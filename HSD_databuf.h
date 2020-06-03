@@ -4,7 +4,7 @@
 #include "hashpipe_databuf.h"
 #define PKTSIZE 528 //byte of packet size
 
-#define CACHE_ALIGNMENT         1180
+#define CACHE_ALIGNMENT         256
 #define N_INPUT_BLOCKS          4
 #define N_OUTPUT_BLOCKS         8
 

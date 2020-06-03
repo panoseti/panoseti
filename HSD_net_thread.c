@@ -16,6 +16,7 @@
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <errno.h>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
@@ -26,7 +27,7 @@ static int init(hashpipe_thread_args_t * args){
     hashpipe_status_t st = args->st;
     strcpy(params.bindhost, "127.0.0.1");
     //selecting a port to listen to
-    params.bindport = 5009;
+    params.bindport = 60001;
     params.packet_size = 0;
     hashpipe_udp_init(&params);
     hashpipe_status_lock_safe(&st);
@@ -88,7 +89,11 @@ static void *run(hashpipe_thread_args_t * args){
         hashpipe_status_lock_safe(&st);
         hputs(st.buf, status_key, "receiving");
         hashpipe_status_unlock_safe(&st);
-        n = recvfrom(params.sock, str_rcv, PKTSIZE*sizeof(char), 0,0,0);
+        n = recv(params.sock, str_rcv, PKTSIZE*sizeof(char), 0);//recvfrom(params.sock, str_rcv, PKTSIZE*sizeof(char), 0,0,0);
+        hashpipe_status_lock_safe(&st);
+        hputi4(st.buf, "N_VALUE", n);
+        hputs(st.buf, "PKTError", strerror(errno));
+        hashpipe_status_unlock_safe(&st);
 
         //if recieved packet has data;
         if (n > 0){

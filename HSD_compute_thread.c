@@ -59,10 +59,10 @@ static void *run(hashpipe_thread_args_t * args){
 
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
-        hputi4(st.buf, "GPUBLKIN", curblock_in);
+        hputi4(st.buf, "COMPUTEBLKIN", curblock_in);
         hputs(st.buf, status_key, "waiting");
-        hputi4(st.buf, "GPUBKOUT", curblock_out);
-	    hputi8(st.buf,"GPUMCNT",mcnt);
+        hputi4(st.buf, "COMPUTEBKOUT", curblock_out);
+	    hputi8(st.buf,"COMPUTEMCNT",mcnt);
         hashpipe_status_unlock_safe(&st);
 
         //Wait for new input block to be filled
@@ -134,7 +134,7 @@ static void *run(hashpipe_thread_args_t * args){
 
 static hashpipe_thread_desc_t HSD_compute_thread = {
     name: "HSD_compute_thread",
-    skey: "GPUSTAT",
+    skey: "COMPUTESTAT",
     init: NULL,
     run: run,
     ibuf_desc: {HSD_input_databuf_create},
