@@ -110,7 +110,7 @@ static void *run(hashpipe_thread_args_t * args){
 
             //move these headers and packet to buffer
             db->block[block_idx].header.mcnt = mcnt;
-            memcpy(db->block[block_idx].packet_bytes, str_q, PKTSIZE);
+            memcpy(db->block[block_idx].packet_bytes, str_q, PKTSIZE*sizeof(char));
 
             //Mark block as full
             if(HSD_input_databuf_set_filled(db, block_idx) != HASHPIPE_OK){
@@ -135,7 +135,7 @@ static void *run(hashpipe_thread_args_t * args){
 static hashpipe_thread_desc_t HSD_net_thread = {
     name: "HSD_net_thread",
     skey: "NETSTAT",
-    init: NULL,
+    init: init,
     run: run,
     ibuf_desc: {NULL},
     obuf_desc: {HSD_input_databuf_create}

@@ -35,8 +35,8 @@ static uint8_t char_to_uint8_flipped(char ch){
         default: return 0x00;
     }
 }
-uint8_t hex_to_uint8(char first, char second){
-    return (char_to_uint8_flipped(first)<<4) + char_to_uint8_flipped(second);
+uint8_t findPktNum(char data){
+    return (data<<4) | (data>>4);
 }
 
 static void *run(hashpipe_thread_args_t * args){
@@ -101,14 +101,16 @@ static void *run(hashpipe_thread_args_t * args){
         //CALCULATION BLOCK
         //TODO
         //Get data from buffer
-        memcpy(str_q, db_in->block[curblock_in].packet_bytes, PKTSIZE);
+        memcpy(str_q, db_in->block[curblock_in].packet_bytes, PKTSIZE*sizeof(char));
 
         //Read the packet number from the packet
-        pkt_num = hex_to_uint8(str_q[2], str_q[3]);
-        printf("Packet number %i is being processed", pkt_num);
+        pkt_num = findPktNum(str_q[1]);
+        //printf("%s\n", str_q);
+        printf("Packet number %02x is being processed\n", pkt_num);
+        printf("First 4 Bytes %02x %02x %02x %02x \n", (unsigned char)str_q[0], (unsigned char)str_q[1], (unsigned char)str_q[2], (unsigned char)str_q[3]);
 
         //Copy the input packet to the output packet
-        memcpy(db_out->block[curblock_out].packet_result, str_q, PKTSIZE);
+        memcpy(db_out->block[curblock_out].packet_result, str_q, PKTSIZE*sizeof(char));
 
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
