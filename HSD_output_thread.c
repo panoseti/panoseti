@@ -57,7 +57,7 @@ static void *run(hashpipe_thread_args_t * args){
     //Output elements
     char *packet;
     char *textpacket = (char *)malloc((PKTSIZE*sizeof(char)*3) + 1);
-    //int packetNum = 0;
+    int packetNum = 0;
     FILE * HSD_file;
     HSD_file=fopen("./data.out", "w");
 
@@ -96,10 +96,11 @@ static void *run(hashpipe_thread_args_t * args){
 
         data_to_text(packet, textpacket);
 
-        //fprint("----------------------------");
-        //fprintf("Packet %i", packetNum);
-        //packetNum++;
+        fprintf(HSD_file, "----------------------------\n");
+        fprintf(HSD_file, "Packet %i\n", packetNum);
+        packetNum++;
         fwrite(textpacket, (PKTSIZE*sizeof(char)*3) + 1, 1, HSD_file);
+        fprintf(HSD_file, "\n");
 
 
         HSD_output_databuf_set_free(db,block_idx);
