@@ -11,6 +11,38 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
+char hex_to_char(char in){
+    switch (in) {
+        case 0x00: return '0';
+        case 0x01: return '1';
+        case 0x02: return '2';
+        case 0x03: return '3';
+        case 0x04: return '4';
+        case 0x05: return '5';
+        case 0x06: return '6';
+        case 0x07: return '7';
+        case 0x08: return '8';
+        case 0x09: return '9';
+        case 0x0a: return 'a';
+        case 0x0b: return 'b';
+        case 0x0c: return 'c';
+        case 0x0d: return 'd';
+        case 0x0e: return 'e';
+        case 0x0f: return 'f';
+    }
+}
+
+static void data_to_text(char *data, char *text){
+    int textInd;
+    for(int i = 0; i < PKTSIZE; i++){
+        textInd = i*3;
+        text[textInd] = hex_to_char(((data[i] >> 4) & 0x0f));
+        text[textInd + 1] = hex_to_char(data[i] & 0x0f);
+        text[textInd + 2] = ' ';
+    }
+    text[textInd + 3] = '\n';
+}
+
 static void *run(hashpipe_thread_args_t * args){
     // Local aliases to shorten access to args fields
     // Our input buffer happens to be a demo1_ouput_databuf
@@ -24,6 +56,8 @@ static void *run(hashpipe_thread_args_t * args){
 
     //Output elements
     char *packet;
+    char *textpacket = (char *)malloc((PKTSIZE*sizeof(char)*3) + 1);
+    //int packetNum = 0;
     FILE * HSD_file;
     HSD_file=fopen("./data.out", "w");
 
@@ -59,7 +93,13 @@ static void *run(hashpipe_thread_args_t * args){
         //TODO check mcnt
         //Read the packet
         packet=db->block[block_idx].packet_result;
-        fwrite(packet, PKTSIZE, 1, HSD_file);
+
+        data_to_text(packet, textpacket);
+
+        //fprint("----------------------------");
+        //fprintf("Packet %i", packetNum);
+        //packetNum++;
+        fwrite(textpacket, (PKTSIZE*sizeof(char)*3) + 1, 1, HSD_file);
 
 
         HSD_output_databuf_set_free(db,block_idx);

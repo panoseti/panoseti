@@ -14,29 +14,9 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
-static uint8_t char_to_uint8_flipped(char ch){
-    switch (ch){
-        case '0': return 0x00;
-        case '1': return 0x08;
-        case '2': return 0x04;
-        case '3': return 0x0c;
-        case '4': return 0x02;
-        case '5': return 0x0a;
-        case '6': return 0x06;
-        case '7': return 0x0e;
-        case '8': return 0x01;
-        case '9': return 0x09;
-        case 'a': return 0x05;
-        case 'b': return 0x0d;
-        case 'c': return 0x03;
-        case 'd': return 0x0b;
-        case 'e': return 0x07;
-        case 'f': return 0x0f;
-        default: return 0x00;
-    }
-}
+
 uint8_t findPktNum(char data){
-    return (data<<4) | (data>>4);
+    return ((data << 4) & 0xf0) | ((data >> 4) & 0x0f);
 }
 
 static void *run(hashpipe_thread_args_t * args){
@@ -105,9 +85,8 @@ static void *run(hashpipe_thread_args_t * args){
 
         //Read the packet number from the packet
         pkt_num = findPktNum(str_q[1]);
-        //printf("%s\n", str_q);
-        printf("Packet number %02x is being processed\n", pkt_num);
-        printf("First 4 Bytes %02x %02x %02x %02x \n", (unsigned char)str_q[0], (unsigned char)str_q[1], (unsigned char)str_q[2], (unsigned char)str_q[3]);
+        //printf("\rPacket number %u is being processed", pkt_num);
+        //printf("First 4 Bytes %02x %02x %02x %02x \n", (unsigned char)str_q[0], (unsigned char)str_q[1], (unsigned char)str_q[2], (unsigned char)str_q[3]);
 
         //Copy the input packet to the output packet
         memcpy(db_out->block[curblock_out].packet_result, str_q, PKTSIZE*sizeof(char));
@@ -131,6 +110,8 @@ static void *run(hashpipe_thread_args_t * args){
         pthread_testcancel();
 
     }
+
+    //printf("\n");
     return THREAD_OK;
 }
 
