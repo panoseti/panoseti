@@ -15,8 +15,8 @@
 #include "HSD_databuf.h"
 
 
-uint8_t findPktNum(char data){
-    return ((data << 4) & 0xf0) | ((data >> 4) & 0x0f);
+uint16_t findPktNum(char data1, char data2){
+    return ((data2 << 8) & 0xff00) | ((data1) & 0x00ff);
 }
 
 static void *run(hashpipe_thread_args_t * args){
@@ -31,18 +31,20 @@ static void *run(hashpipe_thread_args_t * args){
     int curblock_in=0;
     int curblock_out=0;
 
-    //TODO: Temporarily display packet number
-    uint8_t pkt_num;
+    //Variables to display pkt info
+    uint16_t pkt_num;
+    uint16_t prev_pkt_num;
+    int lost_pkts = -1;
     //Compute Elements
     char *str_q;
     str_q = (char *)malloc(PKTSIZE*sizeof(char));
 
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
-        hputi4(st.buf, "COMPUTEBLKIN", curblock_in);
+        hputi4(st.buf, "COMBLKIN", curblock_in);
         hputs(st.buf, status_key, "waiting");
-        hputi4(st.buf, "COMPUTEBKOUT", curblock_out);
-	    hputi8(st.buf,"COMPUTEMCNT",mcnt);
+        hputi4(st.buf, "COMBKOUT", curblock_out);
+	    hputi8(st.buf,"COMMCNT",mcnt);
         hashpipe_status_unlock_safe(&st);
 
         //Wait for new input block to be filled
@@ -84,9 +86,21 @@ static void *run(hashpipe_thread_args_t * args){
         memcpy(str_q, db_in->block[curblock_in].packet_bytes, PKTSIZE*sizeof(char));
 
         //Read the packet number from the packet
-        pkt_num = findPktNum(str_q[1]);
+        pkt_num = findPktNum(str_q[2], str_q[3]);
         //printf("\rPacket number %u is being processed", pkt_num);
         //printf("First 4 Bytes %02x %02x %02x %02x \n", (unsigned char)str_q[0], (unsigned char)str_q[1], (unsigned char)str_q[2], (unsigned char)str_q[3]);
+
+        //Check to see if the next packet is 1 more than the previous packet
+        if (lost_pkts < 0)
+            lost_pkts = 0;
+        else
+            if (pkt_num < prev_pkt_num)
+                lost_pkts += (0xffff - prev_pkt_num) + pkt_num - 1;
+            else 
+                lost_pkts += (pkt_num - prev_pkt_num) - 1;
+        prev_pkt_num = pkt_num;
+
+        printf("Lost Packets %i\n", lost_pkts);
 
         //Copy the input packet to the output packet
         memcpy(db_out->block[curblock_out].packet_result, str_q, PKTSIZE*sizeof(char));
@@ -104,6 +118,7 @@ static void *run(hashpipe_thread_args_t * args){
         //display packetnum in status
         hashpipe_status_lock_safe(&st);
         hputi4(st.buf, "PKTNUM", pkt_num);
+        hputi4(st.buf, "PKTLOST", lost_pkts);
         hashpipe_status_unlock_safe(&st);
 
         //Check for cancel
