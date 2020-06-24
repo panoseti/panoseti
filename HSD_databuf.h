@@ -8,7 +8,7 @@
 #define N_INPUT_BLOCKS          4
 #define N_OUTPUT_BLOCKS         8
 #define N_PKT_PER_BLOCK         40
-#define BLOCKSIZE               PKTSIZE //*N_PKT_PER_BLOCK  
+#define BLOCKSIZE               PKTSIZE*N_PKT_PER_BLOCK  
 
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
