@@ -7,6 +7,8 @@
 #define CACHE_ALIGNMENT         256
 #define N_INPUT_BLOCKS          4
 #define N_OUTPUT_BLOCKS         8
+#define N_PKT_PER_BLOCK         40
+#define BLOCKSIZE               PKTSIZE //*N_PKT_PER_BLOCK  
 
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
@@ -20,12 +22,12 @@ typedef uint8_t HSD_input_header_cache_alignment[
 typedef struct HSD_input_block {
     HSD_input_block_header_t header;
     HSD_input_header_cache_alignment padding;   // Maintain cache alignment
-    char packet_bytes[528];                  //Store Data Packets
+    char data_block[BLOCKSIZE*sizeof(char)];    //define input buffer
 } HSD_input_block_t;
 
 typedef struct HSD_input_databuf {
     hashpipe_databuf_t header;
-    HSD_input_header_cache_alignment padding;
+    HSD_input_header_cache_alignment padding;   // Maintain chache alignment
     HSD_input_block_t block[N_INPUT_BLOCKS];
 } HSD_input_databuf_t;
 
@@ -43,7 +45,7 @@ typedef uint8_t HSD_output_header_cache_alignment[
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
-    char packet_result[528];
+    char result_block[BLOCKSIZE*sizeof(char)];
 } HSD_output_block_t;
 
 typedef struct HSD_output_databuf {

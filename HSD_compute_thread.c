@@ -37,7 +37,7 @@ static void *run(hashpipe_thread_args_t * args){
     int lost_pkts = -1;
     //Compute Elements
     char *str_q;
-    str_q = (char *)malloc(PKTSIZE*sizeof(char));
+    str_q = (char *)malloc(BLOCKSIZE*sizeof(char));
 
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
@@ -83,15 +83,13 @@ static void *run(hashpipe_thread_args_t * args){
         //CALCULATION BLOCK
         //TODO
         //Get data from buffer
-        memcpy(str_q, db_in->block[curblock_in].packet_bytes, PKTSIZE*sizeof(char));
+        memcpy(str_q, db_in->block[curblock_in].data_block, BLOCKSIZE*sizeof(char));
 
         //Read the packet number from the packet
-        pkt_num = findPktNum(str_q[2], str_q[3]);
-        //printf("\rPacket number %u is being processed", pkt_num);
-        //printf("First 4 Bytes %02x %02x %02x %02x \n", (unsigned char)str_q[0], (unsigned char)str_q[1], (unsigned char)str_q[2], (unsigned char)str_q[3]);
+        //pkt_num = findPktNum(str_q[2], str_q[3]);
 
         //Check to see if the next packet is 1 more than the previous packet
-        if (lost_pkts < 0)
+        /*if (lost_pkts < 0)
             lost_pkts = 0;
         else
             if (pkt_num < prev_pkt_num)
@@ -100,10 +98,10 @@ static void *run(hashpipe_thread_args_t * args){
                 lost_pkts += (pkt_num - prev_pkt_num) - 1;
         prev_pkt_num = pkt_num;
 
-        printf("Lost Packets %i\n", lost_pkts);
+        printf("Lost Packets %i\n", lost_pkts);*/
 
         //Copy the input packet to the output packet
-        memcpy(db_out->block[curblock_out].packet_result, str_q, PKTSIZE*sizeof(char));
+        memcpy(db_out->block[curblock_out].result_block, str_q, BLOCKSIZE*sizeof(char));
 
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance

@@ -29,12 +29,13 @@ char hex_to_char(char in){
         case 0x0d: return 'd';
         case 0x0e: return 'e';
         case 0x0f: return 'f';
+        default: return '=';
     }
 }
 
 static void data_to_text(char *data, char *text){
     int textInd;
-    for(int i = 0; i < PKTSIZE; i++){
+    for(int i = 0; i < BLOCKSIZE; i++){
         textInd = i*3;
         text[textInd] = hex_to_char(((data[i] >> 4) & 0x0f));
         text[textInd + 1] = hex_to_char(data[i] & 0x0f);
@@ -55,8 +56,8 @@ static void *run(hashpipe_thread_args_t * args){
     uint64_t mcnt=0;
 
     //Output elements
-    char *packet;
-    char *textpacket = (char *)malloc((PKTSIZE*sizeof(char)*3) + 1);
+    char *block_ptr;
+    char *textblock = (char *)malloc((BLOCKSIZE*sizeof(char)*3) + 1);
     int packetNum = 0;
     FILE * HSD_file;
     HSD_file=fopen("./data.out", "w");
@@ -92,15 +93,15 @@ static void *run(hashpipe_thread_args_t * args){
 
         //TODO check mcnt
         //Read the packet
-        packet=db->block[block_idx].packet_result;
+        /*block_ptr=db->block[block_idx].result_block;
 
-        data_to_text(packet, textpacket);
+        data_to_text(block_ptr, textblock);
 
         fprintf(HSD_file, "----------------------------\n");
-        fprintf(HSD_file, "Packet %i\n", packetNum);
+        fprintf(HSD_file, "BLOCK %i\n", packetNum);
         packetNum++;
-        fwrite(textpacket, (PKTSIZE*sizeof(char)*3) + 1, 1, HSD_file);
-        fprintf(HSD_file, "\n");
+        fwrite(textblock, (BLOCKSIZE*sizeof(char)*3) + 1, 1, HSD_file);
+        fprintf(HSD_file, "\n");*/
 
 
         HSD_output_databuf_set_free(db,block_idx);
