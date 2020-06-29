@@ -26,7 +26,7 @@
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
 //defining a struct of type hashpipe_udp_params as defined in hashpipe_udp.h
-static struct hashpipe_udp_params params;
+//static struct hashpipe_udp_params params;
 
 static int init(hashpipe_thread_args_t * args){
 
@@ -82,6 +82,23 @@ static int init(hashpipe_thread_args_t * args){
     return 0;
 }
 
+typedef struct {
+    int mode;
+    uint64_t packetNum;
+}packet_header_t;
+
+static inline void get_header(unsigned char *p_frame, packet_header_t *pkt_header) {
+    uint64_t raw_header;
+    raw_header = *(unsigned long long *)(PKT_UDP_DATA(p_frame));
+    pkt_header->packetNum = (raw_header & 0x00000000ffff0000) >> (16);
+    pkt_header->mode = (raw_header & 0x00000000000000ff);
+
+    #ifdef TEST_MODE
+        printf("Mode:%i", pkt_header->mode);
+        printf("Packet:%lu\n", pkt_header->packetNum);
+    #endif
+}
+
 static void *run(hashpipe_thread_args_t * args){
     HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
     hashpipe_status_t st = args->st;
@@ -91,6 +108,7 @@ static void *run(hashpipe_thread_args_t * args){
     int rv, n;
     uint64_t mcnt = 0;
     int block_idx = 0;
+    packet_header_t pkt_header;
             
     //Input elements(Packets from Quabo)
     char *str_rcv, *str_q;
@@ -165,9 +183,9 @@ static void *run(hashpipe_thread_args_t * args){
         npackets++;
         printf("%lu",npackets);*/
 
-        printf("N_PKT_PER_BLOCK: %d\n", N_PKT_PER_BLOCK);
+        //printf("N_PKT_PER_BLOCK: %d\n", N_PKT_PER_BLOCK);
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
-            printf("For loop i: %i\n", i);
+            //printf("For loop i: %i\n", i);
             do {
                 p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
             } 
@@ -177,13 +195,14 @@ static void *run(hashpipe_thread_args_t * args){
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
+            get_header(p_frame, &pkt_header);
             
-            printf("PKT_UDP_DATA %i\n", PKT_UDP_DATA(p_frame)-8);
+            //printf("PKT_UDP_DATA %i\n", PKT_UDP_DATA(p_frame)-8);
 
             hashpipe_pktsock_release_frame(p_frame);
 
             //move these headers and packet to buffer
-            memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame)-8, PKTSIZE*sizeof(unsigned char));
+            memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
             pthread_testcancel();
         }
 
@@ -191,9 +210,9 @@ static void *run(hashpipe_thread_args_t * args){
         // Get stats from packet socket
 		hashpipe_pktsock_stats(p_ps, &pktsock_pkts, &pktsock_drops);
 
-        int packet_size = PKT_UDP_SIZE(p_frame) - 8;
-        printf("packet size is: %d\n", packet_size);
-        printf("for loop npackets: %lu\n", npackets);
+        //int packet_size = PKT_UDP_SIZE(p_frame) - 8;
+        //printf("packet size is: %d\n", packet_size);
+        //printf("for loop npackets: %lu\n", npackets);
 
         hashpipe_status_lock_safe(&st);
 		hputi8(st.buf, "NPACKETS", npackets);

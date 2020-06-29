@@ -14,6 +14,7 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
+#define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
 
 uint16_t findPktNum(char data1, char data2){
     return ((data2 << 8) & 0xff00) | ((data1) & 0x00ff);
@@ -32,12 +33,16 @@ static void *run(hashpipe_thread_args_t * args){
     int curblock_out=0;
 
     //Variables to display pkt info
-    uint16_t pkt_num;
-    uint16_t prev_pkt_num;
-    int lost_pkts = -1;
+    uint8_t mode;
+    uint16_t pkt_num[NUM_OF_MODES+1] = {0};
+    uint16_t prev_pkt_num[NUM_OF_MODES+1] = {0};
+    int lost_pkts[NUM_OF_MODES+1];
+    memset(lost_pkts, -1, sizeof(lost_pkts));
+    int total_lost_pkts = 0;
+    int current_pkt_lost;
     //Compute Elements
     char *str_q;
-    str_q = (char *)malloc(BLOCKSIZE*sizeof(char));
+    str_q = (char *)malloc(BLOCKSIZE*sizeof(unsigned char));
 
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
@@ -83,25 +88,35 @@ static void *run(hashpipe_thread_args_t * args){
         //CALCULATION BLOCK
         //TODO
         //Get data from buffer
-        memcpy(str_q, db_in->block[curblock_in].data_block, BLOCKSIZE*sizeof(char));
+        memcpy(str_q, db_in->block[curblock_in].data_block, BLOCKSIZE*sizeof(unsigned char));
 
-        //Read the packet number from the packet
-        //pkt_num = findPktNum(str_q[2], str_q[3]);
+        for(int i = 0; i < N_PKT_PER_BLOCK; i++){
+            //Read the packet number from the packet
+            mode = str_q[i*PKTSIZE];
+            pkt_num[mode] = findPktNum(str_q[i*PKTSIZE+2], str_q[i*PKTSIZE+3]);
 
-        //Check to see if the next packet is 1 more than the previous packet
-        /*if (lost_pkts < 0)
-            lost_pkts = 0;
-        else
-            if (pkt_num < prev_pkt_num)
-                lost_pkts += (0xffff - prev_pkt_num) + pkt_num - 1;
-            else 
-                lost_pkts += (pkt_num - prev_pkt_num) - 1;
-        prev_pkt_num = pkt_num;
-
-        printf("Lost Packets %i\n", lost_pkts);*/
+            #ifdef TEST_MODE
+                printf("pkt_num:%i\n", pkt_num[mode]);
+                printf("lost_pkt:%i\n\n", lost_pkts[mode]);
+            #endif
+            //Check to see if the next packet is 1 more than the previous packet
+            if (lost_pkts[mode] < 0) {
+                lost_pkts[mode] = 0;
+            } else {
+                if (pkt_num[mode] < prev_pkt_num[mode])
+                    current_pkt_lost = (0xffff - prev_pkt_num[mode]) + pkt_num[mode] - 1;
+                else 
+                    current_pkt_lost = (pkt_num[mode] - prev_pkt_num[mode]) - 1;
+                
+                lost_pkts[mode] += current_pkt_lost;
+                total_lost_pkts += current_pkt_lost;
+            }
+            prev_pkt_num[mode] = pkt_num[mode];
+            
+        }
 
         //Copy the input packet to the output packet
-        memcpy(db_out->block[curblock_out].result_block, str_q, BLOCKSIZE*sizeof(char));
+        memcpy(db_out->block[curblock_out].result_block, str_q, BLOCKSIZE*sizeof(unsigned char));
 
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
@@ -115,8 +130,18 @@ static void *run(hashpipe_thread_args_t * args){
 
         //display packetnum in status
         hashpipe_status_lock_safe(&st);
-        hputi4(st.buf, "PKTNUM", pkt_num);
-        hputi4(st.buf, "PKTLOST", lost_pkts);
+        hputi4(st.buf, "M1PKTNUM", pkt_num[1]);
+        hputi4(st.buf, "M2PKTNUM", pkt_num[2]);
+        hputi4(st.buf, "M3PKTNUM", pkt_num[3]);
+        hputi4(st.buf, "M6PKTNUM", pkt_num[6]);
+        hputi4(st.buf, "M7PKTNUM", pkt_num[7]);
+
+        hputi4(st.buf, "TPKTLST", total_lost_pkts);
+        hputi4(st.buf, "M1PKTLST", lost_pkts[1]);
+        hputi4(st.buf, "M2PKTLST", lost_pkts[2]);
+        hputi4(st.buf, "M3PKTLST", lost_pkts[3]);
+        hputi4(st.buf, "M6PKTLST", lost_pkts[6]);
+        hputi4(st.buf, "M7PKTLST", lost_pkts[7]);
         hashpipe_status_unlock_safe(&st);
 
         //Check for cancel
