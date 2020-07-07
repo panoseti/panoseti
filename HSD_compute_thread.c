@@ -16,7 +16,29 @@
 
 #define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
 
-uint16_t findPktNum(char data1, char data2){
+typedef struct quabo_info{
+    uint16_t pkt_num[NUM_OF_MODES+1];
+    uint16_t prev_pkt_num[NUM_OF_MODES+1];
+    int lost_pkts[NUM_OF_MODES+1];
+    quabo_info* next_quabo_info;
+} quabo_info_t;
+
+quabo_info_t* quabo_info_t_new(){
+    quabo_info_t* value = (quabo_info_t*) malloc(sizeof(struct quabo_info));
+    memset(value->lost_pkts, -1, sizeof(value->lost_pkts));
+    memset(value->pkt_num, 0, sizeof(value->pkt_num));
+    memset(value->prev_pkt_num, 0, sizeof(value->prev_pkt_num));
+    value->next_quabo_info = NULL;
+    return value;
+}
+
+quabo_info_t* get_quabo_info(quabo_info_t* list, unsigned int ind){
+    if(list != NULL && ind > 0)
+        return get_quabo_info(list->next_quabo_info, ind-1);
+    return list;
+}
+
+uint16_t flipBytes(char data1, char data2){
     return ((data2 << 8) & 0xff00) | ((data1) & 0x00ff);
 }
 
@@ -34,10 +56,22 @@ static void *run(hashpipe_thread_args_t * args){
 
     //Variables to display pkt info
     uint8_t mode;
-    uint16_t pkt_num[NUM_OF_MODES+1] = {0};
-    uint16_t prev_pkt_num[NUM_OF_MODES+1] = {0};
+    quabo_info_t* quaboListBegin = quabo_info_t_new();
+    quabo_info_t* quaboListEnd = quaboListBegin;
+    unsigned int quaboListSize = 1;
+    unsigned int quaboInd[0xffff];
+    memset(quaboInd, -1, sizeof(quaboInd));
+
+    quabo_info_t* currentQuabo;
+    uint16_t boardLoc;
+    char* boardLocstr = (char *)malloc(sizeof(char)*10);
+
+
+    /*uint16_t pkt_num[NUM_OF_MODES+1];
+    uint16_t prev_pkt_num[NUM_OF_MODES+1];
     int lost_pkts[NUM_OF_MODES+1];
-    memset(lost_pkts, -1, sizeof(lost_pkts));
+    memset(lost_pkts, -1, sizeof(lost_pkts));*/
+    
     int total_lost_pkts = 0;
     int current_pkt_lost;
     //Compute Elements
@@ -90,28 +124,47 @@ static void *run(hashpipe_thread_args_t * args){
         //Get data from buffer
         memcpy(str_q, db_in->block[curblock_in].data_block, BLOCKSIZE*sizeof(unsigned char));
 
+        
+        //Finding the packet number and computing the lost of packets by using packet number
         for(int i = 0; i < N_PKT_PER_BLOCK; i++){
             //Read the packet number from the packet
             mode = str_q[i*PKTSIZE];
-            pkt_num[mode] = findPktNum(str_q[i*PKTSIZE+2], str_q[i*PKTSIZE+3]);
+            boardLoc = flipBytes(str_q[i*PKTSIZE+4], str_q[i*PKTSIZE+5]);
+            //printf("Mode:%i ", mode);
+            //printf("BoardLocation:%02X \n", boardLoc);
+            if (quaboInd[boardLoc] == -1){
+                quaboInd[boardLoc] = quaboListSize;
+                quaboListSize++;
+
+                printf("New Quabo Detected ID:%u.%u\n", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
+
+                quaboListEnd->next_quabo_info = quabo_info_t_new();
+                quaboListEnd = quaboListEnd->next_quabo_info;
+                currentQuabo = quaboListEnd;
+            } else {
+                //printf("Index:%i \n", quaboInd[boardLoc]);
+                currentQuabo = get_quabo_info(quaboListBegin, quaboInd[boardLoc]);
+            }
+
+            currentQuabo->pkt_num[mode] = flipBytes(str_q[i*PKTSIZE+2], str_q[i*PKTSIZE+3]);
 
             #ifdef TEST_MODE
                 printf("pkt_num:%i\n", pkt_num[mode]);
                 printf("lost_pkt:%i\n\n", lost_pkts[mode]);
             #endif
             //Check to see if the next packet is 1 more than the previous packet
-            if (lost_pkts[mode] < 0) {
-                lost_pkts[mode] = 0;
+            if (currentQuabo->lost_pkts[mode] < 0) {
+                currentQuabo->lost_pkts[mode] = 0;
             } else {
-                if (pkt_num[mode] < prev_pkt_num[mode])
-                    current_pkt_lost = (0xffff - prev_pkt_num[mode]) + pkt_num[mode] - 1;
-                else 
-                    current_pkt_lost = (pkt_num[mode] - prev_pkt_num[mode]) - 1;
+                if (currentQuabo->pkt_num[mode] < currentQuabo->prev_pkt_num[mode])
+                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[mode]) + currentQuabo->pkt_num[mode];
+                else
+                    current_pkt_lost = (currentQuabo->pkt_num[mode] - currentQuabo->prev_pkt_num[mode]) - 1;
                 
-                lost_pkts[mode] += current_pkt_lost;
+                currentQuabo->lost_pkts[mode] += current_pkt_lost;
                 total_lost_pkts += current_pkt_lost;
             }
-            prev_pkt_num[mode] = pkt_num[mode];
+            currentQuabo->prev_pkt_num[mode] = currentQuabo->pkt_num[mode];
             
         }
 
@@ -128,20 +181,22 @@ static void *run(hashpipe_thread_args_t * args){
         curblock_in = (curblock_in + 1) % db_in->header.n_block;
         mcnt++;
 
+        sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
         //display packetnum in status
         hashpipe_status_lock_safe(&st);
-        hputi4(st.buf, "M1PKTNUM", pkt_num[1]);
-        hputi4(st.buf, "M2PKTNUM", pkt_num[2]);
-        hputi4(st.buf, "M3PKTNUM", pkt_num[3]);
-        hputi4(st.buf, "M6PKTNUM", pkt_num[6]);
-        hputi4(st.buf, "M7PKTNUM", pkt_num[7]);
+        hputs(st.buf, "QUABOKEY", boardLocstr);
+        hputi4(st.buf, "M1PKTNUM", currentQuabo->pkt_num[1]);
+        hputi4(st.buf, "M2PKTNUM", currentQuabo->pkt_num[2]);
+        hputi4(st.buf, "M3PKTNUM", currentQuabo->pkt_num[3]);
+        hputi4(st.buf, "M6PKTNUM", currentQuabo->pkt_num[6]);
+        hputi4(st.buf, "M7PKTNUM", currentQuabo->pkt_num[7]);
 
         hputi4(st.buf, "TPKTLST", total_lost_pkts);
-        hputi4(st.buf, "M1PKTLST", lost_pkts[1]);
-        hputi4(st.buf, "M2PKTLST", lost_pkts[2]);
-        hputi4(st.buf, "M3PKTLST", lost_pkts[3]);
-        hputi4(st.buf, "M6PKTLST", lost_pkts[6]);
-        hputi4(st.buf, "M7PKTLST", lost_pkts[7]);
+        hputi4(st.buf, "M1PKTLST", currentQuabo->lost_pkts[1]);
+        hputi4(st.buf, "M2PKTLST", currentQuabo->lost_pkts[2]);
+        hputi4(st.buf, "M3PKTLST", currentQuabo->lost_pkts[3]);
+        hputi4(st.buf, "M6PKTLST", currentQuabo->lost_pkts[6]);
+        hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
         hashpipe_status_unlock_safe(&st);
 
         //Check for cancel

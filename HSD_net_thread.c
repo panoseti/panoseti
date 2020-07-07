@@ -24,6 +24,7 @@
 #define PKTSOCK_FRAMES_PER_BLOCK (8)
 #define PKTSOCK_NBLOCKS (20)
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
+#define TEST_MODE
 
 //defining a struct of type hashpipe_udp_params as defined in hashpipe_udp.h
 //static struct hashpipe_udp_params params;
@@ -85,17 +86,21 @@ static int init(hashpipe_thread_args_t * args){
 typedef struct {
     int mode;
     uint64_t packetNum;
+    int boardLocation;
 }packet_header_t;
 
 static inline void get_header(unsigned char *p_frame, packet_header_t *pkt_header) {
     uint64_t raw_header;
     raw_header = *(unsigned long long *)(PKT_UDP_DATA(p_frame));
-    pkt_header->packetNum = (raw_header & 0x00000000ffff0000) >> (16);
     pkt_header->mode = (raw_header & 0x00000000000000ff);
+    pkt_header->packetNum = (raw_header & 0x00000000ffff0000) >> (16);
+    pkt_header->boardLocation = (raw_header & 0x0000ffff00000000) >> (32);
 
     #ifdef TEST_MODE
-        printf("Mode:%i", pkt_header->mode);
-        printf("Packet:%lu\n", pkt_header->packetNum);
+        //printf("Mode:%i ", pkt_header->mode);
+        //printf("BoardLocation:%02X ", pkt_header->boardLocation);
+        //printf("Packet:%lu\n", pkt_header->packetNum);
+        //printf("Header:%02lx\n", (raw_header & 0xffffffffffffffff));
     #endif
 }
 
@@ -173,17 +178,6 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "receiving");
         hashpipe_status_unlock_safe(&st);
 
-        /*do {
-            p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
-        } 
-        while (!p_frame && run_threads());
-
-        //move these headers and packet to buffer
-        memcpy(db->block[block_idx].data_block, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(char));
-        npackets++;
-        printf("%lu",npackets);*/
-
-        //printf("N_PKT_PER_BLOCK: %d\n", N_PKT_PER_BLOCK);
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
             //printf("For loop i: %i\n", i);
             do {
@@ -232,43 +226,6 @@ static void *run(hashpipe_thread_args_t * args){
         db->block[block_idx].header.mcnt = mcnt;
 		block_idx = (block_idx + 1) % db->header.n_block;
 		mcnt++;
-
-        
-        //n = recv(params.sock, str_rcv, PKTSIZE*sizeof(char), 0);//recvfrom(params.sock, str_rcv, PKTSIZE*sizeof(char), 0,0,0);
-
-
-        /*hashpipe_status_lock_safe(&st);
-        hputi4(st.buf, "N_VALUE", n);
-        hputs(st.buf, "PKTError", strerror(errno));
-        hashpipe_status_unlock_safe(&st);
-
-        //if recieved packet has data;
-        if (n > 0){
-            npackets++;
-            str_q = str_rcv;
-            hasData = 1;
-        } else {
-            hasData = 0;
-        }
-
-        //if there is data that has been recieved
-        if (hasData){
-
-            //move these headers and packet to buffer
-            db->block[block_idx].header.mcnt = mcnt;
-            memcpy(db->block[block_idx].packet_bytes, str_q, PKTSIZE*sizeof(char));
-
-            //Mark block as full
-            if(HSD_input_databuf_set_filled(db, block_idx) != HASHPIPE_OK){
-                hashpipe_error(__FUNCTION__, "error waiting for databuf filled call");
-                pthread_exit(NULL);
-            }
-        } else {
-            continue;
-        }
-
-        //Setup for next block
-        block_idx = (block_idx + 1) % db->header.n_block;*/
 
         //Will exit if thread has been cancelled
         pthread_testcancel();
