@@ -196,7 +196,11 @@ static void *run(hashpipe_thread_args_t * args){
             hashpipe_pktsock_release_frame(p_frame);
 
             //move these headers and packet to buffer
-            memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
+            if (pkt_header.mode < 4){
+                memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
+            } else {
+                memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
+            }
             pthread_testcancel();
         }
 
