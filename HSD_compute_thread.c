@@ -78,6 +78,7 @@ static void *run(hashpipe_thread_args_t * args){
     char *str_q;
     str_q = (char *)malloc(BLOCKSIZE*sizeof(unsigned char));
 
+    printf("-----------Finished Setup of Compute Thread----------\n\n");
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
         hputi4(st.buf, "COMBLKIN", curblock_in);

@@ -145,7 +145,7 @@ static void *run(hashpipe_thread_args_t * args){
 		hashpipe_pktsock_release_frame(p_frame);
 	}
 
-
+    printf("-----------Finished Setup of Input Thread------------\n\n");
     while(run_threads()){
         //Update the info of the buffer
         hashpipe_status_lock_safe(&st);
