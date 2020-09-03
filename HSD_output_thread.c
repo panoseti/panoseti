@@ -621,14 +621,14 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
             reply = (redisReply *)redisCommand(redisServer, command);
 
             if (strtol(reply->str, NULL, 10)){
-                //freeReplyObject(reply);
+                freeReplyObject(reply);
 
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
                 sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod1Name, i);
                 H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
 
-                //sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
-                //reply = (redisReply *)redisCommand(redisServer, command);
+                sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
+                reply = (redisReply *)redisCommand(redisServer, command);
             }
 
             freeReplyObject(reply);
@@ -643,14 +643,14 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
             reply = (redisReply *)redisCommand(redisServer, command);
 
             if (strtol(reply->str, NULL, 10)){
-                //freeReplyObject(reply);
+                freeReplyObject(reply);
 
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
                 sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod2Name, i);
                 H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
 
-                //sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
-                //reply = (redisReply *)redisCommand(redisServer, command);
+                sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
+                reply = (redisReply *)redisCommand(redisServer, command);
             }
 
             freeReplyObject(reply);
@@ -887,7 +887,7 @@ static void *run(hashpipe_thread_args_t * args){
                                                                     mod1Name, mod2Name);
                     
                     moduleListEnd = moduleListEnd->next_moduleID;
-
+                    
                     createQuaboTables(moduleListEnd->dynamicMeta, moduleListEnd);
                 }
             }
@@ -898,7 +898,7 @@ static void *run(hashpipe_thread_args_t * args){
         }
         cbuf = getc(modConfig_file);
     }
-
+    
     check_storeHK(redisServer, moduleListBegin->next_moduleID);
     HKPackets_t* HK = (HKPackets_t *)malloc(sizeof(struct HKPackets));
     /*HK->BOARDLOC[0] = 504;
@@ -1024,7 +1024,7 @@ static void *run(hashpipe_thread_args_t * args){
             }
             freeReplyObject(reply);*/
 
-            storeData(currentModule, block_ptr + (i*PKTSIZE+16), boardLoc, acqmode);
+            //storeData(currentModule, block_ptr + (i*PKTSIZE+16), boardLoc, acqmode);
         }
 
 

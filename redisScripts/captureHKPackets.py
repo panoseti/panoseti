@@ -4,7 +4,7 @@ from signal import signal, SIGINT
 from sys import exit
 from datetime import datetime
 
-HOST = '127.0.0.1'
+HOST = '0.0.0.0'
 PORT = 60002
 
 COUNTER = "\rPackets Captured So Far {}"
