@@ -18,7 +18,6 @@
 #define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
 #define OBSERVATORY "LICK"
 #define RANK 2
-#define NUMPKT 2
 #define CONFIGFILE "./modulePair.config"
 #define FRAME_FORMAT "Frame%05i"
 #define DATA_FORMAT "DATA%05i"
@@ -26,12 +25,13 @@
 #define HK_TABLENAME_FORAMT "HK_Module%05i_Quabo%01i"
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
 #define QUABOPERMODULE 4
+#define PKTPERPAIR QUABOPERMODULE*2
 #define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
 #define STRBUFFSIZE 50
 #define SCIDATASIZE 256
 #define HKFIELDS 27
 
-static hsize_t storageDim[RANK] = {NUMPKT,SCIDATASIZE};
+static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
 
 static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
 
@@ -155,14 +155,13 @@ typedef struct moduleIDs {
     hid_t ID16bit;
     hid_t ID8bit;
     hid_t dynamicMeta;
-    unsigned int status;                 // Determine the which part of the data is filled 0:neither filled 1:First rank filled 2: Second rank filled
+    uint8_t status;                 // Determine the which part of the data is filled 0:neither filled 1:First rank filled 2: Second rank filled
     int mod1Name;
     int mod2Name;
-    uint16_t data[NUMPKT][SCIDATASIZE];
+    uint16_t data[PKTPERPAIR][SCIDATASIZE];
     int frameNum;
-    int dataNum;
-    hid_t ID16bitframe;
-    hid_t ID8bitframe;
+    uint32_t UTC;
+    uint32_t NANOSEC;
     moduleIDs* next_moduleID;
 } moduleIDs_t;
 
@@ -176,7 +175,8 @@ moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned in
     value->mod2Name = mod2;
     value->next_moduleID = NULL;
     value->frameNum = -1;
-    value->dataNum = -1;
+    value->UTC = 0;
+    value->NANOSEC = 0;
     return value;
 }
 
@@ -251,7 +251,7 @@ void createStrAttribute(hid_t group, const char* name, char* data) {
 
 }
 
-void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char data[NUMPKT][STRBUFFSIZE]) {
+void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char data[PKTPERPAIR][STRBUFFSIZE]) {
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
 
@@ -415,8 +415,6 @@ void closeModules(moduleIDs_t* head){
     while (head != NULL){
         H5Gclose(head->ID16bit);
         H5Gclose(head->ID8bit);
-        H5Gclose(head->ID16bitframe);
-        H5Gclose(head->ID8bitframe);
         head = head->next_moduleID;
         free(currentmodule);
         currentmodule = head;
@@ -615,7 +613,6 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
         //Updating all the Quabos from Module 1
         BOARDLOC = (currentMod->mod1Name << 2) & 0xfffc;
         
-
         for(int i = 0; i < 4; i++){
             sprintf(command, "HGET UPDATED %u", BOARDLOC);
             reply = (redisReply *)redisCommand(redisServer, command);
@@ -635,26 +632,29 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
             BOARDLOC++;
         }
 
-        //Updating all the Quabos from Module 2
-        BOARDLOC = (currentMod->mod2Name << 2) & 0xfffc;
+        if(currentMod->mod2Name != -1){
+            //Updating all the Quabos from Module 2
+            BOARDLOC = (currentMod->mod2Name << 2) & 0xfffc;
+            printf("BOARDLOC1 is %u\n", BOARDLOC);
 
-        for(int i = 0; i < 4; i++){
-            sprintf(command, "HGET UPDATED %u", BOARDLOC);
-            reply = (redisReply *)redisCommand(redisServer, command);
-
-            if (strtol(reply->str, NULL, 10)){
-                freeReplyObject(reply);
-
-                fetchHKdata(HKdata, BOARDLOC, redisServer);
-                sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod2Name, i);
-                H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
-
-                sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
+            for(int i = 0; i < 4; i++){
+                sprintf(command, "HGET UPDATED %u", BOARDLOC);
                 reply = (redisReply *)redisCommand(redisServer, command);
-            }
 
-            freeReplyObject(reply);
-            BOARDLOC++;
+                if (strtol(reply->str, NULL, 10)){
+                    freeReplyObject(reply);
+
+                    fetchHKdata(HKdata, BOARDLOC, redisServer);
+                    sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod2Name, i);
+                    H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
+
+                    sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
+                    reply = (redisReply *)redisCommand(redisServer, command);
+                }
+
+                freeReplyObject(reply);
+                BOARDLOC++;
+            }
         }
 
         //Update to Next Module
@@ -664,12 +664,11 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     free(HKdata);
 }
 
-int createDataBlock(moduleIDs_t* module, HKPackets_t* HouseKeeping){
+/*int createDataBlock(moduleIDs_t* module, HKPackets_t* HouseKeeping){
     char frameName[50];
-    /*if (module->frameNum > 0)
+    if (module->frameNum > 0)
         H5Gclose(module->ID16bitframe);
-        H5Gclose(module->ID8bitframe);*/
-
+        H5Gclose(module->ID8bitframe);
     // Create a new group of frames to store the metadata and with new sets of frame
     module->frameNum = module->frameNum + 1;
     sprintf(frameName, FRAME_FORMAT, module->frameNum);
@@ -682,9 +681,9 @@ int createDataBlock(moduleIDs_t* module, HKPackets_t* HouseKeeping){
 
 
     return 1;
-}
+}*/
 
-void writeDataBlock(hid_t frame, uint16_t data_ptr[NUMPKT][SCIDATASIZE], int index){
+void writeDataBlock(hid_t frame, uint16_t data_ptr[PKTPERPAIR][SCIDATASIZE], int index){
     hid_t dataset;
     char name[50];
 
@@ -712,16 +711,18 @@ void storePktData(uint16_t* moduleData, char* data_ptr, int mode){
     }
 }
 
-void storeData(moduleIDs_t* module, char* data_ptr, uint16_t boardLoc, char acqmode){
+void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint32_t UTC, uint32_t NANOSEC, char* data_ptr){
     uint16_t* moduleData;
-    hid_t moduleFrame;
+    hid_t group;
     int mode;
+    uint8_t currentStatus = (0x01 << quaboNum);
+    printf("Module %u, Quabo %u\n", moduleNum, quaboNum);
 
     if(acqmode == 0x2 || acqmode == 0x3){
-        moduleFrame = module->ID16bitframe;
+        group = module->ID16bit;
         mode = 16;
     } else if (acqmode == 0x6 || acqmode == 0x7){
-        moduleFrame = module->ID8bitframe;
+        group = module->ID8bit;
         mode = 8;
     } else {
         printf("A new mode was identify acqmode=%X\n", acqmode);
@@ -729,50 +730,21 @@ void storeData(moduleIDs_t* module, char* data_ptr, uint16_t boardLoc, char acqm
         return;
     }
 
-    if(boardLoc == module->mod1Name){
-        if (module->status == 1){
-            module->dataNum = module->dataNum + 1;
-            writeDataBlock(moduleFrame, module->data, module->dataNum);
-            
-            module->status = 0;
-        }
-        moduleData = module->data[0];
+    moduleData = module->data[quaboNum];
 
-        storePktData(moduleData, data_ptr, mode);
-
-        if (module->status = 2){
-            module->dataNum = module->dataNum + 1;
-            writeDataBlock(moduleFrame, module->data, module->dataNum);
-            
-            module->status = 0;
-        } else {
-            module->status = 1;
-        }
-
-    } else if (boardLoc == module->mod2Name){
-        if (module->status == 2){
-            module->dataNum = module->dataNum + 1;
-            writeDataBlock(moduleFrame, module->data, module->dataNum);
-            
-            module->status = 0;
-        }
-        moduleData = module->data[1];
-
-        storePktData(moduleData, data_ptr, mode);
-
-        if (module->status = 1){
-            module->dataNum = module->dataNum + 1;
-            writeDataBlock(moduleFrame, module->data, module->dataNum);
-            
-            module->status = 0;
-        } else {
-            module->status = 1;
-        }
-
-    } else {
-        //TODO Create a separate data block for this module
+    if(moduleNum == module->mod2Name){
+        currentStatus = currentStatus << 4;
+        moduleData = module->data[4 + quaboNum];
+    }
+    if ((module->status & currentStatus)){
+        //writeDataBlock(group, module->data, module->dataNum);
+        printf("Write\n");
+        module->status = 0;
     }
 
+    printf("Store\n");//storePktData(moduleData, data_ptr, mode);
+
+    module->status = module->status | currentStatus;
 }
 
 moduleIDs_t* get_module_info(moduleIDs_t* list, unsigned int ind){
@@ -798,8 +770,11 @@ static void *run(hashpipe_thread_args_t * args){
     char *block_ptr;
     char *textblock = (char *)malloc((BLOCKSIZE*sizeof(char)*3 + N_PKT_PER_BLOCK));
     int packetNum = 0;
-    uint16_t boardLoc;
+    uint16_t moduleNum;
+    uint8_t quaboNum;
     char acqmode;
+    uint32_t packet_UTC;
+    uint32_t packet_NANOSEC;
 
     //FILE * HSD_file;
     //HSD_file=fopen("./data.out", "w");
@@ -848,14 +823,13 @@ static void *run(hashpipe_thread_args_t * args){
     unsigned int mod2Name;
 
 
-
     modConfig_file = fopen(CONFIGFILE, "r");
     if (modConfig_file == NULL) {
         perror("Error Opening File\n");
         return(NULL);
     }
 
-    dimsf[0] = NUMPKT;
+    dimsf[0] = PKTPERPAIR;
     dimsf[1] = PKTSIZE;
     dataspace = H5Screate_simple(RANK, dimsf, NULL);
     datatype = H5Tcopy(H5T_STD_U64LE);
@@ -877,7 +851,9 @@ static void *run(hashpipe_thread_args_t * args){
                     moduleInd[mod1Name] = moduleInd[mod2Name] = moduleListSize;
                     moduleListSize++;
 
-                    printf("Created Module Pair: %u.%u and %u.%u\n", (unsigned int) mod1Name/0x100, mod1Name % 0x100, mod2Name/0x100, mod2Name % 0x100);
+                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
+                    (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
+                    (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
 
                     sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
 
@@ -976,27 +952,39 @@ static void *run(hashpipe_thread_args_t * args){
 
         check_storeHK(redisServer, moduleListBegin->next_moduleID);
         for(int i = 0; i < N_PKT_PER_BLOCK; i++){
-            /*boardLoc = ((block_ptr[i*PKTSIZE+5] << 8) & 0xff00) | ((block_ptr[i*PKTSIZE+4]) & 0x00ff);
             acqmode = block_ptr[i*PKTSIZE];
+            moduleNum = ((block_ptr[i*PKTSIZE+5] << 6) & 0x3fc0) | ((block_ptr[i*PKTSIZE+4] >> 2) & 0x003f);
+            quaboNum = ((block_ptr[i*PKTSIZE+4]) & 0x03);
+            packet_UTC = ((block_ptr[i*PKTSIZE+9] << 24) & 0xff000000) 
+                            | ((block_ptr[i*PKTSIZE+8] << 16) & 0x00ff0000)
+                            | ((block_ptr[i*PKTSIZE+7] << 8) & 0x0000ff00)
+                            | ((block_ptr[i*PKTSIZE+6]) & 0x000000ff);
+                             
+            packet_NANOSEC = ((block_ptr[i*PKTSIZE+13] << 24) & 0xff000000) 
+                            | ((block_ptr[i*PKTSIZE+12] << 16) & 0x00ff0000)
+                            | ((block_ptr[i*PKTSIZE+11] << 8) & 0x0000ff00)
+                            | ((block_ptr[i*PKTSIZE+10]) & 0x000000ff);
 
-            if (moduleInd[boardLoc] == -1){
-                moduleInd[boardLoc] = moduleListSize;
+
+            if (moduleInd[moduleNum] == -1){
+                moduleInd[moduleNum] = moduleListSize;
                 moduleListSize++;
 
-                printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) boardLoc/0x100, boardLoc % 0x100);
+                printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) moduleNum/0x100, moduleNum % 0x100);
 
-                moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(file->bit16IMGData, boardLoc, 0), 
-                                                                    createModPair(file->bit8IMGData, boardLoc, 0), 
-                                                                    boardLoc, 0);
+                moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(file->bit16IMGData, moduleNum, 0), 
+                                                                    createModPair(file->bit8IMGData, moduleNum, 0),
+                                                                    createModPair(file->DynamicMeta, moduleNum, 0), 
+                                                                    moduleNum);
                 moduleListEnd = moduleListEnd->next_moduleID;
                 currentModule = moduleListEnd;
 
             } else {
-                currentModule = get_module_info(moduleListBegin, moduleInd[boardLoc]);
+                currentModule = get_module_info(moduleListBegin, moduleInd[moduleNum]);
             }
             //printf("Current Module Pair: %i, %i\n", currentModule->mod1Name, currentModule->mod2Name);
 
-            sprintf(command, "HGET UPDATED %i", currentModule->mod1Name);
+            /*sprintf(command, "HGET UPDATED %i", currentModule->mod1Name);
             reply = (redisReply *)redisCommand(redisServer, command);
             if (strtol(reply->str, NULL, 10) == 1){
                 freeReplyObject(reply);
@@ -1024,7 +1012,7 @@ static void *run(hashpipe_thread_args_t * args){
             }
             freeReplyObject(reply);*/
 
-            //storeData(currentModule, block_ptr + (i*PKTSIZE+16), boardLoc, acqmode);
+            storeData(currentModule, acqmode, moduleNum, quaboNum, packet_UTC, packet_NANOSEC, block_ptr + (i*PKTSIZE+16));
         }
 
 
