@@ -20,7 +20,7 @@
 #define RANK 2
 #define CONFIGFILE "./modulePair.config"
 #define FRAME_FORMAT "Frame%05i"
-#define DATA_FORMAT "DATA%05i"
+#define DATA_FORMAT "DATA%09i"
 #define QUABO_FORMAT "QUABO%05i_%01i"
 #define HK_TABLENAME_FORAMT "HK_Module%05i_Quabo%01i"
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
@@ -151,6 +151,14 @@ const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,  
                                 H5T_STD_U16LE,H5T_STD_U16LE                                     // FWID0 and FWID1
 };
 
+void moduleFillZeros(uint16_t data[PKTPERPAIR][SCIDATASIZE], uint8_t status){
+    for(int i = 0; i < PKTPERPAIR; i++){
+        if(!((status >> i) & 0x01)){
+            memset(data[i], 0, SCIDATASIZE*sizeof(uint16_t));
+        }
+    }
+}
+
 typedef struct moduleIDs {
     hid_t ID16bit;
     hid_t ID8bit;
@@ -159,14 +167,16 @@ typedef struct moduleIDs {
     int mod1Name;
     int mod2Name;
     uint16_t data[PKTPERPAIR][SCIDATASIZE];
-    int frameNum;
+    int dataNum;
     uint32_t UTC;
     uint32_t NANOSEC;
     moduleIDs* next_moduleID;
 } moduleIDs_t;
 
+
 moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned int mod1, unsigned int mod2){
     moduleIDs_t* value = (moduleIDs_t*) malloc(sizeof(struct moduleIDs));
+    //moduleFillZeros(value->data, 0);
     value->ID16bit = ID16;
     value->ID8bit = ID8;
     value->dynamicMeta = dynamicMD;
@@ -174,7 +184,7 @@ moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned in
     value->mod1Name = mod1;
     value->mod2Name = mod2;
     value->next_moduleID = NULL;
-    value->frameNum = -1;
+    value->dataNum = 0;
     value->UTC = 0;
     value->NANOSEC = 0;
     return value;
@@ -635,7 +645,6 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
         if(currentMod->mod2Name != -1){
             //Updating all the Quabos from Module 2
             BOARDLOC = (currentMod->mod2Name << 2) & 0xfffc;
-            printf("BOARDLOC1 is %u\n", BOARDLOC);
 
             for(int i = 0; i < 4; i++){
                 sprintf(command, "HGET UPDATED %u", BOARDLOC);
@@ -737,12 +746,13 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         moduleData = module->data[4 + quaboNum];
     }
     if ((module->status & currentStatus)){
-        //writeDataBlock(group, module->data, module->dataNum);
-        printf("Write\n");
+        moduleFillZeros(module->data, module->status);
+        writeDataBlock(group, module->data, module->dataNum);
+        module->dataNum++;
         module->status = 0;
     }
 
-    printf("Store\n");//storePktData(moduleData, data_ptr, mode);
+    storePktData(moduleData, data_ptr, mode);
 
     module->status = module->status | currentStatus;
 }
@@ -970,7 +980,7 @@ static void *run(hashpipe_thread_args_t * args){
                 moduleInd[moduleNum] = moduleListSize;
                 moduleListSize++;
 
-                printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) moduleNum/0x100, moduleNum % 0x100);
+                printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) (moduleNum << 2)/0x100, (moduleNum << 2) % 0x100);
 
                 moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(file->bit16IMGData, moduleNum, 0), 
                                                                     createModPair(file->bit8IMGData, moduleNum, 0),
