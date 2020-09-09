@@ -725,7 +725,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     hid_t group;
     int mode;
     uint8_t currentStatus = (0x01 << quaboNum);
-    printf("Module %u, Quabo %u\n", moduleNum, quaboNum);
+    //printf("Module %u, Quabo %u\n", moduleNum, quaboNum);
 
     if(acqmode == 0x2 || acqmode == 0x3){
         group = module->ID16bit;
