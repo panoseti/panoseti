@@ -746,12 +746,13 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         moduleData = module->data[4 + quaboNum];
     }
     if ((module->status & currentStatus)){
+        printf("\n");
         moduleFillZeros(module->data, module->status);
         writeDataBlock(group, module->data, module->dataNum);
         module->dataNum++;
         module->status = 0;
     }
-
+    printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u\n", moduleNum, quaboNum, UTC, NANOSEC);
     storePktData(moduleData, data_ptr, mode);
 
     module->status = module->status | currentStatus;
