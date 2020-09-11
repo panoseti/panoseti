@@ -714,15 +714,15 @@ moduleIDs_t* get_module_info(moduleIDs_t* list, unsigned int ind){
     return list;
 }
 
-/*#include <signal.h>
+#include <signal.h>
 void sighandler(int signum) {
    printf("Caught signal %d, coming out...\n", signum);
-   exit(1);
-}*/
+   //exit(1);
+}
 
 static void *run(hashpipe_thread_args_t * args){
 
-    //signal(SIGINT, sighandler);
+    signal(SIGINT, sighandler);
 
     /*Initialization of HASHPIPE Values*/
     // Local aliases to shorten access to args fields
