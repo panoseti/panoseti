@@ -8,6 +8,7 @@
 #include <math.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 #include <unistd.h>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
@@ -155,7 +156,8 @@ typedef struct moduleIDs {
     hid_t ID16bit;
     hid_t ID8bit;
     hid_t dynamicMeta;
-    uint8_t status;                 // Determine the which part of the data is filled 0:neither filled 1:First rank filled 2: Second rank filled
+    uint8_t status;   // Determine the which part of the data is filled 0:neither filled 1:First rank filled 2: Second rank filled
+    int lastMode;
     int mod1Name;
     int mod2Name;
     uint16_t data[PKTPERPAIR][SCIDATASIZE];
@@ -414,27 +416,6 @@ fileIDs_t* createNewFile(char* fileName, char* currTime){
     return newfile;
 }
 
-void closeFile(fileIDs_t* file){
-    H5Fclose(file->file);
-    H5Gclose(file->bit16IMGData);
-    H5Gclose(file->bit8IMGData);
-    H5Gclose(file->PHData);
-    H5Gclose(file->ShortTransient);
-    free(file);
-}
-
-void closeModules(moduleIDs_t* head){
-    moduleIDs_t* currentmodule;
-    currentmodule = head;
-    while (head != NULL){
-        H5Gclose(head->ID16bit);
-        H5Gclose(head->ID8bit);
-        head = head->next_moduleID;
-        free(currentmodule);
-        currentmodule = head;
-    }
-}
-
 void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) {
     redisReply *reply;
     char command[50];
@@ -556,11 +537,6 @@ void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) 
     reply = (redisReply *)redisCommand(redisServer, command);
     HK->FWID1 = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
-}
-
-void appendQuaboTable(hid_t group, uint16_t moduleNum, uint8_t quaboNum, HKPackets_t* HKData){
-    printf("Got Module %u, Quabo %u", moduleNum, quaboNum);
-    
 }
 
 void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
@@ -691,7 +667,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         currentStatus = currentStatus << 4;
         quaboIndex += 4;
     }
-    if ((module->status & currentStatus)){
+    if ((module->status & currentStatus) || module->lastMode != mode){
         printf("\n");
         moduleFillZeros(module, module->status);
         writeDataBlock(group, module, *dataNum);
@@ -701,6 +677,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
 
     printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u\n", moduleNum, quaboNum, UTC, NANOSEC);
     storePktData(module->data[quaboIndex], data_ptr, mode);
+    module->lastMode = mode;
     module->PKTNUM[quaboIndex] = PKTNUM;
     module->UTC[quaboIndex] = UTC;
     module->NANOSEC[quaboIndex] = NANOSEC;
@@ -714,10 +691,56 @@ moduleIDs_t* get_module_info(moduleIDs_t* list, unsigned int ind){
     return list;
 }
 
-#include <signal.h>
+void closeFile(fileIDs_t* file){
+    H5Fclose(file->file);
+    H5Gclose(file->bit16IMGData);
+    H5Gclose(file->bit8IMGData);
+    H5Gclose(file->PHData);
+    H5Gclose(file->ShortTransient);
+    free(file);
+}
+
+void closeModules(moduleIDs_t* head){
+    moduleIDs_t* currentmodule;
+    currentmodule = head;
+    while (head != NULL){
+        printf("Start Flushing Module %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
+        moduleFillZeros(currentmodule, currentmodule->status);
+        if(currentmodule->lastMode == 16){
+            printf("Start bit 16\n");
+            writeDataBlock(currentmodule->ID16bit, currentmodule, currentmodule->bit16dataNum);
+        } else if (currentmodule->lastMode == 8){
+            printf("Start bit 8\n");
+            writeDataBlock(currentmodule->ID8bit, currentmodule, currentmodule->bit8dataNum);
+        }
+        printf("Finish Flushing Module %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
+        H5Gclose(head->ID16bit);
+        H5Gclose(head->ID8bit);
+        head = head->next_moduleID;
+        free(currentmodule);
+        currentmodule = head;
+    }
+}
+
+static moduleIDs_t* moduleListBegin = moduleIDs_t_new();
+static fileIDs_t* file;
+hid_t datatype, dataspace;
+FILE *modConfig_file;
+redisContext *redisServer;
+
 void sighandler(int signum) {
-   printf("Caught signal %d, coming out...\n", signum);
-   //exit(1);
+    printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
+    //flushModules(moduleListBegin->next_moduleID);
+    printf("===CLOSING ALL RESOURCES===\n");
+    closeFile(file);
+    H5Sclose(dataspace);
+    H5Tclose(datatype);
+    fclose(modConfig_file);
+    closeModules(moduleListBegin->next_moduleID);
+    //fclose(HSD_file);
+    redisFree(redisServer);
+    //printf("Caught signal %d, coming out...\n", signum);
+    exit(1);
 }
 
 static void *run(hashpipe_thread_args_t * args){
@@ -752,7 +775,7 @@ static void *run(hashpipe_thread_args_t * args){
     
     /*Initialization of Redis Server Values*/
     printf("------------------SETTING UP REDIS ------------------\n");
-    redisContext *redisServer = redisConnect("127.0.0.1", 6379);
+    redisServer = redisConnect("127.0.0.1", 6379);
     if (redisServer != NULL && redisServer->err){
         printf("Error: %s\n", redisServer->errstr);
         exit(0);
@@ -769,17 +792,14 @@ static void *run(hashpipe_thread_args_t * args){
 
     /* Initialization of HDF5 Values*/
     printf("-------------------SETTING UP HDF5 ------------------\n");
-    fileIDs_t* file;
-    hid_t datatype, dataspace, dataset, tempGroup;   /* handles */
+    hid_t dataset, tempGroup;   /* handles */
     hsize_t dimsf[2];
     herr_t status;
-    moduleIDs_t* moduleListBegin = moduleIDs_t_new();
     moduleIDs_t* moduleListEnd = moduleListBegin;
     moduleIDs_t* currentModule;
     unsigned int moduleListSize = 1;
     unsigned int moduleInd[0xffff];
     memset(moduleInd, -1, sizeof(moduleInd));
-    int data[2][PKTSIZE];
 
     char fileName[100];
 
@@ -787,7 +807,6 @@ static void *run(hashpipe_thread_args_t * args){
     struct tm tm = *gmtime(&t);
     char currTime[100];
 
-    FILE *modConfig_file;
     char fbuf[100];
     char cbuf;
     unsigned int mod1Name;
@@ -868,8 +887,6 @@ static void *run(hashpipe_thread_args_t * args){
                 tempGroup = H5Gopen(file->DynamicMeta, reply->element[i-1]->str, H5P_DEFAULT);
             else
                 tempGroup = H5Gcreate(file->DynamicMeta, reply->element[i-1]->str, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-            
 
             H5Gclose(tempGroup);
             printf("Element: %s\n", reply->element[i-1]->str);
