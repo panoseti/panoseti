@@ -817,7 +817,7 @@ void closeFileResources(){
     free(moduleListBegin);
 }
 
-void INThandler(int signum) {
+void closeAllResources(){
     //printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
     //flushModules(moduleListBegin->next_moduleID);
     printf("\n===CLOSING ALL RESOURCES===\n");
@@ -829,11 +829,22 @@ void INThandler(int signum) {
     exit(1);
 }
 
-void QUIThandler(int signum){
+void reinitFileResources(){
     printf("\n===CLOSING FILE RESOURCES===\n");
     closeFileResources();
     printf("\n===INITIALING FILE RESROUCES===\n");
     file = HDF5file_init();
+}
+
+static int INTSIG;
+static int QUITSIG;
+
+void INThandler(int signum) {
+    INTSIG = 1;
+}
+
+void QUIThandler(int signum){
+    QUITSIG = 1;
 }
 
 static void *run(hashpipe_thread_args_t * args){
@@ -841,6 +852,9 @@ static void *run(hashpipe_thread_args_t * args){
     signal(SIGINT, INThandler);
 
     signal(SIGQUIT, QUIThandler);
+
+    INTSIG = 0;
+    QUITSIG = 0;
 
     /*Initialization of HASHPIPE Values*/
     // Local aliases to shorten access to args fields
@@ -1058,7 +1072,15 @@ static void *run(hashpipe_thread_args_t * args){
             storeData(currentModule, acqmode, moduleNum, quaboNum, packet_NUM, packet_UTC, packet_NANOSEC, block_ptr + (i*PKTSIZE+16));
         }
 
+        /* Term conditions */
 
+        if (INTSIG){
+            closeAllResources();
+        }
+
+        if (QUITSIG) {
+            reinitFileResources();
+        }
 
         HSD_output_databuf_set_free(db,block_idx);
 	    block_idx = (block_idx + 1) % db->header.n_block;
@@ -1066,7 +1088,6 @@ static void *run(hashpipe_thread_args_t * args){
 
         //Will exit if thread has been cancelled
         pthread_testcancel();
-
     }
 
     printf("===CLOSING ALL RESOURCES===\n");
