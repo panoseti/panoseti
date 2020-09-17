@@ -17,6 +17,7 @@
 #include "hdf5_hl.h"
 
 #define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
+#define TIME_FORMAT "%04i-%02i-%02iT%02i:%02i:%02i UTC"
 #define OBSERVATORY "LICK"
 #define RANK 2
 #define CONFIGFILE "./modulePair.config"
@@ -704,7 +705,7 @@ void closeModules(moduleIDs_t* head){
     moduleIDs_t* currentmodule;
     currentmodule = head;
     while (head != NULL){
-        printf("Start Flushing Module %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
+        //printf("Start Flushing Modules %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
         moduleFillZeros(currentmodule, currentmodule->status);
         if(currentmodule->lastMode == 16){
             printf("Start bit 16\n");
@@ -713,39 +714,133 @@ void closeModules(moduleIDs_t* head){
             printf("Start bit 8\n");
             writeDataBlock(currentmodule->ID8bit, currentmodule, currentmodule->bit8dataNum);
         }
-        printf("Finish Flushing Module %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
         H5Gclose(head->ID16bit);
         H5Gclose(head->ID8bit);
         head = head->next_moduleID;
         free(currentmodule);
+        printf("Flushed and Closed Module %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
         currentmodule = head;
     }
 }
 
+
+
 static moduleIDs_t* moduleListBegin = moduleIDs_t_new();
+static moduleIDs_t* moduleListEnd = moduleListBegin;
+static unsigned int moduleListSize = 1;
+static unsigned int moduleInd[0xffff];
 static fileIDs_t* file;
-hid_t datatype, dataspace;
-FILE *modConfig_file;
 redisContext *redisServer;
 
-void sighandler(int signum) {
-    printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
-    //flushModules(moduleListBegin->next_moduleID);
-    printf("===CLOSING ALL RESOURCES===\n");
-    closeFile(file);
+    
+fileIDs_t* HDF5file_init(){
+    fileIDs_t* new_file;
+    FILE *modConfig_file;
+    hid_t datatype, dataspace;
+    hsize_t dimsf[2];
+    char fbuf[100];
+    char fileName[100];
+    char currTime[100];
+    char cbuf;
+    unsigned int mod1Name;
+    unsigned int mod2Name;
+    time_t t = time(NULL);
+    struct tm tm = *gmtime(&t);
+
+    moduleListBegin = moduleIDs_t_new();
+    moduleListEnd = moduleListBegin;
+    moduleListSize = 1;
+    memset(moduleInd, -1, sizeof(moduleInd));
+
+    modConfig_file = fopen(CONFIGFILE, "r");
+    if (modConfig_file == NULL) {
+        perror("Error Opening File\n");
+        exit(0);
+    }
+
+    dimsf[0] = PKTPERPAIR;
+    dimsf[1] = PKTSIZE;
+    dataspace = H5Screate_simple(RANK, dimsf, NULL);
+    datatype = H5Tcopy(H5T_STD_U16LE);
+    
+    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    
+    new_file = createNewFile(fileName, currTime);
+
+    cbuf = getc(modConfig_file);
+    char moduleName[50];
+    
+
+    while(cbuf != EOF){
+        ungetc(cbuf, modConfig_file);
+        if (cbuf != '#'){
+            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2){
+                if (moduleInd[mod1Name] == -1 && moduleInd[mod2Name] == -1){
+                    moduleInd[mod1Name] = moduleInd[mod2Name] = moduleListSize;
+                    moduleListSize++;
+
+                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
+                    (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
+                    (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
+
+                    sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
+
+                    moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(new_file->bit16IMGData, mod1Name, mod2Name), 
+                                                                    createModPair(new_file->bit8IMGData, mod1Name, mod2Name),
+                                                                    createModPair(new_file->DynamicMeta, mod1Name, mod2Name), 
+                                                                    mod1Name, mod2Name);
+                    
+                    moduleListEnd = moduleListEnd->next_moduleID;
+                    
+                    createQuaboTables(moduleListEnd->dynamicMeta, moduleListEnd);
+                }
+            }
+        } else {
+            if (fgets(fbuf, 100, modConfig_file) == NULL){
+                break;
+            }
+        }
+        cbuf = getc(modConfig_file);
+    }
+    fclose(modConfig_file);
     H5Sclose(dataspace);
     H5Tclose(datatype);
-    fclose(modConfig_file);
+    return new_file;
+}
+
+void closeFileResources(){
+    printf("--------------Closing HDF5 file--------------\n");
+    closeFile(file);
+    printf("-----Start Flushing and Closing all Files----\n");
     closeModules(moduleListBegin->next_moduleID);
+    free(moduleListBegin);
+}
+
+void INThandler(int signum) {
+    //printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
+    //flushModules(moduleListBegin->next_moduleID);
+    printf("\n===CLOSING ALL RESOURCES===\n");
+    
     //fclose(HSD_file);
+    printf("\n-----------Closing Redis Connection-----------\n\n");
     redisFree(redisServer);
     //printf("Caught signal %d, coming out...\n", signum);
     exit(1);
 }
 
+void QUIThandler(int signum){
+    printf("\n===CLOSING FILE RESOURCES===\n");
+    closeFileResources();
+    printf("\n===INITIALING FILE RESROUCES===\n");
+    file = HDF5file_init();
+}
+
 static void *run(hashpipe_thread_args_t * args){
 
-    signal(SIGINT, sighandler);
+    signal(SIGINT, INThandler);
+
+    signal(SIGQUIT, QUIThandler);
 
     /*Initialization of HASHPIPE Values*/
     // Local aliases to shorten access to args fields
@@ -792,25 +887,24 @@ static void *run(hashpipe_thread_args_t * args){
 
     /* Initialization of HDF5 Values*/
     printf("-------------------SETTING UP HDF5 ------------------\n");
-    hid_t dataset, tempGroup;   /* handles */
-    hsize_t dimsf[2];
-    herr_t status;
-    moduleIDs_t* moduleListEnd = moduleListBegin;
     moduleIDs_t* currentModule;
-    unsigned int moduleListSize = 1;
-    unsigned int moduleInd[0xffff];
-    memset(moduleInd, -1, sizeof(moduleInd));
-
-    char fileName[100];
-
-    time_t t = time(NULL);
-    struct tm tm = *gmtime(&t);
-    char currTime[100];
-
+    /*hsize_t dimsf[2];
+    hid_t datatype, dataspace;
+    herr_t status;
     char fbuf[100];
     char cbuf;
     unsigned int mod1Name;
     unsigned int mod2Name;
+
+    FILE *modConfig_file;
+
+    moduleListBegin = moduleIDs_t_new();
+    moduleListEnd = moduleListBegin;
+    moduleListSize = 1;
+    memset(moduleInd, -1, sizeof(moduleInd));
+
+    time_t t = time(NULL);
+    struct tm tm = *gmtime(&t);
 
 
     modConfig_file = fopen(CONFIGFILE, "r");
@@ -824,7 +918,7 @@ static void *run(hashpipe_thread_args_t * args){
     dataspace = H5Screate_simple(RANK, dimsf, NULL);
     datatype = H5Tcopy(H5T_STD_U16LE);
     
-    sprintf(currTime, "%04i-%02i-%02iT%02i:%02i:%02i UTC",tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     
     file = createNewFile(fileName, currTime);
@@ -864,6 +958,10 @@ static void *run(hashpipe_thread_args_t * args){
         }
         cbuf = getc(modConfig_file);
     }
+    fclose(modConfig_file);
+    H5Sclose(dataspace);
+    H5Tclose(datatype);*/
+    file = HDF5file_init();
     
     check_storeHK(redisServer, moduleListBegin->next_moduleID);
     HKPackets_t* HK = (HKPackets_t *)malloc(sizeof(struct HKPackets));
@@ -878,21 +976,6 @@ static void *run(hashpipe_thread_args_t * args){
     //storeHKdata(moduleListBegin->next_moduleID->ID16bit, HK);
 
     printf("-----------Finished Setup of Output Thread-----------\n\n");
-    
-    /*reply = (redisReply *)redisCommand(redisServer, "HGETALL UPDATED");
-    for (int i = 1; i < reply->elements; i=i+2){
-        if (strtol(reply->element[i]->str, NULL, 10)){
-            status = H5Gget_objinfo(file->file, reply->element[i-1]->str, 0, NULL);
-            if (status = 0)
-                tempGroup = H5Gopen(file->DynamicMeta, reply->element[i-1]->str, H5P_DEFAULT);
-            else
-                tempGroup = H5Gcreate(file->DynamicMeta, reply->element[i-1]->str, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-            H5Gclose(tempGroup);
-            printf("Element: %s\n", reply->element[i-1]->str);
-        }
-        
-    }*/
 
     /* Main loop */
     while(run_threads()){
@@ -988,9 +1071,6 @@ static void *run(hashpipe_thread_args_t * args){
 
     printf("===CLOSING ALL RESOURCES===\n");
     closeFile(file);
-    H5Sclose(dataspace);
-    H5Tclose(datatype);
-    fclose(modConfig_file);
     //fclose(HSD_file);
     redisFree(redisServer);
     return THREAD_OK;
