@@ -705,13 +705,10 @@ void closeModules(moduleIDs_t* head){
     moduleIDs_t* currentmodule;
     currentmodule = head;
     while (head != NULL){
-        //printf("Start Flushing Modules %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
         moduleFillZeros(currentmodule, currentmodule->status);
         if(currentmodule->lastMode == 16){
-            printf("Start bit 16\n");
             writeDataBlock(currentmodule->ID16bit, currentmodule, currentmodule->bit16dataNum);
         } else if (currentmodule->lastMode == 8){
-            printf("Start bit 8\n");
             writeDataBlock(currentmodule->ID8bit, currentmodule, currentmodule->bit8dataNum);
         }
         H5Gclose(head->ID16bit);
@@ -821,7 +818,7 @@ void closeAllResources(){
     //printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
     //flushModules(moduleListBegin->next_moduleID);
     printf("\n===CLOSING ALL RESOURCES===\n");
-    
+    closeFileResources();
     //fclose(HSD_file);
     printf("\n-----------Closing Redis Connection-----------\n\n");
     redisFree(redisServer);
@@ -1080,6 +1077,7 @@ static void *run(hashpipe_thread_args_t * args){
 
         if (QUITSIG) {
             reinitFileResources();
+            QUITSIG = false;
         }
 
         HSD_output_databuf_set_free(db,block_idx);
