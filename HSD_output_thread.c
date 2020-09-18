@@ -33,8 +33,10 @@
 #define SCIDATASIZE 256
 #define HKDATASIZE 464
 #define DATABLOCKSIZE SCIDATASIZE*PKTPERPAIR+64+16
-#define STRBUFFSIZE 50
 #define HKFIELDS 27
+#define NANOSECTHRESHOLD 20
+
+#define STRBUFFSIZE 50
 
 static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
 
@@ -172,6 +174,8 @@ typedef struct moduleIDs {
     uint16_t PKTNUM[PKTPERPAIR];
     uint32_t UTC[PKTPERPAIR];
     uint32_t NANOSEC[PKTPERPAIR];
+    uint32_t upperNANOSEC;
+    uint32_t lowerNANOSEC;
     int bit16dataNum;
     int bit8dataNum;
     moduleIDs* next_moduleID;
@@ -188,6 +192,8 @@ moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned in
     value->mod1Name = mod1;
     value->mod2Name = mod2;
     value->next_moduleID = NULL;
+    value->upperNANOSEC = 0;
+    value->lowerNANOSEC = 0;
     value->bit16dataNum = 0;
     value->bit8dataNum = 0;
     return value;
@@ -683,15 +689,27 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         currentStatus = currentStatus << 4;
         quaboIndex += 4;
     }
-    if ((module->status & currentStatus) || module->lastMode != mode){
+
+    if(module->status == 0){
+        module->upperNANOSEC = NANOSEC;
+        module->lowerNANOSEC = NANOSEC;
+    } else if(NANOSEC > module->upperNANOSEC){
+        module->upperNANOSEC = NANOSEC;
+    } else if (NANOSEC < module->lowerNANOSEC){
+        module->lowerNANOSEC = NANOSEC;
+    }
+
+    if ((module->status & currentStatus) || module->lastMode != mode || (module->upperNANOSEC - module->lowerNANOSEC) > NANOSECTHRESHOLD){
         printf("\n");
         moduleFillZeros(module, module->status);
         writeDataBlock(group, module, *dataNum);
         (*dataNum)++;
         module->status = 0;
+        module->upperNANOSEC = NANOSEC;
+        module->lowerNANOSEC = NANOSEC;
     }
 
-    printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u\n", moduleNum, quaboNum, UTC, NANOSEC);
+    printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u uNANOSEC = %u lNANOSEC = %u\n", moduleNum, quaboNum, UTC, NANOSEC, module->upperNANOSEC, module->lowerNANOSEC);
     storePktData(module->data[quaboIndex], data_ptr, mode);
     module->lastMode = mode;
     module->PKTNUM[quaboIndex] = PKTNUM;
