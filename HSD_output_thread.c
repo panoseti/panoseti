@@ -33,7 +33,7 @@
 #define SCIDATASIZE 256
 #define HKDATASIZE 464
 #define DATABLOCKSIZE SCIDATASIZE*PKTPERPAIR+64+16
-#define MAXFILESIZE 3E7//STORED IN BITS
+#define MAXFILESIZE 3E6 //IN UNITS OF APPROX 2 BYTES OR 16 bits
 #define STRBUFFSIZE 50
 #define HKFIELDS 27
 
@@ -741,22 +741,21 @@ static moduleIDs_t* moduleListEnd = moduleListBegin;
 static unsigned int moduleListSize = 1;
 static unsigned int moduleInd[0xffff];
 static fileIDs_t* file;
-redisContext *redisServer;
+static redisContext *redisServer;
 
     
-fileIDs_t* HDF5file_init(){
+fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     fileIDs_t* new_file;
     FILE *modConfig_file;
     hid_t datatype, dataspace;
     hsize_t dimsf[2];
     char fbuf[100];
-    char fileName[100];
-    char currTime[100];
     char cbuf;
     unsigned int mod1Name;
     unsigned int mod2Name;
-    time_t t = time(NULL);
-    struct tm tm = *gmtime(&t);
+    
+    
+    new_file = createNewFile(fileName, currTime);
 
     moduleListBegin = moduleIDs_t_new();
     moduleListEnd = moduleListBegin;
@@ -773,11 +772,6 @@ fileIDs_t* HDF5file_init(){
     dimsf[1] = PKTSIZE;
     dataspace = H5Screate_simple(RANK, dimsf, NULL);
     datatype = H5Tcopy(H5T_STD_U16LE);
-    
-    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    
-    new_file = createNewFile(fileName, currTime);
 
     cbuf = getc(modConfig_file);
     char moduleName[50];
@@ -820,6 +814,18 @@ fileIDs_t* HDF5file_init(){
     return new_file;
 }
 
+fileIDs_t* HDF5file_init(){
+    time_t t = time(NULL);
+    struct tm tm = *gmtime(&t);
+    char currTime[100];
+    char fileName[100];
+
+    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+    return HDF5file_init(fileName, currTime);
+}
+
 void closeFileResources(){
     printf("--------------Closing HDF5 file--------------\n");
     closeFile(file);
@@ -841,10 +847,21 @@ void closeAllResources(){
 }
 
 void reinitFileResources(){
+    time_t t = time(NULL);
+    struct tm tm = *gmtime(&t);
+    char currTime[100];
+    char fileName[100];
+
+    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    
+    if (access(fileName, F_OK) != -1){
+        return;
+    }
     printf("\n===CLOSING FILE RESOURCES===\n");
     closeFileResources();
     printf("\n===INITIALING FILE RESROUCES===\n");
-    file = HDF5file_init();
+    file = HDF5file_init(fileName, currTime);
 }
 
 static int INTSIG;
@@ -913,79 +930,6 @@ static void *run(hashpipe_thread_args_t * args){
     /* Initialization of HDF5 Values*/
     printf("-------------------SETTING UP HDF5 ------------------\n");
     moduleIDs_t* currentModule;
-    /*hsize_t dimsf[2];
-    hid_t datatype, dataspace;
-    herr_t status;
-    char fbuf[100];
-    char cbuf;
-    unsigned int mod1Name;
-    unsigned int mod2Name;
-
-    FILE *modConfig_file;
-
-    moduleListBegin = moduleIDs_t_new();
-    moduleListEnd = moduleListBegin;
-    moduleListSize = 1;
-    memset(moduleInd, -1, sizeof(moduleInd));
-
-    time_t t = time(NULL);
-    struct tm tm = *gmtime(&t);
-
-
-    modConfig_file = fopen(CONFIGFILE, "r");
-    if (modConfig_file == NULL) {
-        perror("Error Opening File\n");
-        exit(0);
-    }
-
-    dimsf[0] = PKTPERPAIR;
-    dimsf[1] = PKTSIZE;
-    dataspace = H5Screate_simple(RANK, dimsf, NULL);
-    datatype = H5Tcopy(H5T_STD_U16LE);
-    
-    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    
-    file = createNewFile(fileName, currTime);
-
-    cbuf = getc(modConfig_file);
-    char moduleName[50];
-    
-
-    while(cbuf != EOF){
-        ungetc(cbuf, modConfig_file);
-        if (cbuf != '#'){
-            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2){
-                if (moduleInd[mod1Name] == -1 && moduleInd[mod2Name] == -1){
-                    moduleInd[mod1Name] = moduleInd[mod2Name] = moduleListSize;
-                    moduleListSize++;
-
-                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
-                    (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
-                    (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
-
-                    sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
-
-                    moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(file->bit16IMGData, mod1Name, mod2Name), 
-                                                                    createModPair(file->bit8IMGData, mod1Name, mod2Name),
-                                                                    createModPair(file->DynamicMeta, mod1Name, mod2Name), 
-                                                                    mod1Name, mod2Name);
-                    
-                    moduleListEnd = moduleListEnd->next_moduleID;
-                    
-                    createQuaboTables(moduleListEnd->dynamicMeta, moduleListEnd);
-                }
-            }
-        } else {
-            if (fgets(fbuf, 100, modConfig_file) == NULL){
-                break;
-            }
-        }
-        cbuf = getc(modConfig_file);
-    }
-    fclose(modConfig_file);
-    H5Sclose(dataspace);
-    H5Tclose(datatype);*/
     file = HDF5file_init();
     
     check_storeHK(redisServer, moduleListBegin->next_moduleID);
@@ -1089,11 +1033,11 @@ static void *run(hashpipe_thread_args_t * args){
             closeAllResources();
         }
 
-        if (QUITSIG || fileSize > MAXFILESIZE) {
+        //if (QUITSIG || fileSize > MAXFILESIZE) {
             reinitFileResources();
             fileSize = 0;
             QUITSIG = false;
-        }
+        //}
 
         HSD_output_databuf_set_free(db,block_idx);
 	    block_idx = (block_idx + 1) % db->header.n_block;
