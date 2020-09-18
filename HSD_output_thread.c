@@ -26,11 +26,15 @@
 #define QUABO_FORMAT "QUABO%05i_%01i"
 #define HK_TABLENAME_FORAMT "HK_Module%05i_Quabo%01i"
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
+#define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
+
 #define QUABOPERMODULE 4
 #define PKTPERPAIR QUABOPERMODULE*2
-#define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
-#define STRBUFFSIZE 50
 #define SCIDATASIZE 256
+#define HKDATASIZE 464
+#define DATABLOCKSIZE SCIDATASIZE*PKTPERPAIR+64+16
+#define MAXFILESIZE 3E7//STORED IN BITS
+#define STRBUFFSIZE 50
 #define HKFIELDS 27
 
 static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
@@ -38,6 +42,8 @@ static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
 static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
 
 static hid_t storageType = H5Tcopy(H5T_STD_U16LE);
+
+static long long fileSize = 0;
 
 typedef struct fileIDs {
     hid_t       file;         /* file and dataset handles */
@@ -261,6 +267,8 @@ void createStrAttribute(hid_t group, const char* name, char* data) {
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
 
     H5Awrite(attribute, datatype, data);
+    // Add size to fileSize
+    fileSize += STRBUFFSIZE;
 
     H5Sclose(dataspace);
     H5Tclose(datatype);
@@ -281,6 +289,7 @@ void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char dat
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     H5Awrite(attribute, datatype, data[0]);
+    fileSize += STRBUFFSIZE;
 
     H5Sclose(dataspace);
     H5Tclose(datatype);
@@ -301,6 +310,7 @@ void createNumAttribute(hid_t group, const char* name, hid_t dtype, unsigned lon
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
 
     H5Awrite(attribute, dtype, attr_data);
+    fileSize += 16;
     
     H5Sclose(dataspace);
     H5Tclose(datatype);
@@ -316,6 +326,7 @@ void createNumAttribute2(hid_t group, const char* name, hid_t dtype, hsize_t* di
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     H5Awrite(attribute, dtype, data);
+    fileSize += 32;
 
     H5Sclose(dataspace);
     H5Tclose(datatype);
@@ -565,6 +576,7 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
                 sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod1Name, i);
                 H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
+                fileSize += HKDATASIZE;
 
                 sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
                 reply = (redisReply *)redisCommand(redisServer, command);
@@ -620,6 +632,8 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index){
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, module->PKTNUM);
     createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, module->UTC);
     createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, module->NANOSEC);
+
+    fileSize += DATABLOCKSIZE;
 
     H5Dclose(dataset);
 }
@@ -1075,8 +1089,9 @@ static void *run(hashpipe_thread_args_t * args){
             closeAllResources();
         }
 
-        if (QUITSIG) {
+        if (QUITSIG || fileSize > MAXFILESIZE) {
             reinitFileResources();
+            fileSize = 0;
             QUITSIG = false;
         }
 
