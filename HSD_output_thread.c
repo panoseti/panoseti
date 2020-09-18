@@ -33,7 +33,6 @@
 #define SCIDATASIZE 256
 #define HKDATASIZE 464
 #define DATABLOCKSIZE SCIDATASIZE*PKTPERPAIR+64+16
-#define MAXFILESIZE 3E6 //IN UNITS OF APPROX 2 BYTES OR 16 bits
 #define STRBUFFSIZE 50
 #define HKFIELDS 27
 
@@ -44,6 +43,8 @@ static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
 static hid_t storageType = H5Tcopy(H5T_STD_U16LE);
 
 static long long fileSize = 0;
+
+static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 
 typedef struct fileIDs {
     hid_t       file;         /* file and dataset handles */
@@ -909,6 +910,11 @@ static void *run(hashpipe_thread_args_t * args){
     //FILE * HSD_file;
     //HSD_file=fopen("./data.out", "w");
 
+    int maxSizeInput = 0;
+
+    hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
+    maxFileSize = maxSizeInput*5E5; 
+
     
     /*Initialization of Redis Server Values*/
     printf("------------------SETTING UP REDIS ------------------\n");
@@ -1033,11 +1039,11 @@ static void *run(hashpipe_thread_args_t * args){
             closeAllResources();
         }
 
-        //if (QUITSIG || fileSize > MAXFILESIZE) {
+        if (QUITSIG || fileSize > maxFileSize) {
             reinitFileResources();
             fileSize = 0;
             QUITSIG = false;
-        //}
+        }
 
         HSD_output_databuf_set_free(db,block_idx);
 	    block_idx = (block_idx + 1) % db->header.n_block;
