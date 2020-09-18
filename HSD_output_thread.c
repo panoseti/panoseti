@@ -691,6 +691,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     }
 
     if(module->status == 0){
+        module->lastMode = mode;
         module->upperNANOSEC = NANOSEC;
         module->lowerNANOSEC = NANOSEC;
     } else if(NANOSEC > module->upperNANOSEC){
