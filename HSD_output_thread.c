@@ -22,7 +22,8 @@
 #define RANK 2
 #define CONFIGFILE "./modulePair.config"
 #define FRAME_FORMAT "Frame%05i"
-#define DATA_FORMAT "DATA%09i"
+#define IMGDATA_FORMAT "DATA%09i"
+#define PHDATA_FORMAT "PH_Module%05i_Quabo%01i_PKTNUM%05i"
 #define QUABO_FORMAT "QUABO%05i_%01i"
 #define HK_TABLENAME_FORAMT "HK_Module%05i_Quabo%01i"
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
@@ -630,7 +631,7 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index){
     hsize_t dimsf[1];
     dimsf[0] = PKTPERPAIR;
 
-    sprintf(name, DATA_FORMAT, index);
+    sprintf(name, IMGDATA_FORMAT, index);
     dataset = H5Dcreate2(frame, name, storageType, storageSpace,
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     
@@ -660,6 +661,39 @@ void storePktData(uint16_t* moduleData, char* data_ptr, int mode){
     }
 }
 
+static moduleIDs_t* moduleListBegin = moduleIDs_t_new();
+static moduleIDs_t* moduleListEnd = moduleListBegin;
+static unsigned int moduleListSize = 1;
+static unsigned int moduleInd[0xffff];
+static fileIDs_t* file;
+static redisContext *redisServer;
+
+void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, char* data_ptr){
+    hid_t dataset;
+    char name[50];
+    uint16_t data[SCIDATASIZE];
+    hsize_t dimsf[1] = {1};
+
+    hsize_t storageDim[1] = {SCIDATASIZE};
+    hid_t storageSpace = H5Screate_simple(1, storageDim, NULL);
+    hid_t storageType = H5Tcopy(H5T_STD_U16LE);
+
+    sprintf(name, PHDATA_FORMAT, moduleNum, quaboNum, PKTNUM);
+    dataset = H5Dcreate2(file->PHData, name, storageType, storageSpace,
+        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    
+    storePktData(data, data_ptr, 16);
+    H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
+
+    createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, &PKTNUM);
+    createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, &UTC);
+    createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, &NANOSEC);
+
+    fileSize += SCIDATASIZE+80;
+
+    H5Dclose(dataset);
+}
+
 void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, char* data_ptr){
     //uint16_t* moduleData;
     int* dataNum;
@@ -669,7 +703,9 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     uint8_t currentStatus = (0x01 << quaboNum);
     //printf("Module %u, Quabo %u\n", moduleNum, quaboNum);
 
-    if(acqmode == 0x2 || acqmode == 0x3){
+    if (acqmode == 0x1){
+        writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, data_ptr);
+    } else if(acqmode == 0x2 || acqmode == 0x3){
         group = module->ID16bit;
         dataNum = &(module->bit16dataNum);
         mode = 16;
@@ -753,15 +789,6 @@ void closeModules(moduleIDs_t* head){
         currentmodule = head;
     }
 }
-
-
-
-static moduleIDs_t* moduleListBegin = moduleIDs_t_new();
-static moduleIDs_t* moduleListEnd = moduleListBegin;
-static unsigned int moduleListSize = 1;
-static unsigned int moduleInd[0xffff];
-static fileIDs_t* file;
-static redisContext *redisServer;
 
     
 fileIDs_t* HDF5file_init(char* fileName, char* currTime){
