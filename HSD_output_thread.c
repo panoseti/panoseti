@@ -23,7 +23,7 @@
 #define CONFIGFILE "./modulePair.config"
 #define FRAME_FORMAT "Frame%05i"
 #define IMGDATA_FORMAT "DATA%09i"
-#define PHDATA_FORMAT "PH_Module%05i_Quabo%01i_PKTNUM%05i"
+#define PHDATA_FORMAT "PH_Module%05i_Quabo%01i_UTC%09i_NANOSEC%09i_PKTNUM%05i"
 #define QUABO_FORMAT "QUABO%05i_%01i"
 #define HK_TABLENAME_FORAMT "HK_Module%05i_Quabo%01i"
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
@@ -670,16 +670,16 @@ static redisContext *redisServer;
 
 void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, char* data_ptr){
     hid_t dataset;
-    char name[50];
+    char name[100];
     uint16_t data[SCIDATASIZE];
     hsize_t dimsf[1] = {1};
 
-    hsize_t storageDim[1] = {SCIDATASIZE};
-    hid_t storageSpace = H5Screate_simple(1, storageDim, NULL);
-    hid_t storageType = H5Tcopy(H5T_STD_U16LE);
+    hsize_t PHDim[1] = {SCIDATASIZE};
+    hid_t PHSpace = H5Screate_simple(1, PHDim, NULL);
+    hid_t PHType = H5Tcopy(H5T_STD_U16LE);
 
-    sprintf(name, PHDATA_FORMAT, moduleNum, quaboNum, PKTNUM);
-    dataset = H5Dcreate2(file->PHData, name, storageType, storageSpace,
+    sprintf(name, PHDATA_FORMAT, moduleNum, quaboNum, UTC, NANOSEC, PKTNUM);
+    dataset = H5Dcreate2(file->PHData, name, PHType, PHSpace,
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     
     storePktData(data, data_ptr, 16);
@@ -701,10 +701,10 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     int mode;
     int quaboIndex;
     uint8_t currentStatus = (0x01 << quaboNum);
-    //printf("Module %u, Quabo %u\n", moduleNum, quaboNum);
 
     if (acqmode == 0x1){
         writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, data_ptr);
+        return;
     } else if(acqmode == 0x2 || acqmode == 0x3){
         group = module->ID16bit;
         dataNum = &(module->bit16dataNum);
