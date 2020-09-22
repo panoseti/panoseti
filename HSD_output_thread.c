@@ -173,7 +173,8 @@ typedef struct moduleIDs {
     int mod2Name;
     uint16_t data[PKTPERPAIR][SCIDATASIZE];
     uint16_t PKTNUM[PKTPERPAIR];
-    uint32_t UTC[PKTPERPAIR];
+    long int tv_sec[PKTPERPAIR];
+    long int tv_usec[PKTPERPAIR];
     uint32_t NANOSEC[PKTPERPAIR];
     uint32_t upperNANOSEC;
     uint32_t lowerNANOSEC;
@@ -219,7 +220,8 @@ void moduleFillZeros(moduleIDs_t* module, uint8_t status){//uint16_t data[PKTPER
         if(!((status >> i) & 0x01)){
             memset(module->data[i], 0, SCIDATASIZE*sizeof(uint16_t));
             module->PKTNUM[i] = 0;
-            module->UTC[i] = 0;
+            module->tv_sec[i] = 0;
+            module->tv_usec[i] = 0;
             module->NANOSEC[i] = 0;
         }
     }
@@ -638,7 +640,9 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index){
     H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
 
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, module->PKTNUM);
-    createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, module->UTC);
+    //createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, module->UTC);
+    createNumAttribute2(dataset, "tv_sec", H5T_NATIVE_LONG, dimsf, module->tv_sec);
+    createNumAttribute2(dataset, "tv_usec", H5T_NATIVE_LONG, dimsf, module->tv_usec);
     createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, module->NANOSEC);
 
     fileSize += DATABLOCKSIZE;
@@ -694,7 +698,7 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
     H5Dclose(dataset);
 }
 
-void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, char* data_ptr){
+void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     //uint16_t* moduleData;
     int* dataNum;
     hid_t group;
@@ -746,11 +750,13 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         module->lowerNANOSEC = NANOSEC;
     }
 
-    printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u uNANOSEC = %u lNANOSEC = %u\n", moduleNum, quaboNum, UTC, NANOSEC, module->upperNANOSEC, module->lowerNANOSEC);
+    printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u, tv_sec = %li, tv_usec = %li\n", moduleNum, quaboNum, UTC, NANOSEC, tv_sec, tv_usec);
     storePktData(module->data[quaboIndex], data_ptr, mode);
     module->lastMode = mode;
     module->PKTNUM[quaboIndex] = PKTNUM;
-    module->UTC[quaboIndex] = UTC;
+    //module->UTC[quaboIndex] = UTC;
+    module->tv_sec[quaboIndex] = tv_sec;
+    module->tv_usec[quaboIndex] = tv_usec;
     module->NANOSEC[quaboIndex] = NANOSEC;
 
     module->status = module->status | currentStatus;
@@ -1076,7 +1082,8 @@ static void *run(hashpipe_thread_args_t * args){
                 currentModule = get_module_info(moduleListBegin, moduleInd[moduleNum]);
             }
 
-            storeData(currentModule, acqmode, moduleNum, quaboNum, packet_NUM, packet_UTC, packet_NANOSEC, block_ptr + (i*PKTSIZE+16));
+            storeData(currentModule, acqmode, moduleNum, quaboNum, packet_NUM, packet_UTC, packet_NANOSEC,
+                        db->block[block_idx].header.tv_sec[i], db->block[block_idx].header.tv_usec[i], block_ptr + (i*PKTSIZE+16));
         }
 
         /* Term conditions */

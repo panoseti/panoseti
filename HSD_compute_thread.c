@@ -166,12 +166,17 @@ static void *run(hashpipe_thread_args_t * args){
                 total_lost_pkts += current_pkt_lost;
             }
             currentQuabo->prev_pkt_num[mode] = currentQuabo->pkt_num[mode];
-            
         }
 
         //Copy the input packet to the output packet
         memcpy(db_out->block[curblock_out].result_block, str_q, BLOCKSIZE*sizeof(unsigned char));
 
+        //Copy time over to output
+        memcpy(db_out->block[curblock_out].header.tv_sec, db_in->block[curblock_in].header.tv_sec, N_PKT_PER_BLOCK*sizeof(long int));
+        memcpy(db_out->block[curblock_out].header.tv_usec, db_in->block[curblock_in].header.tv_usec, N_PKT_PER_BLOCK*sizeof(long int));
+        for (int i = 0; i < N_PKT_PER_BLOCK; i++){
+            printf("TIME %li.%li\n", db_out->block[curblock_out].header.tv_sec[i], db_out->block[curblock_out].header.tv_usec[i]);
+        }
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
         HSD_output_databuf_set_filled(db_out, curblock_out);

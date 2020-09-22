@@ -114,6 +114,8 @@ static void *run(hashpipe_thread_args_t * args){
     uint64_t mcnt = 0;
     int block_idx = 0;
     packet_header_t pkt_header;
+    struct timeval nowTime;
+    int rc;
             
     //Input elements(Packets from Quabo)
     char *str_rcv, *str_q;
@@ -201,6 +203,17 @@ static void *run(hashpipe_thread_args_t * args){
             } else {
                 memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
             }
+
+            rc = gettimeofday(&nowTime, NULL);
+            if (rc == 0){
+                db->block[block_idx].header.tv_sec[i] = nowTime.tv_sec;
+                db->block[block_idx].header.tv_usec[i] = nowTime.tv_usec;
+            } else {
+                printf("gettimeofday() failed, errno = %d\n", errno);
+                db->block[block_idx].header.tv_sec[i] = 0;
+                db->block[block_idx].header.tv_usec[i] = 0;
+            }
+            //printf("TIME %li.%li\n", nowTime.tv_sec, nowTime.tv_usec);
             pthread_testcancel();
         }
 

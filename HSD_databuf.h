@@ -14,6 +14,8 @@
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
+    long int tv_sec[N_PKT_PER_BLOCK];
+    long int tv_usec[N_PKT_PER_BLOCK];
 } HSD_input_block_header_t;
 
 typedef uint8_t HSD_input_header_cache_alignment[
@@ -37,6 +39,8 @@ typedef struct HSD_input_databuf {
  */
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
+    long int tv_sec[N_PKT_PER_BLOCK];
+    long int tv_usec[N_PKT_PER_BLOCK];
 } HSD_output_block_header_t;
 
 typedef uint8_t HSD_output_header_cache_alignment[
