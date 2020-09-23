@@ -641,8 +641,8 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index){
 
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, module->PKTNUM);
     //createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, module->UTC);
-    createNumAttribute2(dataset, "tv_sec", H5T_NATIVE_LONG, dimsf, module->tv_sec);
-    createNumAttribute2(dataset, "tv_usec", H5T_NATIVE_LONG, dimsf, module->tv_usec);
+    createNumAttribute2(dataset, "ntp_sec", H5T_NATIVE_LONG, dimsf, module->tv_sec);
+    createNumAttribute2(dataset, "ntp_usec", H5T_NATIVE_LONG, dimsf, module->tv_usec);
     createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, module->NANOSEC);
 
     fileSize += DATABLOCKSIZE;
@@ -691,8 +691,8 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
 
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, &PKTNUM);
     createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, &UTC);
-    createNumAttribute2(dataset, "tv_sec", H5T_NATIVE_LONG, dimsf, &tv_sec);
-    createNumAttribute2(dataset, "tv_usec", H5T_NATIVE_LONG, dimsf, &tv_usec);
+    createNumAttribute2(dataset, "ntp_sec", H5T_NATIVE_LONG, dimsf, &tv_sec);
+    createNumAttribute2(dataset, "ntp_usec", H5T_NATIVE_LONG, dimsf, &tv_usec);
     createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, &NANOSEC);
 
     fileSize += SCIDATASIZE+80;
