@@ -672,7 +672,7 @@ static unsigned int moduleInd[0xffff];
 static fileIDs_t* file;
 static redisContext *redisServer;
 
-void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, char* data_ptr){
+void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     hid_t dataset;
     char name[100];
     uint16_t data[SCIDATASIZE];
@@ -691,6 +691,8 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
 
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, &PKTNUM);
     createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, &UTC);
+    createNumAttribute2(dataset, "tv_sec", H5T_NATIVE_LONG, dimsf, &tv_sec);
+    createNumAttribute2(dataset, "tv_usec", H5T_NATIVE_LONG, dimsf, &tv_usec);
     createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, &NANOSEC);
 
     fileSize += SCIDATASIZE+80;
@@ -707,7 +709,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     uint8_t currentStatus = (0x01 << quaboNum);
 
     if (acqmode == 0x1){
-        writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, data_ptr);
+        writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, tv_sec, tv_usec, data_ptr);
         return;
     } else if(acqmode == 0x2 || acqmode == 0x3){
         group = module->ID16bit;
@@ -741,7 +743,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     }
 
     if ((module->status & currentStatus) || module->lastMode != mode || (module->upperNANOSEC - module->lowerNANOSEC) > NANOSECTHRESHOLD){
-        printf("\n");
+        //printf("\n");
         moduleFillZeros(module, module->status);
         writeDataBlock(group, module, *dataNum);
         (*dataNum)++;
@@ -750,7 +752,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         module->lowerNANOSEC = NANOSEC;
     }
 
-    printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u, tv_sec = %li, tv_usec = %li\n", moduleNum, quaboNum, UTC, NANOSEC, tv_sec, tv_usec);
+    //printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u, tv_sec = %li, tv_usec = %li\n", moduleNum, quaboNum, UTC, NANOSEC, tv_sec, tv_usec);
     storePktData(module->data[quaboIndex], data_ptr, mode);
     module->lastMode = mode;
     module->PKTNUM[quaboIndex] = PKTNUM;
