@@ -637,8 +637,6 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
     dimsf[0] = PKTPERPAIR;
 
     sprintf(name, IMGDATA_FORMAT, index);
-    dataset = H5Dcreate2(frame, name, storageType, storageSpace,
-        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     
     if(mode == 16){
         dataset = H5Dcreate2(frame, name, storageTypebit16, storageSpace,
