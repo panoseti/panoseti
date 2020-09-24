@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 #include "hiredis/hiredis.h"
@@ -627,7 +628,7 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     free(HKdata);
 }
 
-void writeDataBlock(hid_t frame, moduleIDs_t* module, int index){
+void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
     hid_t dataset;
     char name[50];
     hsize_t dimsf[1];
@@ -637,13 +638,19 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index){
     dataset = H5Dcreate2(frame, name, storageType, storageSpace,
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     
-    H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+    if(mode == 16){
+        H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+    }else{
+        H5Dwrite(dataset, H5T_STD_U8LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+    }
+    
 
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, module->PKTNUM);
     //createNumAttribute2(dataset, "UTC", H5T_STD_U32LE, dimsf, module->UTC);
     createNumAttribute2(dataset, "ntp_sec", H5T_NATIVE_LONG, dimsf, module->tv_sec);
     createNumAttribute2(dataset, "ntp_usec", H5T_NATIVE_LONG, dimsf, module->tv_usec);
     createNumAttribute2(dataset, "NANOSEC", H5T_STD_U32LE, dimsf, module->NANOSEC);
+    createNumAttribute(dataset, "status", H5T_STD_U8LE, module->status);
 
     fileSize += DATABLOCKSIZE;
 
@@ -745,7 +752,7 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     if ((module->status & currentStatus) || module->lastMode != mode || (module->upperNANOSEC - module->lowerNANOSEC) > NANOSECTHRESHOLD){
         //printf("\n");
         moduleFillZeros(module, module->status);
-        writeDataBlock(group, module, *dataNum);
+        writeDataBlock(group, module, *dataNum, mode);
         (*dataNum)++;
         module->status = 0;
         module->upperNANOSEC = NANOSEC;
@@ -785,9 +792,9 @@ void closeModules(moduleIDs_t* head){
     while (head != NULL){
         moduleFillZeros(currentmodule, currentmodule->status);
         if(currentmodule->lastMode == 16){
-            writeDataBlock(currentmodule->ID16bit, currentmodule, currentmodule->bit16dataNum);
+            writeDataBlock(currentmodule->ID16bit, currentmodule, currentmodule->bit16dataNum, 16);
         } else if (currentmodule->lastMode == 8){
-            writeDataBlock(currentmodule->ID8bit, currentmodule, currentmodule->bit8dataNum);
+            writeDataBlock(currentmodule->ID8bit, currentmodule, currentmodule->bit8dataNum, 8);
         }
         H5Gclose(head->ID16bit);
         H5Gclose(head->ID8bit);
@@ -874,9 +881,12 @@ fileIDs_t* HDF5file_init(){
     struct tm tm = *gmtime(&t);
     char currTime[100];
     char fileName[100];
-
+    
+    sprintf(fileName, "%i/", (tm.tm_year + 1900));
+    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+    sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
 
     return HDF5file_init(fileName, currTime);
 }
@@ -907,9 +917,11 @@ void reinitFileResources(){
     char currTime[100];
     char fileName[100];
 
+    sprintf(fileName, "%i/", (tm.tm_year + 1900));
+    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    sprintf(fileName, H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    
+    sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
     if (access(fileName, F_OK) != -1){
         return;
     }
