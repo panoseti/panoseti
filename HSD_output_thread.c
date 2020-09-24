@@ -44,7 +44,9 @@ static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
 
 static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
 
-static hid_t storageType = H5Tcopy(H5T_STD_U16LE);
+static hid_t storageTypebit16 = H5Tcopy(H5T_STD_U16LE);
+
+static hid_t storageTypebit8 = H5Tcopy(H5T_STD_U8LE);
 
 static long long fileSize = 0;
 
@@ -639,8 +641,12 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     
     if(mode == 16){
+        dataset = H5Dcreate2(frame, name, storageTypebit16, storageSpace,
+        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
     }else{
+        dataset = H5Dcreate2(frame, name, storageTypebit8, storageSpace,
+        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         H5Dwrite(dataset, H5T_STD_U8LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
     }
     
