@@ -11,9 +11,9 @@ COUNTER = "\rPackets Captured So Far {}"
 
 signed = [
     0,                        # BOARDLOC
-    1, 1, 1, 1,          # HVMON (0 to -80V)
+    0, 0, 0, 0,          # HVMON (0 to -80V)
     0, 0, 0, 0, # HVIMON ((65535-HVIMON) * 38.1nA) (0 to 2.5mA)
-    1,                        # RAWHVMON (0 to -80V)
+    0,                        # RAWHVMON (0 to -80V)
     0,                      # V12MON (19.07uV/LSB) (1.2V supply)
     0,                      # V18MON (19.07uV/LSB) (1.8V supply)
     0,                      # V33MON (38.10uV/LSB) (3.3V supply)
