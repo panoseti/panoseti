@@ -68,9 +68,9 @@ typedef struct HKPackets {
     int16_t TEMP1;
     uint16_t TEMP2;
     uint16_t VCCINT, VCCAUX;
-    uint16_t UID;
+    uint64_t UID;
     uint8_t SHUTTER_STATUS, LIGHT_STATUS;
-    uint16_t FWID0, FWID1;
+    uint32_t FWID0, FWID1;
 } HKPackets_t;
 
 const HKPackets_t  HK_dst_buf[0] = {};
@@ -161,9 +161,9 @@ const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,  
                                 H5T_STD_U16LE, H5T_STD_U16LE, H5T_STD_U16LE,                    // I10MON, I18MON, I33MON        
                                 H5T_STD_I16LE, H5T_STD_U16LE,                                   // TEMP1, TEMP2                        
                                 H5T_STD_U16LE, H5T_STD_U16LE,                                   // VCCINT, VCCAUX              
-                                H5T_STD_U16LE,                                                  // UID
+                                H5T_STD_U64LE,                                                  // UID
                                 H5T_STD_I8LE,H5T_STD_I8LE,                                      // SHUTTER and LIGHT_SENSOR STATUS
-                                H5T_STD_U16LE,H5T_STD_U16LE                                     // FWID0 and FWID1
+                                H5T_STD_U32LE,H5T_STD_U32LE                                     // FWID0 and FWID1
 };
 
 typedef struct moduleIDs {
@@ -174,7 +174,7 @@ typedef struct moduleIDs {
     int lastMode;
     int mod1Name;
     int mod2Name;
-    uint16_t data[PKTPERPAIR][SCIDATASIZE];
+    uint8_t data[PKTPERPAIR*SCIDATASIZE*2];
     uint16_t PKTNUM[PKTPERPAIR];
     long int tv_sec[PKTPERPAIR];
     long int tv_usec[PKTPERPAIR];
@@ -218,10 +218,14 @@ moduleIDs_t* get_moduleID(moduleIDs_t* list, unsigned int ind){
     return list;
 }
 
-void moduleFillZeros(moduleIDs_t* module, uint8_t status){//uint16_t data[PKTPERPAIR][SCIDATASIZE], uint8_t status){
+void moduleFillZeros(moduleIDs_t* module, uint8_t status){
     for(int i = 0; i < PKTPERPAIR; i++){
         if(!((status >> i) & 0x01)){
-            memset(module->data[i], 0, SCIDATASIZE*sizeof(uint16_t));
+            if (module->lastMode == 16){
+                memset(module->data + (i*SCIDATASIZE*2), 0, SCIDATASIZE*2*sizeof(uint8_t));
+            } else if (module->lastMode == 8) {
+                memset(module->data + (i*SCIDATASIZE), 0, SCIDATASIZE*sizeof(uint8_t));
+            }
             module->PKTNUM[i] = 0;
             module->tv_sec[i] = 0;
             module->tv_usec[i] = 0;
@@ -661,15 +665,17 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
     H5Dclose(dataset);
 }
 
-void storePktData(uint16_t* moduleData, char* data_ptr, int mode){
-
+void storePktData(uint8_t* moduleData, char* data_ptr, int mode, int quaboIndex){
+    uint8_t *data;
     if (mode == 16){
-        for(int i = 0; i < SCIDATASIZE; i++){
-            moduleData[i] = (data_ptr[i*2 + 1] << 8) & 0xff00 | (data_ptr[i*2] & 0x00ff);
+        data = moduleData + (quaboIndex*SCIDATASIZE*2);
+        for(int i = 0; i < SCIDATASIZE*2; i++){
+            data[i] = data_ptr[i];
         }
     } else if(mode == 8){
+        data = moduleData + (quaboIndex*SCIDATASIZE);
         for(int i = 0; i < SCIDATASIZE; i++){
-            moduleData[i] = data_ptr[i];
+            data[i] = data_ptr[i];
         }
     } else {
         return;
@@ -686,7 +692,7 @@ static redisContext *redisServer;
 void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     hid_t dataset;
     char name[100];
-    uint16_t data[SCIDATASIZE];
+    uint8_t data[SCIDATASIZE*2];
     hsize_t dimsf[1] = {1};
 
     hsize_t PHDim[1] = {SCIDATASIZE};
@@ -694,10 +700,11 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
     hid_t PHType = H5Tcopy(H5T_STD_U16LE);
 
     sprintf(name, PHDATA_FORMAT, moduleNum, quaboNum, UTC, NANOSEC, PKTNUM);
+    //printf("Name = %s\n", name);
     dataset = H5Dcreate2(file->PHData, name, PHType, PHSpace,
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     
-    storePktData(data, data_ptr, 16);
+    storePktData(data, data_ptr, 16, 0);
     H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
 
     createNumAttribute2(dataset, "PKTNUM", H5T_STD_U16LE, dimsf, &PKTNUM);
@@ -713,8 +720,6 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
 
 void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     //uint16_t* moduleData;
-    int* dataNum;
-    hid_t group;
     int mode;
     int quaboIndex;
     uint8_t currentStatus = (0x01 << quaboNum);
@@ -723,12 +728,8 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
         writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, tv_sec, tv_usec, data_ptr);
         return;
     } else if(acqmode == 0x2 || acqmode == 0x3){
-        group = module->ID16bit;
-        dataNum = &(module->bit16dataNum);
         mode = 16;
     } else if (acqmode == 0x6 || acqmode == 0x7){
-        group = module->ID8bit;
-        dataNum = &(module->bit8dataNum);
         mode = 8;
     } else {
         printf("A new mode was identify acqmode=%X\n", acqmode);
@@ -756,15 +757,21 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     if ((module->status & currentStatus) || module->lastMode != mode || (module->upperNANOSEC - module->lowerNANOSEC) > NANOSECTHRESHOLD){
         //printf("\n");
         moduleFillZeros(module, module->status);
-        writeDataBlock(group, module, *dataNum, mode);
-        (*dataNum)++;
+        if (module->lastMode == 16){
+            writeDataBlock(module->ID16bit, module, module->bit16dataNum, module->lastMode);
+            module->bit16dataNum++;
+        }else if (module->lastMode == 8){
+            writeDataBlock(module->ID8bit, module, module->bit8dataNum, module->lastMode);
+            module->bit8dataNum++;
+        }
+        //(*dataNum)++;
         module->status = 0;
         module->upperNANOSEC = NANOSEC;
         module->lowerNANOSEC = NANOSEC;
     }
 
-    //printf("ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u, tv_sec = %li, tv_usec = %li\n", moduleNum, quaboNum, UTC, NANOSEC, tv_sec, tv_usec);
-    storePktData(module->data[quaboIndex], data_ptr, mode);
+    //printf("ACQMode = %u, LastMode = %u, Mode = %u, ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u, PKTNUM = %u\n", acqmode, module->lastMode, mode, moduleNum, quaboNum, UTC, NANOSEC, PKTNUM);
+    storePktData((uint8_t *)module->data, data_ptr, mode, quaboIndex);
     module->lastMode = mode;
     module->PKTNUM[quaboIndex] = PKTNUM;
     //module->UTC[quaboIndex] = UTC;
@@ -933,6 +940,7 @@ void reinitFileResources(){
     closeFileResources();
     printf("\n===INITIALING FILE RESROUCES===\n");
     file = HDF5file_init(fileName, currTime);
+    printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
 }
 
 static int INTSIG;
@@ -1020,7 +1028,8 @@ static void *run(hashpipe_thread_args_t * args){
     createDataBlock(moduleListEnd, HK);*/
     //storeHKdata(moduleListBegin->next_moduleID->ID16bit, HK);
 
-    printf("-----------Finished Setup of Output Thread-----------\n\n");
+    printf("-----------Finished Setup of Output Thread-----------\n");
+    printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
 
     /* Main loop */
     while(run_threads()){
