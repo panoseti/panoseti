@@ -91,7 +91,7 @@ def storeInRedis(packet):
     r.hset(boardName, 'UID', getUID(array[21:25]))
     
     r.hset(boardName, 'SHUTTER_STATUS', array[25]&0x01)
-    r.hset(boardName, 'LIGHT_SENSOR_STATUS', array[25]&0x02 >> 1)
+    r.hset(boardName, 'LIGHT_SENSOR_STATUS', (array[25]&0x02) >> 1)
     
     r.hset(boardName, 'FWID0', array[27] + array[28]*0x10000)
     r.hset(boardName, 'FWID1', array[29] + array[30]*0x10000)
