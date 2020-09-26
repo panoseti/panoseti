@@ -41,10 +41,7 @@ def handler(signal_recieved, frame):
     exit(0)
     
 def getUID(intArr):
-    b = b''
-    for i in intArr[::-1]:
-        b += i.to_bytes(2, byteorder='big')
-    return b.hex()
+    return intArr[0] + (intArr[1] << 16) + (intArr[2] << 32) + (intArr[3] << 48)
     
 def storeInRedis(packet):
     array = []
