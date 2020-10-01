@@ -10,6 +10,9 @@ def compare(a,b):
     return True
 
 def checkIMG16Data(IMG16):
+    if len(IMG16) == 0:
+        print("Empty 16bit Image Data")
+        return False
     refData = [0]*256
     index = 0
     mode = 0
@@ -56,6 +59,9 @@ def checkIMG16Data(IMG16):
     return True
 
 def checkIMG8Data(IMG8):
+    if len(IMG8) == 0:
+        print("Empty 8bit Image Data")
+        return False
     refData = [0]*256
     index = 0
     mode = 0
@@ -100,6 +106,9 @@ def checkIMG8Data(IMG8):
     return True
 
 def checkPHData(PHData):
+    if len(PHData) == 0:
+        print("Empty PH Data")
+        return False
     refData = [0]*256
     index = 0
     mode = 0
@@ -143,6 +152,9 @@ def checkPHData(PHData):
     return True
 
 def checkHKPackets(DynamicData):
+    if len(DynamicData) == 0:
+        print("Empty HouseKeeping Data")
+        return False
     dataRef = [[0]*26, [257]*26, [514]*26, [771]*26]
     dataRef[1][21] = 72340172838076673
     dataRef[1][22] = 1
@@ -163,6 +175,9 @@ def checkHKPackets(DynamicData):
     dataRef[3][25] = 50529027
 
     for i in DynamicData:
+        if len(DynamicData[i]) == 0:
+            print("Empty HouseKeeping Data")
+            return False
         for j in range(len(DynamicData[i])):
             for k in range(2, len(DynamicData[i][j])):
                 if DynamicData[i][j][k] != dataRef[j][k-1]:
