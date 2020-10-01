@@ -893,8 +893,11 @@ fileIDs_t* HDF5file_init(){
     char currTime[100];
     char fileName[100];
     
-    sprintf(fileName, "%i/", (tm.tm_year + 1900));
+    sprintf(fileName, "%04i/", (tm.tm_year + 1900));
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    sprintf(fileName, "%04i/%04i%02i%02i/", (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    //sprintf(fileName+strlen(fileName), "%04i%02i%02i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
@@ -928,7 +931,9 @@ void reinitFileResources(){
     char currTime[100];
     char fileName[100];
 
-    sprintf(fileName, "%i/", (tm.tm_year + 1900));
+    sprintf(fileName, "%04i/", (tm.tm_year + 1900));
+    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    sprintf(fileName, "%04i/%04i%02i%02i/", (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
