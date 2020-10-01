@@ -1,5 +1,6 @@
 import socket
 import redis
+from influxdb import InfluxDBClient
 from signal import signal, SIGINT
 from sys import exit
 from datetime import datetime
@@ -35,6 +36,9 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 r = redis.Redis(host='localhost', port=6379, db=0)
 
+client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
+client.create_database('metadata')
+
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
     sock.close()
@@ -43,7 +47,7 @@ def handler(signal_recieved, frame):
 def getUID(intArr):
     return intArr[0] + (intArr[1] << 16) + (intArr[2] << 32) + (intArr[3] << 48)
     
-def storeInRedis(packet):
+def storeInRedisandInflux(packet):
     array = []
     startUp = 0
     
@@ -54,9 +58,58 @@ def storeInRedis(packet):
         
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
+        
+    json_body = [
+        {
+            "measurement": "Quabo{0}".format(array[0]),
+            "tags": {
+                "observatory": "lick",
+                "datatype": "housekeeping"
+            },
+            "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "fields":{
+                'BOARDLOC': array[0],
+                'HVMON0': array[1],
+                'HVMON1': array[2],
+                'HVMON2': array[3],
+                'HVMON3': array[4],
+
+                'HVIMON0': array[5],
+                'HVIMON1': array[6],
+                'HVIMON2': array[7],
+                'HVIMON3': array[8],
+
+                'RAWHVMON': array[9],
+
+                'V12MON': array[10],
+                'V18MON': array[11],
+                'V33MON': array[12],
+                'V37MON': array[13],
+
+                'I10MON': array[14],
+                'I18MON': array[15],
+                'I33MON': array[16],
+
+                'TEMP1': array[17],
+                'TEMP2': array[18],
+
+                'VCCINT': array[19],
+                'VCCAUX': array[20],
+
+                'UID': getUID(array[21:25]),
+
+                'SHUTTER_STATUS': array[25]&0x01,
+                'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
+
+                'FWID0': array[27] + array[28]*0x10000,
+                'FWID1': array[29] + array[30]*0x10000           
+            }
+        }
+    ]
+    client.write_points(json_body)
     
     boardName = array[0]
-    r.hset(boardName, 'SYSTIME', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S UTC"))
+    r.hset(boardName, 'SYSTIME', json_body[0]['time'])
     r.hset(boardName,'BOARDLOC', boardName)
     r.hset(boardName, 'HVMON0', array[1]) #array[1]*1.22/1000)
     r.hset(boardName, 'HVMON1', array[2]) #array[2]*1.22/1000)
@@ -85,61 +138,18 @@ def storeInRedis(packet):
     r.hset(boardName, 'VCCINT', array[19]) #array[19]*3/65536)
     r.hset(boardName, 'VCCAUX', array[20]) #array[20]*3/65536)
      
-    r.hset(boardName, 'UID', getUID(array[21:25]))
+    r.hset(boardName, 'UID', json_body[0]['fields']['UID'])
     
-    r.hset(boardName, 'SHUTTER_STATUS', array[25]&0x01)
-    r.hset(boardName, 'LIGHT_SENSOR_STATUS', (array[25]&0x02) >> 1)
+    r.hset(boardName, 'SHUTTER_STATUS', json_body[0]['fields']['SHUTTER_STATUS'])
+    r.hset(boardName, 'LIGHT_SENSOR_STATUS', json_body[0]['fields']['LIGHT_SENSOR_STATUS'])
     
-    r.hset(boardName, 'FWID0', array[27] + array[28]*0x10000)
-    r.hset(boardName, 'FWID1', array[29] + array[30]*0x10000)
+    r.hset(boardName, 'FWID0', json_body[0]['fields']['FWID0'])
+    r.hset(boardName, 'FWID1', json_body[0]['fields']['FWID1'])
 
     r.hset(boardName,'StartUp', startUp)
 
     r.hset('UPDATED', boardName, "1")
 
-    # d = {
-    #     'BOARDLOC': array[0],
-    #     'HVMON0': array[1]*1.22/1000,
-    #     'HVMON1': array[2]*1.22/1000,
-    #     'HVMON2': array[3]*1.22/1000,
-    #     'HVMON3': array[4]*1.22/1000,
-        
-    #     'HVIMON0': (65535-array[5])*38.1/1000000,
-    #     'HVIMON1': (65535-array[6])*38.1/1000000,
-    #     'HVIMON2': (65535-array[7])*38.1/1000000,
-    #     'HVIMON3': (65535-array[8])*38.1/1000000,
-        
-    #     'RAWHVMON': array[9]*1.22/1000,
-        
-    #     'V12MON': array[10]*19.07/1000000000,
-    #     'V18MON': array[11]*19.07/1000000000,
-    #     'V33MON': array[12]*38.1/1000000000,
-    #     'V37MON': array[13]*38.1/1000000000,
-        
-    #     'I10MON': array[14]*182/1000000,
-    #     'I18MON': array[15]*37.8/1000000,
-    #     'I33MON': array[16]*37.8/1000000,
-        
-    #     'TEMP1': array[17]*0.0625,
-    #     'TEMP2': array[18]*0.0625,
-        
-    #     'VCCINT': array[19]*3/65536,
-    #     'VCCAUX': array[20]*3/65536,
-        
-    #     'UID': getUID(array[21:25]),
-        
-    #     'SHUTTER_STATUS': array[25]&0x01,
-    #     'LIGHT_SENSOR_STATUS': array[25]&0x02 >> 1,
-        
-    #     'FWID0': array[27],
-    #     'FWID0': array[28],
-    #     'FWID0': array[29],
-    #     'FWID0': array[30],
-
-    #     'UPDATED': 1
-    # }
-
-    # r.hmset(d.get('BOARDLOC'), d)
     
     
 signal(SIGINT, handler)
@@ -150,5 +160,5 @@ num = 0
 while(True):
     packet = sock.recvfrom(64)
     num += 1
-    storeInRedis(packet[0])
+    storeInRedisandInflux(packet[0])
     print(COUNTER.format(num), end='')
