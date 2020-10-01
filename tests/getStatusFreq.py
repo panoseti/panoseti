@@ -9,7 +9,7 @@ def statusFreq(IMG):
             d[stat] += 1
         else:
             d[stat] = 0
-    print(d)
+    return d
 
 if len(sys.argv) != 2:
     print("Program to get the frequency of status bit for a file")
@@ -23,7 +23,12 @@ f = h5py.File(fileName)
 IMG16 = f['bit16IMGData']['ModulePair_00254_00001']
 IMG8 = f['bit8IMGData']['ModulePair_00254_00001']
 
+dict16 = statusFreq(IMG16)
+dict8 = statusFreq(IMG8)
+
 print("Status Frequency for 16 bit Image Data")
-statusFreq(IMG16)
+for key in sorted(dict16.keys()):
+	print('{0}:{1}'.format(key, dict16[key]))
 print("Status Frequency for 8 bit Image Data")
-statusFreq(IMG8)
+for key in sorted(dict8.keys()):
+	print('{0}:{1}'.format(key, dict8[key]))
