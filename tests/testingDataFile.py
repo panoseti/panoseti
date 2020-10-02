@@ -155,7 +155,7 @@ def checkHKPackets(DynamicData):
     if len(DynamicData) == 0:
         print("Empty HouseKeeping Data")
         return False
-    dataRef = [[0]*26, [257]*26, [514]*26, [771]*26]
+    dataRef = [[0]*26, [257]*26, [514]*26, [771]*26, [0]*26]
     dataRef[1][21] = 72340172838076673
     dataRef[1][22] = 1
     dataRef[1][23] = 0
@@ -174,6 +174,7 @@ def checkHKPackets(DynamicData):
     dataRef[3][24] = 50529027
     dataRef[3][25] = 50529027
 
+    dataRef[4][17] = -1
     for i in DynamicData:
         if len(DynamicData[i]) == 0:
             print("Empty HouseKeeping Data")

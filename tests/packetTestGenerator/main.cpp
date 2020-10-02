@@ -376,6 +376,15 @@ int main(int argc, char** argv) {
         delay(sleepTime);
     }
 
+    memset(HKPacket+1, 3, 64*sizeof(unsigned char));
+    for (int q = 0; q < 8; q++){
+        HKPacket[2] = quabosHex[q*2];
+        HKPacket[3] = quabosHex[q*2 + 1];
+        if(sendto(sockfd, HKPacket, 64, 0,(struct sockaddr *) &HK_serv_addr, HK_addrLength) == 64){
+            successPackets++;
+        }
+    }
+
     printf("Sending Packets for Checking Image Data Max Value\n");
     for (int i = 0; i < 256; i++) {
 
@@ -395,7 +404,9 @@ int main(int argc, char** argv) {
     }
     printf("Done\n\n");
 
-    memset(HKPacket+1, 3, 64*sizeof(unsigned char));
+    memset(HKPacket+1, 0, 64*sizeof(unsigned char));
+    HKPacket[36] = 0xFF;
+    HKPacket[37] = 0xFF;
     for (int q = 0; q < 8; q++){
         HKPacket[2] = quabosHex[q*2];
         HKPacket[3] = quabosHex[q*2 + 1];
