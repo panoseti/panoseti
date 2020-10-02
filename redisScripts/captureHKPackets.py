@@ -96,7 +96,7 @@ def storeInRedisandInflux(packet):
                 'VCCINT': array[19],
                 'VCCAUX': array[20],
 
-                'UID': getUID(array[21:25]),
+                'UID': '0x{0:04x}{0:04x}{0:04x}{0:04x}'.format(array[24],array[23],array[22],array[21]),
 
                 'SHUTTER_STATUS': array[25]&0x01,
                 'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
@@ -138,7 +138,7 @@ def storeInRedisandInflux(packet):
     r.hset(boardName, 'VCCINT', array[19]) #array[19]*3/65536)
     r.hset(boardName, 'VCCAUX', array[20]) #array[20]*3/65536)
      
-    r.hset(boardName, 'UID', json_body[0]['fields']['UID'])
+    r.hset(boardName, 'UID', getUID(array[21:25]))
     
     r.hset(boardName, 'SHUTTER_STATUS', json_body[0]['fields']['SHUTTER_STATUS'])
     r.hset(boardName, 'LIGHT_SENSOR_STATUS', json_body[0]['fields']['LIGHT_SENSOR_STATUS'])
