@@ -5,8 +5,8 @@ import redis
 from signal import signal, SIGINT
 
 BYTEORDER = 'big'
-RKEY = 'GPSRECEIVERPRIM'
-RKEYsupp = 'GPSRECEIVERSUPP'
+RKEY = 'GPSPRIM'
+RKEYsupp = 'GPSSUPP'
 
 r = redis.Redis(host='localhost', port=6379, db=0)
 
