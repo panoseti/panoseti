@@ -1,8 +1,9 @@
 import redis
 import time
 from signal import signal, SIGINT
+#from panosetiSIconvert import HKconvert
+# HKconv = HKconvert()
 
-ENDPROGRAM = False
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
     exit(0)
@@ -101,10 +102,11 @@ while 1:
         elements = ''
         setValues = r.hgetall(q)
         for k in quaboKeys:
-            currValue = setValues[k].decode("utf-8")
+            print(k)
+            currValue = setValues[k].decode("utf-8")#HKconv.convertValue(k.decode("utf-8"), setValues[k].decode("utf-8"))
             color = TEXTCOLOR
             if k in quaboBounds:
-                color = determineColor(int(currValue), quaboBounds[k])
+                color = determineColor(float(currValue), quaboBounds[k])
             elements += eleTemplate.format(currValue, color)
         rows += rowHeader.format(elements)
     
