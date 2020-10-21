@@ -1,8 +1,10 @@
 import os
 import netsnmp
 import redis
+from influxdb import InfluxDBClient
 import time
 from signal import signal, SIGINT
+from datetime import datetime
 
 
 LINK_DOWN   =   '1'
@@ -11,6 +13,7 @@ SFP_PN0     =   'PS-FB-TX1310'
 SFP_PN1     =   'PS-FB-RX1310'
 SWITCHIP    =   '192.168.1.254'
 RKEY        =   'WRSWITCH'
+OBSERVATORY =   'lick'
 
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
@@ -18,6 +21,9 @@ def handler(signal_recieved, frame):
 signal(SIGINT, handler)
 
 r = redis.Redis(host='localhost', port=6379, db=0)
+
+client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
+client.create_database('metadata')
 
 os.environ['MIBDIRS']='+./'
 
@@ -36,7 +42,7 @@ except:
 
 print('*****************WR-SWITCH SFP CHECK***********************')
 
-if(len(res)==0):
+if(res == None or len(res)==0):
     print('WR-SWITCH(%s) : No sfp transceivers detected!' %(SWITCHIP))
     exit(0)
 
@@ -73,14 +79,31 @@ while True:
         print('WR-SWITCH(%s) : No sfp transceivers detected!' %(SWITCHIP))
         exit(0)
 
+    json_body = [
+        {
+            "measurement": "GPSSUPP",
+            "tags": {
+                "observatory": OBSERVATORY,
+                "datatype": "GPS"
+            },
+            "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "fields":{
+            }
+        }
+    ]
+    
     for i in range(len(res)):
         tmp = bytes.decode(res[i]).replace(' ','') 					#convert bytes to str, and replace the 'space' at the end
         if tmp == LINK_UP :
             r.hset(RKEY, 'Port%2d_LINK'%(i+1), 1)
+            json_body[0]['fields']['Port%2d_LINK'%(i+1)] = 1
             #print('WR-SWITCH(%s) : Port%2d LINK_UP  ' %(SWITCHIP, i+1))
         else:
             r.hset(RKEY, 'Port%2d_LINK'%(i+1), 0)
+            json_body[0]['fields']['Port%2d_LINK'%(i+1)] = 0
             #print('WR-SWITCH(%s) : Port%2d LINK_DOWN' %(SWITCHIP, i+1))
+    
+    client.write_points(json_body)
 
     #print(' ')
     r.hset('UPDATED', RKEY, 1)
