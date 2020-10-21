@@ -123,7 +123,6 @@ def storeInRedisandInflux(packet):
         r.hset(boardName, key, json_body[0]['fields'][key])
 
     r.hset('UPDATED', boardName, "1")
-    print(json_body[0]['fields']['TEMP1'])
 
     
     
