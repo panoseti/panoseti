@@ -2,13 +2,21 @@ import time
 import serial
 import struct
 import redis
+from influxdb import InfluxDBClient
 from signal import signal, SIGINT
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'
 RKEYsupp = 'GPSSUPP'
+OBSERVATORY = "lick"
 
 r = redis.Redis(host='localhost', port=6379, db=0)
+
+client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
+client.create_database('metadata')
+
+lastTime = '';
+lastTimeUpdated = False;
 
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
@@ -34,6 +42,12 @@ timingFlagValues = {0:'GPS', 1:'UTC'}
 
 # OutputID 0x8F-AB
 def primaryTimingPacket(data):
+    global lastTime, lastTimeUpdated
+    if len(data) != 17:
+        print(RKEY, ' is malformed ignoring the following data packet')
+        print(data)
+        print('Packet size is ', len(data))
+        return
     
     timeofWeek = int.from_bytes(data[1:5], byteorder=BYTEORDER, signed=False)
     
@@ -55,34 +69,37 @@ def primaryTimingPacket(data):
     month = int.from_bytes(data[14:15], byteorder=BYTEORDER, signed=False)
     year = int.from_bytes(data[15:17], byteorder=BYTEORDER, signed=False)
     
+    lastTime = str(year)+'-'+str(month)+'-'+str(dayofMonth)+'T'+str(hours)+':'+str(minutes)+':'+str(seconds) + 'Z'
+    lastTimeUpdated = True
+    print(lastTime)
     
-    r.hset(RKEY,'TOW', timeofWeek)
-    r.hset(RKEY, 'WEEKNUMBER', weekNumber)
-    r.hset(RKEY, 'UTCOFFSET', UTCOffset)
-    r.hset(RKEY, 'GPSTIME', str(year)+'_'+str(month)+'_'+str(dayofMonth)+'T'+str(hours)+':'+str(minutes)+':'+str(seconds))
+    json_body = [
+        {
+            "measurement": RKEY,
+            "tags": {
+                "observatory": OBSERVATORY,
+                "datatype": "GPS"
+            },
+            "time": lastTime,
+            "fields":{
+                'TOW': timeofWeek,
+                'WEEKNUMBER': weekNumber,
+                'UTCOFFSET': UTCOffset,
+                'TIMEFLAG': timingFlagValues[time],
+                'PPSFLAG': timingFlagValues[PPS],
+                'TIMESET': (timeSet+1)%2,
+                'UTCINFO': (UTCinfo+1)%2,
+                'TIMEFROMGPS': (timeFrom+1)%2
+            }
+        }
+    ]
+    client.write_points(json_body)
+    #print('GPSTIME', json_body[0]['time'])
+    r.hset(RKEY, 'GPSTIME', json_body[0]['time'])
     
-    #print('Time of Week = ', timeofWeek)
-    #print('Week number = ', weekNumber)
-    #print('UTC offset = ', UTCOffset)
-    #print('Timing Flag = ', timingFlag)
-    r.hset(RKEY, 'TIMEFLAG', timingFlagValues[time])
-    r.hset(RKEY, 'PPSFLAG', timingFlagValues[PPS])
-    if timeSet == 0:
-        r.hset(RKEY, 'TIMESETFLAG', 'time is set')
-    else:
-        r.hset(RKEY, 'TIMESETFLAG', 'time is not set')
-    
-    if UTCinfo == 0:
-        r.hset(RKEY, 'UTCINFO', 'have UTC info')
-    else:
-        r.hset(RKEY, 'UTCINFO', 'no UTC info')
-        
-    if timeFrom == 0:
-        r.hset(RKEY, 'TIMEFROMFLAG', 'time from GPS')
-    else:
-        r.hset(RKEY, 'TIMEFROMFLAG', 'time from user')
-    
-    #print(str(year)+'_'+str(month)+'_'+str(dayofMonth)+'T'+str(hours)+':'+str(minutes)+':'+str(seconds))
+    for key in json_body[0]['fields']:
+        #print(key, json_body[0]['fields'][key])
+        r.hset(RKEY, key, json_body[0]['fields'][key])
     
 
     
@@ -96,6 +113,17 @@ disActivityValues = {0:'Phase locking', 1:'Oscillator warm-up', 2:'Frequency loc
 DEFAULTVALUE = 'Uknown Value {0}'
 # OutputID 0x8F-AC
 def supplimentaryTimingPacket(data):
+    global lastTimeUpdated
+    if len(data) != 68:
+        print(RKEYsupp, ' is malformed ignoring the following data packet')
+        print(data)
+        print('Packet size is ', len(data))
+        lastTimeUpdated = False
+        return
+    if not lastTimeUpdated:
+        print("Primary Packet Failed not saving Supplimentary Packet")
+        return
+    
     receiverMode = int.from_bytes(data[1:2], byteorder=BYTEORDER, signed=False)
     discipliningMode = int.from_bytes(data[2:3], byteorder=BYTEORDER, signed=False)
     selfSurveyProgress = int.from_bytes(data[3:4], byteorder=BYTEORDER, signed=False)
@@ -117,58 +145,66 @@ def supplimentaryTimingPacket(data):
     altitude = doublefrom_bytes(data[52:60])
     PPSQuantizationError = floatfrom_bytes(data[60:64])
 
-    
+    json_body = [
+        {
+            "measurement": RKEYsupp,
+            "tags": {
+                "observatory": OBSERVATORY,
+                "datatype": "GPS"
+            },
+            "time": lastTime,
+            "fields":{
+                'RECEIVERMODE': DEFAULTVALUE.format(receiverMode),
+                'DISCIPLININGMODE': DEFAULTVALUE.format(disModeValues),
+                'SELFSURVEYPROGRESS': selfSurveyProgress,
+                'HOLDOVERDURATION': holdOverDuration,
+                'DACatRail': (criticalAlarms & 0x08) >> 3,
+                'DACnearRail': minorAlarms & 0x0001,
+                'AntennaOpen': (minorAlarms & 0x0002) >> 1,
+                'AntennaShorted': (minorAlarms & 0x0004) >> 2,
+                'NotTrackingSatellites': (minorAlarms & 0x0008) >> 3,
+                'NotDiscipliningOscillator': (minorAlarms & 0x0010) >> 4,
+                'SurveyInProgress': (minorAlarms & 0x0020) >> 5,
+                'NoStoredPosition': (minorAlarms & 0x0040) >> 6,
+                'LeapSecondPending': (minorAlarms & 0x0080) >> 7,
+                'InTestMode': (minorAlarms & 0x0100) >> 8,
+                'PositionIsQuestionable': (minorAlarms & 0x0200) >> 9,
+                'EEPROMCorrupt': (minorAlarms & 0x0400) >> 10,
+                'AlmanacNotComplete': (minorAlarms & 0x0800) >> 11,
+                'PPSNotGenerated': (minorAlarms & 0x1000) >> 12,
+                'GPSDECODINGSTATUS': DEFAULTVALUE.format(GPSDecodingStatus),
+                'DISCIPLININGACTIVITY': DEFAULTVALUE.format(discipliningActivity),
+                'SPARESTATUS1': spareStatus1,
+                'SPARESTATUS2': spareStatus2,
+                'PPSOFFSET': PPSOffset,
+                'CLOCKOFFSET': clockOffset,
+                'DACVALUE': DACValue,
+                'DACVOLTAGE': DACVoltage,
+                'TEMPERATURE': temp,
+                'LATITUDE': latitude,
+                'LONGITUDE': longitude,
+                'ALTITUDE': altitude,
+                'PPSQUANTIZATIONERROR': PPSQuantizationError
+            }
+        }
+    ]
     if receiverMode in recModeValues:
-        r.hset(RKEYsupp, 'RECEIVERMODE', recModeValues[receiverMode])
-    else:
-        r.hset(RKEYsupp, 'RECEIVERMODE', DEFAULTVALUE.format(receiverMode))
-    
+        json_body[0]['fields']['RECEIVERMODE'] = recModeValues[receiverMode]
     if discipliningMode in disModeValues:
-        r.hset(RKEYsupp, 'DISCIPLININGMODE', disModeValues[discipliningMode])
-    else:
-        r.hset(RKEYsupp, 'DISCIPLININGMODE', DEFAULTVALUE.format(disModeValues))
-    
-    r.hset(RKEYsupp, 'SELFSURVEYPROGRESS', selfSurveyProgress)
-    r.hset(RKEYsupp, 'HOLDOVERDURATION', holdOverDuration)
-    #ALARMS
-    r.hset(RKEYsupp, 'DACatRail', (criticalAlarms & 0x08) >> 3)
-    
-    r.hset(RKEYsupp, 'DACnearRail', minorAlarms & 0x0001)
-    r.hset(RKEYsupp, 'AntennaOpen', (minorAlarms & 0x0002) >> 1)
-    r.hset(RKEYsupp, 'AntennaShorted', (minorAlarms & 0x0004) >> 2)
-    r.hset(RKEYsupp, 'NotTrackingSatellites', (minorAlarms & 0x0008) >> 3)
-    r.hset(RKEYsupp, 'NotDiscipliningOscillator', (minorAlarms & 0x0010) >> 4)
-    r.hset(RKEYsupp, 'SurveyInProgress', (minorAlarms & 0x0020) >> 5)
-    r.hset(RKEYsupp, 'NoStoredPosition', (minorAlarms & 0x0040) >> 6)
-    r.hset(RKEYsupp, 'LeapSecondPending', (minorAlarms & 0x0080) >> 7)
-    r.hset(RKEYsupp, 'InTestMode', (minorAlarms & 0x0100) >> 8)
-    r.hset(RKEYsupp, 'PositionIsQuestionable', (minorAlarms & 0x0200) >> 9)
-    r.hset(RKEYsupp, 'EEPROMCorrupt', (minorAlarms & 0x0400) >> 10)
-    r.hset(RKEYsupp, 'AlmanacNotComplete', (minorAlarms & 0x0800) >> 11)
-    r.hset(RKEYsupp, 'PPSNotGenerated', (minorAlarms & 0x1000) >> 12)
-    
+        json_body[0]['fields']['DISCIPLININGMODE'] = disModeValues[discipliningMode]
     if GPSDecodingStatus in GPSDecodeValues:
-        r.hset(RKEYsupp, 'GPSDECODINGSTATUS', GPSDecodeValues[GPSDecodingStatus])
-    else:
-        r.hset(RKEYsupp, 'GPSDECODINGSTATUS', DEFAULTVALUE.format(GPSDecodingStatus))
-        
+        json_body[0]['fields']['GPSDECODINGSTATUS'] = GPSDecodeValues[GPSDecodingStatus]
     if discipliningActivity in disActivityValues:
-        r.hset(RKEYsupp, 'DISCIPLININGACTIVITY', disActivityValues[discipliningActivity])
-    else:
-        r.hset(RKEYsupp, 'DISCIPLININGACTIVITY', DEFAULTVALUE.format(discipliningActivity))
+        json_body[0]['fields']['DISCIPLININGACTIVITY'] = disActivityValues[discipliningActivity]
     
-    r.hset(RKEYsupp, 'SPARESTATUS1', spareStatus1)
-    r.hset(RKEYsupp, 'SPARESTATUS2', spareStatus2)
+    client.write_points(json_body)
     
-    r.hset(RKEYsupp, 'PPSOFFSET', PPSOffset)
-    r.hset(RKEYsupp, 'CLOCKOFFSET', clockOffset)
-    r.hset(RKEYsupp, 'DACVALUE', DACValue)
-    r.hset(RKEYsupp, 'DACVOLTAGE', DACVoltage)
-    r.hset(RKEYsupp, 'TEMPERATURE', temp)
-    r.hset(RKEYsupp, 'LATITUDE', latitude)
-    r.hset(RKEYsupp, 'LONGITUDE', longitude)
-    r.hset(RKEYsupp, 'ALTITUDE', altitude)
-    r.hset(RKEYsupp, 'PPSQUANTIZATIONERROR', PPSQuantizationError)
+    
+    for key in json_body[0]['fields']:
+        #print(key, json_body[0]['fields'][key])
+        r.hset(RKEYsupp, key, json_body[0]['fields'][key])
+    
+    lastTimeUpdated = False
     
     #print('ID = ', data[0:1])
     #print('ReceiverMode = ', receiverMode, ' bytes = ', data[1:2])
@@ -223,7 +259,10 @@ while 1 :
             elif id == b'\x8f\xac':
                 supplimentaryTimingPacket(data[2:dataSize-2])
                 r.hset('UPDATED', RKEYsupp, 1)
+            else:
+                print(data[1:dataSize-2])
+                print(len(data[2:dataSize-2]))
         
-        print(data[1:3])
+        #print(data[1:3])
         data = b''
         dataSize = 0
