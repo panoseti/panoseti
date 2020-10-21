@@ -20,6 +20,9 @@
 #define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
 #define TIME_FORMAT "%04i-%02i-%02iT%02i:%02i:%02i UTC"
 #define OBSERVATORY "LICK"
+#define GPSPRIMNAME "GPSPRIM"
+#define GPSSUPPNAME "GPSSUPP"
+#define WRSWITCHNAME "WRSWITCH"
 #define RANK 2
 #define CONFIGFILE "./modulePair.config"
 #define FRAME_FORMAT "Frame%05i"
@@ -60,14 +63,14 @@ typedef struct fileIDs {
 typedef struct HKPackets {
     char SYSTIME[STRBUFFSIZE];
     uint16_t BOARDLOC;
-    int16_t HVMON0, HVMON1, HVMON2, HVMON3;
-    uint16_t HVIMON0, HVIMON1, HVIMON2, HVIMON3;
-    int16_t RAWHVMON;
-    uint16_t V12MON, V18MON, V33MON, V37MON;
-    uint16_t I10MON, I18MON, I33MON;
-    int16_t TEMP1;
-    uint16_t TEMP2;
-    uint16_t VCCINT, VCCAUX;
+    float HVMON0, HVMON1, HVMON2, HVMON3;
+    float HVIMON0, HVIMON1, HVIMON2, HVIMON3;
+    float RAWHVMON;
+    float V12MON, V18MON, V33MON, V37MON;
+    float I10MON, I18MON, I33MON;
+    float TEMP1;
+    float TEMP2;
+    float VCCINT, VCCAUX;
     uint64_t UID;
     uint8_t SHUTTER_STATUS, LIGHT_STATUS;
     uint32_t FWID0, FWID1;
@@ -154,13 +157,13 @@ hid_t get_H5T_string_type(){
 }
 
 const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,                  // SYSTIME, BOARDLOC
-                                H5T_STD_I16LE, H5T_STD_I16LE, H5T_STD_I16LE, H5T_STD_I16LE,     // HVMON0-3
-                                H5T_STD_U16LE, H5T_STD_U16LE, H5T_STD_U16LE, H5T_STD_U16LE,     // HVIMON0-3
-                                H5T_STD_I16LE,                                                  // RAWHVMON
-                                H5T_STD_U16LE, H5T_STD_U16LE, H5T_STD_U16LE, H5T_STD_U16LE,     // V12MON, V18MON, V33MON, V37MON           
-                                H5T_STD_U16LE, H5T_STD_U16LE, H5T_STD_U16LE,                    // I10MON, I18MON, I33MON        
-                                H5T_STD_I16LE, H5T_STD_U16LE,                                   // TEMP1, TEMP2                        
-                                H5T_STD_U16LE, H5T_STD_U16LE,                                   // VCCINT, VCCAUX              
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVMON0-3
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVIMON0-3
+                                H5T_NATIVE_FLOAT,                                                  // RAWHVMON
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // V12MON, V18MON, V33MON, V37MON           
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                    // I10MON, I18MON, I33MON        
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                   // TEMP1, TEMP2                        
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                   // VCCINT, VCCAUX              
                                 H5T_STD_U64LE,                                                  // UID
                                 H5T_STD_I8LE,H5T_STD_I8LE,                                      // SHUTTER and LIGHT_SENSOR STATUS
                                 H5T_STD_U32LE,H5T_STD_U32LE                                     // FWID0 and FWID1
@@ -457,91 +460,92 @@ void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) 
     reply = (redisReply *)redisCommand(redisServer, command);
     HK->BOARDLOC = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
+
     sprintf(command, "HGET %u %s", BOARDLOC, "HVMON0");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON0 = strtoll(reply->str, NULL, 10);
+    HK->HVMON0 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "HVMON1");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON1 = strtoll(reply->str, NULL, 10);
+    HK->HVMON1 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "HVMON2");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON2 = strtoll(reply->str, NULL, 10);
+    HK->HVMON2 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "HVMON3");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON3 = strtoll(reply->str, NULL, 10);
+    HK->HVMON3 = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON0");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON0 = strtoll(reply->str, NULL, 10);
+    HK->HVIMON0 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON1");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON1 = strtoll(reply->str, NULL, 10);
+    HK->HVIMON1 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON2");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON2 = strtoll(reply->str, NULL, 10);
+    HK->HVIMON2 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON3");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON3 = strtoll(reply->str, NULL, 10);
+    HK->HVIMON3 = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "RAWHVMON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->RAWHVMON = strtoll(reply->str, NULL, 10);
+    HK->RAWHVMON = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "V12MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V12MON = strtoll(reply->str, NULL, 10);
+    HK->V12MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "V18MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V18MON = strtoll(reply->str, NULL, 10);
+    HK->V18MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "V33MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V33MON = strtoll(reply->str, NULL, 10);
+    HK->V33MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "V37MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V37MON = strtoll(reply->str, NULL, 10);
+    HK->V37MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "I10MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->I10MON = strtoll(reply->str, NULL, 10);
+    HK->I10MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "I18MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->I18MON = strtoll(reply->str, NULL, 10);
+    HK->I18MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "I33MON");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->I33MON = strtoll(reply->str, NULL, 10);
+    HK->I33MON = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "TEMP1");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->TEMP1 = strtoll(reply->str, NULL, 10);
+    HK->TEMP1 = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "TEMP2");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->TEMP2 = strtoll(reply->str, NULL, 10);
+    HK->TEMP2 = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "VCCINT");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->VCCINT = strtoll(reply->str, NULL, 10);
+    HK->VCCINT = strtof(reply->str, NULL);
     freeReplyObject(reply);
     sprintf(command, "HGET %u %s", BOARDLOC, "VCCAUX");
     reply = (redisReply *)redisCommand(redisServer, command);
-    HK->VCCAUX = strtoll(reply->str, NULL, 10);
+    HK->VCCAUX = strtof(reply->str, NULL);
     freeReplyObject(reply);
 
     sprintf(command, "HGET %u %s", BOARDLOC, "UID");
@@ -634,6 +638,32 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     free(HKdata);
 }
 
+/*void check_storeGPS(redisContext* redisServer){
+    redisReply* reply;
+    char command[50];
+    sprintf(command, "HGET UPDATED %s", GPSPRIMNAME);
+    reply = (redisReply *)redisCommand(redisServer, command);
+
+    if((strtol(reply->str, NULL, 10)){
+
+    }
+}
+
+void check_storeWR(redisContext* redisServer){
+    redisReply* reply;
+    char command[50];
+    sprintf(command, "HGET UPDATED %s", WRSWITCHNAME);
+    reply = (redisReply *)redisCommand(redisServer, command);
+
+    if((strtol(reply->str, NULL, 10)){
+
+    }
+}*/
+
+void getRedisData(redisContext* redisServer, moduleIDs_t* modHead){
+    check_storeHK(redisServer, modHead);
+}
+
 void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
     hid_t dataset;
     char name[50];
@@ -716,6 +746,8 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
     fileSize += SCIDATASIZE+80;
 
     H5Dclose(dataset);
+    H5Sclose(PHSpace);
+    H5Tclose(PHType);
 }
 
 void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
@@ -789,11 +821,14 @@ moduleIDs_t* get_module_info(moduleIDs_t* list, unsigned int ind){
 }
 
 void closeFile(fileIDs_t* file){
-    H5Fclose(file->file);
     H5Gclose(file->bit16IMGData);
     H5Gclose(file->bit8IMGData);
     H5Gclose(file->PHData);
     H5Gclose(file->ShortTransient);
+    H5Gclose(file->bit16HCData);
+    H5Gclose(file->bit8HCData);
+    H5Gclose(file->DynamicMeta);
+    H5Fclose(file->file);
     free(file);
 }
 
@@ -809,6 +844,7 @@ void closeModules(moduleIDs_t* head){
         }
         H5Gclose(head->ID16bit);
         H5Gclose(head->ID8bit);
+        H5Gclose(head->dynamicMeta);
         head = head->next_moduleID;
         free(currentmodule);
         printf("Flushed and Closed Module %u and %u\n", currentmodule->mod1Name, currentmodule->mod2Name);
@@ -906,11 +942,11 @@ fileIDs_t* HDF5file_init(){
 }
 
 void closeFileResources(){
-    printf("--------------Closing HDF5 file--------------\n");
-    closeFile(file);
-    printf("-----Start Flushing and Closing all Files----\n");
+    printf("-----Start Flushing and Closing all File Resources----\n");
     closeModules(moduleListBegin->next_moduleID);
     free(moduleListBegin);
+    printf("--------------Closing HDF5 file--------------\n");
+    closeFile(file);
 }
 
 void closeAllResources(){
@@ -1021,7 +1057,7 @@ static void *run(hashpipe_thread_args_t * args){
     moduleIDs_t* currentModule;
     file = HDF5file_init();
     
-    check_storeHK(redisServer, moduleListBegin->next_moduleID);
+    getRedisData(redisServer, moduleListBegin->next_moduleID);
     HKPackets_t* HK = (HKPackets_t *)malloc(sizeof(struct HKPackets));
     /*HK->BOARDLOC[0] = 504;
     HK->BOARDLOC[1] = 503;
@@ -1080,7 +1116,7 @@ static void *run(hashpipe_thread_args_t * args){
         #endif
         //fwrite(block_ptr, BLOCKSIZE*sizeof(char), 1, HSD_file);
 
-        check_storeHK(redisServer, moduleListBegin->next_moduleID);
+        getRedisData(redisServer, moduleListBegin->next_moduleID);
         for(int i = 0; i < N_PKT_PER_BLOCK; i++){
             acqmode = block_ptr[i*PKTSIZE];
             packet_NUM = ((block_ptr[i*PKTSIZE+3] << 8) & 0xff00) | (block_ptr[i*PKTSIZE+2] & 0x00ff);
