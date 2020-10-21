@@ -5,8 +5,14 @@ from signal import signal, SIGINT
 from sys import exit
 from datetime import datetime
 
+from panosetiSIconvert import HKconvert
+HKconv = HKconvert()
+HKconv.changeUnits('V')
+HKconv.changeUnits('uA')
+
 HOST = '0.0.0.0'
 PORT = 60002
+OBSERVATORY = "lick"
 
 COUNTER = "\rPackets Captured So Far {}"
 
@@ -59,42 +65,44 @@ def storeInRedisandInflux(packet):
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
         
+    boardName = array[0]
+    
     json_body = [
         {
             "measurement": "Quabo{0}".format(array[0]),
             "tags": {
-                "observatory": "lick",
+                "observatory": OBSERVATORY,
                 "datatype": "housekeeping"
             },
             "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "fields":{
                 'BOARDLOC': array[0],
-                'HVMON0': array[1],
-                'HVMON1': array[2],
-                'HVMON2': array[3],
-                'HVMON3': array[4],
+                'HVMON0': HKconv.convertValue('HVMON0', array[1]),
+                'HVMON1': HKconv.convertValue('HVMON1', array[2]),
+                'HVMON2': HKconv.convertValue('HVMON2', array[3]),
+                'HVMON3': HKconv.convertValue('HVMON3', array[4]),
 
-                'HVIMON0': array[5],
-                'HVIMON1': array[6],
-                'HVIMON2': array[7],
-                'HVIMON3': array[8],
+                'HVIMON0': HKconv.convertValue('HVIMON0', array[5]),
+                'HVIMON1': HKconv.convertValue('HVIMON1', array[6]),
+                'HVIMON2': HKconv.convertValue('HVIMON2', array[7]),
+                'HVIMON3': HKconv.convertValue('HVIMON3', array[8]),
 
-                'RAWHVMON': array[9],
+                'RAWHVMON': HKconv.convertValue('RAWHVMON', array[9]),
 
-                'V12MON': array[10],
-                'V18MON': array[11],
-                'V33MON': array[12],
-                'V37MON': array[13],
+                'V12MON': HKconv.convertValue('V12MON', array[10]),
+                'V18MON': HKconv.convertValue('V18MON', array[11]),
+                'V33MON': HKconv.convertValue('V33MON', array[12]),
+                'V37MON': HKconv.convertValue('V37MON', array[13]),
 
-                'I10MON': array[14],
-                'I18MON': array[15],
-                'I33MON': array[16],
+                'I10MON': HKconv.convertValue('I10MON', array[14]),
+                'I18MON': HKconv.convertValue('I18MON', array[15]),
+                'I33MON': HKconv.convertValue('I33MON', array[16]),
 
-                'TEMP1': array[17],
-                'TEMP2': array[18],
+                'TEMP1': HKconv.convertValue('TEMP1', array[17]),
+                'TEMP2': HKconv.convertValue('TEMP2', array[18]),
 
-                'VCCINT': array[19],
-                'VCCAUX': array[20],
+                'VCCINT': HKconv.convertValue('VCCINT', array[19]),
+                'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
 
                 'UID': '0x{0:04x}{0:04x}{0:04x}{0:04x}'.format(array[24],array[23],array[22],array[21]),
 
@@ -102,53 +110,20 @@ def storeInRedisandInflux(packet):
                 'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
                 'FWID0': array[27] + array[28]*0x10000,
-                'FWID1': array[29] + array[30]*0x10000           
+                'FWID1': array[29] + array[30]*0x10000,
+                
+                'StartUp': startUp
             }
         }
     ]
     client.write_points(json_body)
     
-    boardName = array[0]
     r.hset(boardName, 'SYSTIME', json_body[0]['time'])
-    r.hset(boardName,'BOARDLOC', boardName)
-    r.hset(boardName, 'HVMON0', array[1]) #array[1]*1.22/1000)
-    r.hset(boardName, 'HVMON1', array[2]) #array[2]*1.22/1000)
-    r.hset(boardName, 'HVMON2', array[3]) #array[3]*1.22/1000)
-    r.hset(boardName, 'HVMON3', array[4]) #array[4]*1.22/1000)
-    
-    r.hset(boardName, 'HVIMON0', array[5]) #(65535-array[5])*38.1/1000000)
-    r.hset(boardName, 'HVIMON1', array[6]) #(65535-array[6])*38.1/1000000)
-    r.hset(boardName, 'HVIMON2', array[7]) #(65535-array[7])*38.1/1000000)
-    r.hset(boardName, 'HVIMON3', array[8]) #(65535-array[8])*38.1/1000000)
-    
-    r.hset(boardName, 'RAWHVMON', array[9]) #array[9]*1.22/1000)
-    
-    r.hset(boardName, 'V12MON', array[10]) #array[10]*19.07/1000000000)
-    r.hset(boardName, 'V18MON', array[11]) #array[11]*19.07/1000000000)
-    r.hset(boardName, 'V33MON', array[12]) #array[12]*38.1/1000000000)
-    r.hset(boardName, 'V37MON', array[13]) #array[13]*38.1/1000000000)
-    
-    r.hset(boardName, 'I10MON', array[14]) #array[14]*182/1000000)
-    r.hset(boardName, 'I18MON', array[15]) #array[15]*37.8/1000000)
-    r.hset(boardName, 'I33MON', array[16]) #array[16]*37.8/1000000)
-    
-    r.hset(boardName, 'TEMP1', array[17]) #array[17]*0.0625)
-    r.hset(boardName, 'TEMP2', array[18]) #array[18]*0.0625)
-    
-    r.hset(boardName, 'VCCINT', array[19]) #array[19]*3/65536)
-    r.hset(boardName, 'VCCAUX', array[20]) #array[20]*3/65536)
-     
-    r.hset(boardName, 'UID', getUID(array[21:25]))
-    
-    r.hset(boardName, 'SHUTTER_STATUS', json_body[0]['fields']['SHUTTER_STATUS'])
-    r.hset(boardName, 'LIGHT_SENSOR_STATUS', json_body[0]['fields']['LIGHT_SENSOR_STATUS'])
-    
-    r.hset(boardName, 'FWID0', json_body[0]['fields']['FWID0'])
-    r.hset(boardName, 'FWID1', json_body[0]['fields']['FWID1'])
-
-    r.hset(boardName,'StartUp', startUp)
+    for key in json_body[0]['fields']:
+        r.hset(boardName, key, json_body[0]['fields'][key])
 
     r.hset('UPDATED', boardName, "1")
+    print(json_body[0]['fields']['TEMP1'])
 
     
     
