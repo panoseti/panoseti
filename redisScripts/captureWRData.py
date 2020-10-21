@@ -81,10 +81,10 @@ while True:
 
     json_body = [
         {
-            "measurement": "GPSSUPP",
+            "measurement": "WRSwitch",
             "tags": {
                 "observatory": OBSERVATORY,
-                "datatype": "GPS"
+                "datatype": "whiterabbit"
             },
             "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "fields":{
