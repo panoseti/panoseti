@@ -39,6 +39,7 @@
 #define HKDATASIZE 464
 #define DATABLOCKSIZE SCIDATASIZE*PKTPERPAIR+64+16
 #define HKFIELDS 27
+#define GPSFIELDS 9
 #define NANOSECTHRESHOLD 20
 
 #define STRBUFFSIZE 50
@@ -57,7 +58,7 @@ static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 
 typedef struct fileIDs {
     hid_t       file;         /* file and dataset handles */
-    hid_t       bit16IMGData, bit8IMGData, PHData, ShortTransient, bit16HCData, bit8HCData, DynamicMeta;
+    hid_t       bit16IMGData, bit8IMGData, PHData, ShortTransient, bit16HCData, bit8HCData, DynamicMeta, StaticMeta;
 } fileIDs_t;
 
 typedef struct HKPackets {
@@ -156,17 +157,74 @@ hid_t get_H5T_string_type(){
     return string_type;
 }
 
-const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,                  // SYSTIME, BOARDLOC
+const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,                              // SYSTIME, BOARDLOC
                                 H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVMON0-3
                                 H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVIMON0-3
-                                H5T_NATIVE_FLOAT,                                                  // RAWHVMON
+                                H5T_NATIVE_FLOAT,                                                           // RAWHVMON
                                 H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // V12MON, V18MON, V33MON, V37MON           
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                    // I10MON, I18MON, I33MON        
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                   // TEMP1, TEMP2                        
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                   // VCCINT, VCCAUX              
-                                H5T_STD_U64LE,                                                  // UID
-                                H5T_STD_I8LE,H5T_STD_I8LE,                                      // SHUTTER and LIGHT_SENSOR STATUS
-                                H5T_STD_U32LE,H5T_STD_U32LE                                     // FWID0 and FWID1
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                       // I10MON, I18MON, I33MON        
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                         // TEMP1, TEMP2                        
+                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                         // VCCINT, VCCAUX              
+                                H5T_STD_U64LE,                                                              // UID
+                                H5T_STD_I8LE,H5T_STD_I8LE,                                                  // SHUTTER and LIGHT_SENSOR STATUS
+                                H5T_STD_U32LE,H5T_STD_U32LE                                                 // FWID0 and FWID1
+};
+
+typedef struct GPSPackets {
+    char GPSTIME[STRBUFFSIZE];
+    uint32_t TOW;
+    uint16_t WEEKNUMBER;
+    uint8_t UTCOFFSET;
+    char TIMEFLAG[STRBUFFSIZE];
+    char PPSFLAG[STRBUFFSIZE];
+    uint8_t TIMESET;
+    uint8_t UTCINFO;
+    uint8_t TIMEFROMGPS;
+} GPSPackets_t;
+
+const GPSPackets_t  GPS_dst_buf[0] = {};
+
+const size_t GPS_dst_size = sizeof(GPSPackets_t);
+
+const size_t GPS_dst_offset[GPSFIELDS] = { HOFFSET( GPSPackets_t, GPSTIME ),
+                                        HOFFSET( GPSPackets_t, TOW),
+                                        HOFFSET( GPSPackets_t, WEEKNUMBER),
+                                        HOFFSET( GPSPackets_t, UTCOFFSET),
+                                        HOFFSET( GPSPackets_t, TIMEFLAG),
+                                        HOFFSET( GPSPackets_t, PPSFLAG),
+                                        HOFFSET( GPSPackets_t, TIMESET),
+                                        HOFFSET( GPSPackets_t, UTCINFO),
+                                        HOFFSET( GPSPackets_t, TIMEFROMGPS)};
+
+const size_t GPS_dst_sizes[GPSFIELDS] = { sizeof( GPS_dst_buf[0].GPSTIME),
+                                        sizeof( GPS_dst_buf[0].TOW),
+                                        sizeof( GPS_dst_buf[0].WEEKNUMBER),
+                                        sizeof( GPS_dst_buf[0].UTCOFFSET),
+                                        sizeof( GPS_dst_buf[0].TIMEFLAG),
+                                        sizeof( GPS_dst_buf[0].PPSFLAG),
+                                        sizeof( GPS_dst_buf[0].TIMESET),
+                                        sizeof( GPS_dst_buf[0].UTCINFO),
+                                        sizeof( GPS_dst_buf[0].TIMEFROMGPS)};
+
+const char *GPS_field_names[GPSFIELDS] = { "GPSTIME",
+                                        "TOW",
+                                        "WEEKNUMBER",
+                                        "UTCOFFSET",
+                                        "TIMEFLAG",
+                                        "PPSFLAG",
+                                        "TIMESET",
+                                        "UTCINFO",
+                                        "TIMEFROMGPS"};
+
+const hid_t GPS_field_types[GPSFIELDS] = { get_H5T_string_type(),   // GPSTIME
+                                        H5T_STD_U32LE,              // TOW;
+                                        H5T_STD_U16LE,              // WEEKNUMBER
+                                        H5T_STD_U8LE,               // UTCOFFSET
+                                        get_H5T_string_type(),      // TIMEFLAG[STRBUFFSIZE]
+                                        get_H5T_string_type(),      // PPSFLAG[STRBUFFSIZE]
+                                        H5T_STD_U8LE,               // TIMESET
+                                        H5T_STD_U8LE,               // UTCINFO
+                                        H5T_STD_U8LE                // TIMEFROMGPS
 };
 
 typedef struct moduleIDs {
@@ -389,27 +447,6 @@ hid_t createMod(hid_t group, unsigned int mod1Name){
 
 void createQuaboTables(hid_t group, moduleIDs_t* module){
 
-    /*HKPackets_t HK_data[1] = {{ "null", module->mod1Name,
-                                -1, -1, -1, -1,         // HVMON (0 to -80V)
-                                0, 0, 0, 0,             // HVIMON ((65535-HVIMON) * 38.1nA) (0 to 2.5mA)
-                                -1,                     // RAWHVMON (0 to -80V)
-                                0,                      // V12MON (19.07uV/LSB) (1.2V supply)
-                                0,                      // V18MON (19.07uV/LSB) (1.8V supply)
-                                0,                      // V33MON (38.10uV/LSB) (3.3V supply)
-                                0,                      // V37MON (38.10uV/LSB) (3.7V supply)
-                                0,                      // I10MON (182uA/LSB) (1.0V supply)
-                                0,                      // I18MON (37.8uA/LSB) (1.8V supply)
-                                0,                      // I33MON (37.8uA/LSB) (3.3V supply)
-                                -1,                     // TEMP1 (0.0625*N)
-                                0,                      // TEMP2 (N/130.04-273.15)
-                                0,                      // VCCINT (N*3/65536)
-                                0,                      // VCCAUX (N*3/65536)
-                                0,                      // UID
-                                0,0,                    // SHUTTER and LIGHT_SENSOR STATUS
-                                0,0                     // FWID0 and FWID1
-
-    }};*/
-
     HKPackets_t HK_data;
     char tableName[50];
     char tableTitle[50];
@@ -432,6 +469,23 @@ void createQuaboTables(hid_t group, moduleIDs_t* module){
     }
 }
 
+void createGPSTable(){
+    GPSPackets_t GPS_data;
+
+    H5TBmake_table(GPSPRIMNAME, file->DynamicMeta, GPSPRIMNAME, GPSFIELDS, 0,
+                            GPS_dst_size, GPS_field_names, GPS_dst_offset, GPS_field_types,
+                            100, NULL, 0, &GPS_data);
+}
+
+void createWRTable(){
+
+}
+
+void createMetaResources(){
+    createGPSTable();
+    createWRTable();
+}
+
 fileIDs_t* createNewFile(char* fileName, char* currTime){
     fileIDs_t* newfile = (fileIDs_t*) malloc(sizeof(struct fileIDs));
 
@@ -444,6 +498,7 @@ fileIDs_t* createNewFile(char* fileName, char* currTime){
     newfile->bit16HCData =  H5Gcreate(newfile->file, "/bit16HCData", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     newfile->bit8HCData = H5Gcreate(newfile->file, "/bit8HCData", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); 
     newfile->DynamicMeta = H5Gcreate(newfile->file, "/DynamicMeta", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    newfile->StaticMeta = H5Gcreate(newfile->file, "/StaticMeta", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
     return newfile;
 }
@@ -572,6 +627,51 @@ void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) 
     freeReplyObject(reply);
 }
 
+void fetchGPSdata(GPSPackets_t* GPS, redisContext* redisServer) {
+    redisReply *reply;
+    char command[50];
+
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "GPSTIME");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    strcpy(GPS->GPSTIME, reply->str);
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TOW");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    GPS->TOW = strtoll(reply->str, NULL, 10);
+    freeReplyObject(reply);
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "WEEKNUMBER");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    GPS->WEEKNUMBER = strtoll(reply->str, NULL, 10);
+    freeReplyObject(reply);
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "UTCOFFSET");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    GPS->UTCOFFSET = strtoll(reply->str, NULL, 10);
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TIMEFLAG");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    strcpy(GPS->TIMEFLAG, reply->str);
+    freeReplyObject(reply);
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "PPSFLAG");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    strcpy(GPS->PPSFLAG, reply->str);
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TIMESET");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    GPS->TIMESET = strtoll(reply->str, NULL, 10);
+    freeReplyObject(reply);
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "UTCINFO");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    GPS->UTCINFO = strtoll(reply->str, NULL, 10);
+    freeReplyObject(reply);
+    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TIMEFROMGPS");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
+    freeReplyObject(reply);
+}
+
 void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     HKPackets_t* HKdata = (HKPackets_t *)malloc(sizeof(HKPackets));
     moduleIDs_t* currentMod;
@@ -638,18 +738,28 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     free(HKdata);
 }
 
-/*void check_storeGPS(redisContext* redisServer){
+void check_storeGPS(redisContext* redisServer, hid_t group){
+    GPSPackets_t* GPSdata = (GPSPackets_t *)malloc(sizeof(GPSPackets));
     redisReply* reply;
     char command[50];
     sprintf(command, "HGET UPDATED %s", GPSPRIMNAME);
     reply = (redisReply *)redisCommand(redisServer, command);
 
     if((strtol(reply->str, NULL, 10)){
+        freeReplyObject(reply);
 
+        fetchGPSdata(GPSdata, redisServer);
+        H5TBappend_records(group, GPSPRIMNAME, 1, GPS_dst_size, GPS_dst_offset, GPS_dst_sizes, GPSdata);
+
+        sprintf(command, "HSET UPDATED %u 0", GPSPRIMNAME);
+        reply = (redisReply *)redisCommand(redisServer, command);
     }
+
+    freeReplyObject(reply);
+    free(GPSdata);
 }
 
-void check_storeWR(redisContext* redisServer){
+/*void check_storeWR(redisContext* redisServer){
     redisReply* reply;
     char command[50];
     sprintf(command, "HGET UPDATED %s", WRSWITCHNAME);
@@ -661,6 +771,7 @@ void check_storeWR(redisContext* redisServer){
 }*/
 
 void getRedisData(redisContext* redisServer, moduleIDs_t* modHead){
+    check_storeGPS(redisServer, file->DynamicMeta);
     check_storeHK(redisServer, modHead);
 }
 
@@ -828,6 +939,7 @@ void closeFile(fileIDs_t* file){
     H5Gclose(file->bit16HCData);
     H5Gclose(file->bit8HCData);
     H5Gclose(file->DynamicMeta);
+    H5Gclose(file->StaticMeta);
     H5Fclose(file->file);
     free(file);
 }
@@ -865,6 +977,8 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     
     
     new_file = createNewFile(fileName, currTime);
+    
+    createMetaResources();
 
     moduleListBegin = moduleIDs_t_new();
     moduleListEnd = moduleListBegin;
