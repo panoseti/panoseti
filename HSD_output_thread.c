@@ -411,6 +411,46 @@ void createNumAttribute2(hid_t group, const char* name, hid_t dtype, hsize_t* di
     H5Aclose(attribute);
 }
 
+void createFloatAttribute(hid_t group, const char* name, float data){
+    hid_t       datatype, dataspace;   /* handles */
+    hid_t       attribute;
+    float attr_data[1];
+    attr_data[0] = data;
+
+    dataspace = H5Screate(H5S_SCALAR);
+
+    datatype = H5Tcopy(H5T_NATIVE_FLOAT);
+
+    attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
+
+    H5Awrite(attribute, H5T_NATIVE_FLOAT, attr_data);
+    fileSize += 32;
+    
+    H5Sclose(dataspace);
+    H5Tclose(datatype);
+    H5Aclose(attribute);
+}
+
+void createDoubleAttribute(hid_t group, const char* name, double data){
+    hid_t       datatype, dataspace;   /* handles */
+    hid_t       attribute;
+    double attr_data[1];
+    attr_data[0] = data;
+
+    dataspace = H5Screate(H5S_SCALAR);
+
+    datatype = H5Tcopy(H5T_NATIVE_DOUBLE);
+
+    attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
+
+    H5Awrite(attribute, H5T_NATIVE_DOUBLE, attr_data);
+    fileSize += 64;
+    
+    H5Sclose(dataspace);
+    H5Tclose(datatype);
+    H5Aclose(attribute);
+}
+
 hid_t createModPair(hid_t group, unsigned int mod1Name, unsigned int mod2Name) {
     hid_t   modulePair;
     char    modName[STRBUFFSIZE];
@@ -469,10 +509,10 @@ void createQuaboTables(hid_t group, moduleIDs_t* module){
     }
 }
 
-void createGPSTable(){
+void createGPSTable(hid_t group){
     GPSPackets_t GPS_data;
 
-    H5TBmake_table(GPSPRIMNAME, file->DynamicMeta, GPSPRIMNAME, GPSFIELDS, 0,
+    H5TBmake_table(GPSPRIMNAME, group, GPSPRIMNAME, GPSFIELDS, 0,
                             GPS_dst_size, GPS_field_names, GPS_dst_offset, GPS_field_types,
                             100, NULL, 0, &GPS_data);
 }
@@ -481,8 +521,8 @@ void createWRTable(){
 
 }
 
-void createMetaResources(){
-    createGPSTable();
+void createDMetaResources(hid_t group){
+    createGPSTable(group);
     createWRTable();
 }
 
@@ -631,42 +671,42 @@ void fetchGPSdata(GPSPackets_t* GPS, redisContext* redisServer) {
     redisReply *reply;
     char command[50];
 
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "GPSTIME");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "GPSTIME");
     reply = (redisReply *)redisCommand(redisServer, command);
     strcpy(GPS->GPSTIME, reply->str);
     freeReplyObject(reply);
 
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TOW");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TOW");
     reply = (redisReply *)redisCommand(redisServer, command);
     GPS->TOW = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "WEEKNUMBER");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "WEEKNUMBER");
     reply = (redisReply *)redisCommand(redisServer, command);
     GPS->WEEKNUMBER = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "UTCOFFSET");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "UTCOFFSET");
     reply = (redisReply *)redisCommand(redisServer, command);
     GPS->UTCOFFSET = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
 
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TIMEFLAG");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TIMEFLAG");
     reply = (redisReply *)redisCommand(redisServer, command);
     strcpy(GPS->TIMEFLAG, reply->str);
     freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "PPSFLAG");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "PPSFLAG");
     reply = (redisReply *)redisCommand(redisServer, command);
     strcpy(GPS->PPSFLAG, reply->str);
     freeReplyObject(reply);
 
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TIMESET");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TIMESET");
     reply = (redisReply *)redisCommand(redisServer, command);
     GPS->TIMESET = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "UTCINFO");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "UTCINFO");
     reply = (redisReply *)redisCommand(redisServer, command);
     GPS->UTCINFO = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", GPSPRIMNAME, "TIMEFROMGPS");
+    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TIMEFROMGPS");
     reply = (redisReply *)redisCommand(redisServer, command);
     GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
     freeReplyObject(reply);
@@ -745,18 +785,169 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
     sprintf(command, "HGET UPDATED %s", GPSPRIMNAME);
     reply = (redisReply *)redisCommand(redisServer, command);
 
-    if((strtol(reply->str, NULL, 10)){
+    if(strtol(reply->str, NULL, 10)){
         freeReplyObject(reply);
 
         fetchGPSdata(GPSdata, redisServer);
         H5TBappend_records(group, GPSPRIMNAME, 1, GPS_dst_size, GPS_dst_offset, GPS_dst_sizes, GPSdata);
 
-        sprintf(command, "HSET UPDATED %u 0", GPSPRIMNAME);
+        sprintf(command, "HSET UPDATED %s 0", GPSPRIMNAME);
         reply = (redisReply *)redisCommand(redisServer, command);
     }
 
     freeReplyObject(reply);
     free(GPSdata);
+}
+
+void get_storeGPSSupp(redisContext* redisServer, hid_t group){
+    redisReply* reply;
+    char command[50];
+
+    sprintf(command, "HGET GPSSUPP %s", "RECEIVERMODE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createStrAttribute(group, "RECEIVERMODE", reply->str);
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "DISCIPLININGMODE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createStrAttribute(group, "DISCIPLININGMODE", reply->str);
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "SELFSURVEYPROGRESS"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "SELFSURVEYPROGRESS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "HOLDOVERDURATION"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "HOLDOVERDURATION", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "DACatRail"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "DACatRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "DACnearRail"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "DACnearRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "AntennaOpen"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "AntennaOpen", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "AntennaShorted"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "AntennaShorted", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "NotTrackingSatellites"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "NotTrackingSatellites", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "NotDiscipliningOscillator"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "NotDiscipliningOscillator", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "SurveyInProgress"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "SurveyInProgress", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "NoStoredPosition"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "NoStoredPosition", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "LeapSecondPending"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "LeapSecondPending", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "InTestMode"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "InTestMode", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "PositionIsQuestionable"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "PositionIsQuestionable", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "EEPROMCorrupt"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "EEPROMCorrupt", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "AlmanacNotComplete"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "AlmanacNotComplete", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "PPSNotGenerated"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "PPSNotGenerated", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "GPSDECODINGSTATUS"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "GPSDECODINGSTATUS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "DISCIPLININGACTIVITY"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "DISCIPLININGACTIVITY", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "PPSOFFSET"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createFloatAttribute(group, "PPSOFFSET", strtof(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "CLOCKOFFSET"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createFloatAttribute(group, "CLOCKOFFSET", strtof(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "DACVALUE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createNumAttribute(group, "DACVALUE", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "DACVOLTAGE");
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createFloatAttribute(group, "DACVOLTAGE", strtof(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "TEMPERATURE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createFloatAttribute(group, "TEMPERATURE", strtof(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "LATITUDE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createDoubleAttribute(group, "LATITUDE", strtod(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "LONGITUDE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createDoubleAttribute(group, "LONGITUDE", strtod(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "ALTITUDE"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createDoubleAttribute(group, "ALTITUDE", strtod(reply->str, NULL));
+    freeReplyObject(reply);
+
+    sprintf(command, "HGET GPSSUPP %s", "PPSQUANTIZATIONERROR"); //
+    reply = (redisReply *)redisCommand(redisServer, command);
+    createFloatAttribute(group, "PPSQUANTIZATIONERROR", strtof(reply->str, NULL));
+    freeReplyObject(reply);
+
 }
 
 /*void check_storeWR(redisContext* redisServer){
@@ -770,8 +961,8 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
     }
 }*/
 
-void getRedisData(redisContext* redisServer, moduleIDs_t* modHead){
-    check_storeGPS(redisServer, file->DynamicMeta);
+void getRedisData(redisContext* redisServer, moduleIDs_t* modHead, hid_t dynamicMeta){
+    check_storeGPS(redisServer, dynamicMeta);
     check_storeHK(redisServer, modHead);
 }
 
@@ -978,7 +1169,7 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     
     new_file = createNewFile(fileName, currTime);
     
-    createMetaResources();
+    createDMetaResources(new_file->DynamicMeta);
 
     moduleListBegin = moduleIDs_t_new();
     moduleListEnd = moduleListBegin;
@@ -998,7 +1189,6 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
 
     cbuf = getc(modConfig_file);
     char moduleName[50];
-    
 
     while(cbuf != EOF){
         ungetc(cbuf, modConfig_file);
@@ -1170,8 +1360,9 @@ static void *run(hashpipe_thread_args_t * args){
     printf("-------------------SETTING UP HDF5 ------------------\n");
     moduleIDs_t* currentModule;
     file = HDF5file_init();
+    get_storeGPSSupp(redisServer, file->StaticMeta);
     
-    getRedisData(redisServer, moduleListBegin->next_moduleID);
+    getRedisData(redisServer, moduleListBegin->next_moduleID, file->DynamicMeta);
     HKPackets_t* HK = (HKPackets_t *)malloc(sizeof(struct HKPackets));
     /*HK->BOARDLOC[0] = 504;
     HK->BOARDLOC[1] = 503;
@@ -1230,7 +1421,7 @@ static void *run(hashpipe_thread_args_t * args){
         #endif
         //fwrite(block_ptr, BLOCKSIZE*sizeof(char), 1, HSD_file);
 
-        getRedisData(redisServer, moduleListBegin->next_moduleID);
+        getRedisData(redisServer, moduleListBegin->next_moduleID, file->DynamicMeta);
         for(int i = 0; i < N_PKT_PER_BLOCK; i++){
             acqmode = block_ptr[i*PKTSIZE];
             packet_NUM = ((block_ptr[i*PKTSIZE+3] << 8) & 0xff00) | (block_ptr[i*PKTSIZE+2] & 0x00ff);
@@ -1276,6 +1467,7 @@ static void *run(hashpipe_thread_args_t * args){
 
         if (QUITSIG || fileSize > maxFileSize) {
             reinitFileResources();
+            get_storeGPSSupp(redisServer, file->StaticMeta);
             fileSize = 0;
             QUITSIG = false;
         }
