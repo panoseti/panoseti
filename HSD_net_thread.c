@@ -2,7 +2,7 @@
  * HSD_net_thread.c
  * 
  * The net thread which is used to read packets from the quabos.
- * These packets are then written into the shared memory blacks,
+ * These packets are then written into the shared memory blocks,
  * which then allows for the pre-process of the data.
  */
 
@@ -20,28 +20,26 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
+//PKTSOCK Params(These should be only changed with caution as it need to change with MMAP)
 #define PKTSOCK_BYTES_PER_FRAME (16384)
 #define PKTSOCK_FRAMES_PER_BLOCK (8)
 #define PKTSOCK_NBLOCKS (20)
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
-#define TEST_MODE
 
-//defining a struct of type hashpipe_udp_params as defined in hashpipe_udp.h
-//static struct hashpipe_udp_params params;
+//DEBUGGING MODE 
+#define TEST_MODE
 
 static int init(hashpipe_thread_args_t * args){
 
-    // define network params
+    // define default network params
     char bindhost[80];
     int bindport = 60001;
     hashpipe_status_t st = args->st;
     strcpy(bindhost, "0.0.0.0");
 
-    //selecting a port to listen to
-    //params.bindport = 60001;
-    //params.packet_size = 0;
-    //hashpipe_udp_init(&params);
+    //Locking shared buffer to properly get and set values.
     hashpipe_status_lock_safe(&st);
+
     // Get info from status buffer if present
     hgets(st.buf, "BINDHOST", 80, bindhost);
     hgeti4(st.buf, "BINDPORT", &bindport);
@@ -50,6 +48,8 @@ static int init(hashpipe_thread_args_t * args){
     hputs(st.buf, "BINDHOST", bindhost);
 	hputi4(st.buf, "BINDPORT", bindport);
     hputi8(st.buf, "NPACKETS", 0);
+
+    //Unlocking shared buffer once complete.
     hashpipe_status_unlock_safe(&st);
 
     // Set up pktsocket
@@ -71,6 +71,7 @@ static int init(hashpipe_thread_args_t * args){
 	// number of blocks
 	p_ps->nblocks = PKTSOCK_NBLOCKS;
 
+    //Opening Pktsocket to recieve data.
     int rv = hashpipe_pktsock_open(p_ps, bindhost, PACKET_RX_RING);
 	if (rv!=HASHPIPE_OK) {
         hashpipe_error("HSD_net_thread", "Error opening pktsock.");
@@ -83,12 +84,18 @@ static int init(hashpipe_thread_args_t * args){
     return 0;
 }
 
+//Struct to store the header vaules
 typedef struct {
     int mode;
     uint64_t packetNum;
     int boardLocation;
 }packet_header_t;
 
+/**
+ * Function that creates a 
+ * @param p_frame The pointer for the packet frame
+ * @param pkt_header The header struct written to
+ */
 static inline void get_header(unsigned char *p_frame, packet_header_t *pkt_header) {
     uint64_t raw_header;
     raw_header = *(unsigned long long *)(PKT_UDP_DATA(p_frame));
@@ -105,17 +112,20 @@ static inline void get_header(unsigned char *p_frame, packet_header_t *pkt_heade
 }
 
 static void *run(hashpipe_thread_args_t * args){
+    //Creating pointers hashpipe args
     HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
 
     /* Main loop */
+
+    //Variables 
     int rv, n;
-    uint64_t mcnt = 0;
-    int block_idx = 0;
-    packet_header_t pkt_header;
-    struct timeval nowTime;
-    int rc;
+    uint64_t mcnt = 0;          //Mcount of
+    int block_idx = 0;          //The input buffer block index
+    packet_header_t pkt_header; //Current packet's header
+    struct timeval nowTime;     //Current NTP UTC time
+    int rc;                     
             
     //Input elements(Packets from Quabo)
     char *str_rcv, *str_q;
@@ -123,11 +133,9 @@ static void *run(hashpipe_thread_args_t * args){
     str_q = (char *)malloc(PKTSIZE*sizeof(char));
 
     //Compute the pkt_loss in the compute thread
-    /*uint64_t pkt_loss = 0;          // number of packets has been lost
-    uint64_t pkt_loss_rate = 0;     // packets lost rate*/
-    unsigned int pktsock_pkts = 0;      // Stats counter from socket packet
-    unsigned int pktsock_drops = 0;     // Stats counter from socket packet
-    uint64_t npackets = 0;          //number of received packets
+    unsigned int pktsock_pkts = 0;      // Stats counter for socket packet
+    unsigned int pktsock_drops = 0;     // Stats counter for dropped socket packet
+    uint64_t npackets = 0;              // number of received packets
     int bindport = 0;
 
     hashpipe_status_lock_safe(&st);
@@ -148,6 +156,8 @@ static void *run(hashpipe_thread_args_t * args){
 	}
 
     printf("-----------Finished Setup of Input Thread------------\n\n");
+
+    /* Main Loop */
     while(run_threads()){
         //Update the info of the buffer
         hashpipe_status_lock_safe(&st);
@@ -180,8 +190,8 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "receiving");
         hashpipe_status_unlock_safe(&st);
 
+        // Loop through all of the packets in the buffer block.
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
-            //printf("For loop i: %i\n", i);
             do {
                 p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
             } 

@@ -2,14 +2,16 @@
 #include <stdio.h>
 #include "hashpipe.h"
 #include "hashpipe_databuf.h"
-#define PKTSIZE 528 //byte of packet size
+//Defining size of packets
+#define PKTSIZE 528     //byte of packet size
 #define BIT8PKTSIZE 272 //byte of 8bit packet size
 
+//Defining the characteristics of the circuluar buffers
 #define CACHE_ALIGNMENT         256
-#define N_INPUT_BLOCKS          4
-#define N_OUTPUT_BLOCKS         8
-#define N_PKT_PER_BLOCK         40
-#define BLOCKSIZE               PKTSIZE*N_PKT_PER_BLOCK
+#define N_INPUT_BLOCKS          4                       //Number of blocks in the input buffer
+#define N_OUTPUT_BLOCKS         8                       //Number of blocks in the output buffer
+#define N_PKT_PER_BLOCK         40                      //Number of Pkt stored in each block
+#define BLOCKSIZE               PKTSIZE*N_PKT_PER_BLOCK //Block size in bytes
 
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
