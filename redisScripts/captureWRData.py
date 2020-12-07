@@ -107,4 +107,5 @@ while True:
 
     #print(' ')
     r.hset('UPDATED', RKEY, 1)
+    print(datetime.utcnow())
     time.sleep(1)

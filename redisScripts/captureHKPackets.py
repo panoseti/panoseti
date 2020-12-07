@@ -116,7 +116,7 @@ def storeInRedisandInflux(packet):
             }
         }
     ]
-    client.write_points(json_body)
+    #client.write_points(json_body)
     
     r.hset(boardName, 'SYSTIME', json_body[0]['time'])
     for key in json_body[0]['fields']:

@@ -1,6 +1,7 @@
 import redis
 import time
 from signal import signal, SIGINT
+from datetime import datetime
 #from panosetiSIconvert import HKconvert
 # HKconv = HKconvert()
 
@@ -87,7 +88,7 @@ redisKeys = [int(i.decode("utf-8")) for i in r.keys("[0-9]*")]
 redisKeys.sort()
 recieverKeys = [i.decode("utf-8") for i in r.keys("[A-Z]*")]
 recieverKeys.remove('UPDATED')
-print(recieverKeys)
+#print(recieverKeys)
 
 for k in r.hkeys(redisKeys[0]):
     quaboKeys.append(k)
@@ -102,7 +103,7 @@ while 1:
         elements = ''
         setValues = r.hgetall(q)
         for k in quaboKeys:
-            print(k)
+            #print(k)
             currValue = setValues[k].decode("utf-8")#HKconv.convertValue(k.decode("utf-8"), setValues[k].decode("utf-8"))
             color = TEXTCOLOR
             if k in quaboBounds:
@@ -127,4 +128,5 @@ while 1:
     f = open("index.html", "w")
     f.write(htmlTemplate.format(htmlBody))
     f.close()
+    print(datetime.utcnow())
     time.sleep(1)
