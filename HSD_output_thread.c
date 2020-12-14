@@ -23,7 +23,6 @@
 #define GPSPRIMNAME "GPSPRIM"
 #define GPSSUPPNAME "GPSSUPP"
 #define WRSWITCHNAME "WRSWITCH"
-#define RANK 2
 #define CONFIGFILE "./modulePair.config"
 #define FRAME_FORMAT "Frame%05i"
 #define IMGDATA_FORMAT "DATA%09i"
@@ -33,6 +32,7 @@
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
 #define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
 
+#define RANK 2
 #define QUABOPERMODULE 4
 #define PKTPERPAIR QUABOPERMODULE*2
 #define SCIDATASIZE 256

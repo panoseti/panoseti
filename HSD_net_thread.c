@@ -92,7 +92,7 @@ typedef struct {
 }packet_header_t;
 
 /**
- * Function that creates a 
+ * Get the header info of the first packet in the PKTSOCK buffer
  * @param p_frame The pointer for the packet frame
  * @param pkt_header The header struct written to
  */
@@ -192,28 +192,34 @@ static void *run(hashpipe_thread_args_t * args){
 
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
+            //Recv all of the UDP packets from PKTSOCK
             do {
                 p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
             } 
             while (!p_frame && run_threads());
 
+            //Check to see if the threads are still running. If not then terminate
             if(!run_threads()) break;
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
             get_header(p_frame, &pkt_header);
             
-            //printf("PKT_UDP_DATA %i\n", PKT_UDP_DATA(p_frame)-8);
+            #ifdef TEST_MODE
+                //printf("PKT_UDP_DATA %i\n", PKT_UDP_DATA(p_frame)-8);
+            #endif
 
             hashpipe_pktsock_release_frame(p_frame);
 
-            //move these headers and packet to buffer
+            //Copy the packets in PKTSOCK to the input circular buffer
+            //Size is based on whether or not the mode is 16 bit or 8 bit
             if (pkt_header.mode < 4){
                 memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
             } else {
                 memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
             }
 
+            //Time stamping the packets and passing it into the shared buffer
             rc = gettimeofday(&nowTime, NULL);
             if (rc == 0){
                 db->block[block_idx].header.tv_sec[i] = nowTime.tv_sec;
@@ -223,7 +229,10 @@ static void *run(hashpipe_thread_args_t * args){
                 db->block[block_idx].header.tv_sec[i] = 0;
                 db->block[block_idx].header.tv_usec[i] = 0;
             }
-            //printf("TIME %li.%li\n", nowTime.tv_sec, nowTime.tv_usec);
+
+            #ifdef TEST_MODE
+                //printf("TIME %li.%li\n", nowTime.tv_sec, nowTime.tv_usec);
+            #endif
             pthread_testcancel();
         }
 
@@ -231,9 +240,11 @@ static void *run(hashpipe_thread_args_t * args){
         // Get stats from packet socket
 		hashpipe_pktsock_stats(p_ps, &pktsock_pkts, &pktsock_drops);
 
-        //int packet_size = PKT_UDP_SIZE(p_frame) - 8;
-        //printf("packet size is: %d\n", packet_size);
-        //printf("for loop npackets: %lu\n", npackets);
+        #ifdef TEST_MODE
+            //int packet_size = PKT_UDP_SIZE(p_frame) - 8;
+            //printf("packet size is: %d\n", packet_size);
+            //printf("for loop npackets: %lu\n", npackets);
+        #ifdef TEST_MODE
 
         hashpipe_status_lock_safe(&st);
 		hputi8(st.buf, "NPACKETS", npackets);
@@ -265,6 +276,9 @@ static void *run(hashpipe_thread_args_t * args){
     return THREAD_OK;
 }
 
+/**
+ * Sets the functions and buffers for this thread
+ */
 static hashpipe_thread_desc_t HSD_net_thread = {
     name: "HSD_net_thread",
     skey: "NETSTAT",
