@@ -17,13 +17,16 @@
 #include "hdf5.h"
 #include "hdf5_hl.h"
 
-#define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
-#define TIME_FORMAT "%04i-%02i-%02iT%02i:%02i:%02i UTC"
+//Defining the names of redis keys and files
 #define OBSERVATORY "LICK"
 #define GPSPRIMNAME "GPSPRIM"
 #define GPSSUPPNAME "GPSSUPP"
 #define WRSWITCHNAME "WRSWITCH"
 #define CONFIGFILE "./modulePair.config"
+
+//Defining the Formats that will be used within the HDF5 data file
+#define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
+#define TIME_FORMAT "%04i-%02i-%02iT%02i:%02i:%02i UTC"
 #define FRAME_FORMAT "Frame%05i"
 #define IMGDATA_FORMAT "DATA%09i"
 #define PHDATA_FORMAT "PH_Module%05i_Quabo%01i_UTC%09i_NANOSEC%09i_PKTNUM%05i"
@@ -32,6 +35,7 @@
 #define HK_TABLETITLE_FORMAT "HouseKeeping Data for Module%05i_Quabo%01i"
 #define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
 
+//Definng the numerical values
 #define RANK 2
 #define QUABOPERMODULE 4
 #define PKTPERPAIR QUABOPERMODULE*2
@@ -42,8 +46,10 @@
 #define GPSFIELDS 9
 #define NANOSECTHRESHOLD 20
 
+//Defining the string buffer size
 #define STRBUFFSIZE 50
 
+//Defining the static values for the storage values for HDF5 file
 static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
 
 static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
@@ -56,11 +62,17 @@ static long long fileSize = 0;
 
 static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 
+/**
+ * The fileID structure for the current HDF5 opened.
+ */
 typedef struct fileIDs {
     hid_t       file;         /* file and dataset handles */
     hid_t       bit16IMGData, bit8IMGData, PHData, ShortTransient, bit16HCData, bit8HCData, DynamicMeta, StaticMeta;
 } fileIDs_t;
 
+/**
+ * The Housekeeping packet structure used to write to HDF5 table
+ */
 typedef struct HKPackets {
     char SYSTIME[STRBUFFSIZE];
     uint16_t BOARDLOC;
@@ -77,6 +89,7 @@ typedef struct HKPackets {
     uint32_t FWID0, FWID1;
 } HKPackets_t;
 
+//Defining other dependencies needed for writing to HDF5 tables
 const HKPackets_t  HK_dst_buf[0] = {};
 
 const size_t HK_dst_size = sizeof(HKPackets_t);
@@ -149,6 +162,9 @@ const char *HK_field_names[HKFIELDS] = { "SYSTIME", "BOARDLOC",
                                         "SHUTTER_STATUS","LIGHT_SENSOR_STATUS",
                                         "FWID0","FWID1"};
 
+/**
+ * Getting the string type for the HK_fields_type
+ */
 hid_t get_H5T_string_type(){
     hid_t string_type;
 
@@ -170,6 +186,9 @@ const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,  
                                 H5T_STD_U32LE,H5T_STD_U32LE                                                 // FWID0 and FWID1
 };
 
+/**
+ * The GPS packet structure used for writing to HDF5 table
+ */
 typedef struct GPSPackets {
     char GPSTIME[STRBUFFSIZE];
     uint32_t TOW;
@@ -182,6 +201,7 @@ typedef struct GPSPackets {
     uint8_t TIMEFROMGPS;
 } GPSPackets_t;
 
+//Defining other depenedencies for writing GPS data to HDF5 table
 const GPSPackets_t  GPS_dst_buf[0] = {};
 
 const size_t GPS_dst_size = sizeof(GPSPackets_t);
@@ -227,6 +247,10 @@ const hid_t GPS_field_types[GPSFIELDS] = { get_H5T_string_type(),   // GPSTIME
                                         H5T_STD_U8LE                // TIMEFROMGPS
 };
 
+/**
+ * The module ID structure that is used to store a lot of the information regarding the current pair of module.
+ * Module pairs consists of PKTPERPAIR(8) quabos.
+ */
 typedef struct moduleIDs {
     hid_t ID16bit;
     hid_t ID8bit;
@@ -247,7 +271,9 @@ typedef struct moduleIDs {
     moduleIDs* next_moduleID;
 } moduleIDs_t;
 
-
+/**
+ * Creating a new module ID object given the ID values and module numbers.
+ */
 moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned int mod1, unsigned int mod2){
     moduleIDs_t* value = (moduleIDs_t*) malloc(sizeof(struct moduleIDs));
     //moduleFillZeros(value->data, 0);
@@ -265,20 +291,32 @@ moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned in
     return value;
 }
 
+/**
+ * Creating a new module ID with zeroed/null values
+ */
 moduleIDs_t* moduleIDs_t_new(){
     moduleIDs_t_new(0,0,0,-1,-1);
 }
 
+/**
+ * Creating a new module ID with only 1 module for when new module is detected and not in module pair config file
+ */
 moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned mod1){
     moduleIDs_t_new(ID16, ID8, dynamicMD, mod1, -1);
 }
 
+/**
+ * Getting the module ID from the linked list
+ */
 moduleIDs_t* get_moduleID(moduleIDs_t* list, unsigned int ind){
     if(list != NULL && ind > 0)
         return get_moduleID(list->next_moduleID, ind-1);
     return list;
 }
 
+/**
+ * Filling the module ID with Zeros
+ */
 void moduleFillZeros(moduleIDs_t* module, uint8_t status){
     for(int i = 0; i < PKTPERPAIR; i++){
         if(!((status >> i) & 0x01)){
@@ -295,6 +333,9 @@ void moduleFillZeros(moduleIDs_t* module, uint8_t status){
     }
 }
 
+/**
+ * A hex to char coversion table
+ */
 static char hex_to_char(char in){
     switch (in) {
         case 0x00: return '0';
@@ -317,6 +358,9 @@ static char hex_to_char(char in){
     }
 }
 
+/**
+ * A char string to text conversion
+ */
 static void data_to_text(char *data, char *text){
     int textInd;
     for(int i = 0; i < BLOCKSIZE; i++){
@@ -331,6 +375,9 @@ static void data_to_text(char *data, char *text){
     }
 }
 
+/**
+ * Create a singular string attribute attached to the given group.
+ */
 void createStrAttribute(hid_t group, const char* name, char* data) {
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
@@ -354,6 +401,9 @@ void createStrAttribute(hid_t group, const char* name, char* data) {
 
 }
 
+/**
+ * Create a multidimensional string attribute attached to the given group.
+ */
 void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char data[PKTPERPAIR][STRBUFFSIZE]) {
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
@@ -374,6 +424,9 @@ void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char dat
     H5Aclose(attribute);
 }
 
+/**
+ * Create a singular numerical attribute attached to the given group
+ */
 void createNumAttribute(hid_t group, const char* name, hid_t dtype, unsigned long long data) {
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
@@ -395,6 +448,9 @@ void createNumAttribute(hid_t group, const char* name, hid_t dtype, unsigned lon
     H5Aclose(attribute);
 }
 
+/**
+ * Create a multidensional numberical attribute attached to the given group
+ */
 void createNumAttribute2(hid_t group, const char* name, hid_t dtype, hsize_t* dimsf, void* data) {
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
@@ -411,6 +467,9 @@ void createNumAttribute2(hid_t group, const char* name, hid_t dtype, hsize_t* di
     H5Aclose(attribute);
 }
 
+/**
+ * Create a singular float attribute attached to the given group
+ */
 void createFloatAttribute(hid_t group, const char* name, float data){
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
@@ -431,6 +490,9 @@ void createFloatAttribute(hid_t group, const char* name, float data){
     H5Aclose(attribute);
 }
 
+/**
+ * Create a singular double attribute attached to the given group.
+ */
 void createDoubleAttribute(hid_t group, const char* name, double data){
     hid_t       datatype, dataspace;   /* handles */
     hid_t       attribute;
@@ -451,6 +513,9 @@ void createDoubleAttribute(hid_t group, const char* name, double data){
     H5Aclose(attribute);
 }
 
+/**
+ * Create a module pair within the HDF5 file located at the group.
+ */
 hid_t createModPair(hid_t group, unsigned int mod1Name, unsigned int mod2Name) {
     hid_t   modulePair;
     char    modName[STRBUFFSIZE];
@@ -472,6 +537,9 @@ hid_t createModPair(hid_t group, unsigned int mod1Name, unsigned int mod2Name) {
 
 }
 
+/**
+ * Create a singular module within the HDF5 file located at the group.
+ */
 hid_t createMod(hid_t group, unsigned int mod1Name){
     hid_t   modulePair;
     char    modName[STRBUFFSIZE];
@@ -485,6 +553,9 @@ hid_t createMod(hid_t group, unsigned int mod1Name){
     return modulePair;
 }
 
+/**
+ * Create new quabo tables within the HDF5 file located at the group.
+ */
 void createQuaboTables(hid_t group, moduleIDs_t* module){
 
     HKPackets_t HK_data;
@@ -509,6 +580,9 @@ void createQuaboTables(hid_t group, moduleIDs_t* module){
     }
 }
 
+/**
+ * Create new GPS tables within the HDF5 files located at the group
+ */
 void createGPSTable(hid_t group){
     GPSPackets_t GPS_data;
 
@@ -517,15 +591,24 @@ void createGPSTable(hid_t group){
                             100, NULL, 0, &GPS_data);
 }
 
+/**
+ * Create new White Rabbit Switch tables within the HDF5 files located at the group.
+ */
 void createWRTable(){
 
 }
 
+/**
+ * Inialize the metadata resources such as GPS and WR tables.
+ */
 void createDMetaResources(hid_t group){
     createGPSTable(group);
     createWRTable();
 }
 
+/**
+ * Initialize a new file given a name and time.
+ */
 fileIDs_t* createNewFile(char* fileName, char* currTime){
     fileIDs_t* newfile = (fileIDs_t*) malloc(sizeof(struct fileIDs));
 
@@ -543,6 +626,9 @@ fileIDs_t* createNewFile(char* fileName, char* currTime){
     return newfile;
 }
 
+/**
+ * Fetch the Housekeeping data from the Redis database for the given boardloc or quabo id.
+ */
 void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) {
     redisReply *reply;
     char command[50];
@@ -667,6 +753,9 @@ void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) 
     freeReplyObject(reply);
 }
 
+/**
+ * Get the GPS data from the Redis Server.
+ */
 void fetchGPSdata(GPSPackets_t* GPS, redisContext* redisServer) {
     redisReply *reply;
     char command[50];
@@ -712,6 +801,9 @@ void fetchGPSdata(GPSPackets_t* GPS, redisContext* redisServer) {
     freeReplyObject(reply);
 }
 
+/**
+ * Check if housekeeping data for the module pair has been updated and if so get and store it in the HDF5 file.
+ */
 void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     HKPackets_t* HKdata = (HKPackets_t *)malloc(sizeof(HKPackets));
     moduleIDs_t* currentMod;
@@ -778,6 +870,9 @@ void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
     free(HKdata);
 }
 
+/**
+ * Check if the GPS Primary data have been updated and if so store the GPS Primary data in the HDF5 file.
+ */
 void check_storeGPS(redisContext* redisServer, hid_t group){
     GPSPackets_t* GPSdata = (GPSPackets_t *)malloc(sizeof(GPSPackets));
     redisReply* reply;
@@ -799,6 +894,9 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
     free(GPSdata);
 }
 
+/**
+ * Get and store the GPS Supplimentary data in the HDF5 file.
+ */
 void get_storeGPSSupp(redisContext* redisServer, hid_t group){
     redisReply* reply;
     char command[50];
@@ -950,6 +1048,9 @@ void get_storeGPSSupp(redisContext* redisServer, hid_t group){
 
 }
 
+/**
+ * Get and store the White Rabbit Switch data into HDF5 file.
+ */
 void get_storeWR(redisContext* redisServer, hid_t group){
     redisReply* reply;
     char command[50];
@@ -962,6 +1063,9 @@ void get_storeWR(redisContext* redisServer, hid_t group){
     freeReplyObject(reply);
 }
 
+/**
+ * Check and store Static data to the HDF5 file.
+ */
 void getStaticRedisData(redisContext* redisServer, hid_t staticMeta){
     hid_t GPSgroup, WRgroup;
     GPSgroup = H5Gcreate(staticMeta, GPSSUPPNAME, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -974,11 +1078,17 @@ void getStaticRedisData(redisContext* redisServer, hid_t staticMeta){
     H5Gclose(WRgroup);
 }
 
+/**
+ * Check and store Dynamic data to the HDF5 file.
+ */
 void getDynamicRedisData(redisContext* redisServer, moduleIDs_t* modHead, hid_t dynamicMeta){
     check_storeGPS(redisServer, dynamicMeta);
     check_storeHK(redisServer, modHead);
 }
 
+/**
+ * Write an PKTPERPAIR frame data block into the module pair in the HDF5 file.
+ */
 void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
     hid_t dataset;
     char name[50];
@@ -1010,6 +1120,9 @@ void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
     H5Dclose(dataset);
 }
 
+/**
+ * Store the data from the data_ptr to the moduleData based on the mode.
+ */
 void storePktData(uint8_t* moduleData, char* data_ptr, int mode, int quaboIndex){
     uint8_t *data;
     if (mode == 16){
@@ -1027,6 +1140,7 @@ void storePktData(uint8_t* moduleData, char* data_ptr, int mode, int quaboIndex)
     }
 }
 
+//Initializing the linked list to be used for stroing the moduleIDs
 static moduleIDs_t* moduleListBegin = moduleIDs_t_new();
 static moduleIDs_t* moduleListEnd = moduleListBegin;
 static unsigned int moduleListSize = 1;
@@ -1034,6 +1148,9 @@ static unsigned int moduleInd[0xffff];
 static fileIDs_t* file;
 static redisContext *redisServer;
 
+/**
+ * Write the Pulse Height data to disk
+ */
 void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     hid_t dataset;
     char name[100];
@@ -1065,6 +1182,9 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
     H5Tclose(PHType);
 }
 
+/**
+ * Storing the module data to the moduleIDs from the data pointer.
+ */
 void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     //uint16_t* moduleData;
     int mode;
@@ -1129,12 +1249,18 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
     module->status = module->status | currentStatus;
 }
 
+/**
+ * Finding the module ID given the index of the linked list.
+ */
 moduleIDs_t* get_module_info(moduleIDs_t* list, unsigned int ind){
     if(list != NULL && ind > 0)
         return get_module_info(list->next_moduleID, ind-1);
     return list;
 }
 
+/**
+ * Close the HDF5 file.
+ */
 void closeFile(fileIDs_t* file){
     H5Gclose(file->bit16IMGData);
     H5Gclose(file->bit8IMGData);
@@ -1148,6 +1274,9 @@ void closeFile(fileIDs_t* file){
     free(file);
 }
 
+/**
+ * Close all of the modules that were initalized.
+ */
 void closeModules(moduleIDs_t* head){
     moduleIDs_t* currentmodule;
     currentmodule = head;
@@ -1168,7 +1297,9 @@ void closeModules(moduleIDs_t* head){
     }
 }
 
-    
+/**
+ * Initalize the HDF5 file given a name and time.
+ */
 fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     fileIDs_t* new_file;
     FILE *modConfig_file;
@@ -1240,6 +1371,9 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     return new_file;
 }
 
+/**
+ * Initilzing the HDF5 file based on the current file_naming format.
+ */
 fileIDs_t* HDF5file_init(){
     time_t t = time(NULL);
     struct tm tm = *gmtime(&t);
@@ -1258,6 +1392,9 @@ fileIDs_t* HDF5file_init(){
     return HDF5file_init(fileName, currTime);
 }
 
+/**
+ * Close and flush out all of the file resources
+ */
 void closeFileResources(){
     printf("-----Start Flushing and Closing all File Resources----\n");
     closeModules(moduleListBegin->next_moduleID);
@@ -1266,6 +1403,9 @@ void closeFileResources(){
     closeFile(file);
 }
 
+/**
+ * Close and flush out all of the resources allocated.
+ */
 void closeAllResources(){
     //printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
     //flushModules(moduleListBegin->next_moduleID);
@@ -1278,6 +1418,9 @@ void closeAllResources(){
     exit(1);
 }
 
+/**
+ * Reinitlize the rfile resources by first closing and flushing all resources then redefining them.
+ */
 void reinitFileResources(){
     time_t t = time(NULL);
     struct tm tm = *gmtime(&t);
@@ -1301,6 +1444,7 @@ void reinitFileResources(){
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
 }
 
+//Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
 static int INTSIG;
 static int QUITSIG;
 
@@ -1502,6 +1646,9 @@ static void *run(hashpipe_thread_args_t * args){
     return THREAD_OK;
 }
 
+/**
+ * Sets the functions and buffers for this thread
+ */
 static hashpipe_thread_desc_t HSD_output_thread = {
     name: "HSD_output_thread",
     skey: "OUTSTAT",

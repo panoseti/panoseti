@@ -144,9 +144,11 @@ static void *run(hashpipe_thread_args_t * args){
         //Get data from buffer
         memcpy(str_q, db_in->block[curblock_in].data_block, BLOCKSIZE*sizeof(unsigned char));
 
-        
-        //Finding the packet number and computing the lost of packets by using packet number
         for(int i = 0; i < N_PKT_PER_BLOCK; i++){
+            
+
+
+            //Finding the packet number and computing the lost of packets by using packet number
             //Read the packet number from the packet
             mode = str_q[i*PKTSIZE];
             boardLoc = flipBytes(str_q[i*PKTSIZE+4], str_q[i*PKTSIZE+5]);
