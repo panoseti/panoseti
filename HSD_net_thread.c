@@ -86,8 +86,12 @@ static int init(hashpipe_thread_args_t * args){
 
 //Struct to store the header vaules
 typedef struct {
-    int mode;
-    uint64_t packetNum;
+    int acqmode;
+    uint16_t packetNum;
+    uint16_t moduleNum;
+    uint8_t quaboNum;
+    uint32_t packet_UTC;
+    uint32_t packet_NANOSEC;
     int boardLocation;
 }packet_header_t;
 
@@ -96,18 +100,39 @@ typedef struct {
  * @param p_frame The pointer for the packet frame
  * @param pkt_header The header struct written to
  */
-static inline void get_header(unsigned char *p_frame, packet_header_t *pkt_header) {
-    uint64_t raw_header;
+static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_header_t* pkt_header) {
+    /*uint64_t raw_header;
     raw_header = *(unsigned long long *)(PKT_UDP_DATA(p_frame));
     pkt_header->mode = (raw_header & 0x00000000000000ff);
     pkt_header->packetNum = (raw_header & 0x00000000ffff0000) >> (16);
-    pkt_header->boardLocation = (raw_header & 0x0000ffff00000000) >> (32);
+    pkt_header->boardLocation = (raw_header & 0x0000ffff00000000) >> (32);*/
+    pkt_header->acqmode[i] = pkt_data[PKTSIZE];
+    pkt_header->pktNum[i] = ((pkt_data[PKTSIZE+3] << 8) & 0xff00) 
+                        | (pkt_data[PKTSIZE+2] & 0x00ff);
+    pkt_header->modNum[i] = ((pkt_data[PKTSIZE+5] << 6) & 0x3fc0) 
+                        | ((pkt_data[PKTSIZE+4] >> 2) & 0x003f);
+    pkt_header->quaNum[i] = ((pkt_data[PKTSIZE+4]) & 0x03);
+    pkt_header->pktUTC[i] = ((pkt_data[PKTSIZE+9] << 24) & 0xff000000) 
+                        | ((pkt_data[PKTSIZE+8] << 16) & 0x00ff0000)
+                        | ((pkt_data[PKTSIZE+7] << 8) & 0x0000ff00)
+                        | ((pkt_data[PKTSIZE+6]) & 0x000000ff);
+                        
+    pkt_header->pktNSEC[i] = ((pkt_data[PKTSIZE+13] << 24) & 0xff000000) 
+                        | ((pkt_data[PKTSIZE+12] << 16) & 0x00ff0000)
+                        | ((pkt_data[PKTSIZE+11] << 8) & 0x0000ff00)
+                        | ((pkt_data[PKTSIZE+10]) & 0x000000ff);
+    
 
     #ifdef TEST_MODE
         //printf("Mode:%i ", pkt_header->mode);
         //printf("BoardLocation:%02X ", pkt_header->boardLocation);
         //printf("Packet:%lu\n", pkt_header->packetNum);
         //printf("Header:%02lx\n", (raw_header & 0xffffffffffffffff));
+        printf("Header");
+        for (int i = 0; i < HEADERSIZE; i++){
+            printf(" %X ", pkt_data[i]);
+        }
+        printf("\n");
     #endif
 }
 
@@ -123,7 +148,9 @@ static void *run(hashpipe_thread_args_t * args){
     int rv, n;
     uint64_t mcnt = 0;          //Mcount of
     int block_idx = 0;          //The input buffer block index
+    HSD_input_block_header_t* blockHeader;
     packet_header_t pkt_header; //Current packet's header
+    unsigned char* pkt_data;    //Packet Data from PKT_UDP_DATA
     struct timeval nowTime;     //Current NTP UTC time
     int rc;                     
             
@@ -203,7 +230,9 @@ static void *run(hashpipe_thread_args_t * args){
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
-            get_header(p_frame, &pkt_header);
+            pkt_data = (unsigned char *) PKT_UDP_DATA(p_frame);
+            blockHeader = &(db->block[block_idx].header);
+            get_header(pkt_data, i, blockHeader);
             
             #ifdef TEST_MODE
                 //printf("PKT_UDP_DATA %i\n", PKT_UDP_DATA(p_frame)-8);
@@ -213,7 +242,7 @@ static void *run(hashpipe_thread_args_t * args){
 
             //Copy the packets in PKTSOCK to the input circular buffer
             //Size is based on whether or not the mode is 16 bit or 8 bit
-            if (pkt_header.mode < 4){
+            if (blockHeader->acqmode[i] < 4){
                 memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
             } else {
                 memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
@@ -222,12 +251,12 @@ static void *run(hashpipe_thread_args_t * args){
             //Time stamping the packets and passing it into the shared buffer
             rc = gettimeofday(&nowTime, NULL);
             if (rc == 0){
-                db->block[block_idx].header.tv_sec[i] = nowTime.tv_sec;
-                db->block[block_idx].header.tv_usec[i] = nowTime.tv_usec;
+                blockHeader->tv_sec[i] = nowTime.tv_sec;
+                blockHeader->tv_usec[i] = nowTime.tv_usec;
             } else {
                 printf("gettimeofday() failed, errno = %d\n", errno);
-                db->block[block_idx].header.tv_sec[i] = 0;
-                db->block[block_idx].header.tv_usec[i] = 0;
+                blockHeader->tv_sec[i] = 0;
+                blockHeader->tv_usec[i] = 0;
             }
 
             #ifdef TEST_MODE
@@ -244,7 +273,7 @@ static void *run(hashpipe_thread_args_t * args){
             //int packet_size = PKT_UDP_SIZE(p_frame) - 8;
             //printf("packet size is: %d\n", packet_size);
             //printf("for loop npackets: %lu\n", npackets);
-        #ifdef TEST_MODE
+        #endif
 
         hashpipe_status_lock_safe(&st);
 		hputi8(st.buf, "NPACKETS", npackets);
