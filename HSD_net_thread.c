@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/types.h>
@@ -95,10 +96,34 @@ typedef struct {
     int boardLocation;
 }packet_header_t;
 
+
+/**
+ * Check the acqmode of the packet coming in. Returns True if it is valid and returns
+ * false if it is an acqmode that is not recognized
+ * @param pkt_data The pointer for the packet frame(returned from PKT_UDP_DATA(p_frame))
+ * @param pkt_header The header struct to be written to
+ * @return 1 if acqmode is recognized and 0 otherwise
+ */
+static int check_acqmode(unsigned char* pkt_data){
+    if (pkt_data[0] == 1 || pkt_data[0] == 2 || pkt_data[0] == 3 ||
+        pkt_data[0] == 6 || pkt_data[0] == 7){
+            return 1;
+        }
+
+    printf("Malformed packet identify");
+    for(int i=0; i < PKTDATASIZE; i++){
+        if(i % 16 == 0){
+            printf("\n");
+        }
+        printf("%02X ", pkt_data[i]);
+    }
+    return 0;
+}
+
 /**
  * Get the header info of the first packet in the PKTSOCK buffer
- * @param p_frame The pointer for the packet frame
- * @param pkt_header The header struct written to
+ * @param p_frame The pointer for the packet frame(returned from PKT_UDP_DATA(p_frame))
+ * @param pkt_header The header struct to be written to
  */
 static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_header_t* pkt_header) {
     /*uint64_t raw_header;
@@ -106,21 +131,21 @@ static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_he
     pkt_header->mode = (raw_header & 0x00000000000000ff);
     pkt_header->packetNum = (raw_header & 0x00000000ffff0000) >> (16);
     pkt_header->boardLocation = (raw_header & 0x0000ffff00000000) >> (32);*/
-    pkt_header->acqmode[i] = pkt_data[PKTSIZE];
-    pkt_header->pktNum[i] = ((pkt_data[PKTSIZE+3] << 8) & 0xff00) 
-                        | (pkt_data[PKTSIZE+2] & 0x00ff);
-    pkt_header->modNum[i] = ((pkt_data[PKTSIZE+5] << 6) & 0x3fc0) 
-                        | ((pkt_data[PKTSIZE+4] >> 2) & 0x003f);
-    pkt_header->quaNum[i] = ((pkt_data[PKTSIZE+4]) & 0x03);
-    pkt_header->pktUTC[i] = ((pkt_data[PKTSIZE+9] << 24) & 0xff000000) 
-                        | ((pkt_data[PKTSIZE+8] << 16) & 0x00ff0000)
-                        | ((pkt_data[PKTSIZE+7] << 8) & 0x0000ff00)
-                        | ((pkt_data[PKTSIZE+6]) & 0x000000ff);
+    pkt_header->acqmode[i] = pkt_data[0];
+    pkt_header->pktNum[i] = ((pkt_data[3] << 8) & 0xff00) 
+                        | (pkt_data[2] & 0x00ff);
+    pkt_header->modNum[i] = ((pkt_data[5] << 6) & 0x3fc0) 
+                        | ((pkt_data[4] >> 2) & 0x003f);
+    pkt_header->quaNum[i] = ((pkt_data[4]) & 0x03);
+    pkt_header->pktUTC[i] = ((pkt_data[9] << 24) & 0xff000000) 
+                        | ((pkt_data[8] << 16) & 0x00ff0000)
+                        | ((pkt_data[7] << 8) & 0x0000ff00)
+                        | ((pkt_data[6]) & 0x000000ff);
                         
-    pkt_header->pktNSEC[i] = ((pkt_data[PKTSIZE+13] << 24) & 0xff000000) 
-                        | ((pkt_data[PKTSIZE+12] << 16) & 0x00ff0000)
-                        | ((pkt_data[PKTSIZE+11] << 8) & 0x0000ff00)
-                        | ((pkt_data[PKTSIZE+10]) & 0x000000ff);
+    pkt_header->pktNSEC[i] = ((pkt_data[13] << 24) & 0xff000000) 
+                        | ((pkt_data[12] << 16) & 0x00ff0000)
+                        | ((pkt_data[11] << 8) & 0x0000ff00)
+                        | ((pkt_data[10]) & 0x000000ff);
     
 
     #ifdef TEST_MODE
@@ -184,8 +209,17 @@ static void *run(hashpipe_thread_args_t * args){
 
     printf("-----------Finished Setup of Input Thread------------\n\n");
 
+    static int QUITSIG;
+    
+    void QUIThandler(int signum) {
+        QUITSIG = 1;
+    }
+
     /* Main Loop */
     while(run_threads()){
+        signal(SIGQUIT, QUIThandler);
+        QUITSIG = 0;
+
         //Update the info of the buffer
         hashpipe_status_lock_safe(&st);
         hputs(st.buf, status_key, "waiting");
@@ -217,21 +251,26 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "receiving");
         hashpipe_status_unlock_safe(&st);
 
+        blockHeader = &(db->block[block_idx].header);
+        blockHeader->data_block_size = 0;
+        blockHeader->QUITSIG = QUITSIG;
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
+            //Check if the QUITSIG is recognized
+            if(QUITSIG) break;
             //Recv all of the UDP packets from PKTSOCK
             do {
                 p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
             } 
-            while (!p_frame && run_threads());
+            while (!p_frame && run_threads() && !check_acqmode(PKT_UDP_DATA(p_frame)));
 
             //Check to see if the threads are still running. If not then terminate
             if(!run_threads()) break;
+
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
             pkt_data = (unsigned char *) PKT_UDP_DATA(p_frame);
-            blockHeader = &(db->block[block_idx].header);
             get_header(pkt_data, i, blockHeader);
             
             #ifdef TEST_MODE
@@ -243,10 +282,11 @@ static void *run(hashpipe_thread_args_t * args){
             //Copy the packets in PKTSOCK to the input circular buffer
             //Size is based on whether or not the mode is 16 bit or 8 bit
             if (blockHeader->acqmode[i] < 4){
-                memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
             } else {
-                memcpy(db->block[block_idx].data_block+i*PKTSIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*BIT8PKTDATASIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
             }
+            blockHeader->data_block_size++;
 
             //Time stamping the packets and passing it into the shared buffer
             rc = gettimeofday(&nowTime, NULL);

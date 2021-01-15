@@ -38,24 +38,6 @@ quabo_info_t* quabo_info_t_new(){
     return value;
 }
 
-/**
- * Gets the quabo_info structure that corresponds to the quabo index
- * @param list The quabo object linked list to be incremented through
- * @param ind The quabo ind to find the appropriate object
- */ 
-quabo_info_t* get_quabo_info(quabo_info_t* list, unsigned int ind){
-    if(list != NULL && ind > 0)
-        return get_quabo_info(list->next_quabo_info, ind-1);
-    return list;
-}
-
-/**
- * Fliping the bytes of data1 and data2 to go from little-endian to big-endian
- */
-uint16_t flipBytes(char data1, char data2){
-    return ((data2 << 8) & 0xff00) | ((data1) & 0x00ff);
-}
-
 static void *run(hashpipe_thread_args_t * args){
     // Local aliases to shorten access to args fields
     HSD_input_databuf_t *db_in = (HSD_input_databuf_t *)args->ibuf;
@@ -73,9 +55,7 @@ static void *run(hashpipe_thread_args_t * args){
     uint8_t mode;                                       //The current mode of the packet block
     quabo_info_t* quaboListBegin = quabo_info_t_new();  //Initializing the quabo info linked list
     quabo_info_t* quaboListEnd = quaboListBegin;        //Setting the pointer to be the end of the linked list
-    unsigned int quaboListSize = 1;                     //Initalizing the size of the linked list
-    unsigned int quaboInd[0xffff];                      //Create a rudimentary hash map of the quabo number and linked list ind
-    memset(quaboInd, -1, sizeof(quaboInd));             //Set all of the values of the hash to be -1
+    quabo_info_t* quaboInd[0xffff] = {NULL};            //Create a rudimentary hash map of the quabo number and linked list ind
 
     quabo_info_t* currentQuabo;                         //Pointer to the quabo info that is currently being used
     uint16_t boardLoc;                                  //The boardLoc(quabo index) for the current packet
@@ -90,10 +70,6 @@ static void *run(hashpipe_thread_args_t * args){
     //Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
-
-    //Compute Elements
-    char *str_q;
-    str_q = (char *)malloc(BLOCKSIZE*sizeof(unsigned char));
 
     printf("-----------Finished Setup of Compute Thread----------\n\n");
 
@@ -139,42 +115,41 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
-        //CALCULATION BLOCK
-        //TODO
-        //Get data from buffer
-        memcpy(str_q, db_in->block[curblock_in].data_block, BLOCKSIZE*sizeof(unsigned char));
+        db_out->block[curblock_out].header.stream_block_size = 0;
+        db_out->block[curblock_out].header.coinc_block_size = 0;
+        db_out->block[curblock_out].header.QUITSIG = db_in->block[curblock_in].header.QUITSIG;
 
-        for(int i = 0; i < N_PKT_PER_BLOCK; i++){
-            
+        for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
+
+            //CALCULATION BLOCK
+            //TODO
+
+
 
 
             //Finding the packet number and computing the lost of packets by using packet number
             //Read the packet number from the packet
-            mode = str_q[i*PKTSIZE];
-            boardLoc = flipBytes(str_q[i*PKTSIZE+4], str_q[i*PKTSIZE+5]);
+            mode = db_in->block[curblock_in].header.acqmode[i];
+            boardLoc = db_in->block[curblock_in].header.modNum[i] * 4 + db_in->block[curblock_in].header.quaNum[i];
             #ifdef TEST_MODE
                 //printf("Mode:%i ", mode);
                 //printf("BoardLocation:%02X \n", boardLoc);
             #endif
             //Check to see if there is a quabo info for the current quabo packet. If not create an object
-            if (quaboInd[boardLoc] == -1){
-                quaboInd[boardLoc] = quaboListSize;                 //Setting the value to be the new element for quabo info
-                quaboListSize++;                                    //Increase the size of the linked list by 1
+            if (quaboInd[boardLoc] == NULL){
+                quaboInd[boardLoc] = quabo_info_t_new();            //Create a new quabo info object
 
                 printf("New Quabo Detected ID:%u.%u\n", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff); //Output the terminal the new quabo
 
-                quaboListEnd->next_quabo_info = quabo_info_t_new(); //Create a new quabo info object
+                quaboListEnd->next_quabo_info = quaboInd[boardLoc];
                 quaboListEnd = quaboListEnd->next_quabo_info;       //Append the new quabo info to the end of the linked list
-                currentQuabo = quaboListEnd;                        //Set the currentQuabo to point to the new quabo info
-            } else {
-                #ifdef TEST_MODE
-                    //printf("Index:%i \n", quaboInd[boardLoc]);
-                #endif
-                currentQuabo = get_quabo_info(quaboListBegin, quaboInd[boardLoc]);
             }
 
+            //Set the current Quabo to the one stored in memory
+            currentQuabo = quaboInd[boardLoc];
+
             //Store the current quabo's mode
-            currentQuabo->pkt_num[mode] = flipBytes(str_q[i*PKTSIZE+2], str_q[i*PKTSIZE+3]);
+            currentQuabo->pkt_num[mode] = db_in->block[curblock_in].header.pktNum[i];
 
             #ifdef TEST_MODE
                 printf("pkt_num:%i\n", pkt_num[mode]);
@@ -195,10 +170,11 @@ static void *run(hashpipe_thread_args_t * args){
                 total_lost_pkts += current_pkt_lost;               //Add this packet lost to the overall total for all quabos
             }
             currentQuabo->prev_pkt_num[mode] = currentQuabo->pkt_num[mode]; //Update the previous packet number to be the current packet number
+        
         }
 
         //Copy the input packet to the output packet
-        memcpy(db_out->block[curblock_out].result_block, str_q, BLOCKSIZE*sizeof(unsigned char));
+        memcpy(db_out->block[curblock_out].stream_block, db_in->block[curblock_in].data_block, INPUTBLOCKSIZE*sizeof(unsigned char));
 
         //Copy time over to output
         memcpy(db_out->block[curblock_out].header.tv_sec, db_in->block[curblock_in].header.tv_sec, N_PKT_PER_BLOCK*sizeof(long int));

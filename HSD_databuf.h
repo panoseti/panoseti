@@ -30,6 +30,8 @@ typedef struct HSD_input_block_header {
     uint8_t quaNum[N_PKT_PER_BLOCK];
     uint32_t pktUTC[N_PKT_PER_BLOCK];
     uint32_t pktNSEC[N_PKT_PER_BLOCK];
+    int data_block_size;
+    int QUITSIG;
 } HSD_input_block_header_t;
 
 typedef uint8_t HSD_input_header_cache_alignment[
@@ -61,6 +63,9 @@ typedef struct HSD_output_block_header {
     uint8_t quaNum[N_PKT_PER_BLOCK];
     uint32_t pktUTC[N_PKT_PER_BLOCK];
     uint32_t pktNSEC[N_PKT_PER_BLOCK];
+    int stream_block_size;
+    int coinc_block_size;
+    int QUITSIG;
 } HSD_output_block_header_t;
 
 typedef uint8_t HSD_output_header_cache_alignment[
@@ -70,7 +75,8 @@ typedef uint8_t HSD_output_header_cache_alignment[
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
-    char result_block[OUTPUTBLOCKSIZE*sizeof(char)];
+    char stream_block[OUTPUTBLOCKSIZE*sizeof(char)];
+    char coinc_block[OUTPUTBLOCKSIZE*sizeof(char)];
 } HSD_output_block_t;
 
 typedef struct HSD_output_databuf {
