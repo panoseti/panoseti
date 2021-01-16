@@ -161,7 +161,16 @@ static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_he
     #endif
 }
 
+static int INTSIG;
+
+void INThandler(int signum) {
+    INTSIG = 1;
+}
+
 static void *run(hashpipe_thread_args_t * args){
+    signal(SIGINT, INThandler);
+    INTSIG = 0;
+    
     //Creating pointers hashpipe args
     HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
     hashpipe_status_t st = args->st;
@@ -209,16 +218,9 @@ static void *run(hashpipe_thread_args_t * args){
 
     printf("-----------Finished Setup of Input Thread------------\n\n");
 
-    static int QUITSIG;
-    
-    void QUIThandler(int signum) {
-        QUITSIG = 1;
-    }
-
     /* Main Loop */
     while(run_threads()){
-        signal(SIGQUIT, QUIThandler);
-        QUITSIG = 0;
+        
 
         //Update the info of the buffer
         hashpipe_status_lock_safe(&st);
@@ -253,11 +255,11 @@ static void *run(hashpipe_thread_args_t * args){
 
         blockHeader = &(db->block[block_idx].header);
         blockHeader->data_block_size = 0;
-        blockHeader->QUITSIG = QUITSIG;
+        blockHeader->INTSIG = INTSIG;
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
-            //Check if the QUITSIG is recognized
-            if(QUITSIG) break;
+            //Check if the INTSIG is recognized
+            if(INTSIG) break;
             //Recv all of the UDP packets from PKTSOCK
             do {
                 p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
@@ -282,11 +284,10 @@ static void *run(hashpipe_thread_args_t * args){
             //Copy the packets in PKTSOCK to the input circular buffer
             //Size is based on whether or not the mode is 16 bit or 8 bit
             if (blockHeader->acqmode[i] < 4){
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame), PKTSIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame), PKTDATASIZE*sizeof(unsigned char));
             } else {
-                memcpy(db->block[block_idx].data_block+i*BIT8PKTDATASIZE, PKT_UDP_DATA(p_frame), BIT8PKTSIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame), BIT8PKTDATASIZE*sizeof(unsigned char));
             }
-            blockHeader->data_block_size++;
 
             //Time stamping the packets and passing it into the shared buffer
             rc = gettimeofday(&nowTime, NULL);
@@ -298,6 +299,8 @@ static void *run(hashpipe_thread_args_t * args){
                 blockHeader->tv_sec[i] = 0;
                 blockHeader->tv_usec[i] = 0;
             }
+
+            blockHeader->data_block_size++;
 
             #ifdef TEST_MODE
                 //printf("TIME %li.%li\n", nowTime.tv_sec, nowTime.tv_usec);

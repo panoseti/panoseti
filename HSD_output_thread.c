@@ -251,7 +251,7 @@ const hid_t GPS_field_types[GPSFIELDS] = { get_H5T_string_type(),   // GPSTIME
  * The module ID structure that is used to store a lot of the information regarding the current pair of module.
  * Module pairs consists of PKTPERPAIR(8) quabos.
  */
-typedef struct moduleIDs {
+typedef struct modulePairData {
     hid_t ID16bit;
     hid_t ID8bit;
     hid_t dynamicMeta;
@@ -268,14 +268,14 @@ typedef struct moduleIDs {
     uint32_t lowerNANOSEC;
     int bit16dataNum;
     int bit8dataNum;
-    moduleIDs* next_moduleID;
-} moduleIDs_t;
+    modulePairData* next_moduleID;
+} modulePairData_t;
 
 /**
  * Creating a new module ID object given the ID values and module numbers.
  */
-moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned int mod1, unsigned int mod2){
-    moduleIDs_t* value = (moduleIDs_t*) malloc(sizeof(struct moduleIDs));
+modulePairData_t* modulePairData_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned int mod1, unsigned int mod2){
+    modulePairData_t* value = (modulePairData_t*) malloc(sizeof(struct modulePairData));
     //moduleFillZeros(value->data, 0);
     value->ID16bit = ID16;
     value->ID8bit = ID8;
@@ -294,21 +294,21 @@ moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned in
 /**
  * Creating a new module ID with zeroed/null values
  */
-moduleIDs_t* moduleIDs_t_new(){
-    moduleIDs_t_new(0,0,0,-1,-1);
+modulePairData_t* modulePairData_t_new(){
+    return modulePairData_t_new(0,0,0,-1,-1);
 }
 
 /**
  * Creating a new module ID with only 1 module for when new module is detected and not in module pair config file
  */
-moduleIDs_t* moduleIDs_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned mod1){
-    moduleIDs_t_new(ID16, ID8, dynamicMD, mod1, -1);
+modulePairData_t* modulePairData_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, unsigned mod1){
+    return modulePairData_t_new(ID16, ID8, dynamicMD, mod1, -1);
 }
 
 /**
  * Getting the module ID from the linked list
  */
-moduleIDs_t* get_moduleID(moduleIDs_t* list, unsigned int ind){
+modulePairData_t* get_moduleID(modulePairData_t* list, unsigned int ind){
     if(list != NULL && ind > 0)
         return get_moduleID(list->next_moduleID, ind-1);
     return list;
@@ -317,7 +317,7 @@ moduleIDs_t* get_moduleID(moduleIDs_t* list, unsigned int ind){
 /**
  * Filling the module ID with Zeros
  */
-void moduleFillZeros(moduleIDs_t* module, uint8_t status){
+void moduleFillZeros(modulePairData_t* module, uint8_t status){
     for(int i = 0; i < PKTPERPAIR; i++){
         if(!((status >> i) & 0x01)){
             if (module->lastMode == 16){
@@ -556,7 +556,7 @@ hid_t createMod(hid_t group, unsigned int mod1Name){
 /**
  * Create new quabo tables within the HDF5 file located at the group.
  */
-void createQuaboTables(hid_t group, moduleIDs_t* module){
+void createQuaboTables(hid_t group, modulePairData_t* module){
 
     HKPackets_t HK_data;
     char tableName[50];
@@ -804,9 +804,9 @@ void fetchGPSdata(GPSPackets_t* GPS, redisContext* redisServer) {
 /**
  * Check if housekeeping data for the module pair has been updated and if so get and store it in the HDF5 file.
  */
-void check_storeHK(redisContext* redisServer, moduleIDs_t* modHead){
+void check_storeHK(redisContext* redisServer, modulePairData_t* modHead){
     HKPackets_t* HKdata = (HKPackets_t *)malloc(sizeof(HKPackets));
-    moduleIDs_t* currentMod;
+    modulePairData_t* currentMod;
     redisReply* reply;
     uint16_t BOARDLOC;
     char tableName[50];
@@ -1081,7 +1081,7 @@ void getStaticRedisData(redisContext* redisServer, hid_t staticMeta){
 /**
  * Check and store Dynamic data to the HDF5 file.
  */
-void getDynamicRedisData(redisContext* redisServer, moduleIDs_t* modHead, hid_t dynamicMeta){
+void getDynamicRedisData(redisContext* redisServer, modulePairData_t* modHead, hid_t dynamicMeta){
     check_storeGPS(redisServer, dynamicMeta);
     check_storeHK(redisServer, modHead);
 }
@@ -1089,7 +1089,7 @@ void getDynamicRedisData(redisContext* redisServer, moduleIDs_t* modHead, hid_t 
 /**
  * Write an PKTPERPAIR frame data block into the module pair in the HDF5 file.
  */
-void writeDataBlock(hid_t frame, moduleIDs_t* module, int index, int mode){
+void writeDataBlock(hid_t frame, modulePairData_t* module, int index, int mode){
     hid_t dataset;
     char name[50];
     hsize_t dimsf[1];
@@ -1140,11 +1140,10 @@ void storePktData(uint8_t* moduleData, char* data_ptr, int mode, int quaboIndex)
     }
 }
 
-//Initializing the linked list to be used for stroing the moduleIDs
-static moduleIDs_t* moduleListBegin = moduleIDs_t_new();
-static moduleIDs_t* moduleListEnd = moduleListBegin;
-static unsigned int moduleListSize = 1;
-static unsigned int moduleInd[0xffff];
+//Initializing the linked list to be used for stroing the modulePairData
+static modulePairData_t* moduleListBegin = modulePairData_t_new();
+static modulePairData_t* moduleListEnd = moduleListBegin;
+static modulePairData_t* moduleInd[0xffff] = {NULL};
 static fileIDs_t* file;
 static redisContext *redisServer;
 
@@ -1183,9 +1182,9 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
 }
 
 /**
- * Storing the module data to the moduleIDs from the data pointer.
+ * Storing the module data to the modulePairData from the data pointer.
  */
-void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
+void storeData(modulePairData_t* module, char acqmode, uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t UTC, uint32_t NANOSEC, long int tv_sec, long int tv_usec, char* data_ptr){
     //uint16_t* moduleData;
     int mode;
     int quaboIndex;
@@ -1250,15 +1249,6 @@ void storeData(moduleIDs_t* module, char acqmode, uint16_t moduleNum, uint8_t qu
 }
 
 /**
- * Finding the module ID given the index of the linked list.
- */
-moduleIDs_t* get_module_info(moduleIDs_t* list, unsigned int ind){
-    if(list != NULL && ind > 0)
-        return get_module_info(list->next_moduleID, ind-1);
-    return list;
-}
-
-/**
  * Close the HDF5 file.
  */
 void closeFile(fileIDs_t* file){
@@ -1277,8 +1267,8 @@ void closeFile(fileIDs_t* file){
 /**
  * Close all of the modules that were initalized.
  */
-void closeModules(moduleIDs_t* head){
-    moduleIDs_t* currentmodule;
+void closeModules(modulePairData_t* head){
+    modulePairData_t* currentmodule;
     currentmodule = head;
     while (head != NULL){
         moduleFillZeros(currentmodule, currentmodule->status);
@@ -1315,10 +1305,8 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     
     createDMetaResources(new_file->DynamicMeta);
 
-    moduleListBegin = moduleIDs_t_new();
+    moduleListBegin = modulePairData_t_new();
     moduleListEnd = moduleListBegin;
-    moduleListSize = 1;
-    memset(moduleInd, -1, sizeof(moduleInd));
 
     modConfig_file = fopen(CONFIGFILE, "r");
     if (modConfig_file == NULL) {
@@ -1338,9 +1326,7 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
         ungetc(cbuf, modConfig_file);
         if (cbuf != '#'){
             if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2){
-                if (moduleInd[mod1Name] == -1 && moduleInd[mod2Name] == -1){
-                    moduleInd[mod1Name] = moduleInd[mod2Name] = moduleListSize;
-                    moduleListSize++;
+                if (moduleInd[mod1Name] == NULL && moduleInd[mod2Name] == NULL){
 
                     printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
                     (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
@@ -1348,7 +1334,8 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
 
                     sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
 
-                    moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(new_file->bit16IMGData, mod1Name, mod2Name), 
+                    moduleInd[mod1Name] = moduleInd[mod2Name] = moduleListEnd->next_moduleID 
+                                            = modulePairData_t_new(createModPair(new_file->bit16IMGData, mod1Name, mod2Name), 
                                                                     createModPair(new_file->bit8IMGData, mod1Name, mod2Name),
                                                                     createModPair(new_file->DynamicMeta, mod1Name, mod2Name), 
                                                                     mod1Name, mod2Name);
@@ -1415,7 +1402,6 @@ void closeAllResources(){
     printf("\n-----------Closing Redis Connection-----------\n\n");
     redisFree(redisServer);
     //printf("Caught signal %d, coming out...\n", signum);
-    exit(1);
 }
 
 /**
@@ -1445,24 +1431,16 @@ void reinitFileResources(){
 }
 
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
-static int INTSIG;
 static int QUITSIG;
 
-void INThandler(int signum) {
-    INTSIG = 1;
-}
-
-void QUIThandler(int signum){
+void QUIThandler(int signum) {
     QUITSIG = 1;
 }
 
 static void *run(hashpipe_thread_args_t * args){
 
-    signal(SIGINT, INThandler);
-
     signal(SIGQUIT, QUIThandler);
 
-    INTSIG = 0;
     QUITSIG = 0;
 
     /*Initialization of HASHPIPE Values*/
@@ -1487,13 +1465,10 @@ static void *run(hashpipe_thread_args_t * args){
     uint32_t packet_UTC;
     uint32_t packet_NANOSEC;
 
-    //FILE * HSD_file;
-    //HSD_file=fopen("./data.out", "w");
-
     int maxSizeInput = 0;
 
     hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
-    maxFileSize = maxSizeInput*5E5; 
+    maxFileSize = maxSizeInput*8E5; 
 
     
     /*Initialization of Redis Server Values*/
@@ -1515,7 +1490,7 @@ static void *run(hashpipe_thread_args_t * args){
 
     /* Initialization of HDF5 Values*/
     printf("-------------------SETTING UP HDF5 ------------------\n");
-    moduleIDs_t* currentModule;
+    modulePairData_t* currentModule;
     file = HDF5file_init();
     getStaticRedisData(redisServer, file->StaticMeta);
     //get_storeGPSSupp(redisServer, file->StaticMeta);
@@ -1566,7 +1541,8 @@ static void *run(hashpipe_thread_args_t * args){
 
         //TODO check mcnt
         //Read the packet
-        block_ptr=db->block[block_idx].result_block;
+        block_ptr=db->block[block_idx].stream_block;
+
 
         #ifdef PRINT_TXT
             data_to_text(block_ptr, textblock);
@@ -1580,29 +1556,21 @@ static void *run(hashpipe_thread_args_t * args){
         //fwrite(block_ptr, BLOCKSIZE*sizeof(char), 1, HSD_file);
 
         getDynamicRedisData(redisServer, moduleListBegin->next_moduleID, file->DynamicMeta);
-        for(int i = 0; i < N_PKT_PER_BLOCK; i++){
-            acqmode = block_ptr[i*PKTSIZE];
-            packet_NUM = ((block_ptr[i*PKTSIZE+3] << 8) & 0xff00) | (block_ptr[i*PKTSIZE+2] & 0x00ff);
-            moduleNum = ((block_ptr[i*PKTSIZE+5] << 6) & 0x3fc0) | ((block_ptr[i*PKTSIZE+4] >> 2) & 0x003f);
-            quaboNum = ((block_ptr[i*PKTSIZE+4]) & 0x03);
-            packet_UTC = ((block_ptr[i*PKTSIZE+9] << 24) & 0xff000000) 
-                            | ((block_ptr[i*PKTSIZE+8] << 16) & 0x00ff0000)
-                            | ((block_ptr[i*PKTSIZE+7] << 8) & 0x0000ff00)
-                            | ((block_ptr[i*PKTSIZE+6]) & 0x000000ff);
-                             
-            packet_NANOSEC = ((block_ptr[i*PKTSIZE+13] << 24) & 0xff000000) 
-                            | ((block_ptr[i*PKTSIZE+12] << 16) & 0x00ff0000)
-                            | ((block_ptr[i*PKTSIZE+11] << 8) & 0x0000ff00)
-                            | ((block_ptr[i*PKTSIZE+10]) & 0x000000ff);
+        for(int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
+            acqmode = db->block[block_idx].header.acqmode[i];
+            packet_NUM = db->block[block_idx].header.pktNum[i];
+            moduleNum = db->block[block_idx].header.modNum[i];
+            quaboNum = db->block[block_idx].header.quaboNum[i];
+            packet_UTC = db->block[block_idx].header.pktUTC[i]; 
+            packet_NANOSEC = db->block[block_idx].header.pktNSEC[i];
 
 
-            if (moduleInd[moduleNum] == -1){
-                moduleInd[moduleNum] = moduleListSize;
-                moduleListSize++;
+            if (moduleInd[moduleNum] == NULL){
 
                 printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) (moduleNum << 2)/0x100, (moduleNum << 2) % 0x100);
 
-                moduleListEnd->next_moduleID = moduleIDs_t_new(createModPair(file->bit16IMGData, moduleNum, 0), 
+                moduleInd[moduleNum] = moduleListEnd->next_moduleID 
+                                            = modulePairData_t_new(createModPair(file->bit16IMGData, moduleNum, 0), 
                                                                     createModPair(file->bit8IMGData, moduleNum, 0),
                                                                     createModPair(file->DynamicMeta, moduleNum, 0), 
                                                                     moduleNum);
@@ -1610,17 +1578,18 @@ static void *run(hashpipe_thread_args_t * args){
                 currentModule = moduleListEnd;
 
             } else {
-                currentModule = get_module_info(moduleListBegin, moduleInd[moduleNum]);
+                currentModule = moduleInd[moduleNum];
             }
 
             storeData(currentModule, acqmode, moduleNum, quaboNum, packet_NUM, packet_UTC, packet_NANOSEC,
-                        db->block[block_idx].header.tv_sec[i], db->block[block_idx].header.tv_usec[i], block_ptr + (i*PKTSIZE+16));
+                        db->block[block_idx].header.tv_sec[i], db->block[block_idx].header.tv_usec[i], block_ptr + (i*PKTDATASIZE));
         }
 
         /* Term conditions */
 
-        if (INTSIG){
+        if (db->block[block_idx].header.INTSIG){
             closeAllResources();
+            exit(1);
         }
 
         if (QUITSIG || fileSize > maxFileSize) {
@@ -1628,7 +1597,7 @@ static void *run(hashpipe_thread_args_t * args){
             getStaticRedisData(redisServer, file->StaticMeta);
             //get_storeGPSSupp(redisServer, file->StaticMeta);
             fileSize = 0;
-            QUITSIG = false;
+            QUITSIG = 0;
         }
 
         HSD_output_databuf_set_free(db,block_idx);

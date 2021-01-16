@@ -117,13 +117,12 @@ static void *run(hashpipe_thread_args_t * args){
 
         db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
-        db_out->block[curblock_out].header.QUITSIG = db_in->block[curblock_in].header.QUITSIG;
+        db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
 
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
 
             //CALCULATION BLOCK
             //TODO
-
 
 
 
@@ -170,15 +169,24 @@ static void *run(hashpipe_thread_args_t * args){
                 total_lost_pkts += current_pkt_lost;               //Add this packet lost to the overall total for all quabos
             }
             currentQuabo->prev_pkt_num[mode] = currentQuabo->pkt_num[mode]; //Update the previous packet number to be the current packet number
+
+
+            if (mode < 4){
+                memcpy(db_in->block[curblock_in].data_block+i*PKTDATASIZE, db_out->block[curblock_out].stream_block+i*PKTDATASIZE, PKTDATASIZE*sizeof(unsigned char));
+            } else {
+                memcpy(db_in->block[curblock_in].data_block+i*PKTDATASIZE, db_out->block[curblock_out].stream_block+i*PKTDATASIZE, BIT8PKTDATASIZE*sizeof(unsigned char));
+            }
+
+            //Copy time over to output
+            db_out->block[curblock_out].header.tv_sec[i] = db_in->block[curblock_in].header.tv_sec[i];
+            db_out->block[curblock_out].header.tv_usec[i] = db_in->block[curblock_in].header.tv_usec[i];
+
+            db_out->block[curblock_out].header.stream_block_size++;
         
         }
 
-        //Copy the input packet to the output packet
-        memcpy(db_out->block[curblock_out].stream_block, db_in->block[curblock_in].data_block, INPUTBLOCKSIZE*sizeof(unsigned char));
+        
 
-        //Copy time over to output
-        memcpy(db_out->block[curblock_out].header.tv_sec, db_in->block[curblock_in].header.tv_sec, N_PKT_PER_BLOCK*sizeof(long int));
-        memcpy(db_out->block[curblock_out].header.tv_usec, db_in->block[curblock_in].header.tv_usec, N_PKT_PER_BLOCK*sizeof(long int));
         #ifdef TEST_MODE
             /*for (int i = 0; i < N_PKT_PER_BLOCK; i++){
                 printf("TIME %li.%li\n", db_out->block[curblock_out].header.tv_sec[i], db_out->block[curblock_out].header.tv_usec[i]);

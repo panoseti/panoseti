@@ -31,7 +31,7 @@ typedef struct HSD_input_block_header {
     uint32_t pktUTC[N_PKT_PER_BLOCK];
     uint32_t pktNSEC[N_PKT_PER_BLOCK];
     int data_block_size;
-    int QUITSIG;
+    int INTSIG;
 } HSD_input_block_header_t;
 
 typedef uint8_t HSD_input_header_cache_alignment[
@@ -64,8 +64,16 @@ typedef struct HSD_output_block_header {
     uint32_t pktUTC[N_PKT_PER_BLOCK];
     uint32_t pktNSEC[N_PKT_PER_BLOCK];
     int stream_block_size;
+    long int coin_tv_sec[N_PKT_PER_BLOCK];
+    long int coin_tv_usec[N_PKT_PER_BLOCK];
+    char coin_acqmode[N_PKT_PER_BLOCK];
+    uint16_t coin_pktNum[N_PKT_PER_BLOCK];
+    uint16_t coin_modNum[N_PKT_PER_BLOCK];
+    uint8_t coin_quaNum[N_PKT_PER_BLOCK];
+    uint32_t coin_pktUTC[N_PKT_PER_BLOCK];
+    uint32_t coin_pktNSEC[N_PKT_PER_BLOCK];
     int coinc_block_size;
-    int QUITSIG;
+    int INTSIG;
 } HSD_output_block_header_t;
 
 typedef uint8_t HSD_output_header_cache_alignment[
