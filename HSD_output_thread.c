@@ -586,7 +586,7 @@ void createQuaboTables(hid_t group, modulePairData_t* module){
 void createGPSTable(hid_t group){
     GPSPackets_t GPS_data;
 
-    H5TBmake_table(GPSPRIMNAME, group, GPSPRIMNAME, GPSFIELDS, 0,
+    return H5TBmake_table(GPSPRIMNAME, group, GPSPRIMNAME, GPSFIELDS, 0,
                             GPS_dst_size, GPS_field_names, GPS_dst_offset, GPS_field_types,
                             100, NULL, 0, &GPS_data);
 }
@@ -622,6 +622,13 @@ fileIDs_t* createNewFile(char* fileName, char* currTime){
     newfile->bit8HCData = H5Gcreate(newfile->file, "/bit8HCData", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT); 
     newfile->DynamicMeta = H5Gcreate(newfile->file, "/DynamicMeta", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     newfile->StaticMeta = H5Gcreate(newfile->file, "/StaticMeta", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+    if(newfile->file < 0 || newfile->bit16IMGData < 0 || newfile->bit8IMGData < 0 ||
+        newfile->PHData < 0 || newfile->ShortTransient < 0 || newfile->bit16HCData < 0 ||
+        newfile->bit8HCData < 0 || newfile->DynamicMeta < 0 || newfile->StaticMeta < 0){
+            printf("Error in creating HD5f file\n");
+            exit(0);
+    }
 
     return newfile;
 }
@@ -1375,7 +1382,6 @@ fileIDs_t* HDF5file_init(){
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-
     return HDF5file_init(fileName, currTime);
 }
 
@@ -1492,6 +1498,7 @@ static void *run(hashpipe_thread_args_t * args){
     printf("-------------------SETTING UP HDF5 ------------------\n");
     modulePairData_t* currentModule;
     file = HDF5file_init();
+    printf("file initialized");
     getStaticRedisData(redisServer, file->StaticMeta);
     //get_storeGPSSupp(redisServer, file->StaticMeta);
     
@@ -1560,7 +1567,7 @@ static void *run(hashpipe_thread_args_t * args){
             acqmode = db->block[block_idx].header.acqmode[i];
             packet_NUM = db->block[block_idx].header.pktNum[i];
             moduleNum = db->block[block_idx].header.modNum[i];
-            quaboNum = db->block[block_idx].header.quaboNum[i];
+            quaboNum = db->block[block_idx].header.quaNum[i];
             packet_UTC = db->block[block_idx].header.pktUTC[i]; 
             packet_NANOSEC = db->block[block_idx].header.pktNSEC[i];
 
