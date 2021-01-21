@@ -735,130 +735,186 @@ fileIDs_t* createNewFile(char* fileName, char* currTime){
 }
 
 /**
+ * Send Redis Command
+ * @return The redis reply from HIREDIS
+ */
+redisReply* sendHSETRedisCommand(redisContext* redisServer, const char* HSETName, const char* Value){
+    redisReply* reply = (redisReply *)redisCommand(redisServer, "HGET %s %s", HSETName, Value);
+    if (reply->type != REDIS_REPLY_STATUS){
+        printf("Warning: Redis was unable to get replay with the command - HGET %s %s\n", HSETName, Value);
+        freeReplyObject(reply);
+        return NULL;
+    }
+    return reply;
+}
+
+/**
+ * Send Redis Command
+ * @return The redis reply from HIREDIS
+ */
+redisReply* sendHSETRedisCommand(redisContext* redisServer, int HSETName, const char* Value){
+    redisReply* reply = (redisReply *)redisCommand(redisServer, "HGET %i %s", HSETName, Value);
+    if (reply->type != REDIS_REPLY_STATUS){
+        printf("Warning: Redis was unable to get replay with the command - HGET %i %s\n", HSETName, Value);
+        freeReplyObject(reply);
+        return NULL;
+    }
+    return reply;
+}
+
+/**
  * Fetch the Housekeeping data from the Redis database for the given boardloc or quabo id.
  */
 void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) {
     redisReply *reply;
-    char command[50];
-    sprintf(command, "HGET %u %s", BOARDLOC, "SYSTIME");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    strcpy(HK->SYSTIME, reply->str);
-    freeReplyObject(reply);
 
-    sprintf(command, "HGET %u %s", BOARDLOC, "BOARDLOC");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->BOARDLOC = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVMON0");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON0 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVMON1");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON1 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVMON2");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON2 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVMON3");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVMON3 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON0");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON0 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON1");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON1 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON2");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON2 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "HVIMON3");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->HVIMON3 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "RAWHVMON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->RAWHVMON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "V12MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V12MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "V18MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V18MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "V33MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V33MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "V37MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->V37MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "I10MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->I10MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "I18MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->I18MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "I33MON");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->I33MON = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "TEMP1");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->TEMP1 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "TEMP2");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->TEMP2 = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "VCCINT");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->VCCINT = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "VCCAUX");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->VCCAUX = strtof(reply->str, NULL);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "UID");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->UID = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "SHUTTER_STATUS");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->SHUTTER_STATUS = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "LIGHT_SENSOR_STATUS");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->LIGHT_STATUS = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-
-    sprintf(command, "HGET %u %s", BOARDLOC, "FWID0");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->FWID0 = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %u %s", BOARDLOC, "FWID1");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    HK->FWID1 = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "SYSTIME");
+    if (reply != NULL){
+        strcpy(HK->SYSTIME, reply->str);
+        freeReplyObject(reply);
+    } else {strcpy(HK->SYSTIME, "");}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "BOARDLOC");
+    if (reply != NULL){
+        HK->BOARDLOC = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    } else {HK->BOARDLOC = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON0");
+    if (reply != NULL){
+        HK->HVMON0 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVMON0 = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON1");
+    if (reply != NULL){
+        HK->HVMON1 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVMON1 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON2");
+    if (reply != NULL){
+        HK->HVMON2 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVMON2 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON3");
+    if (reply != NULL){
+        HK->HVMON3 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVMON3 = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON0");
+    if (reply != NULL){
+        HK->HVIMON0 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVIMON0 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON1");
+    if (reply != NULL){
+        HK->HVIMON1 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVIMON1 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON2");
+    if (reply != NULL){
+        HK->HVIMON2 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVIMON2 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON3");
+    if (reply != NULL){
+        HK->HVIMON3 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->HVIMON3 = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "RAWHVMON");
+    if (reply != NULL){
+        HK->RAWHVMON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->RAWHVMON = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V12MON");
+    if (reply != NULL){
+        HK->V12MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->V12MON = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V18MON");
+    if (reply != NULL){
+        HK->V18MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->V18MON = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V33MON");
+    if (reply != NULL){
+        HK->V33MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->V33MON = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V37MON");
+    if (reply != NULL){
+        HK->V37MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->V37MON = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I10MON");
+    if (reply != NULL){
+        HK->I10MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->I10MON = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I18MON");
+    if (reply != NULL){
+        HK->I18MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->I18MON = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I33MON");
+    if (reply != NULL){
+        HK->I33MON = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->I33MON = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "TEMP1");
+    if (reply != NULL){
+        HK->TEMP1 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->TEMP1 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "TEMP2");
+    if (reply != NULL){
+        HK->TEMP2 = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->TEMP2 = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "VCCINT");
+    if (reply != NULL){
+        HK->VCCINT = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->VCCINT = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "VCCAUX");
+    if (reply != NULL){
+        HK->VCCAUX = strtof(reply->str, NULL);
+        freeReplyObject(reply);
+    } else {HK->VCCAUX = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "UID");
+    if (reply != NULL){
+        HK->UID = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    } else {HK->UID = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "SHUTTER_STATUS");
+    if (reply != NULL){
+        HK->SHUTTER_STATUS = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    } else {HK->SHUTTER_STATUS = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "LIGHT_SENSOR_STATUS");
+    if (reply != NULL){
+        HK->LIGHT_STATUS = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    } else {HK->LIGHT_STATUS = 0;}
+    
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "FWID0");
+    if (reply != NULL){
+        HK->FWID0 = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    } else {HK->FWID0 = 0;}
+    reply = sendHSETRedisCommand(redisServer, BOARDLOC, "FWID1");
+    if (reply != NULL){
+        HK->FWID1 = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    } else {HK->FWID1 = 0;}
 }
 
 /**
@@ -866,47 +922,55 @@ void fetchHKdata(HKPackets_t* HK, uint16_t BOARDLOC, redisContext* redisServer) 
  */
 void fetchGPSdata(GPSPackets_t* GPS, redisContext* redisServer) {
     redisReply *reply;
-    char command[50];
 
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "GPSTIME");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    strcpy(GPS->GPSTIME, reply->str);
-    freeReplyObject(reply);
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "GPSTIME");
+    if (reply != NULL){
+        strcpy(GPS->GPSTIME, reply->str);
+        freeReplyObject(reply);
+    }
 
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TOW");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    GPS->TOW = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "WEEKNUMBER");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    GPS->WEEKNUMBER = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "UTCOFFSET");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    GPS->UTCOFFSET = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TOW");
+    if (reply != NULL){
+        GPS->TOW = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "WEEKNUMBER");
+    if (reply != NULL){
+        GPS->WEEKNUMBER = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "UTCOFFSET");
+    if (reply != NULL){
+        GPS->UTCOFFSET = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
 
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TIMEFLAG");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    strcpy(GPS->TIMEFLAG, reply->str);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "PPSFLAG");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    strcpy(GPS->PPSFLAG, reply->str);
-    freeReplyObject(reply);
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFLAG");
+    if (reply != NULL){
+        strcpy(GPS->TIMEFLAG, reply->str);
+        freeReplyObject(reply);
+    }
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "PPSFLAG");
+    if (reply != NULL){
+        strcpy(GPS->PPSFLAG, reply->str);
+        freeReplyObject(reply);
+    }
 
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TIMESET");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    GPS->TIMESET = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "UTCINFO");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    GPS->UTCINFO = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
-    sprintf(command, "HGET %s %s", GPSPRIMNAME, "TIMEFROMGPS");
-    reply = (redisReply *)redisCommand(redisServer, command);
-    GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
-    freeReplyObject(reply);
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMESET");
+    if (reply != NULL){
+        GPS->TIMESET = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "UTCINFO");
+    if (reply != NULL){
+        GPS->UTCINFO = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFROMGPS");
+    if (reply != NULL){
+        GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
 }
 
 /**
@@ -922,29 +986,28 @@ void check_storeHK(redisContext* redisServer, modulePairData_t* modHead){
     redisReply* reply;
     uint16_t BOARDLOC;
     char tableName[50];
-    char command[50];
 
     currentMod = modHead;
     
     while(currentMod != NULL){
-
+ 
         //Updating all the Quabos from Module 1
         BOARDLOC = (currentMod->mod1Name << 2) & 0xfffc;
         
         for(int i = 0; i < 4; i++){
-            sprintf(command, "HGET UPDATED %u", BOARDLOC);
-            reply = (redisReply *)redisCommand(redisServer, command);
+            reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %u", BOARDLOC);
 
             if (strtol(reply->str, NULL, 10)){
                 freeReplyObject(reply);
 
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
                 sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod1Name, i);
-                H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
+                if (H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0){
+                    printf("Warning: Unable to write HK Data for module %i-%i", currentMod->mod1Name, i);
+                }
                 fileSize += HKDATASIZE;
 
-                sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
-                reply = (redisReply *)redisCommand(redisServer, command);
+                reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %u 0", BOARDLOC);
             }
 
             freeReplyObject(reply);
@@ -956,18 +1019,18 @@ void check_storeHK(redisContext* redisServer, modulePairData_t* modHead){
             BOARDLOC = (currentMod->mod2Name << 2) & 0xfffc;
 
             for(int i = 0; i < 4; i++){
-                sprintf(command, "HGET UPDATED %u", BOARDLOC);
-                reply = (redisReply *)redisCommand(redisServer, command);
+                reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %u", BOARDLOC);
 
                 if (strtol(reply->str, NULL, 10)){
                     freeReplyObject(reply);
 
                     fetchHKdata(HKdata, BOARDLOC, redisServer);
                     sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod2Name, i);
-                    H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata);
+                    if (H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0){
+                        printf("Warning: Unable to write HK Data for module %i-%i", currentMod->mod1Name, i);
+                    }
 
-                    sprintf(command, "HSET UPDATED %u 0", BOARDLOC);
-                    reply = (redisReply *)redisCommand(redisServer, command);
+                    reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %u 0", BOARDLOC);
                 }
 
                 freeReplyObject(reply);
@@ -1001,7 +1064,9 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
         freeReplyObject(reply);
 
         fetchGPSdata(GPSdata, redisServer);
-        H5TBappend_records(group, GPSPRIMNAME, 1, GPS_dst_size, GPS_dst_offset, GPS_dst_sizes, GPSdata);
+        if (H5TBappend_records(group, GPSPRIMNAME, 1, GPS_dst_size, GPS_dst_offset, GPS_dst_sizes, GPSdata) < 0){
+            printf("Warning: Unable to append GPS data to table in HDF5 file.\n");
+        }
 
         reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %s 0", GPSPRIMNAME);
 
@@ -1012,19 +1077,6 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
 
     freeReplyObject(reply);
     free(GPSdata);
-}
-
-/**
- * Send Redis Command
- */
-redisReply* sendHSETRedisCommand(redisContext* redisServer, const char* HSETName, const char* Value){
-    redisReply* reply = (redisReply *)redisCommand(redisServer, "HGET %s %s", HSETName, Value);
-    if (reply->type != REDIS_REPLY_STATUS){
-        printf("Warning: Redis was unable to get replay with the command - HGET %s %s\n", HSETName, Value);
-        freeReplyObject(reply);
-        return NULL;
-    }
-    return reply;
 }
 
 /**
@@ -1040,145 +1092,175 @@ void get_storeGPSSupp(redisContext* redisServer, hid_t group){
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DISCIPLININGMODE");
-    if (reply == NULL){return;}
-    createStrAttribute(group, "DISCIPLININGMODE", reply->str);
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createStrAttribute(group, "DISCIPLININGMODE", reply->str);
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "SELFSURVEYPROGRESS");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "SELFSURVEYPROGRESS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "SELFSURVEYPROGRESS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "HOLDOVERDURATION");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "HOLDOVERDURATION", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "HOLDOVERDURATION", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACatRail");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "DACatRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "DACatRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACnearRail");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "DACnearRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "DACnearRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "AntennaOpen");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "AntennaOpen", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "AntennaOpen", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "AntennaShorted");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "AntennaShorted", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "AntennaShorted", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "NotTrackingSatellites");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "NotTrackingSatellites", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "NotTrackingSatellites", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "NotDiscipliningOscillator");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "NotDiscipliningOscillator", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "NotDiscipliningOscillator", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "SurveyInProgress");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "SurveyInProgress", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "SurveyInProgress", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "NoStoredPosition");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "NoStoredPosition", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "NoStoredPosition", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "LeapSecondPending");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "LeapSecondPending", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "LeapSecondPending", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "InTestMode");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "InTestMode", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "InTestMode", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PositionIsQuestionable");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "PositionIsQuestionable", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "PositionIsQuestionable", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "EEPROMCorrupt");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "EEPROMCorrupt", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "EEPROMCorrupt", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "AlmanacNotComplete");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "AlmanacNotComplete", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "AlmanacNotComplete", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PPSNotGenerated");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "PPSNotGenerated", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createNumAttribute(group, "PPSNotGenerated", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "GPSDECODINGSTATUS");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "GPSDECODINGSTATUS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "GPSDECODINGSTATUS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
+    
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DISCIPLININGACTIVITY");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "DISCIPLININGACTIVITY", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "DISCIPLININGACTIVITY", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PPSOFFSET");
-    if (reply == NULL){return;}
-    createFloatAttribute(group, "PPSOFFSET", strtof(reply->str, NULL));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createFloatAttribute(group, "PPSOFFSET", strtof(reply->str, NULL));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "CLOCKOFFSET");
-    if (reply == NULL){return;}
-    createFloatAttribute(group, "CLOCKOFFSET", strtof(reply->str, NULL));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createFloatAttribute(group, "CLOCKOFFSET", strtof(reply->str, NULL));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACVALUE");
-    if (reply == NULL){return;}
-    createNumAttribute(group, "DACVALUE", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createNumAttribute(group, "DACVALUE", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
+        freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACVOLTAGE");
-    if (reply == NULL){return;}
-    createFloatAttribute(group, "DACVOLTAGE", strtof(reply->str, NULL));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createFloatAttribute(group, "DACVOLTAGE", strtof(reply->str, NULL));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "TEMPERATURE");
-    if (reply == NULL){return;}
-    createFloatAttribute(group, "TEMPERATURE", strtof(reply->str, NULL));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createFloatAttribute(group, "TEMPERATURE", strtof(reply->str, NULL));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "LATITUDE");
-    if (reply == NULL){return;}
-    createDoubleAttribute(group, "LATITUDE", strtod(reply->str, NULL));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createDoubleAttribute(group, "LATITUDE", strtod(reply->str, NULL));
+        freeReplyObject(reply);
+    }
+
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "LONGITUDE");
-    if (reply == NULL){return;}
-    createDoubleAttribute(group, "LONGITUDE", strtod(reply->str, NULL));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createDoubleAttribute(group, "LONGITUDE", strtod(reply->str, NULL));
+        freeReplyObject(reply);
+    }
+    
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "ALTITUDE");
-    if (reply == NULL){return;}
-    createDoubleAttribute(group, "ALTITUDE", strtod(reply->str, NULL));
-    freeReplyObject(reply);
+    if (reply != NULL){
+        createDoubleAttribute(group, "ALTITUDE", strtod(reply->str, NULL));
+            freeReplyObject(reply);
+    }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PPSQUANTIZATIONERROR");
-    if (reply == NULL){return;}
-    createFloatAttribute(group, "PPSQUANTIZATIONERROR", strtof(reply->str, NULL));
-    freeReplyObject(reply);
-
+    if (reply != NULL){
+        createFloatAttribute(group, "PPSQUANTIZATIONERROR", strtof(reply->str, NULL));
+        freeReplyObject(reply);
+    }
+    
 }
 
 /**

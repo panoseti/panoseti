@@ -102,22 +102,25 @@ typedef struct {
  * false if it is an acqmode that is not recognized
  * @param pkt_data The pointer for the packet frame(returned from PKT_UDP_DATA(p_frame))
  * @param pkt_header The header struct to be written to
- * @return 1 if acqmode is recognized and 0 otherwise
+ * @return 0 if acqmode is recognized and 1 otherwise
  */
-static int check_acqmode(unsigned char* pkt_data){
+int check_acqmode(unsigned char* pkt_data){
+    return 1;
+    printf("Checking the Acqmode %c", pkt_data[0]);
     if (pkt_data[0] == 1 || pkt_data[0] == 2 || pkt_data[0] == 3 ||
         pkt_data[0] == 6 || pkt_data[0] == 7){
-            return 1;
+            return 0;
         }
 
+    /*
     printf("Malformed packet identify");
     for(int i=0; i < PKTDATASIZE; i++){
         if(i % 16 == 0){
             printf("\n");
         }
         printf("%02X ", pkt_data[i]);
-    }
-    return 0;
+    }*/
+    return 1;
 }
 
 /**
@@ -220,7 +223,6 @@ static void *run(hashpipe_thread_args_t * args){
 
     /* Main Loop */
     while(run_threads()){
-        
 
         //Update the info of the buffer
         hashpipe_status_lock_safe(&st);
@@ -262,12 +264,15 @@ static void *run(hashpipe_thread_args_t * args){
             if(INTSIG) break;
             //Recv all of the UDP packets from PKTSOCK
             do {
-                p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
-            } 
-            while (!p_frame && run_threads() && !check_acqmode(PKT_UDP_DATA(p_frame)));
+                do {
+                    p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
+                } while (!p_frame && run_threads() && !INTSIG);
+
+                if (INTSIG){break;}
+            } while(!check_acqmode(PKT_UDP_DATA(p_frame)));
 
             //Check to see if the threads are still running. If not then terminate
-            if(!run_threads()) break;
+            if(!run_threads() || INTSIG) break;
 
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
