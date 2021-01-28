@@ -119,6 +119,17 @@ static void *run(hashpipe_thread_args_t * args){
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
 
+        for (int r = 0; r < 20480; r++){
+            if (r % 512 == 0){
+                printf("\nPacket %i: \n0", r/512);
+            }
+            printf(" %8X", db_in->block[curblock_in].data_block[r]);
+            if (r % 16 == 15){
+                printf("\n%i",(r+1)/16);
+            }
+
+        }
+
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
 
             //CALCULATION BLOCK
@@ -172,12 +183,20 @@ static void *run(hashpipe_thread_args_t * args){
 
 
             if (mode < 4){
-                memcpy(db_in->block[curblock_in].data_block+i*PKTDATASIZE, db_out->block[curblock_out].stream_block+i*PKTDATASIZE, PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db_out->block[curblock_out].stream_block+i*PKTDATASIZE, db_in->block[curblock_in].data_block+i*PKTDATASIZE, PKTDATASIZE*sizeof(unsigned char));
             } else {
-                memcpy(db_in->block[curblock_in].data_block+i*PKTDATASIZE, db_out->block[curblock_out].stream_block+i*PKTDATASIZE, BIT8PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db_out->block[curblock_out].stream_block+i*PKTDATASIZE, db_in->block[curblock_in].data_block+i*PKTDATASIZE, BIT8PKTDATASIZE*sizeof(unsigned char));
             }
 
             //Copy time over to output
+            db_out->block[curblock_out].header.acqmode[i] = db_in->block[curblock_in].header.acqmode[i];
+            db_out->block[curblock_out].header.pktNum[i] = db_in->block[curblock_in].header.pktNum[i];
+            db_out->block[curblock_out].header.modNum[i] = db_in->block[curblock_in].header.modNum[i];
+            db_out->block[curblock_out].header.quaNum[i] = db_in->block[curblock_in].header.quaNum[i];
+            db_out->block[curblock_out].header.pktUTC[i] = db_in->block[curblock_in].header.pktUTC[i];
+            db_out->block[curblock_out].header.pktNSEC[i] = db_in->block[curblock_in].header.pktNSEC[i];
+
+
             db_out->block[curblock_out].header.tv_sec[i] = db_in->block[curblock_in].header.tv_sec[i];
             db_out->block[curblock_out].header.tv_usec[i] = db_in->block[curblock_in].header.tv_usec[i];
 

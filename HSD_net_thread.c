@@ -157,10 +157,12 @@ static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_he
         //printf("Packet:%lu\n", pkt_header->packetNum);
         //printf("Header:%02lx\n", (raw_header & 0xffffffffffffffff));
         printf("Header");
-        for (int i = 0; i < HEADERSIZE; i++){
-            printf(" %X ", pkt_data[i]);
+        for (int j = 0; j < HEADERSIZE; j++){
+            printf(" %X ", pkt_data[j]);
         }
         printf("\n");
+        printf("acqmode %i pktNum %i modNum %i quaNum %i pktUTC %i pktNSEC %i\n", 
+                pkt_header->acqmode[i], pkt_header->pktNum[i], pkt_header->modNum[i], pkt_header->quaNum[i], pkt_header->pktUTC[i], pkt_header->pktUTC[i]);
     #endif
 }
 
@@ -190,11 +192,6 @@ static void *run(hashpipe_thread_args_t * args){
     unsigned char* pkt_data;    //Packet Data from PKT_UDP_DATA
     struct timeval nowTime;     //Current NTP UTC time
     int rc;                     
-            
-    //Input elements(Packets from Quabo)
-    char *str_rcv, *str_q;
-    str_rcv = (char *)malloc(PKTSIZE*sizeof(char));
-    str_q = (char *)malloc(PKTSIZE*sizeof(char));
 
     //Compute the pkt_loss in the compute thread
     unsigned int pktsock_pkts = 0;      // Stats counter for socket packet
@@ -289,9 +286,9 @@ static void *run(hashpipe_thread_args_t * args){
             //Copy the packets in PKTSOCK to the input circular buffer
             //Size is based on whether or not the mode is 16 bit or 8 bit
             if (blockHeader->acqmode[i] < 4){
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame), PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame)+16, PKTDATASIZE*sizeof(unsigned char));
             } else {
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame), BIT8PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame)+16, BIT8PKTDATASIZE*sizeof(unsigned char));
             }
 
             //Time stamping the packets and passing it into the shared buffer

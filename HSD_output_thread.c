@@ -1521,8 +1521,6 @@ void closeModules(modulePairData_t* head){
 fileIDs_t* HDF5file_init(char* fileName, char* currTime){
     fileIDs_t* new_file;
     FILE *modConfig_file;
-    hid_t datatype, dataspace;
-    hsize_t dimsf[2];
     char fbuf[100];
     char cbuf;
     unsigned int mod1Name;
@@ -1541,11 +1539,6 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
         perror("Error Opening File\n");
         exit(1);
     }
-
-    dimsf[0] = PKTPERPAIR;
-    dimsf[1] = PKTSIZE;
-    dataspace = H5Screate_simple(RANK, dimsf, NULL);
-    datatype = H5Tcopy(H5T_STD_U16LE);
 
     cbuf = getc(modConfig_file);
     char moduleName[50];
@@ -1583,12 +1576,6 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
 
     if (fclose(modConfig_file) == EOF){
         printf("Warning: Unable to close module configuration file.\n");
-    }
-    if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 file database.\n");
-    }
-    if (H5Tclose(datatype) < 0){
-        printf("Warning: Unable to close HDF5 file datatype.\n");
     }
     return new_file;
 }
@@ -1716,7 +1703,6 @@ static void *run(hashpipe_thread_args_t * args){
     }
     redisReply *keysReply;
     redisReply *reply;
-    char command[50];
     // Uncomment following lines for redis servers with password
     // reply = redisCommand(redisServer, "AUTH password");
     // freeReplyObject(reply);
@@ -1775,7 +1761,17 @@ static void *run(hashpipe_thread_args_t * args){
 
         //TODO check mcnt
         //Read the packet
-        block_ptr=db->block[block_idx].stream_block;
+        block_ptr = db->block[block_idx].stream_block;
+        /*for (int r = 0; r < 20480; r++){
+            if (r % 512 == 0){
+                printf("\nPacket %i: \n", r/512);
+            }
+            printf(" %8X", block_ptr[r]);
+            if (r % 16 == 15){
+                printf("\n");
+            }
+
+        }*/
 
         getDynamicRedisData(redisServer, moduleListBegin->next_moduleID, file->DynamicMeta);
         for(int i = 0; i < db->block[block_idx].header.stream_block_size; i++){

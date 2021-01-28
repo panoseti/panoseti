@@ -6,16 +6,14 @@
 #define PKTDATASIZE         512     //byte of data block
 #define BIT8PKTDATASIZE     256     //byte of 8bit data block
 #define HEADERSIZE          16      //byte of header
-#define PKTSIZE             HEADERSIZE+PKTDATASIZE     //byte of packet size
-#define BIT8PKTSIZE         HEADERSIZE+BIT8PKTDATASIZE //byte of 8bit packet size
 
 //Defining the characteristics of the circuluar buffers
 #define CACHE_ALIGNMENT         256
 #define N_INPUT_BLOCKS          4                       //Number of blocks in the input buffer
 #define N_OUTPUT_BLOCKS         8                       //Number of blocks in the output buffer
 #define N_PKT_PER_BLOCK         40                      //Number of Pkt stored in each block
-#define INPUTBLOCKSIZE      PKTSIZE*N_PKT_PER_BLOCK     //Block size includes headers
-#define OUTPUTBLOCKSIZE     PKTSIZE*N_PKT_PER_BLOCK     //Block size excludes headers
+#define INPUTBLOCKSIZE      PKTDATASIZE*N_PKT_PER_BLOCK     //Block size includes headers
+#define OUTPUTBLOCKSIZE     PKTDATASIZE*N_PKT_PER_BLOCK     //Block size excludes headers
 
 #define BLOCKSIZE           INPUTBLOCKSIZE
 

@@ -6,6 +6,7 @@ def compare(a,b):
         return False
     for i in range(len(a)):
         if a[i] != b[i]:
+            print("Index ", i, " is incorrect.")
             return False
     return True
 
@@ -22,10 +23,16 @@ def checkIMG16Data(IMG16):
         data = IMG16[name]
         ntp_usec = -1
         for i in range(8):
-            if (not compare(IMG16[name][i], refData)):
+            if (not compare(refData, IMG16[name][i])):
                 print("Error in Dataset ", name)
-                print("Expected Image Values are ", refData)
-                print("Actual Image Values are ", IMG16[name][i])
+                print("Expected Image Values are ")
+                for j in range(16):
+                    print(j*16, refData[j*16:j*16+16])
+                print("Size = ", len(refData))
+                print("Actual Image Values are ")
+                for j in range(16):
+                    print(j*16, IMG16[name][i][j*16:j*16+16])
+                print("Size = ", len(IMG16[name][i]))
                 return False
             if pktNum != IMG16[name].attrs['PKTNUM'][i]:
                 print("Error in Dataset ", name)
@@ -71,10 +78,16 @@ def checkIMG8Data(IMG8):
         data = IMG8[name]
         ntp_usec = -1
         for i in range(8):
-            if (not compare(IMG8[name][i], refData)):
+            if (not compare(refData, IMG8[name][i])):
                 print("Error in Dataset ", name)
-                print("Expected Image Values are ", refData)
-                print("Actual Image Values are ", IMG8[name][i])
+                print("Expected Image Values are ")
+                for j in range(16):
+                    print(j*16, refData[j*16:j*16+16])
+                print("Size = ", len(refData))
+                print("Actual Image Values are ")
+                for j in range(16):
+                    print(j*16, IMG8[name][i][j*16:j*16+16])
+                print("Size = ", len(IMG8[name][i]))
                 return False
             if pktNum != IMG16[name].attrs['PKTNUM'][i] and IMG16[name].attrs['PKTNUM'][i] != 0:
                 print("Error in Dataset ", name)
@@ -117,10 +130,16 @@ def checkPHData(PHData):
     for name in PHData:
         data = PHData[name]
         ntp_usec = -1
-        if (not compare(PHData[name], refData)):
+        if (not compare(refData, PHData[name])):
             print("Error in Dataset ", name)
-            print("Expected Image Values are ", refData)
-            print("Actual Image Values are ", PHData[name])
+            print("Expected Image Values are ")
+            for j in range(16):
+                print(j*16, refData[j*16:j*16+16])
+            print("Size = ", len(refData))
+            print("Actual Image Values are ")
+            for j in range(16):
+                print(j*16, PHData[name][j*16:j*16+16])
+            print("Size = ", len(PHData[name]))
             return False
         if pktNum != PHData[name].attrs['PKTNUM']:
             print("Error in Dataset ", name)
