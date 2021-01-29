@@ -1679,7 +1679,7 @@ static void *run(hashpipe_thread_args_t * args){
     if (saveLocation[strlen(saveLocation)-1] != '/'){
         saveLocation[strlen(saveLocation)] = '/';
     }
-    printf("Save Location: %s", saveLocation);
+    printf("Save Location: %s\n", saveLocation);
     
     int rv;
     int block_idx = 0;
