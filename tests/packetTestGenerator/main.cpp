@@ -415,13 +415,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    char answer = '\0';
+    /*char answer = '\0';
     printf("Test Packets have been sent. Now please press Ctl+c on Hashpipe and type y to proceed:");
     scanf("%c", &answer);
     while (answer != 'y'){
         printf("Invalid Response. Please type y to proceed: ");
         scanf("%c", &answer);
-    }
+    }*/
 
     dataBytes[0] = 0x06;
     dataBytes[1] = 0x00;

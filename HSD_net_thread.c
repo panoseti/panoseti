@@ -28,7 +28,7 @@
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
 //DEBUGGING MODE 
-#define TEST_MODE
+//#define TEST_MODE
 
 static int init(hashpipe_thread_args_t * args){
 
