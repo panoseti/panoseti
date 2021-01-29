@@ -348,13 +348,13 @@ void createStrAttribute(hid_t group, const char* name, char* data) {
 
     dataspace = H5Screate(H5S_SCALAR);
     if (dataspace < 0){
-        printf("Error: Unable to create HDF5 dataspace for string attribute - %s.", name);
+        printf("Error: Unable to create HDF5 dataspace for string attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_C_S1);
     if (datatype < 0 ){
-        printf("Error: Unable to create HDF5 datatype for string attribute - %s.", name);
+        printf("Error: Unable to create HDF5 datatype for string attribute - %s.\n", name);
         return;
     }
     H5Tset_size(datatype, strlen(data));
@@ -363,24 +363,24 @@ void createStrAttribute(hid_t group, const char* name, char* data) {
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     if (attribute < 0 ){
-        printf("Error: Unable to create HDF5 Attribute for string attribute - %s.", name);
+        printf("Error: Unable to create HDF5 Attribute for string attribute - %s.\n", name);
         return;
     }
 
     if (H5Awrite(attribute, datatype, data) < 0){
-        printf("Warning: Unable to write HDF5 Attribute for string attribute - %s.", name);
+        printf("Warning: Unable to write HDF5 Attribute for string attribute - %s.\n", name);
     }
     // Add size to fileSize
     fileSize += STRBUFFSIZE;
 
     if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 dataspace for string attribute - %s", name);
+        printf("Warning: Unable to close HDF5 dataspace for string attribute - %s\n", name);
     }
     if (H5Tclose(datatype) < 0){
-        printf("Warning: Unable to close HDF5 datatype for string attribute - %s", name);
+        printf("Warning: Unable to close HDF5 datatype for string attribute - %s\n", name);
     }
     if (H5Aclose(attribute) < 0){
-        printf("Warning: Unable to close HDF5 attribute for string attribute - %s", name);
+        printf("Warning: Unable to close HDF5 attribute for string attribute - %s\n", name);
     }
 
 }
@@ -394,13 +394,13 @@ void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char dat
 
     dataspace = H5Screate_simple(sizeof(dimsf)/sizeof(dimsf[0]), dimsf, NULL);
     if (dataspace < 0){
-        printf("Error: Unable to create HDF5 dataspace for string attribute - %s.", name);
+        printf("Error: Unable to create HDF5 dataspace for string attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_C_S1);
     if (datatype < 0 ){
-        printf("Error: Unable to create HDF5 datatype for string attribute - %s.", name);
+        printf("Error: Unable to create HDF5 datatype for string attribute - %s.\n", name);
         return;
     }
     H5Tset_size(datatype, STRBUFFSIZE);
@@ -409,23 +409,23 @@ void createStrAttribute2(hid_t group, const char* name, hsize_t* dimsf, char dat
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     if (attribute < 0 ){
-        printf("Error: Unable to create HDF5 Attribute for string attribute - %s.", name);
+        printf("Error: Unable to create HDF5 Attribute for string attribute - %s.\n", name);
         return;
     }
     
     if (H5Awrite(attribute, datatype, data[0]) < 0){
-        printf("Warning: Unable to write HDF5 Attribute for string attribute - %s.", name);
+        printf("Warning: Unable to write HDF5 Attribute for string attribute - %s.\n", name);
     }
     fileSize += STRBUFFSIZE;
 
     if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 dataspace for string attribute - %s", name);
+        printf("Warning: Unable to close HDF5 dataspace for string attribute - %s\n", name);
     }
     if (H5Tclose(datatype) < 0){
-        printf("Warning: Unable to close HDF5 datatype for string attribute - %s", name);
+        printf("Warning: Unable to close HDF5 datatype for string attribute - %s\n", name);
     }
     if (H5Aclose(attribute) < 0){
-        printf("Warning: Unable to close HDF5 attribute for string attribute - %s", name);
+        printf("Warning: Unable to close HDF5 attribute for string attribute - %s\n", name);
     }
 }
 
@@ -441,35 +441,35 @@ void createNumAttribute(hid_t group, const char* name, hid_t dtype, unsigned lon
     
     dataspace = H5Screate(H5S_SCALAR);
     if (dataspace < 0){
-        printf("Error: Unable to create HDF5 dataspace for numerical attribute - %s.", name);
+        printf("Error: Unable to create HDF5 dataspace for numerical attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(dtype);
     if (datatype < 0 ){
-        printf("Error: Unable to create HDF5 datatype for numerical attribute - %s.", name);
+        printf("Error: Unable to create HDF5 datatype for numerical attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     if (attribute < 0 ){
-        printf("Error: Unable to create HDF5 Attribute for numerical attribute - %s.", name);
+        printf("Error: Unable to create HDF5 Attribute for numerical attribute - %s.\n", name);
         return;
     }
 
     if (H5Awrite(attribute, dtype, attr_data) < 0){
-        printf("Warning: Unable to write HDF5 Attribute for numerical attribute - %s.", name);
+        printf("Warning: Unable to write HDF5 Attribute for numerical attribute - %s.\n", name);
     }
     fileSize += 16;
     
     if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 dataspace for numerical attribute - %s", name);
+        printf("Warning: Unable to close HDF5 dataspace for numerical attribute - %s\n", name);
     }
     if (H5Tclose(datatype) < 0){
-        printf("Warning: Unable to close HDF5 datatype for numerical attribute - %s", name);
+        printf("Warning: Unable to close HDF5 datatype for numerical attribute - %s\n", name);
     }
     if (H5Aclose(attribute) < 0){
-        printf("Warning: Unable to close HDF5 attribute for numerical attribute - %s", name);
+        printf("Warning: Unable to close HDF5 attribute for numerical attribute - %s\n", name);
     }
 }
 
@@ -482,35 +482,35 @@ void createNumAttribute2(hid_t group, const char* name, hid_t dtype, hsize_t* di
 
     dataspace = H5Screate_simple(sizeof(dimsf)/sizeof(dimsf[0]), dimsf, NULL);
     if (dataspace < 0){
-        printf("Error: Unable to create HDF5 dataspace for numerical attribute - %s.", name);
+        printf("Error: Unable to create HDF5 dataspace for numerical attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(dtype);
     if (datatype < 0 ){
-        printf("Error: Unable to create HDF5 datatype for numerical attribute - %s.", name);
+        printf("Error: Unable to create HDF5 datatype for numerical attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     if (attribute < 0 ){
-        printf("Error: Unable to create HDF5 Attribute for numerical attribute - %s.", name);
+        printf("Error: Unable to create HDF5 Attribute for numerical attribute - %s.\n", name);
         return;
     }
 
     if (H5Awrite(attribute, dtype, data) < 0){
-        printf("Warning: Unable to write HDF5 Attribute for numerical attribute - %s.", name);
+        printf("Warning: Unable to write HDF5 Attribute for numerical attribute - %s.\n", name);
     }
     fileSize += 32;
 
     if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 dataspace for numerical attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 dataspace for numerical attribute - %s.\n", name);
     }
     if (H5Tclose(datatype) < 0){
-        printf("Warning: Unable to close HDF5 datatype for numerical attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 datatype for numerical attribute - %s.\n", name);
     }
     if (H5Aclose(attribute) < 0){
-        printf("Warning: Unable to close HDF5 attribute for numerical attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 attribute for numerical attribute - %s.\n", name);
     }
 }
 
@@ -525,35 +525,35 @@ void createFloatAttribute(hid_t group, const char* name, float data){
 
     dataspace = H5Screate(H5S_SCALAR);
     if (dataspace < 0){
-        printf("Error: Unable to create HDF5 dataspace for floating point attribute - %s.", name);
+        printf("Error: Unable to create HDF5 dataspace for floating point attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_NATIVE_FLOAT);
     if (datatype < 0 ){
-        printf("Error: Unable to create HDF5 datatype for floating point attribute - %s.", name);
+        printf("Error: Unable to create HDF5 datatype for floating point attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     if (attribute < 0 ){
-        printf("Error: Unable to create HDF5 Attribute for floating point attribute - %s.", name);
+        printf("Error: Unable to create HDF5 Attribute for floating point attribute - %s.\n", name);
         return;
     }
 
     if (H5Awrite(attribute, H5T_NATIVE_FLOAT, attr_data) < 0){
-        printf("Warning: Unable to write HDF5 Attribute for floating point attribute - %s.", name);
+        printf("Warning: Unable to write HDF5 Attribute for floating point attribute - %s.\n", name);
     }
     fileSize += 32;
     
     if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 dataspace for floating point attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 dataspace for floating point attribute - %s.\n", name);
     }
     if (H5Tclose(datatype) < 0){
-        printf("Warning: Unable to close HDF5 datatype for floating point attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 datatype for floating point attribute - %s.\n", name);
     }
     if (H5Aclose(attribute) < 0){
-        printf("Warning: Unable to close HDF5 attribute for floating point attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 attribute for floating point attribute - %s.\n", name);
     }
 }
 
@@ -568,35 +568,35 @@ void createDoubleAttribute(hid_t group, const char* name, double data){
 
     dataspace = H5Screate(H5S_SCALAR);
     if (dataspace < 0){
-        printf("Error: Unable to create HDF5 dataspace for double precision attribute - %s.", name);
+        printf("Error: Unable to create HDF5 dataspace for double precision attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_NATIVE_DOUBLE);
     if (datatype < 0 ){
-        printf("Error: Unable to create HDF5 datatype for double precision attribute - %s.", name);
+        printf("Error: Unable to create HDF5 datatype for double precision attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
     if (attribute < 0 ){
-        printf("Error: Unable to create HDF5 Attribute for double precision attribute - %s.", name);
+        printf("Error: Unable to create HDF5 Attribute for double precision attribute - %s.\n", name);
         return;
     }
 
     if (H5Awrite(attribute, H5T_NATIVE_DOUBLE, attr_data) < 0){
-        printf("Warning: Unable to write HDF5 Attribute for double precision attribute - %s.", name);
+        printf("Warning: Unable to write HDF5 Attribute for double precision attribute - %s.\n", name);
     }
     fileSize += 64;
     
     if (H5Sclose(dataspace) < 0){
-        printf("Warning: Unable to close HDF5 dataspace for double precision attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 dataspace for double precision attribute - %s.\n", name);
     }
     if (H5Tclose(datatype) < 0){
         printf("Warning: Unable to close HDF5 datatype for double precision attribute - %s.", name);
     }
     if (H5Aclose(attribute) < 0){
-        printf("Warning: Unable to close HDF5 attribute for double precision attribute - %s.", name);
+        printf("Warning: Unable to close HDF5 attribute for double precision attribute - %s.\n", name);
     }
 }
 
@@ -1005,7 +1005,7 @@ void check_storeHK(redisContext* redisServer, modulePairData_t* modHead){
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
                 sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod1Name, i);
                 if (H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0){
-                    printf("Warning: Unable to write HK Data for module %i-%i", currentMod->mod1Name, i);
+                    printf("Warning: Unable to write HK Data for module %i-%i\n", currentMod->mod1Name, i);
                 }
                 fileSize += HKDATASIZE;
 
@@ -1029,7 +1029,7 @@ void check_storeHK(redisContext* redisServer, modulePairData_t* modHead){
                     fetchHKdata(HKdata, BOARDLOC, redisServer);
                     sprintf(tableName, HK_TABLENAME_FORAMT, currentMod->mod2Name, i);
                     if (H5TBappend_records(currentMod->dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0){
-                        printf("Warning: Unable to write HK Data for module %i-%i", currentMod->mod1Name, i);
+                        printf("Warning: Unable to write HK Data for module %i-%i\n", currentMod->mod1Name, i);
                     }
 
                     reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %u 0", BOARDLOC);
@@ -1347,7 +1347,9 @@ void writeDataBlock(hid_t frame, modulePairData_t* module, int index, int mode){
 
     fileSize += DATABLOCKSIZE;
 
-    H5Dclose(dataset);
+    if (H5Dclose(dataset) < 0){
+        printf("Warning: Unable to close HD5F Image Dataset - %s\n", name);
+    }
 }
 
 /**
@@ -1406,9 +1408,15 @@ void writePHData(uint16_t moduleNum, uint8_t quaboNum, uint16_t PKTNUM, uint32_t
 
     fileSize += SCIDATASIZE+80;
 
-    H5Dclose(dataset);
-    H5Sclose(PHSpace);
-    H5Tclose(PHType);
+    if (H5Dclose(dataset) < 0){
+        printf("Warning: Unable to close HDF5 dataset for PH Data- %s.\n", name);
+    }
+    if (H5Sclose(PHSpace) < 0){
+        printf("Warning: Unable to close HDF5 dataspace for PH Data- %s.\n", name);
+    }
+    if (H5Tclose(PHType) < 0){
+        printf("Warning: Unable to close HDF5 datatype for PH Data- %s.\n", name);
+    }
 }
 
 /**
