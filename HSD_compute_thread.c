@@ -118,17 +118,19 @@ static void *run(hashpipe_thread_args_t * args){
         db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
+        
+        #ifdef TEST_MODE
+            for (int r = 0; r < 20480; r++){
+                if (r % 512 == 0){
+                    printf("\nPacket %i: \n0", r/512);
+                }
+                printf(" %8X", db_in->block[curblock_in].data_block[r]);
+                if (r % 16 == 15){
+                    printf("\n%i",(r+1)/16);
+                }
 
-        for (int r = 0; r < 20480; r++){
-            if (r % 512 == 0){
-                printf("\nPacket %i: \n0", r/512);
             }
-            printf(" %8X", db_in->block[curblock_in].data_block[r]);
-            if (r % 16 == 15){
-                printf("\n%i",(r+1)/16);
-            }
-
-        }
+        #endif
 
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
 

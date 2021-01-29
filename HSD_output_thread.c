@@ -47,7 +47,9 @@
 #define NANOSECTHRESHOLD 20
 
 //Defining the string buffer size
-#define STRBUFFSIZE 50
+#define STRBUFFSIZE 80
+
+static char saveLocation[STRBUFFSIZE];
 
 //Defining the static values for the storage values for HDF5 file
 static hsize_t storageDim[RANK] = {PKTPERPAIR,SCIDATASIZE};
@@ -1427,6 +1429,7 @@ void storeData(modulePairData_t* module, char acqmode, uint16_t moduleNum, uint8
         mode = 8;
     } else {
         printf("A new mode was identify acqmode=%X\n", acqmode);
+        printf("moduleNum=%X quaboNum=%X PKTNUM=%X\n", moduleNum, quaboNum, PKTNUM);
         printf("packet skipped\n");
         return;
     }
@@ -1586,14 +1589,13 @@ fileIDs_t* HDF5file_init(char* fileName, char* currTime){
 fileIDs_t* HDF5file_init(){
     time_t t = time(NULL);
     struct tm tm = *gmtime(&t);
-    char currTime[100];
-    char fileName[100];
+    char currTime[STRBUFFSIZE+20];
+    char fileName[STRBUFFSIZE+20];
     
-    sprintf(fileName, "%04i/", (tm.tm_year + 1900));
+    sprintf(fileName, "%s%04i/", saveLocation, (tm.tm_year + 1900));
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    sprintf(fileName, "%04i/%04i%02i%02i/", (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    sprintf(fileName, "%s%04i/%04i%02i%02i/", saveLocation, (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    //sprintf(fileName+strlen(fileName), "%04i%02i%02i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
@@ -1631,12 +1633,12 @@ void closeAllResources(){
 void reinitFileResources(){
     time_t t = time(NULL);
     struct tm tm = *gmtime(&t);
-    char currTime[100];
-    char fileName[100];
+    char currTime[STRBUFFSIZE+20];
+    char fileName[STRBUFFSIZE+20];
 
-    sprintf(fileName, "%04i/", (tm.tm_year + 1900));
+    sprintf(fileName, "%s%04i/", saveLocation, (tm.tm_year + 1900));
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    sprintf(fileName, "%04i/%04i%02i%02i/", (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    sprintf(fileName, "%s%04i/%04i%02i%02i/", saveLocation, (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
@@ -1670,7 +1672,15 @@ static void *run(hashpipe_thread_args_t * args){
     HSD_output_databuf_t *db = (HSD_output_databuf_t *)args->ibuf;
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
-
+    
+    // Get info from status buffer if present
+    sprintf(saveLocation, "./");
+    hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
+    if (saveLocation[strlen(saveLocation)-1] != '/'){
+        saveLocation[strlen(saveLocation)] = '/';
+    }
+    printf("Save Location: %s", saveLocation);
+    
     int rv;
     int block_idx = 0;
     uint64_t mcnt=0;

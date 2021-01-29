@@ -216,7 +216,7 @@ if len(sys.argv) != 2:
 
 fileName = sys.argv[1]
 
-f = h5py.File(fileName)
+f = h5py.File(fileName, 'r')
 
 IMG16 = f['bit16IMGData']['ModulePair_00254_00001']
 IMG8 = f['bit8IMGData']['ModulePair_00254_00001']
@@ -244,12 +244,12 @@ else:
     print("Test Failed")
     exit(0)
 
-print("Testing House Keeping Data")
-if checkHKPackets(DynamicData):
-    print("Test passed")
-else:
-    print("Test Failed")
-    exit(0)
+#print("Testing House Keeping Data")
+#if checkHKPackets(DynamicData):
+#    print("Test passed")
+#else:
+#    print("Test Failed")
+#    exit(0)
 
 f.close()
 
