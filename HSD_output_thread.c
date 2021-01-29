@@ -1320,7 +1320,7 @@ void getDynamicRedisData(redisContext* redisServer, modulePairData_t* modHead, h
  * Write an PKTPERPAIR frame data block into the module pair in the HDF5 file.
  */
 void writeDataBlock(hid_t frame, modulePairData_t* module, int index, int mode){
-    hid_t dataset;
+    hid_t dataset, status;
     char name[50];
     hsize_t dimsf[1];
     dimsf[0] = PKTPERPAIR;
@@ -1330,11 +1330,29 @@ void writeDataBlock(hid_t frame, modulePairData_t* module, int index, int mode){
     if(mode == 16){
         dataset = H5Dcreate2(frame, name, storageTypebit16, storageSpace,
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+        if (dataset > 0){
+            status = H5Dwrite(dataset, H5T_STD_U16LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+        } else {
+            printf("Warning: Unable to create dataset for 16 bit Image - %s\n", name);
+            return;
+        }
+        if (status < 0){
+            printf("Warning: Unable to write dataset for 16 bit Image to file - %s\n", name);
+            return;
+        }
     }else{
         dataset = H5Dcreate2(frame, name, storageTypebit8, storageSpace,
         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        H5Dwrite(dataset, H5T_STD_U8LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+        if (dataset > 0) {
+            status = H5Dwrite(dataset, H5T_STD_U8LE, H5S_ALL, H5S_ALL, H5P_DEFAULT, module->data);
+        } else {
+            printf("Warning: Unable to create dataset for 8 bit Image - %s\n", name);
+            return;
+        }
+        if (status < 0){
+            printf("Warning: Unable to write dataset for 8 bit Image to file - %s\n", name);
+            return;
+        }
     }
     
 
