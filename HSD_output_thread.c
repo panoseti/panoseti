@@ -45,6 +45,7 @@
 #define HKFIELDS 27
 #define GPSFIELDS 9
 #define NANOSECTHRESHOLD 20
+#define MODULEINDEXSIZE 0xffff
 
 //Defining the string buffer size
 #define STRBUFFSIZE 80
@@ -282,7 +283,6 @@ modulePairData_t* modulePairData_t_new(hid_t ID16, hid_t ID8, hid_t dynamicMD, u
         printf("Error: Unable to malloc space for ModulePairData\n");
         exit(1);
     }
-    //moduleFillZeros(value->data, 0);
     value->ID16bit = ID16;
     value->ID8bit = ID8;
     value->dynamicMeta = dynamicMD;
@@ -1393,7 +1393,7 @@ void storePktData(uint8_t* moduleData, char* data_ptr, int mode, int quaboIndex)
 //Initializing the linked list to be used for stroing the modulePairData
 static modulePairData_t* moduleListBegin = modulePairData_t_new();
 static modulePairData_t* moduleListEnd = moduleListBegin;
-static modulePairData_t* moduleInd[0xffff] = {NULL};
+static modulePairData_t* moduleInd[MODULEINDEXSIZE] = {NULL};
 static fileIDs_t* file;
 static redisContext *redisServer;
 
@@ -1525,8 +1525,7 @@ void closeFile(fileIDs_t* file){
  * Close all of the modules that were initalized.
  */
 void closeModules(modulePairData_t* head){
-    modulePairData_t* currentmodule;
-    currentmodule = head;
+    modulePairData_t* currentmodule = head;
     while (head != NULL){
         moduleFillZeros(currentmodule, currentmodule->status);
         if(currentmodule->lastMode == 16){
@@ -1625,6 +1624,11 @@ fileIDs_t* HDF5file_init(){
     sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
+    if (access(fileName, F_OK) != -1){
+        printf("Error: Unable to access file location - %s", fileName);
+        exit(0);
+    }
+
     return HDF5file_init(fileName, currTime);
 }
 
@@ -1635,6 +1639,9 @@ void closeFileResources(){
     printf("-----Start Flushing and Closing all File Resources----\n");
     closeModules(moduleListBegin->next_moduleID);
     free(moduleListBegin);
+    for (int i = 0; i < MODULEINDEXSIZE; i++){
+        moduleInd[i] = NULL;
+    }
     printf("--------------Closing HDF5 file--------------\n");
     closeFile(file);
 }
@@ -1657,25 +1664,10 @@ void closeAllResources(){
  * Reinitlize the rfile resources by first closing and flushing all resources then redefining them.
  */
 void reinitFileResources(){
-    time_t t = time(NULL);
-    struct tm tm = *gmtime(&t);
-    char currTime[STRBUFFSIZE+20];
-    char fileName[STRBUFFSIZE+20];
-
-    sprintf(fileName, "%s%04i/", saveLocation, (tm.tm_year + 1900));
-    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    sprintf(fileName, "%s%04i/%04i%02i%02i/", saveLocation, (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-    if (access(fileName, F_OK) != -1){
-        return;
-    }
     printf("\n===CLOSING FILE RESOURCES===\n");
     closeFileResources();
     printf("\n===INITIALING FILE RESROUCES===\n");
-    file = HDF5file_init(fileName, currTime);
+    file = HDF5file_init();
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
 }
 
