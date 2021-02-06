@@ -1270,7 +1270,7 @@ void get_storeGPSSupp(redisContext* redisServer, hid_t group){
  */
 void get_storeWR(redisContext* redisServer, hid_t group){
     redisReply* reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", WRSWITCHNAME);
-    if (reply->type != REDIS_REPLY_STRING){
+    if (reply->type != REDIS_REPLY_ARRAY){
         printf("Warning: Unable to get WR Swtich Values from Redis. Skipping WR Data.\n");
         return;
     }
