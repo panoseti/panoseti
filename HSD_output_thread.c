@@ -1072,7 +1072,7 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
 
         reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %s 0", GPSPRIMNAME);
 
-        if (reply->type != REDIS_REPLY_STRING){
+        if (reply->type != REDIS_REPLY_INTEGER){
             printf("Warning: Unable to set GPS's UPDATED Flag from Redis.\n");
         }
     }
