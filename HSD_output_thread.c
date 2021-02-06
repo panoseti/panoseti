@@ -742,7 +742,7 @@ fileIDs_t* createNewFile(char* fileName, char* currTime){
  */
 redisReply* sendHSETRedisCommand(redisContext* redisServer, const char* HSETName, const char* Value){
     redisReply* reply = (redisReply *)redisCommand(redisServer, "HGET %s %s", HSETName, Value);
-    if (reply->type != REDIS_REPLY_STATUS){
+    if (reply->type != REDIS_REPLY_STRING){
         printf("Warning: Redis was unable to get replay with the command - HGET %s %s\n", HSETName, Value);
         freeReplyObject(reply);
         return NULL;
@@ -756,7 +756,7 @@ redisReply* sendHSETRedisCommand(redisContext* redisServer, const char* HSETName
  */
 redisReply* sendHSETRedisCommand(redisContext* redisServer, int HSETName, const char* Value){
     redisReply* reply = (redisReply *)redisCommand(redisServer, "HGET %i %s", HSETName, Value);
-    if (reply->type != REDIS_REPLY_STATUS){
+    if (reply->type != REDIS_REPLY_STRING){
         printf("Warning: Redis was unable to get replay with the command - HGET %i %s\n", HSETName, Value);
         freeReplyObject(reply);
         return NULL;
@@ -1057,7 +1057,7 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
         return;
     }
     redisReply* reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %s", GPSPRIMNAME);
-    if (reply->type != REDIS_REPLY_STATUS){
+    if (reply->type != REDIS_REPLY_STRING){
         printf("Warning: Unable to get GPS's UPDATED Flag from Redis. Skipping GPS Data.\n");
         return;
     }
@@ -1072,7 +1072,7 @@ void check_storeGPS(redisContext* redisServer, hid_t group){
 
         reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %s 0", GPSPRIMNAME);
 
-        if (reply->type != REDIS_REPLY_STATUS){
+        if (reply->type != REDIS_REPLY_STRING){
             printf("Warning: Unable to set GPS's UPDATED Flag from Redis.\n");
         }
     }
@@ -1270,7 +1270,7 @@ void get_storeGPSSupp(redisContext* redisServer, hid_t group){
  */
 void get_storeWR(redisContext* redisServer, hid_t group){
     redisReply* reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", WRSWITCHNAME);
-    if (reply->type != REDIS_REPLY_STATUS){
+    if (reply->type != REDIS_REPLY_STRING){
         printf("Warning: Unable to get WR Swtich Values from Redis. Skipping WR Data.\n");
         return;
     }
