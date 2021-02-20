@@ -28,7 +28,7 @@
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
 //DEBUGGING MODE 
-//#define TEST_MODE
+#define TEST_MODE
 
 static int init(hashpipe_thread_args_t * args){
 
@@ -105,22 +105,13 @@ typedef struct {
  * @return 0 if acqmode is recognized and 1 otherwise
  */
 int check_acqmode(unsigned char* pkt_data){
-    return 1;
-    printf("Checking the Acqmode %c", pkt_data[0]);
+    //return 1;
+    //printf("Checking the Acqmode %c", pkt_data[0]);
     if (pkt_data[0] == 1 || pkt_data[0] == 2 || pkt_data[0] == 3 ||
         pkt_data[0] == 6 || pkt_data[0] == 7){
-            return 0;
+            return 1;
         }
-
-    /*
-    printf("Malformed packet identify");
-    for(int i=0; i < PKTDATASIZE; i++){
-        if(i % 16 == 0){
-            printf("\n");
-        }
-        printf("%02X ", pkt_data[i]);
-    }*/
-    return 1;
+    return 0;
 }
 
 /**
@@ -129,11 +120,6 @@ int check_acqmode(unsigned char* pkt_data){
  * @param pkt_header The header struct to be written to
  */
 static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_header_t* pkt_header) {
-    /*uint64_t raw_header;
-    raw_header = *(unsigned long long *)(PKT_UDP_DATA(p_frame));
-    pkt_header->mode = (raw_header & 0x00000000000000ff);
-    pkt_header->packetNum = (raw_header & 0x00000000ffff0000) >> (16);
-    pkt_header->boardLocation = (raw_header & 0x0000ffff00000000) >> (32);*/
     pkt_header->acqmode[i] = pkt_data[0];
     pkt_header->pktNum[i] = ((pkt_data[3] << 8) & 0xff00) 
                         | (pkt_data[2] & 0x00ff);
@@ -149,21 +135,7 @@ static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_he
                         | ((pkt_data[12] << 16) & 0x00ff0000)
                         | ((pkt_data[11] << 8) & 0x0000ff00)
                         | ((pkt_data[10]) & 0x000000ff);
-    
 
-    #ifdef TEST_MODE
-        //printf("Mode:%i ", pkt_header->mode);
-        //printf("BoardLocation:%02X ", pkt_header->boardLocation);
-        //printf("Packet:%lu\n", pkt_header->packetNum);
-        //printf("Header:%02lx\n", (raw_header & 0xffffffffffffffff));
-        printf("Header");
-        for (int j = 0; j < HEADERSIZE; j++){
-            printf(" %X ", pkt_data[j]);
-        }
-        printf("\n");
-        printf("acqmode %i pktNum %i modNum %i quaNum %i pktUTC %i pktNSEC %i\n", 
-                pkt_header->acqmode[i], pkt_header->pktNum[i], pkt_header->modNum[i], pkt_header->quaNum[i], pkt_header->pktUTC[i], pkt_header->pktUTC[i]);
-    #endif
 }
 
 static int INTSIG;
@@ -198,6 +170,12 @@ static void *run(hashpipe_thread_args_t * args){
     unsigned int pktsock_drops = 0;     // Stats counter for dropped socket packet
     uint64_t npackets = 0;              // number of received packets
     int bindport = 0;
+    #ifdef TEST_MODE
+        FILE *fptr;
+        fptr = fopen("./input_buffer.log", "w");
+        fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
+                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
+    #endif
 
     hashpipe_status_lock_safe(&st);
 	// Get info from status buffer if present (no change if not present)
@@ -277,9 +255,6 @@ static void *run(hashpipe_thread_args_t * args){
             pkt_data = (unsigned char *) PKT_UDP_DATA(p_frame);
             get_header(pkt_data, i, blockHeader);
             
-            #ifdef TEST_MODE
-                //printf("PKT_UDP_DATA %i\n", PKT_UDP_DATA(p_frame)-8);
-            #endif
 
             hashpipe_pktsock_release_frame(p_frame);
 
@@ -304,21 +279,21 @@ static void *run(hashpipe_thread_args_t * args){
 
             blockHeader->data_block_size++;
 
-            #ifdef TEST_MODE
-                //printf("TIME %li.%li\n", nowTime.tv_sec, nowTime.tv_usec);
-            #endif
             pthread_testcancel();
         }
+        #ifdef TEST_MODE
+            for (int i = 0; i < blockHeader->data_block_size; i++){
+                fprintf(fptr, "%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
+                        blockHeader->acqmode[i], blockHeader->pktNum[i],
+                        blockHeader->modNum[i], blockHeader->quaNum[i],
+                        blockHeader->pktUTC[i], blockHeader->pktNSEC[i],
+                        blockHeader->tv_sec[i], blockHeader->tv_usec[i]);
+            }
+        #endif
 
 
         // Get stats from packet socket
 		hashpipe_pktsock_stats(p_ps, &pktsock_pkts, &pktsock_drops);
-
-        #ifdef TEST_MODE
-            //int packet_size = PKT_UDP_SIZE(p_frame) - 8;
-            //printf("packet size is: %d\n", packet_size);
-            //printf("for loop npackets: %lu\n", npackets);
-        #endif
 
         hashpipe_status_lock_safe(&st);
 		hputi8(st.buf, "NPACKETS", npackets);

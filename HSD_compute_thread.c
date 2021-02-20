@@ -15,6 +15,7 @@
 #include "HSD_databuf.h"
 
 #define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
+#define TEST_MODE
 
 /**
  * Structure of the Quabo buffer stored for determining packet loss
@@ -66,6 +67,14 @@ static void *run(hashpipe_thread_args_t * args){
     uint16_t prev_pkt_num[NUM_OF_MODES+1];
     int lost_pkts[NUM_OF_MODES+1];
     memset(lost_pkts, -1, sizeof(lost_pkts));*/
+
+    #ifdef TEST_MODE
+        FILE *fptr;
+        HSD_output_block_header_t* outBlockHeader;
+        fptr = fopen("./output_buffer.log", "w");
+        fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
+                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
+    #endif
     
     //Counters for the packets lost
     int total_lost_pkts = 0;
@@ -119,18 +128,6 @@ static void *run(hashpipe_thread_args_t * args){
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         
-        #ifdef TEST_MODE
-            for (int r = 0; r < 20480; r++){
-                if (r % 512 == 0){
-                    printf("\nPacket %i: \n0", r/512);
-                }
-                printf(" %8X", db_in->block[curblock_in].data_block[r]);
-                if (r % 16 == 15){
-                    printf("\n%i",(r+1)/16);
-                }
-
-            }
-        #endif
 
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
 
@@ -143,10 +140,7 @@ static void *run(hashpipe_thread_args_t * args){
             //Read the packet number from the packet
             mode = db_in->block[curblock_in].header.acqmode[i];
             boardLoc = db_in->block[curblock_in].header.modNum[i] * 4 + db_in->block[curblock_in].header.quaNum[i];
-            #ifdef TEST_MODE
-                //printf("Mode:%i ", mode);
-                //printf("BoardLocation:%02X \n", boardLoc);
-            #endif
+
             //Check to see if there is a quabo info for the current quabo packet. If not create an object
             if (quaboInd[boardLoc] == NULL){
                 quaboInd[boardLoc] = quabo_info_t_new();            //Create a new quabo info object
@@ -163,10 +157,6 @@ static void *run(hashpipe_thread_args_t * args){
             //Store the current quabo's mode
             currentQuabo->pkt_num[mode] = db_in->block[curblock_in].header.pktNum[i];
 
-            #ifdef TEST_MODE
-                printf("pkt_num:%i\n", pkt_num[mode]);
-                printf("lost_pkt:%i\n\n", lost_pkts[mode]);
-            #endif
             //Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
             if (currentQuabo->lost_pkts[mode] < 0) {
                 currentQuabo->lost_pkts[mode] = 0;
@@ -209,10 +199,16 @@ static void *run(hashpipe_thread_args_t * args){
         
 
         #ifdef TEST_MODE
-            /*for (int i = 0; i < N_PKT_PER_BLOCK; i++){
-                printf("TIME %li.%li\n", db_out->block[curblock_out].header.tv_sec[i], db_out->block[curblock_out].header.tv_usec[i]);
-            }*/
+            outBlockHeader = &(db_out->block[curblock_out].header);
+            for (int i = 0; i < outBlockHeader->stream_block_size; i++){
+                fprintf(fptr, "%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
+                        outBlockHeader->acqmode[i], outBlockHeader->pktNum[i],
+                        outBlockHeader->modNum[i], outBlockHeader->quaNum[i],
+                        outBlockHeader->pktUTC[i], outBlockHeader->pktNSEC[i],
+                        outBlockHeader->tv_sec[i], outBlockHeader->tv_usec[i]);
+            }
         #endif
+
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
         HSD_output_databuf_set_filled(db_out, curblock_out);
