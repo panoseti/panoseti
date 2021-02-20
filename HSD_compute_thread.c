@@ -53,7 +53,7 @@ static void *run(hashpipe_thread_args_t * args){
     int curblock_out=0;
 
     //Variables to display pkt info
-    uint8_t mode;                                       //The current mode of the packet block
+/*    uint8_t mode;                                       //The current mode of the packet block
     quabo_info_t* quaboListBegin = quabo_info_t_new();  //Initializing the quabo info linked list
     quabo_info_t* quaboListEnd = quaboListBegin;        //Setting the pointer to be the end of the linked list
     quabo_info_t* quaboInd[0xffff] = {NULL};            //Create a rudimentary hash map of the quabo number and linked list ind
@@ -61,12 +61,6 @@ static void *run(hashpipe_thread_args_t * args){
     quabo_info_t* currentQuabo;                         //Pointer to the quabo info that is currently being used
     uint16_t boardLoc;                                  //The boardLoc(quabo index) for the current packet
     char* boardLocstr = (char *)malloc(sizeof(char)*10);
-
-
-    /*uint16_t pkt_num[NUM_OF_MODES+1];
-    uint16_t prev_pkt_num[NUM_OF_MODES+1];
-    int lost_pkts[NUM_OF_MODES+1];
-    memset(lost_pkts, -1, sizeof(lost_pkts));*/
 
     #ifdef TEST_MODE
         FILE *fptr;
@@ -79,7 +73,7 @@ static void *run(hashpipe_thread_args_t * args){
     //Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
-
+*/
     printf("-----------Finished Setup of Compute Thread----------\n\n");
 
     
@@ -124,7 +118,7 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
-        db_out->block[curblock_out].header.stream_block_size = 0;
+/*        db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         
@@ -208,7 +202,7 @@ static void *run(hashpipe_thread_args_t * args){
                         outBlockHeader->tv_sec[i], outBlockHeader->tv_usec[i]);
             }
         #endif
-
+*/
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
         HSD_output_databuf_set_filled(db_out, curblock_out);
@@ -219,7 +213,7 @@ static void *run(hashpipe_thread_args_t * args){
         curblock_in = (curblock_in + 1) % db_in->header.n_block;
         mcnt++;
 
-        sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
+/*        sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
         //display packetnum in status
         hashpipe_status_lock_safe(&st);
         hputs(st.buf, "QUABOKEY", boardLocstr);
@@ -236,13 +230,13 @@ static void *run(hashpipe_thread_args_t * args){
         hputi4(st.buf, "M6PKTLST", currentQuabo->lost_pkts[6]);
         hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
         hashpipe_status_unlock_safe(&st);
-
+*/
         //Check for cancel
         pthread_testcancel();
-
+        //Break out when SIGINT is found
+        if(db_in->block[curblock_in].header.INTSIG) break;
     }
 
-    //printf("\n");
     return THREAD_OK;
 }
 

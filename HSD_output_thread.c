@@ -1650,14 +1650,10 @@ void closeFileResources(){
  * Close and flush out all of the resources allocated.
  */
 void closeAllResources(){
-    //printf("===FLUSHING ALL RESOURCES IN BUFFER===\n");
-    //flushModules(moduleListBegin->next_moduleID);
     printf("\n===CLOSING ALL RESOURCES===\n");
     closeFileResources();
-    //fclose(HSD_file);
     printf("\n-----------Closing Redis Connection-----------\n\n");
     redisFree(redisServer);
-    //printf("Caught signal %d, coming out...\n", signum);
 }
 
 /**
@@ -1691,6 +1687,10 @@ static void *run(hashpipe_thread_args_t * args){
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
     
+    int rv;
+    int block_idx = 0;
+    uint64_t mcnt=0;
+/*
     // Get info from status buffer if present
     sprintf(saveLocation, "./");
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
@@ -1698,10 +1698,6 @@ static void *run(hashpipe_thread_args_t * args){
         saveLocation[strlen(saveLocation)] = '/';
     }
     printf("Save Location: %s\n", saveLocation);
-    
-    int rv;
-    int block_idx = 0;
-    uint64_t mcnt=0;
 
     //Output elements
     char *block_ptr;
@@ -1718,10 +1714,10 @@ static void *run(hashpipe_thread_args_t * args){
 
     hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
     maxFileSize = maxSizeInput*8E5; 
-
+*/
     
     /*Initialization of Redis Server Values*/
-    printf("------------------SETTING UP REDIS ------------------\n");
+/*    printf("------------------SETTING UP REDIS ------------------\n");
     redisServer = redisConnect("127.0.0.1", 6379);
     if (redisServer != NULL && redisServer->err){
         printf("Error: %s\n", redisServer->errstr);
@@ -1735,26 +1731,18 @@ static void *run(hashpipe_thread_args_t * args){
     // reply = redisCommand(redisServer, "AUTH password");
     // freeReplyObject(reply);
 
-
+*/
     /* Initialization of HDF5 Values*/
     printf("-------------------SETTING UP HDF5 ------------------\n");
-    modulePairData_t* currentModule;
+/*    modulePairData_t* currentModule;
     file = HDF5file_init();
     getStaticRedisData(redisServer, file->StaticMeta);
-    //get_storeGPSSupp(redisServer, file->StaticMeta);
+    get_storeGPSSupp(redisServer, file->StaticMeta);
     
     getDynamicRedisData(redisServer, moduleListBegin->next_moduleID, file->DynamicMeta);
     HKPackets_t* HK = (HKPackets_t *)malloc(sizeof(struct HKPackets));
-    /*HK->BOARDLOC[0] = 504;
-    HK->BOARDLOC[1] = 503;
-    printf("Testing on mod %u\n", moduleListBegin->next_moduleID->mod1Name);
-    printf("Testing on mod %u\n", moduleListBegin->next_moduleID->mod2Name);
-    fetchHKdata(HK, redisServer);
-    printf("Module ID is %li and %li", moduleListEnd->ID16bit, moduleListEnd->ID8bit);
-    createDataBlock(moduleListEnd, HK);
-    createDataBlock(moduleListEnd, HK);*/
-    //storeHKdata(moduleListBegin->next_moduleID->ID16bit, HK);
-
+    storeHKdata(moduleListBegin->next_moduleID->ID16bit, HK);
+*/
     printf("-----------Finished Setup of Output Thread-----------\n");
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
 
@@ -1789,17 +1777,7 @@ static void *run(hashpipe_thread_args_t * args){
 
         //TODO check mcnt
         //Read the packet
-        block_ptr = db->block[block_idx].stream_block;
-        /*for (int r = 0; r < 20480; r++){
-            if (r % 512 == 0){
-                printf("\nPacket %i: \n", r/512);
-            }
-            printf(" %8X", block_ptr[r]);
-            if (r % 16 == 15){
-                printf("\n");
-            }
-
-        }*/
+/*        block_ptr = db->block[block_idx].stream_block;
 
         getDynamicRedisData(redisServer, moduleListBegin->next_moduleID, file->DynamicMeta);
         for(int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
@@ -1830,34 +1808,33 @@ static void *run(hashpipe_thread_args_t * args){
             storeData(currentModule, acqmode, moduleNum, quaboNum, packet_NUM, packet_UTC, packet_NANOSEC,
                         db->block[block_idx].header.tv_sec[i], db->block[block_idx].header.tv_usec[i], block_ptr + (i*PKTDATASIZE));
         }
-
-        /* Term conditions */
-
-        if (db->block[block_idx].header.INTSIG){
-            closeAllResources();
-            exit(0);
-        }
-
+*/
         if (QUITSIG || fileSize > maxFileSize) {
-            reinitFileResources();
-            getStaticRedisData(redisServer, file->StaticMeta);
+//            reinitFileResources();
+//            getStaticRedisData(redisServer, file->StaticMeta);
             //get_storeGPSSupp(redisServer, file->StaticMeta);
-            fileSize = 0;
-            QUITSIG = 0;
+//            fileSize = 0;
+//            QUITSIG = 0;
         }
 
         HSD_output_databuf_set_free(db,block_idx);
 	    block_idx = (block_idx + 1) % db->header.n_block;
 	    mcnt++;
 
+        /* Term conditions */
+
+        if (db->block[block_idx].header.INTSIG){
+//            closeAllResources();
+//            exit(0);
+              break;
+        }
+
         //Will exit if thread has been cancelled
         pthread_testcancel();
     }
 
     printf("===CLOSING ALL RESOURCES===\n");
-    closeFile(file);
-    //fclose(HSD_file);
-    redisFree(redisServer);
+    
     return THREAD_OK;
 }
 

@@ -99,18 +99,19 @@ typedef struct {
 
 /**
  * Check the acqmode of the packet coming in. Returns True if it is valid and returns
- * false if it is an acqmode that is not recognized
- * @param pkt_data The pointer for the packet frame(returned from PKT_UDP_DATA(p_frame))
+ * false if it is an acqmode that is not recognized.
+ * @param p_frame The pointer for the packet frame
  * @param pkt_header The header struct to be written to
  * @return 0 if acqmode is recognized and 1 otherwise
  */
-int check_acqmode(unsigned char* pkt_data){
-    //return 1;
-    //printf("Checking the Acqmode %c", pkt_data[0]);
+int check_acqmode(unsigned char* p_frame){
+    if (!p_frame) return 0;
+    unsigned char* pkt_data = PKT_UDP_DATA(p_frame);
     if (pkt_data[0] == 1 || pkt_data[0] == 2 || pkt_data[0] == 3 ||
         pkt_data[0] == 6 || pkt_data[0] == 7){
             return 1;
         }
+    hashpipe_pktsock_release_frame(p_frame);
     return 0;
 }
 
@@ -232,38 +233,34 @@ static void *run(hashpipe_thread_args_t * args){
 
         blockHeader = &(db->block[block_idx].header);
         blockHeader->data_block_size = 0;
-        blockHeader->INTSIG = INTSIG;
+
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
             //Check if the INTSIG is recognized
+            printf("Started for loop: %i\n", i);
             if(INTSIG) break;
+
             //Recv all of the UDP packets from PKTSOCK
             do {
-                do {
-                    p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
-                } while (!p_frame && run_threads() && !INTSIG);
-
-                if (INTSIG){break;}
-            } while(!check_acqmode(PKT_UDP_DATA(p_frame)));
+                p_frame = hashpipe_pktsock_recv_udp_frame_nonblock(p_ps, bindport);
+            } while (!p_frame && run_threads() && !INTSIG && !check_acqmode(p_frame));
 
             //Check to see if the threads are still running. If not then terminate
             if(!run_threads() || INTSIG) break;
+            printf("Still Running\n");
 
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
             pkt_data = (unsigned char *) PKT_UDP_DATA(p_frame);
             get_header(pkt_data, i, blockHeader);
-            
-
-            hashpipe_pktsock_release_frame(p_frame);
 
             //Copy the packets in PKTSOCK to the input circular buffer
             //Size is based on whether or not the mode is 16 bit or 8 bit
             if (blockHeader->acqmode[i] < 4){
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame)+16, PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, pkt_data+16, PKTDATASIZE*sizeof(unsigned char));
             } else {
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, PKT_UDP_DATA(p_frame)+16, BIT8PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, pkt_data+16, BIT8PKTDATASIZE*sizeof(unsigned char));
             }
 
             //Time stamping the packets and passing it into the shared buffer
@@ -279,8 +276,14 @@ static void *run(hashpipe_thread_args_t * args){
 
             blockHeader->data_block_size++;
 
+            //Release the hashpipe frame back to the kernel to gather data
+            hashpipe_pktsock_release_frame(p_frame);
+
             pthread_testcancel();
         }
+        //Send the signal of SIGINT to the blockHeader
+        blockHeader->INTSIG = INTSIG;
+
         #ifdef TEST_MODE
             for (int i = 0; i < blockHeader->data_block_size; i++){
                 fprintf(fptr, "%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
@@ -316,6 +319,9 @@ static void *run(hashpipe_thread_args_t * args){
 
         //Will exit if thread has been cancelled
         pthread_testcancel();
+
+        //Break out when SIGINT is found
+        if(INTSIG) break;
     }
 
     pthread_cleanup_pop(1); /* Closes push(hashpipe_pktsock_close) */
