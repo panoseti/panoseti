@@ -1718,10 +1718,18 @@ static void *run(hashpipe_thread_args_t * args){
     /*Initialization of Redis Server Values*/
     printf("------------------SETTING UP REDIS ------------------\n");
     redisServer = redisConnect("127.0.0.1", 6379);
-    if (redisServer != NULL && redisServer->err){
+    int attempts = 0;
+    while(redisServer != NULL && redisServer->err) {
         printf("Error: %s\n", redisServer->errstr);
-        exit(1);
-    } else {
+        attempts++;
+        if (attempts >= 12){
+            printf("Unable to connect to Redis.\n");
+            exit(0);
+        }
+        printf("Attempting to reconnect in 5 seconds.\n");
+        sleep(5);
+        redisServer = redisConnect("127.0.0.1", 6379);
+    }
         printf("Connect to Redis\n");
     }
     redisReply *keysReply;
