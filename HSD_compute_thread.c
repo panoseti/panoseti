@@ -39,12 +39,23 @@ quabo_info_t* quabo_info_t_new(){
     return value;
 }
 
+static int init(hashpipe_thread_args_t * args){
+    HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
+    for (int i = 0 ; i < db_out->header.n_block; i++){
+        db_out->block[i].header.INTSIG = 0;
+    }
+
+    return 0;
+}
+
 static void *run(hashpipe_thread_args_t * args){
     // Local aliases to shorten access to args fields
     HSD_input_databuf_t *db_in = (HSD_input_databuf_t *)args->ibuf;
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
+
+
 
     // Index values for the circular buffers in the shared buffer with the input and output threads
     int rv;
@@ -118,10 +129,10 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
-/*        db_out->block[curblock_out].header.stream_block_size = 0;
+        db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
-        
+/*        
 
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
 
@@ -246,7 +257,7 @@ static void *run(hashpipe_thread_args_t * args){
 static hashpipe_thread_desc_t HSD_compute_thread = {
     name: "HSD_compute_thread",
     skey: "COMPUTESTAT",
-    init: NULL,
+    init: init,
     run: run,
     ibuf_desc: {HSD_input_databuf_create},
     obuf_desc: {HSD_output_databuf_create}
