@@ -1690,7 +1690,7 @@ static void *run(hashpipe_thread_args_t * args){
     int rv;
     int block_idx = 0;
     uint64_t mcnt=0;
-/*
+
     // Get info from status buffer if present
     sprintf(saveLocation, "./");
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
@@ -1701,7 +1701,6 @@ static void *run(hashpipe_thread_args_t * args){
 
     //Output elements
     char *block_ptr;
-    //char *textblock = (char *)malloc((BLOCKSIZE*sizeof(char)*3 + N_PKT_PER_BLOCK));
     int packetNum = 0;
     uint16_t moduleNum;
     uint8_t quaboNum;
@@ -1714,15 +1713,23 @@ static void *run(hashpipe_thread_args_t * args){
 
     hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
     maxFileSize = maxSizeInput*8E5; 
-*/
+
     
     /*Initialization of Redis Server Values*/
-/*    printf("------------------SETTING UP REDIS ------------------\n");
+    printf("------------------SETTING UP REDIS ------------------\n");
     redisServer = redisConnect("127.0.0.1", 6379);
-    if (redisServer != NULL && redisServer->err){
+    int attempts = 0;
+    while(redisServer != NULL && redisServer->err) {
         printf("Error: %s\n", redisServer->errstr);
-        exit(1);
-    } else {
+        attempts++;
+        if (attempts >= 12){
+            printf("Unable to connect to Redis.\n");
+            exit(0);
+        }
+        printf("Attempting to reconnect in 5 seconds.\n");
+        sleep(5);
+        redisServer = redisConnect("127.0.0.1", 6379);
+    }
         printf("Connect to Redis\n");
     }
     redisReply *keysReply;
@@ -1731,7 +1738,7 @@ static void *run(hashpipe_thread_args_t * args){
     // reply = redisCommand(redisServer, "AUTH password");
     // freeReplyObject(reply);
 
-*/
+
     /* Initialization of HDF5 Values*/
     printf("-------------------SETTING UP HDF5 ------------------\n");
 /*    modulePairData_t* currentModule;
