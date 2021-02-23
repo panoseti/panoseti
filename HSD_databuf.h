@@ -20,14 +20,14 @@
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
-    long int tv_sec[N_PKT_PER_BLOCK];
-    long int tv_usec[N_PKT_PER_BLOCK];
     char acqmode[N_PKT_PER_BLOCK];
     uint16_t pktNum[N_PKT_PER_BLOCK];
     uint16_t modNum[N_PKT_PER_BLOCK];
     uint8_t quaNum[N_PKT_PER_BLOCK];
     uint32_t pktUTC[N_PKT_PER_BLOCK];
     uint32_t pktNSEC[N_PKT_PER_BLOCK];
+    long int tv_sec[N_PKT_PER_BLOCK];
+    long int tv_usec[N_PKT_PER_BLOCK];
     int data_block_size;
     int INTSIG;
 } HSD_input_block_header_t;

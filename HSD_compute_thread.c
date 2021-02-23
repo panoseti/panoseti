@@ -54,7 +54,7 @@ static void *run(hashpipe_thread_args_t * args){
     const char * status_key = args->thread_desc->skey;
 
 
-
+/*
     // Index values for the circular buffers in the shared buffer with the input and output threads
     int rv;
     uint64_t mcnt=0;
@@ -82,7 +82,7 @@ static void *run(hashpipe_thread_args_t * args){
     //Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
-
+*/
     printf("-----------Finished Setup of Compute Thread----------\n\n");
 
     
@@ -130,10 +130,10 @@ static void *run(hashpipe_thread_args_t * args){
         db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
-/*        
+        
 
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
-
+/*
             //CALCULATION BLOCK
             //TODO
 

@@ -81,6 +81,14 @@ static int init(hashpipe_thread_args_t * args){
 
     // Store packet socket pointer in args
 	args->user_data = p_ps;
+
+    
+    // Initialize the the starting values of the input buffer.
+    HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
+    for (int i = 0 ; i < db->header.n_block; i++){
+        db->block[i].header.INTSIG = 0;
+    }
+
 	// Success!
     return 0;
 }
@@ -171,12 +179,6 @@ static void *run(hashpipe_thread_args_t * args){
     unsigned int pktsock_drops = 0;     // Stats counter for dropped socket packet
     uint64_t npackets = 0;              // number of received packets
     int bindport = 0;
-    #ifdef TEST_MODE
-        FILE *fptr;
-        fptr = fopen("./input_buffer.log", "w");
-        fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
-                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
-    #endif
 
     hashpipe_status_lock_safe(&st);
 	// Get info from status buffer if present (no change if not present)
@@ -196,6 +198,15 @@ static void *run(hashpipe_thread_args_t * args){
 	}
 
     printf("-----------Finished Setup of Input Thread------------\n\n");
+
+    #ifdef TEST_MODE
+        FILE *fptr;
+        fptr = fopen("./input_buffer.log", "w");
+        fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
+                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
+        printf("%s%15s%15s%15s%15s%15s%15s%15s\n",
+                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
+    #endif
 
     /* Main Loop */
     while(run_threads()){
@@ -237,7 +248,7 @@ static void *run(hashpipe_thread_args_t * args){
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < N_PKT_PER_BLOCK; i++){
             //Check if the INTSIG is recognized
-            printf("Started for loop: %i\n", i);
+            //printf("Started for loop: %i\n", i);
             if(INTSIG) break;
 
             //Recv all of the UDP packets from PKTSOCK
@@ -247,8 +258,8 @@ static void *run(hashpipe_thread_args_t * args){
 
             //Check to see if the threads are still running. If not then terminate
             if(!run_threads() || INTSIG) break;
-            printf("Still Running\n");
-
+            //printf("Still Running\n");
+/*
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
@@ -275,7 +286,7 @@ static void *run(hashpipe_thread_args_t * args){
             }
 
             blockHeader->data_block_size++;
-
+*/
             //Release the hashpipe frame back to the kernel to gather data
             hashpipe_pktsock_release_frame(p_frame);
 
@@ -287,6 +298,11 @@ static void *run(hashpipe_thread_args_t * args){
         #ifdef TEST_MODE
             for (int i = 0; i < blockHeader->data_block_size; i++){
                 fprintf(fptr, "%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
+                        blockHeader->acqmode[i], blockHeader->pktNum[i],
+                        blockHeader->modNum[i], blockHeader->quaNum[i],
+                        blockHeader->pktUTC[i], blockHeader->pktNSEC[i],
+                        blockHeader->tv_sec[i], blockHeader->tv_usec[i]);
+                printf("%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
                         blockHeader->acqmode[i], blockHeader->pktNum[i],
                         blockHeader->modNum[i], blockHeader->quaNum[i],
                         blockHeader->pktUTC[i], blockHeader->pktNSEC[i],
@@ -321,7 +337,11 @@ static void *run(hashpipe_thread_args_t * args){
         pthread_testcancel();
 
         //Break out when SIGINT is found
-        if(INTSIG) break;
+        if(INTSIG){ 
+            printf("NET_THREAD Ended\n");
+            break;
+        }
+
     }
 
     pthread_cleanup_pop(1); /* Closes push(hashpipe_pktsock_close) */

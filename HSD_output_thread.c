@@ -1730,8 +1730,8 @@ static void *run(hashpipe_thread_args_t * args){
         sleep(5);
         redisServer = redisConnect("127.0.0.1", 6379);
     }
-        printf("Connect to Redis\n");
-    }
+        
+    printf("Connected to Redis\n");
     redisReply *keysReply;
     redisReply *reply;
     // Uncomment following lines for redis servers with password
