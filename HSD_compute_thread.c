@@ -133,7 +133,6 @@ static void *run(hashpipe_thread_args_t * args){
         
 
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
-
             //CALCULATION BLOCK
             //TODO
 
@@ -156,7 +155,6 @@ static void *run(hashpipe_thread_args_t * args){
 
             //Set the current Quabo to the one stored in memory
             currentQuabo = quaboInd[boardLoc];
-
 
             //Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
             if (currentQuabo->lost_pkts[mode] < 0) {
@@ -193,8 +191,7 @@ static void *run(hashpipe_thread_args_t * args){
             db_out->block[curblock_out].header.tv_sec[i] = db_in->block[curblock_in].header.tv_sec[i];
             db_out->block[curblock_out].header.tv_usec[i] = db_in->block[curblock_in].header.tv_usec[i];
 
-            db_out->block[curblock_out].header.stream_block_size++;
-        
+            db_out->block[curblock_out].header.stream_block_size++;        
         }
 
         
@@ -228,7 +225,7 @@ static void *run(hashpipe_thread_args_t * args){
         hputi4(st.buf, "M2PKTNUM", currentQuabo->pkt_num[2]);
         hputi4(st.buf, "M3PKTNUM", currentQuabo->pkt_num[3]);
         hputi4(st.buf, "M6PKTNUM", currentQuabo->pkt_num[6]);
-        hputi4(st.buf, "M7PKTNUM", currentQuabo->pkt_num[7]);
+        hputi4(st.buf, "M7PKTNUM", currentQuabo->pkt_num[7]);*/
 
         hputi4(st.buf, "TPKTLST", total_lost_pkts);
         hputi4(st.buf, "M1PKTLST", currentQuabo->lost_pkts[1]);
@@ -236,7 +233,7 @@ static void *run(hashpipe_thread_args_t * args){
         hputi4(st.buf, "M3PKTLST", currentQuabo->lost_pkts[3]);
         hputi4(st.buf, "M6PKTLST", currentQuabo->lost_pkts[6]);
         hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
-*/        hashpipe_status_unlock_safe(&st);
+        hashpipe_status_unlock_safe(&st);
 
         //Check for cancel
         pthread_testcancel();
