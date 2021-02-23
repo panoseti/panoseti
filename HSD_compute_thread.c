@@ -21,7 +21,6 @@
  * Structure of the Quabo buffer stored for determining packet loss
  */
 typedef struct quabo_info{
-    uint16_t pkt_num[NUM_OF_MODES+1];
     uint16_t prev_pkt_num[NUM_OF_MODES+1];
     int lost_pkts[NUM_OF_MODES+1];
     quabo_info* next_quabo_info;
@@ -33,10 +32,18 @@ typedef struct quabo_info{
 quabo_info_t* quabo_info_t_new(){
     quabo_info_t* value = (quabo_info_t*) malloc(sizeof(struct quabo_info));
     memset(value->lost_pkts, -1, sizeof(value->lost_pkts));
-    memset(value->pkt_num, 0, sizeof(value->pkt_num));
     memset(value->prev_pkt_num, 0, sizeof(value->prev_pkt_num));
     value->next_quabo_info = NULL;
     return value;
+}
+
+static int init(hashpipe_thread_args_t * args){
+    HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
+    for (int i = 0 ; i < db_out->header.n_block; i++){
+        db_out->block[i].header.INTSIG = 0;
+    }
+
+    return 0;
 }
 
 static void *run(hashpipe_thread_args_t * args){
@@ -46,6 +53,8 @@ static void *run(hashpipe_thread_args_t * args){
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
 
+
+
     // Index values for the circular buffers in the shared buffer with the input and output threads
     int rv;
     uint64_t mcnt=0;
@@ -53,7 +62,7 @@ static void *run(hashpipe_thread_args_t * args){
     int curblock_out=0;
 
     //Variables to display pkt info
-/*    uint8_t mode;                                       //The current mode of the packet block
+    uint8_t mode;                                       //The current mode of the packet block
     quabo_info_t* quaboListBegin = quabo_info_t_new();  //Initializing the quabo info linked list
     quabo_info_t* quaboListEnd = quaboListBegin;        //Setting the pointer to be the end of the linked list
     quabo_info_t* quaboInd[0xffff] = {NULL};            //Create a rudimentary hash map of the quabo number and linked list ind
@@ -73,7 +82,7 @@ static void *run(hashpipe_thread_args_t * args){
     //Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
-*/
+
     printf("-----------Finished Setup of Compute Thread----------\n\n");
 
     
@@ -118,7 +127,7 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
-/*        db_out->block[curblock_out].header.stream_block_size = 0;
+        db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         
@@ -148,8 +157,6 @@ static void *run(hashpipe_thread_args_t * args){
             //Set the current Quabo to the one stored in memory
             currentQuabo = quaboInd[boardLoc];
 
-            //Store the current quabo's mode
-            currentQuabo->pkt_num[mode] = db_in->block[curblock_in].header.pktNum[i];
 
             //Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
             if (currentQuabo->lost_pkts[mode] < 0) {
@@ -157,15 +164,15 @@ static void *run(hashpipe_thread_args_t * args){
             } else {
                 //Check to see if the current packet number is less than the previous. If so the number has overflowed and looped.
                 //Compenstate for this if this has happend, and then take the difference of the packet numbers minus 1 to be the packets lost
-                if (currentQuabo->pkt_num[mode] < currentQuabo->prev_pkt_num[mode])
-                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[mode]) + currentQuabo->pkt_num[mode];
+                if (db_in->block[curblock_in].header.pktNum[i] < currentQuabo->prev_pkt_num[mode])
+                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[mode]) + db_in->block[curblock_in].header.pktNum[i];
                 else
-                    current_pkt_lost = (currentQuabo->pkt_num[mode] - currentQuabo->prev_pkt_num[mode]) - 1;
+                    current_pkt_lost = (db_in->block[curblock_in].header.pktNum[i] - currentQuabo->prev_pkt_num[mode]) - 1;
                 
                 currentQuabo->lost_pkts[mode] += current_pkt_lost; //Add this packet lost to the total for this quabo
                 total_lost_pkts += current_pkt_lost;               //Add this packet lost to the overall total for all quabos
             }
-            currentQuabo->prev_pkt_num[mode] = currentQuabo->pkt_num[mode]; //Update the previous packet number to be the current packet number
+            currentQuabo->prev_pkt_num[mode] = db_in->block[curblock_in].header.pktNum[i]; //Update the previous packet number to be the current packet number
 
 
             if (mode < 4){
@@ -202,7 +209,7 @@ static void *run(hashpipe_thread_args_t * args){
                         outBlockHeader->tv_sec[i], outBlockHeader->tv_usec[i]);
             }
         #endif
-*/
+
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
         HSD_output_databuf_set_filled(db_out, curblock_out);
@@ -213,10 +220,10 @@ static void *run(hashpipe_thread_args_t * args){
         curblock_in = (curblock_in + 1) % db_in->header.n_block;
         mcnt++;
 
-/*        sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
+        sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
         //display packetnum in status
         hashpipe_status_lock_safe(&st);
-        hputs(st.buf, "QUABOKEY", boardLocstr);
+/*        hputs(st.buf, "QUABOKEY", boardLocstr);
         hputi4(st.buf, "M1PKTNUM", currentQuabo->pkt_num[1]);
         hputi4(st.buf, "M2PKTNUM", currentQuabo->pkt_num[2]);
         hputi4(st.buf, "M3PKTNUM", currentQuabo->pkt_num[3]);
@@ -229,8 +236,8 @@ static void *run(hashpipe_thread_args_t * args){
         hputi4(st.buf, "M3PKTLST", currentQuabo->lost_pkts[3]);
         hputi4(st.buf, "M6PKTLST", currentQuabo->lost_pkts[6]);
         hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
-        hashpipe_status_unlock_safe(&st);
-*/
+*/        hashpipe_status_unlock_safe(&st);
+
         //Check for cancel
         pthread_testcancel();
         //Break out when SIGINT is found
@@ -246,7 +253,7 @@ static void *run(hashpipe_thread_args_t * args){
 static hashpipe_thread_desc_t HSD_compute_thread = {
     name: "HSD_compute_thread",
     skey: "COMPUTESTAT",
-    init: NULL,
+    init: init,
     run: run,
     ibuf_desc: {HSD_input_databuf_create},
     obuf_desc: {HSD_output_databuf_create}
