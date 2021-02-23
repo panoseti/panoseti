@@ -259,7 +259,7 @@ static void *run(hashpipe_thread_args_t * args){
             //Check to see if the threads are still running. If not then terminate
             if(!run_threads() || INTSIG) break;
             //printf("Still Running\n");
-/*
+
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
             npackets++;
@@ -286,7 +286,7 @@ static void *run(hashpipe_thread_args_t * args){
             }
 
             blockHeader->data_block_size++;
-*/
+
             //Release the hashpipe frame back to the kernel to gather data
             hashpipe_pktsock_release_frame(p_frame);
 
