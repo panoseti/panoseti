@@ -15,7 +15,7 @@
 #include "HSD_databuf.h"
 
 #define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
-#define TEST_MODE
+//#define TEST_MODE
 
 /**
  * Structure of the Quabo buffer stored for determining packet loss
@@ -219,21 +219,24 @@ static void *run(hashpipe_thread_args_t * args){
 
         sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
         //display packetnum in status
-        hashpipe_status_lock_safe(&st);
-/*        hputs(st.buf, "QUABOKEY", boardLocstr);
-        hputi4(st.buf, "M1PKTNUM", currentQuabo->pkt_num[1]);
-        hputi4(st.buf, "M2PKTNUM", currentQuabo->pkt_num[2]);
-        hputi4(st.buf, "M3PKTNUM", currentQuabo->pkt_num[3]);
-        hputi4(st.buf, "M6PKTNUM", currentQuabo->pkt_num[6]);
-        hputi4(st.buf, "M7PKTNUM", currentQuabo->pkt_num[7]);*/
 
-        hputi4(st.buf, "TPKTLST", total_lost_pkts);
-        hputi4(st.buf, "M1PKTLST", currentQuabo->lost_pkts[1]);
-        hputi4(st.buf, "M2PKTLST", currentQuabo->lost_pkts[2]);
-        hputi4(st.buf, "M3PKTLST", currentQuabo->lost_pkts[3]);
-        hputi4(st.buf, "M6PKTLST", currentQuabo->lost_pkts[6]);
-        hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
-        hashpipe_status_unlock_safe(&st);
+        if (currentQuabo){
+            hashpipe_status_lock_safe(&st);
+            /*hputs(st.buf, "QUABOKEY", boardLocstr);
+            hputi4(st.buf, "M1PKTNUM", currentQuabo->pkt_num[1]);
+            hputi4(st.buf, "M2PKTNUM", currentQuabo->pkt_num[2]);
+            hputi4(st.buf, "M3PKTNUM", currentQuabo->pkt_num[3]);
+            hputi4(st.buf, "M6PKTNUM", currentQuabo->pkt_num[6]);
+            hputi4(st.buf, "M7PKTNUM", currentQuabo->pkt_num[7]);*/
+
+            hputi4(st.buf, "TPKTLST", total_lost_pkts);
+            hputi4(st.buf, "M1PKTLST", currentQuabo->lost_pkts[1]);
+            hputi4(st.buf, "M2PKTLST", currentQuabo->lost_pkts[2]);
+            hputi4(st.buf, "M3PKTLST", currentQuabo->lost_pkts[3]);
+            hputi4(st.buf, "M6PKTLST", currentQuabo->lost_pkts[6]);
+            hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
+            hashpipe_status_unlock_safe(&st);
+        }
 
         //Check for cancel
         pthread_testcancel();

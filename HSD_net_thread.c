@@ -28,7 +28,7 @@
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
 //DEBUGGING MODE 
-#define TEST_MODE
+//#define TEST_MODE
 
 static int init(hashpipe_thread_args_t * args){
 
@@ -204,8 +204,8 @@ static void *run(hashpipe_thread_args_t * args){
         fptr = fopen("./input_buffer.log", "w");
         fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
                 "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
-        printf("%s%15s%15s%15s%15s%15s%15s%15s\n",
-                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
+        /*printf("%s%15s%15s%15s%15s%15s%15s%15s\n",
+                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");*/
     #endif
 
     /* Main Loop */
@@ -302,11 +302,11 @@ static void *run(hashpipe_thread_args_t * args){
                         blockHeader->modNum[i], blockHeader->quaNum[i],
                         blockHeader->pktUTC[i], blockHeader->pktNSEC[i],
                         blockHeader->tv_sec[i], blockHeader->tv_usec[i]);
-                printf("%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
+                /*printf("%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
                         blockHeader->acqmode[i], blockHeader->pktNum[i],
                         blockHeader->modNum[i], blockHeader->quaNum[i],
                         blockHeader->pktUTC[i], blockHeader->pktNSEC[i],
-                        blockHeader->tv_sec[i], blockHeader->tv_usec[i]);
+                        blockHeader->tv_sec[i], blockHeader->tv_usec[i]);*/
             }
         #endif
 
