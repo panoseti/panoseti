@@ -246,7 +246,7 @@ static void *run(hashpipe_thread_args_t * args){
         blockHeader->data_block_size = 0;
 
         // Loop through all of the packets in the buffer block.
-        for (int i = 0; i < N_PKT_PER_BLOCK; i++){
+        for (int i = 0; i < IN_PKT_PER_BLOCK; i++){
             //Check if the INTSIG is recognized
             //printf("Started for loop: %i\n", i);
             if(INTSIG) break;
