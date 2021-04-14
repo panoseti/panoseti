@@ -14,7 +14,7 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
-#define CONFIGFILE "./modulePair.config"
+
 #define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
 //#define TEST_MODE
 
@@ -53,8 +53,6 @@ modulePairData_t* modulePairData_t_new(unsigned int mod1, unsigned int mod2){
     value->next_moduleID = NULL;
     value->upperNANOSEC = 0;
     value->lowerNANOSEC = 0;
-    value->bit16dataNum = 0;
-    value->bit8dataNum = 0;
     return value;
 }
 
@@ -254,6 +252,7 @@ static modulePairData_t* moduleInd[MODULEINDEXSIZE] = {NULL};
 
 static int init(hashpipe_thread_args_t * args){
     //Initialize the INTSIG signal within the buffer to be zero
+    printf("\n-----------Start Setup of Compute Thread--------------\n");
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
     for (int i = 0 ; i < db_out->header.n_block; i++){
         db_out->block[i].header.INTSIG = 0;
@@ -288,7 +287,7 @@ static int init(hashpipe_thread_args_t * args){
                     
                     //createQuaboTables(moduleListEnd->dynamicMeta, moduleListEnd);
 
-                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
+                    printf("\nCreated Module Pair: %u.%u-%u and %u.%u-%u\n", 
                     (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
                     (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
                 }
@@ -304,6 +303,7 @@ static int init(hashpipe_thread_args_t * args){
     if (fclose(modConfig_file) == EOF){
         printf("Warning: Unable to close module configuration file.\n");
     }
+    printf("\n-----------Finished Setup of Compute Thread-----------\n");
     
     return 0;
 
@@ -312,6 +312,7 @@ static int init(hashpipe_thread_args_t * args){
 
 
 static void *run(hashpipe_thread_args_t * args){
+    printf("\n---------------Running Compute Thread-----------------\n");
     // Local aliases to shorten access to args fields
     HSD_input_databuf_t *db_in = (HSD_input_databuf_t *)args->ibuf;
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
@@ -528,7 +529,10 @@ static void *run(hashpipe_thread_args_t * args){
         //Check for cancel
         pthread_testcancel();
         //Break out when SIGINT is found
-        if(db_in->block[curblock_in].header.INTSIG) break;
+        if(db_in->block[curblock_in].header.INTSIG) {
+            printf("COMPUTE_THREAD Ended\n");
+            //break;
+        }
     }
 
     return THREAD_OK;

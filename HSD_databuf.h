@@ -24,6 +24,7 @@
 #define PKTPERPAIR              QUABOPERMODULE*2
 #define SCIDATASIZE             256
 #define MODPAIRDATASIZE         PKTPERPAIR*PKTDATASIZE
+#define PKTPERDATASET           500
 
 //Defining the Block Sizes for the Input and Ouput Buffers
 #define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE                    //Input Block size includes headers
@@ -35,7 +36,7 @@
 
 
 //Definng the numerical values
-#define RANK                    2
+#define RANK                    3
 #define HKDATASIZE              464
 #define DATABLOCKSIZE           SCIDATASIZE*PKTPERPAIR+64+16
 #define HKFIELDS                27
@@ -43,190 +44,15 @@
 #define NANOSECTHRESHOLD        20
 #define MODULEINDEXSIZE         0xffff
 
-
 #define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
+#define CONFIGFILE "./modulePair.config"
+
 
 //Defining the string buffer size
 #define STRBUFFSIZE 80
 
 
 
-/**
- * The Housekeeping packet structure used to write to HDF5 table
- */
-typedef struct HKPackets {
-    char SYSTIME[STRBUFFSIZE];
-    uint16_t BOARDLOC;
-    float HVMON0, HVMON1, HVMON2, HVMON3;
-    float HVIMON0, HVIMON1, HVIMON2, HVIMON3;
-    float RAWHVMON;
-    float V12MON, V18MON, V33MON, V37MON;
-    float I10MON, I18MON, I33MON;
-    float TEMP1;
-    float TEMP2;
-    float VCCINT, VCCAUX;
-    uint64_t UID;
-    uint8_t SHUTTER_STATUS, LIGHT_STATUS;
-    uint32_t FWID0, FWID1;
-} HKPackets_t;
-
-//Defining other dependencies needed for writing to HDF5 tables
-const HKPackets_t  HK_dst_buf[0] = {};
-
-const size_t HK_dst_size = sizeof(HKPackets_t);
-
-const size_t HK_dst_offset[HKFIELDS] = { HOFFSET( HKPackets_t, SYSTIME ),
-                                        HOFFSET( HKPackets_t, BOARDLOC),
-                                        HOFFSET( HKPackets_t, HVMON0 ),
-                                        HOFFSET( HKPackets_t, HVMON1 ),
-                                        HOFFSET( HKPackets_t, HVMON2 ),
-                                        HOFFSET( HKPackets_t, HVMON3 ),
-                                        HOFFSET( HKPackets_t, HVIMON0 ),
-                                        HOFFSET( HKPackets_t, HVIMON1 ),
-                                        HOFFSET( HKPackets_t, HVIMON2 ),
-                                        HOFFSET( HKPackets_t, HVIMON3 ),
-                                        HOFFSET( HKPackets_t, RAWHVMON ),
-                                        HOFFSET( HKPackets_t, V12MON ),
-                                        HOFFSET( HKPackets_t, V18MON ),
-                                        HOFFSET( HKPackets_t, V33MON ),
-                                        HOFFSET( HKPackets_t, V37MON ),
-                                        HOFFSET( HKPackets_t, I10MON ),
-                                        HOFFSET( HKPackets_t, I18MON ),
-                                        HOFFSET( HKPackets_t, I33MON ),
-                                        HOFFSET( HKPackets_t, TEMP1 ),
-                                        HOFFSET( HKPackets_t, TEMP2 ),
-                                        HOFFSET( HKPackets_t, VCCINT ),
-                                        HOFFSET( HKPackets_t, VCCAUX ),
-                                        HOFFSET( HKPackets_t, UID ),
-                                        HOFFSET( HKPackets_t, SHUTTER_STATUS ),
-                                        HOFFSET( HKPackets_t, LIGHT_STATUS ),
-                                        HOFFSET( HKPackets_t, FWID0 ),
-                                        HOFFSET( HKPackets_t, FWID1 )};
-
-const size_t HK_dst_sizes[HKFIELDS] = { sizeof( HK_dst_buf[0].SYSTIME),
-                                        sizeof( HK_dst_buf[0].BOARDLOC),
-                                        sizeof( HK_dst_buf[0].HVMON0),
-                                        sizeof( HK_dst_buf[0].HVMON1),
-                                        sizeof( HK_dst_buf[0].HVMON2),
-                                        sizeof( HK_dst_buf[0].HVMON3),
-                                        sizeof( HK_dst_buf[0].HVIMON0),
-                                        sizeof( HK_dst_buf[0].HVIMON1),
-                                        sizeof( HK_dst_buf[0].HVIMON2),
-                                        sizeof( HK_dst_buf[0].HVIMON3),
-                                        sizeof( HK_dst_buf[0].RAWHVMON),
-                                        sizeof( HK_dst_buf[0].V12MON),
-                                        sizeof( HK_dst_buf[0].V18MON),
-                                        sizeof( HK_dst_buf[0].V33MON),
-                                        sizeof( HK_dst_buf[0].V37MON),
-                                        sizeof( HK_dst_buf[0].I10MON),
-                                        sizeof( HK_dst_buf[0].I18MON),
-                                        sizeof( HK_dst_buf[0].I33MON),
-                                        sizeof( HK_dst_buf[0].TEMP1),
-                                        sizeof( HK_dst_buf[0].TEMP2),
-                                        sizeof( HK_dst_buf[0].VCCINT),
-                                        sizeof( HK_dst_buf[0].VCCAUX),
-                                        sizeof( HK_dst_buf[0].UID),
-                                        sizeof( HK_dst_buf[0].SHUTTER_STATUS),
-                                        sizeof( HK_dst_buf[0].LIGHT_STATUS),
-                                        sizeof( HK_dst_buf[0].FWID0),
-                                        sizeof( HK_dst_buf[0].FWID1)};
-
-const char *HK_field_names[HKFIELDS] = { "SYSTIME", "BOARDLOC",
-                                        "HVMON0","HVMON1","HVMON2","HVMON3",
-                                        "HVIMON0","HVIMON1","HVIMON2","HVIMON3",
-                                        "RAWHVMON",
-                                        "V12MON","V18MON","V33MON","V37MON",
-                                        "I10MON","I18MON","I33MON",
-                                        "TEMP1","TEMP2",
-                                        "VCCINT","VCCAUX",
-                                        "UID",
-                                        "SHUTTER_STATUS","LIGHT_SENSOR_STATUS",
-                                        "FWID0","FWID1"};
-
-/**
- * Getting the string type for the HK_fields_type
- */
-hid_t get_H5T_string_type(){
-    hid_t string_type;
-
-    string_type = H5Tcopy(H5T_C_S1);
-    H5Tset_size( string_type, STRBUFFSIZE );
-    return string_type;
-}
-
-const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,                              // SYSTIME, BOARDLOC
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVMON0-3
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVIMON0-3
-                                H5T_NATIVE_FLOAT,                                                           // RAWHVMON
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // V12MON, V18MON, V33MON, V37MON           
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                       // I10MON, I18MON, I33MON        
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                         // TEMP1, TEMP2                        
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                         // VCCINT, VCCAUX              
-                                H5T_STD_U64LE,                                                              // UID
-                                H5T_STD_I8LE,H5T_STD_I8LE,                                                  // SHUTTER and LIGHT_SENSOR STATUS
-                                H5T_STD_U32LE,H5T_STD_U32LE                                                 // FWID0 and FWID1
-};
-
-/**
- * The GPS packet structure used for writing to HDF5 table
- */
-typedef struct GPSPackets {
-    char GPSTIME[STRBUFFSIZE];
-    uint32_t TOW;
-    uint16_t WEEKNUMBER;
-    uint8_t UTCOFFSET;
-    char TIMEFLAG[STRBUFFSIZE];
-    char PPSFLAG[STRBUFFSIZE];
-    uint8_t TIMESET;
-    uint8_t UTCINFO;
-    uint8_t TIMEFROMGPS;
-} GPSPackets_t;
-
-//Defining other depenedencies for writing GPS data to HDF5 table
-const GPSPackets_t  GPS_dst_buf[0] = {};
-
-const size_t GPS_dst_size = sizeof(GPSPackets_t);
-
-const size_t GPS_dst_offset[GPSFIELDS] = { HOFFSET( GPSPackets_t, GPSTIME ),
-                                        HOFFSET( GPSPackets_t, TOW),
-                                        HOFFSET( GPSPackets_t, WEEKNUMBER),
-                                        HOFFSET( GPSPackets_t, UTCOFFSET),
-                                        HOFFSET( GPSPackets_t, TIMEFLAG),
-                                        HOFFSET( GPSPackets_t, PPSFLAG),
-                                        HOFFSET( GPSPackets_t, TIMESET),
-                                        HOFFSET( GPSPackets_t, UTCINFO),
-                                        HOFFSET( GPSPackets_t, TIMEFROMGPS)};
-
-const size_t GPS_dst_sizes[GPSFIELDS] = { sizeof( GPS_dst_buf[0].GPSTIME),
-                                        sizeof( GPS_dst_buf[0].TOW),
-                                        sizeof( GPS_dst_buf[0].WEEKNUMBER),
-                                        sizeof( GPS_dst_buf[0].UTCOFFSET),
-                                        sizeof( GPS_dst_buf[0].TIMEFLAG),
-                                        sizeof( GPS_dst_buf[0].PPSFLAG),
-                                        sizeof( GPS_dst_buf[0].TIMESET),
-                                        sizeof( GPS_dst_buf[0].UTCINFO),
-                                        sizeof( GPS_dst_buf[0].TIMEFROMGPS)};
-
-const char *GPS_field_names[GPSFIELDS] = { "GPSTIME",
-                                        "TOW",
-                                        "WEEKNUMBER",
-                                        "UTCOFFSET",
-                                        "TIMEFLAG",
-                                        "PPSFLAG",
-                                        "TIMESET",
-                                        "UTCINFO",
-                                        "TIMEFROMGPS"};
-
-const hid_t GPS_field_types[GPSFIELDS] = { get_H5T_string_type(),   // GPSTIME
-                                        H5T_STD_U32LE,              // TOW;
-                                        H5T_STD_U16LE,              // WEEKNUMBER
-                                        H5T_STD_U8LE,               // UTCOFFSET
-                                        get_H5T_string_type(),      // TIMEFLAG[STRBUFFSIZE]
-                                        get_H5T_string_type(),      // PPSFLAG[STRBUFFSIZE]
-                                        H5T_STD_U8LE,               // TIMESET
-                                        H5T_STD_U8LE,               // UTCINFO
-                                        H5T_STD_U8LE                // TIMEFROMGPS
-};
 
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
