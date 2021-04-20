@@ -326,6 +326,7 @@ static void *run(hashpipe_thread_args_t * args){
     uint64_t mcnt=0;
     int curblock_in=0;
     int curblock_out=0;
+    int INTSIG;
 
     //Variables to display pkt info
     uint8_t mode;                                       //The current mode of the packet block
@@ -396,13 +397,13 @@ static void *run(hashpipe_thread_args_t * args){
         db_out->block[curblock_out].header.stream_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
-        
+        INTSIG = db_in->block[curblock_in].header.INTSIG;
 
         modulePairData_t* currentModule;
         uint16_t moduleNum;
+        printf("Size of data block: %i\n", db_in->block[curblock_in].header.data_block_size);
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
             //----------------CALCULATION BLOCK-----------------
-
             moduleNum = db_in->block[curblock_in].header.modNum[i];
 
 
@@ -411,10 +412,6 @@ static void *run(hashpipe_thread_args_t * args){
                 printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) (moduleNum << 2)/0x100, (moduleNum << 2) % 0x100);
                 printf("Packet skipping\n");
                 continue;
-
-                /*moduleInd[moduleNum] = moduleListEnd->next_moduleID = modulePairData_t_new(moduleNum);
-                moduleListEnd = moduleListEnd->next_moduleID;
-                currentModule = moduleListEnd;*/
 
             } else {
                 currentModule = moduleInd[moduleNum];
@@ -505,6 +502,12 @@ static void *run(hashpipe_thread_args_t * args){
         curblock_in = (curblock_in + 1) % db_in->header.n_block;
         mcnt++;
 
+        //Break out when SIGINT is found
+        if(INTSIG) {
+            printf("COMPUTE_THREAD Ended\n");
+            break;
+        }
+
         sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
         //display packetnum in status
 
@@ -528,13 +531,9 @@ static void *run(hashpipe_thread_args_t * args){
 
         //Check for cancel
         pthread_testcancel();
-        //Break out when SIGINT is found
-        if(db_in->block[curblock_in].header.INTSIG) {
-            printf("COMPUTE_THREAD Ended\n");
-            //break;
-        }
     }
 
+    printf("Returned Compute_thread\n");
     return THREAD_OK;
 }
 

@@ -1408,9 +1408,9 @@ static int init(hashpipe_thread_args_t *args){
     moduleFileListEnd = moduleFileListBegin;
     create_ModPair_Datasets(file, moduleFileIndex, moduleFileListEnd);
 
-    getStaticRedisData(redisServer, file->StaticMeta);
+    //getStaticRedisData(redisServer, file->StaticMeta);
 
-    getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+    //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
 
     printf("-----------Finished Setup of Output Thread-----------\n");
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
@@ -1468,9 +1468,9 @@ static void *run(hashpipe_thread_args_t *args){
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
 
-        //TODO check mcnt
+        
 
-        getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+        //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
         for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
         }
         for (int i = 0; i < db->block[block_idx].header.coinc_block_size; i++)
@@ -1485,23 +1485,24 @@ static void *run(hashpipe_thread_args_t *args){
             QUITSIG = 0;
         }
 
+        //TODO check mcnt
+        if (db->block[block_idx].header.INTSIG){
+            //closeAllResources();
+            printf("OUTPUT_THREAD Ended\n");
+            break;
+        }
+
         HSD_output_databuf_set_free(db, block_idx);
         block_idx = (block_idx + 1) % db->header.n_block;
         mcnt++;
 
         /* Term conditions */
 
-        if (db->block[block_idx].header.INTSIG)
-        {
-            //closeAllResources();
-            printf("OUTPUT_THREAD Ended\n");
-            //break;
-        }
-
         //Will exit if thread has been cancelled
         pthread_testcancel();
     }
 
+    printf("Returned Output_thread\n");
     return THREAD_OK;
 }
 

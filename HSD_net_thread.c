@@ -30,6 +30,69 @@
 //DEBUGGING MODE 
 //#define TEST_MODE
 
+static int init(hashpipe_thread_args_t * args){
+
+    // define default network params
+    char bindhost[80];
+    int bindport = 60001;
+    hashpipe_status_t st = args->st;
+    strcpy(bindhost, "0.0.0.0");
+
+    //Locking shared buffer to properly get and set values.
+    hashpipe_status_lock_safe(&st);
+
+    // Get info from status buffer if present
+    hgets(st.buf, "BINDHOST", 80, bindhost);
+    hgeti4(st.buf, "BINDPORT", &bindport);
+
+    //Store bind host/port info and other info in status buffer
+    hputs(st.buf, "BINDHOST", bindhost);
+	hputi4(st.buf, "BINDPORT", bindport);
+    hputi8(st.buf, "NPACKETS", 0);
+
+    //Unlocking shared buffer once complete.
+    hashpipe_status_unlock_safe(&st);
+
+    // Set up pktsocket
+    struct hashpipe_pktsock *p_ps = (struct hashpipe_pktsock *)
+    malloc(sizeof(struct hashpipe_pktsock));
+
+    if(!p_ps) {
+        perror(__FUNCTION__);
+        return -1;
+    }
+
+    /* Make frame_size be a divisor of block size so that frames will be
+	contiguous in mapped mempory.  block_size must also be a multiple of
+	page_size.  Easiest way is to oversize the frames to be 16384 bytes, which
+	is bigger than we need, but keeps things easy. */
+	p_ps->frame_size = PKTSOCK_BYTES_PER_FRAME;
+	// total number of frames
+	p_ps->nframes = PKTSOCK_NFRAMES;
+	// number of blocks
+	p_ps->nblocks = PKTSOCK_NBLOCKS;
+
+    //Opening Pktsocket to recieve data.
+    int rv = hashpipe_pktsock_open(p_ps, bindhost, PACKET_RX_RING);
+	if (rv!=HASHPIPE_OK) {
+        hashpipe_error("HSD_net_thread", "Error opening pktsock.");
+        pthread_exit(NULL);
+	}
+
+    // Store packet socket pointer in args
+	args->user_data = p_ps;
+
+    
+    // Initialize the the starting values of the input buffer.
+    HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
+    for (int i = 0 ; i < db->header.n_block; i++){
+        db->block[i].header.INTSIG = 0;
+    }
+
+	// Success!
+    return 0;
+}
+
 //Struct to store the header vaules
 typedef struct {
     int acqmode;
@@ -90,74 +153,9 @@ void INThandler(int signum) {
     INTSIG = 1;
 }
 
-static int init(hashpipe_thread_args_t * args){
-    printf("\n-----------Start Setup of Input Thread--------------\n");
-    // define default network params
-    char bindhost[80];
-    int bindport = 60001;
-    hashpipe_status_t st = args->st;
-    strcpy(bindhost, "0.0.0.0");
-
-    //Locking shared buffer to properly get and set values.
-    hashpipe_status_lock_safe(&st);
-
-    // Get info from status buffer if present
-    hgets(st.buf, "BINDHOST", 80, bindhost);
-    hgeti4(st.buf, "BINDPORT", &bindport);
-
-    //Store bind host/port info and other info in status buffer
-    hputs(st.buf, "BINDHOST", bindhost);
-	hputi4(st.buf, "BINDPORT", bindport);
-    hputi8(st.buf, "NPACKETS", 0);
-
-    //Unlocking shared buffer once complete.
-    hashpipe_status_unlock_safe(&st);
-
-    // Set up pktsocket
-    struct hashpipe_pktsock *p_ps = (struct hashpipe_pktsock *)
-    malloc(sizeof(struct hashpipe_pktsock));
-
-    if(!p_ps) {
-        perror(__FUNCTION__);
-        return -1;
-    }
-
-    /* Make frame_size be a divisor of block size so that frames will be
-	contiguous in mapped mempory.  block_size must also be a multiple of
-	page_size.  Easiest way is to oversize the frames to be 16384 bytes, which
-	is bigger than we need, but keeps things easy. */
-	p_ps->frame_size = PKTSOCK_BYTES_PER_FRAME;
-	// total number of frames
-	p_ps->nframes = PKTSOCK_NFRAMES;
-	// number of blocks
-	p_ps->nblocks = PKTSOCK_NBLOCKS;
-
-    //Opening Pktsocket to recieve data.
-    int rv = hashpipe_pktsock_open(p_ps, bindhost, PACKET_RX_RING);
-	if (rv!=HASHPIPE_OK) {
-        hashpipe_error("HSD_net_thread", "Error opening pktsock.");
-        pthread_exit(NULL);
-	}
-
-    // Store packet socket pointer in args
-	args->user_data = p_ps;
-
-    
-    // Initialize the the starting values of the input buffer.
-    HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
-    for (int i = 0 ; i < db->header.n_block; i++){
-        db->block[i].header.INTSIG = 0;
-    }
-    printf("\n-----------Finished Setup of Input Thread------------\n");
-
-	// Success!
-    return 0;
-}
-
 static void *run(hashpipe_thread_args_t * args){
     signal(SIGINT, INThandler);
     INTSIG = 0;
-    printf("\n---------------Running Input Thread-----------------\n");
     
     //Creating pointers hashpipe args
     HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
@@ -199,7 +197,7 @@ static void *run(hashpipe_thread_args_t * args){
 		hashpipe_pktsock_release_frame(p_frame);
 	}
 
-    //printf("-----------Finished Setup of Input Thread------------\n\n");
+    printf("-----------Finished Setup of Input Thread------------\n\n");
 
     #ifdef TEST_MODE
         FILE *fptr;
@@ -246,8 +244,6 @@ static void *run(hashpipe_thread_args_t * args){
 
         blockHeader = &(db->block[block_idx].header);
         blockHeader->data_block_size = 0;
-        //Send the signal of SIGINT to the blockHeader
-        blockHeader->INTSIG = INTSIG;
 
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < IN_PKT_PER_BLOCK; i++){
@@ -296,6 +292,8 @@ static void *run(hashpipe_thread_args_t * args){
 
             pthread_testcancel();
         }
+        //Send the signal of SIGINT to the blockHeader
+        blockHeader->INTSIG = INTSIG;
 
         #ifdef TEST_MODE
             for (int i = 0; i < blockHeader->data_block_size; i++){
@@ -339,17 +337,17 @@ static void *run(hashpipe_thread_args_t * args){
         pthread_testcancel();
 
         //Break out when SIGINT is found
-        /*if(INTSIG){ 
+        if(INTSIG){ 
             printf("NET_THREAD Ended\n");
-            INTSIG = 0;
-            //break;
-        }*/
+            break;
+        }
 
     }
 
     pthread_cleanup_pop(1); /* Closes push(hashpipe_pktsock_close) */
 	pthread_cleanup_pop(1); /* Closes push(free) */
 
+    printf("Returned Net_thread\n");
     //Thread success!
     return THREAD_OK;
 }
