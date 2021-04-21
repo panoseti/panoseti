@@ -96,17 +96,17 @@ void writeDataToOutBuf(modulePairData_t* modulePair, HSD_output_block_t* out_blo
     int out_index = out_block->header.stream_block_size;
     HSD_output_block_header_t* out_header = &(out_block->header);
 
-    out_header->modNum[out_index] = modulePair->mod1Name;
-    out_header->modNum[out_index+1] = modulePair->mod2Name;
+    out_header->modNum[out_index*2] = modulePair->mod1Name;
+    out_header->modNum[(out_index*2)+1] = modulePair->mod2Name;
 
     out_header->acqmode[out_index] = modulePair->lastMode;
     
-    memcpy(out_block->header.pktNum + out_index, modulePair->PKTNUM, sizeof(modulePair->PKTNUM[0])*PKTPERPAIR);
-    memcpy(out_block->header.pktNSEC + out_index, modulePair->NANOSEC, sizeof(modulePair->NANOSEC[0])*PKTPERPAIR);
-    memcpy(out_block->header.tv_sec + out_index, modulePair->tv_sec, sizeof(modulePair->tv_sec[0])*PKTPERPAIR);
-    memcpy(out_block->header.tv_usec + out_index, modulePair->tv_usec, sizeof(modulePair->tv_usec[0])*PKTPERPAIR);
+    memcpy(out_block->header.pktNum + (out_index * PKTPERPAIR), modulePair->PKTNUM, sizeof(modulePair->PKTNUM[0])*PKTPERPAIR);
+    memcpy(out_block->header.pktNSEC + (out_index * PKTPERPAIR), modulePair->NANOSEC, sizeof(modulePair->NANOSEC[0])*PKTPERPAIR);
+    memcpy(out_block->header.tv_sec + (out_index * PKTPERPAIR), modulePair->tv_sec, sizeof(modulePair->tv_sec[0])*PKTPERPAIR);
+    memcpy(out_block->header.tv_usec + (out_index * PKTPERPAIR), modulePair->tv_usec, sizeof(modulePair->tv_usec[0])*PKTPERPAIR);
     
-    memcpy(out_block->stream_block + out_index*MODPAIRDATASIZE, modulePair->data, sizeof(uint8_t)*SCIDATASIZE*(modulePair->lastMode/8));
+    memcpy(out_block->stream_block + (out_index * MODPAIRDATASIZE), modulePair->data, sizeof(uint8_t)*MODPAIRDATASIZE);
 
     out_block->header.stream_block_size++;
 }

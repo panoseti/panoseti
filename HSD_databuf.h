@@ -23,8 +23,8 @@
 #define QUABOPERMODULE          4
 #define PKTPERPAIR              QUABOPERMODULE*2
 #define SCIDATASIZE             256
-#define MODPAIRDATASIZE         PKTPERPAIR*PKTDATASIZE
-#define PKTPERDATASET           500
+#define MODPAIRDATASIZE         PKTPERPAIR*SCIDATASIZE*2
+#define PKTPERDATASET           500                     //Number Module Pair data per dataset in HDF5 file
 
 //Defining the Block Sizes for the Input and Ouput Buffers
 #define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE                    //Input Block size includes headers
