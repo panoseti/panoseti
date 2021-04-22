@@ -34,7 +34,7 @@ typedef struct modulePairData {
     uint32_t NANOSEC[PKTPERPAIR];
     long int tv_sec[PKTPERPAIR];
     long int tv_usec[PKTPERPAIR];
-    uint8_t data[PKTPERPAIR*SCIDATASIZE*2];
+    uint8_t data[MODPAIRDATASIZE];
     modulePairData* next_moduleID;
 } modulePairData_t;
 
@@ -105,6 +105,7 @@ void writeDataToOutBuf(modulePairData_t* modulePair, HSD_output_block_t* out_blo
     memcpy(out_block->header.pktNSEC + (out_index * PKTPERPAIR), modulePair->NANOSEC, sizeof(modulePair->NANOSEC[0])*PKTPERPAIR);
     memcpy(out_block->header.tv_sec + (out_index * PKTPERPAIR), modulePair->tv_sec, sizeof(modulePair->tv_sec[0])*PKTPERPAIR);
     memcpy(out_block->header.tv_usec + (out_index * PKTPERPAIR), modulePair->tv_usec, sizeof(modulePair->tv_usec[0])*PKTPERPAIR);
+    memcpy(out_block->header.status + out_index, &(modulePair->status), sizeof(modulePair->status));
     
     memcpy(out_block->stream_block + (out_index * MODPAIRDATASIZE), modulePair->data, sizeof(uint8_t)*MODPAIRDATASIZE);
 
@@ -401,7 +402,9 @@ static void *run(hashpipe_thread_args_t * args){
 
         modulePairData_t* currentModule;
         uint16_t moduleNum;
-        printf("Size of data block: %i\n", db_in->block[curblock_in].header.data_block_size);
+        #ifdef TEST_MODE
+            printf("Size of intput buffer data block: %i\n", db_in->block[curblock_in].header.data_block_size);
+        #endif
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
             //----------------CALCULATION BLOCK-----------------
             moduleNum = db_in->block[curblock_in].header.modNum[i];

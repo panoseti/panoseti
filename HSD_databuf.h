@@ -98,6 +98,7 @@ typedef struct HSD_output_block_header {
     uint32_t pktNSEC[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
     long int tv_sec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
     long int tv_usec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
+    uint8_t status[OUT_MODPAIR_PER_BLOCK];
     int stream_block_size;
 
     

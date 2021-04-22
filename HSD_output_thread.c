@@ -52,6 +52,10 @@ static hsize_t storageDimMeta[RANK] = {PKTPERDATASET, PKTPERPAIR, 1};
 
 static hid_t storageSpaceMeta = H5Screate_simple(RANK, storageDimMeta, NULL);
 
+static hsize_t storageDimModPair[RANK] = {PKTPERDATASET, 1, 1};
+
+static hid_t storageSpaceModPair = H5Screate_simple(RANK, storageDimModPair, NULL);
+
 static hid_t storageTypebit16 = H5Tcopy(H5T_STD_U16LE);
 
 static hid_t storageTypebit8 = H5Tcopy(H5T_STD_U8LE);
@@ -81,6 +85,7 @@ typedef struct modulePairFile{
     hid_t bit16pktNSEC;
     hid_t bit16tv_sec;
     hid_t bit16tv_usec;
+    hid_t bit16status;
 
     hid_t bit8IMGGroup;
     hid_t bit8Dataset;
@@ -88,6 +93,7 @@ typedef struct modulePairFile{
     hid_t bit8pktNSEC;
     hid_t bit8tv_sec;
     hid_t bit8tv_usec;
+    hid_t bit8status;
 
     uint32_t bit16DatasetIndex;
     uint32_t bit8DatasetIndex;
@@ -106,6 +112,7 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
             H5Dclose(modPair->bit16pktNSEC);
             H5Dclose(modPair->bit16tv_sec);
             H5Dclose(modPair->bit16tv_usec);
+            H5Dclose(modPair->bit16status);
         }
         modPair->bit16ModPairIndex = 0;
         modPair->bit16DatasetIndex += 1;
@@ -124,6 +131,9 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
         
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "tv_usec");
         modPair->bit16tv_usec = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_NATIVE_LONG, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "status");
+        modPair->bit16status = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_NATIVE_LONG, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         
     } else if (acqmode == 8){
 
@@ -151,6 +161,9 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
 
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit8DatasetIndex, "tv_usec");
         modPair->bit8tv_usec = H5Dcreate2(modPair->bit8IMGGroup, name, H5T_NATIVE_LONG, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->bit8DatasetIndex, "status");
+        modPair->bit8status = H5Dcreate2(modPair->bit8IMGGroup, name, H5T_NATIVE_LONG, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
     }
 }
@@ -186,6 +199,8 @@ modulePairFile_t* modulePairFile_t_new(fileIDs_t* currFile, uint16_t mod1, uint1
     newModPair->bit8tv_sec = -1;
     newModPair->bit16tv_usec = -1;
     newModPair->bit8tv_usec = -1;
+    newModPair->bit16status = -1;
+    newModPair->bit8status = -1;
     newModPair->bit16DatasetIndex = -1;
     newModPair->bit8DatasetIndex = -1;
     newModPair->bit16ModPairIndex = PKTPERDATASET;
@@ -234,20 +249,38 @@ void write_Dataset(modulePairFile_t* modPair, HSD_output_block_t* block, int i){
     //Create the dataspace of the data within memory
     H5Sselect_hyperslab(dataMSpaceMeta, H5S_SELECT_SET, mOffsetMeta, NULL, mCountMeta, NULL);
 
+    hsize_t offsetModPair[RANK] = {modulePairIndex, 0, 0};
+    hsize_t countModPair[RANK] = {1, 1, 1};
+
+    hid_t dataSpaceModPair = H5Screate_simple(RANK, storageDimModPair, NULL);
+    //Create the dataspace within the HDF5 dataset for metadata
+    H5Sselect_hyperslab(dataSpaceModPair, H5S_SELECT_SET, offsetModPair, NULL, countModPair, NULL);
+
+    hsize_t mOffsetModPair[RANK-1] = {0,0};
+    hsize_t mCountModPair[RANK-1] = {1,1};
+
+    hid_t dataMSpaceModPair = H5Screate_simple(RANK-1, mCountModPair, NULL);
+    //Create the dataspace of the data within memory
+    H5Sselect_hyperslab(dataMSpaceModPair, H5S_SELECT_SET, mOffsetModPair, NULL, mCountModPair, NULL);
+
     if(mode == 16){
-        status = H5Dwrite(modPair->bit16Dataset, storageTypebit16, dataMSpace, dataSpace, H5P_DEFAULT, block->stream_block + (i * SCIDATASIZE*2));
+        status = H5Dwrite(modPair->bit16Dataset, storageTypebit16, dataMSpace, dataSpace, H5P_DEFAULT, block->stream_block + (i * MODPAIRDATASIZE));
         status = H5Dwrite(modPair->bit16pktNum, H5T_STD_U16LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNum + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16pktNSEC, H5T_STD_U32LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNSEC + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16tv_sec, H5T_NATIVE_LONG, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.tv_sec + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16tv_usec, H5T_NATIVE_LONG, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.tv_usec + (i * PKTPERPAIR));
+        status = H5Dwrite(modPair->bit16status, H5T_STD_U8LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.status + i);
     } else{
-        status = H5Dwrite(modPair->bit8Dataset, storageTypebit8, dataMSpace, dataSpace, H5P_DEFAULT, block->stream_block + (i * SCIDATASIZE*2));
+        status = H5Dwrite(modPair->bit8Dataset, storageTypebit8, dataMSpace, dataSpace, H5P_DEFAULT, block->stream_block + (i * MODPAIRDATASIZE));
         status = H5Dwrite(modPair->bit8pktNum, H5T_STD_U16LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNum + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit8pktNSEC, H5T_STD_U32LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNSEC + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit8tv_sec, H5T_NATIVE_LONG, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.tv_sec + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit8tv_usec, H5T_NATIVE_LONG, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.tv_usec + (i * PKTPERPAIR));
+        status = H5Dwrite(modPair->bit8status, H5T_STD_U8LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.status + i);
     }
-    printf("Acqmode: %u, modPairIndex: %u\n", mode, modulePairIndex);
+    #ifdef TEST_MODE
+        printf("Acqmode: %u, modPairIndex: %u\n", mode, modulePairIndex);
+    #endif
 
     H5Sclose(dataSpace);
     H5Sclose(dataMSpace);
@@ -1668,15 +1701,21 @@ static void *run(hashpipe_thread_args_t *args){
             }
 
             if (db->block[block_idx].header.acqmode[i] == 16){
-                printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit16Dataset, currModPairFile->bit16ModPairIndex);
+                #ifdef TEST_MODE
+                    printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit16Dataset, currModPairFile->bit16ModPairIndex);
+                #endif
                 if (currModPairFile->bit16ModPairIndex >= (int)PKTPERDATASET){
-                    printf("CreatingDataset\n");
+                    #ifdef TEST_MODE
+                        printf("CreatingDataset\n");
+                    #endif
                     create_ModPair_Dataset(currModPairFile, db->block[block_idx].header.acqmode[i]);
                 }
                 write_Dataset(currModPairFile, &(db->block[block_idx]), i);
                 currModPairFile->bit16ModPairIndex += 1;
             } else if (db->block[block_idx].header.acqmode[i] == 8){
-                printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit8Dataset, currModPairFile->bit8ModPairIndex);
+                #ifdef TEST_MODE
+                    printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit8Dataset, currModPairFile->bit8ModPairIndex);
+                #endif
                 if (currModPairFile->bit8ModPairIndex >= (int)PKTPERDATASET){
                     create_ModPair_Dataset(currModPairFile, db->block[block_idx].header.acqmode[i]);
                 }
