@@ -45,19 +45,19 @@ static char saveLocation[STRBUFFSIZE];
 
 //Defining the static values for the storage values for HDF5 file
 static hsize_t storageDim[RANK] = {PKTPERDATASET, PKTPERPAIR, SCIDATASIZE};
-
 static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
 
 static hsize_t storageDimMeta[RANK] = {PKTPERDATASET, PKTPERPAIR, 1};
-
 static hid_t storageSpaceMeta = H5Screate_simple(RANK, storageDimMeta, NULL);
 
 static hsize_t storageDimModPair[RANK] = {PKTPERDATASET, 1, 1};
-
 static hid_t storageSpaceModPair = H5Screate_simple(RANK, storageDimModPair, NULL);
 
-static hid_t storageTypebit16 = H5Tcopy(H5T_STD_U16LE);
+static hsize_t chunkDim[RANK] = {1, PKTPERPAIR, SCIDATASIZE};
+static hid_t creation_property = H5Pcreate(H5P_DATASET_CREATE);
 
+
+static hid_t storageTypebit16 = H5Tcopy(H5T_STD_U16LE);
 static hid_t storageTypebit8 = H5Tcopy(H5T_STD_U8LE);
 
 static long long fileSize = 0;
@@ -118,7 +118,7 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
         modPair->bit16DatasetIndex += 1;
 
         sprintf(name, IMGDATA_FORMAT, modPair->bit16DatasetIndex);
-        modPair->bit16Dataset = H5Dcreate2(modPair->bit16IMGGroup, name, storageTypebit16, storageSpace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        modPair->bit16Dataset = H5Dcreate2(modPair->bit16IMGGroup, name, storageTypebit16, storageSpace, H5P_DEFAULT, creation_property, H5P_DEFAULT);
         
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "pktNum");
         modPair->bit16pktNum = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_STD_U16LE, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -148,7 +148,7 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
         modPair->bit8DatasetIndex += 1;
 
         sprintf(name, IMGDATA_FORMAT, modPair->bit8DatasetIndex);
-        modPair->bit8Dataset = H5Dcreate2(modPair->bit8IMGGroup, name, storageTypebit8, storageSpace, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        modPair->bit8Dataset = H5Dcreate2(modPair->bit8IMGGroup, name, storageTypebit8, storageSpace, H5P_DEFAULT, creation_property, H5P_DEFAULT);
         
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit8DatasetIndex, "pktNum");
         modPair->bit8pktNum = H5Dcreate2(modPair->bit8IMGGroup, name, H5T_STD_U16LE, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -1572,6 +1572,7 @@ void QUIThandler(int signum)
 }
 
 static int init(hashpipe_thread_args_t *args){
+    H5Pset_chunk(creation_property, RANK, chunkDim);
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
     printf("\n-----------Start Setup of Output Thread--------------\n");

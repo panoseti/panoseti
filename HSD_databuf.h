@@ -15,16 +15,16 @@
 #define CACHE_ALIGNMENT         256
 #define N_INPUT_BLOCKS          4                       //Number of blocks in the input buffer
 #define N_OUTPUT_BLOCKS         8                       //Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK        40                      //Number of Pkt stored in each block
-#define OUT_MODPAIR_PER_BLOCK   40                      //Max Number of Module Pairs stored in each block
-#define COINC_PKT_PER_BLOCK     40                      //Max Number of Coinc packets stored in each block
+#define IN_PKT_PER_BLOCK        160                      //Number of Pkt stored in each block
+#define OUT_MODPAIR_PER_BLOCK   160                      //Max Number of Module Pairs stored in each block
+#define COINC_PKT_PER_BLOCK     160                      //Max Number of Coinc packets stored in each block
 
 //Defining Imaging Data Values
 #define QUABOPERMODULE          4
 #define PKTPERPAIR              QUABOPERMODULE*2
 #define SCIDATASIZE             256
 #define MODPAIRDATASIZE         PKTPERPAIR*SCIDATASIZE*2
-#define PKTPERDATASET           500                     //Number Module Pair data per dataset in HDF5 file
+#define PKTPERDATASET           5000                     //Number Module Pair data per dataset in HDF5 file
 
 //Defining the Block Sizes for the Input and Ouput Buffers
 #define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE                    //Input Block size includes headers
