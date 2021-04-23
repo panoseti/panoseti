@@ -1498,6 +1498,8 @@ void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid
                         printf("Warning: Unable to write HK Data for module %i-%i\n", currentModFile->mod1Name, i);
                     }
 
+                    fileSize += HKDATASIZE;
+
                     reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %u 0", BOARDLOC);
                 }
 
@@ -1600,8 +1602,7 @@ fileIDs_t *HDF5file_init() {
     sprintf(currTime, TIME_FORMAT, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
     sprintf(fileName + strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
-    if (access(fileName, F_OK) != -1)
-    {
+    if (access(fileName, F_OK) != -1) {
         printf("Error: Unable to access file location - %s", fileName);
         exit(0);
     }
@@ -1654,6 +1655,7 @@ fileIDs_t* reInitHDF5File(fileIDs_t* oldFile, modulePairFile_t* moduleFileListBe
         moduleFileIndex[modFileoldHeadptr->mod1Name] = moduleFileIndex[modFileoldHeadptr->mod2Name] 
         = modFileEndptr->next_modulePairFile 
         = modulePairFile_t_new(new_file, modFileoldHeadptr->mod1Name, modFileoldHeadptr->mod2Name);
+        createQuaboTables(new_file->DynamicMeta, modFileEndptr->next_modulePairFile);
 
         //Increment ptrs and free old object
         modFileEndptr = modFileEndptr->next_modulePairFile;
@@ -1689,8 +1691,7 @@ static redisContext *redisServer;
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
 static int QUITSIG;
 
-void QUIThandler(int signum)
-{
+void QUIThandler(int signum) {
     QUITSIG = 1;
 }
 
@@ -1702,8 +1703,7 @@ static int init(hashpipe_thread_args_t *args)
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
     sprintf(saveLocation, "./");
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
-    if (saveLocation[strlen(saveLocation) - 1] != '/')
-    {
+    if (saveLocation[strlen(saveLocation) - 1] != '/') {
         char endingSlash = '/';
         strncat(saveLocation, &endingSlash, 1);
         //saveLocation[strlen(saveLocation)] = '/';
@@ -1713,18 +1713,16 @@ static int init(hashpipe_thread_args_t *args)
     int maxSizeInput = 0;
 
     hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
-    maxFileSize = maxSizeInput * 8E5;
+    maxFileSize = maxSizeInput * 2E6;
 
     /*Initialization of Redis Server Values*/
     printf("------------------SETTING UP REDIS ------------------\n");
     redisServer = redisConnect("127.0.0.1", 6379);
     int attempts = 0;
-    while (redisServer != NULL && redisServer->err)
-    {
+    while (redisServer != NULL && redisServer->err) {
         printf("Error: %s\n", redisServer->errstr);
         attempts++;
-        if (attempts >= 12)
-        {
+        if (attempts >= 12) {
             printf("Unable to connect to Redis.\n");
             exit(0);
         }
@@ -1835,6 +1833,8 @@ static void *run(hashpipe_thread_args_t *args) {
                 }
                 write_Dataset(currModPairFile, &(db->block[block_idx]), i);
                 currModPairFile->bit16ModPairIndex += 1;
+                fileSize += MODPAIRDATASIZE;
+
             } else if (db->block[block_idx].header.acqmode[i] == 8) {
                 #ifdef TEST_MODE
                     printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit8Dataset, currModPairFile->bit8ModPairIndex);
@@ -1844,6 +1844,7 @@ static void *run(hashpipe_thread_args_t *args) {
                 }
                 write_Dataset(currModPairFile, &(db->block[block_idx]), i);
                 currModPairFile->bit8ModPairIndex += 1;
+                fileSize += MODPAIRDATASIZE;
             }
         }
 
