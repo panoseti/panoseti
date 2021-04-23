@@ -1606,12 +1606,63 @@ fileIDs_t *HDF5file_init() {
         exit(0);
     }
 
-    fileIDs_t *new_file;
-
-    new_file = createNewFile(fileName, currTime);
+    fileIDs_t* new_file = createNewFile(fileName, currTime);
 
     createDMetaResources(new_file->DynamicMeta);
 
+    return new_file;
+}
+
+fileIDs_t* reInitHDF5File(fileIDs_t* oldFile, modulePairFile_t* moduleFileListBegin, modulePairFile_t* moduleFileListEnd, modulePairFile_t** moduleFileIndex){
+    fileIDs_t* new_file = HDF5file_init();
+    printf("Created New File\n");
+    modulePairFile_t* modFileEndptr = moduleFileListBegin;
+    modulePairFile_t* modFileoldHeadptr = moduleFileListBegin->next_modulePairFile;
+    modulePairFile_t* modFileToFree;
+    while (modFileoldHeadptr){
+        //Close old ModulePair
+        if (modFileoldHeadptr->bit16Dataset >= 0){
+            H5Dclose(modFileoldHeadptr->bit16Dataset);
+            H5Dclose(modFileoldHeadptr->bit16pktNum);
+            H5Dclose(modFileoldHeadptr->bit16pktNSEC);
+            H5Dclose(modFileoldHeadptr->bit16tv_sec);
+            H5Dclose(modFileoldHeadptr->bit16tv_usec);
+            H5Dclose(modFileoldHeadptr->bit16status);
+        }
+        H5Dclose(modFileoldHeadptr->bit16IMGGroup);
+        if (modFileoldHeadptr->bit8Dataset >= 0){
+            H5Dclose(modFileoldHeadptr->bit8Dataset);
+            H5Dclose(modFileoldHeadptr->bit8pktNum);
+            H5Dclose(modFileoldHeadptr->bit8pktNSEC);
+            H5Dclose(modFileoldHeadptr->bit8tv_sec);
+            H5Dclose(modFileoldHeadptr->bit8tv_usec);
+            H5Dclose(modFileoldHeadptr->bit8status);
+        }
+        H5Dclose(modFileoldHeadptr->bit8IMGGroup);
+        if (modFileoldHeadptr->PHDataset >= 0){
+            H5Dclose(modFileoldHeadptr->PHDataset);
+            H5Dclose(modFileoldHeadptr->PHpktNum);
+            H5Dclose(modFileoldHeadptr->PHpktNSEC);
+            H5Dclose(modFileoldHeadptr->PHtv_sec);
+            H5Dclose(modFileoldHeadptr->PHtv_usec);
+            H5Dclose(modFileoldHeadptr->PHmodNum);
+            H5Dclose(modFileoldHeadptr->PHquaNum);
+            H5Dclose(modFileoldHeadptr->PHpktUTC);
+        }
+        H5Dclose(modFileoldHeadptr->PHGroup);
+
+        //Reinitate new ModFile Pairs
+        moduleFileIndex[modFileoldHeadptr->mod1Name] = moduleFileIndex[modFileoldHeadptr->mod2Name] 
+        = modFileEndptr->next_modulePairFile 
+        = modulePairFile_t_new(new_file, modFileoldHeadptr->mod1Name, modFileoldHeadptr->mod2Name);
+
+        //Increment ptrs and free old object
+        modFileEndptr = modFileEndptr->next_modulePairFile;
+        modFileToFree = modFileoldHeadptr;
+        modFileoldHeadptr = modFileoldHeadptr->next_modulePairFile;
+        free(modFileToFree);
+    }
+    moduleFileListEnd = modFileEndptr;
     return new_file;
 }
 
@@ -1685,9 +1736,9 @@ static int init(hashpipe_thread_args_t *args)
     moduleFileListEnd = moduleFileListBegin;
     create_ModPair(file, moduleFileIndex, moduleFileListEnd);
 
-    getStaticRedisData(redisServer, file->StaticMeta);
+    //getStaticRedisData(redisServer, file->StaticMeta);
 
-    getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+    //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
 
     printf("-----------Finished Setup of Output Thread-----------\n");
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
@@ -1749,7 +1800,7 @@ static void *run(hashpipe_thread_args_t *args)
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
 
-        getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+        //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
         for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++) {
             if (moduleFileIndex[db->block[block_idx].header.modNum[i * 2]]) {
                 currModPairFile = moduleFileIndex[db->block[block_idx].header.modNum[i * 2]];
@@ -1797,9 +1848,11 @@ static void *run(hashpipe_thread_args_t *args)
         }
 
         if (QUITSIG || fileSize > maxFileSize) {
-            printf("Start new file signal");
-            //reinitFileResources();
+            printf("-----Start Reinitializing all File Resources----\n");
+            reInitHDF5File(file, moduleFileListBegin, moduleFileListEnd, moduleFileIndex);
             //getStaticRedisData(redisServer, file->StaticMeta);
+            printf("-----Reinitializing File Resources Complete----\n");
+            printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
             fileSize = 0;
             QUITSIG = 0;
         }
