@@ -256,7 +256,7 @@ static modulePairData_t* moduleInd[MODULEINDEXSIZE] = {NULL};
 
 static int init(hashpipe_thread_args_t * args){
     //Initialize the INTSIG signal within the buffer to be zero
-    printf("\n-----------Start Setup of Compute Thread--------------\n");
+    printf("\n\n-----------Start Setup of Compute Thread--------------\n");
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
     for (int i = 0 ; i < db_out->header.n_block; i++){
         db_out->block[i].header.INTSIG = 0;
@@ -291,7 +291,7 @@ static int init(hashpipe_thread_args_t * args){
                     
                     //createQuaboTables(moduleListEnd->dynamicMeta, moduleListEnd);
 
-                    printf("\nCreated Module Pair: %u.%u-%u and %u.%u-%u\n", 
+                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
                     (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
                     (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
                 }
@@ -307,7 +307,7 @@ static int init(hashpipe_thread_args_t * args){
     if (fclose(modConfig_file) == EOF){
         printf("Warning: Unable to close module configuration file.\n");
     }
-    printf("\n-----------Finished Setup of Compute Thread-----------\n");
+    printf("-----------Finished Setup of Compute Thread-----------\n\n");
     
     return 0;
 
@@ -316,7 +316,7 @@ static int init(hashpipe_thread_args_t * args){
 
 
 static void *run(hashpipe_thread_args_t * args){
-    printf("\n---------------Running Compute Thread-----------------\n");
+    printf("\n---------------Running Compute Thread-----------------\n\n");
     // Local aliases to shorten access to args fields
     HSD_input_databuf_t *db_in = (HSD_input_databuf_t *)args->ibuf;
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
@@ -353,8 +353,6 @@ static void *run(hashpipe_thread_args_t * args){
     //Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
-
-    printf("-----------Finished Setup of Compute Thread----------\n\n");
 
     
     while(run_threads()){

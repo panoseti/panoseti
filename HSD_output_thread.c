@@ -888,7 +888,7 @@ void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modul
 
                     createQuaboTables(currFile->DynamicMeta, moduleLinkEnd);
 
-                    printf("\nCreated Module Pair: %u.%u-%u and %u.%u-%u\n",
+                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n",
                            (unsigned int)(mod1Name << 2) / 0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
                            (mod2Name << 2) / 0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
                 }
@@ -1687,7 +1687,7 @@ static int init(hashpipe_thread_args_t *args)
     H5Pset_chunk(creation_property, RANK, chunkDim);
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
-    printf("\n-----------Start Setup of Output Thread--------------\n");
+    printf("\n\n-----------Start Setup of Output Thread--------------\n");
     sprintf(saveLocation, "./");
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
     if (saveLocation[strlen(saveLocation) - 1] != '/')
@@ -1753,7 +1753,7 @@ static void *run(hashpipe_thread_args_t *args)
 
     QUITSIG = 0;
 
-    printf("\n---------------Running Output Thread-----------------\n");
+    printf("\n---------------Running Output Thread-----------------\n\n");
 
     /*Initialization of HASHPIPE Values*/
     // Local aliases to shorten access to args fields

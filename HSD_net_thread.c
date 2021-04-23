@@ -31,7 +31,7 @@
 //#define TEST_MODE
 
 static int init(hashpipe_thread_args_t * args){
-
+    printf("\n\n-----------Start Setup of Input Thread--------------\n");
     // define default network params
     char bindhost[80];
     int bindport = 60001;
@@ -88,7 +88,7 @@ static int init(hashpipe_thread_args_t * args){
     for (int i = 0 ; i < db->header.n_block; i++){
         db->block[i].header.INTSIG = 0;
     }
-
+    printf("-----------Finished Setup of Input Thread------------\n\n");
 	// Success!
     return 0;
 }
@@ -157,6 +157,7 @@ static void *run(hashpipe_thread_args_t * args){
     signal(SIGINT, INThandler);
     INTSIG = 0;
     
+    printf("\n---------------Running Input Thread-----------------\n\n");
     //Creating pointers hashpipe args
     HSD_input_databuf_t *db  = (HSD_input_databuf_t *)args->obuf;
     hashpipe_status_t st = args->st;
@@ -196,8 +197,6 @@ static void *run(hashpipe_thread_args_t * args){
 	while(p_frame=hashpipe_pktsock_recv_frame_nonblock(p_ps)) {
 		hashpipe_pktsock_release_frame(p_frame);
 	}
-
-    printf("-----------Finished Setup of Input Thread------------\n\n");
 
     #ifdef TEST_MODE
         FILE *fptr;
