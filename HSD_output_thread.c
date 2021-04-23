@@ -591,21 +591,18 @@ const hid_t GPS_field_types[GPSFIELDS] = {
 /**
  * Create a singular string attribute attached to the given group.
  */
-void createStrAttribute(hid_t group, const char *name, char *data)
-{
+void createStrAttribute(hid_t group, const char *name, char *data) {
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
 
     dataspace = H5Screate(H5S_SCALAR);
-    if (dataspace < 0)
-    {
+    if (dataspace < 0) {
         printf("Error: Unable to create HDF5 dataspace for string attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_C_S1);
-    if (datatype < 0)
-    {
+    if (datatype < 0) {
         printf("Error: Unable to create HDF5 datatype for string attribute - %s.\n", name);
         return;
     }
@@ -614,29 +611,24 @@ void createStrAttribute(hid_t group, const char *name, char *data)
     H5Tset_cset(datatype, H5T_CSET_UTF8);
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-    if (attribute < 0)
-    {
+    if (attribute < 0) {
         printf("Error: Unable to create HDF5 Attribute for string attribute - %s.\n", name);
         return;
     }
 
-    if (H5Awrite(attribute, datatype, data) < 0)
-    {
+    if (H5Awrite(attribute, datatype, data) < 0) {
         printf("Warning: Unable to write HDF5 Attribute for string attribute - %s.\n", name);
     }
     // Add size to fileSize
     fileSize += STRBUFFSIZE;
 
-    if (H5Sclose(dataspace) < 0)
-    {
+    if (H5Sclose(dataspace) < 0) {
         printf("Warning: Unable to close HDF5 dataspace for string attribute - %s\n", name);
     }
-    if (H5Tclose(datatype) < 0)
-    {
+    if (H5Tclose(datatype) < 0) {
         printf("Warning: Unable to close HDF5 datatype for string attribute - %s\n", name);
     }
-    if (H5Aclose(attribute) < 0)
-    {
+    if (H5Aclose(attribute) < 0) {
         printf("Warning: Unable to close HDF5 attribute for string attribute - %s\n", name);
     }
 }
@@ -644,50 +636,42 @@ void createStrAttribute(hid_t group, const char *name, char *data)
 /**
  * Create a singular numerical attribute attached to the given group
  */
-void createNumAttribute(hid_t group, const char *name, hid_t dtype, unsigned long long data)
-{
+void createNumAttribute(hid_t group, const char *name, hid_t dtype, unsigned long long data) {
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
     unsigned long long attr_data[1];
     attr_data[0] = data;
 
     dataspace = H5Screate(H5S_SCALAR);
-    if (dataspace < 0)
-    {
+    if (dataspace < 0) {
         printf("Error: Unable to create HDF5 dataspace for numerical attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(dtype);
-    if (datatype < 0)
-    {
+    if (datatype < 0) {
         printf("Error: Unable to create HDF5 datatype for numerical attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-    if (attribute < 0)
-    {
+    if (attribute < 0) {
         printf("Error: Unable to create HDF5 Attribute for numerical attribute - %s.\n", name);
         return;
     }
 
-    if (H5Awrite(attribute, dtype, attr_data) < 0)
-    {
+    if (H5Awrite(attribute, dtype, attr_data) < 0) {
         printf("Warning: Unable to write HDF5 Attribute for numerical attribute - %s.\n", name);
     }
     fileSize += 16;
 
-    if (H5Sclose(dataspace) < 0)
-    {
+    if (H5Sclose(dataspace) < 0) {
         printf("Warning: Unable to close HDF5 dataspace for numerical attribute - %s\n", name);
     }
-    if (H5Tclose(datatype) < 0)
-    {
+    if (H5Tclose(datatype) < 0) {
         printf("Warning: Unable to close HDF5 datatype for numerical attribute - %s\n", name);
     }
-    if (H5Aclose(attribute) < 0)
-    {
+    if (H5Aclose(attribute) < 0) {
         printf("Warning: Unable to close HDF5 attribute for numerical attribute - %s\n", name);
     }
 }
@@ -695,50 +679,42 @@ void createNumAttribute(hid_t group, const char *name, hid_t dtype, unsigned lon
 /**
  * Create a singular float attribute attached to the given group
  */
-void createFloatAttribute(hid_t group, const char *name, float data)
-{
+void createFloatAttribute(hid_t group, const char *name, float data) {
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
     float attr_data[1];
     attr_data[0] = data;
 
     dataspace = H5Screate(H5S_SCALAR);
-    if (dataspace < 0)
-    {
+    if (dataspace < 0) {
         printf("Error: Unable to create HDF5 dataspace for floating point attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_NATIVE_FLOAT);
-    if (datatype < 0)
-    {
+    if (datatype < 0) {
         printf("Error: Unable to create HDF5 datatype for floating point attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-    if (attribute < 0)
-    {
+    if (attribute < 0) {
         printf("Error: Unable to create HDF5 Attribute for floating point attribute - %s.\n", name);
         return;
     }
 
-    if (H5Awrite(attribute, H5T_NATIVE_FLOAT, attr_data) < 0)
-    {
+    if (H5Awrite(attribute, H5T_NATIVE_FLOAT, attr_data) < 0) {
         printf("Warning: Unable to write HDF5 Attribute for floating point attribute - %s.\n", name);
     }
     fileSize += 32;
 
-    if (H5Sclose(dataspace) < 0)
-    {
+    if (H5Sclose(dataspace) < 0) {
         printf("Warning: Unable to close HDF5 dataspace for floating point attribute - %s.\n", name);
     }
-    if (H5Tclose(datatype) < 0)
-    {
+    if (H5Tclose(datatype) < 0) {
         printf("Warning: Unable to close HDF5 datatype for floating point attribute - %s.\n", name);
     }
-    if (H5Aclose(attribute) < 0)
-    {
+    if (H5Aclose(attribute) < 0) {
         printf("Warning: Unable to close HDF5 attribute for floating point attribute - %s.\n", name);
     }
 }
@@ -746,50 +722,42 @@ void createFloatAttribute(hid_t group, const char *name, float data)
 /**
  * Create a singular double attribute attached to the given group.
  */
-void createDoubleAttribute(hid_t group, const char *name, double data)
-{
+void createDoubleAttribute(hid_t group, const char *name, double data) {
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
     double attr_data[1];
     attr_data[0] = data;
 
     dataspace = H5Screate(H5S_SCALAR);
-    if (dataspace < 0)
-    {
+    if (dataspace < 0) {
         printf("Error: Unable to create HDF5 dataspace for double precision attribute - %s.\n", name);
         return;
     }
 
     datatype = H5Tcopy(H5T_NATIVE_DOUBLE);
-    if (datatype < 0)
-    {
+    if (datatype < 0) {
         printf("Error: Unable to create HDF5 datatype for double precision attribute - %s.\n", name);
         return;
     }
 
     attribute = H5Acreate(group, name, datatype, dataspace, H5P_DEFAULT, H5P_DEFAULT);
-    if (attribute < 0)
-    {
+    if (attribute < 0) {
         printf("Error: Unable to create HDF5 Attribute for double precision attribute - %s.\n", name);
         return;
     }
 
-    if (H5Awrite(attribute, H5T_NATIVE_DOUBLE, attr_data) < 0)
-    {
+    if (H5Awrite(attribute, H5T_NATIVE_DOUBLE, attr_data) < 0) {
         printf("Warning: Unable to write HDF5 Attribute for double precision attribute - %s.\n", name);
     }
     fileSize += 64;
 
-    if (H5Sclose(dataspace) < 0)
-    {
+    if (H5Sclose(dataspace) < 0) {
         printf("Warning: Unable to close HDF5 dataspace for double precision attribute - %s.\n", name);
     }
-    if (H5Tclose(datatype) < 0)
-    {
+    if (H5Tclose(datatype) < 0) {
         printf("Warning: Unable to close HDF5 datatype for double precision attribute - %s.", name);
     }
-    if (H5Aclose(attribute) < 0)
-    {
+    if (H5Aclose(attribute) < 0) {
         printf("Warning: Unable to close HDF5 attribute for double precision attribute - %s.\n", name);
     }
 }
@@ -798,11 +766,9 @@ void createDoubleAttribute(hid_t group, const char *name, double data)
  * Send Redis Command
  * @return The redis reply from HIREDIS
  */
-redisReply *sendHSETRedisCommand(redisContext *redisServer, const char *HSETName, const char *Value)
-{
+redisReply *sendHSETRedisCommand(redisContext *redisServer, const char *HSETName, const char *Value) {
     redisReply *reply = (redisReply *)redisCommand(redisServer, "HGET %s %s", HSETName, Value);
-    if (reply->type != REDIS_REPLY_STRING)
-    {
+    if (reply->type != REDIS_REPLY_STRING) {
         printf("Warning: Redis was unable to get replay with the command - HGET %s %s\n", HSETName, Value);
         freeReplyObject(reply);
         return NULL;
@@ -814,11 +780,9 @@ redisReply *sendHSETRedisCommand(redisContext *redisServer, const char *HSETName
  * Send Redis Command
  * @return The redis reply from HIREDIS
  */
-redisReply *sendHSETRedisCommand(redisContext *redisServer, int HSETName, const char *Value)
-{
+redisReply *sendHSETRedisCommand(redisContext *redisServer, int HSETName, const char *Value) {
     redisReply *reply = (redisReply *)redisCommand(redisServer, "HGET %i %s", HSETName, Value);
-    if (reply->type != REDIS_REPLY_STRING)
-    {
+    if (reply->type != REDIS_REPLY_STRING) {
         printf("Warning: Redis was unable to get replay with the command - HGET %i %s\n", HSETName, Value);
         freeReplyObject(reply);
         return NULL;
@@ -829,11 +793,9 @@ redisReply *sendHSETRedisCommand(redisContext *redisServer, int HSETName, const 
 /**
  * Initialize a new file given a name and time.
  */
-fileIDs_t *createNewFile(char *fileName, char *currTime)
-{
+fileIDs_t *createNewFile(char *fileName, char *currTime) {
     fileIDs_t *newfile = (fileIDs_t *)malloc(sizeof(struct fileIDs));
-    if (newfile == NULL)
-    {
+    if (newfile == NULL) {
         printf("Error: Unable to malloc space for new file.\n");
         exit(1);
     }
@@ -851,13 +813,10 @@ fileIDs_t *createNewFile(char *fileName, char *currTime)
 
     if (newfile->file < 0 || newfile->bit16IMGData < 0 || newfile->bit8IMGData < 0 ||
         newfile->PHData < 0 || newfile->ShortTransient < 0 || newfile->bit16HCData < 0 ||
-        newfile->bit8HCData < 0 || newfile->DynamicMeta < 0 || newfile->StaticMeta < 0)
-    {
+        newfile->bit8HCData < 0 || newfile->DynamicMeta < 0 || newfile->StaticMeta < 0) {
         printf("Error in creating HD5f file\n");
         exit(1);
-    }
-    else
-    {
+    } else {
         printf("Created new file: %s\n", fileName);
     }
 
@@ -867,35 +826,30 @@ fileIDs_t *createNewFile(char *fileName, char *currTime)
 /**
  * Create new quabo tables within the HDF5 file located at the group.
  */
-void createQuaboTables(hid_t group, modulePairFile_t *module)
-{
+void createQuaboTables(hid_t group, modulePairFile_t *module) {
 
     HKPackets_t HK_data;
     char tableName[50];
     char tableTitle[50];
-    for (int i = 0; i < QUABOPERMODULE; i++)
-    {
+    for (int i = 0; i < QUABOPERMODULE; i++) {
         sprintf(tableName, HK_TABLENAME_FORAMT, module->mod1Name, i);
         sprintf(tableTitle, HK_TABLETITLE_FORMAT, module->mod1Name, i);
 
         if (H5TBmake_table(tableTitle, group, tableName, HKFIELDS, 0,
                            HK_dst_size, HK_field_names, HK_dst_offset, HK_field_types,
-                           100, NULL, 0, &HK_data) < 0)
-        {
+                           100, NULL, 0, &HK_data) < 0) {
             printf("Error: Unable to create quabo tables in HDF5 file.\n");
             exit(1);
         }
     }
 
-    for (int i = 0; i < QUABOPERMODULE; i++)
-    {
+    for (int i = 0; i < QUABOPERMODULE; i++) {
         sprintf(tableName, HK_TABLENAME_FORAMT, module->mod2Name, i);
         sprintf(tableTitle, HK_TABLETITLE_FORMAT, module->mod2Name, i);
 
         if (H5TBmake_table(tableTitle, group, tableName, HKFIELDS, 0,
                            HK_dst_size, HK_field_names, HK_dst_offset, HK_field_types,
-                           100, NULL, 0, &HK_data) < 0)
-        {
+                           100, NULL, 0, &HK_data) < 0) {
             printf("Error: Unable to create quabo tables in HDF5 file.\n");
             exit(1);
         }
@@ -905,8 +859,7 @@ void createQuaboTables(hid_t group, modulePairFile_t *module)
 /**
  * Create Module Pair Pointers from the config file
  */
-void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modulePairFile_t *moduleLinkEnd)
-{
+void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modulePairFile_t *moduleLinkEnd) {
     //Initializing the Module Pairing using the config file given
     FILE *modConfig_file = fopen(CONFIGFILE, "r");
     char fbuf[100];
@@ -914,23 +867,18 @@ void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modul
     unsigned int mod1Name;
     unsigned int mod2Name;
 
-    if (modConfig_file == NULL)
-    {
+    if (modConfig_file == NULL) {
         perror("Error Opening Config File\n");
         exit(1);
     }
     cbuf = getc(modConfig_file);
     char moduleName[50];
 
-    while (cbuf != EOF)
-    {
+    while (cbuf != EOF) {
         ungetc(cbuf, modConfig_file);
-        if (cbuf != '#')
-        {
-            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2)
-            {
-                if (moduleFileInd[mod1Name] == NULL && moduleFileInd[mod2Name] == NULL)
-                {
+        if (cbuf != '#') {
+            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2) {
+                if (moduleFileInd[mod1Name] == NULL && moduleFileInd[mod2Name] == NULL) {
 
                     sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
 
@@ -945,19 +893,15 @@ void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modul
                            (mod2Name << 2) / 0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
                 }
             }
-        }
-        else
-        {
-            if (fgets(fbuf, 100, modConfig_file) == NULL)
-            {
+        } else {
+            if (fgets(fbuf, 100, modConfig_file) == NULL) {
                 break;
             }
         }
         cbuf = getc(modConfig_file);
     }
 
-    if (fclose(modConfig_file) == EOF)
-    {
+    if (fclose(modConfig_file) == EOF) {
         printf("Warning: Unable to close module configuration file.\n");
     }
 }
@@ -971,209 +915,179 @@ void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modul
 /**
  * Get and store the GPS Supplimentary data in the HDF5 file.
  */
-void get_storeGPSSupp(redisContext *redisServer, hid_t group)
-{
+void get_storeGPSSupp(redisContext *redisServer, hid_t group) {
     redisReply *reply;
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "RECEIVERMODE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createStrAttribute(group, "RECEIVERMODE", reply->str);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DISCIPLININGMODE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createStrAttribute(group, "DISCIPLININGMODE", reply->str);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "SELFSURVEYPROGRESS");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "SELFSURVEYPROGRESS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "HOLDOVERDURATION");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "HOLDOVERDURATION", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACatRail");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "DACatRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACnearRail");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "DACnearRail", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "AntennaOpen");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "AntennaOpen", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "AntennaShorted");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "AntennaShorted", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "NotTrackingSatellites");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "NotTrackingSatellites", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "NotDiscipliningOscillator");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "NotDiscipliningOscillator", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "SurveyInProgress");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "SurveyInProgress", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "NoStoredPosition");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "NoStoredPosition", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "LeapSecondPending");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "LeapSecondPending", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "InTestMode");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "InTestMode", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PositionIsQuestionable");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "PositionIsQuestionable", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "EEPROMCorrupt");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "EEPROMCorrupt", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "AlmanacNotComplete");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "AlmanacNotComplete", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PPSNotGenerated");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "PPSNotGenerated", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "GPSDECODINGSTATUS");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "GPSDECODINGSTATUS", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DISCIPLININGACTIVITY");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "DISCIPLININGACTIVITY", H5T_STD_U8LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PPSOFFSET");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createFloatAttribute(group, "PPSOFFSET", strtof(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "CLOCKOFFSET");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createFloatAttribute(group, "CLOCKOFFSET", strtof(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACVALUE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createNumAttribute(group, "DACVALUE", H5T_STD_U32LE, strtoll(reply->str, NULL, 10));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "DACVOLTAGE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createFloatAttribute(group, "DACVOLTAGE", strtof(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "TEMPERATURE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createFloatAttribute(group, "TEMPERATURE", strtof(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "LATITUDE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createDoubleAttribute(group, "LATITUDE", strtod(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "LONGITUDE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createDoubleAttribute(group, "LONGITUDE", strtod(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "ALTITUDE");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createDoubleAttribute(group, "ALTITUDE", strtod(reply->str, NULL));
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSSUPPNAME, "PPSQUANTIZATIONERROR");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         createFloatAttribute(group, "PPSQUANTIZATIONERROR", strtof(reply->str, NULL));
         freeReplyObject(reply);
     }
@@ -1182,17 +1096,14 @@ void get_storeGPSSupp(redisContext *redisServer, hid_t group)
 /**
  * Get and store the White Rabbit Switch data into HDF5 file.
  */
-void get_storeWR(redisContext *redisServer, hid_t group)
-{
+void get_storeWR(redisContext *redisServer, hid_t group) {
     redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", WRSWITCHNAME);
-    if (reply->type != REDIS_REPLY_ARRAY)
-    {
+    if (reply->type != REDIS_REPLY_ARRAY) {
         printf("Warning: Unable to get WR Swtich Values from Redis. Skipping WR Data.\n");
         return;
     }
 
-    for (int i = 0; i < reply->elements; i = i + 2)
-    {
+    for (int i = 0; i < reply->elements; i = i + 2) {
         createNumAttribute(group, reply->element[i]->str, H5T_STD_U8LE, strtoll(reply->element[i + 1]->str, NULL, 10));
     }
     freeReplyObject(reply);
@@ -1201,64 +1112,54 @@ void get_storeWR(redisContext *redisServer, hid_t group)
 /**
  * Get the GPS data from the Redis Server.
  */
-void fetchGPSdata(GPSPackets_t *GPS, redisContext *redisServer)
-{
+void fetchGPSdata(GPSPackets_t *GPS, redisContext *redisServer) {
     redisReply *reply;
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "GPSTIME");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         strcpy(GPS->GPSTIME, reply->str);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TOW");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         GPS->TOW = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "WEEKNUMBER");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         GPS->WEEKNUMBER = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "UTCOFFSET");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         GPS->UTCOFFSET = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFLAG");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         strcpy(GPS->TIMEFLAG, reply->str);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "PPSFLAG");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         strcpy(GPS->PPSFLAG, reply->str);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMESET");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         GPS->TIMESET = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "UTCINFO");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         GPS->UTCINFO = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFROMGPS");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
@@ -1267,303 +1168,248 @@ void fetchGPSdata(GPSPackets_t *GPS, redisContext *redisServer)
 /**
  * Fetch the Housekeeping data from the Redis database for the given boardloc or quabo id.
  */
-void fetchHKdata(HKPackets_t *HK, uint16_t BOARDLOC, redisContext *redisServer)
-{
+void fetchHKdata(HKPackets_t *HK, uint16_t BOARDLOC, redisContext *redisServer) {
     redisReply *reply;
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "SYSTIME");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         strcpy(HK->SYSTIME, reply->str);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         strcpy(HK->SYSTIME, "");
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "BOARDLOC");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->BOARDLOC = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->BOARDLOC = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON0");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVMON0 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVMON0 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON1");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVMON1 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVMON1 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON2");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVMON2 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVMON2 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON3");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVMON3 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVMON3 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON0");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVIMON0 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVIMON0 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON1");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVIMON1 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVIMON1 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON2");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVIMON2 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVIMON2 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON3");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->HVIMON3 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->HVIMON3 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "RAWHVMON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->RAWHVMON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->RAWHVMON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V12MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->V12MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->V12MON = 0;
     }
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V18MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->V18MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->V18MON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V33MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->V33MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->V33MON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V37MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->V37MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->V37MON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I10MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->I10MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->I10MON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I18MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->I18MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->I18MON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I33MON");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->I33MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->I33MON = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "TEMP1");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->TEMP1 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->TEMP1 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "TEMP2");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->TEMP2 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->TEMP2 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "VCCINT");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->VCCINT = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->VCCINT = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "VCCAUX");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->VCCAUX = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->VCCAUX = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "UID");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->UID = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->UID = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "SHUTTER_STATUS");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->SHUTTER_STATUS = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->SHUTTER_STATUS = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "LIGHT_SENSOR_STATUS");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->LIGHT_STATUS = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->LIGHT_STATUS = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "FWID0");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->FWID0 = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->FWID0 = 0;
     }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "FWID1");
-    if (reply != NULL)
-    {
+    if (reply != NULL) {
         HK->FWID1 = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else
-    {
+    else {
         HK->FWID1 = 0;
     }
 }
@@ -1571,18 +1417,15 @@ void fetchHKdata(HKPackets_t *HK, uint16_t BOARDLOC, redisContext *redisServer)
 /**
  * Check and store Static data to the HDF5 file.
  */
-void getStaticRedisData(redisContext *redisServer, hid_t staticMeta)
-{
+void getStaticRedisData(redisContext *redisServer, hid_t staticMeta) {
     hid_t GPSgroup, WRgroup;
     GPSgroup = H5Gcreate(staticMeta, GPSSUPPNAME, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    if (GPSgroup < 0)
-    {
+    if (GPSgroup < 0) {
         printf("Error: Unable to create GPS group in HDF5 file.\n");
         exit(1);
     }
     WRgroup = H5Gcreate(staticMeta, WRSWITCHNAME, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    if (WRgroup < 0)
-    {
+    if (WRgroup < 0) {
         printf("Error: Unable to create White Rabbit group in HDF5 file.\n");
         exit(1);
     }
@@ -1590,12 +1433,10 @@ void getStaticRedisData(redisContext *redisServer, hid_t staticMeta)
     get_storeGPSSupp(redisServer, GPSgroup);
     get_storeWR(redisServer, WRgroup);
 
-    if (H5Gclose(GPSgroup) < 0)
-    {
+    if (H5Gclose(GPSgroup) < 0) {
         printf("Warning: Unable to close GPS HDF5 Group\n");
     }
-    if (H5Gclose(WRgroup) < 0)
-    {
+    if (H5Gclose(WRgroup) < 0) {
         printf("Warning: Unable to close WR HDF5 Group\n");
     }
 }
@@ -1603,11 +1444,9 @@ void getStaticRedisData(redisContext *redisServer, hid_t staticMeta)
 /**
  * Check if housekeeping data for the module pair has been updated and if so get and store it in the HDF5 file.
  */
-void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid_t dynamicMeta)
-{
+void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid_t dynamicMeta) {
     HKPackets_t *HKdata = (HKPackets_t *)malloc(sizeof(HKPackets));
-    if (HKdata == NULL)
-    {
+    if (HKdata == NULL) {
         printf("Error: Unable to malloc space for House Keeping Object.\n");
         exit(1);
     }
@@ -1618,24 +1457,20 @@ void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid
 
     currentModFile = modFileHead;
 
-    while (currentModFile != NULL)
-    {
+    while (currentModFile != NULL) {
 
         //Updating all the Quabos from Module 1
         BOARDLOC = (currentModFile->mod1Name << 2) & 0xfffc;
 
-        for (int i = 0; i < 4; i++)
-        {
+        for (int i = 0; i < 4; i++) {
             reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %u", BOARDLOC);
 
-            if (strtol(reply->str, NULL, 10))
-            {
+            if (strtol(reply->str, NULL, 10)) {
                 freeReplyObject(reply);
 
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
                 sprintf(tableName, HK_TABLENAME_FORAMT, currentModFile->mod1Name, i);
-                if (H5TBappend_records(dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0)
-                {
+                if (H5TBappend_records(dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0) {
                     printf("Warning: Unable to write HK Data for module %i-%i\n", currentModFile->mod1Name, i);
                 }
                 fileSize += HKDATASIZE;
@@ -1647,23 +1482,19 @@ void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid
             BOARDLOC++;
         }
 
-        if (currentModFile->mod2Name != -1)
-        {
+        if (currentModFile->mod2Name != -1) {
             //Updating all the Quabos from Module 2
             BOARDLOC = (currentModFile->mod2Name << 2) & 0xfffc;
 
-            for (int i = 0; i < 4; i++)
-            {
+            for (int i = 0; i < 4; i++) {
                 reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %u", BOARDLOC);
 
-                if (strtol(reply->str, NULL, 10))
-                {
+                if (strtol(reply->str, NULL, 10)) {
                     freeReplyObject(reply);
 
                     fetchHKdata(HKdata, BOARDLOC, redisServer);
                     sprintf(tableName, HK_TABLENAME_FORAMT, currentModFile->mod2Name, i);
-                    if (H5TBappend_records(dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0)
-                    {
+                    if (H5TBappend_records(dynamicMeta, tableName, 1, HK_dst_size, HK_dst_offset, HK_dst_sizes, HKdata) < 0) {
                         printf("Warning: Unable to write HK Data for module %i-%i\n", currentModFile->mod1Name, i);
                     }
 
@@ -1685,35 +1516,29 @@ void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid
 /**
  * Check if the GPS Primary data have been updated and if so store the GPS Primary data in the HDF5 file.
  */
-void check_storeGPS(redisContext *redisServer, hid_t group)
-{
+void check_storeGPS(redisContext *redisServer, hid_t group) {
     GPSPackets_t *GPSdata = (GPSPackets_t *)malloc(sizeof(GPSPackets));
-    if (GPSdata == NULL)
-    {
+    if (GPSdata == NULL) {
         printf("Warning: Unable to malloc space for GPS Object. Skipping GPS Data storage\n");
         return;
     }
     redisReply *reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %s", GPSPRIMNAME);
-    if (reply->type != REDIS_REPLY_STRING)
-    {
+    if (reply->type != REDIS_REPLY_STRING) {
         printf("Warning: Unable to get GPS's UPDATED Flag from Redis. Skipping GPS Data.\n");
         return;
     }
 
-    if (strtol(reply->str, NULL, 10))
-    {
+    if (strtol(reply->str, NULL, 10)) {
         freeReplyObject(reply);
 
         fetchGPSdata(GPSdata, redisServer);
-        if (H5TBappend_records(group, GPSPRIMNAME, 1, GPS_dst_size, GPS_dst_offset, GPS_dst_sizes, GPSdata) < 0)
-        {
+        if (H5TBappend_records(group, GPSPRIMNAME, 1, GPS_dst_size, GPS_dst_offset, GPS_dst_sizes, GPSdata) < 0) {
             printf("Warning: Unable to append GPS data to table in HDF5 file.\n");
         }
 
         reply = (redisReply *)redisCommand(redisServer, "HSET UPDATED %s 0", GPSPRIMNAME);
 
-        if (reply->type != REDIS_REPLY_INTEGER)
-        {
+        if (reply->type != REDIS_REPLY_INTEGER) {
             printf("Warning: Unable to set GPS's UPDATED Flag from Redis.\n");
         }
     }
@@ -1725,8 +1550,7 @@ void check_storeGPS(redisContext *redisServer, hid_t group)
 /**
  * Check and store Dynamic data to the HDF5 file.
  */
-void getDynamicRedisData(redisContext *redisServer, modulePairFile_t *modFileHead, hid_t dynamicMeta)
-{
+void getDynamicRedisData(redisContext *redisServer, modulePairFile_t *modFileHead, hid_t dynamicMeta) {
     check_storeHK(redisServer, modFileHead, dynamicMeta);
     check_storeGPS(redisServer, dynamicMeta);
 }
@@ -1734,14 +1558,12 @@ void getDynamicRedisData(redisContext *redisServer, modulePairFile_t *modFileHea
 /**
  * Create new GPS tables within the HDF5 files located at the group
  */
-void createGPSTable(hid_t group)
-{
+void createGPSTable(hid_t group) {
     GPSPackets_t GPS_data;
 
     if (H5TBmake_table(GPSPRIMNAME, group, GPSPRIMNAME, GPSFIELDS, 0,
                        GPS_dst_size, GPS_field_names, GPS_dst_offset, GPS_field_types,
-                       100, NULL, 0, &GPS_data) < 0)
-    {
+                       100, NULL, 0, &GPS_data) < 0) {
         printf("Unable to create GPS Table for HDF5 file\n");
         exit(1);
     }
@@ -1750,15 +1572,13 @@ void createGPSTable(hid_t group)
 /**
  * Create new White Rabbit Switch tables within the HDF5 files located at the group.
  */
-void createWRTable()
-{
+void createWRTable() {
 }
 
 /**
  * Inialize the metadata resources such as GPS and WR tables.
  */
-void createDMetaResources(hid_t group)
-{
+void createDMetaResources(hid_t group) {
     createGPSTable(group);
     createWRTable();
 }
