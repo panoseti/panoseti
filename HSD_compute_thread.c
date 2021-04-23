@@ -120,12 +120,15 @@ void writePHToOutBuf(HSD_input_block_t* in_block, int pktIndex, HSD_output_block
     out_block->header.coin_acqmode[out_index] = in_block->header.acqmode[pktIndex];
     out_block->header.coin_pktNum[out_index] = in_block->header.pktNum[pktIndex];
     out_block->header.coin_modNum[out_index] = in_block->header.modNum[pktIndex];
+    out_block->header.coin_quaNum[out_index] = in_block->header.quaNum[pktIndex];
     out_block->header.coin_pktUTC[out_index] = in_block->header.pktUTC[pktIndex];
     out_block->header.coin_pktNSEC[out_index] = in_block->header.pktNSEC[pktIndex];
     out_block->header.coin_tv_sec[out_index] = in_block->header.tv_sec[pktIndex];
     out_block->header.coin_tv_usec[out_index] = in_block->header.tv_usec[pktIndex];
     
     memcpy(out_block->coinc_block + out_index*PKTDATASIZE, in_block->data_block + pktIndex*PKTDATASIZE, sizeof(in_block->data_block[0])*PKTDATASIZE);
+
+    out_block->header.coinc_block_size++;
 }
 
 

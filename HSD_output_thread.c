@@ -47,6 +47,9 @@ static char saveLocation[STRBUFFSIZE];
 static hsize_t storageDim[RANK] = {PKTPERDATASET, PKTPERPAIR, SCIDATASIZE};
 static hid_t storageSpace = H5Screate_simple(RANK, storageDim, NULL);
 
+static hsize_t storageDimPH[RANK] = {PKTPERDATASET, 1, SCIDATASIZE};
+static hid_t storageSpacePH = H5Screate_simple(RANK, storageDimPH, NULL);
+
 static hsize_t storageDimMeta[RANK] = {PKTPERDATASET, PKTPERPAIR, 1};
 static hid_t storageSpaceMeta = H5Screate_simple(RANK, storageDimMeta, NULL);
 
@@ -55,7 +58,6 @@ static hid_t storageSpaceModPair = H5Screate_simple(RANK, storageDimModPair, NUL
 
 static hsize_t chunkDim[RANK] = {1, PKTPERPAIR, SCIDATASIZE};
 static hid_t creation_property = H5Pcreate(H5P_DATASET_CREATE);
-
 
 static hid_t storageTypebit16 = H5Tcopy(H5T_STD_U16LE);
 static hid_t storageTypebit8 = H5Tcopy(H5T_STD_U8LE);
@@ -67,7 +69,8 @@ static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 /**
  * The fileID structure for the current HDF5 opened.
  */
-typedef struct fileIDs{
+typedef struct fileIDs
+{
     hid_t file; /* file and dataset handles */
     hid_t bit16IMGData, bit8IMGData, PHData, ShortTransient, bit16HCData, bit8HCData, DynamicMeta, StaticMeta;
 } fileIDs_t;
@@ -75,7 +78,8 @@ typedef struct fileIDs{
 /**
  * Module Pair structure to store data information regarding storing in HDF5
  */
-typedef struct modulePairFile{
+typedef struct modulePairFile
+{
     unsigned int mod1Name;
     unsigned int mod2Name;
 
@@ -86,6 +90,8 @@ typedef struct modulePairFile{
     hid_t bit16tv_sec;
     hid_t bit16tv_usec;
     hid_t bit16status;
+    uint32_t bit16DatasetIndex;
+    uint32_t bit16ModPairIndex;
 
     hid_t bit8IMGGroup;
     hid_t bit8Dataset;
@@ -94,19 +100,33 @@ typedef struct modulePairFile{
     hid_t bit8tv_sec;
     hid_t bit8tv_usec;
     hid_t bit8status;
-
-    uint32_t bit16DatasetIndex;
     uint32_t bit8DatasetIndex;
-    uint32_t bit16ModPairIndex;
     uint32_t bit8ModPairIndex;
-    modulePairFile* next_modulePairFile;
+
+    hid_t PHGroup;
+    hid_t PHDataset;
+    hid_t PHpktNum;
+    hid_t PHpktNSEC;
+    hid_t PHtv_sec;
+    hid_t PHtv_usec;
+    hid_t PHpktUTC;
+    hid_t PHmodNum;
+    hid_t PHquaNum;
+    uint32_t PHDatasetIndex;
+    uint32_t PHModPairIndex;
+
+    modulePairFile *next_modulePairFile;
 } modulePairFile_t;
-
-void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
+/**
+ * Instantiate the dataset for a modulepair 
+ * @param modPair The module pair object for which we are creating
+ * @param acqmode The acquisition mode that we have (possible values are 16 and 8)
+ */
+void create_ModPair_Dataset(modulePairFile_t *modPair, int acqmode) {
     char name[STRBUFFSIZE];
-    if (acqmode == 16){
+    if (acqmode == 16) {
 
-        if (modPair->bit16Dataset >= 0){
+        if (modPair->bit16Dataset >= 0) {
             H5Dclose(modPair->bit16Dataset);
             H5Dclose(modPair->bit16pktNum);
             H5Dclose(modPair->bit16pktNSEC);
@@ -119,25 +139,24 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
 
         sprintf(name, IMGDATA_FORMAT, modPair->bit16DatasetIndex);
         modPair->bit16Dataset = H5Dcreate2(modPair->bit16IMGGroup, name, storageTypebit16, storageSpace, H5P_DEFAULT, creation_property, H5P_DEFAULT);
-        
+
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "pktNum");
         modPair->bit16pktNum = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_STD_U16LE, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        
+
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "pktNSEC");
         modPair->bit16pktNSEC = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_STD_U32LE, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        
+
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "tv_sec");
         modPair->bit16tv_sec = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_NATIVE_LONG, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        
+
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "tv_usec");
         modPair->bit16tv_usec = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_NATIVE_LONG, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit16DatasetIndex, "status");
         modPair->bit16status = H5Dcreate2(modPair->bit16IMGGroup, name, H5T_NATIVE_LONG, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        
     } else if (acqmode == 8){
 
-        if (modPair->bit8Dataset >= 0){
+        if (modPair->bit8Dataset >= 0) {
             H5Dclose(modPair->bit8Dataset);
             H5Dclose(modPair->bit8pktNum);
             H5Dclose(modPair->bit8pktNSEC);
@@ -149,7 +168,7 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
 
         sprintf(name, IMGDATA_FORMAT, modPair->bit8DatasetIndex);
         modPair->bit8Dataset = H5Dcreate2(modPair->bit8IMGGroup, name, storageTypebit8, storageSpace, H5P_DEFAULT, creation_property, H5P_DEFAULT);
-        
+
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit8DatasetIndex, "pktNum");
         modPair->bit8pktNum = H5Dcreate2(modPair->bit8IMGGroup, name, H5T_STD_U16LE, storageSpaceMeta, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
@@ -164,73 +183,128 @@ void create_ModPair_Dataset(modulePairFile_t* modPair, int acqmode){
 
         sprintf(name, IMGDATA_META_FORMAT, modPair->bit8DatasetIndex, "status");
         modPair->bit8status = H5Dcreate2(modPair->bit8IMGGroup, name, H5T_NATIVE_LONG, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    } else {
 
+        if (modPair->PHDataset >= 0) {
+            H5Dclose(modPair->PHDataset);
+            H5Dclose(modPair->PHpktNum);
+            H5Dclose(modPair->PHpktNSEC);
+            H5Dclose(modPair->PHpktUTC);
+            H5Dclose(modPair->PHtv_sec);
+            H5Dclose(modPair->PHtv_usec);
+            H5Dclose(modPair->PHmodNum);
+            H5Dclose(modPair->PHquaNum);
+        }
+        modPair->PHModPairIndex = 0;
+        modPair->PHDatasetIndex += 1;
+
+        sprintf(name, IMGDATA_FORMAT, modPair->PHDatasetIndex);
+        modPair->PHDataset = H5Dcreate2(modPair->PHGroup, name, storageTypebit16, storageSpacePH, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "modNum");
+        modPair->PHmodNum = H5Dcreate2(modPair->PHGroup, name, H5T_STD_U16LE, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "quaNum");
+        modPair->PHquaNum = H5Dcreate2(modPair->PHGroup, name, H5T_STD_U8LE, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "pktNum");
+        modPair->PHpktNum = H5Dcreate2(modPair->PHGroup, name, H5T_STD_U16LE, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "pktNSEC");
+        modPair->PHpktNSEC = H5Dcreate2(modPair->PHGroup, name, H5T_STD_U32LE, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "pktUTC");
+        modPair->PHpktUTC = H5Dcreate2(modPair->PHGroup, name, H5T_STD_U32LE, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "tv_sec");
+        modPair->PHtv_sec = H5Dcreate2(modPair->PHGroup, name, H5T_NATIVE_LONG, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+
+        sprintf(name, IMGDATA_META_FORMAT, modPair->PHDatasetIndex, "tv_usec");
+        modPair->PHtv_usec = H5Dcreate2(modPair->PHGroup, name, H5T_NATIVE_LONG, storageSpaceModPair, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     }
 }
 
 /**
  * Initializing an empty modulePairFile object
  */
-modulePairFile_t* modulePairFile_t_new(fileIDs_t* currFile, uint16_t mod1, uint16_t mod2, int createGroup = 1){
-    modulePairFile_t* newModPair = (modulePairFile_t*)malloc(sizeof(struct modulePairFile));
-    if (newModPair == NULL){
+modulePairFile_t *modulePairFile_t_new(fileIDs_t *currFile, uint16_t mod1, uint16_t mod2, int createGroup = 1) {
+
+    modulePairFile_t *newModPair = (modulePairFile_t *)malloc(sizeof(struct modulePairFile));
+    if (newModPair == NULL) {
         printf("Error: Unable to malloc space for ModulePairFile\n");
         exit(1);
     }
 
     char name[STRBUFFSIZE];
-    
-    
 
     newModPair->mod1Name = mod1;
     newModPair->mod2Name = mod2;
-    if (createGroup){
+    if (createGroup) {
         sprintf(name, MODULEPAIR_FORMAT, mod1, mod2);
         newModPair->bit16IMGGroup = H5Gcreate(currFile->bit16IMGData, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
         newModPair->bit8IMGGroup = H5Gcreate(currFile->bit8IMGData, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        newModPair->PHGroup = H5Gcreate(currFile->PHData, name, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     }
     newModPair->bit16Dataset = -1;
-    newModPair->bit8Dataset = -1;
     newModPair->bit16pktNum = -1;
-    newModPair->bit8pktNum = -1;
     newModPair->bit16pktNSEC = -1;
-    newModPair->bit8pktNSEC = -1;
     newModPair->bit16tv_sec = -1;
-    newModPair->bit8tv_sec = -1;
     newModPair->bit16tv_usec = -1;
-    newModPair->bit8tv_usec = -1;
     newModPair->bit16status = -1;
-    newModPair->bit8status = -1;
     newModPair->bit16DatasetIndex = -1;
-    newModPair->bit8DatasetIndex = -1;
     newModPair->bit16ModPairIndex = PKTPERDATASET;
+
+    newModPair->bit8Dataset = -1;
+    newModPair->bit8pktNum = -1;
+    newModPair->bit8pktNSEC = -1;
+    newModPair->bit8tv_sec = -1;
+    newModPair->bit8tv_usec = -1;
+    newModPair->bit8status = -1;
+    newModPair->bit8DatasetIndex = -1;
     newModPair->bit8ModPairIndex = PKTPERDATASET;
+
+    newModPair->PHDataset = -1;
+    newModPair->PHmodNum = -1;
+    newModPair->PHquaNum = -1;
+    newModPair->PHpktNum = -1;
+    newModPair->PHpktNSEC = -1;
+    newModPair->PHpktUTC = -1;
+    newModPair->PHtv_sec = -1;
+    newModPair->PHtv_usec = -1;
+    newModPair->PHDatasetIndex = -1;
+    newModPair->PHModPairIndex = PKTPERDATASET;
+
     newModPair->next_modulePairFile = NULL;
     return newModPair;
 }
 
-void write_Dataset(modulePairFile_t* modPair, HSD_output_block_t* block, int i){
+/**
+ * Writes the IMG dataset into the file given
+ * @param modPair The module pair object associated with the pair of modules specificed in config file
+ * @param block The datablock from the output buffer that contains the module pair data
+ * @param i The index of the block that we are looking at
+ */
+void write_Dataset(modulePairFile_t *modPair, HSD_output_block_t *block, int i) {
     hid_t status;
     uint32_t modulePairIndex;
     int mode = block->header.acqmode[i];
-    if (mode == 16){
+    if (mode == 16) {
         modulePairIndex = modPair->bit16ModPairIndex;
     } else if (mode == 8) {
         modulePairIndex = modPair->bit8ModPairIndex;
     }
 
-    hsize_t offset[RANK] = {modulePairIndex,0,0};
-    hsize_t count[RANK] = {1,PKTPERPAIR,SCIDATASIZE};
+    hsize_t offset[RANK] = {modulePairIndex, 0, 0};
+    hsize_t count[RANK] = {1, PKTPERPAIR, SCIDATASIZE};
 
     hid_t dataSpace = H5Screate_simple(RANK, storageDim, NULL);
     //Create the dataspace within the HDF5 dataset that will be written
     H5Sselect_hyperslab(dataSpace, H5S_SELECT_SET, offset, NULL, count, NULL);
 
+    hsize_t mOffset[RANK - 1] = {0, 0};
+    hsize_t mCount[RANK - 1] = {PKTPERPAIR, SCIDATASIZE};
 
-    hsize_t mOffset[RANK-1] = {0,0};
-    hsize_t mCount[RANK-1] = {PKTPERPAIR,SCIDATASIZE};
-
-    hid_t dataMSpace = H5Screate_simple(RANK-1, mCount, NULL);
+    hid_t dataMSpace = H5Screate_simple(RANK - 1, mCount, NULL);
     //Create the dataspace of the data within memory
     H5Sselect_hyperslab(dataMSpace, H5S_SELECT_SET, mOffset, NULL, mCount, NULL);
 
@@ -242,12 +316,13 @@ void write_Dataset(modulePairFile_t* modPair, HSD_output_block_t* block, int i){
     //Create the dataspace within the HDF5 dataset for metadata
     H5Sselect_hyperslab(dataSpaceMeta, H5S_SELECT_SET, offsetMeta, NULL, countMeta, NULL);
 
-    hsize_t mOffsetMeta[RANK-1] = {0,0};
-    hsize_t mCountMeta[RANK-1] = {PKTPERPAIR,1};
+    hsize_t mOffsetMeta[RANK - 1] = {0, 0};
+    hsize_t mCountMeta[RANK - 1] = {PKTPERPAIR, 1};
 
-    hid_t dataMSpaceMeta = H5Screate_simple(RANK-1, mCountMeta, NULL);
+    hid_t dataMSpaceMeta = H5Screate_simple(RANK - 1, mCountMeta, NULL);
     //Create the dataspace of the data within memory
     H5Sselect_hyperslab(dataMSpaceMeta, H5S_SELECT_SET, mOffsetMeta, NULL, mCountMeta, NULL);
+
 
     hsize_t offsetModPair[RANK] = {modulePairIndex, 0, 0};
     hsize_t countModPair[RANK] = {1, 1, 1};
@@ -256,21 +331,21 @@ void write_Dataset(modulePairFile_t* modPair, HSD_output_block_t* block, int i){
     //Create the dataspace within the HDF5 dataset for metadata
     H5Sselect_hyperslab(dataSpaceModPair, H5S_SELECT_SET, offsetModPair, NULL, countModPair, NULL);
 
-    hsize_t mOffsetModPair[RANK-1] = {0,0};
-    hsize_t mCountModPair[RANK-1] = {1,1};
+    hsize_t mOffsetModPair[RANK - 1] = {0, 0};
+    hsize_t mCountModPair[RANK - 1] = {1, 1};
 
-    hid_t dataMSpaceModPair = H5Screate_simple(RANK-1, mCountModPair, NULL);
+    hid_t dataMSpaceModPair = H5Screate_simple(RANK - 1, mCountModPair, NULL);
     //Create the dataspace of the data within memory
     H5Sselect_hyperslab(dataMSpaceModPair, H5S_SELECT_SET, mOffsetModPair, NULL, mCountModPair, NULL);
 
-    if(mode == 16){
+    if (mode == 16) {
         status = H5Dwrite(modPair->bit16Dataset, storageTypebit16, dataMSpace, dataSpace, H5P_DEFAULT, block->stream_block + (i * MODPAIRDATASIZE));
         status = H5Dwrite(modPair->bit16pktNum, H5T_STD_U16LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNum + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16pktNSEC, H5T_STD_U32LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNSEC + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16tv_sec, H5T_NATIVE_LONG, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.tv_sec + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16tv_usec, H5T_NATIVE_LONG, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.tv_usec + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit16status, H5T_STD_U8LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.status + i);
-    } else{
+    } else if (mode == 8) {
         status = H5Dwrite(modPair->bit8Dataset, storageTypebit8, dataMSpace, dataSpace, H5P_DEFAULT, block->stream_block + (i * MODPAIRDATASIZE));
         status = H5Dwrite(modPair->bit8pktNum, H5T_STD_U16LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNum + (i * PKTPERPAIR));
         status = H5Dwrite(modPair->bit8pktNSEC, H5T_STD_U32LE, dataMSpaceMeta, dataSpaceMeta, H5P_DEFAULT, block->header.pktNSEC + (i * PKTPERPAIR));
@@ -284,6 +359,65 @@ void write_Dataset(modulePairFile_t* modPair, HSD_output_block_t* block, int i){
 
     H5Sclose(dataSpace);
     H5Sclose(dataMSpace);
+    H5Sclose(dataSpaceMeta);
+    H5Sclose(dataMSpaceMeta);
+    H5Sclose(dataSpaceModPair);
+    H5Sclose(dataMSpaceModPair);
+}
+
+/**
+ * Writes the PH dataset into the file given
+ * @param modPair The module pair object associated with the pair of modules specificed in config file
+ * @param block The datablock from the output buffer that contains the module pair data
+ * @param i The index of the block that we are looking at
+ */
+void write_PHDataset(modulePairFile_t *modPair, HSD_output_block_t *block, int i) {
+    hid_t status;
+
+    hsize_t offsetPH[RANK] = {modPair->PHModPairIndex, 0, 0};
+    hsize_t countPH[RANK] = {1, 1, SCIDATASIZE};
+
+    hid_t dataSpacePH = H5Screate_simple(RANK, storageDimPH, NULL);
+    //Create the dataspace within the HDF5 dataset for metadata
+    H5Sselect_hyperslab(dataSpacePH, H5S_SELECT_SET, offsetPH, NULL, countPH, NULL);
+
+
+    hsize_t mOffsetPH[RANK-1] = {0, 0};
+    hsize_t mCountPH[RANK-1] = {1, SCIDATASIZE};
+
+    hid_t dataMSpacePH = H5Screate_simple(RANK-1, mCountPH, NULL);
+    //Create the dataspace of the data within memory
+    H5Sselect_hyperslab(dataMSpacePH, H5S_SELECT_SET, mOffsetPH, NULL, mCountPH, NULL);
+
+
+
+    hsize_t offsetModPair[RANK] = {modPair->PHModPairIndex, 0, 0};
+    hsize_t countModPair[RANK] = {1, 1, 1};
+
+    hid_t dataSpaceModPair = H5Screate_simple(RANK, storageDimModPair, NULL);
+    //Create the dataspace within the HDF5 dataset for metadata
+    H5Sselect_hyperslab(dataSpaceModPair, H5S_SELECT_SET, offsetModPair, NULL, countModPair, NULL);
+
+    hsize_t mOffsetModPair[RANK - 1] = {0, 0};
+    hsize_t mCountModPair[RANK - 1] = {1, 1};
+
+    hid_t dataMSpaceModPair = H5Screate_simple(RANK - 1, mCountModPair, NULL);
+    //Create the dataspace of the data within memory
+    H5Sselect_hyperslab(dataMSpaceModPair, H5S_SELECT_SET, mOffsetModPair, NULL, mCountModPair, NULL);
+
+    status = H5Dwrite(modPair->PHDataset, storageTypebit16, dataMSpacePH, dataSpacePH, H5P_DEFAULT, block->coinc_block + (i * PKTDATASIZE));
+    status = H5Dwrite(modPair->PHmodNum, H5T_STD_U16LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_modNum + i);
+    status = H5Dwrite(modPair->PHquaNum, H5T_STD_U8LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_quaNum + i);
+    status = H5Dwrite(modPair->PHpktNum, H5T_STD_U16LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_pktNum + i);
+    status = H5Dwrite(modPair->PHpktNSEC, H5T_STD_U32LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_pktNSEC + i);
+    status = H5Dwrite(modPair->PHpktUTC, H5T_STD_U32LE, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_pktUTC + i);
+    status = H5Dwrite(modPair->PHtv_sec, H5T_NATIVE_LONG, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_tv_sec + i);
+    status = H5Dwrite(modPair->PHtv_usec, H5T_NATIVE_LONG, dataMSpaceModPair, dataSpaceModPair, H5P_DEFAULT, block->header.coin_tv_usec + i);
+
+    H5Sclose(dataSpacePH);
+    H5Sclose(dataMSpacePH);
+    H5Sclose(dataSpaceModPair);
+    H5Sclose(dataMSpaceModPair);
 }
 
 typedef struct HKPackets {
@@ -302,97 +436,98 @@ typedef struct HKPackets {
     uint32_t FWID0, FWID1;
 } HKPackets_t;
 
-const HKPackets_t  HK_dst_buf[0] = {};
+const HKPackets_t HK_dst_buf[0] = {};
 
 const size_t HK_dst_size = sizeof(HKPackets_t);
 
-const size_t HK_dst_offset[HKFIELDS] = { HOFFSET( HKPackets_t, SYSTIME ),
-                                        HOFFSET( HKPackets_t, BOARDLOC),
-                                        HOFFSET( HKPackets_t, HVMON0 ),
-                                        HOFFSET( HKPackets_t, HVMON1 ),
-                                        HOFFSET( HKPackets_t, HVMON2 ),
-                                        HOFFSET( HKPackets_t, HVMON3 ),
-                                        HOFFSET( HKPackets_t, HVIMON0 ),
-                                        HOFFSET( HKPackets_t, HVIMON1 ),
-                                        HOFFSET( HKPackets_t, HVIMON2 ),
-                                        HOFFSET( HKPackets_t, HVIMON3 ),
-                                        HOFFSET( HKPackets_t, RAWHVMON ),
-                                        HOFFSET( HKPackets_t, V12MON ),
-                                        HOFFSET( HKPackets_t, V18MON ),
-                                        HOFFSET( HKPackets_t, V33MON ),
-                                        HOFFSET( HKPackets_t, V37MON ),
-                                        HOFFSET( HKPackets_t, I10MON ),
-                                        HOFFSET( HKPackets_t, I18MON ),
-                                        HOFFSET( HKPackets_t, I33MON ),
-                                        HOFFSET( HKPackets_t, TEMP1 ),
-                                        HOFFSET( HKPackets_t, TEMP2 ),
-                                        HOFFSET( HKPackets_t, VCCINT ),
-                                        HOFFSET( HKPackets_t, VCCAUX ),
-                                        HOFFSET( HKPackets_t, UID ),
-                                        HOFFSET( HKPackets_t, SHUTTER_STATUS ),
-                                        HOFFSET( HKPackets_t, LIGHT_STATUS ),
-                                        HOFFSET( HKPackets_t, FWID0 ),
-                                        HOFFSET( HKPackets_t, FWID1 )};
+const size_t HK_dst_offset[HKFIELDS] = {HOFFSET(HKPackets_t, SYSTIME),
+                                        HOFFSET(HKPackets_t, BOARDLOC),
+                                        HOFFSET(HKPackets_t, HVMON0),
+                                        HOFFSET(HKPackets_t, HVMON1),
+                                        HOFFSET(HKPackets_t, HVMON2),
+                                        HOFFSET(HKPackets_t, HVMON3),
+                                        HOFFSET(HKPackets_t, HVIMON0),
+                                        HOFFSET(HKPackets_t, HVIMON1),
+                                        HOFFSET(HKPackets_t, HVIMON2),
+                                        HOFFSET(HKPackets_t, HVIMON3),
+                                        HOFFSET(HKPackets_t, RAWHVMON),
+                                        HOFFSET(HKPackets_t, V12MON),
+                                        HOFFSET(HKPackets_t, V18MON),
+                                        HOFFSET(HKPackets_t, V33MON),
+                                        HOFFSET(HKPackets_t, V37MON),
+                                        HOFFSET(HKPackets_t, I10MON),
+                                        HOFFSET(HKPackets_t, I18MON),
+                                        HOFFSET(HKPackets_t, I33MON),
+                                        HOFFSET(HKPackets_t, TEMP1),
+                                        HOFFSET(HKPackets_t, TEMP2),
+                                        HOFFSET(HKPackets_t, VCCINT),
+                                        HOFFSET(HKPackets_t, VCCAUX),
+                                        HOFFSET(HKPackets_t, UID),
+                                        HOFFSET(HKPackets_t, SHUTTER_STATUS),
+                                        HOFFSET(HKPackets_t, LIGHT_STATUS),
+                                        HOFFSET(HKPackets_t, FWID0),
+                                        HOFFSET(HKPackets_t, FWID1)};
 
-const size_t HK_dst_sizes[HKFIELDS] = { sizeof( HK_dst_buf[0].SYSTIME),
-                                        sizeof( HK_dst_buf[0].BOARDLOC),
-                                        sizeof( HK_dst_buf[0].HVMON0),
-                                        sizeof( HK_dst_buf[0].HVMON1),
-                                        sizeof( HK_dst_buf[0].HVMON2),
-                                        sizeof( HK_dst_buf[0].HVMON3),
-                                        sizeof( HK_dst_buf[0].HVIMON0),
-                                        sizeof( HK_dst_buf[0].HVIMON1),
-                                        sizeof( HK_dst_buf[0].HVIMON2),
-                                        sizeof( HK_dst_buf[0].HVIMON3),
-                                        sizeof( HK_dst_buf[0].RAWHVMON),
-                                        sizeof( HK_dst_buf[0].V12MON),
-                                        sizeof( HK_dst_buf[0].V18MON),
-                                        sizeof( HK_dst_buf[0].V33MON),
-                                        sizeof( HK_dst_buf[0].V37MON),
-                                        sizeof( HK_dst_buf[0].I10MON),
-                                        sizeof( HK_dst_buf[0].I18MON),
-                                        sizeof( HK_dst_buf[0].I33MON),
-                                        sizeof( HK_dst_buf[0].TEMP1),
-                                        sizeof( HK_dst_buf[0].TEMP2),
-                                        sizeof( HK_dst_buf[0].VCCINT),
-                                        sizeof( HK_dst_buf[0].VCCAUX),
-                                        sizeof( HK_dst_buf[0].UID),
-                                        sizeof( HK_dst_buf[0].SHUTTER_STATUS),
-                                        sizeof( HK_dst_buf[0].LIGHT_STATUS),
-                                        sizeof( HK_dst_buf[0].FWID0),
-                                        sizeof( HK_dst_buf[0].FWID1)};
+const size_t HK_dst_sizes[HKFIELDS] = {sizeof(HK_dst_buf[0].SYSTIME),
+                                       sizeof(HK_dst_buf[0].BOARDLOC),
+                                       sizeof(HK_dst_buf[0].HVMON0),
+                                       sizeof(HK_dst_buf[0].HVMON1),
+                                       sizeof(HK_dst_buf[0].HVMON2),
+                                       sizeof(HK_dst_buf[0].HVMON3),
+                                       sizeof(HK_dst_buf[0].HVIMON0),
+                                       sizeof(HK_dst_buf[0].HVIMON1),
+                                       sizeof(HK_dst_buf[0].HVIMON2),
+                                       sizeof(HK_dst_buf[0].HVIMON3),
+                                       sizeof(HK_dst_buf[0].RAWHVMON),
+                                       sizeof(HK_dst_buf[0].V12MON),
+                                       sizeof(HK_dst_buf[0].V18MON),
+                                       sizeof(HK_dst_buf[0].V33MON),
+                                       sizeof(HK_dst_buf[0].V37MON),
+                                       sizeof(HK_dst_buf[0].I10MON),
+                                       sizeof(HK_dst_buf[0].I18MON),
+                                       sizeof(HK_dst_buf[0].I33MON),
+                                       sizeof(HK_dst_buf[0].TEMP1),
+                                       sizeof(HK_dst_buf[0].TEMP2),
+                                       sizeof(HK_dst_buf[0].VCCINT),
+                                       sizeof(HK_dst_buf[0].VCCAUX),
+                                       sizeof(HK_dst_buf[0].UID),
+                                       sizeof(HK_dst_buf[0].SHUTTER_STATUS),
+                                       sizeof(HK_dst_buf[0].LIGHT_STATUS),
+                                       sizeof(HK_dst_buf[0].FWID0),
+                                       sizeof(HK_dst_buf[0].FWID1)};
 
-const char *HK_field_names[HKFIELDS] = { "SYSTIME", "BOARDLOC",
-                                        "HVMON0","HVMON1","HVMON2","HVMON3",
-                                        "HVIMON0","HVIMON1","HVIMON2","HVIMON3",
+const char *HK_field_names[HKFIELDS] = {"SYSTIME", "BOARDLOC",
+                                        "HVMON0", "HVMON1", "HVMON2", "HVMON3",
+                                        "HVIMON0", "HVIMON1", "HVIMON2", "HVIMON3",
                                         "RAWHVMON",
-                                        "V12MON","V18MON","V33MON","V37MON",
-                                        "I10MON","I18MON","I33MON",
-                                        "TEMP1","TEMP2",
-                                        "VCCINT","VCCAUX",
+                                        "V12MON", "V18MON", "V33MON", "V37MON",
+                                        "I10MON", "I18MON", "I33MON",
+                                        "TEMP1", "TEMP2",
+                                        "VCCINT", "VCCAUX",
                                         "UID",
-                                        "SHUTTER_STATUS","LIGHT_SENSOR_STATUS",
-                                        "FWID0","FWID1"};
+                                        "SHUTTER_STATUS", "LIGHT_SENSOR_STATUS",
+                                        "FWID0", "FWID1"};
 
-hid_t get_H5T_string_type(){
+hid_t get_H5T_string_type() {
     hid_t string_type;
 
     string_type = H5Tcopy(H5T_C_S1);
-    H5Tset_size( string_type, STRBUFFSIZE );
+    H5Tset_size(string_type, STRBUFFSIZE);
     return string_type;
 }
 
-const hid_t HK_field_types[HKFIELDS] = { get_H5T_string_type(), H5T_STD_U16LE,                              // SYSTIME, BOARDLOC
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVMON0-3
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // HVIMON0-3
-                                H5T_NATIVE_FLOAT,                                                           // RAWHVMON
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,     // V12MON, V18MON, V33MON, V37MON           
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                       // I10MON, I18MON, I33MON        
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                         // TEMP1, TEMP2                        
-                                H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                         // VCCINT, VCCAUX              
-                                H5T_STD_U64LE,                                                              // UID
-                                H5T_STD_I8LE,H5T_STD_I8LE,                                                  // SHUTTER and LIGHT_SENSOR STATUS
-                                H5T_STD_U32LE,H5T_STD_U32LE                                                 // FWID0 and FWID1
+const hid_t HK_field_types[HKFIELDS] = {
+    get_H5T_string_type(), H5T_STD_U16LE,                                   // SYSTIME, BOARDLOC
+    H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, // HVMON0-3
+    H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, // HVIMON0-3
+    H5T_NATIVE_FLOAT,                                                       // RAWHVMON
+    H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, // V12MON, V18MON, V33MON, V37MON
+    H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                   // I10MON, I18MON, I33MON
+    H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                     // TEMP1, TEMP2
+    H5T_NATIVE_FLOAT, H5T_NATIVE_FLOAT,                                     // VCCINT, VCCAUX
+    H5T_STD_U64LE,                                                          // UID
+    H5T_STD_I8LE, H5T_STD_I8LE,                                             // SHUTTER and LIGHT_SENSOR STATUS
+    H5T_STD_U32LE, H5T_STD_U32LE                                            // FWID0 and FWID1
 };
 
 typedef struct GPSPackets {
@@ -407,86 +542,57 @@ typedef struct GPSPackets {
     uint8_t TIMEFROMGPS;
 } GPSPackets_t;
 
-const GPSPackets_t  GPS_dst_buf[0] = {};
+const GPSPackets_t GPS_dst_buf[0] = {};
 
 const size_t GPS_dst_size = sizeof(GPSPackets_t);
 
-const size_t GPS_dst_offset[GPSFIELDS] = { HOFFSET( GPSPackets_t, GPSTIME ),
-                                        HOFFSET( GPSPackets_t, TOW),
-                                        HOFFSET( GPSPackets_t, WEEKNUMBER),
-                                        HOFFSET( GPSPackets_t, UTCOFFSET),
-                                        HOFFSET( GPSPackets_t, TIMEFLAG),
-                                        HOFFSET( GPSPackets_t, PPSFLAG),
-                                        HOFFSET( GPSPackets_t, TIMESET),
-                                        HOFFSET( GPSPackets_t, UTCINFO),
-                                        HOFFSET( GPSPackets_t, TIMEFROMGPS)};
+const size_t GPS_dst_offset[GPSFIELDS] = {HOFFSET(GPSPackets_t, GPSTIME),
+                                          HOFFSET(GPSPackets_t, TOW),
+                                          HOFFSET(GPSPackets_t, WEEKNUMBER),
+                                          HOFFSET(GPSPackets_t, UTCOFFSET),
+                                          HOFFSET(GPSPackets_t, TIMEFLAG),
+                                          HOFFSET(GPSPackets_t, PPSFLAG),
+                                          HOFFSET(GPSPackets_t, TIMESET),
+                                          HOFFSET(GPSPackets_t, UTCINFO),
+                                          HOFFSET(GPSPackets_t, TIMEFROMGPS)};
 
-const size_t GPS_dst_sizes[GPSFIELDS] = { sizeof( GPS_dst_buf[0].GPSTIME),
-                                        sizeof( GPS_dst_buf[0].TOW),
-                                        sizeof( GPS_dst_buf[0].WEEKNUMBER),
-                                        sizeof( GPS_dst_buf[0].UTCOFFSET),
-                                        sizeof( GPS_dst_buf[0].TIMEFLAG),
-                                        sizeof( GPS_dst_buf[0].PPSFLAG),
-                                        sizeof( GPS_dst_buf[0].TIMESET),
-                                        sizeof( GPS_dst_buf[0].UTCINFO),
-                                        sizeof( GPS_dst_buf[0].TIMEFROMGPS)};
+const size_t GPS_dst_sizes[GPSFIELDS] = {sizeof(GPS_dst_buf[0].GPSTIME),
+                                         sizeof(GPS_dst_buf[0].TOW),
+                                         sizeof(GPS_dst_buf[0].WEEKNUMBER),
+                                         sizeof(GPS_dst_buf[0].UTCOFFSET),
+                                         sizeof(GPS_dst_buf[0].TIMEFLAG),
+                                         sizeof(GPS_dst_buf[0].PPSFLAG),
+                                         sizeof(GPS_dst_buf[0].TIMESET),
+                                         sizeof(GPS_dst_buf[0].UTCINFO),
+                                         sizeof(GPS_dst_buf[0].TIMEFROMGPS)};
 
-const char *GPS_field_names[GPSFIELDS] = { "GPSTIME",
-                                        "TOW",
-                                        "WEEKNUMBER",
-                                        "UTCOFFSET",
-                                        "TIMEFLAG",
-                                        "PPSFLAG",
-                                        "TIMESET",
-                                        "UTCINFO",
-                                        "TIMEFROMGPS"};
+const char *GPS_field_names[GPSFIELDS] = {"GPSTIME",
+                                          "TOW",
+                                          "WEEKNUMBER",
+                                          "UTCOFFSET",
+                                          "TIMEFLAG",
+                                          "PPSFLAG",
+                                          "TIMESET",
+                                          "UTCINFO",
+                                          "TIMEFROMGPS"};
 
-const hid_t GPS_field_types[GPSFIELDS] = { get_H5T_string_type(),   // GPSTIME
-                                        H5T_STD_U32LE,              // TOW;
-                                        H5T_STD_U16LE,              // WEEKNUMBER
-                                        H5T_STD_U8LE,               // UTCOFFSET
-                                        get_H5T_string_type(),      // TIMEFLAG[STRBUFFSIZE]
-                                        get_H5T_string_type(),      // PPSFLAG[STRBUFFSIZE]
-                                        H5T_STD_U8LE,               // TIMESET
-                                        H5T_STD_U8LE,               // UTCINFO
-                                        H5T_STD_U8LE                // TIMEFROMGPS
+const hid_t GPS_field_types[GPSFIELDS] = {
+    get_H5T_string_type(), // GPSTIME
+    H5T_STD_U32LE,         // TOW;
+    H5T_STD_U16LE,         // WEEKNUMBER
+    H5T_STD_U8LE,          // UTCOFFSET
+    get_H5T_string_type(), // TIMEFLAG[STRBUFFSIZE]
+    get_H5T_string_type(), // PPSFLAG[STRBUFFSIZE]
+    H5T_STD_U8LE,          // TIMESET
+    H5T_STD_U8LE,          // UTCINFO
+    H5T_STD_U8LE           // TIMEFROMGPS
 };
 
-typedef struct IMGHeader {
-    uint16_t pktNum;
-    uint32_t pktNSEC;
-    long int tv_sec;
-    long int tv_usec;
-} IMGHeader_t;
-
-const IMGHeader_t  IMGHead_dst_buf[0] = {};
-
-const size_t IMGHead_dst_size = sizeof(IMGHeader_t);
-
-const size_t IMGHead_dst_offset[IMGHeadFIELDS] = { HOFFSET( IMGHeader_t, pktNum ),
-                                        HOFFSET( IMGHeader_t, pktNSEC),
-                                        HOFFSET( IMGHeader_t, tv_sec),
-                                        HOFFSET( IMGHeader_t, tv_usec)};
-
-const size_t IMGHead_dst_sizes[IMGHeadFIELDS] = { sizeof( IMGHead_dst_buf[0].pktNum),
-                                        sizeof( IMGHead_dst_buf[0].pktNSEC),
-                                        sizeof( IMGHead_dst_buf[0].tv_sec),
-                                        sizeof( IMGHead_dst_buf[0].tv_usec)};
-
-const char *IMGHead_field_names[IMGHeadFIELDS] = { "pktNum",
-                                        "pktNSEC",
-                                        "tv_sec",
-                                        "tv_usec"};
-
-const hid_t IMGHead_field_types[IMGHeadFIELDS] = { H5T_STD_U16LE,   // GPSTIME
-                                        H5T_STD_U32LE,              // TOW;
-                                        H5T_NATIVE_LONG,              // WEEKNUMBER
-                                        H5T_NATIVE_LONG               // UTCOFFSET
-};
 /**
  * Create a singular string attribute attached to the given group.
  */
-void createStrAttribute(hid_t group, const char *name, char *data){
+void createStrAttribute(hid_t group, const char *name, char *data)
+{
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
 
@@ -538,7 +644,8 @@ void createStrAttribute(hid_t group, const char *name, char *data){
 /**
  * Create a singular numerical attribute attached to the given group
  */
-void createNumAttribute(hid_t group, const char *name, hid_t dtype, unsigned long long data){
+void createNumAttribute(hid_t group, const char *name, hid_t dtype, unsigned long long data)
+{
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
     unsigned long long attr_data[1];
@@ -588,7 +695,8 @@ void createNumAttribute(hid_t group, const char *name, hid_t dtype, unsigned lon
 /**
  * Create a singular float attribute attached to the given group
  */
-void createFloatAttribute(hid_t group, const char *name, float data){
+void createFloatAttribute(hid_t group, const char *name, float data)
+{
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
     float attr_data[1];
@@ -638,7 +746,8 @@ void createFloatAttribute(hid_t group, const char *name, float data){
 /**
  * Create a singular double attribute attached to the given group.
  */
-void createDoubleAttribute(hid_t group, const char *name, double data){
+void createDoubleAttribute(hid_t group, const char *name, double data)
+{
     hid_t datatype, dataspace; /* handles */
     hid_t attribute;
     double attr_data[1];
@@ -796,50 +905,59 @@ void createQuaboTables(hid_t group, modulePairFile_t *module)
 /**
  * Create Module Pair Pointers from the config file
  */
-void create_ModPair(fileIDs_t* currFile, modulePairFile_t** moduleFileInd, modulePairFile_t* moduleLinkEnd){
-     //Initializing the Module Pairing using the config file given
+void create_ModPair(fileIDs_t *currFile, modulePairFile_t **moduleFileInd, modulePairFile_t *moduleLinkEnd)
+{
+    //Initializing the Module Pairing using the config file given
     FILE *modConfig_file = fopen(CONFIGFILE, "r");
     char fbuf[100];
     char cbuf;
     unsigned int mod1Name;
     unsigned int mod2Name;
 
-    if (modConfig_file == NULL) {
+    if (modConfig_file == NULL)
+    {
         perror("Error Opening Config File\n");
         exit(1);
     }
     cbuf = getc(modConfig_file);
     char moduleName[50];
 
-    while(cbuf != EOF){
+    while (cbuf != EOF)
+    {
         ungetc(cbuf, modConfig_file);
-        if (cbuf != '#'){
-            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2){
-                if (moduleFileInd[mod1Name] == NULL && moduleFileInd[mod2Name] == NULL){
+        if (cbuf != '#')
+        {
+            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2)
+            {
+                if (moduleFileInd[mod1Name] == NULL && moduleFileInd[mod2Name] == NULL)
+                {
 
                     sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
 
-                    moduleFileInd[mod1Name] = moduleFileInd[mod2Name] = moduleLinkEnd->next_modulePairFile 
-                                            = modulePairFile_t_new(currFile, mod1Name, mod2Name);
-                    
+                    moduleFileInd[mod1Name] = moduleFileInd[mod2Name] = moduleLinkEnd->next_modulePairFile = modulePairFile_t_new(currFile, mod1Name, mod2Name);
+
                     moduleLinkEnd = moduleLinkEnd->next_modulePairFile;
-                    
+
                     createQuaboTables(currFile->DynamicMeta, moduleLinkEnd);
 
-                    printf("\nCreated Module Pair: %u.%u-%u and %u.%u-%u\n", 
-                    (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
-                    (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
+                    printf("\nCreated Module Pair: %u.%u-%u and %u.%u-%u\n",
+                           (unsigned int)(mod1Name << 2) / 0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
+                           (mod2Name << 2) / 0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
                 }
             }
-        } else {
-            if (fgets(fbuf, 100, modConfig_file) == NULL){
+        }
+        else
+        {
+            if (fgets(fbuf, 100, modConfig_file) == NULL)
+            {
                 break;
             }
         }
         cbuf = getc(modConfig_file);
     }
 
-    if (fclose(modConfig_file) == EOF){
+    if (fclose(modConfig_file) == EOF)
+    {
         printf("Warning: Unable to close module configuration file.\n");
     }
 }
@@ -1088,50 +1206,59 @@ void fetchGPSdata(GPSPackets_t *GPS, redisContext *redisServer)
     redisReply *reply;
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "GPSTIME");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         strcpy(GPS->GPSTIME, reply->str);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TOW");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         GPS->TOW = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "WEEKNUMBER");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         GPS->WEEKNUMBER = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "UTCOFFSET");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         GPS->UTCOFFSET = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFLAG");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         strcpy(GPS->TIMEFLAG, reply->str);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "PPSFLAG");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         strcpy(GPS->PPSFLAG, reply->str);
         freeReplyObject(reply);
     }
 
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMESET");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         GPS->TIMESET = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "UTCINFO");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         GPS->UTCINFO = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFROMGPS");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
@@ -1145,192 +1272,300 @@ void fetchHKdata(HKPackets_t *HK, uint16_t BOARDLOC, redisContext *redisServer)
     redisReply *reply;
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "SYSTIME");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         strcpy(HK->SYSTIME, reply->str);
         freeReplyObject(reply);
     }
-    else{strcpy(HK->SYSTIME, "");}
+    else
+    {
+        strcpy(HK->SYSTIME, "");
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "BOARDLOC");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->BOARDLOC = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else{HK->BOARDLOC = 0;}
+    else
+    {
+        HK->BOARDLOC = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON0");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVMON0 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVMON0 = 0;}
+    else
+    {
+        HK->HVMON0 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON1");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVMON1 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVMON1 = 0;}
+    else
+    {
+        HK->HVMON1 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON2");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVMON2 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVMON2 = 0;}
+    else
+    {
+        HK->HVMON2 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVMON3");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVMON3 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVMON3 = 0;}
+    else
+    {
+        HK->HVMON3 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON0");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVIMON0 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVIMON0 = 0;}
+    else
+    {
+        HK->HVIMON0 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON1");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVIMON1 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVIMON1 = 0;}
+    else
+    {
+        HK->HVIMON1 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON2");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVIMON2 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVIMON2 = 0;}
+    else
+    {
+        HK->HVIMON2 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "HVIMON3");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->HVIMON3 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->HVIMON3 = 0;}
+    else
+    {
+        HK->HVIMON3 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "RAWHVMON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->RAWHVMON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->RAWHVMON = 0;}
+    else
+    {
+        HK->RAWHVMON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V12MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->V12MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->V12MON = 0;}
+    else
+    {
+        HK->V12MON = 0;
+    }
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V18MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->V18MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->V18MON = 0;}
+    else
+    {
+        HK->V18MON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V33MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->V33MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->V33MON = 0;}
+    else
+    {
+        HK->V33MON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "V37MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->V37MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->V37MON = 0;}
+    else
+    {
+        HK->V37MON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I10MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->I10MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->I10MON = 0;}
+    else
+    {
+        HK->I10MON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I18MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->I18MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->I18MON = 0;}
+    else
+    {
+        HK->I18MON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "I33MON");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->I33MON = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->I33MON = 0;}
+    else
+    {
+        HK->I33MON = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "TEMP1");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->TEMP1 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->TEMP1 = 0;}
+    else
+    {
+        HK->TEMP1 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "TEMP2");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->TEMP2 = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->TEMP2 = 0;}
+    else
+    {
+        HK->TEMP2 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "VCCINT");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->VCCINT = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->VCCINT = 0;}
+    else
+    {
+        HK->VCCINT = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "VCCAUX");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->VCCAUX = strtof(reply->str, NULL);
         freeReplyObject(reply);
     }
-    else{HK->VCCAUX = 0;}
+    else
+    {
+        HK->VCCAUX = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "UID");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->UID = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else{HK->UID = 0;}
+    else
+    {
+        HK->UID = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "SHUTTER_STATUS");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->SHUTTER_STATUS = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else{HK->SHUTTER_STATUS = 0;}
+    else
+    {
+        HK->SHUTTER_STATUS = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "LIGHT_SENSOR_STATUS");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->LIGHT_STATUS = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else{HK->LIGHT_STATUS = 0;}
+    else
+    {
+        HK->LIGHT_STATUS = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "FWID0");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->FWID0 = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else{HK->FWID0 = 0;}
+    else
+    {
+        HK->FWID0 = 0;
+    }
 
     reply = sendHSETRedisCommand(redisServer, BOARDLOC, "FWID1");
-    if (reply != NULL){
+    if (reply != NULL)
+    {
         HK->FWID1 = strtoll(reply->str, NULL, 10);
         freeReplyObject(reply);
     }
-    else{HK->FWID1 = 0;}
+    else
+    {
+        HK->FWID1 = 0;
+    }
 }
 
 /**
@@ -1365,14 +1600,14 @@ void getStaticRedisData(redisContext *redisServer, hid_t staticMeta)
     }
 }
 
-
 /**
  * Check if housekeeping data for the module pair has been updated and if so get and store it in the HDF5 file.
  */
 void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid_t dynamicMeta)
 {
-    HKPackets_t* HKdata = (HKPackets_t *)malloc(sizeof(HKPackets));
-    if (HKdata == NULL){
+    HKPackets_t *HKdata = (HKPackets_t *)malloc(sizeof(HKPackets));
+    if (HKdata == NULL)
+    {
         printf("Error: Unable to malloc space for House Keeping Object.\n");
         exit(1);
     }
@@ -1383,15 +1618,18 @@ void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid
 
     currentModFile = modFileHead;
 
-    while (currentModFile != NULL){
+    while (currentModFile != NULL)
+    {
 
         //Updating all the Quabos from Module 1
         BOARDLOC = (currentModFile->mod1Name << 2) & 0xfffc;
 
-        for (int i = 0; i < 4; i++){
+        for (int i = 0; i < 4; i++)
+        {
             reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %u", BOARDLOC);
 
-            if (strtol(reply->str, NULL, 10)){
+            if (strtol(reply->str, NULL, 10))
+            {
                 freeReplyObject(reply);
 
                 fetchHKdata(HKdata, BOARDLOC, redisServer);
@@ -1409,14 +1647,17 @@ void check_storeHK(redisContext *redisServer, modulePairFile_t *modFileHead, hid
             BOARDLOC++;
         }
 
-        if (currentModFile->mod2Name != -1){
+        if (currentModFile->mod2Name != -1)
+        {
             //Updating all the Quabos from Module 2
             BOARDLOC = (currentModFile->mod2Name << 2) & 0xfffc;
 
-            for (int i = 0; i < 4; i++){
+            for (int i = 0; i < 4; i++)
+            {
                 reply = (redisReply *)redisCommand(redisServer, "HGET UPDATED %u", BOARDLOC);
 
-                if (strtol(reply->str, NULL, 10)){
+                if (strtol(reply->str, NULL, 10))
+                {
                     freeReplyObject(reply);
 
                     fetchHKdata(HKdata, BOARDLOC, redisServer);
@@ -1484,7 +1725,7 @@ void check_storeGPS(redisContext *redisServer, hid_t group)
 /**
  * Check and store Dynamic data to the HDF5 file.
  */
-void getDynamicRedisData(redisContext* redisServer, modulePairFile_t* modFileHead, hid_t dynamicMeta)
+void getDynamicRedisData(redisContext *redisServer, modulePairFile_t *modFileHead, hid_t dynamicMeta)
 {
     check_storeHK(redisServer, modFileHead, dynamicMeta);
     check_storeGPS(redisServer, dynamicMeta);
@@ -1525,8 +1766,7 @@ void createDMetaResources(hid_t group)
 /**
  * Initilzing the HDF5 file based on the current file_naming format.
  */
-fileIDs_t *HDF5file_init()
-{
+fileIDs_t *HDF5file_init() {
     time_t t = time(NULL);
     struct tm tm = *gmtime(&t);
     char currTime[STRBUFFSIZE + 20];
@@ -1557,9 +1797,9 @@ fileIDs_t *HDF5file_init()
 
 static fileIDs_t *file;
 
-static modulePairFile_t* moduleFileListBegin;
-static modulePairFile_t* moduleFileListEnd;
-static modulePairFile_t* moduleFileIndex[MODULEINDEXSIZE] = {NULL};
+static modulePairFile_t *moduleFileListBegin;
+static modulePairFile_t *moduleFileListEnd;
+static modulePairFile_t *moduleFileIndex[MODULEINDEXSIZE] = {NULL};
 
 static redisContext *redisServer;
 
@@ -1571,14 +1811,16 @@ void QUIThandler(int signum)
     QUITSIG = 1;
 }
 
-static int init(hashpipe_thread_args_t *args){
+static int init(hashpipe_thread_args_t *args)
+{
     H5Pset_chunk(creation_property, RANK, chunkDim);
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
     printf("\n-----------Start Setup of Output Thread--------------\n");
     sprintf(saveLocation, "./");
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
-    if (saveLocation[strlen(saveLocation) - 1] != '/'){
+    if (saveLocation[strlen(saveLocation) - 1] != '/')
+    {
         char endingSlash = '/';
         strncat(saveLocation, &endingSlash, 1);
         //saveLocation[strlen(saveLocation)] = '/';
@@ -1623,18 +1865,18 @@ static int init(hashpipe_thread_args_t *args){
     moduleFileListEnd = moduleFileListBegin;
     create_ModPair(file, moduleFileIndex, moduleFileListEnd);
 
-    //getStaticRedisData(redisServer, file->StaticMeta);
+    getStaticRedisData(redisServer, file->StaticMeta);
 
-    //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+    getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
 
     printf("-----------Finished Setup of Output Thread-----------\n");
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
 
-
     return 0;
 }
 
-static void *run(hashpipe_thread_args_t *args){
+static void *run(hashpipe_thread_args_t *args)
+{
 
     signal(SIGQUIT, QUIThandler);
 
@@ -1652,7 +1894,7 @@ static void *run(hashpipe_thread_args_t *args){
     int rv;
     int block_idx = 0;
     uint64_t mcnt = 0;
-    modulePairFile_t* currModPairFile;
+    modulePairFile_t *currModPairFile;
 
     /* Main loop */
     while (run_threads())
@@ -1665,14 +1907,17 @@ static void *run(hashpipe_thread_args_t *args){
         hashpipe_status_unlock_safe(&st);
 
         //Wait for the output buffer to be free
-        while ((rv = HSD_output_databuf_wait_filled(db, block_idx)) != HASHPIPE_OK){
-            if (rv == HASHPIPE_TIMEOUT){
+        while ((rv = HSD_output_databuf_wait_filled(db, block_idx)) != HASHPIPE_OK)
+        {
+            if (rv == HASHPIPE_TIMEOUT)
+            {
                 hashpipe_status_lock_safe(&st);
                 hputs(st.buf, status_key, "blocked");
                 hashpipe_status_unlock_safe(&st);
                 continue;
             }
-            else{
+            else
+            {
                 hashpipe_error(__FUNCTION__, "error waiting for filled databuf");
                 pthread_exit(NULL);
                 break;
@@ -1684,28 +1929,23 @@ static void *run(hashpipe_thread_args_t *args){
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
 
-        
-
-        //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
-        for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
-            if (moduleFileIndex[db->block[block_idx].header.modNum[i*2]]){
-                currModPairFile = moduleFileIndex[db->block[block_idx].header.modNum[i*2]];
+        getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+        for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++) {
+            if (moduleFileIndex[db->block[block_idx].header.modNum[i * 2]]) {
+                currModPairFile = moduleFileIndex[db->block[block_idx].header.modNum[i * 2]];
                 //printf("Mod1 Number is :%i Acqmode: %i\n", db->block[block_idx].header.modNum[i*2],
                 //                                            db->block[block_idx].header.acqmode[i]);
-
-                
-            } else if (moduleFileIndex[db->block[block_idx].header.modNum[(i*2)+1]]){
-                currModPairFile = moduleFileIndex[db->block[block_idx].header.modNum[(i*2)+1]];
+            } else if (moduleFileIndex[db->block[block_idx].header.modNum[(i * 2) + 1]]) {
+                currModPairFile = moduleFileIndex[db->block[block_idx].header.modNum[(i * 2) + 1]];
                 //printf("Mod2 Number is :%i Acqmode: %i\n", db->block[block_idx].header.modNum[(i*2)+1],
                 //                                            db->block[block_idx].header.acqmode[i]);
-                
             }
 
-            if (db->block[block_idx].header.acqmode[i] == 16){
+            if (db->block[block_idx].header.acqmode[i] == 16) {
                 #ifdef TEST_MODE
                     printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit16Dataset, currModPairFile->bit16ModPairIndex);
                 #endif
-                if (currModPairFile->bit16ModPairIndex >= (int)PKTPERDATASET){
+                if (currModPairFile->bit16ModPairIndex >= (int)PKTPERDATASET) {
                     #ifdef TEST_MODE
                         printf("CreatingDataset\n");
                     #endif
@@ -1713,22 +1953,30 @@ static void *run(hashpipe_thread_args_t *args){
                 }
                 write_Dataset(currModPairFile, &(db->block[block_idx]), i);
                 currModPairFile->bit16ModPairIndex += 1;
-            } else if (db->block[block_idx].header.acqmode[i] == 8){
+            } else if (db->block[block_idx].header.acqmode[i] == 8) {
                 #ifdef TEST_MODE
                     printf("Dataset Key: %i, ModulePair Index: %u\n", currModPairFile->bit8Dataset, currModPairFile->bit8ModPairIndex);
                 #endif
-                if (currModPairFile->bit8ModPairIndex >= (int)PKTPERDATASET){
+                if (currModPairFile->bit8ModPairIndex >= (int)PKTPERDATASET) {
                     create_ModPair_Dataset(currModPairFile, db->block[block_idx].header.acqmode[i]);
                 }
                 write_Dataset(currModPairFile, &(db->block[block_idx]), i);
                 currModPairFile->bit8ModPairIndex += 1;
             }
         }
-        for (int i = 0; i < db->block[block_idx].header.coinc_block_size; i++)
-        {
+
+
+        for (int i = 0; i < db->block[block_idx].header.coinc_block_size; i++) {
+            currModPairFile = moduleFileIndex[db->block[block_idx].header.coin_modNum[i]];
+
+            if (currModPairFile->PHModPairIndex >= (int)PKTPERDATASET){
+                create_ModPair_Dataset(currModPairFile, 0);
+            }
+            write_PHDataset(currModPairFile, &(db->block[block_idx]), i);
+            currModPairFile->PHModPairIndex += 1;
         }
 
-        if (QUITSIG || fileSize > maxFileSize){
+        if (QUITSIG || fileSize > maxFileSize) {
             printf("Start new file signal");
             //reinitFileResources();
             //getStaticRedisData(redisServer, file->StaticMeta);
@@ -1737,7 +1985,7 @@ static void *run(hashpipe_thread_args_t *args){
         }
 
         //TODO check mcnt
-        if (db->block[block_idx].header.INTSIG){
+        if (db->block[block_idx].header.INTSIG) {
             //closeAllResources();
             printf("OUTPUT_THREAD Ended\n");
             break;

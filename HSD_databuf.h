@@ -15,9 +15,9 @@
 #define CACHE_ALIGNMENT         256
 #define N_INPUT_BLOCKS          4                       //Number of blocks in the input buffer
 #define N_OUTPUT_BLOCKS         8                       //Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK        160                      //Number of Pkt stored in each block
-#define OUT_MODPAIR_PER_BLOCK   160                      //Max Number of Module Pairs stored in each block
-#define COINC_PKT_PER_BLOCK     160                      //Max Number of Coinc packets stored in each block
+#define IN_PKT_PER_BLOCK        320                      //Number of Pkt stored in each block
+#define OUT_MODPAIR_PER_BLOCK   320                      //Max Number of Module Pairs stored in each block
+#define COINC_PKT_PER_BLOCK     320                      //Max Number of Coinc packets stored in each block
 
 //Defining Imaging Data Values
 #define QUABOPERMODULE          4
