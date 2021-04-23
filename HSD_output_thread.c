@@ -1728,32 +1728,32 @@ static int init(hashpipe_thread_args_t *args)
     // reply = redisCommand(redisServer, "AUTH password");
     // freeReplyObject(reply);
 
+    printf("-----------Finished Setup of Output Thread-----------\n\n");    
+
+    return 0;
+}
+
+static void *run(hashpipe_thread_args_t *args) {
+
+    signal(SIGQUIT, QUIThandler);
+
+    QUITSIG = 0;
     /* Initialization of HDF5 Values*/
-    printf("-------------------SETTING UP HDF5 ------------------\n");
+    printf("\n-------------------SETTING UP HDF5 ------------------\n");
 
     file = HDF5file_init();
     moduleFileListBegin = modulePairFile_t_new(file, -1, -1, 0);
     moduleFileListEnd = moduleFileListBegin;
     create_ModPair(file, moduleFileIndex, moduleFileListEnd);
 
-    //getStaticRedisData(redisServer, file->StaticMeta);
+    getStaticRedisData(redisServer, file->StaticMeta);
 
-    //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+    getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
 
-    printf("-----------Finished Setup of Output Thread-----------\n");
-    printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
+    
+    printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
 
-    return 0;
-}
-
-static void *run(hashpipe_thread_args_t *args)
-{
-
-    signal(SIGQUIT, QUIThandler);
-
-    QUITSIG = 0;
-
-    printf("\n---------------Running Output Thread-----------------\n\n");
+    printf("---------------Running Output Thread-----------------\n\n");
 
     /*Initialization of HASHPIPE Values*/
     // Local aliases to shorten access to args fields
@@ -1768,8 +1768,7 @@ static void *run(hashpipe_thread_args_t *args)
     modulePairFile_t *currModPairFile;
 
     /* Main loop */
-    while (run_threads())
-    {
+    while (run_threads()) {
 
         hashpipe_status_lock_safe(&st);
         hputi4(st.buf, "OUTBLKIN", block_idx);
@@ -1800,7 +1799,7 @@ static void *run(hashpipe_thread_args_t *args)
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
 
-        //getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
+        getDynamicRedisData(redisServer, moduleFileListBegin->next_modulePairFile, file->DynamicMeta);
         for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++) {
             if (moduleFileIndex[db->block[block_idx].header.modNum[i * 2]]) {
                 currModPairFile = moduleFileIndex[db->block[block_idx].header.modNum[i * 2]];
@@ -1850,7 +1849,7 @@ static void *run(hashpipe_thread_args_t *args)
         if (QUITSIG || fileSize > maxFileSize) {
             printf("-----Start Reinitializing all File Resources----\n");
             reInitHDF5File(file, moduleFileListBegin, moduleFileListEnd, moduleFileIndex);
-            //getStaticRedisData(redisServer, file->StaticMeta);
+            getStaticRedisData(redisServer, file->StaticMeta);
             printf("-----Reinitializing File Resources Complete----\n");
             printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
             fileSize = 0;
