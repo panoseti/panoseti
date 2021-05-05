@@ -2,6 +2,10 @@
 #include <stdio.h>
 #include "hashpipe.h"
 #include "hashpipe_databuf.h"
+#include "hdf5.h"
+#include "hdf5_hl.h"
+
+
 //Defining size of packets
 #define PKTDATASIZE         512     //byte of data block
 #define BIT8PKTDATASIZE     256     //byte of 8bit data block
@@ -11,23 +15,56 @@
 #define CACHE_ALIGNMENT         256
 #define N_INPUT_BLOCKS          4                       //Number of blocks in the input buffer
 #define N_OUTPUT_BLOCKS         8                       //Number of blocks in the output buffer
-#define N_PKT_PER_BLOCK         40                      //Number of Pkt stored in each block
-#define INPUTBLOCKSIZE      PKTDATASIZE*N_PKT_PER_BLOCK     //Block size includes headers
-#define OUTPUTBLOCKSIZE     PKTDATASIZE*N_PKT_PER_BLOCK     //Block size excludes headers
+#define IN_PKT_PER_BLOCK        320                      //Number of Pkt stored in each block
+#define OUT_MODPAIR_PER_BLOCK   320                      //Max Number of Module Pairs stored in each block
+#define COINC_PKT_PER_BLOCK     320                      //Max Number of Coinc packets stored in each block
+
+//Defining Imaging Data Values
+#define QUABOPERMODULE          4
+#define PKTPERPAIR              QUABOPERMODULE*2
+#define SCIDATASIZE             256
+#define MODPAIRDATASIZE         PKTPERPAIR*SCIDATASIZE*2
+#define PKTPERDATASET           5000                     //Number Module Pair data per dataset in HDF5 file
+
+//Defining the Block Sizes for the Input and Ouput Buffers
+#define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE                    //Input Block size includes headers
+#define OUTPUTBLOCKSIZE         OUT_MODPAIR_PER_BLOCK*MODPAIRDATASIZE           //Output Stream Block size excludes headers
+#define OUTPUTCOICBLOCKSIZE     COINC_PKT_PER_BLOCK*PKTDATASIZE                 //Output Coinc Block size excluding headers
+
 
 #define BLOCKSIZE           INPUTBLOCKSIZE
+
+
+//Definng the numerical values
+#define RANK                    3
+#define HKDATASIZE              464
+#define DATABLOCKSIZE           SCIDATASIZE*PKTPERPAIR+64+16
+#define HKFIELDS                27
+#define GPSFIELDS               9
+#define NANOSECTHRESHOLD        20
+#define MODULEINDEXSIZE         0xffff
+
+#define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
+#define CONFIGFILE "./modulePair.config"
+
+
+//Defining the string buffer size
+#define STRBUFFSIZE 80
+
+
+
 
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
-    long int tv_sec[N_PKT_PER_BLOCK];
-    long int tv_usec[N_PKT_PER_BLOCK];
-    char acqmode[N_PKT_PER_BLOCK];
-    uint16_t pktNum[N_PKT_PER_BLOCK];
-    uint16_t modNum[N_PKT_PER_BLOCK];
-    uint8_t quaNum[N_PKT_PER_BLOCK];
-    uint32_t pktUTC[N_PKT_PER_BLOCK];
-    uint32_t pktNSEC[N_PKT_PER_BLOCK];
+    char acqmode[IN_PKT_PER_BLOCK];
+    uint16_t pktNum[IN_PKT_PER_BLOCK];
+    uint16_t modNum[IN_PKT_PER_BLOCK];
+    uint8_t quaNum[IN_PKT_PER_BLOCK];
+    uint32_t pktUTC[IN_PKT_PER_BLOCK];
+    uint32_t pktNSEC[IN_PKT_PER_BLOCK];
+    long int tv_sec[IN_PKT_PER_BLOCK];
+    long int tv_usec[IN_PKT_PER_BLOCK];
     int data_block_size;
     int INTSIG;
 } HSD_input_block_header_t;
@@ -53,24 +90,29 @@ typedef struct HSD_input_databuf {
  */
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
-    long int tv_sec[N_PKT_PER_BLOCK];
-    long int tv_usec[N_PKT_PER_BLOCK];
-    char acqmode[N_PKT_PER_BLOCK];
-    uint16_t pktNum[N_PKT_PER_BLOCK];
-    uint16_t modNum[N_PKT_PER_BLOCK];
-    uint8_t quaNum[N_PKT_PER_BLOCK];
-    uint32_t pktUTC[N_PKT_PER_BLOCK];
-    uint32_t pktNSEC[N_PKT_PER_BLOCK];
+
+    uint16_t modNum[OUT_MODPAIR_PER_BLOCK*2];
+    char acqmode[OUT_MODPAIR_PER_BLOCK];
+    //uint32_t pktUTC[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
+    uint16_t pktNum[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
+    uint32_t pktNSEC[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
+    long int tv_sec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
+    long int tv_usec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
+    uint8_t status[OUT_MODPAIR_PER_BLOCK];
     int stream_block_size;
-    long int coin_tv_sec[N_PKT_PER_BLOCK];
-    long int coin_tv_usec[N_PKT_PER_BLOCK];
-    char coin_acqmode[N_PKT_PER_BLOCK];
-    uint16_t coin_pktNum[N_PKT_PER_BLOCK];
-    uint16_t coin_modNum[N_PKT_PER_BLOCK];
-    uint8_t coin_quaNum[N_PKT_PER_BLOCK];
-    uint32_t coin_pktUTC[N_PKT_PER_BLOCK];
-    uint32_t coin_pktNSEC[N_PKT_PER_BLOCK];
+
+    
+    char coin_acqmode[COINC_PKT_PER_BLOCK];
+    uint16_t coin_pktNum[COINC_PKT_PER_BLOCK];
+    uint16_t coin_modNum[COINC_PKT_PER_BLOCK];
+    uint8_t coin_quaNum[COINC_PKT_PER_BLOCK];
+    uint32_t coin_pktUTC[COINC_PKT_PER_BLOCK];
+    uint32_t coin_pktNSEC[COINC_PKT_PER_BLOCK];
+    long int coin_tv_sec[COINC_PKT_PER_BLOCK];
+    long int coin_tv_usec[COINC_PKT_PER_BLOCK];
     int coinc_block_size;
+
+
     int INTSIG;
 } HSD_output_block_header_t;
 
@@ -82,7 +124,7 @@ typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
     char stream_block[OUTPUTBLOCKSIZE*sizeof(char)];
-    char coinc_block[OUTPUTBLOCKSIZE*sizeof(char)];
+    char coinc_block[OUTPUTCOICBLOCKSIZE*sizeof(char)];
 } HSD_output_block_t;
 
 typedef struct HSD_output_databuf {
