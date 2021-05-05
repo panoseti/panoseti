@@ -40,11 +40,6 @@
 
 //Defining the string buffer size
 #define STRBUFFSIZE 80
-<<<<<<< HEAD
-
-static char saveLocation[STRBUFFSIZE];
-=======
->>>>>>> origin/newHDF5format
 
 static char saveLocation[STRBUFFSIZE];
 
@@ -1577,30 +1572,7 @@ void createGPSTable(hid_t group) {
 }
 
 /**
-<<<<<<< HEAD
- * Initilzing the HDF5 file based on the current file_naming format.
- */
-fileIDs_t* HDF5file_init(){
-    time_t t = time(NULL);
-    struct tm tm = *gmtime(&t);
-    char currTime[STRBUFFSIZE+20];
-    char fileName[STRBUFFSIZE+20];
-    
-    sprintf(fileName, "%s%04i/", saveLocation, (tm.tm_year + 1900));
-    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    sprintf(fileName, "%s%04i/%04i%02i%02i/", saveLocation, (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-    mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    sprintf(currTime, TIME_FORMAT,tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-    sprintf(fileName+strlen(fileName), H5FILE_NAME_FORMAT, OBSERVATORY, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-    return HDF5file_init(fileName, currTime);
-}
-
-/**
- * Close and flush out all of the file resources
-=======
  * Create new White Rabbit Switch tables within the HDF5 files located at the group.
->>>>>>> origin/newHDF5format
  */
 void createWRTable() {
 }
@@ -1619,16 +1591,10 @@ void createDMetaResources(hid_t group) {
 fileIDs_t *HDF5file_init() {
     time_t t = time(NULL);
     struct tm tm = *gmtime(&t);
-<<<<<<< HEAD
-    char currTime[STRBUFFSIZE+20];
-    char fileName[STRBUFFSIZE+20];
-
-=======
     char currTime[STRBUFFSIZE + 20];
     char fileName[STRBUFFSIZE + 20];
 
     //Making the directory for where the data files are stored
->>>>>>> origin/newHDF5format
     sprintf(fileName, "%s%04i/", saveLocation, (tm.tm_year + 1900));
     mkdir(fileName, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     sprintf(fileName, "%s%04i/%04i%02i%02i/", saveLocation, (tm.tm_year + 1900), tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
@@ -1734,32 +1700,6 @@ static int init(hashpipe_thread_args_t *args)
     H5Pset_chunk(creation_property, RANK, chunkDim);
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
-<<<<<<< HEAD
-    const char * status_key = args->thread_desc->skey;
-    
-    // Get info from status buffer if present
-    sprintf(saveLocation, "./");
-    hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
-    if (saveLocation[strlen(saveLocation)-1] != '/'){
-        saveLocation[strlen(saveLocation)] = '/';
-    }
-    printf("Save Location: %s\n", saveLocation);
-    
-    int rv;
-    int block_idx = 0;
-    uint64_t mcnt=0;
-
-    //Output elements
-    char *block_ptr;
-    //char *textblock = (char *)malloc((BLOCKSIZE*sizeof(char)*3 + N_PKT_PER_BLOCK));
-    int packetNum = 0;
-    uint16_t moduleNum;
-    uint8_t quaboNum;
-    char acqmode;
-    uint16_t packet_NUM;
-    uint32_t packet_UTC;
-    uint32_t packet_NANOSEC;
-=======
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
     sprintf(saveLocation, "./");
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
@@ -1769,7 +1709,6 @@ static int init(hashpipe_thread_args_t *args)
         //saveLocation[strlen(saveLocation)] = '/';
     }
     printf("Save Location: %s\n", saveLocation);
->>>>>>> origin/newHDF5format
 
     int maxSizeInput = 0;
 
