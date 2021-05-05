@@ -195,19 +195,17 @@ void storeData(modulePairData_t* module, HSD_input_block_t* in_block, HSD_output
     //When the mode in the module pair doesen't match the new mode
     //When the NANOSEC interval superceeded the threshold that is allowed
     if ((module->status & currentStatus) || module->lastMode != mode || (module->upperNANOSEC - module->lowerNANOSEC) > NANOSECTHRESHOLD){
-        if (module->lastMode == 16 || module->lastMode == 8){
-            //TODO
-            writeDataToOutBuf(module, out_block);
-            //writeDataBlock(module->ID16bit, module, module->bit16dataNum, module->lastMode);
-            //module->bit16dataNum++;
-        }/*else if (){
-            //TODO
-            //writeDataBlock(module->ID8bit, module, module->bit8dataNum, module->lastMode);
-            //module->bit8dataNum++;
-        }*/
+
+        writeDataToOutBuf(module, out_block);
+
+        memset(module->PKTNUM, 0, sizeof(uint16_t)*PKTPERPAIR);
+        memset(module->NANOSEC, 0, sizeof(uint32_t)*PKTPERPAIR);
+        memset(module->tv_sec, 0 , sizeof(long)*PKTPERPAIR);
+        memset(module->tv_usec, 0, sizeof(long)*PKTPERPAIR); 
         
         //Resetting values in the new emptied module pair obj
         module->status = 0;
+        module->lastMode = mode;
         module->upperNANOSEC = NANOSEC;
         module->lowerNANOSEC = NANOSEC;
     }
