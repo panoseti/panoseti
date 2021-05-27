@@ -10,164 +10,78 @@ def compare(a,b):
             return False
     return True
 
-def checkIMG16Data(IMG16):
-    if len(IMG16) == 0:
+def printError(name, refData, IMGData):
+    print("Error in Dataset ", name)
+    print("Expected Image Values are ")
+    for j in range(16):
+        print(j*16, refData[j*16:j*16+16])
+    print("Actual Image Values are ")
+    for j in range(16):
+        print(j*16, IMGData[j*16:j*16+16])
+
+def checkIMGData(IMGData, bitMode=16, PHMode=False):
+    if len(IMGData) == 0:
         print("Empty 16bit Image Data")
         return False
     refData = [0]*256
     index = 0
-    mode = 0
-    pktNum = 0
-    ntp_sec = -1
-    for name in IMG16:
-        data = IMG16[name]
-        ntp_usec = -1
-        for i in range(8):
-            if (not compare(refData, IMG16[name][i])):
-                print("Error in Dataset ", name)
-                print("Expected Image Values are ")
-                for j in range(16):
-                    print(j*16, refData[j*16:j*16+16])
-                print("Size = ", len(refData))
-                print("Actual Image Values are ")
-                for j in range(16):
-                    print(j*16, IMG16[name][i][j*16:j*16+16])
-                print("Size = ", len(IMG16[name][i]))
-                return False
-            if pktNum != IMG16[name].attrs['PKTNUM'][i]:
-                print("Error in Dataset ", name)
-                print("Expected PktNum Values are ", pktNum)
-                print("Actual PktNum Values are ", IMG16[name].attrs['PKTNUM'])
-                return False
-            if ntp_sec > IMG16[name].attrs['ntp_sec'][i]:
-                print("Error in Dataset ", name)
-                print("Error in ntp_sec")
-                print(list(IMG16[name].attrs.items()))
-                return False
-            ntp_sec = IMG16[name].attrs['ntp_sec'][i]
-            if ntp_usec > IMG16[name].attrs['ntp_usec'][i]:
-                print("Error in Dataset ", name)
-                print("Error in ntp_usec")
-                print(list(IMG16[name].attrs.items()))
-                return False
-            ntp_usec = IMG16[name].attrs['ntp_usec'][i]
+    
+    datasetSize = len(IMGData)//6
+    
+    for datasetIndex in range(datasetSize):
+        dataset = IMGData["DATA{0:09d}".format(datasetIndex)]
+        for framePair in dataset:
+            for frame in framePair:
+                if not compare(refData, frame):
+                    print("Error on framePair ", index)
+                    printError("DATA{0:09d}".format(datasetIndex), refData, frame)
+                    return False
+            mode = index // 256
+            if bitMode == 16:
+                if mode == 0:
+                    refData[index%256] = 1
+                elif mode == 1:
+                    refData[index%256] = 257
+                elif mode == 2:
+                    refData[index%256] = 65535
+                else:
+                    break
+            elif bitMode == 8:
+                if mode == 0:
+                    refData[index%256] = 1
+                elif mode == 1:
+                    refData[index%256] = 255
+                else:
+                    break
+            index += 1
+        
+        dataset = IMGData["DATA{0:09d}_pktNum".format(datasetIndex)]
+        pktNum = 0
+        for framePair in dataset:
+            for frame in framePair:
+                if frame[0] != pktNum:
+                    print("pktNum is supposed to be ", pktNum, " but it is ", frame[0])
+                    return False
+            pktNum += 1
+            if pktNum >= index:
+                break
+        
+        if PHMode:
+            return True
             
-        pktNum+=1
-        mode = index // 256
-        if mode == 0:
-            refData[index%256] = 1
-        elif mode == 1:
-            refData[index%256] = 257
-        elif mode == 2:
-            refData[index%256] = 65535
-        else:
-            refData = [0]*256
-        index += 1
-    return True
-
-def checkIMG8Data(IMG8):
-    if len(IMG8) == 0:
-        print("Empty 8bit Image Data")
-        return False
-    refData = [0]*256
-    index = 0
-    mode = 0
-    pktNum = 0
-    ntp_sec = -1
-    for name in IMG8:
-        data = IMG8[name]
-        ntp_usec = -1
-        for i in range(8):
-            if (not compare(refData, IMG8[name][i])):
-                print("Error in Dataset ", name)
-                print("Expected Image Values are ")
-                for j in range(16):
-                    print(j*16, refData[j*16:j*16+16])
-                print("Size = ", len(refData))
-                print("Actual Image Values are ")
-                for j in range(16):
-                    print(j*16, IMG8[name][i][j*16:j*16+16])
-                print("Size = ", len(IMG8[name][i]))
-                return False
-            if pktNum != IMG16[name].attrs['PKTNUM'][i] and IMG16[name].attrs['PKTNUM'][i] != 0:
-                print("Error in Dataset ", name)
-                print("Expected PktNum Values are ", pktNum)
-                print("Actual PktNum Values are ", IMG8[name].attrs['PKTNUM'])
-                return False
-            if ntp_sec > IMG8[name].attrs['ntp_sec'][i] and IMG8[name].attrs['ntp_sec'][i] != 0:
-                print("Error in Dataset ", name)
-                print("Error in ntp_sec")
-                print(list(IMG8[name].attrs.items()))
-                return False
-            ntp_sec = IMG8[name].attrs['ntp_sec'][i]
-            if ntp_usec > IMG8[name].attrs['ntp_usec'][i] and IMG8[name].attrs['ntp_usec'][i] != 0:
-                print("Error in Dataset ", name)
-                print("Error in ntp_usec")
-                print(list(IMG8[name].attrs.items()))
-                return False
-            ntp_usec = IMG8[name].attrs['ntp_usec'][i]
+        count = 0
+        for statusIndex in range(index):
+            dataset = IMGData["DATA{0:09d}_status".format(datasetIndex)]
+            for framePair in dataset:
+                if framePair[0][0] != 255:
+                    print("Count is ", count)
+                    print("Status bit at ", statusIndex, "is ", framePair[0][0])
+                    return False
+                count += 1
+                if count >= index:
+                    break
         
-        pktNum +=1
-        mode = index // 256
-        if mode == 0:
-            refData[index%256] = 1
-        elif mode == 1:
-            refData[index%256] = 255
-        else:
-            refData = [0]*256
-        index += 1
-    return True
-
-def checkPHData(PHData):
-    if len(PHData) == 0:
-        print("Empty PH Data")
-        return False
-    refData = [0]*256
-    index = 0
-    mode = 0
-    pktNum = 0
-    ntp_sec = -1
-    for name in PHData:
-        data = PHData[name]
-        ntp_usec = -1
-        if (not compare(refData, PHData[name])):
-            print("Error in Dataset ", name)
-            print("Expected Image Values are ")
-            for j in range(16):
-                print(j*16, refData[j*16:j*16+16])
-            print("Size = ", len(refData))
-            print("Actual Image Values are ")
-            for j in range(16):
-                print(j*16, PHData[name][j*16:j*16+16])
-            print("Size = ", len(PHData[name]))
-            return False
-        if pktNum != PHData[name].attrs['PKTNUM']:
-            print("Error in Dataset ", name)
-            print("Expected PktNum Values are ", pktNum)
-            print("Actual PktNum Values are ", PHData[name].attrs['PKTNUM'])
-            return False
-        if ntp_sec > PHData[name].attrs['ntp_sec']:
-            print("Error in Dataset ", name)
-            print("Error in ntp_sec")
-            print(list(PHData[name].attrs.items()))
-            return False
-        ntp_sec = PHData[name].attrs['ntp_sec']
-        if ntp_usec > PHData[name].attrs['ntp_usec']:
-            print("Error in Dataset ", name)
-            print("Error in ntp_usec")
-            print(list(PHData[name].attrs.items()))
-            return False
-        ntp_usec = PHData[name].attrs['ntp_usec']
-        
-        pktNum+=1
-        mode = index // 256
-        if mode == 0:
-            refData[index%256] = 1
-        elif mode == 1:
-            refData[index%256] = 257
-        elif mode == 2:
-            refData[index%256] = 65535
-        index += 1
+                    
     return True
 
 def checkHKPackets(DynamicData):
@@ -220,25 +134,24 @@ f = h5py.File(fileName, 'r')
 
 IMG16 = f['bit16IMGData']['ModulePair_00254_00001']
 IMG8 = f['bit8IMGData']['ModulePair_00254_00001']
-PHData = f['PHData']
-DynamicData = f['DynamicMeta']['ModulePair_00254_00001']
-
+PHData = f['PHData']['ModulePair_00254_00001']
+DynamicData = f['DynamicMeta']
 print("Testing 16 bit Image Data")
-if checkIMG16Data(IMG16):
-    print("Test passed")
-else:
-    print("Test Failed")
-    exit(0)
-
-print("Testing PH Data")
-if checkPHData(PHData):
+if checkIMGData(IMG16, bitMode=16):
     print("Test passed")
 else:
     print("Test Failed")
     exit(0)
 
 print("Testing 8 bit Image Data")
-if checkIMG8Data(IMG8):
+if checkIMGData(IMG8, bitMode=8):
+    print("Test passed")
+else:
+    print("Test Failed")
+    exit(0)
+
+print("Testing PH Data")    
+if checkIMGData(PHData, bitMode=16, PHMode=True):
     print("Test passed")
 else:
     print("Test Failed")
