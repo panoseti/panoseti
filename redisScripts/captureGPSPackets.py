@@ -4,6 +4,8 @@ import struct
 import redis
 from influxdb import InfluxDBClient
 from signal import signal, SIGINT
+from datetime import datetime
+from datetime import timezone
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'
@@ -48,6 +50,7 @@ def primaryTimingPacket(data):
         print(data)
         print('Packet size is ', len(data))
         return
+    tvUTC = str(datetime.now(timezone.utc))
     
     timeofWeek = int.from_bytes(data[1:5], byteorder=BYTEORDER, signed=False)
     
@@ -100,6 +103,7 @@ def primaryTimingPacket(data):
     for key in json_body[0]['fields']:
         #print(key, json_body[0]['fields'][key])
         r.hset(RKEY, key, json_body[0]['fields'][key])
+    r.hset(RKEY, "TV_UTC", tvUTC)
     
 
     

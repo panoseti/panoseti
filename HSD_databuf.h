@@ -40,7 +40,7 @@
 #define HKDATASIZE              464
 #define DATABLOCKSIZE           SCIDATASIZE*PKTPERPAIR+64+16
 #define HKFIELDS                27
-#define GPSFIELDS               9
+#define GPSFIELDS               10
 #define NANOSECTHRESHOLD        20
 #define MODULEINDEXSIZE         0xffff
 

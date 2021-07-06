@@ -540,6 +540,7 @@ typedef struct GPSPackets {
     uint8_t TIMESET;
     uint8_t UTCINFO;
     uint8_t TIMEFROMGPS;
+    char TV_UTC[STRBUFFSIZE];
 } GPSPackets_t;
 
 const GPSPackets_t GPS_dst_buf[0] = {};
@@ -554,7 +555,8 @@ const size_t GPS_dst_offset[GPSFIELDS] = {HOFFSET(GPSPackets_t, GPSTIME),
                                           HOFFSET(GPSPackets_t, PPSFLAG),
                                           HOFFSET(GPSPackets_t, TIMESET),
                                           HOFFSET(GPSPackets_t, UTCINFO),
-                                          HOFFSET(GPSPackets_t, TIMEFROMGPS)};
+                                          HOFFSET(GPSPackets_t, TIMEFROMGPS),
+                                          HOFFSET(GPSPackets_t, TV_UTC)};
 
 const size_t GPS_dst_sizes[GPSFIELDS] = {sizeof(GPS_dst_buf[0].GPSTIME),
                                          sizeof(GPS_dst_buf[0].TOW),
@@ -564,7 +566,8 @@ const size_t GPS_dst_sizes[GPSFIELDS] = {sizeof(GPS_dst_buf[0].GPSTIME),
                                          sizeof(GPS_dst_buf[0].PPSFLAG),
                                          sizeof(GPS_dst_buf[0].TIMESET),
                                          sizeof(GPS_dst_buf[0].UTCINFO),
-                                         sizeof(GPS_dst_buf[0].TIMEFROMGPS)};
+                                         sizeof(GPS_dst_buf[0].TIMEFROMGPS),
+                                         sizeof(GPS_dst_buf[0].TV_UTC)};
 
 const char *GPS_field_names[GPSFIELDS] = {"GPSTIME",
                                           "TOW",
@@ -574,7 +577,8 @@ const char *GPS_field_names[GPSFIELDS] = {"GPSTIME",
                                           "PPSFLAG",
                                           "TIMESET",
                                           "UTCINFO",
-                                          "TIMEFROMGPS"};
+                                          "TIMEFROMGPS",
+                                          "TV_UTC"};
 
 const hid_t GPS_field_types[GPSFIELDS] = {
     get_H5T_string_type(), // GPSTIME
@@ -585,7 +589,8 @@ const hid_t GPS_field_types[GPSFIELDS] = {
     get_H5T_string_type(), // PPSFLAG[STRBUFFSIZE]
     H5T_STD_U8LE,          // TIMESET
     H5T_STD_U8LE,          // UTCINFO
-    H5T_STD_U8LE           // TIMEFROMGPS
+    H5T_STD_U8LE,           // TIMEFROMGPS
+    get_H5T_string_type()  // TV_UTC
 };
 
 /**
@@ -802,6 +807,20 @@ fileIDs_t *createNewFile(char *fileName, char *currTime) {
 
     newfile->file = H5Fcreate(fileName, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     createStrAttribute(newfile->file, "dateCreated", currTime);
+
+    FILE *fp;
+    char ntpout[1035];
+    fp = popen("ntpstat", "r");
+    size_t size;
+    if (fp != NULL){
+        size = fread(ntpout, sizeof(char), 1035, fp);//fgets(out, 1035, fp);
+        if (size){
+            ntpout[size] = '\0';
+            createStrAttribute(newfile->file, "ntpstat", ntpout);
+        }
+    }
+
+    //;createStrAttribute(newfile->file, "ntpstat", system("ntpstat"));
     newfile->bit16IMGData = H5Gcreate(newfile->file, "/bit16IMGData", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     newfile->bit8IMGData = H5Gcreate(newfile->file, "/bit8IMGData", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     newfile->PHData = H5Gcreate(newfile->file, "/PHData", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -1161,6 +1180,12 @@ void fetchGPSdata(GPSPackets_t *GPS, redisContext *redisServer) {
     reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TIMEFROMGPS");
     if (reply != NULL) {
         GPS->TIMEFROMGPS = strtoll(reply->str, NULL, 10);
+        freeReplyObject(reply);
+    }
+
+    reply = sendHSETRedisCommand(redisServer, GPSPRIMNAME, "TV_UTC");
+    if (reply != NULL) {
+        strcpy(GPS->TV_UTC, reply->str);
         freeReplyObject(reply);
     }
 }
