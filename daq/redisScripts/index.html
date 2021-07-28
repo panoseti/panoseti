@@ -1,0 +1,417 @@
+<html>
+<head><style> table, th, td {
+  border: 1px solid black;
+  padding: 5px;
+}
+table {
+  border-spacing: 15px;
+}
+</style></head>
+<body>
+<h1 style="font-size:15px">REDIS SNAPSHOT</h1>
+<h2 style="font-size:15px">Quabos</h2>
+<table style="Width:100%;font-size:15px">
+<tbody>
+<tr>
+<td style="color:black;">SYSTIME</td>
+<td style="color:black;">BOARDLOC</td>
+<td style="color:black;">HVMON0</td>
+<td style="color:black;">HVMON1</td>
+<td style="color:black;">HVMON2</td>
+<td style="color:black;">HVMON3</td>
+<td style="color:black;">HVIMON0</td>
+<td style="color:black;">HVIMON1</td>
+<td style="color:black;">HVIMON2</td>
+<td style="color:black;">HVIMON3</td>
+<td style="color:black;">RAWHVMON</td>
+<td style="color:black;">V12MON</td>
+<td style="color:black;">V18MON</td>
+<td style="color:black;">V33MON</td>
+<td style="color:black;">V37MON</td>
+<td style="color:black;">I10MON</td>
+<td style="color:black;">I18MON</td>
+<td style="color:black;">I33MON</td>
+<td style="color:black;">TEMP1</td>
+<td style="color:black;">TEMP2</td>
+<td style="color:black;">VCCINT</td>
+<td style="color:black;">VCCAUX</td>
+<td style="color:black;">UID</td>
+<td style="color:black;">SHUTTER_STATUS</td>
+<td style="color:black;">LIGHT_SENSOR_STATUS</td>
+<td style="color:black;">FWID0</td>
+<td style="color:black;">FWID1</td>
+<td style="color:black;">StartUp</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:33Z</td>
+<td style="color:black;">4</td>
+<td style="color:green;">55.60272</td>
+<td style="color:red;">55.337979999999995</td>
+<td style="color:orange;">55.57222</td>
+<td style="color:red;">55.2172</td>
+<td style="color:red;">154.03830000000002</td>
+<td style="color:red;">147.2946</td>
+<td style="color:green;">155.3718</td>
+<td style="color:red;">144.399</td>
+<td style="color:red;">72.66442</td>
+<td style="color:red;">1.17881205</td>
+<td style="color:orange;">0.89827328</td>
+<td style="color:red;">1.6437483</td>
+<td style="color:red;">1.8608802</td>
+<td style="color:red;">939302.0</td>
+<td style="color:red;">355811.39999999997</td>
+<td style="color:red;">114685.2</td>
+<td style="color:green;">11.0625</td>
+<td style="color:red;">64.89983082128578</td>
+<td style="color:orange;">0.985931396484375</td>
+<td style="color:red;">1.775299072265625</td>
+<td style="color:black;">0x000b000b000b000b</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:35Z</td>
+<td style="color:black;">5</td>
+<td style="color:green;">55.57466</td>
+<td style="color:red;">55.35018</td>
+<td style="color:orange;">55.60272</td>
+<td style="color:red;">55.22452</td>
+<td style="color:red;">167.8305</td>
+<td style="color:red;">150.0378</td>
+<td style="color:green;">158.0769</td>
+<td style="color:red;">146.4945</td>
+<td style="color:red;">72.69248</td>
+<td style="color:red;">1.18968195</td>
+<td style="color:orange;">0.89779653</td>
+<td style="color:red;">1.6355187</td>
+<td style="color:red;">1.8673572</td>
+<td style="color:red;">888888.0</td>
+<td style="color:red;">368587.8</td>
+<td style="color:red;">115063.2</td>
+<td style="color:green;">11.125</td>
+<td style="color:red;">62.792786834820106</td>
+<td style="color:orange;">0.9869384765625</td>
+<td style="color:red;">1.776763916015625</td>
+<td style="color:black;">0x0030003000300030</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:35Z</td>
+<td style="color:black;">6</td>
+<td style="color:green;">55.56246</td>
+<td style="color:red;">55.3636</td>
+<td style="color:orange;">55.56002</td>
+<td style="color:red;">55.26111999999999</td>
+<td style="color:red;">156.972</td>
+<td style="color:red;">151.8666</td>
+<td style="color:green;">162.19170000000003</td>
+<td style="color:red;">152.2476</td>
+<td style="color:red;">72.72542</td>
+<td style="color:red;">1.17877391</td>
+<td style="color:orange;">0.8968621</td>
+<td style="color:red;">1.6347948</td>
+<td style="color:red;">1.8592419000000002</td>
+<td style="color:red;">933296.0</td>
+<td style="color:red;">374371.19999999995</td>
+<td style="color:red;">125911.79999999999</td>
+<td style="color:green;">11.5</td>
+<td style="color:red;">70.31354967702248</td>
+<td style="color:orange;">0.988677978515625</td>
+<td style="color:red;">1.780609130859375</td>
+<td style="color:black;">0x000d000d000d000d</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:34Z</td>
+<td style="color:black;">7</td>
+<td style="color:green;">55.535619999999994</td>
+<td style="color:red;">55.38556</td>
+<td style="color:orange;">55.6259</td>
+<td style="color:red;">55.23428</td>
+<td style="color:red;">155.56230000000002</td>
+<td style="color:red;">150.22830000000002</td>
+<td style="color:green;">160.3248</td>
+<td style="color:red;">149.5425</td>
+<td style="color:red;">72.74006</td>
+<td style="color:red;">1.17898368</td>
+<td style="color:orange;">0.89707187</td>
+<td style="color:red;">1.6394811</td>
+<td style="color:red;">1.8761202000000003</td>
+<td style="color:red;">924560.0</td>
+<td style="color:red;">375013.8</td>
+<td style="color:red;">115289.99999999999</td>
+<td style="color:green;">11.4375</td>
+<td style="color:red;">68.68328206705633</td>
+<td style="color:orange;">0.98419189453125</td>
+<td style="color:red;">1.787567138671875</td>
+<td style="color:black;">0x0013001300130013</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:34Z</td>
+<td style="color:black;">1016</td>
+<td style="color:green;">55.56856</td>
+<td style="color:red;">55.34042</td>
+<td style="color:orange;">55.57344</td>
+<td style="color:red;">55.24526</td>
+<td style="color:red;">157.7721</td>
+<td style="color:red;">154.6479</td>
+<td style="color:green;">158.38170000000002</td>
+<td style="color:red;">152.781</td>
+<td style="color:red;">72.70468</td>
+<td style="color:red;">1.18935776</td>
+<td style="color:orange;">0.89224716</td>
+<td style="color:red;">1.6363569000000002</td>
+<td style="color:red;">1.8639663</td>
+<td style="color:red;">848848.0</td>
+<td style="color:red;">359591.39999999997</td>
+<td style="color:red;">113551.2</td>
+<td style="color:green;">11.0625</td>
+<td style="color:red;">63.00810519840053</td>
+<td style="color:orange;">0.98583984375</td>
+<td style="color:red;">1.7889862060546875</td>
+<td style="color:black;">0x000b000b000b000b</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:33Z</td>
+<td style="color:black;">1017</td>
+<td style="color:green;">55.55636</td>
+<td style="color:red;">55.31358</td>
+<td style="color:orange;">55.55879999999999</td>
+<td style="color:red;">55.2172</td>
+<td style="color:red;">160.2486</td>
+<td style="color:red;">156.7815</td>
+<td style="color:green;">164.8206</td>
+<td style="color:red;">152.6286</td>
+<td style="color:red;">72.63758</td>
+<td style="color:red;">1.18150092</td>
+<td style="color:orange;">0.89207553</td>
+<td style="color:red;">1.6383762</td>
+<td style="color:red;">1.8638901</td>
+<td style="color:red;">1001000.0</td>
+<td style="color:red;">385938.0</td>
+<td style="color:red;">114949.79999999999</td>
+<td style="color:green;">11.3125</td>
+<td style="color:red;">64.85369117194716</td>
+<td style="color:orange;">0.986846923828125</td>
+<td style="color:red;">1.77813720703125</td>
+<td style="color:black;">0x000f000f000f000f</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:34Z</td>
+<td style="color:black;">1018</td>
+<td style="color:green;">55.57588</td>
+<td style="color:red;">55.3636</td>
+<td style="color:orange;">55.57588</td>
+<td style="color:red;">55.22574</td>
+<td style="color:red;">161.163</td>
+<td style="color:red;">153.3906</td>
+<td style="color:green;">166.878</td>
+<td style="color:red;">154.4955</td>
+<td style="color:red;">72.64612</td>
+<td style="color:red;">1.18254977</td>
+<td style="color:orange;">0.89001597</td>
+<td style="color:red;">1.6452342</td>
+<td style="color:red;">1.8646902</td>
+<td style="color:red;">1015924.0</td>
+<td style="color:red;">389264.39999999997</td>
+<td style="color:red;">116688.59999999999</td>
+<td style="color:green;">11.6875</td>
+<td style="color:red;">71.85153798831135</td>
+<td style="color:orange;">0.9887237548828125</td>
+<td style="color:red;">1.784454345703125</td>
+<td style="color:black;">0x000d000d000d000d</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr><tr>
+<td style="color:black;">2020-11-05T07:51:33Z</td>
+<td style="color:black;">1019</td>
+<td style="color:green;">55.55392</td>
+<td style="color:red;">55.29406</td>
+<td style="color:orange;">55.56002</td>
+<td style="color:red;">55.17938</td>
+<td style="color:red;">160.17239999999998</td>
+<td style="color:red;">165.50639999999999</td>
+<td style="color:green;">172.66920000000002</td>
+<td style="color:red;">161.1249</td>
+<td style="color:red;">72.71566</td>
+<td style="color:red;">1.1829883800000003</td>
+<td style="color:orange;">0.89772025</td>
+<td style="color:red;">1.6388715</td>
+<td style="color:red;">1.8495645</td>
+<td style="color:red;">904176.0</td>
+<td style="color:red;">372405.6</td>
+<td style="color:red;">114685.2</td>
+<td style="color:green;">11.4375</td>
+<td style="color:red;">69.26771762534611</td>
+<td style="color:orange;">0.98419189453125</td>
+<td style="color:red;">1.78399658203125</td>
+<td style="color:black;">0x0004000400040004</td>
+<td style="color:green;">0</td>
+<td style="color:green;">0</td>
+<td style="color:red;">600566523</td>
+<td style="color:red;">808530230</td>
+<td style="color:green;">0</td>
+</tr>
+</tbody>
+</table><h2 style="font-size:15px">WRSWITCH</h2>
+<table style="Width:100%;font-size:15px">
+<tbody>
+<tr>
+<td style="color:black;">Port 1_LINK</td>
+<td style="color:black;">Port 2_LINK</td>
+<td style="color:black;">Port 3_LINK</td>
+<td style="color:black;">Port 4_LINK</td>
+<td style="color:black;">Port 5_LINK</td>
+<td style="color:black;">Port 6_LINK</td>
+<td style="color:black;">Port 7_LINK</td>
+<td style="color:black;">Port 8_LINK</td>
+<td style="color:black;">Port 9_LINK</td>
+<td style="color:black;">Port10_LINK</td>
+<td style="color:black;">Port11_LINK</td>
+<td style="color:black;">Port12_LINK</td>
+<td style="color:black;">Port13_LINK</td>
+<td style="color:black;">Port14_LINK</td>
+<td style="color:black;">Port15_LINK</td>
+<td style="color:black;">Port16_LINK</td>
+<td style="color:black;">Port17_LINK</td>
+<td style="color:black;">Port18_LINK</td>
+</tr><tr>
+<td style="color:black;">0</td>
+<td style="color:black;">1</td>
+<td style="color:black;">1</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+</tr>
+</tbody>
+</table><h2 style="font-size:15px">GPSPRIM</h2>
+<table style="Width:100%;font-size:15px">
+<tbody>
+<tr>
+<td style="color:black;">GPSTIME</td>
+<td style="color:black;">TOW</td>
+<td style="color:black;">WEEKNUMBER</td>
+<td style="color:black;">UTCOFFSET</td>
+<td style="color:black;">TIMEFLAG</td>
+<td style="color:black;">PPSFLAG</td>
+<td style="color:black;">TIMESET</td>
+<td style="color:black;">UTCINFO</td>
+<td style="color:black;">TIMEFROMGPS</td>
+</tr><tr>
+<td style="color:black;">2020-11-5T7:51:53Z</td>
+<td style="color:black;">373913</td>
+<td style="color:black;">2130</td>
+<td style="color:black;">18</td>
+<td style="color:black;">GPS</td>
+<td style="color:black;">GPS</td>
+<td style="color:black;">1</td>
+<td style="color:black;">1</td>
+<td style="color:black;">1</td>
+</tr>
+</tbody>
+</table><h2 style="font-size:15px">GPSSUPP</h2>
+<table style="Width:100%;font-size:15px">
+<tbody>
+<tr>
+<td style="color:black;">RECEIVERMODE</td>
+<td style="color:black;">DISCIPLININGMODE</td>
+<td style="color:black;">SELFSURVEYPROGRESS</td>
+<td style="color:black;">HOLDOVERDURATION</td>
+<td style="color:black;">DACatRail</td>
+<td style="color:black;">DACnearRail</td>
+<td style="color:black;">AntennaOpen</td>
+<td style="color:black;">AntennaShorted</td>
+<td style="color:black;">NotTrackingSatellites</td>
+<td style="color:black;">NotDiscipliningOscillator</td>
+<td style="color:black;">SurveyInProgress</td>
+<td style="color:black;">NoStoredPosition</td>
+<td style="color:black;">LeapSecondPending</td>
+<td style="color:black;">InTestMode</td>
+<td style="color:black;">PositionIsQuestionable</td>
+<td style="color:black;">EEPROMCorrupt</td>
+<td style="color:black;">AlmanacNotComplete</td>
+<td style="color:black;">PPSNotGenerated</td>
+<td style="color:black;">GPSDECODINGSTATUS</td>
+<td style="color:black;">DISCIPLININGACTIVITY</td>
+<td style="color:black;">SPARESTATUS1</td>
+<td style="color:black;">SPARESTATUS2</td>
+<td style="color:black;">PPSOFFSET</td>
+<td style="color:black;">CLOCKOFFSET</td>
+<td style="color:black;">DACVALUE</td>
+<td style="color:black;">DACVOLTAGE</td>
+<td style="color:black;">TEMPERATURE</td>
+<td style="color:black;">LATITUDE</td>
+<td style="color:black;">LONGITUDE</td>
+<td style="color:black;">ALTITUDE</td>
+<td style="color:black;">PPSQUANTIZATIONERROR</td>
+</tr><tr>
+<td style="color:black;">Over-Determined Clock</td>
+<td style="color:black;">Normal (Locked to GPS)</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">1</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">Doing fixes</td>
+<td style="color:black;">Phase locking</td>
+<td style="color:black;">0</td>
+<td style="color:black;">0</td>
+<td style="color:black;">-1.0492925643920898</td>
+<td style="color:black;">0.047505028545856476</td>
+<td style="color:black;">556800</td>
+<td style="color:black;">2.655029296875</td>
+<td style="color:black;">46.46436309814453</td>
+<td style="color:black;">0.6517513964660384</td>
+<td style="color:black;">-2.1229861132089614</td>
+<td style="color:black;">1250.6873726891354</td>
+<td style="color:black;">-7.451956272125244</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
