@@ -1,0 +1,28 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/panosetigraph/HSD_PANOSETI/tests/packetTestGenerator/main.cpp
+iostream
+-
+fstream
+-
+vector
+-
+sys/socket.h
+-
+netinet/in.h
+-
+strings.h
+-
+arpa/inet.h
+-
+unistd.h
+-
+cstring
+-
+
