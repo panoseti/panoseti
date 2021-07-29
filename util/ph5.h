@@ -1,3 +1,6 @@
+#ifndef PH5_H
+#define PH5_H
+
 // functions for getting data from a PanoSETI HDF5 file
 //
 // integer return values are error codes; nonzero = error
@@ -14,8 +17,8 @@ using std::string;
 struct FRAME_GROUP {
     uint16_t *data;
     int nframes;
-    uint16_t* get_frame(int iframe, int module, int quabo) {
-        return data + iframe*(8*64) + module*256 + quabo*64;
+    uint16_t* get_frame(int iframe, int module) {
+        return data + iframe*(8*64) + module*256;
     }
     FRAME_GROUP(){
         data = 0;
@@ -38,3 +41,5 @@ struct PH5 {
     int get_attr(const char* name, string&);
     int get_frame_group( const char* base_name, int igroup, FRAME_GROUP&);
 };
+
+#endif

@@ -10,24 +10,24 @@
 
 vector <FILE*> fout;
 
-void callback(int level, double pulse_count, long nsamples) {
+void PULSE_FIND::pulse_complete(int level, double pulse_count, long nsamples) {
     fprintf(fout[level], "%ld %f\n", nsamples, pulse_count);
 }
 
 int main(int argc, char** argv) {
     PULSE_FIND pf;
-    bool perf = false;
+    bool perf=false;
     if (argc>1) {
         if (!strcmp(argv[1], "--perf")) {
             perf = true;
         } else {
-            printf("usage\n");
+            printf("pulse_test [--perf] [< samples]\n");
             exit(1);
         }
     }
     if (perf) {
         int nlevels = 16;
-        pf.init(nlevels, NULL);
+        pf.init(nlevels, true);
         for (int i=0; i<1000000000; i++) {
             pf.add_sample(1);
         }
@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
         int nlevels = 4;
         char buf[256];
 
-        pf.init(nlevels, callback);
+        pf.init(nlevels, false);
         for (int i=0; i<nlevels; i++) {
             sprintf(buf, "out_%d", i);
             fout.push_back(fopen(buf, "w"));

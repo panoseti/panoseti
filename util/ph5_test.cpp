@@ -7,15 +7,13 @@
 
 void print_frames(int iframe, FRAME_GROUP &fg) {
     for (int module=0; module<2; module++) {
-        for (int quabo=0; quabo<4; quabo++) {
-            uint16_t* p = fg.get_frame(iframe, module, quabo);
-            printf("frame %d module %d quabo %d\n", iframe, module, quabo);
-            for (int i=0; i<8; i++) {
-                for (int j=0; j<8; j++) {
-                    printf("%d ", p[i*8+j]);
-                }
-                printf("\n");
+        uint16_t* p = fg.get_frame(iframe, module);
+        printf("frame %d module %d\n", iframe, module);
+        for (int i=0; i<16; i++) {
+            for (int j=0; j<16; j++) {
+                printf("%d ", p[i*8+j]);
             }
+            printf("\n");
         }
     }
 }

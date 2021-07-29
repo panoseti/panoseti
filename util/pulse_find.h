@@ -1,9 +1,12 @@
+#ifndef PULSE_FIND_H
+#define PULSE_FIND_H
+
 // struct PULSE_FIND:
 // given a sequence of samples,
 // compute pulses at time scales increasing by powers of 2,
 // In each time scale, look at 90 deg phases.
 // compute statistics for each time scale.
-// When a pulse is complete, call a callback function.
+// When a pulse is complete, call pulse_complete() (app must define this)
 
 // Notes:
 // 1) We do this in a streaming fashion;
@@ -18,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+
+#include "window_rms.h"
 
 using std::vector;
 
@@ -34,11 +39,8 @@ using std::vector;
 struct LEVEL {
     double count[4];
     int phase;      // next pulse to start
+    WINDOW_RMS window_rms;
         
-    // where to write results
-    //
-    FILE *fout;
-
     // an even pulse from the next lower level is complete.
     // Add it either to 0/2 or 1/3, one of which is now complete.
     // If it's 0 or 2, return true, in which case we want
@@ -61,16 +63,28 @@ struct PULSE_FIND {
     long nsamples;  // how many samples processed so far
     int nlevels;    // not counting 0 and 1
     vector<LEVEL> levels;
-    void (*callback)(int, double, long);
+    bool perf;      // if set, no pulse_complete() calls
 
-    void init(int _nlevels, void (*_callback)(int, double, long)) {
+    // application must define this
+    //
+    void pulse_complete (int, double, long);
+
+    void init(int _nlevels, bool _perf=false) {
+        perf = _perf;
         nlevels = _nlevels-2;
-        callback = _callback;
         LEVEL level;
         for (int i=0; i<nlevels; i++) {
             levels.push_back(level);
         }
         nsamples = 0;
+    }
+
+    // initialize RMS stats, if needed
+    //
+    void init_window_rms(int window_size, int window_spacing) {
+        for (int i=0; i<nlevels; i++) {
+            levels[i].window_rms.init(window_size, window_spacing);
+        }
     }
 
     void add_sample(double x) {
@@ -104,8 +118,8 @@ struct PULSE_FIND {
             );
 #endif
             bool keep_going = levels[i].add_pulse(pulse_count);
-            if (callback) {
-                callback(i, pulse_count, nsamples);
+            if (!perf) {
+                pulse_complete(i, pulse_count, nsamples);
             }
             if (!keep_going) {
                 break;
@@ -114,3 +128,5 @@ struct PULSE_FIND {
         nsamples++;
     }
 };
+
+#endif

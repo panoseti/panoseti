@@ -1,3 +1,6 @@
+#ifndef WINDOW_RMS_H
+#define WINDOW_RMS_H
+
 // given a stream of values,
 // compute their mean and RMS over windows of a given size and spacing
 
@@ -13,14 +16,16 @@ struct WINDOW_RMS {
     int window_spacing;
     int pos;
     int count;
-    double rms;
+    bool ready;
+    double mean, rms;
 
-    void init(_window_size, _window_spacing) {
+    void init(int _window_size, int _window_spacing) {
         window_size = _window_size;
         window_spacing = _window_spacing;
         values.resize(window_size);
         pos = 0;
         count = 0;
+        ready = false;
     }
 
     // compute mean and RMS
@@ -28,13 +33,14 @@ struct WINDOW_RMS {
     // and subtracting old ones, but this could accumulate round-off error.
     //
     void compute_rms() {
-        double mean = accumulate(values.begin(), values.end(), 0)/window_size;
+        mean = accumulate(values.begin(), values.end(), 0)/window_size;
         double sum = 0;
         for (unsigned int i=0; i<window_size; i++) {
             double x = values[i]-mean;
             sum += x*x;
         }
         rms = sqrt(sum);
+        ready = true;
     }
 
     void add_value(double x) {
@@ -48,3 +54,5 @@ struct WINDOW_RMS {
     }
 
 };
+
+#endif
