@@ -15,7 +15,6 @@ void PULSE_FIND::pulse_complete(int level, double pulse_count, long nsamples) {
 }
 
 int main(int argc, char** argv) {
-    PULSE_FIND pf;
     bool perf=false;
     if (argc>1) {
         if (!strcmp(argv[1], "--perf")) {
@@ -27,7 +26,7 @@ int main(int argc, char** argv) {
     }
     if (perf) {
         int nlevels = 16;
-        pf.init(nlevels, true);
+        PULSE_FIND pf(nlevels, true);
         for (int i=0; i<1000000000; i++) {
             pf.add_sample(1);
         }
@@ -35,7 +34,7 @@ int main(int argc, char** argv) {
         int nlevels = 4;
         char buf[256];
 
-        pf.init(nlevels, false);
+        PULSE_FIND pf(nlevels, false);
         for (int i=0; i<nlevels; i++) {
             sprintf(buf, "out_%d", i);
             fout.push_back(fopen(buf, "w"));

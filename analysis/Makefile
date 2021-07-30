@@ -11,7 +11,7 @@ HDF5_LIB = -lhdf5_serial
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
-pulse: pulse.cpp
+pulse: pulse.cpp ../util/ph5.o
 	$(CXX) -o pulse pulse.cpp ../util/ph5.o $(HDF5_LIB)
 
 -include Makefile.deps

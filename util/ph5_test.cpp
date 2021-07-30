@@ -5,13 +5,13 @@
 
 #define PATH "/disks/centurion/b/carolyn/b/home/ryanl/PANOSETI_DATA/PANOSETI_LICK_2021_07_15_05-04-15.h5"
 
-void print_frames(int iframe, FRAME_GROUP &fg) {
+void print_frames(int iframe, FRAME_SET &fs) {
     for (int module=0; module<2; module++) {
-        uint16_t* p = fg.get_frame(iframe, module);
+        uint16_t* p = fs.get_mframe(iframe, module);
         printf("frame %d module %d\n", iframe, module);
-        for (int i=0; i<16; i++) {
-            for (int j=0; j<16; j++) {
-                printf("%d ", p[i*8+j]);
+        for (int i=0; i<MFRAME_DIM; i++) {
+            for (int j=0; j<MFRAME_DIM; j++) {
+                printf("%d ", p[i*MFRAME_DIM+j]);
             }
             printf("\n");
         }
@@ -32,14 +32,14 @@ int main(int, char**) {
     printf("date: %s\n", s.c_str());
 
     for (int ifg=0; ; ifg++) {
-        FRAME_GROUP fg;
-        retval = file.get_frame_group(
-            "/bit16IMGData/ModulePair_00254_00001/DATA", ifg, fg
+        FRAME_SET fs;
+        retval = file.get_frame_set(
+            "/bit16IMGData/ModulePair_00254_00001/DATA", ifg, fs
         );
         if (retval) break;
-        printf("read frame group %d\n", ifg);
+        printf("read frame set %d; %d frames\n", ifg, fs.nframe_pairs);
         for (int i=0; i<1; i++) {
-            print_frames(i, fg);
+            print_frames(i, fs);
         }
     }
     file.close();

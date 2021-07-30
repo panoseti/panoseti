@@ -11,19 +11,32 @@
 
 using std::string;
 
-// a "frame group" is ~5000 frames.
-// a file can have arbitrarily many
+// terminology:
+// "qframe": a frame from a quabo.  16x16 pixels
+// 'mframe": a frame from a mobo.  32x32 pixels
+//      NOTE: because of hardware variation, you may have
+//      to rotate some of the qframes within an mframe
+// 'frame pair': a pair of corresponding mframes from 2 domes
+// 'frame set': a sequence of frame pairs, typically 5000,
+//      stored as an HDF5 dataset
+// a file can have arbitrarily many frame sets
 //
-struct FRAME_GROUP {
+
+#define MFRAME_DIM  32
+#define MFRAME_PIXELS   1024
+#define FRAME_PAIR_PIXELS 2*MFRAME_PIXELS
+
+struct FRAME_SET {
     uint16_t *data;
-    int nframes;
-    uint16_t* get_frame(int iframe, int module) {
-        return data + iframe*(8*64) + module*256;
+    int nframe_pairs;
+
+    uint16_t* get_mframe(int iframe_pair, int module) {
+        return data + iframe_pair*FRAME_PAIR_PIXELS + module*MFRAME_PIXELS;
     }
-    FRAME_GROUP(){
+    FRAME_SET(){
         data = 0;
     }
-    ~FRAME_GROUP() {
+    ~FRAME_SET() {
         if (data) {
             //printf("freeing %lx\n", data);
             free(data);
@@ -39,7 +52,7 @@ struct PH5 {
     int open(const char* path);
     void close();
     int get_attr(const char* name, string&);
-    int get_frame_group( const char* base_name, int igroup, FRAME_GROUP&);
+    int get_frame_set( const char* base_name, int iset, FRAME_SET&);
 };
 
 #endif

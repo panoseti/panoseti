@@ -22,8 +22,6 @@
 #include <stdlib.h>
 #include <vector>
 
-#include "window_rms.h"
-
 using std::vector;
 
 #define DEBUG 0
@@ -39,7 +37,11 @@ using std::vector;
 struct LEVEL {
     double count[4];
     int phase;      // next pulse to start
-    WINDOW_RMS window_rms;
+
+    LEVEL() {
+        phase = 0;
+        count[0] = count[1] = count[2] = count[3] = 0;
+    }
         
     // an even pulse from the next lower level is complete.
     // Add it either to 0/2 or 1/3, one of which is now complete.
@@ -56,6 +58,7 @@ struct LEVEL {
         count[phase2] = 0;
         phase = (phase+1)&3;
         return phase&1?true:false;
+        printf("add pulse: return\n");
     }
 };
 
@@ -69,22 +72,18 @@ struct PULSE_FIND {
     //
     void pulse_complete (int, double, long);
 
-    void init(int _nlevels, bool _perf=false) {
+    PULSE_FIND(int _nlevels, bool _perf) {
         perf = _perf;
         nlevels = _nlevels-2;
+        if (nlevels < 1) {
+            fprintf(stderr, "nlevels must be > 2\n");
+            exit(1);
+        }
         LEVEL level;
         for (int i=0; i<nlevels; i++) {
             levels.push_back(level);
         }
         nsamples = 0;
-    }
-
-    // initialize RMS stats, if needed
-    //
-    void init_window_rms(int window_size, int window_spacing) {
-        for (int i=0; i<nlevels; i++) {
-            levels[i].window_rms.init(window_size, window_spacing);
-        }
     }
 
     void add_sample(double x) {

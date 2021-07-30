@@ -19,7 +19,7 @@ struct WINDOW_RMS {
     bool ready;
     double mean, rms;
 
-    void init(int _window_size, int _window_spacing) {
+    WINDOW_RMS(int _window_size, int _window_spacing) {
         window_size = _window_size;
         window_spacing = _window_spacing;
         values.resize(window_size);

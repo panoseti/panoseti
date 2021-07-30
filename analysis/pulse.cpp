@@ -26,12 +26,14 @@
 //
 
 #include <sys/stat.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #include "ph5.h"
 #include "pulse_find.h"
+#include "window_rms.h"
 
 void usage() {
     printf("options:\n"
@@ -56,15 +58,18 @@ double thresh = 10.;
 bool stats = false;
 vector<FILE*> pulse_fout;
 vector<FILE*> stats_fout;
+vector<WINDOW_RMS> window_rms;
 
 // called when a pulse is complete
 //
 void PULSE_FIND::pulse_complete(int level, double value, long isample) {
+    printf("pulse complete: level %d value %f sample %ld\n", level, value, isample);
     if (stats) {
         fprintf(stats_fout[level], "%ld %f\n", isample, value);
     }
-    WINDOW_RMS &wrms = levels[level].window_rms;
+    WINDOW_RMS &wrms = window_rms[level];
     wrms.add_value(value);
+    printf("wrms: ready %d mean %f rms %f\n", wrms.ready, wrms.mean, wrms.rms);
     if (wrms.ready) {
         if (value > wrms.mean + thresh*wrms.rms) {
             fprintf(pulse_fout[level], "%ld %f\n", isample, value);
@@ -73,9 +78,9 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
 }
 
 int main(int argc, char **argv) {
-    const char* file = NULL;
+    const char* file = "PANOSETI_DATA/PANOSETI_LICK_2021_07_15_08-36-14.h5";
     int win_size = 256, win_spacing=64;
-    int pixel, module;
+    int pixel=0, module=0;
     const char* out_dir = "pulse_out";
     int i, nlevels = 16;
     int retval;
@@ -114,6 +119,13 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    // set up the stats 
+
+    WINDOW_RMS wrms(win_size, win_spacing);
+    for (i=0; i<nlevels; i++) {
+        window_rms.push_back(wrms);
+    }
+
     // create output directory and open output files
     //
     const char* file_name;
@@ -124,14 +136,21 @@ int main(int argc, char **argv) {
         file_name = file;
     }
     char buf[1024];
+    mkdir(out_dir, 0771);
     sprintf(buf, "%s/%s", out_dir, file_name);
     mkdir(buf, 0771);
     sprintf(buf, "%s/%s/%d", out_dir, file_name, pixel);
     mkdir(buf, 0771);
     printf("writing results to %s\n", buf);
+
     for (i=0; i<nlevels; i++) {
         sprintf(buf, "%s/%s/%d/pulse_%d", out_dir, file_name, pixel, i);
-        pulse_fout.push_back(fopen(buf, "w"));
+        FILE *f = fopen(buf, "w");
+        if (!f) {
+            printf("can't open %s\n", buf);
+            exit(1);
+        }
+        pulse_fout.push_back(f);
         if (stats) {
             sprintf(buf, "%s/%s/%d/stats_%d", out_dir, file_name, pixel, i);
             stats_fout.push_back(fopen(buf, "w"));
@@ -140,18 +159,23 @@ int main(int argc, char **argv) {
 
     // scan the data file
     //
-    PULSE_FIND pulse_find;
-    for (int ifg=0; ; ifg++) {
-        FRAME_GROUP fg;
-        retval = ph5.get_frame_group(
-            "/bit16IMGData/ModulePair_00254_00001/DATA", ifg, fg
+    PULSE_FIND pulse_find(nlevels, false);
+    for (int ifs=0; ifs<2; ifs++) {
+        FRAME_SET fs;
+        retval = ph5.get_frame_set(
+            "/bit16IMGData/ModulePair_00254_00001/DATA", ifs, fs
         );
         if (retval) break;
 
-        for (int iframe=0; i<fg.nframes; i++) {
-            uint16_t* p = fg.get_frame(iframe, module);
+        printf("got %d frame pairs\n", fs.nframe_pairs);
+
+        for (int iframe=0; iframe<fs.nframe_pairs; iframe++) {
+            uint16_t* p = fs.get_mframe(iframe, module);
             uint16_t val = p[pixel];
+            //printf("val: %d\n", val);
+
             pulse_find.add_sample((double)val);
         }
+        printf("done with frame set %d\n",ifs);
     }
 }
