@@ -43,14 +43,18 @@ struct WINDOW_RMS {
         ready = true;
     }
 
-    void add_value(double x) {
+    // return true if we computed a new window
+    //
+    bool add_value(double x) {
         values[pos] = x;
         pos = (pos+1)%window_size;
         count++;
         if (count == window_spacing) {
             compute_rms();
             count = 0;
+            return true;
         }
+        return false;
     }
 
 };
