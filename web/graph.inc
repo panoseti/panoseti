@@ -52,7 +52,7 @@ $x = <<<EOT
 <script>
 
 // set the dimensions and margins of the graph
-var margin = {top: 10, right: 30, bottom: 30, left: 60},
+var margin = {top: 10, right: 30, bottom: 40, left: 60},
     width = %d - margin.left - margin.right,
     height = %d - margin.top - margin.bottom;
 
@@ -76,12 +76,28 @@ d3.csv("%s", function(data) {
     .attr("transform", "translate(0," + height + ")")
     .call(d3.axisBottom(x));
 
+  SVG.append("text")             
+      .attr("transform",
+            "translate(" + (width/2) + " ," + 
+                           (height + margin.top + 25) + ")")
+      .style("text-anchor", "middle")
+      .text("%s");
+
   // Add Y axis
   var y = d3.scaleLinear()
     .domain([%d, %d])
     .range([ height, 0]);
   var yAxis = SVG.append("g")
     .call(d3.axisLeft(y));
+
+  // text label for the y axis
+  SVG.append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 0 - margin.left)
+      .attr("x",0 - (height / 2))
+      .attr("dy", "1em")
+      .style("text-anchor", "middle")
+      .text("%s");      
 
   // Add a clipPath: everything out of this area won't be drawn.
   var clip = SVG.append("defs").append("SVG:clipPath")
@@ -147,7 +163,12 @@ d3.csv("%s", function(data) {
 EOT;
 
 function zoom_graph(
-    $file, $xname, $yname, $width, $height, $xmin, $xmax, $ymin, $ymax
+    $file,              // URL of .csv data file
+    $width, $height,    // graph size in pixels
+    $xlabel, $ylabel,
+        // get the following from .csv file using get_extrema()
+    $xname, $yname,             // column names
+    $xmin, $xmax, $ymin, $ymax  // data extrema
 ) {
     global $x;
     static $i=0;
@@ -157,7 +178,9 @@ function zoom_graph(
 
     echo sprintf(
         $x, $divname, $width, $height, $divname, $file,
-        $xmin, $xmax, $ymin, $ymax, $xname, $yname, $xname, $yname
+        $xmin, $xmax, $xlabel,
+        $ymin, $ymax, $ylabel,
+        $xname, $yname, $xname, $yname
     );
 }
 

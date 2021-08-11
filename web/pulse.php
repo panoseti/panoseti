@@ -3,11 +3,11 @@
 // show pulse info for a given file/pixel
 //
 
-function show_file($path, $title) {
+function show_file($path, $title, $type) {
     if (!file_exists($path)) return;
     $size = filesize($path);
     if ($size == 0) return;
-    echo "<p><a href=graph.php?path=$path>$title</a> ($size bytes)";
+    echo "<p><a href=graph.php?path=$path&type=$type>$title</a> ($size bytes)";
 }
 
 function main($file, $pixel) {
@@ -18,9 +18,10 @@ function main($file, $pixel) {
         $all = "pulse_out/$file/$pixel/all_$i";
         $stats = "pulse_out/$file/$pixel/stats_$i";
         $pulse = "pulse_out/$file/$pixel/pulse_$i";
-        show_file($all, "All pulses");
-        show_file($stats, "Mean/RMS");
-        show_file($pulse, "Pulses above threshold");
+        show_file($all, "All pulses", "all");
+        show_file($stats, "Mean", "mean");
+        show_file($stats, "RMS", "rms");
+        show_file($pulse, "Pulses above threshold", "thresh");
     }
 }
 
