@@ -15,15 +15,16 @@ using std::vector;
 
 // our codes for numeric types
 //
-#define PF_U8   0
-#define PF_U16  1
-#define PF_U32  1
+#define PF_8   0
+#define PF_16  1
+#define PF_32  2
 
 // corresponding FITS codes
 //
 int fits_image_type[3] = {BYTE_IMG, SHORT_IMG, LONG_IMG};
-int fits_data_type[3] = {TBYTE, TUSHORT, TULONG};
+int fits_data_type[3] = {TBYTE, TSHORT, TLONG};
 int nbits[3] = {8, 16, 32};
+int nbytes[3] = {1, 2, 4};
 
 // a name/value pair from a FITS header
 //
@@ -167,10 +168,7 @@ struct PFITS {
     //
     int next() {
         int status = 0;
-        check(
-            fits_movrel_hdu(f, 1, NULL, &status),
-            "movrel_hdu"
-        );
+        fits_movrel_hdu(f, 1, NULL, &status);
         return status;
     }
 
@@ -185,17 +183,49 @@ struct PFITS {
         );
         return status;
     }
+
     int write_image(int type, int dim, void* data) {
         int status = 0;
-        long fpixel[2] = {1,1};
+        long nelements = dim*dim;
+#if 1
+        char *q = (char*)data;
+        char *x[dim];
+        for (int i=0; i<dim; i++) {
+            x[i] = q+i*dim*nbytes[type];
+        }
+        long fpixel = 1;
         check(
-            fits_write_pix( f, fits_data_type[type], fpixel, nbits[type], data, &status),
+            fits_write_img(f, fits_data_type[type], fpixel, dim*dim, x[0], &status),
             "write_pix"
         );
+#else
+        // the following should work but doesn't
+
+        long fpixel[2] = {1,1};
+        check(
+            fits_write_pix(f, fits_data_type[type], fpixel, nelements, x, &status),
+            "write_pix"
+        );
+#endif
         return status;
     }
+
     int read_image(int type, int dim, void* data) {
         int status = 0;
+#if 1
+        long fpixel = 1;
+        long nbuffer = dim*dim;
+        int nullval = 0;
+        int anynull;
+        check(
+            fits_read_img(
+                f, fits_data_type[type], fpixel, nbuffer, &nullval, data, &anynull, &status
+            ),
+            "read_img"
+        );
+#else
+        // The following should work (?) but doesn't
+        //
         long dims[2];
         int naxis, bitpix;
         long fpixel[2] = {1,1};
@@ -221,6 +251,7 @@ struct PFITS {
             fits_read_pix(f, fits_data_type[type], fpixel, nbits[type], NULL, data, NULL, &status),
             "read_pix"
         );
+#endif
         return status;
     }
 };

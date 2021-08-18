@@ -1,11 +1,15 @@
 // example/test program for FITS API
 //
-// This writes a fits file consisting of
+// pfits_test [--read | --write] [--nframes N]
+//
+// This writes a FITS file consisting of
 // 1) a header block with a struct FOO as key/value pairs
-// 2) a 4x4 16-bit image, with a key/value pair
+// 2) N 32x32 16-bit images, with a key/value pair
 
 #include <stdio.h>
 #include "pfits.h"
+
+#define IMAGE_DIM   32
 
 // The following shows how to convert between C structure and FITS header.
 // NOTE: cfitsio converts all names into uppercase (huh??).
@@ -35,12 +39,18 @@ struct FOO {
     }
 };
 
-void write_file(const char* name) {
+void write_file(const char* name, int nframes) {
     FOO foo;
     foo.x = 3.14;
     foo.y = 17;
     strcpy(foo.blah, "foobar");
-    short data[16] = {1,2,3,4,5,6,7,8,8,7,6,5,4,3,2,1};
+    short data[IMAGE_DIM][IMAGE_DIM];
+
+    for (int i=0; i<IMAGE_DIM; i++) {
+        for (int j=0; j<IMAGE_DIM; j++) {
+            data[i][j] = i+j;
+        }
+    }
 
     PFITS pf;
 
@@ -48,38 +58,60 @@ void write_file(const char* name) {
     pf.create_header();
     foo.pfits_write(pf);
 
-    pf.create_image(PF_U16, 4);
-    pf.put_long("foobar", 1);
-    pf.write_image(PF_U16, 4, data);
+    for (int i=0; i<nframes; i++) {
+        pf.create_image(PF_16, IMAGE_DIM);
+        pf.put_long("foobar", 1);
+        pf.write_image(PF_16, IMAGE_DIM, data);
+    }
     pf.close();
 }
 
 void read_file(const char* name) {
     PFITS pf;
     FOO foo;
-    short data[16];
+    short data[IMAGE_DIM][IMAGE_DIM];
+    int retval;
 
     pf.open(name);
     pf.read_header();
     foo.pfits_parse(pf);
     printf("header: %f %ld %s\n", foo.x, foo.y, foo.blah);
+    retval = pf.next();
 
-    pf.next();
-    pf.read_header();
-    long foobar;
-    pf.get_long("FOOBAR", foobar);
-    printf("image header: %ld\n", foobar);
-    pf.read_image(PF_U16, 4, data);
-    for (int i=0; i<4; i++) {
-        for (int j=0; j<4; j++) {
-            printf("%d ", data[i*4+j]);
+    for (int frame=0; ; frame++) {
+        pf.read_header();
+        long foobar;
+        pf.get_long("FOOBAR", foobar);
+        printf("frame %d\nheader: %ld\n", frame, foobar);
+        pf.read_image(PF_16, IMAGE_DIM, data);
+        for (int i=0; i<IMAGE_DIM; i++) {
+            for (int j=0; j<IMAGE_DIM; j++) {
+                printf("%2d ", data[i][j]);
+            }
+            printf("\n");
         }
-        printf("\n");
+        retval = pf.next();
+        if (retval) break;
     }
-
+    pf.close();
 }
 
-int main(int, char**) {
-    write_file("pfits.fits");
-    read_file("pfits.fits");
+int main(int argc, char** argv) {
+    bool do_read = false, do_write = false;
+    int nframes = 1;
+    for (int i=1; i<argc; i++) {
+        if (!strcmp(argv[i], "--read")) {
+            do_read = true;
+        } else if (!strcmp(argv[i], "--write")) {
+            do_write = true;
+        } else if (!strcmp(argv[i], "--nframes")) {
+            nframes = atoi(argv[++i]);
+        }
+    }
+    if (do_write) {
+        write_file("pfits.fit", nframes);
+    }
+    if (do_read) {
+        read_file("pfits.fit");
+    }
 }
