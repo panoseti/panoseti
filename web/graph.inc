@@ -61,6 +61,7 @@ var SVG = d3.select("#%s")
   .append("svg")
     .attr("width", width + margin.left + margin.right)
     .attr("height", height + margin.top + margin.bottom)
+    .style("background-color", "white")
   .append("g")
     .attr("transform",
           "translate(" + margin.left + "," + margin.top + ")");
@@ -121,7 +122,7 @@ d3.csv("%s", function(data) {
       .attr("cx", function (d) { return x(d.%s); } )
       .attr("cy", function (d) { return y(d.%s); } )
       .attr("r", 4)
-      .style("fill", "#61a3a9")
+      .style("fill", "#6183b9")
       .style("opacity", 0.5)
 
   // Set the zoom and Pan features: how much you can zoom, on which part, and what to do when there is a zoom

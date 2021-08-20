@@ -3,12 +3,15 @@
 // top-level page: show list of data files,
 // with link to per-file pages
 
+require_once("panoseti.inc");
+
 function main() {
-    echo "<h2>PanoSETI data files</h2>\n";
+    page_head("PanoSETI data files");
     foreach (scandir("PANOSETI_DATA") as $f) {
         if ($f[0] == ".") continue;
-        echo "<a href=data_file.php?name=$f>$f</a><p>\n";
+        echo "<p><a href=data_file.php?name=$f>$f</a>\n";
     }
+    page_tail();
 }
 
 main();

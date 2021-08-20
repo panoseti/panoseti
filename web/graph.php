@@ -2,13 +2,14 @@
 
 // show a zoomable graph of a .csv file specified by path
 
+require_once("panoseti.inc");
 require_once("graph.inc");
+require_once("pulse.inc");
 
-function main($path, $type) {
-    echo '
-        <!DOCTYPE html>
-        <meta charset="utf-8">
-    ';
+function main($file, $module, $pixel, $type, $dur) {
+    page_head(pulse_title($type));
+
+    $path = pulse_file_name($file, $module, $pixel, $type, $dur);
 
     $url = "https://setiathome.berkeley.edu/panoseti/$path";
     list($xmin, $xmax, $ymin, $ymax, $xname, $yname) = get_extrema($path);
@@ -28,16 +29,25 @@ function main($path, $type) {
         $xmin, $xmax,
         $ymin, $ymax
     );
-    echo "file: $path";
+    echo "<p>file: $file";
+    echo "<p>module: $module";
+    echo "<p>pixel: $pixel";
+    $d = 2<<$dur;
+    echo "<p>pulse duration: $d";
+    page_tail();
 }
 
-$path = $_GET['path'];
+$file = $_GET['file'];
+$module = (int)$_GET['module'];
+$pixel = (int)$_GET['pixel'];
 $type = $_GET['type'];
+$dur = (int)$_GET['dur'];
 
 // security checks
 //
-if (strstr($path, "..")) die("");
-if ($path[0] == "/") die("");
-main($path, $type);
+if (strstr($file, "..")) die("");
+if ($file[0] == "/") die("");
+
+main($file, $module, $pixel, $type, $dur);
 
 ?>

@@ -8,9 +8,12 @@
 //      out_dir/
 //          filename/  (from input file)
 //              pixel/      (0.255)
-//                  pulse_i     (i=pulse duration level: 0,1,...)
-//                  all_i
-//                  stats_i
+//                  pulse_i     pulses above threshold
+//                      (i=pulse duration level: 0,1,...)
+//                  all_i       all pulsese
+//                  mean_i      mean
+//                  rms_i       RMS
+//                  value_i     pixel value
 //
 // --file x         data file
 // --module n       module number, 0/1 default 0
@@ -25,6 +28,7 @@
 // --out_dir x      output directory
 //                  default: pulse_out
 // --log_pulses     output all pulses
+// --log_value      output all pixel values
 // --log_stats      output history of mean and RMS for each pulse duration
 //
 
@@ -38,6 +42,7 @@
 #include "pulse_find.h"
 #include "window_rms.h"
 
+#define MAX_VAL 1000        // ignore values larger than this
 void usage() {
     printf("options:\n"
         "   --file x            data file\n"
@@ -53,16 +58,19 @@ void usage() {
         "   --out_dir x         output directory\n"
         "                       default: pulse_out\n"
         "   --log_pulses        output all pulses\n"
+        "   --log_value         output pixel values\n"
         "   --log_stats         output history of mean and RMS for each pulse duration\n"
     );
     exit(1);
 }
 
 double thresh = 1;
-bool log_stats = true, log_pulses=true;
+bool log_stats = true, log_pulses=true, log_value=true;
 vector<FILE*> pulse_fout;
-vector<FILE*> stats_fout;
+vector<FILE*> mean_fout;
+vector<FILE*> rms_fout;
 vector<FILE*> all_fout;
+FILE* value_fout;
 vector<WINDOW_RMS> window_rms;
 
 // called when a pulse is complete
@@ -76,7 +84,8 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     WINDOW_RMS &wrms = window_rms[level];
     bool new_window = wrms.add_value(value);
     if (new_window && log_stats) {
-        fprintf(stats_fout[level], "%ld,%f,%f\n", isample, wrms.mean, wrms.rms);
+        fprintf(mean_fout[level], "%ld,%f\n", isample, wrms.mean);
+        fprintf(rms_fout[level], "%ld,%f\n", isample, wrms.rms);
     }
 
     //printf("wrms: ready %d mean %f rms %f\n", wrms.ready, wrms.mean, wrms.rms);
@@ -147,18 +156,21 @@ int main(int argc, char **argv) {
     } else {
         file_name = file;
     }
-    char buf[1024];
+    char buf[1024], file_dir[1024];
     mkdir(out_dir, 0771);
     sprintf(buf, "%s/%s", out_dir, file_name);
     mkdir(buf, 0771);
-    sprintf(buf, "%s/%s/%d", out_dir, file_name, pixel);
+    sprintf(buf, "%s/%s/%d", out_dir, file_name, module);
     mkdir(buf, 0771);
-    printf("writing results to %s\n", buf);
+    sprintf(file_dir, "%s/%s/%d/%d", out_dir, file_name, module, pixel);
+    mkdir(file_dir, 0771);
+    printf("writing results to %s\n", file_dir);
+
 
     // open output files
     //
     for (i=0; i<nlevels; i++) {
-        sprintf(buf, "%s/%s/%d/pulse_%d", out_dir, file_name, pixel, i);
+        sprintf(buf, "%s/pulse_%d", file_dir, i);
         FILE *f = fopen(buf, "w");
         if (!f) {
             printf("can't open %s\n", buf);
@@ -166,22 +178,33 @@ int main(int argc, char **argv) {
         }
         pulse_fout.push_back(f);
         if (log_stats) {
-            sprintf(buf, "%s/%s/%d/stats_%d", out_dir, file_name, pixel, i);
+            sprintf(buf, "%s/mean_%d", file_dir, i);
             FILE *f = fopen(buf, "w");
-            fprintf(f, "frame,mean,rms\n");
-            stats_fout.push_back(f);
+            fprintf(f, "frame,mean\n");
+            mean_fout.push_back(f);
+
+            sprintf(buf, "%s/rms_%d", file_dir, i);
+            f = fopen(buf, "w");
+            fprintf(f, "frame,rms\n");
+            rms_fout.push_back(f);
         }
         if (log_pulses) {
-            sprintf(buf, "%s/%s/%d/all_%d", out_dir, file_name, pixel, i);
+            sprintf(buf, "%s/all_%d", file_dir, i);
             FILE*f = fopen(buf, "w");
             fprintf(f, "frame,value\n");
             all_fout.push_back(f);
+        }
+        if (log_value) {
+            sprintf(buf, "%s/value", file_dir);
+            value_fout = fopen(buf, "w");
+            fprintf(value_fout, "frame,value\n");
         }
     }
 
     // scan data file
     //
     PULSE_FIND pulse_find(nlevels, false);
+    int isample = 0;
     for (int ifs=0; ifs<99999; ifs++) {
         FRAME_SET fs;
         retval = ph5.get_frame_set(
@@ -195,8 +218,15 @@ int main(int argc, char **argv) {
             uint16_t* p = fs.get_mframe(iframe, module);
             uint16_t val = p[pixel];
             //printf("val: %d\n", val);
+            if (val > MAX_VAL) {
+                val = 0;
+            }
 
             pulse_find.add_sample((double)val);
+            if (log_value) {
+                fprintf(value_fout, "%d,%d\n", isample, val);
+            }
+            isample++;
         }
         printf("done with frame set %d\n",ifs);
     }
