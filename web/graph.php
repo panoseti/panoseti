@@ -33,7 +33,9 @@ function main($file, $module, $pixel, $type, $dur) {
     echo "<p>module: $module";
     echo "<p>pixel: $pixel";
     $d = 2<<$dur;
-    echo "<p>pulse duration: $d";
+    if ($type != "value") {
+        echo "<p>pulse duration: $d";
+    }
     page_tail();
 }
 

@@ -1,10 +1,21 @@
-all: pulse
+DEBUG = 1
+
+PROGS = pulse
+
+all: $(PROGS)
+
+SRCS = pulse.php
 
 H5_INC = -I/usr/include/hdf5/serial
 UTIL_INC = -I../util
 
-#CXX =  g++ -O4 $(H5_INC) $(UTIL_INC)
-CXX =  g++ -g $(H5_INC) $(UTIL_INC)
+ifeq ($(DEBUG),1)
+CXXFLAGS =  -g
+else
+CXXFLAGS =  -O4
+endif
+
+CXX = g++ $(CXXFLAGS) $(H5_INC) $(UTIL_INC)
 
 HDF5_LIB = -lhdf5_serial
 
@@ -18,3 +29,6 @@ pulse: pulse.cpp ../util/ph5.o
 
 Makefile.deps: $(SRCS)
 	$(CXX) -MM *.cpp > Makefile.deps
+
+clean:
+	rm -f $(PROGS) *.o

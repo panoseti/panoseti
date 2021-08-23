@@ -43,4 +43,4 @@ Makefile.deps: $(SRCS)
 	 $(CXX) -MM $(H5_INC) *.cpp > Makefile.deps
 
 clean:
-	rm $(PROGS) *.o
+	rm -f $(PROGS) *.o

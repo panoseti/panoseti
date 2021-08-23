@@ -27,8 +27,8 @@
 //                  default: 10
 // --out_dir x      output directory
 //                  default: pulse_out
-// --log_pulses     output all pulses
-// --log_value      output all pixel values
+// --log_pulses     output pulses length 4 and up
+// --log_value      output pixel values
 // --log_stats      output history of mean and RMS for each pulse duration
 //
 
@@ -57,7 +57,7 @@ void usage() {
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
         "                       default: pulse_out\n"
-        "   --log_pulses        output all pulses\n"
+        "   --log_pulses        output pulses length 4 and up\n"
         "   --log_value         output pixel values\n"
         "   --log_stats         output history of mean and RMS for each pulse duration\n"
     );
@@ -77,6 +77,11 @@ vector<WINDOW_RMS> window_rms;
 //
 void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     //printf("pulse complete: level %d value %f sample %ld\n", level, value, isample);
+
+    int idur = 1<<level;
+    value /= idur;
+    isample = isample + 1 - idur;
+
     if (log_pulses) {
         fprintf(all_fout[level], "%ld,%f\n", isample, value);
     }

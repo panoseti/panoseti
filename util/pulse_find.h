@@ -3,7 +3,7 @@
 
 // struct PULSE_FIND:
 // given a sequence of samples,
-// compute pulses at time scales increasing by powers of 2,
+// compute "pulses" of durations increasing by powers of 2,
 // In each time scale, look at 90 deg phases.
 // compute statistics for each time scale.
 // When a pulse is complete, call pulse_complete() (app must define this)
@@ -36,7 +36,7 @@ using std::vector;
 //
 struct LEVEL {
     double count[4];
-    int phase;      // next pulse to start
+    int phase;      // which phase if about to start
 
     LEVEL() {
         phase = 0;
@@ -64,18 +64,23 @@ struct LEVEL {
 
 struct PULSE_FIND {
     long nsamples;  // how many samples processed so far
-    int nlevels;    // not counting 0 and 1
-    vector<LEVEL> levels;
+    int nlevels;
+    vector<LEVEL> levels;   // 1st and 2nd aren't used
     bool perf;      // if set, no pulse_complete() calls
 
-    // application must define this
+    // Called when a pulse is complete.
+    // Application must define this.
     //
-    void pulse_complete (int, double, long);
+    void pulse_complete(
+        int level,      // pulse duration is 2^level samples
+        double value,   // sum of samples in pulse
+        long isample    // index of last sample of pulse
+    );
 
     PULSE_FIND(int _nlevels, bool _perf) {
         perf = _perf;
-        nlevels = _nlevels-2;
-        if (nlevels < 1) {
+        nlevels = _nlevels;
+        if (nlevels <= 2) {
             fprintf(stderr, "nlevels must be > 2\n");
             exit(1);
         }
@@ -101,6 +106,9 @@ struct PULSE_FIND {
             pulse_count = odd_sum;
             even_sum = x;
         }
+#if 0
+        pulse_complete(1, pulse_count, nsamples);
+#endif
         if (nsamples == 0) {
             nsamples = 1;
             return;
@@ -110,10 +118,10 @@ struct PULSE_FIND {
         // At start of loop,
         // pulse_count is count of completed pulse from lower level
         //
-        for (int i=0; i<nlevels; i++) {
+        for (int i=2; i<nlevels; i++) {
 #if DEBUG
             printf("add_pulse: level %d value %f nsamples %ld\n",
-                i,pulse_count, nsamples
+                i, pulse_count, nsamples
             );
 #endif
             bool keep_going = levels[i].add_pulse(pulse_count);
