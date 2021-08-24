@@ -21,10 +21,18 @@ function main($file, $module, $pixel, $type, $dur) {
 
     zoom_init();
 
+    if ($type == "value_hist") {
+        $xtitle = "Pixel value";
+        $ytitle = "#Pixels";
+    } else {
+        $xtitle = "Frame number";
+        $ytitle = "Value";
+    }
+
     zoom_graph(
         $url,
         1000, 600,
-        "Frame number", "Value",
+        $xtitle, $ytitle,
         $xname, $yname,
         $xmin, $xmax,
         $ymin, $ymax

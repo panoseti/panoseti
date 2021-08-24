@@ -1,6 +1,6 @@
 DEBUG = 0
 
-PROGS = pulse_test ph5_test fits_test pfits_test raw_test
+PROGS = pulse_test ph5_test fits_test pfits_test pff_test
 
 all: $(PROGS)
 
@@ -34,8 +34,8 @@ fits_test: fits_test.cpp
 pfits_test: pfits_test.cpp pfits.h
 	$(CXX) -o pfits_test pfits_test.cpp $(FITS_LIB)
     
-raw_test: raw_test.cpp
-	$(CXX) -o raw_test raw_test.cpp
+pff_test: pff_test.cpp
+	$(CXX) -o pff_test pff_test.cpp
     
 -include Makefile.deps
 

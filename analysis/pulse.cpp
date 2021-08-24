@@ -7,13 +7,16 @@
 // The output files are written in a directory hierarchy:
 //      out_dir/
 //          filename/  (from input file)
-//              pixel/      (0.255)
-//                  pulse_i     pulses above threshold
-//                      (i=pulse duration level: 0,1,...)
-//                  all_i       all pulsese
-//                  mean_i      mean
-//                  rms_i       RMS
-//                  value_i     pixel value
+//              module/     (0..1)
+//                  pixel/      (0.255)
+//                      pulse_i     pulses above threshold
+//                          (i=pulse duration level: 0,1,...)
+//                      all_i       all pulsese
+//                      mean_i      mean
+//                      rms_i       RMS
+//                      value       pixel value
+//
+// options:
 //
 // --file x         data file
 // --module n       module number, 0/1 default 0
@@ -42,7 +45,7 @@
 #include "pulse_find.h"
 #include "window_rms.h"
 
-#define MAX_VAL 1000        // ignore values larger than this
+#define MAX_VAL 2000        // ignore values larger than this
 void usage() {
     printf("options:\n"
         "   --file x            data file\n"
@@ -72,6 +75,7 @@ vector<FILE*> rms_fout;
 vector<FILE*> all_fout;
 FILE* value_fout;
 vector<WINDOW_RMS> window_rms;
+int nlevels = 16;
 
 // called when a pulse is complete
 //
@@ -101,12 +105,68 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     }
 }
 
+// open output files
+//
+void open_output_files(const char* file_dir) {
+    char buf[1024];
+    for (int i=0; i<nlevels; i++) {
+        sprintf(buf, "%s/pulse_%d", file_dir, i);
+        FILE *f = fopen(buf, "w");
+        if (!f) {
+            printf("can't open %s\n", buf);
+            exit(1);
+        }
+        pulse_fout.push_back(f);
+        if (log_stats) {
+            sprintf(buf, "%s/mean_%d", file_dir, i);
+            FILE *f = fopen(buf, "w");
+            fprintf(f, "frame,mean\n");
+            mean_fout.push_back(f);
+
+            sprintf(buf, "%s/rms_%d", file_dir, i);
+            f = fopen(buf, "w");
+            fprintf(f, "frame,rms\n");
+            rms_fout.push_back(f);
+        }
+        if (log_pulses) {
+            sprintf(buf, "%s/all_%d", file_dir, i);
+            FILE*f = fopen(buf, "w");
+            fprintf(f, "frame,value\n");
+            all_fout.push_back(f);
+        }
+    }
+    if (log_value) {
+        sprintf(buf, "%s/value", file_dir);
+        value_fout = fopen(buf, "w");
+        fprintf(value_fout, "frame,value\n");
+    }
+}
+
+// flush output files.
+// This is because HDF5 crashes at random times :-(
+//
+void flush_output_files() {
+    for (int i=0; i<nlevels; i++) {
+        fflush(pulse_fout[i]);
+        if (log_stats) {
+            fflush(mean_fout[i]);
+            fflush(rms_fout[i]);
+        }
+        if (log_pulses) {
+            fflush(all_fout[i]);
+        }
+    }
+    if (log_value) {
+        fflush(value_fout);
+    }
+}
+
 int main(int argc, char **argv) {
     const char* file = "PANOSETI_DATA/PANOSETI_LICK_2021_07_15_08-36-14.h5";
     int win_size = 256, win_spacing=64;
     int pixel=0, module=0;
     const char* out_dir = "pulse_out";
-    int i, nlevels = 16;
+    int i;
     int retval;
 
     for (i=1; i<argc; i++) {
@@ -172,39 +232,7 @@ int main(int argc, char **argv) {
     printf("writing results to %s\n", file_dir);
 
 
-    // open output files
-    //
-    for (i=0; i<nlevels; i++) {
-        sprintf(buf, "%s/pulse_%d", file_dir, i);
-        FILE *f = fopen(buf, "w");
-        if (!f) {
-            printf("can't open %s\n", buf);
-            exit(1);
-        }
-        pulse_fout.push_back(f);
-        if (log_stats) {
-            sprintf(buf, "%s/mean_%d", file_dir, i);
-            FILE *f = fopen(buf, "w");
-            fprintf(f, "frame,mean\n");
-            mean_fout.push_back(f);
-
-            sprintf(buf, "%s/rms_%d", file_dir, i);
-            f = fopen(buf, "w");
-            fprintf(f, "frame,rms\n");
-            rms_fout.push_back(f);
-        }
-        if (log_pulses) {
-            sprintf(buf, "%s/all_%d", file_dir, i);
-            FILE*f = fopen(buf, "w");
-            fprintf(f, "frame,value\n");
-            all_fout.push_back(f);
-        }
-        if (log_value) {
-            sprintf(buf, "%s/value", file_dir);
-            value_fout = fopen(buf, "w");
-            fprintf(value_fout, "frame,value\n");
-        }
-    }
+    open_output_files(file_dir);
 
     // scan data file
     //
@@ -231,7 +259,9 @@ int main(int argc, char **argv) {
             if (log_value) {
                 fprintf(value_fout, "%d,%d\n", isample, val);
             }
+
             isample++;
+            flush_output_files();
         }
         printf("done with frame set %d\n",ifs);
     }

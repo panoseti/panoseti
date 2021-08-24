@@ -28,6 +28,7 @@ function main($file, $module, $pixel) {
     echo "<p>Module: $module\n";
     echo "<p>Pixel: $pixel\n";
     show_file($file, $module, $pixel, "value", 0);
+    show_file($file, $module, $pixel, "value_hist", 0);
     for ($i=2; $i<16; $i++) {
         $x = 1<<$i;
         echo "<h3>Pulse duration $x</h3>\n";
