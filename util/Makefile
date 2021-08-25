@@ -1,4 +1,4 @@
-DEBUG = 0
+DEBUG = 1
 
 PROGS = pulse_test ph5_test fits_test pfits_test pff_test
 
