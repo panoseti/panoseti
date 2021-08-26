@@ -1,4 +1,5 @@
-// functions for reading/writing PanoSETI file format (.pff) files
+// functions for reading/writing PanoSETI file format (.pff) files,
+// and stuff related to file names
 //
 // A PFF file is a sequence of blocks,
 // each of which is either text (e.g. a JSON doc) or a binary image.
@@ -71,3 +72,36 @@ int pff_read_image(FILE* f, int nbytes, void* img) {
     }
     return 0;
 }
+
+////////// DIR AND FILE NAMES ////////////////
+
+typedef enum {
+    DP_PH = 1,
+    DP_IMAGE
+} DATA_PRODUCT;
+
+
+// the info encoded in a dir name
+//
+struct DIRNAME_INFO {
+    char observatory[256];
+    double start_time;
+
+    void make(string&);
+    int parse(char*);
+};
+
+// the info encoded in a file name
+//
+struct FILENAME_INFO {
+    double start_time;
+    DATA_PRODUCT data_product;
+    int pixel_nbytes;
+    int dome;
+    int module;
+    int seqno;
+
+    void make(string&);
+    int parse(char*);
+};
+

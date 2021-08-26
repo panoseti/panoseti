@@ -12,7 +12,7 @@ function page_head($title) {
 </head>
 <body >
 ',
-    "PanoSETI"
+    "PanoSETI: $title"
     );
     echo '<div class="container-fluid">';
     echo "<h2>$title</h2>";
@@ -21,4 +21,19 @@ function page_head($title) {
 function page_tail() {
     echo "</div></body></html>";
 }
+
+function get_int($key) {
+    if (array_key_exists($key, $_GET)) {
+        return (int)$_GET[$key];
+    }
+    return null;
+}
+
+function get_str($key) {
+    if (array_key_exists($key, $_GET)) {
+        return $_GET[$key];
+    }
+    return null;
+}
+
 ?>

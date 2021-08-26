@@ -19,6 +19,7 @@ def read_json(f):
     return s;
 
 # returns the image as a list of 1024 numbers
+# see https://docs.python.org/3/library/struct.html
 #
 def read_image_16(f):
     c = f.read(1)

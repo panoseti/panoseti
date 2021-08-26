@@ -1,15 +1,47 @@
 <?php
 
 // show a zoomable graph of a .csv file specified by path
+//
+// Also, since graphs with lots of points are slow to draw in Javascript,
+// you can zoom and move in the data itself.
 
 require_once("panoseti.inc");
 require_once("graph.inc");
 require_once("pulse.inc");
 
-function main($file, $module, $pixel, $type, $dur) {
+function main($action, $start, $n, $file, $module, $pixel, $type, $dur) {
     page_head(pulse_title($type));
 
     $path = pulse_file_name($file, $module, $pixel, $type, $dur);
+
+    if ($action == 'zoom_in') {
+        if ($n) {
+            $start += (int)($n/2);
+            $n = (int)($n/10);
+        } else {
+            $n = count(file($path));
+            $start = (int)($n/2);
+            $n = (int)($n/10);
+        }
+    } else if ($action == 'zoom_out') {
+        $n *= 10;
+        $start -= (int)($n/2);
+        if ($start < 2) $start = 2;
+    } else if ($action == 'left') {
+        $start -= $n;
+        if ($start < 2) $start = 2;
+    } else if ($action == 'right') {
+        $start += $n;
+    }
+
+    if ($n) {
+        $last = $start+$n;
+        $cmd = sprintf("sed -n '1p;%d,%dp;%dq' %s > %s",
+            $start, $last, $last+1, $path, "tmp/graph.csv"
+        );
+        system($cmd);
+        $path = "tmp/graph.csv";
+    }
 
     $url = "https://setiathome.berkeley.edu/panoseti/$path";
     list($xmin, $xmax, $ymin, $ymax, $xname, $yname) = get_extrema($path);
@@ -21,23 +53,45 @@ function main($file, $module, $pixel, $type, $dur) {
 
     zoom_init();
 
+    $ylogscale = false;
     if ($type == "value_hist") {
         $xtitle = "Pixel value";
-        $ytitle = "#Pixels";
+        $ytitle = "log(#Pixels)";
+        $ylogscale = true;
     } else {
         $xtitle = "Frame number";
         $ytitle = "Value";
+        $ymin -= 10;
+        $ymax += 10;
     }
 
     zoom_graph(
         $url,
-        1000, 600,
+        1200, 600,
         $xtitle, $ytitle,
         $xname, $yname,
         $xmin, $xmax,
-        $ymin, $ymax
+        $ymin, $ymax,
+        $ylogscale
     );
-    echo "<p>file: $file";
+
+    // show zoom/pan buttons
+    //
+    $my_url = "graph.php?file=$file&module=$module&pixel=$pixel&type=$type&dur=$dur&start=$start&n=$n";
+    echo "<br>";
+    $btn = 'class="btn btn-primary btn-sm"';
+    if ($n && $start > 0) {
+        echo "<a $btn href=$my_url&action=left><<</a> &nbsp";
+    }
+
+    echo "<a $btn href=$my_url&action=zoom_in>Zoom in 10X</a>";
+    if ($n) {
+        echo "&nbsp; <a $btn href=$my_url&action=zoom_out>Zoom out 10X</a>";
+        echo "&nbsp; <a $btn href=$my_url&action=right>>></a>";
+    }
+    echo "<br><br>";
+
+    echo "<p>file: <a href=data_file.php?name=$file>$file</a>";
     echo "<p>module: $module";
     echo "<p>pixel: $pixel";
     $d = 2<<$dur;
@@ -47,17 +101,20 @@ function main($file, $module, $pixel, $type, $dur) {
     page_tail();
 }
 
-$file = $_GET['file'];
-$module = (int)$_GET['module'];
-$pixel = (int)$_GET['pixel'];
-$type = $_GET['type'];
-$dur = (int)$_GET['dur'];
+$file = get_str('file');
+$module = get_int('module');
+$pixel = get_int('pixel');
+$type = get_str('type');
+$dur = get_int('dur');
+$action = get_str('action');
+$start = get_int('start');
+$n = get_int('n');
 
 // security checks
 //
 if (strstr($file, "..")) die("");
 if ($file[0] == "/") die("");
 
-main($file, $module, $pixel, $type, $dur);
+main($action, $start, $n, $file, $module, $pixel, $type, $dur);
 
 ?>

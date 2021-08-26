@@ -85,7 +85,7 @@ d3.csv("%s", function(data) {
       .text("%s");
 
   // Add Y axis
-  var y = d3.scaleLinear()
+  var y = d3.%s()
     .domain([%d, %d])
     .range([ height, 0]);
   var yAxis = SVG.append("g")
@@ -121,7 +121,7 @@ d3.csv("%s", function(data) {
     .append("circle")
       .attr("cx", function (d) { return x(d.%s); } )
       .attr("cy", function (d) { return y(d.%s); } )
-      .attr("r", 4)
+      .attr("r", 3)
       .style("fill", "#6183b9")
       .style("opacity", 0.5)
 
@@ -169,7 +169,8 @@ function zoom_graph(
     $xlabel, $ylabel,
         // get the following from .csv file using get_extrema()
     $xname, $yname,             // column names
-    $xmin, $xmax, $ymin, $ymax  // data extrema
+    $xmin, $xmax, $ymin, $ymax,  // data extrema
+    $ylogscale
 ) {
     global $x;
     static $i=0;
@@ -180,9 +181,11 @@ function zoom_graph(
     echo sprintf(
         $x, $divname, $width, $height, $divname, $file,
         $xmin, $xmax, $xlabel,
+        $ylogscale?"scaleLog":"scaleLinear",
         $ymin, $ymax, $ylabel,
         $xname, $yname, $xname, $yname
     );
 }
 
+//zoom_graph("foo", 40, 40, "x", "y", "x","y",0,10,0,10,false);
 ?>
