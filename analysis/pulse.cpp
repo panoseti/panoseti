@@ -1,19 +1,19 @@
 // pulse [options]
 // find pulses in a file and output:
-//      - pulses above RMS threshold
+//      - pulses above stddev threshold
 //      - optionally, a log of all pulses
-//      - optionally, a log of means and RMSs
+//      - optionally, a log of mean and stddev
 // The above are output separately for each pulse duration
 // The output files are written in a directory hierarchy:
 //      out_dir/
 //          filename/  (from input file)
 //              module/     (0..1)
 //                  pixel/      (0.255)
-//                      pulse_i     pulses above threshold
+//                      thresh_i     pulses above threshold
 //                          (i=pulse duration level: 0,1,...)
 //                      all_i       all pulsese
 //                      mean_i      mean
-//                      rms_i       RMS
+//                      stddev_i    stddev
 //                      value       pixel value
 //
 // options:
@@ -22,17 +22,17 @@
 // --module n       module number, 0/1 default 0
 // --pixel n        pixel (0..1023)
 // --nlevels n      number of duration octaves (default 16)
-// --win_size n     RMS window is n times pulse duration
-//                  default: 256
-// --win_spacing n  recompute RMS every n pulse durations
+// --win_size n     stats window is n times pulse duration
 //                  default: 64
-// --thresh x       threshold is x times RMS
-//                  default: 10
+// --win_spacing n  recompute stats every n pulse durations
+//                  default: 16
+// --thresh x       threshold is x times stddev
+//                  default: 1
 // --out_dir x      output directory
 //                  default: pulse_out
 // --log_pulses     output pulses length 4 and up
 // --log_value      output pixel values
-// --log_stats      output history of mean and RMS for each pulse duration
+// --log_stats      output history of stats for each pulse duration
 //
 
 #include <sys/stat.h>
@@ -43,38 +43,41 @@
 
 #include "ph5.h"
 #include "pulse_find.h"
-#include "window_rms.h"
+#include "window_stats.h"
 
-#define MAX_VAL 2000        // ignore values larger than this
+#define WIN_SIZE_DEFAULT    64
+#define WIN_SPACING_DEFAULT 16
+#define MAX_VAL             2000        // ignore values larger than this
+
 void usage() {
     printf("options:\n"
         "   --file x            data file\n"
         "   --module n          module number\n"
         "   --pixel n           pixel (0..255)\n"
         "   --nlevels n         duration levels (default 16)\n"
-        "   --win_size n        RMS window is n times pulse duration\n"
-        "                       default: 256\n"
-        "   --win_spacing n     RMS window is n times pulse duration\n"
-        "                       default: 256\n"
-        "   --thresh x          threshold is mean + x times RMS\n"
+        "   --win_size n        stats window is n times pulse duration\n"
+        "                       default: 64\n"
+        "   --win_spacing n     stats window computed every n samples\n"
+        "                       default: 16\n"
+        "   --thresh x          threshold is mean + x times stddev\n"
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
         "                       default: pulse_out\n"
         "   --log_pulses        output pulses length 4 and up\n"
         "   --log_value         output pixel values\n"
-        "   --log_stats         output history of mean and RMS for each pulse duration\n"
+        "   --log_stats         output history of mean and stddev for each pulse duration\n"
     );
     exit(1);
 }
 
 double thresh = 1;
 bool log_stats = true, log_pulses=true, log_value=true;
-vector<FILE*> pulse_fout;
+vector<FILE*> thresh_fout;
 vector<FILE*> mean_fout;
-vector<FILE*> rms_fout;
+vector<FILE*> stddev_fout;
 vector<FILE*> all_fout;
 FILE* value_fout;
-vector<WINDOW_RMS> window_rms;
+vector<WINDOW_STATS> window_stats;
 int nlevels = 16;
 
 // called when a pulse is complete
@@ -83,24 +86,29 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     //printf("pulse complete: level %d value %f sample %ld\n", level, value, isample);
 
     int idur = 1<<level;
-    value /= idur;
     isample = isample + 1 - idur;
+    if (isample < 0) return;
+    value /= idur;
 
     if (log_pulses) {
         fprintf(all_fout[level], "%ld,%f\n", isample, value);
     }
 
-    WINDOW_RMS &wrms = window_rms[level];
-    bool new_window = wrms.add_value(value);
+    WINDOW_STATS &wstats = window_stats[level];
+    bool new_window = wstats.add_value(value);
     if (new_window && log_stats) {
-        fprintf(mean_fout[level], "%ld,%f\n", isample, wrms.mean);
-        fprintf(rms_fout[level], "%ld,%f\n", isample, wrms.rms);
+        fprintf(mean_fout[level], "%ld,%f\n", isample, wstats.mean);
+        fprintf(stddev_fout[level], "%ld,%f\n", isample, wstats.stddev);
     }
 
-    //printf("wrms: ready %d mean %f rms %f\n", wrms.ready, wrms.mean, wrms.rms);
-    if (wrms.ready) {
-        if (value > wrms.mean + thresh*wrms.rms) {
-            fprintf(pulse_fout[level], "%ld,%f\n", isample, value);
+#if 0
+    printf("pulse_complete: level %d value %f ready %d mean %f stddev %f\n",
+        level, value, wstats.ready, wstats.mean, wstats.stddev
+    );
+#endif
+    if (wstats.ready) {
+        if (value > wstats.mean + thresh*wstats.stddev) {
+            fprintf(thresh_fout[level], "%ld,%f\n", isample, value);
         }
     }
 }
@@ -110,23 +118,24 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
 void open_output_files(const char* file_dir) {
     char buf[1024];
     for (int i=0; i<nlevels; i++) {
-        sprintf(buf, "%s/pulse_%d", file_dir, i);
+        sprintf(buf, "%s/thresh_%d", file_dir, i);
         FILE *f = fopen(buf, "w");
         if (!f) {
             printf("can't open %s\n", buf);
             exit(1);
         }
-        pulse_fout.push_back(f);
+        fprintf(f, "frame,value\n");
+        thresh_fout.push_back(f);
         if (log_stats) {
             sprintf(buf, "%s/mean_%d", file_dir, i);
             FILE *f = fopen(buf, "w");
             fprintf(f, "frame,mean\n");
             mean_fout.push_back(f);
 
-            sprintf(buf, "%s/rms_%d", file_dir, i);
+            sprintf(buf, "%s/stddev_%d", file_dir, i);
             f = fopen(buf, "w");
-            fprintf(f, "frame,rms\n");
-            rms_fout.push_back(f);
+            fprintf(f, "frame,stddev\n");
+            stddev_fout.push_back(f);
         }
         if (log_pulses) {
             sprintf(buf, "%s/all_%d", file_dir, i);
@@ -147,10 +156,10 @@ void open_output_files(const char* file_dir) {
 //
 void flush_output_files() {
     for (int i=0; i<nlevels; i++) {
-        fflush(pulse_fout[i]);
+        fflush(thresh_fout[i]);
         if (log_stats) {
             fflush(mean_fout[i]);
-            fflush(rms_fout[i]);
+            fflush(stddev_fout[i]);
         }
         if (log_pulses) {
             fflush(all_fout[i]);
@@ -163,7 +172,7 @@ void flush_output_files() {
 
 int main(int argc, char **argv) {
     const char* file = "PANOSETI_DATA/PANOSETI_LICK_2021_07_15_08-36-14.h5";
-    int win_size = 256, win_spacing=64;
+    int win_size = WIN_SIZE_DEFAULT, win_spacing=WIN_SPACING_DEFAULT;
     int pixel=0, module=0;
     const char* out_dir = "pulse_out";
     int i;
@@ -207,9 +216,9 @@ int main(int argc, char **argv) {
 
     // set up the stats 
 
-    WINDOW_RMS wrms(win_size, win_spacing);
+    WINDOW_STATS w(win_size, win_spacing);
     for (i=0; i<nlevels; i++) {
-        window_rms.push_back(wrms);
+        window_stats.push_back(w);
     }
 
     // create output directory

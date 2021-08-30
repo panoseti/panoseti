@@ -15,9 +15,9 @@ function pulse_file_name($file, $module, $pixel, $type, $dur) {
 function pulse_title($type) {
     if ($type == 'value') return "Pixel values";
     if ($type == 'value_hist') return "Pixel value histogram";
-    if ($type == 'all') return "All pulses";
-    if ($type == 'mean') return "Pulse mean";
-    if ($type == 'rms') return "Pulse RMS to mean";
+    if ($type == 'all') return "Intensity";
+    if ($type == 'mean') return "Local mean intensity";
+    if ($type == 'stddev') return "Local stddev";
     if ($type == 'thresh') return "Pulses above threshold ";
     return "bad type";
 }

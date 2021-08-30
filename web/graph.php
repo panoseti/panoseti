@@ -47,8 +47,8 @@ function main($action, $start, $n, $file, $module, $pixel, $type, $dur) {
     list($xmin, $xmax, $ymin, $ymax, $xname, $yname) = get_extrema($path);
 
     // kludge
-    if ($type == "rms") {
-        $yname = "rms";
+    if ($type == "stddev") {
+        $yname = "stddev";
     }
 
     zoom_init();
@@ -64,6 +64,8 @@ function main($action, $start, $n, $file, $module, $pixel, $type, $dur) {
         $ymin -= 10;
         $ymax += 10;
     }
+    $xmin -= 1000;
+    $xmax += 1000;
 
     zoom_graph(
         $url,
@@ -94,9 +96,9 @@ function main($action, $start, $n, $file, $module, $pixel, $type, $dur) {
     echo "<p>file: <a href=data_file.php?name=$file>$file</a>";
     echo "<p>module: $module";
     echo "<p>pixel: $pixel";
-    $d = 2<<$dur;
+    $d = 1<<$dur;
     if ($type != "value") {
-        echo "<p>pulse duration: $d";
+        echo "<p>Number of frames integrated: $d";
     }
     page_tail();
 }
@@ -110,10 +112,7 @@ $action = get_str('action');
 $start = get_int('start');
 $n = get_int('n');
 
-// security checks
-//
-if (strstr($file, "..")) die("");
-if ($file[0] == "/") die("");
+check_filename($file);
 
 main($action, $start, $n, $file, $module, $pixel, $type, $dur);
 

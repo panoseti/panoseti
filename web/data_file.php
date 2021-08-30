@@ -26,7 +26,8 @@ function main($name) {
     page_tail();
 }
 
-$name = $_GET['name'];
+$name = get_str('name');
+check_filename($name);
 main($name);
 
 ?>

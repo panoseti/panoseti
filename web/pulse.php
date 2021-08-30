@@ -24,7 +24,7 @@ function show_file($file, $module, $pixel, $type, $dur) {
 }
 
 function main($file, $module, $pixel) {
-    page_head("Pulses for file $file");
+    page_head("Imaging data for file $file");
     echo "<p>Module: $module\n";
     echo "<p>Pixel: $pixel\n";
     show_file($file, $module, $pixel, "value", 0);
@@ -35,17 +35,17 @@ function main($file, $module, $pixel) {
         echo "<ul>";
         show_file($file, $module, $pixel, "all", $i);
         show_file($file, $module, $pixel, "mean", $i);
-        show_file($file, $module, $pixel, "rms", $i);
+        show_file($file, $module, $pixel, "stddev", $i);
         show_file($file, $module, $pixel, "thresh", $i);
         echo "</ul>";
     }
     page_tail();
 }
 
-$file = $_GET["file"];
-$module = $_GET["module"];
-$pixel = $_GET["pixel"];
-
+$file = get_str("file");
+$module = get_int("module");
+$pixel = get_int("pixel");
+check_filename($file);
 main($file, $module, $pixel);
 
 ?>

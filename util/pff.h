@@ -96,7 +96,7 @@ struct DIRNAME_INFO {
 struct FILENAME_INFO {
     double start_time;
     DATA_PRODUCT data_product;
-    int pixel_nbytes;
+    int bytes_per_pixel;
     int dome;
     int module;
     int seqno;

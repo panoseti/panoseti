@@ -36,4 +36,12 @@ function get_str($key) {
     return null;
 }
 
+// make sure a path doesn't go above current dir.
+// Do this for any filename passed in a URL
+//
+function check_filename($name) {
+    if (strstr($name, "..")) die("");
+    if ($name[0] == "/") die("");
+}
+
 ?>
