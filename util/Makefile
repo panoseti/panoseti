@@ -1,10 +1,10 @@
 DEBUG = 1
 
-PROGS = pulse_test ph5_test fits_test pfits_test pff_test
+PROGS = image_test pulse_test ph5_test fits_test pfits_test pff_test
 
 all: $(PROGS)
 
-SRCS = pulse_test.cpp ph5_test.cpp pfits_test.cpp
+SRCS = image_test.cpp pulse_test.cpp ph5_test.cpp pfits_test.cpp
 
 H5_INC = -I/usr/include/hdf5/serial
 
@@ -21,6 +21,9 @@ FITS_LIB = -lcfitsio
 
 .cpp.o:
 	$(CXX) -c -o $*.o $<
+
+image_test: image_test.cpp image.h
+	$(CXX) -o image_test image_test.cpp image.o
 
 pulse_test: pulse_test.cpp pulse_find.h
 	$(CXX) -o pulse_test pulse_test.cpp
