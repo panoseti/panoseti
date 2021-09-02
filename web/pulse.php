@@ -3,7 +3,7 @@
 require_once("panoseti.inc");
 require_once("pulse.inc");
 
-// show pulse info for a given file/pixel
+// show pulse info for a given file/module/pixel
 //
 
 function show_file($file, $module, $pixel, $type, $dur) {
@@ -23,6 +23,18 @@ function show_file($file, $module, $pixel, $type, $dur) {
     echo "<li><a href=$url>$title</a> ($size bytes)";
 }
 
+function sigma_form($file, $module, $pixel, $dur) {
+    echo "<li><form action=pulse_sigma.php>Pulses above
+        <input type=text name=nsigma size=4> sigma
+        <input type=hidden name=file value=$file>
+        <input type=hidden name=module value=$module>
+        <input type=hidden name=pixel value=$pixel>
+        <input type=hidden name=dur value=$dur>
+        <input type=submit class=\"btn-sm btn-primary\" name=list value=list>
+        </form>
+    ";
+}
+
 function main($file, $module, $pixel) {
     page_head("Imaging data for file $file");
     echo "<p>Module: $module\n";
@@ -37,6 +49,7 @@ function main($file, $module, $pixel) {
         show_file($file, $module, $pixel, "mean", $i);
         show_file($file, $module, $pixel, "stddev", $i);
         show_file($file, $module, $pixel, "thresh", $i);
+        sigma_form($file, $module, $pixel, $i);
         echo "</ul>";
     }
     page_tail();

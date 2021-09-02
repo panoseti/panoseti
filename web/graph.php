@@ -59,13 +59,13 @@ function main($action, $start, $n, $file, $module, $pixel, $type, $dur) {
         $ytitle = "log(#Pixels)";
         $ylogscale = true;
     } else {
-        $xtitle = "Frame number";
-        $ytitle = "Value";
+        $xtitle = "Seconds";
+        $ytitle = "Mean intensity";
         $ymin -= 10;
         $ymax += 10;
     }
-    $xmin -= 1000;
-    $xmax += 1000;
+    $xmin -= 1;
+    $xmax += 1;
 
     zoom_graph(
         $url,

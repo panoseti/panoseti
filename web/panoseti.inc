@@ -44,4 +44,56 @@ function check_filename($name) {
     if ($name[0] == "/") die("");
 }
 
+// various stuff copied from boinc/html/inc/util.inc
+
+
+function start_table_str($class="", $style="") {
+    $s = $style?'style="'.$style.'"':'';
+    return '<div class="table">
+      <table '.$s.' width="100%" class="table table-condensed '.$class.'" >
+    ';
+}
+
+function start_table($class="", $style="") {
+    echo start_table_str($class, $style);
+}
+
+function end_table_str() {
+    return '</table>
+        </div>
+    ';
+}
+
+function end_table() {
+    echo end_table_str();
+}
+
+function table_header() {
+    echo "<tr>\n";
+    $c = 'class="bg-primary"';
+    for ($i = 0; $i < func_num_args(); $i++) {
+        if (is_array(func_get_arg($i))) {
+            $col = func_get_arg($i);
+            echo "<th $c ".$col[1].">".$col[0]."</th>\n";
+        } else {
+            echo "<th $c>".func_get_arg($i)."</th>\n";
+        }
+    }
+    echo "</tr>\n";
+}
+
+// Table row with unlimited number of columns
+
+function table_row() {
+    echo "<tr>\n";
+    for ($i = 0; $i < func_num_args(); $i++) {
+        if (is_array(func_get_arg($i))) {
+            $col = func_get_arg($i);
+            echo "<td ".$col[1].">".$col[0]."</td>\n";
+        } else {
+            echo "<td>".func_get_arg($i)."</td>\n";
+        }
+    }
+    echo "</tr>\n";
+}
 ?>

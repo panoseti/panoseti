@@ -18,7 +18,7 @@ function pulse_title($type) {
     if ($type == 'all') return "Intensity";
     if ($type == 'mean') return "Local mean intensity";
     if ($type == 'stddev') return "Local stddev";
-    if ($type == 'thresh') return "Pulses above threshold ";
+    if ($type == 'thresh') return "Pulses > 3 sigma above mean intensity";
     return "bad type";
 }
 
