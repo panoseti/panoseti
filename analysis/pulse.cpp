@@ -70,7 +70,7 @@ void usage() {
     exit(1);
 }
 
-double thresh = 1;
+double thresh = 3;
 bool log_stats = true, log_pulses=true, log_value=true;
 vector<FILE*> thresh_fout;
 vector<FILE*> mean_fout;
@@ -79,6 +79,10 @@ vector<FILE*> all_fout;
 FILE* value_fout;
 vector<WINDOW_STATS> window_stats;
 int nlevels = 16;
+
+inline double sample_to_sec(long i) {
+    return ((double)i)/200.;
+}
 
 // called when a pulse is complete
 //
@@ -90,15 +94,11 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     if (isample < 0) return;
     value /= idur;
 
-    if (log_pulses) {
-        fprintf(all_fout[level], "%ld,%f\n", isample, value);
-    }
-
     WINDOW_STATS &wstats = window_stats[level];
     bool new_window = wstats.add_value(value);
     if (new_window && log_stats) {
-        fprintf(mean_fout[level], "%ld,%f\n", isample, wstats.mean);
-        fprintf(stddev_fout[level], "%ld,%f\n", isample, wstats.stddev);
+        fprintf(mean_fout[level], "%f,%f\n", sample_to_sec(isample), wstats.mean);
+        fprintf(stddev_fout[level], "%f,%f\n", sample_to_sec(isample), wstats.stddev);
     }
 
 #if 0
@@ -106,11 +106,19 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
         level, value, wstats.ready, wstats.mean, wstats.stddev
     );
 #endif
+    double nsigma = 0;
     if (wstats.ready) {
-        if (value > wstats.mean + thresh*wstats.stddev) {
-            fprintf(thresh_fout[level], "%ld,%f\n", isample, value);
+        if (value > wstats.mean) {
+            nsigma = (value-wstats.mean)/wstats.stddev;
+            if (nsigma > thresh) {
+                fprintf(thresh_fout[level], "%f,%f\n", sample_to_sec(isample), value);
+            }
         }
     }
+    if (log_pulses) {
+        fprintf(all_fout[level], "%f,%f,%f\n", sample_to_sec(isample), value, nsigma);
+    }
+
 }
 
 // open output files
@@ -147,7 +155,7 @@ void open_output_files(const char* file_dir) {
     if (log_value) {
         sprintf(buf, "%s/value", file_dir);
         value_fout = fopen(buf, "w");
-        fprintf(value_fout, "frame,value\n");
+        fprintf(value_fout, "frame,value,nsigma\n");
     }
 }
 
@@ -266,7 +274,7 @@ int main(int argc, char **argv) {
 
             pulse_find.add_sample((double)val);
             if (log_value) {
-                fprintf(value_fout, "%d,%d\n", isample, val);
+                fprintf(value_fout, "%f,%d\n", sample_to_sec(isample), val);
             }
 
             isample++;
