@@ -1,15 +1,17 @@
 CC          = g++
+HDF5_LIB_CCFLAGS = -I/usr/local/hdf5/include \
+					 -L/usr/local/hdf5/lib \
+					 -lhdf5_hl \
+					 -lhdf5
+REDIS_LIB_CCFLAGS = -lhiredis
 HSD_LIB_CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -mavx -msse4 \
                      -I. -I$(CUDA_DIR)/include -I/usr/local/include \
                      -L. -L/usr/local/lib \
                      -lhashpipe -lrt -lm \
-					 -lhiredis \
-					 -I/usr/local/hdf5/include \
-					 -L/usr/local/hdf5/lib \
-					 -lhdf5_hl \
-					 -lhdf5 \
+					 $(HDF5_LIB_CCFLAGS) \
+					 $(REDIS_LIB_CCFLAGS) \
 					 -lz -ldl -lm \
-					 -Wl,-rpath -Wl,/usr/local/hdf5/lib
+					 -Wl,-rpath
 HSD_LIB_TARGET   = HSD_hashpipe.so
 HSD_LIB_SOURCES  = HSD_net_thread.c \
 		      HSD_compute_thread.c \
