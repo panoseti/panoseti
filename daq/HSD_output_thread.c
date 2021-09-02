@@ -12,9 +12,11 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <string>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 #include "hiredis/hiredis.h"
+#include "../util/pff.cpp"
 
 //Defining the names of redis keys and files
 #define OBSERVATORY "LICK"
@@ -22,15 +24,37 @@
 #define GPSSUPPNAME "GPSSUPP"
 #define WRSWITCHNAME "WRSWITCH"
 
-//Defining the Formats that will be used within the HDF5 data file
-#define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
-#define TIME_FORMAT "%04i-%02i-%02iT%02i:%02i:%02i UTC"
-
 static char saveLocation[STRBUFFSIZE];
 static long long fileSize = 0;
 static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 
-static redisContext *redisServer;
+typedef struct file_ptrs{
+    FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
+} file_ptrs_t;
+
+static redisContext* redisServer;
+static file_ptrs_t dataFiles;
+
+int data_file_init(DATA_PRODUCT dataProduct, int dome, int module) {
+    time_t t = time(NULL);
+
+    DIRNAME_INFO dirInfo(t, "LICK");
+    FILENAME_INFO filenameInfo(t, dataProduct, 0, dome, module, 0);
+    
+    string dirName;
+    string fileName;
+    dirInfo.make(dirName);
+    printf("Directory is :%s\n", dirName.c_str());
+    filenameInfo.make(fileName);
+    printf("Filename is :%s\n", fileName.c_str());
+
+}
+
+int fetch_storeGPSSupp(redisContext *redisServer) {
+    
+}
+
+
 
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
 static int QUITSIG;
@@ -80,6 +104,11 @@ static int init(hashpipe_thread_args_t *args)
     // Uncomment following lines for redis servers with password
     // reply = redisCommand(redisServer, "AUTH password");
     // freeReplyObject(reply);
+
+    printf("-----------------SETTING UP DATA FILES---------------\n");
+    for (int i = DP_STATIC_META; i <= DP_PH_IMG; i++){
+        data_file_init((DATA_PRODUCT) i, 0, 0);
+    }
 
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
 
