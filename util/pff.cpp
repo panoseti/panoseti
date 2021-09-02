@@ -8,16 +8,6 @@
 using std::string;
 using std::vector;
 
-void DIRNAME_INFO::make(string &s) {
-    char buf[1024], tbuf[256];
-
-    time_t x = (time_t)start_time;
-    struct tm* tm = localtime(&x);
-    strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
-    sprintf(buf, "obs=%s,st=%s", observatory, tbuf);
-    s = buf;
-}
-
 struct NV_PAIR {
     char name[64], value[256];
     int parse(const char *s) {
@@ -42,6 +32,23 @@ void split_comma(char *name, vector<string> &pieces) {
     pieces.push_back(string(p));
 }
 
+DIRNAME_INFO::DIRNAME_INFO(){}
+DIRNAME_INFO::DIRNAME_INFO(double _start_time, const char* _observatory){
+    DIRNAME_INFO value;
+    value.start_time = _start_time;
+    strcpy(value.observatory, _observatory);
+}
+
+void DIRNAME_INFO::make(string &s) {
+    char buf[1024], tbuf[256];
+
+    time_t x = (time_t)start_time;
+    struct tm* tm = localtime(&x);
+    strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
+    sprintf(buf, "obs=%s,st=%s", observatory, tbuf);
+    s = buf;
+}
+
 int DIRNAME_INFO::parse(char* name) {
     vector<string> pieces;
     split_comma(name, pieces);
@@ -63,6 +70,17 @@ int DIRNAME_INFO::parse(char* name) {
         }
     }
     return 0;
+}
+
+FILENAME_INFO::FILENAME_INFO(){}
+FILENAME_INFO::FILENAME_INFO(double _start_time, DATA_PRODUCT _data_product, int _bytes_per_pixel, int _dome, int _module, int _seqno) {
+    FILENAME_INFO value;
+    value.start_time = _start_time;
+    value.data_product = _data_product;
+    value.bytes_per_pixel = _bytes_per_pixel;
+    value.dome = _dome;
+    value.module = _module;
+    value.seqno = _seqno;
 }
 
 void FILENAME_INFO::make(string &s) {
@@ -120,7 +138,7 @@ int main(int, char**) {
 
     FILENAME_INFO fi;
     fi.start_time = time(0);
-    fi.data_product = DP_PH;
+    fi.data_product = DP_PH_IMG;
     fi.bytes_per_pixel = 2;
     fi.dome = 0;
     fi.module=14;

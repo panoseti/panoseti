@@ -76,17 +76,22 @@ int pff_read_image(FILE* f, int nbytes, void* img) {
 ////////// DIR AND FILE NAMES ////////////////
 
 typedef enum {
-    DP_PH = 1,
-    DP_IMAGE
+    DP_STATIC_META,
+    DP_DYNAMIC_META,
+    DP_BIT16_IMG,
+    DP_BIT8_IMG,
+    DP_PH_IMG
 } DATA_PRODUCT;
 
 
 // the info encoded in a dir name
 //
 struct DIRNAME_INFO {
-    char observatory[256];
     double start_time;
+    char observatory[256];
 
+    DIRNAME_INFO();
+    DIRNAME_INFO(double _start_time, const char* _observatory);
     void make(string&);
     int parse(char*);
 };
@@ -100,8 +105,10 @@ struct FILENAME_INFO {
     int dome;
     int module;
     int seqno;
+    char *fileName;
 
+    FILENAME_INFO();
+    FILENAME_INFO(double _start_time, DATA_PRODUCT _data_product, int _bytes_per_pixel, int _dome, int _module, int _seqno);
     void make(string&);
     int parse(char*);
 };
-
