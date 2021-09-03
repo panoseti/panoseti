@@ -112,3 +112,8 @@ struct FILENAME_INFO {
     void make(string&);
     int parse(char*);
 };
+
+struct FILE_PTRS{
+    FILE * dynamicMeta, *bit16Img, *bit8Img, *PHImg;
+    FILE_PTRS(const char *diskDir, DIRNAME_INFO dirInfo, FILENAME_INFO fileInfo, const char *mode);
+};

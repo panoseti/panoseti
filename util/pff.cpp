@@ -34,9 +34,8 @@ void split_comma(char *name, vector<string> &pieces) {
 
 DIRNAME_INFO::DIRNAME_INFO(){}
 DIRNAME_INFO::DIRNAME_INFO(double _start_time, const char* _observatory){
-    DIRNAME_INFO value;
-    value.start_time = _start_time;
-    strcpy(value.observatory, _observatory);
+    start_time = _start_time;
+    strcpy(observatory, _observatory);
 }
 
 void DIRNAME_INFO::make(string &s) {
@@ -125,6 +124,41 @@ int FILENAME_INFO::parse(char* name) {
         }
     }
     return 0;
+}
+
+FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO dirInfo, FILENAME_INFO fileInfo, const char *mode){
+    string fileName;
+    string dirName;
+    dirInfo.make(dirName);
+    dirName = diskDir + dirName + "/";
+    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    
+
+    for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
+        fileInfo.data_product = (DATA_PRODUCT)dp;
+        fileInfo.make(fileName);
+        switch (dp){
+            case DP_DYNAMIC_META:
+                dynamicMeta = fopen((dirName + fileName).c_str(), mode);
+                break;
+            case DP_BIT16_IMG:
+                bit16Img = fopen((dirName + fileName).c_str(), mode);
+                break;
+            case DP_BIT8_IMG:
+                bit8Img = fopen((dirName + fileName).c_str(), mode);
+                break;
+            case DP_PH_IMG:
+                PHImg = fopen((dirName + fileName).c_str(), mode);
+                break;
+            default:
+                break;
+        }
+        if (access(dirName.c_str(), F_OK) == -1) {
+            printf("Error: Unable to access file - %s\n", dirName.c_str());
+            exit(0);
+        }
+        printf("Created file %s\n", (dirName + fileName).c_str());
+    }
 }
 
 #if 1
