@@ -1,6 +1,6 @@
 DEBUG = 1
 
-PROGS = pulse
+PROGS = pulse write_images
 
 all: $(PROGS)
 
@@ -24,6 +24,9 @@ HDF5_LIB = -lhdf5_serial
 
 pulse: pulse.cpp ../util/ph5.o
 	$(CXX) -o pulse pulse.cpp ../util/ph5.o $(HDF5_LIB)
+
+write_images: write_images.cpp ../util/ph5.o
+	$(CXX) -o write_images write_images.cpp ../util/ph5.o $(HDF5_LIB)
 
 -include Makefile.deps
 
