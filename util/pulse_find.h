@@ -106,7 +106,8 @@ struct PULSE_FIND {
             pulse_count = odd_sum;
             even_sum = x;
         }
-#if 0
+#if 1
+        pulse_complete(0, x, nsamples);
         pulse_complete(1, pulse_count, nsamples);
 #endif
         if (nsamples == 0) {

@@ -14,7 +14,6 @@
 //                      all_i       all pulsese
 //                      mean_i      mean
 //                      stddev_i    stddev
-//                      value       pixel value
 //
 // options:
 //
@@ -31,7 +30,6 @@
 // --out_dir x      output directory
 //                  default: pulse_out
 // --log_pulses     output pulses length 4 and up
-// --log_value      output pixel values
 // --log_stats      output history of stats for each pulse duration
 //
 
@@ -64,19 +62,17 @@ void usage() {
         "   --out_dir x         output directory\n"
         "                       default: pulse_out\n"
         "   --log_pulses        output pulses length 4 and up\n"
-        "   --log_value         output pixel values\n"
         "   --log_stats         output history of mean and stddev for each pulse duration\n"
     );
     exit(1);
 }
 
 double thresh = 3;
-bool log_stats = true, log_pulses=true, log_value=true;
+bool log_stats = true, log_pulses=true;
 vector<FILE*> thresh_fout;
 vector<FILE*> mean_fout;
 vector<FILE*> stddev_fout;
 vector<FILE*> all_fout;
-FILE* value_fout;
 vector<WINDOW_STATS> window_stats;
 int nlevels = 16;
 
@@ -152,11 +148,6 @@ void open_output_files(const char* file_dir) {
             all_fout.push_back(f);
         }
     }
-    if (log_value) {
-        sprintf(buf, "%s/value", file_dir);
-        value_fout = fopen(buf, "w");
-        fprintf(value_fout, "frame,value,nsigma\n");
-    }
 }
 
 // flush output files.
@@ -172,9 +163,6 @@ void flush_output_files() {
         if (log_pulses) {
             fflush(all_fout[i]);
         }
-    }
-    if (log_value) {
-        fflush(value_fout);
     }
 }
 
@@ -248,7 +236,6 @@ int main(int argc, char **argv) {
     mkdir(file_dir, 0771);
     printf("writing results to %s\n", file_dir);
 
-
     open_output_files(file_dir);
 
     // scan data file
@@ -271,12 +258,7 @@ int main(int argc, char **argv) {
             if (val > MAX_VAL) {
                 val = 0;
             }
-
             pulse_find.add_sample((double)val);
-            if (log_value) {
-                fprintf(value_fout, "%f,%d\n", sample_to_sec(isample), val);
-            }
-
             isample++;
             flush_output_files();
         }

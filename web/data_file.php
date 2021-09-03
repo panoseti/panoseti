@@ -10,17 +10,20 @@ function main($name) {
 
     $dir = "pulse_out/$name";
     if (!is_dir($dir)) {
-        echo "No pulse info available\n";
+        echo "No info available\n";
         return;
     }
-    echo "<h2>Pulse info</h2>\n";
     foreach (scandir($dir) as $module) {
         if ($module[0] == ".") continue;
-        echo "<h3>Module $module</h3>";
+        echo "<h2>Dome $module</h3>";
+
+        echo "<p><a href=image.php?file=$name&module=$module&frame=0>Images</a>";
+        echo "<p>Pulse info: pixel ";
         foreach (scandir("$dir/$module") as $pixel) {
             if ($pixel[0] == ".") continue;
+            if (!is_numeric($pixel)) continue;
             $url = "pulse.php?file=$name&module=$module&pixel=$pixel";
-            echo "<p><a href=$url>pixel $pixel</a>\n";
+            echo "&nbsp;&nbsp <a href=$url>$pixel</a>\n";
         }
     }
     page_tail();

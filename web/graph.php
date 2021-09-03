@@ -93,9 +93,9 @@ function main($action, $start, $n, $file, $module, $pixel, $type, $dur) {
     }
     echo "<br><br>";
 
-    echo "<p>file: <a href=data_file.php?name=$file>$file</a>";
-    echo "<p>module: $module";
-    echo "<p>pixel: $pixel";
+    echo "<p>File: <a href=data_file.php?name=$file>$file</a>";
+    echo "<p>Dome: $module";
+    echo "<p>Pixel: $pixel";
     $d = 1<<$dur;
     if ($type != "value") {
         echo "<p>Number of frames integrated: $d";
