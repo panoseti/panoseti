@@ -1,6 +1,8 @@
-DEBUG = 1
+DEBUG = 0
 
 PROGS = image_test pulse_test ph5_test fits_test pfits_test pff_test
+
+OBJS = image.o
 
 all: $(PROGS)
 
@@ -22,7 +24,7 @@ FITS_LIB = -lcfitsio
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
-image_test: image_test.cpp image.h
+image_test: image_test.cpp image.h $(OBJS)
 	$(CXX) -o image_test image_test.cpp image.o
 
 pulse_test: pulse_test.cpp pulse_find.h

@@ -23,8 +23,6 @@
 // --nlevels n      number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
 //                  default: 64
-// --win_spacing n  recompute stats every n pulse durations
-//                  default: 16
 // --thresh x       threshold is x times stddev
 //                  default: 1
 // --out_dir x      output directory
@@ -44,7 +42,6 @@
 #include "window_stats.h"
 
 #define WIN_SIZE_DEFAULT    64
-#define WIN_SPACING_DEFAULT 16
 #define MAX_VAL             2000        // ignore values larger than this
 
 void usage() {
@@ -55,8 +52,6 @@ void usage() {
         "   --nlevels n         duration levels (default 16)\n"
         "   --win_size n        stats window is n times pulse duration\n"
         "                       default: 64\n"
-        "   --win_spacing n     stats window computed every n samples\n"
-        "                       default: 16\n"
         "   --thresh x          threshold is mean + x times stddev\n"
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
@@ -91,30 +86,31 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     value /= idur;
 
     WINDOW_STATS &wstats = window_stats[level];
-    bool new_window = wstats.add_value(value);
-    if (new_window && log_stats) {
+    double stddev = sqrt(wstats.var);
+    if (log_stats) {
         fprintf(mean_fout[level], "%f,%f\n", sample_to_sec(isample), wstats.mean);
-        fprintf(stddev_fout[level], "%f,%f\n", sample_to_sec(isample), wstats.stddev);
+        fprintf(stddev_fout[level], "%f,%f\n", sample_to_sec(isample), stddev);
     }
 
 #if 0
-    printf("pulse_complete: level %d value %f ready %d mean %f stddev %f\n",
-        level, value, wstats.ready, wstats.mean, wstats.stddev
+    printf("pulse_complete: level %d value %f mean %f stddev %f\n",
+        level, value, wstats.mean, wstats.stddev
     );
 #endif
     double nsigma = 0;
-    if (wstats.ready) {
-        if (value > wstats.mean) {
-            nsigma = (value-wstats.mean)/wstats.stddev;
-            if (nsigma > thresh) {
-                fprintf(thresh_fout[level], "%f,%f\n", sample_to_sec(isample), value);
-            }
+    if (value > wstats.mean) {
+        nsigma = (value-wstats.mean)/stddev;
+        if (nsigma > thresh) {
+            fprintf(thresh_fout[level], "%f,%f\n", sample_to_sec(isample), value);
         }
     }
     if (log_pulses) {
         fprintf(all_fout[level], "%f,%f,%f\n", sample_to_sec(isample), value, nsigma);
     }
 
+    // add this sample AFTER using the window stats
+    //
+    wstats.add_value(value);
 }
 
 // open output files
@@ -168,7 +164,7 @@ void flush_output_files() {
 
 int main(int argc, char **argv) {
     const char* file = "PANOSETI_DATA/PANOSETI_LICK_2021_07_15_08-36-14.h5";
-    int win_size = WIN_SIZE_DEFAULT, win_spacing=WIN_SPACING_DEFAULT;
+    int win_size = WIN_SIZE_DEFAULT;
     int pixel=0, module=0;
     const char* out_dir = "pulse_out";
     int i;
@@ -185,8 +181,6 @@ int main(int argc, char **argv) {
             nlevels = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--win_size")) {
             win_size = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--win_spacing")) {
-            win_spacing = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--thresh")) {
             thresh = atof(argv[++i]);
         } else if (!strcmp(argv[i], "--out_dir")) {
@@ -212,7 +206,7 @@ int main(int argc, char **argv) {
 
     // set up the stats 
 
-    WINDOW_STATS w(win_size, win_spacing);
+    WINDOW_STATS w(win_size);
     for (i=0; i<nlevels; i++) {
         window_stats.push_back(w);
     }
@@ -240,7 +234,7 @@ int main(int argc, char **argv) {
 
     // scan data file
     //
-    PULSE_FIND pulse_find(nlevels, false);
+    PULSE_FIND pulse_find(nlevels);
     int isample = 0;
     for (int ifs=0; ifs<99999; ifs++) {
         FRAME_SET fs;
