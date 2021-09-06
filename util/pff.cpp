@@ -73,13 +73,12 @@ int DIRNAME_INFO::parse(char* name) {
 
 FILENAME_INFO::FILENAME_INFO(){}
 FILENAME_INFO::FILENAME_INFO(double _start_time, DATA_PRODUCT _data_product, int _bytes_per_pixel, int _dome, int _module, int _seqno) {
-    FILENAME_INFO value;
-    value.start_time = _start_time;
-    value.data_product = _data_product;
-    value.bytes_per_pixel = _bytes_per_pixel;
-    value.dome = _dome;
-    value.module = _module;
-    value.seqno = _seqno;
+    start_time = _start_time;
+    data_product = _data_product;
+    bytes_per_pixel = _bytes_per_pixel;
+    dome = _dome;
+    module = _module;
+    seqno = _seqno;
 }
 
 void FILENAME_INFO::make(string &s) {
@@ -126,17 +125,17 @@ int FILENAME_INFO::parse(char* name) {
     return 0;
 }
 
-FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO dirInfo, FILENAME_INFO fileInfo, const char *mode){
+FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode){
     string fileName;
     string dirName;
-    dirInfo.make(dirName);
+    dirInfo->make(dirName);
     dirName = diskDir + dirName + "/";
     mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     
 
     for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
-        fileInfo.data_product = (DATA_PRODUCT)dp;
-        fileInfo.make(fileName);
+        fileInfo->data_product = (DATA_PRODUCT)dp;
+        fileInfo->make(fileName);
         switch (dp){
             case DP_DYNAMIC_META:
                 dynamicMeta = fopen((dirName + fileName).c_str(), mode);

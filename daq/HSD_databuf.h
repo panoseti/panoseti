@@ -45,11 +45,14 @@
 #define MODULEINDEXSIZE         0xffff
 
 #define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
+#define DATAFILE_DEFAULT "./"
+#define CONFIGFILE_DEFAULT "./module.config"
+
+//TODO needs to be removed after changing compute thread
 #define CONFIGFILE "./modulePair.config"
 
-
 //Defining the string buffer size
-#define STRBUFFSIZE 80
+#define STRBUFFSIZE 256
 
 
 

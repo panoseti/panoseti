@@ -24,32 +24,58 @@
 #define GPSSUPPNAME "GPSSUPP"
 #define WRSWITCHNAME "WRSWITCH"
 
-#define H5FILE_NAME_FORMAT "PANOSETI_%s_%04i_%02i_%02i_%02i-%02i-%02i.h5"
-#define TIME_FORMAT "%04i-%02i-%02iT%02i:%02i:%02i UTC"
+
+static char configLocation[STRBUFFSIZE];
 
 static char saveLocation[STRBUFFSIZE];
 static long long fileSize = 0;
 static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 
-typedef struct file_ptrs{
-    FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
-} file_ptrs_t;
 
-static redisContext* redisServer;
-static file_ptrs_t dataFiles;
+static redisContext *redisServer;
+static FILE_PTRS *dataFiles[MODULEINDEXSIZE] = {NULL};
 
-FILE_PTRS data_file_init(const char *diskDir, int dome, int module) {
+
+FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
     DIRNAME_INFO dirInfo(t, OBSERVATORY);
     FILENAME_INFO filenameInfo(t, DP_STATIC_META, 0, dome, module, 0);
-    FILE_PTRS filePtrs(diskDir, dirInfo, filenameInfo, "w");
-
-    return filePtrs;
+    return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
 
-int fetch_storeGPSSupp(redisContext *redisServer) {
-    
+int create_data_files(){
+    FILE *configFile = fopen(configLocation, "r");
+    char fbuf[STRBUFFSIZE];
+    char cbuf;
+    unsigned int modNum;
+
+    if (configFile == NULL) {
+        perror("Error Opening Config File");
+        exit(1);
+    }
+
+    cbuf = getc(configFile);
+
+    while (cbuf != EOF){
+        ungetc(cbuf, configFile);
+        if (cbuf != '#') {
+            if (fscanf(configFile, "%u\n", &modNum) == 1){
+                if (dataFiles[modNum] == NULL) {
+                    dataFiles[modNum] = data_file_init(saveLocation, 0, modNum);
+                }
+            }
+        } else {
+            if (fgets(fbuf, STRBUFFSIZE, configFile) == NULL) {
+                break;
+            }
+        }
+        cbuf = getc(configFile);
+    }
+
+    if (fclose(configFile) == EOF) {
+        printf("Warning: Unable to close module configuration file.\n");
+    }
 }
 
 
@@ -66,14 +92,17 @@ static int init(hashpipe_thread_args_t *args)
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
-    sprintf(saveLocation, "./");
+    sprintf(saveLocation, DATAFILE_DEFAULT);
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
     if (saveLocation[strlen(saveLocation) - 1] != '/') {
         char endingSlash = '/';
         strncat(saveLocation, &endingSlash, 1);
-        //saveLocation[strlen(saveLocation)] = '/';
     }
     printf("Save Location: %s\n", saveLocation);
+
+    sprintf(configLocation, CONFIGFILE_DEFAULT);
+    hgets(st.buf, "CONFIG", STRBUFFSIZE, configLocation);
+    printf("Config Location: %s\n", configLocation);
 
     int maxSizeInput = 0;
 
@@ -104,7 +133,8 @@ static int init(hashpipe_thread_args_t *args)
     // freeReplyObject(reply);
 
     printf("-----------------SETTING UP DATA FILES---------------\n");
-    FILE_PTRS file_ptrs = data_file_init(saveLocation, 0, 0);
+    create_data_files();
+    //FILE_PTRS *file_ptrs = data_file_init(saveLocation, 0, 0);
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
 
     return 0;
