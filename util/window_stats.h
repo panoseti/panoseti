@@ -5,6 +5,7 @@
 // compute their mean and variance over sliding windows of a given size
 
 #include <vector>
+#include <math.h>
 
 using std::vector;
 
@@ -15,14 +16,14 @@ struct WINDOW_STATS {
     int window_size;
     vector<double> values;      // the current window
     int pos;
-    double var;
+    double var_by_n;            // variance times window size
     double mean;
 
     WINDOW_STATS(int _window_size) {
         window_size = _window_size;
         values.resize(window_size, 0);
         pos = 0;
-        var = 0;
+        var_by_n = 0;
         mean = 0;
     }
 
@@ -35,8 +36,12 @@ struct WINDOW_STATS {
             pos = 0;
         }
         double new_mean = mean + (x - old)/window_size;
-        var += (x - old)*(x - new_mean + old - mean);
+        var_by_n += (x - old)*(x - new_mean + old - mean);
         mean = new_mean;
+    }
+
+    inline double stddev() {
+        return sqrt(var_by_n/window_size);
     }
 };
 

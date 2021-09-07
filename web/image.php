@@ -2,10 +2,10 @@
 
 require_once("panoseti.inc");
 
-function show_arrows($file, $module, $frame) {
+function arrows_str($file, $module, $frame) {
     $url = "image.php?file=$file&module=$module&frame=";
-    echo sprintf(
-        '<br><a class="btn btn-sm btn-primary" href=%s%d><< min</a>
+    return sprintf(
+        '<a class="btn btn-sm btn-primary" href=%s%d><< min</a>
         <a class="btn btn-sm btn-primary" href=%s%d><< sec</a>
         <a class="btn btn-sm btn-primary" href=%s%d><< frame</a>
         <a class="btn btn-sm btn-primary" href=%s%d> frame >></a>
@@ -20,7 +20,7 @@ function show_arrows($file, $module, $frame) {
     );
 }
 
-function show_frame($data) {
+function show_frame($data, $arrows) {
     echo "<table>";
     for ($i=0; $i<32; $i++) {
         echo "<tr>";
@@ -35,6 +35,7 @@ function show_frame($data) {
         }
         echo "</tr>\n";
     }
+    echo "<tr><td colspan=32 align=center><br>$arrows</td></tr>\n";
     echo "</table>";
 }
 
@@ -68,8 +69,8 @@ function main($file, $module, $frame) {
     echo "<p>Frame: $frame ($t sec)\n";
     $path = "pulse_out/$file/$module/images.bin";
     $x = get_frame($path, $frame);
-    show_frame($x);
-    show_arrows($file, $module, $frame);
+    $as = arrows_str($file, $module, $frame);
+    show_frame($x, $as);
     page_tail();
 }
 

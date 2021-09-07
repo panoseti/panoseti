@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "ph5.h"
 #include "pulse_find.h"
@@ -86,10 +87,14 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     value /= idur;
 
     WINDOW_STATS &wstats = window_stats[level];
-    double stddev = sqrt(wstats.var);
+    double stddev = wstats.stddev();
     if (log_stats) {
-        fprintf(mean_fout[level], "%f,%f\n", sample_to_sec(isample), wstats.mean);
-        fprintf(stddev_fout[level], "%f,%f\n", sample_to_sec(isample), stddev);
+        fprintf(mean_fout[level], "%f,%f\n",
+            sample_to_sec(isample), wstats.mean
+        );
+        fprintf(stddev_fout[level], "%f,%f\n",
+            sample_to_sec(isample), stddev
+        );
     }
 
 #if 0
@@ -98,14 +103,18 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     );
 #endif
     double nsigma = 0;
-    if (value > wstats.mean) {
+    if (value > wstats.mean && stddev>0) {
         nsigma = (value-wstats.mean)/stddev;
         if (nsigma > thresh) {
-            fprintf(thresh_fout[level], "%f,%f\n", sample_to_sec(isample), value);
+            fprintf(thresh_fout[level], "%f,%f\n",
+                sample_to_sec(isample), value
+            );
         }
     }
     if (log_pulses) {
-        fprintf(all_fout[level], "%f,%f,%f\n", sample_to_sec(isample), value, nsigma);
+        fprintf(all_fout[level], "%f,%f,%f\n",
+            sample_to_sec(isample), value, nsigma
+        );
     }
 
     // add this sample AFTER using the window stats
