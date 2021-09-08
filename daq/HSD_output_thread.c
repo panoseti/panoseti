@@ -44,6 +44,56 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
 
+int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex, int moduleIndex){
+    fprintf(fileToWrite,
+    " { pktNum : %u, pktNSEC : %u, tv_sec : %li, tv_usec : %li, status : %u}",
+    dataHeader->pktNum[blockIndex * PKTPERPAIR + moduleIndex],
+    dataHeader->pktNSEC[blockIndex * PKTPERPAIR + moduleIndex],
+    dataHeader->tv_sec[blockIndex * PKTPERPAIR + moduleIndex],
+    dataHeader->tv_usec[blockIndex * PKTPERPAIR + moduleIndex],
+    ((dataHeader->status[blockIndex * PKTPERPAIR + moduleIndex]) | 0x0F) >> 4*moduleIndex
+    );
+}
+
+int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int moduleIndex){
+    FILE *fileToWrite;
+    FILE_PTRS *moduleToWrite;
+    int mode = dataBlock->header.acqmode[blockIndex];
+    int modeOffset = mode/8;
+
+    moduleToWrite = dataFiles[dataBlock->header.modNum[blockIndex * 2] + moduleIndex];
+    if (mode == 16) {
+        fileToWrite = moduleToWrite->bit16Img;
+    } else if (mode == 8){
+        fileToWrite = moduleToWrite->bit8Img;
+    } else {
+        return 0;
+    }
+    
+    pff_start_json(fileToWrite);
+
+    write_img_header_file(fileToWrite, &(dataBlock->header), blockIndex, moduleIndex);
+
+    pff_end_json(fileToWrite);
+
+    pff_write_image(fileToWrite, 
+        QUABOPERMODULE*SCIDATASIZE*modeOffset, 
+        dataBlock->stream_block + (blockIndex*MODPAIRDATASIZE) + (moduleIndex*SCIDATASIZE*modeOffset));
+    return 1;
+}
+
+/**
+ * Given a file ptr object and the output datablock with its index it will write the image data
+ * to its corresponding data file in the PFF format
+ * @param currentFilePtrs The current file pointers for the given module
+ * @param dataBlock The datablock that is currently being read from the output buffer
+ * @param frameIndex The index of the datablock to read the image frame from
+ */
+int write_img_files(HSD_output_block_t *dataBlock, int blockIndex){
+    write_module_img_file(dataBlock, blockIndex, 0);
+    write_module_img_file(dataBlock, blockIndex, 1);
+}
+
 int create_data_files(){
     FILE *configFile = fopen(configLocation, "r");
     char fbuf[STRBUFFSIZE];
@@ -77,6 +127,12 @@ int create_data_files(){
         printf("Warning: Unable to close module configuration file.\n");
     }
 }
+
+
+
+
+
+
 
 
 
@@ -132,9 +188,9 @@ static int init(hashpipe_thread_args_t *args)
     // reply = redisCommand(redisServer, "AUTH password");
     // freeReplyObject(reply);
 
-    printf("-----------------SETTING UP DATA FILES---------------\n");
+    printf("\n---------------SETTING UP DATA File------------------\n");
     create_data_files();
-    //FILE_PTRS *file_ptrs = data_file_init(saveLocation, 0, 0);
+    printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
 
     return 0;
@@ -145,12 +201,7 @@ static void *run(hashpipe_thread_args_t *args) {
     signal(SIGQUIT, QUIThandler);
     QUITSIG = 0;
 
-    printf("\n---------------SETTING UP DATA File------------------\n");
-
     //FETCH STATIC AND DYNAMIC REDIS DATA
-    //TODO INITIALIZE DATAFILE AND STORE AT SAVELOCATION
-
-    printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
 
     printf("---------------Running Output Thread-----------------\n\n");
 
@@ -164,6 +215,7 @@ static void *run(hashpipe_thread_args_t *args) {
     int rv;
     int block_idx = 0;
     uint64_t mcnt = 0;
+    FILE_PTRS *currentDataFile;
 
     /* Main loop */
     while (run_threads()) {
@@ -199,7 +251,24 @@ static void *run(hashpipe_thread_args_t *args) {
 
         //TODO FETCH AND STORE DYNAMIC METATDATA
         //STORE FRAMES FROM OUTPUT BUFFER ONTO DATAFILES
+        for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
+            /**if (dataFiles[db->block[block_idx].header.modNum[i * 2]]){
+                currentDataFile = dataFiles[db->block[block_idx].header.modNum[i * 2]];
+            } else if (dataFiles[db->block[block_idx].header.modNum[(i * 2) + 1]]) {
+                currentDataFile = dataFiles[db->block[block_idx].header.modNum[(i * 2) + 1]];
+            }
+
+            if (db->block[block_idx].header.acqmode[i] == 16) {
+                write_img_frames(currentDataFile);
+            } else if (db->block[block_idx].header.acqmode[i] == 8) {
+                write_img_frames();
+            }**/
+
+
+            write_img_files(&(db->block[block_idx]), i);
         
+        }
+
         if (QUITSIG || fileSize > maxFileSize) {
             printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
             fileSize = 0;
