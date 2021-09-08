@@ -26,6 +26,9 @@ using std::vector;
 
 #define DEBUG 0
 
+#define LEVELS01
+    // whether to report pulses of duration 1 and 2
+
 // LEVEL represents one of the time scales.
 // It maintains 4 pulses in progress (different phases)
 // and the statistics of pulses completed.
@@ -66,7 +69,6 @@ struct PULSE_FIND {
     long nsamples;  // how many samples processed so far
     int nlevels;
     vector<LEVEL> levels;   // 1st and 2nd aren't used
-    bool perf;      // if set, no pulse_complete() calls
 
     // Called when a pulse is complete.
     // Application must define this.
@@ -77,8 +79,7 @@ struct PULSE_FIND {
         long isample    // index of last sample of pulse
     );
 
-    PULSE_FIND(int _nlevels, bool _perf) {
-        perf = _perf;
+    PULSE_FIND(int _nlevels) {
         nlevels = _nlevels;
         if (nlevels <= 2) {
             fprintf(stderr, "nlevels must be > 2\n");
@@ -106,7 +107,7 @@ struct PULSE_FIND {
             pulse_count = odd_sum;
             even_sum = x;
         }
-#if 1
+#ifdef LEVELS01
         pulse_complete(0, x, nsamples);
         pulse_complete(1, pulse_count, nsamples);
 #endif
@@ -126,9 +127,7 @@ struct PULSE_FIND {
             );
 #endif
             bool keep_going = levels[i].add_pulse(pulse_count);
-            if (!perf) {
-                pulse_complete(i, pulse_count, nsamples);
-            }
+            pulse_complete(i, pulse_count, nsamples);
             if (!keep_going) {
                 break;
             }
