@@ -114,6 +114,6 @@ struct FILENAME_INFO {
 };
 
 struct FILE_PTRS{
-    FILE * dynamicMeta, *bit16Img, *bit8Img, *PHImg;
+    FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
     FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode);
 };

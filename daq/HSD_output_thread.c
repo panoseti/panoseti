@@ -61,7 +61,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int mod
     int mode = dataBlock->header.acqmode[blockIndex];
     int modeOffset = mode/8;
 
-    moduleToWrite = dataFiles[dataBlock->header.modNum[blockIndex * 2] + moduleIndex];
+    moduleToWrite = dataFiles[dataBlock->header.modNum[blockIndex * 2 + moduleIndex]];
     if (mode == 16) {
         fileToWrite = moduleToWrite->bit16Img;
     } else if (mode == 8){
@@ -70,6 +70,14 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int mod
         return 0;
     }
     
+    if (moduleToWrite == NULL){
+        printf("Module To Write is null\n");
+        return 0;
+    } else if (fileToWrite == NULL){
+        printf("File to Write is null\n");
+        return 0;
+    } 
+
     pff_start_json(fileToWrite);
 
     write_img_header_file(fileToWrite, &(dataBlock->header), blockIndex, moduleIndex);
@@ -113,6 +121,7 @@ int create_data_files(){
             if (fscanf(configFile, "%u\n", &modNum) == 1){
                 if (dataFiles[modNum] == NULL) {
                     dataFiles[modNum] = data_file_init(saveLocation, 0, modNum);
+                    printf("Created Data file for Module %u\n", modNum);
                 }
             }
         } else {
@@ -127,13 +136,6 @@ int create_data_files(){
         printf("Warning: Unable to close module configuration file.\n");
     }
 }
-
-
-
-
-
-
-
 
 
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
@@ -196,6 +198,17 @@ static int init(hashpipe_thread_args_t *args)
     return 0;
 }
 
+void close_all_resources() {
+    for (int i = 0; i < MODULEINDEXSIZE; i++){
+        if (dataFiles[i] != NULL){
+            fclose(dataFiles[i]->dynamicMeta);
+            fclose(dataFiles[i]->bit16Img);
+            fclose(dataFiles[i]->bit8Img);
+            fclose(dataFiles[i]->PHImg);
+        }
+    }
+}
+
 static void *run(hashpipe_thread_args_t *args) {
 
     signal(SIGQUIT, QUIThandler);
@@ -252,21 +265,7 @@ static void *run(hashpipe_thread_args_t *args) {
         //TODO FETCH AND STORE DYNAMIC METATDATA
         //STORE FRAMES FROM OUTPUT BUFFER ONTO DATAFILES
         for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
-            /**if (dataFiles[db->block[block_idx].header.modNum[i * 2]]){
-                currentDataFile = dataFiles[db->block[block_idx].header.modNum[i * 2]];
-            } else if (dataFiles[db->block[block_idx].header.modNum[(i * 2) + 1]]) {
-                currentDataFile = dataFiles[db->block[block_idx].header.modNum[(i * 2) + 1]];
-            }
-
-            if (db->block[block_idx].header.acqmode[i] == 16) {
-                write_img_frames(currentDataFile);
-            } else if (db->block[block_idx].header.acqmode[i] == 8) {
-                write_img_frames();
-            }**/
-
-
             write_img_files(&(db->block[block_idx]), i);
-        
         }
 
         if (QUITSIG || fileSize > maxFileSize) {
@@ -277,7 +276,7 @@ static void *run(hashpipe_thread_args_t *args) {
 
         //TODO check mcnt
         if (db->block[block_idx].header.INTSIG) {
-            //closeAllResources();
+            close_all_resources();
             printf("OUTPUT_THREAD Ended\n");
             break;
         }
