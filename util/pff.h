@@ -86,3 +86,5 @@ struct FILENAME_INFO {
 // given a string of the form .../d/f, return d and f
 //
 extern int pff_parse_path(const char* path, string& dir, string& file);
+
+#endif
