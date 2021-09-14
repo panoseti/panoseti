@@ -39,8 +39,8 @@ fits_test: fits_test.cpp
 pfits_test: pfits_test.cpp pfits.h
 	$(CXX) -o pfits_test pfits_test.cpp $(FITS_LIB)
     
-pff_test: pff_test.cpp
-	$(CXX) -o pff_test pff_test.cpp
+pff_test: pff_test.cpp pff.o
+	$(CXX) -o pff_test pff_test.cpp pff.o
     
 -include Makefile.deps
 
