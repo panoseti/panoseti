@@ -186,43 +186,8 @@ int FILENAME_INFO::parse_filename(char* name) {
     }
     return 0;
 }
+
 #if 0
-FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode){
-    string fileName;
-    string dirName;
-    dirInfo->make(dirName);
-    dirName = diskDir + dirName + "/";
-    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    
-
-    for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
-        fileInfo->data_product = (DATA_PRODUCT)dp;
-        fileInfo->make(fileName);
-        switch (dp){
-            case DP_DYNAMIC_META:
-                dynamicMeta = fopen((dirName + fileName).c_str(), mode);
-                break;
-            case DP_BIT16_IMG:
-                bit16Img = fopen((dirName + fileName).c_str(), mode);
-                break;
-            case DP_BIT8_IMG:
-                bit8Img = fopen((dirName + fileName).c_str(), mode);
-                break;
-            case DP_PH_IMG:
-                PHImg = fopen((dirName + fileName).c_str(), mode);
-                break;
-            default:
-                break;
-        }
-        if (access(dirName.c_str(), F_OK) == -1) {
-            printf("Error: Unable to access file - %s\n", dirName.c_str());
-            exit(0);
-        }
-        printf("Created file %s\n", (dirName + fileName).c_str());
-    }
-}
-
-#if 1
 int main(int, char**) {
     DIRNAME_INFO di;
     strcpy(di.observatory, "Palomar");
@@ -248,5 +213,4 @@ int main(int, char**) {
     strcpy(buf, "st=Fri_Aug_27_15:21:46_2021,dp=1,bpp=2,dome=0,module=14,seqno=5.pff");
     fi.parse(buf);
 }
-#endif
 #endif

@@ -86,23 +86,3 @@ struct FILENAME_INFO {
 // given a string of the form .../d/f, return d and f
 //
 extern int pff_parse_path(const char* path, string& dir, string& file);
-
-#if 0
-// the info for managing file pointers for all data products
-//
-struct FILE_PTRS{
-    FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
-    FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode);
-};
-
-////////// Structures for Reading and Parsing file in PFF////////////////
-
-struct PF {
-    DATA_PRODUCT dataProduct;
-    FILE *filePtr;
-    PF(FILENAME_INFO *fileInfo, DIRNAME_INFO *dirInfo);
-    PF(const char *dirName, const char *fileName);
-};
-#endif
-
-#endif
