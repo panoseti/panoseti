@@ -24,6 +24,51 @@
 #define GPSSUPPNAME "GPSSUPP"
 #define WRSWITCHNAME "WRSWITCH"
 
+////////// Structures for Reading and Parsing file in PFF////////////////
+
+struct PF {
+    DATA_PRODUCT dataProduct;
+    FILE *filePtr;
+    PF(FILENAME_INFO *fileInfo, DIRNAME_INFO *dirInfo);
+    PF(const char *dirName, const char *fileName);
+};
+
+
+FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode){
+    string fileName;
+    string dirName;
+    dirInfo->make(dirName);
+    dirName = diskDir + dirName + "/";
+    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    
+
+    for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
+        fileInfo->data_product = (DATA_PRODUCT)dp;
+        fileInfo->make(fileName);
+        switch (dp){
+            case DP_DYNAMIC_META:
+                dynamicMeta = fopen((dirName + fileName).c_str(), mode);
+                break;
+            case DP_BIT16_IMG:
+                bit16Img = fopen((dirName + fileName).c_str(), mode);
+                break;
+            case DP_BIT8_IMG:
+                bit8Img = fopen((dirName + fileName).c_str(), mode);
+                break;
+            case DP_PH_IMG:
+                PHImg = fopen((dirName + fileName).c_str(), mode);
+                break;
+            default:
+                break;
+        }
+        if (access(dirName.c_str(), F_OK) == -1) {
+            printf("Error: Unable to access file - %s\n", dirName.c_str());
+            exit(0);
+        }
+        printf("Created file %s\n", (dirName + fileName).c_str());
+    }
+}
+
 
 static char configLocation[STRBUFFSIZE];
 
