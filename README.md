@@ -10,6 +10,10 @@ PANOSETI is a novel optical and near-infrared (350 - 1650 nm) instrument designe
 
 ![MPPCarrayandFranklinsfinger](https://github.com/panoseti/panoseti/blob/master/media/MPPCarrayandFranklinsfinger.png)
 
+Conceptual video of a PANOSETI module (Video courtesy of Yannick Dusseault):
+
+https://user-images.githubusercontent.com/44886374/133492116-1a0ff082-bece-4edb-925f-c4494e7d714e.mp4
+
 ### The PANOSETI experiment
 Fast time resolutions (nano-seconds to seconds) have barely been explored and represents an observational limit with current ground and space-based facilities, especially since facilities are unable to represent large sky coverage with high duty cycles. Even with these limitations, new flavored transient sources are being found at shorter timescales (seconds), e.g., ASASSN-15lh. GRB afterglows can be observed for seconds to hours after the initial triggering event, but there have been no known observations that extend down to milli-seconds to seconds for rapid follow-up (hatched area). GRB 080319B, the brightest recorded GRB in 2008, resides above the y-axis at 10^(51) erg s-1. Stellar variability from cataclysmic variables, Cepheids, stellar ares are typically less than 1034 erg s-1. PANOSETI will be capable of exploring luminous transient and variable phenomena from nanoseconds to seconds (grey area).
 
