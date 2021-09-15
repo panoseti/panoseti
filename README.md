@@ -33,6 +33,6 @@ This program is a collaboration between UC San Diego, Harvard University, UC Ber
 
 Team Members:
 
-Shelley Wright (PI, UCSD), Franklin Antonio (Qualcomm), Michael Aronson (Electronic Packaging Man), Samuel Chaim-Weismann (Berkeley), Maren Cosens (UCSD), Frank Drake (SETI Institute), Paul Horowitz (Harvard), Andrew Howard (Caltech), Ryan Lee (Berkeley), Wei Liu (Berkeley), Jérôme Maire (UCSD), Rick Raffanti (Techne Instruments), Andrew Siemon (Berkeley), Remington Stone (Lick Observatory), Richard Treffers (Starman Systems), Avinash Uttamchandani (Harvard), Dan Werthimer (Berkeley, Space Sciences Laboratory)
+Shelley Wright (PI, UCSD), Dave Anderson (UC Berkeley), Franklin Antonio (Qualcomm), Michael Aronson (Electronic Packaging Man), Samuel Chaim-Weismann (Berkeley), Maren Cosens (UCSD), Frank Drake (SETI Institute), Paul Horowitz (Harvard), Andrew Howard (Caltech), Ryan Lee (Berkeley), Wei Liu (Berkeley), Jérôme Maire (UCSD), Rick Raffanti (Techne Instruments), Andrew Siemon (Berkeley), Remington Stone (Lick Observatory), Richard Treffers (Starman Systems), Avinash Uttamchandani (Harvard), Dan Werthimer (Berkeley, Space Sciences Laboratory)
 
-For more information on PANOSETI, please read our [2018 SPIE papers](https://oirlab.ucsd.edu/OIRpubli.html).
+For more information on PANOSETI, please read our [2018 SPIE papers](https://oirlab.ucsd.edu/OIRLabPubli2018.html) and <a href="OIRLabPubli2020.html" > [2020 SPIE papers](https://oirlab.ucsd.edu/OIRLabPubli2020.html).
