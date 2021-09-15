@@ -1,33 +1,42 @@
-// pulse [options]
+// pulse --file path [options]
 // find pulses in a file and output:
 //      - pulses above stddev threshold
 //      - optionally, a log of all pulses
 //      - optionally, a log of mean and stddev
 // The above are output separately for each pulse duration
-// The output files are written in a directory hierarchy:
+//
+// The output files are written in a directory determined as follows:
+// HDF5 (deprecated)
 //      out_dir/
 //          filename/  (from input file)
 //              module/     (0..1)
-//                  pixel/      (0.255)
-//                      thresh_i     pulses above threshold
-//                          (i=pulse duration level: 0,1,...)
-//                      all_i       all pulsese
-//                      mean_i      mean
-//                      stddev_i    stddev
+//                  pixel/      (0.1023)
+// PFF
+//      input filename is of the form D/F
+//      out_dir/
+//          D/
+//              F/
+//                  pixel/      (0..1023)
+//
+// In either case, the output files are:
+//      thresh_i     pulses above threshold
+//          (i=pulse duration level: 0,1,...)
+//      all_i       all pulsese
+//      mean_i      mean
+//      stddev_i    stddev
 //
 // options:
 //
-// --file x         data file
-// --module n       module number, 0/1 default 0
+// --module n       module number, 0/1 default 0 (HDF5 only)
 // --pixel n        pixel (0..1023)
 // --nlevels n      number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
 //                  default: 64
 // --thresh x       threshold is x times stddev
-//                  default: 1
-// --out_dir x      output directory
+//                  default: 3
+// --out_dir x      top-level output directory (see above)
 //                  default: pulse_out
-// --log_pulses     output pulses length 4 and up
+// --log_pulses     output pulses
 // --log_stats      output history of stats for each pulse duration
 //
 
@@ -39,11 +48,16 @@
 #include <math.h>
 
 #include "ph5.h"
+#include "pff.h"
 #include "pulse_find.h"
 #include "window_stats.h"
 
 #define WIN_SIZE_DEFAULT    64
 #define MAX_VAL             2000        // ignore values larger than this
+
+int win_size = WIN_SIZE_DEFAULT;
+int pixel=0, module=0;
+const char* out_dir = "pulse_out";
 
 void usage() {
     printf("options:\n"
@@ -156,7 +170,7 @@ void open_output_files(const char* file_dir) {
 }
 
 // flush output files.
-// This is because HDF5 crashes at random times :-(
+// This is needed because HDF5 crashes at random times :-(
 //
 void flush_output_files() {
     for (int i=0; i<nlevels; i++) {
@@ -171,53 +185,12 @@ void flush_output_files() {
     }
 }
 
-int main(int argc, char **argv) {
-    const char* file = "PANOSETI_DATA/PANOSETI_LICK_2021_07_15_08-36-14.h5";
-    int win_size = WIN_SIZE_DEFAULT;
-    int pixel=0, module=0;
-    const char* out_dir = "pulse_out";
-    int i;
-    int retval;
-
-    for (i=1; i<argc; i++) {
-        if (!strcmp(argv[i], "--file")) {
-            file = argv[++i];
-        } else if (!strcmp(argv[i], "--pixel")) {
-            pixel = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--module")) {
-            module = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--nlevels")) {
-            nlevels = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--win_size")) {
-            win_size = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--thresh")) {
-            thresh = atof(argv[++i]);
-        } else if (!strcmp(argv[i], "--out_dir")) {
-            out_dir = argv[++i];
-        } else if (!strcmp(argv[i], "--log_stats")) {
-            log_stats = true;
-        } else if (!strcmp(argv[i], "--log_pulses")) {
-            log_pulses = true;
-        } else {
-            usage();
-        }
-    }
-    if (!file) {
-        usage();
-    }
-
+int do_hdf5(const char* file) {
     PH5 ph5;
-    retval = ph5.open(file);
+    int retval = ph5.open(file);
     if (retval) {
         fprintf(stderr, "can't open %s\n", file);
         exit(1);
-    }
-
-    // set up the stats 
-
-    WINDOW_STATS w(win_size);
-    for (i=0; i<nlevels; i++) {
-        window_stats.push_back(w);
     }
 
     // create output directory
@@ -266,5 +239,98 @@ int main(int argc, char **argv) {
             flush_output_files();
         }
         printf("done with frame set %d\n",ifs);
+    }
+}
+
+unsigned short image[1024];
+
+int do_pff(const char* path) {
+    string dir, file;
+    int retval = pff_parse_path(path, dir, file);
+    if (retval) {
+        fprintf(stderr, "bad path: %s\n", path);
+        exit(1);
+    }
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "can't open %s\n", path);
+        exit(1);
+    }
+
+    // create output directory
+    //
+    char buf[1024], file_dir[1024];
+    mkdir(out_dir, 0771);
+    sprintf(buf, "%s/%s", out_dir, dir.c_str());
+    mkdir(buf, 0771);
+    sprintf(buf, "%s/%s/%s", out_dir, dir.c_str(), file.c_str());
+    mkdir(buf, 0771);
+    sprintf(file_dir, "%s/%s/%s/%d", out_dir, dir.c_str(), file.c_str(), pixel);
+    mkdir(file_dir, 0771);
+    printf("writing results to %s\n", file_dir);
+    open_output_files(file_dir);
+
+    string s;
+    PULSE_FIND pulse_find(nlevels);
+    int isample = 0;
+    while (1) {
+        retval = pff_read_json(f, s);
+        if (retval) break;
+        retval = pff_read_image(f, sizeof(image), image);
+        uint16_t val = image[pixel];
+        if (val > MAX_VAL) {
+            val = 0;
+        }
+        pulse_find.add_sample((double)val);
+        isample++;
+    }
+}
+
+int main(int argc, char **argv) {
+    const char* file = 0;
+    int i;
+    int retval;
+
+    for (i=1; i<argc; i++) {
+        if (!strcmp(argv[i], "--file")) {
+            file = argv[++i];
+        } else if (!strcmp(argv[i], "--pixel")) {
+            pixel = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--module")) {
+            module = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--nlevels")) {
+            nlevels = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--win_size")) {
+            win_size = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--thresh")) {
+            thresh = atof(argv[++i]);
+        } else if (!strcmp(argv[i], "--out_dir")) {
+            out_dir = argv[++i];
+        } else if (!strcmp(argv[i], "--log_stats")) {
+            log_stats = true;
+        } else if (!strcmp(argv[i], "--log_pulses")) {
+            log_pulses = true;
+        } else {
+            usage();
+        }
+    }
+    if (!file) {
+        usage();
+    }
+
+    // set up the stats 
+
+    WINDOW_STATS w(win_size);
+    for (i=0; i<nlevels; i++) {
+        window_stats.push_back(w);
+    }
+
+    if (ends_with(file, ".h5")) {
+        do_hdf5(file);
+    } else if (ends_with(file, ".pff")) {
+        do_pff(file);
+    } else {
+        fprintf(stderr, "unknown file type: %s\n", file);
+        exit(1);
     }
 }

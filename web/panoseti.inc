@@ -15,7 +15,7 @@ function page_head($title) {
     "PanoSETI: $title"
     );
     echo '<div class="container-fluid">';
-    echo "<h2>$title</h2>";
+    echo "<h1>$title</h1>";
 }
 
 function page_tail() {

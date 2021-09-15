@@ -8,6 +8,60 @@
 using std::string;
 using std::vector;
 
+void pff_start_json(FILE* f) {
+    static char buf = PFF_TYPE_TEXT;
+    fwrite(&buf, 1, 1, f);
+}
+
+void pff_end_json(FILE* f) {
+    static char buf = 0;
+    fwrite(&buf, 1, 1, f);
+}
+
+void pff_write_image(
+    FILE* f, int nbytes, void* image
+) {
+    static char buf = PFF_TYPE_IMAGE;
+    fwrite(&buf, 1, 1, f);
+    fwrite(image, 1, nbytes, f);
+}
+
+int pff_read_json(FILE* f, string &s) {
+    char c;
+    if (fread(&c, 1, 1, f) != 1) {
+        return PFF_ERROR_READ;
+    }
+    if (c != PFF_TYPE_TEXT) {
+        return PFF_ERROR_BAD_TYPE;
+    }
+    s.clear();
+    while(1) {
+        c = fgetc(f);
+        if (c == EOF) {
+            return PFF_ERROR_READ;
+        }
+        if (c == 0) {
+            break;
+        }
+        s.append(&c, 1);
+    }
+    return 0;
+}
+
+int pff_read_image(FILE* f, int nbytes, void* img) {
+    char c;
+    if (fread(&c, 1, 1, f) != 1) {
+        return PFF_ERROR_READ;
+    }
+    if (c != PFF_TYPE_IMAGE) {
+        return PFF_ERROR_BAD_TYPE;
+    }
+    if (fread(img, 1, nbytes, f) != nbytes) {
+        return PFF_ERROR_READ;
+    }
+    return 0;
+}
+
 struct NV_PAIR {
     char name[64], value[256];
     int parse(const char *s) {
@@ -20,6 +74,8 @@ struct NV_PAIR {
     }
 };
 
+// get comma-separated substrings
+//
 void split_comma(char *name, vector<string> &pieces) {
     char *p = name;
     while (1) {
@@ -32,13 +88,29 @@ void split_comma(char *name, vector<string> &pieces) {
     pieces.push_back(string(p));
 }
 
-DIRNAME_INFO::DIRNAME_INFO(){}
-DIRNAME_INFO::DIRNAME_INFO(double _start_time, const char* _observatory){
-    start_time = _start_time;
-    strcpy(observatory, _observatory);
+int pff_parse_path(const char* path, string& dir, string& file) {
+    char buf[4096];
+    strcpy(buf, path);
+    char *p = strrchr(buf, '/');
+    if (!p) return -1;
+    file = p+1;
+    *p = 0;
+    p = strrchr(buf, '/');
+    if (!p) return -1;
+    dir = p+1;
+    return 0;
 }
 
-void DIRNAME_INFO::make(string &s) {
+bool ends_with(const char* s, const char* suffix) {
+    const char *p = strstr(s, suffix);
+    if (!p) return false;
+    if (p != s + strlen(s) - strlen(suffix)) {
+        return false;
+    }
+    return true;
+}
+
+void DIRNAME_INFO::make_dirname(string &s) {
     char buf[1024], tbuf[256];
 
     time_t x = (time_t)start_time;
@@ -48,7 +120,7 @@ void DIRNAME_INFO::make(string &s) {
     s = buf;
 }
 
-int DIRNAME_INFO::parse(char* name) {
+int DIRNAME_INFO::parse_dirname(char* name) {
     vector<string> pieces;
     split_comma(name, pieces);
     for (int i=0; i<pieces.size(); i++) {
@@ -71,17 +143,7 @@ int DIRNAME_INFO::parse(char* name) {
     return 0;
 }
 
-FILENAME_INFO::FILENAME_INFO(){}
-FILENAME_INFO::FILENAME_INFO(double _start_time, DATA_PRODUCT _data_product, int _bytes_per_pixel, int _dome, int _module, int _seqno) {
-    start_time = _start_time;
-    data_product = _data_product;
-    bytes_per_pixel = _bytes_per_pixel;
-    dome = _dome;
-    module = _module;
-    seqno = _seqno;
-}
-
-void FILENAME_INFO::make(string &s) {
+void FILENAME_INFO::make_filename(string &s) {
     char buf[1024], tbuf[256];
 
     time_t x = (time_t)start_time;
@@ -93,7 +155,7 @@ void FILENAME_INFO::make(string &s) {
     s = buf;
 }
 
-int FILENAME_INFO::parse(char* name) {
+int FILENAME_INFO::parse_filename(char* name) {
     vector<string> pieces;
     char* p = strrchr(name, '.');   // trim .pff
     if (!p) return 1;
@@ -125,7 +187,7 @@ int FILENAME_INFO::parse(char* name) {
     return 0;
 }
 
-#if 1
+#if 0
 int main(int, char**) {
     DIRNAME_INFO di;
     strcpy(di.observatory, "Palomar");

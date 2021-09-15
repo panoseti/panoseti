@@ -22,11 +22,14 @@ HDF5_LIB = -lhdf5_serial
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
-pulse: pulse.cpp ../util/ph5.o
-	$(CXX) -o pulse pulse.cpp ../util/ph5.o $(HDF5_LIB)
+pulse: pulse.cpp ../util/ph5.o ../util/pff.o
+	$(CXX) -o pulse pulse.cpp ../util/ph5.o ../util/pff.o $(HDF5_LIB)
 
-write_images: write_images.cpp ../util/ph5.o
-	$(CXX) -o write_images write_images.cpp ../util/ph5.o $(HDF5_LIB)
+write_images_h5: write_images_h5.cpp ../util/ph5.o
+	$(CXX) -o write_images_h5 write_images_h5.cpp ../util/ph5.o $(HDF5_LIB)
+
+write_images: write_images.cpp ../util/pff.o
+	$(CXX) -o write_images write_images.cpp ../util/pff.o
 
 -include Makefile.deps
 
