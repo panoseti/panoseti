@@ -14,7 +14,12 @@
 #v07:   Added support for stepper, flasher, fan, shutter
 #v08:   Changed stepper control to work with the new logic (send a target position, rather than a number  of steps to move)
 #       Also removed "WR shell" command (no longer available)
-
+#v09:   Added 'SHO_NEW' to open the shutter
+#       Added 'SHC_NEW' to close the shutter
+#       IP address is a parameter for the script
+#        For example, when we run the script, we can specify the IP address: python control_quabo.py 192.168.3.250
+#        The default IP address is 192.168.3.258
+#       Added 'LF0'/'LF1' to select the old/new led flasher on the new mobo
 
 
 import time
@@ -479,6 +484,8 @@ while True:
     "ARP" to report ARP table,
     "SHO_NEW" to open shutter with new firmware(> V11.1),
     "SHC_NEW" to close shutter with new firmware(> V11.1),
+    "LF0" to select Led Flasher0 on mobo with new firmware(>= V11.8)
+    "LF1" to select Led Flasher1 on mobo with new firmware(>= V11.8)
     or "q" to quit
     ''')
     if inp == 'q':
@@ -650,12 +657,24 @@ while True:
         cmd_payload = bytearray(64)
         for i in range(64): cmd_payload[i]=0
         cmd_payload[0] = 0x08
-        cmd_payload[1] = 0x01
+        cmd_payload[1] = 0x00
         sendit(cmd_payload)
 		
     elif inp == 'SHC_NEW':
         cmd_payload = bytearray(64)
         for i in range(64): cmd_payload[i]=0
         cmd_payload[0] = 0x08
+        cmd_payload[1] = 0x01
+        sendit(cmd_payload)
+    elif inp == 'LF0':
+        cmd_payload = bytearray(64)
+        for i in range(64): cmd_payload[i]=0
+        cmd_payload[0] = 0x09
         cmd_payload[1] = 0x00
+        sendit(cmd_payload)
+    elif inp == 'LF1':
+        cmd_payload = bytearray(64)
+        for i in range(64): cmd_payload[i]=0
+        cmd_payload[0] = 0x09
+        cmd_payload[1] = 0x01
         sendit(cmd_payload)
