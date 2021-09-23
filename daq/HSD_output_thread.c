@@ -213,6 +213,7 @@ void check_redis(redisContext *redisServer){
         return;
     }
     for (int i = 0; i < reply->elements; i=i+2){
+        if (strcmp(reply->element[i+1]->str, "0") == 0){continue;}
 
         if (isdigit(reply->element[i]->str[0])){
             if (data_files[strtol(reply->element[i]->str, NULL, 10) >> 2] != NULL){
