@@ -99,7 +99,7 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
 
 int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex, int moduleIndex){
     fprintf(fileToWrite,
-    " { pktNum : %u, pktNSEC : %u, tv_sec : %li, tv_usec : %li, status : %u}",
+    "{ pktNum : %u, pktNSEC : %u, tv_sec : %li, tv_usec : %li, status : %u}",
     dataHeader->pktNum[blockIndex * PKTPERPAIR + moduleIndex],
     dataHeader->pktNSEC[blockIndex * PKTPERPAIR + moduleIndex],
     dataHeader->tv_sec[blockIndex * PKTPERPAIR + moduleIndex],
@@ -196,11 +196,13 @@ void write_redis_key(redisContext *redisServer, const char *key, FILE *filePtr){
         printf("Warning: Unable to get %s keys from Reids. Skipping Redis values from %s.", key, key);
         return;
     }
+    pff_start_json(filePtr);
     fprintf(filePtr, "{ RedisKey :%s", key);
     for (int i = 0; i < reply->elements; i=i+2){
         fprintf(filePtr, ", %s :%s", reply->element[i]->str, reply->element[i+1]->str);
     }
     fprintf(filePtr, "}");
+    pff_end_json(filePtr);
 }
 
 void check_redis(redisContext *redisServer){
@@ -213,10 +215,10 @@ void check_redis(redisContext *redisServer){
     for (int i = 0; i < reply->elements; i=i+2){
 
         if (isdigit(reply->element[i]->str[0])){
-            if (data_files[strtol(reply->element[i]->str, NULL, 10)] != NULL){
+            if (data_files[strtol(reply->element[i]->str, NULL, 10) >> 2] != NULL){
                 write_redis_key(redisServer, 
                     reply->element[i]->str, 
-                    data_files[strtol(reply->element[i]->str, NULL, 10)]->dynamicMeta);
+                    data_files[strtol(reply->element[i]->str, NULL, 10) >> 2]->dynamicMeta);
             }
         } else {
             write_redis_key(redisServer, reply->element[i]->str, dynamic_meta);
@@ -287,6 +289,7 @@ static int init(hashpipe_thread_args_t *args)
     printf("Creating file : %s\n", (dirName + "dynamic_meta.pff").c_str());
     dynamic_meta = fopen((dirName + "dynamic_meta.pff").c_str(), "w");
     create_data_files();
+    check_redis(redis_server);
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
 
@@ -359,6 +362,7 @@ static void *run(hashpipe_thread_args_t *args) {
 
         //TODO FETCH AND STORE DYNAMIC METATDATA
         //STORE FRAMES FROM OUTPUT BUFFER ONTO DATAFILES
+        check_redis(redis_server);
         for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
             write_img_files(&(db->block[block_idx]), i);
         }
