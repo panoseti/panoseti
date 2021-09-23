@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <time.h>
 #include <math.h>
 #include <string.h>
@@ -17,12 +18,14 @@
 #include "HSD_databuf.h"
 #include "hiredis/hiredis.h"
 #include "../util/pff.cpp"
+#include "../util/dp.h"
 
 //Defining the names of redis keys and files
 #define OBSERVATORY "LICK"
-#define GPSPRIMNAME "GPSPRIM"
-#define GPSSUPPNAME "GPSSUPP"
-#define WRSWITCHNAME "WRSWITCH"
+#define GPSPRIMKEY "GPSPRIM"
+#define GPSSUPPKEY "GPSSUPP"
+#define WRSWITCHKEY "WRSWITCH"
+#define UPDATEDKEY "UPDATED"
 
 ////////// Structures for Reading and Parsing file in PFF////////////////
 
@@ -33,18 +36,22 @@ struct PF {
     PF(const char *dirName, const char *fileName);
 };
 
+struct FILE_PTRS{
+    FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
+    FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode);
+};
 
 FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode){
     string fileName;
     string dirName;
-    dirInfo->make(dirName);
+    dirInfo->make_dirname(dirName);
     dirName = diskDir + dirName + "/";
     mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     
 
     for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
         fileInfo->data_product = (DATA_PRODUCT)dp;
-        fileInfo->make(fileName);
+        fileInfo->make_filename(fileName);
         switch (dp){
             case DP_DYNAMIC_META:
                 dynamicMeta = fopen((dirName + fileName).c_str(), mode);
@@ -70,15 +77,16 @@ FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *
 }
 
 
-static char configLocation[STRBUFFSIZE];
+static char config_location[STRBUFFSIZE];
 
-static char saveLocation[STRBUFFSIZE];
-static long long fileSize = 0;
-static long long maxFileSize = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
+static char save_location[STRBUFFSIZE];
+static long long file_size = 0;
+static long long max_file_size = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
 
 
-static redisContext *redisServer;
-static FILE_PTRS *dataFiles[MODULEINDEXSIZE] = {NULL};
+static redisContext *redis_server;
+static FILE_PTRS *data_files[MODULEINDEXSIZE] = {NULL};
+static FILE *dynamic_meta;
 
 
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
@@ -106,7 +114,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int mod
     int mode = dataBlock->header.acqmode[blockIndex];
     int modeOffset = mode/8;
 
-    moduleToWrite = dataFiles[dataBlock->header.modNum[blockIndex * 2 + moduleIndex]];
+    moduleToWrite = data_files[dataBlock->header.modNum[blockIndex * 2 + moduleIndex]];
     if (mode == 16) {
         fileToWrite = moduleToWrite->bit16Img;
     } else if (mode == 8){
@@ -148,7 +156,7 @@ int write_img_files(HSD_output_block_t *dataBlock, int blockIndex){
 }
 
 int create_data_files(){
-    FILE *configFile = fopen(configLocation, "r");
+    FILE *configFile = fopen(config_location, "r");
     char fbuf[STRBUFFSIZE];
     char cbuf;
     unsigned int modNum;
@@ -164,8 +172,8 @@ int create_data_files(){
         ungetc(cbuf, configFile);
         if (cbuf != '#') {
             if (fscanf(configFile, "%u\n", &modNum) == 1){
-                if (dataFiles[modNum] == NULL) {
-                    dataFiles[modNum] = data_file_init(saveLocation, 0, modNum);
+                if (data_files[modNum] == NULL) {
+                    data_files[modNum] = data_file_init(save_location, 0, modNum);
                     printf("Created Data file for Module %u\n", modNum);
                 }
             }
@@ -182,6 +190,39 @@ int create_data_files(){
     }
 }
 
+void write_redis_key(redisContext *redisServer, const char *key, FILE *filePtr){
+    redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", key);
+    if (reply->type != REDIS_REPLY_ARRAY){
+        printf("Warning: Unable to get %s keys from Reids. Skipping Redis values from %s.", key, key);
+        return;
+    }
+    fprintf(filePtr, "{ RedisKey :%s", key);
+    for (int i = 0; i < reply->elements; i=i+2){
+        fprintf(filePtr, ", %s :%s", reply->element[i]->str, reply->element[i+1]->str);
+    }
+    fprintf(filePtr, "}");
+}
+
+void check_redis(redisContext *redisServer){
+    redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", UPDATEDKEY);
+    if (reply->type != REDIS_REPLY_ARRAY){
+        printf("Warning: Unable to get Updated keys from Redis. Skipping Redis values.\n");
+        freeReplyObject(reply);
+        return;
+    }
+    for (int i = 0; i < reply->elements; i=i+2){
+
+        if (isdigit(reply->element[i]->str[0])){
+            if (data_files[strtol(reply->element[i]->str, NULL, 10)] != NULL){
+                write_redis_key(redisServer, 
+                    reply->element[i]->str, 
+                    data_files[strtol(reply->element[i]->str, NULL, 10)]->dynamicMeta);
+            }
+        } else {
+            write_redis_key(redisServer, reply->element[i]->str, dynamic_meta);
+        }
+    } 
+}
 
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
 static int QUITSIG;
@@ -195,29 +236,29 @@ static int init(hashpipe_thread_args_t *args)
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
-    sprintf(saveLocation, DATAFILE_DEFAULT);
-    hgets(st.buf, "SAVELOC", STRBUFFSIZE, saveLocation);
-    if (saveLocation[strlen(saveLocation) - 1] != '/') {
+    sprintf(save_location, DATAFILE_DEFAULT);
+    hgets(st.buf, "SAVELOC", STRBUFFSIZE, save_location);
+    if (save_location[strlen(save_location) - 1] != '/') {
         char endingSlash = '/';
-        strncat(saveLocation, &endingSlash, 1);
+        strncat(save_location, &endingSlash, 1);
     }
-    printf("Save Location: %s\n", saveLocation);
+    printf("Save Location: %s\n", save_location);
 
-    sprintf(configLocation, CONFIGFILE_DEFAULT);
-    hgets(st.buf, "CONFIG", STRBUFFSIZE, configLocation);
-    printf("Config Location: %s\n", configLocation);
+    sprintf(config_location, CONFIGFILE_DEFAULT);
+    hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
+    printf("Config Location: %s\n", config_location);
 
     int maxSizeInput = 0;
 
     hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
-    maxFileSize = maxSizeInput * 2E6;
+    max_file_size = maxSizeInput * 2E6;
 
     /*Initialization of Redis Server Values*/
     printf("------------------SETTING UP REDIS ------------------\n");
-    redisServer = redisConnect("127.0.0.1", 6379);
+    redis_server = redisConnect("127.0.0.1", 6379);
     int attempts = 0;
-    while (redisServer != NULL && redisServer->err) {
-        printf("Error: %s\n", redisServer->errstr);
+    while (redis_server != NULL && redis_server->err) {
+        printf("Error: %s\n", redis_server->errstr);
         attempts++;
         if (attempts >= 12) {
             printf("Unable to connect to Redis.\n");
@@ -225,17 +266,26 @@ static int init(hashpipe_thread_args_t *args)
         }
         printf("Attempting to reconnect in 5 seconds.\n");
         sleep(5);
-        redisServer = redisConnect("127.0.0.1", 6379);
+        redis_server = redisConnect("127.0.0.1", 6379);
     }
 
     printf("Connected to Redis\n");
     redisReply *keysReply;
     redisReply *reply;
     // Uncomment following lines for redis servers with password
-    // reply = redisCommand(redisServer, "AUTH password");
+    // reply = redisCommand(redis_server, "AUTH password");
     // freeReplyObject(reply);
 
     printf("\n---------------SETTING UP DATA File------------------\n");
+    time_t t = time(NULL);
+
+    DIRNAME_INFO dirInfo(t, OBSERVATORY);
+    string dirName;
+    dirInfo.make_dirname(dirName);
+    dirName = save_location + dirName + "/";
+    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    printf("Creating file : %s\n", (dirName + "dynamic_meta.pff").c_str());
+    dynamic_meta = fopen((dirName + "dynamic_meta.pff").c_str(), "w");
     create_data_files();
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
@@ -245,11 +295,11 @@ static int init(hashpipe_thread_args_t *args)
 
 void close_all_resources() {
     for (int i = 0; i < MODULEINDEXSIZE; i++){
-        if (dataFiles[i] != NULL){
-            fclose(dataFiles[i]->dynamicMeta);
-            fclose(dataFiles[i]->bit16Img);
-            fclose(dataFiles[i]->bit8Img);
-            fclose(dataFiles[i]->PHImg);
+        if (data_files[i] != NULL){
+            fclose(data_files[i]->dynamicMeta);
+            fclose(data_files[i]->bit16Img);
+            fclose(data_files[i]->bit8Img);
+            fclose(data_files[i]->PHImg);
         }
     }
 }
@@ -313,9 +363,9 @@ static void *run(hashpipe_thread_args_t *args) {
             write_img_files(&(db->block[block_idx]), i);
         }
 
-        if (QUITSIG || fileSize > maxFileSize) {
+        if (QUITSIG || file_size > max_file_size) {
             printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
-            fileSize = 0;
+            file_size = 0;
             QUITSIG = 0;
         }
 
