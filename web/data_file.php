@@ -5,7 +5,7 @@
 
 require_once("panoseti.inc");
 
-function main($name) {
+function do_h5($name) {
     page_head("File: $name");
 
     $dir = "pulse_out/$name";
@@ -29,8 +29,36 @@ function main($name) {
     page_tail();
 }
 
+function do_pff($name) {
+    page_head("File: $name");
+
+    $dir = "pulse_out/$name";
+    if (!is_dir($dir)) {
+        echo "No info available\n";
+        return;
+    }
+    foreach (scandir($dir) as $f) {
+        if ($f[0] == ".") continue;
+        echo "<h2>File $f</h3>";
+
+        echo "<p><a href=image.php?file=$name/$f&frame=0>Images</a>";
+        echo "<p>Pulse info: pixel ";
+        foreach (scandir("$dir/$f") as $pixel) {
+            if ($pixel[0] == ".") continue;
+            if (!is_numeric($pixel)) continue;
+            $url = "pulse.php?file=$name/$f&pixel=$pixel";
+            echo "&nbsp;&nbsp <a href=$url>$pixel</a>\n";
+        }
+    }
+    page_tail();
+}
+
 $name = get_str('name');
 check_filename($name);
-main($name);
+if (strstr($name, 'pffd')) {
+    do_pff($name);
+} else {
+    do_h5($name);
+}
 
 ?>

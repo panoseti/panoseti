@@ -102,12 +102,10 @@ int pff_parse_path(const char* path, string& dir, string& file) {
 }
 
 bool ends_with(const char* s, const char* suffix) {
-    const char *p = strstr(s, suffix);
-    if (!p) return false;
-    if (p != s + strlen(s) - strlen(suffix)) {
-        return false;
-    }
-    return true;
+    size_t n = strlen(s);
+    size_t m = strlen(suffix);
+    if (n<m) return false;
+    return (strcmp(s+n-m, suffix)) == 0;
 }
 
 void DIRNAME_INFO::make_dirname(string &s) {

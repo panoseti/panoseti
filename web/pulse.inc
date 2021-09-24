@@ -1,7 +1,11 @@
 <?php
 
 function pulse_file_name($file, $module, $pixel, $type, $dur) {
-    $x = "pulse_out/$file/$module/$pixel/$type";
+    if (strstr($file, ".pff")) {
+        $x = "pulse_out/$file/$pixel/$type";
+    } else {
+        $x = "pulse_out/$file/$module/$pixel/$type";
+    }
     switch($type) {
     case "value":
     case "value_hist":

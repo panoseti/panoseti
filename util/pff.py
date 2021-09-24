@@ -27,3 +27,19 @@ def read_image_16(f):
         print('bad type code')
         return Null
     return unpack("1024H", f.read(2048))
+
+# parse a string of the form
+# a=b,a=b...a=b.ext
+# into a dictionary of a=>b
+#
+def parse_name(name):
+    d = {}
+    n = name.rfind('.')
+    if n<0:
+        return Null
+    name = name[0:n]
+    x = name.split(',')
+    for s in x:
+        y = s.split('=')
+        d[y[0]] = y[1]
+    return d

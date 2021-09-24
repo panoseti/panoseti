@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
     pff_parse_path(path, dir, file);
 
     sprintf(buf, "pulse_out/%s/%s/images.bin", dir.c_str(), file.c_str());
+    printf("writing images to %s\n", buf);
     fout = fopen(buf, "w");
 
     while (1) {

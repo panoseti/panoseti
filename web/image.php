@@ -64,10 +64,15 @@ function rand_frame() {
 function main($file, $module, $frame) {
     page_head("Image");
     echo "<p>File: <a href=data_file.php?name=$file>$file</a>\n";
-    echo "<p>Dome: $module\n";
+    $pff = strstr($file, '.pff');
+    if ($pff) {
+        $path = "pulse_out/$file/images.bin";
+    } else {
+        echo "<p>Dome: $module\n";
+        $path = "pulse_out/$file/$module/images.bin";
+    }
     $t = $frame/200.;
     echo "<p>Frame: $frame ($t sec)\n";
-    $path = "pulse_out/$file/$module/images.bin";
     $x = get_frame($path, $frame);
     $as = arrows_str($file, $module, $frame);
     show_frame($x, $as);

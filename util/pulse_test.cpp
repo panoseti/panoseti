@@ -1,8 +1,12 @@
 // test correctness and performance of pulse-finding code
 //
 // --perf: do 1e9 samples
-// otherwise read samples from stdin
+//  otherwise read samples from stdin
+// --ncpus N: run N copies in parallel
 
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -31,15 +35,23 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
 #endif
 }
 
+void usage() {
+    printf("pulse_test [--perf] [< samples]\n");
+    exit(1);
+}
+
 int main(int argc, char** argv) {
-    if (argc>1) {
-        if (!strcmp(argv[1], "--perf")) {
+    int ncpus=0;
+    for (int i=1; i<argc; i++) {
+        if (!strcmp(argv[i], "--perf")) {
             perf = true;
+        } else if (!strcmp(argv[i], "--ncpus")) {
+            ncpus = atoi(argv[++i]);
         } else {
-            printf("pulse_test [--perf] [< samples]\n");
-            exit(1);
+            usage();
         }
     }
+
     if (perf) {
         int nlevels = 16;
         PULSE_FIND pf(nlevels);
@@ -59,8 +71,23 @@ int main(int argc, char** argv) {
         printf("levels 0/1: no\n");
 #endif
 
-        for (int i=0; i<1000000000; i++) {
-            pf.add_sample(1);
+        if (ncpus) {
+            for (int i=0; i<ncpus; i++) {
+                if (!fork()) {
+                    for (int i=0; i<1000000000; i++) {
+                        pf.add_sample(1);
+                    }
+                    exit(0);
+                }
+            }
+            for (int i=0; i<ncpus; i++) {
+                int pid;
+                wait(&pid);
+            }
+        } else {
+            for (int i=0; i<1000000000; i++) {
+                pf.add_sample(1);
+            }
         }
     } else {
         int nlevels = 4;
