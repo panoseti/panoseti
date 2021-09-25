@@ -21,14 +21,12 @@
 
 //Defining Imaging Data Values
 #define QUABOPERMODULE          4
-#define PKTPERPAIR              QUABOPERMODULE*2
 #define SCIDATASIZE             256
-#define MODPAIRDATASIZE         PKTPERPAIR*SCIDATASIZE*2
-#define PKTPERDATASET           5000                     //Number Module Pair data per dataset in HDF5 file
+#define MODULEDATASIZE          QUABOPERMODULE*SCIDATASIZE*2
 
 //Defining the Block Sizes for the Input and Ouput Buffers
 #define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE                    //Input Block size includes headers
-#define OUTPUTBLOCKSIZE         OUT_MODPAIR_PER_BLOCK*MODPAIRDATASIZE           //Output Stream Block size excludes headers
+#define OUTPUTBLOCKSIZE         OUT_MODPAIR_PER_BLOCK*MODULEDATASIZE            //Output Stream Block size excludes headers
 #define OUTPUTCOICBLOCKSIZE     COINC_PKT_PER_BLOCK*PKTDATASIZE                 //Output Coinc Block size excluding headers
 
 
@@ -54,20 +52,51 @@
 //Defining the string buffer size
 #define STRBUFFSIZE 256
 
+typedef struct packet_header {
+    char acq_mode;
+    uint16_t pkt_num;
+    uint16_t mod_num;
+    uint8_t qua_num;
+    uint32_t pkt_utc;
+    uint32_t pkt_nsec;
+    long int tv_sec;
+    long int tv_usec;
+    int copy_to(packet_header_t* pkt_head) {
+        pkt_head->acqmode = acq_mode;
+        pkt_head->pkt_num = pkt_num;
+        pkt_head->mod_num = mod_num;
+        pkt_head->qua_num = qua_num;
+        pkt_head->pkt_utc = pkt_utc;
+        pkt_head->pkt_nsec = pkt_nsec;
+        pkt_head->tv_sec = tv_sec;
+        pkt_head->tv_usec = tv_usec;
+    }
+} packet_header_t;
 
+typedef struct module_header {
+    packet_header_t pkt_head[QUABOPERMODULE];
+    uint8_t status[QUABOPERMODULE];
+    int copy_to(module_header_t* mod_head) {
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
+        }
+        mod_head->status = status;
+    }
+} module_header_t;
 
 
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
-    char acqmode[IN_PKT_PER_BLOCK];
+    /*char acqmode[IN_PKT_PER_BLOCK];
     uint16_t pktNum[IN_PKT_PER_BLOCK];
     uint16_t modNum[IN_PKT_PER_BLOCK];
     uint8_t quaNum[IN_PKT_PER_BLOCK];
     uint32_t pktUTC[IN_PKT_PER_BLOCK];
     uint32_t pktNSEC[IN_PKT_PER_BLOCK];
     long int tv_sec[IN_PKT_PER_BLOCK];
-    long int tv_usec[IN_PKT_PER_BLOCK];
+    long int tv_usec[IN_PKT_PER_BLOCK];*/
+    packet_header_t pkt_head[IN_PKT_PER_BLOCK];
     int data_block_size;
     int INTSIG;
 } HSD_input_block_header_t;
@@ -94,25 +123,26 @@ typedef struct HSD_input_databuf {
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
 
-    uint16_t modNum[OUT_MODPAIR_PER_BLOCK*2];
+    /*uint16_t modNum[OUT_MODPAIR_PER_BLOCK*2];
     char acqmode[OUT_MODPAIR_PER_BLOCK];
-    //uint32_t pktUTC[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
     uint16_t pktNum[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
     uint32_t pktNSEC[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
     long int tv_sec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
-    long int tv_usec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
-    uint8_t status[OUT_MODPAIR_PER_BLOCK];
+    long int tv_usec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];*/
+    module_header_t img_pkt_head[OUT_MODPAIR_PER_BLOCK];
+    //uint8_t status[OUT_MODPAIR_PER_BLOCK];
     int stream_block_size;
 
     
-    char coin_acqmode[COINC_PKT_PER_BLOCK];
+    /*char coin_acqmode[COINC_PKT_PER_BLOCK];
     uint16_t coin_pktNum[COINC_PKT_PER_BLOCK];
     uint16_t coin_modNum[COINC_PKT_PER_BLOCK];
     uint8_t coin_quaNum[COINC_PKT_PER_BLOCK];
     uint32_t coin_pktUTC[COINC_PKT_PER_BLOCK];
     uint32_t coin_pktNSEC[COINC_PKT_PER_BLOCK];
     long int coin_tv_sec[COINC_PKT_PER_BLOCK];
-    long int coin_tv_usec[COINC_PKT_PER_BLOCK];
+    long int coin_tv_usec[COINC_PKT_PER_BLOCK];*/
+    packet_header_t coin_pkt_head[COINC_PKT_PER_BLOCK];
     int coinc_block_size;
 
 
