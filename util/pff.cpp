@@ -9,39 +9,47 @@ using std::string;
 using std::vector;
 
 void pff_start_json(FILE* f) {
-    static char buf = PFF_TYPE_TEXT;
-    fwrite(&buf, 1, 1, f);
 }
 
 void pff_end_json(FILE* f) {
-    static char buf = 0;
-    fwrite(&buf, 1, 1, f);
+    fprintf(f, "\n\n");
 }
 
 void pff_write_image(
     FILE* f, int nbytes, void* image
 ) {
-    static char buf = PFF_TYPE_IMAGE;
+    static char buf = PFF_IMAGE_START;
     fwrite(&buf, 1, 1, f);
     fwrite(image, 1, nbytes, f);
 }
 
 int pff_read_json(FILE* f, string &s) {
     char c;
-    if (fread(&c, 1, 1, f) != 1) {
-        return PFF_ERROR_READ;
-    }
-    if (c != PFF_TYPE_TEXT) {
+    s.clear();
+    while (1) {
+        if (fread(&c, 1, 1, f) != 1) {
+            return PFF_ERROR_READ;
+        }
+        if (c == '\n') continue;
+        if (c == PFF_JSON_START) {
+            break;
+        }
         return PFF_ERROR_BAD_TYPE;
     }
-    s.clear();
+    s.append(&c, 1);
+    bool last_nl = false;   // last char was newline
     while(1) {
         c = fgetc(f);
         if (c == EOF) {
             return PFF_ERROR_READ;
         }
-        if (c == 0) {
-            break;
+        if (c == '\n') {
+            if (last_nl) {
+                break;
+            }
+            last_nl = true;
+        } else {
+            last_nl= false;
         }
         s.append(&c, 1);
     }
@@ -50,10 +58,13 @@ int pff_read_json(FILE* f, string &s) {
 
 int pff_read_image(FILE* f, int nbytes, void* img) {
     char c;
-    if (fread(&c, 1, 1, f) != 1) {
-        return PFF_ERROR_READ;
-    }
-    if (c != PFF_TYPE_IMAGE) {
+    while (1) {
+        if (fread(&c, 1, 1, f) != 1) {
+            return PFF_ERROR_READ;
+        }
+        if (c == PFF_IMAGE_START) {
+            break;
+        }
         return PFF_ERROR_BAD_TYPE;
     }
     if (fread(img, 1, nbytes, f) != nbytes) {
@@ -61,6 +72,8 @@ int pff_read_image(FILE* f, int nbytes, void* img) {
     }
     return 0;
 }
+
+////////// DIR/FILE NAME STUFF ////////////////
 
 struct NV_PAIR {
     char name[64], value[256];

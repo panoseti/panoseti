@@ -16,8 +16,8 @@
 #include <string>
 using std::string;
 
-#define PFF_TYPE_TEXT       1
-#define PFF_TYPE_IMAGE      2
+#define PFF_JSON_START '{'
+#define PFF_IMAGE_START '*'
 
 #define PFF_ERROR_BAD_TYPE  -1
 #define PFF_ERROR_READ      -2

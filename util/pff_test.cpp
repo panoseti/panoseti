@@ -1,4 +1,5 @@
-// test program for PFF API
+// test program for PFF API:
+// writes a file "test.pff", then reads it
 
 #include "rapidjson/include/rapidjson/document.h"
 #include "rapidjson/include/rapidjson/stringbuffer.h"

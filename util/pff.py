@@ -6,15 +6,19 @@ from struct import *
 #
 def read_json(f):
     c = f.read(1)
-    if c != b'\x01':
-        #d = int.from_bytes(c, byteorder='big')
+    if c != b'{':
         print('bad type code')
         return Null
-    s = ''
+    s = '{'
+    last_nl = False
     while True:
         c = f.read(1)
-        if c == b'\x00':
-            break
+        if c == b'\n':
+            if last_nl:
+                break
+            last_nl = True
+        else:
+            last_nl = False
         s += c.decode()
     return s;
 
@@ -23,7 +27,7 @@ def read_json(f):
 #
 def read_image_16(f):
     c = f.read(1)
-    if c != b'\x02':
+    if c != b'*':
         print('bad type code')
         return Null
     return unpack("1024H", f.read(2048))

@@ -1,5 +1,6 @@
 # test Python API for PFF
-# create the file with pff_test.cpp
+# parse "test.pff"
+# (create this with pff_test.cpp)
 
 import json
 
