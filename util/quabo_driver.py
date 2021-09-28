@@ -19,8 +19,9 @@ UDP_CMD_PORT= 60000
 SERIAL_COMMAND_LENGTH = 829
 
 class QUABO:
-    def __init__(self, ip_addr):
-        self.ip_addr = ip_addr;
+    def __init__(self, ip_addr, config_file_path='config/quabo_config.txt'):
+        self.ip_addr = ip_addr
+        selt.config_file_path = config_file_path
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         self.sock.bind(("", UDP_CMD_PORT))
@@ -33,16 +34,17 @@ class QUABO:
             self.MAROC_regs.append([0 for x in range(104)])
 
     def close(self):
-        self.sock.close();
+        self.sock.close()
 
-    def send_maroc_params(self, fhand):            # fhand is open config file
+    def send_maroc_params(self):
         cmd = bytearray(492)
         cmd[0] = 0x01
-        self.parse_maroc_params(fhand, cmd)
+        with open(config_file_path) as f:
+            self.parse_maroc_params(f, cmd)
         self.flush_rx_buf()
-        self.send(cmd);
+        self.send(cmd)
 
-    def calibrate_ph_baseline(self, fhand):        # fhand is output file handle
+    def calibrate_ph_baseline(self):
         cmd = self.make_cmd(0x07)
         self.flush_rx_buf()
         self.send(cmd)
@@ -50,17 +52,19 @@ class QUABO:
         reply = self.sock.recvfrom(1024)
         bytesback = reply[0]
         now =time.ctime().split(" ")[3]
-        fhand.write(str(now) + ',')
-        for n in range(256):
-            val=bytesback[2*n+4]+256*bytesback[2*n+5]
-            fhand.write(str(val) + ',')
-        fhand.write('\n')
+        with open(output_file_path, 'w') as f:
+            f.write(str(now) + ',')
+            for n in range(256):
+                val=bytesback[2*n+4]+256*bytesback[2*n+5]
+                f.write(str(val) + ',')
+            f.write('\n')
 
-    def hv_config(self, fhand):
+    def hv_config(self):
         cmd = self.make_cmd(0x02)
-        self.parse_hv_params(fhand, cmd)
+        with open(config_file_path) as f:
+            self.parse_hv_params(f, cmd)
         self.flush_rx_buf()     # needed?
-        self.send(cmd);
+        self.send(cmd)
 
     def hv_chan(self, chan, value):
         cmd = self.make_cmd(0x02)
@@ -70,30 +74,32 @@ class QUABO:
             MSbyte = (HV_vals[i] >> 8) & 0xff
             cmd[2*i+2]=LSbyte
             cmd[2*i+3]=MSbyte
-        self.send(cmd);
+        self.send(cmd)
 
     def hv_zero(self):
         cmd = self.make_cmd(0x02)
         for i in range(4):
             cmd[2*i+2]=0
             cmd[2*i+3]=0
-        self.send(cmd);
+        self.send(cmd)
 
-    def send_acq_parameters(self, fhand):        # fhand is open config file
+    def send_acq_parameters(self):
         cmd = self.make_cmd(0x03)
-        self.parse_acq_parameters(fhand, cmd)
+        with open(config_file_path) as f:
+            self.parse_acq_parameters(f, cmd)
         self.flush_rx_buf()
-        self.send(cmd);
+        self.send(cmd)
 
-    def send_trigger_mask(self, fhand):          # fhand is open config file
+    def send_trigger_mask(self):
         cmd = self.make_cmd(0x06)
-        self.parse_trigger_mask(fhand, cmd)
+        with open(config_file_path) as f:
+            self.parse_trigger_mask(f, cmd)
         self.flush_rx_buf()
-        self.send(cmd);
+        self.send(cmd)
 
     def reset(self):
         cmd = self.make_cmd(0x04)
-        self.send(cmd);
+        self.send(cmd)
 
     def focus(self, steps):      # 1 to 50000, 0 to recalibrate
         endzone = 300
@@ -114,7 +120,7 @@ class QUABO:
         cmd[15] = (step_ontime>>8) & 0xff
         cmd[16] = step_offtime & 0xff
         cmd[17] = (step_offtime>>8) & 0xff
-        self.send(cmd);
+        self.send(cmd)
 
     def shutter(self, closed):
         cmd = self.make_cmd(0x05)
@@ -122,13 +128,13 @@ class QUABO:
         self.shutter_power = 1
         cmd[6] = self.shutter_open | (self.shutter_power<<1)
         cmd[8] = self.fanspeed
-        self.send(cmd);
-        time.sleep(1);
+        self.send(cmd)
+        time.sleep(1)
         self.shutter_open = 0
         self.shutter_power = 0
         cmd[6] = self.shutter_open | (self.shutter_power<<1)
         cmd[8] = self.fanspeed
-        self.send(cmd);
+        self.send(cmd)
 
     def fan(self, fanspeed):     # fanspeed is 0..15
         self.fanspeed = fanspeed
@@ -139,12 +145,12 @@ class QUABO:
 
     def shutter_new(self, closed):
         cmd = self.make_cmd(0x08)
-        cmd[1] = 0x01 if closed else 0x0;
+        cmd[1] = 0x01 if closed else 0x0
         self.send(cmd)
 
     def lf(self, val):
         cmd = self.make_cmd(0x09)
-        cmd[1] = 0x01 if val else 0x0;
+        cmd[1] = 0x01 if val else 0x0
         self.send(cmd)
 
 # IMPLEMENTATION STUFF FOLLOWS

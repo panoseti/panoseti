@@ -22,28 +22,23 @@ baseline_filename = "./quabo_baseline.csv"
 def do_cmd(quabo, words):
     cmd = words.pop(0)
     if cmd == 'q':
-        return True;
+        return True
     elif cmd == 'M':
-        with open(config_filename) as f:
-            quabo.send_maroc_params(f)
+        quabo.send_maroc_params()
     elif cmd == 'B':
-        with open(baseline_filename, 'w') as f:
-            quabo.calibrate_ph_baseline(f)
+        quabo.calibrate_ph_baseline(baseline_filename)
     elif cmd == 'V':
-        with open(config_filename) as f:
-            quabo.hv_config(f)
+        quabo.hv_config(config_filename)
     elif cmd == 'v':
         chan = int(words.pop(0))
         value = int(words.pop(0))
-        quabo.hv_chan(chan, value);
+        quabo.hv_chan(chan, value)
     elif cmd == 'VV':
         quabo.hv_zero()
     elif cmd == 'A':
-        with open(config_filename) as f:
-            quabo.send_acq_parameters(f)
+        quabo.send_acq_parameters()
     elif cmd == 'T':
-        with open(config_filename) as f:
-            quabo.send_trigger_mask(f)
+        quabo.send_trigger_mask()
     elif cmd == 'R':
         quabo.reset()
     elif cmd == 'ST':
@@ -74,7 +69,7 @@ def do_cmd(quabo, words):
 def cmdline():
     sys.argv.pop(0)
     ip_addr = sys.argv.pop(0)
-    quabo = quabo_driver.QUABO(ip_addr);
+    quabo = quabo_driver.QUABO(ip_addr, config_filename)
     while len(sys.argv) > 0:
         do_cmd(quabo, sys.argv)
     quabo.close()
@@ -104,7 +99,7 @@ def print_cmds():
 def interpreter():
     print("IP address of quabo: ")
     ip_addr = input()
-    quabo = quabo_driver.QUABO(ip_addr)
+    quabo = quabo_driver.QUABO(ip_addr, config_filename)
     while True:
         print_cmds()
         line = input()
