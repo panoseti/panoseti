@@ -12,15 +12,27 @@ def quabo_power(on):
     url = ups['url']
     socket = ups['quabo_socket']
     value = 'true' if on else 'false'
-    cmd = 'curl -v -X PUT -H \'X-CSRF: x\' -H "Accept: application/json" --data \'value=%s\' --digest \'%s/restapi/relay/outlets/=%d/state/\''%(value, url, socket)
-    print(cmd)
+    cmd = 'curl --silent -X PUT -H \'X-CSRF: x\' -H "Accept: application/json" --data \'value=%s\' --digest \'%s/restapi/relay/outlets/=%d/state/\''%(value, url, socket)
     os.system(cmd)
 
+def quabo_power_query():
+    c = config.get_misc_config()
+    ups = c['ups']
+    url = ups['url']
+    socket = ups['quabo_socket']
+    cmd = 'curl --silent -H "Accept: application/json" --digest \'%s/restapi/relay/outlets/=%d/state/\''%(url, socket)
+    out = os.popen(cmd).read()
+    return 'true' in out
+
 if __name__ == "__main__":
-    if sys.argv[1] == 'on':
-        value = True
+    if len(sys.argv) < 2:
+        if quabo_power_query():
+            print("power is on")
+        else:
+            print("power is off")
+    elif sys.argv[1] == 'on':
+        quabo_power(True)
     elif sys.argv[1] == 'off':
-        value = False
+        quabo_power(False)
     else:
         raise Exception('bad arg')
-    quabo_power(value)
