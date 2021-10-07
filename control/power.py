@@ -4,12 +4,13 @@
 # The IP addr of the UPS and the socket # come from a config file
 # This can be used as a module or a script.
 
-import obs_config, sys, os
+import config, sys, os
 
 def quabo_power(on):
-    config = obs_config.get_config()
-    url = config['power_url']
-    socket = config['power_socket']
+    c = config.get_misc_config()
+    ups = c['ups']
+    url = ups['url']
+    socket = ups['quabo_socket']
     value = 'true' if on else 'false'
     cmd = 'curl -v -X PUT -H \'X-CSRF: x\' -H "Accept: application/json" --data \'value=%s\' --digest \'%s/restapi/relay/outlets/=%d/state/\''%(value, url, socket)
     print(cmd)

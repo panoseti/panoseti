@@ -21,7 +21,7 @@ SERIAL_COMMAND_LENGTH = 829
 class QUABO:
     def __init__(self, ip_addr, config_file_path='config/quabo_config.txt'):
         self.ip_addr = ip_addr
-        selt.config_file_path = config_file_path
+        self.config_file_path = config_file_path
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         self.sock.bind(("", UDP_CMD_PORT))

@@ -1,4 +1,41 @@
 {
-    "power_url": "http://admin:1234@192.168.0.100",
-    "power_socket": 4
+    "domes": [
+        {
+            "name": "north",
+            "modules": [
+                {
+                    "number": 0,
+                    "quabos": [
+                        {
+                            "ip_addr": "128.1.2.3",
+                            "board_id": "0"
+                        },
+                        {
+                            "ip_addr": "128.1.2.4",
+                            "board_id": "1"
+                        }
+                    ]
+                },
+                {
+                    "number": 1,
+                    "quabos": [
+                        {
+                            "ip_addr": "128.1.2.5",
+                            "board_id": "0"
+                        },
+                        {
+                            "ip_addr": "128.1.2.6",
+                            "board_id": "1"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "south",
+            "modules": [
+            ]
+        }
+
+    ],
 }
