@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 # the Quabos are plugged into a particular socket in
 # a Digital Loggers Inc LPC9 UPS.
 # This function turns the power to this socket on or off.
