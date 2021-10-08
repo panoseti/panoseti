@@ -4,7 +4,7 @@
             "name": "north",
             "modules": [
                 {
-                    "number": 0,
+                    "id": "M11",
                     "quabos": [
                         {
                             "ip_addr": "128.1.2.3",
@@ -17,7 +17,7 @@
                     ]
                 },
                 {
-                    "number": 1,
+                    "id": "M12",
                     "quabos": [
                         {
                             "ip_addr": "128.1.2.5",
@@ -34,8 +34,34 @@
         {
             "name": "south",
             "modules": [
+                {
+                    "id": "M13",
+                    "quabos": [
+                        {
+                            "ip_addr": "128.1.2.7",
+                            "board_id": "0"
+                        },
+                        {
+                            "ip_addr": "128.1.2.8",
+                            "board_id": "1"
+                        }
+                    ]
+                },
+                {
+                    "id": "M14",
+                    "quabos": [
+                        {
+                            "ip_addr": "128.1.2.9",
+                            "board_id": "0"
+                        },
+                        {
+                            "ip_addr": "128.1.2.10",
+                            "board_id": "1"
+                        }
+                    ]
+                }
             ]
         }
 
-    ],
+    ]
 }

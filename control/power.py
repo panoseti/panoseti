@@ -6,7 +6,7 @@
 # The IP addr of the UPS and the socket # come from a config file
 # This can be used as a module or a script.
 
-import config, sys, os
+import config_file, sys, os
 
 def quabo_power(on):
     c = config.get_misc_config()
