@@ -1,3 +1,4 @@
+#include <string>
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -80,6 +81,26 @@ typedef struct packet_header {
         this->tv_sec = 0;
         this->tv_usec = 0;
     };
+    std::string toString(){
+        return "acq_mode = " + std::to_string(this->acq_mode) +
+                " pkt_num = " + std::to_string(this->pkt_num) +
+                " mod_num = " + std::to_string(this->mod_num) +
+                " qua_num = " + std::to_string(this->qua_num) +
+                " pkt_utc = " + std::to_string(this->pkt_utc) +
+                " pkt_nsec = " + std::to_string(this->pkt_nsec) +
+                " tv_sec = " + std::to_string(this->tv_sec) +
+                " tv_sec = " + std::to_string(this->tv_usec);
+    };
+    int equal_to(packet_header *pkt_head){
+        return (this->acq_mode == pkt_head->acq_mode
+            && this->pkt_num == pkt_head->pkt_num
+            && this->mod_num == pkt_head->mod_num
+            && this->qua_num == pkt_head->qua_num
+            && this->pkt_utc == pkt_head->pkt_utc
+            && this->pkt_nsec == pkt_head->pkt_nsec
+            && this->tv_sec == pkt_head->tv_sec
+            && this->tv_usec == pkt_head->tv_usec);
+    };
 } packet_header_t;
 
 typedef struct module_header {
@@ -87,9 +108,32 @@ typedef struct module_header {
     uint8_t status[QUABOPERMODULE];
     int copy_to(module_header* mod_head) {
         for (int i = 0; i < QUABOPERMODULE; i++){
-            pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
+            this->pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
         }
-        memcpy(this->status, mod_head->pkt_head, sizeof(uint8_t)*QUABOPERMODULE);
+        memcpy(mod_head->status, this->status, sizeof(uint8_t)*QUABOPERMODULE);
+    };
+    int clear(){
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            this->pkt_head[i].clear();
+        }
+        memset(this->status, 0, sizeof(uint8_t)*QUABOPERMODULE);
+    };
+    std::string toString(){
+        std::string return_string;
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            return_string += pkt_head[i].toString();
+            return_string += " status = " + std::to_string(this->status[i]) + " \n";
+        }
+        return return_string;
+    }
+    int equal_to(module_header *mod_head){
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            if (!this->pkt_head[i].equal_to(&(mod_head->pkt_head[i])) 
+                || this->status[i] != mod_head->status[i]) {
+                return 0;
+            }
+        }
+        return 1;
     }
 } module_header_t;
 
