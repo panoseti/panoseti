@@ -1,9 +1,8 @@
+#include <string.h>
 #include <stdint.h>
 #include <stdio.h>
 #include "hashpipe.h"
 #include "hashpipe_databuf.h"
-#include "hdf5.h"
-#include "hdf5_hl.h"
 
 
 //Defining size of packets
@@ -61,26 +60,36 @@ typedef struct packet_header {
     uint32_t pkt_nsec;
     long int tv_sec;
     long int tv_usec;
-    int copy_to(packet_header_t* pkt_head) {
-        pkt_head->acqmode = acq_mode;
-        pkt_head->pkt_num = pkt_num;
-        pkt_head->mod_num = mod_num;
-        pkt_head->qua_num = qua_num;
-        pkt_head->pkt_utc = pkt_utc;
-        pkt_head->pkt_nsec = pkt_nsec;
-        pkt_head->tv_sec = tv_sec;
-        pkt_head->tv_usec = tv_usec;
-    }
+    int copy_to(packet_header* pkt_head) {
+        pkt_head->acq_mode = this->acq_mode;
+        pkt_head->pkt_num = this->pkt_num;
+        pkt_head->mod_num = this->mod_num;
+        pkt_head->qua_num = this->qua_num;
+        pkt_head->pkt_utc = this->pkt_utc;
+        pkt_head->pkt_nsec = this->pkt_nsec;
+        pkt_head->tv_sec = this->tv_sec;
+        pkt_head->tv_usec = this->tv_usec;
+    };
+    int clear(){
+        this->acq_mode = 0x0;
+        this->pkt_num = 0;
+        this->mod_num = 0;
+        this->qua_num = 0;
+        this->pkt_utc = 0;
+        this->pkt_nsec = 0;
+        this->tv_sec = 0;
+        this->tv_usec = 0;
+    };
 } packet_header_t;
 
 typedef struct module_header {
     packet_header_t pkt_head[QUABOPERMODULE];
     uint8_t status[QUABOPERMODULE];
-    int copy_to(module_header_t* mod_head) {
+    int copy_to(module_header* mod_head) {
         for (int i = 0; i < QUABOPERMODULE; i++){
             pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
         }
-        mod_head->status = status;
+        memcpy(this->status, mod_head->pkt_head, sizeof(uint8_t)*QUABOPERMODULE);
     }
 } module_header_t;
 
@@ -88,14 +97,6 @@ typedef struct module_header {
 /* INPUT BUFFER STRUCTURES */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
-    /*char acqmode[IN_PKT_PER_BLOCK];
-    uint16_t pktNum[IN_PKT_PER_BLOCK];
-    uint16_t modNum[IN_PKT_PER_BLOCK];
-    uint8_t quaNum[IN_PKT_PER_BLOCK];
-    uint32_t pktUTC[IN_PKT_PER_BLOCK];
-    uint32_t pktNSEC[IN_PKT_PER_BLOCK];
-    long int tv_sec[IN_PKT_PER_BLOCK];
-    long int tv_usec[IN_PKT_PER_BLOCK];*/
     packet_header_t pkt_head[IN_PKT_PER_BLOCK];
     int data_block_size;
     int INTSIG;
