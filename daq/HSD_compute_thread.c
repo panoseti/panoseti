@@ -23,108 +23,79 @@
  * The module ID structure that is used to store a lot of the information regarding the current pair of module.
  * Module pairs consists of PKTPERPAIR(8) quabos.
  */
-typedef struct modulePairData {
-    uint8_t status;   // Determine the which part of the data is filled 0:neither filled 1:First rank filled 2: Second rank filled
-    unsigned int mod1Name;
-    unsigned int mod2Name;
-    uint32_t upperNANOSEC;
-    uint32_t lowerNANOSEC;
-    int lastMode;
-    uint16_t PKTNUM[PKTPERPAIR];
-    uint32_t NANOSEC[PKTPERPAIR];
-    long int tv_sec[PKTPERPAIR];
-    long int tv_usec[PKTPERPAIR];
-    uint8_t data[MODPAIRDATASIZE];
-    modulePairData* next_moduleID;
-} modulePairData_t;
-
-/**
- * Creating a new module ID object given the ID values and module numbers.
- */
-modulePairData_t* modulePairData_t_new(unsigned int mod1, unsigned int mod2){
-    modulePairData_t* value = (modulePairData_t*) malloc(sizeof(struct modulePairData));
-    if (value == NULL){
-        printf("Error: Unable to malloc space for ModulePairData\n");
-        exit(1);
-    }
-    value->status = 0;
-    value->mod1Name = mod1;
-    value->mod2Name = mod2;
-    value->next_moduleID = NULL;
-    value->upperNANOSEC = 0;
-    value->lowerNANOSEC = 0;
-    return value;
-}
-
-/**
- * Creating a new module ID with zeroed/null values
- */
-modulePairData_t* modulePairData_t_new(){
-    return modulePairData_t_new(-1,-1);
-}
-
-/**
- * Creating a new module ID with only 1 module for when new module is detected and not in module pair config file
- */
-modulePairData_t* modulePairData_t_new(unsigned mod1){
-    return modulePairData_t_new(mod1, -1);
-}
-
-/**
- * Store the data from the data_ptr to the moduleData based on the mode.
- */
-/*void storePktDataIntoModPair(uint8_t* moduleData, char* data_ptr, int mode, int quaboIndex){
-    //memcpy(moduleData + (quaboIndex*SCIDATASIZE*(mode/8)), data_ptr, sizeof(uint8_t)*SCIDATASIZE*(mode/8));
-    uint8_t *data;
-    if (mode == 16){
-        data = moduleData + (quaboIndex*SCIDATASIZE*2);
-        for(int i = 0; i < SCIDATASIZE*2; i++){
-            data[i] = data_ptr[i];
+typedef struct module_data {
+    uint32_t upper_nanosec;
+    uint32_t lower_nanosec;
+    int last_mode;
+    uint8_t status;
+    module_header_t mod_head[QUABOPERMODULE];
+    uint8_t data[MODULEDATASIZE];
+    int copy_to(module_data *mod_data) {
+        mod_data->upper_nanosec = this->upper_nanosec;
+        mod_data->lower_nanosec = this->lower_nanosec;
+        mod_data->last_mode = this->last_mode;
+        mod_data->status = this->status;
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            this->mod_head[i].copy_to(&(mod_data->mod_head[i]));
         }
-    } else if(mode == 8){
-        data = moduleData + (quaboIndex*SCIDATASIZE);
-        for(int i = 0; i < SCIDATASIZE; i++){
-            data[i] = data_ptr[i];
+        memcpy(mod_data->data, this->data, sizeof(uint8_t)*MODULEDATASIZE);
+    };
+    int clear(){
+        this->upper_nanosec = 0;
+        this->lower_nanosec = 0;
+        this->last_mode = 0;
+        this->status = 0;
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            this->mod_head[i].clear();
         }
+        memset(this->data, 0, sizeof(uint8_t)*MODULEDATASIZE);
+    };
+    std::string toString(){
+        return "";
+    };
+    int equal_to(module_data *mod_data){
+        if (this->upper_nanosec != mod_data->upper_nanosec
+            || this->lower_nanosec != mod_data->lower_nanosec
+            || this->last_mode != mod_data->last_mode
+            || this->status != mod_data->status){
+            return 0;
+        }
+        for (int i = 0; i < QUABOPERMODULE; i++){
+            if (!this->mod_head[i].equal_to(&(mod_data->mod_head[i]))){
+                return 0;
+            }
+        }
+        if (memcmp(this->data, mod_data->data, sizeof(uint8_t)*MODULEDATASIZE) == 0){
+            return 0;
+        }
+        return 1;
     }
-}*/
+} module_data_t;
 
 /**
  * Writes the module pair data to output buffer
  */
-void writeDataToOutBuf(modulePairData_t* modulePair, HSD_output_block_t* out_block){
+void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
     int out_index = out_block->header.stream_block_size;
     HSD_output_block_header_t* out_header = &(out_block->header);
-
-    out_header->modNum[out_index*2] = modulePair->mod1Name;
-    out_header->modNum[(out_index*2)+1] = modulePair->mod2Name;
-
-    out_header->acqmode[out_index] = modulePair->lastMode;
     
-    memcpy(out_block->header.pktNum + (out_index * PKTPERPAIR), modulePair->PKTNUM, sizeof(modulePair->PKTNUM[0])*PKTPERPAIR);
-    memcpy(out_block->header.pktNSEC + (out_index * PKTPERPAIR), modulePair->NANOSEC, sizeof(modulePair->NANOSEC[0])*PKTPERPAIR);
-    memcpy(out_block->header.tv_sec + (out_index * PKTPERPAIR), modulePair->tv_sec, sizeof(modulePair->tv_sec[0])*PKTPERPAIR);
-    memcpy(out_block->header.tv_usec + (out_index * PKTPERPAIR), modulePair->tv_usec, sizeof(modulePair->tv_usec[0])*PKTPERPAIR);
-    memcpy(out_block->header.status + out_index, &(modulePair->status), sizeof(modulePair->status));
+    for (int i = 0; i < QUABOPERMODULE; i++){
+        mod_data->mod_head[i].copy_to(&(out_header->img_pkt_head[out_index]));
+    }
     
-    memcpy(out_block->stream_block + (out_index * MODPAIRDATASIZE), modulePair->data, sizeof(uint8_t)*MODPAIRDATASIZE);
+    memcpy(out_block->stream_block + (out_index * MODULEDATASIZE), mod_data->data, sizeof(uint8_t)*MODULEDATASIZE);
 
     out_block->header.stream_block_size++;
 }
 
+//TODO
 /**
  * Write PH Data to output buffer's coinc block
  */
-void writePHToOutBuf(HSD_input_block_t* in_block, int pktIndex, HSD_output_block_t* out_block){
+void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_output_block_t* out_block){
     int out_index = out_block->header.coinc_block_size;
-    out_block->header.coin_acqmode[out_index] = in_block->header.acqmode[pktIndex];
-    out_block->header.coin_pktNum[out_index] = in_block->header.pktNum[pktIndex];
-    out_block->header.coin_modNum[out_index] = in_block->header.modNum[pktIndex];
-    out_block->header.coin_quaNum[out_index] = in_block->header.quaNum[pktIndex];
-    out_block->header.coin_pktUTC[out_index] = in_block->header.pktUTC[pktIndex];
-    out_block->header.coin_pktNSEC[out_index] = in_block->header.pktNSEC[pktIndex];
-    out_block->header.coin_tv_sec[out_index] = in_block->header.tv_sec[pktIndex];
-    out_block->header.coin_tv_usec[out_index] = in_block->header.tv_usec[pktIndex];
+
+    in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coin_pkt_head[out_index]));
     
     memcpy(out_block->coinc_block + out_index*PKTDATASIZE, in_block->data_block + pktIndex*PKTDATASIZE, sizeof(in_block->data_block[0])*PKTDATASIZE);
 
@@ -135,93 +106,68 @@ void writePHToOutBuf(HSD_input_block_t* in_block, int pktIndex, HSD_output_block
 /**
  * Storing the module data to the modulePairData from the data pointer.
  */
-void storeData(modulePairData_t* module, HSD_input_block_t* in_block, HSD_output_block_t* out_block, int pktIndex){
+void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_block_t* out_block, int pktIndex){
     int mode;
-    int quaboIndex;
-    char acqmode = in_block->header.acqmode[pktIndex];
-    uint16_t modNum = in_block->header.modNum[pktIndex];
-    uint8_t quaboNum = in_block->header.quaNum[pktIndex];
-    uint16_t PKTNUM = in_block->header.pktNum[pktIndex];
-    uint32_t NANOSEC = in_block->header.pktNSEC[pktIndex];
+    packet_header_t *pkt_head = &(in_block->header.pkt_head[pktIndex]);
+    uint32_t nanosec = pkt_head->pkt_nsec;
 
-    uint8_t currentStatus = (0x01 << quaboNum);
+    uint8_t currentStatus = (0x01 << pkt_head->qua_num);
 
     //Check the acqmode to determine the mode in which the packet is coming in as
-    if (acqmode == 0x1){
+    if (pkt_head->acq_mode == 0x1){
         //PH Mode
         //TODO
         writePHToOutBuf(in_block, pktIndex, out_block);
         //writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, tv_sec, tv_usec, data_ptr);
         //return;
-    } else if(acqmode == 0x2 || acqmode == 0x3){
+    } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
         mode = 16;
-    } else if (acqmode == 0x6 || acqmode == 0x7){
+    } else if (pkt_head->acq_mode == 0x6 || pkt_head->acq_mode == 0x7){
         //8 bit Imaging mode
         mode = 8;
     } else {
         //Unidentified mode
         //Return and not store the packet and return an error
-        printf("A new mode was identify acqmode=%X\n", acqmode);
-        printf("moduleNum=%X quaboNum=%X PKTNUM=%X\n", modNum, quaboNum, PKTNUM);
+        printf("A new mode was identify acqmode=%X\n ", pkt_head->acq_mode);
+        printf("moduleNum=%X quaboNum=%X PKTNUM=%X\n", pkt_head->mod_num, pkt_head->qua_num, pkt_head->pkt_num);
         printf("packet skipped\n");
         return;
     }
 
-    //Set the Index where the packet would be stored within the module pair
-    quaboIndex = quaboNum;
-
-    if(modNum == module->mod2Name){
-        currentStatus = currentStatus << 4;
-        quaboIndex += 4;
-    }
-
     //Setting the upper and lower bounds of NANOSEC interval that is allowed in the grouping
-    if(module->status == 0){
+    if(mod_data->status == 0){
         //Empty module pair obj
         //Setting both the upper and lower NANOSEC interval to the current NANOSEC value
-        module->lastMode = mode;
-        module->upperNANOSEC = NANOSEC;
-        module->lowerNANOSEC = NANOSEC;
-    } else if(NANOSEC > module->upperNANOSEC){
-        module->upperNANOSEC = NANOSEC;
-    } else if (NANOSEC < module->lowerNANOSEC){
-        module->lowerNANOSEC = NANOSEC;
+
+        mod_data->last_mode = mode;
+        mod_data->upper_nanosec = nanosec;
+        mod_data->lower_nanosec = nanosec;
+    } else if(nanosec > mod_data->upper_nanosec){
+        mod_data->upper_nanosec = nanosec;
+    } else if (nanosec < mod_data->lower_nanosec){
+        mod_data->lower_nanosec = nanosec;
     }
 
-    //Check conditions to see if they are met for writing to file
+    //Check conditions to see if they are met for writing to output buffer
     //Conditions:
     //When the current location in module pair is occupied in the module pair
     //When the mode in the module pair doesen't match the new mode
     //When the NANOSEC interval superceeded the threshold that is allowed
-    if ((module->status & currentStatus) || module->lastMode != mode || (module->upperNANOSEC - module->lowerNANOSEC) > NANOSECTHRESHOLD){
+    if ((mod_data->status & currentStatus) || mod_data->last_mode != mode || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSECTHRESHOLD){
 
-        writeDataToOutBuf(module, out_block);
-
-        memset(module->PKTNUM, 0, sizeof(uint16_t)*PKTPERPAIR);
-        memset(module->NANOSEC, 0, sizeof(uint32_t)*PKTPERPAIR);
-        memset(module->tv_sec, 0 , sizeof(long)*PKTPERPAIR);
-        memset(module->tv_usec, 0, sizeof(long)*PKTPERPAIR); 
+        write_img_to_out_buffer(mod_data, out_block);
         
         //Resetting values in the new emptied module pair obj
-        module->status = 0;
-        module->lastMode = mode;
-        module->upperNANOSEC = NANOSEC;
-        module->lowerNANOSEC = NANOSEC;
+        mod_data->clear();
     }
 
-    //printf("ACQMode = %u, LastMode = %u, Mode = %u, ModuleNum = %u, QuaboNum = %u, UTC = %u, NANOSEC = %u, PKTNUM = %u\n", acqmode, module->lastMode, mode, moduleNum, quaboNum, UTC, NANOSEC, PKTNUM);
-    //storePktDataIntoModPair((uint8_t *)module->data, data_ptr, mode, quaboIndex);
-    memcpy(module->data + (quaboIndex*SCIDATASIZE*(mode/8)), in_block->data_block + (pktIndex*PKTDATASIZE), sizeof(uint8_t)*SCIDATASIZE*(mode/8));
-    module->lastMode = mode;
-    module->PKTNUM[quaboIndex] = PKTNUM;
-    //module->UTC[quaboIndex] = UTC;
-    module->tv_sec[quaboIndex] = in_block->header.tv_sec[pktIndex];
-    module->tv_usec[quaboIndex] = in_block->header.tv_usec[pktIndex];
-    module->NANOSEC[quaboIndex] = NANOSEC;
+    memcpy(module->data + (pkt_head->qua_num*SCIDATASIZE*(mode/8)), in_block->data_block + (pktIndex*PKTDATASIZE), sizeof(uint8_t)*SCIDATASIZE*(mode/8));
+    
+    in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head->pkt_head[pkt_head->qua_num]));
 
     //Mark the status for the packet slot as taken
-    module->status = module->status | currentStatus;
+    mod_data->status = mod_data->status | currentStatus;
 }
 
 
