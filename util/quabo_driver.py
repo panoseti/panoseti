@@ -137,11 +137,14 @@ class QUABO:
         self.send(cmd)
 
     def fan(self, fanspeed):     # fanspeed is 0..15
+        print('speed: %d'%fanspeed)
         self.fanspeed = fanspeed
-        cmd = self.make_cmd(0x05)
+        cmd = self.make_cmd(0x85)
         cmd[6] = self.shutter_open | (self.shutter_power<<1)
         cmd[8] = self.fanspeed
         self.send(cmd)
+        time.sleep(1)
+        self.flush_rx_buf()
 
     def shutter_new(self, closed):
         cmd = self.make_cmd(0x08)
@@ -156,6 +159,7 @@ class QUABO:
 # IMPLEMENTATION STUFF FOLLOWS
 
     def send(self, cmd):
+        print('sending %d bytes'%(len(cmd)))
         self.sock.sendto(bytes(cmd), (self.ip_addr, UDP_CMD_PORT))
 
     def make_cmd(self, cmd):
@@ -167,12 +171,16 @@ class QUABO:
 
     def flush_rx_buf(self):
         count = 0
+        nbytes = 0
         while (count<32):
             try:
-                dumpbytes = self.sock.recvfrom(2048)
+                x = self.sock.recvfrom(2048)
+                # returns (data, ip_addr)
+                nbytes += len(x[0])
                 count += 1
             except:
                 break
+        print('got %d bytes'%nbytes)
 
     def parse_hv_params(self, fhand, cmd):
         for line in fhand:
