@@ -33,9 +33,9 @@ def quabo_power_query():
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         if quabo_power_query():
-            print("power is on")
+            print("Quabo power is on")
         else:
-            print("power is off")
+            print("Quabo power is off")
     elif sys.argv[1] == 'on':
         quabo_power(True)
     elif sys.argv[1] == 'off':

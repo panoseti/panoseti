@@ -3,6 +3,8 @@
 # start quabos
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 # options:
+# --start       start recording data
+# --stop        stop recording data
 # --dome N      select dome
 # --module N    select module
 # --quabo N     select quabo

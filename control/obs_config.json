@@ -21,11 +21,11 @@
                     "quabos": [
                         {
                             "ip_addr": "128.1.2.5",
-                            "board_id": "0"
+                            "board_id": "2"
                         },
                         {
                             "ip_addr": "128.1.2.6",
-                            "board_id": "1"
+                            "board_id": "3"
                         }
                     ]
                 }
@@ -39,11 +39,11 @@
                     "quabos": [
                         {
                             "ip_addr": "128.1.2.7",
-                            "board_id": "0"
+                            "board_id": "4"
                         },
                         {
                             "ip_addr": "128.1.2.8",
-                            "board_id": "1"
+                            "board_id": "5"
                         }
                     ]
                 },
@@ -52,11 +52,11 @@
                     "quabos": [
                         {
                             "ip_addr": "128.1.2.9",
-                            "board_id": "0"
+                            "board_id": "6"
                         },
                         {
                             "ip_addr": "128.1.2.10",
-                            "board_id": "1"
+                            "board_id": "7"
                         }
                     ]
                 }
