@@ -97,24 +97,30 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
 
-int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex, int moduleIndex){
-    fprintf(fileToWrite,
-    "{ pktNum : %u, pktNSEC : %u, tv_sec : %li, tv_usec : %li, status : %u}",
-    dataHeader->pktNum[blockIndex * PKTPERPAIR + moduleIndex],
-    dataHeader->pktNSEC[blockIndex * PKTPERPAIR + moduleIndex],
-    dataHeader->tv_sec[blockIndex * PKTPERPAIR + moduleIndex],
-    dataHeader->tv_usec[blockIndex * PKTPERPAIR + moduleIndex],
-    ((dataHeader->status[blockIndex * PKTPERPAIR + moduleIndex]) | 0x0F) >> 4*moduleIndex
+int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
+    for (int i = 0; i < QUABOPERMODULE; i++){
+        fprintf(fileToWrite,
+        "{ acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li, status : %u}",
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].acq_mode,
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].mod_num,
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].qua_num,
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].pkt_num,
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].pkt_nsec,
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_sec,
+        dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_usec,
+        dataHeader->img_pkt_head[blockIndex].status[i]
     );
+    }
+    
 }
 
-int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int moduleIndex){
+int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     FILE *fileToWrite;
     FILE_PTRS *moduleToWrite;
-    int mode = dataBlock->header.acqmode[blockIndex];
-    int modeOffset = mode/8;
+    int mode = dataBlock->header.img_pkt_head[blockIndex].pkt_head[0].acq_mode;
+    int modSizeMultiplier = mode/8;
 
-    moduleToWrite = data_files[dataBlock->header.modNum[blockIndex * 2 + moduleIndex]];
+    moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].pkt_head[0].mod_num];
     if (mode == 16) {
         fileToWrite = moduleToWrite->bit16Img;
     } else if (mode == 8){
@@ -133,13 +139,13 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int mod
 
     pff_start_json(fileToWrite);
 
-    write_img_header_file(fileToWrite, &(dataBlock->header), blockIndex, moduleIndex);
+    write_img_header_file(fileToWrite, &(dataBlock->header), blockIndex);
 
     pff_end_json(fileToWrite);
 
     pff_write_image(fileToWrite, 
-        QUABOPERMODULE*SCIDATASIZE*modeOffset, 
-        dataBlock->stream_block + (blockIndex*MODPAIRDATASIZE) + (moduleIndex*SCIDATASIZE*modeOffset));
+        QUABOPERMODULE*SCIDATASIZE*modSizeMultiplier, 
+        dataBlock->stream_block + (blockIndex*MODULEDATASIZE));
     return 1;
 }
 
@@ -151,8 +157,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex, int mod
  * @param frameIndex The index of the datablock to read the image frame from
  */
 int write_img_files(HSD_output_block_t *dataBlock, int blockIndex){
-    write_module_img_file(dataBlock, blockIndex, 0);
-    write_module_img_file(dataBlock, blockIndex, 1);
+    write_module_img_file(dataBlock, blockIndex);
 }
 
 int create_data_files(){

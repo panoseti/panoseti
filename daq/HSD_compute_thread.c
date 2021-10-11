@@ -30,6 +30,12 @@ typedef struct module_data {
     uint8_t status;
     module_header_t mod_head[QUABOPERMODULE];
     uint8_t data[MODULEDATASIZE];
+    module_data(){
+        this->upper_nanosec = 0;
+        this->lower_nanosec = 0;
+        this->last_mode = 0;
+        this->status = 0;
+    };
     int copy_to(module_data *mod_data) {
         mod_data->upper_nanosec = this->upper_nanosec;
         mod_data->lower_nanosec = this->lower_nanosec;
@@ -117,7 +123,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
         //TODO
-        writePHToOutBuf(in_block, pktIndex, out_block);
+        write_coinc_to_out_buffer(in_block, pktIndex, out_block);
         //writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, tv_sec, tv_usec, data_ptr);
         //return;
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
@@ -162,7 +168,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         mod_data->clear();
     }
 
-    memcpy(module->data + (pkt_head->qua_num*SCIDATASIZE*(mode/8)), in_block->data_block + (pktIndex*PKTDATASIZE), sizeof(uint8_t)*SCIDATASIZE*(mode/8));
+    memcpy(mod_data->data + (pkt_head->qua_num*SCIDATASIZE*(mode/8)), in_block->data_block + (pktIndex*PKTDATASIZE), sizeof(uint8_t)*SCIDATASIZE*(mode/8));
     
     in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head->pkt_head[pkt_head->qua_num]));
 
@@ -177,7 +183,6 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
 typedef struct quabo_info{
     uint16_t prev_pkt_num[NUM_OF_MODES+1];
     int lost_pkts[NUM_OF_MODES+1];
-    quabo_info* next_quabo_info;
 } quabo_info_t;
 
 /**
@@ -187,18 +192,13 @@ quabo_info_t* quabo_info_t_new(){
     quabo_info_t* value = (quabo_info_t*) malloc(sizeof(struct quabo_info));
     memset(value->lost_pkts, -1, sizeof(value->lost_pkts));
     memset(value->prev_pkt_num, 0, sizeof(value->prev_pkt_num));
-    value->next_quabo_info = NULL;
     return value;
 }
 
-//Initializing the linked list to be used for stroing the modulePairData
-static modulePairData_t* moduleListBegin = modulePairData_t_new();
-static modulePairData_t* moduleListEnd = moduleListBegin;
-static modulePairData_t* moduleInd[MODULEINDEXSIZE] = {NULL};
-
-
+static module_data_t* moduleInd[MODULEINDEXSIZE] = {NULL};
 
 static int init(hashpipe_thread_args_t * args){
+    hashpipe_status_t st = args->st;
     //Initialize the INTSIG signal within the buffer to be zero
     printf("\n\n-----------Start Setup of Compute Thread--------------\n");
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
@@ -207,37 +207,31 @@ static int init(hashpipe_thread_args_t * args){
     }
 
     //Initializing the Module Pairing using the config file given
-    FILE *modConfig_file = fopen(CONFIGFILE, "r");
+    char config_location[STRBUFFSIZE];
+    sprintf(config_location, CONFIGFILE_DEFAULT);
+    hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
+    FILE *modConfig_file = fopen(config_location, "r");
+
     char fbuf[100];
     char cbuf;
-    unsigned int mod1Name;
-    unsigned int mod2Name;
+    unsigned int modName;
 
     if (modConfig_file == NULL) {
         perror("Error Opening Config File\n");
         exit(1);
     }
     cbuf = getc(modConfig_file);
-    char moduleName[50];
 
     while(cbuf != EOF){
         ungetc(cbuf, modConfig_file);
         if (cbuf != '#'){
-            if (fscanf(modConfig_file, "%u %u\n", &mod1Name, &mod2Name) == 2){
-                if (moduleInd[mod1Name] == NULL && moduleInd[mod2Name] == NULL){
+            if (fscanf(modConfig_file, "%u\n", &modName) == 1){
+                if (moduleInd[modName] == NULL){
 
-                    sprintf(moduleName, MODULEPAIR_FORMAT, mod1Name, mod2Name);
+                    moduleInd[modName] = new module_data();
 
-                    moduleInd[mod1Name] = moduleInd[mod2Name] = moduleListEnd->next_moduleID 
-                                            = modulePairData_t_new(mod1Name, mod2Name);
-                    
-                    moduleListEnd = moduleListEnd->next_moduleID;
-                    
-                    //createQuaboTables(moduleListEnd->dynamicMeta, moduleListEnd);
-
-                    printf("Created Module Pair: %u.%u-%u and %u.%u-%u\n", 
-                    (unsigned int) (mod1Name << 2)/0x100, (mod1Name << 2) % 0x100, ((mod1Name << 2) % 0x100) + 3,
-                    (mod2Name << 2)/0x100, (mod2Name << 2) % 0x100, ((mod2Name << 2) % 0x100) + 3);
+                    printf("Created Module: %u.%u-%u\n", 
+                    (unsigned int) (modName << 2)/0x100, (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3);
                 }
             }
         } else {
@@ -278,21 +272,11 @@ static void *run(hashpipe_thread_args_t * args){
 
     //Variables to display pkt info
     uint8_t mode;                                       //The current mode of the packet block
-    quabo_info_t* quaboListBegin = quabo_info_t_new();  //Initializing the quabo info linked list
-    quabo_info_t* quaboListEnd = quaboListBegin;        //Setting the pointer to be the end of the linked list
     quabo_info_t* quaboInd[0xffff] = {NULL};            //Create a rudimentary hash map of the quabo number and linked list ind
 
     quabo_info_t* currentQuabo;                         //Pointer to the quabo info that is currently being used
     uint16_t boardLoc;                                  //The boardLoc(quabo index) for the current packet
     char* boardLocstr = (char *)malloc(sizeof(char)*10);
-
-    #ifdef TEST_MODE
-        FILE *fptr;
-        HSD_output_block_header_t* outBlockHeader;
-        fptr = fopen("./output_buffer.log", "w");
-        fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
-                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
-    #endif
     
     //Counters for the packets lost
     int total_lost_pkts = 0;
@@ -345,14 +329,13 @@ static void *run(hashpipe_thread_args_t * args){
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 
-        modulePairData_t* currentModule;
         uint16_t moduleNum;
         #ifdef TEST_MODE
             printf("Size of intput buffer data block: %i\n", db_in->block[curblock_in].header.data_block_size);
         #endif
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
             //----------------CALCULATION BLOCK-----------------
-            moduleNum = db_in->block[curblock_in].header.modNum[i];
+            moduleNum = db_in->block[curblock_in].header.pkt_head[i].mod_num;
 
             if (moduleInd[moduleNum] == NULL){
 
@@ -360,28 +343,23 @@ static void *run(hashpipe_thread_args_t * args){
                 printf("Packet skipping\n");
                 continue;
 
-            } else {
-                currentModule = moduleInd[moduleNum];
             }
 
-            storeData(currentModule, &(db_in->block[curblock_in]), &(db_out->block[curblock_out]), i);
+            storeData(moduleInd[moduleNum], &(db_in->block[curblock_in]), &(db_out->block[curblock_out]), i);
             
             //------------End CALCULATION BLOCK----------------
 
 
             //Finding the packet number and computing the lost of packets by using packet number
             //Read the packet number from the packet
-            mode = db_in->block[curblock_in].header.acqmode[i];
-            boardLoc = db_in->block[curblock_in].header.modNum[i] * 4 + db_in->block[curblock_in].header.quaNum[i];
+            mode = db_in->block[curblock_in].header.pkt_head[i].acq_mode;
+            boardLoc = db_in->block[curblock_in].header.pkt_head[i].mod_num * 4 + db_in->block[curblock_in].header.pkt_head[i].qua_num;
 
             //Check to see if there is a quabo info for the current quabo packet. If not create an object
             if (quaboInd[boardLoc] == NULL){
                 quaboInd[boardLoc] = quabo_info_t_new();            //Create a new quabo info object
 
                 printf("New Quabo Detected ID:%u.%u\n", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff); //Output the terminal the new quabo
-
-                quaboListEnd->next_quabo_info = quaboInd[boardLoc];
-                quaboListEnd = quaboListEnd->next_quabo_info;       //Append the new quabo info to the end of the linked list
             }
 
             //Set the current Quabo to the one stored in memory
@@ -393,51 +371,16 @@ static void *run(hashpipe_thread_args_t * args){
             } else {
                 //Check to see if the current packet number is less than the previous. If so the number has overflowed and looped.
                 //Compenstate for this if this has happend, and then take the difference of the packet numbers minus 1 to be the packets lost
-                if (db_in->block[curblock_in].header.pktNum[i] < currentQuabo->prev_pkt_num[mode])
-                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[mode]) + db_in->block[curblock_in].header.pktNum[i];
+                if (db_in->block[curblock_in].header.pkt_head[i].pkt_num < currentQuabo->prev_pkt_num[mode])
+                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[mode]) + db_in->block[curblock_in].header.pkt_head[i].pkt_num;
                 else
-                    current_pkt_lost = (db_in->block[curblock_in].header.pktNum[i] - currentQuabo->prev_pkt_num[mode]) - 1;
+                    current_pkt_lost = (db_in->block[curblock_in].header.pkt_head[i].pkt_num - currentQuabo->prev_pkt_num[mode]) - 1;
                 
                 currentQuabo->lost_pkts[mode] += current_pkt_lost; //Add this packet lost to the total for this quabo
                 total_lost_pkts += current_pkt_lost;               //Add this packet lost to the overall total for all quabos
             }
-            currentQuabo->prev_pkt_num[mode] = db_in->block[curblock_in].header.pktNum[i]; //Update the previous packet number to be the current packet number
-
-            /*
-            //Copy to output buffer
-            if (mode < 4){
-                memcpy(db_out->block[curblock_out].stream_block+i*PKTDATASIZE, db_in->block[curblock_in].data_block+i*PKTDATASIZE, PKTDATASIZE*sizeof(unsigned char));
-            } else {
-                memcpy(db_out->block[curblock_out].stream_block+i*PKTDATASIZE, db_in->block[curblock_in].data_block+i*PKTDATASIZE, BIT8PKTDATASIZE*sizeof(unsigned char));
-            }
-
-            //Copy time over to output
-            db_out->block[curblock_out].header.acqmode[i] = db_in->block[curblock_in].header.acqmode[i];
-            db_out->block[curblock_out].header.pktNum[i] = db_in->block[curblock_in].header.pktNum[i];
-            db_out->block[curblock_out].header.modNum[i] = db_in->block[curblock_in].header.modNum[i];
-            db_out->block[curblock_out].header.quaNum[i] = db_in->block[curblock_in].header.quaNum[i];
-            db_out->block[curblock_out].header.pktUTC[i] = db_in->block[curblock_in].header.pktUTC[i];
-            db_out->block[curblock_out].header.pktNSEC[i] = db_in->block[curblock_in].header.pktNSEC[i];
-
-
-            db_out->block[curblock_out].header.tv_sec[i] = db_in->block[curblock_in].header.tv_sec[i];
-            db_out->block[curblock_out].header.tv_usec[i] = db_in->block[curblock_in].header.tv_usec[i];
-
-            db_out->block[curblock_out].header.stream_block_size++;*/        
+            currentQuabo->prev_pkt_num[mode] = db_in->block[curblock_in].header.pkt_head[i].pkt_num; //Update the previous packet number to be the current packet number
         }
-
-        
-
-        #ifdef TEST_MODE
-            outBlockHeader = &(db_out->block[curblock_out].header);
-            for (int i = 0; i < outBlockHeader->stream_block_size; i++){
-                fprintf(fptr, "%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
-                        outBlockHeader->acqmode[i], outBlockHeader->pktNum[i],
-                        outBlockHeader->modNum[i], outBlockHeader->quaNum[i],
-                        outBlockHeader->pktUTC[i], outBlockHeader->pktNSEC[i],
-                        outBlockHeader->tv_sec[i], outBlockHeader->tv_usec[i]);
-            }
-        #endif
 
         /*Update input and output block for both buffers*/
         //Mark output block as full and advance
