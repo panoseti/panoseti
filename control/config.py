@@ -4,17 +4,18 @@
 # based on matlab/initq.m, startq*.py
 # options:
 # --show        show list of domes/modules/quabos
-# --reboot      reboot quabos
-# --loads       load silver firmware
-# --loadg       load gold firmware
 # --dome N      select dome
 # --module N    select module
 # --quabo N     select quabo
+# --ping        ping selected quabos
+# --reboot      reboot selected quabos
+# --loads       load silver firmware in selected quabos
+# --loadg       load gold firmware in selected quabos
 
 firmware_silver = 'quabo_0116C_23CBEAFB.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import config_file, sys
+import config_file, sys, os
 from panoseti_tftp import tftpw
 
 def show_quabos(obs_config):
@@ -37,6 +38,13 @@ def do_op(quabos, op):
             x.put_bin_file(firmware_silver)
         elif op == 'loadg':
             x.put_bin_file(firmware_gold, 0x0)
+        elif op == 'ping':
+            ret = os.system('ping -c 1 %s'%quabo['ip_addr'])
+            if ret == 0:
+                print('%s responds to ping'%quabo['ip_addr'])
+            else:
+                print('%s does not respond to ping'%quabo['ip_addr'])
+            
 
 if __name__ == "__main__":
     argv = sys.argv
@@ -60,6 +68,9 @@ if __name__ == "__main__":
         elif argv[i] == '--loadg':
             nops += 1
             op = 'loadg'
+        elif argv[i] == '--ping':
+            nops += 1
+            op = 'ping'
         elif argv[i] == '--dome':
             nsel += 1
             i += 1
