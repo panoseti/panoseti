@@ -35,6 +35,7 @@ BINDIR=$(prefix)/bin
 install-lib: $(HSD_LIB_TARGET)
 	mkdir -p "$(DESTDIR)$(LIBDIR)"
 	install -p $^ "$(DESTDIR)$(LIBDIR)"
+	rm $^
 install: install-lib
 
 .PHONY: all tags clean install install-lib
