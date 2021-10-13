@@ -186,13 +186,6 @@ static void *run(hashpipe_thread_args_t * args){
 		hashpipe_pktsock_release_frame(p_frame);
 	}
 
-    #ifdef TEST_MODE
-        FILE *fptr;
-        fptr = fopen("./input_buffer.log", "w");
-        fprintf(fptr, "%s%15s%15s%15s%15s%15s%15s%15s\n",
-                "ACQMODE", "PKTNUM", "MODNUM", "QUABONUM", "PKTUTC", "PKTNSEC", "tv_sec", "tv_usec");
-    #endif
-
     /* Main Loop */
     while(run_threads()){
 
@@ -279,16 +272,6 @@ static void *run(hashpipe_thread_args_t * args){
         }
         //Send the signal of SIGINT to the blockHeader
         blockHeader->INTSIG = INTSIG;
-
-        #ifdef TEST_MODE
-            for (int i = 0; i < blockHeader->data_block_size; i++){
-                fprintf(fptr, "%7u%15u%15u%15u%15u%15u%15lu%15lu\n",
-                        blockHeader->acqmode[i], blockHeader->pktNum[i],
-                        blockHeader->modNum[i], blockHeader->quaNum[i],
-                        blockHeader->pktUTC[i], blockHeader->pktNSEC[i],
-                        blockHeader->tv_sec[i], blockHeader->tv_usec[i]);
-            }
-        #endif
 
 
         // Get stats from packet socket

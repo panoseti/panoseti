@@ -26,50 +26,42 @@
 typedef struct module_data {
     uint32_t upper_nanosec;
     uint32_t lower_nanosec;
-    int last_mode;
     uint8_t status;
-    module_header_t mod_head[QUABOPERMODULE];
+    module_header_t mod_head;
     uint8_t data[MODULEDATASIZE];
     module_data(){
         this->upper_nanosec = 0;
         this->lower_nanosec = 0;
-        this->last_mode = 0;
         this->status = 0;
     };
     int copy_to(module_data *mod_data) {
         mod_data->upper_nanosec = this->upper_nanosec;
         mod_data->lower_nanosec = this->lower_nanosec;
-        mod_data->last_mode = this->last_mode;
         mod_data->status = this->status;
-        for (int i = 0; i < QUABOPERMODULE; i++){
-            this->mod_head[i].copy_to(&(mod_data->mod_head[i]));
-        }
+        this->mod_head.copy_to(&(mod_data->mod_head));
         memcpy(mod_data->data, this->data, sizeof(uint8_t)*MODULEDATASIZE);
     };
     int clear(){
         this->upper_nanosec = 0;
         this->lower_nanosec = 0;
-        this->last_mode = 0;
         this->status = 0;
-        for (int i = 0; i < QUABOPERMODULE; i++){
-            this->mod_head[i].clear();
-        }
+        this->mod_head.clear();
         memset(this->data, 0, sizeof(uint8_t)*MODULEDATASIZE);
     };
     std::string toString(){
-        return "";
+        return "status = " + std::to_string(this->status) +
+                " upper_nanosec = " + std::to_string(this->upper_nanosec) +
+                " lower_nanosec = " + std::to_string(this->lower_nanosec) +
+                "\n" + mod_head.toString();
     };
     int equal_to(module_data *mod_data){
         if (this->upper_nanosec != mod_data->upper_nanosec
             || this->lower_nanosec != mod_data->lower_nanosec
-            || this->last_mode != mod_data->last_mode
             || this->status != mod_data->status){
             return 0;
         }
-        for (int i = 0; i < QUABOPERMODULE; i++){
-            if (!this->mod_head[i].equal_to(&(mod_data->mod_head[i]))){
-                return 0;
-            }
+        if (!this->mod_head.equal_to(&(mod_data->mod_head))){
+            return 0;
         }
         if (memcmp(this->data, mod_data->data, sizeof(uint8_t)*MODULEDATASIZE) == 0){
             return 0;
@@ -85,9 +77,7 @@ void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_bl
     int out_index = out_block->header.stream_block_size;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
-    for (int i = 0; i < QUABOPERMODULE; i++){
-        mod_data->mod_head[i].copy_to(&(out_header->img_pkt_head[out_index]));
-    }
+    mod_data->mod_head.copy_to(&(out_header->img_pkt_head[out_index]));
     
     memcpy(out_block->stream_block + (out_index * MODULEDATASIZE), mod_data->data, sizeof(uint8_t)*MODULEDATASIZE);
 
@@ -140,13 +130,14 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         printf("packet skipped\n");
         return;
     }
+    //printf("\nModule Data Before\n%s", mod_data->toString().c_str());
 
     //Setting the upper and lower bounds of NANOSEC interval that is allowed in the grouping
     if(mod_data->status == 0){
         //Empty module pair obj
         //Setting both the upper and lower NANOSEC interval to the current NANOSEC value
-
-        mod_data->last_mode = mode;
+        mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+        mod_data->mod_head.mode = mode;
         mod_data->upper_nanosec = nanosec;
         mod_data->lower_nanosec = nanosec;
     } else if(nanosec > mod_data->upper_nanosec){
@@ -155,25 +146,38 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         mod_data->lower_nanosec = nanosec;
     }
 
+
+    /*printf("Packet Data\n %s\n", pkt_head->toString().c_str());
+    printf("if statment %i %i %i\n",
+        (mod_data->status & currentStatus),
+        mod_data->last_mode != mode,
+        (mod_data->upper_nanosec - mod_data->lower_nanosec));
+    printf("Last Mode %i Current Mode %i\n", mod_data->last_mode, mode);*/
     //Check conditions to see if they are met for writing to output buffer
     //Conditions:
     //When the current location in module pair is occupied in the module pair
     //When the mode in the module pair doesen't match the new mode
     //When the NANOSEC interval superceeded the threshold that is allowed
-    if ((mod_data->status & currentStatus) || mod_data->last_mode != mode || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSECTHRESHOLD){
+    if ((mod_data->status & currentStatus) || mod_data->mod_head.mode != mode || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSECTHRESHOLD){
 
         write_img_to_out_buffer(mod_data, out_block);
         
         //Resetting values in the new emptied module pair obj
         mod_data->clear();
+        
     }
 
     memcpy(mod_data->data + (pkt_head->qua_num*SCIDATASIZE*(mode/8)), in_block->data_block + (pktIndex*PKTDATASIZE), sizeof(uint8_t)*SCIDATASIZE*(mode/8));
     
-    in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head->pkt_head[pkt_head->qua_num]));
+    in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head.pkt_head[pkt_head->qua_num]));
 
     //Mark the status for the packet slot as taken
     mod_data->status = mod_data->status | currentStatus;
+    mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+    mod_data->mod_head.mode = mode;
+    mod_data->upper_nanosec = nanosec;
+    mod_data->lower_nanosec = nanosec;
+    //printf("Module data After\n %s", mod_data->toString().c_str());
 }
 
 
@@ -330,19 +334,14 @@ static void *run(hashpipe_thread_args_t * args){
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 
         uint16_t moduleNum;
-        #ifdef TEST_MODE
-            printf("Size of intput buffer data block: %i\n", db_in->block[curblock_in].header.data_block_size);
-        #endif
         for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
             //----------------CALCULATION BLOCK-----------------
             moduleNum = db_in->block[curblock_in].header.pkt_head[i].mod_num;
 
             if (moduleInd[moduleNum] == NULL){
-
                 printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) (moduleNum << 2)/0x100, (moduleNum << 2) % 0x100);
                 printf("Packet skipping\n");
                 continue;
-
             }
 
             storeData(moduleInd[moduleNum], &(db_in->block[curblock_in]), &(db_out->block[curblock_out]), i);
@@ -403,13 +402,6 @@ static void *run(hashpipe_thread_args_t * args){
 
         if (currentQuabo){
             hashpipe_status_lock_safe(&st);
-            /*hputs(st.buf, "QUABOKEY", boardLocstr);
-            hputi4(st.buf, "M1PKTNUM", currentQuabo->pkt_num[1]);
-            hputi4(st.buf, "M2PKTNUM", currentQuabo->pkt_num[2]);
-            hputi4(st.buf, "M3PKTNUM", currentQuabo->pkt_num[3]);
-            hputi4(st.buf, "M6PKTNUM", currentQuabo->pkt_num[6]);
-            hputi4(st.buf, "M7PKTNUM", currentQuabo->pkt_num[7]);*/
-
             hputi4(st.buf, "TPKTLST", total_lost_pkts);
             hputi4(st.buf, "M1PKTLST", currentQuabo->lost_pkts[1]);
             hputi4(st.buf, "M2PKTLST", currentQuabo->lost_pkts[2]);

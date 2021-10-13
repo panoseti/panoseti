@@ -39,7 +39,7 @@
 #define DATABLOCKSIZE           SCIDATASIZE*PKTPERPAIR+64+16
 #define HKFIELDS                27
 #define GPSFIELDS               10
-#define NANOSECTHRESHOLD        20
+#define NANOSECTHRESHOLD        1e10//20
 #define MODULEINDEXSIZE         0xffff
 
 #define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
@@ -104,29 +104,39 @@ typedef struct packet_header {
 } packet_header_t;
 
 typedef struct module_header {
+    int mode;
+    uint16_t mod_num;
     packet_header_t pkt_head[QUABOPERMODULE];
     uint8_t status[QUABOPERMODULE];
     int copy_to(module_header* mod_head) {
+        mod_head->mode = this->mode;
+        mod_head->mod_num = this->mod_num;
         for (int i = 0; i < QUABOPERMODULE; i++){
             this->pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
         }
         memcpy(mod_head->status, this->status, sizeof(uint8_t)*QUABOPERMODULE);
     };
     int clear(){
+        this->mode = 0;
+        this->mod_num = 0;
         for (int i = 0; i < QUABOPERMODULE; i++){
             this->pkt_head[i].clear();
         }
         memset(this->status, 0, sizeof(uint8_t)*QUABOPERMODULE);
     };
     std::string toString(){
-        std::string return_string;
+        std::string return_string = "mode = " + std::to_string(this->mode) + "\n";
+        return_string += "mod_num = " + std::to_string(this->mod_num);
         for (int i = 0; i < QUABOPERMODULE; i++){
-            return_string += pkt_head[i].toString();
-            return_string += " status = " + std::to_string(this->status[i]) + " \n";
+            return_string += "\n" + pkt_head[i].toString();
+            return_string += " status = " + std::to_string(this->status[i]);
         }
         return return_string;
     }
     int equal_to(module_header *mod_head){
+        if (this->mode != mod_head->mode){
+            return 0;
+        }
         for (int i = 0; i < QUABOPERMODULE; i++){
             if (!this->pkt_head[i].equal_to(&(mod_head->pkt_head[i])) 
                 || this->status[i] != mod_head->status[i]) {

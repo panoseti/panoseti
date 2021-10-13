@@ -98,9 +98,11 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
 }
 
 int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
+    fprintf(fileToWrite, "{ ");
     for (int i = 0; i < QUABOPERMODULE; i++){
         fprintf(fileToWrite,
-        "{ acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li, status : %u}",
+        "quabo %u: { acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li, status : %u}",
+        i,
         dataHeader->img_pkt_head[blockIndex].pkt_head[i].acq_mode,
         dataHeader->img_pkt_head[blockIndex].pkt_head[i].mod_num,
         dataHeader->img_pkt_head[blockIndex].pkt_head[i].qua_num,
@@ -109,23 +111,28 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
         dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_sec,
         dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_usec,
         dataHeader->img_pkt_head[blockIndex].status[i]
-    );
+        );
+        if (i < QUABOPERMODULE-1){
+            fprintf(fileToWrite, ", ");
+        }
     }
-    
+    fprintf(fileToWrite, "}");
 }
 
 int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     FILE *fileToWrite;
     FILE_PTRS *moduleToWrite;
-    int mode = dataBlock->header.img_pkt_head[blockIndex].pkt_head[0].acq_mode;
+    int mode = dataBlock->header.img_pkt_head[blockIndex].mode;
     int modSizeMultiplier = mode/8;
 
-    moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].pkt_head[0].mod_num];
+    moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].mod_num];
     if (mode == 16) {
         fileToWrite = moduleToWrite->bit16Img;
     } else if (mode == 8){
         fileToWrite = moduleToWrite->bit8Img;
     } else {
+        printf("Mode %i not recognized\n", mode);
+        printf("Module Header Value\n%s", dataBlock->header.img_pkt_head[blockIndex].toString().c_str());
         return 0;
     }
     
