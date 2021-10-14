@@ -115,7 +115,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         //TODO
         write_coinc_to_out_buffer(in_block, pktIndex, out_block);
         //writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, tv_sec, tv_usec, data_ptr);
-        //return;
+        return;
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
         mode = 16;
