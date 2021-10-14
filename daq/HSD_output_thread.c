@@ -37,11 +37,14 @@ struct PF {
 };
 
 struct FILE_PTRS{
+    DIRNAME_INFO dir_info;
+    FILENAME_INFO file_info;
     FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
-    FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode);
+    FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode);
+    void make_files(const char *diskDir, const char *file_mode);
 };
 
-FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *mode){
+FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode){
     string fileName;
     string dirName;
     dirInfo->make_dirname(dirName);
@@ -54,16 +57,51 @@ FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *
         fileInfo->make_filename(fileName);
         switch (dp){
             case DP_DYNAMIC_META:
-                dynamicMeta = fopen((dirName + fileName).c_str(), mode);
+                this->dynamicMeta = fopen((dirName + fileName).c_str(), file_mode);
                 break;
             case DP_BIT16_IMG:
-                bit16Img = fopen((dirName + fileName).c_str(), mode);
+                this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
                 break;
             case DP_BIT8_IMG:
-                bit8Img = fopen((dirName + fileName).c_str(), mode);
+                this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
                 break;
             case DP_PH_IMG:
-                PHImg = fopen((dirName + fileName).c_str(), mode);
+                this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
+                break;
+            default:
+                break;
+        }
+        if (access(dirName.c_str(), F_OK) == -1) {
+            printf("Error: Unable to access file - %s\n", dirName.c_str());
+            exit(0);
+        }
+        printf("Created file %s\n", (dirName + fileName).c_str());
+    }
+}
+
+void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
+    string fileName;
+    string dirName;
+    this->dir_info.make_dirname(dirName);
+    dirName = diskDir + dirName + "/";
+    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    
+
+    for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
+        this->file_info.data_product = (DATA_PRODUCT)dp;
+        this->file_info.make_filename(fileName);
+        switch (dp){
+            case DP_DYNAMIC_META:
+                this->dynamicMeta = fopen((dirName + fileName).c_str(), file_mode);
+                break;
+            case DP_BIT16_IMG:
+                this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
+                break;
+            case DP_BIT8_IMG:
+                this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
+                break;
+            case DP_PH_IMG:
+                this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
                 break;
             default:
                 break;
