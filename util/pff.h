@@ -54,6 +54,7 @@ struct DIRNAME_INFO {
     }
     void make_dirname(string&);
     int parse_dirname(char*);
+    int copy_to(DIRNAME_INFO* dirInfo);
 };
 
 // the info encoded in a file name
@@ -65,7 +66,6 @@ struct FILENAME_INFO {
     int dome;
     int module;
     int seqno;
-    char *fileName;
 
     FILENAME_INFO(){}
     FILENAME_INFO(
@@ -81,6 +81,7 @@ struct FILENAME_INFO {
     }
     void make_filename(string&);
     int parse_filename(char*);
+    int copy_to(FILENAME_INFO* fileInfo);
 };
 
 // given a string of the form .../d/f, return d and f

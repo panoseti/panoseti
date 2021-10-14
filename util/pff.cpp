@@ -154,6 +154,12 @@ int DIRNAME_INFO::parse_dirname(char* name) {
     return 0;
 }
 
+int DIRNAME_INFO::copy_to(DIRNAME_INFO* dirInfo){
+    dirInfo->start_time = this->start_time;
+    memcpy(dirInfo->observatory, this->observatory, sizeof(char)*256);
+    return 1;
+}
+
 void FILENAME_INFO::make_filename(string &s) {
     char buf[1024], tbuf[256];
 
@@ -196,6 +202,16 @@ int FILENAME_INFO::parse_filename(char* name) {
         }
     }
     return 0;
+}
+
+int FILENAME_INFO::copy_to(FILENAME_INFO* fileInfo){
+    fileInfo->start_time = this->start_time;
+    fileInfo->data_product = this->data_product;
+    fileInfo->bytes_per_pixel = this->bytes_per_pixel;
+    fileInfo->dome = this->dome;
+    fileInfo->module = this->module;
+    fileInfo->seqno = this->seqno;
+    return 1;
 }
 
 #if 0
