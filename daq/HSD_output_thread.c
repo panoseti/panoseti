@@ -42,41 +42,13 @@ struct FILE_PTRS{
     FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
     FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode);
     void make_files(const char *diskDir, const char *file_mode);
+    void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
 };
 
 FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode){
-    string fileName;
-    string dirName;
-    dirInfo->make_dirname(dirName);
-    dirName = diskDir + dirName + "/";
-    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-    
-
-    for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
-        fileInfo->data_product = (DATA_PRODUCT)dp;
-        fileInfo->make_filename(fileName);
-        switch (dp){
-            case DP_DYNAMIC_META:
-                this->dynamicMeta = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            case DP_BIT16_IMG:
-                this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            case DP_BIT8_IMG:
-                this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            case DP_PH_IMG:
-                this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            default:
-                break;
-        }
-        if (access(dirName.c_str(), F_OK) == -1) {
-            printf("Error: Unable to access file - %s\n", dirName.c_str());
-            exit(0);
-        }
-        printf("Created file %s\n", (dirName + fileName).c_str());
-    }
+    dirInfo->copy_to(&(this->dir_info));
+    fileInfo->copy_to(&(this->file_info));
+    this->make_files(diskDir, file_mode);
 }
 
 void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
@@ -114,12 +86,49 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     }
 }
 
+void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode){
+    string fileName;
+    string dirName;
+    this->dir_info.make_dirname(dirName);
+    dirName = diskDir + dirName + "/";
+    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+    this->file_info.data_product = (DATA_PRODUCT)dp;
+    this->file_info.start_time = time(NULL);
+    this->file_info.make_filename(fileName);
+
+    switch (dp){
+        case DP_DYNAMIC_META:
+            fclose(this->dynamicMeta);
+            this->dynamicMeta = fopen((dirName + fileName).c_str(), file_mode);
+            break;
+        case DP_BIT16_IMG:
+            fclose(this->bit16Img);
+            this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
+            break;
+        case DP_BIT8_IMG:
+            fclose(this->bit8Img);
+            this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
+            break;
+        case DP_PH_IMG:
+            fclose(this->PHImg);
+            this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
+            break;
+        default:
+            break;
+    }
+    if (access(dirName.c_str(), F_OK) == -1) {
+        printf("Error: Unable to access file - %s\n", dirName.c_str());
+        exit(0);
+    }
+    printf("Created file %s\n", (dirName + fileName).c_str());
+}
+
 
 static char config_location[STRBUFFSIZE];
 
 static char save_location[STRBUFFSIZE];
-static long long file_size = 0;
-static long long max_file_size = 0; //IN UNITS OF APPROX 2 BYTES OR 16 bits
+static long long max_file_size = 0; //IN UNITS OF BYTES
 
 
 static redisContext *redis_server;
@@ -190,6 +199,15 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     pff_write_image(fileToWrite, 
         QUABOPERMODULE*SCIDATASIZE*modSizeMultiplier, 
         dataBlock->stream_block + (blockIndex*MODULEDATASIZE));
+
+    if (ftell(fileToWrite) > max_file_size){
+        if (mode == 16){
+            moduleToWrite->new_dp_file(DP_BIT16_IMG, save_location, "w");
+        } else if (mode == 8){
+            moduleToWrite->new_dp_file(DP_BIT8_IMG, save_location, "w");
+        }
+    }
+
     return 1;
 }
 
@@ -236,6 +254,12 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
     pff_write_image(fileToWrite, 
         SCIDATASIZE*2, 
         dataBlock->coinc_block + (blockIndex*PKTDATASIZE));
+
+    if (ftell(fileToWrite) > max_file_size){
+        if (mode == 0x1){
+            moduleToWrite->new_dp_file(DP_PH_IMG, save_location, "w");
+        }
+    }
     return 1;
 }
 
@@ -346,10 +370,10 @@ static int init(hashpipe_thread_args_t *args)
     hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
     printf("Config Location: %s\n", config_location);
 
-    int maxSizeInput = 0;
-
-    hgeti4(st.buf, "MAXFILESIZE", &maxSizeInput);
-    max_file_size = maxSizeInput * 2E6;
+    int maxFileSizeInput;
+    hgeti4(st.buf, "MAXFILESIZE", &maxFileSizeInput);
+    max_file_size = maxFileSizeInput*1E6;
+    printf("Max file size is %i megabytes\n", maxFileSizeInput);
 
     /*Initialization of Redis Server Values*/
     printf("------------------SETTING UP REDIS ------------------\n");
@@ -467,9 +491,8 @@ static void *run(hashpipe_thread_args_t *args) {
             write_module_coinc_file(&(db->block[block_idx]), i);
         }
 
-        if (QUITSIG || file_size > max_file_size) {
+        if (QUITSIG) {
             printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n\n");
-            file_size = 0;
             QUITSIG = 0;
         }
 
