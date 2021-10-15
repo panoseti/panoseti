@@ -159,18 +159,17 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
 
 int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     FILE *fileToWrite;
-    FILE_PTRS *moduleToWrite;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].mod_num];
     int mode = dataBlock->header.img_pkt_head[blockIndex].mode;
     int modSizeMultiplier = mode/8;
 
-    moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].mod_num];
     if (mode == 16) {
         fileToWrite = moduleToWrite->bit16Img;
     } else if (mode == 8){
         fileToWrite = moduleToWrite->bit8Img;
     } else {
         printf("Mode %i not recognized\n", mode);
-        printf("Module Header Value\n%s", dataBlock->header.img_pkt_head[blockIndex].toString().c_str());
+        printf("Module Header Value\n%s\n", dataBlock->header.img_pkt_head[blockIndex].toString().c_str());
         return 0;
     }
     
@@ -191,6 +190,52 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     pff_write_image(fileToWrite, 
         QUABOPERMODULE*SCIDATASIZE*modSizeMultiplier, 
         dataBlock->stream_block + (blockIndex*MODULEDATASIZE));
+    return 1;
+}
+
+int write_coinc_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
+    fprintf(fileToWrite,
+    "{ acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li}",
+    dataHeader->coin_pkt_head[blockIndex].acq_mode,
+    dataHeader->coin_pkt_head[blockIndex].mod_num,
+    dataHeader->coin_pkt_head[blockIndex].qua_num,
+    dataHeader->coin_pkt_head[blockIndex].pkt_num,
+    dataHeader->coin_pkt_head[blockIndex].pkt_nsec,
+    dataHeader->coin_pkt_head[blockIndex].tv_sec,
+    dataHeader->coin_pkt_head[blockIndex].tv_usec
+    );
+}
+
+int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
+    FILE *fileToWrite;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coin_pkt_head[blockIndex].mod_num];
+    char mode = dataBlock->header.coin_pkt_head[blockIndex].acq_mode;
+
+    if (mode == 0x1) {
+        fileToWrite = moduleToWrite->PHImg;
+    } else {
+        printf("Mode %c not recognized\n", mode);
+        printf("Module Header Value\n%s\n", dataBlock->header.img_pkt_head[blockIndex].toString().c_str());
+        return 0;
+    }
+
+    if (moduleToWrite == NULL){
+        printf("Module To Write is null\n");
+        return 0;
+    } else if (fileToWrite == NULL){
+        printf("File to Write is null\n");
+        return 0;
+    } 
+
+    pff_start_json(fileToWrite);
+
+    write_coinc_header_file(fileToWrite, &(dataBlock->header), blockIndex);
+
+    pff_end_json(fileToWrite);
+
+    pff_write_image(fileToWrite, 
+        SCIDATASIZE*2, 
+        dataBlock->coinc_block + (blockIndex*PKTDATASIZE));
     return 1;
 }
 
@@ -416,6 +461,10 @@ static void *run(hashpipe_thread_args_t *args) {
         check_redis(redis_server);
         for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
             write_img_files(&(db->block[block_idx]), i);
+        }
+
+        for (int i = 0; i < db->block[block_idx].header.coinc_block_size; i++){
+            write_module_coinc_file(&(db->block[block_idx]), i);
         }
 
         if (QUITSIG || file_size > max_file_size) {
