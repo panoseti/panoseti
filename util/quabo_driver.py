@@ -14,7 +14,9 @@
 import socket, time
 
 UDP_CMD_PORT= 60000
-    # port used on both sides
+    # port used on both sides for command packets
+UDP_HK_PORT= 60002
+    # used on master to receive HK packets
 
 SERIAL_COMMAND_LENGTH = 829
 
@@ -25,6 +27,11 @@ class QUABO:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         self.sock.bind(("", UDP_CMD_PORT))
+
+        self.hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.hk_sock.settimeout(0.5)
+        self.hk_sock.bind(("", UDP_HK_PORT))
+
         self.shutter_open = 0
         self.shutter_power = 0
         self.fanspeed = 0

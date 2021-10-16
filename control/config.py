@@ -18,6 +18,19 @@ firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 import config_file, sys, os
 from panoseti_tftp import tftpw
 
+def usage():
+    print('''usage:
+--show        show list of domes/modules/quabos
+--dome N      select dome
+--module N    select module
+--quabo N     select quabo
+--ping        ping selected quabos
+--reboot      reboot selected quabos
+--loads       load silver firmware in selected quabos
+--loadg       load gold firmware in selected quabos
+''')
+    sys.exit()
+
 def show_quabos(obs_config):
     for dome in obs_config['domes']:
         print('dome %s'%dome['num'])
@@ -39,7 +52,7 @@ def do_op(quabos, op):
         elif op == 'loadg':
             x.put_bin_file(firmware_gold, 0x0)
         elif op == 'ping':
-            ret = os.system('ping -c 1 %s'%quabo['ip_addr'])
+            ret = os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%quabo['ip_addr'])
             if ret == 0:
                 print('%s responds to ping'%quabo['ip_addr'])
             else:
@@ -84,15 +97,19 @@ if __name__ == "__main__":
             i += 1
             quabo = int(argv[i])
         else:
-            raise Exception('bad arg %s'%argv[i])
+            print('bad arg: %s'%argv[i])
+            usage()
         i += 1
 
     if (nops == 0):
-        raise Exception('no op specified')
+        print('no op specified')
+        usage()
     if (nops > 1):
-        raise Exception('must specify a single op')
+        print('must specify a single op')
+        usage()
     if (nsel > 1):
-        raise Exception('only one selector allowed')
+        print('only one selector allowed')
+        usage()
 
     quabos = config_file.get_quabos(obs_config, dome, module, quabo)
     do_op(quabos, op)
