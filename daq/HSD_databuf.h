@@ -1,3 +1,7 @@
+/**
+ * Panoseti Data Acquisition Data Buffer
+ * 
+ */
 #include <string>
 #include <string.h>
 #include <stdint.h>
@@ -12,42 +16,29 @@
 #define HEADERSIZE          16      //byte of header
 
 //Defining the characteristics of the circuluar buffers
-#define CACHE_ALIGNMENT         256
-#define N_INPUT_BLOCKS          4                       //Number of blocks in the input buffer
-#define N_OUTPUT_BLOCKS         8                       //Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK        320                      //Number of Pkt stored in each block
-#define OUT_MODPAIR_PER_BLOCK   320                      //Max Number of Module Pairs stored in each block
-#define COINC_PKT_PER_BLOCK     320                      //Max Number of Coinc packets stored in each block
+#define CACHE_ALIGNMENT         256     //Align the cache within the buffer
+#define N_INPUT_BLOCKS          4       //Number of blocks in the input buffer
+#define N_OUTPUT_BLOCKS         8       //Number of blocks in the output buffer
+#define IN_PKT_PER_BLOCK        320     //Number of Pkt stored in each block
+#define OUT_MOD_PER_BLOCK       320     //Max Number of Module Pairs stored in each block
+#define COINC_PKT_PER_BLOCK     320     //Max Number of Coinc packets stored in each block
 
 //Defining Imaging Data Values
-#define QUABOPERMODULE          4
-#define SCIDATASIZE             256
-#define MODULEDATASIZE          QUABOPERMODULE*SCIDATASIZE*2
+#define QUABOPERMODULE          4                               //Number of Quabos associated with a Module
+#define SCIDATASIZE             256                             //Size of image data size in bytes
+#define MODULEDATASIZE          QUABOPERMODULE*SCIDATASIZE*2    //Size of module image allocated in buffer
 
 //Defining the Block Sizes for the Input and Ouput Buffers
-#define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE                    //Input Block size includes headers
-#define OUTPUTBLOCKSIZE         OUT_MODPAIR_PER_BLOCK*MODULEDATASIZE            //Output Stream Block size excludes headers
-#define OUTPUTCOICBLOCKSIZE     COINC_PKT_PER_BLOCK*PKTDATASIZE                 //Output Coinc Block size excluding headers
-
-
-#define BLOCKSIZE           INPUTBLOCKSIZE
-
+#define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE        //Input Block size includes headers
+#define OUTPUTBLOCKSIZE         OUT_MOD_PER_BLOCK*MODULEDATASIZE    //Output Stream Block size excludes headers
+#define OUTPUTCOICBLOCKSIZE     COINC_PKT_PER_BLOCK*PKTDATASIZE     //Output Coinc Block size excluding headers
 
 //Definng the numerical values
-#define RANK                    3
-#define HKDATASIZE              464
-#define DATABLOCKSIZE           SCIDATASIZE*PKTPERPAIR+64+16
-#define HKFIELDS                27
-#define GPSFIELDS               10
-#define NANOSECTHRESHOLD        1e10//20
-#define MODULEINDEXSIZE         0xffff
+#define NANOSECTHRESHOLD        1e10//20    //Nanosecond threshold used for grouping quabo images
+#define MODULEINDEXSIZE         0xffff      //Largest Module Index
 
-#define MODULEPAIR_FORMAT "ModulePair_%05u_%05u"
-#define DATAFILE_DEFAULT "./"
-#define CONFIGFILE_DEFAULT "./module.config"
-
-//TODO needs to be removed after changing compute thread
-#define CONFIGFILE "./modulePair.config"
+#define DATAFILE_DEFAULT "./"                   //Default Location used for storing files
+#define CONFIGFILE_DEFAULT "./module.config"    //Default Location used for module config file
 
 //Defining the string buffer size
 #define STRBUFFSIZE 256
@@ -173,33 +164,15 @@ typedef struct HSD_input_databuf {
 } HSD_input_databuf_t;
 
 /*
- *  OUTPUT BUFFER STRUCTURES
- */
+*  OUTPUT BUFFER STRUCTURES
+*/
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
-
-    /*uint16_t modNum[OUT_MODPAIR_PER_BLOCK*2];
-    char acqmode[OUT_MODPAIR_PER_BLOCK];
-    uint16_t pktNum[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
-    uint32_t pktNSEC[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
-    long int tv_sec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];
-    long int tv_usec[OUT_MODPAIR_PER_BLOCK*PKTPERPAIR];*/
-    module_header_t img_pkt_head[OUT_MODPAIR_PER_BLOCK];
-    //uint8_t status[OUT_MODPAIR_PER_BLOCK];
+    module_header_t img_pkt_head[OUT_MOD_PER_BLOCK];
     int stream_block_size;
 
-    
-    /*char coin_acqmode[COINC_PKT_PER_BLOCK];
-    uint16_t coin_pktNum[COINC_PKT_PER_BLOCK];
-    uint16_t coin_modNum[COINC_PKT_PER_BLOCK];
-    uint8_t coin_quaNum[COINC_PKT_PER_BLOCK];
-    uint32_t coin_pktUTC[COINC_PKT_PER_BLOCK];
-    uint32_t coin_pktNSEC[COINC_PKT_PER_BLOCK];
-    long int coin_tv_sec[COINC_PKT_PER_BLOCK];
-    long int coin_tv_usec[COINC_PKT_PER_BLOCK];*/
     packet_header_t coin_pkt_head[COINC_PKT_PER_BLOCK];
     int coinc_block_size;
-
 
     int INTSIG;
 } HSD_output_block_header_t;
