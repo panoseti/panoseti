@@ -43,6 +43,9 @@
 //Defining the string buffer size
 #define STRBUFFSIZE 256
 
+/**
+ * Structure for storing the values from a packet header
+ */
 typedef struct packet_header {
     char acq_mode;
     uint16_t pkt_num;
@@ -94,6 +97,11 @@ typedef struct packet_header {
     };
 } packet_header_t;
 
+/**
+ * Structure for storing the packet headers for all quabos associated with a module.
+ * Header structure includes the mode and module associated with the structure with 
+ * status determining attributes of the packet headers
+ */
 typedef struct module_header {
     int mode;
     uint16_t mod_num;
@@ -140,6 +148,9 @@ typedef struct module_header {
 
 
 /* INPUT BUFFER STRUCTURES */
+/**
+ * Input block header containing header information for the input buffer.
+ */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
     packet_header_t pkt_head[IN_PKT_PER_BLOCK];
@@ -151,12 +162,20 @@ typedef uint8_t HSD_input_header_cache_alignment[
     CACHE_ALIGNMENT - (sizeof(HSD_input_block_header_t)%CACHE_ALIGNMENT)
 ];
 
+/**
+ * Input data block within the input buffer. Contains image data within
+ * data_block and their header information within header.
+ */
 typedef struct HSD_input_block {
     HSD_input_block_header_t header;
     HSD_input_header_cache_alignment padding;       // Maintain cache alignment
     char data_block[INPUTBLOCKSIZE*sizeof(char)];   //define input buffer
 } HSD_input_block_t;
 
+/**
+ * Input data buffer containing mutiple data blocks to be passed over to 
+ * compute thread for processing.
+ */
 typedef struct HSD_input_databuf {
     hashpipe_databuf_t header;
     HSD_input_header_cache_alignment padding;   // Maintain chache alignment
@@ -166,10 +185,14 @@ typedef struct HSD_input_databuf {
 /*
 *  OUTPUT BUFFER STRUCTURES
 */
+/**
+ * Output block header containing header information for the data streams 
+ * created by the compute thread.
+ */
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
     module_header_t img_pkt_head[OUT_MOD_PER_BLOCK];
-    int stream_block_size;
+    int img_block_size;
 
     packet_header_t coin_pkt_head[COINC_PKT_PER_BLOCK];
     int coinc_block_size;
@@ -181,6 +204,10 @@ typedef uint8_t HSD_output_header_cache_alignment[
     CACHE_ALIGNMENT - (sizeof(HSD_output_block_header_t)%CACHE_ALIGNMENT)
 ];
 
+/**
+ * Output data block within the output buffer. Contains images and coincidence data
+ * computed by the compute thread.
+ */
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
@@ -188,6 +215,10 @@ typedef struct HSD_output_block {
     char coinc_block[OUTPUTCOICBLOCKSIZE*sizeof(char)];
 } HSD_output_block_t;
 
+/**
+ * Output data buffer containing multiple data blocks to be passed to output thread
+ * for disk writes.
+ */
 typedef struct HSD_output_databuf {
     hashpipe_databuf_t header;
     HSD_output_header_cache_alignment padding;
