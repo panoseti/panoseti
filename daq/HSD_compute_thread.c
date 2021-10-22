@@ -14,14 +14,12 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
-
 #define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
-//#define TEST_MODE
-
 
 /**
- * The module ID structure that is used to store a lot of the information regarding the current pair of module.
- * Module pairs consists of PKTPERPAIR(8) quabos.
+ * Structure for monitoring module data held by the compute thread.
+ * Software mode such as image integration and coincidence analysis
+ * information should be stored in this structure.
  */
 typedef struct module_data {
     uint32_t upper_nanosec;
@@ -71,7 +69,9 @@ typedef struct module_data {
 } module_data_t;
 
 /**
- * Writes the module pair data to output buffer
+ * Writes the image data from the module data into block in output buffer.
+ * @param mod_data Module data passed in be copied to output block.
+ * @param out_block Output block to be written to.
  */
 void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
     int out_index = out_block->header.img_block_size;
@@ -86,7 +86,10 @@ void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_bl
 
 //TODO
 /**
- * Write PH Data to output buffer's coinc block
+ * Write coincidence(Pulse Height) images into the output buffer.
+ * @param in_block Input data block containing the image needed to be copied.
+ * @param pktIndex Packet index for the image in the input data block.
+ * @param out_block Output data block to be written to. 
  */
 void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_output_block_t* out_block){
     int out_index = out_block->header.coinc_block_size;
@@ -100,7 +103,13 @@ void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_ou
 
 
 /**
- * Storing the module data to the modulePairData from the data pointer.
+ * Store the image data from the input data block into the module data.
+ * If the conditions for the current data in the module data structure is met,
+ * the data would be written to the output block before copying the new image
+ * into the module data. 
+ * @param mod_data The module data of the corresponding module for the image
+ * @param in_block The input block containing the new image
+ * @param out_bock the output block to be written to if module data needs to be written to output buffer
  */
 void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_block_t* out_block, int pktIndex){
     int mode;
@@ -112,9 +121,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     //Check the acqmode to determine the mode in which the packet is coming in as
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
-        //TODO
         write_coinc_to_out_buffer(in_block, pktIndex, out_block);
-        //writePHData(moduleNum, quaboNum, PKTNUM, UTC, NANOSEC, tv_sec, tv_usec, data_ptr);
         return;
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
@@ -146,22 +153,16 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         mod_data->lower_nanosec = nanosec;
     }
 
-
-    /*printf("Packet Data\n %s\n", pkt_head->toString().c_str());
-    printf("if statment %i %i %i\n",
-        (mod_data->status & currentStatus),
-        mod_data->last_mode != mode,
-        (mod_data->upper_nanosec - mod_data->lower_nanosec));
-    printf("Last Mode %i Current Mode %i\n", mod_data->last_mode, mode);*/
     //Check conditions to see if they are met for writing to output buffer
     //Conditions:
     //When the current location in module pair is occupied in the module pair
     //When the mode in the module pair doesen't match the new mode
     //When the NANOSEC interval superceeded the threshold that is allowed
-    if ((mod_data->status & currentStatus) || mod_data->mod_head.mode != mode || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSECTHRESHOLD){
-
-        write_img_to_out_buffer(mod_data, out_block);
+    if ((mod_data->status & currentStatus) 
+        || mod_data->mod_head.mode != mode 
+        || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSECTHRESHOLD){
         
+        write_img_to_out_buffer(mod_data, out_block);
         //Resetting values in the new emptied module pair obj
         mod_data->clear();
         
@@ -177,12 +178,11 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     mod_data->mod_head.mode = mode;
     mod_data->upper_nanosec = nanosec;
     mod_data->lower_nanosec = nanosec;
-    //printf("Module data After\n %s", mod_data->toString().c_str());
 }
 
 
 /**
- * Structure of the Quabo buffer stored for determining packet loss
+ * Structure of quabo stored for determining packet loss
  */
 typedef struct quabo_info{
     uint16_t prev_pkt_num[NUM_OF_MODES+1];
@@ -210,7 +210,7 @@ static int init(hashpipe_thread_args_t * args){
         db_out->block[i].header.INTSIG = 0;
     }
 
-    //Initializing the Module Pairing using the config file given
+    //Initializing the module data with the config file
     char config_location[STRBUFFSIZE];
     sprintf(config_location, CONFIGFILE_DEFAULT);
     hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
@@ -328,6 +328,7 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
+        //Resetting the values in the new output block
         db_out->block[curblock_out].header.img_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
