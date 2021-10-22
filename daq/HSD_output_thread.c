@@ -483,7 +483,7 @@ static void *run(hashpipe_thread_args_t *args) {
         //TODO FETCH AND STORE DYNAMIC METATDATA
         //STORE FRAMES FROM OUTPUT BUFFER ONTO DATAFILES
         check_redis(redis_server);
-        for (int i = 0; i < db->block[block_idx].header.stream_block_size; i++){
+        for (int i = 0; i < db->block[block_idx].header.img_block_size; i++){
             write_img_files(&(db->block[block_idx]), i);
         }
 

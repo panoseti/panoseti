@@ -74,14 +74,14 @@ typedef struct module_data {
  * Writes the module pair data to output buffer
  */
 void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
-    int out_index = out_block->header.stream_block_size;
+    int out_index = out_block->header.img_block_size;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
     mod_data->mod_head.copy_to(&(out_header->img_pkt_head[out_index]));
     
-    memcpy(out_block->stream_block + (out_index * MODULEDATASIZE), mod_data->data, sizeof(uint8_t)*MODULEDATASIZE);
+    memcpy(out_block->img_block + (out_index * MODULEDATASIZE), mod_data->data, sizeof(uint8_t)*MODULEDATASIZE);
 
-    out_block->header.stream_block_size++;
+    out_block->header.img_block_size++;
 }
 
 //TODO
@@ -328,7 +328,7 @@ static void *run(hashpipe_thread_args_t * args){
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
-        db_out->block[curblock_out].header.stream_block_size = 0;
+        db_out->block[curblock_out].header.img_block_size = 0;
         db_out->block[curblock_out].header.coinc_block_size = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         INTSIG = db_in->block[curblock_in].header.INTSIG;
