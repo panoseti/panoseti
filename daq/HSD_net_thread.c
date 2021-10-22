@@ -1,7 +1,7 @@
 /*
  * HSD_net_thread.c
  * 
- * The net thread which is used to read packets from the quabos.
+ * The input(network) thread which is used to read packets from the quabos.
  * These packets are then written into the shared memory blocks,
  * which then allows for the pre-process of the data.
  */
@@ -26,9 +26,6 @@
 #define PKTSOCK_FRAMES_PER_BLOCK (8)
 #define PKTSOCK_NBLOCKS (20)
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
-
-//DEBUGGING MODE 
-//#define TEST_MODE
 
 static int init(hashpipe_thread_args_t * args){
     printf("\n\n-----------Start Setup of Input Thread--------------\n");
@@ -225,8 +222,7 @@ static void *run(hashpipe_thread_args_t * args){
 
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < IN_PKT_PER_BLOCK; i++){
-            //Check if the INTSIG is recognized
-            //printf("Started for loop: %i\n", i);
+            //Check if the INTSIG flag is set
             if(INTSIG) break;
 
             //Recv all of the UDP packets from PKTSOCK
@@ -236,7 +232,6 @@ static void *run(hashpipe_thread_args_t * args){
 
             //Check to see if the threads are still running. If not then terminate
             if(!run_threads() || INTSIG) break;
-            //printf("Still Running\n");
 
             //TODO
             //Check Packet Number at the beginning and end to see if we lost any packets
