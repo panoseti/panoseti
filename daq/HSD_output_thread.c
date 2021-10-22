@@ -27,8 +27,9 @@
 #define WRSWITCHKEY "WRSWITCH"
 #define UPDATEDKEY "UPDATED"
 
-////////// Structures for Reading and Parsing file in PFF////////////////
-
+/**
+ * Structures for Reading and Parsing file in PFF
+ */
 struct PF {
     DATA_PRODUCT dataProduct;
     FILE *filePtr;
@@ -36,6 +37,11 @@ struct PF {
     PF(const char *dirName, const char *fileName);
 };
 
+/**
+ * Structure for storing file pointers opened by output thread.
+ * A file is create for all possible data products described by pff.h
+ * @see ../utls/pff.sh
+ */
 struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;
@@ -45,12 +51,24 @@ struct FILE_PTRS{
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
 };
 
+/**
+ * Constructor for file pointer structure
+ * @param diskDir directory used for writing all files monitored by file pointer
+ * @param dirInfo directory information structure stored by file pointer
+ * @param fileInfo file information structure stored by file pointer
+ * @param file_mode file editing mode for all files within file pointer
+ */
 FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode){
     dirInfo->copy_to(&(this->dir_info));
     fileInfo->copy_to(&(this->file_info));
     this->make_files(diskDir, file_mode);
 }
 
+/**
+ * Creating files for the file pointer stucture given a directory.
+ * @param diskDir directory for where the files will be created by file pointers
+ * @param file_mode file editing mode for the new file created
+ */
 void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     string fileName;
     string dirName;
@@ -86,6 +104,13 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     }
 }
 
+/**
+ * Create a new file for a specified data product within file structure.
+ * Method is used usually when a certain data product file has reached max file size.
+ * @param dp Data product of the file that needs to be created.
+ * @param diskDir Disk directory for the file pointer.
+ * @param file_mode File mode of the new file created.
+ */
 void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode){
     string fileName;
     string dirName;
@@ -136,6 +161,12 @@ static FILE_PTRS *data_files[MODULEINDEXSIZE] = {NULL};
 static FILE *dynamic_meta;
 
 
+/**
+ * Create a file pointers for a given dome and module.
+ * @param diskDir directory of the file created for the file pointer structure
+ * @param dome dome number of the files
+ * @param module module number of the files
+ */
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
@@ -144,6 +175,12 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
 
+/**
+ * Write image header to file.
+ * @param fileToWrite File the image header will be written to
+ * @param dataHeader The output block header containing the image headers
+ * @param blockIndex The block index for the specified output block
+ */
 int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
     fprintf(fileToWrite, "{ ");
     for (int i = 0; i < QUABOPERMODULE; i++){
@@ -166,6 +203,11 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
     fprintf(fileToWrite, "}");
 }
 
+/**
+ * Writing the image module structure to file
+ * @param dataBlock Data block of the containing the images to be written to disk
+ * @param blockIndex The block index for the specified output block.
+ */
 int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     FILE *fileToWrite;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].mod_num];
@@ -211,6 +253,12 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     return 1;
 }
 
+/**
+ * Write the coincidence header information to file.
+ * @param fileToWrite File the image header will be written to
+ * @param dataHeader The output block header containing the image headers
+ * @param blockIndex The block index for the specified output block
+ */
 int write_coinc_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
     fprintf(fileToWrite,
     "{ acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li}",
@@ -224,6 +272,11 @@ int write_coinc_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHe
     );
 }
 
+/**
+ * Writing the coincidence(Pulse Height) image to file
+ * @param dataBlock Data block of the containing the images to be written to disk
+ * @param blockIndex The block index for the specified output block.
+ */
 int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
     FILE *fileToWrite;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coin_pkt_head[blockIndex].mod_num];
@@ -264,17 +317,9 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
 }
 
 /**
- * Given a file ptr object and the output datablock with its index it will write the image data
- * to its corresponding data file in the PFF format
- * @param currentFilePtrs The current file pointers for the given module
- * @param dataBlock The datablock that is currently being read from the output buffer
- * @param frameIndex The index of the datablock to read the image frame from
+ * Create data files from the provided config file.
  */
-int write_img_files(HSD_output_block_t *dataBlock, int blockIndex){
-    write_module_img_file(dataBlock, blockIndex);
-}
-
-int create_data_files(){
+int create_data_files_from_config(){
     FILE *configFile = fopen(config_location, "r");
     char fbuf[STRBUFFSIZE];
     char cbuf;
@@ -309,6 +354,12 @@ int create_data_files(){
     }
 }
 
+/**
+ * Write the redis values from redis server given a certain key.
+ * @param redisServer Redis server structure containing key.
+ * @param key Key of the value to be fetch from redis server.
+ * @param filePtr File pointer which the key values are to be written to.
+ */
 void write_redis_key(redisContext *redisServer, const char *key, FILE *filePtr){
     redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", key);
     if (reply->type != REDIS_REPLY_ARRAY){
@@ -324,6 +375,10 @@ void write_redis_key(redisContext *redisServer, const char *key, FILE *filePtr){
     pff_end_json(filePtr);
 }
 
+/**
+ * Check the redis server for any updated key values and write updated values.
+ * @param redisServer Redis server to be checked
+ */
 void check_redis(redisContext *redisServer){
     redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", UPDATEDKEY);
     if (reply->type != REDIS_REPLY_ARRAY){
@@ -358,6 +413,7 @@ static int init(hashpipe_thread_args_t *args)
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
+    // Fetch user input for save location of data files.
     sprintf(save_location, DATAFILE_DEFAULT);
     hgets(st.buf, "SAVELOC", STRBUFFSIZE, save_location);
     if (save_location[strlen(save_location) - 1] != '/') {
@@ -366,10 +422,12 @@ static int init(hashpipe_thread_args_t *args)
     }
     printf("Save Location: %s\n", save_location);
 
+    // Fetch user input for config file location.
     sprintf(config_location, CONFIGFILE_DEFAULT);
     hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
     printf("Config Location: %s\n", config_location);
 
+    // Fetch user input for max file size of data files.
     int maxFileSizeInput;
     hgeti4(st.buf, "MAXFILESIZE", &maxFileSizeInput);
     max_file_size = maxFileSizeInput*1E6;
@@ -400,15 +458,20 @@ static int init(hashpipe_thread_args_t *args)
 
     printf("\n---------------SETTING UP DATA File------------------\n");
     time_t t = time(NULL);
-
+    //Creating directory for data files.
     DIRNAME_INFO dirInfo(t, OBSERVATORY);
     string dirName;
     dirInfo.make_dirname(dirName);
     dirName = save_location + dirName + "/";
     mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+
+    //Creating dynamic metadata file.
     printf("Creating file : %s\n", (dirName + "dynamic_meta.pff").c_str());
     dynamic_meta = fopen((dirName + "dynamic_meta.pff").c_str(), "w");
-    create_data_files();
+    
+    //Create data files based on given config file.
+    create_data_files_from_config();
+    //Check redis for any new values and save new values.
     check_redis(redis_server);
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
@@ -416,6 +479,9 @@ static int init(hashpipe_thread_args_t *args)
     return 0;
 }
 
+/**
+ * Close all allocated resources
+ */
 void close_all_resources() {
     for (int i = 0; i < MODULEINDEXSIZE; i++){
         if (data_files[i] != NULL){
@@ -432,13 +498,11 @@ static void *run(hashpipe_thread_args_t *args) {
     signal(SIGQUIT, QUIThandler);
     QUITSIG = 0;
 
-    //FETCH STATIC AND DYNAMIC REDIS DATA
-
     printf("---------------Running Output Thread-----------------\n\n");
 
     /*Initialization of HASHPIPE Values*/
     // Local aliases to shorten access to args fields
-    // Our input buffer happens to be a demo1_ouput_databuf
+    // Our input buffer happens to be a HSD_ouput_databuf
     HSD_output_databuf_t *db = (HSD_output_databuf_t *)args->ibuf;
     hashpipe_status_t st = args->st;
     const char *status_key = args->thread_desc->skey;
@@ -480,11 +544,9 @@ static void *run(hashpipe_thread_args_t *args) {
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
 
-        //TODO FETCH AND STORE DYNAMIC METATDATA
-        //STORE FRAMES FROM OUTPUT BUFFER ONTO DATAFILES
         check_redis(redis_server);
         for (int i = 0; i < db->block[block_idx].header.img_block_size; i++){
-            write_img_files(&(db->block[block_idx]), i);
+            write_module_img_file(&(db->block[block_idx]), i);
         }
 
         for (int i = 0; i < db->block[block_idx].header.coinc_block_size; i++){
@@ -496,7 +558,6 @@ static void *run(hashpipe_thread_args_t *args) {
             QUITSIG = 0;
         }
 
-        //TODO check mcnt
         if (db->block[block_idx].header.INTSIG) {
             close_all_resources();
             printf("OUTPUT_THREAD Ended\n");
