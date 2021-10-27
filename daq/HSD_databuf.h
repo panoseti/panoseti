@@ -211,7 +211,7 @@ typedef uint8_t HSD_output_header_cache_alignment[
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
-    char stream_block[OUTPUTBLOCKSIZE*sizeof(char)];
+    char img_block[OUTPUTBLOCKSIZE*sizeof(char)];
     char coinc_block[OUTPUTCOICBLOCKSIZE*sizeof(char)];
 } HSD_output_block_t;
 
