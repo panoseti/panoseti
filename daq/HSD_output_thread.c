@@ -240,7 +240,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
 
     pff_write_image(fileToWrite, 
         QUABOPERMODULE*SCIDATASIZE*modSizeMultiplier, 
-        dataBlock->stream_block + (blockIndex*MODULEDATASIZE));
+        dataBlock->img_block + (blockIndex*MODULEDATASIZE));
 
     if (ftell(fileToWrite) > max_file_size){
         if (mode == 16){
