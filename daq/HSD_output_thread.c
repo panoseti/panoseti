@@ -20,8 +20,11 @@
 #include "../util/pff.cpp"
 #include "../util/dp.h"
 
-//Defining the names of redis keys and files
+// TODO: get the following from config file (or something)
 #define OBSERVATORY "LICK"
+#define RUN_TYPE "SCI"
+
+//Defining the names of redis keys and files
 #define GPSPRIMKEY "GPSPRIM"
 #define GPSSUPPKEY "GPSSUPP"
 #define WRSWITCHKEY "WRSWITCH"
@@ -170,7 +173,7 @@ static FILE *dynamic_meta;
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
-    DIRNAME_INFO dirInfo(t, OBSERVATORY);
+    DIRNAME_INFO dirInfo(t, OBSERVATORY, "foobar");
     FILENAME_INFO filenameInfo(t, DP_STATIC_META, 0, dome, module, 0);
     return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
@@ -459,7 +462,7 @@ static int init(hashpipe_thread_args_t *args)
     printf("\n---------------SETTING UP DATA File------------------\n");
     time_t t = time(NULL);
     //Creating directory for data files.
-    DIRNAME_INFO dirInfo(t, OBSERVATORY);
+    DIRNAME_INFO dirInfo(t, OBSERVATORY, RUN_TYPE);
     string dirName;
     dirInfo.make_dirname(dirName);
     dirName = save_location + dirName + "/";

@@ -44,17 +44,21 @@ typedef enum {
 // the info encoded in a dir name
 //
 struct DIRNAME_INFO {
-    double start_time;
-    char observatory[256];
+    double start_time;      // UNIX time
+    string observatory;
+    string run_type;        // "SCI", "CAL" or "ENG"
 
     DIRNAME_INFO(){}
-    DIRNAME_INFO(double _start_time, const char* _observatory) {
+    DIRNAME_INFO(
+        double _start_time, const string &_observatory, const string &_run_type
+    ) {
         start_time = _start_time;
-        strcpy(observatory, _observatory);
+        observatory = _observatory;
+        run_type = _run_type;
     }
     void make_dirname(string&);
     int parse_dirname(char*);
-    int copy_to(DIRNAME_INFO* dirInfo);
+    void copy_to(DIRNAME_INFO* dip);
 };
 
 // the info encoded in a file name
