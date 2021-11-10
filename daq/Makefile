@@ -8,7 +8,6 @@ HSD_LIB_CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -mavx -msse4 \
                      -I. -I$(CUDA_DIR)/include -I/usr/local/include \
                      -L. -L/usr/local/lib \
                      -lhashpipe -lrt -lm \
-					 $(HDF5_LIB_CCFLAGS) \
 					 $(REDIS_LIB_CCFLAGS) \
 					 -lz -ldl -lm \
 					 -Wl,-rpath

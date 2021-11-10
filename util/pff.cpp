@@ -127,7 +127,9 @@ void DIRNAME_INFO::make_dirname(string &s) {
     time_t x = (time_t)start_time;
     struct tm* tm = localtime(&x);
     strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
-    sprintf(buf, "obs=%s,st=%s", observatory, tbuf);
+    sprintf(buf, "obs=%s,st=%s,run_type=%s",
+        observatory.c_str(), tbuf, run_type.c_str()
+    );
     s = buf;
 }
 
@@ -141,7 +143,9 @@ int DIRNAME_INFO::parse_dirname(char* name) {
             fprintf(stderr, "bad filename component: %s\n", pieces[i].c_str());
         }
         if (!strcmp(nvp.name, "obs")) {
-            strcpy(observatory, nvp.value);
+            observatory = nvp.value;
+        } else if (!strcmp(nvp.name, "run_type")) {
+            run_type = nvp.value;
         } else if (!strcmp(nvp.name, "st")) {
             struct tm tm;
             char *p = strptime(nvp.value, "%a_%b_%d_%T_%Y", &tm);
@@ -154,10 +158,10 @@ int DIRNAME_INFO::parse_dirname(char* name) {
     return 0;
 }
 
-int DIRNAME_INFO::copy_to(DIRNAME_INFO* dirInfo){
-    dirInfo->start_time = this->start_time;
-    memcpy(dirInfo->observatory, this->observatory, sizeof(char)*256);
-    return 1;
+void DIRNAME_INFO::copy_to(DIRNAME_INFO* dip){
+    dip->start_time = start_time;
+    dip->observatory = observatory;
+    dip->run_type = run_type;
 }
 
 void FILENAME_INFO::make_filename(string &s) {
@@ -216,11 +220,12 @@ int FILENAME_INFO::copy_to(FILENAME_INFO* fileInfo){
 
 #if 0
 int main(int, char**) {
-    DIRNAME_INFO di;
-    strcpy(di.observatory, "Palomar");
+    DIRNAME_INFO di(time(0), "Palomar", "SCI");
+    di.observatory = "Palomar";
+    di.run_type = "SCI";
     di.start_time = time(0);
     string s;
-    di.make(s);
+    di.make_dirname(s);
     printf("dir name: %s\n", s.c_str());
 
     FILENAME_INFO fi;
@@ -230,14 +235,14 @@ int main(int, char**) {
     fi.dome = 0;
     fi.module=14;
     fi.seqno = 5;
-    fi.make(s);
+    fi.make_filename(s);
     printf("file name: %s\n", s.c_str());
 
     char buf[256];
     strcpy(buf, "obs=Palomar,st=Fri_Aug_27_15:21:46_2021");
-    di.parse(buf);
+    di.parse_dirname(buf);
 
     strcpy(buf, "st=Fri_Aug_27_15:21:46_2021,dp=1,bpp=2,dome=0,module=14,seqno=5.pff");
-    fi.parse(buf);
+    fi.parse_filename(buf);
 }
 #endif
