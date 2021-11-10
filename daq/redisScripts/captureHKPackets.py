@@ -38,22 +38,14 @@ signed = [
     0,0,0,0                     # FWID0 and FWID1
 ]
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-r = redis.Redis(host='localhost', port=6379, db=0)
-
-client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-client.create_database('metadata')
-
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
-    sock.close()
     exit(0)
     
 def getUID(intArr):
     return intArr[0] + (intArr[1] << 16) + (intArr[2] << 32) + (intArr[3] << 48)
     
-def storeInRedisandInflux(packet):
+def storeInRedisandInflux(packet, r, client):
     array = []
     startUp = 0
     
@@ -97,10 +89,6 @@ def storeInRedisandInflux(packet):
                 'I10MON': HKconv.convertValue('I10MON', array[14]),
                 'I18MON': HKconv.convertValue('I18MON', array[15]),
                 'I33MON': HKconv.convertValue('I33MON', array[16]),
-
-                'TEMP1': HKconv.convertValue('TEMP1', array[17]),
-                'TEMP2': HKconv.convertValue('TEMP2', array[18]),
-
                 'VCCINT': HKconv.convertValue('VCCINT', array[19]),
                 'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
 
@@ -124,15 +112,29 @@ def storeInRedisandInflux(packet):
 
     r.hset('UPDATED', boardName, "1")
 
+def initialize():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    r = redis.Redis(host='localhost', port=6379, db=0)
+
+    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
+    client.create_database('metadata')
+
+    return sock, r, client
+    
     
     
 signal(SIGINT, handler)
 
-print('Running')
-sock.bind((HOST,PORT))
-num = 0
-while(True):
-    packet = sock.recvfrom(64)
-    num += 1
-    storeInRedisandInflux(packet[0])
-    print(COUNTER.format(num), end='')
+def main():
+    sock, r, client = initialize()
+    print('Running')
+    sock.bind((HOST,PORT))
+    num = 0
+    while(True):
+        packet = sock.recvfrom(64)
+        num += 1
+        storeInRedisandInflux(packet[0], r, client)
+        print(COUNTER.format(num), end='')
+
+if __name__ == "__main__":
+    main()

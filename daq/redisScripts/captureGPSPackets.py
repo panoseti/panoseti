@@ -12,13 +12,10 @@ RKEY = 'GPSPRIM'
 RKEYsupp = 'GPSSUPP'
 OBSERVATORY = "lick"
 
-r = redis.Redis(host='localhost', port=6379, db=0)
 
-client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-client.create_database('metadata')
 
-lastTime = '';
-lastTimeUpdated = False;
+lastTime = ''
+lastTimeUpdated = False
 
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
@@ -43,7 +40,7 @@ def doublefrom_bytes(bytesData, bytesorder=BYTEORDER):
 timingFlagValues = {0:'GPS', 1:'UTC'}
 
 # OutputID 0x8F-AB
-def primaryTimingPacket(data):
+def primaryTimingPacket(data, r, client):
     global lastTime, lastTimeUpdated
     if len(data) != 17:
         print(RKEY, ' is malformed ignoring the following data packet')
@@ -116,7 +113,7 @@ disActivityValues = {0:'Phase locking', 1:'Oscillator warm-up', 2:'Frequency loc
                      5:'Compensating OCXO (holdover)', 6:'Inactive', 7:'Not used', 8:'Recovery mode', 9:'Calibration/control voltage'}
 DEFAULTVALUE = 'Uknown Value {0}'
 # OutputID 0x8F-AC
-def supplimentaryTimingPacket(data):
+def supplimentaryTimingPacket(data, r, client):
     global lastTimeUpdated
     if len(data) != 68:
         print(RKEYsupp, ' is malformed ignoring the following data packet')
@@ -231,42 +228,58 @@ def supplimentaryTimingPacket(data):
 
 
 
-# configure the serial connections (the parameters differs on the device you are connecting to)
-ser = serial.Serial(
-    port='/dev/ttyUSB0',
-    baudrate=9600,
-    timeout=1,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    bytesize=serial.EIGHTBITS
-)
-ser.isOpen()
+
 # Reading the data from the serial port. This will be running in an infinite loop.
 
 signal(SIGINT, handler)
-data = b''
-dataSize = 0
-bytesToRead = 0
 
-print('Running')
-while 1 :
-    while bytesToRead == 0:
-        bytesToRead = ser.inWaiting()
-    data += ser.read(bytesToRead)
-    dataSize += bytesToRead
-    if data[dataSize-1:dataSize] == b'\x03' and data[dataSize-2:dataSize-1] == b'\x10':
-        if data[0:1] == b'\x10':
-            id = data[1:3]
-            if id == b'\x8f\xab':
-                primaryTimingPacket(data[2:dataSize-2])
-                r.hset('UPDATED', RKEY, 1)
-            elif id == b'\x8f\xac':
-                supplimentaryTimingPacket(data[2:dataSize-2])
-                r.hset('UPDATED', RKEYsupp, 1)
-            else:
-                print(data[1:dataSize-2])
-                print(len(data[2:dataSize-2]))
-        
-        #print(data[1:3])
-        data = b''
-        dataSize = 0
+def initialize():
+    r = redis.Redis(host='localhost', port=6379, db=0)
+
+    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
+    client.create_database('metadata')
+    # configure the serial connections (the parameters differs on the device you are connecting to)
+    ser = serial.Serial(
+        port='/dev/ttyUSB0',
+        baudrate=9600,
+        timeout=1,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        bytesize=serial.EIGHTBITS
+    )
+    ser.isOpen()
+
+    return ser, r, client
+
+
+def main():
+    data = b''
+    dataSize = 0
+    bytesToRead = 0
+
+    ser, r, client= initialize()
+
+    print('Running')
+    while True:
+        while bytesToRead == 0:
+            bytesToRead = ser.inWaiting()
+        data += ser.read(bytesToRead)
+        dataSize += bytesToRead
+        if data[dataSize-1:dataSize] == b'\x03' and data[dataSize-2:dataSize-1] == b'\x10':
+            if data[0:1] == b'\x10':
+                id = data[1:3]
+                if id == b'\x8f\xab':
+                    primaryTimingPacket(data[2:dataSize-2])
+                    r.hset('UPDATED', RKEY, 1)
+                elif id == b'\x8f\xac':
+                    supplimentaryTimingPacket(data[2:dataSize-2])
+                    r.hset('UPDATED', RKEYsupp, 1)
+                else:
+                    print(data[1:dataSize-2])
+                    print(len(data[2:dataSize-2]))
+            
+            data = b''
+            dataSize = 0
+
+if __name__ == "__main__":
+    main()
