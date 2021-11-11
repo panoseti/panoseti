@@ -1,0 +1,43 @@
+{
+    "name": "Lick",
+    "comment": "Example config file",
+    "ups": {
+        "url": "http://admin:1234@192.168.0.100",
+        "quabo_socket": 4
+    },
+    "domes": [
+        {
+            "obslat": 10.3,     // lat/long/alt in WGS84 coordinate system
+            "obslon": 44.2,
+            "obsalt": 234,
+            "name": "north dome",
+            "modules": [
+                {
+                    "mobo_serialno": "M11",
+                    "ip_addr": "128.1.2.0",
+                    "azimuth": 77,
+                    "elevation": 77,
+                    "position_angle": 77
+                },
+                ...
+            ]
+        },
+        {
+            "name": "south dome",
+            "latitude": 10.3,
+            "longitude": 44.2,
+            "altitude": 234,
+            "modules": [
+                {
+                    "mobo_serialno": "M12",
+                    "ip_addr": "128.1.3.0",
+                    "azimuth": 77,
+                    "elevation": 77,
+                    "position_angle": 77
+                },
+                ...
+            ]
+        }
+
+    ]
+}
