@@ -7,7 +7,7 @@
     },
     "domes": [
         {
-            "obslat": 10.3,     // lat/long/alt in WGS84 coordinate system
+            "obslat": 10.3,
             "obslon": 44.2,
             "obsalt": 234,
             "name": "north dome",

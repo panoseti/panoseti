@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 # functions to read and parse config files
 
 import json
@@ -5,7 +7,6 @@ import json
 obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
 data_config_filename = 'data_config.json'
-misc_config_filename = 'misc_config.json'
 
 # assign sequential numbers to domes, modules, and quabos
 #
@@ -19,9 +20,6 @@ def assign_numbers(c):
         for module in dome['modules']:
             module['num'] = nmodule
             nmodule += 1
-            for quabo in module['quabos']:
-                quabo['num'] = nquabo
-                nquabo += 1
 
 def get_obs_config():
     with open(obs_config_filename) as f:
@@ -40,13 +38,9 @@ def get_data_config():
         c = f.read()
     return json.loads(c)
 
-def get_misc_config():
-    with open(misc_config_filename) as f:
-        c = f.read()
-    return json.loads(c)
-
 # return list of quabos from obs_config
 # -1 if not specified
+# DEPRECATED - REMOVE
 #
 def get_quabos(c, idome, imodule, iquabo):
     quabos = []
@@ -64,4 +58,4 @@ def get_quabos(c, idome, imodule, iquabo):
 
 if __name__ == "__main__":
     c = get_obs_config()
-    print(c['domes'][1])
+    print(c)

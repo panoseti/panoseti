@@ -7,10 +7,10 @@
     },
     "domes": [
         {
-            "obslat": 10.3,     // lat/long/alt in WGS84 coordinate system
+            "name": "north dome",
+            "obslat": 10.3,
             "obslon": 44.2,
             "obsalt": 234,
-            "name": "north dome",
             "modules": [
                 {
                     "mobo_serialno": "M11",
@@ -18,15 +18,14 @@
                     "azimuth": 77,
                     "elevation": 77,
                     "position_angle": 77
-                },
-                ...
+                }
             ]
         },
         {
             "name": "south dome",
-            "latitude": 10.3,
-            "longitude": 44.2,
-            "altitude": 234,
+            "obslat": 10.3,
+            "obslon": 44.2,
+            "obsalt": 234,
             "modules": [
                 {
                     "mobo_serialno": "M12",
@@ -34,10 +33,8 @@
                     "azimuth": 77,
                     "elevation": 77,
                     "position_angle": 77
-                },
-                ...
+                }
             ]
         }
-
     ]
 }
