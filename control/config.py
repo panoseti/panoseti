@@ -1,16 +1,17 @@
 #! /usr/bin/env python
 
-# Configure quabos
-# based on matlab/initq.m, startq*.py
+# Configure and reboot quabos
 # options:
-# --show        show list of domes/modules/quabos
+# --show        show list of domes and modules
 # --dome N      select dome
 # --module N    select module
-# --quabo N     select quabo
+# --quabo ip_addr     select quabo
 # --ping        ping selected quabos
 # --reboot      reboot selected quabos
 # --loads       load silver firmware in selected quabos
 # --loadg       load gold firmware in selected quabos
+#           DEPRECATED - dangerous
+# based on matlab/initq.m, startq*.py
 
 firmware_silver = 'quabo_0116C_23CBEAFB.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
@@ -23,11 +24,10 @@ def usage():
 --show        show list of domes/modules/quabos
 --dome N      select dome
 --module N    select module
---quabo N     select quabo
+--quabo ip_addr     select quabo
 --ping        ping selected quabos
 --reboot      reboot selected quabos
 --loads       load silver firmware in selected quabos
---loadg       load gold firmware in selected quabos
 ''')
     sys.exit()
 
@@ -35,22 +35,27 @@ def show_quabos(obs_config):
     for dome in obs_config['domes']:
         print('dome %s'%dome['num'])
         for module in dome['modules']:
-            print('   module %s'%module['num'])
-            print('      ID: %s'%module['id'])
-            for quabo in module['quabos']:
-                print('      quabo %s'%quabo['num'])
-                print('         IP addr: %s'%quabo['ip_addr'])
+            module_num = module['num']
+            ip_addr = module['ip_addr']
+            print('   module %s'%module_num)
+            print('      Mobo serial#: %s'%module['mobo_serialno'])
+            for i in range(4):
+                quabo_num = module_num*4+i
+                quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
+                print('      quabo %d'%quabo_num)
+                print('         IP addr: %s'%quabo_ip)
 
-def do_op(quabos, op):
-    for quabo in quabos:
-        print(op, quabo['ip_addr'])
-        x = tftpw(quabo['ip_addr'])
+def do_op(quabo_ip_addrs, op):
+    for ip_addr in quabo_ip_addrs:
+        print(op, ip_addr)
+        x = tftpw(ip_addr)
         if op == 'reboot':
             x.reboot()
         elif op == 'loads':
             x.put_bin_file(firmware_silver)
         elif op == 'loadg':
-            x.put_bin_file(firmware_gold, 0x0)
+            print("not supported");
+            #x.put_bin_file(firmware_gold, 0x0)
         elif op == 'ping':
             ret = os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%quabo['ip_addr'])
             if ret == 0:
@@ -65,7 +70,7 @@ if __name__ == "__main__":
     nsel = 0
     dome = -1
     module = -1
-    quabo = -1
+    quabo_ip_addr = None
     obs_config = config_file.get_obs_config()
     i = 1
     while i < len(argv):
@@ -78,9 +83,6 @@ if __name__ == "__main__":
         elif argv[i] == '--loads':
             nops += 1
             op = 'loads'
-        elif argv[i] == '--loadg':
-            nops += 1
-            op = 'loadg'
         elif argv[i] == '--ping':
             nops += 1
             op = 'ping'
@@ -95,7 +97,7 @@ if __name__ == "__main__":
         elif argv[i] == '--quabo':
             nsel += 1
             i += 1
-            quabo = int(argv[i])
+            quabo_ip_addr = argv[i]
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -111,5 +113,8 @@ if __name__ == "__main__":
         print('only one selector allowed')
         usage()
 
-    quabos = config_file.get_quabos(obs_config, dome, module, quabo)
-    do_op(quabos, op)
+    if quabo_ip_addr:
+        quabo_ip_addrs = [quabo_ip_addr]
+    else:
+        quabo_ip_addrs = config_file.get_quabo_ip_addrs(obs_config, dome, module)
+    do_op(quabo_ip_addrs, op)

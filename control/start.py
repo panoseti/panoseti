@@ -14,7 +14,6 @@ import config_file, sys
 def do_op(quabos, op):
     for quabo in quabos:
         print(op, quabo['ip_addr'])
-        if op == 'start':
 
 if __name__ == "__main__":
     argv = sys.argv

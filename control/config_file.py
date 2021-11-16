@@ -8,6 +8,13 @@ obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
 data_config_filename = 'data_config.json'
 
+# given an IP address, return one with offset i
+#
+def quabo_ip_addr(base, i):
+    x = base.split('.')
+    x[3] = str(int(x[3])+i)
+    return '.'.join(x)
+
 # assign sequential numbers to domes, modules, and quabos
 #
 def assign_numbers(c):
@@ -38,23 +45,21 @@ def get_data_config():
         c = f.read()
     return json.loads(c)
 
-# return list of quabos from obs_config
-# -1 if not specified
-# DEPRECATED - REMOVE
+# return list of quabo IP addrs from obs_config
+# idome, imodule: -1 if not specified
 #
-def get_quabos(c, idome, imodule, iquabo):
-    quabos = []
+def get_quabo_ip_addrs(c, idome, imodule):
+    ip_addrs = []
     for dome in c['domes']:
         if idome>=0 and dome['num'] != idome:
             continue
         for module in dome['modules']:
             if imodule>=0 and module['num'] != imodule:
                 continue
-            for quabo in module['quabos']:
-                if iquabo >= 0 and quabo['num'] != iquabo:
-                    continue
-                quabos.append(quabo)
-    return quabos
+            ip_addr = module['ip_addr']
+            for i in range(4):
+                ip_addrs.append(quabo_ip_addr(ip_addr, i))
+    return ip_addrs
 
 if __name__ == "__main__":
     c = get_obs_config()
