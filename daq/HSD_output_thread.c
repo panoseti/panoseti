@@ -156,6 +156,9 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
 static char config_location[STRBUFFSIZE];
 
 static char save_location[STRBUFFSIZE];
+
+static char observatory[STRBUFFSIZE];
+
 static long long max_file_size = 0; //IN UNITS OF BYTES
 
 
@@ -173,7 +176,7 @@ static FILE *dynamic_meta;
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
-    DIRNAME_INFO dirInfo(t, OBSERVATORY, "foobar");
+    DIRNAME_INFO dirInfo(t, observatory, "foobar");
     FILENAME_INFO filenameInfo(t, DP_STATIC_META, 0, dome, module, 0);
     return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
@@ -430,6 +433,10 @@ static int init(hashpipe_thread_args_t *args)
     hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
     printf("Config Location: %s\n", config_location);
 
+    sprintf(observatory, OBSERVATORY);
+    hgets(st.buf, "OBS", STRBUFFSIZE, observatory);
+    printf("Observatory set to: %s\n", observatory);
+
     // Fetch user input for max file size of data files.
     int maxFileSizeInput;
     hgeti4(st.buf, "MAXFILESIZE", &maxFileSizeInput);
@@ -462,7 +469,7 @@ static int init(hashpipe_thread_args_t *args)
     printf("\n---------------SETTING UP DATA File------------------\n");
     time_t t = time(NULL);
     //Creating directory for data files.
-    DIRNAME_INFO dirInfo(t, OBSERVATORY, RUN_TYPE);
+    DIRNAME_INFO dirInfo(t, observatory, RUN_TYPE);
     string dirName;
     dirInfo.make_dirname(dirName);
     dirName = save_location + dirName + "/";
