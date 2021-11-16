@@ -11,22 +11,22 @@ import config_file, sys, os
 # turn power on or off
 #
 def quabo_power(on):
-    c = config_file.get_misc_config()
+    c = config_file.get_obs_config()
     ups = c['ups']
     url = ups['url']
     socket = ups['quabo_socket']
     value = 'true' if on else 'false'
-    cmd = 'curl --silent -X PUT -H \'X-CSRF: x\' -H "Accept: application/json" --data \'value=%s\' --digest \'%s/restapi/relay/outlets/=%d/state/\''%(value, url, socket)
+    cmd = 'curl --silent --max-time 10 -X PUT -H \'X-CSRF: x\' -H "Accept: application/json" --data \'value=%s\' --digest \'%s/restapi/relay/outlets/=%d/state/\''%(value, url, socket)
     os.system(cmd)
 
 # return True if power is on
 #
 def quabo_power_query():
-    c = config_file.get_misc_config()
+    c = config_file.get_obs_config()
     ups = c['ups']
     url = ups['url']
     socket = ups['quabo_socket']
-    cmd = 'curl --silent -H "Accept: application/json" --digest \'%s/restapi/relay/outlets/=%d/state/\''%(url, socket)
+    cmd = 'curl --max-time 10 -H "Accept: application/json" --digest \'%s/restapi/relay/outlets/=%d/state/\''%(url, socket)
     out = os.popen(cmd).read()
     return 'true' in out
 

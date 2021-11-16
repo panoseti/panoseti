@@ -1,0 +1,25 @@
+{
+    "name": "UCB lab",
+    "comment": "radio astronomy lab, 425 Campbell",
+    "ups": {
+        "url": "http://admin:1234@192.168.0.100",
+        "quabo_socket": 1
+    },
+    "domes": [
+        {
+            "obslat": 10.3,
+            "obslon": 44.2,
+            "obsalt": 234,
+            "name": "north dome",
+            "modules": [
+                {
+                    "mobo_serialno": "M11",
+                    "ip_addr": "192.168.3.248",
+                    "azimuth": 77,
+                    "elevation": 77,
+                    "position_angle": 77
+                }
+            ]
+        }
+    ]
+}
