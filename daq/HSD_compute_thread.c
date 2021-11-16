@@ -214,6 +214,7 @@ static int init(hashpipe_thread_args_t * args){
     char config_location[STRBUFFSIZE];
     sprintf(config_location, CONFIGFILE_DEFAULT);
     hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
+    printf("Config Location: %s\n", config_location);
     FILE *modConfig_file = fopen(config_location, "r");
 
     char fbuf[100];
@@ -221,7 +222,7 @@ static int init(hashpipe_thread_args_t * args){
     unsigned int modName;
 
     if (modConfig_file == NULL) {
-        perror("Error Opening Config File\n");
+        perror("Error Opening Config File");
         exit(1);
     }
     cbuf = getc(modConfig_file);
