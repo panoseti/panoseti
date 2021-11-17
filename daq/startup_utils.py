@@ -1,12 +1,16 @@
+##################################################################################
+# Main utilities libraries for starting up the daq software for panoseti.
+##################################################################################
 from abc import abstractmethod
 from tkinter import StringVar
 from threading import Thread
 import subprocess
 import time
 import signal
-from typing import overload
 
-
+#################################################################################
+# Main abstract class for monitoring different subprocesses made by daq software
+#################################################################################
 class Process:
     def __init__(self) -> None:
         self.process = None
@@ -60,25 +64,25 @@ class Process:
                 self.str_val.set(self.str_val.get() + self.get_stdout_update())
             time.sleep(0.1)
 
+# Process specific to DAQ
 class DAQ(Process):
-    
     def run(self) -> int:
         self.process = subprocess.Popen(["hashpipe", "-p", "HSD_hashpipe", "-I", "0", "-o",
         "BINDHOST=\"0.0.0.0\"", "-o", "MAXFILESIZE=500", "-o", "SAVELOC=./", "-o",
         "CONFIG=./module.config", "HSD_net_thread", "HSD_compute_thread",  "HSD_output_thread"], shell=False, stdout=subprocess.PIPE)
 
+# Process specific to HK
 class HK(Process):
-
     def run(self) -> int:
         self.process = subprocess.Popen(["python", "redisScripts/captureHKPackets.py"], shell=False, stdout=subprocess.PIPE)
 
+# Process specific to GPS
 class GPS(Process):
-
     def run(self) -> int:
         self.process = subprocess.Popen(["python", "redisScripts/captureGPSPackets.py"], shell=False, stdout=subprocess.PIPE)
 
+# Process specific to WR
 class WR(Process):
-
     def run(self) -> int:
         self.process = subprocess.Popen(["python", "redisScripts/captureWRPackets.py"], shell=False, stdout=subprocess.PIPE)
 
