@@ -163,6 +163,14 @@ class QUABO:
         cmd[1] = 0x01 if val else 0x0
         self.send(cmd)
 
+    def read_hk_packet(self):
+        x = None
+        try:
+            x = self.hk_sock.recvfrom(2048)    # returns (data, ip_addr)
+        except:
+            pass
+        return x
+
 # IMPLEMENTATION STUFF FOLLOWS
 
     def send(self, cmd):

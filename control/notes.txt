@@ -1,0 +1,11 @@
+config.py
+    boot some or all quabos
+    (based on obs_config.json)
+
+start.py
+    start data recorders
+    tell quabos to start sending data
+
+
+qc.py
+    control an individual booted quabo, given its IP address

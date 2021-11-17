@@ -59,6 +59,14 @@ def do_cmd(quabo, words):
         quabo.lf(0)
     elif cmd == 'LF1':
         quabo.lf(1)
+    elif cmd == 'HK':
+        x = quabo.read_hk_packet();
+        if x:
+            print('got %d bytes'%(len(x[0])))
+            print('IP addr:')
+            print(x[1])
+        else:
+            print('no HK packet')
     else:
         print('unknown command %s'%cmd)
 
@@ -92,6 +100,7 @@ def print_cmds():
     "SHC_NEW" to close shutter with new firmware(> V11.1),
     "LF0" to select Led Flasher0 on mobo with new firmware(>= V11.8)
     "LF1" to select Led Flasher1 on mobo with new firmware(>= V11.8)
+    "HK" to read housekeeping packet
     or "q" to quit''')
 
 # interpreter version: prompt for commands
