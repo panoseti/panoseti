@@ -1,0 +1,17 @@
+{
+    "image": {
+        "frames_per_second": 50000,
+        "bits_per_pixel": 16
+    },
+    "pulse_height": {
+    },
+    "software_pulse": {
+        "octaves": 16,
+        "threshold_sigma": [
+             3., 3., 3., 3.,
+             3., 3., 3., 3.,
+             3., 3., 3., 3.,
+             3., 3., 3., 3.
+        ]
+    }
+}
