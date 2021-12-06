@@ -31,7 +31,7 @@ def quabo_power_query():
     off = out.find('state">')
     off += len('state">')
     y = out[off:off+2]
-    status = int(y)
+    status = int(y,16)
     if(status&(1<<(socket-1))):
         return 'true'
 

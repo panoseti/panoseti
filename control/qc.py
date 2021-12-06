@@ -60,11 +60,12 @@ def do_cmd(quabo, words):
     elif cmd == 'LF1':
         quabo.lf(1)
     elif cmd == 'HK':
-        x = quabo.read_hk_packet();
-        if x:
-            print('got %d bytes'%(len(x[0])))
-            print('IP addr:')
-            print(x[1])
+        data = quabo.read_hk_packet();
+        if data:
+            n = len(data)
+            print('got %d bytes'%n)
+            for i in range(n):
+                print("%d: %d"%(i, data[i]))
         else:
             print('no HK packet')
     else:

@@ -1,0 +1,10 @@
+{
+    "daq_nodes": [
+        {
+            "ip_addr": "10.0.1.22",
+            "username": "panosetigraph",
+            "dir": "panoseti",
+            "modules": "0-99"
+        }
+    ]
+}

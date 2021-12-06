@@ -163,13 +163,25 @@ class QUABO:
         cmd[1] = 0x01 if val else 0x0
         self.send(cmd)
 
+    # read from housekeeping socket, wait for one from this quabo
+    # (discard ones from other quabos)
+    # wait for up to 10 sec
+    # returns the HK packet, or None
+    #
     def read_hk_packet(self):
         x = None
-        try:
-            x = self.hk_sock.recvfrom(2048)    # returns (data, ip_addr)
-        except:
-            pass
-        return x
+        end_time = time.time() + 10
+        while True:
+            try:
+                x = self.hk_sock.recvfrom(2048)
+                # returns (data, (ip_addr, port))
+            except:
+                continue
+            src = x[1]
+            if src[0] == self.ip_addr:
+                return x[0]
+            if time.time() > end_time:
+                return None
 
 # IMPLEMENTATION STUFF FOLLOWS
 

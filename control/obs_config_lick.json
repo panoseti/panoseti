@@ -3,7 +3,7 @@
     "comment": "",
     "ups": {
         "url": "http://admin:1234@192.168.0.100",
-        "quabo_socket": 4
+        "quabo_socket": 5
     },
     "domes": [
         {
