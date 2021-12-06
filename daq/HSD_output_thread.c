@@ -16,7 +16,6 @@
 #include <string>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
-#include "hiredis/hiredis.h"
 #include "../util/pff.cpp"
 #include "../util/dp.h"
 
@@ -24,11 +23,7 @@
 #define OBSERVATORY "LICK"
 #define RUN_TYPE "SCI"
 
-//Defining the names of redis keys and files
-#define GPSPRIMKEY "GPSPRIM"
-#define GPSSUPPKEY "GPSSUPP"
-#define WRSWITCHKEY "WRSWITCH"
-#define UPDATEDKEY "UPDATED"
+
 
 /**
  * Structures for Reading and Parsing file in PFF
@@ -162,7 +157,7 @@ static char observatory[STRBUFFSIZE];
 static long long max_file_size = 0; //IN UNITS OF BYTES
 
 
-static redisContext *redis_server;
+
 static FILE_PTRS *data_files[MODULEINDEXSIZE] = {NULL};
 static FILE *dynamic_meta;
 
@@ -360,52 +355,7 @@ int create_data_files_from_config(){
     }
 }
 
-/**
- * Write the redis values from redis server given a certain key.
- * @param redisServer Redis server structure containing key.
- * @param key Key of the value to be fetch from redis server.
- * @param filePtr File pointer which the key values are to be written to.
- */
-void write_redis_key(redisContext *redisServer, const char *key, FILE *filePtr){
-    redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", key);
-    if (reply->type != REDIS_REPLY_ARRAY){
-        printf("Warning: Unable to get %s keys from Reids. Skipping Redis values from %s.", key, key);
-        return;
-    }
-    pff_start_json(filePtr);
-    fprintf(filePtr, "{ RedisKey :%s", key);
-    for (int i = 0; i < reply->elements; i=i+2){
-        fprintf(filePtr, ", %s :%s", reply->element[i]->str, reply->element[i+1]->str);
-    }
-    fprintf(filePtr, "}");
-    pff_end_json(filePtr);
-}
 
-/**
- * Check the redis server for any updated key values and write updated values.
- * @param redisServer Redis server to be checked
- */
-void check_redis(redisContext *redisServer){
-    redisReply *reply = (redisReply *)redisCommand(redisServer, "HGETALL %s", UPDATEDKEY);
-    if (reply->type != REDIS_REPLY_ARRAY){
-        printf("Warning: Unable to get Updated keys from Redis. Skipping Redis values.\n");
-        freeReplyObject(reply);
-        return;
-    }
-    for (int i = 0; i < reply->elements; i=i+2){
-        if (strcmp(reply->element[i+1]->str, "0") == 0){continue;}
-
-        if (isdigit(reply->element[i]->str[0])){
-            if (data_files[strtol(reply->element[i]->str, NULL, 10) >> 2] != NULL){
-                write_redis_key(redisServer, 
-                    reply->element[i]->str, 
-                    data_files[strtol(reply->element[i]->str, NULL, 10) >> 2]->dynamicMeta);
-            }
-        } else {
-            write_redis_key(redisServer, reply->element[i]->str, dynamic_meta);
-        }
-    } 
-}
 
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
 static int QUITSIG;
@@ -443,28 +393,7 @@ static int init(hashpipe_thread_args_t *args)
     max_file_size = maxFileSizeInput*1E6;
     printf("Max file size is %i megabytes\n", maxFileSizeInput);
 
-    /*Initialization of Redis Server Values*/
-    printf("------------------SETTING UP REDIS ------------------\n");
-    redis_server = redisConnect("127.0.0.1", 6379);
-    int attempts = 0;
-    while (redis_server != NULL && redis_server->err) {
-        printf("Error: %s\n", redis_server->errstr);
-        attempts++;
-        if (attempts >= 12) {
-            printf("Unable to connect to Redis.\n");
-            exit(0);
-        }
-        printf("Attempting to reconnect in 5 seconds.\n");
-        sleep(5);
-        redis_server = redisConnect("127.0.0.1", 6379);
-    }
 
-    printf("Connected to Redis\n");
-    redisReply *keysReply;
-    redisReply *reply;
-    // Uncomment following lines for redis servers with password
-    // reply = redisCommand(redis_server, "AUTH password");
-    // freeReplyObject(reply);
 
     printf("\n---------------SETTING UP DATA File------------------\n");
     time_t t = time(NULL);
@@ -481,8 +410,7 @@ static int init(hashpipe_thread_args_t *args)
     
     //Create data files based on given config file.
     create_data_files_from_config();
-    //Check redis for any new values and save new values.
-    check_redis(redis_server);
+
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
     printf("-----------Finished Setup of Output Thread-----------\n\n");    
 
@@ -554,7 +482,7 @@ static void *run(hashpipe_thread_args_t *args) {
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
 
-        check_redis(redis_server);
+        
         for (int i = 0; i < db->block[block_idx].header.img_block_size; i++){
             write_module_img_file(&(db->block[block_idx]), i);
         }

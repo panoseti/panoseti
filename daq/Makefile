@@ -4,15 +4,14 @@ HSD_LIB_CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -mavx -msse4 \
     -I. -I$(CUDA_DIR)/include -I/usr/local/include \
     -L. -L/usr/local/lib \
     -lhashpipe -lrt -lm \
-    $(REDIS_LIB_CCFLAGS) \
-    -lz -ldl -lm \
+    -ldl \
     -Wl,-rpath
 HSD_LIB_TARGET   = HSD_hashpipe.so
 HSD_LIB_SOURCES  = HSD_net_thread.c \
     HSD_compute_thread.c \
     HSD_output_thread.c \
-    HSD_databuf.c \
-    ../util/image.o
+    HSD_databuf.c #\
+#    ../util/image.o
 
 HSD_LIB_INCLUDES = HSD_databuf.h
 

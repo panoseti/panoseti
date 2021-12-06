@@ -3,12 +3,8 @@
 # Configure and reboot quabos
 # options:
 # --show        show summary of config file (list of domes and modules)
-# --dome N      select dome
-# --module N    select module
-# --quabo N     select quabo (N=0..3)
 # --ping        ping selected quabos
 # --reboot      reboot selected quabos
-# --get_uids    get UIDs of quabos, write to quabo_uids.json
 # --loads       load silver firmware in selected quabos
 # --loadg       load gold firmware in selected quabos
 #               DEPRECATED - dangerous
@@ -23,12 +19,8 @@ from panoseti_tftp import tftpw
 def usage():
     print('''usage:
 --show        show list of domes/modules/quabos
---dome N      select dome
---module N    select module
---quabo N     select quabo (N=0..3)
 --ping        ping selected quabos
 --reboot      reboot selected quabos
---get_uids    get UIDs of quabos, write to quabo_uids.json
 --loads       load silver firmware in selected quabos
 ''')
     sys.exit()
@@ -54,18 +46,15 @@ def show_config(obs_config):
 def ping(ip_addr):
     return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
 
-def do_reboot(modules, quabo_num):
+def do_reboot(modules, quabo_ids):
     # need to reboot quabos in order 0..3
     # could do this in parallel across modules; for now, do it serially
     #
     for module in modules:
         for i in range(4):
-            if quabo_num>=0 and i != quabo_num:
-                continue
+            if !config_file.is_quabo_alive(module, quabo_ids, i):
+                continue;
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            if not ping(ip_addr):
-                print("can't ping %s"%ip_addr)
-                continue
             x = tftpw(ip_addr)
             x.reboot()
 
@@ -77,106 +66,31 @@ def do_reboot(modules, quabo_num):
                     break
             quabo.close()
 
-def do_loads(modules, quabo_num):
-        for module in modules:
-            for i in range(4):
-                if quabo_num>=0 and i != quabo_num:
-                    continue
-                ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-                if not ping(ip_addr):
-                    print("can't ping %s"%ip_addr)
-                    continue
-                x = tftpw(ip_addr)
-                x.put_bin_file(firmware_silver)
-
-def do_loadg(modules,quabo_num):
-    print("not supported");
-    #x.put_bin_file(firmware_gold, 0x0)
-
-def do_ping(modules,quabo_num):
+def do_loads(modules, quabo_ids):
     for module in modules:
         for i in range(4):
-            if quabo_num>=0 and i != quabo_num:
-                continue
+            if !config_file.is_quabo_alive(module, quabo_ids, i):
+                continue;
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            x = tftpw(ip_addr)
+            x.put_bin_file(firmware_silver)
+
+def do_loadg(modules):
+    print("not supported")
+    #x.put_bin_file(firmware_gold, 0x0)
+
+def do_ping(modules):
+    for module in modules:
+        for i in range(4):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if ping(ip_addr):
                 print("pinged %s"%ip_addr)
             else:
                 print("can't ping %s"%ip_addr)
 
-# return quabo UID as hex string
-#
-def get_uid(ip_addr):
-    print("get uid", ip_addr)
-    x = tftpw(ip_addr)
-    x.get_flashuid()
-    with open('flashuid', 'rb') as f:
-        i = struct.unpack('q', f.read(8))
-        return "%x"%(i[0])
-
-def get_uids(obs_config):
-    f = open('quabo_uids.json', 'w')
-    f.write(
-'''
-[
-    "domes": [
-''')
-    dfirst = True
-    for dome in obs_config['domes']:
-        if not dfirst:
-            f.write(',')
-        dfirst = False
-        f.write(
-'''
-        {
-            "modules": [
-''')
-        mfirst = True
-        for module in dome['modules']:
-            if not mfirst:
-                f.write(',')
-            mfirst = False
-            f.write(
-'''
-                {
-                    "quabos": [
-''')
-            for i in range(4):
-                ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-                if not ping(ip_addr):
-                    uid = ''
-                else:
-                    uid = get_uid(ip_addr)
-                f.write(
-'''
-                        {
-                            "uid": "%s"
-                        }%s
-'''%(uid, ('' if i==3 else ',')))
-            f.write(
-'''
-                    ]
-                }
-''')
-        f.write(
-'''
-            ]
-        }
-''')
-    f.write(
-'''
-    ]
-}
-''')
-    f.close()
-
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
-    nsel = 0
-    dome = -1
-    module = -1
-    quabo_num = -1
     obs_config = config_file.get_obs_config()
     i = 1
     while i < len(argv):
@@ -192,20 +106,6 @@ if __name__ == "__main__":
         elif argv[i] == '--ping':
             nops += 1
             op = 'ping'
-        elif argv[i] == '--get_uids':
-            nops += 1
-            op = 'get_uids'
-        elif argv[i] == '--dome':
-            nsel += 1
-            i += 1
-            dome = int(argv[i])
-        elif argv[i] == '--module':
-            nsel += 1
-            i += 1
-            module = int(argv[i])
-        elif argv[i] == '--quabo':
-            i += 1
-            quabo_num = int(argv[i])
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -217,16 +117,12 @@ if __name__ == "__main__":
     if (nops > 1):
         print('must specify a single op')
         usage()
-    if (nsel > 1):
-        print('only one selector allowed')
-        usage()
 
-    modules = config_file.get_modules(obs_config, dome, module)
-    if op == 'get_uids':
-        get_uids(obs_config)
+    modules = config_file.get_modules(obs_config)
+    quabo_ids = config_file.get_quabo_ids()
     elif op == 'reboot':
-        do_reboot(modules, quabo_num)
+        do_reboot(modules, quabo_ids)
     elif op == 'loads':
-        do_loads(modules, quabo_num)
+        do_loads(modules, quabo_ids)
     elif op == 'ping':
-        do_ping(modules, quabo_num)
+        do_ping(modules)

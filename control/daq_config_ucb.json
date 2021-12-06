@@ -5,6 +5,7 @@
             "username": "panosetigraph",
             "dir": "data",
             "modules": "0-99"
+            "module_nums": "0-99"
         }
     ]
 }

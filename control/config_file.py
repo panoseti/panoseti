@@ -7,6 +7,7 @@ import json
 obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
 data_config_filename = 'data_config.json'
+quabo_ids_filename = 'quabo_ids.json'
 
 # given module base IP address, return IP addr of quabo i
 #
@@ -19,14 +20,47 @@ def quabo_ip_addr(base, i):
 #
 def assign_numbers(c):
     ndome = 0
-    nmodule = 0
     nquabo = 0
     for dome in c['domes']:
         dome['num'] = ndome
         ndome += 1
+        nmodule = 0
         for module in dome['modules']:
             module['num'] = nmodule
             nmodule += 1
+
+# input: a string of the form "0-2, 5-6"
+# output: a list of integers, e.g. 0,1,2,5,6
+#
+def string_to_list(s):
+    out = []
+    parts = s.split(',')
+    for part in parts:
+        nums = part.split('-')
+        if len(nums) > 1:
+            a = int(nums[0])
+            b = int(nums[1])
+            for i in range(a,b+1):
+                out.append(i)
+        else:
+            out.append(int(nums[0]))
+    return out
+
+# in DAQ node objects, expand module range strings
+# to list of module numbers
+#
+def expand_ranges(daq_config):
+    for n in daq_config['daq_nodes']:
+        n['module_nums'] = string_to_list(n['modules'])
+            
+
+# given a module number, find the DAQ node that's handling it
+#
+def module_num_to_daq_node(daq_config, module_num):
+    for n in daq_config['daq_nodes']:
+        if module_num in n['module_nums']:
+            return n
+    raise Exception("no DAQ node is handling module number %d"%module_num)
 
 def get_obs_config():
     with open(obs_config_filename) as f:
@@ -38,6 +72,7 @@ def get_obs_config():
 def get_daq_config():
     with open(daq_config_filename) as f:
         c = f.read()
+    expand_ranges(c)
     return json.loads(c)
 
 def get_data_config():
@@ -45,17 +80,29 @@ def get_data_config():
         c = f.read()
     return json.loads(c)
 
+def get_quabo_uids():
+    with open(quabo_uids_filename) as f:
+        s = f.read()
+    c = json.loads(s)
+    assign_numbers(c)
+    return c
+
+def is_quabo_alive(module, quabo_uids, i):
+    n = module['num']
+    for dome in c['domes']:
+        for m in dome['modules']:
+            if m['num'] == module['num']:
+                q = m['quabos'][i]
+                return q['uid'] != ''
+    raise Exception("no such module")
+
+
 # return list of modules from obs_config
-# idome, imodule: -1 if not specified
 #
-def get_modules(c, idome, imodule):
+def get_modules(c):
     modules = []
     for dome in c['domes']:
-        if idome>=0 and dome['num'] != idome:
-            continue
         for module in dome['modules']:
-            if imodule>=0 and module['num'] != imodule:
-                continue
             modules.append(module)
     return modules
 
