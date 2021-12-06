@@ -1,28 +1,38 @@
 #! /usr/bin/env python
 
-# start quabos
+# start or stop recording:
+# - figure out association of quabos and DAQ nodes,
+#   based on config files
+# - start the flow of data: set DAQ mode and dest IP addr of quabos
+# - send commands to DAQ nodes to start hashpipe program
+
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 # options:
 # --start       start recording data
 # --stop        stop recording data
-# --dome N      select dome
-# --module N    select module
-# --quabo N     select quabo
 
 import config_file, sys
 
-def do_op(quabos, op):
-    for quabo in quabos:
-        print(op, quabo['ip_addr'])
+# link modules to DAQ nodes:
+# - in the daq_config data structure, add a list "modules"
+#   to each daq node object, of the module objects
+#   in the quabo_uids data structure;
+# - in the quabo_ids data structure, in each module object,
+#   add a link "daq_node" to the DAQ node that's handling it.
+#
+def associate(daq_config, quabo_uids):
+    for n in daq_config['daq_nodes']:
+        n['modules'] = []
+    for dome in quabo_ids['domes']:
+        for module in dome['modules']:
+            daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])
+            daq_node['modules'].append(module)
+            module['daq_node'] = daq_node
+
 
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
-    nsel = 0
-    dome = -1
-    module = -1
-    quabo = -1
-    obs_config = config_file.get_obs_config()
     i = 1
     while i < len(argv):
         if argv[i] == '--start':
@@ -31,18 +41,6 @@ if __name__ == "__main__":
         elif argv[i] == '--stop':
             nops += 1
             op = 'stop'
-        elif argv[i] == '--dome':
-            nsel += 1
-            i += 1
-            dome = int(argv[i])
-        elif argv[i] == '--module':
-            nsel += 1
-            i += 1
-            module = int(argv[i])
-        elif argv[i] == '--quabo':
-            nsel += 1
-            i += 1
-            quabo = int(argv[i])
         else:
             raise Exception('bad arg %s'%argv[i])
         i += 1
@@ -54,6 +52,9 @@ if __name__ == "__main__":
     if (nsel > 1):
         raise Exception('only one selector allowed')
 
-    quabos = config_file.get_quabos(obs_config, dome, module, quabo)
-    do_op(quabos, op)
 
+    obs_config = config_file.get_obs_config()
+    daq_config = config_file.get_daq_config()
+    quabo_uids = config_file.get_quabo_uids();
+
+    associate(obs_config, daq_config, quabo_uids)
