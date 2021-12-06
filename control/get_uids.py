@@ -6,8 +6,8 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import config_file, sys
-from panoset_tftp import tftpw
+import util, config_file, sys, struct
+from panoseti_tftp import tftpw
 
 # return quabo UID as hex string
 #
@@ -20,10 +20,9 @@ def get_uid(ip_addr):
         return "%x"%(i[0])
 
 def get_uids(obs_config, exclude):
-    f = open(config_file.quabo_ids_filename, 'w')
+    f = open(config_file.quabo_uids_filename, 'w')
     f.write(
-'''
-[
+'''{
     "domes": [
 ''')
     dfirst = True
@@ -49,8 +48,8 @@ def get_uids(obs_config, exclude):
             for i in range(4):
                 uid = ''
                 if i not in exclude:
-                    ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-                    if ping(ip_addr):
+                    ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+                    if util.ping(ip_addr):
                         uid = get_uid(ip_addr)
                 f.write(
 '''
@@ -76,15 +75,15 @@ def get_uids(obs_config, exclude):
     f.close()
 
 def usage():
-    print("usage: get_uids.py [--exclude N ...]"
+    print("usage: get_uids.py [--exclude N ...]")
     sys.exit()
 
 def main():
     obs_config = config_file.get_obs_config()
     i = 1;
     exclude = []
-    while i < len(argv):
-        if argv[i] = '--exclude':
+    while i < len(sys.argv):
+        if sys.argv[i] == '--exclude':
             i += 1
             exclude.append(int(argv[i]))
         else:

@@ -17,13 +17,13 @@ import config_file, sys
 # - in the daq_config data structure, add a list "modules"
 #   to each daq node object, of the module objects
 #   in the quabo_uids data structure;
-# - in the quabo_ids data structure, in each module object,
+# - in the quabo_uids data structure, in each module object,
 #   add a link "daq_node" to the DAQ node that's handling it.
 #
 def associate(daq_config, quabo_uids):
     for n in daq_config['daq_nodes']:
         n['modules'] = []
-    for dome in quabo_ids['domes']:
+    for dome in quabo_uids['domes']:
         for module in dome['modules']:
             daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])
             daq_node['modules'].append(module)
@@ -45,16 +45,14 @@ if __name__ == "__main__":
             raise Exception('bad arg %s'%argv[i])
         i += 1
 
-    if (nops == 0):
+    if nops == 0:
         raise Exception('no op specified')
-    if (nops > 1):
+    if nops > 1:
         raise Exception('must specify a single op')
-    if (nsel > 1):
-        raise Exception('only one selector allowed')
 
 
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids();
 
-    associate(obs_config, daq_config, quabo_uids)
+    associate(daq_config, quabo_uids)

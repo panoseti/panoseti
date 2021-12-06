@@ -7,14 +7,7 @@ import json
 obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
 data_config_filename = 'data_config.json'
-quabo_ids_filename = 'quabo_ids.json'
-
-# given module base IP address, return IP addr of quabo i
-#
-def quabo_ip_addr(base, i):
-    x = base.split('.')
-    x[3] = str(int(x[3])+i)
-    return '.'.join(x)
+quabo_uids_filename = 'quabo_uids.json'
 
 # assign sequential numbers to domes and modules
 #
@@ -51,7 +44,7 @@ def string_to_list(s):
 #
 def expand_ranges(daq_config):
     for n in daq_config['daq_nodes']:
-        n['module_nums'] = string_to_list(n['modules'])
+        n['module_nums'] = string_to_list(n['module_nums'])
             
 
 # given a module number, find the DAQ node that's handling it
@@ -71,9 +64,10 @@ def get_obs_config():
 
 def get_daq_config():
     with open(daq_config_filename) as f:
-        c = f.read()
+        s = f.read()
+    c = json.loads(s)
     expand_ranges(c)
-    return json.loads(c)
+    return c
 
 def get_data_config():
     with open(data_config_filename) as f:
@@ -86,16 +80,6 @@ def get_quabo_uids():
     c = json.loads(s)
     assign_numbers(c)
     return c
-
-def is_quabo_alive(module, quabo_uids, i):
-    n = module['num']
-    for dome in c['domes']:
-        for m in dome['modules']:
-            if m['num'] == module['num']:
-                q = m['quabos'][i]
-                return q['uid'] != ''
-    raise Exception("no such module")
-
 
 # return list of modules from obs_config
 #

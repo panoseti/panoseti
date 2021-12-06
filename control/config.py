@@ -13,7 +13,7 @@
 firmware_silver = 'quabo_0116C_23CBEAFB.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import config_file, sys, os, quabo_driver, struct
+import util, config_file, sys, os, quabo_driver
 from panoseti_tftp import tftpw
 
 def usage():
@@ -37,24 +37,19 @@ def show_config(obs_config):
             print('      Mobo serial#: %s'%module['mobo_serialno'])
             for i in range(4):
                 quabo_num = module_num*4+i
-                quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
+                quabo_ip = util.quabo_ip_addr(ip_addr, i)
                 print('      quabo %d'%quabo_num)
                 print('         IP addr: %s'%quabo_ip)
 
-# return true if can ping IP addr
-#
-def ping(ip_addr):
-    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
-
-def do_reboot(modules, quabo_ids):
+def do_reboot(modules, quabo_uids):
     # need to reboot quabos in order 0..3
     # could do this in parallel across modules; for now, do it serially
     #
     for module in modules:
         for i in range(4):
-            if !config_file.is_quabo_alive(module, quabo_ids, i):
+            if not config_file.is_quabo_alive(module, quabo_uids, i):
                 continue;
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
             x.reboot()
 
@@ -66,12 +61,12 @@ def do_reboot(modules, quabo_ids):
                     break
             quabo.close()
 
-def do_loads(modules, quabo_ids):
+def do_loads(modules, quabo_uids):
     for module in modules:
         for i in range(4):
-            if !config_file.is_quabo_alive(module, quabo_ids, i):
+            if not config_file.is_quabo_alive(module, quabo_uids, i):
                 continue;
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
             x.put_bin_file(firmware_silver)
 
@@ -82,8 +77,8 @@ def do_loadg(modules):
 def do_ping(modules):
     for module in modules:
         for i in range(4):
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            if ping(ip_addr):
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            if util.ping(ip_addr):
                 print("pinged %s"%ip_addr)
             else:
                 print("can't ping %s"%ip_addr)
@@ -119,10 +114,10 @@ if __name__ == "__main__":
         usage()
 
     modules = config_file.get_modules(obs_config)
-    quabo_ids = config_file.get_quabo_ids()
-    elif op == 'reboot':
-        do_reboot(modules, quabo_ids)
+    quabo_uids = config_file.get_quabo_uids()
+    if op == 'reboot':
+        do_reboot(modules, quabo_uids)
     elif op == 'loads':
-        do_loads(modules, quabo_ids)
+        do_loads(modules, quabo_uids)
     elif op == 'ping':
         do_ping(modules)
