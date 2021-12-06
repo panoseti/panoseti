@@ -3,7 +3,7 @@
         {
             "ip_addr": "10.0.1.22",
             "username": "panosetigraph",
-            "dir": "panoseti",
+            "dir": "data",
             "modules": "0-99"
         }
     ]

@@ -5,7 +5,7 @@
 # --config      copy data products config file
 # --hashpipe    copy hashpipe executable (HSD_hashpipe.so)
 
-import config_file, sys
+import config_file, sys, os
 
 def usage():
     print('''options:
@@ -17,6 +17,7 @@ def usage():
 def copy(file, node):
     cmd = 'scp %s %s@%s:%s'%(file, node['username'], node['ip_addr'], node['dir'])
     print(cmd)
+    os.system(cmd)
 
 def main():
     do_config = False
@@ -39,9 +40,9 @@ def main():
     for node in c['daq_nodes']:
         print(node['ip_addr'])
         if do_config:
-            copy('data_config.json', node)
+            copy('daq_config.json', node)
             copy('obs_config.json', node)
         if do_hashpipe:
-            copy('HSD_hashpipe.so', node)
+            copy('../daq/HSD_hashpipe.so', node)
 
 main()
