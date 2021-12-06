@@ -10,8 +10,8 @@ HSD_LIB_TARGET   = HSD_hashpipe.so
 HSD_LIB_SOURCES  = HSD_net_thread.c \
     HSD_compute_thread.c \
     HSD_output_thread.c \
-    HSD_databuf.c \
-    ../util/image.o
+    HSD_databuf.c #\
+#    ../util/image.o
 
 HSD_LIB_INCLUDES = HSD_databuf.h
 
