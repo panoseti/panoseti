@@ -7,19 +7,40 @@
 
 import config_file, sys, os
 
-def usage():
-    print('''options:
---config: copy config files: obs_config.json, data_config.json
---hashpipe: copy hashpipe .so file
-''')
-    sys.exit()
 
+# copy a file to a node
+#
 def copy(file, node):
     cmd = 'scp %s %s@%s:%s'%(file, node['username'], node['ip_addr'], node['dir'])
     print(cmd)
     os.system(cmd)
 
-def main():
+# create a directory on DAQ nodes
+#
+def make_remote_dirs(daq_config, dirname):
+    for node in daq_config['daq_nodes']:
+        cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(node['username'], node['ip_addr'], node['dir'], dirname)
+        os.system(cmd)
+
+# copy files to all DAQ nodes
+#
+def copy_all(daq_config, do_config=True, do_hashpipe=True):
+    for node in daq_config['daq_nodes']:
+        if do_config:
+            copy('daq_config.json', node)
+            copy('obs_config.json', node)
+        if do_hashpipe:
+            copy('../daq/HSD_hashpipe.so', node)
+
+if __name__ == "__main__":
+
+    def usage():
+        print('''options:
+    --config: copy config files: obs_config.json, data_config.json
+    --hashpipe: copy hashpipe .so file
+    ''')
+        sys.exit()
+
     do_config = False
     do_hashpipe = False
     argv = sys.argv
@@ -37,12 +58,4 @@ def main():
         usage()
 
     c = config_file.get_daq_config()
-    for node in c['daq_nodes']:
-        print(node['ip_addr'])
-        if do_config:
-            copy('daq_config.json', node)
-            copy('obs_config.json', node)
-        if do_hashpipe:
-            copy('../daq/HSD_hashpipe.so', node)
-
-main()
+    copy_all(do_config, do_hashpipe)

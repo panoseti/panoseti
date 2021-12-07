@@ -43,8 +43,9 @@ def get_uids(obs_config, exclude):
             f.write(
 '''
                 {
+                    "ip_addr": "%s",
                     "quabos": [
-''')
+'''%(module['ip_addr']))
             for i in range(4):
                 uid = ''
                 if i not in exclude:
