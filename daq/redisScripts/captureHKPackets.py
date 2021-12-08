@@ -57,7 +57,7 @@ def storeInRedisandInflux(packet, r, client):
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
         
-    boardName = array[0]
+    boardName = "QUABO_"+array[0]
     
     json_body = [
         {
