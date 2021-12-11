@@ -23,7 +23,7 @@ def main():
 
     if os.path.exists(pid_filename):
         print("PID file exists; run stop_daq.py")
-        #return;
+        #return
 
     # make the run directory
 

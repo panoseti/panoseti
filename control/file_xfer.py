@@ -36,7 +36,6 @@ def copy_dir_from_node(data_dir, run_name, node):
     # make a temp dir if needed
     #
     tmp_dir = '%s/%s'%(data_dir, node['ip_addr'])
-    print(tmp_dir)
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
 
