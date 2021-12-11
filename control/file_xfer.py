@@ -8,6 +8,7 @@
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
 import config_file, sys, os
+import util
 
 # copy a file to a node
 #
@@ -19,7 +20,7 @@ def copy_file_to_node(file, node, run_dir=''):
         file, node['username'], node['ip_addr'], dest_path
     )
     print(cmd)
-    os.system(cmd)
+#os.system(cmd)
 
 # copy the contents of a run dir from a DAQ node.
 # to the corresponding run dir on this node
@@ -32,19 +33,24 @@ def copy_dir_from_node(data_dir, run_name, node):
     if not run_dir_path:
         raise Exception('No run dir %s'%run_name)
 
-    # make the temp dir if needed
+    # make a temp dir if needed
     #
-    tmd_dir = '%s/%s'%(data_dir, node['ip_addr'])
+    tmp_dir = '%s/%s'%(data_dir, node['ip_addr'])
+    print(tmp_dir)
     if not os.path.isdir(tmp_dir):
         os.mkdir(tmp_dir)
 
     cmd = 'scp -r %s@%s:%s/%s %s'%(
-        node['username'], node['ip_addr'], node['dir'], tmp_dir
+        node['username'], node['ip_addr'], node['dir'], run_name, tmp_dir
     )
-    os.system(cmd)
+    print(cmd)
+#os.system(cmd)
 
-    cmd = 'mv %s/* run_dir_path'%(tmp_dir)
-    os.system(cmd)
+    cmd = 'mv %s/* %s'%(tmp_dir, run_dir_path)
+    print(cmd)
+#os.system(cmd)
+
+#os.rmdir(tmp_dir)
 
 # create a directory on DAQ nodes
 #
@@ -53,7 +59,8 @@ def make_remote_dirs(daq_config, dirname):
         cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(
             node['username'], node['ip_addr'], node['dir'], dirname
         )
-        os.system(cmd)
+        print(cmd)
+#os.system(cmd)
 
 # copy config files to a run dir on a DAQ node
 #

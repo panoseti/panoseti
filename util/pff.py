@@ -56,5 +56,3 @@ def run_dir_name(obs_name, run_type):
     dt = datetime.datetime.fromtimestamp(t)
     dt_str = dt.isoformat()
     return 'obs=%s,start=%s,run_type=%s'%(obs_name, dt_str, run_type)
-
-print(run_dir_name("lick", "science"))

@@ -19,7 +19,7 @@ hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
 # for now data dir is just ./data/
-def data_dir():
+def get_data_dir():
     return 'data'
 
 #-------------- QUABO OPS ---------------
@@ -51,14 +51,17 @@ def is_quabo_alive(module, quabo_uids, i):
 
 def start_hk_recorder(run_name):
     path = '%s/%s/%s'%(data_dir(), run_name, hk_file_name)
+    print("starting HK record", path)
     try:
         process = subprocess.Popen(['record_hk.py', path])
     except:
         print("can't launch HK recorder")
         raise
 
+    print("started HK record")
     with open(hk_pid_file, 'w') as f:
         f.write(str(process.pid))
+    print("done HK record")
 
 def stop_hk_recorder():
     if not os.path.exists(hk_pid_file):

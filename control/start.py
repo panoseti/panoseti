@@ -11,7 +11,7 @@
 # --no_record       don't start hashpipe program on DAQ nodes (for debugging)
 
 import os, sys
-import copy_to_daq_nodes, util, config_file
+import file_xfer, util, config_file
 
 # start data flow from the quabos
 # for each one:
@@ -36,7 +36,7 @@ def start_data_flow(quabo_uids, data_config):
 def start_recording(daq_config, data_config, run_name, no_record):
     for node in daq_config['daq_nodes']:
         if len(node['modules']) > 0:
-            copy_to_daq_nodes.copy_config_files(node, run_name)
+            file_xfer.copy_config_files(node, run_name)
     if not no_record:
         for node in daq_config['daq_nodes']:
             if len(node['modules']) > 0:
