@@ -100,7 +100,7 @@ def primaryTimingPacket(data, r, client):
     for key in json_body[0]['fields']:
         #print(key, json_body[0]['fields'][key])
         r.hset(RKEY, key, json_body[0]['fields'][key])
-    r.hset(RKEY, "TV_UTC", tvUTC)
+    r.hset(RKEY, "COMPUTER_UTC", tvUTC)
     
 
     
@@ -204,6 +204,7 @@ def supplimentaryTimingPacket(data, r, client):
     for key in json_body[0]['fields']:
         #print(key, json_body[0]['fields'][key])
         r.hset(RKEYsupp, key, json_body[0]['fields'][key])
+    rhset(RKEYsupp, key, json_body[0]['time'])
     
     lastTimeUpdated = False
     

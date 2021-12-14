@@ -8,7 +8,7 @@ from datetime import datetime
 from panosetiSIconvert import HKconvert
 HKconv = HKconvert()
 HKconv.changeUnits('V')
-HKconv.changeUnits('uA')
+HKconv.changeUnits('A')
 
 HOST = '0.0.0.0'
 PORT = 60002
