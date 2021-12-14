@@ -40,7 +40,7 @@ def set(c, key, value):
 
 def test():
     c = read('quabo_config.txt')
-    set(c, 'SMALL_DAC', 'foo');
+    set(c, 'SMALL_DAC', 'foo')
     print(get(c, 'SMALL_DAC'))
     write(c, 'foo.txt')
 

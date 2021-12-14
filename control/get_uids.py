@@ -81,15 +81,15 @@ def usage():
 
 def main():
     obs_config = config_file.get_obs_config()
-    i = 1;
+    i = 1
     exclude = []
     while i < len(sys.argv):
         if sys.argv[i] == '--exclude':
             i += 1
             exclude.append(int(argv[i]))
         else:
-            usage();
+            usage()
         i += 1
     get_uids(obs_config, exclude)
 
-main();
+main()

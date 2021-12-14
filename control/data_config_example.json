@@ -1,5 +1,5 @@
 {
-    "run_type": "engineering",
+    "run_type": "eng",
     "image": {
         "frames_per_second": 50000,
         "bits_per_pixel": 16
@@ -9,10 +9,10 @@
     "software_pulse": {
         "octaves": 16,
         "threshold_sigma": [
-             3., 3., 3., 3.,
-             3., 3., 3., 3.,
-             3., 3., 3., 3.,
-             3., 3., 3., 3.
+             3.0, 3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0, 3.0
         ]
     }
 }

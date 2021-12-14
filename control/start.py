@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 
-# start or stop recording:
+# start a recording run:
 # - figure out association of quabos and DAQ nodes,
 #   based on config files
 # - start the flow of data: set DAQ mode and dest IP addr of quabos
@@ -8,38 +8,10 @@
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 # options:
-# --start       start recording data
-# --stop        stop recording data
+# --no_record       don't start hashpipe program on DAQ nodes (for debugging)
 
-import config_file, sys
-import copy_to_daq_nodes
-
-# link modules to DAQ nodes:
-# - in the daq_config data structure, add a list "modules"
-#   to each daq node object, of the module objects
-#   in the quabo_uids data structure;
-# - in the quabo_uids data structure, in each module object,
-#   add a link "daq_node" to the DAQ node that's handling it.
-#
-def associate(daq_config, quabo_uids):
-    for n in daq_config['daq_nodes']:
-        n['modules'] = []
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])
-            daq_node['modules'].append(module)
-            module['daq_node'] = daq_node
-
-# show which module is going to which data recorder
-#
-def show_daq_assignments(quabo_uids):
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            for i in range(4):
-                q = module['quabos'][i];
-                print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], quabo_ip_address(q['ip_addr'], i))
-                )
+import os, sys
+import file_xfer, util, config_file
 
 # start data flow from the quabos
 # for each one:
@@ -49,49 +21,56 @@ def show_daq_assignments(quabo_uids):
 def start_data_flow(quabo_uids, data_config):
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
+            dn = module['daq_node']
             for i in range(4):
                 quabo = module['quabos'][i]
                 if quabo['uid'] == '':
                     continue
-                dn = quabo['daq_node']
+# to be continued
 
 # for each DAQ node that is getting data:
 # - create run directory
 # - copy config files to run directory
 # - start hashpipe program
 #
-def start_recording(daq_config, data_config):
-    run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
-    copy_to_daq_nodes.copy_all(daq_config, run_name)
-    start_hashpipe(daq_config, run_name)
+def start_recording(daq_config, data_config, run_name, no_record):
+    for node in daq_config['daq_nodes']:
+        if len(node['modules']) > 0:
+            file_xfer.copy_config_files(node, run_name)
+    if not no_record:
+        for node in daq_config['daq_nodes']:
+            if len(node['modules']) > 0:
+                cmd = 'ssh %s@%s "cd %s; start_hashpipe.py"'%(
+                    node['username'], node['ip_addr'], node['dir']
+                )
+                print(cmd)
+                #os.system(cmd)
+
+def start_run(obs_config, daq_config, data_config, quabo_ids, no_record=False):
+    run_name = util.make_run_name(obs_config['name'], data_config['run_type'])
+    data_dir = util.data_dir()
+    if not os.path.isdir(data_dir):
+        os.mkdir(data_dir)
+    os.mkdir('%s/%s'%(data_dir, run_name))
+    util.associate(daq_config, quabo_uids)
+    start_data_flow(quabo_uids, data_config)
+    util.start_hk_recorder(run_name)
+    start_recording(daq_config, data_config, run_name, no_record)
+    util.write_run_name(run_name)
 
 if __name__ == "__main__":
     argv = sys.argv
-    nops = 0
     i = 1
+    no_record = False
     while i < len(argv):
-        if argv[i] == '--start':
-            nops += 1
-            op = 'start'
-        elif argv[i] == '--stop':
-            nops += 1
-            op = 'stop'
+        if argv[i] == '--no_record':
+            no_record = True
         else:
             raise Exception('bad arg %s'%argv[i])
         i += 1
-
-    if nops == 0:
-        raise Exception('no op specified')
-    if nops > 1:
-        raise Exception('must specify a single op')
-
 
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
-
-    associate(daq_config, quabo_uids)
-    show_daq_assignments(quabo_uids)
-    start_data_flow(quabo_uids)
-    start_recording(daq_config)
+    start_run(obs_config, daq_config, data_config, quabo_uids, no_record)

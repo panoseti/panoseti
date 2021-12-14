@@ -60,7 +60,7 @@ def do_cmd(quabo, words):
     elif cmd == 'LF1':
         quabo.lf(1)
     elif cmd == 'HK':
-        data = quabo.read_hk_packet();
+        data = quabo.read_hk_packet()
         if data:
             n = len(data)
             print('got %d bytes'%n)
