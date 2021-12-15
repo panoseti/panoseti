@@ -1,6 +1,8 @@
 DEBUG = 0
 
-PROGS = image_test pulse_test ph5_test fits_test pfits_test pff_test
+PROGS = image_test pulse_test pff_test
+OLD_PROGS = ph5_test fits_test pfits_test
+    # these require cfitsio and/or hdf5 libraries
 
 OBJS = image.o
 
