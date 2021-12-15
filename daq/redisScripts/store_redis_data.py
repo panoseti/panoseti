@@ -15,11 +15,12 @@ def get_updated_redis_keys(update_key):
     return list_of_updates
     
 
-def write_redis_key(redis_keys):
+def write_redis_key(redis_keys, update_key="UPDATED"):
     for rkey in redis_keys:
         redis_value = r.hgetall(rkey)
         value_dict = { k.decode('utf-8'): redis_value[k].decode('utf-8') for k in redis_value.keys() }
         json.dump({rkey: value_dict}, file_ptr)
+        r.hset(update_key, rkey, "0")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
