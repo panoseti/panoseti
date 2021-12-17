@@ -113,3 +113,6 @@ def main():
         r.hset('UPDATED', RKEY, 1)
         print(datetime.utcnow())
         time.sleep(1)
+
+if __name__ == "__main__":
+    main()
