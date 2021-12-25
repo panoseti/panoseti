@@ -12,7 +12,7 @@
 # --stop        stop recording data
 
 import config_file, sys
-import copy_to_daq_nodes
+import util, copy_to_daq_nodes
 
 # link modules to DAQ nodes:
 # - in the daq_config data structure, add a list "modules"
@@ -35,10 +35,12 @@ def associate(daq_config, quabo_uids):
 def show_daq_assignments(quabo_uids):
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
+            ip_addr = module['ip_addr']
+            daq_node = module['daq_node']
             for i in range(4):
                 q = module['quabos'][i];
                 print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], quabo_ip_address(q['ip_addr'], i))
+                    %(q['uid'], util.quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
                 )
 
 # start data flow from the quabos
@@ -62,7 +64,7 @@ def start_data_flow(quabo_uids, data_config):
 #
 def start_recording(daq_config, data_config):
     run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
-    copy_to_daq_nodes.copy_all(daq_config, run_name)
+    copy_to_daq_nodes.copy_config_files(daq_config, run_name)
     start_hashpipe(daq_config, run_name)
 
 if __name__ == "__main__":
@@ -93,5 +95,5 @@ if __name__ == "__main__":
 
     associate(daq_config, quabo_uids)
     show_daq_assignments(quabo_uids)
-    start_data_flow(quabo_uids)
-    start_recording(daq_config)
+#start_data_flow(quabo_uids)
+#start_recording(daq_config)

@@ -1,9 +1,9 @@
 {
+    "username": "panosetigraph",
+    "data_dir": "data",
     "daq_nodes": [
         {
             "ip_addr": "10.0.1.22",
-            "username": "panosetigraph",
-            "dir": "data",
             "module_nums": "0-99"
         }
     ]

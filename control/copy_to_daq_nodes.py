@@ -8,29 +8,45 @@
 import config_file, sys, os
 
 
-# copy a file to a node
+# copy a file to data dir on a node
 #
-def copy(file, node):
-    cmd = 'scp %s %s@%s:%s'%(file, node['username'], node['ip_addr'], node['dir'])
+def copy_to_data_dir(file, node, daq_config):
+    username = daq_config['username']
+    data_dir = daq_config['data_dir']
+    cmd = 'scp %s %s@%s:%s'%(file, username, node['ip_addr'], data_dir)
     print(cmd)
     os.system(cmd)
 
-# create a directory on DAQ nodes
+# copy a file to a run dir
 #
-def make_remote_dirs(daq_config, dirname):
-    for node in daq_config['daq_nodes']:
-        cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(node['username'], node['ip_addr'], node['dir'], dirname)
-        os.system(cmd)
+def copy_to_run_dir(file, node, run_dir, daq_config):
+    username = daq_config['username']
+    data_dir = daq_config['data_dir']
+    cmd = 'scp %s %s@%s:%s/%s'%(file, username, node['ip_addr'], data_dir, run_dir)
+    print(cmd)
+    os.system(cmd)
 
-# copy files to all DAQ nodes
+# create a run directory on DAQ nodes
 #
-def copy_all(daq_config, do_config=True, do_hashpipe=True):
+def make_remote_dirs(daq_config, run_dirname):
+    username = daq_config['username']
+    data_dir = daq_config['data_dir']
     for node in daq_config['daq_nodes']:
-        if do_config:
-            copy('daq_config.json', node)
-            copy('obs_config.json', node)
-        if do_hashpipe:
-            copy('../daq/HSD_hashpipe.so', node)
+        cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(username, node['ip_addr'], data_dir, run_dirname)
+        print(cmd)
+    os.system(cmd)
+
+# copy hashpipe .so data dir on all DAQ nodes
+#
+def copy_hashpipe(daq_config):
+    for node in daq_config['daq_nodes']:
+        copy_to_data_dir('../daq/HSD_hashpipe.so', node, daq_config)
+
+def copy_config_files(daq_config, run_dir):
+    for node in daq_config['daq_nodes']:
+        copy_to_run_dir('daq_config.json', node, run_dir, daq_config)
+        copy_to_run_dir('obs_config.json', node, run_dir, daq_config)
+        copy_to_run_dir('data_config.json', node, run_dir, daq_config)
 
 if __name__ == "__main__":
 
@@ -57,5 +73,9 @@ if __name__ == "__main__":
     if not do_config and not do_hashpipe:
         usage()
 
-    c = config_file.get_daq_config()
-    copy_all(do_config, do_hashpipe)
+    daq_config = config_file.get_daq_config()
+    if do_hashpipe:
+        copy_hashpipe(daq_config)
+    if do_config:
+        make_remote_dirs(daq_config, 'test_run_dir')
+        copy_config_files(daq_config, 'test_run_dir')
