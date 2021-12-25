@@ -8,7 +8,7 @@ from datetime import datetime
 from panosetiSIconvert import HKconvert
 HKconv = HKconvert()
 HKconv.changeUnits('V')
-HKconv.changeUnits('uA')
+HKconv.changeUnits('A')
 
 HOST = '0.0.0.0'
 PORT = 60002
@@ -57,7 +57,7 @@ def storeInRedisandInflux(packet, r, client):
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
         
-    boardName = array[0]
+    boardName = "QUABO_" + str(array[0])
     
     json_body = [
         {

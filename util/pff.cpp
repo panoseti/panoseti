@@ -127,7 +127,7 @@ void DIRNAME_INFO::make_dirname(string &s) {
     time_t x = (time_t)start_time;
     struct tm* tm = localtime(&x);
     strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
-    sprintf(buf, "obs=%s,st=%s,run_type=%s",
+    sprintf(buf, "obs=%s,start=%s,run_type=%s",
         observatory.c_str(), tbuf, run_type.c_str()
     );
     s = buf;
@@ -170,7 +170,7 @@ void FILENAME_INFO::make_filename(string &s) {
     time_t x = (time_t)start_time;
     struct tm* tm = localtime(&x);
     strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
-    sprintf(buf, "st=%s,dp=%d,bpp=%d,dome=%d,module=%d,seqno=%d.pff",
+    sprintf(buf, "start=%s,dp=%d,bpp=%d,dome=%d,module=%d,seqno=%d.pff",
         tbuf, data_product, bytes_per_pixel, dome, module, seqno
     );
     s = buf;
@@ -239,10 +239,10 @@ int main(int, char**) {
     printf("file name: %s\n", s.c_str());
 
     char buf[256];
-    strcpy(buf, "obs=Palomar,st=Fri_Aug_27_15:21:46_2021");
+    strcpy(buf, "obs=Palomar,start=Fri_Aug_27_15:21:46_2021");
     di.parse_dirname(buf);
 
-    strcpy(buf, "st=Fri_Aug_27_15:21:46_2021,dp=1,bpp=2,dome=0,module=14,seqno=5.pff");
+    strcpy(buf, "start=Fri_Aug_27_15:21:46_2021,dp=1,bpp=2,dome=0,module=14,seqno=5.pff");
     fi.parse_filename(buf);
 }
 #endif

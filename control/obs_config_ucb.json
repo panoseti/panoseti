@@ -1,5 +1,5 @@
 {
-    "name": "UCB lab",
+    "name": "UCB_lab",
     "comment": "radio astronomy lab, 425 Campbell",
     "ups": {
         "url": "http://admin:1234@192.168.0.100",

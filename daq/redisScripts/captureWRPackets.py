@@ -12,7 +12,7 @@ LINK_UP     =   '2'
 SFP_PN0     =   'PS-FB-TX1310'
 SFP_PN1     =   'PS-FB-RX1310'
 SWITCHIP    =   '192.168.1.254'
-RKEY        =   'WRSWITCH'
+RKEY        =   f'WRSWITCH{""}'
 OBSERVATORY =   'lick'
 
 def handler(signal_recieved, frame):
@@ -113,3 +113,6 @@ def main():
         r.hset('UPDATED', RKEY, 1)
         print(datetime.utcnow())
         time.sleep(1)
+
+if __name__ == "__main__":
+    main()

@@ -48,7 +48,7 @@ def do_reboot(modules, quabo_uids):
     for module in modules:
         for i in range(4):
             if not config_file.is_quabo_alive(module, quabo_uids, i):
-                continue;
+                continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
             x.reboot()
@@ -65,7 +65,7 @@ def do_loads(modules, quabo_uids):
     for module in modules:
         for i in range(4):
             if not config_file.is_quabo_alive(module, quabo_uids, i):
-                continue;
+                continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
             x.put_bin_file(firmware_silver)
