@@ -13,7 +13,6 @@ RKEYsupp = 'GPSSUPP'
 OBSERVATORY = "lick"
 
 
-
 lastTime = ''
 lastTimeUpdated = False
 
@@ -40,7 +39,7 @@ def doublefrom_bytes(bytesData, bytesorder=BYTEORDER):
 timingFlagValues = {0:'GPS', 1:'UTC'}
 
 # OutputID 0x8F-AB
-def primaryTimingPacket(data, r, client):
+def primaryTimingPacket(data, r):
     global lastTime, lastTimeUpdated
     if len(data) != 17:
         print(RKEY, ' is malformed ignoring the following data packet')
@@ -73,34 +72,20 @@ def primaryTimingPacket(data, r, client):
     lastTimeUpdated = True
     print(lastTime)
     
-    json_body = [
-        {
-            "measurement": RKEY,
-            "tags": {
-                "observatory": OBSERVATORY,
-                "datatype": "GPS"
-            },
-            "time": lastTime,
-            "fields":{
-                'TOW': timeofWeek,
-                'WEEKNUMBER': weekNumber,
-                'UTCOFFSET': UTCOffset,
-                'TIMEFLAG': timingFlagValues[time],
-                'PPSFLAG': timingFlagValues[PPS],
-                'TIMESET': (timeSet+1)%2,
-                'UTCINFO': (UTCinfo+1)%2,
-                'TIMEFROMGPS': (timeFrom+1)%2
-            }
-        }
-    ]
-    client.write_points(json_body)
-    #print('GPSTIME', json_body[0]['time'])
-    r.hset(RKEY, 'GPSTIME', json_body[0]['time'])
-    
-    for key in json_body[0]['fields']:
-        #print(key, json_body[0]['fields'][key])
-        r.hset(RKEY, key, json_body[0]['fields'][key])
-    r.hset(RKEY, "COMPUTER_UTC", tvUTC)
+    redis_set = { 'SYSTIME': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        'GPSTIME': lastTime,
+        'TOW': timeofWeek,
+        'WEEKNUMBER': weekNumber,
+        'UTCOFFSET': UTCOffset,
+        'TIMEFLAG': timingFlagValues[time],
+        'PPSFLAG': timingFlagValues[PPS],
+        'TIMESET': (timeSet+1)%2,
+        'UTCINFO': (UTCinfo+1)%2,
+        'TIMEFROMGPS': (timeFrom+1)%2
+    }
+
+    for key in redis_set.keys():
+        r.hset(RKEY, key, redis_set[key])
     
 
     
@@ -113,7 +98,7 @@ disActivityValues = {0:'Phase locking', 1:'Oscillator warm-up', 2:'Frequency loc
                      5:'Compensating OCXO (holdover)', 6:'Inactive', 7:'Not used', 8:'Recovery mode', 9:'Calibration/control voltage'}
 DEFAULTVALUE = 'Uknown Value {0}'
 # OutputID 0x8F-AC
-def supplimentaryTimingPacket(data, r, client):
+def supplimentaryTimingPacket(data, r):
     global lastTimeUpdated
     if len(data) != 68:
         print(RKEYsupp, ' is malformed ignoring the following data packet')
@@ -146,65 +131,51 @@ def supplimentaryTimingPacket(data, r, client):
     altitude = doublefrom_bytes(data[52:60])
     PPSQuantizationError = floatfrom_bytes(data[60:64])
 
-    json_body = [
-        {
-            "measurement": RKEYsupp,
-            "tags": {
-                "observatory": OBSERVATORY,
-                "datatype": "GPS"
-            },
-            "time": lastTime,
-            "fields":{
-                'RECEIVERMODE': DEFAULTVALUE.format(receiverMode),
-                'DISCIPLININGMODE': DEFAULTVALUE.format(disModeValues),
-                'SELFSURVEYPROGRESS': selfSurveyProgress,
-                'HOLDOVERDURATION': holdOverDuration,
-                'DACatRail': (criticalAlarms & 0x08) >> 3,
-                'DACnearRail': minorAlarms & 0x0001,
-                'AntennaOpen': (minorAlarms & 0x0002) >> 1,
-                'AntennaShorted': (minorAlarms & 0x0004) >> 2,
-                'NotTrackingSatellites': (minorAlarms & 0x0008) >> 3,
-                'NotDiscipliningOscillator': (minorAlarms & 0x0010) >> 4,
-                'SurveyInProgress': (minorAlarms & 0x0020) >> 5,
-                'NoStoredPosition': (minorAlarms & 0x0040) >> 6,
-                'LeapSecondPending': (minorAlarms & 0x0080) >> 7,
-                'InTestMode': (minorAlarms & 0x0100) >> 8,
-                'PositionIsQuestionable': (minorAlarms & 0x0200) >> 9,
-                'EEPROMCorrupt': (minorAlarms & 0x0400) >> 10,
-                'AlmanacNotComplete': (minorAlarms & 0x0800) >> 11,
-                'PPSNotGenerated': (minorAlarms & 0x1000) >> 12,
-                'GPSDECODINGSTATUS': DEFAULTVALUE.format(GPSDecodingStatus),
-                'DISCIPLININGACTIVITY': DEFAULTVALUE.format(discipliningActivity),
-                'SPARESTATUS1': spareStatus1,
-                'SPARESTATUS2': spareStatus2,
-                'PPSOFFSET': PPSOffset,
-                'CLOCKOFFSET': clockOffset,
-                'DACVALUE': DACValue,
-                'DACVOLTAGE': DACVoltage,
-                'TEMPERATURE': temp,
-                'LATITUDE': latitude,
-                'LONGITUDE': longitude,
-                'ALTITUDE': altitude,
-                'PPSQUANTIZATIONERROR': PPSQuantizationError
-            }
-        }
-    ]
+    redis_set = { 'SYSTIME': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        'GPSTIME': lastTime,
+        'RECEIVERMODE': DEFAULTVALUE.format(receiverMode),
+        'DISCIPLININGMODE': DEFAULTVALUE.format(disModeValues),
+        'SELFSURVEYPROGRESS': selfSurveyProgress,
+        'HOLDOVERDURATION': holdOverDuration,
+        'DACatRail': (criticalAlarms & 0x08) >> 3,
+        'DACnearRail': minorAlarms & 0x0001,
+        'AntennaOpen': (minorAlarms & 0x0002) >> 1,
+        'AntennaShorted': (minorAlarms & 0x0004) >> 2,
+        'NotTrackingSatellites': (minorAlarms & 0x0008) >> 3,
+        'NotDiscipliningOscillator': (minorAlarms & 0x0010) >> 4,
+        'SurveyInProgress': (minorAlarms & 0x0020) >> 5,
+        'NoStoredPosition': (minorAlarms & 0x0040) >> 6,
+        'LeapSecondPending': (minorAlarms & 0x0080) >> 7,
+        'InTestMode': (minorAlarms & 0x0100) >> 8,
+        'PositionIsQuestionable': (minorAlarms & 0x0200) >> 9,
+        'EEPROMCorrupt': (minorAlarms & 0x0400) >> 10,
+        'AlmanacNotComplete': (minorAlarms & 0x0800) >> 11,
+        'PPSNotGenerated': (minorAlarms & 0x1000) >> 12,
+        'GPSDECODINGSTATUS': DEFAULTVALUE.format(GPSDecodingStatus),
+        'DISCIPLININGACTIVITY': DEFAULTVALUE.format(discipliningActivity),
+        'SPARESTATUS1': spareStatus1,
+        'SPARESTATUS2': spareStatus2,
+        'PPSOFFSET': PPSOffset,
+        'CLOCKOFFSET': clockOffset,
+        'DACVALUE': DACValue,
+        'DACVOLTAGE': DACVoltage,
+        'TEMPERATURE': temp,
+        'LATITUDE': latitude,
+        'LONGITUDE': longitude,
+        'ALTITUDE': altitude,
+        'PPSQUANTIZATIONERROR': PPSQuantizationError
+    }
     if receiverMode in recModeValues:
-        json_body[0]['fields']['RECEIVERMODE'] = recModeValues[receiverMode]
+        redis_set['RECEIVERMODE'] = recModeValues[receiverMode]
     if discipliningMode in disModeValues:
-        json_body[0]['fields']['DISCIPLININGMODE'] = disModeValues[discipliningMode]
+        redis_set['DISCIPLININGMODE'] = disModeValues[discipliningMode]
     if GPSDecodingStatus in GPSDecodeValues:
-        json_body[0]['fields']['GPSDECODINGSTATUS'] = GPSDecodeValues[GPSDecodingStatus]
+        redis_set['GPSDECODINGSTATUS'] = GPSDecodeValues[GPSDecodingStatus]
     if discipliningActivity in disActivityValues:
-        json_body[0]['fields']['DISCIPLININGACTIVITY'] = disActivityValues[discipliningActivity]
+        redis_set['DISCIPLININGACTIVITY'] = disActivityValues[discipliningActivity]
     
-    client.write_points(json_body)
-    
-    
-    for key in json_body[0]['fields']:
-        #print(key, json_body[0]['fields'][key])
-        r.hset(RKEYsupp, key, json_body[0]['fields'][key])
-    rhset(RKEYsupp, key, json_body[0]['time'])
+    for key in redis_set.keys():
+        r.hset(RKEYsupp, key, redis_set[key])
     
     lastTimeUpdated = False
     
@@ -237,8 +208,6 @@ signal(SIGINT, handler)
 def initialize():
     r = redis.Redis(host='localhost', port=6379, db=0)
 
-    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-    client.create_database('metadata')
     # configure the serial connections (the parameters differs on the device you are connecting to)
     ser = serial.Serial(
         port='/dev/ttyUSB0',
@@ -250,7 +219,7 @@ def initialize():
     )
     ser.isOpen()
 
-    return ser, r, client
+    return ser, r
 
 
 def main():
@@ -258,7 +227,7 @@ def main():
     dataSize = 0
     bytesToRead = 0
 
-    ser, r, client= initialize()
+    ser, r = initialize()
 
     print('Running')
     while True:
@@ -270,11 +239,9 @@ def main():
             if data[0:1] == b'\x10':
                 id = data[1:3]
                 if id == b'\x8f\xab':
-                    primaryTimingPacket(data[2:dataSize-2])
-                    r.hset('UPDATED', RKEY, 1)
+                    primaryTimingPacket(data[2:dataSize-2], r)
                 elif id == b'\x8f\xac':
-                    supplimentaryTimingPacket(data[2:dataSize-2])
-                    r.hset('UPDATED', RKEYsupp, 1)
+                    supplimentaryTimingPacket(data[2:dataSize-2], r)
                 else:
                     print(data[1:dataSize-2])
                     print(len(data[2:dataSize-2]))
