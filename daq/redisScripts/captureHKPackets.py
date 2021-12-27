@@ -1,6 +1,5 @@
 import socket
 import redis
-from influxdb import InfluxDBClient
 from signal import signal, SIGINT
 from sys import exit
 from datetime import datetime
@@ -45,7 +44,7 @@ def handler(signal_recieved, frame):
 def getUID(intArr):
     return intArr[0] + (intArr[1] << 16) + (intArr[2] << 32) + (intArr[3] << 48)
     
-def storeInRedisandInflux(packet, r, client):
+def storeInRedis(packet, r:redis.Redis):
     array = []
     startUp = 0
     
@@ -59,81 +58,64 @@ def storeInRedisandInflux(packet, r, client):
         
     boardName = "QUABO_" + str(array[0])
     
-    json_body = [
-        {
-            "measurement": "Quabo{0}".format(array[0]),
-            "tags": {
-                "observatory": OBSERVATORY,
-                "datatype": "housekeeping"
-            },
-            "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "fields":{
-                'BOARDLOC': array[0],
-                'HVMON0': HKconv.convertValue('HVMON0', array[1]),
-                'HVMON1': HKconv.convertValue('HVMON1', array[2]),
-                'HVMON2': HKconv.convertValue('HVMON2', array[3]),
-                'HVMON3': HKconv.convertValue('HVMON3', array[4]),
+    redis_set = {
+        'SYSTIME': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        'BOARDLOC': array[0],
+        'HVMON0': HKconv.convertValue('HVMON0', array[1]),
+        'HVMON1': HKconv.convertValue('HVMON1', array[2]),
+        'HVMON2': HKconv.convertValue('HVMON2', array[3]),
+        'HVMON3': HKconv.convertValue('HVMON3', array[4]),
 
-                'HVIMON0': HKconv.convertValue('HVIMON0', array[5]),
-                'HVIMON1': HKconv.convertValue('HVIMON1', array[6]),
-                'HVIMON2': HKconv.convertValue('HVIMON2', array[7]),
-                'HVIMON3': HKconv.convertValue('HVIMON3', array[8]),
+        'HVIMON0': HKconv.convertValue('HVIMON0', array[5]),
+        'HVIMON1': HKconv.convertValue('HVIMON1', array[6]),
+        'HVIMON2': HKconv.convertValue('HVIMON2', array[7]),
+        'HVIMON3': HKconv.convertValue('HVIMON3', array[8]),
 
-                'RAWHVMON': HKconv.convertValue('RAWHVMON', array[9]),
+        'RAWHVMON': HKconv.convertValue('RAWHVMON', array[9]),
 
-                'V12MON': HKconv.convertValue('V12MON', array[10]),
-                'V18MON': HKconv.convertValue('V18MON', array[11]),
-                'V33MON': HKconv.convertValue('V33MON', array[12]),
-                'V37MON': HKconv.convertValue('V37MON', array[13]),
+        'V12MON': HKconv.convertValue('V12MON', array[10]),
+        'V18MON': HKconv.convertValue('V18MON', array[11]),
+        'V33MON': HKconv.convertValue('V33MON', array[12]),
+        'V37MON': HKconv.convertValue('V37MON', array[13]),
 
-                'I10MON': HKconv.convertValue('I10MON', array[14]),
-                'I18MON': HKconv.convertValue('I18MON', array[15]),
-                'I33MON': HKconv.convertValue('I33MON', array[16]),
-                'VCCINT': HKconv.convertValue('VCCINT', array[19]),
-                'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
+        'I10MON': HKconv.convertValue('I10MON', array[14]),
+        'I18MON': HKconv.codwnvertValue('I18MON', array[15]),
+        'I33MON': HKconv.convertValue('I33MON', array[16]),
+        'VCCINT': HKconv.convertValue('VCCINT', array[19]),
+        'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
 
-                'UID': '0x{0:04x}{0:04x}{0:04x}{0:04x}'.format(array[24],array[23],array[22],array[21]),
+        'UID': '0x{0:04x}{0:04x}{0:04x}{0:04x}'.format(array[24],array[23],array[22],array[21]),
 
-                'SHUTTER_STATUS': array[25]&0x01,
-                'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
+        'SHUTTER_STATUS': array[25]&0x01,
+        'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
-                'FWID0': array[27] + array[28]*0x10000,
-                'FWID1': array[29] + array[30]*0x10000,
-                
-                'StartUp': startUp
-            }
-        }
-    ]
-    client.write_points(json_body)
-    
-    r.hset(boardName, 'SYSTIME', json_body[0]['time'])
-    for key in json_body[0]['fields']:
-        r.hset(boardName, key, json_body[0]['fields'][key])
+        'FWID0': array[27] + array[28]*0x10000,
+        'FWID1': array[29] + array[30]*0x10000,
+        
+        'StartUp': startUp
+    }
 
-    r.hset('UPDATED', boardName, "1")
+    for key in redis_set.keys():
+        r.hset(boardName, key, redis_set[key])
 
 def initialize():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     r = redis.Redis(host='localhost', port=6379, db=0)
-
-    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-    client.create_database('metadata')
-
-    return sock, r, client
+    return sock, r
     
     
     
 signal(SIGINT, handler)
 
 def main():
-    sock, r, client = initialize()
+    sock, r = initialize()
     print('Running')
     sock.bind((HOST,PORT))
     num = 0
     while(True):
         packet = sock.recvfrom(64)
         num += 1
-        storeInRedisandInflux(packet[0], r, client)
+        storeInRedis(packet[0], r)
         print(COUNTER.format(num), end='')
 
 if __name__ == "__main__":
