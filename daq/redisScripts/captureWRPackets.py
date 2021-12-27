@@ -1,7 +1,6 @@
 import os
 import netsnmp
 import redis
-from influxdb import InfluxDBClient
 import time
 from signal import signal, SIGINT
 from datetime import datetime
@@ -22,9 +21,6 @@ signal(SIGINT, handler)
 
 def initialize():
     r = redis.Redis(host='localhost', port=6379, db=0)
-
-    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-    client.create_database('metadata')
 
     os.environ['MIBDIRS']='+./'
 
@@ -64,11 +60,11 @@ def initialize():
         print('Error : Please check the sfp transceivers!!')
         print(' ')
 
-    return r, client
+    return r
 
 
 def main():
-    r, client = initialize()
+    r = initialize()
     while True:
         oid = netsnmp.Varbind('WR-SWITCH-MIB::wrsPortStatusLink')
         try:
@@ -83,34 +79,13 @@ def main():
         if(len(res)==0):
             print('WR-SWITCH(%s) : No sfp transceivers detected!' %(SWITCHIP))
             exit(0)
-
-        json_body = [
-            {
-                "measurement": "WRSwitch",
-                "tags": {
-                    "observatory": OBSERVATORY,
-                    "datatype": "whiterabbit"
-                },
-                "time": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "fields":{
-                }
-            }
-        ]
         
+
+        r.hset(RKEY, 'SYSTIME', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
         for i in range(len(res)):
             tmp = bytes.decode(res[i]).replace(' ','') 					#convert bytes to str, and replace the 'space' at the end
-            if tmp == LINK_UP :
-                r.hset(RKEY, 'Port%2d_LINK'%(i+1), 1)
-                json_body[0]['fields']['Port%2d_LINK'%(i+1)] = 1
-                #print('WR-SWITCH(%s) : Port%2d LINK_UP  ' %(SWITCHIP, i+1))
-            else:
-                r.hset(RKEY, 'Port%2d_LINK'%(i+1), 0)
-                json_body[0]['fields']['Port%2d_LINK'%(i+1)] = 0
-                #print('WR-SWITCH(%s) : Port%2d LINK_DOWN' %(SWITCHIP, i+1))
-        
-        client.write_points(json_body)
+            r.hset(RKEY, 'Port%2d_LINK'%(i+1), 1 if tmp == LINK_UP else 0)
 
-        r.hset('UPDATED', RKEY, 1)
         print(datetime.utcnow())
         time.sleep(1)
 
