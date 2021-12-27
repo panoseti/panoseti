@@ -7,6 +7,14 @@ sys.path.insert(0, '../util')
 
 import pff
 
+#-------------- BINARY DATA ---------------
+
+def print_binary(data):
+    n = len(data)
+    print('got %d bytes'%n)
+    for i in range(n):
+        print("%d: %d"%(i, data[i]))
+
 #-------------- FILE NAMES ---------------
 
 hk_pid_file = '.hk_pid'

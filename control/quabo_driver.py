@@ -2,7 +2,10 @@
 #
 # example:
 #   q = QUABO("128.5.4.2")
-#   q.lf(False)
+#   q.lf(False)     # set LED flasher 0
+#
+# Some of the operations get their info from a "quabo config file".
+# Where possible I'd like to add variants that get params directly.
 #
 # A QUABO object has info about the quabo state,
 # e.g. MAROC regs, shutter status etc.
@@ -12,6 +15,7 @@
 # See https://github.com/panoseti/panoseti/wiki/Quabo-device-driver
 
 import socket, time
+import util
 
 UDP_CMD_PORT= 60000
     # port used on both sides for command packets
@@ -19,6 +23,13 @@ UDP_HK_PORT= 60002
     # used on master to receive HK packets
 
 SERIAL_COMMAND_LENGTH = 829
+
+class DAQ_PARAMS:
+    def __init__(self, do_image, do_ph, bl_subtract, image_us):
+        self.do_image = do_image
+        self.do_ph = do_ph
+        self.bl_subtract = bl_subtract
+        self.image_us = image_us
 
 class QUABO:
     def __init__(self, ip_addr, config_file_path='config/quabo_config.txt'):
@@ -42,6 +53,22 @@ class QUABO:
 
     def close(self):
         self.sock.close()
+
+    def set_acq_params(self, params):
+        cmd = self.make_cmd(0x03)
+        mode = 0
+        if params.do_image:
+            mode |= 0x1
+        if params.do_ph:
+            mode |= 0x2
+        if not params.bl_subtract:
+            mode |= 0x10
+        cmd[2] = mode
+        cmd[4] = params.image_us % 256
+        cmd[5] = params.image_us // 256
+        cmd[12] = 70
+        #util.print_binary(cmd)
+        self.send(cmd)
 
     def send_maroc_params(self):
         cmd = bytearray(492)
@@ -90,7 +117,7 @@ class QUABO:
             cmd[2*i+3]=0
         self.send(cmd)
 
-    def send_acq_parameters(self):
+    def send_acq_parameters_file(self):
         cmd = self.make_cmd(0x03)
         with open(config_file_path) as f:
             self.parse_acq_parameters(f, cmd)

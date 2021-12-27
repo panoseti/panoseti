@@ -2,11 +2,11 @@
 
 # Configure and reboot quabos
 # options:
-# --show        show summary of config file (list of domes and modules)
-# --ping        ping selected quabos
-# --reboot      reboot selected quabos
-# --loads       load silver firmware in selected quabos
-# --loadg       load gold firmware in selected quabos
+# --show        show list of domes/modules/quabos
+# --ping        ping quabos
+# --reboot      reboot quabos
+# --loads       load silver firmware in quabos
+# --loadg       load gold firmware in quabos
 #               DEPRECATED - dangerous
 # based on matlab/initq.m, startq*.py
 
@@ -19,9 +19,9 @@ from panoseti_tftp import tftpw
 def usage():
     print('''usage:
 --show        show list of domes/modules/quabos
---ping        ping selected quabos
---reboot      reboot selected quabos
---loads       load silver firmware in selected quabos
+--ping        ping quabos
+--reboot      reboot quabos
+--loads       load silver firmware in quabos
 ''')
     sys.exit()
 

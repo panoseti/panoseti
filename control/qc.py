@@ -36,7 +36,14 @@ def do_cmd(quabo, words):
     elif cmd == 'VV':
         quabo.hv_zero()
     elif cmd == 'A':
-        quabo.send_acq_parameters()
+        quabo.send_acq_parameters_file()
+    elif cmd == 'AM':
+        image = int(words.pop(0))
+        ph = int(words.pop(0))
+        bl_subtract = int(words.pop(0))
+        image_us = int(words.pop(0))
+        am = ACQ_MODE(image, ph, bl_subtract, image_us)
+        quabo.send_act_params(am)
     elif cmd == 'T':
         quabo.send_trigger_mask()
     elif cmd == 'R':
@@ -62,10 +69,7 @@ def do_cmd(quabo, words):
     elif cmd == 'HK':
         data = quabo.read_hk_packet()
         if data:
-            n = len(data)
-            print('got %d bytes'%n)
-            for i in range(n):
-                print("%d: %d"%(i, data[i]))
+            print_binary(data)
         else:
             print('no HK packet')
     else:
@@ -91,6 +95,7 @@ def print_cmds():
     "v chan value" to adjust individual HV values (0..3, 0..65535),
     "VV" to turn off all HVs,
     "A" to load only the acquisition mode parameters from quabo_config.txt,
+    "AM image ph bl_subtract image_us: set acq mode params,
     "T" to load the trigger mask values from the quabo_config.txt file,
     "R" to send a system reset,
     "ST steps" to move the focus stepper (1..50000; 0 to recalibrate),
