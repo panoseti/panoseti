@@ -41,14 +41,22 @@ def main():
     r, client = influx_init()
     key_timestamps = {}
     while True:
-        avaliable_keys = r.keys("*")
+        avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
         for key in avaliable_keys:
+            print(key)
             try:
                 systime = r.hget(key, 'SYSTIME')
+                if systime == None:
+                    continue
                 if key in key_timestamps and key_timestamps[key] == systime:
                     continue
                 
-                write_influx(client, key, r.hgetall(key), get_datatype(key))
+                redis_set = r.hgetall(key)
+                data_fields = {}
+                for rkey in redis_set:
+                    data_fields[rkey.decode("utf-8")] = redis_set[rkey].decode("utf-8")
+                
+                write_influx(client, key, data_fields, get_datatype(key))
                 key_timestamps[key] = systime
             except redis.ResponseError:
                 pass
