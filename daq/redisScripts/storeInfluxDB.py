@@ -43,7 +43,6 @@ def main():
     while True:
         avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
         for key in avaliable_keys:
-            print(key)
             try:
                 systime = r.hget(key, 'SYSTIME')
                 if systime == None:
