@@ -10,7 +10,7 @@
 #
 # See https://github.com/panoseti/panoseti/wiki/Quabo-command-line-interface
 
-import quabo_driver
+import quabo_driver, util
 import sys
 
 config_filename = "./config/quabo_config.txt"
@@ -39,11 +39,11 @@ def do_cmd(quabo, words):
         quabo.send_acq_parameters_file()
     elif cmd == 'AM':
         image = int(words.pop(0))
+        image_us = int(words.pop(0))
         ph = int(words.pop(0))
         bl_subtract = int(words.pop(0))
-        image_us = int(words.pop(0))
-        am = ACQ_MODE(image, ph, bl_subtract, image_us)
-        quabo.send_act_params(am)
+        am = quabo_driver.DAQ_PARAMS(image, ph, bl_subtract, image_us)
+        quabo.send_daq_params(am)
     elif cmd == 'T':
         quabo.send_trigger_mask()
     elif cmd == 'R':
@@ -69,7 +69,7 @@ def do_cmd(quabo, words):
     elif cmd == 'HK':
         data = quabo.read_hk_packet()
         if data:
-            print_binary(data)
+            util.print_binary(data)
         else:
             print('no HK packet')
     else:
@@ -95,7 +95,7 @@ def print_cmds():
     "v chan value" to adjust individual HV values (0..3, 0..65535),
     "VV" to turn off all HVs,
     "A" to load only the acquisition mode parameters from quabo_config.txt,
-    "AM image ph bl_subtract image_us: set acq mode params,
+    "AM image(0/1) image_us ph(0/1) bl_subtract(0/1): set acq mode params,
     "T" to load the trigger mask values from the quabo_config.txt file,
     "R" to send a system reset,
     "ST steps" to move the focus stepper (1..50000; 0 to recalibrate),

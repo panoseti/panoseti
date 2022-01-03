@@ -13,6 +13,6 @@ def main():
         # returns [data, [ip_addr, port]]
         data = x[0]
         ip_addr = x[1][0]
-        print('got %d bytes from %s'%(len(data), ip_addr))
+        print('%f: got %d bytes from %s'%(time.time(), len(data), ip_addr))
 
 main()

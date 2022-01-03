@@ -1,27 +1,29 @@
 #! /usr/bin/env python
 
-# Configure and reboot quabos
+# Initialize for (one or more) observing runs
 # options:
-# --show        show list of domes/modules/quabos
-# --ping        ping quabos
-# --reboot      reboot quabos
-# --loads       load silver firmware in quabos
-# --loadg       load gold firmware in quabos
-#               DEPRECATED - dangerous
-# based on matlab/initq.m, startq*.py
+# --show            show list of domes/modules/quabos
+# --ping            ping quabos
+# --reboot          reboot quabos
+# --loads           load silver firmware in quabos
+# --init_daq_nodes  copy software to daq nodes
+#
+# see matlab/initq.m, startq*.py
 
 firmware_silver = 'quabo_0116C_23CBEAFB.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import util, config_file, sys, os, quabo_driver
+import sys, os
+import util, config_file, quabo_driver, file_xfer
 from panoseti_tftp import tftpw
 
 def usage():
     print('''usage:
---show        show list of domes/modules/quabos
---ping        ping quabos
---reboot      reboot quabos
---loads       load silver firmware in quabos
+--show              show list of domes/modules/quabos
+--ping              ping quabos
+--reboot            reboot quabos
+--loads             load silver firmware in quabos
+--init_daq_nodes    copy software to daq nodes
 ''')
     sys.exit()
 
@@ -47,7 +49,7 @@ def do_reboot(modules, quabo_uids):
     #
     for module in modules:
         for i in range(4):
-            if not config_file.is_quabo_alive(module, quabo_uids, i):
+            if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
@@ -60,11 +62,12 @@ def do_reboot(modules, quabo_uids):
                 if quabo.read_hk_packet():
                     break
             quabo.close()
+            print('rebooted quabo at %s'%ip_addr)
 
 def do_loads(modules, quabo_uids):
     for module in modules:
         for i in range(4):
-            if not config_file.is_quabo_alive(module, quabo_uids, i):
+            if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
@@ -101,15 +104,17 @@ if __name__ == "__main__":
         elif argv[i] == '--ping':
             nops += 1
             op = 'ping'
+        elif argv[i] == '--init_daq_nodes':
+            nops += 1
+            op = 'init_daq_nodes'
         else:
             print('bad arg: %s'%argv[i])
             usage()
         i += 1
 
-    if (nops == 0):
-        print('no op specified')
+    if nops == 0:
         usage()
-    if (nops > 1):
+    if nops > 1:
         print('must specify a single op')
         usage()
 
@@ -121,3 +126,6 @@ if __name__ == "__main__":
         do_loads(modules, quabo_uids)
     elif op == 'ping':
         do_ping(modules)
+    elif op == 'init_daq_nodes':
+        daq_config = config_file.get_daq_config()
+        file_xfer.copy_hashpipe(daq_config)

@@ -17,7 +17,9 @@ def quabo_power(on):
     socket = ups['quabo_socket']
     value = 'ON' if on else 'OFF'
     cmd = 'curl -s %s/outlet?%d=%s > /dev/null'%(url,socket,value)
-    os.system(cmd)
+    ret = os.system(cmd)
+    if ret: raise Exception('%s returned %d'%(cmd, ret))
+
 
 # return True if power is on
 #

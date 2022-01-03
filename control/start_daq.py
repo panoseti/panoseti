@@ -2,7 +2,7 @@
 
 # start_daq.py dirname
 # This script is run (remotely) on a DAQ node to start recording
-# - create the directory
+# The run directory has already been created
 # - start the Hashpipe process
 # - record the PID and dirname in a file
 #
@@ -13,7 +13,6 @@ import sys, os, subprocess
 pid_filename = 'daq_pid'
 dirname_filename = 'daq_dirname'
     # stores name of current run
-daq_log_filename = 'daq_log'
 
 def main():
     if len(sys.argv) != 2:
@@ -25,15 +24,7 @@ def main():
         print("PID file exists; run stop_daq.py")
         #return
 
-    # make the run directory
-
-    try:
-        os.mkdir(dirname)
-    except:
-        print("can't create run directory")
-        #return
-
-    # record its name in a file
+    # record the run name in a file
 
     try:
         f = open(dirname_filename, 'w')
@@ -47,9 +38,12 @@ def main():
     # run the DAQ program
 
     try:
-        process = subprocess.Popen(['daq', dirname, daq_log_filename])
+        process = subprocess.Popen(
+            ['./record_time.py', dirname], start_new_session=True,
+            close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except:
-        print("can't launch daq process")
+        print("can't launch DAQ process")
         return
 
     # write its PID to a file

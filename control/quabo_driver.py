@@ -25,11 +25,15 @@ UDP_HK_PORT= 60002
 SERIAL_COMMAND_LENGTH = 829
 
 class DAQ_PARAMS:
-    def __init__(self, do_image, do_ph, bl_subtract, image_us):
+    def __init__(self, do_image, image_us, do_ph, bl_subtract):
         self.do_image = do_image
+        self.image_us = image_us
         self.do_ph = do_ph
         self.bl_subtract = bl_subtract
-        self.image_us = image_us
+
+# currently each QUABO object has its own sockets,
+# which means you can only have one at a time.
+# will probably need to change this at some point
 
 class QUABO:
     def __init__(self, ip_addr, config_file_path='config/quabo_config.txt'):
@@ -53,8 +57,9 @@ class QUABO:
 
     def close(self):
         self.sock.close()
+        self.hk_sock.close()
 
-    def set_acq_params(self, params):
+    def send_daq_params(self, params):
         cmd = self.make_cmd(0x03)
         mode = 0
         if params.do_image:

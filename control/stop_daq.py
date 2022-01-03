@@ -7,15 +7,11 @@
 #
 # On success, print OK.  Otherwise print an error message
 
-import sys, os, signal
+import os, signal
 
 pid_filename = 'daq_pid'
 
 def main():
-    if len(sys.argv) != 1:
-        print("usage: start_daq.py dirname")
-        return
-
     try:
         f = open(pid_filename, 'r')
     except:
@@ -23,7 +19,7 @@ def main():
         return
     pid = int(f.read())
     f.close()
-    os.kill(pid, signal.SIGSTOP)
+    os.kill(pid, signal.SIGKILL)
     os.unlink(pid_filename)
 
     print('OK')

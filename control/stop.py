@@ -8,23 +8,39 @@
 # - collect data files
 
 import os, sys
-import util, config_file, collect
+import util, config_file, collect, quabo_driver
 
 # tell the quabos to stop sending data
 #
 def stop_data_flow(quabo_uids):
-    pass
+    daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False)
+    for dome in quabo_uids['domes']:
+        for module in dome['modules']:
+            if 'daq_node' not in module:
+                continue
+            base_ip_addr = module['ip_addr']
+            for i in range(4):
+                quabo = module['quabos'][i]
+                if quabo['uid'] == '':
+                    continue
+                ip_addr = util.quabo_ip_addr(base_ip_addr, i)
+                quabo = quabo_driver.QUABO(ip_addr)
+                quabo.send_daq_params(daq_params)
+                quabo.close()
 
 # tell the DAQ nodes to stop recording
 #
 def stop_recording(daq_config):
+    username = daq_config['username']
+    data_dir = daq_config['data_dir']
     for node in daq_config['daq_nodes']:
         if len(node['modules']) > 0:
-            cmd = 'ssh %s@%s "cd %s; start_hashpipe.py --stop"'%(
-                node['username'], node['ip_addr'], node['dir']
+            cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(
+                username, node['ip_addr'], data_dir
             )
             print(cmd)
-            #os.system(cmd)
+            ret = os.system(cmd)
+            if ret: raise Exception('%s returned %d'%(cmd, ret))
 
 def stop_run(daq_config, quabo_uids):
     print("stopping data recording")
@@ -42,7 +58,6 @@ def stop_run(daq_config, quabo_uids):
         collect.collect_data(daq_config, run_dir)
     else:
         print("No run name found - can't collect data")
-
 
 if __name__ == "__main__":
     daq_config = config_file.get_daq_config()

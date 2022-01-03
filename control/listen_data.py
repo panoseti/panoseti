@@ -12,7 +12,7 @@ def main():
         x = sock.recvfrom(2048)
         # returns [data, [ip_addr, port]]
         data = x[0]
-        ip_addr = [1][0]
-        print('got %d bytes from %s'%(len(data), ip_addr))
+        ip_addr = x[1][0]
+        print('%f: got %d bytes from %s'%(time.time(), len(data), ip_addr))
 
 main()

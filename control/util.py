@@ -48,7 +48,7 @@ def quabo_ip_addr(base, i):
 #
 def is_quabo_alive(module, quabo_uids, i):
     n = module['num']
-    for dome in c['domes']:
+    for dome in quabo_uids['domes']:
         for m in dome['modules']:
             if m['num'] == module['num']:
                 q = m['quabos'][i]
