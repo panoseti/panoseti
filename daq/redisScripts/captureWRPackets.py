@@ -81,7 +81,7 @@ def main():
             exit(0)
         
 
-        r.hset(RKEY, 'SYSTIME', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+        r.hset(RKEY, 'Computer_UTC', datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
         for i in range(len(res)):
             tmp = bytes.decode(res[i]).replace(' ','') 					#convert bytes to str, and replace the 'space' at the end
             r.hset(RKEY, 'Port%2d_LINK'%(i+1), 1 if tmp == LINK_UP else 0)

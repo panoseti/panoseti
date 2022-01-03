@@ -72,7 +72,7 @@ def primaryTimingPacket(data, r):
     lastTimeUpdated = True
     print(lastTime)
     
-    redis_set = { 'SYSTIME': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    redis_set = { 'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'GPSTIME': lastTime,
         'TOW': timeofWeek,
         'WEEKNUMBER': weekNumber,
@@ -131,7 +131,7 @@ def supplimentaryTimingPacket(data, r):
     altitude = doublefrom_bytes(data[52:60])
     PPSQuantizationError = floatfrom_bytes(data[60:64])
 
-    redis_set = { 'SYSTIME': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    redis_set = { 'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'GPSTIME': lastTime,
         'RECEIVERMODE': DEFAULTVALUE.format(receiverMode),
         'DISCIPLININGMODE': DEFAULTVALUE.format(disModeValues),

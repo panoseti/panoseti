@@ -59,7 +59,7 @@ def storeInRedis(packet, r:redis.Redis):
     boardName = "QUABO_" + str(array[0])
     
     redis_set = {
-        'SYSTIME': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'BOARDLOC': array[0],
         'HVMON0': HKconv.convertValue('HVMON0', array[1]),
         'HVMON1': HKconv.convertValue('HVMON1', array[2]),
