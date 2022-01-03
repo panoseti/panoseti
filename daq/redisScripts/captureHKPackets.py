@@ -71,7 +71,7 @@ def storeInRedis(packet, r:redis.Redis):
         'HVIMON2': HKconv.convertValue('HVIMON2', array[7]),
         'HVIMON3': HKconv.convertValue('HVIMON3', array[8]),
 
-        'RAWHVMON': HKconv.convertValue('RAWHVMON', array[9]),
+        'RAWHVMON': HKconv.convertValue('RAWHVMON', -array[9]),
 
         'V12MON': HKconv.convertValue('V12MON', array[10]),
         'V18MON': HKconv.convertValue('V18MON', array[11]),
