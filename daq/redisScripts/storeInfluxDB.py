@@ -67,24 +67,6 @@ def main():
     key_timestamps = {}
     while True:
         write_redis_to_influx(client, r, get_updated_redis_keys(r, key_timestamps), key_timestamps)
-        #avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
-        #for key in avaliable_keys:
-        #    try:
-        #        compUTC = r.hget(key, 'Computer_UTC')
-        #        if compUTC == None:
-        #            continue
-        #        if key in key_timestamps and key_timestamps[key] == compUTC:
-        #            continue
-        #        
-        #        redis_set = r.hgetall(key)
-        #        data_fields = {}
-        #        for rkey in redis_set:
-        #            data_fields[rkey.decode("utf-8")] = redis_set[rkey].decode("utf-8")
-        #        
-        #        write_influx(client, key, data_fields, get_datatype(key))
-        #        key_timestamps[key] = compUTC
-        #    except redis.ResponseError:
-        #        pass
         time.sleep(1)
 
 if __name__ == "__main__":
