@@ -17,7 +17,7 @@ def get_updated_redis_keys(key_timestamps):
             systime = r.hget(key, 'SYSTIME')
             if systime == None:
                 continue
-            if key in key_timestamps[key] == systime:
+            if key in key_timestamps and key_timestamps[key] == systime.decode("utf-8"):
                 continue
             list_of_updates.append(key)
         except redis.ResponseError:
@@ -41,6 +41,5 @@ if __name__ == "__main__":
         exit(0)
     file_ptr = open(sys.argv[1], "w+")
     while True:
-        write_redis_keys(file_ptr, get_updated_redis_keys("UPDATED"), key_timestamps)
-        file_ptr.write("\n\n")
+        write_redis_keys(file_ptr, get_updated_redis_keys(key_timestamps), key_timestamps)
         time.sleep(1)
