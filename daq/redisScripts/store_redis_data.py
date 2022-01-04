@@ -14,10 +14,10 @@ def get_updated_redis_keys(key_timestamps):
     list_of_updates = []
     for key in avaliable_keys:
         try:
-            systime = r.hget(key, 'SYSTIME')
-            if systime == None:
+            compUTC = r.hget(key, 'Computer_UTC')
+            if compUTC == None:
                 continue
-            if key in key_timestamps and key_timestamps[key] == systime.decode("utf-8"):
+            if key in key_timestamps and key_timestamps[key] == compUTC.decode("utf-8"):
                 continue
             list_of_updates.append(key)
         except redis.ResponseError:
@@ -30,7 +30,7 @@ def write_redis_keys(file_ptr:FileIO, redis_keys:dict, key_timestamps:dict):
         redis_value = r.hgetall(rkey)
         value_dict = { k.decode('utf-8'): redis_value[k].decode('utf-8') for k in redis_value.keys() }
         json.dump({rkey: value_dict}, file_ptr)
-        key_timestamps[rkey] = value_dict['SYSTIME']
+        key_timestamps[rkey] = value_dict['Computer_UTC']
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
