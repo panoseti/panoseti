@@ -15,35 +15,6 @@ import os, sys
 import config_file
 import util, file_xfer, quabo_driver, pff
 
-# link modules to DAQ nodes:
-# - in the daq_config data structure, add a list "modules"
-#   to each daq node object, of the module objects
-#   in the quabo_uids data structure;
-# - in the quabo_uids data structure, in each module object,
-#   add a link "daq_node" to the DAQ node that's handling it.
-#
-def associate(daq_config, quabo_uids):
-    for n in daq_config['daq_nodes']:
-        n['modules'] = []
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])
-            daq_node['modules'].append(module)
-            module['daq_node'] = daq_node
-
-# show which module is going to which data recorder
-#
-def show_daq_assignments(quabo_uids):
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            ip_addr = module['ip_addr']
-            daq_node = module['daq_node']
-            for i in range(4):
-                q = module['quabos'][i];
-                print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], util.quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
-                )
-
 # parse the data config file to get DAQ params for quabos
 #
 def get_daq_params(data_config):
@@ -116,10 +87,10 @@ def start_recording(daq_config, run_name):
 def start(obs_config, daq_config, quabo_uids, data_config):
     run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
     util.write_run_name(run_name)
-    associate(daq_config, quabo_uids)
-    show_daq_assignments(quabo_uids)
+    util.associate(daq_config, quabo_uids)
+    util.show_daq_assignments(quabo_uids)
     print('starting data flow from quabos')
-#start_data_flow(quabo_uids, data_config)
+    start_data_flow(quabo_uids, data_config)
     print('starting recording')
     start_recording(daq_config, run_name)
 

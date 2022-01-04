@@ -116,9 +116,10 @@ def associate(daq_config, quabo_uids):
 def show_daq_assignments(quabo_uids):
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
+            ip_addr = module['ip_addr']
+            daq_node = module['daq_node']
             for i in range(4):
-                q = module['quabos'][i]
-                print("data from quabo %s (%s) -> DAQ node %s"%(
-                    q['uid'], quabo_ip_address(q['ip_addr'], i)
-                ))
-
+                q = module['quabos'][i];
+                print("data from quabo %s (%s) -> DAQ node %s"
+                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
+                )
