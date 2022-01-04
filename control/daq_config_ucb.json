@@ -1,6 +1,7 @@
 {
-    "username": "panosetigraph",
-    "data_dir": "data",
+    "head_node_data_dir": "/home/panoseti/data",
+    "daq_node_username": "panosetigraph",
+    "daq_node_data_dir": "data",
     "daq_nodes": [
         {
             "ip_addr": "10.0.1.22",

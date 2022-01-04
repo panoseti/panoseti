@@ -31,8 +31,8 @@ def stop_data_flow(quabo_uids):
 # tell the DAQ nodes to stop recording
 #
 def stop_recording(daq_config):
-    username = daq_config['username']
-    data_dir = daq_config['data_dir']
+    username = daq_config['daq_node_username']
+    data_dir = daq_config['daq_node_data_dir']
     for node in daq_config['daq_nodes']:
         if len(node['modules']) > 0:
             cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(

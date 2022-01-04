@@ -26,10 +26,6 @@ run_name_file = '.run_name'
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
-# for now data dir is just ./data/
-def get_data_dir():
-    return 'data'
-
 #-------------- QUABO OPS ---------------
 
 # return true if can ping IP addr
@@ -57,8 +53,8 @@ def is_quabo_alive(module, quabo_uids, i):
 
 #-------------- RECORDING ---------------
 
-def start_hk_recorder(run_name):
-    path = '%s/%s/%s'%(data_dir(), run_name, hk_file_name)
+def start_hk_recorder(daq_config, run_name):
+    path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
         process = subprocess.Popen(['record_hk.py', path])
     except:

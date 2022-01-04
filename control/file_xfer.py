@@ -13,44 +13,60 @@ import util
 # copy a file to a DAQ node
 #
 def copy_file_to_node(file, daq_config, node, run_dir=''):
-    dest_path = daq_config['data_dir']
+    dest_path = daq_config['daq_node_data_dir']
     if run_dir:
         dest_path += '/%s'%(run_dir)
+    else:
+        dest_path += '/'
     cmd = 'scp -q %s %s@%s:%s'%(
-        file, daq_config['username'], node['ip_addr'], dest_path
+        file, daq_config['daq_node_username'], node['ip_addr'], dest_path
     )
     print(cmd)
     ret = os.system(cmd)
     if ret: raise Exception('%s returned %d'%(cmd, ret))
 
 # copy the contents of a run dir from a DAQ node.
-# to the corresponding run dir on this node
+# to the corresponding run dir on this (head) node
 # scp doesn't let you do this directly,
-# so we copy the dir to a temp directory (data/IP_ADDR),
+# so we copy the dir to a temp directory (data/IP_ADDR/run),
 # then move (rename) the files into the target dir
 #
-def copy_dir_from_node(data_dir, run_name, daq_config, node):
-    run_dir_path = '%s/%s'%(data_dir, run_name)
+def copy_dir_from_node(run_name, daq_config, node):
+    local_data_dir = daq_config['head_node_data_dir']
+    run_dir_path = '%s/%s'%(local_data_dir, run_name)
     if not run_dir_path:
         raise Exception('No run dir %s'%run_name)
+    # run dir should have already been created, but just in case
+    if not os.path.isdir(run_dir_path):
+        os.mkdir(run_dir_path)
 
     # make a temp dir if needed
     #
-    tmp_dir = '%s/%s'%(data_dir, node['ip_addr'])
-    if not os.path.isdir(tmp_dir):
-        os.mkdir(tmp_dir)
+    node_tmp_dir = '%s/%s'%(local_data_dir, node['ip_addr'])
+    if not os.path.isdir(node_tmp_dir):
+        os.mkdir(node_tmp_dir)
 
+    # copy run dir from remote node to temp dir
     cmd = 'scp -q -r %s@%s:%s/%s %s'%(
-        daq_config['username'], node['ip_addr'], daq_config['data_dir'], run_name, tmp_dir
+        daq_config['daq_node_username'], node['ip_addr'],
+        daq_config['daq_node_data_dir'], run_name,
+        node_tmp_dir
     )
     print(cmd)
     ret = os.system(cmd)
     if ret: raise Exception('%s returned %d'%(cmd, ret))
 
-    cmd = 'mv %s/* %s'%(tmp_dir, run_dir_path)
-    print(cmd)
-    ret = os.system(cmd)
-    if ret: raise Exception('%s returned %d'%(cmd, ret))
+    # move non-config files from temp dir to head node data dir
+    run_tmp_dir = '%s/%s'%(node_tmp_dir, run_name)
+    for fn in os.listdir(run_tmp_dir):
+        print(fn)
+        if fn.find('config')>=0 or fn.find('quabo_uids')>=0:
+            #os.unlink('%s/%s'%(tmp_dir, fn))
+            continue
+        cmd = 'mv %s/%s %s/'%(run_tmp_dir, fn, run_dir_path)
+        print(cmd)
+        ret = os.system(cmd)
+        if ret: raise Exception('%s returned %d'%(cmd, ret))
 
 #os.rmdir(tmp_dir)
 
@@ -59,7 +75,7 @@ def copy_dir_from_node(data_dir, run_name, daq_config, node):
 def make_remote_dirs(daq_config, dirname):
     for node in daq_config['daq_nodes']:
         cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(
-            node['username'], node['ip_addr'], node['dir'], dirname
+            node['daq_node_username'], node['ip_addr'], node['dir'], dirname
         )
         print(cmd)
         ret = os.system(cmd)

@@ -10,7 +10,7 @@ import config_file, file_xfer, util
 def collect_data(daq_config, run_dir):
     for node in daq_config['daq_nodes']:
         if len(node['modules']) > 0:
-            file_xfer.copy_dir_from_node(util.get_data_dir(), run_dir, daq_config, node)
+            file_xfer.copy_dir_from_node(run_dir, daq_config, node)
 
 if __name__ == "__main__":
     i = 1

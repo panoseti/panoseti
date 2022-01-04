@@ -59,8 +59,11 @@ def start_data_flow(quabo_uids, data_config):
 # - start hashpipe program
 #
 def start_recording(daq_config, run_name):
-    username = daq_config['username']
-    data_dir = daq_config['data_dir']
+    username = daq_config['daq_node_username']
+    data_dir = daq_config['daq_node_data_dir']
+
+    # make run directories on DAQ nodes
+    #
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
@@ -71,7 +74,11 @@ def start_recording(daq_config, run_name):
         ret = os.system(cmd)
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
+    # copy config files to DAQ nodes
     file_xfer.copy_config_files(daq_config, run_name)
+
+    # start recording HK data
+    #util.start_hk_recorder(daq_config, run_name)
 
     # start hashpipe on DAQ nodes
     for node in daq_config['daq_nodes']:
@@ -86,6 +93,8 @@ def start_recording(daq_config, run_name):
 
 def start(obs_config, daq_config, quabo_uids, data_config):
     run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
+    run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
+    os.mkdir(run_dir)
     util.write_run_name(run_name)
     util.associate(daq_config, quabo_uids)
     util.show_daq_assignments(quabo_uids)
