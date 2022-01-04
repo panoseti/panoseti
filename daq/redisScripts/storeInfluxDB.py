@@ -31,7 +31,7 @@ def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str)
                 "observatory": OBSERVATORY,
                 "datatype": datatype
             },
-            "time": data_fields['SYSTIME'],
+            "time": data_fields['Computer_UTC'],
             "fields": data_fields
         }
     ]
@@ -44,10 +44,10 @@ def main():
         avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
         for key in avaliable_keys:
             try:
-                systime = r.hget(key, 'SYSTIME')
-                if systime == None:
+                compUTC = r.hget(key, 'Computer_UTC')
+                if compUTC == None:
                     continue
-                if key in key_timestamps and key_timestamps[key] == systime:
+                if key in key_timestamps and key_timestamps[key] == compUTC:
                     continue
                 
                 redis_set = r.hgetall(key)
@@ -56,7 +56,7 @@ def main():
                     data_fields[rkey.decode("utf-8")] = redis_set[rkey].decode("utf-8")
                 
                 write_influx(client, key, data_fields, get_datatype(key))
-                key_timestamps[key] = systime
+                key_timestamps[key] = compUTC
             except redis.ResponseError:
                 pass
         time.sleep(1)
