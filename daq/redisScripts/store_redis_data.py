@@ -9,7 +9,7 @@ r = redis.Redis(host='localhost', port=6379, db=0)
 #List of keys with the time stamp values
 key_timestamps = {}
 
-def get_updated_redis_keys(key_timestamps):
+def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
     avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
     list_of_updates = []
     for key in avaliable_keys:
@@ -28,7 +28,7 @@ def get_updated_redis_keys(key_timestamps):
     return list_of_updates
     
 
-def write_redis_keys(file_ptr:FileIO, redis_keys:dict, key_timestamps:dict):
+def write_redis_keys(file_ptr:FileIO, redis_keys:list, key_timestamps:dict):
     for rkey in redis_keys:
         redis_value = r.hgetall(rkey)
         value_dict = { k.decode('utf-8'): redis_value[k].decode('utf-8') for k in redis_value.keys() }
@@ -45,6 +45,5 @@ if __name__ == "__main__":
         exit(0)
     file_ptr = open(sys.argv[1], "w+")
     while True:
-        write_redis_keys(file_ptr, get_updated_redis_keys(key_timestamps), key_timestamps)
-        print(key_timestamps)
+        write_redis_keys(file_ptr, get_updated_redis_keys(r, key_timestamps), key_timestamps)
         time.sleep(1)
