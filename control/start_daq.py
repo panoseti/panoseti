@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # start_daq.py dirname
 # This script is run (remotely) on a DAQ node to start recording

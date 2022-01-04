@@ -1,0 +1,18 @@
+{
+    "run_type": "eng",
+    "image": {
+        "integration_time_usec": 1000,
+        "bits_per_pixel": 16
+    },
+    "pulse_height": {
+    },
+    "software_pulse": {
+        "octaves": 16,
+        "threshold_sigma": [
+             3.0, 3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0, 3.0
+        ]
+    }
+}

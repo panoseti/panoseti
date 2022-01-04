@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # stop_daq.py
 # This script is run (remotely) on a DAQ node to stop recording

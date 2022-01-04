@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # listen for housekeeping packets (from any quabo)
 # show their type and source

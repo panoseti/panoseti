@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # scan possible quabo IP addrs.
 # If they respond to ping, get their UID
@@ -52,6 +52,9 @@ def get_uids(obs_config, exclude):
                     ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
                     if util.ping(ip_addr):
                         uid = get_uid(ip_addr)
+                        print("%s has UID %s"%(ip_addr, uid))
+                    else:
+                        print("Can't ping %s"%ip_addr)
                 f.write(
 '''
                         {

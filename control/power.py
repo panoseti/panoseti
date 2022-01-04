@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # the Quabos are plugged into a particular socket in
 # a Digital Loggers Inc LPC9 UPS.

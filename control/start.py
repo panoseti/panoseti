@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # start or stop recording:
 # - figure out association of quabos and DAQ nodes,
