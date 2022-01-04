@@ -6,6 +6,7 @@ from influxdb import InfluxDBClient
 from signal import signal, SIGINT
 from datetime import datetime
 from datetime import timezone
+from redis_utils import *
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'
@@ -206,7 +207,7 @@ def supplimentaryTimingPacket(data, r):
 signal(SIGINT, handler)
 
 def initialize():
-    r = redis.Redis(host='localhost', port=6379, db=0)
+    r = redis_init()
 
     # configure the serial connections (the parameters differs on the device you are connecting to)
     ser = serial.Serial(

@@ -3,6 +3,7 @@ import redis
 from signal import signal, SIGINT
 from sys import exit
 from datetime import datetime
+from redis_utils import *
 
 from panosetiSIconvert import HKconvert
 HKconv = HKconvert()
@@ -100,7 +101,7 @@ def storeInRedis(packet, r:redis.Redis):
 
 def initialize():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    r = redis.Redis(host='localhost', port=6379, db=0)
+    r = redis_init()
     return sock, r
     
     

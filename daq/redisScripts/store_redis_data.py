@@ -3,27 +3,12 @@ import redis
 import json
 import sys
 import time
+from redis_utils import *
 
 file_ptr = None
-r = redis.Redis(host='localhost', port=6379, db=0)
+r = redis_init()
 #List of keys with the time stamp values
-key_timestamps = {}
-
-def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
-    avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
-    list_of_updates = []
-    for key in avaliable_keys:
-        try:
-            compUTC = r.hget(key, 'Computer_UTC')
-            if compUTC == None:
-                continue
-            if key in key_timestamps and key_timestamps[key] == compUTC.decode("utf-8"):
-                continue
-            list_of_updates.append(key)
-        except redis.ResponseError:
-            pass
-    return list_of_updates
-    
+key_timestamps = {}    
 
 def write_redis_keys(file_ptr:FileIO, redis_keys:list, key_timestamps:dict):
     for rkey in redis_keys:

@@ -4,6 +4,7 @@ import redis
 import time
 from signal import signal, SIGINT
 from datetime import datetime
+from redis_utils import *
 
 
 LINK_DOWN   =   '1'
@@ -20,7 +21,7 @@ def handler(signal_recieved, frame):
 signal(SIGINT, handler)
 
 def initialize():
-    r = redis.Redis(host='localhost', port=6379, db=0)
+    r = redis_init()
 
     os.environ['MIBDIRS']='+./'
 
