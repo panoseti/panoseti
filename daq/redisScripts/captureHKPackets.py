@@ -79,7 +79,7 @@ def storeInRedis(packet, r:redis.Redis):
         'V37MON': HKconv.convertValue('V37MON', array[13]),
 
         'I10MON': HKconv.convertValue('I10MON', array[14]),
-        'I18MON': HKconv.codwnvertValue('I18MON', array[15]),
+        'I18MON': HKconv.convertValue('I18MON', array[15]),
         'I33MON': HKconv.convertValue('I33MON', array[16]),
         'VCCINT': HKconv.convertValue('VCCINT', array[19]),
         'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
