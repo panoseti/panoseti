@@ -17,14 +17,11 @@ def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
             compUTC = r.hget(key, 'Computer_UTC')
             if compUTC == None:
                 continue
-            if key in key_timestamps:
-                print(key_timestamps[key], compUTC.decode("utf-8"), key_timestamps[key] == compUTC.decode("utf-8"))
             if key in key_timestamps and key_timestamps[key] == compUTC.decode("utf-8"):
                 continue
             list_of_updates.append(key)
         except redis.ResponseError:
             pass
-    print(list_of_updates)
     return list_of_updates
     
 
