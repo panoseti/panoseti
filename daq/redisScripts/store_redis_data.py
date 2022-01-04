@@ -1,3 +1,4 @@
+from io import FileIO
 import redis
 import json
 import sys
@@ -5,22 +6,31 @@ import time
 
 file_ptr = None
 r = redis.Redis(host='localhost', port=6379, db=0)
+#List of keys with the time stamp values
+key_timestamps = {}
 
-def get_updated_redis_keys(update_key):
-    update_values = r.hgetall(update_key)
+def get_updated_redis_keys(key_timestamps):
+    avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
     list_of_updates = []
-    for k in update_values.keys():
-        if update_values[k] == b'1':
-            list_of_updates.append(k.decode("utf-8"))
+    for key in avaliable_keys:
+        try:
+            systime = r.hget(key, 'SYSTIME')
+            if systime == None:
+                continue
+            if key in key_timestamps[key] == systime:
+                continue
+            list_of_updates.append(key)
+        except redis.ResponseError:
+            pass
     return list_of_updates
     
 
-def write_redis_key(redis_keys, update_key="UPDATED"):
+def write_redis_keys(file_ptr:FileIO, redis_keys:dict, key_timestamps:dict):
     for rkey in redis_keys:
         redis_value = r.hgetall(rkey)
         value_dict = { k.decode('utf-8'): redis_value[k].decode('utf-8') for k in redis_value.keys() }
         json.dump({rkey: value_dict}, file_ptr)
-        r.hset(update_key, rkey, "0")
+        key_timestamps[rkey] = value_dict['SYSTIME']
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -31,6 +41,6 @@ if __name__ == "__main__":
         exit(0)
     file_ptr = open(sys.argv[1], "w+")
     while True:
-        write_redis_key(get_updated_redis_keys("UPDATED"))
+        write_redis_keys(file_ptr, get_updated_redis_keys("UPDATED"), key_timestamps)
         file_ptr.write("\n\n")
         time.sleep(1)
