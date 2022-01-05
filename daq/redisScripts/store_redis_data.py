@@ -1,3 +1,11 @@
+##############################################################
+# Store data from redis database into panoseti metdata json 
+# files. Script stores all sets which contains the key for the 
+# computer timestamp 'Computer_UTC'. All sets where this value 
+# is absent is ignored. The set is then stored in to a json 
+# format separated by the characters '\n\n'.
+# As pertained in the panoseti metdata json format specifications.
+##############################################################
 from io import FileIO
 import redis
 import json

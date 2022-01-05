@@ -1,3 +1,10 @@
+##############################################################
+# Script for capturing Housekeeping data from the quabos
+# and writing their associated values into the Redis database.
+# All packet information is time stamped by the computer and
+# and added to each set of values with a variable labeled as
+# 'Computer_UTC'.
+##############################################################
 import socket
 import redis
 from signal import signal, SIGINT

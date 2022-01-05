@@ -1,3 +1,10 @@
+##############################################################
+# Script for capturing White Rabbit data from the WR Switches
+# and writing their associated values into the Redis database.
+# All packet information is time stamped by the computer and 
+# added to each set of values with a variable labeled as
+# 'Computer_UTC'.
+##############################################################
 import os
 import netsnmp
 import redis

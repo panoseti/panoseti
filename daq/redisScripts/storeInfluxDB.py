@@ -1,3 +1,11 @@
+##############################################################
+# Populates new data from redis into the influxDB database.
+# Script stores all sets which contains the key for the 
+# computer timestamp 'Computer_UTC'. All sets where this value 
+# is absent is ignored. The set is stored as a new entry in the
+# database 'metadata' in the measurement associated with each 
+# redis set.
+##############################################################
 from os import write
 from influxdb import InfluxDBClient
 import redis
