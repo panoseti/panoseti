@@ -56,7 +56,7 @@ def is_quabo_alive(module, quabo_uids, i):
 def start_hk_recorder(daq_config, run_name):
     path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
-        process = subprocess.Popen(['record_hk.py', path])
+        process = subprocess.Popen(['store_redis_data.py', path])
     except:
         print("can't launch HK recorder")
         raise

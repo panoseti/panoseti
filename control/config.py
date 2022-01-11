@@ -7,6 +7,7 @@
 # --reboot          reboot quabos
 # --loads           load silver firmware in quabos
 # --init_daq_nodes  copy software to daq nodes
+# --hk_daemons      check housekeeping scripts, start if not running
 #
 # see matlab/initq.m, startq*.py
 
@@ -85,6 +86,11 @@ def do_ping(modules):
                 print("pinged %s"%ip_addr)
             else:
                 print("can't ping %s"%ip_addr)
+
+# capture_gps.py, capture_hk.py, capture_wr.py
+#
+def do_hk_daemons():
+    pass
 
 if __name__ == "__main__":
     argv = sys.argv

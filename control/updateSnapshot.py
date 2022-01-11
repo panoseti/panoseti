@@ -1,3 +1,5 @@
+# generate index.html from redis values
+
 import redis
 import time
 from signal import signal, SIGINT
