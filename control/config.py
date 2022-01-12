@@ -14,7 +14,7 @@
 firmware_silver = 'quabo_0116C_23CBEAFB.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os
+import sys, os, subprocess
 import util, config_file, quabo_driver, file_xfer
 from panoseti_tftp import tftpw
 
@@ -95,15 +95,15 @@ def start_daemon(prog):
             close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     except:
-        print("can't launch daemon")
+        print("can't launch %s"%prog)
         return
 
-# capture_gps.py, capture_hk.py, capture_wr.py
+# start daemons that write housekeeping data to redis
 #
 def do_hk_daemons():
-    start_daemon('./capture_gps.py')
-    start_daemon('./capture_hk.py')
-    start_daemon('./capture_wr.py')
+    start_daemon('capture_gps.py')
+    start_daemon('capture_hk.py')
+    start_daemon('capture_wr.py')
 
 if __name__ == "__main__":
     argv = sys.argv

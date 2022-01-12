@@ -1,3 +1,10 @@
+#! /usr/bin/env python3
+
+# store_redis_data.py file
+#
+# copy data from redis to the given file
+# poll once per second
+
 from io import FileIO
 import redis
 import json
