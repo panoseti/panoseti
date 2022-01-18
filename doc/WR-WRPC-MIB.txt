@@ -1,0 +1,747 @@
+WR-WRPC-MIB DEFINITIONS ::= BEGIN
+
+-- Based on the WR-SWITCH-MIB
+-- Adam Wujek, BE-CO-HT, CERN
+
+-- IMPORTS: Include definitions from other mibs here
+IMPORTS
+        OBJECT-TYPE, Integer32, Unsigned32, Counter32, Counter64,
+        MODULE-IDENTITY, enterprises, TimeTicks FROM SNMPv2-SMI
+        DisplayString                         FROM SNMPv2-TC;
+
+wrWrpcMIB MODULE-IDENTITY
+    LAST-UPDATED "201607061700Z"
+    ORGANIZATION "CERN"
+    CONTACT-INFO "postal:   BE-CO-HT, CERN, Geneva
+                  email:    ht-drivers@cern.ch
+                 "
+    DESCRIPTION  "White Rabbit WRPC internal details
+                 "
+
+    REVISION     "201607061700Z"
+    DESCRIPTION
+        "Clean up MIB."
+
+    REVISION     "201604181000Z"
+    DESCRIPTION
+        "Create wrpc structure."
+
+    REVISION     "201603081000Z"
+    DESCRIPTION
+        "First revision. For testing purposes only."
+
+    ::= { cern 101 }
+
+cern OBJECT IDENTIFIER ::= { enterprises 96 }
+
+-- Define typical mib nodes
+-- we'll prefix everything in this mib with wrpc
+wrpcCore      OBJECT IDENTIFIER ::= { wrWrpcMIB 1 }
+--wrpcAuxDiag   OBJECT IDENTIFIER ::= { wrWrpcMIB 2 }
+
+-- ****************************************************************************
+wrpcVersionGroup               OBJECT IDENTIFIER ::= { wrpcCore 1 }
+
+wrpcVersionHwType              OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..31))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "The hw type"
+    ::= { wrpcVersionGroup 1 }
+
+wrpcVersionSwVersion           OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..31))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "The software version, as returned from 'git describe' at build time"
+    ::= { wrpcVersionGroup 2 }
+
+wrpcVersionSwBuildBy           OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..31))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "The software build by, as returned from
+         'git config -get-all user.name' at build time"
+    ::= { wrpcVersionGroup 3 }
+
+wrpcVersionSwBuildDate         OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..31))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "The build time and date of the software"
+    ::= { wrpcVersionGroup 4 }
+
+--x wrpcVersionGwVersion           OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The version of gateware (FPGA bitstream)"
+--x     ::= { wrpcVersionGroup 5 }
+
+--x wrpcVersionGwBuild             OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The build ID of gateware (FPGA bitstream)"
+--x     ::= { wrpcVersionGroup 6 }
+
+--x wrpcVersionGwBuildDate         OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The build date of gateware (FPGA bitstream)"
+--x     ::= { wrpcVersionGroup 7 }
+
+--x wrpcVersionGwBuildBy         OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The build author of gateware (FPGA bitstream)"
+--x     ::= { wrpcVersionGroup 8 }
+
+--x wrpcVersionGwCommitId      OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The gateware version: commit ID of XXXXXXXXX"
+--x     ::= { wrpcVersionGroup 9 }
+
+--x wrpcVersionGeneralCoresCommitId OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The gateware version: commit of general-cores"
+--x     ::= { wrpcVersionGroup 10 }
+
+--x wrpcVersionWrCoresCommitId     OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..31))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x         "The gateware version: commit of wr-cores"
+--x     ::= { wrpcVersionGroup 11 }
+
+
+-- ****************************************************************************
+wrpcTimeGroup                  OBJECT IDENTIFIER ::= { wrpcCore 2 }
+
+wrpcTimeTAI                    OBJECT-TYPE
+    SYNTAX                     Counter64
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "The current time, in TAI seconds"
+    ::= { wrpcTimeGroup 1 }
+
+wrpcTimeTAIString              OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..31))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "The current TAI time, printed as %y-%m-%d-%H:%M:%S (no time zone)"
+    ::= { wrpcTimeGroup 2 }
+
+wrpcTimeSystemUptime           OBJECT-TYPE
+    SYNTAX                     TimeTicks
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+        "System uptime in hundreds of second"
+    ::= { wrpcTimeGroup 3 }
+
+-- ****************************************************************************
+wrpcTemperatureTable           OBJECT-TYPE
+    SYNTAX                     SEQUENCE OF WrpcTemperatureEntry
+    MAX-ACCESS                 not-accessible
+    STATUS                     current
+    DESCRIPTION
+            "Information for each mounted partition"
+    ::= { wrpcCore 3 }
+
+wrpcTemperatureEntry           OBJECT-TYPE
+    SYNTAX                     WrpcTemperatureEntry
+    MAX-ACCESS                 not-accessible
+    STATUS                     current
+    DESCRIPTION
+            "An entry containing partitions' details"
+    INDEX   { wrpcTemperatureIndex }
+    ::= { wrpcTemperatureTable 1 }
+
+WrpcTemperatureEntry ::=
+    SEQUENCE {
+        wrpcTemperatureIndex   Unsigned32,
+        wrpcTemperatureName    DisplayString,
+        wrpcTemperatureValue   DisplayString
+    }
+
+wrpcTemperatureIndex           OBJECT-TYPE
+    SYNTAX                     Unsigned32
+    MAX-ACCESS                 not-accessible
+    STATUS                     current
+    DESCRIPTION
+            "Index for wrpcTemperatureTable"
+    ::= { wrpcTemperatureEntry 1 }
+
+wrpcTemperatureName            OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..32))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Temperature sensor's name"
+    ::= { wrpcTemperatureEntry 2 }
+
+wrpcTemperatureValue           OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..32))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Temperature in tenths of a celsius degree of given sensor"
+    ::= { wrpcTemperatureEntry 3 }
+
+
+-- ****************************************************************************
+wrpcSpllStatusGroup            OBJECT IDENTIFIER ::= { wrpcCore 4 }
+
+wrpcSpllMode                   OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   na(0),
+                                   grandmaster(1),
+                                   master(2),
+                                   slave(3)
+                               }
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Mode of Soft PLL (values taken from softpll_export.h)"
+    ::= { wrpcSpllStatusGroup 1 }
+
+wrpcSpllIrqCnt                 OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Number of interrupts in Soft PLL"
+    ::= { wrpcSpllStatusGroup 2 }
+
+wrpcSpllSeqState               OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   startExt(1),
+                                   waitExt(2),
+                                   startHelper(3),
+                                   waitHelper(4),
+                                   startMain(5),
+                                   waitMain(6),
+                                   disabled(7),
+                                   ready(8),
+                                   clearDacs(9),
+                                   waitClearDacs(10)
+                               }
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Sequence state of Soft PLL (values taken from file softpll_export.h in wrpc-sw repo)"
+    ::= { wrpcSpllStatusGroup 3 }
+
+wrpcSpllAlignState             OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   extOff(0),
+                                   start(1),
+                                   initCsync(2),
+                                   waitCsync(3),
+                                   waitSample(4),
+                                   compensateDelay(5),
+                                   locked(6),
+                                   startAlignment(7),
+                                   startMain(8),
+                                   waitClkin(9),
+                                   waitPlock(10)
+                               }
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Align state of Soft PLL (values taken from file spll_external.c in wrpc-sw repo)"
+    ::= { wrpcSpllStatusGroup 4 }
+
+wrpcSpllHlock                  OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "HLock in Soft PLL"
+    ::= { wrpcSpllStatusGroup 5 }
+
+wrpcSpllMlock                  OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "MLock at Soft PLL"
+    ::= { wrpcSpllStatusGroup 6 }
+
+wrpcSpllHY                     OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "H_y at Soft PLL"
+    ::= { wrpcSpllStatusGroup 7 }
+
+wrpcSpllMY                     OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "M_y at Soft PLL"
+    ::= { wrpcSpllStatusGroup 8 }
+
+wrpcSpllDelCnt                 OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Del counter at Soft PLL"
+    ::= { wrpcSpllStatusGroup 9 }
+
+-- ****************************************************************************
+
+wrpcPtpGroup                   OBJECT IDENTIFIER ::= { wrpcCore 5 }
+
+--x wrpcPtpGrandmasterID           OBJECT-TYPE
+--x     SYNTAX                     OCTET STRING (SIZE(8))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "The ClockID of the current grandmaster"
+--x     ::= { wrpcPtpGroup 1 }
+
+--x wrpcPtpOwnID OBJECT-TYPE
+--x     SYNTAX                     OCTET STRING (SIZE(8))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "The ClockID of this WR device"
+--x     ::= { wrpcPtpGroup 2 }
+
+--x wrpcPtpMode                    OBJECT-TYPE
+--x     SYNTAX INTEGER {
+--x                 unknown(0),        ---- same as WRC_MODE macros
+--x                 grandmaster(1),
+--x                 master(2),
+--x                 slave(3)
+--x     }
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "The mode of this clock"
+--x     ::= { wrpcPtpGroup 3 }
+
+--x wrpcPtpServoState OBJECT-TYPE
+--x     SYNTAX                     DisplayString (SIZE (0..32))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "The servo state if slave"
+--x     ::= { wrpcPtpGroup 4 }
+
+wrpcPtpServoStateN             OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   uninitialized(0),
+                                   syncNsec(1),
+                                   syncSec(2),
+                                   syncPhase(3),
+                                   trackPhase(4),
+                                   waitOffsetStable(5)
+                               }
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Numeric representation of servo state"
+    ::= { wrpcPtpGroup 5 }
+
+--x wrpcPtpPhaseTracking           OBJECT-TYPE
+--x     SYNTAX INTEGER {
+--x                na(0),
+--x                notTracking(1),
+--x                tracking(2)
+--x     }
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "Whether phase tracking is enabled in the servo"
+--x     ::= { wrpcPtpGroup 6 }
+
+--x wrpcPtpClockOffsetPs           OBJECT-TYPE
+--x     SYNTAX                     Counter64 ---- integer64
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "Current clock offset from master, in picoseconds"
+--x     ::= { wrpcPtpGroup 7 }
+
+wrpcPtpClockOffsetPsHR         OBJECT-TYPE
+    SYNTAX                     Integer32 -- should be something like gauge32, but with int range
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Human Readable current clock offset from master, in picoseconds
+            with saturation to integer"
+    ::= { wrpcPtpGroup 8 }
+
+wrpcPtpSkew                    OBJECT-TYPE
+    SYNTAX                     Integer32 -- should be something like gauge32, but with int range
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "The estimated change of master-to-slave delay, in picoseconds.
+            Saturated to +/- int32."
+    ::= { wrpcPtpGroup 9 }
+
+wrpcPtpRTT                     OBJECT-TYPE
+    SYNTAX                     Counter64 -- unsigned64
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "The round-trip-time, from master, in picoseconds"
+    ::= { wrpcPtpGroup 10 }
+
+--x wrpcPtpLinkLength              OBJECT-TYPE
+--x     SYNTAX                     Unsigned32
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "Estimated fiber length, from master-to-slave delay, in meters"
+--x     ::= { wrpcPtpGroup 11 }
+
+wrpcPtpServoUpdates            OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "How many times did the servo run"
+    ::= { wrpcPtpGroup 12 }
+
+wrpcPtpServoUpdateTime         OBJECT-TYPE
+    SYNTAX                     Counter64
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "TAI Nanosecond of the last servo's update"
+    ::= { wrpcPtpGroup 13 }
+
+wrpcPtpDeltaTxM                OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Fixed Tx latency on Master side"
+    ::= { wrpcPtpGroup 14 }
+
+wrpcPtpDeltaRxM                OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Fixed Rx latency on Master side"
+    ::= { wrpcPtpGroup 15 }
+
+wrpcPtpDeltaTxS                OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Fixed Tx latency on Slave side"
+    ::= { wrpcPtpGroup 16 }
+
+wrpcPtpDeltaRxS                OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Fixed Rx latency on Slave side"
+    ::= { wrpcPtpGroup 17 }
+
+wrpcPtpServoStateErrCnt        OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Number of servo updates with wrong servo state"
+    ::= { wrpcPtpGroup 18 }
+
+wrpcPtpClockOffsetErrCnt       OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Number of servo updates with wrong clock offset"
+    ::= { wrpcPtpGroup 19 }
+
+wrpcPtpRTTErrCnt               OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Number of servo updates with wrong RTT"
+    ::= { wrpcPtpGroup 20 }
+
+--x wrpcPtpPeer                    OBJECT-TYPE
+--x     SYNTAX                     OCTET STRING (SIZE(8))
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "ptp peer ID"
+--x     ::= { wrpcPtpGroup 21 }
+
+wrpcPtpAsymmetry               OBJECT-TYPE
+    SYNTAX                     Counter64 -- unsigned64
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Asymmetry of Total link asymmetry"
+    ::= { wrpcPtpGroup 22 }
+
+wrpcPtpTx                      OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "TX ptp packets"
+    ::= { wrpcPtpGroup 23 }
+
+wrpcPtpRx                      OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "RX ptp packets"
+    ::= { wrpcPtpGroup 24 }
+
+--x wrpcPtpConfigWord              OBJECT-TYPE
+--x     SYNTAX                     Unsigned32
+--x     MAX-ACCESS                 read-only
+--x     STATUS                     current
+--x     DESCRIPTION
+--x             "Configuration word of PTP"
+--x     ::= { wrpcPtpGroup 25 }
+
+wrpcPtpAlpha                   OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Alpha used by PTP"
+    ::= { wrpcPtpGroup 26 }
+
+-- ****************************************************************************
+wrpcPtpConfigGroup             OBJECT IDENTIFIER ::= { wrpcCore 6 }
+
+wrpcPtpConfigRestart           OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   na(0),
+                                   restartPtp(1),
+                                   restartPtpSuccessful(100),
+                                   restartPtpFailed(200)
+                               }
+    MAX-ACCESS                 read-write
+    STATUS                     current
+    DESCRIPTION
+            "restart PTP
+            restartPtp - trigger the restart of PTP
+            restartPtpSuccessful - PTP restart triggered
+            restartPtpFailed - failed to trigger PTP restart"
+    ::= { wrpcPtpConfigGroup 1 }
+
+wrpcPtpConfigApply             OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   na(0),
+                                   writeToFlashGivenSfp(1),
+                                   writeToFlashCurrentSfp(2),
+                                   writeToMemoryCurrentSfp(3),
+                                   eraseFlash(50),
+                                   applySuccessful(100),
+                                   applySuccessfulMatchFailed(101),
+                                   applyFailed(200),
+                                   applyFailedI2CError(201),
+                                   applyFailedDBFull(202),
+                                   applyFailedInvalidPN(203)
+                               }
+    MAX-ACCESS                 read-write
+    STATUS                     current
+    DESCRIPTION
+            "Apply configuration of the ptp
+            writeToFlashGivenSfp - Write delta TX/RX and alpha for provided SFP's PN to the sfp database in the flash. Perform sfp match.
+            writeToFlashCurrentSfp - Write delta TX/RX and alpha for currently used SFP to the sfp database in the flash. Perform sfp match.
+            writeToMemoryCurrentSfp - Write delta TX/RX and alpha for currently used SFP to the the memory. Do not perform sfp match.
+            eraseFlash - Erase sfp database in the flash. Do not perform sfp match.
+            applySuccessful - Configuration applied successfully.
+            applySuccessfulMatchFailed - SFP entry written, but failed to match with the plugged SFP.
+            applyFailed - Failed to apply configuration.
+            applyFailedI2CError - Failed to apply configuration due to communication error with the flash memory.
+            applyFailedDBFull - Failed to apply configuration. Database is full.
+            applyFailedInvalidPN - Invalid Product Number (PN) provided."
+    ::= { wrpcPtpConfigGroup 2 }
+
+wrpcPtpConfigSfpPn             OBJECT-TYPE
+    SYNTAX                     OCTET STRING (SIZE(0..16))
+    MAX-ACCESS                 read-write
+    STATUS                     current
+    DESCRIPTION
+            "SFP product number identifying which entry in the flash to update."
+    ::= { wrpcPtpConfigGroup 3 }
+
+wrpcPtpConfigDeltaTx           OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-write
+    STATUS                     current
+    DESCRIPTION
+            "Delta tx to be set"
+    ::= { wrpcPtpConfigGroup 4 }
+
+wrpcPtpConfigDeltaRx           OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-write
+    STATUS                     current
+    DESCRIPTION
+            "Delta rx to be set"
+    ::= { wrpcPtpConfigGroup 5 }
+
+wrpcPtpConfigAlpha             OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-write
+    STATUS                     current
+    DESCRIPTION
+            "Alpha to be set"
+    ::= { wrpcPtpConfigGroup 6 }
+
+-- ****************************************************************************
+wrpcPortGroup            OBJECT IDENTIFIER ::= { wrpcCore 7 }
+
+wrpcPortLinkStatus             OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   na(0),
+                                   down(1),
+                                   up(2)
+                               }
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Whether the link is up or down"
+    ::= { wrpcPortGroup 1 }
+
+wrpcPortSfpPn                  OBJECT-TYPE
+    SYNTAX                     OCTET STRING (SIZE(0..16))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "SFP product number identifying matched SFP."
+    ::= { wrpcPortGroup 2 }
+
+wrpcPortSfpInDB                OBJECT-TYPE
+    SYNTAX                     INTEGER {
+                                   na(0),
+                                   notInDataBase(1),
+                                   inDataBase(2)
+                               }
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Whether the SFP is in data base or not"
+    ::= { wrpcPortGroup 3 }
+
+wrpcPortInternalTx             OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Total TX packets on a port"
+    ::= { wrpcPortGroup 4 }
+
+wrpcPortInternalRx             OBJECT-TYPE
+    SYNTAX                     Counter32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "Total RX packets on a port"
+    ::= { wrpcPortGroup 5 }
+
+-- ****************************************************************************
+wrpcSfpTable                   OBJECT-TYPE
+    SYNTAX                     SEQUENCE OF WrpcSfpEntry
+    MAX-ACCESS                 not-accessible
+    STATUS                     current
+    DESCRIPTION
+            "Information of the SFPs database"
+    ::= { wrpcCore 8 }
+
+wrpcSfpEntry OBJECT-TYPE
+    SYNTAX                     WrpcSfpEntry
+    MAX-ACCESS                 not-accessible
+    STATUS                     current
+    DESCRIPTION
+            "An entry containing SFP entry"
+    INDEX   { wrpcSfpIndex }
+    ::= { wrpcSfpTable 1 }
+
+WrpcSfpEntry ::=
+    SEQUENCE {
+        wrpcSfpIndex           Unsigned32,
+        wrpcSfpPn              DisplayString,
+        wrpcSfpDeltaTx         Integer32,
+        wrpcSfpDeltaRx         Integer32,
+        wrpcSfpAlpha           Integer32
+    }
+
+wrpcSfpIndex                   OBJECT-TYPE
+    SYNTAX                     Unsigned32
+    MAX-ACCESS                 not-accessible
+    STATUS                     current
+    DESCRIPTION
+            "Index for wrpcSfpTable"
+    ::= { wrpcSfpEntry 1 }
+
+wrpcSfpPn                      OBJECT-TYPE
+    SYNTAX                     DisplayString (SIZE (0..16))
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "SFPs Product Number"
+    ::= { wrpcSfpEntry 2 }
+
+wrpcSfpDeltaTx                 OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "SFPs Delta TX"
+    ::= { wrpcSfpEntry 3 }
+
+wrpcSfpDeltaRx                 OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "SFPs Delta RX"
+    ::= { wrpcSfpEntry 4 }
+
+wrpcSfpAlpha                   OBJECT-TYPE
+    SYNTAX                     Integer32
+    MAX-ACCESS                 read-only
+    STATUS                     current
+    DESCRIPTION
+            "SFPs Alpha"
+    ::= { wrpcSfpEntry 5 }
+
+-- ****************************************************************************
+
+
+END
