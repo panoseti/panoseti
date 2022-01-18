@@ -61,6 +61,8 @@ def start_hk_recorder(daq_config, run_name):
         print("can't launch HK recorder")
         raise
 
+    print('writing HK data to %s'%path)
+
     with open(hk_pid_file, 'w') as f:
         f.write(str(process.pid))
 
