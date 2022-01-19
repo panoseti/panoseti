@@ -27,6 +27,7 @@
 #           The default IP address of IM and PH packets is 192.168.1.100.
 #       (2) Added "HK-IP" for setting IP address of HK packets.
 #           The default IP address of HK packets is 192.168.1.100.
+#v11.1: LF0 is old flasher led, and LF1 is new flasher led
 
 import time
 import string
@@ -41,10 +42,10 @@ if (sys.version_info < (3,0)):
 configfilename = "./config/quabo_config.txt"
 baseline_fname = "./quabo_baseline.csv"
 #Send to hard-coded quabo address
-if len(sys.argv[1]):
+if (len(sys.argv) > 1):
     UDP_DEST_IP = sys.argv[1]
 else:
-    UDP_DEST_IP = "192.168.3.251"
+    UDP_DEST_IP = "192.168.3.248"
 print(UDP_DEST_IP)
 #quabo expects commands on this port and will respond with housekeeping data to this port
 UDP_CMD_PORT= 60000
@@ -504,8 +505,8 @@ while True:
     "ARP" to report ARP table,
     "SHO_NEW" to open shutter with new firmware(> V11.1),
     "SHC_NEW" to close shutter with new firmware(> V11.1),
-    "LF0" to select Led Flasher0 on mobo with new firmware(>= V11.8)
-    "LF1" to select Led Flasher1 on mobo with new firmware(>= V11.8)
+    "LF0" to select old Led Flasher on mobo with new firmware(>= V11.8)
+    "LF1" to select new Led Flasher on mobo with new firmware(>= V11.8)
     "IM-PH-IP" to set IP addresses for PH and IM packets
     "HK-IP" to set IP address for HK packets
     or "q" to quit
