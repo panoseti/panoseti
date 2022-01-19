@@ -7,13 +7,14 @@
 # --reboot          reboot quabos
 # --loads           load silver firmware in quabos
 # --init_daq_nodes  copy software to daq nodes
+# --hk_daemons      start daemons to get HK data
 #
 # see matlab/initq.m, startq*.py
 
-firmware_silver = 'quabo_0116C_23CBEAFB.bin'
+firmware_silver = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os
+import sys, os, subprocess
 import util, config_file, quabo_driver, file_xfer
 from panoseti_tftp import tftpw
 
@@ -24,6 +25,7 @@ def usage():
 --reboot            reboot quabos
 --loads             load silver firmware in quabos
 --init_daq_nodes    copy software to daq nodes
+--hk_daemons        start daemons to get HK data
 ''')
     sys.exit()
 
@@ -86,6 +88,23 @@ def do_ping(modules):
             else:
                 print("can't ping %s"%ip_addr)
 
+def start_daemon(prog):
+    try:
+        process = subprocess.Popen(
+            [prog], start_new_session=True,
+            close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except:
+        print("can't launch %s"%prog)
+        return
+
+# start daemons that write housekeeping data to redis
+#
+def do_hk_daemons():
+    start_daemon('capture_gps.py')
+    start_daemon('capture_hk.py')
+    start_daemon('capture_wr.py')
+
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
@@ -107,6 +126,9 @@ if __name__ == "__main__":
         elif argv[i] == '--init_daq_nodes':
             nops += 1
             op = 'init_daq_nodes'
+        elif argv[i] == '--hk_daemons':
+            nops += 1
+            op = 'hk_daemons'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -129,3 +151,5 @@ if __name__ == "__main__":
     elif op == 'init_daq_nodes':
         daq_config = config_file.get_daq_config()
         file_xfer.copy_hashpipe(daq_config)
+    elif op == 'hk_daemons':
+        do_hk_daemons()
