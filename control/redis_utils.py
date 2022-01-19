@@ -1,3 +1,7 @@
+##############################################################
+# Utility functions for communicating with redis and sending 
+# commands to redis databases
+##############################################################
 import redis
 
 def redis_init():

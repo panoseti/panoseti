@@ -1,4 +1,14 @@
+##############################################################
+# Conversion Library for storing values into redis at different 
+# units default is to store the values as Volts and Amps. The 
+# units can be changed by running changeUnits(). This should be
+# imported for necessary scripts and running this scripts will 
+# run the unit tests for the functions
+##############################################################
 import re
+import unittest
+
+from numpy import place
 
 convertValues = {r'[A-Z]':1e9, r'm[A-Z]':1e6, r'u[A-Z]':1e3, r'n[A-Z]':1 }
 
@@ -15,11 +25,11 @@ class HKconvert():
                          r'TEMP1':self.TEMP1,
                          r'TEMP2':self.TEMP2,
                          r'VCC*':self.VCC}
-        self.voltageFactor = 1e3
-        self.currentFactor = 1e3
+        self.voltageFactor = 1e9
+        self.currentFactor = 1e9
         
     def HVMON(self, value):
-        return value*1.22*1e6 / self.voltageFactor
+        return -value*1.22*1e6 / self.voltageFactor
 
     def HVIMON(self, value):
         return (65535-value)*38.1 / self.currentFactor
@@ -98,11 +108,120 @@ class HKconvert():
                 return
         self.showUnits()
         return
-    
-
         
     def convertValue(self, key, value):
         for k in self.keyFormat:
             if re.match(k, key):
                 return self.keyFormat[k](int(value))
-        return value
+        return None
+
+class TestHKConvert(unittest.TestCase):
+    hk_converter = HKconvert()
+    def test_HVMON_conversion(self):
+        for i in range(4):
+            # Test zero value
+            self.assertEqual(0, self.hk_converter.convertValue(f"HVMON{i}", 0x0000))
+            # Test increment value
+            self.assertEqual(-0.00122, self.hk_converter.convertValue(f"HVMON{i}", 0x0001))
+            # Test maximum value
+            self.assertAlmostEqual(-80, self.hk_converter.convertValue(f"HVMON{i}", 0xffff), places=1)
+
+    def test_HVIMON_conversion(self):
+        for i in range(4):
+            # Test zero value
+            self.assertEqual(0, self.hk_converter.convertValue(f"HVIMON{i}", 0x0000))
+            # Test increment value
+            self.assertEqual(-0.00122, self.hk_converter.convertValue(f"HVIMON{i}", 0x0001))
+            # Test maximum value
+            self.assertAlmostEqual(-80, self.hk_converter.convertValue(f"HVIMON{i}", 0xffff), places=1)
+
+    def test_RAWHVMON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("RAWHVMON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_V12MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("V12MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_V18MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("V18MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_V33MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("V33MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_V37MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("V37MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_I10MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("I10MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_I18MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("I18MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_I33MON_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("I33MON", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_TEMP1_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("TEMP1", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_TEMP2_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("TEMP2", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+    def test_VCC_conversion(self):
+        # Test minimum value
+        self.assertEqual(0, self.hk_converter.convertValue("VCC", 0))
+        # Test maximum value
+        self.assertEqual(0, 0)
+        # Test standard value
+        self.assertEqual(0, 0)
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
