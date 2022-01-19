@@ -11,7 +11,7 @@
 #
 # see matlab/initq.m, startq*.py
 
-firmware_silver = 'quabo_0116C_23CBEAFB.bin'
+firmware_silver = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess
