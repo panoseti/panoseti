@@ -52,8 +52,10 @@ def do_reboot(modules, quabo_uids):
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            print('rebooting quabo at %s'%ip_addr)
             x = tftpw(ip_addr)
             x.reboot()
+            print('waiting for HK packet from %s'%ip_addr)
 
             # wait for a housekeeping packet
             #
