@@ -1,3 +1,4 @@
+#! /usr/bin/python
 #PANOSETI Quadrant Board Control
 #Run this code in a command window to permit sending command packets to the Quabo
 #v01 Oct 17 2018 RR
@@ -17,10 +18,16 @@
 #v09:   Added 'SHO_NEW' to open the shutter
 #       Added 'SHC_NEW' to close the shutter
 #       IP address is a parameter for the script
-#        For example, when we run the script, we can specify the IP address: python control_quabo.py 192.168.3.250
-#        The default IP address is 192.168.3.258
+#       For example, when we run the script, we can specify the IP address: python control_quabo.py 192.168.3.250
+#       The default IP address is 192.168.3.248
 #       Added 'LF0'/'LF1' to select the old/new led flasher on the new mobo
-
+#v10:   IP address of quabo is a parameter in the script
+#       Added "IP" to set IP addresses of PH and IM packets
+#v11:   (1) Added "IM-PH-IP" for setting IP addresses of IM and PH packets.
+#           The default IP address of IM and PH packets is 192.168.1.100.
+#       (2) Added "HK-IP" for setting IP address of HK packets.
+#           The default IP address of HK packets is 192.168.1.100.
+#v11.1: LF0 is old flasher led, and LF1 is new flasher led
 
 import time
 import string
@@ -35,7 +42,11 @@ if (sys.version_info < (3,0)):
 configfilename = "./config/quabo_config.txt"
 baseline_fname = "./quabo_baseline.csv"
 #Send to hard-coded quabo address
-UDP_DEST_IP = "192.168.3.248"
+if (len(sys.argv) > 1):
+    UDP_DEST_IP = sys.argv[1]
+else:
+    UDP_DEST_IP = "192.168.3.248"
+print(UDP_DEST_IP)
 #quabo expects commands on this port and will respond with housekeeping data to this port
 UDP_CMD_PORT= 60000
 
@@ -436,10 +447,20 @@ def send_trigger_mask(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
     
+def get_ip(str_in):
+    ip_str = str_in.split('.')
+    if(len(ip_str) != 4):
+        return -1
+    ip = bytearray(4)
+    for i in range(4):
+        tmp = int(ip_str[i])
+        if(tmp<0 or tmp>255):
+            return -2
+        ip[i] = tmp
+    return ip
 ##########################################################    
 ##########################################################    
 ##########################################################    
-
 
 print ("Quadrant Board Control")
 try :
@@ -484,8 +505,10 @@ while True:
     "ARP" to report ARP table,
     "SHO_NEW" to open shutter with new firmware(> V11.1),
     "SHC_NEW" to close shutter with new firmware(> V11.1),
-    "LF0" to select Led Flasher0 on mobo with new firmware(>= V11.8)
-    "LF1" to select Led Flasher1 on mobo with new firmware(>= V11.8)
+    "LF0" to select old Led Flasher on mobo with new firmware(>= V11.8)
+    "LF1" to select new Led Flasher on mobo with new firmware(>= V11.8)
+    "IM-PH-IP" to set IP addresses for PH and IM packets
+    "HK-IP" to set IP address for HK packets
     or "q" to quit
     ''')
     if inp == 'q':
@@ -677,4 +700,52 @@ while True:
         for i in range(64): cmd_payload[i]=0
         cmd_payload[0] = 0x09
         cmd_payload[1] = 0x01
+        sendit(cmd_payload)
+    elif inp == 'IM-PH-IP':
+        cmd_payload = bytearray(64)
+        for i in range(64): cmd_payload[i]=0
+        cmd_payload[0] = 0x0a
+        str_in = input('PH IP: ')
+        ph_ip = get_ip(str_in)
+        #print(ph_ip)
+        if(ph_ip == -1):
+            print('Please check the IP address: length incorrect')
+            continue
+        if(ph_ip == -2):
+            print('Please check the IP address: value incorrect')
+            continue
+        cmd_payload[1] = ph_ip[0]
+        cmd_payload[2] = ph_ip[1]
+        cmd_payload[3] = ph_ip[2]
+        cmd_payload[4] = ph_ip[3]
+        str_in = input('IM IP: ')
+        im_ip = get_ip(str_in)
+        #print(im_ip)
+        if(im_ip == -1):
+            print('Please check the IP address: length incorrect')
+            continue
+        if(im_ip == -2):
+            print('Please check the IP address: value incorrect')
+            continue
+        cmd_payload[5] = im_ip[0]
+        cmd_payload[6] = im_ip[1]
+        cmd_payload[7] = im_ip[2]
+        cmd_payload[8] = im_ip[3]
+        sendit(cmd_payload)
+    elif inp == 'HK-IP':
+        cmd_payload = bytearray(64)
+        for i in range(64): cmd_payload[i]=0
+        cmd_payload[0] = 0x0b
+        str_in = input('HK IP: ')
+        hk_ip = get_ip(str_in)
+        if(hk_ip == -1):
+            print('Please check the IP address: length incorrect')
+            continue
+        if(hk_ip == -2):
+            print('Please check the IP address: value incorrect')
+            continue
+        cmd_payload[1] = hk_ip[0]
+        cmd_payload[2] = hk_ip[1]
+        cmd_payload[3] = hk_ip[2]
+        cmd_payload[4] = hk_ip[3]
         sendit(cmd_payload)

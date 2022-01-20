@@ -78,7 +78,7 @@ def start_recording(daq_config, run_name):
     file_xfer.copy_config_files(daq_config, run_name)
 
     # start recording HK data
-    #util.start_hk_recorder(daq_config, run_name)
+    util.start_hk_recorder(daq_config, run_name)
 
     # start hashpipe on DAQ nodes
     for node in daq_config['daq_nodes']:
