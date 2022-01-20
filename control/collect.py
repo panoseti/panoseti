@@ -8,7 +8,10 @@ import sys
 import config_file, file_xfer, util
 
 def collect_data(daq_config, run_dir):
+    my_ip = util.local_ip()
     for node in daq_config['daq_nodes']:
+        if node['ip_addr'] == my_ip:
+            continue
         if len(node['modules']) > 0:
             file_xfer.copy_dir_from_node(run_dir, daq_config, node)
 

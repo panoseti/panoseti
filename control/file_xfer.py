@@ -85,11 +85,11 @@ def make_remote_dirs(daq_config, dirname):
 #
 def copy_config_files(daq_config, run_dir):
     for node in daq_config['daq_nodes']:
-        copy_file_to_node('data_config.json', daq_config, node, run_dir)
-        copy_file_to_node('obs_config.json', daq_config, node, run_dir)
-        copy_file_to_node('quabo_uids.json', daq_config, node, run_dir)
-        copy_file_to_node('daq_config.json', daq_config, node, run_dir)
+        for f in util.config_file_names:
+            copy_file_to_node(f, daq_config, node, run_dir)
 
+# copy hashpipe binary and scripts to data dirs on DAQ nodes
+#
 def copy_hashpipe(daq_config):
     for node in daq_config['daq_nodes']:
         copy_file_to_node('../daq/HSD_hashpipe.so', daq_config, node)

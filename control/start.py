@@ -53,22 +53,33 @@ def start_data_flow(quabo_uids, data_config):
                 quabo.send_daq_params(daq_params)
                 quabo.close()
 
-# for each DAQ node that is getting data:
-# - create run directory
-# - copy config files to run directory
-# - start hashpipe program
+# start recording data
+#   copy config files to run dir on head node
+#   for each DAQ node that is getting data
+#       create run directory
+#       copy config files to run directory
+#       start hashpipe program
 #
 def start_recording(daq_config, run_name):
     username = daq_config['daq_node_username']
     data_dir = daq_config['daq_node_data_dir']
+    my_ip = util.local_ip()
+
+    # copy config files to run dir on this node
+    local_data_dir = daq_config['head_node_data_dir']
+    for f in util.config_file_names:
+        shutil.copyfile(f, '%s/%s'%(local_data_dir, f))
 
     # make run directories on DAQ nodes
     #
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
+        ip_addr = node['ip_addr'],
+        if ip_addr == my_ip:
+            continue
         cmd = 'ssh %s@%s "mkdir %s/%s"'%(
-            username, node['ip_addr'], data_dir, run_name
+            username, ip_addr, data_dir, run_name
         )
         print(cmd)
         ret = os.system(cmd)

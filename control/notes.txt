@@ -8,3 +8,10 @@ start.py
 
 qc.py
     control an individual booted quabo, given its IP address
+
+hashpipe config
+    needs to know what quabo IP addrs to expect data from
+    if get packet from elsewhere, write error msg to log file
+    if get malformed packet, write msg to log file
+
+

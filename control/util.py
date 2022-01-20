@@ -1,11 +1,20 @@
 # control script utilities
 
-import os, sys, subprocess, signal
+import os, sys, subprocess, signal, socket
 
 import config_file
 sys.path.insert(0, '../util')
 
 import pff
+
+#-------------- NETWORK ---------------
+
+def local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    x = s.getsockname()[0]
+    s.close()
+    return x
 
 #-------------- BINARY DATA ---------------
 
@@ -25,6 +34,10 @@ run_name_file = '.run_name'
 
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
+
+config_file_names = [
+    'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
+]
 
 #-------------- QUABO OPS ---------------
 
