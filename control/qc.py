@@ -72,6 +72,10 @@ def do_cmd(quabo, words):
             util.print_binary(data)
         else:
             print('no HK packet')
+    elif cmd == 'IM-PH-IP':
+        quabo.data_packet_destination(words.pop(0))
+    elif cmd == 'HK-IP':
+        quabo.hk_packet_destination(words.pop(0))
     else:
         print('unknown command %s'%cmd)
 
@@ -106,7 +110,9 @@ def print_cmds():
     "SHC_NEW" to close shutter with new firmware(> V11.1),
     "LF0" to select Led Flasher0 on mobo with new firmware(>= V11.8)
     "LF1" to select Led Flasher1 on mobo with new firmware(>= V11.8)
-    "HK" to read housekeeping packet
+    "HK": read housekeeping packet
+    "IM-PH-IP ip_addr": set destination addr for data packets
+    "HK-IP ip_addr": set destination addr for HK packets
     or "q" to quit''')
 
 # interpreter version: prompt for commands

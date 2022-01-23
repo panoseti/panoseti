@@ -16,6 +16,18 @@ def local_ip():
     s.close()
     return x
 
+def ip_addr_str_to_bytes(ip_addr_str):
+    pieces = ip_addr_str.split('.')
+    if len(pieces) != 4:
+        raise Exception('bad IP addr %s'%ip_addr_str)
+    bytes = bytearray(4)
+    for i in range(4):
+        x = int(pieces[i])
+        if x<0 or x>255:
+            raise Exception('bad IP addr %s'%ip_addr_str)
+        bytes[i] = x
+    return bytes
+
 #-------------- BINARY DATA ---------------
 
 def print_binary(data):

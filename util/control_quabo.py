@@ -1,6 +1,9 @@
 #! /usr/bin/python
-#PANOSETI Quadrant Board Control
-#Run this code in a command window to permit sending command packets to the Quabo
+
+# Interactive script for sending commands to quabos.
+# If you add or change something, please make the corresponding change
+# in control/quabo_driver.py and control/qc.py
+
 #v01 Oct 17 2018 RR
 #v02 Changed config directory
 #v03: support for PH Baseline cal
@@ -447,6 +450,9 @@ def send_trigger_mask(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
     
+# convert IP addr string, eg. '192.0.100.3' to a byte array
+# Do error checking.
+#
 def get_ip(str_in):
     ip_str = str_in.split('.')
     if(len(ip_str) != 4):

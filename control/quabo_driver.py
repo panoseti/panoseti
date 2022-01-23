@@ -215,6 +215,21 @@ class QUABO:
             if time.time() > end_time:
                 return None
 
+    def data_packet_destination(self, ip_addr_str):
+        ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
+        cmd = self.make_cmd(0x0a)
+        for i in range(4):
+            cmd[i+1] = ip_addr_bytes[i]
+            cmd[i+5] = ip_addr_bytes[i]
+        self.send(cmd)
+
+    def hk_packet_destination(self, ip_addr_str):
+        ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
+        cmd = self.make_cmd(0x0b)
+        for i in range(4):
+            cmd[i+1] = ip_addr_bytes[i]
+        self.send(cmd)
+
 # IMPLEMENTATION STUFF FOLLOWS
 
     def send(self, cmd):
