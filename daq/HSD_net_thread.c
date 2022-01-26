@@ -5,7 +5,6 @@
  * These packets are then written into the shared memory blocks,
  * which then allows for the pre-process of the data.
  */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -27,6 +26,10 @@
 #define PKTSOCK_NBLOCKS (20)
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
+/**
+ * Initialization function for Hashpipe. This function is called once when the thread is created
+ * @param args Arugments passed in by hashpipe framework.
+ */
 static int init(hashpipe_thread_args_t * args){
     printf("\n\n-----------Start Setup of Input Thread--------------\n");
     // define default network params
@@ -133,12 +136,20 @@ static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_he
 
 }
 
+/** Signal inturrupt function where it is changed when a SIGINT is recieved by the program.
+ * This value is meant to be passed to the other threads to stop the program gracefully.
+ */
 static int INTSIG;
-
 void INThandler(int signum) {
     INTSIG = 1;
 }
 
+
+/**
+ * Main run function that is ran once when the threads are running. To keep thread running
+ * make sure to use a while loop.
+ * @param args Arguements passed in by the hashpipe framework
+ */
 static void *run(hashpipe_thread_args_t * args){
     signal(SIGINT, INThandler);
     INTSIG = 0;
