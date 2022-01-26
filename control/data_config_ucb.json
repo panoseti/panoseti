@@ -3,6 +3,7 @@
     "image": {
         "integration_time_usec": 1000
     },
+    "max_file_size_mb": 1000,
     "software_pulse": {
         "octaves": 16,
         "threshold_sigma": [

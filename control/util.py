@@ -7,6 +7,25 @@ sys.path.insert(0, '../util')
 
 import pff
 
+#-------------- DEFAULTS ---------------
+
+default_max_file_size_mb = 1000
+
+#-------------- FILE NAMES ---------------
+
+hk_pid_file = '.hk_pid'
+    # stores the PID of the housekeeping process
+
+run_name_file = '.run_name'
+    # stores the name of the current run
+
+hk_file_name = 'hk.pff'
+    # housekeeping file in run dir
+
+config_file_names = [
+    'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
+]
+
 #-------------- NETWORK ---------------
 
 def local_ip():
@@ -28,6 +47,13 @@ def ip_addr_str_to_bytes(ip_addr_str):
         bytes[i] = x
     return bytes
 
+# compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
+#
+def ip_addr_to_mobo_id(ip_addr_str):
+    pieces = ip_addr_str.split('.')
+    n = int(pieces[3]) + 256*int(pieces[2])
+    return (n>>2)&255
+
 #-------------- BINARY DATA ---------------
 
 def print_binary(data):
@@ -35,21 +61,6 @@ def print_binary(data):
     print('got %d bytes'%n)
     for i in range(n):
         print("%d: %d"%(i, data[i]))
-
-#-------------- FILE NAMES ---------------
-
-hk_pid_file = '.hk_pid'
-    # stores the PID of the housekeeping process
-
-run_name_file = '.run_name'
-    # stores the name of the current run
-
-hk_file_name = 'hk.pff'
-    # housekeeping file in run dir
-
-config_file_names = [
-    'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
-]
 
 #-------------- QUABO OPS ---------------
 

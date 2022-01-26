@@ -13,5 +13,95 @@ hashpipe config
     needs to know what quabo IP addrs to expect data from
     if get packet from elsewhere, write error msg to log file
     if get malformed packet, write msg to log file
+---------
+1/24/2022
+config.py
+    do everything from power-on to start record
+    re-do if any change to config (except data_config).
+    Maybe keep track of where we are in the process?
 
+    mobo serial#: written on board
 
+    module ID: last 10 bits of base IP addr >> 2
+
+    Need to add all calibration stuff
+    (Wei can help me)
+    
+start/stop.py
+
+status.py
+    to be written
+
+web tools
+
+-------------
+notion of "mobo ID": the base IP addr
+hashpipe cmdline:
+    list of mobo IDs
+    name of log file
+bad source (from board loc) => log
+malformed packet -> log
+---------
+1/25/22
+In experimenting with Ryan, we found
+- if you run hashpipe from a python script,
+    it exits when the script exist (we don't know why)
+    If you run a shell script from a python script,
+    and the shell script runs hashpipe,
+    then both shell script and hashpipe continue to run
+    after python script exist.
+    That's good.
+    But killing the shell script doesn't kill hashpipe.
+    However, killing hashpipe causes the shell script to exit
+
+So we came up with the following scheme
+
+starting hashpipe
+    start.py (on head node)
+        for each DAQ node
+            copy to node:
+                run_hashpipe.sh
+                module.config
+                config files
+                start_daq.py
+            ssh to run start_daq.py
+
+    start_daq.py (on DAQ node)
+        args: run name, file size, module IDs
+        create run_hashpipe.sh
+            hashpipe command line, including
+                SAVELOC: path to run dir
+                MAXFILESIZE: from data config
+                redirects stderr/stdout
+        create module.config
+            list of module IDs
+        run run_hashpipe.sh (in new session, detach)
+        use pgrep to find PID of the hashpipe process
+        write that to a daq_pid
+
+    run_hashpipe.sh
+        runs hashpipe, passing cmdline args
+
+    hashpipe
+        reads module.config
+------------
+1/26/22:
+did:
+    start hashpipe remote with start/stop scripts
+        python on head node / python on DAQ/ shell script / hashpip
+    tell it what quabos to expect data from:
+        notion of "module ID": bits 2..10 of base IP addr
+    hashpipe doesn't:
+        create run dir
+        record HK data
+todo, short-term:
+    some hashpipe changes
+    finish start.py
+    actually record data
+    redirect hashpipe stdout/stderr to log files, collect these
+
+longer term
+    calibration
+    hashpipe:
+        orient 32x32 images
+        integrate pulse-finding

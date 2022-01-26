@@ -60,7 +60,7 @@ def start_data_flow(quabo_uids, data_config):
 #       copy config files to run directory
 #       start hashpipe program
 #
-def start_recording(daq_config, run_name):
+def start_recording(data_config, daq_config, run_name):
     username = daq_config['daq_node_username']
     data_dir = daq_config['daq_node_data_dir']
     my_ip = util.local_ip()
@@ -92,11 +92,22 @@ def start_recording(daq_config, run_name):
     util.start_hk_recorder(daq_config, run_name)
 
     # start hashpipe on DAQ nodes
+
+    if 'max_file_size_mb' in data_config.keys():
+        max_file_size_mb = int(data_config['max_file_size_mb'])
+    else:
+        max_file_size_mb = util.default_max_file_size_mb
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
-        cmd = 'ssh %s@%s "cd %s; ./start_daq.py %s"'%(
-            username, node['ip_addr'], data_dir, run_name
+        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s/%s --max_file_size_mb %d'%(
+            node['ip_addr'], data_dir, run_name, max_file_size_mb
+        )
+        for m in node['modules']:
+            module_id = ip_addr_to_module_id(m['ip_addr'])
+            remote_cmd += ' --module_id %d'%module_id
+        cmd = 'ssh %s@%s "cd %s; %s"'%(
+            username, node['ip_addr'], data_dir, remote_cmd
         )
         print(cmd)
         ret = os.system(cmd)
@@ -112,7 +123,7 @@ def start(obs_config, daq_config, quabo_uids, data_config):
     print('starting data flow from quabos')
     start_data_flow(quabo_uids, data_config)
     print('starting recording')
-    start_recording(daq_config, run_name)
+    start_recording(data_config, daq_config, run_name)
 
 if __name__ == "__main__":
     argv = sys.argv
