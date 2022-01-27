@@ -11,7 +11,7 @@
 # --start       start recording data
 # --stop        stop recording data
 
-import os, sys
+import os, sys, shutil
 import config_file
 import util, file_xfer, quabo_driver, pff
 
@@ -75,13 +75,12 @@ def start_recording(data_config, daq_config, run_name):
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
-        ip_addr = node['ip_addr'],
+        ip_addr = node['ip_addr']
         if ip_addr == my_ip:
             continue
         cmd = 'ssh %s@%s "mkdir %s/%s"'%(
             username, ip_addr, data_dir, run_name
         )
-        print(cmd)
         ret = os.system(cmd)
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
@@ -89,7 +88,7 @@ def start_recording(data_config, daq_config, run_name):
     file_xfer.copy_config_files(daq_config, run_name)
 
     # start recording HK data
-    util.start_hk_recorder(daq_config, run_name)
+    #util.start_hk_recorder(daq_config, run_name)
 
     # start hashpipe on DAQ nodes
 
@@ -100,11 +99,11 @@ def start_recording(data_config, daq_config, run_name):
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
-        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s/%s --max_file_size_mb %d'%(
-            node['ip_addr'], data_dir, run_name, max_file_size_mb
+        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d'%(
+            node['ip_addr'], run_name, max_file_size_mb
         )
         for m in node['modules']:
-            module_id = ip_addr_to_module_id(m['ip_addr'])
+            module_id = util.ip_addr_to_module_id(m['ip_addr'])
             remote_cmd += ' --module_id %d'%module_id
         cmd = 'ssh %s@%s "cd %s; %s"'%(
             username, node['ip_addr'], data_dir, remote_cmd
