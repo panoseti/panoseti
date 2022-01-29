@@ -91,5 +91,6 @@ def get_modules(c):
     return modules
 
 if __name__ == "__main__":
-    c = get_obs_config()
-    print(c)
+    c = get_daq_config()
+    n = c['daq_nodes'][0]
+    print(n)

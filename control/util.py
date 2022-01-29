@@ -51,7 +51,7 @@ def ip_addr_str_to_bytes(ip_addr_str):
 
 # compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
 #
-def ip_addr_to_mobo_id(ip_addr_str):
+def ip_addr_to_module_id(ip_addr_str):
     pieces = ip_addr_str.split('.')
     n = int(pieces[3]) + 256*int(pieces[2])
     return (n>>2)&255

@@ -44,6 +44,7 @@ def show_config(obs_config):
                 quabo_ip = util.quabo_ip_addr(ip_addr, i)
                 print('      quabo %d'%quabo_num)
                 print('         IP addr: %s'%quabo_ip)
+    print("This node's IP addr: %s"%util.local_ip())
 
 def do_reboot(modules, quabo_uids):
     # need to reboot quabos in order 0..3
