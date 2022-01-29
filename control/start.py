@@ -1,17 +1,18 @@
 #! /usr/bin/env python3
 
-# start or stop recording:
+# start a recording run:
+#
 # - figure out association of quabos and DAQ nodes,
 #   based on config files
 # - start the flow of data: set DAQ mode and dest IP addr of quabos
 # - send commands to DAQ nodes to start hashpipe program
+#
+# fail if a recording run is in progress,
+# or if recording activities are active
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
-# options:
-# --start       start recording data
-# --stop        stop recording data
 
-import os, sys
+import os, sys, traceback, psutil
 import config_file
 import util, file_xfer, quabo_driver, pff
 
@@ -113,21 +114,33 @@ def start_recording(data_config, daq_config, run_name):
         ret = os.system(cmd)
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
-def start(obs_config, daq_config, quabo_uids, data_config):
-    run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
-    run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
-    os.mkdir(run_dir)
+def start_run(obs_config, daq_config, quabo_uids, data_config):
+    rn = util.read_run_name()
+    if (rn):
+        print('A run is already in progress.  Run stop.py, then try again.')
+        return
+    if 'record_redis_data.py' in (p.name() for p in psutil.process_iter()):
+        print('The HK recorder is running.  Run stop.py, then try again.')
+    try:
+        run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
+        run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
+        os.mkdir(run_dir)
+        util.associate(daq_config, quabo_uids)
+        util.show_daq_assignments(quabo_uids)
+        print('starting data flow from quabos')
+        start_data_flow(quabo_uids, data_config)
+        print('starting recording')
+        start_recording(data_config, daq_config, run_name)
+    except:
+        print(traceback.format_exc())
+        print("Couldn't start run.  Run stop.py, then try again.")
+        print('If other users might be using the telescope, check with them;')
+        print('running stop.py will kill their run.')
+        return
     util.write_run_name(run_name)
-    util.associate(daq_config, quabo_uids)
-    util.show_daq_assignments(quabo_uids)
-    print('starting data flow from quabos')
-    start_data_flow(quabo_uids, data_config)
-    print('starting recording')
-    start_recording(data_config, daq_config, run_name)
 
 if __name__ == "__main__":
     argv = sys.argv
-    nops = 0
     i = 1
     while i < len(argv):
         raise Exception('bad arg %s'%argv[i])
@@ -137,4 +150,4 @@ if __name__ == "__main__":
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
-    start(obs_config, daq_config, quabo_uids, data_config)
+    start_run(obs_config, daq_config, quabo_uids, data_config)

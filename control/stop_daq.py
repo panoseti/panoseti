@@ -5,9 +5,11 @@
 # - get the PID of the hashpipe process
 # - send it a STOP signal
 #
+# Then kill any other hashpipe processes
+#
 # On success, print OK.  Otherwise print an error message
 
-import os, signal
+import os, signal, psutil
 
 pid_filename = 'daq_pid'
 
@@ -15,12 +17,19 @@ def main():
     try:
         f = open(pid_filename, 'r')
     except:
-        print("can't open PID file")
-        return
-    pid = int(f.read())
-    f.close()
-    os.kill(pid, signal.SIGKILL)
-    os.unlink(pid_filename)
+        f = None
+    if f:
+        pid = int(f.read())
+        f.close()
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except:
+            pass
+        os.unlink(pid_filename)
+
+    for p in psutil.process_iter():
+        if p.name() == "hashpipe":
+            os.kill(p.pid(), signal.SIGKILL)
 
     print('OK')
 

@@ -13,14 +13,16 @@ default_max_file_size_mb = 1000
 
 #-------------- FILE NAMES ---------------
 
-hk_pid_file = '.hk_pid'
+hk_pid_file = 'hk_pid'
     # stores the PID of the housekeeping process
 
-run_name_file = '.run_name'
+run_name_file = 'current_run'
     # stores the name of the current run
 
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
+
+hk_recorder_name = 'store_redis_data.py'
 
 config_file_names = [
     'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
@@ -119,6 +121,8 @@ def write_run_name(run_name):
         f.write(run_name)
 
 def read_run_name():
+    if not os.path.exists(run_name_file):
+        return None
     with open(run_name_file) as f:
         return f.read()
 

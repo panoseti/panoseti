@@ -54,6 +54,9 @@ def main():
     if os.path.exists(pid_filename):
         raise Exception("PID file exists; run stop_daq.py")
 
+    if "hashpipe" in (p.name() for p in psutil.process_iter()):
+        raise Exception("Hashpipe is already running")
+             
     # record the run name in a file
 
     f = open(dirname_filename, 'w')
@@ -85,7 +88,7 @@ def main():
     pid = process.pid
     while True:
         result = subprocess.run(['pgrep', '-P', str(pid)], stdout=subprocess.PIPE)
-        if result != '': break
+        if result.stdout != '': break
         time.sleep(1)
     child_pid = int(result.stdout)
 

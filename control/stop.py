@@ -1,11 +1,12 @@
 #! /usr/bin/env python3
 
-# stop a recording run
+# stop and finish a recording run if one is in progress.
+# stop recording activities whether or not a run is in progress.
 #
 # - tell DAQs to stop recording
 # - stop HK recorder process
 # - tell quabos to stop sending data
-# - collect data files
+# - if a run is in progress, collect data files
 
 import os, sys
 import util, config_file, collect, quabo_driver
