@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# collect files at the end of a recording run
+# collect files from remote DAQ nodes at the end of a recording run
 #
 # --run_dir X    specify run dir
 

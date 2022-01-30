@@ -1,0 +1,13 @@
+{
+    "comment": "gateway as both head node and DAQ node",
+    "head_node_data_dir": "/home/panosetigraph/data",
+    "head_node_ip_addr": "128.114.176.40",
+    "daq_nodes": [
+        {
+            "username": "panosetigraph",
+            "data_dir": "/home/panosetgraph/data",
+            "ip_addr": "128.114.176.40",
+            "module_nums": "0-255"
+        }
+    ]
+}

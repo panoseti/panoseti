@@ -13,13 +13,13 @@ import util
 # copy a file to a DAQ node
 #
 def copy_file_to_node(file, daq_config, node, run_dir=''):
-    dest_path = daq_config['daq_node_data_dir']
+    dest_path = node['data_dir']
     if run_dir:
         dest_path += '/%s'%(run_dir)
     else:
         dest_path += '/'
     cmd = 'scp -q %s %s@%s:%s'%(
-        file, daq_config['daq_node_username'], node['ip_addr'], dest_path
+        file, node['username'], node['ip_addr'], dest_path
     )
     print(cmd)
     ret = os.system(cmd)
@@ -48,8 +48,8 @@ def copy_dir_from_node(run_name, daq_config, node):
 
     # copy run dir from remote node to temp dir
     cmd = 'scp -q -r %s@%s:%s/%s %s'%(
-        daq_config['daq_node_username'], node['ip_addr'],
-        daq_config['daq_node_data_dir'], run_name,
+        node['username'], node['ip_addr'],
+        node['data_dir'], run_name,
         node_tmp_dir
     )
     print(cmd)
@@ -75,7 +75,7 @@ def copy_dir_from_node(run_name, daq_config, node):
 def make_remote_dirs(daq_config, dirname):
     for node in daq_config['daq_nodes']:
         cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(
-            node['daq_node_username'], node['ip_addr'], node['dir'], dirname
+            node['username'], node['ip_addr'], node['data_dir'], dirname
         )
         print(cmd)
         ret = os.system(cmd)

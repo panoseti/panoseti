@@ -43,16 +43,16 @@ def string_to_list(s):
 # to list of module numbers
 #
 def expand_ranges(daq_config):
-    for n in daq_config['daq_nodes']:
-        n['module_nums'] = string_to_list(n['module_nums'])
+    for node in daq_config['daq_nodes']:
+        node['module_nums'] = string_to_list(n['module_nums'])
             
 
 # given a module number, find the DAQ node that's handling it
 #
 def module_num_to_daq_node(daq_config, module_num):
-    for n in daq_config['daq_nodes']:
-        if module_num in n['module_nums']:
-            return n
+    for node in daq_config['daq_nodes']:
+        if module_num in node['module_nums']:
+            return node
     raise Exception("no DAQ node is handling module number %d"%module_num)
 
 def get_obs_config():

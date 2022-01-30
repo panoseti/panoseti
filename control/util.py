@@ -1,6 +1,6 @@
 # control script utilities
 
-import os, sys, subprocess, signal, socket
+import os, sys, subprocess, signal, socket, datetime
 
 import config_file
 sys.path.insert(0, '../util')
@@ -27,6 +27,12 @@ hk_recorder_name = 'store_redis_data.py'
 config_file_names = [
     'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
 ]
+
+#-------------- TIME ---------------
+
+def now_str():
+    dt = datetime.datetime.fromtimestamp(t)
+    return dt.isoformat()
 
 #-------------- NETWORK ---------------
 
@@ -133,6 +139,11 @@ def remove_run_name():
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
 
+def run_complete(daq_config, run_name):
+    path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, run_complete_filename)
+    with open(path, 'w') as f:
+        f.write(now_str())
+
 # link modules to DAQ nodes:
 # - in the daq_config data structure, add a list "modules"
 #   to each daq node object, of the module objects
@@ -141,8 +152,8 @@ def remove_run_name():
 #   add a link "daq_node" to the DAQ node that's handling it.
 #
 def associate(daq_config, quabo_uids):
-    for n in daq_config['daq_nodes']:
-        n['modules'] = []
+    for node in daq_config['daq_nodes']:
+        node['modules'] = []
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
             daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])

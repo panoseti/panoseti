@@ -17,18 +17,18 @@ def status():
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
     util.associate(daq_config, quabo_uids)
-    user_name = daq_config['daq_node_username']
     my_ip = util.local_ip()
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
         ip_addr = node['ip_addr']
+        username = node['username']
         if ip_addr == my_ip:
             print('local status')
         else:
             print('DAQ node %s:'%ip_addr)
             x = subprocess.run(['ssh',
-                '%s@%s'%(user_name, ip_addr),
+                '%s@%s'%(username, ip_addr),
                 'status_daq.py'],
                 stdout = subprocess.PIPE
             )

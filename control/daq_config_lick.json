@@ -1,11 +1,13 @@
 {
+    "comment": "gateway as head node, DellXPS as DAQ node",
     "head_node_data_dir": "/home/panosetigraph/data",
-    "daq_node_username": "panoseti",
-    "daq_node_data_dir": "data",
+    "head_node_ip_addr": "128.114.176.40",
     "daq_nodes": [
         {
+            "username": "panoseti",
+            "data_dir": "data",
             "ip_addr": "192.168.1.100",
-            "module_nums": "0-99"
+            "module_nums": "0-255"
         }
     ]
 }

@@ -62,8 +62,6 @@ def start_data_flow(quabo_uids, data_config):
 #       start hashpipe program
 #
 def start_recording(data_config, daq_config, run_name):
-    username = daq_config['daq_node_username']
-    data_dir = daq_config['daq_node_data_dir']
     my_ip = util.local_ip()
 
     # copy config files to run dir on this node
@@ -71,7 +69,7 @@ def start_recording(data_config, daq_config, run_name):
     for f in util.config_file_names:
         shutil.copyfile(f, '%s/%s'%(local_data_dir, f))
 
-    # make run directories on DAQ nodes
+    # make run directories on remote DAQ nodes
     #
     for node in daq_config['daq_nodes']:
         if not node['modules']:
@@ -79,6 +77,8 @@ def start_recording(data_config, daq_config, run_name):
         ip_addr = node['ip_addr']
         if ip_addr == my_ip:
             continue
+        username = node['username']
+        data_dir = node['data_dir']
         cmd = 'ssh %s@%s "mkdir %s/%s"'%(
             username, ip_addr, data_dir, run_name
         )
@@ -89,7 +89,7 @@ def start_recording(data_config, daq_config, run_name):
     file_xfer.copy_config_files(daq_config, run_name)
 
     # start recording HK data
-    #util.start_hk_recorder(daq_config, run_name)
+    util.start_hk_recorder(daq_config, run_name)
 
     # start hashpipe on DAQ nodes
 
@@ -100,6 +100,8 @@ def start_recording(data_config, daq_config, run_name):
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
+        username = node['username']
+        data_dir = node['data_dir']
         remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d'%(
             node['ip_addr'], run_name, max_file_size_mb
         )
@@ -117,9 +119,21 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
     rn = util.read_run_name()
     if (rn):
         print('A run is already in progress.  Run stop.py, then try again.')
-        return
+        return False
     if 'record_redis_data.py' in (p.name() for p in psutil.process_iter()):
         print('The HK recorder is running.  Run stop.py, then try again.')
+        return False
+    my_ip = util.local_ip()
+    if my_ip != daq_config['head_node_ip_addr']:
+        print('This is not the head node; see daq_config.json')
+        return False
+        
+    # if head node is also DAQ note, make sure data first are the same
+    for node in daq_config['daq_nodes']:
+        if my_ip == node['ip_addr'] and head_node_data_dir != node['data_dir']:
+            print("Head node data dir doesn't match DAQ node data dir")
+            return False
+
     try:
         run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
         run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
@@ -135,8 +149,9 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         print("Couldn't start run.  Run stop.py, then try again.")
         print('If other users might be using the telescope, check with them;')
         print('running stop.py will kill their run.')
-        return
+        return False
     util.write_run_name(run_name)
+    return True
 
 if __name__ == "__main__":
     argv = sys.argv

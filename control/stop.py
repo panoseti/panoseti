@@ -29,19 +29,16 @@ def stop_data_flow(quabo_uids):
                 quabo.send_daq_params(daq_params)
                 quabo.close()
 
-# tell the DAQ nodes to stop recording
+# tell all DAQ nodes to stop recording
 #
 def stop_recording(daq_config):
-    username = daq_config['daq_node_username']
-    data_dir = daq_config['daq_node_data_dir']
     for node in daq_config['daq_nodes']:
-        if len(node['modules']) > 0:
-            cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(
-                username, node['ip_addr'], data_dir
-            )
-            print(cmd)
-            ret = os.system(cmd)
-            if ret: raise Exception('%s returned %d'%(cmd, ret))
+        cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(
+            node['username'], node['ip_addr'], node['data_dir']
+        )
+        print(cmd)
+        ret = os.system(cmd)
+        if ret: raise Exception('%s returned %d'%(cmd, ret))
 
 def stop_run(daq_config, quabo_uids):
     print("stopping data recording")
@@ -53,10 +50,13 @@ def stop_run(daq_config, quabo_uids):
     print("stopping data generation")
     stop_data_flow(quabo_uids)
 
+    if util.local_ip() != daq_config['head_node_ip_addr']:
+        raise Exception('This is not the head node specific in daq_config.json')
     print("collecting data from DAQ nodes")
     run_dir = util.read_run_name()
     if run_dir:
         collect.collect_data(daq_config, run_dir)
+        util.run_complete(daq_config, run_dir)
     else:
         print("No run name found - can't collect data")
 
