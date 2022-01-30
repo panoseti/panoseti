@@ -8,20 +8,11 @@
 #
 # runs in the data dir on the DAQ node
 
-import os, psutil, shutil
-
-def disk_usage(dir):
-    x = 0
-    for f in os.listdir(dir):
-        x += os.path.getsize('%s/%s'%(dir, f))
-    return x
-
-def free_space():
-    total, used, free = shutil.disk_usage('.')
-    return free
+import os
+import util
 
 def status():
-    if "hashpipe" in (p.name() for p in psutil.process_iter()):
+    if util.is_hashpipe_running():
         print('hashpipe is running')
     else:
         print('hashpipe is not running')
@@ -31,14 +22,14 @@ def status():
             run_name = f.read().strip()
             print('current run: %s'%run_name)
         if os.path.exists(run_name):
-            used = disk_usage(run_name)
+            used = util.disk_usage(run_name)
             print('disk used: %.2fMB'%(used/1.e6))
         else:
             print("run dir doesn't exist");
     else:
         print('no current run')
 
-    print('disk free: %.2fMB'%(free_space()/1.e6))
+    print('disk free: %.2fMB'%(util.free_space()/1.e6))
 
     
 status()

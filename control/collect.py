@@ -30,5 +30,5 @@ if __name__ == "__main__":
             sys.exit()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
-    util.associate(daq_config, quabo_uids)
+    config_file.associate(daq_config, quabo_uids)
     collect_data(daq_config, run_dir)

@@ -54,7 +54,7 @@ def main():
     if os.path.exists(pid_filename):
         raise Exception("PID file exists; run stop_daq.py")
 
-    if "hashpipe" in (p.name() for p in psutil.process_iter()):
+    if util.is_hashpipe_running():
         raise Exception("Hashpipe is already running")
              
     # record the run name in a file

@@ -66,5 +66,5 @@ def stop_run(daq_config, quabo_uids):
 if __name__ == "__main__":
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
-    util.associate(daq_config, quabo_uids)
+    config_file.associate(daq_config, quabo_uids)
     stop_run(daq_config, quabo_uids)

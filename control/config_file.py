@@ -9,6 +9,10 @@ daq_config_filename = 'daq_config.json'
 data_config_filename = 'data_config.json'
 quabo_uids_filename = 'quabo_uids.json'
 
+config_file_names = [
+    obs_config_filename, daq_config_filename, data_config_filename, quabo_uids_filename
+]
+
 # assign sequential numbers to domes and modules
 #
 def assign_numbers(c):
@@ -89,6 +93,35 @@ def get_modules(c):
         for module in dome['modules']:
             modules.append(module)
     return modules
+
+# link modules to DAQ nodes:
+# - in the daq_config data structure, add a list "modules"
+#   to each daq node object, of the module objects
+#   in the quabo_uids data structure;
+# - in the quabo_uids data structure, in each module object,
+#   add a link "daq_node" to the DAQ node that's handling it.
+#
+def associate(daq_config, quabo_uids):
+    for node in daq_config['daq_nodes']:
+        node['modules'] = []
+    for dome in quabo_uids['domes']:
+        for module in dome['modules']:
+            daq_node = module_num_to_daq_node(daq_config, module['num'])
+            daq_node['modules'].append(module)
+            module['daq_node'] = daq_node
+
+# show which module is going to which data recorder
+#
+def show_daq_assignments(quabo_uids):
+    for dome in quabo_uids['domes']:
+        for module in dome['modules']:
+            ip_addr = module['ip_addr']
+            daq_node = module['daq_node']
+            for i in range(4):
+                q = module['quabos'][i];
+                print("data from quabo %s (%s) -> DAQ node %s"
+                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
+                )
 
 if __name__ == "__main__":
     c = get_daq_config()

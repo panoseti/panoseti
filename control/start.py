@@ -12,9 +12,12 @@
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
-import os, sys, traceback, psutil, shutil
-import config_file
-import util, file_xfer, quabo_driver, pff
+import os, sys, traceback, shutil
+import config_file, util, file_xfer, quabo_driver, pff
+
+sys.path.insert(0, '../util')
+
+import pff
 
 # parse the data config file to get DAQ params for quabos
 #
@@ -66,7 +69,7 @@ def start_recording(data_config, daq_config, run_name):
 
     # copy config files to run dir on this node
     local_data_dir = daq_config['head_node_data_dir']
-    for f in util.config_file_names:
+    for f in config_file.config_file_names:
         shutil.copyfile(f, '%s/%s'%(local_data_dir, f))
 
     # make run directories on remote DAQ nodes
@@ -120,7 +123,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
     if (rn):
         print('A run is already in progress.  Run stop.py, then try again.')
         return False
-    if 'record_redis_data.py' in (p.name() for p in psutil.process_iter()):
+    if util.is_hk_recorder_running():
         print('The HK recorder is running.  Run stop.py, then try again.')
         return False
     my_ip = util.local_ip()
@@ -138,8 +141,8 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
         run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
         os.mkdir(run_dir)
-        util.associate(daq_config, quabo_uids)
-        util.show_daq_assignments(quabo_uids)
+        config_file.associate(daq_config, quabo_uids)
+        config_file.show_daq_assignments(quabo_uids)
         print('starting data flow from quabos')
         start_data_flow(quabo_uids, data_config)
         print('starting recording')

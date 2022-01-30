@@ -7,8 +7,8 @@
 # --hashpipe            copy hashpipe executable (HSD_hashpipe.so) to nodes
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
-import config_file, sys, os
-import util
+import sys, os
+import util, config_file
 
 # copy a file to a DAQ node
 #
@@ -59,7 +59,6 @@ def copy_dir_from_node(run_name, daq_config, node):
     # move non-config files from temp dir to head node data dir
     run_tmp_dir = '%s/%s'%(node_tmp_dir, run_name)
     for fn in os.listdir(run_tmp_dir):
-        print(fn)
         if fn.find('config')>=0 or fn.find('quabo_uids')>=0:
             #os.unlink('%s/%s'%(tmp_dir, fn))
             continue
@@ -85,7 +84,7 @@ def make_remote_dirs(daq_config, dirname):
 #
 def copy_config_files(daq_config, run_dir):
     for node in daq_config['daq_nodes']:
-        for f in util.config_file_names:
+        for f in config_file.config_file_names:
             copy_file_to_node(f, daq_config, node, run_dir)
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
@@ -95,7 +94,8 @@ def copy_hashpipe(daq_config):
         copy_file_to_node('../daq/HSD_hashpipe.so', daq_config, node)
         copy_file_to_node('start_daq.py', daq_config, node)
         copy_file_to_node('stop_daq.py', daq_config, node)
-        copy_file_to_node('record_time.py', daq_config, node)
+        copy_file_to_node('status_daq.py', daq_config, node)
+        copy_file_to_node('util.py', daq_config, node)
 
 if __name__ == "__main__":
 

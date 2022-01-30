@@ -1,11 +1,6 @@
 # control script utilities
 
-import os, sys, subprocess, signal, socket, datetime, time
-
-import config_file
-sys.path.insert(0, '../util')
-
-import pff
+import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 
 #-------------- DEFAULTS ---------------
 
@@ -26,9 +21,7 @@ run_complete_file = 'run_complete'
 
 hk_recorder_name = 'store_redis_data.py'
 
-config_file_names = [
-    'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
-]
+hashpipe_name = 'hashpipe'
 
 #-------------- TIME ---------------
 
@@ -135,9 +128,6 @@ def read_run_name():
     with open(run_name_file) as f:
         return f.read()
 
-def make_run_name(obs, run_type):
-    return pff.run_dir_name(obs, run_type)
-
 def remove_run_name():
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
@@ -147,31 +137,48 @@ def write_run_complete_file(daq_config, run_name):
     with open(path, 'w') as f:
         f.write(now_str())
 
-# link modules to DAQ nodes:
-# - in the daq_config data structure, add a list "modules"
-#   to each daq node object, of the module objects
-#   in the quabo_uids data structure;
-# - in the quabo_uids data structure, in each module object,
-#   add a link "daq_node" to the DAQ node that's handling it.
+# if hashpipe is running, send it a SIGINT and wait for it to exit
 #
-def associate(daq_config, quabo_uids):
-    for node in daq_config['daq_nodes']:
-        node['modules'] = []
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])
-            daq_node['modules'].append(module)
-            module['daq_node'] = daq_node
+def stop_hashpipe(pid):
+    for p in psutil.process_iter():
+        if p.pid() == pid and p.name() == hashpipe_name:
+            os.kill(pid, signal.SIGINT)
+            while True:
+                try:
+                    os.kill(pid, 0)
+                except:
+                    return True
+                time.sleep(0.1)
+    return False
 
-# show which module is going to which data recorder
-#
-def show_daq_assignments(quabo_uids):
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            ip_addr = module['ip_addr']
-            daq_node = module['daq_node']
-            for i in range(4):
-                q = module['quabos'][i];
-                print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
-                )
+def is_hashpipe_running():
+    for p in psutil.process_iter():
+        if p.name() == hashpipe_name:
+            return True;
+    return False
+
+def is_hk_recorder_running():
+    for p in psutil.process_iter():
+        if hk_recorder_name in p.cmdline():
+            return True
+    return False
+
+def kill_hashpipe():
+    for p in psutil.process_iter():
+        if p.name() == hashpipe_name:
+            os.kill(p.pid(), signal.SIGKILL)
+
+def kill_hk_recorder():
+    for p in psutil.process_iter():
+        if hk_recorder_name in p.cmdline():
+            os.kill(p.pid(), signal.SIGKILL)
+
+def disk_usage(dir):
+    x = 0
+    for f in os.listdir(dir):
+        x += os.path.getsize('%s/%s'%(dir, f))
+    return x
+
+def free_space():
+    total, used, free = shutil.disk_usage('.')
+    return free
