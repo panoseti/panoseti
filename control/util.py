@@ -1,6 +1,6 @@
 # control script utilities
 
-import os, sys, subprocess, signal, socket, datetime
+import os, sys, subprocess, signal, socket, datetime, time
 
 import config_file
 sys.path.insert(0, '../util')
@@ -22,6 +22,8 @@ run_name_file = 'current_run'
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
+run_complete_file = 'run_complete'
+
 hk_recorder_name = 'store_redis_data.py'
 
 config_file_names = [
@@ -31,6 +33,7 @@ config_file_names = [
 #-------------- TIME ---------------
 
 def now_str():
+    t = int(time.time())
     dt = datetime.datetime.fromtimestamp(t)
     return dt.isoformat()
 
@@ -139,8 +142,8 @@ def remove_run_name():
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
 
-def run_complete(daq_config, run_name):
-    path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, run_complete_filename)
+def write_run_complete_file(daq_config, run_name):
+    path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, run_complete_file)
     with open(path, 'w') as f:
         f.write(now_str())
 

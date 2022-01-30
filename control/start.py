@@ -12,7 +12,7 @@
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
-import os, sys, traceback, psutil
+import os, sys, traceback, psutil, shutil
 import config_file
 import util, file_xfer, quabo_driver, pff
 
@@ -130,7 +130,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         
     # if head node is also DAQ note, make sure data first are the same
     for node in daq_config['daq_nodes']:
-        if my_ip == node['ip_addr'] and head_node_data_dir != node['data_dir']:
+        if my_ip == node['ip_addr'] and daq_config['head_node_data_dir'] != node['data_dir']:
             print("Head node data dir doesn't match DAQ node data dir")
             return False
 
@@ -151,6 +151,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         print('running stop.py will kill their run.')
         return False
     util.write_run_name(run_name)
+    print('started run %s'%run_name)
     return True
 
 if __name__ == "__main__":

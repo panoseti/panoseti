@@ -44,7 +44,7 @@ def string_to_list(s):
 #
 def expand_ranges(daq_config):
     for node in daq_config['daq_nodes']:
-        node['module_nums'] = string_to_list(n['module_nums'])
+        node['module_nums'] = string_to_list(node['module_nums'])
             
 
 # given a module number, find the DAQ node that's handling it
