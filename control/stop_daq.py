@@ -11,11 +11,9 @@
 
 import os, signal, util
 
-pid_filename = 'daq_pid'
-
 def main():
     try:
-        f = open(pid_filename, 'r')
+        f = open(util.daq_hashpipe_pid_filename, 'r')
     except:
         f = None
     if f:
@@ -23,7 +21,7 @@ def main():
         f.close()
         if not util.stop_hashpipe(pid):
             print("Couldn't top hashpipe")
-        os.unlink(pid_filename)
+        os.unlink(util.daq_hashpipe_pid_filename)
 
     util.kill_hashpipe()
     util.kill_hk_recorder()

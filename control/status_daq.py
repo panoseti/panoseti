@@ -17,8 +17,8 @@ def status():
     else:
         print('hashpipe is not running')
 
-    if os.path.exists('current_run_daq'):
-        with open('current_run_daq') as f:
+    if os.path.exists(util.daq_run_name_filename):
+        with open(util.daq_run_name_filename) as f:
             run_name = f.read().strip()
             print('current run: %s'%run_name)
         if os.path.exists(run_name):

@@ -16,11 +16,7 @@
 # hashpipe keeps running.
 
 import sys, os, subprocess, time
-
-pid_filename = 'daq_pid'
-dirname_filename = 'daq_dirname'
-    # stores name of current run
-hp_stdout_prefix = 'hp_stdout_'
+import util
 
 def main():
     argv = sys.argv
@@ -51,7 +47,7 @@ def main():
         raise Exception('no module IDs specified')
     if not os.path.isdir(run_dir):
         raise Exception("run dir doesn't exist")
-    if os.path.exists(pid_filename):
+    if os.path.exists(util.daq_hashpipe_pid_filename):
         raise Exception("PID file exists; run stop_daq.py")
 
     if util.is_hashpipe_running():
@@ -59,7 +55,7 @@ def main():
              
     # record the run name in a file
 
-    f = open(dirname_filename, 'w')
+    f = open(util.daq_run_name_filename, 'w')
     f.write(run_dir)
     f.close()
 
@@ -73,7 +69,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./HSD_hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o SAVELOC="%s" -o CONFIG="./module.config" -o OBS="LICK" HSD_net_thread HSD_compute_thread  HSD_output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, hp_stdout_prefix, daq_ip_addr))
+    f.write('hashpipe -p ./HSD_hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o SAVELOC="%s" -o CONFIG="./module.config" -o OBS="LICK" HSD_net_thread HSD_compute_thread  HSD_output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script
@@ -94,7 +90,7 @@ def main():
 
     # write it to a file
 
-    f = open(pid_filename, 'w')
+    f = open(util.daq_hashpipe_pid_filename, 'w')
     f.write(str(child_pid))
     f.close()
 

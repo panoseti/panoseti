@@ -8,9 +8,6 @@ default_max_file_size_mb = 1000
 
 #-------------- FILE NAMES ---------------
 
-hk_pid_file = 'hk_pid'
-    # stores the PID of the housekeeping process
-
 run_name_file = 'current_run'
     # stores the name of the current run
 
@@ -19,9 +16,17 @@ hk_file_name = 'hk.pff'
 
 run_complete_file = 'run_complete'
 
-hk_recorder_name = 'store_redis_data.py'
+hk_recorder_name = './store_redis_data.py'
 
 hashpipe_name = 'hashpipe'
+
+daq_hashpipe_pid_filename = 'daq_hashpipe_pid'
+    # stores PID of hashpipe process
+daq_run_name_filename = 'daq_run_name'
+    # stores name of current run
+hp_stdout_prefix = 'hp_stdout_'
+    # hashpipe stdout file is prefix_ipaddr
+
 
 #-------------- TIME ---------------
 
@@ -96,27 +101,10 @@ def is_quabo_alive(module, quabo_uids, i):
 def start_hk_recorder(daq_config, run_name):
     path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
-        process = subprocess.Popen(['store_redis_data.py', path])
+        process = subprocess.Popen([hk_recorder_name, path])
     except:
         print("can't launch HK recorder")
         raise
-
-    print('writing HK data to %s'%path)
-
-    with open(hk_pid_file, 'w') as f:
-        f.write(str(process.pid))
-
-def stop_hk_recorder():
-    if not os.path.exists(hk_pid_file):
-        return
-    with open(hk_pid_file) as f:
-        pid = int(f.read())
-    try:
-        os.kill(pid, signal.SIGKILL)
-        print('Stopped HK data recorder')
-    except:
-        print('HK recorder not running')
-    os.unlink(hk_pid_file)
 
 def write_run_name(run_name):
     with open(run_name_file, 'w') as f:
@@ -141,7 +129,7 @@ def write_run_complete_file(daq_config, run_name):
 #
 def stop_hashpipe(pid):
     for p in psutil.process_iter():
-        if p.pid() == pid and p.name() == hashpipe_name:
+        if p.pid == pid and p.name() == hashpipe_name:
             os.kill(pid, signal.SIGINT)
             while True:
                 try:
@@ -166,12 +154,12 @@ def is_hk_recorder_running():
 def kill_hashpipe():
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
-            os.kill(p.pid(), signal.SIGKILL)
+            os.kill(p.pid, signal.SIGKILL)
 
 def kill_hk_recorder():
     for p in psutil.process_iter():
         if hk_recorder_name in p.cmdline():
-            os.kill(p.pid(), signal.SIGKILL)
+            os.kill(p.pid, signal.SIGKILL)
 
 def disk_usage(dir):
     x = 0

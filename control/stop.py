@@ -45,7 +45,7 @@ def stop_run(daq_config, quabo_uids):
     stop_recording(daq_config)
 
     print("stopping HK recording")
-    util.stop_hk_recorder()
+    util.kill_hk_recorder()
 
     print("stopping data generation")
     stop_data_flow(quabo_uids)
@@ -53,9 +53,9 @@ def stop_run(daq_config, quabo_uids):
     if util.local_ip() != daq_config['head_node_ip_addr']:
         raise Exception('This is not the head node specified in daq_config.json')
 
-    print("collecting data from DAQ nodes")
     run_dir = util.read_run_name()
     if run_dir:
+        print("collecting data from DAQ nodes")
         collect.collect_data(daq_config, run_dir)
         util.write_run_complete_file(daq_config, run_dir)
         print('completed run %s'%run_dir)

@@ -3,6 +3,7 @@
 # functions to read and parse config files
 
 import json
+import util
 
 obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
@@ -120,7 +121,7 @@ def show_daq_assignments(quabo_uids):
             for i in range(4):
                 q = module['quabos'][i];
                 print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
+                    %(q['uid'], util.quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
                 )
 
 if __name__ == "__main__":

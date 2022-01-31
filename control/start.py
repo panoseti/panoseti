@@ -13,7 +13,7 @@
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
 import os, sys, traceback, shutil
-import config_file, util, file_xfer, quabo_driver, pff
+import config_file, util, file_xfer, quabo_driver
 
 sys.path.insert(0, '../util')
 
