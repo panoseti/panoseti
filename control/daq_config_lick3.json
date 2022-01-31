@@ -7,7 +7,7 @@
             "username": "panosetigraph",
             "data_dir": "/home/panosetgraph/data",
             "ip_addr": "128.114.176.40",
-            "module_nums": "0-255"
+            "module_ids": "0-255"
         }
     ]
 }

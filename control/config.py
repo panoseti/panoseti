@@ -29,22 +29,22 @@ def usage():
 ''')
     sys.exit()
 
-# print summary of obs config file
+# print summary of obs and daq config files
 #
-def show_config(obs_config):
+def show_config(obs_config, quabo_uids):
     for dome in obs_config['domes']:
         print('dome %s'%dome['num'])
         for module in dome['modules']:
-            module_num = module['num']
+            module_id = module['id']
             ip_addr = module['ip_addr']
-            print('   module %s'%module_num)
+            print('   module ID %d'%module_id)
             print('      Mobo serial#: %s'%module['mobo_serialno'])
             for i in range(4):
-                quabo_num = module_num*4+i
                 quabo_ip = util.quabo_ip_addr(ip_addr, i)
-                print('      quabo %d'%quabo_num)
+                print('      quabo %d'%i)
                 print('         IP addr: %s'%quabo_ip)
     print("This node's IP addr: %s"%util.local_ip())
+    config_file.show_daq_assignments(quabo_uids)
 
 def do_reboot(modules, quabo_uids):
     # need to reboot quabos in order 0..3
@@ -115,8 +115,8 @@ if __name__ == "__main__":
     i = 1
     while i < len(argv):
         if argv[i] == '--show':
-            show_config(obs_config)
-            sys.exit()
+            nops += 1
+            op = 'show'
         elif argv[i] == '--reboot':
             nops += 1
             op = 'reboot'
@@ -145,6 +145,8 @@ if __name__ == "__main__":
 
     modules = config_file.get_modules(obs_config)
     quabo_uids = config_file.get_quabo_uids()
+    daq_config = config_file.get_daq_config()
+    config_file.associate(daq_config, quabo_uids)
     if op == 'reboot':
         do_reboot(modules, quabo_uids)
     elif op == 'loads':
@@ -156,3 +158,5 @@ if __name__ == "__main__":
         file_xfer.copy_hashpipe(daq_config)
     elif op == 'hk_daemons':
         do_hk_daemons()
+    elif op == 'show':
+        show_config(obs_config, quabo_uids)

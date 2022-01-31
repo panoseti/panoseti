@@ -14,18 +14,16 @@ config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename, quabo_uids_filename
 ]
 
-# assign sequential numbers to domes and modules
+# assign sequential numbers to domes,
+# and IDs to modules
 #
 def assign_numbers(c):
     ndome = 0
-    nquabo = 0
     for dome in c['domes']:
         dome['num'] = ndome
         ndome += 1
-        nmodule = 0
         for module in dome['modules']:
-            module['num'] = nmodule
-            nmodule += 1
+            module['id'] = util.ip_addr_to_module_id(module['ip_addr'])
 
 # input: a string of the form "0-2, 5-6"
 # output: a list of integers, e.g. 0,1,2,5,6
@@ -49,16 +47,15 @@ def string_to_list(s):
 #
 def expand_ranges(daq_config):
     for node in daq_config['daq_nodes']:
-        node['module_nums'] = string_to_list(node['module_nums'])
-            
+        node['module_ids'] = string_to_list(node['module_ids'])
 
-# given a module number, find the DAQ node that's handling it
+# given a module ID, find the DAQ node that's handling it
 #
-def module_num_to_daq_node(daq_config, module_num):
+def module_id_to_daq_node(daq_config, module_id):
     for node in daq_config['daq_nodes']:
-        if module_num in node['module_nums']:
+        if module_id in node['module_ids']:
             return node
-    raise Exception("no DAQ node is handling module number %d"%module_num)
+    raise Exception("no DAQ node is handling module %d"%module_id)
 
 def get_obs_config():
     with open(obs_config_filename) as f:
@@ -107,7 +104,7 @@ def associate(daq_config, quabo_uids):
         node['modules'] = []
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
-            daq_node = module_num_to_daq_node(daq_config, module['num'])
+            daq_node = module_id_to_daq_node(daq_config, module['id'])
             daq_node['modules'].append(module)
             module['daq_node'] = daq_node
 

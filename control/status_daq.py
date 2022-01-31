@@ -29,7 +29,7 @@ def status():
     else:
         print('no current run')
 
-    print('disk free: %.2fMB'%(util.free_space()/1.e6))
+    print('disk free: %.0fGB'%(util.free_space()/1.e9))
 
     
 status()

@@ -56,6 +56,11 @@ def ip_addr_str_to_bytes(ip_addr_str):
         bytes[i] = x
     return bytes
 
+# return true if can ping IP addr
+#
+def ping(ip_addr):
+    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+
 # compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
 #
 def ip_addr_to_module_id(ip_addr_str):
@@ -72,11 +77,6 @@ def print_binary(data):
         print("%d: %d"%(i, data[i]))
 
 #-------------- QUABO OPS ---------------
-
-# return true if can ping IP addr
-#
-def ping(ip_addr):
-    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
 
 # given module base IP address, return IP addr of quabo i
 #

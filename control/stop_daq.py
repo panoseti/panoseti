@@ -26,6 +26,11 @@ def main():
     util.kill_hashpipe()
     util.kill_hk_recorder()
 
+    try:
+        os.unlink(util.daq_run_name_filename)
+    except:
+        pass
+
     print('OK')
 
 main()
