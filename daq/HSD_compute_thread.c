@@ -14,7 +14,8 @@
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 
-#define NUM_OF_MODES 7 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
+// Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
+#define NUM_OF_MODES 7
 
 /**
  * Structure for monitoring module data held by the compute thread.
@@ -84,7 +85,6 @@ void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_bl
     out_block->header.img_block_size++;
 }
 
-//TODO
 /**
  * Write coincidence(Pulse Height) images into the output buffer.
  * @param in_block Input data block containing the image needed to be copied.
@@ -198,9 +198,13 @@ quabo_info_t* quabo_info_t_new(){
     memset(value->prev_pkt_num, 0, sizeof(value->prev_pkt_num));
     return value;
 }
-
+//A module index for holding the data structures for the modules it expects.
 static module_data_t* moduleInd[MODULEINDEXSIZE] = {NULL};
 
+/**
+ * Initialization function for Hashpipe. This function is called once when the thread is created
+ * @param args Arugments passed in by hashpipe framework.
+ */
 static int init(hashpipe_thread_args_t * args){
     hashpipe_status_t st = args->st;
     //Initialize the INTSIG signal within the buffer to be zero
@@ -227,6 +231,8 @@ static int init(hashpipe_thread_args_t * args){
     }
     cbuf = getc(modConfig_file);
 
+    //Parsing the Module Config file for the modules to expect data from
+    //Creates structures for holding that data in the module index
     while(cbuf != EOF){
         ungetc(cbuf, modConfig_file);
         if (cbuf != '#'){
@@ -257,7 +263,11 @@ static int init(hashpipe_thread_args_t * args){
     
 }
 
-
+/**
+ * Main run function that is ran once when the threads are running. To keep thread running
+ * make sure to use a while loop.
+ * @param args Arguements passed in by the hashpipe framework
+ */
 static void *run(hashpipe_thread_args_t * args){
     printf("\n---------------Running Compute Thread-----------------\n\n");
     // Local aliases to shorten access to args fields
@@ -265,8 +275,6 @@ static void *run(hashpipe_thread_args_t * args){
     HSD_output_databuf_t *db_out = (HSD_output_databuf_t *)args->obuf;
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
-
-
 
     // Index values for the circular buffers in the shared buffer with the input and output threads
     int rv;
