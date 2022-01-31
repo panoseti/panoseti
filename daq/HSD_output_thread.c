@@ -13,16 +13,12 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <string>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
 #include "../util/pff.cpp"
 #include "../util/dp.h"
-
-// TODO: get the following from config file (or something)
-#define OBSERVATORY "LICK"
-#define RUN_TYPE "SCI"
-
 
 
 /**
@@ -44,7 +40,7 @@ struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;
     FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
-    FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode);
+    FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
     void make_files(const char *diskDir, const char *file_mode);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
 };
@@ -52,12 +48,10 @@ struct FILE_PTRS{
 /**
  * Constructor for file pointer structure
  * @param diskDir directory used for writing all files monitored by file pointer
- * @param dirInfo directory information structure stored by file pointer
  * @param fileInfo file information structure stored by file pointer
  * @param file_mode file editing mode for all files within file pointer
  */
-FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *fileInfo, const char *file_mode){
-    dirInfo->copy_to(&(this->dir_info));
+FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode){
     fileInfo->copy_to(&(this->file_info));
     this->make_files(diskDir, file_mode);
 }
@@ -70,11 +64,8 @@ FILE_PTRS::FILE_PTRS(const char *diskDir, DIRNAME_INFO *dirInfo, FILENAME_INFO *
 void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     string fileName;
     string dirName;
-    this->dir_info.make_dirname(dirName);
-    dirName = diskDir + dirName + "/";
-    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    dirName = diskDir;
     
-
     for (int dp = DP_BIT16_IMG; dp <= DP_PH_IMG; dp++){
         this->file_info.data_product = (DATA_PRODUCT)dp;
         this->file_info.make_filename(fileName);
@@ -92,7 +83,7 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
                 break;
         }
         if (access(dirName.c_str(), F_OK) == -1) {
-            printf("Error: Unable to access file - %s\n", dirName.c_str());
+            printf("Error: Unable to access directory - %s\n", dirName.c_str());
             exit(0);
         }
         printf("Created file %s\n", (dirName + fileName).c_str());
@@ -109,9 +100,7 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
 void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode){
     string fileName;
     string dirName;
-    this->dir_info.make_dirname(dirName);
-    dirName = diskDir + dirName + "/";
-    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    dirName = diskDir;
 
     this->file_info.data_product = (DATA_PRODUCT)dp;
     this->file_info.start_time = time(NULL);
@@ -134,7 +123,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
             break;
     }
     if (access(dirName.c_str(), F_OK) == -1) {
-        printf("Error: Unable to access file - %s\n", dirName.c_str());
+        printf("Error: Unable to access directory - %s\n", dirName.c_str());
         exit(0);
     }
     printf("Created file %s\n", (dirName + fileName).c_str());
@@ -143,9 +132,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
 
 static char config_location[STRBUFFSIZE];
 
-static char save_location[STRBUFFSIZE];
-
-static char observatory[STRBUFFSIZE];
+static char run_directory[STRBUFFSIZE];
 
 static long long max_file_size = 0; //IN UNITS OF BYTES
 
@@ -163,9 +150,8 @@ static FILE_PTRS *data_files[MODULEINDEXSIZE] = {NULL};
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
-    DIRNAME_INFO dirInfo(t, observatory, RUN_TYPE);
     FILENAME_INFO filenameInfo(t, DP_STATIC_META, 0, dome, module, 0);
-    return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
+    return new FILE_PTRS(diskDir, &filenameInfo, "w");
 }
 
 /**
@@ -237,9 +223,9 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
 
     if (ftell(fileToWrite) > max_file_size){
         if (mode == 16){
-            moduleToWrite->new_dp_file(DP_BIT16_IMG, save_location, "w");
+            moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
         } else if (mode == 8){
-            moduleToWrite->new_dp_file(DP_BIT8_IMG, save_location, "w");
+            moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory, "w");
         }
     }
 
@@ -303,7 +289,7 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
 
     if (ftell(fileToWrite) > max_file_size){
         if (mode == 0x1){
-            moduleToWrite->new_dp_file(DP_PH_IMG, save_location, "w");
+            moduleToWrite->new_dp_file(DP_PH_IMG, run_directory, "w");
         }
     }
     return 1;
@@ -330,7 +316,7 @@ int create_data_files_from_config(){
         if (cbuf != '#') {
             if (fscanf(configFile, "%u\n", &modNum) == 1){
                 if (data_files[modNum] == NULL) {
-                    data_files[modNum] = data_file_init(save_location, 0, modNum);
+                    data_files[modNum] = data_file_init(run_directory, 0, modNum);
                     printf("Created Data file for Module %u\n", modNum);
                 }
             }
@@ -348,6 +334,34 @@ int create_data_files_from_config(){
 }
 
 
+typedef enum {
+    DIR_EXISTS,
+    DIR_DNE,
+    NOT_DIR,
+    DIR_READ_ERROR
+} DIR_STATUS;
+
+DIR_STATUS check_directory(char *run_directory){
+    if (strlen(run_directory) <= 0){return DIR_DNE;}
+
+    struct stat s;
+    int err = stat(run_directory, &s);
+    if (err == -1){
+        if (ENOENT == errno){
+            return DIR_DNE;
+        } else {
+            return DIR_READ_ERROR; 
+        }
+    } else {
+        if (S_ISDIR(s.st_mode)) {
+            return DIR_EXISTS;
+        } else {
+            return NOT_DIR;
+        }
+    }
+
+}
+
 
 //Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
 static int QUITSIG;
@@ -362,22 +376,35 @@ static int init(hashpipe_thread_args_t *args)
     hashpipe_status_t st = args->st;
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
     // Fetch user input for save location of data files.
-    sprintf(save_location, DATAFILE_DEFAULT);
-    hgets(st.buf, "SAVELOC", STRBUFFSIZE, save_location);
-    if (save_location[strlen(save_location) - 1] != '/') {
-        char endingSlash = '/';
-        strncat(save_location, &endingSlash, 1);
+    hgets(st.buf, "RUNDIR", STRBUFFSIZE, run_directory);
+    // Remove old run directory so that info isn't saved for next run.
+    hdel(st.buf, "RUNDIR");
+    // Check to see if the run directory provided is an accurage directory
+    switch(check_directory(run_directory)) {
+        case DIR_EXISTS:
+            printf("Run directory: %s\n", run_directory);
+            break;
+        case DIR_DNE:
+            fprintf(stderr, "Directory %s does not exist\n", run_directory);
+            exit(1);
+        case NOT_DIR:
+            fprintf(stderr, "%s is not a directory\n", run_directory);
+            exit(1);
+        case DIR_READ_ERROR:
+            fprintf(stderr, "Issue reading directory %s\n", run_directory);
+            exit(1);
+            
     }
-    printf("Save Location: %s\n", save_location);
+    //If directory doesn't end in a / then add it to the run_directory variable
+    if (run_directory[strlen(run_directory) - 1] != '/') {
+        char endingSlash = '/';
+        strncat(run_directory, &endingSlash, 1);
+    }
 
     // Fetch user input for config file location.
     sprintf(config_location, CONFIGFILE_DEFAULT);
     hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
     printf("Config Location: %s\n", config_location);
-
-    sprintf(observatory, OBSERVATORY);
-    hgets(st.buf, "OBS", STRBUFFSIZE, observatory);
-    printf("Observatory set to: %s\n", observatory);
 
     // Fetch user input for max file size of data files.
     int maxFileSizeInput;
@@ -388,13 +415,6 @@ static int init(hashpipe_thread_args_t *args)
 
 
     printf("\n---------------SETTING UP DATA File------------------\n");
-    time_t t = time(NULL);
-    //Creating directory for data files.
-    DIRNAME_INFO dirInfo(t, observatory, RUN_TYPE);
-    string dirName;
-    dirInfo.make_dirname(dirName);
-    dirName = save_location + dirName + "/";
-    mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     
     //Create data files based on given config file.
     create_data_files_from_config();
