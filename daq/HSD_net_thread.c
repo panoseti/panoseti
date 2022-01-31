@@ -109,6 +109,7 @@ int check_acqmode(unsigned char* p_frame){
             return 1;
         }
     hashpipe_pktsock_release_frame(p_frame);
+    fprintf(stderr, "Malformed packet dectected: %s\n", pkt_data);
     return 0;
 }
 

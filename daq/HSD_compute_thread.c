@@ -349,8 +349,8 @@ static void *run(hashpipe_thread_args_t * args){
             moduleNum = db_in->block[curblock_in].header.pkt_head[i].mod_num;
 
             if (moduleInd[moduleNum] == NULL){
-                printf("Detected New Module not in Config File: %u.%u\n", (unsigned int) (moduleNum << 2)/0x100, (moduleNum << 2) % 0x100);
-                printf("Packet skipping\n");
+                fprintf(stderr, "Detected New Module not in Config File: %u.%u\n", (unsigned int) (moduleNum << 2)/0x100, (moduleNum << 2) % 0x100);
+                fprintf(stderr, "Packet skipping\n");
                 continue;
             }
 
