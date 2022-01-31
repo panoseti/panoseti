@@ -6,6 +6,7 @@
     },
     "pulse_height": {
     },
+    "max_file_size_mb": 1000,
     "software_pulse": {
         "octaves": 16,
         "threshold_sigma": [

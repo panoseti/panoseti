@@ -13,5 +13,216 @@ hashpipe config
     needs to know what quabo IP addrs to expect data from
     if get packet from elsewhere, write error msg to log file
     if get malformed packet, write msg to log file
+---------
+1/24/2022
+config.py
+    do everything from power-on to start record
+    re-do if any change to config (except data_config).
+    Maybe keep track of where we are in the process?
 
+    mobo serial#: written on board
 
+    module ID: last 10 bits of base IP addr >> 2
+
+    Need to add all calibration stuff
+    (Wei can help me)
+    
+start/stop.py
+
+status.py
+    to be written
+
+web tools
+
+-------------
+notion of "mobo ID": the base IP addr
+hashpipe cmdline:
+    list of mobo IDs
+    name of log file
+bad source (from board loc) => log
+malformed packet -> log
+---------
+1/25/22
+In experimenting with Ryan, we found
+- if you run hashpipe from a python script,
+    it exits when the script exist (we don't know why)
+    If you run a shell script from a python script,
+    and the shell script runs hashpipe,
+    then both shell script and hashpipe continue to run
+    after python script exist.
+    That's good.
+    But killing the shell script doesn't kill hashpipe.
+    However, killing hashpipe causes the shell script to exit
+
+So we came up with the following scheme
+
+starting hashpipe
+    start.py (on head node)
+        for each DAQ node
+            copy to node:
+                run_hashpipe.sh
+                module.config
+                config files
+                start_daq.py
+            ssh to run start_daq.py
+
+    start_daq.py (on DAQ node)
+        args: run name, file size, module IDs
+        create run_hashpipe.sh
+            hashpipe command line, including
+                SAVELOC: path to run dir
+                MAXFILESIZE: from data config
+                redirects stderr/stdout
+        create module.config
+            list of module IDs
+        run run_hashpipe.sh (in new session, detach)
+        use pgrep to find PID of the hashpipe process
+        write that to a daq_pid
+
+    run_hashpipe.sh
+        runs hashpipe, passing cmdline args
+
+    hashpipe
+        reads module.config
+------------
+1/26/22:
+did:
+    start hashpipe remote with start/stop scripts
+        python on head node / python on DAQ/ shell script / hashpip
+    tell it what quabos to expect data from:
+        notion of "module ID": bits 2..10 of base IP addr
+    hashpipe doesn't:
+        create run dir
+        record HK data
+todo, short-term:
+    some hashpipe changes
+    finish start.py
+    actually record data
+    redirect hashpipe stdout/stderr to log files, collect these
+
+longer term
+    calibration
+    hashpipe:
+        orient 32x32 images
+        integrate pulse-finding
+------------
+1/27/22
+
+Definition of "run in progress":
+A run is in progress if there's a file "run_name"
+    in the data dir on the head node.
+start.py creates this before it starts anything.
+    it complains if it already exists
+stop.py:
+    if there's a run in progess, terminate it normally,
+        e.g. collect its data
+        and deletes "run_name".
+
+A run involves "recording activities" on distributed nodes,
+There are two kinds of "recording activities":
+1) recording HK data (store_redis_data.py on the head node)
+2) a hashpipe process
+
+Normally, start.py starts these activities,
+and stop.py stops them.
+So there always at most one instance of the activity -
+e.g. at most one hashpipe process on a host.
+
+But it's possible a recording activity could be active
+even after stop.py has been called,
+perhaps because stop.py failed for some reason partway through
+
+It would be bad if more than one instance of a recording activity
+was active at the same time -
+for example, you wouldn't want two hashpipe processes running at once.
+So we want to prevent this from happening.
+
+Here's how we do it:
+start.py:
+    fail if some recording activity was already active
+    (possibly leave some recording activities active)
+    in particular:
+        local: fail if HK record running
+        start_daq.py: fail if an instance of hashpipe already running
+    tell user:
+        you or another 
+
+stop.py: (in addition to the above)
+    if there is no run in progress:
+        kill HK recording
+        kill all hashpipes on DAQ nodes
+            stop_daq.py:
+                if no current run,
+                kill all hashpipe processes
+
+status.py:
+    if no run in progress:
+        show status of recording activities
+            (use status_daq.py for remote nodes)
+
+So for the end user:
+
+- if your start.py fails because something already active,
+    just do stop.py and try again.
+
+- if you want to make sure your start.py won't fail for this reason,
+    do "status.py".  If it shows something active, do stop.py
+    (or just do stop.py)
+
+--- also ---
+
+How to deal with multiple preople using a single observatory?
+Users could issue start/stop commands from different head nodes
+(e.g. multiple nodes configured to be a head node)
+
+for starters:
+start/stop commands: make sure they're being run on the head node
+specified in obs_config.json
+
+If someone is doing a run,
+other start.py commands will fail because of the above.
+Tell the user: it's possible that someone else is
+using the observatory.
+If this is possible, please check for this before doing stop.py
+
+Note: it a user runs stop.py, it stop recording any other user's run
+
+--- also ---
+
+we do start/stop stuff remotely by using ssh to run *_daq.py.
+But what if head node = DAQ node, i.e. one node?
+We could avoid ssh'ing to the same node;
+Instead package code in *_daq.py and call it from script
+
+Maybe better to always use SSH - uniformity.
+
+So various possibilities:
+
+1) single node - both head and DAQ
+2) multiple nodes; head node is also DAQ node
+3) multiple nodes: head node is not a DAQ node
+
+daq_config.json specifies:
+    - IP and data dir for head node
+    - IP, username and data dir for each DAQ node
+
+start.py: check that we're running on head node
+
+--- also ---
+
+On head node:
+    command dir: where you run start/stop/status commands from.
+        typically source dir, but could be elsewhere.
+        config files must be here
+        No files are created here.
+    data dir
+        All files are created here
+        run dirs
+        current run name
+
+on DAQ nodes
+    data dir
+        run dirs
+        if remote:
+            *_daq.py source code is copied here
+            keep track of current run in "current_run_daq".

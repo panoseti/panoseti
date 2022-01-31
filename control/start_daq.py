@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# start_daq.py --run_dir dirname --max_file_size N --module_id M1 ... --module_id Mn
+# start_daq.py --run_dir dirname --max_file_size_mb N --daq_ip_addr a.b.c.d --module_id M1 ... --module_id Mn
 #
 # This script is run (remotely) on a DAQ node to start recording.
 # The run directory already exists.
@@ -16,42 +16,46 @@
 # hashpipe keeps running.
 
 import sys, os, subprocess, time
-
-pid_filename = 'daq_pid'
-dirname_filename = 'daq_dirname'
-    # stores name of current run
+import util
 
 def main():
     argv = sys.argv
     i = 1
-    max_file_size = None
+    max_file_size_mb = None
     run_dir = None
+    daq_ip_addr = None
     module_ids = []
     while i<len(argv):
         if argv[i] == '--run_dir':
             i += 1
             run_dir = argv[i]
-        elif argv[i] == '--max_file_size':
+        elif argv[i] == '--daq_ip_addr':
             i += 1
-            max_file_size = int(argv[i])
+            daq_ip_addr = argv[i]
+        elif argv[i] == '--max_file_size_mb':
+            i += 1
+            max_file_size_mb = int(argv[i])
         elif argv[i] == '--module_id':
             i += 1
             module_ids.append(int(argv[i]))
         i += 1
     if not run_dir:
         raise Exception('no run dir specified')
-    if not max_file_size:
+    if not max_file_size_mb:
         raise Exception('no max file size specified')
     if len(module_ids) == 0:
         raise Exception('no module IDs specified')
     if not os.path.isdir(run_dir):
         raise Exception("run dir doesn't exist")
-    if os.path.exists(pid_filename):
+    if os.path.exists(util.daq_hashpipe_pid_filename):
         raise Exception("PID file exists; run stop_daq.py")
 
+    if util.is_hashpipe_running():
+        raise Exception("Hashpipe is already running")
+             
     # record the run name in a file
 
-    f = open(dirname_filename, 'w')
+    f = open(util.daq_run_name_filename, 'w')
     f.write(run_dir)
     f.close()
 
@@ -65,7 +69,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./HSD_hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o SAVELOC="%s" -o CONFIG="./module.config" -o OBS="LICK" HSD_net_thread HSD_compute_thread  HSD_output_thread'%(max_file_size, run_dir))
+    f.write('hashpipe -p ./HSD_hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o SAVELOC="%s" -o CONFIG="./module.config" -o OBS="LICK" HSD_net_thread HSD_compute_thread  HSD_output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script
@@ -80,13 +84,13 @@ def main():
     pid = process.pid
     while True:
         result = subprocess.run(['pgrep', '-P', str(pid)], stdout=subprocess.PIPE)
-        if result != '': break
+        if result.stdout != '': break
         time.sleep(1)
     child_pid = int(result.stdout)
 
     # write it to a file
 
-    f = open(pid_filename, 'w')
+    f = open(util.daq_hashpipe_pid_filename, 'w')
     f.write(str(child_pid))
     f.close()
 

@@ -1,11 +1,39 @@
 # control script utilities
 
-import os, sys, subprocess, signal, socket
+import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 
-import config_file
-sys.path.insert(0, '../util')
+#-------------- DEFAULTS ---------------
 
-import pff
+default_max_file_size_mb = 1000
+
+#-------------- FILE NAMES ---------------
+
+run_name_file = 'current_run'
+    # stores the name of the current run
+
+hk_file_name = 'hk.pff'
+    # housekeeping file in run dir
+
+run_complete_file = 'run_complete'
+
+hk_recorder_name = './store_redis_data.py'
+
+hashpipe_name = 'hashpipe'
+
+daq_hashpipe_pid_filename = 'daq_hashpipe_pid'
+    # stores PID of hashpipe process
+daq_run_name_filename = 'daq_run_name'
+    # stores name of current run
+hp_stdout_prefix = 'hp_stdout_'
+    # hashpipe stdout file is prefix_ipaddr
+
+
+#-------------- TIME ---------------
+
+def now_str():
+    t = int(time.time())
+    dt = datetime.datetime.fromtimestamp(t)
+    return dt.isoformat()
 
 #-------------- NETWORK ---------------
 
@@ -28,6 +56,18 @@ def ip_addr_str_to_bytes(ip_addr_str):
         bytes[i] = x
     return bytes
 
+# return true if can ping IP addr
+#
+def ping(ip_addr):
+    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+
+# compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
+#
+def ip_addr_to_module_id(ip_addr_str):
+    pieces = ip_addr_str.split('.')
+    n = int(pieces[3]) + 256*int(pieces[2])
+    return (n>>2)&255
+
 #-------------- BINARY DATA ---------------
 
 def print_binary(data):
@@ -36,27 +76,7 @@ def print_binary(data):
     for i in range(n):
         print("%d: %d"%(i, data[i]))
 
-#-------------- FILE NAMES ---------------
-
-hk_pid_file = '.hk_pid'
-    # stores the PID of the housekeeping process
-
-run_name_file = '.run_name'
-    # stores the name of the current run
-
-hk_file_name = 'hk.pff'
-    # housekeeping file in run dir
-
-config_file_names = [
-    'data_config.json', 'obs_config.json', 'quabo_uids.json', 'daq_config.json'
-]
-
 #-------------- QUABO OPS ---------------
-
-# return true if can ping IP addr
-#
-def ping(ip_addr):
-    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
 
 # given module base IP address, return IP addr of quabo i
 #
@@ -81,68 +101,72 @@ def is_quabo_alive(module, quabo_uids, i):
 def start_hk_recorder(daq_config, run_name):
     path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
-        process = subprocess.Popen(['store_redis_data.py', path])
+        process = subprocess.Popen([hk_recorder_name, path])
     except:
         print("can't launch HK recorder")
         raise
-
-    print('writing HK data to %s'%path)
-
-    with open(hk_pid_file, 'w') as f:
-        f.write(str(process.pid))
-
-def stop_hk_recorder():
-    if not os.path.exists(hk_pid_file):
-        return
-    with open(hk_pid_file) as f:
-        pid = int(f.read())
-    try:
-        os.kill(pid, signal.SIGKILL)
-        print('Stopped HK data recorder')
-    except:
-        print('HK recorder not running')
-    os.unlink(hk_pid_file)
 
 def write_run_name(run_name):
     with open(run_name_file, 'w') as f:
         f.write(run_name)
 
 def read_run_name():
+    if not os.path.exists(run_name_file):
+        return None
     with open(run_name_file) as f:
         return f.read()
-
-def make_run_name(obs, run_type):
-    return pff.run_dir_name(obs, run_type)
 
 def remove_run_name():
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
 
-# link modules to DAQ nodes:
-# - in the daq_config data structure, add a list "modules"
-#   to each daq node object, of the module objects
-#   in the quabo_uids data structure;
-# - in the quabo_uids data structure, in each module object,
-#   add a link "daq_node" to the DAQ node that's handling it.
-#
-def associate(daq_config, quabo_uids):
-    for n in daq_config['daq_nodes']:
-        n['modules'] = []
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            daq_node = config_file.module_num_to_daq_node(daq_config, module['num'])
-            daq_node['modules'].append(module)
-            module['daq_node'] = daq_node
+def write_run_complete_file(daq_config, run_name):
+    path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, run_complete_file)
+    with open(path, 'w') as f:
+        f.write(now_str())
 
-# show which module is going to which data recorder
+# if hashpipe is running, send it a SIGINT and wait for it to exit
 #
-def show_daq_assignments(quabo_uids):
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            ip_addr = module['ip_addr']
-            daq_node = module['daq_node']
-            for i in range(4):
-                q = module['quabos'][i];
-                print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
-                )
+def stop_hashpipe(pid):
+    for p in psutil.process_iter():
+        if p.pid == pid and p.name() == hashpipe_name:
+            os.kill(pid, signal.SIGINT)
+            while True:
+                try:
+                    os.kill(pid, 0)
+                except:
+                    return True
+                time.sleep(0.1)
+    return False
+
+def is_hashpipe_running():
+    for p in psutil.process_iter():
+        if p.name() == hashpipe_name:
+            return True;
+    return False
+
+def is_hk_recorder_running():
+    for p in psutil.process_iter():
+        if hk_recorder_name in p.cmdline():
+            return True
+    return False
+
+def kill_hashpipe():
+    for p in psutil.process_iter():
+        if p.name() == hashpipe_name:
+            os.kill(p.pid, signal.SIGKILL)
+
+def kill_hk_recorder():
+    for p in psutil.process_iter():
+        if hk_recorder_name in p.cmdline():
+            os.kill(p.pid, signal.SIGKILL)
+
+def disk_usage(dir):
+    x = 0
+    for f in os.listdir(dir):
+        x += os.path.getsize('%s/%s'%(dir, f))
+    return x
+
+def free_space():
+    total, used, free = shutil.disk_usage('.')
+    return free

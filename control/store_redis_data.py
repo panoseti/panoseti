@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 ##############################################################
 # Store data from redis database into panoseti metdata json 
 # files. Script stores all sets which contains the key for the 
