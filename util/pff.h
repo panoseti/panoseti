@@ -34,7 +34,6 @@ extern bool ends_with(const char* s, const char* suffix);
 
 typedef enum {
     DP_STATIC_META,
-    DP_DYNAMIC_META,
     DP_BIT16_IMG,
     DP_BIT8_IMG,
     DP_PH_IMG

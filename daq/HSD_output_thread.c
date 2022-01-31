@@ -75,13 +75,10 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     
 
-    for (int dp = DP_DYNAMIC_META; dp <= DP_PH_IMG; dp++){
+    for (int dp = DP_BIT16_IMG; dp <= DP_PH_IMG; dp++){
         this->file_info.data_product = (DATA_PRODUCT)dp;
         this->file_info.make_filename(fileName);
         switch (dp){
-            case DP_DYNAMIC_META:
-                this->dynamicMeta = fopen((dirName + fileName).c_str(), file_mode);
-                break;
             case DP_BIT16_IMG:
                 this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
                 break;
@@ -121,10 +118,6 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
     this->file_info.make_filename(fileName);
 
     switch (dp){
-        case DP_DYNAMIC_META:
-            fclose(this->dynamicMeta);
-            this->dynamicMeta = fopen((dirName + fileName).c_str(), file_mode);
-            break;
         case DP_BIT16_IMG:
             fclose(this->bit16Img);
             this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
@@ -159,7 +152,6 @@ static long long max_file_size = 0; //IN UNITS OF BYTES
 
 
 static FILE_PTRS *data_files[MODULEINDEXSIZE] = {NULL};
-static FILE *dynamic_meta;
 
 
 /**
@@ -171,7 +163,7 @@ static FILE *dynamic_meta;
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
-    DIRNAME_INFO dirInfo(t, observatory, "foobar");
+    DIRNAME_INFO dirInfo(t, observatory, RUN_TYPE);
     FILENAME_INFO filenameInfo(t, DP_STATIC_META, 0, dome, module, 0);
     return new FILE_PTRS(diskDir, &dirInfo, &filenameInfo, "w");
 }
@@ -403,10 +395,6 @@ static int init(hashpipe_thread_args_t *args)
     dirInfo.make_dirname(dirName);
     dirName = save_location + dirName + "/";
     mkdir(dirName.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-    //Creating dynamic metadata file.
-    printf("Creating file : %s\n", (dirName + "dynamic_meta.pff").c_str());
-    dynamic_meta = fopen((dirName + "dynamic_meta.pff").c_str(), "w");
     
     //Create data files based on given config file.
     create_data_files_from_config();
