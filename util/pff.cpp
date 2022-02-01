@@ -75,10 +75,18 @@ int pff_read_image(FILE* f, int nbytes, void* img) {
 
 ////////// DIR/FILE NAME STUFF ////////////////
 
+// separator between name and value
+//
+#define VAL_SEP '_'
+
+// separator between pairs
+//
+#define PAIR_SEP '.'
+
 struct NV_PAIR {
     char name[64], value[256];
     int parse(const char *s) {
-        char *p = (char*)strchr(s, '=');
+        char *p = (char*)strchr(s, VAL_SEP);
         if (!p) return -1;
         *p = 0;
         strcpy(name, s);
@@ -87,12 +95,12 @@ struct NV_PAIR {
     }
 };
 
-// get comma-separated substrings
+// get substrings separated by PAIR_SEP
 //
-void split_comma(char *name, vector<string> &pieces) {
+void split_pair_sep(char *name, vector<string> &pieces) {
     char *p = name;
     while (1) {
-        char *q = strchr(p, ',');
+        char *q = strchr(p, PAIR_SEP);
         if (!q) break;
         *q = 0;
         pieces.push_back(string(p));
@@ -125,17 +133,19 @@ void DIRNAME_INFO::make_dirname(string &s) {
     char buf[1024], tbuf[256];
 
     time_t x = (time_t)start_time;
-    struct tm* tm = localtime(&x);
-    strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
-    sprintf(buf, "obs=%s,start=%s,run_type=%s",
-        observatory.c_str(), tbuf, run_type.c_str()
+    struct tm* tm = gmtime(&x);
+    strftime(tbuf, sizeof(tbuf), "%FT%TZ", tm);
+    sprintf(buf, "obs%c%s%cstart%c%s%cruntype%c%s",
+        VAL_SEP, observatory.c_str(),
+    PAIR_SEP, VAL_SEP, tbuf,
+    PAIR_SEP, VAL_SEP, run_type.c_str()
     );
     s = buf;
 }
 
 int DIRNAME_INFO::parse_dirname(char* name) {
     vector<string> pieces;
-    split_comma(name, pieces);
+    split_pair_sep(name, pieces);
     for (int i=0; i<pieces.size(); i++) {
         NV_PAIR nvp;
         int retval = nvp.parse(pieces[i].c_str());
@@ -144,11 +154,11 @@ int DIRNAME_INFO::parse_dirname(char* name) {
         }
         if (!strcmp(nvp.name, "obs")) {
             observatory = nvp.value;
-        } else if (!strcmp(nvp.name, "run_type")) {
+        } else if (!strcmp(nvp.name, "runtype")) {
             run_type = nvp.value;
-        } else if (!strcmp(nvp.name, "st")) {
+        } else if (!strcmp(nvp.name, "start")) {
             struct tm tm;
-            char *p = strptime(nvp.value, "%a_%b_%d_%T_%Y", &tm);
+            char *p = strptime(nvp.value, "%FT%T%z", &tm);
             time_t t = mktime(&tm);
             start_time = (double)t;
         } else {
@@ -168,10 +178,15 @@ void FILENAME_INFO::make_filename(string &s) {
     char buf[1024], tbuf[256];
 
     time_t x = (time_t)start_time;
-    struct tm* tm = localtime(&x);
-    strftime(tbuf, sizeof(tbuf), "%a_%b_%d_%T_%Y", tm);
-    sprintf(buf, "start=%s,dp=%d,bpp=%d,dome=%d,module=%d,seqno=%d.pff",
-        tbuf, data_product, bytes_per_pixel, dome, module, seqno
+    struct tm* tm = gmtime(&x);
+    strftime(tbuf, sizeof(tbuf), "%FT%TZ", tm);
+    sprintf(buf, "start%c%s%cdp%c%d%cbpp%c%d%cdome%c%d%cmodule%c%d%cseqno%c%d.pff",
+        VAL_SEP, tbuf,
+    PAIR_SEP, VAL_SEP, data_product,
+    PAIR_SEP, VAL_SEP, bytes_per_pixel,
+    PAIR_SEP, VAL_SEP, dome,
+    PAIR_SEP, VAL_SEP, module,
+    PAIR_SEP, VAL_SEP, seqno
     );
     s = buf;
 }
@@ -181,23 +196,25 @@ int FILENAME_INFO::parse_filename(char* name) {
     char* p = strrchr(name, '.');   // trim .pff
     if (!p) return 1;
     *p = 0;
-    split_comma(name, pieces);
+    split_pair_sep(name, pieces);
     for (int i=0; i<pieces.size(); i++) {
         NV_PAIR nvp;
         int retval = nvp.parse(pieces[i].c_str());
         if (retval) {
             fprintf(stderr, "bad filename component: %s\n", pieces[i].c_str());
         }
-        if (!strcmp(nvp.name, "st")) {
+        if (!strcmp(nvp.name, "start")) {
             struct tm tm;
-            char *p = strptime(nvp.value, "%a_%b_%d_%T_%Y", &tm);
+            char *p = strptime(nvp.value, "%FT%T%z", &tm);
             time_t t = mktime(&tm);
             start_time = (double)t;
         } else if (!strcmp(nvp.name, "dp")) {
             data_product = (DATA_PRODUCT)atoi(nvp.value);
+        } else if (!strcmp(nvp.name, "bpp")) {
+            bytes_per_pixel = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "dome")) {
             dome = atoi(nvp.value);
-        } else if (!strcmp(nvp.name, "mod")) {
+        } else if (!strcmp(nvp.name, "module")) {
             module = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "seqno")) {
             seqno = atoi(nvp.value);
@@ -226,7 +243,14 @@ int main(int, char**) {
     di.start_time = time(0);
     string s;
     di.make_dirname(s);
-    printf("dir name: %s\n", s.c_str());
+
+    char buf[256];
+    strcpy(buf, s.c_str());
+    printf("dir name: %s\n", buf);
+
+    di.parse_dirname(buf);
+    printf("parsed: obs %s type %s time %f\n", di.observatory.c_str(),
+    di.run_type.c_str(), di.start_time);
 
     FILENAME_INFO fi;
     fi.start_time = time(0);
@@ -236,13 +260,14 @@ int main(int, char**) {
     fi.module=14;
     fi.seqno = 5;
     fi.make_filename(s);
-    printf("file name: %s\n", s.c_str());
 
-    char buf[256];
-    strcpy(buf, "obs=Palomar,start=Fri_Aug_27_15:21:46_2021");
-    di.parse_dirname(buf);
+    strcpy(buf, s.c_str());
+    printf("file name: %s\n", buf);
 
-    strcpy(buf, "start=Fri_Aug_27_15:21:46_2021,dp=1,bpp=2,dome=0,module=14,seqno=5.pff");
     fi.parse_filename(buf);
+    printf("parsed: time %f dp %d bpp %d dome %d module %d seqno %d\n",
+        fi.start_time, fi.data_product, fi.bytes_per_pixel,
+        fi.dome, fi.module, fi.seqno
+    );
 }
 #endif
