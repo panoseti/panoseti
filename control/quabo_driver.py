@@ -233,7 +233,7 @@ class QUABO:
 # IMPLEMENTATION STUFF FOLLOWS
 
     def send(self, cmd):
-        print('sending %d bytes'%(len(cmd)))
+        #print('sending %d bytes'%(len(cmd)))
         self.sock.sendto(bytes(cmd), (self.ip_addr, UDP_CMD_PORT))
 
     def make_cmd(self, cmd):
