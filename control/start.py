@@ -119,19 +119,27 @@ def start_recording(data_config, daq_config, run_name):
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
 def start_run(obs_config, daq_config, quabo_uids, data_config):
-    rn = util.read_run_name()
-    if (rn):
-        print('A run is already in progress.  Run stop.py, then try again.')
-        return False
-    if util.is_hk_recorder_running():
-        print('The HK recorder is running.  Run stop.py, then try again.')
-        return False
     my_ip = util.local_ip()
     if my_ip != daq_config['head_node_ip_addr']:
         print('This is not the head node; see daq_config.json')
         return False
+
+    rn = util.read_run_name()
+    if (rn):
+        print('A run is already in progress.  Run stop.py, then try again.')
+        return False
+
+    if util.is_hk_recorder_running():
+        print('The HK recorder is running.  Run stop.py, then try again.')
+        return False
         
-    # if head node is also DAQ note, make sure data first are the same
+    if not util.are_redis_daemons_running():
+        print('Redis daemons are not runing')
+        util.show_redis_daemons()
+        return False
+
+    # if head node is also DAQ note, make sure data dirs are the same
+    #
     for node in daq_config['daq_nodes']:
         if my_ip == node['ip_addr'] and daq_config['head_node_data_dir'] != node['data_dir']:
             print("Head node data dir doesn't match DAQ node data dir")

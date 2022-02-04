@@ -43,10 +43,6 @@ class QUABO:
         self.sock.settimeout(0.5)
         self.sock.bind(("", UDP_CMD_PORT))
 
-        self.hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.hk_sock.settimeout(0.5)
-        self.hk_sock.bind(("", UDP_HK_PORT))
-
         self.shutter_open = 0
         self.shutter_power = 0
         self.fanspeed = 0
@@ -57,7 +53,6 @@ class QUABO:
 
     def close(self):
         self.sock.close()
-        self.hk_sock.close()
 
     def send_daq_params(self, params):
         cmd = self.make_cmd(0x03)
@@ -203,6 +198,10 @@ class QUABO:
     def read_hk_packet(self):
         x = None
         end_time = time.time() + 10
+        hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        hk_sock.settimeout(0.5)
+        hk_sock.bind(("", UDP_HK_PORT))
+
         while True:
             try:
                 x = self.hk_sock.recvfrom(2048)
@@ -211,8 +210,10 @@ class QUABO:
                 continue
             src = x[1]
             if src[0] == self.ip_addr:
+                hk_sock.close()
                 return x[0]
             if time.time() > end_time:
+                hk_sock.close()
                 return None
 
     def data_packet_destination(self, ip_addr_str):
