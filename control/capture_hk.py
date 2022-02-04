@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 ##############################################################
 # Script for capturing Housekeeping data from the quabos
 # and writing their associated values into the Redis database.

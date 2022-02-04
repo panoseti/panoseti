@@ -1,4 +1,8 @@
-# generate index.html from redis values
+#! /usr/bin/env python3
+
+# get latest metadata
+# (housekeeping data from quabos, GPS, white Rabbit) from redis,
+# and make an HTML file (index.html) displaying it
 
 import redis
 import time
@@ -87,48 +91,49 @@ def determineColor(value, bounds):
 labels = ''
 quaboKeys = []
 redisKeys = [int(i.decode("utf-8")) for i in r.keys("[0-9]*")]
+
+if not redisKeys:
+    raise Exception("no keys")
+
 redisKeys.sort()
-recieverKeys = [i.decode("utf-8") for i in r.keys("[A-Z]*")]
-recieverKeys.remove('UPDATED')
-#print(recieverKeys)
+receiverKeys = [i.decode("utf-8") for i in r.keys("[A-Z]*")]
+#print(receiverKeys)
 
 for k in r.hkeys(redisKeys[0]):
     quaboKeys.append(k)
     labels += eleTemplate.format(k.decode("utf-8"), TEXTCOLOR)
 
-while 1:
-    htmlBody = mainHeader
-    
-    rows = rowHeader.format(labels)
-    
-    for q in redisKeys:
-        elements = ''
-        setValues = r.hgetall(q)
-        for k in quaboKeys:
-            #print(k)
-            currValue = setValues[k].decode("utf-8")#HKconv.convertValue(k.decode("utf-8"), setValues[k].decode("utf-8"))
-            color = TEXTCOLOR
-            if k in quaboBounds:
-                color = determineColor(float(currValue), quaboBounds[k])
-            elements += eleTemplate.format(currValue, color)
-        rows += rowHeader.format(elements)
-    
-    htmlBody += subHeader.format('Quabos', FONTSIZE)
+htmlBody = mainHeader
+
+rows = rowHeader.format(labels)
+
+for q in redisKeys:
+    elements = ''
+    setValues = r.hgetall(q)
+    for k in quaboKeys:
+        #print(k)
+        currValue = setValues[k].decode("utf-8")#HKconv.convertValue(k.decode("utf-8"), setValues[k].decode("utf-8"))
+        color = TEXTCOLOR
+        if k in quaboBounds:
+            color = determineColor(float(currValue), quaboBounds[k])
+        elements += eleTemplate.format(currValue, color)
+    rows += rowHeader.format(elements)
+
+htmlBody += subHeader.format('Quabos', FONTSIZE)
+htmlBody += tableHeader.format(rows, FONTSIZE)
+
+for key in receiverKeys:
+    label = ''
+    value = ''
+    setValues = r.hgetall(key)
+    for k in setValues.keys():
+        label += eleTemplate.format(k.decode("utf-8"), TEXTCOLOR)
+        value += eleTemplate.format(setValues[k].decode("utf-8"), TEXTCOLOR)
+    rows = rowHeader.format(label) +  rowHeader.format(value)
+    htmlBody += subHeader.format(key, FONTSIZE)
     htmlBody += tableHeader.format(rows, FONTSIZE)
     
-    for key in recieverKeys:
-        label = ''
-        value = ''
-        setValues = r.hgetall(key)
-        for k in setValues.keys():
-            label += eleTemplate.format(k.decode("utf-8"), TEXTCOLOR)
-            value += eleTemplate.format(setValues[k].decode("utf-8"), TEXTCOLOR)
-        rows = rowHeader.format(label) +  rowHeader.format(value)
-        htmlBody += subHeader.format(key, FONTSIZE)
-        htmlBody += tableHeader.format(rows, FONTSIZE)
-        
-    f = open("index.html", "w")
-    f.write(htmlTemplate.format(htmlBody))
-    f.close()
-    print(datetime.utcnow())
-    time.sleep(1)
+f = open("index.html", "w")
+f.write(htmlTemplate.format(htmlBody))
+f.close()
+print(datetime.utcnow())

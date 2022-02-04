@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 ##############################################################
 # Script for capturing GPS Primary and Secondary data from the 
 # GPS Reciever and writing their associated values into the 
