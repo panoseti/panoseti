@@ -20,7 +20,7 @@ def main():
         pid = int(f.read())
         f.close()
         if not util.stop_hashpipe(pid):
-            print("Couldn't top hashpipe")
+            print("Couldn't stop hashpipe")
         os.unlink(util.daq_hashpipe_pid_filename)
 
     util.kill_hashpipe()

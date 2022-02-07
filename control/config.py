@@ -7,7 +7,7 @@
 # --reboot          reboot quabos
 # --loads           load silver firmware in quabos
 # --init_daq_nodes  copy software to daq nodes
-# --hk_daemons      start daemons to get HK data
+# --redis_daemons   start daemons to populate Redis with HK/GPS/WR data
 #
 # see matlab/initq.m, startq*.py
 
@@ -25,7 +25,7 @@ def usage():
 --reboot            reboot quabos
 --loads             load silver firmware in quabos
 --init_daq_nodes    copy software to daq nodes
---hk_daemons        start daemons to get HK data
+--redis_daemons        start daemons to populate Redis with HK/GPS/WR data
 ''')
     sys.exit()
 
@@ -91,23 +91,6 @@ def do_ping(modules):
             else:
                 print("can't ping %s"%ip_addr)
 
-def start_daemon(prog):
-    try:
-        process = subprocess.Popen(
-            [prog], start_new_session=True,
-            close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-    except:
-        print("can't launch %s"%prog)
-        return
-
-# start daemons that write housekeeping data to redis
-#
-def do_hk_daemons():
-    start_daemon('capture_gps.py')
-    start_daemon('capture_hk.py')
-    start_daemon('capture_wr.py')
-
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
@@ -129,9 +112,9 @@ if __name__ == "__main__":
         elif argv[i] == '--init_daq_nodes':
             nops += 1
             op = 'init_daq_nodes'
-        elif argv[i] == '--hk_daemons':
+        elif argv[i] == '--redis_daemons':
             nops += 1
-            op = 'hk_daemons'
+            op = 'redis_daemons'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -156,7 +139,8 @@ if __name__ == "__main__":
     elif op == 'init_daq_nodes':
         daq_config = config_file.get_daq_config()
         file_xfer.copy_hashpipe(daq_config)
-    elif op == 'hk_daemons':
-        do_hk_daemons()
+    elif op == 'redis_daemons':
+        util.start_redis_daemons()
     elif op == 'show':
         show_config(obs_config, quabo_uids)
+        util.show_redis_daemons()

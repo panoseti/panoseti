@@ -27,6 +27,7 @@ daq_run_name_filename = 'daq_run_name'
 hp_stdout_prefix = 'hp_stdout_'
     # hashpipe stdout file is prefix_ipaddr
 
+redis_daemons = ['capture_gps.py', 'capture_hk.py', 'capture_wr.py']
 
 #-------------- TIME ---------------
 
@@ -98,6 +99,39 @@ def is_quabo_alive(module, quabo_uids, i):
 
 #-------------- RECORDING ---------------
 
+def start_daemon(prog):
+    if is_script_running(prog):
+        print('%s is already running'%prog)
+        return
+    try:
+        process = subprocess.Popen(
+            [prog], start_new_session=True,
+            close_fds=True, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except:
+        print("can't launch %s"%prog)
+        return
+
+# start daemons that write HK/GPS/WR data to Redis
+#
+def start_redis_daemons():
+    for daemon in redis_daemons:
+        start_daemon(daemon)
+
+def show_redis_daemons():
+    for daemon in redis_daemons:
+        if is_script_running(daemon):
+            print('%s is running'%daemon)
+        else:
+            print('%s is not running'%daemon)
+
+def are_redis_daemons_running():
+    for daemon in redis_daemons:
+        if not is_script_running(daemon):
+            return False
+    return True
+
 def start_hk_recorder(daq_config, run_name):
     path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
@@ -137,6 +171,13 @@ def stop_hashpipe(pid):
                 except:
                     return True
                 time.sleep(0.1)
+    return False
+
+def is_script_running(script):
+    s = './%s'%script
+    for p in psutil.process_iter():
+        if s in p.cmdline():
+            return True
     return False
 
 def is_hashpipe_running():

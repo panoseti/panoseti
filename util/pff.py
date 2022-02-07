@@ -43,16 +43,16 @@ def parse_name(name):
     if n<0:
         return Null
     name = name[0:n]
-    x = name.split(',')
+    x = name.split('.')
     for s in x:
-        y = s.split('=')
+        y = s.split('_')
         d[y[0]] = y[1]
     return d
 
 # return the directory name for a run
 #
 def run_dir_name(obs_name, run_type):
-    t = int(time.time())
-    dt = datetime.datetime.fromtimestamp(t)
+    dt = datetime.datetime.utcnow()
+    dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
-    return 'obs=%s,start=%s,run_type=%s'%(obs_name, dt_str, run_type)
+    return 'obs_%s.start_%sZ.runtype_=%s'%(obs_name, dt_str, run_type)
