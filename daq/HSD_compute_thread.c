@@ -254,7 +254,7 @@ static int init(hashpipe_thread_args_t * args){
     }
 
     if (fclose(modConfig_file) == EOF){
-        printf("Warning: Unable to close module configuration file.\n");
+        fprintf(stderr, "Warning: Unable to close module configuration file.\n");
     }
     printf("-----------Finished Setup of Compute Thread-----------\n\n");
     

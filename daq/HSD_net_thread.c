@@ -265,7 +265,7 @@ static void *run(hashpipe_thread_args_t * args){
                 blockHeader->pkt_head[i].tv_sec = nowTime.tv_sec;
                 blockHeader->pkt_head[i].tv_usec = nowTime.tv_usec;
             } else {
-                printf("gettimeofday() failed, errno = %d\n", errno);
+                fprintf(stderr, "gettimeofday() failed, errno = %d\n", errno);
                 blockHeader->pkt_head[i].tv_sec = 0;
                 blockHeader->pkt_head[i].tv_usec = 0;
             }
