@@ -35,17 +35,13 @@ static int init(hashpipe_thread_args_t * args){
     // define default network params
     char bindhost[80];
     int bindport = 60001;
-    printf("Finish defining bindhost and bindport\n");
     hashpipe_status_t st = args->st; //Issue where the Illegal Instruction
     
-    printf("Setting st from arguement st\n");
     strcpy(bindhost, "0.0.0.0");
 
-    printf("Finished copying string to bindhost\n");
     //Locking shared buffer to properly get and set values.
     hashpipe_status_lock_safe(&st);
 
-    printf("Attempting to fetch BINDHOST and BINDPORT\n");
     // Get info from status buffer if present
     hgets(st.buf, "BINDHOST", 80, bindhost);
     hgeti4(st.buf, "BINDPORT", &bindport);
@@ -55,7 +51,6 @@ static int init(hashpipe_thread_args_t * args){
 	hputi4(st.buf, "BINDPORT", bindport);
     hputi8(st.buf, "NPACKETS", 0);
 
-    printf("Finished fetching data\n");
     //Unlocking shared buffer once complete.
     hashpipe_status_unlock_safe(&st);
 
