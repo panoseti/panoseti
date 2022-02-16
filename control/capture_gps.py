@@ -13,6 +13,7 @@ import struct
 import redis
 from influxdb import InfluxDBClient
 from signal import signal, SIGINT
+import time
 from datetime import datetime
 from datetime import timezone
 from redis_utils import *
@@ -80,7 +81,7 @@ def primaryTimingPacket(data, r):
     lastTimeUpdated = True
     print(lastTime)
     
-    redis_set = { 'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    redis_set = { 'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'GPSTIME': lastTime,
         'TOW': timeofWeek,
         'WEEKNUMBER': weekNumber,
@@ -139,7 +140,7 @@ def supplementaryTimingPacket(data, r):
     altitude = doublefrom_bytes(data[52:60])
     PPSQuantizationError = floatfrom_bytes(data[60:64])
 
-    redis_set = { 'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    redis_set = { 'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'GPSTIME': lastTime,
         'RECEIVERMODE': DEFAULTVALUE.format(receiverMode),
         'DISCIPLININGMODE': DEFAULTVALUE.format(disModeValues),
@@ -243,6 +244,7 @@ def main():
             bytesToRead = ser.inWaiting()
         data += ser.read(bytesToRead)
         dataSize += bytesToRead
+        bytesToRead = 0
         if data[dataSize-1:dataSize] == b'\x03' and data[dataSize-2:dataSize-1] == b'\x10':
             if data[0:1] == b'\x10':
                 id = data[1:3]

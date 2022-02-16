@@ -70,6 +70,21 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     
     for (int dp = DP_BIT16_IMG; dp <= DP_PH_IMG; dp++){
         this->file_info.data_product = (DATA_PRODUCT)dp;
+        
+        switch (dp){
+            case DP_BIT16_IMG:
+                this->set_bpp(2);
+                break;
+            case DP_BIT8_IMG:
+                this->set_bpp(1);
+                break;
+            case DP_PH_IMG:
+                this->set_bpp(2);
+                break;
+            default:
+                break;
+        }
+
         this->file_info.make_filename(fileName);
         switch (dp){
             case DP_BIT16_IMG:
@@ -146,9 +161,10 @@ int FILE_PTRS::increment_seqno(){
  */
 
 int FILE_PTRS::set_bpp(int value){
-    if (value != 16 || value != 8){
+    if (value != 1 && value != 2){
         return 0;
-    }    
+    } 
+    printf("Setting BPP");
     this->file_info.bytes_per_pixel = value;
     return 1;
 }
@@ -248,10 +264,10 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     if (ftell(fileToWrite) > max_file_size){
         moduleToWrite->increment_seqno();
         if (mode == 16){
-            moduleToWrite->set_bpp(16);
+            moduleToWrite->set_bpp(2);
             moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
         } else if (mode == 8){
-            moduleToWrite->set_bpp(8);
+            moduleToWrite->set_bpp(1);
             moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory, "w");
         }
     }
