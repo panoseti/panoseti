@@ -246,6 +246,7 @@ def main():
             bytesToRead = ser.inWaiting()
         data += ser.read(bytesToRead)
         dataSize += bytesToRead
+        bytesToRead = 0
         if data[dataSize-1:dataSize] == b'\x03' and data[dataSize-2:dataSize-1] == b'\x10':
             if data[0:1] == b'\x10':
                 id = data[1:3]
