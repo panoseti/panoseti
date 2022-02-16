@@ -226,3 +226,14 @@ on DAQ nodes
         if remote:
             *_daq.py source code is copied here
             keep track of current run in "current_run_daq".
+----------
+What are quabo versions at UCB?
+    mixed
+    pixel order is only difference
+    
+Add command to show silver version (after reboot)
+
+reboot didn't get HK packet
+
+config reboot: try HK port bind at start
+    ping first

@@ -89,6 +89,7 @@ def quabo_ip_addr(base, i):
 # see if quabo is alive by seeing if we got its UID
 #
 def is_quabo_alive(module, quabo_uids, i):
+    return True
     n = module['num']
     for dome in quabo_uids['domes']:
         for m in dome['modules']:

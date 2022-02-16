@@ -2,7 +2,7 @@
 
 ##############################################################
 # Script for capturing GPS Primary and Secondary data from the 
-# GPS Reciever and writing their associated values into the 
+# GPS Receiver and writing their associated values into the 
 # Redis database. All packet information is time stamped by the
 # computer and added to each set of values with a variable 
 # labeled as 'Computer_UTC'.
@@ -20,8 +20,6 @@ from redis_utils import *
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'
 RKEYsupp = 'GPSSUPP'
-OBSERVATORY = "lick"
-
 
 lastTime = ''
 lastTimeUpdated = False
@@ -108,7 +106,7 @@ disActivityValues = {0:'Phase locking', 1:'Oscillator warm-up', 2:'Frequency loc
                      5:'Compensating OCXO (holdover)', 6:'Inactive', 7:'Not used', 8:'Recovery mode', 9:'Calibration/control voltage'}
 DEFAULTVALUE = 'Uknown Value {0}'
 # OutputID 0x8F-AC
-def supplimentaryTimingPacket(data, r):
+def supplementaryTimingPacket(data, r):
     global lastTimeUpdated
     if len(data) != 68:
         print(RKEYsupp, ' is malformed ignoring the following data packet')
@@ -117,7 +115,7 @@ def supplimentaryTimingPacket(data, r):
         lastTimeUpdated = False
         return
     if not lastTimeUpdated:
-        print("Primary Packet Failed not saving Supplimentary Packet")
+        print("Primary Packet Failed not saving Supplementary Packet")
         return
     
     receiverMode = int.from_bytes(data[1:2], byteorder=BYTEORDER, signed=False)
@@ -251,7 +249,7 @@ def main():
                 if id == b'\x8f\xab':
                     primaryTimingPacket(data[2:dataSize-2], r)
                 elif id == b'\x8f\xac':
-                    supplimentaryTimingPacket(data[2:dataSize-2], r)
+                    supplementaryTimingPacket(data[2:dataSize-2], r)
                 else:
                     print(data[1:dataSize-2])
                     print(len(data[2:dataSize-2]))

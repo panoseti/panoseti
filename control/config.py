@@ -11,7 +11,8 @@
 #
 # see matlab/initq.m, startq*.py
 
-firmware_silver = 'quabo_0201_2644962F.bin'
+firmware_silver_qfp = 'quabo_0200_264489B3.bin'
+firmware_silver_bga = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess
@@ -71,12 +72,17 @@ def do_reboot(modules, quabo_uids):
 
 def do_loads(modules, quabo_uids):
     for module in modules:
+        if module['quabo_version'] == 'qfp':
+            fw = firmware_silver_qfp
+        else:
+            fw = firmware_silver_bga
         for i in range(4):
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             x = tftpw(ip_addr)
-            x.put_bin_file(firmware_silver)
+            print('loading %s into %s'%(fw, ip_addr))
+            x.put_bin_file(fw)
 
 def do_loadg(modules):
     print("not supported")

@@ -42,6 +42,7 @@ class QUABO:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         self.sock.bind(("", UDP_CMD_PORT))
+        self.have_hk_sock = False
 
         self.shutter_open = 0
         self.shutter_power = 0
@@ -198,9 +199,11 @@ class QUABO:
     def read_hk_packet(self):
         x = None
         end_time = time.time() + 10
-        hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        hk_sock.settimeout(0.5)
-        hk_sock.bind(("", UDP_HK_PORT))
+        if not self.have_hk_sock:
+            self.hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.hk_sock.settimeout(0.5)
+            self.hk_sock.bind(("", UDP_HK_PORT))
+            self.have_hk_sock = True
 
         while True:
             try:
@@ -210,10 +213,12 @@ class QUABO:
                 continue
             src = x[1]
             if src[0] == self.ip_addr:
-                hk_sock.close()
+                self.hk_sock.close()
+                self.have_hk_sock = False
                 return x[0]
             if time.time() > end_time:
-                hk_sock.close()
+                self.hk_sock.close()
+                self.have_hk_sock = False
                 return None
 
     def data_packet_destination(self, ip_addr_str):

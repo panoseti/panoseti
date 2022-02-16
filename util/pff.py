@@ -55,4 +55,4 @@ def run_dir_name(obs_name, run_type):
     dt = datetime.datetime.utcnow()
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
-    return 'obs_%s.start_%sZ.runtype_=%s'%(obs_name, dt_str, run_type)
+    return 'obs_%s.start_%sZ.runtype_%s'%(obs_name, dt_str, run_type)
