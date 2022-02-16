@@ -43,6 +43,7 @@ struct FILE_PTRS{
     FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
     void make_files(const char *diskDir, const char *file_mode);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
+    int increment_seqno();
 };
 
 /**
@@ -127,6 +128,15 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
         exit(0);
     }
     printf("Created file %s\n", (dirName + fileName).c_str());
+}
+
+/**
+ * Increments the seqno for the filename of new files
+ * @return 1 if it was successful and return 0 if it failed
+ */
+int FILE_PTRS::increment_seqno(){
+    this->file_info.seqno += 1;
+    return 1;
 }
 
 
@@ -222,6 +232,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
         dataBlock->img_block + (blockIndex*MODULEDATASIZE));
 
     if (ftell(fileToWrite) > max_file_size){
+        moduleToWrite->increment_seqno();
         if (mode == 16){
             moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
         } else if (mode == 8){
