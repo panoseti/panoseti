@@ -24,8 +24,8 @@
 #define COINC_PKT_PER_BLOCK     320     //Max Number of Coinc packets stored in each block
 
 //Defining Imaging Data Values
-#define QUABOPERMODULE          4                               //Number of Quabos associated with a Module
-#define SCIDATASIZE             256                             //Size of image data size in bytes
+#define QUABOPERMODULE          4                               //Max Number of Quabos associated with a Module
+#define SCIDATASIZE             256                             //Size of image data size in pixels
 #define MODULEDATASIZE          QUABOPERMODULE*SCIDATASIZE*2    //Size of module image allocated in buffer
 
 //Defining the Block Sizes for the Input and Ouput Buffers
@@ -34,10 +34,9 @@
 #define OUTPUTCOICBLOCKSIZE     COINC_PKT_PER_BLOCK*PKTDATASIZE     //Output Coinc Block size excluding headers
 
 //Definng the numerical values
-#define NANOSECTHRESHOLD        1e10//20    //Nanosecond threshold used for grouping quabo images
+#define NANOSECTHRESHOLD        1e10        //Nanosecond threshold used for grouping quabo images
 #define MODULEINDEXSIZE         0xffff      //Largest Module Index
 
-#define DATAFILE_DEFAULT "./"                   //Default Location used for storing files
 #define CONFIGFILE_DEFAULT "./module.config"    //Default Location used for module config file
 
 //Defining the string buffer size

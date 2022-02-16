@@ -286,9 +286,7 @@ static void *run(hashpipe_thread_args_t * args){
 		hashpipe_pktsock_stats(p_ps, &pktsock_pkts, &pktsock_drops);
 
         hashpipe_status_lock_safe(&st);
-		hputi8(st.buf, "NPACKETS", npackets);
-		//hputi8(st.buf,"PKTLOSS",pkt_loss);
-		//hputr8(st.buf,"LOSSRATE",pkt_loss_rate);		
+		hputi8(st.buf, "NPACKETS", npackets);	
 		hputu8(st.buf, "NETRECV",  pktsock_pkts);
 		hputu8(st.buf, "NETDROPS", pktsock_drops);
 		hashpipe_status_unlock_safe(&st);
