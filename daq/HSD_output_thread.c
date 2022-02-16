@@ -44,6 +44,7 @@ struct FILE_PTRS{
     void make_files(const char *diskDir, const char *file_mode);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
     int increment_seqno();
+    int set_bpp(int value);
 };
 
 /**
@@ -136,6 +137,19 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
  */
 int FILE_PTRS::increment_seqno(){
     this->file_info.seqno += 1;
+    return 1;
+}
+
+/**
+ * Sets the value for bytes per pixel of new files
+ * @return 1 if it was successful and return 0 if it failed
+ */
+
+int FILE_PTRS::set_bpp(int value){
+    if (value != 16 || value != 8){
+        return 0;
+    }    
+    this->file_info.bytes_per_pixel = value;
     return 1;
 }
 
@@ -234,8 +248,10 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     if (ftell(fileToWrite) > max_file_size){
         moduleToWrite->increment_seqno();
         if (mode == 16){
+            moduleToWrite->set_bpp(16);
             moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
         } else if (mode == 8){
+            moduleToWrite->set_bpp(8);
             moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory, "w");
         }
     }
