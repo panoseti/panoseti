@@ -14,6 +14,7 @@
             "modules": [
                 {
                     "mobo_serialno": "M11",
+                    "quabo_version": "qfp",
                     "ip_addr": "192.168.3.248",
                     "azimuth": 77,
                     "elevation": 77,
@@ -21,6 +22,7 @@
                 },
                 {
                     "mobo_serialno": "M12",
+                    "quabo_version": "qfp",
                     "ip_addr": "192.168.0.4",
                     "azimuth": 77,
                     "elevation": 77,

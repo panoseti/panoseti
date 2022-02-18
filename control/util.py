@@ -89,14 +89,21 @@ def quabo_ip_addr(base, i):
 # see if quabo is alive by seeing if we got its UID
 #
 def is_quabo_alive(module, quabo_uids, i):
-    return True
-    n = module['num']
     for dome in quabo_uids['domes']:
         for m in dome['modules']:
-            if m['num'] == module['num']:
+            if m['ip_addr'] == module['ip_addr']:
                 q = m['quabos'][i]
                 return q['uid'] != ''
     raise Exception("no such module")
+
+# is quabo new or old hardware version, as specified in obs_config?
+# can be specified as either string or array of 4 strings
+#
+def is_quabo_old_version(module, i):
+    v = module['quabo_version']
+    if isinstance(v, list):
+        v = v[i]
+    return v == 'qfp'
 
 #-------------- RECORDING ---------------
 
