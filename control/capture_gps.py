@@ -13,7 +13,6 @@ import struct
 import redis
 from influxdb import InfluxDBClient
 from signal import signal, SIGINT
-import time
 from datetime import datetime
 from datetime import timezone
 from redis_utils import *
@@ -64,7 +63,7 @@ def primaryTimingPacket(data, r):
     UTCOffset = int.from_bytes(data[7:9], byteorder=BYTEORDER, signed=True)
     
     timingFlag = int.from_bytes(data[9:10], byteorder=BYTEORDER, signed=False)
-    time = timingFlag & 0x01
+    timeFlagIndex = timingFlag & 0x01
     PPS = (timingFlag & 0x02) >> 1
     timeSet = (timingFlag & 0x04) >> 2
     UTCinfo = (timingFlag & 0x08) >> 3
@@ -86,7 +85,7 @@ def primaryTimingPacket(data, r):
         'TOW': timeofWeek,
         'WEEKNUMBER': weekNumber,
         'UTCOFFSET': UTCOffset,
-        'TIMEFLAG': timingFlagValues[time],
+        'TIMEFLAG': timingFlagValues[timeFlagIndex],
         'PPSFLAG': timingFlagValues[PPS],
         'TIMESET': (timeSet+1)%2,
         'UTCINFO': (UTCinfo+1)%2,
