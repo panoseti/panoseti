@@ -101,7 +101,7 @@ def storeInRedis(packet, r:redis.Redis):
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
         'FWID0': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
-        'FWID1': '0x{0:04x}{1:04x}'.format(array[30],array[29]),
+        'FWID1': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),
         
         'StartUp': startUp
     }
