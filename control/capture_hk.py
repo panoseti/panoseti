@@ -95,13 +95,13 @@ def storeInRedis(packet, r:redis.Redis):
         'VCCINT': '{0:0.5g}'.format(HKconv.convertValue('VCCINT', array[19])),
         'VCCAUX': '{0:0.5g}'.format(HKconv.convertValue('VCCAUX', array[20])),
 
-        'UID': '0x{0:04x}{0:04x}{0:04x}{0:04x}'.format(array[24],array[23],array[22],array[21]),
+        'UID': '0x{0:04x}{1:04x}{2:04x}{3:04x}'.format(array[24],array[23],array[22],array[21]),
 
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
-        'FWID0': '0x{0:04x}{0:04x}'.format(array[28],array[27]),
-        'FWID1': '0x{0:04x}{0:04x}'.format(array[30],array[29]),
+        'FWID0': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
+        'FWID1': '0x{0:04x}{1:04x}'.format(array[30],array[29]),
         
         'StartUp': startUp
     }
