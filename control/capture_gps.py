@@ -235,6 +235,8 @@ def main():
     data = b''
     dataSize = 0
     bytesToRead = 0
+    recv_byte = 0
+    last_recv_byte = 0
 
     ser, r = initialize()
 
@@ -242,8 +244,15 @@ def main():
     while True:
         while bytesToRead == 0:
             bytesToRead = ser.inWaiting()
-        data += ser.read(bytesToRead)
-        dataSize += bytesToRead
+        # as I tested, bytesToRead is always 1.
+        # If it's not 1, the algorithm here will not work
+        recv_byte = ser.read(bytesToRead)
+        if(recv_byte == b'\x10' and last_recv_byte == b'\x10'):
+            pass
+        else:
+            data += recv_byte
+            dataSize += bytesToRead
+        last_recv_byte = recv_byte
         bytesToRead = 0
         if data[dataSize-1:dataSize] == b'\x03' and data[dataSize-2:dataSize-1] == b'\x10':
             if data[0:1] == b'\x10':
