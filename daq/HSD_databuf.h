@@ -29,12 +29,13 @@
 #define MODULEDATASIZE          QUABOPERMODULE*SCIDATASIZE*2    //Size of module image allocated in buffer
 
 //Defining the Block Sizes for the Input and Ouput Buffers
-#define INPUTBLOCKSIZE          IN_PKT_PER_BLOCK*PKTDATASIZE        //Input Block size includes headers
-#define OUTPUTBLOCKSIZE         OUT_MOD_PER_BLOCK*MODULEDATASIZE    //Output Stream Block size excludes headers
-#define OUTPUTCOICBLOCKSIZE     COINC_PKT_PER_BLOCK*PKTDATASIZE     //Output Coinc Block size excluding headers
+#define BYTES_PER_INPUT_BLOCK           IN_PKT_PER_BLOCK*PKTDATASIZE        //Input Block size includes headers
+#define BYTES_PER_OUTPUT_IMAGE_BLOCK    OUT_MOD_PER_BLOCK*MODULEDATASIZE    //Output Stream Block size excludes headers
+#define BYTES_PER_OUTPUT_COINC_BLOCK    COINC_PKT_PER_BLOCK*PKTDATASIZE     //Output Coinc Block size excluding headers
 
 //Definng the numerical values
-#define NANOSECTHRESHOLD        1e10        //Nanosecond threshold used for grouping quabo images
+//TODO add a more detail description of the alogrithm using NANOSECTHRESHOLD
+#define NANOSECTHRESHOLD        100         //Nanosecond threshold used for grouping quabo images
 #define MODULEINDEXSIZE         0xffff      //Largest Module Index
 
 #define CONFIGFILE_DEFAULT "./module.config"    //Default Location used for module config file
@@ -48,8 +49,8 @@
 typedef struct packet_header {
     char acq_mode;
     uint16_t pkt_num;
-    uint16_t mod_num;
-    uint8_t qua_num;
+    uint16_t mod_num;       //0..255
+    uint8_t qua_num;        //0..3
     uint32_t pkt_utc;
     uint32_t pkt_nsec;
     long int tv_sec;
@@ -153,7 +154,7 @@ typedef struct module_header {
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
     packet_header_t pkt_head[IN_PKT_PER_BLOCK];
-    int data_block_size;
+    int n_pkts_in_block;
     int INTSIG;
 } HSD_input_block_header_t;
 
@@ -168,7 +169,7 @@ typedef uint8_t HSD_input_header_cache_alignment[
 typedef struct HSD_input_block {
     HSD_input_block_header_t header;
     HSD_input_header_cache_alignment padding;       // Maintain cache alignment
-    char data_block[INPUTBLOCKSIZE*sizeof(char)];   //define input buffer
+    char data_block[BYTES_PER_INPUT_BLOCK];   //define input buffer
 } HSD_input_block_t;
 
 /**
@@ -210,8 +211,8 @@ typedef uint8_t HSD_output_header_cache_alignment[
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
-    char img_block[OUTPUTBLOCKSIZE*sizeof(char)];
-    char coinc_block[OUTPUTCOICBLOCKSIZE*sizeof(char)];
+    char img_block[BYTES_PER_OUTPUT_IMAGE_BLOCK*sizeof(char)];
+    char coinc_block[BYTES_PER_OUTPUT_COINC_BLOCK*sizeof(char)];
 } HSD_output_block_t;
 
 /**

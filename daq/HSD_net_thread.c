@@ -231,7 +231,7 @@ static void *run(hashpipe_thread_args_t * args){
         hashpipe_status_unlock_safe(&st);
 
         blockHeader = &(db->block[block_idx].header);
-        blockHeader->data_block_size = 0;
+        blockHeader->n_pkts_in_block = 0;
 
         // Loop through all of the packets in the buffer block.
         for (int i = 0; i < IN_PKT_PER_BLOCK; i++){
@@ -271,7 +271,7 @@ static void *run(hashpipe_thread_args_t * args){
                 blockHeader->pkt_head[i].tv_usec = 0;
             }
 
-            blockHeader->data_block_size++;
+            blockHeader->n_pkts_in_block++;
 
             //Release the hashpipe frame back to the kernel to gather data
             hashpipe_pktsock_release_frame(p_frame);

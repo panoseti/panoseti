@@ -164,7 +164,6 @@ int FILE_PTRS::set_bpp(int value){
     if (value != 1 && value != 2){
         return 0;
     } 
-    printf("Setting BPP");
     this->file_info.bytes_per_pixel = value;
     return 1;
 }

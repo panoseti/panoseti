@@ -344,7 +344,7 @@ static void *run(hashpipe_thread_args_t * args){
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 
         uint16_t moduleNum;
-        for(int i = 0; i < db_in->block[curblock_in].header.data_block_size; i++){
+        for(int i = 0; i < db_in->block[curblock_in].header.n_pkts_in_block; i++){
             //----------------CALCULATION BLOCK-----------------
             moduleNum = db_in->block[curblock_in].header.pkt_head[i].mod_num;
 
