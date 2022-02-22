@@ -160,7 +160,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     //When the NANOSEC interval superceeded the threshold that is allowed
     if ((mod_data->status & currentStatus) 
         || mod_data->mod_head.mode != mode 
-        || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSECTHRESHOLD){
+        || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSEC_THRESHOLD){
         
         write_img_to_out_buffer(mod_data, out_block);
         //Resetting values in the new emptied module pair obj
