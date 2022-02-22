@@ -72,7 +72,6 @@ def do_reboot(modules, quabo_uids):
 
 def do_loads(modules, quabo_uids):
     for module in modules:
-        if module['quabo_version'] == 'qfp':
         for i in range(4):
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
