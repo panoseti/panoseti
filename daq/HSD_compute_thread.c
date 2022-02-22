@@ -96,7 +96,7 @@ void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_ou
 
     in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coin_pkt_head[out_index]));
     
-    memcpy(out_block->coinc_block + out_index*BYTES_PER_PKT, in_block->data_block + pktIndex*BYTES_PER_PKT, sizeof(in_block->data_block[0])*BYTES_PER_PKT);
+    memcpy(out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE, in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE, sizeof(in_block->data_block[0])*BYTES_PER_PKT_IMAGE);
 
     out_block->header.coinc_block_size++;
 }
@@ -168,7 +168,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         
     }
 
-    memcpy(mod_data->data + (pkt_head->qua_num*PIXELS_PER_IMAGE*(mode/8)), in_block->data_block + (pktIndex*BYTES_PER_PKT), sizeof(uint8_t)*PIXELS_PER_IMAGE*(mode/8));
+    memcpy(mod_data->data + (pkt_head->qua_num*PIXELS_PER_IMAGE*(mode/8)), in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE), sizeof(uint8_t)*PIXELS_PER_IMAGE*(mode/8));
     
     in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head.pkt_head[pkt_head->qua_num]));
 

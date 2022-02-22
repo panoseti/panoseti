@@ -1,5 +1,6 @@
 /**
- * Panoseti Data Acquisition Data Buffer
+ * Panoseti Data Acquisition Data Buffer Header File
+ * The main var
  * 
  */
 #include <string>
@@ -11,27 +12,27 @@
 
 
 //Defining size of packets
-#define BYTES_PER_PKT           512     //byte of data block
-#define BYTES_PER_8BIT_PKT      256     //byte of 8bit data block
-#define BYTE_PKT_HEADER         16      //byte of header
+#define BYTES_PER_PKT_IMAGE         512     //Number of bytes for a normal packets. eg. 16bit Image and Pulse Height
+#define BYTES_PER_8BIT_PKT_IMAGE    256     //Number of bytes for a 8 bit image packet
+#define BYTE_PKT_HEADER             16      //Number of bytes for the header for all packets
 
 //Defining the characteristics of the circuluar buffers
-#define CACHE_ALIGNMENT         256     //Align the cache within the buffer
-#define N_INPUT_BLOCKS          4       //Number of blocks in the input buffer
-#define N_OUTPUT_BLOCKS         8       //Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK        320     //Number of Pkt stored in each block
-#define OUT_MOD_PER_BLOCK       320     //Max Number of Module Pairs stored in each block
-#define OUT_COINC_PER_BLOCK     320     //Max Number of Coinc packets stored in each block
+#define CACHE_ALIGNMENT             256     //Align the cache within the buffer
+#define N_INPUT_BLOCKS              4       //Number of blocks in the input buffer
+#define N_OUTPUT_BLOCKS             8       //Number of blocks in the output buffer
+#define IN_PKT_PER_BLOCK            320     //Number of input packets stored in each block of the input buffer
+#define OUT_MOD_PER_BLOCK           320     //Max Number of Modules stored in each block of the output buffer
+#define OUT_COINC_PER_BLOCK         320     //Max Number of coincidence packets stored in each block of the output buffer
 
 //Defining Imaging Data Values
 #define QUABO_PER_MODULE        4                                    //Max Number of Quabos associated with a Module
-#define PIXELS_PER_IMAGE        256                                  //Size of image data size in pixels
+#define PIXELS_PER_IMAGE        256                                  //Number of pixels for each image data
 #define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2  //Size of module image allocated in buffer
 
 //Defining the Block Sizes for the Input and Ouput Buffers
-#define BYTES_PER_INPUT_BLOCK           IN_PKT_PER_BLOCK*BYTES_PER_PKT              //Input Block size includes headers
-#define BYTES_PER_OUTPUT_IMAGE_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME    //Output Stream Block size excludes headers
-#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT           //Output Coinc Block size excluding headers
+#define BYTES_PER_INPUT_IMAGE_BLOCK     IN_PKT_PER_BLOCK*BYTES_PER_PKT_IMAGE        //Byte size of input image block. Contains images for packets excluding headers
+#define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME    //Byte size of output frame block. Contains frames for modules excluding headers
+#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE     //Byte size of output coincidence block. Contains frames for coincidence packets excluding headers
 
 //Definng the numerical values
 //TODO add a more detail description of the alogrithm using NANOSEC_THRESHOLD
@@ -169,7 +170,7 @@ typedef uint8_t HSD_input_header_cache_alignment[
 typedef struct HSD_input_block {
     HSD_input_block_header_t header;
     HSD_input_header_cache_alignment padding;       // Maintain cache alignment
-    char data_block[BYTES_PER_INPUT_BLOCK];   //define input buffer
+    char data_block[BYTES_PER_INPUT_IMAGE_BLOCK];   //define input buffer
 } HSD_input_block_t;
 
 /**
@@ -211,7 +212,7 @@ typedef uint8_t HSD_output_header_cache_alignment[
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;  //Maintain cache alignment
-    char img_block[BYTES_PER_OUTPUT_IMAGE_BLOCK*sizeof(char)];
+    char img_block[BYTES_PER_OUTPUT_FRAME_BLOCK*sizeof(char)];
     char coinc_block[BYTES_PER_OUTPUT_COINC_BLOCK*sizeof(char)];
 } HSD_output_block_t;
 

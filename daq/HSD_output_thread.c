@@ -327,7 +327,7 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
 
     pff_write_image(fileToWrite, 
         PIXELS_PER_IMAGE*2, 
-        dataBlock->coinc_block + (blockIndex*BYTES_PER_PKT));
+        dataBlock->coinc_block + (blockIndex*BYTES_PER_PKT_IMAGE));
 
     if (ftell(fileToWrite) > max_file_size){
         if (mode == 0x1){
