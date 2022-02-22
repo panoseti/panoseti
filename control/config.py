@@ -137,6 +137,9 @@ if __name__ == "__main__":
     daq_config = config_file.get_daq_config()
     config_file.associate(daq_config, quabo_uids)
     if op == 'reboot':
+        if util.local_ip() != util.default_hk_dest:
+            print("You can only reboot quabos from %s"%(util.default_hk_dest))
+            sys.exit()
         do_reboot(modules, quabo_uids)
     elif op == 'loads':
         do_loads(modules, quabo_uids)

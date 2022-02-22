@@ -38,6 +38,11 @@ def now_str():
 
 #-------------- NETWORK ---------------
 
+# quabos send HK packets here at first.
+# so (currently) you can only reboot quabos from this host
+#
+default_hk_dest = '192.168.1.100'
+
 def local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
