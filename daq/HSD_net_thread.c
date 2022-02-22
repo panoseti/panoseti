@@ -1,7 +1,7 @@
 /*
  * HSD_net_thread.c
  * 
- * The input(network) thread which is used to read packets from the quabos.
+ * The input(network) thread is used to read packets from the quabos.
  * These packets are then written into the shared memory blocks,
  * which then allows for the pre-process of the data.
  */
@@ -35,7 +35,7 @@ static int init(hashpipe_thread_args_t * args){
     // define default network params
     char bindhost[80];
     int bindport = 60001;
-    hashpipe_status_t st = args->st; //Issue where the Illegal Instruction
+    hashpipe_status_t st = args->st;
     
     strcpy(bindhost, "0.0.0.0");
 
@@ -116,8 +116,9 @@ int check_acqmode(unsigned char* p_frame){
 
 /**
  * Get the header info of the first packet in the PKTSOCK buffer
- * @param p_frame The pointer for the packet frame(returned from PKT_UDP_DATA(p_frame))
- * @param pkt_header The header struct to be written to
+ * @param pkt_data The pointer for the packet frame(returned from PKT_UDP_DATA(p_frame))
+ * @param block_header The header struct of the current block to be written to.
+ * @param i packet index for the block header.
  */
 static inline void get_header(unsigned char* pkt_data, int i, HSD_input_block_header_t* block_header) {
     block_header->pkt_head[i].acq_mode = pkt_data[0];
