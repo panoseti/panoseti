@@ -1,6 +1,6 @@
 /**
  * Panoseti Data Acquisition Data Buffer Header File
- * The main var
+ * Variables and structures of constants for both the hashpipe framework and packet information is defined here.
  * 
  */
 #include <string>
@@ -11,12 +11,12 @@
 #include "hashpipe_databuf.h"
 
 
-//Defining size of packets
+//Defining the sizes of packets images and headers in bytes
 #define BYTES_PER_PKT_IMAGE         512     //Number of bytes for a normal packets. eg. 16bit Image and Pulse Height
 #define BYTES_PER_8BIT_PKT_IMAGE    256     //Number of bytes for a 8 bit image packet
 #define BYTE_PKT_HEADER             16      //Number of bytes for the header for all packets
 
-//Defining the characteristics of the circuluar buffers
+//Defining the size and characteristics of the input and output circuluar buffers
 #define CACHE_ALIGNMENT             256     //Align the cache within the buffer
 #define N_INPUT_BLOCKS              4       //Number of blocks in the input buffer
 #define N_OUTPUT_BLOCKS             8       //Number of blocks in the output buffer
@@ -24,7 +24,7 @@
 #define OUT_MOD_PER_BLOCK           320     //Max Number of Modules stored in each block of the output buffer
 #define OUT_COINC_PER_BLOCK         320     //Max Number of coincidence packets stored in each block of the output buffer
 
-//Defining Imaging Data Values
+//Defining Imaging Data Values and characterisitics of modules
 #define QUABO_PER_MODULE        4                                    //Max Number of Quabos associated with a Module
 #define PIXELS_PER_IMAGE        256                                  //Number of pixels for each image data
 #define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2  //Size of module image allocated in buffer
@@ -34,11 +34,18 @@
 #define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME    //Byte size of output frame block. Contains frames for modules excluding headers
 #define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE     //Byte size of output coincidence block. Contains frames for coincidence packets excluding headers
 
-//Definng the numerical values
-//TODO add a more detail description of the alogrithm using NANOSEC_THRESHOLD
+//Definng the algorithm constants for the hashpipe framework threads.
+//Nanosecond threshold is used for syncing and grouping packets that are being collected by the network thread.
+//The nanosecond value in the header values are read and if a new packet for an existing module is recieved the
+//difference between the largest and the smallest nanosecond values(nanosecond value of the new packet is included
+//in the calculation) is calculated and must be smaller than the nanosecond threshold.
+//If the new packet's nanosecond value causes the difference to exceed the threshold then the old module data is flushed
+//and the new module data is created starting with the new packet. More information can be seen in the compute thread.
 #define NANOSEC_THRESHOLD        100         //Nanosecond threshold used for grouping quabo images
-#define MAX_MODULE_INDEX         0xffff      //Largest Module Index
+//Module index is used for defining the array for storing pointers of module structures for both compute and output threads.
+#define MAX_MODULE_INDEX         0xffff      //Largest Module Index for compute and output thread
 
+//Defining conguration default file name
 #define CONFIGFILE_DEFAULT "./module.config"    //Default Location used for module config file
 
 //Defining the string buffer size
