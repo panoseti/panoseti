@@ -11,9 +11,9 @@
 
 
 //Defining size of packets
-#define PKTDATASIZE         512     //byte of data block
-#define BIT8PKTDATASIZE     256     //byte of 8bit data block
-#define HEADERSIZE          16      //byte of header
+#define BYTES_PER_PKT           512     //byte of data block
+#define BYTES_PER_8BIT_PKT      256     //byte of 8bit data block
+#define BYTE_PKT_HEADER         16      //byte of header
 
 //Defining the characteristics of the circuluar buffers
 #define CACHE_ALIGNMENT         256     //Align the cache within the buffer
@@ -21,27 +21,27 @@
 #define N_OUTPUT_BLOCKS         8       //Number of blocks in the output buffer
 #define IN_PKT_PER_BLOCK        320     //Number of Pkt stored in each block
 #define OUT_MOD_PER_BLOCK       320     //Max Number of Module Pairs stored in each block
-#define COINC_PKT_PER_BLOCK     320     //Max Number of Coinc packets stored in each block
+#define OUT_COINC_PER_BLOCK     320     //Max Number of Coinc packets stored in each block
 
 //Defining Imaging Data Values
-#define QUABOPERMODULE          4                               //Max Number of Quabos associated with a Module
-#define SCIDATASIZE             256                             //Size of image data size in pixels
-#define MODULEDATASIZE          QUABOPERMODULE*SCIDATASIZE*2    //Size of module image allocated in buffer
+#define QUABO_PER_MODULE        4                                    //Max Number of Quabos associated with a Module
+#define PIXELS_PER_IMAGE        256                                  //Size of image data size in pixels
+#define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2  //Size of module image allocated in buffer
 
 //Defining the Block Sizes for the Input and Ouput Buffers
-#define BYTES_PER_INPUT_BLOCK           IN_PKT_PER_BLOCK*PKTDATASIZE        //Input Block size includes headers
-#define BYTES_PER_OUTPUT_IMAGE_BLOCK    OUT_MOD_PER_BLOCK*MODULEDATASIZE    //Output Stream Block size excludes headers
-#define BYTES_PER_OUTPUT_COINC_BLOCK    COINC_PKT_PER_BLOCK*PKTDATASIZE     //Output Coinc Block size excluding headers
+#define BYTES_PER_INPUT_BLOCK           IN_PKT_PER_BLOCK*BYTES_PER_PKT              //Input Block size includes headers
+#define BYTES_PER_OUTPUT_IMAGE_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME    //Output Stream Block size excludes headers
+#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT           //Output Coinc Block size excluding headers
 
 //Definng the numerical values
-//TODO add a more detail description of the alogrithm using NANOSECTHRESHOLD
-#define NANOSECTHRESHOLD        100         //Nanosecond threshold used for grouping quabo images
-#define MODULEINDEXSIZE         0xffff      //Largest Module Index
+//TODO add a more detail description of the alogrithm using NANOSEC_THRESHOLD
+#define NANOSEC_THRESHOLD        100         //Nanosecond threshold used for grouping quabo images
+#define MAX_MODULE_INDEX         0xffff      //Largest Module Index
 
 #define CONFIGFILE_DEFAULT "./module.config"    //Default Location used for module config file
 
 //Defining the string buffer size
-#define STRBUFFSIZE 256
+#define STR_BUFFER_SIZE 256
 
 /**
  * Structure for storing the values from a packet header
@@ -105,28 +105,28 @@ typedef struct packet_header {
 typedef struct module_header {
     int mode;
     uint16_t mod_num;
-    packet_header_t pkt_head[QUABOPERMODULE];
-    uint8_t status[QUABOPERMODULE];
+    packet_header_t pkt_head[QUABO_PER_MODULE];
+    uint8_t status[QUABO_PER_MODULE];
     int copy_to(module_header* mod_head) {
         mod_head->mode = this->mode;
         mod_head->mod_num = this->mod_num;
-        for (int i = 0; i < QUABOPERMODULE; i++){
+        for (int i = 0; i < QUABO_PER_MODULE; i++){
             this->pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
         }
-        memcpy(mod_head->status, this->status, sizeof(uint8_t)*QUABOPERMODULE);
+        memcpy(mod_head->status, this->status, sizeof(uint8_t)*QUABO_PER_MODULE);
     };
     int clear(){
         this->mode = 0;
         this->mod_num = 0;
-        for (int i = 0; i < QUABOPERMODULE; i++){
+        for (int i = 0; i < QUABO_PER_MODULE; i++){
             this->pkt_head[i].clear();
         }
-        memset(this->status, 0, sizeof(uint8_t)*QUABOPERMODULE);
+        memset(this->status, 0, sizeof(uint8_t)*QUABO_PER_MODULE);
     };
     std::string toString(){
         std::string return_string = "mode = " + std::to_string(this->mode) + "\n";
         return_string += "mod_num = " + std::to_string(this->mod_num);
-        for (int i = 0; i < QUABOPERMODULE; i++){
+        for (int i = 0; i < QUABO_PER_MODULE; i++){
             return_string += "\n" + pkt_head[i].toString();
             return_string += " status = " + std::to_string(this->status[i]);
         }
@@ -136,7 +136,7 @@ typedef struct module_header {
         if (this->mode != mod_head->mode){
             return 0;
         }
-        for (int i = 0; i < QUABOPERMODULE; i++){
+        for (int i = 0; i < QUABO_PER_MODULE; i++){
             if (!this->pkt_head[i].equal_to(&(mod_head->pkt_head[i])) 
                 || this->status[i] != mod_head->status[i]) {
                 return 0;
@@ -194,7 +194,7 @@ typedef struct HSD_output_block_header {
     module_header_t img_pkt_head[OUT_MOD_PER_BLOCK];
     int img_block_size;
 
-    packet_header_t coin_pkt_head[COINC_PKT_PER_BLOCK];
+    packet_header_t coin_pkt_head[OUT_COINC_PER_BLOCK];
     int coinc_block_size;
 
     int INTSIG;

@@ -27,7 +27,7 @@ typedef struct module_data {
     uint32_t lower_nanosec;
     uint8_t status;
     module_header_t mod_head;
-    uint8_t data[MODULEDATASIZE];
+    uint8_t data[BYTES_PER_MODULE_FRAME];
     module_data(){
         this->upper_nanosec = 0;
         this->lower_nanosec = 0;
@@ -38,14 +38,14 @@ typedef struct module_data {
         mod_data->lower_nanosec = this->lower_nanosec;
         mod_data->status = this->status;
         this->mod_head.copy_to(&(mod_data->mod_head));
-        memcpy(mod_data->data, this->data, sizeof(uint8_t)*MODULEDATASIZE);
+        memcpy(mod_data->data, this->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
     };
     int clear(){
         this->upper_nanosec = 0;
         this->lower_nanosec = 0;
         this->status = 0;
         this->mod_head.clear();
-        memset(this->data, 0, sizeof(uint8_t)*MODULEDATASIZE);
+        memset(this->data, 0, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
     };
     std::string toString(){
         return "status = " + std::to_string(this->status) +
@@ -62,7 +62,7 @@ typedef struct module_data {
         if (!this->mod_head.equal_to(&(mod_data->mod_head))){
             return 0;
         }
-        if (memcmp(this->data, mod_data->data, sizeof(uint8_t)*MODULEDATASIZE) == 0){
+        if (memcmp(this->data, mod_data->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME) == 0){
             return 0;
         }
         return 1;
@@ -80,7 +80,7 @@ void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_bl
     
     mod_data->mod_head.copy_to(&(out_header->img_pkt_head[out_index]));
     
-    memcpy(out_block->img_block + (out_index * MODULEDATASIZE), mod_data->data, sizeof(uint8_t)*MODULEDATASIZE);
+    memcpy(out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME), mod_data->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
 
     out_block->header.img_block_size++;
 }
@@ -168,7 +168,7 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         
     }
 
-    memcpy(mod_data->data + (pkt_head->qua_num*SCIDATASIZE*(mode/8)), in_block->data_block + (pktIndex*BYTES_PER_PKT), sizeof(uint8_t)*SCIDATASIZE*(mode/8));
+    memcpy(mod_data->data + (pkt_head->qua_num*PIXELS_PER_IMAGE*(mode/8)), in_block->data_block + (pktIndex*BYTES_PER_PKT), sizeof(uint8_t)*PIXELS_PER_IMAGE*(mode/8));
     
     in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head.pkt_head[pkt_head->qua_num]));
 
@@ -199,7 +199,7 @@ quabo_info_t* quabo_info_t_new(){
     return value;
 }
 //A module index for holding the data structures for the modules it expects.
-static module_data_t* moduleInd[MODULEINDEXSIZE] = {NULL};
+static module_data_t* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
 /**
  * Initialization function for Hashpipe. This function is called once when the thread is created
@@ -215,9 +215,9 @@ static int init(hashpipe_thread_args_t * args){
     }
 
     //Initializing the module data with the config file
-    char config_location[STRBUFFSIZE];
+    char config_location[STR_BUFFER_SIZE];
     sprintf(config_location, CONFIGFILE_DEFAULT);
-    hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
+    hgets(st.buf, "CONFIG", STR_BUFFER_SIZE, config_location);
     printf("Config Location: %s\n", config_location);
     FILE *modConfig_file = fopen(config_location, "r");
 

@@ -169,15 +169,15 @@ int FILE_PTRS::set_bpp(int value){
 }
 
 
-static char config_location[STRBUFFSIZE];
+static char config_location[STR_BUFFER_SIZE];
 
-static char run_directory[STRBUFFSIZE];
+static char run_directory[STR_BUFFER_SIZE];
 
 static long long max_file_size = 0; //IN UNITS OF BYTES
 
 
 
-static FILE_PTRS *data_files[MODULEINDEXSIZE] = {NULL};
+static FILE_PTRS *data_files[MAX_MODULE_INDEX] = {NULL};
 
 
 /**
@@ -201,7 +201,7 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
  */
 int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
     fprintf(fileToWrite, "{ ");
-    for (int i = 0; i < QUABOPERMODULE; i++){
+    for (int i = 0; i < QUABO_PER_MODULE; i++){
         fprintf(fileToWrite,
         "quabo %u: { acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li, status : %u}",
         i,
@@ -214,7 +214,7 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
         dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_usec,
         dataHeader->img_pkt_head[blockIndex].status[i]
         );
-        if (i < QUABOPERMODULE-1){
+        if (i < QUABO_PER_MODULE-1){
             fprintf(fileToWrite, ", ");
         }
     }
@@ -257,8 +257,8 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
     pff_end_json(fileToWrite);
 
     pff_write_image(fileToWrite, 
-        QUABOPERMODULE*SCIDATASIZE*modSizeMultiplier, 
-        dataBlock->img_block + (blockIndex*MODULEDATASIZE));
+        QUABO_PER_MODULE*PIXELS_PER_IMAGE*modSizeMultiplier, 
+        dataBlock->img_block + (blockIndex*BYTES_PER_MODULE_FRAME));
 
     if (ftell(fileToWrite) > max_file_size){
         moduleToWrite->increment_seqno();
@@ -326,7 +326,7 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
     pff_end_json(fileToWrite);
 
     pff_write_image(fileToWrite, 
-        SCIDATASIZE*2, 
+        PIXELS_PER_IMAGE*2, 
         dataBlock->coinc_block + (blockIndex*BYTES_PER_PKT));
 
     if (ftell(fileToWrite) > max_file_size){
@@ -342,7 +342,7 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
  */
 int create_data_files_from_config(){
     FILE *configFile = fopen(config_location, "r");
-    char fbuf[STRBUFFSIZE];
+    char fbuf[STR_BUFFER_SIZE];
     char cbuf;
     unsigned int modNum;
 
@@ -363,7 +363,7 @@ int create_data_files_from_config(){
                 }
             }
         } else {
-            if (fgets(fbuf, STRBUFFSIZE, configFile) == NULL) {
+            if (fgets(fbuf, STR_BUFFER_SIZE, configFile) == NULL) {
                 break;
             }
         }
@@ -418,7 +418,7 @@ static int init(hashpipe_thread_args_t *args)
     hashpipe_status_t st = args->st;
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
     // Fetch user input for save location of data files.
-    hgets(st.buf, "RUNDIR", STRBUFFSIZE, run_directory);
+    hgets(st.buf, "RUNDIR", STR_BUFFER_SIZE, run_directory);
     // Remove old run directory so that info isn't saved for next run.
     hdel(st.buf, "RUNDIR");
     // Check to see if the run directory provided is an accurage directory
@@ -445,7 +445,7 @@ static int init(hashpipe_thread_args_t *args)
 
     // Fetch user input for config file location.
     sprintf(config_location, CONFIGFILE_DEFAULT);
-    hgets(st.buf, "CONFIG", STRBUFFSIZE, config_location);
+    hgets(st.buf, "CONFIG", STR_BUFFER_SIZE, config_location);
     printf("Config Location: %s\n", config_location);
 
     // Fetch user input for max file size of data files.
@@ -471,7 +471,7 @@ static int init(hashpipe_thread_args_t *args)
  * Close all allocated resources
  */
 void close_all_resources() {
-    for (int i = 0; i < MODULEINDEXSIZE; i++){
+    for (int i = 0; i < MAX_MODULE_INDEX; i++){
         if (data_files[i] != NULL){
             fclose(data_files[i]->dynamicMeta);
             fclose(data_files[i]->bit16Img);

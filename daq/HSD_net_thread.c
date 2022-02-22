@@ -257,7 +257,7 @@ static void *run(hashpipe_thread_args_t * args){
             if (blockHeader->pkt_head[i].acq_mode < 4){
                 memcpy(db->block[block_idx].data_block+i*BYTES_PER_PKT, pkt_data+16, BYTES_PER_PKT*sizeof(unsigned char));
             } else {
-                memcpy(db->block[block_idx].data_block+i*BYTES_PER_PKT, pkt_data+16, BIT8PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*BYTES_PER_PKT, pkt_data+16, BYTES_PER_8BIT_PKT*sizeof(unsigned char));
             }
 
             //Time stamping the packets and passing it into the shared buffer
