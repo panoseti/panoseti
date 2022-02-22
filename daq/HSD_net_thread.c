@@ -255,9 +255,9 @@ static void *run(hashpipe_thread_args_t * args){
             //Copy the packets in PKTSOCK to the input circular buffer
             //Size is based on whether or not the mode is 16 bit or 8 bit
             if (blockHeader->pkt_head[i].acq_mode < 4){
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, pkt_data+16, PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*BYTES_PER_PKT, pkt_data+16, BYTES_PER_PKT*sizeof(unsigned char));
             } else {
-                memcpy(db->block[block_idx].data_block+i*PKTDATASIZE, pkt_data+16, BIT8PKTDATASIZE*sizeof(unsigned char));
+                memcpy(db->block[block_idx].data_block+i*BYTES_PER_PKT, pkt_data+16, BIT8PKTDATASIZE*sizeof(unsigned char));
             }
 
             //Time stamping the packets and passing it into the shared buffer
