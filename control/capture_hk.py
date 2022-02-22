@@ -72,36 +72,36 @@ def storeInRedis(packet, r:redis.Redis):
     redis_set = {
         'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'BOARDLOC': array[0],
-        'HVMON0': HKconv.convertValue('HVMON0', array[1]),
-        'HVMON1': HKconv.convertValue('HVMON1', array[2]),
-        'HVMON2': HKconv.convertValue('HVMON2', array[3]),
-        'HVMON3': HKconv.convertValue('HVMON3', array[4]),
+        'HVMON0': '{0:0.5g}'.format(HKconv.convertValue('HVMON0', array[1])),
+        'HVMON1': '{0:0.5g}'.format(HKconv.convertValue('HVMON1', array[2])),
+        'HVMON2': '{0:0.5g}'.format(HKconv.convertValue('HVMON2', array[3])),
+        'HVMON3': '{0:0.5g}'.format(HKconv.convertValue('HVMON3', array[4])),
 
-        'HVIMON0': HKconv.convertValue('HVIMON0', array[5]),
-        'HVIMON1': HKconv.convertValue('HVIMON1', array[6]),
-        'HVIMON2': HKconv.convertValue('HVIMON2', array[7]),
-        'HVIMON3': HKconv.convertValue('HVIMON3', array[8]),
+        'HVIMON0': '{0:0.5g}'.format(HKconv.convertValue('HVIMON0', array[5])),
+        'HVIMON1': '{0:0.5g}'.format(HKconv.convertValue('HVIMON1', array[6])),
+        'HVIMON2': '{0:0.5g}'.format(HKconv.convertValue('HVIMON2', array[7])),
+        'HVIMON3': '{0:0.5g}'.format(HKconv.convertValue('HVIMON3', array[8])),
 
-        'RAWHVMON': HKconv.convertValue('RAWHVMON', -array[9]),
+        'RAWHVMON': '{0:0.5g}'.format(HKconv.convertValue('RAWHVMON', -array[9])),
 
-        'V12MON': HKconv.convertValue('V12MON', array[10]),
-        'V18MON': HKconv.convertValue('V18MON', array[11]),
-        'V33MON': HKconv.convertValue('V33MON', array[12]),
-        'V37MON': HKconv.convertValue('V37MON', array[13]),
+        'V12MON': '{0:0.5g}'.format(HKconv.convertValue('V12MON', array[10])),
+        'V18MON': '{0:0.5g}'.format(HKconv.convertValue('V18MON', array[11])),
+        'V33MON': '{0:0.5g}'.format(HKconv.convertValue('V33MON', array[12])),
+        'V37MON': '{0:0.5g}'.format(HKconv.convertValue('V37MON', array[13])),
 
-        'I10MON': HKconv.convertValue('I10MON', array[14]),
-        'I18MON': HKconv.convertValue('I18MON', array[15]),
-        'I33MON': HKconv.convertValue('I33MON', array[16]),
-        'VCCINT': HKconv.convertValue('VCCINT', array[19]),
-        'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
+        'I10MON': '{0:0.5g}'.format(HKconv.convertValue('I10MON', array[14])),
+        'I18MON': '{0:0.5g}'.format(HKconv.convertValue('I18MON', array[15])),
+        'I33MON': '{0:0.5g}'.format(HKconv.convertValue('I33MON', array[16])),
+        'VCCINT': '{0:0.5g}'.format(HKconv.convertValue('VCCINT', array[19])),
+        'VCCAUX': '{0:0.5g}'.format(HKconv.convertValue('VCCAUX', array[20])),
 
         'UID': '0x{0:04x}{0:04x}{0:04x}{0:04x}'.format(array[24],array[23],array[22],array[21]),
 
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
-        'FWID0': array[27] + array[28]*0x10000,
-        'FWID1': array[29] + array[30]*0x10000,
+        'FWID0': '0x{0:04x}{0:04x}'.format(array[28],array[27]),
+        'FWID1': '0x{0:04x}{0:04x}'.format(array[30],array[29]),
         
         'StartUp': startUp
     }
