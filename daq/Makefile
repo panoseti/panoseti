@@ -1,6 +1,6 @@
 CC          = g++
 REDIS_LIB_CCFLAGS = -lhiredis
-HSD_LIB_CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -mavx -msse4 \
+HSD_LIB_CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -msse4 \
     -I. -I$(CUDA_DIR)/include -I/usr/local/include \
     -L. -L/usr/local/lib \
     -lhashpipe -lrt -lm \
