@@ -23,39 +23,39 @@
  * information should be stored in this structure.
  */
 typedef struct module_data {
-    uint32_t upper_nanosec;
-    uint32_t lower_nanosec;
-    uint8_t status;
+    uint32_t max_nanosec;
+    uint32_t min_nanosec;
+    uint8_t status;                 //Status is a freely used variable for either integration number or error code.
     module_header_t mod_head;
     uint8_t data[BYTES_PER_MODULE_FRAME];
     module_data(){
-        this->upper_nanosec = 0;
-        this->lower_nanosec = 0;
+        this->max_nanosec = 0;
+        this->min_nanosec = 0;
         this->status = 0;
     };
     int copy_to(module_data *mod_data) {
-        mod_data->upper_nanosec = this->upper_nanosec;
-        mod_data->lower_nanosec = this->lower_nanosec;
+        mod_data->max_nanosec = this->max_nanosec;
+        mod_data->min_nanosec = this->min_nanosec;
         mod_data->status = this->status;
         this->mod_head.copy_to(&(mod_data->mod_head));
         memcpy(mod_data->data, this->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
     };
     int clear(){
-        this->upper_nanosec = 0;
-        this->lower_nanosec = 0;
+        this->max_nanosec = 0;
+        this->min_nanosec = 0;
         this->status = 0;
         this->mod_head.clear();
         memset(this->data, 0, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
     };
     std::string toString(){
         return "status = " + std::to_string(this->status) +
-                " upper_nanosec = " + std::to_string(this->upper_nanosec) +
-                " lower_nanosec = " + std::to_string(this->lower_nanosec) +
+                " max_nanosec = " + std::to_string(this->max_nanosec) +
+                " min_nanosec = " + std::to_string(this->min_nanosec) +
                 "\n" + mod_head.toString();
     };
     int equal_to(module_data *mod_data){
-        if (this->upper_nanosec != mod_data->upper_nanosec
-            || this->lower_nanosec != mod_data->lower_nanosec
+        if (this->max_nanosec != mod_data->max_nanosec
+            || this->min_nanosec != mod_data->min_nanosec
             || this->status != mod_data->status){
             return 0;
         }
@@ -74,11 +74,11 @@ typedef struct module_data {
  * @param mod_data Module data passed in be copied to output block.
  * @param out_block Output block to be written to.
  */
-void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
+void write_frame_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
     int out_index = out_block->header.img_block_size;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
-    mod_data->mod_head.copy_to(&(out_header->img_pkt_head[out_index]));
+    mod_data->mod_head.copy_to(&(out_header->img_mod_head[out_index]));
     
     memcpy(out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME), mod_data->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
 
@@ -94,7 +94,7 @@ void write_img_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_bl
 void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_output_block_t* out_block){
     int out_index = out_block->header.coinc_block_size;
 
-    in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coin_pkt_head[out_index]));
+    in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coinc_pkt_head[out_index]));
     
     memcpy(out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE, in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE, sizeof(in_block->data_block[0])*BYTES_PER_PKT_IMAGE);
 
@@ -132,9 +132,9 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     } else {
         //Unidentified mode
         //Return and not store the packet and return an error
-        printf("A new mode was identify acqmode=%X\n ", pkt_head->acq_mode);
-        printf("moduleNum=%X quaboNum=%X PKTNUM=%X\n", pkt_head->mod_num, pkt_head->qua_num, pkt_head->pkt_num);
-        printf("packet skipped\n");
+        fprintf(stderr, "A new mode was identify acqmode=%X\n ", pkt_head->acq_mode);
+        fprintf(stderr, "moduleNum=%X quaboNum=%X PKTNUM=%X\n", pkt_head->mod_num, pkt_head->qua_num, pkt_head->pkt_num);
+        fprintf(stderr, "packet skipped\n");
         return;
     }
     //printf("\nModule Data Before\n%s", mod_data->toString().c_str());
@@ -145,12 +145,12 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         //Setting both the upper and lower NANOSEC interval to the current NANOSEC value
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         mod_data->mod_head.mode = mode;
-        mod_data->upper_nanosec = nanosec;
-        mod_data->lower_nanosec = nanosec;
-    } else if(nanosec > mod_data->upper_nanosec){
-        mod_data->upper_nanosec = nanosec;
-    } else if (nanosec < mod_data->lower_nanosec){
-        mod_data->lower_nanosec = nanosec;
+        mod_data->max_nanosec = nanosec;
+        mod_data->min_nanosec = nanosec;
+    } else if(nanosec > mod_data->max_nanosec){
+        mod_data->max_nanosec = nanosec;
+    } else if (nanosec < mod_data->min_nanosec){
+        mod_data->min_nanosec = nanosec;
     }
 
     //Check conditions to see if they are met for writing to output buffer
@@ -160,12 +160,11 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     //When the NANOSEC interval superceeded the threshold that is allowed
     if ((mod_data->status & currentStatus) 
         || mod_data->mod_head.mode != mode 
-        || (mod_data->upper_nanosec - mod_data->lower_nanosec) > NANOSEC_THRESHOLD){
+        || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD){
         
-        write_img_to_out_buffer(mod_data, out_block);
+        write_frame_to_out_buffer(mod_data, out_block);
         //Resetting values in the new emptied module pair obj
         mod_data->clear();
-        
     }
 
     memcpy(mod_data->data + (pkt_head->qua_num*PIXELS_PER_IMAGE*(mode/8)), in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE), sizeof(uint8_t)*PIXELS_PER_IMAGE*(mode/8));
@@ -176,8 +175,6 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
     mod_data->status = mod_data->status | currentStatus;
     mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
     mod_data->mod_head.mode = mode;
-    mod_data->upper_nanosec = nanosec;
-    mod_data->lower_nanosec = nanosec;
 }
 
 
@@ -241,7 +238,7 @@ static int init(hashpipe_thread_args_t * args){
 
                     moduleInd[modName] = new module_data();
 
-                    printf("Created Module: %u.%u-%u\n", 
+                    fprintf(stdout, "Created Module: %u.%u-%u\n", 
                     (unsigned int) (modName << 2)/0x100, (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3);
                 }
             }

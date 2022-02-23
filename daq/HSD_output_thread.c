@@ -39,7 +39,7 @@ struct PF {
 struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;
-    FILE *dynamicMeta, *bit16Img, *bit8Img, *PHImg;
+    FILE *bit16Img, *bit8Img, *PHImg;
     FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
     void make_files(const char *diskDir, const char *file_mode);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
@@ -197,22 +197,22 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
  * Write image header to file.
  * @param fileToWrite File the image header will be written to
  * @param dataHeader The output block header containing the image headers
- * @param blockIndex The block index for the specified output block
+ * @param frameIndex The frame index for the specified output block
  */
-int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
+int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int frameIndex){
     fprintf(fileToWrite, "{ ");
     for (int i = 0; i < QUABO_PER_MODULE; i++){
         fprintf(fileToWrite,
         "quabo %u: { acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li, status : %u}",
         i,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].acq_mode,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].mod_num,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].qua_num,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].pkt_num,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].pkt_nsec,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_sec,
-        dataHeader->img_pkt_head[blockIndex].pkt_head[i].tv_usec,
-        dataHeader->img_pkt_head[blockIndex].status[i]
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].acq_mode,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].mod_num,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].qua_num,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_num,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_nsec,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_sec,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_usec,
+        dataHeader->img_mod_head[frameIndex].status[i]
         );
         if (i < QUABO_PER_MODULE-1){
             fprintf(fileToWrite, ", ");
@@ -224,12 +224,12 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
 /**
  * Writing the image module structure to file
  * @param dataBlock Data block of the containing the images to be written to disk
- * @param blockIndex The block index for the specified output block.
+ * @param frameIndex The frame index for the specified output block.
  */
-int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
+int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     FILE *fileToWrite;
-    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_pkt_head[blockIndex].mod_num];
-    int mode = dataBlock->header.img_pkt_head[blockIndex].mode;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_mod_head[frameIndex].mod_num];
+    int mode = dataBlock->header.img_mod_head[frameIndex].mode;
     int modSizeMultiplier = mode/8;
 
     if (mode == 16) {
@@ -238,7 +238,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
         fileToWrite = moduleToWrite->bit8Img;
     } else {
         printf("Mode %i not recognized\n", mode);
-        printf("Module Header Value\n%s\n", dataBlock->header.img_pkt_head[blockIndex].toString().c_str());
+        printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[frameIndex].toString().c_str());
         return 0;
     }
     
@@ -252,13 +252,13 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
 
     pff_start_json(fileToWrite);
 
-    write_img_header_file(fileToWrite, &(dataBlock->header), blockIndex);
+    write_img_header_file(fileToWrite, &(dataBlock->header), frameIndex);
 
     pff_end_json(fileToWrite);
 
     pff_write_image(fileToWrite, 
         QUABO_PER_MODULE*PIXELS_PER_IMAGE*modSizeMultiplier, 
-        dataBlock->img_block + (blockIndex*BYTES_PER_MODULE_FRAME));
+        dataBlock->img_block + (frameIndex*BYTES_PER_MODULE_FRAME));
 
     if (ftell(fileToWrite) > max_file_size){
         moduleToWrite->increment_seqno();
@@ -278,36 +278,36 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int blockIndex){
  * Write the coincidence header information to file.
  * @param fileToWrite File the image header will be written to
  * @param dataHeader The output block header containing the image headers
- * @param blockIndex The block index for the specified output block
+ * @param packetIndex The packet index for the specified output block
  */
-int write_coinc_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int blockIndex){
+int write_coinc_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int packetIndex){
     fprintf(fileToWrite,
     "{ acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li}",
-    dataHeader->coin_pkt_head[blockIndex].acq_mode,
-    dataHeader->coin_pkt_head[blockIndex].mod_num,
-    dataHeader->coin_pkt_head[blockIndex].qua_num,
-    dataHeader->coin_pkt_head[blockIndex].pkt_num,
-    dataHeader->coin_pkt_head[blockIndex].pkt_nsec,
-    dataHeader->coin_pkt_head[blockIndex].tv_sec,
-    dataHeader->coin_pkt_head[blockIndex].tv_usec
+    dataHeader->coinc_pkt_head[packetIndex].acq_mode,
+    dataHeader->coinc_pkt_head[packetIndex].mod_num,
+    dataHeader->coinc_pkt_head[packetIndex].qua_num,
+    dataHeader->coinc_pkt_head[packetIndex].pkt_num,
+    dataHeader->coinc_pkt_head[packetIndex].pkt_nsec,
+    dataHeader->coinc_pkt_head[packetIndex].tv_sec,
+    dataHeader->coinc_pkt_head[packetIndex].tv_usec
     );
 }
 
 /**
  * Writing the coincidence(Pulse Height) image to file
  * @param dataBlock Data block of the containing the images to be written to disk
- * @param blockIndex The block index for the specified output block.
+ * @param packetIndex The packet index for the specified output block.
  */
-int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
+int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
     FILE *fileToWrite;
-    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coin_pkt_head[blockIndex].mod_num];
-    char mode = dataBlock->header.coin_pkt_head[blockIndex].acq_mode;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coinc_pkt_head[packetIndex].mod_num];
+    char mode = dataBlock->header.coinc_pkt_head[packetIndex].acq_mode;
 
     if (mode == 0x1) {
         fileToWrite = moduleToWrite->PHImg;
     } else {
         printf("Mode %c not recognized\n", mode);
-        printf("Module Header Value\n%s\n", dataBlock->header.img_pkt_head[blockIndex].toString().c_str());
+        printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[packetIndex].toString().c_str());
         return 0;
     }
 
@@ -321,16 +321,18 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int blockIndex){
 
     pff_start_json(fileToWrite);
 
-    write_coinc_header_file(fileToWrite, &(dataBlock->header), blockIndex);
+    write_coinc_header_file(fileToWrite, &(dataBlock->header), packetIndex);
 
     pff_end_json(fileToWrite);
 
     pff_write_image(fileToWrite, 
         PIXELS_PER_IMAGE*2, 
-        dataBlock->coinc_block + (blockIndex*BYTES_PER_PKT_IMAGE));
+        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE));
 
     if (ftell(fileToWrite) > max_file_size){
+        moduleToWrite->increment_seqno();
         if (mode == 0x1){
+            moduleToWrite->set_bpp(2);
             moduleToWrite->new_dp_file(DP_PH_IMG, run_directory, "w");
         }
     }
@@ -473,7 +475,6 @@ static int init(hashpipe_thread_args_t *args)
 void close_all_resources() {
     for (int i = 0; i < MAX_MODULE_INDEX; i++){
         if (data_files[i] != NULL){
-            fclose(data_files[i]->dynamicMeta);
             fclose(data_files[i]->bit16Img);
             fclose(data_files[i]->bit8Img);
             fclose(data_files[i]->PHImg);
