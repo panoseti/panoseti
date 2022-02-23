@@ -100,8 +100,8 @@ def storeInRedis(packet, r:redis.Redis):
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
-        'FWID0': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
-        'FWID1': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),
+        'FWTIME': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
+        'FWVER': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),
         
         'StartUp': startUp
     }
