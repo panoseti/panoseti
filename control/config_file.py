@@ -2,7 +2,7 @@
 
 # functions to read and parse config files
 
-import json
+import os,sys,json
 import util
 
 obs_config_filename = 'obs_config.json'
@@ -57,7 +57,16 @@ def module_id_to_daq_node(daq_config, module_id):
             return node
     raise Exception("no DAQ node is handling module %d"%module_id)
 
+def check_config_file(name):
+    if not os.path.exists(name):
+        print("The config file '%s' doesn't exist."%name)
+        print("Create a symbolic link from %s to a specific config file, e.g.:"%name)
+        print("   ln -s %s_lick.json %s"%(name.split('.')[0], name))
+
+        sys.exit()
+
 def get_obs_config():
+    check_config_file(obs_config_filename)
     with open(obs_config_filename) as f:
         s = f.read()
     c = json.loads(s)
@@ -65,6 +74,7 @@ def get_obs_config():
     return c
 
 def get_daq_config():
+    check_config_file(daq_config_filename)
     with open(daq_config_filename) as f:
         s = f.read()
     c = json.loads(s)
@@ -72,11 +82,15 @@ def get_daq_config():
     return c
 
 def get_data_config():
+    check_config_file(data_config_filename)
     with open(data_config_filename) as f:
         c = f.read()
     return json.loads(c)
 
 def get_quabo_uids():
+    if not os.path.exists(quabo_uids_filename):
+        print("%s is missing.  Run get_uids.py"%quabo_uids_filename)
+        sys.exit()
     with open(quabo_uids_filename) as f:
         s = f.read()
     c = json.loads(s)
