@@ -1,14 +1,7 @@
 #! /usr/bin/env python3
 
 # Initialize for (one or more) observing runs
-# options:
-# --show            show list of domes/modules/quabos
-# --ping            ping quabos
-# --reboot          reboot quabos
-# --loads           load silver firmware in quabos
-# --init_daq_nodes  copy software to daq nodes
-# --redis_daemons   start daemons to populate Redis with HK/GPS/WR data
-#
+# See usage() for options.
 # see matlab/initq.m, startq*.py
 
 firmware_silver_qfp = 'quabo_0200_264489B3.bin'
@@ -21,12 +14,13 @@ from panoseti_tftp import tftpw
 
 def usage():
     print('''usage:
---show              show list of domes/modules/quabos
---ping              ping quabos
---reboot            reboot quabos
---loads             load silver firmware in quabos
---init_daq_nodes    copy software to daq nodes
---redis_daemons        start daemons to populate Redis with HK/GPS/WR data
+--show                  show list of domes/modules/quabos
+--ping                  ping quabos
+--reboot                reboot quabos
+--loads                 load silver firmware in quabos
+--init_daq_nodes        copy software to daq nodes
+--redis_daemons         start daemons to populate Redis with HK/GPS/WR data
+--stop_redis_daemons    stop daemons
 ''')
     sys.exit()
 
@@ -121,6 +115,9 @@ if __name__ == "__main__":
         elif argv[i] == '--redis_daemons':
             nops += 1
             op = 'redis_daemons'
+        elif argv[i] == '--stop_redis_daemons':
+            nops += 1
+            op = 'stop_redis_daemons'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -150,6 +147,8 @@ if __name__ == "__main__":
         file_xfer.copy_hashpipe(daq_config)
     elif op == 'redis_daemons':
         util.start_redis_daemons()
+    elif op == 'stop_redis_daemons':
+        util.stop_redis_daemons()
     elif op == 'show':
         show_config(obs_config, quabo_uids)
         util.show_redis_daemons()

@@ -132,6 +132,14 @@ def start_redis_daemons():
     for daemon in redis_daemons:
         start_daemon(daemon)
 
+def stop_redis_daemons():
+    for d in redis_daemons:
+        prog = './%s'%d
+        for p in psutil.process_iter():
+            c = p.cmdline()
+            if len(c) == 2 and c[1] == prog:
+                os.kill(p.pid, signal.SIGKILL)
+
 def show_redis_daemons():
     for daemon in redis_daemons:
         if is_script_running(daemon):
