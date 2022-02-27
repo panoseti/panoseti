@@ -43,26 +43,31 @@ def show_config(obs_config, quabo_uids):
 
 def do_reboot(modules, quabo_uids):
     # need to reboot quabos in order 0..3
-    # could do this in parallel across modules; for now, do it serially
     #
-    for module in modules:
-        for i in range(4):
+    for i in range(4):
+        for module in modules:
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             print('rebooting quabo at %s'%ip_addr)
             x = tftpw(ip_addr)
             x.reboot()
-            print('waiting for HK packet from %s'%ip_addr)
 
-            # wait for a housekeeping packet
-            #
+        # wait for a housekeeping packets
+        #
+        for module in modules:
+            if not util.is_quabo_alive(module, quabo_uids, i):
+                continue
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            print('waiting for HK packet from %s'%ip_addr)
             quabo = quabo_driver.QUABO(ip_addr)
             while True:
                 if quabo.read_hk_packet():
                     break
             quabo.close()
-            print('rebooted quabo at %s'%ip_addr)
+            print('got HK packet from %s'%ip_addr)
+
+    print('All quabos rebooted')
 
 def do_loads(modules, quabo_uids):
     for module in modules:
