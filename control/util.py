@@ -118,7 +118,7 @@ def start_daemon(prog):
         return
     try:
         process = subprocess.Popen(
-            [prog], start_new_session=True,
+            ['./'+prog], start_new_session=True,
             close_fds=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )

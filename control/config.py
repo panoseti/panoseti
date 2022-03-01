@@ -8,8 +8,8 @@ firmware_silver_qfp = 'quabo_0200_264489B3.bin'
 firmware_silver_bga = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess
-import util, config_file, quabo_driver, file_xfer
+import sys, os, subprocess, time
+import util, config_file, file_xfer
 from panoseti_tftp import tftpw
 
 def usage():
@@ -43,6 +43,10 @@ def show_config(obs_config, quabo_uids):
 
 def do_reboot(modules, quabo_uids):
     # need to reboot quabos in order 0..3
+    # to parallelize:
+    # start reboot of quabo 0 in all modules
+    # wait for ping of quabo 0 in all modules (means reboot is done)
+    # ... same for quabo 1 etc.
     #
     for i in range(4):
         for module in modules:
@@ -53,19 +57,18 @@ def do_reboot(modules, quabo_uids):
             x = tftpw(ip_addr)
             x.reboot()
 
-        # wait for a housekeeping packets
+        # wait for pings
         #
         for module in modules:
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
-            print('waiting for HK packet from %s'%ip_addr)
-            quabo = quabo_driver.QUABO(ip_addr)
+            print('waiting for ping of %s'%ip_addr)
             while True:
-                if quabo.read_hk_packet():
+                if util.ping(ip_addr):
                     break
-            quabo.close()
-            print('got HK packet from %s'%ip_addr)
+                time.sleep(1)
+            print('pinged %s; reboot done'%ip_addr)
 
     print('All quabos rebooted')
 
