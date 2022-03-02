@@ -4,11 +4,13 @@
 // A PFF file is a sequence of blocks,
 // each of which is either text (e.g. a JSON doc) or a binary image.
 // Each block starts with a "block type" byte (see values below).
-// Text blocks are terminated with a zero byte.
+// Text blocks are terminated with a blank line (two newlines in a row)
 //
 // A PFF file is not self-describing; you have to know what to expect,
 // e.g. that images are 32x32.
 // The type codes are mostly for sanity checking.
+//
+// See https://github.com/panoseti/panoseti/wiki/Data-file-format
 
 #ifndef PANOSETI_PFF_H
 #define PANOSETI_PFF_H
@@ -16,6 +18,7 @@
 #include <string>
 using std::string;
 
+// block types
 #define PFF_JSON_START '{'
 #define PFF_IMAGE_START '*'
 

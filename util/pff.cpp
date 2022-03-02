@@ -1,3 +1,6 @@
+// functions for reading/writing PanoSETI file format (.pff) files
+// See pff.h
+
 #include <string.h>
 #include <string>
 #include <vector>

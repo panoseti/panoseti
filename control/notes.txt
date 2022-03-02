@@ -237,3 +237,12 @@ reboot didn't get HK packet
 
 config reboot: try HK port bind at start
     ping first
+
+-----------
+errors
+    missing symlinks etc.
+    reboot from wrong IP addr
+stop run if hashpipe fails
+daemons
+    no error if running
+redundant stuff in HK
