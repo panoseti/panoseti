@@ -118,7 +118,7 @@ def start_daemon(prog):
         return
     try:
         process = subprocess.Popen(
-            [prog], start_new_session=True,
+            ['./'+prog], start_new_session=True,
             close_fds=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
@@ -131,6 +131,14 @@ def start_daemon(prog):
 def start_redis_daemons():
     for daemon in redis_daemons:
         start_daemon(daemon)
+
+def stop_redis_daemons():
+    for d in redis_daemons:
+        prog = './%s'%d
+        for p in psutil.process_iter():
+            c = p.cmdline()
+            if len(c) == 2 and c[1] == prog:
+                os.kill(p.pid, signal.SIGKILL)
 
 def show_redis_daemons():
     for daemon in redis_daemons:

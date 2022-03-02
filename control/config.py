@@ -1,32 +1,26 @@
 #! /usr/bin/env python3
 
 # Initialize for (one or more) observing runs
-# options:
-# --show            show list of domes/modules/quabos
-# --ping            ping quabos
-# --reboot          reboot quabos
-# --loads           load silver firmware in quabos
-# --init_daq_nodes  copy software to daq nodes
-# --redis_daemons   start daemons to populate Redis with HK/GPS/WR data
-#
+# See usage() for options.
 # see matlab/initq.m, startq*.py
 
 firmware_silver_qfp = 'quabo_0200_264489B3.bin'
 firmware_silver_bga = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess
-import util, config_file, quabo_driver, file_xfer
+import sys, os, subprocess, time
+import util, config_file, file_xfer
 from panoseti_tftp import tftpw
 
 def usage():
     print('''usage:
---show              show list of domes/modules/quabos
---ping              ping quabos
---reboot            reboot quabos
---loads             load silver firmware in quabos
---init_daq_nodes    copy software to daq nodes
---redis_daemons        start daemons to populate Redis with HK/GPS/WR data
+--show                  show list of domes/modules/quabos
+--ping                  ping quabos
+--reboot                reboot quabos
+--loads                 load silver firmware in quabos
+--init_daq_nodes        copy software to daq nodes
+--redis_daemons         start daemons to populate Redis with HK/GPS/WR data
+--stop_redis_daemons    stop daemons
 ''')
     sys.exit()
 
@@ -49,26 +43,34 @@ def show_config(obs_config, quabo_uids):
 
 def do_reboot(modules, quabo_uids):
     # need to reboot quabos in order 0..3
-    # could do this in parallel across modules; for now, do it serially
+    # to parallelize:
+    # start reboot of quabo 0 in all modules
+    # wait for ping of quabo 0 in all modules (means reboot is done)
+    # ... same for quabo 1 etc.
     #
-    for module in modules:
-        for i in range(4):
+    for i in range(4):
+        for module in modules:
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             print('rebooting quabo at %s'%ip_addr)
             x = tftpw(ip_addr)
             x.reboot()
-            print('waiting for HK packet from %s'%ip_addr)
 
-            # wait for a housekeeping packet
-            #
-            quabo = quabo_driver.QUABO(ip_addr)
+        # wait for pings
+        #
+        for module in modules:
+            if not util.is_quabo_alive(module, quabo_uids, i):
+                continue
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            print('waiting for ping of %s'%ip_addr)
             while True:
-                if quabo.read_hk_packet():
+                if util.ping(ip_addr):
                     break
-            quabo.close()
-            print('rebooted quabo at %s'%ip_addr)
+                time.sleep(1)
+            print('pinged %s; reboot done'%ip_addr)
+
+    print('All quabos rebooted')
 
 def do_loads(modules, quabo_uids):
     for module in modules:
@@ -121,6 +123,9 @@ if __name__ == "__main__":
         elif argv[i] == '--redis_daemons':
             nops += 1
             op = 'redis_daemons'
+        elif argv[i] == '--stop_redis_daemons':
+            nops += 1
+            op = 'stop_redis_daemons'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -150,6 +155,8 @@ if __name__ == "__main__":
         file_xfer.copy_hashpipe(daq_config)
     elif op == 'redis_daemons':
         util.start_redis_daemons()
+    elif op == 'stop_redis_daemons':
+        util.stop_redis_daemons()
     elif op == 'show':
         show_config(obs_config, quabo_uids)
         util.show_redis_daemons()
