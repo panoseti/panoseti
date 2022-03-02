@@ -75,14 +75,14 @@ typedef struct module_data {
  * @param out_block Output block to be written to.
  */
 void write_frame_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
-    int out_index = out_block->header.img_block_size;
+    int out_index = out_block->header.n_img_module;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
     mod_data->mod_head.copy_to(&(out_header->img_mod_head[out_index]));
     
     memcpy(out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME), mod_data->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
 
-    out_block->header.img_block_size++;
+    out_block->header.n_img_module++;
 }
 
 /**
@@ -92,13 +92,13 @@ void write_frame_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_
  * @param out_block Output data block to be written to. 
  */
 void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_output_block_t* out_block){
-    int out_index = out_block->header.coinc_block_size;
+    int out_index = out_block->header.n_coinc_img;
 
     in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coinc_pkt_head[out_index]));
     
     memcpy(out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE, in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE, sizeof(in_block->data_block[0])*BYTES_PER_PKT_IMAGE);
 
-    out_block->header.coinc_block_size++;
+    out_block->header.n_coinc_img++;
 }
 
 
@@ -162,6 +162,8 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         || mod_data->mod_head.mode != mode 
         || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD){
         
+        // This is where we will have a complete frame and perform and processing
+        // before it gets written to the output buffer.
         write_frame_to_out_buffer(mod_data, out_block);
         //Resetting values in the new emptied module pair obj
         mod_data->clear();
@@ -335,8 +337,8 @@ static void *run(hashpipe_thread_args_t * args){
         hashpipe_status_unlock_safe(&st);
 
         //Resetting the values in the new output block
-        db_out->block[curblock_out].header.img_block_size = 0;
-        db_out->block[curblock_out].header.coinc_block_size = 0;
+        db_out->block[curblock_out].header.n_img_module = 0;
+        db_out->block[curblock_out].header.n_coinc_img = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 

@@ -534,11 +534,11 @@ static void *run(hashpipe_thread_args_t *args) {
         hashpipe_status_unlock_safe(&st);
 
         
-        for (int i = 0; i < db->block[block_idx].header.img_block_size; i++){
+        for (int i = 0; i < db->block[block_idx].header.n_img_module; i++){
             write_module_img_file(&(db->block[block_idx]), i);
         }
 
-        for (int i = 0; i < db->block[block_idx].header.coinc_block_size; i++){
+        for (int i = 0; i < db->block[block_idx].header.n_coinc_img; i++){
             write_module_coinc_file(&(db->block[block_idx]), i);
         }
 

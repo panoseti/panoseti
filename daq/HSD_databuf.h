@@ -200,10 +200,10 @@ typedef struct HSD_input_databuf {
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
     module_header_t img_mod_head[OUT_MOD_PER_BLOCK];
-    int img_block_size;
+    int n_img_module;
 
     packet_header_t coinc_pkt_head[OUT_COINC_PER_BLOCK];
-    int coinc_block_size;
+    int n_coinc_img;
 
     int INTSIG;
 } HSD_output_block_header_t;
