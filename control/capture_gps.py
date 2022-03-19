@@ -218,7 +218,7 @@ def initialize():
 
     # configure the serial connections (the parameters differs on the device you are connecting to)
     ser = serial.Serial(
-        port='/dev/ttyUSB0',
+        port='/dev/ttyUSB5',
         baudrate=9600,
         timeout=1,
         parity=serial.PARITY_NONE,

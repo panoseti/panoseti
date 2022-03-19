@@ -21,7 +21,7 @@ LINK_DOWN   =   '1'
 LINK_UP     =   '2'
 SFP_PN0     =   'PS-FB-TX1310'
 SFP_PN1     =   'PS-FB-RX1310'
-SWITCHIP    =   '192.168.1.254'
+SWITCHIP    =   '10.0.1.36'
 RKEY        =   f'WRSWITCH{""}'
 OBSERVATORY =   'lick'
 

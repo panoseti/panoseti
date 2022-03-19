@@ -120,9 +120,11 @@ def start_recording(data_config, daq_config, run_name):
 
 def start_run(obs_config, daq_config, quabo_uids, data_config):
     my_ip = util.local_ip()
+    '''
     if my_ip != daq_config['head_node_ip_addr']:
         print('This is not the head node; see daq_config.json')
         return False
+    '''
 
     rn = util.read_run_name()
     if (rn):
@@ -148,7 +150,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
     try:
         run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
         run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
-        os.mkdir(run_dir)
+        #os.mkdir(run_dir)
         config_file.associate(daq_config, quabo_uids)
         config_file.show_daq_assignments(quabo_uids)
         print('starting data flow from quabos')
