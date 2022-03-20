@@ -5,7 +5,7 @@
 import redis
 
 def redis_init():
-    return redis.Redis(host='localhost', port=6379, db=0)
+    return redis.Redis(host='172.17.0.3', port=6379, db=0)
 
 def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
     avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
