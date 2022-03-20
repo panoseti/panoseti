@@ -15,7 +15,9 @@ import time
 import re
 from redis_utils import *
 
-OBSERVATORY = 'Lick'
+UTC_OFFSET = 7*3600 #ns
+TIMEFORMAT = "%Y-%m-%dT%H:%M:%SZ"
+OBSERVATORY = 'test'
 DATATYPE_FORMAT = {'housekeeping': re.compile("Quabo_[0-9]*"),
     'GPS': re.compile("GPS.*"),
     'whiterabbit': re.compile("WRSWITCH.*")}
@@ -38,6 +40,9 @@ def get_datatype(redis_key):
 
 # Create the json body and write the data to influxDB
 def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str):
+    t0 = float(data_fields['Computer_UTC']) + UTC_OFFSET
+    t1 = time.localtime(t0)
+    t = time.strftime(TIMEFORMAT, t1)
     json_body = [
         {
             "measurement": key,
@@ -45,7 +50,8 @@ def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str)
                 "observatory": OBSERVATORY,
                 "datatype": datatype
             },
-            "time": data_fields['Computer_UTC'],
+            #"time": data_fields['Computer_UTC'],
+            "time": t,
             "fields": data_fields
         }
     ]
