@@ -15,7 +15,8 @@ import time
 import re
 from redis_utils import *
 
-UTC_OFFSET = 7*3600 #ns
+#UTC_OFFSET = 7*3600 #ns
+UTC_OFFSET = 0
 TIMEFORMAT = "%Y-%m-%dT%H:%M:%SZ"
 OBSERVATORY = 'test'
 DATATYPE_FORMAT = {'housekeeping': re.compile("Quabo_[0-9]*"),
