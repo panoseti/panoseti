@@ -16,6 +16,7 @@ from signal import signal, SIGINT
 from datetime import datetime
 from datetime import timezone
 from redis_utils import *
+import util, config_file
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'
@@ -218,7 +219,7 @@ def initialize():
 
     # configure the serial connections (the parameters differs on the device you are connecting to)
     ser = serial.Serial(
-        port='/dev/ttyUSB0',
+        port=util.get_gps_port(config_file.get_obs_config()),
         baudrate=9600,
         timeout=1,
         parity=serial.PARITY_NONE,

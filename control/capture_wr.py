@@ -15,13 +15,14 @@ from signal import signal, SIGINT
 import time
 from datetime import datetime
 from redis_utils import *
+import config_file, util
 
 
 LINK_DOWN   =   '1'
 LINK_UP     =   '2'
 SFP_PN0     =   'PS-FB-TX1310'
 SFP_PN1     =   'PS-FB-RX1310'
-SWITCHIP    =   '192.168.1.254'
+SWITCHIP    =   util.get_wr_ip_addr(config_file.get_obs_config())
 RKEY        =   f'WRSWITCH{""}'
 OBSERVATORY =   'lick'
 

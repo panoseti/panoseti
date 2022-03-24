@@ -1,6 +1,7 @@
 # control script utilities
 
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
+import netifaces
 
 #-------------- DEFAULTS ---------------
 
@@ -43,12 +44,18 @@ def now_str():
 #
 default_hk_dest = '192.168.1.100'
 
+# our IP address on local network (192.x.x.x)
+# see https://pypi.org/project/netifaces/
+#
 def local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    x = s.getsockname()[0]
-    s.close()
-    return x
+    for ifname in netifaces.interfaces():
+        addrs = netifaces.ifaddresses(ifname)
+        for a, b in addrs.items():
+            for c in b:
+                z = c['addr']
+                if (z.startswith('192.')):
+                    return z
+    raise Exception("can't get local IP")
 
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.split('.')
@@ -232,3 +239,19 @@ def disk_usage(dir):
 def free_space():
     total, used, free = shutil.disk_usage('.')
     return free
+
+#-------------- WR and GPS---------------
+
+def get_wr_ip_addr(obs_config):
+    if 'wr_ip_addr' in obs_config.keys():
+        return obs_config['wr_ip_addr']
+    else:
+        return '192.168.1.254'
+
+# get GPS receiver port (path of the tty)
+#
+def get_gps_port(obs_config):
+    if 'gps_port' in obs_config.keys():
+        return obs_config['gps_port']
+    else:
+        return '/dev/ttyUSB0'
