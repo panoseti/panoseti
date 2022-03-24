@@ -220,7 +220,7 @@ def kill_hashpipe():
 
 def kill_hk_recorder():
     for p in psutil.process_iter():
-        if (hk_recorder_name in p.cmdline()) and p.username() == os.getlogin():
+        if (hk_recorder_name in p.cmdline()) and (p.username() == os.getenv('USER')):
             os.kill(p.pid, signal.SIGKILL)
 
 def disk_usage(dir):
