@@ -8,4 +8,3 @@ fi
 
 ssh-keygen -t ecdsa -b 521
 ssh-copy-id -i ~/.ssh/id_ecdsa.pub $1
-ssh-copy-id -i ~/.ssh/id_ecdsa.pub $USER@$HOSTNAME
