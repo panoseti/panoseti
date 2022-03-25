@@ -5,6 +5,8 @@
         "url": "http://admin:1234@192.168.0.100",
         "quabo_socket": 1
     },
+    "wr_ip_addr": "10.0.1.36",
+    "gps_port": "/dev/ttyUSB5",
     "domes": [
         {
             "obslat": 10.3,
