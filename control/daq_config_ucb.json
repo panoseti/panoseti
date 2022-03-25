@@ -1,11 +1,11 @@
 {
-    "head_node_data_dir": "/home/panoseti/data",
-    "head_node_ip_addr": "10.0.1.22",
+    "head_node_data_dir": "/home/data",
+    "head_node_ip_addr": "192.168.1.100",
     "daq_nodes": [
         {
-            "username": "panosetigraph",
-            "data_dir": "/home/panosetigraph/data",
-            "ip_addr": "10.0.1.22",
+            "username": "wei",
+            "data_dir": "/home/wei/data",
+            "ip_addr": "192.168.1.100",
             "module_ids": "0-255"
         }
     ]

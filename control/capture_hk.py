@@ -71,6 +71,7 @@ def storeInRedis(packet, r:redis.Redis):
     
     redis_set = {
         'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        #'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'BOARDLOC': array[0],
         'HVMON0': '{0:0.5g}'.format(HKconv.convertValue('HVMON0', array[1])),
         'HVMON1': '{0:0.5g}'.format(HKconv.convertValue('HVMON1', array[2])),

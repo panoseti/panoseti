@@ -49,10 +49,10 @@ def stop_run(daq_config, quabo_uids):
 
     print("stopping data generation")
     stop_data_flow(quabo_uids)
-
+    '''
     if util.local_ip() != daq_config['head_node_ip_addr']:
         raise Exception('This is not the head node specified in daq_config.json')
-
+    '''
     run_dir = util.read_run_name()
     if run_dir:
         print("collecting data from DAQ nodes")
