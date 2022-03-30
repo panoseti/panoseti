@@ -1,5 +1,5 @@
 /*
- * HSD_net_thread.c
+ * net_thread.c
  * 
  * The input(network) thread is used to read packets from the quabos.
  * These packets are then written into the shared memory blocks,
@@ -17,8 +17,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
+
 #include "hashpipe.h"
-#include "HSD_databuf.h"
+
+#include "databuf.h"
 
 //PKTSOCK Params(These should be only changed with caution as it need to change with MMAP)
 #define PKTSOCK_BYTES_PER_FRAME (16384)
@@ -76,7 +78,7 @@ static int init(hashpipe_thread_args_t * args){
     //Opening Pktsocket to recieve data.
     int rv = hashpipe_pktsock_open(p_ps, bindhost, PACKET_RX_RING);
 	if (rv!=HASHPIPE_OK) {
-        hashpipe_error("HSD_net_thread", "Error opening pktsock.");
+        hashpipe_error("net_thread", "Error opening pktsock.");
         pthread_exit(NULL);
 	}
 
@@ -326,7 +328,7 @@ static void *run(hashpipe_thread_args_t * args){
  * Sets the functions and buffers for this thread
  */
 static hashpipe_thread_desc_t HSD_net_thread = {
-    name: "HSD_net_thread",
+    name: "net_thread",
     skey: "NETSTAT",
     init: init,
     run: run,

@@ -69,7 +69,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./HSD_hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" HSD_net_thread HSD_compute_thread  HSD_output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
+    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script

@@ -13,9 +13,9 @@ SRCS = image_test.cpp pulse_test.cpp ph5_test.cpp pfits_test.cpp
 H5_INC = -I/usr/include/hdf5/serial
 
 ifeq ($(DEBUG),1)
-CXXFLAGS =  -g
+CXXFLAGS =  -g -fPIC
 else
-CXXFLAGS =  -O4
+CXXFLAGS =  -O4 -fPIC
 endif
 
 CXX = g++ $(CXXFLAGS) $(H5_INC)

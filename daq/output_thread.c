@@ -1,6 +1,6 @@
-/* HSD_output_thread.c
+/* output_thread.c
  *
- * Writes the data to HDF5 output file
+ * Writes the data to output file
  */
 
 #include <stdio.h>
@@ -16,9 +16,9 @@
 #include <sys/types.h>
 #include <string>
 #include "hashpipe.h"
-#include "HSD_databuf.h"
-#include "../util/pff.cpp"
-#include "../util/dp.h"
+#include "databuf.h"
+#include "pff.h"
+#include "dp.h"
 
 
 /**
@@ -571,7 +571,7 @@ static void *run(hashpipe_thread_args_t *args) {
  * Sets the functions and buffers for this thread
  */
 static hashpipe_thread_desc_t HSD_output_thread = {
-    name : "HSD_output_thread",
+    name : "output_thread",
     skey : "OUTSTAT",
     init : init,
     run : run,

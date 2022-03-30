@@ -1,4 +1,4 @@
-/* HSD_compute_thread.c
+/* compute_thread.c
  *
  * Does pre processing on the data coming from the quabos before writing to file.
  */
@@ -11,64 +11,15 @@
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <unistd.h>
+
 #include "hashpipe.h"
-#include "HSD_databuf.h"
+
+#include "databuf.h"
+#include "compute_thread.h"
 #include "process_frame.h"
 
 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
 #define NUM_OF_MODES 7
-
-/**
- * Structure for monitoring module data held by the compute thread.
- * Software mode such as image integration and coincidence analysis
- * information should be stored in this structure.
- */
-typedef struct module_data {
-    uint32_t max_nanosec;
-    uint32_t min_nanosec;
-    uint8_t status;                 //Status is a freely used variable for either integration number or error code.
-    module_header_t mod_head;
-    uint8_t data[BYTES_PER_MODULE_FRAME];
-    module_data(){
-        this->max_nanosec = 0;
-        this->min_nanosec = 0;
-        this->status = 0;
-    };
-    int copy_to(module_data *mod_data) {
-        mod_data->max_nanosec = this->max_nanosec;
-        mod_data->min_nanosec = this->min_nanosec;
-        mod_data->status = this->status;
-        this->mod_head.copy_to(&(mod_data->mod_head));
-        memcpy(mod_data->data, this->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
-    };
-    int clear(){
-        this->max_nanosec = 0;
-        this->min_nanosec = 0;
-        this->status = 0;
-        this->mod_head.clear();
-        memset(this->data, 0, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
-    };
-    std::string toString(){
-        return "status = " + std::to_string(this->status) +
-                " max_nanosec = " + std::to_string(this->max_nanosec) +
-                " min_nanosec = " + std::to_string(this->min_nanosec) +
-                "\n" + mod_head.toString();
-    };
-    int equal_to(module_data *mod_data){
-        if (this->max_nanosec != mod_data->max_nanosec
-            || this->min_nanosec != mod_data->min_nanosec
-            || this->status != mod_data->status){
-            return 0;
-        }
-        if (!this->mod_head.equal_to(&(mod_data->mod_head))){
-            return 0;
-        }
-        if (memcmp(this->data, mod_data->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME) == 0){
-            return 0;
-        }
-        return 1;
-    }
-} module_data_t;
 
 /**
  * Writes the image data from the module data into block in output buffer.
@@ -436,7 +387,7 @@ static void *run(hashpipe_thread_args_t * args){
  * Sets the functions and buffers for this thread
  */
 static hashpipe_thread_desc_t HSD_compute_thread = {
-    name: "HSD_compute_thread",
+    name: "compute_thread",
     skey: "COMPUTESTAT",
     init: init,
     run: run,

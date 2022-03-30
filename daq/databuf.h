@@ -1,3 +1,6 @@
+#ifndef _DATABUF_H_
+#define _DATABUF_H_
+
 /**
  * Panoseti Data Acquisition Data Buffer Header File
  * Variables and structures of constants for both the hashpipe framework and packet information is defined here.
@@ -353,3 +356,5 @@ static inline int HSD_output_databuf_set_free(HSD_output_databuf_t *d, int block
 static inline int HSD_output_databuf_set_filled(HSD_output_databuf_t *d, int block_id){
     return hashpipe_databuf_set_filled((hashpipe_databuf_t *)d, block_id);
 }
+
+#endif

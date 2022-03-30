@@ -1,4 +1,4 @@
-/* HSD_databuf.c
+/* databuf.c
  * 
  * Routines for creating and accessing main data transfer
  * buffer in shared memory
@@ -14,7 +14,8 @@
 #include <sys/sem.h>
 #include <errno.h>
 #include <time.h>
-#include "HSD_databuf.h"
+
+#include "databuf.h"
 
 hashpipe_databuf_t *HSD_input_databuf_create(int instance_id, int databuf_id){
     /* Calc databuf size */
