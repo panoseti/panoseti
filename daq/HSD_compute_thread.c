@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include "hashpipe.h"
 #include "HSD_databuf.h"
+#include "process_frame.h"
 
 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
 #define NUM_OF_MODES 7
@@ -162,8 +163,11 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         || mod_data->mod_head.mode != mode 
         || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD){
         
-        // This is where we will have a complete frame and perform and processing
-        // before it gets written to the output buffer.
+        // A frame is now final.
+        // Process it (e.g. unrotate) before copying to output buffer
+        //
+        process_frame(mod_data);
+
         write_frame_to_out_buffer(mod_data, out_block);
         //Resetting values in the new emptied module pair obj
         mod_data->clear();

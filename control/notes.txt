@@ -246,3 +246,37 @@ stop run if hashpipe fails
 daemons
     no error if running
 redundant stuff in HK
+----------------
+
+send PH threshold to boards
+GAIN
+DAC1
+    convert pe_threshold to DAC1
+
+send calibration
+
+HV settings
+
+function to mask pixels
+chan mask: prevent PH triggering per pixel
+
+data viewer for PFF files
+
+to generate quabo config (matlab):
+    (dark telescope)
+    vary DAC1 from 150 to 250 by 1
+        look for steps in downward slope
+        PH, image:
+    generates: 
+        .mat file
+        .txt file
+
+remove reboot check
+
+config file:
+    IP addr of WR
+    UART port of GPS receiver
+
+same data dir on head/daq node
+
+"this is not the head node spec..."
