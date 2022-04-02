@@ -9,6 +9,8 @@ obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
 data_config_filename = 'data_config.json'
 quabo_uids_filename = 'quabo_uids.json'
+quabo_info_filename = '../quabos/quabo_info.json'
+detector_info_filename = '../quabos/detector_info.json'
 
 config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename, quabo_uids_filename
@@ -97,6 +99,30 @@ def get_quabo_uids():
     assign_numbers(c)
     return c
 
+# get detector info as an array indexed by serialno
+#
+def get_detector_info():
+    check_config_file(detector_info_filename)
+    with open(detector_info_filename) as f:
+        s = f.read()
+    c = json.loads(s)
+    d = {}
+    for det in c:
+        d[str(det['serialno'])] = float(det['operating_voltage'])
+    return d;
+
+# get quabo info as an array indexed by uid
+#
+def get_quabo_info():
+    check_config_file(quabo_info_filename)
+    with open(quabo_info_filename) as f:
+        s = f.read()
+    c = json.loads(s)
+    d = {}
+    for q in c:
+        d[q['uid']] = q
+    return d;
+
 # return list of modules from obs_config
 #
 def get_modules(c):
@@ -136,6 +162,5 @@ def show_daq_assignments(quabo_uids):
                 )
 
 if __name__ == "__main__":
-    c = get_daq_config()
-    n = c['daq_nodes'][0]
-    print(n)
+    c = get_detector_info()
+    print(c)
