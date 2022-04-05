@@ -32,9 +32,9 @@ signed = [
     0, 0, 0, 0, # HVIMON ((65535-HVIMON) * 38.1nA) (0 to 2.5mA)
     0,                        # RAWHVMON (0 to -80V)
     0,                      # V12MON (19.07uV/LSB) (1.2V supply)
-    0,                      # V18MON (19.07uV/LSB) (1.8V supply)
-    0,                      # V33MON (38.10uV/LSB) (3.3V supply)
-    0,                      # V37MON (38.10uV/LSB) (3.7V supply)
+    0,                      # V18MON (38.14uV/LSB) (1.8V supply)
+    0,                      # V33MON (76.20uV/LSB) (3.3V supply)
+    0,                      # V37MON (76.20uV/LSB) (3.7V supply)
     0,                      # I10MON (182uA/LSB) (1.0V supply)
     0,                      # I18MON (37.8uA/LSB) (1.8V supply)
     0,                      # I33MON (37.8uA/LSB) (3.3V supply)
@@ -68,7 +68,7 @@ def storeInRedis(packet, r:redis.Redis):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
         
     boardName = "QUABO_" + str(array[0])
-    
+    print('debugging: ',array[11]) 
     redis_set = {
         'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         #'Computer_UTC': datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
