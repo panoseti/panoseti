@@ -9,7 +9,7 @@ firmware_silver_bga = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess, time
-import util, config_file, file_xfer
+import util, config_file, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
 def usage():
@@ -20,6 +20,8 @@ def usage():
 --loads                 load silver firmware in quabos
 --init_daq_nodes        copy software to daq nodes
 --redis_daemons         start daemons to populate Redis with HK/GPS/WR data
+--hv_on                 enable detectors
+--hv_off                disable detectors
 --stop_redis_daemons    stop daemons
 ''')
     sys.exit()
@@ -99,6 +101,37 @@ def do_ping(modules):
             else:
                 print("can't ping %s"%ip_addr)
 
+def do_hv_on(modules, quabo_uids, quabo_info, detector_info):
+    for module in modules:
+        for i in range(4):
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
+            qi = quabo_info[uid]
+            v = [0]*4
+            for j in range(4):
+                det_ser = qi['detector_serialno'][j]
+                op_voltage = detector_info[det_ser]
+                v[j] = int(op_voltage/.014)
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            quabo = quabo_driver.QUABO(ip_addr)
+            quabo.hv_set(v)
+            quabo.close()
+            print('%s: set HV to [%d %d %d %d]'%(
+                ip_addr, v[0], v[1], v[2], v[3]
+            ))
+
+def do_hv_off(modules, quabo_uids):
+    for module in modules:
+        for i in range(4):
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
+            v = [0]*4
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            quabo = quabo_driver.QUABO(ip_addr)
+            quabo.hv_set(v)
+            quabo.close()
+            print('%s: set HV to zero'%ip_addr)
+
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
@@ -126,6 +159,12 @@ if __name__ == "__main__":
         elif argv[i] == '--stop_redis_daemons':
             nops += 1
             op = 'stop_redis_daemons'
+        elif argv[i] == '--hv_on':
+            nops += 1
+            op = 'hv_on'
+        elif argv[i] == '--hv_off':
+            nops += 1
+            op = 'hv_off'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -140,6 +179,8 @@ if __name__ == "__main__":
     modules = config_file.get_modules(obs_config)
     quabo_uids = config_file.get_quabo_uids()
     daq_config = config_file.get_daq_config()
+    quabo_info = config_file.get_quabo_info()
+    detector_info = config_file.get_detector_info()
     config_file.associate(daq_config, quabo_uids)
     if op == 'reboot':
         do_reboot(modules, quabo_uids)
@@ -157,3 +198,7 @@ if __name__ == "__main__":
     elif op == 'show':
         show_config(obs_config, quabo_uids)
         util.show_redis_daemons()
+    elif op == 'hv_on':
+        do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+    elif op == 'hv_off':
+        do_hv_off(modules, quabo_uids)

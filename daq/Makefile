@@ -1,29 +1,32 @@
 CC          = g++
 REDIS_LIB_CCFLAGS = -lhiredis
-HSD_LIB_CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -msse4 \
+CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ -msse4 \
     -I. -I$(CUDA_DIR)/include -I/usr/local/include \
+    -I ../util \
     -L. -L/usr/local/lib \
     -lhashpipe -lrt -lm \
     -ldl \
     -Wl,-rpath
-HSD_LIB_TARGET   = HSD_hashpipe.so
-HSD_LIB_SOURCES  = HSD_net_thread.c \
-    HSD_compute_thread.c \
-    HSD_output_thread.c \
-    HSD_databuf.c #\
+TARGET   = hashpipe.so
+SOURCES  = net_thread.c \
+    compute_thread.c \
+    output_thread.c \
+    process_frame.c \
+    databuf.c \
+    ../util/pff.o
 #    ../util/image.o
 
-HSD_LIB_INCLUDES = HSD_databuf.h
+INCLUDES = databuf.h
 
-all: $(HSD_LIB_TARGET)
+all: $(TARGET)
 
-$(HSD_LIB_TARGET): $(HSD_LIB_SOURCES) $(HSD_LIB_INCLUDES)
-	$(CC) -o $(HSD_LIB_TARGET) $(HSD_LIB_SOURCES) $(HSD_LIB_CCFLAGS)
+$(TARGET): $(SOURCES) $(INCLUDES)
+	$(CC) -o $(TARGET) $(SOURCES) $(CCFLAGS)
 
 tags:
 	ctags -R .
 clean:
-	rm -f $(HSD_LIB_TARGET) tags
+	rm -f $(TARGET) tags
 
 .PHONY: all tags clean install install-lib
 # vi: set ts=8 noet :

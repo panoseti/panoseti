@@ -4,7 +4,7 @@
 #
 # options when run as a script:
 # --config              copy data products config file to noes
-# --hashpipe            copy hashpipe executable (HSD_hashpipe.so) to nodes
+# --hashpipe            copy hashpipe executable (hashpipe.so) to nodes
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
 import sys, os
@@ -91,7 +91,7 @@ def copy_config_files(daq_config, run_dir):
 #
 def copy_hashpipe(daq_config):
     for node in daq_config['daq_nodes']:
-        copy_file_to_node('../daq/HSD_hashpipe.so', daq_config, node)
+        copy_file_to_node('../daq/hashpipe.so', daq_config, node)
         copy_file_to_node('start_daq.py', daq_config, node)
         copy_file_to_node('stop_daq.py', daq_config, node)
         copy_file_to_node('status_daq.py', daq_config, node)

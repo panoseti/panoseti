@@ -101,7 +101,7 @@ class QUABO:
         self.flush_rx_buf()     # needed?
         self.send(cmd)
 
-    def hv_chan(self, chan, value):
+    def hv_set_chan(self, chan, value):
         cmd = self.make_cmd(0x02)
         self.HV_vals[chan] = value
         for i in range(4):
@@ -111,11 +111,13 @@ class QUABO:
             cmd[2*i+3]=MSbyte
         self.send(cmd)
 
-    def hv_zero(self):
+    # set high voltage for all 4 channels
+    #
+    def hv_set(self, values):
         cmd = self.make_cmd(0x02)
         for i in range(4):
-            cmd[2*i+2]=0
-            cmd[2*i+3]=0
+            cmd[2*i+2] = values[i] & 0xff
+            cmd[2*i+3] = (values[i] >> 8) & 0xff
         self.send(cmd)
 
     def send_acq_parameters_file(self):
