@@ -17,7 +17,8 @@ class HKconvert():
         self.keyFormat = {r'HVMON[0-3]':self.HVMON,
                          r'HVIMON[0-3]':self.HVIMON,
                          r'RAWHVMON':self.RAWHVMON,
-                         r'V1[0-9]MON':self.V12MON,
+                         r'V12MON':self.V12MON,
+                         r'V18MON':self.V18MON,
                          r'V3[0-9]MON':self.V33MON,
                          r'I10MON':self.I10MON,
                          r'I18MON':self.I18MON,
@@ -41,10 +42,10 @@ class HKconvert():
         return value*19.07*1e3 / self.voltageFactor
 
     def V18MON(self, value):
-        return self.V12MON(value)
+        return value*38.14*1e3 / self.voltageFactor
 
     def V33MON(self, value):
-        return value*38.1*1e3 / self.voltageFactor
+        return value*76.2*1e3 / self.voltageFactor
 
     def V37MON(self, value):
         return self.V33MON(value)
