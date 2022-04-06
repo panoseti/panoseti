@@ -5,6 +5,8 @@
 # We parse them into a list of [key, value] pairs rather than a dictionary,
 # in order to preserve the order of lines
 
+DEPRECATED
+
 def read(path):
     with open(path) as f:
         c = []

@@ -11,6 +11,7 @@ data_config_filename = 'data_config.json'
 quabo_uids_filename = 'quabo_uids.json'
 quabo_info_filename = '../quabos/quabo_info.json'
 detector_info_filename = '../quabos/detector_info.json'
+quabo_calib_filename = '../quabos/quabo_calib_%s.json'
 
 config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename, quabo_uids_filename
@@ -122,6 +123,14 @@ def get_quabo_info():
     for q in c:
         d[q['uid']] = q
     return d;
+
+# get quabo calibration info
+#
+def get_quabo_calib(serialno):
+    path = quabo_calib_filename%serialno
+    with open(path) as f:
+        s = f.read()
+    return json.loads(s)
 
 # return list of modules from obs_config
 #
