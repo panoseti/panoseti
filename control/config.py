@@ -19,12 +19,13 @@ def usage():
 --reboot                reboot quabos
 --loads                 load silver firmware in quabos
 --init_daq_nodes        copy software to daq nodes
---redis_daemons         start daemons to populate Redis with HK/GPS/WR data
+--redis_daemons         start daemons to populate Redis with HK/GPS/WR data,
+                        and to copy data from Redis to InfluxDB
+--stop_redis_daemons    stop the above
 --hv_on                 enable detectors
 --hv_off                disable detectors
 --maroc_config          configure MAROCs based on data_config.json
                         and quabo_calib_*.json
---stop_redis_daemons    stop daemons
 ''')
     sys.exit()
 

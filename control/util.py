@@ -28,7 +28,9 @@ daq_run_name_filename = 'daq_run_name'
 hp_stdout_prefix = 'hp_stdout_'
     # hashpipe stdout file is prefix_ipaddr
 
-redis_daemons = ['capture_gps.py', 'capture_hk.py', 'capture_wr.py']
+redis_daemons = [
+    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'storeInfluxDB.py'
+]
 
 #-------------- TIME ---------------
 
