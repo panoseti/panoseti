@@ -22,6 +22,8 @@ def usage():
 --redis_daemons         start daemons to populate Redis with HK/GPS/WR data
 --hv_on                 enable detectors
 --hv_off                disable detectors
+--maroc_config          configure MAROCs based on data_config.json
+                        and quabo_calib_*.json
 --stop_redis_daemons    stop daemons
 ''')
     sys.exit()
@@ -132,10 +134,65 @@ def do_hv_off(modules, quabo_uids):
             quabo.close()
             print('%s: set HV to zero'%ip_addr)
 
+# set the DAC1 and GAIN* params for MAROC chips
+#
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
+    gain = float(data_config['gain'])
+    pe_thresh = float(data_config['image']['pe_threshold'])
+        # should it be image or pulse_height??
+    qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
+    for module in modules:
+        for i in range(4):
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
+            qi = quabo_info[uid]
+            serialno = qi['serialno'][3:]
+            quabo_calib = config_file.get_quabo_calib(serialno)
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+
+            # compute DAC1[] based on calibration data
+            dac1 = [0]*4
+            for j in range(4):      # 4 detectors in a quabo
+                quad = quabo_calib['quadrants'][j]
+                a = quad['a']
+                b = quad['b']
+                n = quad['n']
+                m = quad['m']
+                dac1[j] = int(a*gain*pe_thresh + b)
+            qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
+            print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1']))
+
+            # compute GAIN0[]..GAIN63[] based on calibration data
+            # TODO: fix indexing
+            maroc_gain = [[0]*4 for i in range(64)]
+            s = 0
+            t = 0
+            for j in range(4):
+                for k in range(64):
+                    delta = quabo_calib['pixel_gain'][s][t]
+                    g = int(round(gain*(1+delta)))
+                    print(j, k, delta, g)
+                    maroc_gain[k][j] = g
+                    t += 1
+                    if t == 16:
+                        t = 0
+                        s += 1
+            for k in range(64):
+                tag = 'GAIN%d'%k
+                qc_dict[tag] = '%d,%d,%d,%d'%(
+                    maroc_gain[k][0], maroc_gain[k][1],
+                    maroc_gain[k][2], maroc_gain[k][3]
+                )
+                print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
+
+            # send MAROC params to the quabo
+            quabo = quabo_driver.QUABO(ip_addr)
+            quabo.send_maroc_params(qc_dict)
+            quabo.close()
+
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
-    obs_config = config_file.get_obs_config()
     i = 1
     while i < len(argv):
         if argv[i] == '--show':
@@ -165,6 +222,9 @@ if __name__ == "__main__":
         elif argv[i] == '--hv_off':
             nops += 1
             op = 'hv_off'
+        elif argv[i] == '--maroc_config':
+            nops += 1
+            op = 'maroc_config'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -176,11 +236,11 @@ if __name__ == "__main__":
         print('must specify a single op')
         usage()
 
+    obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
     quabo_uids = config_file.get_quabo_uids()
     daq_config = config_file.get_daq_config()
     quabo_info = config_file.get_quabo_info()
-    detector_info = config_file.get_detector_info()
     config_file.associate(daq_config, quabo_uids)
     if op == 'reboot':
         do_reboot(modules, quabo_uids)
@@ -189,7 +249,6 @@ if __name__ == "__main__":
     elif op == 'ping':
         do_ping(modules)
     elif op == 'init_daq_nodes':
-        daq_config = config_file.get_daq_config()
         file_xfer.copy_hashpipe(daq_config)
     elif op == 'redis_daemons':
         util.start_redis_daemons()
@@ -199,6 +258,10 @@ if __name__ == "__main__":
         show_config(obs_config, quabo_uids)
         util.show_redis_daemons()
     elif op == 'hv_on':
+        detector_info = config_file.get_detector_info()
         do_hv_on(modules, quabo_uids, quabo_info, detector_info)
     elif op == 'hv_off':
         do_hv_off(modules, quabo_uids)
+    elif op == 'maroc_config':
+        data_config = config_file.get_data_config()
+        do_maroc_config(modules, quabo_uids, quabo_info, data_config)

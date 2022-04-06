@@ -36,7 +36,7 @@ class DAQ_PARAMS:
 # will probably need to change this at some point
 
 class QUABO:
-    def __init__(self, ip_addr, config_file_path='config/quabo_config.txt'):
+    def __init__(self, ip_addr, config_file_path='quabo_config.txt'):
         self.ip_addr = ip_addr
         self.config_file_path = config_file_path
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -71,12 +71,17 @@ class QUABO:
         #util.print_binary(cmd)
         self.send(cmd)
 
-    def send_maroc_params(self):
+    def send_maroc_params_file(self):
         cmd = bytearray(492)
-        cmd[0] = 0x01
         with open(config_file_path) as f:
-            self.parse_maroc_params(f, cmd)
+            config = parse_quabo_config_file(self.config_file_path)
+        self.make_maroc_cmd(config, cmd)
         self.flush_rx_buf()
+        self.send(cmd)
+
+    def send_maroc_params(self, config):
+        cmd = bytearray(492)
+        self.make_maroc_cmd(config, cmd)
         self.send(cmd)
 
     def calibrate_ph_baseline(self):
@@ -392,99 +397,90 @@ class QUABO:
                 cmd[26]=LSbyte
                 cmd[27]=MSbyte
 
-    def parse_maroc_params(self, fhand, cmd):
-        for line in fhand:
-            if line.startswith("*"):
-                continue
-
-            # strip off the comment
-            strippedline = line.split('*')[0]
-            
-            # Split the tag field from the cs value field
-            fields = strippedline.split("=")
-            if len(fields) !=2:
-                continue
-            tag = fields[0].strip()
-
+    # given a config dictionary, make a MAROC config command
+    #
+    def make_maroc_cmd(self, config, cmd):
+        cmd[0] = 0x01
+        for tag, val in config.items():
             # Make a list of the should-be 4 ascii values
-            vals = fields[1].split(",")
+            vals = val.split(",")
 
             # Make a list of integers
             vals_int = []
             for i in range(len(vals)): vals_int.append(int(vals[i],0))
 
             # For each tag, set the appropriate bit field
-            if (tag == "OTABG_ON"): self.set_bits_4(fields[0], vals_int, 0, 1)
-            if (tag == "DAC_ON"): self.set_bits_4(fields[0], vals_int, 1, 1)
-            if (tag == "SMALL_DAC"): self.set_bits_4(fields[0], vals_int, 2, 1)
+            if (tag == "OTABG_ON"): self.set_bits_4(tag, vals_int, 0, 1)
+            if (tag == "DAC_ON"): self.set_bits_4(tag, vals_int, 1, 1)
+            if (tag == "SMALL_DAC"): self.set_bits_4(tag, vals_int, 2, 1)
             if (tag == "DAC2"):
                 #need to reverse the bits
                 vals_revbits = []
                 for i in range (4):
                     vals_revbits.append(reverse_bits(int(vals[i],0),10))
-                self.set_bits_4(fields[0], vals_revbits, 3, 10)
+                self.set_bits_4(tag, vals_revbits, 3, 10)
             if (tag == "DAC1"):
                 vals_revbits = []
                 for i in range (4):
                     vals_revbits.append(reverse_bits(int(vals[i],0),10))
-                self.set_bits_4(fields[0], vals_revbits, 13, 10)
-            if (tag == "ENB_OUT_ADC"): self.set_bits_4(fields[0], vals_int, 23, 1)
-            if (tag == "INV_START_GRAY"): self.set_bits_4(fields[0], vals_int, 24, 1)
-            if (tag == "RAMP8B"): self.set_bits_4(fields[0], vals_int, 25, 1)
-            if (tag == "RAMP10B"): self.set_bits_4(fields[0], vals_int, 26, 1)
-            if (tag == "CMD_CK_MUX"): self.set_bits_4(fields[0], vals_int, 155, 1)
-            if (tag == "D1_D2"): self.set_bits_4(fields[0], vals_int, 156, 1)
-            if (tag == "INV_DISCR_ADC"): self.set_bits_4(fields[0], vals_int, 157, 1)
-            if (tag == "POLAR_DISCRI"): self.set_bits_4(fields[0], vals_int, 158, 1)
-            if (tag == "ENB3ST"): self.set_bits_4(fields[0], vals_int, 159, 1)
-            if (tag == "VAL_DC_FSB2"): self.set_bits_4(fields[0], vals_int, 160, 1)
-            if (tag == "SW_FSB2_50F"): self.set_bits_4(fields[0], vals_int, 161, 1)
-            if (tag == "SW_FSB2_100F"): self.set_bits_4(fields[0], vals_int, 162, 1)
-            if (tag == "SW_FSB2_100K"): self.set_bits_4(fields[0], vals_int, 163, 1)
-            if (tag == "SW_FSB2_50K"): self.set_bits_4(fields[0], vals_int, 164, 1)
-            if (tag == "VALID_DC_FS"): self.set_bits_4(fields[0], vals_int, 165, 1)
-            if (tag == "CMD_FSB_FSU"): self.set_bits_4(fields[0], vals_int, 166, 1)
-            if (tag == "SW_FSB1_50F"): self.set_bits_4(fields[0], vals_int, 167, 1)
-            if (tag == "SW_FSB1_100F"): self.set_bits_4(fields[0], vals_int, 168, 1)
-            if (tag == "SW_FSB1_100K"): self.set_bits_4(fields[0], vals_int, 169, 1)
-            if (tag == "SW_FSB1_50k"): self.set_bits_4(fields[0], vals_int, 170, 1)
-            if (tag == "SW_FSU_100K"): self.set_bits_4(fields[0], vals_int, 171, 1)
-            if (tag == "SW_FSU_50K"): self.set_bits_4(fields[0], vals_int, 172, 1)
-            if (tag == "SW_FSU_25K"): self.set_bits_4(fields[0], vals_int, 173, 1)
-            if (tag == "SW_FSU_40F"): self.set_bits_4(fields[0], vals_int, 174, 1)
-            if (tag == "SW_FSU_20F"): self.set_bits_4(fields[0], vals_int, 175, 1)
-            if (tag == "H1H2_CHOICE"): self.set_bits_4(fields[0], vals_int, 176, 1)
-            if (tag == "EN_ADC"): self.set_bits_4(fields[0], vals_int, 177, 1)
-            if (tag == "SW_SS_1200F"): self.set_bits_4(fields[0], vals_int, 178, 1)
-            if (tag == "SW_SS_600F"): self.set_bits_4(fields[0], vals_int, 179, 1)
-            if (tag == "SW_SS_300F"): self.set_bits_4(fields[0], vals_int, 180, 1)
-            if (tag == "ON_OFF_SS"): self.set_bits_4(fields[0], vals_int, 181, 1)
-            if (tag == "SWB_BUF_2P"): self.set_bits_4(fields[0], vals_int, 182, 1)
-            if (tag == "SWB_BUF_1P"): self.set_bits_4(fields[0], vals_int, 183, 1)
-            if (tag == "SWB_BUF_500F"): self.set_bits_4(fields[0], vals_int, 184, 1)
-            if (tag == "SWB_BUF_250F"): self.set_bits_4(fields[0], vals_int, 185, 1)
-            if (tag == "CMD_FSB"): self.set_bits_4(fields[0], vals_int, 186, 1)
-            if (tag == "CMD_SS"): self.set_bits_4(fields[0], vals_int, 187, 1)
-            if (tag == "CMD_FSU"): self.set_bits_4(fields[0], vals_int, 188, 1)
+                self.set_bits_4(tag, vals_revbits, 13, 10)
+            if (tag == "ENB_OUT_ADC"): self.set_bits_4(tag, vals_int, 23, 1)
+            if (tag == "INV_START_GRAY"): self.set_bits_4(tag, vals_int, 24, 1)
+            if (tag == "RAMP8B"): self.set_bits_4(tag, vals_int, 25, 1)
+            if (tag == "RAMP10B"): self.set_bits_4(tag, vals_int, 26, 1)
+            if (tag == "CMD_CK_MUX"): self.set_bits_4(tag, vals_int, 155, 1)
+            if (tag == "D1_D2"): self.set_bits_4(tag, vals_int, 156, 1)
+            if (tag == "INV_DISCR_ADC"): self.set_bits_4(tag, vals_int, 157, 1)
+            if (tag == "POLAR_DISCRI"): self.set_bits_4(tag, vals_int, 158, 1)
+            if (tag == "ENB3ST"): self.set_bits_4(tag, vals_int, 159, 1)
+            if (tag == "VAL_DC_FSB2"): self.set_bits_4(tag, vals_int, 160, 1)
+            if (tag == "SW_FSB2_50F"): self.set_bits_4(tag, vals_int, 161, 1)
+            if (tag == "SW_FSB2_100F"): self.set_bits_4(tag, vals_int, 162, 1)
+            if (tag == "SW_FSB2_100K"): self.set_bits_4(tag, vals_int, 163, 1)
+            if (tag == "SW_FSB2_50K"): self.set_bits_4(tag, vals_int, 164, 1)
+            if (tag == "VALID_DC_FS"): self.set_bits_4(tag, vals_int, 165, 1)
+            if (tag == "CMD_FSB_FSU"): self.set_bits_4(tag, vals_int, 166, 1)
+            if (tag == "SW_FSB1_50F"): self.set_bits_4(tag, vals_int, 167, 1)
+            if (tag == "SW_FSB1_100F"): self.set_bits_4(tag, vals_int, 168, 1)
+            if (tag == "SW_FSB1_100K"): self.set_bits_4(tag, vals_int, 169, 1)
+            if (tag == "SW_FSB1_50k"): self.set_bits_4(tag, vals_int, 170, 1)
+            if (tag == "SW_FSU_100K"): self.set_bits_4(tag, vals_int, 171, 1)
+            if (tag == "SW_FSU_50K"): self.set_bits_4(tag, vals_int, 172, 1)
+            if (tag == "SW_FSU_25K"): self.set_bits_4(tag, vals_int, 173, 1)
+            if (tag == "SW_FSU_40F"): self.set_bits_4(tag, vals_int, 174, 1)
+            if (tag == "SW_FSU_20F"): self.set_bits_4(tag, vals_int, 175, 1)
+            if (tag == "H1H2_CHOICE"): self.set_bits_4(tag, vals_int, 176, 1)
+            if (tag == "EN_ADC"): self.set_bits_4(tag, vals_int, 177, 1)
+            if (tag == "SW_SS_1200F"): self.set_bits_4(tag, vals_int, 178, 1)
+            if (tag == "SW_SS_600F"): self.set_bits_4(tag, vals_int, 179, 1)
+            if (tag == "SW_SS_300F"): self.set_bits_4(tag, vals_int, 180, 1)
+            if (tag == "ON_OFF_SS"): self.set_bits_4(tag, vals_int, 181, 1)
+            if (tag == "SWB_BUF_2P"): self.set_bits_4(tag, vals_int, 182, 1)
+            if (tag == "SWB_BUF_1P"): self.set_bits_4(tag, vals_int, 183, 1)
+            if (tag == "SWB_BUF_500F"): self.set_bits_4(tag, vals_int, 184, 1)
+            if (tag == "SWB_BUF_250F"): self.set_bits_4(tag, vals_int, 185, 1)
+            if (tag == "CMD_FSB"): self.set_bits_4(tag, vals_int, 186, 1)
+            if (tag == "CMD_SS"): self.set_bits_4(tag, vals_int, 187, 1)
+            if (tag == "CMD_FSU"): self.set_bits_4(tag, vals_int, 188, 1)
 
             #Look for a MASKOR1 value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("MASKOR1"):
                 chan = tag.split('_')[1]
                 chan = int(chan)
-                self.set_bits_4(fields[0], vals_int, 154-(2*chan), 1)
+                self.set_bits_4(tag, vals_int, 154-(2*chan), 1)
             #Look for a MASKOR2 value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("MASKOR2"):
                 chan = tag.split('_')[1]
                 chan = int(chan)
-                self.set_bits_4(fields[0], vals_int, 153-(2*chan), 1)
+                self.set_bits_4(tag, vals_int, 153-(2*chan), 1)
             #Look for a CTEST value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("CTEST"):
                 chan = tag.split('_')[1]
                 chan = int(chan)
                 #if chan in range(4):
                     #vals_int = [0,0,0,0]
-                self.set_bits_4(fields[0], vals_int, 828-chan, 1)
-                #print(fields[0], vals_int, chan)
+                self.set_bits_4(tag, vals_int, 828-chan, 1)
+                #print(tag, vals_int, chan)
 
             #Look for a GAIN value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("GAIN"):
@@ -494,14 +490,14 @@ class QUABO:
                 vals_revbits = []
                 for i in range (4):
                     vals_revbits.append(reverse_bits((vals_int[i]),8))
-                self.set_bits_4(fields[0], vals_revbits, 757-9*chan,8)
+                self.set_bits_4(tag, vals_revbits, 757-9*chan,8)
             for ii in range(104):
                 cmd[ii+4] = self.MAROC_regs[0][ii]
                 cmd[ii+132] = self.MAROC_regs[1][ii]
                 cmd[ii+260] = self.MAROC_regs[2][ii]
                 cmd[ii+388] = self.MAROC_regs[3][ii]
 
-    # Set bits in the command_buf according to the input values.
+    # Set bits in MAROC_regs[chip] according to the input values.
     # Maximum value for field_width is 16 (a value can only span three bytes)
     #
     def set_bits(self, chip, lsb_pos, field_width, value):
@@ -525,16 +521,43 @@ class QUABO:
             self.MAROC_regs[chip][byte_pos + 2] = self.MAROC_regs[chip][byte_pos + 2] & ((~(mask>>16)) & 0xff)
             self.MAROC_regs[chip][byte_pos + 2] = self.MAROC_regs[chip][byte_pos + 2] | (((value >> (16-shift))) & 0xff)
 
-    #take a 4-element list and call set_bits 4 times
+    # take a 4-element list and call set_bits for each MAROC
+    #
     def set_bits_4(self, tag, vals, lsb_pos, field_width):
         #vals = instring.split(",")
         if (len(vals) != 4):
-            print("need 4 elements for " + tag +"\n")
-            return
+            raise Exception("need 4 elements for " + tag +"\n")
         self.set_bits(0, lsb_pos, field_width, vals[0])
         self.set_bits(1, lsb_pos, field_width, vals[1])
         self.set_bits(2, lsb_pos, field_width, vals[2])
         self.set_bits(3, lsb_pos, field_width, vals[3])
+
+# END OF CLASS QUABO
+
+# read a file of the form
+# name0=val0
+# name1=val1
+# ... and return a dictionary mapping name to value.
+# strip off comments (text starting with *)
+#
+def parse_quabo_config_file(path):
+    x = {}
+    with open(path) as f:
+        for line in f:
+            if line.startswith("*"):
+                continue
+
+            # strip off the comment
+            strippedline = line.split('*')[0]
+            
+            # Split the tag field from the cs value field
+            fields = strippedline.split("=")
+            if len(fields) !=2:
+                continue
+            name = fields[0].strip()
+            val = fields[1].strip()
+            x[name] = val
+    return x
 
 def reverse_bits(data_in, width):
     data_out = 0
@@ -543,3 +566,17 @@ def reverse_bits(data_in, width):
         if (data_in & 1): data_out = data_out | 1
         data_in = data_in >> 1
     return data_out
+
+# write maroc config cmd to a file
+def write_maroc_config_cmd():
+    q = QUABO('1.1.1.1')
+    config = parse_quabo_config_file('quabo_config.txt')
+    cmd = bytearray(492)
+    q.make_maroc_cmd(config, cmd)
+    with open('maroc_cmd_new.bin', 'w') as f:
+        f.write(cmd)
+
+if __name__ == "__main__":
+# test stuff goes here
+
+    write_maroc_config_cmd();

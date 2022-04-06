@@ -24,7 +24,7 @@ def do_cmd(quabo, words):
     if cmd == 'q':
         return True
     elif cmd == 'M':
-        quabo.send_maroc_params()
+        quabo.send_maroc_params_file()
     elif cmd == 'B':
         quabo.calibrate_ph_baseline(baseline_filename)
     elif cmd == 'V':
