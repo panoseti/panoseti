@@ -1,81 +1,110 @@
 #include <string.h>
+#include <stdio.h>
 
 #include "image.h"
 
-// irot is clockwise 0/90/180/270
+// in a module:
+// quabo 0 (upper left) is unrotated
+// quabo 1 (upper right) is rotated 90 deg
+// quabo 2 (lower left) is rotated 270 deg
+// quabo 3 (lower right) is rotated 180 deg
 //
-void copy_and_rotate_short(SHORT_ROW *from, SHORT_ROW *to, int irot) {
-    switch(irot) {
-    case 0:
-        memcpy(to, from, DIM*2);
-        break;
-    case 1:
-        for (int i=0; i<DIM; i++) {
-            for (int j=0; j<DIM; j++) {
-                to[j*2].x[DIM-1-i] = from[i].x[j];
+// rotations are clockwise
+// the following functions undo the rotation
+
+void quabo_to_module_copy(
+    QUABO_IMG_CHAR in, int iquabo, MODULE_IMG_SHORT out
+) {
+    switch(iquabo) {
+    case 0:     // no rotation
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[i][j] = in[i][j];
             }
         }
         break;
-    case 2:
-        for (int i=0; i<DIM; i++) {
-            for (int j=0; j<DIM; j++) {
-                to[(DIM-1-i)*2].x[DIM-1-j] = from[i].x[j];
+    case 1:     // rotate -90 (= 270)
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[QUABO_DIM-j-1][QUABO_DIM+i] = in[i][j];
             }
         }
         break;
-    case 3:
-        for (int i=0; i<DIM; i++) {
-            for (int j=0; j<DIM; j++) {
-                to[(DIM-1-j)*2].x[i] = from[i].x[j];
+    case 2:     // rotate -270 (= 90)
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[MODULE_DIM-j-1][i] = in[i][j];
             }
+        }
+        break;
+    case 3:     // rotate -180 (= 180)
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[MODULE_DIM-i-1][MODULE_DIM-j-1] = in[i][j];
+            }
+        }
+        break;
+    }
+}
+
+void quabo_to_module_add(
+    QUABO_IMG_CHAR in, int iquabo, MODULE_IMG_SHORT out
+) {
+    switch(iquabo) {
+    case 0:     // no rotation
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[i][j] += in[i][j];
+            }
+        }
+        break;
+    case 1:     // rotate -90 (= 270)
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[QUABO_DIM-j-1][QUABO_DIM+i] += in[i][j];
+            }
+        }
+        break;
+    case 2:     // rotate -270 (= 90)
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[MODULE_DIM-j-1][i] += in[i][j];
+            }
+        }
+        break;
+    case 3:     // rotate -180 (= 180)
+        for (int i=0; i<QUABO_DIM; i++) {
+            for (int j=0; j<QUABO_DIM; j++) {
+                out[MODULE_DIM-i-1][MODULE_DIM-j-1] += in[i][j];
+            }
+        }
+        break;
+    }
+}
+
+void print_quabo_img_char(QUABO_IMG_CHAR q) {
+    for (int i=0; i<QUABO_DIM; i++) {
+        for (int j=0; j<QUABO_DIM; j++) {
+            printf("%3d ", q[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void print_module_img_short(MODULE_IMG_SHORT m) {
+    for (int i=0; i<MODULE_DIM; i++) {
+        for (int j=0; j<MODULE_DIM; j++) {
+            printf("%3d ", m[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+void zero_module_img_short(MODULE_IMG_SHORT m) {
+    for (int i=0; i<MODULE_DIM; i++) {
+        for (int j=0; j<MODULE_DIM; j++) {
+            m[i][j] = 0;
         }
     }
 }
 
-void copy_and_rotate_char(CHAR_ROW *from, CHAR_ROW *to, int irot) {
-    switch(irot) {
-    case 0:
-        memcpy(to, from, DIM);
-        break;
-    case 1:
-        for (int i=0; i<DIM; i++) {
-            for (int j=0; j<DIM; j++) {
-                to[j*2].x[DIM-1-i] = from[i].x[j];
-            }
-        }
-        break;
-    case 2:
-        for (int i=0; i<DIM; i++) {
-            for (int j=0; j<DIM; j++) {
-                to[(DIM-1-i)*2].x[DIM-1-j] = from[i].x[j];
-            }
-        }
-        break;
-    case 3:
-        for (int i=0; i<DIM; i++) {
-            for (int j=0; j<DIM; j++) {
-                to[(DIM-1-j)*2].x[i] = from[i].x[j];
-            }
-        }
-    }
-}
-
-void image_combine_short(
-    short *in0, short *in1, short *in2, short* in3, short *out
-) {
-    SHORT_ROW *p = (SHORT_ROW*) out;
-    copy_and_rotate_short((SHORT_ROW*)in0, p, 0);
-    copy_and_rotate_short((SHORT_ROW*)in1, p+1, 1);
-    copy_and_rotate_short((SHORT_ROW*)in2, p+DIM*2-1, 2);
-    copy_and_rotate_short((SHORT_ROW*)in3, p+DIM*2, 3);
-}
-
-void image_combine_char(
-    char *in0, char *in1, char *in2, char* in3, char *out
-) {
-    CHAR_ROW *p = (CHAR_ROW*) out;
-    copy_and_rotate_char((CHAR_ROW*)in0, p, 0);
-    copy_and_rotate_char((CHAR_ROW*)in1, p+1, 1);
-    copy_and_rotate_char((CHAR_ROW*)in2, p+DIM*2-1, 2);
-    copy_and_rotate_char((CHAR_ROW*)in3, p+DIM*2, 3);
-}

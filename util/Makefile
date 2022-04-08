@@ -26,8 +26,8 @@ FITS_LIB = -lcfitsio
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
-image_test: image_test.cpp image.h $(OBJS)
-	$(CXX) -o image_test image_test.cpp image.o
+image_test: image_test.cpp image.cpp image.h $(OBJS)
+	$(CXX) -o image_test image_test.cpp image.cpp
 
 pulse_test: pulse_test.cpp pulse_find.h
 	$(CXX) -o pulse_test pulse_test.cpp
