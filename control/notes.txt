@@ -280,3 +280,10 @@ config file:
 same data dir on head/daq node
 
 "this is not the head node spec..."
+---------------
+4/7
+if only PH or only image
+    DAC1
+if both
+    DAC1 image
+    DAC2 ph
