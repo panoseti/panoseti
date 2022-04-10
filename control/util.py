@@ -139,6 +139,7 @@ def start_daemon(prog):
     except:
         print("can't launch %s"%prog)
         return
+    print('started %s'%prog)
 
 # start daemons that write HK/GPS/WR data to Redis
 #
@@ -153,6 +154,7 @@ def stop_redis_daemons():
             c = p.cmdline()
             if len(c) == 2 and c[1] == prog:
                 os.kill(p.pid, signal.SIGKILL)
+                print('stopped %s'%d)
 
 def show_redis_daemons():
     for daemon in redis_daemons:
