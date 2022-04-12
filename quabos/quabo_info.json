@@ -1,10 +1,90 @@
 [
-{"uid":"6a238a180e09416","serialno":"SN013","board_version":" ","detector_serialno":["1080","1079","1082","1081"]},
-{"uid":"6a641208290882c","serialno":"SN020","board_version":" ","detector_serialno":["1076","1075","1074","1077"]},
-{"uid":" ","serialno":"SN017","board_version":" ","detector_serialno":["509","510","508","507"]},
-{"uid":"6b2110380604803","serialno":"SN018","board_version":" ","detector_serialno":["1084","1078","1068","1083"]},
-{"uid":" ","serialno":"SN015","board_version":" ","detector_serialno":["1232","1233","1236","1235"]},
-{"uid":"6a6412082b0a41c","serialno":"SN010","board_version":" ","detector_serialno":["1263","1264","1266","1265"]},
-{"uid":" ","serialno":"SN012","board_version":" ","detector_serialno":["1271","1272","1274","1273"]},
-{"uid":" ","serialno":"SN014","board_version":" ","detector_serialno":["1275","1277","1279","1278"]}
+    {
+        "uid": "6a238a180e09416",
+        "serialno": "SN013",
+        "board_version": " ",
+        "detector_serialno": [
+            "1080",
+            "1079",
+            "1082",
+            "1081"
+        ]
+    },
+    {
+        "uid": "6a641208290882c",
+        "serialno": "SN020",
+        "board_version": " ",
+        "detector_serialno": [
+            "1076",
+            "1075",
+            "1074",
+            "1077"
+        ]
+    },
+    {
+        "uid": " ",
+        "serialno": "SN017",
+        "board_version": " ",
+        "detector_serialno": [
+            "509",
+            "510",
+            "508",
+            "507"
+        ]
+    },
+    {
+        "uid": "6b2110380604803",
+        "serialno": "SN018",
+        "board_version": " ",
+        "detector_serialno": [
+            "1084",
+            "1078",
+            "1068",
+            "1083"
+        ]
+    },
+    {
+        "uid": " ",
+        "serialno": "SN015",
+        "board_version": " ",
+        "detector_serialno": [
+            "1232",
+            "1233",
+            "1236",
+            "1235"
+        ]
+    },
+    {
+        "uid": "6a6412082b0a41c",
+        "serialno": "SN010",
+        "board_version": " ",
+        "detector_serialno": [
+            "1263",
+            "1264",
+            "1266",
+            "1265"
+        ]
+    },
+    {
+        "uid": " ",
+        "serialno": "SN012",
+        "board_version": " ",
+        "detector_serialno": [
+            "1271",
+            "1272",
+            "1274",
+            "1273"
+        ]
+    },
+    {
+        "uid": " ",
+        "serialno": "SN014",
+        "board_version": " ",
+        "detector_serialno": [
+            "1275",
+            "1277",
+            "1279",
+            "1278"
+        ]
+    }
 ]
