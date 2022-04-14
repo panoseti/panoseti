@@ -129,6 +129,7 @@ def get_quabo_info():
 # get quabo calibration info
 #
 def get_quabo_calib(serialno):
+    #print('reading calib file %s'%serialno)
     path = quabo_calib_filename%serialno
     with open(path) as f:
         s = f.read()
