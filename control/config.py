@@ -12,6 +12,9 @@ import sys, os, subprocess, time
 import util, config_file, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
+sys.path.insert(0, '../util')
+import pixel_coords
+
 def usage():
     print('''usage:
 --show                  show list of domes/modules/quabos
@@ -135,49 +138,63 @@ def do_hv_off(modules, quabo_uids):
             quabo.close()
             print('%s: set HV to zero'%ip_addr)
 
-# set the DAC1 and GAIN* params for MAROC chips
+# set the DAC1/DA2/GAIN* params for MAROC chips
 #
 def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
     gain = float(data_config['gain'])
-    pe_thresh = float(data_config['image']['pe_threshold'])
-        # should it be image or pulse_height??
+    do_img = 'image' in data_config.keys()
+    do_ph = 'pulse_height' in data_config.keys()
+
+    if do_img and do_ph:
+        pe_thresh1 = float(data_config['image']['pe_threshold'])
+        pe_thresh2 = float(data_config['pulse_height']['pe_threshold'])
+    elif do_img:
+        pe_thresh1 = float(data_config['image']['pe_threshold'])
+    elif do_ph:
+        pe_thresh1 = float(data_config['pulse_height']['pe_threshold'])
+    else:
+        raise Exception('data_config.json specifies no data products')
+
     qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
+            is_qfp = util.is_quabo_old_version(module, i)
             qi = quabo_info[uid]
             serialno = qi['serialno'][3:]
             quabo_calib = config_file.get_quabo_calib(serialno)
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
 
-            # compute DAC1[] based on calibration data
+            # compute DAC1[] and possibly DAC2 based on calibration data
             dac1 = [0]*4
+            dac2 = [0]*4
             for j in range(4):      # 4 detectors in a quabo
                 quad = quabo_calib['quadrants'][j]
                 a = quad['a']
                 b = quad['b']
-                n = quad['n']
-                m = quad['m']
-                dac1[j] = int(a*gain*pe_thresh + b)
+                dac1[j] = int(a*gain*pe_thresh1 + b)
+                if do_img and do_ph:
+                    dac2[j] = int(a*gain*pe_thresh2 + b)
             qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
             print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1']))
+            if do_img and do_ph:
+                qc_dict['DAC2'] = '%d,%d,%d,%d'%(
+                    dac2[0], dac2[1], dac2[2], dac2[3]
+                )
+                print('%s: DAC2 = %s'%(ip_addr, qc_dict['DAC2']))
+
 
             # compute GAIN0[]..GAIN63[] based on calibration data
             # TODO: fix indexing
             maroc_gain = [[0]*4 for i in range(64)]
-            s = 0
-            t = 0
+
             for j in range(4):
                 for k in range(64):
-                    delta = quabo_calib['pixel_gain'][s][t]
+                    [x, y] = pixel_coords.detector_to_quabo(k, j, is_qfp)
+                    delta = quabo_calib['pixel_gain'][x][y]
                     g = int(round(gain*(1+delta)))
-                    print(j, k, delta, g)
                     maroc_gain[k][j] = g
-                    t += 1
-                    if t == 16:
-                        t = 0
-                        s += 1
             for k in range(64):
                 tag = 'GAIN%d'%k
                 qc_dict[tag] = '%d,%d,%d,%d'%(

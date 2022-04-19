@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-
 ##############################################################
 # Populates new data from redis into the influxDB database.
 # Script stores all sets which contains the key for the 

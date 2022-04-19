@@ -2,30 +2,21 @@
 
 #include "image.h"
 
-short from_short[DIM*DIM], to_short[DIM*DIM*4];
-char from_char[DIM*DIM], to_char[DIM*DIM*4];
-
 int main(int, char**) {
-    for (int i=0; i<DIM; i++) {
-        for (int j=0; j<DIM; j++) {
-            from_char[i*DIM+j] = i+j;
+    QUABO_IMG_CHAR q;
+    for (int i=0; i<QUABO_DIM; i++) {
+        for (int j=0; j<QUABO_DIM; j++) {
+            q[i][j] = i*QUABO_DIM +j;
         }
     }
-    for (int i=0; i<1000000; i++) {
-        image_combine_char(from_char, from_char, from_char, from_char, to_char);
-    }
-    for (int i=0; i<DIM; i++) {
-        for (int j=0; j<DIM; j++) {
-            from_short[i*DIM+j] = i+j;
-        }
-    }
-    for (int i=0; i<1000000; i++) {
-        image_combine_short(from_short, from_short, from_short, from_short, to_short);
-    }
-    for (int i=0; i<DIM*2; i++) {
-        for (int j=0; j<DIM*2; j++) {
-            printf("%3d ", to_short[i*DIM*2 + j]);
-        }
-        printf("\n");
-    }
+    print_quabo_img_char(q);
+    printf("-----------\n");
+
+    MODULE_IMG_SHORT m;
+    zero_module_img_short(m);
+    quabo_to_module_copy(q, 0, m);
+    quabo_to_module_copy(q, 1, m);
+    quabo_to_module_copy(q, 2, m);
+    quabo_to_module_copy(q, 3, m);
+    print_module_img_short(m);
 }
