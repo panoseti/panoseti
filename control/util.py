@@ -55,7 +55,7 @@ def local_ip():
         for a, b in addrs.items():
             for c in b:
                 z = c['addr']
-                if (z.startswith('192.')):
+                if (z.startswith('172.')):
                     return z
     raise Exception("can't get local IP")
 
@@ -236,7 +236,7 @@ def kill_hashpipe():
 
 def kill_hk_recorder():
     for p in psutil.process_iter():
-        if (hk_recorder_name in p.cmdline()) and (p.username() == os.popen('whoami').read()):
+        if (hk_recorder_name in p.cmdline()) and (p.username() == os.popen('whoami').read().replace('\n','')):
             os.kill(p.pid, signal.SIGKILL)
 
 def disk_usage(dir):

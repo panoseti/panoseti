@@ -738,6 +738,11 @@ while True:
         cmd_payload[7] = im_ip[2]
         cmd_payload[8] = im_ip[3]
         sendit(cmd_payload)
+        reply = sock.recvfrom(128)
+        r = list(r[0])
+        print('Mac Addr(IM): %02x:%02x:%02x:%02x:%02x:%02x'%(r[0],r[1],r[2],r[3],r[4],r[5]))
+        print('Mac Addr(PH): %02x:%02x:%02x:%02x:%02x:%02x'%(r[6],r[7],r[8],r[9],r[10],r[11]))
+
     elif inp == 'HK-IP':
         cmd_payload = bytearray(64)
         for i in range(64): cmd_payload[i]=0
