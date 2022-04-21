@@ -38,11 +38,14 @@ def do_cmd(quabo, words):
     elif cmd == 'A':
         quabo.send_acq_parameters_file()
     elif cmd == 'AM':
-        image = int(words.pop(0))
+        do_image = int(words.pop(0))
         image_us = int(words.pop(0))
-        ph = int(words.pop(0))
+        image_8bit = int(words.pop(0))
+        do_ph = int(words.pop(0))
         bl_subtract = int(words.pop(0))
-        am = quabo_driver.DAQ_PARAMS(image, ph, bl_subtract, image_us)
+        am = quabo_driver.DAQ_PARAMS(
+            do_image, image_us, image_8bit, do_ph, bl_subtract
+        )
         quabo.send_daq_params(am)
     elif cmd == 'T':
         quabo.send_trigger_mask()
@@ -99,7 +102,8 @@ def print_cmds():
     "v chan value" to adjust individual HV values (0..3, 0..65535),
     "VV" to turn off all HVs,
     "A" to load only the acquisition mode parameters from quabo_config.txt,
-    "AM image(0/1) image_us ph(0/1) bl_subtract(0/1): set acq mode params,
+    "AM do_image image_us image_8bit do_ph bl_subtract"
+        set acq mode params.  image_us is int; other args are 0/1
     "T" to load the trigger mask values from the quabo_config.txt file,
     "R" to send a system reset,
     "ST steps" to move the focus stepper (1..50000; 0 to recalibrate),

@@ -287,3 +287,18 @@ if only PH or only image
 if both
     DAC1 image
     DAC2 ph
+
+4/21
+Matt security
+OS is current; auto updates or once/week
+    current Apache, PHP, Python
+apt install sshguard: blocks repeated SSH failures
+accounts:
+    separate; if shared acct, don't allow direct login
+john the ripper: password checker
+
+use proxy server so firewall only has 1 client
+
+.htaccess
+
+make sure head node IP works

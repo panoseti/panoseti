@@ -24,10 +24,17 @@ UDP_HK_PORT= 60002
 
 SERIAL_COMMAND_LENGTH = 829
 
+# bits for data acquisition mode command
+ACQ_PULSE_HEIGHT = 0x1
+ACQ_IMAGE = 0x2
+ACQ_IMAGE_8BIT = 0x4
+ACQ_NO_BASELINE_SUBTRACT = 0x10
+
 class DAQ_PARAMS:
-    def __init__(self, do_image, image_us, do_ph, bl_subtract):
+    def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract):
         self.do_image = do_image
         self.image_us = image_us
+        self.image_8bit = image_8bit
         self.do_ph = do_ph
         self.bl_subtract = bl_subtract
 
@@ -58,12 +65,15 @@ class QUABO:
     def send_daq_params(self, params):
         cmd = self.make_cmd(0x03)
         mode = 0
+
         if params.do_image:
-            mode |= 0x1
+            mode |= ACQ_IMAGE
+        if params.image_8bit:
+            mode |= ACQ_IMAGE_8BIT
         if params.do_ph:
-            mode |= 0x2
+            mode |= ACQ_PULSE_HEIGHT
         if not params.bl_subtract:
-            mode |= 0x10
+            mode |= ACQ_NO_BASELINE_SUBTRACT
         cmd[2] = mode
         cmd[4] = params.image_us % 256
         cmd[5] = params.image_us // 256
