@@ -22,6 +22,7 @@ def usage():
 --reboot                reboot quabos
 --loads                 load silver firmware in quabos
 --init_daq_nodes        copy software to daq nodes
+--hk_dest               tell quabos to send HK packets to this node
 --redis_daemons         start daemons to populate Redis with HK/GPS/WR data,
                         and to copy data from Redis to InfluxDB
 --stop_redis_daemons    stop the above
@@ -106,6 +107,17 @@ def do_ping(modules):
                 print("pinged %s"%ip_addr)
             else:
                 print("can't ping %s"%ip_addr)
+
+def do_hk_dest(modules):
+    my_ip_addr = util.local_ip()
+    for module in modules:
+        for i in range(4):
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
+            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            quabo = quabo_driver.QUABO(ip_addr)
+            quabo.hk_packet_destination(my_ip_addr)
+            quabo.close()
 
 def do_hv_on(modules, quabo_uids, quabo_info, detector_info):
     for module in modules:
@@ -228,6 +240,9 @@ if __name__ == "__main__":
         elif argv[i] == '--init_daq_nodes':
             nops += 1
             op = 'init_daq_nodes'
+        elif argv[i] == '--hk_dest':
+            nops += 1
+            op = 'hk_dest'
         elif argv[i] == '--redis_daemons':
             nops += 1
             op = 'redis_daemons'
@@ -268,6 +283,8 @@ if __name__ == "__main__":
         do_ping(modules)
     elif op == 'init_daq_nodes':
         file_xfer.copy_hashpipe(daq_config)
+    elif op == 'hk_dest':
+        do_hk_dest(modules)
     elif op == 'redis_daemons':
         util.start_redis_daemons()
     elif op == 'stop_redis_daemons':
