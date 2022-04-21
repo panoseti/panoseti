@@ -22,18 +22,26 @@ import pff
 # parse the data config file to get DAQ params for quabos
 #
 def get_daq_params(data_config):
-    do_image = False;
-    do_ph = False;
+    do_image = False
     image_usec = 0
+    image_8bit = False
+    do_ph = False
     bl_subtract = True
     if 'image' in data_config:
+        do_image = True
         image = data_config['image']
         if 'integration_time_usec' not in image:
             raise Exception('missing integration_time_usec in data_config.json')
+        if image['quabo_sample_size'] == 8:
+            image_8bit = True
+        elif image['quabo_sample_size'] != 16:
+            raise Exception('quabo_sample_size must be 8 or 16')
         image_usec = image['integration_time_usec']
     if 'pulse_height' in data_config:
         do_ph = True
-    return quabo_driver.DAQ_PARAMS(do_image, image_usec, do_ph, bl_subtract)
+    return quabo_driver.DAQ_PARAMS(
+        do_image, image_usec, image_8bit, do_ph, bl_subtract
+    )
 
 # start data flow from the quabos
 # for each one:
