@@ -7,8 +7,8 @@ import netsnmp
 os.environ['MIBDIRS']='+./'
 
 wrsSnmpObjs={'sfppn'         : 'WR-SWITCH-MIB::wrsPortStatusSfpPN' , \
-            'linkstatus'    : 'WR-SWITCH-MIB::wrsPortStatusLink'  , \
-            'pllstatus'     : 'WR-SWITCH-MIB::wrsSoftPLLStatus'         }
+             'linkstatus'    : 'WR-SWITCH-MIB::wrsPortStatusLink'  , \
+             'pllstatus'     : 'WR-SWITCH-MIB::wrsSoftPLLStatus'         }
 
 class snmp_wapper(object):
     def __init__(self, dev, obj):
