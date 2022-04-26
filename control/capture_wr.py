@@ -53,7 +53,7 @@ def wrsSFPCheck(wrs):
             failed = 0
             for i in range(len(res)):
                 if(len(res[i]) != 0):
-                    if(res[i] != SFP_PN0 and res[i] != SFP_PN1):
+                    if(res[i] != SFP_PN1):
                         failed = 1
                         print('WR-SWITCH(%s) : sfp%2d is %-16s[ FAIL ]' %(wrs.dev, i+1, res[i]))
                     else:
@@ -65,6 +65,7 @@ def wrsSFPCheck(wrs):
             else:
                 print(' ')
                 print('Error : Please check the sfp transceivers!!')
+                print('The part number of the sfp transceiver should be %s'%(SFP_PN1))
                 print(' ')
 
 # check the link status
