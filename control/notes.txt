@@ -302,3 +302,5 @@ use proxy server so firewall only has 1 client
 .htaccess
 
 make sure head node IP works
+--------------
+Interface for flash in config
