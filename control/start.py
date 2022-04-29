@@ -39,9 +39,13 @@ def get_daq_params(data_config):
         image_usec = image['integration_time_usec']
     if 'pulse_height' in data_config:
         do_ph = True
-    return quabo_driver.DAQ_PARAMS(
+    daq_params = quabo_driver.DAQ_PARAMS(
         do_image, image_usec, image_8bit, do_ph, bl_subtract
     )
+    if 'flash_params' in data_config:
+        fp = data_config['flash_params']
+        daq_params.set_flash_params(fp['rate'], fp['level'], fp['width'])
+    return daq_params
 
 # start data flow from the quabos
 # for each one:

@@ -37,6 +37,12 @@ class DAQ_PARAMS:
         self.image_8bit = image_8bit
         self.do_ph = do_ph
         self.bl_subtract = bl_subtract
+        self.do_flash = False
+    def set_flash_params(rate, level, width):
+        self.do_flash = True
+        self.flash_rate = rate
+        self.flash_level = level
+        self.flash_width = width
 
 # currently each QUABO object has its own sockets,
 # which means you can only have one at a time.
@@ -78,6 +84,10 @@ class QUABO:
         cmd[4] = params.image_us % 256
         cmd[5] = params.image_us // 256
         cmd[12] = 70
+        if params.do_flash:
+            cmd[22] = params.flash_rate
+            cmd[24] = params.flash_level
+            cmd[26] = params.flash_width
         #util.print_binary(cmd)
         self.send(cmd)
 
