@@ -17,6 +17,9 @@
 //      we aggregate sums moving up the time scales.
 //      So we do an average of 3 floating-point adds per sample,
 //      regardless of the number of levels.
+//
+// TODO: look for groups of adjacent pixels just under threshold
+//      have low/high thresholds (or group pixels)
 
 #include <stdio.h>
 #include <stdlib.h>
