@@ -5,7 +5,7 @@
 # - pulses with given power, period, phase, duty cycle, and position
 #
 # parameters:
-# --nsec X  (how much data to generate, in sec)
+# --file_duration X  (how much data to generate, in sec)
 # --noise_mean N
 # --pulse_power N
 # --pulse_period X

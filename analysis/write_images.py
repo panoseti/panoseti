@@ -11,9 +11,11 @@ def do_pff(d):
     for f in os.listdir('PANOSETI_DATA/%s'%d):
         if f.endswith('.pff'):
             n = pff.parse_name(f)
-            if n['dp'] != '2':
+            if 'dp' not in n.keys():
                 continue
-            cmd = 'write_images --file PANOSETI_DATA/%s/%s'%(d,f)
+            if n['dp'] != '1':
+                continue
+            cmd = 'write_images < PANOSETI_DATA/%s/%s > pulse_out/%s/%s/images.bin'%(d,f,d,f)
             print(cmd)
             os.system(cmd)
         else:

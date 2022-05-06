@@ -20,7 +20,7 @@ function main() {
         <h2>Data files</h2>
     ";
     foreach (scandir("PANOSETI_DATA") as $f) {
-        if ($f[0] == ".") continue;
+        if (!strstr($f, '.pff')) continue;
         echo "<p><a href=data_file.php?name=$f>$f</a>\n";
     }
     page_tail();
