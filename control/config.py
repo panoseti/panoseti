@@ -117,7 +117,7 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info):
             for j in range(4):
                 det_ser = qi['detector_serialno'][j]
                 op_voltage = detector_info[det_ser]
-                v[j] = int(op_voltage/.014)
+                v[j] = int(op_voltage/.00114)
             ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.hv_set(v)
