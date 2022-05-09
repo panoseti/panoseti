@@ -23,21 +23,21 @@ void quabo_to_module_copy(
             }
         }
         break;
-    case 1:     // rotate -90 (= 270)
+    case 1:     // rotate 90 CW and translate right
         for (int i=0; i<QUABO_DIM; i++) {
             for (int j=0; j<QUABO_DIM; j++) {
-                out[QUABO_DIM-j-1][QUABO_DIM+i] = in[i][j];
+                out[j][MODULE_DIM-1-i] = in[i][j];
             }
         }
         break;
-    case 2:     // rotate -270 (= 90)
+    case 2:     // rotate 270 CW and translate down
         for (int i=0; i<QUABO_DIM; i++) {
             for (int j=0; j<QUABO_DIM; j++) {
                 out[MODULE_DIM-j-1][i] = in[i][j];
             }
         }
         break;
-    case 3:     // rotate -180 (= 180)
+    case 3:     // rotate 180 CW and translate right+down
         for (int i=0; i<QUABO_DIM; i++) {
             for (int j=0; j<QUABO_DIM; j++) {
                 out[MODULE_DIM-i-1][MODULE_DIM-j-1] = in[i][j];

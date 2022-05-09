@@ -1,6 +1,6 @@
-# parsing a PFF file in Python
+# parse PFF files and dir/file names
 
-from struct import *
+import struct
 import time, datetime
 
 # returns the string; parse it with json
@@ -31,7 +31,18 @@ def read_image_16(f):
     if c != b'*':
         print('bad type code')
         return Null
-    return unpack("1024H", f.read(2048))
+    return struct.unpack("1024H", f.read(2048))
+
+# write an image; image is 1024
+def write_image_16_1(f, img):
+    f.write(b'*')
+    f.write(struct.pack("1024H", img))
+
+# same, image is 32x32
+def write_image_16_2(f, img):
+    f.write(b'*')
+    for i in range(32):
+        f.write(struct.pack("32H", *img[i]))
 
 # parse a string of the form
 # a=b,a=b...a=b.ext
@@ -46,6 +57,8 @@ def parse_name(name):
     x = name.split('.')
     for s in x:
         y = s.split('_')
+        if len(y)<2:
+            continue
         d[y[0]] = y[1]
     return d
 
@@ -55,4 +68,4 @@ def run_dir_name(obs_name, run_type):
     dt = datetime.datetime.utcnow()
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
-    return 'obs_%s.start_%sZ.runtype_%s'%(obs_name, dt_str, run_type)
+    return 'obs_%s.start_%sZ.runtype_%s.pffd'%(obs_name, dt_str, run_type)

@@ -14,7 +14,7 @@ import util, config_file, collect, quabo_driver
 # tell the quabos to stop sending data
 #
 def stop_data_flow(quabo_uids):
-    daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False)
+    daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
             if 'daq_node' not in module:

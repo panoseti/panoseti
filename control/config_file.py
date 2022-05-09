@@ -90,7 +90,16 @@ def get_data_config():
     check_config_file(data_config_filename)
     with open(data_config_filename) as f:
         c = f.read()
-    return json.loads(c)
+    conf = json.loads(c)
+    if 'flash_params' in conf:
+        fp = conf['flash_params']
+        if fp['rate'] > 7:
+            raise Exception('flash rate > 7 in %s'%data_config_filename)
+        if fp['level'] > 31:
+            raise Exception('flash level > 31 in %s'%data_config_filename)
+        if fp['width'] > 15:
+            raise Exception('flash width > 15 in %s'%data_config_filename)
+    return conf
 
 def get_quabo_uids():
     if not os.path.exists(quabo_uids_filename):
@@ -129,6 +138,7 @@ def get_quabo_info():
 # get quabo calibration info
 #
 def get_quabo_calib(serialno):
+    #print('reading calib file %s'%serialno)
     path = quabo_calib_filename%serialno
     with open(path) as f:
         s = f.read()

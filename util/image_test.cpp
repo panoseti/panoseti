@@ -10,6 +10,7 @@ int main(int, char**) {
         }
     }
     print_quabo_img_char(q);
+    printf("-----------\n");
 
     MODULE_IMG_SHORT m;
     zero_module_img_short(m);

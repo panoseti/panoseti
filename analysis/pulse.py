@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 # run pulse analysis on a few pixels from all data files
 
@@ -46,8 +46,13 @@ def do_hdf5(f):
 
 def do_pff(d):
     for f in os.listdir('PANOSETI_DATA/%s'%d):
+        if not f.endswith('.pff'):
+            continue
+        print('name', f)
         n = pff.parse_name(f)
-        if n['dp'] != '2':
+        if 'dp' not in n.keys():
+            continue
+        if n['dp'] != '1':
             continue
         for pixel in {0, 64, 128, 256, 320, 384}:
             cmd = 'pulse --file PANOSETI_DATA/%s/%s --pixel %d'%(d, f, pixel)
