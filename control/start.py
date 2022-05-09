@@ -146,7 +146,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         return False
         
     if not util.are_redis_daemons_running():
-        print('Redis daemons are not runing')
+        print('Redis daemons are not running')
         util.show_redis_daemons()
         return False
 

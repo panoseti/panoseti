@@ -38,7 +38,7 @@ class DAQ_PARAMS:
         self.do_ph = do_ph
         self.bl_subtract = bl_subtract
         self.do_flash = False
-    def set_flash_params(rate, level, width):
+    def set_flash_params(self, rate, level, width):
         self.do_flash = True
         self.flash_rate = rate
         self.flash_level = level
