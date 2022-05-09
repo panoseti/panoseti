@@ -92,7 +92,7 @@ def get_data_config():
         c = f.read()
     conf = json.loads(c)
     if 'flash_params' in conf:
-        fp = data_config['flash_params']
+        fp = conf['flash_params']
         if fp['rate'] > 7:
             raise Exception('flash rate > 7 in %s'%data_config_filename)
         if fp['level'] > 31:
