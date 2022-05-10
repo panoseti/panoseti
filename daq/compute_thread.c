@@ -21,14 +21,12 @@
 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
 #define NUM_OF_MODES 7
 
-/**
- * Writes the image data from the module data into block in output buffer.
- * @param mod_data Module data passed in be copied to output block.
- * @param out_block Output block to be written to.
- */
+// copy image data from the module data to output buffer.
+//
 void write_frame_to_out_buffer(
-    module_data_t* mod_data, HSD_output_block_t* out_block
-){
+    module_data_t* mod_data,
+    HSD_output_block_t* out_block
+) {
     int out_index = out_block->header.n_img_module;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
@@ -37,7 +35,7 @@ void write_frame_to_out_buffer(
     memcpy(
         out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME),
         mod_data->data,
-        sizeof(uint8_t)*BYTES_PER_MODULE_FRAME
+        BYTES_PER_MODULE_FRAME
     );
 
     out_block->header.n_img_module++;
@@ -52,6 +50,7 @@ void write_frame_to_out_buffer(
 void write_coinc_to_out_buffer(
     HSD_input_block_t* in_block,
     int pktIndex,
+        // TODO: pass the header, not the index
     HSD_output_block_t* out_block
 ) {
     int out_index = out_block->header.n_coinc_img;
@@ -61,27 +60,28 @@ void write_coinc_to_out_buffer(
     memcpy(
         out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE,
         in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE,
-        sizeof(in_block->data_block[0])*BYTES_PER_PKT_IMAGE
+        BYTES_PER_PKT_IMAGE
     );
 
     out_block->header.n_coinc_img++;
 }
 
 // copy quabo image to module image buffer
-// If appropriate, copy module image to output buffer first
+// If needed, copy module image to output buffer first
 //
 void storeData(
     module_data_t* mod_data,        // module image
     HSD_input_block_t* in_block,    // block in input buffer (quabo images)
-    HSD_output_block_t* out_block,  // block in output buffer
+    HSD_output_block_t* out_block,  // block in output buffer (module images)
     int pktIndex                    // index in input buffer
+        // TODO: pass the packet header rather than the index
 ){
     int mode, bytes_per_pixel;
     packet_header_t *pkt_head = &(in_block->header.pkt_head[pktIndex]);
     uint32_t nanosec = pkt_head->pkt_nsec;
     int quabo_num = pkt_head->qua_num;
 
-    uint8_t currentStatus = (0x01 << quabo_num);
+    uint8_t quabo_bit = 1 << quabo_num;
 
     // see what kind of packet it is
 
@@ -108,7 +108,7 @@ void storeData(
 
     // set min/max times of quabo images in module image
     //
-    if(mod_data->status == 0){
+    if(mod_data->quabos_bitmap == 0){
         // Empty module pair obj
         // set both the upper and lower limit to current time
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
@@ -123,10 +123,10 @@ void storeData(
 
     // see if we should add module frame to output buffer
     // - the quabo position of the new packet is already filled in module buf
-    // - or mode is different (???)
+    // - or bytes/pixel is different (should never happen)
     // - or time threshold is exceeded
     //
-    if ((mod_data->status & currentStatus) 
+    if ((mod_data->quabos_bitmap & quabo_bit) 
         || mod_data->mod_head.mode != mode 
         || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD
     ) {
@@ -134,7 +134,7 @@ void storeData(
         // A module frame is now final.
         // do long pulse finding or other stuff here.
         //
-        //process_frame(mod_data);
+        // process_frame(mod_data);
 
         write_frame_to_out_buffer(mod_data, out_block);
 
@@ -164,7 +164,7 @@ void storeData(
     memcpy(
         mod_data->data + (quabo_num*PIXELS_PER_IMAGE*bytes_per_pixel),
         in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE),
-        sizeof(uint8_t)*PIXELS_PER_IMAGE*bytes_per_pixel
+        PIXELS_PER_IMAGE*bytes_per_pixel
     );
 #endif
     
@@ -175,7 +175,7 @@ void storeData(
     );
 
     //Mark the status for the packet slot as taken
-    mod_data->status = mod_data->status | currentStatus;
+    mod_data->quabos_bitmap |= quabo_bit;
     mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
     mod_data->mod_head.mode = mode;
 }
@@ -355,7 +355,12 @@ static void *run(hashpipe_thread_args_t * args){
                 continue;
             }
 
-            storeData(moduleInd[moduleNum], &(db_in->block[curblock_in]), &(db_out->block[curblock_out]), i);
+            storeData(
+                moduleInd[moduleNum],
+                &(db_in->block[curblock_in]),
+                &(db_out->block[curblock_out]),
+                i
+            );
             
             //------------End CALCULATION BLOCK----------------
 
