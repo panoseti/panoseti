@@ -35,8 +35,10 @@ def show_file(fname):
     with open(fname, 'rb') as f:
         i = 0
         while True:
-            if not pff.read_json(f):
+            j = pff.read_json(f)
+            if not j:
                 break
+            print(j.encode())
             img = pff.read_image_16(f)
             print('frame', i)
             image_16_as_text(img)
