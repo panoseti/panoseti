@@ -12,43 +12,60 @@
 // rotations are clockwise
 // the following functions undo the rotation
 
-void quabo_to_module_copy(
-    QUABO_IMG_CHAR in, int iquabo, MODULE_IMG_SHORT out
-) {
-    switch(iquabo) {
-    case 0:     // no rotation
-        for (int i=0; i<QUABO_DIM; i++) {
-            for (int j=0; j<QUABO_DIM; j++) {
-                out[i][j] = in[i][j];
-            }
-        }
-        break;
-    case 1:     // rotate 90 CW and translate right
-        for (int i=0; i<QUABO_DIM; i++) {
-            for (int j=0; j<QUABO_DIM; j++) {
-                out[j][MODULE_DIM-1-i] = in[i][j];
-            }
-        }
-        break;
-    case 2:     // rotate 270 CW and translate down
-        for (int i=0; i<QUABO_DIM; i++) {
-            for (int j=0; j<QUABO_DIM; j++) {
-                out[MODULE_DIM-j-1][i] = in[i][j];
-            }
-        }
-        break;
-    case 3:     // rotate 180 CW and translate right+down
-        for (int i=0; i<QUABO_DIM; i++) {
-            for (int j=0; j<QUABO_DIM; j++) {
-                out[MODULE_DIM-i-1][MODULE_DIM-j-1] = in[i][j];
-            }
-        }
-        break;
+// poor man's template
+
+#define COPY \
+    switch(iquabo) { \
+    case 0: \
+        for (int i=0; i<QUABO_DIM; i++) { \
+            for (int j=0; j<QUABO_DIM; j++) { \
+                out[i][j] = in[i][j]; \
+            } \
+        } \
+        break; \
+    case 1: \
+        for (int i=0; i<QUABO_DIM; i++) { \
+            for (int j=0; j<QUABO_DIM; j++) { \
+                out[j][MODULE_DIM-1-i] = in[i][j]; \
+            } \
+        } \
+        break; \
+    case 2: \
+        for (int i=0; i<QUABO_DIM; i++) { \
+            for (int j=0; j<QUABO_DIM; j++) { \
+                out[MODULE_DIM-j-1][i] = in[i][j]; \
+            } \
+        } \
+        break; \
+    case 3: \
+        for (int i=0; i<QUABO_DIM; i++) { \
+            for (int j=0; j<QUABO_DIM; j++) { \
+                out[MODULE_DIM-i-1][MODULE_DIM-j-1] = in[i][j]; \
+            } \
+        } \
+        break; \
     }
+
+void quabo8_to_module8(
+    QUABO_IMG8 &in, int iquabo, MODULE_IMG8 &out
+) {
+    COPY
 }
 
-void quabo_to_module_add(
-    QUABO_IMG_CHAR in, int iquabo, MODULE_IMG_SHORT out
+void quabo8_to_module16_copy(
+    QUABO_IMG8 &in, int iquabo, MODULE_IMG16 &out
+) {
+    COPY
+}
+
+void quabo16_to_module16_copy(
+    QUABO_IMG16 &in, int iquabo, MODULE_IMG16 &out
+) {
+    COPY
+}
+
+void quabo8_to_module16_add(
+    QUABO_IMG8 in, int iquabo, MODULE_IMG16 out
 ) {
     switch(iquabo) {
     case 0:     // no rotation
@@ -82,7 +99,7 @@ void quabo_to_module_add(
     }
 }
 
-void print_quabo_img_char(QUABO_IMG_CHAR q) {
+void print_quabo_img8(QUABO_IMG8 q) {
     for (int i=0; i<QUABO_DIM; i++) {
         for (int j=0; j<QUABO_DIM; j++) {
             printf("%3d ", q[i][j]);
@@ -91,7 +108,7 @@ void print_quabo_img_char(QUABO_IMG_CHAR q) {
     }
 }
 
-void print_module_img_short(MODULE_IMG_SHORT m) {
+void print_module_img16(MODULE_IMG16 m) {
     for (int i=0; i<MODULE_DIM; i++) {
         for (int j=0; j<MODULE_DIM; j++) {
             printf("%3d ", m[i][j]);
@@ -100,7 +117,7 @@ void print_module_img_short(MODULE_IMG_SHORT m) {
     }
 }
 
-void zero_module_img_short(MODULE_IMG_SHORT m) {
+void zero_module_img16(MODULE_IMG16 m) {
     for (int i=0; i<MODULE_DIM; i++) {
         for (int j=0; j<MODULE_DIM; j++) {
             m[i][j] = 0;

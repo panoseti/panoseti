@@ -5,7 +5,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -16,6 +15,7 @@
 
 #include "databuf.h"
 #include "compute_thread.h"
+#include "image.h"
 #include "process_frame.h"
 
 // Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
@@ -26,13 +26,19 @@
  * @param mod_data Module data passed in be copied to output block.
  * @param out_block Output block to be written to.
  */
-void write_frame_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_block){
+void write_frame_to_out_buffer(
+    module_data_t* mod_data, HSD_output_block_t* out_block
+){
     int out_index = out_block->header.n_img_module;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
     mod_data->mod_head.copy_to(&(out_header->img_mod_head[out_index]));
     
-    memcpy(out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME), mod_data->data, sizeof(uint8_t)*BYTES_PER_MODULE_FRAME);
+    memcpy(
+        out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME),
+        mod_data->data,
+        sizeof(uint8_t)*BYTES_PER_MODULE_FRAME
+    );
 
     out_block->header.n_img_module++;
 }
@@ -43,58 +49,68 @@ void write_frame_to_out_buffer(module_data_t* mod_data, HSD_output_block_t* out_
  * @param pktIndex Packet index for the image in the input data block.
  * @param out_block Output data block to be written to. 
  */
-void write_coinc_to_out_buffer(HSD_input_block_t* in_block, int pktIndex, HSD_output_block_t* out_block){
+void write_coinc_to_out_buffer(
+    HSD_input_block_t* in_block,
+    int pktIndex,
+    HSD_output_block_t* out_block
+) {
     int out_index = out_block->header.n_coinc_img;
 
     in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coinc_pkt_head[out_index]));
     
-    memcpy(out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE, in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE, sizeof(in_block->data_block[0])*BYTES_PER_PKT_IMAGE);
+    memcpy(
+        out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE,
+        in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE,
+        sizeof(in_block->data_block[0])*BYTES_PER_PKT_IMAGE
+    );
 
     out_block->header.n_coinc_img++;
 }
 
-
-/**
- * Store the image data from the input data block into the module data.
- * If the conditions for the current data in the module data structure is met,
- * the data would be written to the output block before copying the new image
- * into the module data. 
- * @param mod_data The module data of the corresponding module for the image
- * @param in_block The input block containing the new image
- * @param out_bock the output block to be written to if module data needs to be written to output buffer
- */
-void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_block_t* out_block, int pktIndex){
-    int mode;
+// copy quabo image to module image buffer
+// If appropriate, copy module image to output buffer first
+//
+void storeData(
+    module_data_t* mod_data,        // module image
+    HSD_input_block_t* in_block,    // block in input buffer (quabo images)
+    HSD_output_block_t* out_block,  // block in output buffer
+    int pktIndex                    // index in input buffer
+){
+    int mode, bytes_per_pixel;
     packet_header_t *pkt_head = &(in_block->header.pkt_head[pktIndex]);
     uint32_t nanosec = pkt_head->pkt_nsec;
+    int quabo_num = pkt_head->qua_num;
 
-    uint8_t currentStatus = (0x01 << pkt_head->qua_num);
+    uint8_t currentStatus = (0x01 << quabo_num);
 
-    //Check the acqmode to determine the mode in which the packet is coming in as
+    // see what kind of packet it is
+
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
         write_coinc_to_out_buffer(in_block, pktIndex, out_block);
         return;
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
+        bytes_per_pixel = 2;
         mode = 16;
     } else if (pkt_head->acq_mode == 0x6 || pkt_head->acq_mode == 0x7){
         //8 bit Imaging mode
+        bytes_per_pixel = 1;
         mode = 8;
     } else {
-        //Unidentified mode
-        //Return and not store the packet and return an error
-        fprintf(stderr, "A new mode was identify acqmode=%X\n ", pkt_head->acq_mode);
-        fprintf(stderr, "moduleNum=%X quaboNum=%X PKTNUM=%X\n", pkt_head->mod_num, pkt_head->qua_num, pkt_head->pkt_num);
+        fprintf(stderr, "Unknown acqmode %X\n ", pkt_head->acq_mode);
+        fprintf(stderr, "moduleNum=%X quaboNum=%X PKTNUM=%X\n",
+            pkt_head->mod_num, quabo_num, pkt_head->pkt_num
+        );
         fprintf(stderr, "packet skipped\n");
         return;
     }
-    //printf("\nModule Data Before\n%s", mod_data->toString().c_str());
 
-    //Setting the upper and lower bounds of NANOSEC interval that is allowed in the grouping
+    // set min/max times of quabo images in module image
+    //
     if(mod_data->status == 0){
-        //Empty module pair obj
-        //Setting both the upper and lower NANOSEC interval to the current NANOSEC value
+        // Empty module pair obj
+        // set both the upper and lower limit to current time
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         mod_data->mod_head.mode = mode;
         mod_data->max_nanosec = nanosec;
@@ -105,28 +121,58 @@ void storeData(module_data_t* mod_data, HSD_input_block_t* in_block, HSD_output_
         mod_data->min_nanosec = nanosec;
     }
 
-    //Check conditions to see if they are met for writing to output buffer
-    //Conditions:
-    //When the current location in module pair is occupied in the module pair
-    //When the mode in the module pair doesen't match the new mode
-    //When the NANOSEC interval superceeded the threshold that is allowed
+    // see if we should add module frame to output buffer
+    // - the quabo position of the new packet is already filled in module buf
+    // - or mode is different (???)
+    // - or time threshold is exceeded
+    //
     if ((mod_data->status & currentStatus) 
         || mod_data->mod_head.mode != mode 
-        || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD){
+        || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD
+    ) {
         
-        // A frame is now final.
-        // Process it (e.g. unrotate) before copying to output buffer
+        // A module frame is now final.
+        // do long pulse finding or other stuff here.
         //
-        process_frame(mod_data);
+        //process_frame(mod_data);
 
         write_frame_to_out_buffer(mod_data, out_block);
-        //Resetting values in the new emptied module pair obj
+
+        // clear module frame buffer
         mod_data->clear();
     }
 
-    memcpy(mod_data->data + (pkt_head->qua_num*PIXELS_PER_IMAGE*(mode/8)), in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE), sizeof(uint8_t)*PIXELS_PER_IMAGE*(mode/8));
+#if 1
+    // copy rotated quabo image to module image
+    //
+    if (bytes_per_pixel == 1) {
+        void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+        quabo8_to_module8_copy(
+            (QUABO_IMG8&)p,
+            quabo_num,
+            (MODULE_IMG8&)(mod_data->data)
+        );
+    } else {
+        void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+        quabo16_to_module16_copy(
+            (QUABO_IMG16&)p,
+            quabo_num,
+            (MODULE_IMG16&)(mod_data->data)
+        );
+    }
+#else
+    memcpy(
+        mod_data->data + (quabo_num*PIXELS_PER_IMAGE*bytes_per_pixel),
+        in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE),
+        sizeof(uint8_t)*PIXELS_PER_IMAGE*bytes_per_pixel
+    );
+#endif
     
-    in_block->header.pkt_head[pktIndex].copy_to(&(mod_data->mod_head.pkt_head[pkt_head->qua_num]));
+    // copy the header
+    //
+    in_block->header.pkt_head[pktIndex].copy_to(
+        &(mod_data->mod_head.pkt_head[quabo_num])
+    );
 
     //Mark the status for the packet slot as taken
     mod_data->status = mod_data->status | currentStatus;
@@ -152,6 +198,7 @@ quabo_info_t* quabo_info_t_new(){
     memset(value->prev_pkt_num, 0, sizeof(value->prev_pkt_num));
     return value;
 }
+
 //A module index for holding the data structures for the modules it expects.
 static module_data_t* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
