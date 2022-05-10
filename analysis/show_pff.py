@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
-# show_image_file.py filename
-# show a PFF file as text
+# show_pff.py filename
+# show a PFF file (image or pulse height) as text
 
 import sys, random
 sys.path.insert(0, '../util')
