@@ -46,7 +46,7 @@
         break; \
     }
 
-void quabo8_to_module8(
+void quabo8_to_module8_copy(
     QUABO_IMG8 &in, int iquabo, MODULE_IMG8 &out
 ) {
     COPY
