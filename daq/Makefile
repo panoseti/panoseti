@@ -13,8 +13,8 @@ SOURCES  = net_thread.c \
     output_thread.c \
     process_frame.c \
     databuf.c \
-    ../util/pff.o
-#    ../util/image.o
+    ../util/pff.cpp \
+	../util/image.cpp
 
 INCLUDES = databuf.h
 
@@ -29,4 +29,3 @@ clean:
 	rm -f $(TARGET) tags
 
 .PHONY: all tags clean install install-lib
-# vi: set ts=8 noet :
