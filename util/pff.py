@@ -23,26 +23,45 @@ def read_json(f):
         s += c.decode()
     return s;
 
-# returns the image as a list of 1024 numbers
+# returns the image as a list of N numbers
 # see https://docs.python.org/3/library/struct.html
 #
-def read_image_16(f):
+def read_image(f, img_size, bytes_per_pixel):
     c = f.read(1)
     if c != b'*':
         print('bad type code')
         return Null
-    return struct.unpack("1024H", f.read(2048))
+    if img_size == 32:
+        if bytes_per_pixel == 2:
+            return struct.unpack("1024H", f.read(2048))
+        else:
+            raise Exception("bad bytes per pixel"%bytes_per_pixel)
+    elif img_size == 16:
+        if bytes_per_pixel == 2:
+            return struct.unpack("256H", f.read(512))
+        else:
+            raise Exception("bad bytes per pixel"%bytes_per_pixel)
+    else:
+        raise Exception("bad image size"%image_size)
 
-# write an image; image is 1024
-def write_image_16_1(f, img):
+# write an image; image is a list
+def write_image_1D(f, img, img_size, bytes_per_pixel):
     f.write(b'*')
-    f.write(struct.pack("1024H", img))
+    if img_size == 32:
+        if bytes_per_pixel == 2:
+            f.write(struct.pack("1024H", img))
+            return
+    raise Exception('bad params')
 
-# same, image is 32x32
-def write_image_16_2(f, img):
+# same, image is NxN array
+def write_image_2D(f, img, img_size, bytes_per_pixel):
     f.write(b'*')
-    for i in range(32):
-        f.write(struct.pack("32H", *img[i]))
+    if img_size == 32:
+        if bytes_per_pixel == 2:
+            for i in range(32):
+                f.write(struct.pack("32H", *img[i]))
+            return
+    raise Exception('bad params')
 
 # parse a string of the form
 # a=b,a=b...a=b.ext

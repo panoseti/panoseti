@@ -40,7 +40,7 @@ def get_daq_params(data_config):
     if 'pulse_height' in data_config:
         do_ph = True
     daq_params = quabo_driver.DAQ_PARAMS(
-        do_image, image_usec, image_8bit, do_ph, bl_subtract
+        do_image, image_usec - 1, image_8bit, do_ph, bl_subtract
     )
     if 'flash_params' in data_config:
         fp = data_config['flash_params']
