@@ -1,15 +1,15 @@
 {
     "run_type": "eng",
-    "gain": 60,
+    "gain": 120,
     "image": {
         "integration_time_usec": 1000,
-        "pe_threshold": 3,
-        "quabo_sample_size": 8
+        "pe_threshold": 2,
+        "quabo_sample_size": 16
     },
     "pulse_height": {
-        "pe_threshold": 3
+        "pe_threshold": 15
     },
-    "max_file_size_mb": 1000,
+    "max_file_size_mb": 100,
     "long_pulse": {
         "octaves": 16,
         "threshold_sigma": [
@@ -18,5 +18,11 @@
              3.0, 3.0, 3.0, 3.0,
              3.0, 3.0, 3.0, 3.0
         ]
+    },
+    "flash_params": {
+        "rate": 7,
+        "level": 0,
+        "width": 15
+
     }
 }

@@ -115,7 +115,7 @@ void storeData(
         mod_data->mod_head.mode = mode;
         mod_data->max_nanosec = nanosec;
         mod_data->min_nanosec = nanosec;
-    } else if(nanosec > mod_data->max_nanosec){
+    } else if (nanosec > mod_data->max_nanosec){
         mod_data->max_nanosec = nanosec;
     } else if (nanosec < mod_data->min_nanosec){
         mod_data->min_nanosec = nanosec;
@@ -126,11 +126,18 @@ void storeData(
     // - or bytes/pixel is different (should never happen)
     // - or time threshold is exceeded
     //
-    if ((mod_data->quabos_bitmap & quabo_bit) 
-        || mod_data->mod_head.mode != mode 
-        || (mod_data->max_nanosec - mod_data->min_nanosec) > NANOSEC_THRESHOLD
-    ) {
-        
+    bool do_write = false;
+    if (mod_data->quabos_bitmap & quabo_bit) {
+        //printf("bit already set: %d %d\n", mod_data->quabos_bitmap, quabo_bit);
+        do_write = true;
+    } else if (mod_data->mod_head.mode != mode) {
+        //printf("new mode %d %d\n", mod_data->mod_head.mode, mode);
+        do_write = true;
+    } else if (mod_data->max_nanosec - mod_data->min_nanosec > NANOSEC_THRESHOLD) {
+        //printf("elapsed time %d %d\n", mod_data->max_nanosec, mod_data->min_nanosec);
+        do_write = true;
+    }
+    if (do_write) {    
         // A module frame is now final.
         // do long pulse finding or other stuff here.
         //
@@ -140,6 +147,8 @@ void storeData(
 
         // clear module frame buffer
         mod_data->clear();
+        mod_data->max_nanosec = nanosec;
+        mod_data->min_nanosec = nanosec;
     }
 
 #if 1
@@ -148,16 +157,16 @@ void storeData(
     if (bytes_per_pixel == 1) {
         void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
         quabo8_to_module8_copy(
-            (QUABO_IMG8&)p,
+            p,
             quabo_num,
-            (MODULE_IMG8&)(mod_data->data)
+            mod_data->data
         );
     } else {
         void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
         quabo16_to_module16_copy(
-            (QUABO_IMG16&)p,
+            p,
             quabo_num,
-            (MODULE_IMG16&)(mod_data->data)
+            mod_data->data
         );
     }
 #else

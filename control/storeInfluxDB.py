@@ -27,7 +27,7 @@ key_timestamps = {}
 
 def influx_init():
     r = redis_init()
-    client = InfluxDBClient('panoseti-influxdb', 8086, 'root', 'root', 'metadata')
+    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
     client.create_database('metadata')
 
     return r, client
