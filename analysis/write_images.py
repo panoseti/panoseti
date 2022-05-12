@@ -15,7 +15,17 @@ def do_pff(d):
                 continue
             if n['dp'] != '1':
                 continue
+
+            # generate images.bin
+            #
             cmd = 'write_images < PANOSETI_DATA/%s/%s > pulse_out/%s/%s/images.bin'%(d,f,d,f)
+            print(cmd)
+            os.system(cmd)
+
+            # generate images.mp4
+            #
+            nframes = 1000
+            cmd = 'php pipe_images.php pulse_out/%s/%s/images.bin %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -crf 0 -vf scale=512:512 pulse_out/%s/%s/images.mp4'%(d,f,nframes,d,f)
             print(cmd)
             os.system(cmd)
         else:

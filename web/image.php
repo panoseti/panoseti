@@ -1,5 +1,8 @@
 <?php
 
+// show a PFF file as a grayscale image,
+// with buttons for moving forward or back in time
+
 require_once("panoseti.inc");
 
 function arrows_str($file, $module, $frame) {
@@ -26,6 +29,7 @@ function show_frame($data, $arrows) {
         echo "<tr>";
         for ($j=0; $j<32; $j++) {
             $v = $data[$i*32+$j];
+            $v  >>= 8;
             if ($v > 255) $v = 255;
             $color = sprintf("#%02x%02x%02x", $v, $v, $v);
             echo sprintf(
@@ -47,7 +51,8 @@ function get_frame($file, $frame) {
     $x = fread($f, 1024*2);
     if (strlen($x)==0 ) die("no such frame");
     $y = array();
-    $y = unpack("S1024", $x);
+    $y = array_merge(unpack("S1024", $x));
+        // unpack returns 1-offset array - BOOOOOOO!!!!!!
     if (!$y) {
         die("unpack");
     }

@@ -19,19 +19,10 @@ typedef uint16_t QUABO_IMG16[QUABO_DIM][QUABO_DIM];
 typedef uint8_t MODULE_IMG8[MODULE_DIM][MODULE_DIM];
 typedef uint16_t MODULE_IMG16[MODULE_DIM][MODULE_DIM];
 
-extern void quabo8_to_module8_copy(
-    void* in, int iquabo, void* out
-);
-extern void quabo8_to_module16_copy(
-    void* in, int iquabo, void* out
-);
-extern void quabo16_to_module16_copy(
-    void* in, int iquabo, void* out
-);
-
-extern void quabo8_to_module16_add(
-    QUABO_IMG8 in, int iquabo, MODULE_IMG16 out
-);
+extern void quabo8_to_module8_copy(void* in, int iquabo, void* out);
+extern void quabo8_to_module16_copy(void* in, int iquabo, void* out);
+extern void quabo16_to_module16_copy(void* in, int iquabo, void* out);
+extern void quabo16_to_module16_add(void* in, int iquabo, void* out);
 
 extern void print_quabo_img8(QUABO_IMG8 q);
 extern void print_module_img16(MODULE_IMG16 m);

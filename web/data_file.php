@@ -42,6 +42,7 @@ function do_pff($name) {
         echo "<h2>File $f</h3>";
 
         echo "<p><a href=image.php?file=$name/$f&frame=0>Images</a>";
+        echo "<p><a href=pulse_out/$name/$f/images.mp4>Movie</a>";
         echo "<p>Pulse info: pixel ";
         foreach (scandir("$dir/$f") as $pixel) {
             if ($pixel[0] == ".") continue;
