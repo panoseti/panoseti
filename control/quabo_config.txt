@@ -333,7 +333,7 @@ HV_3 = 48700
 *ACQMODE =0x00 for using the MONitor SMA, without the readout disturbing things
 ACQMODE = 0x02
 
-ACQINT = 9      *frame interval for IMage mode, x10.24us
+ACQINT = 9      *frame interval for IMage mode, x1us
 HOLD1 = 0       *time after trigger that hold1 is asserted, x5ns, 0 to 15
 HOLD2 = 0       *time after trigger that hold1 is asserted, x5ns, 0 to 15
 *SETTING ADCCLKPH is no longer supported 11/15/18
