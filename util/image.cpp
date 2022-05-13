@@ -6,8 +6,8 @@
 // in a module:
 // quabo 0 (upper left) is unrotated
 // quabo 1 (upper right) is rotated 90 deg
-// quabo 2 (lower left) is rotated 270 deg
-// quabo 3 (lower right) is rotated 180 deg
+// quabo 2 (lower right) is rotated 180 deg
+// quabo 3 (lower left) is rotated 270 deg
 //
 // rotations are clockwise
 // the following functions undo the rotation
@@ -33,14 +33,14 @@
     case 2: \
         for (int i=0; i<QUABO_DIM; i++) { \
             for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-j-1][i] = (*in)[i][j]; \
+                (*out)[MODULE_DIM-i-1][MODULE_DIM-j-1] = (*in)[i][j]; \
             } \
         } \
         break; \
     case 3: \
         for (int i=0; i<QUABO_DIM; i++) { \
             for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-i-1][MODULE_DIM-j-1] = (*in)[i][j]; \
+                (*out)[MODULE_DIM-j-1][i] = (*in)[i][j]; \
             } \
         } \
         break; \
@@ -65,14 +65,14 @@
     case 2: \
         for (int i=0; i<QUABO_DIM; i++) { \
             for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-j-1][i] += (*in)[i][j]; \
+                (*out)[MODULE_DIM-i-1][MODULE_DIM-j-1] += (*in)[i][j]; \
             } \
         } \
         break; \
     case 3: \
         for (int i=0; i<QUABO_DIM; i++) { \
             for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-i-1][MODULE_DIM-j-1] += (*in)[i][j]; \
+                (*out)[MODULE_DIM-j-1][i] += (*in)[i][j]; \
             } \
         } \
         break; \

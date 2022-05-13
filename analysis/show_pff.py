@@ -11,10 +11,10 @@ def image_as_text(img, img_size, bytes_per_pixel):
     scale = ' .,-+=#@'
         # 8 chars w/ increasing density
     print('-'*(img_size*2+2))
-    for row in range(32):
+    for row in range(img_size):
         s = '|'
         for col in range(img_size):
-            x = img[col+img_size*row]
+            x = img[row*img_size+col]
             if bytes_per_pixel == 2:
                 i = x//8192
             else:

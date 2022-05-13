@@ -108,9 +108,10 @@ void storeData(
 
     // set min/max times of quabo images in module image
     //
-    if(mod_data->quabos_bitmap == 0){
-        // Empty module pair obj
+    if (mod_data->quabos_bitmap == 0){
+        // no quabo images yet.
         // set both the upper and lower limit to current time
+        //
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         mod_data->mod_head.mode = mode;
         mod_data->max_nanosec = nanosec;
@@ -151,7 +152,6 @@ void storeData(
         mod_data->min_nanosec = nanosec;
     }
 
-#if 1
     // copy rotated quabo image to module image
     //
     if (bytes_per_pixel == 1) {
@@ -169,13 +169,6 @@ void storeData(
             mod_data->data
         );
     }
-#else
-    memcpy(
-        mod_data->data + (quabo_num*PIXELS_PER_IMAGE*bytes_per_pixel),
-        in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE),
-        PIXELS_PER_IMAGE*bytes_per_pixel
-    );
-#endif
     
     // copy the header
     //
@@ -183,24 +176,21 @@ void storeData(
         &(mod_data->mod_head.pkt_head[quabo_num])
     );
 
-    //Mark the status for the packet slot as taken
+    // Mark the quabo slot as taken
+    //
     mod_data->quabos_bitmap |= quabo_bit;
     mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
     mod_data->mod_head.mode = mode;
 }
 
 
-/**
- * Structure of quabo stored for determining packet loss
- */
+// quabo info for determining packet loss
+//
 typedef struct quabo_info{
     uint16_t prev_pkt_num[NUM_OF_MODES+1];
     int lost_pkts[NUM_OF_MODES+1];
 } quabo_info_t;
 
-/**
- * Initializing a new quabo_info object
- */
 quabo_info_t* quabo_info_t_new(){
     quabo_info_t* value = (quabo_info_t*) malloc(sizeof(struct quabo_info));
     memset(value->lost_pkts, -1, sizeof(value->lost_pkts));
@@ -208,13 +198,13 @@ quabo_info_t* quabo_info_t_new(){
     return value;
 }
 
-//A module index for holding the data structures for the modules it expects.
+// array of pointers to module objects
+//
 static module_data_t* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
-/**
- * Initialization function for Hashpipe. This function is called once when the thread is created
- * @param args Arugments passed in by hashpipe framework.
- */
+// Initialization function
+// is called once when the thread is created
+//
 static int init(hashpipe_thread_args_t * args){
     hashpipe_status_t st = args->st;
     //Initialize the INTSIG signal within the buffer to be zero
@@ -241,8 +231,9 @@ static int init(hashpipe_thread_args_t * args){
     }
     cbuf = getc(modConfig_file);
 
-    //Parsing the Module Config file for the modules to expect data from
-    //Creates structures for holding that data in the module index
+    // Parse the Module Config file for the modules to expect data from
+    // Creates structures for holding that data in the module array
+    //
     while(cbuf != EOF){
         ungetc(cbuf, modConfig_file);
         if (cbuf != '#'){
