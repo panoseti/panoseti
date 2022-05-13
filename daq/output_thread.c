@@ -177,7 +177,7 @@ static FILE_PTRS *data_files[MAX_MODULE_INDEX] = {NULL};
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
-    FILENAME_INFO filenameInfo(t, DP_STATIC_META, 0, dome, module, 0);
+    FILENAME_INFO filenameInfo(t, DP_NONE, 0, dome, module, 0);
     return new FILE_PTRS(diskDir, &filenameInfo, "w");
 }
 

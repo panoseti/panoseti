@@ -11,6 +11,21 @@
 using std::string;
 using std::vector;
 
+const char* dp_to_str(DATA_PRODUCT dp) {
+    switch (dp) {
+    case DP_BIT16_IMG: return "img16";
+    case DP_BIT8_IMG: return "img8";
+    case DP_PH_IMG: return "ph16";
+    }
+    return "unknown";
+}
+
+DATA_PRODUCT str_to_dp(const char* s) {
+    if (!strcmp(s, "img16")) return DP_BIT16_IMG;
+    if (!strcmp(s, "img8")) return DP_BIT8_IMG;
+    if (!strcmp(s, "ph16")) return DP_PH_IMG;
+}
+
 void pff_start_json(FILE* f) {
 }
 
@@ -183,9 +198,9 @@ void FILENAME_INFO::make_filename(string &s) {
     time_t x = (time_t)start_time;
     struct tm* tm = gmtime(&x);
     strftime(tbuf, sizeof(tbuf), "%FT%TZ", tm);
-    sprintf(buf, "start%c%s%cdp%c%d%cbpp%c%d%cdome%c%d%cmodule%c%d%cseqno%c%d.pff",
+    sprintf(buf, "start%c%s%cdp%c%s%cbpp%c%d%cdome%c%d%cmodule%c%d%cseqno%c%d.pff",
         VAL_SEP, tbuf,
-    PAIR_SEP, VAL_SEP, data_product,
+    PAIR_SEP, VAL_SEP, dp_to_str(data_product),
     PAIR_SEP, VAL_SEP, bytes_per_pixel,
     PAIR_SEP, VAL_SEP, dome,
     PAIR_SEP, VAL_SEP, module,
@@ -212,7 +227,7 @@ int FILENAME_INFO::parse_filename(char* name) {
             time_t t = mktime(&tm);
             start_time = (double)t;
         } else if (!strcmp(nvp.name, "dp")) {
-            data_product = (DATA_PRODUCT)atoi(nvp.value);
+            data_product = str_to_dp(nvp.value);
         } else if (!strcmp(nvp.name, "bpp")) {
             bytes_per_pixel = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "dome")) {

@@ -1,4 +1,5 @@
-# parse PFF files and dir/file names
+# functions to parse PFF files,
+# and to create and parse PFF dir/file names
 
 import struct
 import time, datetime
@@ -88,3 +89,9 @@ def run_dir_name(obs_name, run_type):
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
     return 'obs_%s.start_%sZ.runtype_%s.pffd'%(obs_name, dt_str, run_type)
+
+def is_pff_dir(name):
+    return name.endswith('.pffd')
+
+def is_pff_file(name):
+    return name.endswith('.pff')

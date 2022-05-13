@@ -52,7 +52,7 @@ def do_pff(d):
         n = pff.parse_name(f)
         if 'dp' not in n.keys():
             continue
-        if n['dp'] != '1':
+        if n['dp'] != 'img16':
             continue
         for pixel in {0, 64, 128, 256, 320, 384}:
             cmd = 'pulse --file PANOSETI_DATA/%s/%s --pixel %d'%(d, f, pixel)

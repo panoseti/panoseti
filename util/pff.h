@@ -36,10 +36,10 @@ extern bool ends_with(const char* s, const char* suffix);
 ////////// DIR AND FILE NAMES ////////////////
 
 typedef enum {
-    DP_STATIC_META,
-    DP_BIT16_IMG,
+    DP_BIT16_IMG = 1,
     DP_BIT8_IMG,
-    DP_PH_IMG
+    DP_PH_IMG,
+    DP_NONE
 } DATA_PRODUCT;
 
 
