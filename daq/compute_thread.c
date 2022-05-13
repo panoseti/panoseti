@@ -1,7 +1,6 @@
-/* compute_thread.c
- *
- * Does pre processing on the data coming from the quabos before writing to file.
- */
+// compute_thread.c
+// get data from input buffer, combine/transform it,
+// write results to output buffer
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +17,8 @@
 #include "image.h"
 #include "process_frame.h"
 
-// Number of mode and also used the create the size of array (Modes 1,2,3,6,7)
+// Number of DAQ modes
+//
 #define NUM_OF_MODES 7
 
 // copy image data from the module data to output buffer.
@@ -41,26 +41,26 @@ void write_frame_to_out_buffer(
     out_block->header.n_img_module++;
 }
 
-/**
- * Write coincidence(Pulse Height) images into the output buffer.
- * @param in_block Input data block containing the image needed to be copied.
- * @param pktIndex Packet index for the image in the input data block.
- * @param out_block Output data block to be written to. 
- */
-void write_coinc_to_out_buffer(
-    HSD_input_block_t* in_block,
-    int pktIndex,
-        // TODO: pass the header, not the index
-    HSD_output_block_t* out_block
+// Copy a pulse height image to the output buffer.
+//
+void write_ph_to_out_buffer(
+    HSD_input_block_t* in_block,        // data block in input buffer
+    int pktIndex,                       // index into block
+    HSD_output_block_t* out_block,      // block in output buffer
+    int quabo_num
 ) {
     int out_index = out_block->header.n_coinc_img;
 
-    in_block->header.pkt_head[pktIndex].copy_to(&(out_block->header.coinc_pkt_head[out_index]));
+    in_block->header.pkt_head[pktIndex].copy_to(
+        &(out_block->header.coinc_pkt_head[out_index])
+    );
     
-    memcpy(
-        out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE,
+    // copy and rotate the image
+    //
+    quabo16_to_quabo16_copy(
         in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE,
-        BYTES_PER_PKT_IMAGE
+        quabo_num,
+        out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE
     );
 
     out_block->header.n_coinc_img++;
@@ -87,7 +87,7 @@ void storeData(
 
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
-        write_coinc_to_out_buffer(in_block, pktIndex, out_block);
+        write_ph_to_out_buffer(in_block, pktIndex, out_block, quabo_num);
         return;
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode

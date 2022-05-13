@@ -1,7 +1,6 @@
-/* output_thread.c
- *
- * Writes the data to output file
- */
+// output_thread.c
+//
+// write data from output buffer to files
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,27 +14,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <string>
+
 #include "hashpipe.h"
 #include "databuf.h"
 #include "pff.h"
 #include "dp.h"
 
 
-/**
- * Structures for Reading and Parsing file in PFF
- */
-struct PF {
-    DATA_PRODUCT dataProduct;
-    FILE *filePtr;
-    PF(FILENAME_INFO *fileInfo, DIRNAME_INFO *dirInfo);
-    PF(const char *dirName, const char *fileName);
-};
-
-/**
- * Structure for storing file pointers opened by output thread.
- * A file is create for all possible data products described by pff.h
- * @see ../utls/pff.sh
- */
+// Structure for storing file pointers opened by output thread.
+// A file is created for all possible data products described by pff.h
+//
 struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;

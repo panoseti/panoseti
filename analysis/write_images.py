@@ -25,7 +25,8 @@ def do_pff(d):
             # generate images.mp4
             #
             nframes = 1000
-            cmd = 'php pipe_images.php pulse_out/%s/%s/images.bin %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -crf 0 -vf scale=512:512 pulse_out/%s/%s/images.mp4'%(d,f,nframes,d,f)
+# see https://stackoverflow.com/questions/20743070/ffmpeg-compressed-mp4-video-not-playing-on-mozilla-firefox-with-a-file-is-corru
+            cmd = 'php pipe_images.php pulse_out/%s/%s/images.bin %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 pulse_out/%s/%s/images.mp4'%(d,f,nframes,d,f)
             print(cmd)
             os.system(cmd)
         else:

@@ -14,65 +14,33 @@
 
 // poor man's template
 
-#define COPY \
+#define ROTATE_AND_OP \
     switch(iquabo) { \
     case 0: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[i][j] = (*in)[i][j]; \
+        for (int i=0; i<SRC_DIM; i++) { \
+            for (int j=0; j<SRC_DIM; j++) { \
+                (*out)[i][j] OP (*in)[i][j]; \
             } \
         } \
         break; \
     case 1: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[j][MODULE_DIM-1-i] = (*in)[i][j]; \
+        for (int i=0; i<SRC_DIM; i++) { \
+            for (int j=0; j<SRC_DIM; j++) { \
+                (*out)[j][DST_DIM-1-i] OP (*in)[i][j]; \
             } \
         } \
         break; \
     case 2: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-i-1][MODULE_DIM-j-1] = (*in)[i][j]; \
+        for (int i=0; i<SRC_DIM; i++) { \
+            for (int j=0; j<SRC_DIM; j++) { \
+                (*out)[DST_DIM-i-1][DST_DIM-j-1] OP (*in)[i][j]; \
             } \
         } \
         break; \
     case 3: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-j-1][i] = (*in)[i][j]; \
-            } \
-        } \
-        break; \
-    }
-
-#define ADD \
-    switch(iquabo) { \
-    case 0: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[i][j] += (*in)[i][j]; \
-            } \
-        } \
-        break; \
-    case 1: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[j][MODULE_DIM-1-i] += (*in)[i][j]; \
-            } \
-        } \
-        break; \
-    case 2: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-i-1][MODULE_DIM-j-1] += (*in)[i][j]; \
-            } \
-        } \
-        break; \
-    case 3: \
-        for (int i=0; i<QUABO_DIM; i++) { \
-            for (int j=0; j<QUABO_DIM; j++) { \
-                (*out)[MODULE_DIM-j-1][i] += (*in)[i][j]; \
+        for (int i=0; i<SRC_DIM; i++) { \
+            for (int j=0; j<SRC_DIM; j++) { \
+                (*out)[DST_DIM-j-1][i] OP (*in)[i][j]; \
             } \
         } \
         break; \
@@ -81,25 +49,61 @@
 void quabo8_to_module8_copy(void *inp, int iquabo, void *outp) {
     QUABO_IMG8* in = (QUABO_IMG8*) inp;
     MODULE_IMG8* out = (MODULE_IMG8*) outp;
-    COPY
+#define SRC_DIM QUABO_DIM
+#define DST_DIM MODULE_DIM
+#define OP =
+    ROTATE_AND_OP
+#undef SRC_DIM
+#undef DST_DIM
+#undef OP
 }
 
 void quabo8_to_module16_copy(void *inp, int iquabo, void *outp) {
     QUABO_IMG8* in = (QUABO_IMG8*) inp;
     MODULE_IMG16* out = (MODULE_IMG16*) outp;
-    COPY
+#define SRC_DIM QUABO_DIM
+#define DST_DIM MODULE_DIM
+#define OP =
+    ROTATE_AND_OP
+#undef SRC_DIM
+#undef DST_DIM
+#undef OP
 }
 
 void quabo16_to_module16_copy(void *inp, int iquabo, void *outp) {
     QUABO_IMG16* in = (QUABO_IMG16*) inp;
     MODULE_IMG16* out = (MODULE_IMG16*) outp;
-    COPY
+#define SRC_DIM QUABO_DIM
+#define DST_DIM MODULE_DIM
+#define OP =
+    ROTATE_AND_OP
+#undef SRC_DIM
+#undef DST_DIM
+#undef OP
+}
+
+void quabo16_to_quabo16_copy(void *inp, int iquabo, void *outp) {
+    QUABO_IMG16* in = (QUABO_IMG16*) inp;
+    QUABO_IMG16* out = (QUABO_IMG16*) outp;
+#define SRC_DIM QUABO_DIM
+#define DST_DIM QUABO_DIM
+#define OP =
+    ROTATE_AND_OP
+#undef SRC_DIM
+#undef DST_DIM
+#undef OP
 }
 
 void quabo16_to_module16_add(void *inp, int iquabo, void *outp) {
     QUABO_IMG16* in = (QUABO_IMG16*) inp;
     MODULE_IMG16* out = (MODULE_IMG16*) outp;
-    ADD
+#define SRC_DIM QUABO_DIM
+#define DST_DIM MODULE_DIM
+#define OP +=
+    ROTATE_AND_OP
+#undef SRC_DIM
+#undef DST_DIM
+#undef OP
 }
 
 void print_quabo_img8(QUABO_IMG8 q) {
