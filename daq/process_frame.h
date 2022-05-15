@@ -1,3 +1,3 @@
 #include "compute_thread.h"
 
-extern void process_frame(module_data_t*);
+extern void process_frame(MODULE_IMAGE_BUFFER*);

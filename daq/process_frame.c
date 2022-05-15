@@ -1,4 +1,4 @@
 #include "process_frame.h"
 
-void process_frame(module_data_t* md) {
+void process_frame(MODULE_IMAGE_BUFFER* md) {
 }

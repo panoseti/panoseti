@@ -16,7 +16,7 @@ SOURCES  = net_thread.c \
     ../util/pff.cpp \
 	../util/image.cpp
 
-INCLUDES = databuf.h
+INCLUDES = databuf.h compute_thread.h process_frame.h
 
 all: $(TARGET)
 

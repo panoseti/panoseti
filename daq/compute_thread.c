@@ -24,13 +24,13 @@
 // copy image data from the module data to output buffer.
 //
 void write_frame_to_out_buffer(
-    module_data_t* mod_data,
+    MODULE_IMAGE_BUFFER* mod_data,
     HSD_output_block_t* out_block
 ) {
     int out_index = out_block->header.n_img_module;
     HSD_output_block_header_t* out_header = &(out_block->header);
     
-    mod_data->mod_head.copy_to(&(out_header->img_mod_head[out_index]));
+    out_header->img_mod_head[out_index] = mod_data->mod_head;
     
     memcpy(
         out_block->img_block + (out_index * BYTES_PER_MODULE_FRAME),
@@ -51,9 +51,7 @@ void write_ph_to_out_buffer(
 ) {
     int out_index = out_block->header.n_coinc_img;
 
-    in_block->header.pkt_head[pktIndex].copy_to(
-        &(out_block->header.coinc_pkt_head[out_index])
-    );
+    out_block->header.coinc_pkt_head[out_index] = in_block->header.pkt_head[pktIndex];
     
     // copy and rotate the image
     //
@@ -70,14 +68,14 @@ void write_ph_to_out_buffer(
 // If needed, copy module image to output buffer first
 //
 void storeData(
-    module_data_t* mod_data,        // module image
+    MODULE_IMAGE_BUFFER* mod_data,        // module image
     HSD_input_block_t* in_block,    // block in input buffer (quabo images)
     HSD_output_block_t* out_block,  // block in output buffer (module images)
     int pktIndex                    // index in input buffer
         // TODO: pass the packet header rather than the index
 ){
-    int mode, bytes_per_pixel;
-    packet_header_t *pkt_head = &(in_block->header.pkt_head[pktIndex]);
+    int bits_per_pixel, bytes_per_pixel;
+    PACKET_HEADER *pkt_head = &(in_block->header.pkt_head[pktIndex]);
     uint32_t nanosec = pkt_head->pkt_nsec;
     int quabo_num = pkt_head->qua_num;
 
@@ -92,11 +90,11 @@ void storeData(
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
         bytes_per_pixel = 2;
-        mode = 16;
+        bits_per_pixel = 16;
     } else if (pkt_head->acq_mode == 0x6 || pkt_head->acq_mode == 0x7){
         //8 bit Imaging mode
         bytes_per_pixel = 1;
-        mode = 8;
+        bits_per_pixel = 8;
     } else {
         fprintf(stderr, "Unknown acqmode %X\n ", pkt_head->acq_mode);
         fprintf(stderr, "moduleNum=%X quaboNum=%X PKTNUM=%X\n",
@@ -113,7 +111,7 @@ void storeData(
         // set both the upper and lower limit to current time
         //
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-        mod_data->mod_head.mode = mode;
+        mod_data->mod_head.bits_per_pixel = bits_per_pixel;
         mod_data->max_nanosec = nanosec;
         mod_data->min_nanosec = nanosec;
     } else if (nanosec > mod_data->max_nanosec){
@@ -131,8 +129,8 @@ void storeData(
     if (mod_data->quabos_bitmap & quabo_bit) {
         //printf("bit already set: %d %d\n", mod_data->quabos_bitmap, quabo_bit);
         do_write = true;
-    } else if (mod_data->mod_head.mode != mode) {
-        //printf("new mode %d %d\n", mod_data->mod_head.mode, mode);
+    } else if (mod_data->mod_head.bits_per_pixel != bits_per_pixel) {
+        //printf("new bits_per_pixel %d %d\n", mod_data->mod_head.bits_per_pixel, bits_per_pixel);
         do_write = true;
     } else if (mod_data->max_nanosec - mod_data->min_nanosec > NANOSEC_THRESHOLD) {
         //printf("elapsed time %d %d\n", mod_data->max_nanosec, mod_data->min_nanosec);
@@ -172,15 +170,13 @@ void storeData(
     
     // copy the header
     //
-    in_block->header.pkt_head[pktIndex].copy_to(
-        &(mod_data->mod_head.pkt_head[quabo_num])
-    );
+    mod_data->mod_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
 
     // Mark the quabo slot as taken
     //
     mod_data->quabos_bitmap |= quabo_bit;
     mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-    mod_data->mod_head.mode = mode;
+    mod_data->mod_head.bits_per_pixel = bits_per_pixel;
 }
 
 
@@ -200,7 +196,7 @@ quabo_info_t* quabo_info_t_new(){
 
 // array of pointers to module objects
 //
-static module_data_t* moduleInd[MAX_MODULE_INDEX] = {NULL};
+static MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
 // Initialization function
 // is called once when the thread is created
@@ -240,7 +236,7 @@ static int init(hashpipe_thread_args_t * args){
             if (fscanf(modConfig_file, "%u\n", &modName) == 1){
                 if (moduleInd[modName] == NULL){
 
-                    moduleInd[modName] = new module_data();
+                    moduleInd[modName] = new MODULE_IMAGE_BUFFER();
 
                     fprintf(stdout, "Created Module: %u.%u-%u\n", 
                     (unsigned int) (modName << 2)/0x100, (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3);
@@ -285,7 +281,7 @@ static void *run(hashpipe_thread_args_t * args){
     int INTSIG;
 
     //Variables to display pkt info
-    uint8_t mode;                                       //The current mode of the packet block
+    uint8_t acq_mode;                                   //The current mode of the packet block
     quabo_info_t* quaboInd[0xffff] = {NULL};            //Create a rudimentary hash map of the quabo number and linked list ind
 
     quabo_info_t* currentQuabo;                         //Pointer to the quabo info that is currently being used
@@ -367,7 +363,7 @@ static void *run(hashpipe_thread_args_t * args){
 
             //Finding the packet number and computing the lost of packets by using packet number
             //Read the packet number from the packet
-            mode = db_in->block[curblock_in].header.pkt_head[i].acq_mode;
+            acq_mode = db_in->block[curblock_in].header.pkt_head[i].acq_mode;
             boardLoc = db_in->block[curblock_in].header.pkt_head[i].mod_num * 4 + db_in->block[curblock_in].header.pkt_head[i].qua_num;
 
             //Check to see if there is a quabo info for the current quabo packet. If not create an object
@@ -381,20 +377,20 @@ static void *run(hashpipe_thread_args_t * args){
             currentQuabo = quaboInd[boardLoc];
 
             //Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
-            if (currentQuabo->lost_pkts[mode] < 0) {
-                currentQuabo->lost_pkts[mode] = 0;
+            if (currentQuabo->lost_pkts[acq_mode] < 0) {
+                currentQuabo->lost_pkts[acq_mode] = 0;
             } else {
                 //Check to see if the current packet number is less than the previous. If so the number has overflowed and looped.
                 //Compenstate for this if this has happend, and then take the difference of the packet numbers minus 1 to be the packets lost
-                if (db_in->block[curblock_in].header.pkt_head[i].pkt_num < currentQuabo->prev_pkt_num[mode])
-                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[mode]) + db_in->block[curblock_in].header.pkt_head[i].pkt_num;
+                if (db_in->block[curblock_in].header.pkt_head[i].pkt_num < currentQuabo->prev_pkt_num[acq_mode])
+                    current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[acq_mode]) + db_in->block[curblock_in].header.pkt_head[i].pkt_num;
                 else
-                    current_pkt_lost = (db_in->block[curblock_in].header.pkt_head[i].pkt_num - currentQuabo->prev_pkt_num[mode]) - 1;
+                    current_pkt_lost = (db_in->block[curblock_in].header.pkt_head[i].pkt_num - currentQuabo->prev_pkt_num[acq_mode]) - 1;
                 
-                currentQuabo->lost_pkts[mode] += current_pkt_lost; //Add this packet lost to the total for this quabo
+                currentQuabo->lost_pkts[acq_mode] += current_pkt_lost; //Add this packet lost to the total for this quabo
                 total_lost_pkts += current_pkt_lost;               //Add this packet lost to the overall total for all quabos
             }
-            currentQuabo->prev_pkt_num[mode] = db_in->block[curblock_in].header.pkt_head[i].pkt_num; //Update the previous packet number to be the current packet number
+            currentQuabo->prev_pkt_num[acq_mode] = db_in->block[curblock_in].header.pkt_head[i].pkt_num; //Update the previous packet number to be the current packet number
         }
 
         /*Update input and output block for both buffers*/

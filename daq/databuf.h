@@ -57,7 +57,7 @@
 /**
  * Structure for storing the values from a packet header
  */
-typedef struct packet_header {
+struct PACKET_HEADER {
     char acq_mode;
     uint16_t pkt_num;
     uint16_t mod_num;       //0..255
@@ -66,26 +66,6 @@ typedef struct packet_header {
     uint32_t pkt_nsec;
     long int tv_sec;
     long int tv_usec;
-    int copy_to(packet_header* pkt_head) {
-        pkt_head->acq_mode = this->acq_mode;
-        pkt_head->pkt_num = this->pkt_num;
-        pkt_head->mod_num = this->mod_num;
-        pkt_head->qua_num = this->qua_num;
-        pkt_head->pkt_utc = this->pkt_utc;
-        pkt_head->pkt_nsec = this->pkt_nsec;
-        pkt_head->tv_sec = this->tv_sec;
-        pkt_head->tv_usec = this->tv_usec;
-    };
-    int clear(){
-        this->acq_mode = 0x0;
-        this->pkt_num = 0;
-        this->mod_num = 0;
-        this->qua_num = 0;
-        this->pkt_utc = 0;
-        this->pkt_nsec = 0;
-        this->tv_sec = 0;
-        this->tv_usec = 0;
-    };
     std::string toString(){
         return "acq_mode = " + std::to_string(this->acq_mode) +
                 " pkt_num = " + std::to_string(this->pkt_num) +
@@ -96,66 +76,26 @@ typedef struct packet_header {
                 " tv_sec = " + std::to_string(this->tv_sec) +
                 " tv_sec = " + std::to_string(this->tv_usec);
     };
-    int equal_to(packet_header *pkt_head){
-        return (this->acq_mode == pkt_head->acq_mode
-            && this->pkt_num == pkt_head->pkt_num
-            && this->mod_num == pkt_head->mod_num
-            && this->qua_num == pkt_head->qua_num
-            && this->pkt_utc == pkt_head->pkt_utc
-            && this->pkt_nsec == pkt_head->pkt_nsec
-            && this->tv_sec == pkt_head->tv_sec
-            && this->tv_usec == pkt_head->tv_usec);
-    };
-} packet_header_t;
+};
 
-/**
- * Structure for storing the packet headers for all quabos associated with a module.
- * Header structure includes the mode and module associated with the structure with 
- * status determining attributes of the packet headers
- */
-typedef struct module_header {
-    int mode;
+// info about a module image:
+// - the packet headers for the 4 quabo images comprising it
+// - the module number
+// produced by the compute thread, consumed by the output thread
+//
+struct MODULE_IMAGE_HEADER {
+    int bits_per_pixel;
     uint16_t mod_num;
-    packet_header_t pkt_head[QUABO_PER_MODULE];
-    uint8_t status[QUABO_PER_MODULE];
-    int copy_to(module_header* mod_head) {
-        mod_head->mode = this->mode;
-        mod_head->mod_num = this->mod_num;
-        for (int i = 0; i < QUABO_PER_MODULE; i++){
-            this->pkt_head[i].copy_to(&(mod_head->pkt_head[i]));
-        }
-        memcpy(mod_head->status, this->status, sizeof(uint8_t)*QUABO_PER_MODULE);
-    };
-    int clear(){
-        this->mode = 0;
-        this->mod_num = 0;
-        for (int i = 0; i < QUABO_PER_MODULE; i++){
-            this->pkt_head[i].clear();
-        }
-        memset(this->status, 0, sizeof(uint8_t)*QUABO_PER_MODULE);
-    };
+    PACKET_HEADER pkt_head[QUABO_PER_MODULE];
     std::string toString(){
-        std::string return_string = "mode = " + std::to_string(this->mode) + "\n";
+        std::string return_string = "bits_per_pixel = " + std::to_string(this->bits_per_pixel) + "\n";
         return_string += "mod_num = " + std::to_string(this->mod_num);
         for (int i = 0; i < QUABO_PER_MODULE; i++){
             return_string += "\n" + pkt_head[i].toString();
-            return_string += " status = " + std::to_string(this->status[i]);
         }
         return return_string;
     }
-    int equal_to(module_header *mod_head){
-        if (this->mode != mod_head->mode){
-            return 0;
-        }
-        for (int i = 0; i < QUABO_PER_MODULE; i++){
-            if (!this->pkt_head[i].equal_to(&(mod_head->pkt_head[i])) 
-                || this->status[i] != mod_head->status[i]) {
-                return 0;
-            }
-        }
-        return 1;
-    }
-} module_header_t;
+};
 
 
 /* INPUT BUFFER STRUCTURES */
@@ -164,7 +104,7 @@ typedef struct module_header {
  */
 typedef struct HSD_input_block_header {
     uint64_t mcnt;                              // mcount of first packet
-    packet_header_t pkt_head[IN_PKT_PER_BLOCK];
+    PACKET_HEADER pkt_head[IN_PKT_PER_BLOCK];
     int n_pkts_in_block;
     int INTSIG;
 } HSD_input_block_header_t;
@@ -202,10 +142,10 @@ typedef struct HSD_input_databuf {
  */
 typedef struct HSD_output_block_header {
     uint64_t mcnt;
-    module_header_t img_mod_head[OUT_MOD_PER_BLOCK];
+    MODULE_IMAGE_HEADER img_mod_head[OUT_MOD_PER_BLOCK];
     int n_img_module;
 
-    packet_header_t coinc_pkt_head[OUT_COINC_PER_BLOCK];
+    PACKET_HEADER coinc_pkt_head[OUT_COINC_PER_BLOCK];
     int n_coinc_img;
 
     int INTSIG;

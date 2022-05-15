@@ -191,7 +191,7 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
     fprintf(fileToWrite, "{ ");
     for (int i = 0; i < QUABO_PER_MODULE; i++){
         fprintf(fileToWrite,
-        "quabo %u: { acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li, status : %u}",
+        "quabo %u: { acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li}",
         i,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].acq_mode,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].mod_num,
@@ -199,8 +199,7 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_num,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_nsec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_sec,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_usec,
-        dataHeader->img_mod_head[frameIndex].status[i]
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_usec
         );
         if (i < QUABO_PER_MODULE-1){
             fprintf(fileToWrite, ", ");
@@ -217,15 +216,15 @@ int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHead
 int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     FILE *fileToWrite;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_mod_head[frameIndex].mod_num];
-    int mode = dataBlock->header.img_mod_head[frameIndex].mode;
-    int modSizeMultiplier = mode/8;
+    int bits_per_pixel = dataBlock->header.img_mod_head[frameIndex].bits_per_pixel;
+    int modSizeMultiplier = bits_per_pixel/8;
 
-    if (mode == 16) {
+    if (bits_per_pixel == 16) {
         fileToWrite = moduleToWrite->bit16Img;
-    } else if (mode == 8){
+    } else if (bits_per_pixel == 8){
         fileToWrite = moduleToWrite->bit8Img;
     } else {
-        printf("Mode %i not recognized\n", mode);
+        printf("BPP %i not recognized\n", bits_per_pixel);
         printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[frameIndex].toString().c_str());
         return 0;
     }
@@ -250,10 +249,10 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
 
     if (ftell(fileToWrite) > max_file_size){
         moduleToWrite->increment_seqno();
-        if (mode == 16){
+        if (bits_per_pixel == 16){
             moduleToWrite->set_bpp(2);
             moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
-        } else if (mode == 8){
+        } else if (bits_per_pixel == 8){
             moduleToWrite->set_bpp(1);
             moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory, "w");
         }
