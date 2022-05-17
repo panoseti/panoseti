@@ -21,7 +21,6 @@
 //
 // options:
 //
-// --module n       module number, 0/1 default 0 (HDF5 only)
 // --pixel n        pixel (0..1023)
 // --nlevels n      number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
@@ -46,16 +45,15 @@
 #include "window_stats.h"
 
 #define WIN_SIZE_DEFAULT    64
-#define MAX_VAL             2000        // ignore values larger than this
+#define MAX_VAL             65536        // ignore values larger than this
 
 int win_size = WIN_SIZE_DEFAULT;
-int pixel=0, module=0;
+int pixel=0;
 const char* out_dir = "derived";
 
 void usage() {
     printf("options:\n"
         "   --file x            data file\n"
-        "   --module n          module number\n"
         "   --pixel n           pixel (0..255)\n"
         "   --nlevels n         duration levels (default 16)\n"
         "   --win_size n        stats window is n times pulse duration\n"
@@ -213,8 +211,9 @@ int do_pff(const char* path) {
         retval = pff_read_json(f, s);
         if (retval) break;
         retval = pff_read_image(f, sizeof(image), image);
+        if (retval) break;
         uint16_t val = image[pixel];
-        if (val > MAX_VAL) {
+        if (val >= MAX_VAL) {
             val = 0;
         }
         pulse_find.add_sample((double)val);
@@ -232,8 +231,6 @@ int main(int argc, char **argv) {
             file = argv[++i];
         } else if (!strcmp(argv[i], "--pixel")) {
             pixel = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--module")) {
-            module = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--nlevels")) {
             nlevels = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--win_size")) {

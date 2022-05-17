@@ -109,7 +109,7 @@ function main($start, $n, $file, $pixel, $type, $dur) {
     }
     echo "<br><br>";
 
-    echo "<p>File: <a href=data_file.php?name=$file>$file</a>";
+    echo "<p>File: $file";
     echo "<p>Pixel: $pixel";
     $d = 1<<$dur;
     if ($type != "value") {

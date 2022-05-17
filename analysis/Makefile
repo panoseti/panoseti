@@ -14,16 +14,16 @@ else
 CXXFLAGS =  -O4
 endif
 
-CXX = g++ $(CXXFLAGS) $(H5_INC) $(UTIL_INC)
+CXX = g++ $(CXXFLAGS) $(UTIL_INC)
 
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
-pulse: pulse.cpp ../util/ph5.o ../util/pff.o
-	$(CXX) -o pulse pulse.cpp ../util/pff.o
+pulse: pulse.cpp ../util/pff.cpp
+	$(CXX) -o pulse pulse.cpp ../util/pff.cpp
 
-write_images: write_images.cpp ../util/pff.o
-	$(CXX) -o write_images write_images.cpp ../util/pff.o
+write_images: write_images.cpp ../util/pff.cpp
+	$(CXX) -o write_images write_images.cpp ../util/pff.cpp
 
 -include Makefile.deps
 

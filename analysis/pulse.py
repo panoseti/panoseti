@@ -23,7 +23,7 @@ def make_hist(infile, outfile):
             v = int(float(x[1]))
             if v == 0:
                 continue;
-            if counts.has_key(v):
+            if v in counts:
                 counts[v] += 1
             else:
                 counts[v] = 1

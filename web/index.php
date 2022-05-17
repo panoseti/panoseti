@@ -8,11 +8,10 @@ ini_set('display_errors', 1);
 require_once("panoseti.inc");
 
 function main() {
-    page_head("PanoSETI science portal");
+    page_head("PanoSETI");
     echo "
         <p>
-        This site provides access to
-        PanoSETI data and data analysis products.
+        Browse PanoSETI data and data analysis products.
         <p>
         <h2>Observing runs</h2>
     ";
