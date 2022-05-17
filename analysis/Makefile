@@ -6,7 +6,6 @@ all: $(PROGS)
 
 SRCS = pulse.php
 
-H5_INC = -I/usr/include/hdf5/serial
 UTIL_INC = -I../util
 
 ifeq ($(DEBUG),1)
@@ -17,16 +16,11 @@ endif
 
 CXX = g++ $(CXXFLAGS) $(H5_INC) $(UTIL_INC)
 
-HDF5_LIB = -lhdf5_serial
-
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
 pulse: pulse.cpp ../util/ph5.o ../util/pff.o
-	$(CXX) -o pulse pulse.cpp ../util/ph5.o ../util/pff.o $(HDF5_LIB)
-
-write_images_h5: write_images_h5.cpp ../util/ph5.o
-	$(CXX) -o write_images_h5 write_images_h5.cpp ../util/ph5.o $(HDF5_LIB)
+	$(CXX) -o pulse pulse.cpp ../util/pff.o
 
 write_images: write_images.cpp ../util/pff.o
 	$(CXX) -o write_images write_images.cpp ../util/pff.o

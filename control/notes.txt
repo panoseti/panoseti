@@ -303,4 +303,11 @@ use proxy server so firewall only has 1 client
 
 make sure head node IP works
 --------------
-Interface for flash in config
+Interface for flash in config (done)
+
+web interface:
+    histogram of values per file
+    make video w/ min/max limits
+
+copy/process: keep track of what's done
+    assume if dir exists locally, it's done

@@ -8,9 +8,10 @@ import time, datetime
 #
 def read_json(f):
     c = f.read(1)
+    if c == '':
+        return None
     if c != b'{':
-        print('bad type code')
-        return Null
+        raise Exception('bad type code')
     s = '{'
     last_nl = False
     while True:
@@ -29,9 +30,10 @@ def read_json(f):
 #
 def read_image(f, img_size, bytes_per_pixel):
     c = f.read(1)
+    if c == '':
+        return None
     if c != b'*':
-        print('bad type code')
-        return Null
+        raise Exception('bad type code')
     if img_size == 32:
         if bytes_per_pixel == 2:
             return struct.unpack("1024H", f.read(2048))
@@ -72,7 +74,7 @@ def parse_name(name):
     d = {}
     n = name.rfind('.')
     if n<0:
-        return Null
+        return None
     name = name[0:n]
     x = name.split('.')
     for s in x:
@@ -95,3 +97,12 @@ def is_pff_dir(name):
 
 def is_pff_file(name):
     return name.endswith('.pff')
+
+def pff_file_type(name):
+    n = parse_name(name)
+    if 'dp' not in n.keys():
+        return None
+    dp = n['dp']
+    if dp == '1':
+        return 'img16'
+    return dp

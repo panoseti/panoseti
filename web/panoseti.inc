@@ -36,6 +36,10 @@ function get_str($key) {
     return null;
 }
 
+function post_str($key) {
+    return $_POST[$key];
+}
+
 // make sure a path doesn't go above current dir.
 // Do this for any filename passed in a URL
 //
@@ -96,4 +100,70 @@ function table_row() {
     }
     echo "</tr>\n";
 }
+
+function row1($x, $ncols=2, $class="heading") {
+    if ($class == "heading") {
+        echo "<tr><th class=\"bg-primary\" colspan=\"$ncols\">$x</th></tr>\n";
+    } else {
+        echo "<tr><td class=\"$class\" colspan=\"$ncols\">$x</td></tr>\n";
+    }
+}
+
+define('NAME_ATTRS', 'class="text-right " style="padding-right:12px"');
+define('VALUE_ATTRS', 'style="padding-left:12px"');
+define('VALUE_ATTRS_ERR', 'class="danger" style="padding-left:12px"');
+
+function row2($x, $y, $show_error=false, $lwidth='40%') {
+    if ($x==="") $x="<br>";
+    if ($y==="") $y="<br>";
+    $attrs = $show_error?VALUE_ATTRS_ERR:VALUE_ATTRS;
+    echo "<tr>
+        <td width=\"$lwidth\" ".NAME_ATTRS.">$x</td>
+        <td $attrs >$y</td>
+        </tr>
+    ";
+}
+
+function row2_init($x, $y, $lwidth='40%') {
+    echo '<tr>
+        <td class="text-right " width="'.$lwidth.'"  style="padding-right: 20px;">'.$x.'</td>
+        <td '.VALUE_ATTRS.'>'.$y.'
+    ';
+}
+
+function row2_plain($x, $y) {
+    echo "<tr><td>$x</td><td>$y</td></tr>\n";
+}
+
+function rowify($string) {
+    echo "<tr><td>$string</td></tr>";
+}
+
+function row_array($x) {
+    echo "<tr>\n";
+    foreach ($x as $h) {
+        echo "<td>$h</td>\n";
+    }
+    echo "</tr>\n";
+}
+
+define ('ALIGN_RIGHT', 'style="text-align:right;"');
+
+function row_heading_array($x, $attrs=null, $class='bg-primary') {
+    echo "<tr>";
+    $i = 0;
+    foreach ($x as $h) {
+        $a = $attrs?$attrs[$i]:"";
+        echo "<th $a class=\"$class\">$h</th>";
+        $i++;
+    }
+    echo "</tr>\n";
+}
+
+function row_heading($x, $class='bg-primary') {
+    echo sprintf('<tr><th class="%s" colspan=99>%s</th></tr>
+        ', $class, $x
+    );
+}
+
 ?>

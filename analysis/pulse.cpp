@@ -6,12 +6,6 @@
 // The above are output separately for each pulse duration
 //
 // The output files are written in a directory determined as follows:
-// HDF5 (deprecated)
-//      out_dir/
-//          filename/  (from input file)
-//              module/     (0..1)
-//                  pixel/      (0.1023)
-// PFF
 //      input filename is of the form D/F
 //      out_dir/
 //          D/
@@ -35,7 +29,7 @@
 // --thresh x       threshold is x times stddev
 //                  default: 3
 // --out_dir x      top-level output directory (see above)
-//                  default: pulse_out
+//                  default: derived
 // --log_pulses     output pulses
 // --log_stats      output history of stats for each pulse duration
 //
@@ -47,7 +41,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "ph5.h"
 #include "pff.h"
 #include "pulse_find.h"
 #include "window_stats.h"
@@ -57,7 +50,7 @@
 
 int win_size = WIN_SIZE_DEFAULT;
 int pixel=0, module=0;
-const char* out_dir = "pulse_out";
+const char* out_dir = "derived";
 
 void usage() {
     printf("options:\n"
@@ -70,7 +63,7 @@ void usage() {
         "   --thresh x          threshold is mean + x times stddev\n"
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
-        "                       default: pulse_out\n"
+        "                       default: derived\n"
         "   --log_pulses        output pulses length 4 and up\n"
         "   --log_stats         output history of mean and stddev for each pulse duration\n"
     );
@@ -185,63 +178,6 @@ void flush_output_files() {
     }
 }
 
-int do_hdf5(const char* file) {
-    PH5 ph5;
-    int retval = ph5.open(file);
-    if (retval) {
-        fprintf(stderr, "can't open %s\n", file);
-        exit(1);
-    }
-
-    // create output directory
-    //
-    const char* file_name;
-    file_name = strrchr(file, '/');
-    if (file_name) {
-        file_name++;
-    } else {
-        file_name = file;
-    }
-    char buf[1024], file_dir[1024];
-    mkdir(out_dir, 0771);
-    sprintf(buf, "%s/%s", out_dir, file_name);
-    mkdir(buf, 0771);
-    sprintf(buf, "%s/%s/%d", out_dir, file_name, module);
-    mkdir(buf, 0771);
-    sprintf(file_dir, "%s/%s/%d/%d", out_dir, file_name, module, pixel);
-    mkdir(file_dir, 0771);
-    printf("writing results to %s\n", file_dir);
-
-    open_output_files(file_dir);
-
-    // scan data file
-    //
-    PULSE_FIND pulse_find(nlevels);
-    int isample = 0;
-    for (int ifs=0; ifs<99999; ifs++) {
-        FRAME_SET fs;
-        retval = ph5.get_frame_set(
-            "/bit16IMGData/ModulePair_00254_00001/DATA", ifs, fs
-        );
-        if (retval) break;
-
-        printf("got %d frame pairs\n", fs.nframe_pairs);
-
-        for (int iframe=0; iframe<fs.nframe_pairs; iframe++) {
-            uint16_t* p = fs.get_mframe(iframe, module);
-            uint16_t val = p[pixel];
-            //printf("val: %d\n", val);
-            if (val > MAX_VAL) {
-                val = 0;
-            }
-            pulse_find.add_sample((double)val);
-            isample++;
-            flush_output_files();
-        }
-        printf("done with frame set %d\n",ifs);
-    }
-}
-
 unsigned short image[1024];
 
 int do_pff(const char* path) {
@@ -325,9 +261,7 @@ int main(int argc, char **argv) {
         window_stats.push_back(w);
     }
 
-    if (ends_with(file, ".h5")) {
-        do_hdf5(file);
-    } else if (ends_with(file, ".pff")) {
+    if (ends_with(file, ".pff")) {
         do_pff(file);
     } else {
         fprintf(stderr, "unknown file type: %s\n", file);

@@ -9,6 +9,7 @@
 //
 function get_extrema($file) {
     $fin = fopen($file, "r");
+    if (!$fin) die("no file $file");
     $i = 0;
     while ($line = fgets($fin)) {
         if ($i == 0) {
@@ -30,7 +31,8 @@ function get_extrema($file) {
         if ($y < $ymin) $ymin = $y;
         if ($y > $ymax) $ymax = $y;
     }
-    return array($xmin, $xmax, $ymin, $ymax, $xname, $yname);
+    if ($i<2) die("empty file $file");
+    return [$xmin, $xmax, $ymin, $ymax, $xname, $yname];
 }
 
 // call this first

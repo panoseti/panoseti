@@ -1,12 +1,14 @@
 <?php
 
+ini_set('display_errors', 1);
+
 // show a PFF file as a grayscale image,
 // with buttons for moving forward or back in time
 
 require_once("panoseti.inc");
 
-function arrows_str($file, $module, $frame) {
-    $url = "image.php?file=$file&module=$module&frame=";
+function arrows_str($run, $fname, $frame) {
+    $url = "image.php?run=$run&fname=$fname&frame=";
     return sprintf(
         '<a class="btn btn-sm btn-primary" href=%s%d><< min</a>
         <a class="btn btn-sm btn-primary" href=%s%d><< sec</a>
@@ -66,29 +68,25 @@ function rand_frame() {
     }
 }
 
-function main($file, $module, $frame) {
+function main($run, $fname, $frame) {
     page_head("Image");
-    echo "<p>File: <a href=data_file.php?name=$file>$file</a>\n";
-    $pff = strstr($file, '.pff');
-    if ($pff) {
-        $path = "pulse_out/$file/images.bin";
-    } else {
-        echo "<p>Dome: $module\n";
-        $path = "pulse_out/$file/$module/images.bin";
-    }
+    echo "<p>Run: <a href=run.php?name=$run>$run</a>\n";
+    echo "<p>File: <a href=file.php?run=$run&fname=$fname>$fname</a>\n";
+    $path = "derived/$run/$fname/images.bin";
     $t = $frame/200.;
     echo "<p>Frame: $frame ($t sec)\n";
     $x = get_frame($path, $frame);
-    $as = arrows_str($file, $module, $frame);
+    $as = arrows_str($run, $fname, $frame);
     show_frame($x, $as);
     page_tail();
 }
 
-$file = get_str("file");
-check_filename($file);
-$module = get_int("module");
+$run = get_str("run");
+$fname = get_str("fname");
+check_filename($fname);
+check_filename($run);
 $frame = get_int("frame");
 
-main($file, $module, $frame);
+main($run, $fname, $frame);
 
 ?>

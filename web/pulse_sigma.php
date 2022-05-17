@@ -1,10 +1,13 @@
 <?php
+
+ini_set('display_errors', 1);
+
 require_once("panoseti.inc");
 require_once("pulse.inc");
 
-function show_list($file, $module, $pixel, $dur, $nsigma) {
+function show_list($file, $pixel, $dur, $nsigma) {
     page_head("Pulses above $nsigma sigma");
-    $fname = pulse_file_name($file, $module, $pixel, 'all', $dur);
+    $fname = pulse_file_name($file, $pixel, 'all', $dur);
     $lines = file($fname);
     start_table("table-striped");
     table_header("time (sec)", "mean intensity", "sigma");
@@ -23,11 +26,10 @@ function main() {
 }
 
 $file = get_str("file");
-$module = get_int("module");
 $pixel = get_int("pixel");
 $dur = get_int("dur");
 $nsigma = (double)get_str("nsigma");
 
-show_list($file, $module, $pixel, $dur, $nsigma);
+show_list($file, $pixel, $dur, $nsigma);
 
 ?>

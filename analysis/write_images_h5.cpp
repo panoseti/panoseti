@@ -1,3 +1,4 @@
+DEPRECATED
 // write_images --file x
 //
 // read HDF5 file, write binary images to 2 other files
