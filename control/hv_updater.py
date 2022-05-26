@@ -9,7 +9,6 @@ import redis
 
 import redis_utils
 import quabo_driver
-from panosetiSIconvert import HKconvert
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
@@ -18,7 +17,7 @@ HV25CS= [0,0,0,0]  # TODO: Lookup actual values specified by Hamamatsu
 
 
 def get_adjusted_hv(chan, temp: float):
-    """Returns the adjusted high-voltage for a given detector indexed by CHAN.
+    """Returns the adjusted high-voltage for a given detector, indexed by CHAN.
     Assumes TEMP is in degrees Celsius."""
     return HV25CS[chan] + (temp - 25) * 0.054
 
@@ -26,9 +25,9 @@ def get_adjusted_hv(chan, temp: float):
 def update_all(r: redis.Redis):
     """Update the high-voltage values in each quabo."""
     for quabo_name in r.keys('QUABO_*'):
-        temp = r.hget(quabo_name, 'TEMP1')
-        temp = float(temp.decode("utf-8"))
         try:
+            temp = r.hget(quabo_name, 'TEMP1')
+            temp = float(temp.decode("utf-8"))
             # Get Quabo IP address and create corresponding Quabo object
             ip_addr = ... # TODO: figure out how to get the IP address from Quabo uid.
             quabo = quabo_driver.QUABO(ip_addr)
@@ -37,17 +36,20 @@ def update_all(r: redis.Redis):
                 adjusted_hv = get_adjusted_hv(chan, temp)
                 quabo.hv_set_chan(chan, adjusted_hv)
         except:
-            # Note: the initialization of the subprocess running this script
-            # causes this msg to never be seen by a user:
+            # Note: the subprocess running this script (see util.py)
+            # might cause this msg to be always hidden from a user:
             print("Failed to update %s".format(quabo_name))
             pass
 
 
 def main():
-    r = redis_utils.redis_init()
-    while True:
-        update_all(r)
-        time.sleep(UPDATE_INTERVAL)
+    try:
+        r = redis_utils.redis_init()
+        while True:
+            update_all(r)
+            time.sleep(UPDATE_INTERVAL)
+    except:
+        raise
 
 
 main()
