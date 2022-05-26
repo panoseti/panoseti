@@ -1,7 +1,7 @@
 #! /usr/bin/env python3
 
 # Periodically updates the high-voltage values in each quabo
-# based on their latest temperature in the Redis database.
+# based on their temperature in the Redis database.
 # See https://github.com/panoseti/panoseti/issues/47
 
 import time
@@ -24,45 +24,50 @@ def get_adjusted_hv(chan, temp: float):
     Assumes TEMP is in degrees Celsius."""
     return HV25CS[chan] + (temp - 25) * 0.054
 
-def get_module_ip_addrs():
-    """Returns the IP address corresponding to each module."""
-    obs_config = config_file.get_obs_config()
-    obs_config[]
 
 def update_quabo(quabo: quabo_driver.QUABO, temp: float):
     """Update the high-voltage values in the quabo QUABO."""
 
-def update_module():
-    """Update the high-voltage values in the module MODULE."""
+def update_quabo(r: redis.Redis, quabo: quabo_driver.QUABO):
+    """Update the high-voltage values in the quabo QUABO."""
+    temp = r.hget(quabo_name, 'TEMP1')
+    temp = float(temp.decode("utf-8"))
+    try:
+        det_serial_num = quabo_name[5:]
+        # Adjust voltage in each quabo
+        for i in range(4):
+            quabo_ip_addr = util.quabo_ip_addr(base_ip_addr, i)
+            quabo = quabo_driver.QUABO(quabo_ip_addr)
+            adjusted_hv = get_adjusted_hv(i, temp)
+            quabo.hv_set_chan(i, adjusted_hv)
+    except:
+        # Note: the subprocess running this script (see util.py)
+        # might cause this msg to be always hidden from a user:
+        print("Failed to update %s".format(quabo_name))
+        pass
 
 
-
-def update_all_modules(r: redis.Redis):
-    for quabo_name in r.keys('QUABO_*'):
-        try:
-            temp = r.hget(quabo_name, 'TEMP1')
-            temp = float(temp.decode("utf-8"))
-            # Get module IP address
-            base_ip_addr =
-            # Adjust voltage in each quabo
+def update_all(r: redis.Redis, quabo_info, quabo_uids):
+    for dome in quabo_uids["domes"]:
+        for module in dome["modules"]:
+            base_ip_addr = module['ip_addr']
             for i in range(4):
-                quabo_ip_addr = util.quabo_ip_addr(base_ip_addr, i)
-                quabo = quabo_driver.QUABO(quabo_ip_addr)
-                adjusted_hv = get_adjusted_hv(i, temp)
-                quabo.hv_set_chan(i, adjusted_hv)
-        except:
-            # Note: the subprocess running this script (see util.py)
-            # might cause this msg to be always hidden from a user:
-            print("Failed to update %s".format(quabo_name))
-            pass
+                qi_ip_addr = util.quabo_ip_addr(base_ip_addr, i)
+                uid = util.quabo_uid(module, quabo_uids, i)
+                if uid == '': continue
+                qi_info = quabo_info[uid]
+                qi_serial = qi_info["detector_serial"]
+                qi = quabo_driver.QUABO(qi_ip_addr)
+                update_quabo(r, qi)
 
 
 def main():
     try:
+        quabo_info = config_file.get_quabo_info()
+        quabo_uids = config_file.get_quabo_uids()
         r = redis_utils.redis_init()
-        obs_config = config_file.get_obs_config()
         while True:
-            update_all_quabos(r)
+            update_all(r, quabo_info, quabo_uids)
             time.sleep(UPDATE_INTERVAL)
     except:
         raise
