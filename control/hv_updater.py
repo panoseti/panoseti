@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# Periodically updates the high-voltage values in the quabos
+# Periodically updates the high-voltage values in each quabo
 # based on their latest temperature in the Redis database.
 # See https://github.com/panoseti/panoseti/issues/47
 
@@ -8,35 +8,45 @@ import time
 import redis
 
 import redis_utils
-from quabo_driver import QUABO
+import quabo_driver
 from panosetiSIconvert import HKconvert
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
-# Detector nominal operating high voltage at 25 degrees C.
-HV25C = ...  # TODO: Lookup actual value
+# Nominal operating high voltage at 25 degrees C for each detector array.
+HV25CS= [0,0,0,0]  # TODO: Lookup actual values specified by Hamamatsu
 
 
-def adjusted_voltage(temp: float):
-    """Returns adjusted voltage. Assumes temp is in degrees Celsius."""
-    return HV25C + (temp - 25) * 0.054
+def get_adjusted_hv(chan, temp: float):
+    """Returns the adjusted high-voltage for a given detector indexed by CHAN.
+    Assumes TEMP is in degrees Celsius."""
+    return HV25CS[chan] + (temp - 25) * 0.054
 
 
-def update(r: redis.Redis):
-    """Update voltage voltage values."""
-    # TODO: implement
-    try:
-        # Set voltage
-        pass
-    except:
-        pass
+def update_all(r: redis.Redis):
+    """Update the high-voltage values in each quabo."""
+    for quabo_name in r.keys('QUABO_*'):
+        temp = r.hget(quabo_name, 'TEMP1')
+        temp = float(temp.decode("utf-8"))
+        try:
+            # Get Quabo IP address and create corresponding Quabo object
+            ip_addr = ... # TODO: figure out how to get the IP address from Quabo uid.
+            quabo = quabo_driver.QUABO(ip_addr)
+            # Set voltage
+            for chan in range(4):
+                adjusted_hv = get_adjusted_hv(chan, temp)
+                quabo.hv_set_chan(chan, adjusted_hv)
+        except:
+            # Note: the initialization of the subprocess running this script
+            # causes this msg to never be seen by a user:
+            print("Failed to update %s".format(quabo_name))
+            pass
 
 
 def main():
     r = redis_utils.redis_init()
-    key_timestamps = {'TEMP1': None}  # This key does not exist?
     while True:
-        # TODO
+        update_all(r)
         time.sleep(UPDATE_INTERVAL)
 
 
