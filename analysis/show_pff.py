@@ -52,9 +52,9 @@ def show_file(fname, img_size, bytes_per_pixel):
 fname = sys.argv[1]
 dict = pff.parse_name(fname)
 dp = dict['dp']
-if dp == 'img16':
+if dp == 'img16' or dp=='1':
     show_file(fname, 32, 2)
-elif dp == 'ph16':
+elif dp == 'ph16' or dp=='3':
     show_file(fname, 16, 2)
 else:
     raise Exception("bad data product %s"%dp)
