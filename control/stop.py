@@ -44,6 +44,8 @@ def stop_run(daq_config, quabo_uids):
     print("stopping data recording")
     stop_recording(daq_config)
 
+    util.kill_hv_updater()
+
     print("stopping HK recording")
     util.kill_hk_recorder()
 
