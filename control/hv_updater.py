@@ -6,9 +6,12 @@
 
 import time
 import redis
+import json
 
 import redis_utils
 import quabo_driver
+import config_file
+import util
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
@@ -21,20 +24,32 @@ def get_adjusted_hv(chan, temp: float):
     Assumes TEMP is in degrees Celsius."""
     return HV25CS[chan] + (temp - 25) * 0.054
 
+def get_module_ip_addrs():
+    """Returns the IP address corresponding to each module."""
+    obs_config = config_file.get_obs_config()
+    obs_config[]
 
-def update_all(r: redis.Redis):
-    """Update the high-voltage values in each quabo."""
+def update_quabo(quabo: quabo_driver.QUABO, temp: float):
+    """Update the high-voltage values in the quabo QUABO."""
+
+def update_module():
+    """Update the high-voltage values in the module MODULE."""
+
+
+
+def update_all_modules(r: redis.Redis):
     for quabo_name in r.keys('QUABO_*'):
         try:
             temp = r.hget(quabo_name, 'TEMP1')
             temp = float(temp.decode("utf-8"))
-            # Get Quabo IP address and create corresponding Quabo object
-            ip_addr = ... # TODO: figure out how to get the IP address from Quabo uid.
-            quabo = quabo_driver.QUABO(ip_addr)
-            # Set voltage
-            for chan in range(4):
-                adjusted_hv = get_adjusted_hv(chan, temp)
-                quabo.hv_set_chan(chan, adjusted_hv)
+            # Get module IP address
+            base_ip_addr =
+            # Adjust voltage in each quabo
+            for i in range(4):
+                quabo_ip_addr = util.quabo_ip_addr(base_ip_addr, i)
+                quabo = quabo_driver.QUABO(quabo_ip_addr)
+                adjusted_hv = get_adjusted_hv(i, temp)
+                quabo.hv_set_chan(i, adjusted_hv)
         except:
             # Note: the subprocess running this script (see util.py)
             # might cause this msg to be always hidden from a user:
@@ -45,8 +60,9 @@ def update_all(r: redis.Redis):
 def main():
     try:
         r = redis_utils.redis_init()
+        obs_config = config_file.get_obs_config()
         while True:
-            update_all(r)
+            update_all_quabos(r)
             time.sleep(UPDATE_INTERVAL)
     except:
         raise
