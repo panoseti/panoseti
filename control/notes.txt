@@ -311,3 +311,11 @@ web interface:
 
 copy/process: keep track of what's done
     assume if dir exists locally, it's done
+
+5/26/22
+todo:
+start.py creates symlink 'run' to run dur
+stop.py creates symlinks 'img' and 'ph' to first files in run dir
+show_pff.py
+    auto-calibrate to 5-95% range
+    default to 'img'
