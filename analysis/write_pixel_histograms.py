@@ -1,36 +1,19 @@
 #! /usr/bin/env python3
 
-# pixel_histogram.py infile outfile nframes
+# write_pixel_histograms.py
 #
-# read the first nframes of a PFF file;
-# write a histogram file of the form
-# 0 N0
-# 256 N1
-# ... 256 total lines
-#
-# where N0 is the number of pixels with values from 0 to 255 etc.
+# write pixel histograms for all img files
 
 import os, sys
 sys.path.append('../util')
-import pff
+import pff, pixel_histogram
 
 def do_file(infile, outfile, nframes):
-    fin = open(infile, "rb");
-    hist = [0]*256
-    for i in range(nframes):
-        x = pff.read_json(fin)
-        if x is None:
-            break
-        x = pff.read_image(fin, 32, 2)
-        if x is None:
-            break
-        for j in range(1024):
-            v = x[j]>>8
-            hist[v] += 1
-
+    hist = pixel_histogram.get_hist(infile, nframes)
     fout = open(outfile, "w");
     for i in range(256):
         fout.write('%d %d\n'%(i*256, hist[i]))
+    print('write histogram for %s'%infile)
 
 def main():
     for run in os.listdir('data'):

@@ -1,11 +1,14 @@
 #! /usr/bin/env python3
 
-# show_pff.py [--min x] [--max x] filename
+# show_pff.py [--quantile x] filename
 # show a PFF file (image or pulse height) as text
+# --quantile: find the x and 1-x quantiles, and use those as limits
+#   default: 0.1
+# if no filename specified, use 'img'
 
 import sys, random
 sys.path.insert(0, '../util')
-import pff
+import pff, pixel_histogram
 
 def image_as_text(img, img_size, bytes_per_pixel, min, max):
     scale = ' .,-+=#@'
@@ -54,27 +57,28 @@ def show_file(fname, img_size, bytes_per_pixel, min, max):
             print('frame', i)
             image_as_text(img, img_size, bytes_per_pixel, min, max)
             i += 1
+            input('Enter for next frame')
 
 #test()
 
 i = 1
-fname = ''
-min = 0
-max = 0
+fname = 'img'
+quantile = .1
 argv = sys.argv
 while i<len(argv):
-    if argv[i] == '--min':
+    if argv[i] == '--quantile':
         i += 1
-        min = int(argv[i])  
-    elif argv[i] == '--max':
-        i += 1
-        max = int(argv[i])  
+        min = float(argv[i])  
     else:
         fname = argv[i]
     i += 1
 
-dict = pff.parse_name(fname)
-dp = dict['dp']
+if fname=='img':
+    dp = 'img16'
+else:
+    dict = pff.parse_name(fname)
+    dp = dict['dp']
+[min, max] = pixel_histogram.get_quantiles(fname, quantile)
 if dp == 'img16' or dp=='1':
     show_file(fname, 32, 2, min, max)
 elif dp == 'ph16' or dp=='3':
