@@ -6,7 +6,6 @@
 
 import time
 import redis
-import json
 
 import redis_utils
 import quabo_driver
@@ -19,7 +18,6 @@ UPDATE_INTERVAL = 10
 quabo_info = config_file.get_quabo_info()
 detector_info = config_file.get_detector_info()
 quabo_uids = config_file.get_quabo_uids()
-obs_config = config_file.get_obs_config()
 # Store the relation between quabo uids and their 'QUABO_*' keys in Redis.
 quabo_uids_and_rkeys = {}
 
@@ -34,10 +32,10 @@ def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
 
 
 def update_quabo_hv(quabo: quabo_driver.QUABO,
-                 det_serial_nums: list,
-                 temp: float):
-    """Helper method for the function update_all. Updates the high-voltage
-    values in the quabo."""
+                    det_serial_nums: list,
+                    temp: float):
+    """Helper method for the function update_all_quabo_hv. Updates the
+     high-voltage values in the quabo."""
     for detector_index in range(4):
         det_serial_num = det_serial_nums[detector_index]
         adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
@@ -47,12 +45,12 @@ def update_quabo_hv(quabo: quabo_driver.QUABO,
 def update_all_quabo_hv(r: redis.Redis):
     """Iterate through each quabo in the observatory and update its detectors'
     high-voltages through a call to update_quabo."""
-    for dome in obs_config["domes"]:
+    for dome in quabo_uids["domes"]:
         for module in dome["modules"]:
             module_ip_addr = module['ip_addr']
             for quabo_index in range(4):
                 # Get quabo uid
-                uid = util.quabo_uid(module, quabo_uids, quabo_index)
+                uid = module["quabos"][quabo_index]
                 if uid == '':
                     continue
 
@@ -65,7 +63,7 @@ def update_all_quabo_hv(r: redis.Redis):
                 detector_serial_nums = q_info["detector_serialno"]
 
                 # Note: currently the key 'TEMP1' does not exist in the HK Redis,
-                # so line 78 will throw an AttributeError.
+                # so line 70 will throw some kind of Redis error.
 
                 # Get the temperature for this quabo from Redis.
                 quabo_redis_key = quabo_uids_and_rkeys[uid]
@@ -88,10 +86,8 @@ def main():
         while True:
             update_all_quabo_hv(r)
             time.sleep(UPDATE_INTERVAL)
-    except redis.RedisError as err:
-        print("Redis error {0}".format(err))
-        raise
-    except:
+    except Exception as err:
+        print("hv_updater failed with the message '{0}'.".format(err))
         raise
 
 
