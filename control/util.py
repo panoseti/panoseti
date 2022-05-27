@@ -2,6 +2,9 @@
 
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import netifaces
+sys.path.insert(0, '../util')
+import pff
+
 
 #-------------- DEFAULTS ---------------
 
@@ -189,7 +192,7 @@ def write_run_name(daq_config, run_name):
     if os.path.exists(run_symlink):
         os.unlink(run_symlink)
     run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
-    os.symlink(run_symlink, run_dir, True)
+    os.symlink(run_dir, run_symlink, True)
 
 def read_run_name():
     if not os.path.exists(run_name_file):
@@ -221,11 +224,11 @@ def write_run_complete_file(daq_config, run_name):
         if not pff.is_pff_file(path): continue
         if os.path.getsize(path) == 0: continue
         if not did_img and pff.pff_file_type(path)=='img16':
-            os.symlink(img_symlink, path)
+            os.symlink(path, img_symlink)
             did_img = True
             print('linked %s to %s'%(img_symlink, f))
         elif not did_ph and pff.pff_file_type(path)=='ph16':
-            os.symlink(ph_symlink, path)
+            os.symlink(path, ph_symlink)
             did_ph = True
             print('linked %s to %s'%(ph_symlink, f))
         if did_img and did_ph: break
