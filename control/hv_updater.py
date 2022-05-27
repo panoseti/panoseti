@@ -6,16 +6,19 @@
 
 import time
 import redis
+import json
 
 import redis_utils
 import quabo_driver
-from config_file import get_detector_info, get_quabo_info
+from config_file import get_detector_info, get_quabo_info, get_quabo_uids
+import util
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
 # Get quabo and detector info.
 quabo_info = get_quabo_info()
 detector_info = get_detector_info()
+quabo_uids = get_quabo_uids()
 
 
 def get_adjusted_detector_hv(quabo_uid, detector_index, temp) -> float:
@@ -29,14 +32,8 @@ def get_adjusted_detector_hv(quabo_uid, detector_index, temp) -> float:
     return nominal_hv + (temp - 25) * 0.054
 
 
-def quabo_uid_to_module_ip_addr(quabo_uid):
-    """Returns a module's ip address given one of its quabo's QUABO_UIDs."""
-
-    return
-
-
-def update_all(r: redis.Redis):
-    """Update the high-voltage values in each quabo."""
+def update_quabo(quabo: quabo_driver.QUABO, temp: float):
+    """Update the high-voltage values in the quabo QUABO."""
     for quabo_name in r.keys('QUABO_*'):
         try:
             # Get quabo uid
@@ -55,12 +52,25 @@ def update_all(r: redis.Redis):
             print("Failed to update the voltage of %s".format(quabo_name))
             pass
 
+def update_all(r: redis.Redis, quabo_info, quabo_uids):
+    for dome in quabo_uids["domes"]:
+        for module in dome["modules"]:
+            base_ip_addr = module['ip_addr']
+            for i in range(4):
+                qi_ip_addr = util.quabo_ip_addr(base_ip_addr, i)
+                uid = util.quabo_uid(module, quabo_uids, i)
+                if uid == '': continue
+                qi_info = quabo_info[uid]
+                qi_serial = qi_info["detector_serial"]
+                qi = quabo_driver.QUABO(qi_ip_addr)
+                update_quabo(r, qi)
+
 
 def main():
     try:
         r = redis_utils.redis_init()
         while True:
-            update_all(r)
+            update_all(r, quabo_info, quabo_uids)
             time.sleep(UPDATE_INTERVAL)
     except:
         raise
