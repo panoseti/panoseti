@@ -1,12 +1,16 @@
 #! /usr/bin/env python3
 
-###############################################################################
-# Script for periodically updating the high-voltage values in every detector
-# active in the observatory. The adjustments are based on real-time temperature
-# data collected by housekeeping programs and detector settings specified by
-# the detector manufacturer, Hamamatsu.
-# See https://github.com/panoseti/panoseti/issues/47.
-###############################################################################
+"""
+Script for periodically updating the high-voltage values in every detector
+active in the observatory. The adjustments are based on real-time temperature
+data collected by housekeeping programs and detector settings specified by
+the detector manufacturer, Hamamatsu.
+See https://github.com/panoseti/panoseti/issues/47 for info about the issue
+this code resolves.
+See the Hamamatsu datasheet for its MPPC arrays: S13361-3050 series
+for more info about the detector constants used in this script.
+"""
+
 import time
 
 import redis
@@ -21,15 +25,9 @@ import util
 # Seconds between updates.
 UPDATE_INTERVAL = 5
 
-# Acceptable voltage vals. Currently, all voltages are considered acceptable.
-# TODO: replace with real values:
-MIN_HV = float('-inf')
-MAX_HV = float('inf')
-
-# Acceptable temperature ranges. Currently, all temperatures are considered acceptable.
-# TODO: replace with real values:
-MIN_TEMP = float('-inf')
-MAX_TEMP = float('inf')
+# Min & max detector operating temperatures (degrees Celsius).
+MIN_TEMP = -20.0
+MAX_TEMP = 60.0
 
 #--------- Implementation Globals --------#
 
@@ -41,32 +39,27 @@ quabo_uids = config_file.get_quabo_uids()
 # Dict inverting the relation between a quabo's key, 'QUABO_*', and its UID in Redis.
 uids_and_rkeys = dict()
 
-
-def is_acceptable_voltage(adjusted_voltage: float):
-    """Returns True only if the proposed voltage adjustment is between
-     MIN_HV and MAX_HV."""
-    return MIN_HV <= adjusted_voltage <= MIN_HV
-
-
 def is_acceptable_temperature(temp: float):
     """Returns True only if the provided temperature is between
     MIN_TEMP and MAX_TEMP."""
     return MIN_TEMP <= temp <= MAX_TEMP
 
 
-
 def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
     """Given a detector serial number and a temperature in degrees Celsius,
-     returns the desired adjusted high-voltage value only if it is within
-     an acceptable range."""
-    nominal_hv = detector_info[det_serial_num]
-    # Formula from GitHub Issue 47.
-    adjusted_voltage = nominal_hv + (temp - 25) * 0.054
-    if not is_acceptable_voltage(adjusted_voltage):
-        msg = "hv_updater: The proposed voltage of {0} for detector {1} is out "
-        msg += "of the acceptable range and will not be set. "
-        raise Warning(msg.format(adjusted_voltage, det_serial_num))
-    return adjusted_voltage
+     returns the desired adjusted high-voltage value."""
+    try:
+        nominal_hv = detector_info[det_serial_num]
+    except KeyError as kerr:
+        msg = "hv_updater: Failed to get the nominal HV for the detector with serial number: '{0}'."
+        msg += "detector_info.json might be missing an entry for this detector. "
+        msg += "Error msg: {1}"
+        print(msg.format(det_serial_num, kerr))
+        raise
+    else:
+        # Formula from GitHub Issue 47.
+        adjusted_voltage = nominal_hv + (temp - 25) * 0.054
+        return adjusted_voltage
 
 
 def update_quabo(quabo_obj: quabo_driver.QUABO,
@@ -79,8 +72,7 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             det_serial_num = det_serial_nums[detector_index]
             adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
             quabo_obj.hv_set_chan(detector_index, adjusted_hv)
-        except Warning as werr:
-            print(werr)
+        except KeyError:
             continue
 
 
@@ -94,7 +86,7 @@ def update_all_quabos(r: redis.Redis):
             for quabo_index in range(4):
                 try:
                     uid = module['quabos'][quabo_index]['uid']
-                    # Get corresponding Redis key if it is tracked in Redis.
+                    # Get this quabo's Redis key, if it exists.
                     if uid == '':
                         continue
                     elif uid not in uids_and_rkeys:
@@ -107,40 +99,50 @@ def update_all_quabos(r: redis.Redis):
                     # Get the list of detector serial numbers for this quabo.
                     q_info = quabo_info[uid]
                     detector_serial_nums = [s for s in q_info['detector_serialno']]
-                    # Note: currently the key 'TEMP1' does not exist in the HK Redis,
-                    # so line 113 might throw some kind of error.
                     # Get the temperature data for this quabo.
-                    temp = r.hget(quabo_redis_key, 'TEMP1')  # TODO: save temperature HK data in capture_hk.py.
-                    temp = float(temp.decode('utf-8'))
+                    temp = float(r.hget(quabo_redis_key, 'TEMP1'))
                 except Warning as werr:
-                    msg = "hv_updater: Failed to update quabo {0} "
-                    msg += "in module {1}. Error msg: '{2}'"
+                    msg = "hv_updater: Failed to update quabo at index {0} in module {1}."
+                    msg += "Error msg: {2} \n"
+                    msg += "Attempting to get this quabo's Redis key..."
                     print(msg.format(quabo_index, module_ip_addr, werr))
+                    update_inverted_quabo_dict(r)
                     continue
                 except AttributeError as aerr:
-                    msg = "hv_updater: Failed to update quabo {0} "
-                    msg += "in module {1}. Temperature HK data may be "
-                    msg += "missing. Error msg: {2}."
+                    msg = "hv_updater: Failed to update quabo {0} in module {1}. "
+                    msg += "Temperature HK data may be missing. "
+                    msg += "Error msg: {2}"
                     print(msg.format(quabo_index, module_ip_addr, aerr))
-                    raise
+                    continue
                 except redis.RedisError as rerr:
-                    print("hv_updater: A Redis error occurred."
-                          + " Error msg: '{0}'".format(rerr))
-                    raise
+                    msg = "hv_updater: A Redis error occurred. "
+                    msg += "Error msg: {0}"
+                    print(msg.format(rerr))
+                    continue
                 except KeyError as kerr:
-                    msg = "hv_updater: Quabo {0} in module {1} "
-                    msg += "may be missing from a config file. Error msg: {2}"
+                    msg = "hv_updater: Quabo {0} in module {1} may be missing from a config file."
+                    msg += "Error msg: {2}"
                     print(msg.format(quabo_index, module_ip_addr, kerr))
-                    raise
+                    continue
                 else:
-                    # Checks whether the Quabo temperature is acceptable.
+                    # Checks whether the quabo temperature is acceptable.
                     # See https://github.com/panoseti/panoseti/issues/58.
                     if is_acceptable_temperature(temp):
-                        # Call helper to adjust detector voltages in this quabo.
                         update_quabo(quabo_obj, detector_serial_nums, temp)
                     else:
-                        # TODO: define behavior when the temp is extreme.
-                        ...
+                        msg = "hv_updater: The temperature of quabo {0} in module {1} is {2} C, "
+                        msg += "which exceeds the maximum operating temperatures. \n"
+                        msg += "Attempting to power down the detectors on this quabo..."
+                        print(msg.format(quabo_index, module_ip_addr, temp))
+                        try:
+                            quabo_obj.hv_set(0)
+                            print("Successfully powered down.")
+                        except Exception as err:
+                            msg = "*** hv_updater: Failed to power down detectors."
+                            msg += "Error msg: {0}"
+                            print(msg.format(err))
+                            continue
+                # TODO: Determine when (or if) we should turn detectors back on after a temperature-related power down.
 
 
 def update_inverted_quabo_dict(r: redis.Redis):
@@ -154,35 +156,34 @@ def update_inverted_quabo_dict(r: redis.Redis):
             if uid not in uids_and_rkeys:
                 uids_and_rkeys[uid] = quabo_key
     except redis.RedisError as err:
-        print("hv_updater: A Redis error occurred."
-              + " Error msg: '{0}'".format(err))
+        msg = "hv_updater: A Redis error occurred. "
+        msg += "Error msg: {0}"
+        print(msg.format(err))
         raise
 
 
 def main():
     """Initializes the script for a delay after being run, waits until Redis
     contains quabo HK data and makes a call to update_all_quabos every
-     UPDATE_INTVERAL seconds."""
+     UPDATE_INTERVAL seconds."""
     r = redis_utils.redis_init()
     print("hv_updater: Waiting for HK to be saved in Redis...")
-    time.sleep(UPDATE_INTERVAL) # Not sure how long it takes for Hk data to start being collected.
+    time.sleep(UPDATE_INTERVAL)
     update_inverted_quabo_dict(r)
     while len(uids_and_rkeys) == 0:
-        print('hv_updater: No quabo data yet.'
-              + ' Trying again in %ss...' % UPDATE_INTERVAL)
-        update_inverted_quabo_dict(r)
+        print('hv_updater: No quabo data yet. Trying again in %ss...' % UPDATE_INTERVAL)
         time.sleep(UPDATE_INTERVAL)
+        update_inverted_quabo_dict(r)
     print("hv_updater: Running...")
     while True:
         update_all_quabos(r)
         time.sleep(UPDATE_INTERVAL)
 
 
-try:
-    main()
-except Exception as e:
-    print(e)
-    if __name__ == "__main__":
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        msg = "hv_updater failed and exited with the error message: '{0}'."
+        print(msg.format(e))
         raise
-    else:
-        pass

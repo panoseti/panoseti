@@ -111,7 +111,7 @@ def storeInRedis(packet, r:redis.Redis):
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
 
         # PCBrev_n represents the quabo version. If 0, the quabo is BGA version; if 1, the qubao is QFP version
-        # Bit 0 in byte 53.
+        # Bit 0 in the byte with offset 53.
         'PCBREV_N': ((array[25]&0xFF00) >> 8) & 0x01,
 
         'FWTIME': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
