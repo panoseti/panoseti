@@ -86,33 +86,26 @@ def update_all_quabos(r: redis.Redis):
             for quabo_index in range(4):
                 try:
                     uid = module['quabos'][quabo_index]['uid']
-                    # Get this quabo's Redis key, if it exists.
                     if uid == '':
                         continue
-                    elif uid not in uids_and_rkeys:
-                        raise Warning("Quabo %s is not tracked in Redis." % uid)
+                    # Get this Quabo's redis key.
+                    rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
+                    # Get this Quabo's temp, if it exists.
+                    if rkey not in r.keys():
+                        raise Warning("%s is not tracked in Redis." % rkey)
                     else:
-                        quabo_redis_key = uids_and_rkeys[uid]
+                        # Get the temperature data for this quabo.
+                        temp = get_redis_temp(r, rkey)
                     # Get quabo object
                     q_ip_addr = util.quabo_ip_addr(module_ip_addr, quabo_index)
                     quabo_obj = quabo_driver.QUABO(q_ip_addr)
                     # Get the list of detector serial numbers for this quabo.
                     q_info = quabo_info[uid]
                     detector_serial_nums = [s for s in q_info['detector_serialno']]
-                    # Get the temperature data for this quabo.
-                    temp = float(r.hget(quabo_redis_key, 'TEMP1'))
                 except Warning as werr:
-                    msg = "hv_updater: Failed to update quabo at index {0} in module {1}."
+                    msg = "hv_updater: Failed to update quabo at index {0} in module {1}. "
                     msg += "Error msg: {2} \n"
-                    msg += "Attempting to get this quabo's Redis key..."
                     print(msg.format(quabo_index, module_ip_addr, werr))
-                    update_inverted_quabo_dict(r)
-                    continue
-                except AttributeError as aerr:
-                    msg = "hv_updater: Failed to update quabo {0} in module {1}. "
-                    msg += "Temperature HK data may be missing. "
-                    msg += "Error msg: {2}"
-                    print(msg.format(quabo_index, module_ip_addr, aerr))
                     continue
                 except redis.RedisError as rerr:
                     msg = "hv_updater: A Redis error occurred. "
@@ -120,7 +113,7 @@ def update_all_quabos(r: redis.Redis):
                     print(msg.format(rerr))
                     continue
                 except KeyError as kerr:
-                    msg = "hv_updater: Quabo {0} in module {1} may be missing from a config file."
+                    msg = "hv_updater: Quabo {0} in module {1} may be missing from a config file. "
                     msg += "Error msg: {2}"
                     print(msg.format(quabo_index, module_ip_addr, kerr))
                     continue
@@ -138,42 +131,42 @@ def update_all_quabos(r: redis.Redis):
                             quabo_obj.hv_set(0)
                             print("Successfully powered down.")
                         except Exception as err:
-                            msg = "*** hv_updater: Failed to power down detectors."
+                            msg = "*** hv_updater: Failed to power down detectors. "
                             msg += "Error msg: {0}"
                             print(msg.format(err))
                             continue
                 # TODO: Determine when (or if) we should turn detectors back on after a temperature-related power down.
 
 
-def update_inverted_quabo_dict(r: redis.Redis):
-    """Iterates through all quabo keys in Redis and adds [UID]:[Redis key] pairs
-    to the dictionary quabo_uids_and_rkeys. Might throw a Redis exception."""
+def get_boardloc(module_ip_addr: str, quabo_index):
+    """Given a module ip address and a quabo index, returns the BOARDLOC of
+    the corresponding quabo."""
+    pieces = module_ip_addr.split('.')
+    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
+    return boardloc
+
+
+def get_redis_temp(r: redis.Redis, rkey: str) -> float:
+    """Given a Quabo's redis key, rkey, returns the field value of TEMP1 in Redis."""
     try:
-        for quabo_key in r.keys('QUABO_*'):
-            uid = r.hget(quabo_key, 'UID').decode('utf-8')
-            # Remove '0x' prefix from Redis UID to match UIDs in config files.
-            uid = hex(int(uid, 16))[2:]
-            if uid not in uids_and_rkeys:
-                uids_and_rkeys[uid] = quabo_key
+        temp = float(r.hget(rkey, 'TEMP1'))
+        return temp
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
         print(msg.format(err))
-        raise
+        pass
+    except AttributeError as aerr:
+        msg = "hv_updater: Failed to update '{0}'. "
+        msg += "Temperature HK data may be missing. "
+        msg += "Error msg: {1}"
+        print(msg.format(rkey, aerr))
+        pass
 
 
 def main():
-    """Initializes the script for a delay after being run, waits until Redis
-    contains quabo HK data and makes a call to update_all_quabos every
-     UPDATE_INTERVAL seconds."""
+    """Makes a call to update_all_quabos every UPDATE_INTERVAL seconds."""
     r = redis_utils.redis_init()
-    print("hv_updater: Waiting for HK to be saved in Redis...")
-    time.sleep(UPDATE_INTERVAL)
-    update_inverted_quabo_dict(r)
-    while len(uids_and_rkeys) == 0:
-        print('hv_updater: No quabo data yet. Trying again in %ss...' % UPDATE_INTERVAL)
-        time.sleep(UPDATE_INTERVAL)
-        update_inverted_quabo_dict(r)
     print("hv_updater: Running...")
     while True:
         update_all_quabos(r)
@@ -184,6 +177,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        msg = "hv_updater failed and exited with the error message: '{0}'."
+        msg = "hv_updater failed and exited with the error message: {0}"
         print(msg.format(e))
         raise
