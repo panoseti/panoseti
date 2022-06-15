@@ -36,8 +36,6 @@ quabo_info = config_file.get_quabo_info()
 detector_info = config_file.get_detector_info()
 quabo_uids = config_file.get_quabo_uids()
 
-# Dict inverting the relation between a quabo's key, 'QUABO_*', and its UID in Redis.
-uids_and_rkeys = dict()
 
 def is_acceptable_temperature(temp: float):
     """Returns True only if the provided temperature is between
@@ -76,6 +74,32 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             continue
 
 
+def get_boardloc(module_ip_addr: str, quabo_index):
+    """Given a module ip address and a quabo index, returns the BOARDLOC of
+    the corresponding quabo."""
+    pieces = module_ip_addr.split('.')
+    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
+    return boardloc
+
+
+def get_redis_temp(r: redis.Redis, rkey: str) -> float:
+    """Given a Quabo's redis key, rkey, returns the field value of TEMP1 in Redis."""
+    try:
+        temp = float(r.hget(rkey, 'TEMP1'))
+        return temp
+    except redis.RedisError as err:
+        msg = "hv_updater: A Redis error occurred. "
+        msg += "Error msg: {0}"
+        print(msg.format(err))
+        pass
+    except AttributeError as aerr:
+        msg = "hv_updater: Failed to update '{0}'. "
+        msg += "Temperature HK data may be missing. "
+        msg += "Error msg: {1}"
+        print(msg.format(rkey, aerr))
+        pass
+
+
 def update_all_quabos(r: redis.Redis):
     """Iterates through each quabo in the observatory and updates
     its detectors' high-voltage values, provided its temperature is
@@ -104,7 +128,7 @@ def update_all_quabos(r: redis.Redis):
                     q_info = quabo_info[uid]
                     detector_serial_nums = [s for s in q_info['detector_serialno']]
                 except Warning as werr:
-                    msg = "hv_updater: Failed to update quabo at index {0} in mo {1}. "
+                    msg = "hv_updater: Failed to update quabo at index {0} with base IP {1}. "
                     msg += "Error msg: {2} \n"
                     print(msg.format(quabo_index, module_ip_addr, werr))
                     continue
@@ -114,7 +138,7 @@ def update_all_quabos(r: redis.Redis):
                     print(msg.format(rerr))
                     continue
                 except KeyError as kerr:
-                    msg = "hv_updater: Quabo {0} in module {1} may be missing from a config file. "
+                    msg = "hv_updater: Quabo {0} with base IP {1} may be missing from a config file. "
                     msg += "Error msg: {2}"
                     print(msg.format(quabo_index, module_ip_addr, kerr))
                     continue
@@ -140,32 +164,6 @@ def update_all_quabos(r: redis.Redis):
                 finally:
                     if quabo_obj is not None:
                         quabo_obj.close()
-
-
-def get_boardloc(module_ip_addr: str, quabo_index):
-    """Given a module ip address and a quabo index, returns the BOARDLOC of
-    the corresponding quabo."""
-    pieces = module_ip_addr.split('.')
-    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
-    return boardloc
-
-
-def get_redis_temp(r: redis.Redis, rkey: str) -> float:
-    """Given a Quabo's redis key, rkey, returns the field value of TEMP1 in Redis."""
-    try:
-        temp = float(r.hget(rkey, 'TEMP1'))
-        return temp
-    except redis.RedisError as err:
-        msg = "hv_updater: A Redis error occurred. "
-        msg += "Error msg: {0}"
-        print(msg.format(err))
-        pass
-    except AttributeError as aerr:
-        msg = "hv_updater: Failed to update '{0}'. "
-        msg += "Temperature HK data may be missing. "
-        msg += "Error msg: {1}"
-        print(msg.format(rkey, aerr))
-        pass
 
 
 def main():
