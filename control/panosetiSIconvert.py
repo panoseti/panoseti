@@ -60,7 +60,7 @@ class HKconvert():
         return self.I18MON(value)
 
     def TEMP1(self, value):
-        return value*0.0625
+        return value*0.25
     
     def TEMP2(self, value):
         return (value/130.04) - 273.15
