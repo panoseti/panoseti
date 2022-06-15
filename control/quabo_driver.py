@@ -128,10 +128,10 @@ class QUABO:
 
     def hv_set_chan(self, chan, value):
         cmd = self.make_cmd(0x02)
-        self.HV_vals[chan] = value
+        self.HV_vals[chan] = int(value)
         for i in range(4):
-            LSbyte = HV_vals[i] & 0xff
-            MSbyte = (HV_vals[i] >> 8) & 0xff
+            LSbyte = self.HV_vals[i] & 0xff
+            MSbyte = (self.HV_vals[i] >> 8) & 0xff
             cmd[2*i+2]=LSbyte
             cmd[2*i+3]=MSbyte
         self.send(cmd)

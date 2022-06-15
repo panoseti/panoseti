@@ -38,7 +38,7 @@ signed = [
     0,                      # I10MON (182uA/LSB) (1.0V supply)
     0,                      # I18MON (37.8uA/LSB) (1.8V supply)
     0,                      # I33MON (37.8uA/LSB) (3.3V supply)
-    1,                        # TEMP1 (0.0625*N)
+    1,                        # TEMP1 (0.25*N)
     0,                      # TEMP2 (N/130.04-273.15)
     0,                      # VCCINT (N*3/65536)
     0,                      # VCCAUX (N*3/65536)
