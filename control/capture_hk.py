@@ -43,7 +43,7 @@ signed = [
     0,                      # VCCINT (N*3/65536)
     0,                      # VCCAUX (N*3/65536)
     0,0,0,0,                    # UID
-    0,                        # SHUTTER and LIGHT_SENSOR STATUS
+    0,                        # SHUTTER, LIGHT_SENSOR STATUS, and PCBREV_N
     0,                        # unused
     0,0,0,0                     # FWID0 and FWID1
 ]
@@ -63,7 +63,13 @@ def storeInRedis(packet, r:redis.Redis):
         return False
     if int.from_bytes(packet[1:2], byteorder='little') == 0xaa:
         startUp = 1
-        
+
+    # Reads the housekeeping bytes with offsets 2 through 63 two at a time, converts the
+    # 16-bit number to an integer with a sign determined by the corresponding entry in signed,
+    # and appends the result to array.
+    # The byte with offset 2 <= n <= 63 in the HK packet is obtained as follows:
+    #              array[(n - 2) // 2] & 0x00FF, if n is even
+    #       (array[(n - 2) // 2] & 0xFF00) >> 8, if n is odd.
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
         
@@ -92,6 +98,10 @@ def storeInRedis(packet, r:redis.Redis):
         'I10MON': '{0:0.5g}'.format(HKconv.convertValue('I10MON', array[14])),
         'I18MON': '{0:0.5g}'.format(HKconv.convertValue('I18MON', array[15])),
         'I33MON': '{0:0.5g}'.format(HKconv.convertValue('I33MON', array[16])),
+
+        'TEMP1': '{0:0.5g}'.format(HKconv.convertValue('TEMP1', array[17])),
+        'TEMP2': '{0:0.5g}'.format(HKconv.convertValue('TEMP2', array[18])),
+
         'VCCINT': '{0:0.5g}'.format(HKconv.convertValue('VCCINT', array[19])),
         'VCCAUX': '{0:0.5g}'.format(HKconv.convertValue('VCCAUX', array[20])),
 
@@ -99,6 +109,10 @@ def storeInRedis(packet, r:redis.Redis):
 
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
+
+        # PCBrev_n represents the quabo version. If 0, the quabo is BGA version; if 1, the qubao is QFP version
+        # Bit 0 in the byte with offset 53.
+        'PCBREV_N': ((array[25]&0xFF00) >> 8) & 0x01,
 
         'FWTIME': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
         'FWVER': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),

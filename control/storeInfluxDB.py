@@ -18,7 +18,7 @@ from redis_utils import *
 UTC_OFFSET = 0
 TIMEFORMAT = "%Y-%m-%dT%H:%M:%SZ"
 OBSERVATORY = 'test'
-DATATYPE_FORMAT = {'housekeeping': re.compile("Quabo_[0-9]*"),
+DATATYPE_FORMAT = {'housekeeping': re.compile("QUABO_[0-9]*"),
     'GPS': re.compile("GPS.*"),
     'whiterabbit': re.compile("WRSWITCH.*")}
 #List of keys with the time stamp values

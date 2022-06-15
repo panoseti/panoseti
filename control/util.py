@@ -27,6 +27,8 @@ run_complete_file = 'run_complete'
 
 hk_recorder_name = './store_redis_data.py'
 
+hv_updater_name = './hv_updater.py'
+
 hashpipe_name = 'hashpipe'
 
 daq_hashpipe_pid_filename = 'daq_hashpipe_pid'
@@ -185,6 +187,16 @@ def start_hk_recorder(daq_config, run_name):
         print("can't launch HK recorder")
         raise
 
+        
+# Start high-voltage updater daemon
+def start_hv_updater():
+    try:
+        subprocess.Popen([hv_updater_name])
+    except:
+        print("can't launch HV updater")
+        raise
+
+
 # write run name to a file, and symlink 'run' to the run dir
 def write_run_name(daq_config, run_name):
     with open(run_name_file, 'w') as f:
@@ -270,6 +282,9 @@ def is_hk_recorder_running():
             return True
     return False
 
+def is_hv_updater_running():
+    return is_script_running(hv_updater_name[2:])
+
 def kill_hashpipe():
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
@@ -278,6 +293,11 @@ def kill_hashpipe():
 def kill_hk_recorder():
     for p in psutil.process_iter():
         if hk_recorder_name in p.cmdline():
+            os.kill(p.pid, signal.SIGKILL)
+
+def kill_hv_updater():
+    for p in psutil.process_iter():
+        if hv_updater_name in p.cmdline():
             os.kill(p.pid, signal.SIGKILL)
 
 def disk_usage(dir):

@@ -106,6 +106,9 @@ def start_recording(data_config, daq_config, run_name):
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
 
+    # start high-voltage updater
+    util.start_hv_updater()
+
     # start hashpipe on DAQ nodes
 
     if 'max_file_size_mb' in data_config.keys():
