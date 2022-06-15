@@ -176,7 +176,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         print('If other users might be using the telescope, check with them;')
         print('running stop.py will kill their run.')
         return False
-    util.write_run_name(run_name)
+    util.write_run_name(daq_config, run_name)
     print('started run %s'%run_name)
     return True
 

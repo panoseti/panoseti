@@ -59,8 +59,9 @@ def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str)
 
 def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list, key_timestamps:dict):
     for rkey in redis_keys:
-        redis_value = r.hgetall(rkey)
-        data_fields = { k.decode('utf-8'): redis_value[k].decode('utf-8') for k in redis_value.keys() }
+        data_fields = dict()
+        for key in r.hkeys(rkey):
+            data_fields[key.decode('utf-8')] = get_casted_redis_value(r, rkey, key)
         write_influx(client, rkey, data_fields, get_datatype(rkey))
         key_timestamps[rkey] = data_fields['Computer_UTC']
 
