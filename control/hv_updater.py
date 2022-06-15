@@ -84,6 +84,7 @@ def update_all_quabos(r: redis.Redis):
         for module in dome['modules']:
             module_ip_addr = module['ip_addr']
             for quabo_index in range(4):
+                quabo_obj = None
                 try:
                     uid = module['quabos'][quabo_index]['uid']
                     if uid == '':
@@ -91,7 +92,7 @@ def update_all_quabos(r: redis.Redis):
                     # Get this Quabo's redis key.
                     rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
                     # Get this Quabo's temp, if it exists.
-                    if rkey not in r.keys():
+                    if rkey.encode('utf-8') not in r.keys():
                         raise Warning("%s is not tracked in Redis." % rkey)
                     else:
                         # Get the temperature data for this quabo.
@@ -103,7 +104,7 @@ def update_all_quabos(r: redis.Redis):
                     q_info = quabo_info[uid]
                     detector_serial_nums = [s for s in q_info['detector_serialno']]
                 except Warning as werr:
-                    msg = "hv_updater: Failed to update quabo at index {0} in module {1}. "
+                    msg = "hv_updater: Failed to update quabo at index {0} in mo {1}. "
                     msg += "Error msg: {2} \n"
                     print(msg.format(quabo_index, module_ip_addr, werr))
                     continue
@@ -136,6 +137,9 @@ def update_all_quabos(r: redis.Redis):
                             print(msg.format(err))
                             continue
                 # TODO: Determine when (or if) we should turn detectors back on after a temperature-related power down.
+                finally:
+                    if quabo_obj is not None:
+                        quabo_obj.close()
 
 
 def get_boardloc(module_ip_addr: str, quabo_index):
