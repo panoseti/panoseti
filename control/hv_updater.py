@@ -65,13 +65,20 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
                  temp: float):
     """Helper method for the function update_all_quabos. Updates each
      detector in the quabo represented by quabo_obj."""
-    for detector_index in range(4):
-        try:
+    adjusted_hv_values = [0] * 4
+    try:
+        for detector_index in range(4):
             det_serial_num = det_serial_nums[detector_index]
             adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
-            quabo_obj.hv_set_chan(detector_index, adjusted_hv)
-        except KeyError:
-            continue
+            # Save int encoding
+            adjusted_hv_values[detector_index] = int(adjusted_hv / 0.00114)
+    except KeyError as kerr:
+        msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
+        msg += "Error message: {1}"
+        print(msg.format(quabo_obj.ip_addr, kerr))
+        raise
+    else:
+        quabo_obj.hv_set(adjusted_hv_values)
 
 
 def get_boardloc(module_ip_addr: str, quabo_index):
@@ -153,7 +160,7 @@ def update_all_quabos(r: redis.Redis):
                         msg += "Attempting to power down the detectors on this quabo..."
                         print(msg.format(quabo_index, module_ip_addr, temp))
                         try:
-                            quabo_obj.hv_set(0)
+                            quabo_obj.hv_set([0] * 4)
                             print("Successfully powered down.")
                         except Exception as err:
                             msg = "*** hv_updater: Failed to power down detectors. "

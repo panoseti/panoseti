@@ -44,8 +44,8 @@ def get_casted_redis_value(r:redis.Redis, rkey: [bytes, str], key: [bytes, str])
         if val.isnumeric():
             return int(val)
         # Checks if val has the form (-)X.Y, with X and Y numeric.
-        pattern = re.compile("^-*([^\.]+)\.([^\.]+)$")
+        pattern = re.compile("^-*([0-9]+)\.([0-9]+?)(?:e-?([0-9]+))?$")
         match = pattern.match(val)
-        if match and match.groups()[0].isnumeric() and match.groups()[1].isnumeric():
-            return float(val)
+        if match and match.group(1).isnumeric() and match.group(2).isnumeric() \
+                and (match.group(3) is None or match.group(3).isnumeric()):
         return val
