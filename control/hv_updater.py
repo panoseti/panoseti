@@ -98,13 +98,13 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
         print(msg.format(err))
-        pass
-    except AttributeError as aerr:
+        raise
+    except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += "Temperature HK data may be missing. "
         msg += "Error msg: {1}"
-        print(msg.format(rkey, aerr))
-        pass
+        print(msg.format(rkey, terr))
+        raise
 
 
 def update_all_quabos(r: redis.Redis):
@@ -143,12 +143,12 @@ def update_all_quabos(r: redis.Redis):
                     msg = "hv_updater: A Redis error occurred. "
                     msg += "Error msg: {0}"
                     print(msg.format(rerr))
-                    continue
+                    raise
                 except KeyError as kerr:
                     msg = "hv_updater: Quabo {0} with base IP {1} may be missing from a config file. "
                     msg += "Error msg: {2}"
                     print(msg.format(quabo_index, module_ip_addr, kerr))
-                    continue
+                    raise
                 else:
                     # Checks whether the quabo temperature is acceptable.
                     # See https://github.com/panoseti/panoseti/issues/58.
