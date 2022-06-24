@@ -7,8 +7,8 @@ exceeds a specified threshold.
 See https://github.com/panoseti/panoseti/issues/58.
 """
 
-
 import time
+import datetime
 
 import redis
 
@@ -59,34 +59,36 @@ def check_all_module_temps(r: redis.Redis):
                             # Get the temperature data for this quabo.
                             temp = get_redis_temp(r, rkey)
                     except Warning as werr:
-                        msg = "hv_updater: Failed to update quabo at index {0} with base IP {1}. "
-                        msg += "Error msg: {2} \n"
-                        print(msg.format(quabo_index, module_ip_addr, werr))
+                        msg = "hv_updater: {0} \n\tFailed to update quabo at index {1} with base IP {2}. "
+                        msg += "\tError msg: {3} \n"
+                        print(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
                         continue
                     except redis.RedisError as rerr:
-                        msg = "hv_updater: A Redis error occurred. "
-                        msg += "Error msg: {0}"
-                        print(msg.format(rerr))
+                        msg = "hv_updater: {0}\n\tA Redis error occurred. "
+                        msg += "\tError msg: {1}"
+                        print(msg.format(datetime.datetime.now(), rerr))
                         raise
                     else:
                         # Checks whether the quabo temperature is acceptable.
                         # See https://github.com/panoseti/panoseti/issues/58.
                         if not is_acceptable_temperature(temp):
-                            msg = "module_temp_monitor: The temperature of quabo {0} in module {1} is {2} C, "
-                            msg += "which exceeds the maximum operating temperatures. \n"
-                            msg += "Attempting to power down the power supply for this module..."
-                            print(msg.format(quabo_index, module_ip_addr, temp))
+                            msg = "module_temp_monitor: {0} \n\tThe temperature of quabo {1} with base IP {2} is {3} C, "
+                            msg += "which exceeds the operating temperature range: {4} C to {5} C. \n"
+                            msg += "\tAttempting to turn off the power supply for this module..."
+                            print(msg.format(datetime.datetime.now(), quabo_index,
+                                             module_ip_addr, temp, MIN_TEMP, MAX_TEMP))
                             try:
                                 ups = obs_config['ups']
                                 url = ups['url']
                                 socket = ups['quabo_socket']
-                                power.quabo_power('OFF')
-                                msg = "Successfully turned off power to socket {0} in the UPS with url: {1}."
+                                power.quabo_power(False)
+                                msg = "\tSuccessfully turned off power to socket {0} in the UPS with url: {1}."
                                 print(msg.format(socket, url))
+                                break
                             except Exception as err:
-                                msg = "*** module_temp_monitor: Failed to turn off module power supply!"
-                                msg += "Error msg: {0}"
-                                print(msg.format(err))
+                                msg2 = "*** module_temp_monitor: {0}\n\tFailed to turn off module power supply!"
+                                msg += "Error msg: {1}"
+                                print(msg.format(datetime.datetime.now(), err))
                                 continue
                     # TODO: Determine when (or if) we should turn detectors back on after a temperature-related power down.
 
@@ -104,6 +106,6 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        msg = "module_temp_monitor failed and exited with the error message: {0}"
-        print(msg.format(e))
+        msg = "module_temp_monitor: {0} \n\tFailed and exited with the error message: {1}"
+        print(datetime.datetime.now(), msg.format(e))
         raise
