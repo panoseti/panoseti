@@ -109,6 +109,9 @@ def start_recording(data_config, daq_config, run_name):
     # start high-voltage updater
     util.start_hv_updater()
 
+    # start module temperature monitor
+    util.start_module_temp_monitor()
+
     # start hashpipe on DAQ nodes
 
     if 'max_file_size_mb' in data_config.keys():

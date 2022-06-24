@@ -1,8 +1,8 @@
 #! /usr/bin/env python3
 """
-Script that periodically reads all quabo temperatures and
-turns off the corresponding module power supply if the temperature
-exceeds a specified threshold.
+Script that periodically reads each quabo's temperature and
+turns off the corresponding module power supply if its temperature
+exceeds a specified temperature range.
 
 See https://github.com/panoseti/panoseti/issues/58.
 """
@@ -59,8 +59,8 @@ def check_all_module_temps(r: redis.Redis):
                             # Get the temperature data for this quabo.
                             temp = get_redis_temp(r, rkey)
                     except Warning as werr:
-                        msg = "hv_updater: {0} \n\tFailed to update quabo at index {1} with base IP {2}. "
-                        msg += "\tError msg: {3} \n"
+                        msg = "hv_updater: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
+                        msg += "\tError msg: {3}"
                         print(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
                         continue
                     except redis.RedisError as rerr:
@@ -72,8 +72,8 @@ def check_all_module_temps(r: redis.Redis):
                         # Checks whether the quabo temperature is acceptable.
                         # See https://github.com/panoseti/panoseti/issues/58.
                         if not is_acceptable_temperature(temp):
-                            msg = "module_temp_monitor: {0} \n\tThe temperature of quabo {1} with base IP {2} is {3} C, "
-                            msg += "which exceeds the operating temperature range: {4} C to {5} C. \n"
+                            msg = "module_temp_monitor: {0}\n\tThe temperature of quabo {1} with base IP {2} is {3} C, "
+                            msg += "which exceeds the operating temperature range: {4} C to {5} C.\n"
                             msg += "\tAttempting to turn off the power supply for this module..."
                             print(msg.format(datetime.datetime.now(), quabo_index,
                                              module_ip_addr, temp, MIN_TEMP, MAX_TEMP))
