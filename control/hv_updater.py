@@ -36,6 +36,8 @@ quabo_info = config_file.get_quabo_info()
 detector_info = config_file.get_detector_info()
 quabo_uids = config_file.get_quabo_uids()
 
+# Set of quabos whose detectors have been turned off by this script.
+quabos_off = set()
 
 def is_acceptable_temperature(temp: float):
     """Returns True only if the provided temperature is between
@@ -65,13 +67,20 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
                  temp: float):
     """Helper method for the function update_all_quabos. Updates each
      detector in the quabo represented by quabo_obj."""
-    for detector_index in range(4):
-        try:
+    adjusted_hv_values = [0] * 4
+    try:
+        for detector_index in range(4):
             det_serial_num = det_serial_nums[detector_index]
             adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
-            quabo_obj.hv_set_chan(detector_index, adjusted_hv)
-        except KeyError:
-            continue
+            # Save int encoding
+            adjusted_hv_values[detector_index] = int(adjusted_hv / 0.00114)
+    except KeyError as kerr:
+        msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
+        msg += "Error message: {1}"
+        print(msg.format(quabo_obj.ip_addr, kerr))
+        raise
+    else:
+        quabo_obj.hv_set(adjusted_hv_values)
 
 
 def get_boardloc(module_ip_addr: str, quabo_index):
@@ -91,13 +100,13 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
         print(msg.format(err))
-        pass
-    except AttributeError as aerr:
+        raise
+    except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += "Temperature HK data may be missing. "
         msg += "Error msg: {1}"
-        print(msg.format(rkey, aerr))
-        pass
+        print(msg.format(rkey, terr))
+        raise
 
 
 def update_all_quabos(r: redis.Redis):
@@ -110,11 +119,13 @@ def update_all_quabos(r: redis.Redis):
             for quabo_index in range(4):
                 quabo_obj = None
                 try:
+                    # Get this Quabo's redis key.
+                    rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
+                    if rkey in quabos_off:
+                        continue
                     uid = module['quabos'][quabo_index]['uid']
                     if uid == '':
                         continue
-                    # Get this Quabo's redis key.
-                    rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
                     # Get this Quabo's temp, if it exists.
                     if rkey.encode('utf-8') not in r.keys():
                         raise Warning("%s is not tracked in Redis." % rkey)
@@ -136,24 +147,25 @@ def update_all_quabos(r: redis.Redis):
                     msg = "hv_updater: A Redis error occurred. "
                     msg += "Error msg: {0}"
                     print(msg.format(rerr))
-                    continue
+                    raise
                 except KeyError as kerr:
                     msg = "hv_updater: Quabo {0} with base IP {1} may be missing from a config file. "
                     msg += "Error msg: {2}"
                     print(msg.format(quabo_index, module_ip_addr, kerr))
-                    continue
+                    raise
                 else:
                     # Checks whether the quabo temperature is acceptable.
                     # See https://github.com/panoseti/panoseti/issues/58.
                     if is_acceptable_temperature(temp):
                         update_quabo(quabo_obj, detector_serial_nums, temp)
                     else:
-                        msg = "hv_updater: The temperature of quabo {0} in module {1} is {2} C, "
+                        msg = "hv_updater: The temperature of quabo {0} with base IP {1} is {2} C, "
                         msg += "which exceeds the maximum operating temperatures. \n"
                         msg += "Attempting to power down the detectors on this quabo..."
                         print(msg.format(quabo_index, module_ip_addr, temp))
                         try:
-                            quabo_obj.hv_set(0)
+                            quabo_obj.hv_set([0] * 4)
+                            quabos_off.add(rkey)
                             print("Successfully powered down.")
                         except Exception as err:
                             msg = "*** hv_updater: Failed to power down detectors. "
