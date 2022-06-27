@@ -29,6 +29,8 @@ hk_recorder_name = './store_redis_data.py'
 
 hv_updater_name = './hv_updater.py'
 
+module_temp_monitor_name = './module_temp_monitor.py'
+
 hashpipe_name = 'hashpipe'
 
 daq_hashpipe_pid_filename = 'daq_hashpipe_pid'
@@ -197,6 +199,15 @@ def start_hv_updater():
         raise
 
 
+# Start module temperature monitor daemon.
+def start_module_temp_monitor():
+    try:
+        subprocess.Popen([module_temp_monitor_name])
+    except:
+        print("can't launch module temperature monitor")
+        raise
+
+
 # write run name to a file, and symlink 'run' to the run dir
 def write_run_name(daq_config, run_name):
     with open(run_name_file, 'w') as f:
@@ -285,6 +296,9 @@ def is_hk_recorder_running():
 def is_hv_updater_running():
     return is_script_running(hv_updater_name[2:])
 
+def is_module_temp_monitor_running():
+    return is_script_running(hv_updater_name[2:])
+
 def kill_hashpipe():
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
@@ -299,6 +313,13 @@ def kill_hv_updater():
     for p in psutil.process_iter():
         if hv_updater_name in p.cmdline():
             os.kill(p.pid, signal.SIGKILL)
+
+
+def kill_module_temp_monitor():
+    for p in psutil.process_iter():
+        if module_temp_monitor_name in p.cmdline():
+            os.kill(p.pid, signal.SIGKILL)
+
 
 def disk_usage(dir):
     x = 0
