@@ -77,7 +77,7 @@ void storeData(
     int bits_per_pixel, bytes_per_pixel;
     PACKET_HEADER *pkt_head = &(in_block->header.pkt_head[pktIndex]);
     uint32_t nanosec = pkt_head->pkt_nsec;
-    int quabo_num = pkt_head->qua_num;
+    int quabo_num = pkt_head->quabo_num;
 
     uint8_t quabo_bit = 1 << quabo_num;
 
@@ -260,11 +260,10 @@ static int init(hashpipe_thread_args_t * args){
     
 }
 
-/**
- * Main run function that is ran once when the threads are running. To keep thread running
- * make sure to use a while loop.
- * @param args Arguements passed in by the hashpipe framework
- */
+// function that is run once.
+// To keep thread running make sure to use a while loop.
+// args: Arguements passed in by the hashpipe framework
+
 static void *run(hashpipe_thread_args_t * args){
     printf("\n---------------Running Compute Thread-----------------\n\n");
     // Local aliases to shorten access to args fields
@@ -280,15 +279,15 @@ static void *run(hashpipe_thread_args_t * args){
     int curblock_out=0;
     int INTSIG;
 
-    //Variables to display pkt info
-    uint8_t acq_mode;                                   //The current mode of the packet block
-    quabo_info_t* quaboInd[0xffff] = {NULL};            //Create a rudimentary hash map of the quabo number and linked list ind
+    // Variables to display pkt info
+    uint8_t acq_mode;                                   // The current mode of the packet block
+    quabo_info_t* quaboInd[0xffff] = {NULL};            // Create a rudimentary hash map of the quabo number and linked list ind
 
-    quabo_info_t* currentQuabo;                         //Pointer to the quabo info that is currently being used
-    uint16_t boardLoc;                                  //The boardLoc(quabo index) for the current packet
+    quabo_info_t* currentQuabo;                         // Pointer to the quabo info that is currently being used
+    uint16_t boardLoc;                                  // The boardLoc(quabo index) for the current packet
     char* boardLocstr = (char *)malloc(sizeof(char)*10);
     
-    //Counters for the packets lost
+    // Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
 
@@ -301,7 +300,7 @@ static void *run(hashpipe_thread_args_t * args){
 	    hputi8(st.buf,"COMMCNT",mcnt);
         hashpipe_status_unlock_safe(&st);
 
-        //Wait for new input block to be filled
+        // Wait for new input block to be filled
         while ((rv=HSD_input_databuf_wait_filled(db_in, curblock_in)) != HASHPIPE_OK) {
             if (rv==HASHPIPE_TIMEOUT) {
                 hashpipe_status_lock_safe(&st);
@@ -329,19 +328,19 @@ static void *run(hashpipe_thread_args_t * args){
             }
         }
 
-        //Note processing status
+        // Note processing status
         hashpipe_status_lock_safe(&st);
         hputs(st.buf, status_key, "processing packet");
         hashpipe_status_unlock_safe(&st);
 
-        //Resetting the values in the new output block
+        // Resetting the values in the new output block
         db_out->block[curblock_out].header.n_img_module = 0;
         db_out->block[curblock_out].header.n_coinc_img = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 
         uint16_t moduleNum;
-        for(int i = 0; i < db_in->block[curblock_in].header.n_pkts_in_block; i++){
+        for (int i = 0; i < db_in->block[curblock_in].header.n_pkts_in_block; i++){
             //----------------CALCULATION BLOCK-----------------
             moduleNum = db_in->block[curblock_in].header.pkt_head[i].mod_num;
 
@@ -361,56 +360,58 @@ static void *run(hashpipe_thread_args_t * args){
             //------------End CALCULATION BLOCK----------------
 
 
-            //Finding the packet number and computing the lost of packets by using packet number
-            //Read the packet number from the packet
+            // Find the packet number and compute the loss of packets by using packet number
+            // Read the packet number from the packet
             acq_mode = db_in->block[curblock_in].header.pkt_head[i].acq_mode;
-            boardLoc = db_in->block[curblock_in].header.pkt_head[i].mod_num * 4 + db_in->block[curblock_in].header.pkt_head[i].qua_num;
+            boardLoc = db_in->block[curblock_in].header.pkt_head[i].mod_num * 4 + db_in->block[curblock_in].header.pkt_head[i].quabo_num;
 
-            //Check to see if there is a quabo info for the current quabo packet. If not create an object
+            // Check to see if there is a quabo info for the current quabo packet. If not create an object
             if (quaboInd[boardLoc] == NULL){
                 quaboInd[boardLoc] = quabo_info_t_new();            //Create a new quabo info object
 
                 printf("New Quabo Detected ID:%u.%u\n", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff); //Output the terminal the new quabo
             }
 
-            //Set the current Quabo to the one stored in memory
+            // Set the current Quabo to the one stored in memory
             currentQuabo = quaboInd[boardLoc];
 
-            //Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
+            // Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
             if (currentQuabo->lost_pkts[acq_mode] < 0) {
                 currentQuabo->lost_pkts[acq_mode] = 0;
             } else {
-                //Check to see if the current packet number is less than the previous. If so the number has overflowed and looped.
-                //Compenstate for this if this has happend, and then take the difference of the packet numbers minus 1 to be the packets lost
+                // Check to see if the current packet number is less than the previous. If so the number has overflowed and looped.
+                // Compenstate for this if this has happend, and then take the difference of the packet numbers minus 1 to be the packets lost
                 if (db_in->block[curblock_in].header.pkt_head[i].pkt_num < currentQuabo->prev_pkt_num[acq_mode])
                     current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[acq_mode]) + db_in->block[curblock_in].header.pkt_head[i].pkt_num;
                 else
                     current_pkt_lost = (db_in->block[curblock_in].header.pkt_head[i].pkt_num - currentQuabo->prev_pkt_num[acq_mode]) - 1;
                 
-                currentQuabo->lost_pkts[acq_mode] += current_pkt_lost; //Add this packet lost to the total for this quabo
-                total_lost_pkts += current_pkt_lost;               //Add this packet lost to the overall total for all quabos
+                currentQuabo->lost_pkts[acq_mode] += current_pkt_lost; // Add this packet lost to the total for this quabo
+                total_lost_pkts += current_pkt_lost;               // Add this packet lost to the overall total for all quabos
             }
-            currentQuabo->prev_pkt_num[acq_mode] = db_in->block[curblock_in].header.pkt_head[i].pkt_num; //Update the previous packet number to be the current packet number
+            // Update the previous packet number to be the current packet number
+            currentQuabo->prev_pkt_num[acq_mode] = db_in->block[curblock_in].header.pkt_head[i].pkt_num;
         }
 
-        /*Update input and output block for both buffers*/
-        //Mark output block as full and advance
+        // Update input and output block for both buffers
+        // Mark output block as full and advance
+
         HSD_output_databuf_set_filled(db_out, curblock_out);
         curblock_out = (curblock_out + 1) % db_out->header.n_block;
 
-        //Mark input block as free and advance
+        // Mark input block as free and advance
         HSD_input_databuf_set_free(db_in, curblock_in);
         curblock_in = (curblock_in + 1) % db_in->header.n_block;
         mcnt++;
 
-        //Break out when SIGINT is found
+        // Break out when SIGINT is found
         if(INTSIG) {
             printf("COMPUTE_THREAD Ended\n");
             break;
         }
 
         sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
-        //display packetnum in status
+        // display packetnum in status
 
         if (currentQuabo){
             hashpipe_status_lock_safe(&st);
@@ -423,7 +424,7 @@ static void *run(hashpipe_thread_args_t * args){
             hashpipe_status_unlock_safe(&st);
         }
 
-        //Check for cancel
+        // Check for cancel
         pthread_testcancel();
     }
 
@@ -431,9 +432,8 @@ static void *run(hashpipe_thread_args_t * args){
     return THREAD_OK;
 }
 
-/**
- * Sets the functions and buffers for this thread
- */
+// Sets the functions and buffers for this thread
+//
 static hashpipe_thread_desc_t HSD_compute_thread = {
     name: "compute_thread",
     skey: "COMPUTESTAT",

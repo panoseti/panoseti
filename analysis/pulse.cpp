@@ -15,7 +15,7 @@
 // In either case, the output files are:
 //      thresh_i     pulses above threshold
 //          (i=pulse duration level: 0,1,...)
-//      all_i       all pulsese
+//      all_i       all pulses
 //      mean_i      mean
 //      stddev_i    stddev
 //
