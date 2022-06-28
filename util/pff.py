@@ -99,6 +99,8 @@ def is_pff_file(name):
     return name.endswith('.pff')
 
 def pff_file_type(name):
+    if name == 'hk.pff':
+        return 'hk'
     n = parse_name(name)
     if 'dp' not in n.keys():
         return None

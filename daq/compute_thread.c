@@ -285,7 +285,6 @@ static void *run(hashpipe_thread_args_t * args){
 
     quabo_info_t* currentQuabo;                         // Pointer to the quabo info that is currently being used
     uint16_t boardLoc;                                  // The boardLoc(quabo index) for the current packet
-    char* boardLocstr = (char *)malloc(sizeof(char)*10);
     
     // Counters for the packets lost
     int total_lost_pkts = 0;
@@ -410,7 +409,6 @@ static void *run(hashpipe_thread_args_t * args){
             break;
         }
 
-        sprintf(boardLocstr, "%u.%u", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
         // display packetnum in status
 
         if (currentQuabo){

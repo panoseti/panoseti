@@ -58,6 +58,7 @@ def write_run_complete_file(daq_config, run_name):
         os.unlink(ph_symlink)
     did_img = False
     did_ph = False
+    did_hk = False
     for f in os.listdir('%s/%s'%(data_dir, run_name)):
         path = '%s/%s/%s'%(data_dir, run_name, f)
         if not pff.is_pff_file(path): continue
@@ -70,11 +71,17 @@ def write_run_complete_file(daq_config, run_name):
             os.symlink(path, ph_symlink)
             did_ph = True
             print('linked %s to %s'%(ph_symlink, f))
-        if did_img and did_ph: break
+        elif not did_hk and pff.pff_file_type(path)=='hk':
+            os.symlink(path, hk_symlink)
+            did_hk = True
+            print('linked %s to %s'%(hk_symlink, f))
+        if did_img and did_ph and did_hk: break
     if not did_img:
         print('No nonempty image file')
     if not did_ph:
         print('No nonempty PH file')
+    if not did_hk:
+        print('No nonempty housekeeping file')
 
 def stop_run(daq_config, quabo_uids):
     print("stopping data recording")

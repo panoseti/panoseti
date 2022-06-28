@@ -200,15 +200,15 @@ int write_img_header_json(
 // Write the image module structure to file
 //
 int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
-    FILE *fileToWrite;
+    FILE *f;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_mod_head[frameIndex].mod_num];
     int bits_per_pixel = dataBlock->header.img_mod_head[frameIndex].bits_per_pixel;
     int modSizeMultiplier = bits_per_pixel/8;
 
     if (bits_per_pixel == 16) {
-        fileToWrite = moduleToWrite->bit16Img;
+        f = moduleToWrite->bit16Img;
     } else if (bits_per_pixel == 8){
-        fileToWrite = moduleToWrite->bit8Img;
+        f = moduleToWrite->bit8Img;
     } else {
         printf("BPP %i not recognized\n", bits_per_pixel);
         printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[frameIndex].toString().c_str());
@@ -218,23 +218,23 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     if (moduleToWrite == NULL){
         printf("Module To Write is null\n");
         return 0;
-    } else if (fileToWrite == NULL){
+    } else if (f == NULL){
         printf("File to Write is null\n");
         return 0;
     } 
 
-    pff_start_json(fileToWrite);
+    pff_start_json(f);
 
-    write_img_header_json(fileToWrite, &(dataBlock->header), frameIndex);
+    write_img_header_json(f, &(dataBlock->header), frameIndex);
 
-    pff_end_json(fileToWrite);
+    pff_end_json(f);
 
-    pff_write_image(fileToWrite, 
+    pff_write_image(f, 
         QUABO_PER_MODULE*PIXELS_PER_IMAGE*modSizeMultiplier, 
         dataBlock->img_block + (frameIndex*BYTES_PER_MODULE_FRAME)
     );
 
-    if (ftell(fileToWrite) > max_file_size){
+    if (ftell(f) > max_file_size){
         moduleToWrite->increment_seqno();
         if (bits_per_pixel == 16){
             moduleToWrite->set_bpp(2);
@@ -250,7 +250,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
 
 // Write the coincidence header information to file.
 //
-int write_coinc_header_file(
+int write_coinc_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int packetIndex
 ){
     fprintf(f,
@@ -270,12 +270,12 @@ int write_coinc_header_file(
 // packetIndex: The packet index for the specified output block.
 
 int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
-    FILE *fileToWrite;
+    FILE *f;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coinc_pkt_head[packetIndex].mod_num];
     char mode = dataBlock->header.coinc_pkt_head[packetIndex].acq_mode;
 
     if (mode == 0x1) {
-        fileToWrite = moduleToWrite->PHImg;
+        f = moduleToWrite->PHImg;
     } else {
         printf("Mode %c not recognized\n", mode);
         printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[packetIndex].toString().c_str());
@@ -285,22 +285,23 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
     if (moduleToWrite == NULL){
         printf("Module To Write is null\n");
         return 0;
-    } else if (fileToWrite == NULL){
+    } else if (f == NULL){
         printf("File to Write is null\n");
         return 0;
     } 
 
-    pff_start_json(fileToWrite);
+    pff_start_json(f);
 
-    write_coinc_header_file(fileToWrite, &(dataBlock->header), packetIndex);
+    write_coinc_header_json(f, &(dataBlock->header), packetIndex);
 
-    pff_end_json(fileToWrite);
+    pff_end_json(f);
 
-    pff_write_image(fileToWrite, 
+    pff_write_image(f, 
         PIXELS_PER_IMAGE*2, 
-        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE));
+        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE)
+    );
 
-    if (ftell(fileToWrite) > max_file_size){
+    if (ftell(f) > max_file_size){
         moduleToWrite->increment_seqno();
         if (mode == 0x1){
             moduleToWrite->set_bpp(2);

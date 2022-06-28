@@ -15,6 +15,7 @@ run_symlink = 'run'
     # name of symlink to current run
 img_symlink = 'img'
 ph_symlink= 'ph'
+hk_symlink= 'hk'
     # names of symlinks to first img and ph file in current run
 
 hk_file_name = 'hk.pff'
