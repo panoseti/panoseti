@@ -20,7 +20,6 @@
 #include "pff.h"
 #include "dp.h"
 
-
 // Structure for storing file pointers opened by output thread.
 // A file is created for all possible data products described by pff.h
 //
@@ -31,7 +30,7 @@ struct FILE_PTRS{
     FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
     void make_files(const char *diskDir, const char *file_mode);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
-    int increment_seqno();
+    void increment_seqno();
     int set_bpp(int value);
 };
 
@@ -94,12 +93,14 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
 }
 
 // Create a new file for a specified data product within file structure.
-// Method is used usually when a certain data product file has reached max file size.
+// called when a certain data product file has reached max file size.
 // dp: Data product of the file that needs to be created.
 // diskDir: Disk directory for the file pointer.
 // file_mode: File mode of the new file created.
 
-void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode){
+void FILE_PTRS::new_dp_file(
+    DATA_PRODUCT dp, const char *diskDir, const char *file_mode
+){
     string fileName;
     string dirName;
     dirName = diskDir;
@@ -132,11 +133,9 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
 }
 
 // Increments the seqno for the filename of new files
-// return 1 if it was successful and return 0 if it failed
 
-int FILE_PTRS::increment_seqno(){
+void FILE_PTRS::increment_seqno(){
     this->file_info.seqno += 1;
-    return 1;
 }
 
 // Sets the value for bytes per pixel of new files
@@ -348,7 +347,6 @@ int create_data_files_from_config(){
     }
 }
 
-
 typedef enum {
     DIR_EXISTS,
     DIR_DNE,
@@ -442,9 +440,7 @@ static int init(hashpipe_thread_args_t *args) {
     return 0;
 }
 
-// Close all allocated resources
-
-void close_all_resources() {
+void close_files() {
     for (int i = 0; i < MAX_MODULE_INDEX; i++){
         if (data_files[i] != NULL){
             fclose(data_files[i]->bit16Img);
@@ -517,7 +513,7 @@ static void *run(hashpipe_thread_args_t *args) {
         }
 
         if (db->block[block_idx].header.INTSIG) {
-            close_all_resources();
+            close_files();
             printf("OUTPUT_THREAD Ended\n");
             break;
         }
@@ -526,9 +522,7 @@ static void *run(hashpipe_thread_args_t *args) {
         block_idx = (block_idx + 1) % db->header.n_block;
         mcnt++;
 
-        // Term conditions
-
-        // Will exit if thread has been cancelled
+        // exit if thread has been cancelled
         pthread_testcancel();
     }
 
@@ -547,7 +541,6 @@ static hashpipe_thread_desc_t HSD_output_thread = {
     obuf_desc : {NULL}
 };
 
-static __attribute__((constructor)) void ctor()
-{
+static __attribute__((constructor)) void ctor() {
     register_hashpipe_thread(&HSD_output_thread);
 }

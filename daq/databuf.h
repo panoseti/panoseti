@@ -1,8 +1,7 @@
 #ifndef _DATABUF_H_
 #define _DATABUF_H_
 
-// Panoseti Data Acquisition Data Buffer Header File
-// Variables and structures of constants for both the hashpipe framework and packet information is defined here.
+// Panoseti hashpipe data structures
 
 #include <string>
 #include <string.h>
@@ -14,57 +13,81 @@
 
 // the sizes of packets images and headers in bytes
 
-#define BYTES_PER_PKT_IMAGE         512     //Number of bytes for a normal packets. eg. 16bit Image and Pulse Height
-#define BYTES_PER_8BIT_PKT_IMAGE    256     //Number of bytes for a 8 bit image packet
-#define BYTE_PKT_HEADER             16      //Number of bytes for the header for all packets
+#define BYTES_PER_PKT_IMAGE         512
+    // Number of bytes for a 16 bit  packet
+#define BYTES_PER_8BIT_PKT_IMAGE    256
+    // Number of bytes for a 8 bit image packet
+#define BYTE_PKT_HEADER             16
+    // Number of bytes for the header for all packets
 
-// the size and characteristics of the input and output circuluar buffers
+// the size and characteristics of the input and output circular buffers
 
-#define CACHE_ALIGNMENT             256     //Align the cache within the buffer
-#define N_INPUT_BLOCKS              4       //Number of blocks in the input buffer
-#define N_OUTPUT_BLOCKS             8       //Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK            320     //Number of input packets stored in each block of the input buffer
-#define OUT_MOD_PER_BLOCK           320     //Max Number of Modules stored in each block of the output buffer
-#define OUT_COINC_PER_BLOCK         320     //Max Number of coincidence packets stored in each block of the output buffer
+#define CACHE_ALIGNMENT             256
+    // Align the cache within the buffer
+#define N_INPUT_BLOCKS              4
+    // Number of blocks in the input buffer
+#define N_OUTPUT_BLOCKS             8
+    // Number of blocks in the output buffer
+#define IN_PKT_PER_BLOCK            320
+    // Number of input packets stored in each block of the input buffer
+#define OUT_MOD_PER_BLOCK           320
+    // Max Number of Modules stored in each block of the output buffer
+#define OUT_COINC_PER_BLOCK         320
+    // Max Number of coincidence packets stored in each block of the output buffer
 
 // Imaging Data Values and characterisitics of modules
 
-#define QUABO_PER_MODULE        4                                    //Max Number of Quabos associated with a Module
-#define PIXELS_PER_IMAGE        256                                  //Number of pixels for each image data
-#define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2  //Size of module image allocated in buffer
+#define QUABO_PER_MODULE        4
+    // Max Number of Quabos associated with a Module
+#define PIXELS_PER_IMAGE        256
+    // Number of pixels for each image data
+#define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+    // Size of module image allocated in buffer
 
 // the Block Sizes for the Input and Ouput Buffers
 
-#define BYTES_PER_INPUT_IMAGE_BLOCK     IN_PKT_PER_BLOCK*BYTES_PER_PKT_IMAGE        //Byte size of input image block. Contains images for packets excluding headers
-#define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME    //Byte size of output frame block. Contains frames for modules excluding headers
-#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE     //Byte size of output coincidence block. Contains frames for coincidence packets excluding headers
+#define BYTES_PER_INPUT_IMAGE_BLOCK     IN_PKT_PER_BLOCK*BYTES_PER_PKT_IMAGE
+    // Byte size of input image block. Contains images for packets excluding headers
+#define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME
+    // Byte size of output frame block. Contains frames for modules excluding headers
+#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE
+    // Byte size of output coincidence block. Contains frames for coincidence packets excluding headers
 
 // the algorithm constants for the hashpipe framework threads.
-//Nanosecond threshold is used for syncing and grouping packets that are being collected by the network thread.
-//The nanosecond value in the header values are read and if a new packet for an existing module is recieved the
-//difference between the largest and the smallest nanosecond values(nanosecond value of the new packet is included
-//in the calculation) is calculated and must be smaller than the nanosecond threshold.
-//If the new packet's nanosecond value causes the difference to exceed the threshold then the old module data is flushed
-//and the new module data is created starting with the new packet. More information can be seen in the compute thread.
+// Nanosecond threshold is used for syncing and grouping packets
+// that are being collected by the network thread.
+// The nanosecond value in the header values are read and if a new packet
+// for an existing module is received the
+// difference between the largest and the smallest nanosecond values
+// (nanosecond value of the new packet is included in the calculation)
+// is calculated and must be smaller than the nanosecond threshold.
+// If the new packet's nanosecond value causes the difference
+// to exceed the threshold then the old module data is flushed
+// and the new module data is created starting with the new packet.
+// More information can be seen in the compute thread.
 
-#define NANOSEC_THRESHOLD        100         //Nanosecond threshold used for grouping quabo images
+#define NANOSEC_THRESHOLD        100
+    // Nanosecond threshold used for grouping quabo images
 
-// Module index is used for defining the array for storing pointers of module structures for both compute and output threads.
-#define MAX_MODULE_INDEX         0xffff      //Largest Module Index for compute and output thread
+// Module index is used for defining the array for storing pointers
+// of module structures for both compute and output threads.
+#define MAX_MODULE_INDEX         0xffff
+    // Largest Module Index for compute and output thread
 
 // conguration default file name
-#define CONFIGFILE_DEFAULT "./module.config"    //Default Location used for module config file
+#define CONFIGFILE_DEFAULT "./module.config"
+    // Default Location used for module config file
 
 // the string buffer size
 #define STR_BUFFER_SIZE 256
 
 // the values from a packet header
-//
+// 
 struct PACKET_HEADER {
     char acq_mode;
     uint16_t pkt_num;
-    uint16_t mod_num;       //0..255
-    uint8_t quabo_num;        //0..3
+    uint16_t mod_num;       // 0..255
+    uint8_t quabo_num;        // 0..3
     uint32_t pkt_utc;
     uint32_t pkt_nsec;
     long int tv_sec;
@@ -85,7 +108,7 @@ struct PACKET_HEADER {
 // - the packet headers for the 4 quabo images comprising it
 // - the module number
 // produced by the compute thread, consumed by the output thread
-//
+// 
 struct MODULE_IMAGE_HEADER {
     int bits_per_pixel;
     uint16_t mod_num;
@@ -121,8 +144,8 @@ typedef uint8_t HSD_input_header_cache_alignment[
 
 typedef struct HSD_input_block {
     HSD_input_block_header_t header;
-    HSD_input_header_cache_alignment padding;       // Maintain cache alignment
-    char data_block[BYTES_PER_INPUT_IMAGE_BLOCK];   //define input buffer
+    HSD_input_header_cache_alignment padding;
+    char data_block[BYTES_PER_INPUT_IMAGE_BLOCK];
 } HSD_input_block_t;
 
 // Input data buffer containing mutiple data blocks to be passed over to 
@@ -130,7 +153,7 @@ typedef struct HSD_input_block {
 
 typedef struct HSD_input_databuf {
     hashpipe_databuf_t header;
-    HSD_input_header_cache_alignment padding;   // Maintain chache alignment
+    HSD_input_header_cache_alignment padding;
     HSD_input_block_t block[N_INPUT_BLOCKS];
 } HSD_input_databuf_t;
 
@@ -159,13 +182,13 @@ typedef uint8_t HSD_output_header_cache_alignment[
 
 typedef struct HSD_output_block {
     HSD_output_block_header_t header;
-    HSD_output_header_cache_alignment padding;  //Maintain cache alignment
+    HSD_output_header_cache_alignment padding;
     char img_block[BYTES_PER_OUTPUT_FRAME_BLOCK];
     char coinc_block[BYTES_PER_OUTPUT_COINC_BLOCK];
 } HSD_output_block_t;
 
-// Output data buffer containing multiple data blocks to be passed to output thread
-// for disk writes.
+// Output data buffer containing multiple data blocks
+// to be passed to output thread for disk writes.
 
 typedef struct HSD_output_databuf {
     hashpipe_databuf_t header;
@@ -178,7 +201,9 @@ typedef struct HSD_output_databuf {
 hashpipe_databuf_t * HSD_input_databuf_create(int instance_id, int databuf_id);
 
 // Input databuf attach
-static inline HSD_input_databuf_t *HSD_input_databuf_attach(int instance_id, int databuf_id){
+static inline HSD_input_databuf_t *HSD_input_databuf_attach(
+    int instance_id, int databuf_id
+){
     return (HSD_input_databuf_t *)hashpipe_databuf_attach(instance_id, databuf_id);
 }
 

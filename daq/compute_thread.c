@@ -235,11 +235,11 @@ static int init(hashpipe_thread_args_t * args){
         if (cbuf != '#'){
             if (fscanf(modConfig_file, "%u\n", &modName) == 1){
                 if (moduleInd[modName] == NULL){
-
                     moduleInd[modName] = new MODULE_IMAGE_BUFFER();
-
                     fprintf(stdout, "Created Module: %u.%u-%u\n", 
-                    (unsigned int) (modName << 2)/0x100, (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3);
+                        (unsigned int) (modName << 2)/0x100,
+                        (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3
+                    );
                 }
             }
         } else {
@@ -272,7 +272,7 @@ static void *run(hashpipe_thread_args_t * args){
     hashpipe_status_t st = args->st;
     const char * status_key = args->thread_desc->skey;
 
-    // Index values for the circular buffers in the shared buffer with the input and output threads
+    // Index values for input and output buffers
     int rv;
     uint64_t mcnt=0;
     int curblock_in=0;
@@ -280,16 +280,18 @@ static void *run(hashpipe_thread_args_t * args){
     int INTSIG;
 
     // Variables to display pkt info
-    uint8_t acq_mode;                                   // The current mode of the packet block
-    quabo_info_t* quaboInd[0xffff] = {NULL};            // Create a rudimentary hash map of the quabo number and linked list ind
-
-    quabo_info_t* currentQuabo;                         // Pointer to the quabo info that is currently being used
-    uint16_t boardLoc;                                  // The boardLoc(quabo index) for the current packet
+    uint8_t acq_mode;
+        // The current mode of the packet block
+    quabo_info_t* quaboInd[0xffff] = {NULL};
+        // hash table mapping quabo number to linked list ind
+    quabo_info_t* currentQuabo;
+        // Pointer to the quabo info that is currently being used
+    uint16_t boardLoc;
+        // The boardLoc(quabo index) for the current packet
     
     // Counters for the packets lost
     int total_lost_pkts = 0;
     int current_pkt_lost;
-
     
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
@@ -359,35 +361,45 @@ static void *run(hashpipe_thread_args_t * args){
             //------------End CALCULATION BLOCK----------------
 
 
-            // Find the packet number and compute the loss of packets by using packet number
+            // Find the packet number and compute the loss of packets
+            // by using packet number
             // Read the packet number from the packet
             acq_mode = db_in->block[curblock_in].header.pkt_head[i].acq_mode;
             boardLoc = db_in->block[curblock_in].header.pkt_head[i].mod_num * 4 + db_in->block[curblock_in].header.pkt_head[i].quabo_num;
 
-            // Check to see if there is a quabo info for the current quabo packet. If not create an object
+            // Check if there is a quabo info for the current quabo packet.
+            // If not create an object
             if (quaboInd[boardLoc] == NULL){
-                quaboInd[boardLoc] = quabo_info_t_new();            //Create a new quabo info object
+                quaboInd[boardLoc] = quabo_info_t_new();
+                //Create a new quabo info object
 
-                printf("New Quabo Detected ID:%u.%u\n", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff); //Output the terminal the new quabo
+                printf("New Quabo Detected ID:%u.%u\n", (boardLoc >> 8) & 0x00ff, boardLoc & 0x00ff);
             }
 
             // Set the current Quabo to the one stored in memory
             currentQuabo = quaboInd[boardLoc];
 
-            // Check to see if it is newly created quabo info if so then inialize the lost packet number to 0
+            // if it is newly created quabo info,
+            // initialize the lost packet number to 0
             if (currentQuabo->lost_pkts[acq_mode] < 0) {
                 currentQuabo->lost_pkts[acq_mode] = 0;
             } else {
-                // Check to see if the current packet number is less than the previous. If so the number has overflowed and looped.
-                // Compenstate for this if this has happend, and then take the difference of the packet numbers minus 1 to be the packets lost
-                if (db_in->block[curblock_in].header.pkt_head[i].pkt_num < currentQuabo->prev_pkt_num[acq_mode])
+                // check if the current packet number is less than the previous.
+                // If so the number has overflowed and looped.
+                // if this has happened, take the difference of the
+                // packet numbers minus 1 to be the packets lost
+                if (db_in->block[curblock_in].header.pkt_head[i].pkt_num < currentQuabo->prev_pkt_num[acq_mode]) {
                     current_pkt_lost = (0xffff - currentQuabo->prev_pkt_num[acq_mode]) + db_in->block[curblock_in].header.pkt_head[i].pkt_num;
-                else
+                } else {
                     current_pkt_lost = (db_in->block[curblock_in].header.pkt_head[i].pkt_num - currentQuabo->prev_pkt_num[acq_mode]) - 1;
+                }
                 
-                currentQuabo->lost_pkts[acq_mode] += current_pkt_lost; // Add this packet lost to the total for this quabo
-                total_lost_pkts += current_pkt_lost;               // Add this packet lost to the overall total for all quabos
+                currentQuabo->lost_pkts[acq_mode] += current_pkt_lost;
+                    // Add this packet lost to the total for this quabo
+                total_lost_pkts += current_pkt_lost;
+                    // Add this packet lost to the overall total for all quabos
             }
+
             // Update the previous packet number to be the current packet number
             currentQuabo->prev_pkt_num[acq_mode] = db_in->block[curblock_in].header.pkt_head[i].pkt_num;
         }
@@ -404,7 +416,7 @@ static void *run(hashpipe_thread_args_t * args){
         mcnt++;
 
         // Break out when SIGINT is found
-        if(INTSIG) {
+        if (INTSIG) {
             printf("COMPUTE_THREAD Ended\n");
             break;
         }
