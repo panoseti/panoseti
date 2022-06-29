@@ -75,14 +75,22 @@ while i<len(argv):
 
 if fname=='img':
     dp = 'img16'
+elif fname=='ph':
+    dp = 'ph16'
 else:
     dict = pff.parse_name(fname)
     dp = dict['dp']
-[min, max] = pixel_histogram.get_quantiles(fname, quantile)
 if dp == 'img16' or dp=='1':
-    show_file(fname, 32, 2, min, max)
+    image_size = 32
+    bytes_per_pixel = 2
 elif dp == 'ph16' or dp=='3':
-    show_file(fname, 16, 2, min, max)
+    image_size = 16
+    bytes_per_pixel = 2
 else:
     raise Exception("bad data product %s"%dp)
+
+[min, max] = pixel_histogram.get_quantiles(
+    fname, image_size, bytes_per_pixel, quantile
+)
+show_file(fname, image_size, bytes_per_pixel, min, max)
 

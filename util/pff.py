@@ -11,7 +11,7 @@ def read_json(f):
     if c == '':
         return None
     if c != b'{':
-        raise Exception('bad type code')
+        raise Exception('bad type code', c)
     s = '{'
     last_nl = False
     while True:
