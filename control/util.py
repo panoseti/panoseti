@@ -41,7 +41,7 @@ hp_stdout_prefix = 'hp_stdout_'
     # hashpipe stdout file is prefix_ipaddr
 
 redis_daemons = [
-    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'storeInfluxDB.py'
+    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'capture_power.py', 'storeInfluxDB.py'
 ]
 
 #-------------- TIME ---------------
