@@ -35,7 +35,7 @@
 #define OUT_COINC_PER_BLOCK         320
     // Max Number of coincidence packets stored in each block of the output buffer
 
-// Imaging Data Values and characterisitics of modules
+// Imaging Data Values and characteristics of modules
 
 #define QUABO_PER_MODULE        4
     // Max Number of Quabos associated with a Module
@@ -47,11 +47,14 @@
 // the Block Sizes for the Input and Ouput Buffers
 
 #define BYTES_PER_INPUT_IMAGE_BLOCK     IN_PKT_PER_BLOCK*BYTES_PER_PKT_IMAGE
-    // Byte size of input image block. Contains images for packets excluding headers
+    // Byte size of input image block.
+    // Contains images for packets excluding headers
 #define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME
-    // Byte size of output frame block. Contains frames for modules excluding headers
+    // Byte size of output frame block.
+    // Contains frames for modules excluding headers
 #define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE
-    // Byte size of output coincidence block. Contains frames for coincidence packets excluding headers
+    // Byte size of output coincidence block.
+    // Contains frames for coincidence packets excluding headers
 
 // the algorithm constants for the hashpipe framework threads.
 // Nanosecond threshold is used for syncing and grouping packets
