@@ -12,15 +12,20 @@ from influxdb import InfluxDBClient
 import redis
 import time
 import re
+
 from redis_utils import *
+import config_file
 
 #UTC_OFFSET = 7*3600 #ns
 UTC_OFFSET = 0
 TIMEFORMAT = "%Y-%m-%dT%H:%M:%SZ"
-OBSERVATORY = 'test'
-DATATYPE_FORMAT = {'housekeeping': re.compile("QUABO_[0-9]*"),
+OBSERVATORY = config_file.get_obs_config()["name"]
+DATATYPE_FORMAT = {
+    'housekeeping': re.compile("QUABO_[0-9]*"),
     'GPS': re.compile("GPS.*"),
-    'whiterabbit': re.compile("WRSWITCH.*")}
+    'whiterabbit': re.compile("WRSWITCH.*"),
+    'outlet': re.compile("UPS_.*")
+}
 #List of keys with the time stamp values
 key_timestamps = {}
 
@@ -73,4 +78,5 @@ def main():
         time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    #main()
+    ...
