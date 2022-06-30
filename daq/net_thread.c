@@ -131,9 +131,7 @@ static inline void get_header(
     block_header->pkt_head[i].mod_num = ((pkt_data[5] << 6) & 0x3fc0) 
         | ((pkt_data[4] >> 2) & 0x003f);
     block_header->pkt_head[i].quabo_num = ((pkt_data[4]) & 0x03);
-    block_header->pkt_head[i].pkt_utc = ((pkt_data[9] << 24) & 0xff000000) 
-        | ((pkt_data[8] << 16) & 0x00ff0000)
-        | ((pkt_data[7] << 8) & 0x0000ff00)
+    block_header->pkt_head[i].pkt_utc = | ((pkt_data[7] << 8) & 0x00000300)
         | ((pkt_data[6]) & 0x000000ff);
                         
     block_header->pkt_head[i].pkt_nsec = ((pkt_data[13] << 24) & 0xff000000) 
