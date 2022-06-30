@@ -92,5 +92,6 @@ else:
 [min, max] = pixel_histogram.get_quantiles(
     fname, image_size, bytes_per_pixel, quantile
 )
+print('pixel 10/90 percentiles: %d, %d'%(min, max))
 show_file(fname, image_size, bytes_per_pixel, min, max)
 
