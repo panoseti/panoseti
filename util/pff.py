@@ -11,7 +11,7 @@ def read_json(f):
     if c == '':
         return None
     if c != b'{':
-        raise Exception('bad type code')
+        raise Exception('bad type code', c)
     s = '{'
     last_nl = False
     while True:
@@ -99,6 +99,8 @@ def is_pff_file(name):
     return name.endswith('.pff')
 
 def pff_file_type(name):
+    if name == 'hk.pff':
+        return 'hk'
     n = parse_name(name)
     if 'dp' not in n.keys():
         return None

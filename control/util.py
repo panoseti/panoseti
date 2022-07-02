@@ -2,9 +2,6 @@
 
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import netifaces
-sys.path.insert(0, '../util')
-import pff
-
 
 #-------------- DEFAULTS ---------------
 
@@ -18,6 +15,7 @@ run_symlink = 'run'
     # name of symlink to current run
 img_symlink = 'img'
 ph_symlink= 'ph'
+hk_symlink= 'hk'
     # names of symlinks to first img and ph file in current run
 
 hk_file_name = 'hk.pff'
@@ -226,39 +224,6 @@ def read_run_name():
 def remove_run_name():
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
-
-# write a "run complete" file in the current run dir,
-# and make symlinks to the first nonempty image and ph files in that dir
-#
-def write_run_complete_file(daq_config, run_name):
-    data_dir = daq_config['head_node_data_dir']
-    path = '%s/%s/%s'%(data_dir, run_name, run_complete_file)
-    with open(path, 'w') as f:
-        f.write(now_str())
-
-    if os.path.exists(img_symlink):
-        os.unlink(img_symlink)
-    if os.path.exists(ph_symlink):
-        os.unlink(ph_symlink)
-    did_img = False
-    did_ph = False
-    for f in os.listdir('%s/%s'%(data_dir, run_name)):
-        path = '%s/%s/%s'%(data_dir, run_name, f)
-        if not pff.is_pff_file(path): continue
-        if os.path.getsize(path) == 0: continue
-        if not did_img and pff.pff_file_type(path)=='img16':
-            os.symlink(path, img_symlink)
-            did_img = True
-            print('linked %s to %s'%(img_symlink, f))
-        elif not did_ph and pff.pff_file_type(path)=='ph16':
-            os.symlink(path, ph_symlink)
-            did_ph = True
-            print('linked %s to %s'%(ph_symlink, f))
-        if did_img and did_ph: break
-    if not did_img:
-        print('No nonempty image file')
-    if not did_ph:
-        print('No nonempty PH file')
 
 # if hashpipe is running, send it a SIGINT and wait for it to exit
 #

@@ -20,7 +20,6 @@
 #include "pff.h"
 #include "dp.h"
 
-
 // Structure for storing file pointers opened by output thread.
 // A file is created for all possible data products described by pff.h
 //
@@ -31,26 +30,24 @@ struct FILE_PTRS{
     FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
     void make_files(const char *diskDir, const char *file_mode);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
-    int increment_seqno();
+    void increment_seqno();
     int set_bpp(int value);
 };
 
-/**
- * Constructor for file pointer structure
- * @param diskDir directory used for writing all files monitored by file pointer
- * @param fileInfo file information structure stored by file pointer
- * @param file_mode file editing mode for all files within file pointer
- */
+// Constructor for file pointer structure
+// diskDir: directory used for writing all files monitored by file pointer
+// fileInfo: file information structure stored by file pointer
+// file_mode: file editing mode for all files within file pointer
+
 FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode){
     fileInfo->copy_to(&(this->file_info));
     this->make_files(diskDir, file_mode);
 }
 
-/**
- * Creating files for the file pointer stucture given a directory.
- * @param diskDir directory for where the files will be created by file pointers
- * @param file_mode file editing mode for the new file created
- */
+// Create files for the file pointer stucture given a directory.
+// diskDir: directory for where the files will be created by file pointers
+// file_mode: file editing mode for the new file created
+
 void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     string fileName;
     string dirName;
@@ -95,14 +92,15 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
     }
 }
 
-/**
- * Create a new file for a specified data product within file structure.
- * Method is used usually when a certain data product file has reached max file size.
- * @param dp Data product of the file that needs to be created.
- * @param diskDir Disk directory for the file pointer.
- * @param file_mode File mode of the new file created.
- */
-void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode){
+// Create a new file for a specified data product within file structure.
+// called when a certain data product file has reached max file size.
+// dp: Data product of the file that needs to be created.
+// diskDir: Disk directory for the file pointer.
+// file_mode: File mode of the new file created.
+
+void FILE_PTRS::new_dp_file(
+    DATA_PRODUCT dp, const char *diskDir, const char *file_mode
+){
     string fileName;
     string dirName;
     dirName = diskDir;
@@ -134,19 +132,14 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *fi
     printf("Created file %s\n", (dirName + fileName).c_str());
 }
 
-/**
- * Increments the seqno for the filename of new files
- * @return 1 if it was successful and return 0 if it failed
- */
-int FILE_PTRS::increment_seqno(){
+// Increments the seqno for the filename of new files
+
+void FILE_PTRS::increment_seqno(){
     this->file_info.seqno += 1;
-    return 1;
 }
 
-/**
- * Sets the value for bytes per pixel of new files
- * @return 1 if it was successful and return 0 if it failed
- */
+// Sets the value for bytes per pixel of new files
+// return 1 if it was successful and return 0 if it failed
 
 int FILE_PTRS::set_bpp(int value){
     if (value != 1 && value != 2){
@@ -163,17 +156,14 @@ static char run_directory[STR_BUFFER_SIZE];
 
 static long long max_file_size = 0; //IN UNITS OF BYTES
 
-
-
 static FILE_PTRS *data_files[MAX_MODULE_INDEX] = {NULL};
 
 
-/**
- * Create a file pointers for a given dome and module.
- * @param diskDir directory of the file created for the file pointer structure
- * @param dome dome number of the files
- * @param module module number of the files
- */
+// Create a file pointers for a given dome and module.
+// diskDir: directory of the file created for the file pointer structure
+// dome: dome number of the files
+// module: module number of the files
+
 FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
@@ -181,48 +171,44 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     return new FILE_PTRS(diskDir, &filenameInfo, "w");
 }
 
-/**
- * Write image header to file.
- * @param fileToWrite File the image header will be written to
- * @param dataHeader The output block header containing the image headers
- * @param frameIndex The frame index for the specified output block
- */
-int write_img_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int frameIndex){
-    fprintf(fileToWrite, "{ ");
-    for (int i = 0; i < QUABO_PER_MODULE; i++){
-        fprintf(fileToWrite,
-        "quabo %u: { acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li}",
+// Write image header as JSON
+//
+int write_img_header_json(
+    FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
+){
+    fprintf(f, "{\n");
+    for (int i=0; i<QUABO_PER_MODULE; i++){
+        fprintf(f,
+        "   \"quabo_%u\": { \"acq_mode\": %u, \"mod_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
         i,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].acq_mode,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].mod_num,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].qua_num,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_num,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_utc,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_nsec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_sec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_usec
         );
         if (i < QUABO_PER_MODULE-1){
-            fprintf(fileToWrite, ", ");
+            fprintf(f, ", ");
         }
+        fprintf(f, "\n");
     }
-    fprintf(fileToWrite, "}");
+    fprintf(f, "}");
 }
 
-/**
- * Writing the image module structure to file
- * @param dataBlock Data block of the containing the images to be written to disk
- * @param frameIndex The frame index for the specified output block.
- */
+// Write the image module structure to file
+//
 int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
-    FILE *fileToWrite;
+    FILE *f;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.img_mod_head[frameIndex].mod_num];
     int bits_per_pixel = dataBlock->header.img_mod_head[frameIndex].bits_per_pixel;
     int modSizeMultiplier = bits_per_pixel/8;
 
     if (bits_per_pixel == 16) {
-        fileToWrite = moduleToWrite->bit16Img;
+        f = moduleToWrite->bit16Img;
     } else if (bits_per_pixel == 8){
-        fileToWrite = moduleToWrite->bit8Img;
+        f = moduleToWrite->bit8Img;
     } else {
         printf("BPP %i not recognized\n", bits_per_pixel);
         printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[frameIndex].toString().c_str());
@@ -232,22 +218,23 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     if (moduleToWrite == NULL){
         printf("Module To Write is null\n");
         return 0;
-    } else if (fileToWrite == NULL){
+    } else if (f == NULL){
         printf("File to Write is null\n");
         return 0;
     } 
 
-    pff_start_json(fileToWrite);
+    pff_start_json(f);
 
-    write_img_header_file(fileToWrite, &(dataBlock->header), frameIndex);
+    write_img_header_json(f, &(dataBlock->header), frameIndex);
 
-    pff_end_json(fileToWrite);
+    pff_end_json(f);
 
-    pff_write_image(fileToWrite, 
+    pff_write_image(f, 
         QUABO_PER_MODULE*PIXELS_PER_IMAGE*modSizeMultiplier, 
-        dataBlock->img_block + (frameIndex*BYTES_PER_MODULE_FRAME));
+        dataBlock->img_block + (frameIndex*BYTES_PER_MODULE_FRAME)
+    );
 
-    if (ftell(fileToWrite) > max_file_size){
+    if (ftell(f) > max_file_size){
         moduleToWrite->increment_seqno();
         if (bits_per_pixel == 16){
             moduleToWrite->set_bpp(2);
@@ -261,37 +248,35 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     return 1;
 }
 
-/**
- * Write the coincidence header information to file.
- * @param fileToWrite File the image header will be written to
- * @param dataHeader The output block header containing the image headers
- * @param packetIndex The packet index for the specified output block
- */
-int write_coinc_header_file(FILE *fileToWrite, HSD_output_block_header_t *dataHeader, int packetIndex){
-    fprintf(fileToWrite,
-    "{ acq_mode: %u, mod_num: %u, qua_num: %u, pkt_num : %u, pkt_nsec : %u, tv_sec : %li, tv_usec : %li}",
-    dataHeader->coinc_pkt_head[packetIndex].acq_mode,
-    dataHeader->coinc_pkt_head[packetIndex].mod_num,
-    dataHeader->coinc_pkt_head[packetIndex].qua_num,
-    dataHeader->coinc_pkt_head[packetIndex].pkt_num,
-    dataHeader->coinc_pkt_head[packetIndex].pkt_nsec,
-    dataHeader->coinc_pkt_head[packetIndex].tv_sec,
-    dataHeader->coinc_pkt_head[packetIndex].tv_usec
+// Write the coincidence header information to file.
+//
+int write_coinc_header_json(
+    FILE *f, HSD_output_block_header_t *dataHeader, int packetIndex
+){
+    fprintf(f,
+        "{ \"acq_mode\": %u, \"mod_num\": %u, \"quabo_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
+        dataHeader->coinc_pkt_head[packetIndex].acq_mode,
+        dataHeader->coinc_pkt_head[packetIndex].mod_num,
+        dataHeader->coinc_pkt_head[packetIndex].quabo_num,
+        dataHeader->coinc_pkt_head[packetIndex].pkt_num,
+        dataHeader->coinc_pkt_head[packetIndex].pkt_utc,
+        dataHeader->coinc_pkt_head[packetIndex].pkt_nsec,
+        dataHeader->coinc_pkt_head[packetIndex].tv_sec,
+        dataHeader->coinc_pkt_head[packetIndex].tv_usec
     );
 }
 
-/**
- * Writing the coincidence(Pulse Height) image to file
- * @param dataBlock Data block of the containing the images to be written to disk
- * @param packetIndex The packet index for the specified output block.
- */
+// Write the coincidence(Pulse Height) image to file
+// dataBlock: Data block of the containing the images to be written to disk
+// packetIndex: The packet index for the specified output block.
+
 int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
-    FILE *fileToWrite;
+    FILE *f;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coinc_pkt_head[packetIndex].mod_num];
     char mode = dataBlock->header.coinc_pkt_head[packetIndex].acq_mode;
 
     if (mode == 0x1) {
-        fileToWrite = moduleToWrite->PHImg;
+        f = moduleToWrite->PHImg;
     } else {
         printf("Mode %c not recognized\n", mode);
         printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[packetIndex].toString().c_str());
@@ -301,22 +286,23 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
     if (moduleToWrite == NULL){
         printf("Module To Write is null\n");
         return 0;
-    } else if (fileToWrite == NULL){
+    } else if (f == NULL){
         printf("File to Write is null\n");
         return 0;
     } 
 
-    pff_start_json(fileToWrite);
+    pff_start_json(f);
 
-    write_coinc_header_file(fileToWrite, &(dataBlock->header), packetIndex);
+    write_coinc_header_json(f, &(dataBlock->header), packetIndex);
 
-    pff_end_json(fileToWrite);
+    pff_end_json(f);
 
-    pff_write_image(fileToWrite, 
+    pff_write_image(f, 
         PIXELS_PER_IMAGE*2, 
-        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE));
+        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE)
+    );
 
-    if (ftell(fileToWrite) > max_file_size){
+    if (ftell(f) > max_file_size){
         moduleToWrite->increment_seqno();
         if (mode == 0x1){
             moduleToWrite->set_bpp(2);
@@ -326,9 +312,8 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
     return 1;
 }
 
-/**
- * Create data files from the provided config file.
- */
+// Create data files from the provided config file.
+
 int create_data_files_from_config(){
     FILE *configFile = fopen(config_location, "r");
     char fbuf[STR_BUFFER_SIZE];
@@ -364,7 +349,6 @@ int create_data_files_from_config(){
     }
 }
 
-
 typedef enum {
     DIR_EXISTS,
     DIR_DNE,
@@ -394,22 +378,26 @@ DIR_STATUS check_directory(char *run_directory){
 }
 
 
-//Signal handeler to allow for hashpipe to exit gracfully and also to allow for creating of new files by command.
+// Signal handler to allow for hashpipe to exit gracfully
+// and to allow for creating of new files by command.
+//
 static int QUITSIG;
 
 void QUIThandler(int signum) {
     QUITSIG = 1;
 }
 
-static int init(hashpipe_thread_args_t *args)
-{
+static int init(hashpipe_thread_args_t *args) {
     // Get info from status buffer if present
     hashpipe_status_t st = args->st;
     printf("\n\n-----------Start Setup of Output Thread--------------\n");
+
     // Fetch user input for save location of data files.
     hgets(st.buf, "RUNDIR", STR_BUFFER_SIZE, run_directory);
+
     // Remove old run directory so that info isn't saved for next run.
     hdel(st.buf, "RUNDIR");
+
     // Check to see if the run directory provided is an accurage directory
     switch(check_directory(run_directory)) {
         case DIR_EXISTS:
@@ -426,7 +414,7 @@ static int init(hashpipe_thread_args_t *args)
             exit(1);
             
     }
-    //If directory doesn't end in a / then add it to the run_directory variable
+    // If directory doesn't end in a / then add it to the run_directory variable
     if (run_directory[strlen(run_directory) - 1] != '/') {
         char endingSlash = '/';
         strncat(run_directory, &endingSlash, 1);
@@ -443,11 +431,9 @@ static int init(hashpipe_thread_args_t *args)
     max_file_size = maxFileSizeInput*1E6;
     printf("Max file size is %i megabytes\n", maxFileSizeInput);
 
-
-
     printf("\n---------------SETTING UP DATA File------------------\n");
     
-    //Create data files based on given config file.
+    // Create data files based on given config file.
     create_data_files_from_config();
 
     printf("Use Ctrl+\\ to create a new file and Ctrl+c to close program\n");
@@ -456,10 +442,7 @@ static int init(hashpipe_thread_args_t *args)
     return 0;
 }
 
-/**
- * Close all allocated resources
- */
-void close_all_resources() {
+void close_files() {
     for (int i = 0; i < MAX_MODULE_INDEX; i++){
         if (data_files[i] != NULL){
             fclose(data_files[i]->bit16Img);
@@ -470,15 +453,15 @@ void close_all_resources() {
 }
 
 static void *run(hashpipe_thread_args_t *args) {
-
     signal(SIGQUIT, QUIThandler);
     QUITSIG = 0;
 
     printf("---------------Running Output Thread-----------------\n\n");
 
-    /*Initialization of HASHPIPE Values*/
+    // Initialization of HASHPIPE Values
     // Local aliases to shorten access to args fields
     // Our input buffer happens to be a HSD_ouput_databuf
+    //
     HSD_output_databuf_t *db = (HSD_output_databuf_t *)args->ibuf;
     hashpipe_status_t st = args->st;
     const char *status_key = args->thread_desc->skey;
@@ -488,7 +471,7 @@ static void *run(hashpipe_thread_args_t *args) {
     uint64_t mcnt = 0;
     FILE_PTRS *currentDataFile;
 
-    /* Main loop */
+    // Main loop
     while (run_threads()) {
 
         hashpipe_status_lock_safe(&st);
@@ -497,18 +480,14 @@ static void *run(hashpipe_thread_args_t *args) {
         hputs(st.buf, status_key, "waiting");
         hashpipe_status_unlock_safe(&st);
 
-        //Wait for the output buffer to be free
-        while ((rv = HSD_output_databuf_wait_filled(db, block_idx)) != HASHPIPE_OK)
-        {
-            if (rv == HASHPIPE_TIMEOUT)
-            {
+        // Wait for the output buffer to be free
+        while ((rv = HSD_output_databuf_wait_filled(db, block_idx)) != HASHPIPE_OK) {
+            if (rv == HASHPIPE_TIMEOUT) {
                 hashpipe_status_lock_safe(&st);
                 hputs(st.buf, status_key, "blocked");
                 hashpipe_status_unlock_safe(&st);
                 continue;
-            }
-            else
-            {
+            } else {
                 hashpipe_error(__FUNCTION__, "error waiting for filled databuf");
                 pthread_exit(NULL);
                 break;
@@ -516,6 +495,7 @@ static void *run(hashpipe_thread_args_t *args) {
         }
 
         // Mark the buffer as processing
+
         hashpipe_status_lock_safe(&st);
         hputs(st.buf, status_key, "processing");
         hashpipe_status_unlock_safe(&st);
@@ -535,7 +515,7 @@ static void *run(hashpipe_thread_args_t *args) {
         }
 
         if (db->block[block_idx].header.INTSIG) {
-            close_all_resources();
+            close_files();
             printf("OUTPUT_THREAD Ended\n");
             break;
         }
@@ -544,9 +524,7 @@ static void *run(hashpipe_thread_args_t *args) {
         block_idx = (block_idx + 1) % db->header.n_block;
         mcnt++;
 
-        /* Term conditions */
-
-        //Will exit if thread has been cancelled
+        // exit if thread has been cancelled
         pthread_testcancel();
     }
 
@@ -554,9 +532,8 @@ static void *run(hashpipe_thread_args_t *args) {
     return THREAD_OK;
 }
 
-/**
- * Sets the functions and buffers for this thread
- */
+// Sets the functions and buffers for this thread
+
 static hashpipe_thread_desc_t HSD_output_thread = {
     name : "output_thread",
     skey : "OUTSTAT",
@@ -566,7 +543,6 @@ static hashpipe_thread_desc_t HSD_output_thread = {
     obuf_desc : {NULL}
 };
 
-static __attribute__((constructor)) void ctor()
-{
+static __attribute__((constructor)) void ctor() {
     register_hashpipe_thread(&HSD_output_thread);
 }

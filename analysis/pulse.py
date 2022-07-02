@@ -1,6 +1,15 @@
 #! /usr/bin/env python3
 
-# run pulse analysis on a few pixels from all data files
+# run pulse analysis on a few pixels from all PFF image files in data/
+#
+# input: image-mode PFF files in data/
+# output: for each pixel P
+#   derived/D/F/P/
+#       thresh_i: pulses above threshold (i=pulse duration level; 0,1,...)
+#       all_i: all pulses
+#       mean_i: running mean
+#       stddev_i: running stddev
+#       value_hist: value histogram
 
 import os
 import sys

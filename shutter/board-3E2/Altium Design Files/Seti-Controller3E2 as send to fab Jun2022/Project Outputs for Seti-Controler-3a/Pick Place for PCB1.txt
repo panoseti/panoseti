@@ -1,0 +1,68 @@
+Altium Designer Pick and Place Locations
+C:\Users\lafleur\Desktop\Altium Projects\Seti-Controller3D as send to fab 30aug2021\Project Outputs for Seti-Controler-3a\Pick Place for PCB1.txt
+
+========================================================================================================================
+File Design Information:
+
+Date:       01/09/21
+Time:       11:34
+Revision:   Not in VersionControl
+Variant:    No variations
+Units used: mil
+
+Designator Comment                     Layer       Footprint                       Center-X(mil) Center-Y(mil) Rotation Description                                                                                       
+U2         "Part Number: TMC2209-LA-T" BottomLayer QFN50P500X500X90-29N            800.000       -860.000      270      "No Description Available"                                                                        
+C25        4.7uf                       BottomLayer 6-0805                          700.000       -150.000      90       Capacitor                                                                                         
+S1         Reset                       TopLayer    KMR_2                           1880.000      -1800.000     90       Switch                                                                                            
+J23        3220-10-0100-00             TopLayer    SHDR10W41P127_2X5_1265X510X565P 1899.606      -918.307      270      Connector                                                                                         
+C14        100uf/35v                   BottomLayer CAPAE660X610N                   220.000       -1160.000     360      "Capacitor Polarised"                                                                             
+C13        100uf/35v                   BottomLayer CAPAE660X610N                   220.000       -760.000      360      "Capacitor Polarised"                                                                             
+X1         ABS07-32.768KHz-T           BottomLayer ABRA-ABS07-2_V                  1700.000      -950.000      90       "Crystal, 32.768 kHz, 12.5 pF, -40 to 85 degC, SMD Low Profile 3.2 x 1.5 x 0.9 mm, Tape and Reel" 
+U3         SN74LVC14ADBR               BottomLayer DB0014A_M                       1275.000      -1600.000     180      "Hex Schmitt-Trigger Inverter, DB0014A, LARGE T&R"                                                
+U1         ATSAMD21G18A-AU             BottomLayer TQFP48_7x7MC                    1375.000      -1025.000     180      "No Description Available"                                                                        
+TP1        TestPoint                   TopLayer    Test_Point-Thru-Hole            330.000       -270.000      0        ""                                                                                                
+R15        10k                         BottomLayer 6-0805                          1200.000      -150.000      90       "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R14        10k                         BottomLayer 6-0805                          1500.000      -150.000      90       "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R13        10k                         BottomLayer 6-0805                          1100.000      -150.000      270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R12        10k                         BottomLayer 6-0805                          1400.000      -150.000      270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R11        10k                         BottomLayer 6-0805                          900.000       -150.000      270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R10        "0.56r 0805"                BottomLayer 6-0805                          610.000       -980.000      270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R9         "0.56r 0805"                BottomLayer 6-0805                          610.000       -740.000      90       "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R8         "10k 1%"                    BottomLayer 6-0805                          400.000       -150.000      270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R7         NU                          BottomLayer 6-0805                          1050.000      -1100.000     270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R6         "10k 1%"                    BottomLayer 6-0805                          500.000       -150.000      90       "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R5         10k                         BottomLayer 6-0805                          840.000       -380.000      180      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R3         22                          TopLayer    6-0805                          350.000       -1675.250     360      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R4         22                          TopLayer    6-0805                          350.000       -1750.250     360      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R2         330                         TopLayer    6-0805                          1880.000      -1420.000     360      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+R1         10k                         TopLayer    6-0805                          1880.000      -1520.000     360      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+L1         MSS7341S                    BottomLayer MSS7341502NLD                   736.000       -1385.000     360      "No Description Available"                                                                        
+JP1        NU                          BottomLayer 6-0805                          600.000       -150.000      270      "Precision Thick Film Chip Resistor, 10 Ohm to 2.2M Ohm Range, 1% Tolerance, 1206 Size, 0.125 W"  
+P20        "Molex 9014-71108"          BottomLayer HDR1X8                          950.000       -1850.000     180      "Header, 8-Pin"                                                                                   
+J22        "Molex 705530112"           TopLayer    HDR1X8                          1000.000      -520.079      360      "Header, 8-Pin"                                                                                   
+J21        "Molex 705530110"           TopLayer    HDR1X6                          520.080       -958.660      90       "Header, 6-Pin"                                                                                   
+J24        47590-0001                  TopLayer    Molex_47590-0001                113.740       -1682.431     270      "USB - micro AB Receptacle Connector 5 Position Surface Mount, Right Angle; Through Hole"         
+F2         "Poly Fuse 750ma"           BottomLayer PTC_2016L                       350.000       -1700.000     90       "Poly Fuse"                                                                                       
+F1         "Poly Fuse 250ma"           BottomLayer 8-1206                          1600.000      -1800.000     270      "Poly Fuse"                                                                                       
+C24        .1uf                        BottomLayer 6-0805                          1300.000      -150.000      90       Capacitor                                                                                         
+C23        .1uf                        BottomLayer 6-0805                          1600.000      -150.000      90       Capacitor                                                                                         
+C22        .1uf                        BottomLayer 6-0805                          1000.000      -150.000      90       Capacitor                                                                                         
+C21        470pf                       TopLayer    6-0805                          400.000       -1425.000     270      Capacitor                                                                                         
+C20        470pf                       TopLayer    6-0805                          300.000       -1425.000     270      Capacitor                                                                                         
+C19        470pf                       TopLayer    6-0805                          300.000       -425.000      90       Capacitor                                                                                         
+C18        470pf                       TopLayer    6-0805                          400.000       -425.000      90       Capacitor                                                                                         
+C17        1uf                         BottomLayer 6-0805                          800.000       -150.000      90       Capacitor                                                                                         
+C16        .1uf                        BottomLayer 6-0805                          1600.000      -1575.000     90       Capacitor                                                                                         
+C15        .022uf                      BottomLayer 6-0805                          825.000       -650.000      360      Capacitor                                                                                         
+C12        .1uf                        TopLayer    6-0805                          740.000       -670.000      360      Capacitor                                                                                         
+C11        .1uf                        TopLayer    6-0805                          740.000       -1080.000     360      Capacitor                                                                                         
+C10        .1uf                        BottomLayer 6-0805                          1000.000      -650.000      180      Capacitor                                                                                         
+C9         .1uf                        BottomLayer 6-0805                          903.598       -1038.000     180      Capacitor                                                                                         
+C8         .1uf                        BottomLayer 6-0805                          1500.000      -675.000      0        Capacitor                                                                                         
+C7         1uf                         TopLayer    6-0805                          1877.402      -1620.000     180      Capacitor                                                                                         
+C6         .1uf                        BottomLayer 6-0805                          1050.000      -1275.000     90       Capacitor                                                                                         
+C5         1uf                         BottomLayer 6-0805                          1138.000      -800.000      270      Capacitor                                                                                         
+C4         12PF                        BottomLayer 6-0805                          1700.000      -1125.000     270      Capacitor                                                                                         
+C3         12PF                        BottomLayer 6-0805                          1700.000      -775.000      90       Capacitor                                                                                         
+C2         .1uf                        BottomLayer 6-0805                          1000.000      -1575.000     270      Capacitor                                                                                         
+C1         10uf                        BottomLayer 6-0805                          1275.000      -675.000      0        Capacitor                                                                                         
