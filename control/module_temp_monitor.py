@@ -15,7 +15,7 @@ import redis
 import redis_utils
 import config_file
 import power
-from hv_updater import get_boardloc, get_redis_temp
+from hv_updater import get_boardloc
 
 # -------------- CONSTANTS --------------- #
 
@@ -23,17 +23,41 @@ from hv_updater import get_boardloc, get_redis_temp
 UPDATE_INTERVAL = 30
 
 # Min & max module operating temperatures (degrees Celsius).
-MIN_TEMP = -20.0
-MAX_TEMP = 60.0
+MIN_DETECTOR_TEMP = -20.0
+MAX_DETECTOR_TEMP = 60.0
+MAX_FPGA_TEMP = 85.0
 
 # Get quabo info.
 obs_config = config_file.get_obs_config()
 
 
-def is_acceptable_temperature(temp: float):
-    """Returns True only if the provided temperature is between
-    MIN_TEMP and MAX_TEMP."""
-    return MIN_TEMP <= temp <= MAX_TEMP
+def is_acceptable_temperature(temps: (float, float)):
+    """Returns a tuple of (TEMP1 is ok?, TEMP2 is ok?) if the corresponding
+     sensor temperature is within the specified operating range."""
+    temp1_ok = MIN_DETECTOR_TEMP <= temps[0] <= MAX_DETECTOR_TEMP
+    temp2_ok = temps[1] <= MAX_FPGA_TEMP
+    return temp1_ok, temp2_ok
+
+
+def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
+    """
+    Given a Quabo's redis key, rkey, returns (TEMP1, TEMP2).
+    """
+    try:
+        temp1 = float(r.hget(rkey, 'TEMP1'))
+        temp2 = float(r.hget(rkey, 'TEMP2'))
+        return temp1, temp2
+    except redis.RedisError as err:
+        msg = "module_temp_monitor: A Redis error occurred. "
+        msg += "Error msg: {0}"
+        print(msg.format(err))
+        raise
+    except TypeError as terr:
+        msg = "module_temp_monitor: Failed to update '{0}'. "
+        msg += "Temperature HK data may be missing. "
+        msg += "Error msg: {1}"
+        print(msg.format(rkey, terr))
+        raise
 
 
 def check_all_module_temps(r: redis.Redis):
@@ -57,26 +81,34 @@ def check_all_module_temps(r: redis.Redis):
                             raise Warning("%s is not tracked in Redis." % rkey)
                         else:
                             # Get the temperature data for this quabo.
-                            temp = get_redis_temp(r, rkey)
+                            temps = get_redis_temps(r, rkey)
                     except Warning as werr:
-                        msg = "hv_updater: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
+                        msg = "module_temp_monitor: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
                         msg += "\tError msg: {3}"
                         print(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
                         continue
                     except redis.RedisError as rerr:
-                        msg = "hv_updater: {0}\n\tA Redis error occurred. "
+                        msg = "module_temp_monitor: {0}\n\tA Redis error occurred. "
                         msg += "\tError msg: {1}"
                         print(msg.format(datetime.datetime.now(), rerr))
                         raise
                     else:
-                        # Checks whether the quabo temperature is acceptable.
+                        # Checks whether the quabo temperatures are acceptable.
                         # See https://github.com/panoseti/panoseti/issues/58.
-                        if not is_acceptable_temperature(temp):
-                            msg = "module_temp_monitor: {0}\n\tThe temperature of quabo {1} with base IP {2} is {3} C, "
-                            msg += "which exceeds the operating temperature range: {4} C to {5} C.\n"
-                            msg += "\tAttempting to turn off the power supply for this module..."
-                            print(msg.format(datetime.datetime.now(), quabo_index,
-                                             module_ip_addr, temp, MIN_TEMP, MAX_TEMP))
+                        detector_temp_ok, fpga_temp_ok = is_acceptable_temperature(temps)
+                        if not detector_temp_ok or not detector_temp_ok:
+                            if not detector_temp_ok:
+                                msg = "module_temp_monitor: {0}\n\tThe DETECTOR temp of quabo {1} with base IP {2} "
+                                msg += " is {3} C, which exceeds the operating temperature range: {4} C to {5} C.\n"
+                                msg += "\tAttempting to turn off the power supply for this module..."
+                                print(msg.format(datetime.datetime.now(), quabo_index,
+                                                 module_ip_addr, temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP))
+                            else:
+                                msg = "module_temp_monitor: {0}\n\tThe FPGA temp of quabo {1} with base IP {2} "
+                                msg += "is {3} C, which exceeds the operating temperature of {4} C.\n"
+                                msg += "\tAttempting to turn off the power supply for this module..."
+                                print(msg.format(datetime.datetime.now(), quabo_index,
+                                                 module_ip_addr, temps[1], MAX_FPGA_TEMP))
                             try:
                                 ups = obs_config['ups']
                                 url = ups['url']
@@ -90,7 +122,6 @@ def check_all_module_temps(r: redis.Redis):
                                 msg += "Error msg: {1}"
                                 print(msg.format(datetime.datetime.now(), err))
                                 continue
-                    # TODO: Determine when (or if) we should turn detectors back on after a temperature-related power down.
 
 
 def main():
