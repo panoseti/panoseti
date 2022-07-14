@@ -1,5 +1,13 @@
 #! /usr/bin/env python3
 
+# power.py [ups1] [on|off]
+#
+# on/off: turn quabo power on/off
+# neither: query quabo power
+# ups1 (or other name):
+#   use the "ups1" element from obs_config.json
+#   default is "ups"
+
 # the Quabos are plugged into a particular socket in
 # a Digital Loggers Inc LPC9 UPS.
 # This function turns the power to this socket on or off.
@@ -10,9 +18,7 @@ import config_file, sys, os
 
 # turn power on or off
 #
-def quabo_power(on):
-    c = config_file.get_obs_config()
-    ups = c['ups']
+def quabo_power(ups, on):
     url = ups['url']
     socket = ups['quabo_socket']
     value = 'ON' if on else 'OFF'
@@ -23,29 +29,41 @@ def quabo_power(on):
 
 # return True if power is on
 #
-def quabo_power_query():
-    c = config_file.get_obs_config()
-    ups = c['ups']
+def quabo_power_query(ups):
     url = ups['url']
     socket = ups['quabo_socket']
-    cmd='curl -s %s/status'%(url)
+    cmd = 'curl -s %s/status'%(url)
     out = os.popen(cmd).read()
     off = out.find('state">')
     off += len('state">')
     y = out[off:off+2]
-    status = int(y,16)
+    status = int(y, 16)
     if(status&(1<<(socket-1))):
         return 'true'
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        if quabo_power_query():
+    op = 'query'
+    ups_name = 'ups'
+    i = 1
+    while i<len(sys.argv):
+        if sys.argv[i] == 'on':
+            op = 'on'
+        elif sys.argv[1] == 'off':
+            op = 'off'
+        else:
+            ups_name = sys.argv[i]
+        i += 1
+
+    c = config_file.get_obs_config()
+    ups = c[ups_name]
+    if op == 'query':
+        if quabo_power_query(ups):
             print("Quabo power is on")
         else:
             print("Quabo power is off")
-    elif sys.argv[1] == 'on':
-        quabo_power(True)
-    elif sys.argv[1] == 'off':
-        quabo_power(False)
+    elif op == 'on':
+        quabo_power(ups, True)
+    elif op == 'off':
+        quabo_power(ups, False)
     else:
-        raise Exception('bad arg')
+        raise Exception('usage: power.py [ups1] [on|off]')
