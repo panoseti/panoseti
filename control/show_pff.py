@@ -6,7 +6,7 @@
 #   default: 0.1
 # if no filename specified, use 'img'
 
-import sys, random
+import sys, random, json
 sys.path.insert(0, '../util')
 import pff, pixel_histogram
 
@@ -44,54 +44,89 @@ def test():
     for i in range(1024):
         img[i] = random.randrange(2**16)
     image_as_text(img, 32, 2, 0, 0)
+#test()
 
-def show_file(fname, img_size, bytes_per_pixel, min, max):
+def print_json(j, is_ph, verbose):
+    if verbose:
+        print(j)
+    else:
+        j = json.loads(j)
+        if is_ph:
+            print('quabo %d: pkt_num %d, pkt_utc %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
+                j['quabo_num'], j['pkt_num'],
+                j['pkt_utc'], j['pkt_nsec'],
+                j['tv_sec'], j['tv_usec']
+            ))
+        else:
+            for i in range(4):
+                q = j['quabo_%d'%i]
+                print('quabo %d: pkt_num %d, pkt_utc %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
+                    i, q['pkt_num'], q['pkt_utc'], q['pkt_nsec'],
+                    q['tv_sec'], q['tv_usec']
+                ))
+        
+def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
     with open(fname, 'rb') as f:
         i = 0
         while True:
             j = pff.read_json(f)
             if not j:
+                print('reached EOF')
                 break
-            print(j.encode())
-            img = pff.read_image(f, img_size, bytes_per_pixel)
             print('frame', i)
+            print_json(j.encode(), is_ph, verbose)
+            img = pff.read_image(f, img_size, bytes_per_pixel)
             image_as_text(img, img_size, bytes_per_pixel, min, max)
             i += 1
             input('Enter for next frame')
 
-#test()
+def usage():
+    print("usage: show_pff.py [--quantile x] [--verbose] file")
 
-i = 1
-fname = 'img'
-quantile = .1
-argv = sys.argv
-while i<len(argv):
-    if argv[i] == '--quantile':
+def main():
+    i = 1
+    fname = None
+    quantile = .1
+    verbose = False
+
+    argv = sys.argv
+    while i<len(argv):
+        if argv[i] == '--quantile':
+            i += 1
+            min = float(argv[i])  
+        elif argv[i] == '--verbose':
+            verbose = True
+        else:
+            fname = argv[i]
         i += 1
-        min = float(argv[i])  
+
+    if not fname:
+        usage()
+        return
+
+    if fname=='img':
+        dp = 'img16'
+    elif fname=='ph':
+        dp = 'ph16'
     else:
-        fname = argv[i]
-    i += 1
+        dict = pff.parse_name(fname)
+        dp = dict['dp']
 
-if fname=='img':
-    dp = 'img16'
-elif fname=='ph':
-    dp = 'ph16'
-else:
-    dict = pff.parse_name(fname)
-    dp = dict['dp']
-if dp == 'img16' or dp=='1':
-    image_size = 32
-    bytes_per_pixel = 2
-elif dp == 'ph16' or dp=='3':
-    image_size = 16
-    bytes_per_pixel = 2
-else:
-    raise Exception("bad data product %s"%dp)
+    if dp == 'img16' or dp=='1':
+        image_size = 32
+        bytes_per_pixel = 2
+        is_ph = False
+    elif dp == 'ph16' or dp=='3':
+        image_size = 16
+        bytes_per_pixel = 2
+        is_ph = True
+    else:
+        raise Exception("bad data product %s"%dp)
 
-[min, max] = pixel_histogram.get_quantiles(
-    fname, image_size, bytes_per_pixel, quantile
-)
-print('pixel 10/90 percentiles: %d, %d'%(min, max))
-show_file(fname, image_size, bytes_per_pixel, min, max)
+    [min, max] = pixel_histogram.get_quantiles(
+        fname, image_size, bytes_per_pixel, quantile
+    )
+    print('pixel 10/90 percentiles: %d, %d'%(min, max))
+    show_file(fname, image_size, bytes_per_pixel, min, max, is_ph, verbose)
 
+main()

@@ -98,7 +98,6 @@ static int init(hashpipe_thread_args_t * args){
     return 0;
 }
 
-
 // Check the acqmode of the packet coming in.
 // p_frame: The pointer for the packet frame
 // return 0 if acqmode is recognized and 1 otherwise
@@ -112,13 +111,12 @@ int check_acqmode(unsigned char* p_frame){
         return 1;
     }
     hashpipe_pktsock_release_frame(p_frame);
-    fprintf(stderr, "Malformed packet detected: %s\n", pkt_data);
+    fprintf(stderr, "Bad acq mode in packet: %d\n", pkt_data[0]);
     return 0;
 }
 
-// Get the header info of the first packet in the PKTSOCK buffer
-// pkt_data: The pointer for the packet frame
-// (returned from PKT_UDP_DATA(p_frame))
+// parse a packet header.
+// pkt_data: packet data
 // block_header: The header struct of the current block to be written to.
 // i: packet index for the block header.
 
@@ -131,6 +129,8 @@ static inline void get_header(
     block_header->pkt_head[i].mod_num = ((pkt_data[5] << 6) & 0x3fc0) 
         | ((pkt_data[4] >> 2) & 0x003f);
     block_header->pkt_head[i].quabo_num = ((pkt_data[4]) & 0x03);
+
+    // quabo only sends 10 bits of UTC
     block_header->pkt_head[i].pkt_utc = ((pkt_data[7] << 8) & 0x00000300)
         | ((pkt_data[6]) & 0x000000ff);
                         
@@ -140,7 +140,7 @@ static inline void get_header(
         | ((pkt_data[10]) & 0x000000ff);
 }
 
-// Signal inturrupt function where it is changed when a SIGINT is received by the program.
+// Signal interrupt function where it is changed when a SIGINT is received by the program.
 // This value is meant to be passed to the other threads to stop the program gracefully.
 
 static int INTSIG;
@@ -151,7 +151,7 @@ void INThandler(int signum) {
 
 // main function for network thread.
 // make sure to use a while loop.
-// args: Arguements passed in by the hashpipe framework
+// args: Arguments passed in by the hashpipe framework
 //
 static void *run(hashpipe_thread_args_t * args){
     signal(SIGINT, INThandler);
@@ -320,8 +320,8 @@ static void *run(hashpipe_thread_args_t * args){
         }
     }
 
-    pthread_cleanup_pop(1); /* Closes push(hashpipe_pktsock_close) */
-	pthread_cleanup_pop(1); /* Closes push(free) */
+    pthread_cleanup_pop(1); // Closes push(hashpipe_pktsock_close)
+	pthread_cleanup_pop(1); // Closes push(free)
 
     printf("Returned Net_thread\n");
     return THREAD_OK;
