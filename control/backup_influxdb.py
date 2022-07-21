@@ -87,17 +87,33 @@ def do_backup(backup_folder_path, date):
     return exit_status
 
 
+def restore_one_backup(path_to_backup):
+    # Restore backup to a temporary database 'metadata-tmp'
+    print('COMMAND 1')
+    restore_to_tmp_command = 'influxd restore -portable -db "metadata" -newdb "metadata-tmp" {0}'.format(path_to_backup)
+    os.system(restore_to_tmp_command)
+    # Copy data from 'metadata-tmp' and write it into 'metadata'
+    print('COMMAND 2')
+    copy_from_tmp_command = '''influx -execute 'SELECT * INTO "metadata".autogen.:MEASUREMENT FROM "metadata-tmp".autogen./.*/ GROUP BY *' '''
+    os.system(copy_from_tmp_command)
+    # Delete temporary database
+    print('COMMAND 3')
+    drop_tmp_db_command = '''influx -execute 'DROP DATABASE "metadata-tmp"' '''
+    os.system(drop_tmp_db_command)
+
+
 def do_restore():
     """
     Restore the metadata database using the files stored in the restore directory.
     """
     backup_directories = [name for name in os.listdir(RESTORE_DIR_PATH)]
     backup_directories.remove(backup_log_filename)
-    restore_command = 'influxd restore -portable -db metadata -newdb testdb {0}/{1}'
-    print(backup_directories)
-    for dir in backup_directories:
-        os.system(restore_command.format(RESTORE_DIR_PATH, dir))
-        print('Restoring: {0}...'.format(dir))
+    print('Attempting to restore the following backups:', backup_directories)
+    for name in backup_directories:
+        print('Restoring: {0}...'.format(name))
+        path_to_backup = '{0}/{1}'.format(RESTORE_DIR_PATH, name)
+        restore_one_backup(path_to_backup)
+    print("Restored all backups.")
 
 
 def main():
