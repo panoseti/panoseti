@@ -8,6 +8,14 @@ log data is recorded in a file with the following structure:
         {Backup log entry},
     ]
 }
+
+This script can be run on 1st and 15th of every month at 9am as a cronjob:
+With email notifications:
+MAILTO="" # Add email address
+0 9 1,15 * * /path/to/this/script/backup_influxdb.py --backup
+
+Without email notifications:
+0 9 1,15 * * /path/to/this/script/backup_influxdb.py --backup >/dev/null 2>&1
 """
 
 import os, sys
@@ -15,7 +23,7 @@ import datetime
 import json
 import time
 
-
+# Globals
 BACKUP_DIR_PATH = '/tmp/influxdb_backups'
 RESTORE_DIR_PATH = BACKUP_DIR_PATH
 backup_log_filename = 'backup_log.json'
@@ -28,6 +36,9 @@ def get_backup_folder_path(date):
 
 
 def get_last_backup_date():
+    """
+    Returns the last backup date, or None if this is the first backup.
+    """
     last_backup_date = None
     if os.path.exists(backup_log_path):
         with open(backup_log_path) as f:
@@ -73,15 +84,14 @@ def do_backup():
     2. Creates a backup of the influxdb data generated since the last backup, and
     3. Adds a log entry to the log file.
     """
-    # Get and run commands
     date = datetime.datetime.utcnow()
     backup_folder_path = get_backup_folder_path(date)
-
+    # Create backup directory.
     make_dir_command = 'mkdir -p {0}'.format(backup_folder_path)
     os.system(make_dir_command)
+    # Get and run backup command.
     last_backup_date = get_last_backup_date()
     if last_backup_date:
-        print("BRANCH 1")
         backup_command = 'influxd backup -portable -db metadata -since {0} {1} '.format(last_backup_date, backup_folder_path)
     else:
         backup_command = 'influxd backup -portable -db metadata {0}'.format(backup_folder_path)
@@ -89,9 +99,9 @@ def do_backup():
     exit_status = 'SUCCESS' if not exit_status else 'FAILED'
     # Add log entry for this backup.
     update_backup_log(backup_folder_path, date, exit_status)
-
+    # Report success or failure of backup.
     if exit_status == 'SUCCESS':
-        msg = 'Successfully backed up the database at {0}'.format(backup_folder_path)
+        msg = 'Successfully backed up the database to {0}.'.format(backup_folder_path)
         print(msg)
     else:
         msg = 'Failed to back up the database.'
@@ -99,42 +109,52 @@ def do_backup():
 
 
 def restore_one_backup(path_to_backup):
-    # Restore backup to a temporary database 'metadata-tmp'
-    print('COMMAND 1')
-    restore_to_tmp_command = 'influxd restore -portable -db "metadata" -newdb "metadata-tmp" {0}'.format(path_to_backup)
-    os.system(restore_to_tmp_command)
-    # Copy data from 'metadata-tmp' and write it into 'metadata'
-    print('COMMAND 2')
+    """
+    Restores one backup. Note that InfluxDB does not allow us to directly restore backups to
+     an existing database, so we must:
+        1) restore a backup to a temporary database,
+        2) write the data from the temp database into the target database, and
+        3) delete the temporary database.
+    """
+    print("Restoring the backup to the temporary database 'metadata-tmp'...")
+    command_1 = 'influxd restore -portable -db "metadata" -newdb "metadata-tmp" {0}'.format(path_to_backup)
+    os.system(command_1)
+
+    print("Querying data from 'metadata-tmp' and writing it into 'metadata'...")
     time.sleep(1)
-    copy_from_tmp_command = '''influx -execute 'SELECT * INTO "metadata".autogen.:MEASUREMENT FROM "metadata-tmp".autogen./.*/ GROUP BY *' '''
-    os.system(copy_from_tmp_command)
-    # Delete temporary database
-    #time.sleep(5)
-    drop_tmp_db_command = '''influx -execute 'DROP DATABASE "metadata-tmp"' '''
-    os.system(drop_tmp_db_command)
+    command_2 = '''influx -execute 'SELECT * INTO "metadata".autogen.:MEASUREMENT FROM "metadata-tmp".autogen./.*/ GROUP BY *' '''
+    os.system(command_2)
+
+    print("Deleting 'metadata-tmp'...")
+    command_3 = '''influx -execute 'DROP DATABASE "metadata-tmp"' '''
+    os.system(command_3)
 
 
 def do_restore():
     """
-    Restore the metadata database using the files stored in the restore directory.
+    Restore the metadata database using the backups stored in the restore directory.
     """
     try:
         backup_directories = [name for name in os.listdir(RESTORE_DIR_PATH)]
+        backup_directories.remove(backup_log_filename)
     except FileNotFoundError as ferr:
         msg = "backup_influxdb.py: {0}\n\t{1} may not exist or does not contain a usable backup directory."
         msg += "\n\tPlease assign RESTORE_DIR_PATH to a different path."
         msg += "\n\tError msg: {2}\n"
         print(msg.format(datetime.datetime.now(), RESTORE_DIR_PATH, ferr))
         raise
-    backup_directories.remove(backup_log_filename)
-    print('Attempting to restore the following backups:', backup_directories)
     create_db_command = '''influx -execute 'CREATE DATABASE "metadata"' '''
     os.system(create_db_command)
+
+    print('Attempting to restore the following backups:')
     for name in backup_directories:
-        print('\n\t' + '**' * 3, name, '**' * 3)
+        print('\t* {0}'.format(name))
+
+    for name in backup_directories:
+        print('\n\n\t' + '**' * 3, name, '**' * 3)
         path_to_backup = '{0}/{1}'.format(RESTORE_DIR_PATH, name)
         restore_one_backup(path_to_backup)
-    print("Restored all backups.")
+    print("\nRestored all backups.")
 
 
 def usage():
@@ -143,7 +163,7 @@ def usage():
     --restore\t\t restore the metadata database from backups stored in the directory specified by RESTORE_DIR_PATH.
     ''')
 
-
+# Facilitates command-line use.
 if __name__ == '__main__':
     argv = sys.argv
     op = ''
