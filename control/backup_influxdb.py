@@ -5,7 +5,7 @@ Script that creates a backup of the influxdb database. After each backup attempt
 log data is recorded in a file with the following structure:
 {
     "backups: [
-        {Backup log entry 1},
+        {Backup log entry},
     ]
 }
 """
@@ -15,42 +15,36 @@ import datetime
 import json
 
 
-BACKUP_DIR_PATH = './.influxdb_backups'
+BACKUP_DIR_PATH = '/tmp/influxdb_backups'
 RESTORE_DIR_PATH = BACKUP_DIR_PATH
 backup_log_filename = 'backup_log.json'
 backup_log_path = '{0}/{1}'.format(BACKUP_DIR_PATH, backup_log_filename)
 
 
-def get_backup_folder_path():
-    date = datetime.datetime.utcnow().strftime("%Y_%m_%dT%H_%M_%SZ")
-    backup_folder_path = '{0}/influx_backup_{1}'.format(BACKUP_DIR_PATH, date)
+def get_backup_folder_path(date):
+    backup_folder_path = '{0}/influx_backup_{1}'.format(BACKUP_DIR_PATH, date.strftime("%Y_%m_%dT%H_%M_%SZ"))
     return backup_folder_path
 
-def get_data_start_time():
-    start = None
+
+def get_last_backup_date():
+    last_backup_date = None
     if os.path.exists(backup_log_path):
         with open(backup_log_path) as f:
             s = f.read()
             c = json.loads(s)
-            start = c["backups"][-1]["UTC_time_range_end"]
-    return start
+            last_backup_date = c["backups"][-1]["timestamp"]
+    return last_backup_date
 
 
-def get_data_end_time():
-    return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def update_backup_log(backup_folder_path, exit_status, start, end):
+def update_backup_log(backup_folder_path, date, exit_status):
     """
     Updates the json file (creating it if necessary) and storing backup log data
     """
     new_log_data = {
         "backup_number": 0,
-        "UTC_timestamp": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "backup_abs_path": os.path.abspath(backup_folder_path),
+        "backup_path": os.path.abspath(backup_folder_path),
+        "timestamp": date.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "backup_status": exit_status,
-        "UTC_time_range_start": start,
-        "UTC_time_range_end": end,
     }
     if os.path.exists(backup_log_path):
         with open(backup_log_path, 'r+') as f:
@@ -72,7 +66,7 @@ def update_backup_log(backup_folder_path, exit_status, start, end):
             f.write(json_obj)
 
 
-def do_backup(backup_folder_path, start, end):
+def do_backup(backup_folder_path, date):
     """
     1. Creates a new directory: 'influx_backup_{current date in year-month-day-format},
     2. Creates a backup of the influxdb data generated since the last backup, and
@@ -81,14 +75,15 @@ def do_backup(backup_folder_path, start, end):
     # Get and run commands
     make_dir_command = 'mkdir -p {0}'.format(backup_folder_path)
     os.system(make_dir_command)
-    if start:
-        backup_command = 'influxd backup -portable -start {0} -end {1} {2} '.format(start, end, backup_folder_path)
+    last_backup_date = get_last_backup_date()
+    if last_backup_date:
+        backup_command = 'influxd backup -portable -db metadata -since {0} {1} '.format(last_backup_date, backup_folder_path)
     else:
-        backup_command = 'influxd backup -portable -end {0} {1}'.format(end, backup_folder_path)
+        backup_command = 'influxd backup -portable -db metadata {0}'.format(backup_folder_path)
     exit_status = os.system(backup_command)
     exit_status = 'SUCCESS' if not exit_status else 'FAILED'
     # Add log entry for this backup.
-    update_backup_log(backup_folder_path, exit_status, start, end)
+    update_backup_log(backup_folder_path, date, exit_status)
     return exit_status
 
 
@@ -106,9 +101,9 @@ def do_restore():
 
 
 def main():
-    backup_folder_path = get_backup_folder_path()
-    start, end = get_data_start_time(), get_data_end_time()
-    exit_status = do_backup(backup_folder_path, start, end)
+    date = datetime.datetime.utcnow()
+    backup_folder_path = get_backup_folder_path(date)
+    exit_status = do_backup(backup_folder_path, date)
     if exit_status == 'SUCCESS':
         msg = 'Successfully backed up the database at {0}'.format(backup_folder_path)
         print(msg)
