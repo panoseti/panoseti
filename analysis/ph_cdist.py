@@ -21,10 +21,11 @@ DATA_IN_DIR = '.'
 DATA_OUT_DIR = '.ph_cdist_data'
 
 
-def style_fig(fig, mod_num, threshold_pe):
-    # Clean the plot
-    fig.suptitle(f'Log-scaled cumulative pulse height distributions for module {mod_num} (>= {threshold_pe} pe)')
-
+def style_fig(fname, fig, mod_num, threshold_pe):
+    # Add a title to the plot
+    title = f'Log-scaled cumulative pulse height distributions for module {mod_num} (>= {threshold_pe} pe)'
+    title += f'\nFrom file {fname}'
+    fig.suptitle(title)
 
 def style_ax(fig, ax, quabo, threshold_pe):
     ax.grid(True)
@@ -45,7 +46,7 @@ def add_hover_tooltip(fig, ax, plot):
                         bbox=dict(boxstyle='round', fc='w'),
                         arrowprops=dict(arrowstyle='->'))
     annot.set_visible(False)
-    
+
     def update_annot(click_event):
         mouse_x, mouse_y = click_event.xdata, click_event.ydata
         annot.xy = mouse_x, mouse_y
@@ -66,12 +67,11 @@ def add_hover_tooltip(fig, ax, plot):
                 if vis:
                     annot.set_visible(False)
                     fig.canvas.draw_idle()
-                    
+
     def on_key_press(press_event):
         if press_event.key == ' ' and annot.get_visible():
             annot.set_visible(False)
             fig.canvas.draw_idle()
-            
     fig.canvas.mpl_connect('key_press_event', on_key_press)
     fig.canvas.mpl_connect('button_press_event', on_click)
 
@@ -83,7 +83,7 @@ def create_pixel_plt(fig, ax, data, pixel, threshold_pe, enable_tooltip):
     """
     if np.count_nonzero(data) > 0:
         n_bins = np.arange(threshold_pe, shape[2] + 1)
-        sc = ax.stairs(data, n_bins, fill=False, color='grey', label=f'Pixel {pixel}', gid=pixel)
+        sc = ax.stairs(data, n_bins, fill=False, color='purple', label=f'Pixel {pixel}', gid=pixel)
         if enable_tooltip:
             add_hover_tooltip(fig, ax, sc)
         
@@ -100,7 +100,7 @@ def create_quabo_plt(fig, ax, quabo, threshold_pe, enable_tooltip):
         create_pixel_plt(fig, ax, data, pixel, threshold_pe, enable_tooltip)
     
 
-def draw_plt(mod_num, threshold_pe, enable_tooltip):
+def draw_plt(fname, mod_num, threshold_pe, enable_tooltip):
     """Draws a subplot for each quabo."""
     fig, axs = plt.subplots(2,2, figsize=(8, 4))
     for quabo in range(shape[0]):
@@ -108,7 +108,7 @@ def draw_plt(mod_num, threshold_pe, enable_tooltip):
         ax = axs[quabo % 2][quabo // 2]
         create_quabo_plt(fig, ax, quabo, threshold_pe, enable_tooltip)
         print('Done!')
-    style_fig(fig, mod_num, threshold_pe)
+    style_fig(fname, fig, mod_num, threshold_pe)
     fig.tight_layout()
     plt.show()
     
@@ -151,8 +151,8 @@ def do_load_data(filepath):
         raise Warning(msg)
 
 
-def process_file(fname, img_size, bytes_per_pixel, threshold_pe):
-    with open(fname, 'rb') as f:
+def process_file(fpath, img_size, bytes_per_pixel, threshold_pe):
+    with open(fpath, 'rb') as f:
         i = 0
         while True:
             j = None
@@ -191,18 +191,15 @@ def do_test(threshold_pe, enable_tooltip, num_images=10**3,
         for quabo in range(shape[0]):
             print(f'Generating test data for Quabo {quabo}... ', end='')
             for x in range(num_images):
-                #test_data = np.ones(shape[1]).astype('int')*2
                 #test_data = np.random.geometric(0.005, size=shape[1])
-                test_data = np.random.poisson(lam=1000, size=shape[1])
-                #test_data = np.random.normal(132, 700, size=shape[1])
-                #test_data = np.random.randint(low=0, high=2**12, size=shape[1])
+                test_data = np.random.poisson(lam=800, size=shape[1])
                 update_counts(quabo, test_data, threshold_pe)
             print('Done!')
         if save_data:
             do_save_data(fname)
     else:
         do_load_data(fname)
-    draw_plt('TEST', threshold_pe, enable_tooltip)
+    draw_plt('TEST', 'TEST', threshold_pe, enable_tooltip)
 
 
 def usage():
@@ -347,7 +344,7 @@ def main():
             raise Warning(f'{fname} is not a ph file')
     # Draw plots if passed the option --show-plot
     if not ops['--no-show-plot']:
-        draw_plt(mod_num, threshold_pe, ops['--enable-tooltip'])
+        draw_plt(fname, mod_num, threshold_pe, ops['--enable-tooltip'])
 
 
 if __name__ == '__main__':
