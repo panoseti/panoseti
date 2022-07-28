@@ -11,9 +11,9 @@ import pff
 
 # Quabo (4) x Pixels (256) x Raw adc value range (2**12)
 shape = (4, 256, 2**12)
-threshold_pe = 1000
+threshold_pe = 0
 counts = np.zeros(shape, dtype='uint64')
-
+DATA_OUT_DIR = '.ph_cum_dist_data'
 
 #np.random.seed(seed=10)
 
@@ -126,7 +126,8 @@ def update_counts(quabo, img_array):
 
 def do_save_data(filepath):
     """Save the counts array to a binary file."""
-    os.system('mkdir -p .ph_cum_dist_data')
+    os.system(f'mkdir -p {DATA_OUT_DIR}')
+    print(f'Saving data to "{DATA_OUT_DIR}/{filepath}')
     np.save(filepath, counts)
 
 
@@ -144,29 +145,6 @@ def do_load_data(filepath):
         raise Warning(msg)
 
 
-def do_test(num_images=10**4, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
-    """Generate test data and plots."""
-    print('**TEST**')
-    print(f'Array size: {counts.size:,}')
-    #np.set_printoptions(threshold=sys.maxsize)
-    if data_gen:
-        for quabo in range(shape[0]):
-                print(f'Generating test data for Quabo {quabo}... ', end='')
-                for x in range(num_images):
-                    #test_data = np.ones(shape[1]).astype('int')*2
-                    test_data = np.random.geometric(0.005, size=shape[1])
-                    #test_data = np.random.poisson(lam=1000, size=shape[1])
-                    #test_data = np.random.normal(132, 700, size=shape[1])
-                    #test_data = np.random.randint(low=0, high=2**12, size=shape[1])
-                    update_counts(quabo, test_data)
-                print('Done!')
-        if save_data:
-            do_save_data(filepath)
-    else:
-        do_load_data(filepath)
-    draw_plt()
-
-
 def plot_data_from_npy(in_path):
     do_load_data(in_path)
     draw_plt()
@@ -176,22 +154,56 @@ def process_file(fname, img_size, bytes_per_pixel, is_ph, verbose):
     with open(fname, 'rb') as f:
         i = 0
         while True:
-            j = pff.read_json(f)
+            j = None
+            # Deal with EOF bug in pff.read_json
+            try:
+                j = pff.read_json(f)
+            except Exception as e:
+                if repr(e)[:26] == "Exception('bad type code',":
+                    print('reached EOF')
+                    return
+                else:
+                    print("ERROR BRANCH")
+                    print(f'"{repr(e)}"')
+                    raise
             if not j:
                 print('reached EOF')
-                break
-            print(f'Reading data from frame {i}... ', end='')
+                return
+            print(f'Reading data from frame {i}', end='\r')
             # show_pff.print_json(j.encode(), is_ph, verbose)
             img = pff.read_image(f, img_size, bytes_per_pixel)
+            j = json.loads(j.encode())
             quabo_num = j['quabo_num']
             img_arr = np.array(img)
             update_counts(quabo_num, img_arr)
             i += 1
-            print('Done!', end='\r')
+
+
+def do_test(num_images=10**4, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
+    """Generate test data and plots."""
+    print('**TEST**')
+    print(f'Array size: {counts.size:,}')
+    #np.set_printoptions(threshold=sys.maxsize)
+    if data_gen:
+        for quabo in range(shape[0]):
+            print(f'Generating test data for Quabo {quabo}... ', end='')
+            for x in range(num_images):
+                #test_data = np.ones(shape[1]).astype('int')*2
+                test_data = np.random.geometric(0.005, size=shape[1])
+                #test_data = np.random.poisson(lam=1000, size=shape[1])
+                #test_data = np.random.normal(132, 700, size=shape[1])
+                #test_data = np.random.randint(low=0, high=2**12, size=shape[1])
+                update_counts(quabo, test_data)
+            print('Done!')
+        if save_data:
+            do_save_data(filepath)
+    else:
+        do_load_data(filepath)
+    draw_plt()
 
 
 def usage():
-    msg = "usage: ph_cdist.py [--set-threshold <integer 0..4095>] [--show-plot] [--verbose] file"
+    msg = "usage: ph_cdist.py [--set-threshold <integer 0..4095>] [--show-plot] file"
     msg += "\n   or: ph_cdist.py --test"
     print(msg)
 
@@ -216,7 +228,8 @@ def main():
         elif argv[i] == '--show-plot':
             op = 'show-plot'
         elif argv[i] == '--verbose':
-            verbose = True
+            #verbose = True
+            ...
         else:
             fname = argv[i]
         i += 1
@@ -239,8 +252,8 @@ def main():
     elif fname=='ph':
         dp = 'ph16'
     else:
-        dict = pff.parse_name(fname)
-        dp = dict['dp']
+        parsed = pff.parse_name(fname)
+        dp = parsed['dp']
 
     if dp == 'img16' or dp=='1':
         image_size = 32
@@ -255,6 +268,7 @@ def main():
 
     if is_ph:
         process_file(fname, image_size, bytes_per_pixel, is_ph, verbose)
+        do_save_data(fname[:-4])
     else:
         raise Warning(f'{fname} is not a ph packet')
 
