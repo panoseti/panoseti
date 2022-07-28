@@ -8,13 +8,12 @@ import matplotlib.pyplot as plt
 
 sys.path.append('../util')
 import pff
-import show_pff
 
 # Quabo (4) x Pixels (256) x Raw adc value range (2**12)
 shape = (4, 256, 2**12)
 threshold_pe = 1000
 counts = np.zeros(shape, dtype='uint64')
-print(f'Array size: {counts.size:,}')
+
 
 #np.random.seed(seed=10)
 
@@ -148,6 +147,7 @@ def do_load_data(filepath):
 def do_test(num_images=10**4, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
     """Generate test data and plots."""
     print('**TEST**')
+    print(f'Array size: {counts.size:,}')
     #np.set_printoptions(threshold=sys.maxsize)
     if data_gen:
         for quabo in range(shape[0]):
@@ -191,17 +191,29 @@ def process_file(fname, img_size, bytes_per_pixel, is_ph, verbose):
 
 
 def usage():
-    print("usage: ph_cdist.py [--show-plot] [--verbose] file")
+    msg = "usage: ph_cdist.py [--set-threshold <integer 0..4095>] [--show-plot] [--verbose] file"
+    msg += "\n   or: ph_cdist.py --test"
+    print(msg)
 
 def main():
     i = 1
-    fname = None
+    global threshold_pe
+    val = None
+    set_threshold = False
     verbose = False
+    fname = None
     op = ''
 
     argv = sys.argv
     while i < len(argv):
-        if argv[i] == '--show-plot':
+        if argv[i] == '--test':
+            do_test()
+            return
+        if argv[i] == '--set-threshold':
+            i += 1
+            set_threshold = True
+            val = argv[i]
+        elif argv[i] == '--show-plot':
             op = 'show-plot'
         elif argv[i] == '--verbose':
             verbose = True
@@ -209,7 +221,16 @@ def main():
             fname = argv[i]
         i += 1
 
-    if not fname:
+    if set_threshold:
+        if val is not None and val.isnumeric():
+            threshold_pe = int(val)
+        else:
+            print(f'"{val}" is not a valid integer')
+            usage()
+            return
+
+    if fname is None or not os.path.isfile(fname):
+        print(f'invalid file: "{fname}"')
         usage()
         return
 
@@ -240,6 +261,7 @@ def main():
     if op == 'show-plot':
         draw_plt()
 
-#main()
+if __name__ == '__main__':
+    main()
 
-do_test(data_gen=False)
+#do_test(data_gen=False)
