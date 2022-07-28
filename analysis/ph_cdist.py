@@ -187,7 +187,7 @@ def process_file(fname, img_size, bytes_per_pixel):
             i += 1
 
 
-def do_test(num_images=10**3, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
+def do_test(num_images=10**3, save_data=True, data_gen=True, fname='test_ph_cum_dist'):
     """Generate test data and plots."""
     print('**TEST**')
     print(f'Array size: {counts.size:,}')
@@ -204,19 +204,19 @@ def do_test(num_images=10**3, save_data=True, data_gen=True, filepath='./.ph_cum
                 update_counts(quabo, test_data)
             print('Done!')
         if save_data:
-            do_save_data(filepath)
+            do_save_data(fname)
     else:
-        do_load_data(filepath)
+        do_load_data(fname)
     draw_plt()
 
 
 def usage():
-    msg = "usage: ph_cdist.py process <options> file \tprocess ph data from a .pff file"
-    msg += "\n   or: ph_cdist.py load <options> file \t\tplot processed ph data from a .npy file"
-    msg += "\n   or: ph_cdist.py test \t\t\tgenerate test data and plots"
+    msg = "usage: ph_cdist.py process <options> file \t\t\tprocess ph data from a .pff file"
+    msg += "\n   or: ph_cdist.py load <options> [--show-data] file \t\tplot processed ph data from a .npy file"
+    msg += "\n   or: ph_cdist.py test \t\t\t\t\tgenerate test data and plots"
     msg += "\n\noptions:"
-    msg += "\n\t--set-threshold <integer 0..4095>"
-    msg += "\n\t--show-plot"
+    msg += "\n\t--set-threshold <integer 0..4095>" + '\t' * 3 + 'set the minimum pe threshold'
+    msg += "\n\t--no-show-plot" + '\t' * 6 + 'hide plots'
     print(msg)
 
 def main():
@@ -228,6 +228,7 @@ def main():
     ops = {
         '--set-threshold': None,
         '--no-show-plot': False,
+        '--show-data': False,
     }
     fname = None
     # Process CLI commands and options
@@ -277,6 +278,10 @@ def main():
         return
 
     if fname is None:
+        if cmd == 'load' and ops['--show-data']:
+            for f in sorted(os.listdir(DATA_OUT_DIR)):
+                print(f'{DATA_OUT_DIR}/{f}')
+            return
         usage()
         return
     else:
