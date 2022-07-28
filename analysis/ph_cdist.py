@@ -1,5 +1,9 @@
 #! /usr/bin/env python3
 
+"""
+Generates cumulative pulse height distributions.
+"""
+
 import sys
 import os
 import json
@@ -12,6 +16,7 @@ import pff
 # Quabo (4) x Pixels (256) x Raw adc value range (2**12)
 shape = (4, 256, 2**12)
 threshold_pe = 0
+mod_num = None
 counts = np.zeros(shape, dtype='uint64')
 DATA_OUT_DIR = '.ph_cum_dist_data'
 
@@ -19,7 +24,7 @@ DATA_OUT_DIR = '.ph_cum_dist_data'
 
 def style_fig(fig):
     # Clean the plot
-    fig.suptitle('TEST Log-scaled cumulative pulse height distributions')
+    fig.suptitle(f'Log-scaled cumulative pulse height distributions for module {mod_num} (>= {threshold_pe} pe)')
 
 
 def style_ax(fig, ax, quabo):
@@ -28,7 +33,7 @@ def style_ax(fig, ax, quabo):
     ax.set_ylabel('Count')
     ax.set_yscale('log')
     ax.set_title('Quabo {0}'.format(quabo))
-    ax.axvline(x=threshold_pe, color='g', label=f'Threshold pe = {threshold_pe}')
+    ax.axvline(x=threshold_pe, color='g', label=f'Threshold={threshold_pe}')
     #ax.legend(loc='upper right')#, bbox_to_anchor=(1, 0.5))
 
 
@@ -124,15 +129,18 @@ def update_counts(quabo, img_array):
         counts[quabo][pixel][pe] += 1
 
 
-def do_save_data(filepath):
+def do_save_data(fname):
     """Save the counts array to a binary file."""
     os.system(f'mkdir -p {DATA_OUT_DIR}')
-    print(f'Saving data to "{DATA_OUT_DIR}/{filepath}')
+    filepath = f'{DATA_OUT_DIR}/{fname}.npy'
+    print(f'Saving data to {filepath}')
     np.save(filepath, counts)
 
 
 def do_load_data(filepath):
     """Returns an array loaded from a binary file."""
+    if filepath[-4:] != '.npy':
+        raise Warning(f'"{filepath}" is not a numpy binary file (.npy)')
     try:
         global counts
         counts = np.load(filepath)
@@ -150,7 +158,7 @@ def plot_data_from_npy(in_path):
     draw_plt()
 
 
-def process_file(fname, img_size, bytes_per_pixel, is_ph, verbose):
+def process_file(fname, img_size, bytes_per_pixel):
     with open(fname, 'rb') as f:
         i = 0
         while True:
@@ -160,16 +168,16 @@ def process_file(fname, img_size, bytes_per_pixel, is_ph, verbose):
                 j = pff.read_json(f)
             except Exception as e:
                 if repr(e)[:26] == "Exception('bad type code',":
-                    print('reached EOF')
+                    print('\nreached EOF')
                     return
                 else:
                     print("ERROR BRANCH")
                     print(f'"{repr(e)}"')
                     raise
             if not j:
-                print('reached EOF')
+                print('\nreached EOF')
                 return
-            print(f'Reading data from frame {i}', end='\r')
+            print(f'Processed up to frame {i}.', end='\r')
             # show_pff.print_json(j.encode(), is_ph, verbose)
             img = pff.read_image(f, img_size, bytes_per_pixel)
             j = json.loads(j.encode())
@@ -179,7 +187,7 @@ def process_file(fname, img_size, bytes_per_pixel, is_ph, verbose):
             i += 1
 
 
-def do_test(num_images=10**4, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
+def do_test(num_images=10**3, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
     """Generate test data and plots."""
     print('**TEST**')
     print(f'Array size: {counts.size:,}')
@@ -203,79 +211,107 @@ def do_test(num_images=10**4, save_data=True, data_gen=True, filepath='./.ph_cum
 
 
 def usage():
-    msg = "usage: ph_cdist.py [--set-threshold <integer 0..4095>] [--show-plot] file"
-    msg += "\n   or: ph_cdist.py --test"
+    msg = "usage: ph_cdist.py process <options> file \tprocess ph data from a .pff file"
+    msg += "\n   or: ph_cdist.py load <options> file \t\tplot processed ph data from a .npy file"
+    msg += "\n   or: ph_cdist.py test \t\t\tgenerate test data and plots"
+    msg += "\n\noptions:"
+    msg += "\n\t--set-threshold <integer 0..4095>"
+    msg += "\n\t--show-plot"
     print(msg)
 
 def main():
     i = 1
+    global mod_num
     global threshold_pe
-    val = None
-    set_threshold = False
-    verbose = False
+    cmds = ['test', 'process', 'load']
+    cmd = None
+    ops = {
+        '--set-threshold': None,
+        '--no-show-plot': False,
+    }
     fname = None
-    op = ''
-
+    # Process CLI commands and options
     argv = sys.argv
     while i < len(argv):
-        if argv[i] == '--test':
-            do_test()
-            return
-        if argv[i] == '--set-threshold':
-            i += 1
-            set_threshold = True
-            val = argv[i]
-        elif argv[i] == '--show-plot':
-            op = 'show-plot'
-        elif argv[i] == '--verbose':
-            #verbose = True
-            ...
-        else:
+        if argv[i] in cmds:
+            if cmd:
+                'more than one command given'
+                usage()
+                return
+            cmd = argv[i]
+        elif argv[i] in ops:
+            if argv[i] == '--set-threshold':
+                i += 1
+                if i >= len(argv):
+                    print('must supply a number')
+                    usage()
+                    return
+                ops['--set-threshold'] = argv[i]
+            else:
+                ops[argv[i]] = True
+        elif i == len(argv) - 1:
             fname = argv[i]
+            if not os.path.isfile(fname):
+                print(f'{fname} may not be a valid file, or has a bad path')
+                usage()
+                return
+        else:
+            print(f'bad input: "{argv[i]}"')
+            usage()
+            return
         i += 1
-
-    if set_threshold:
+    # Dispatch commands and options
+    if val := ops['--set-threshold']:
         if val is not None and val.isnumeric():
             threshold_pe = int(val)
         else:
             print(f'"{val}" is not a valid integer')
             usage()
             return
-
-    if fname is None or not os.path.isfile(fname):
-        print(f'invalid file: "{fname}"')
+    if cmd is None:
+        print('bad command')
         usage()
         return
+    elif cmd == 'test':
+        do_test()
+        return
 
-    if fname=='img':
-        dp = 'img16'
-    elif fname=='ph':
-        dp = 'ph16'
+    if fname is None:
+        usage()
+        return
     else:
         parsed = pff.parse_name(fname)
-        dp = parsed['dp']
-
-    if dp == 'img16' or dp=='1':
-        image_size = 32
-        bytes_per_pixel = 2
-        is_ph = False
-    elif dp == 'ph16' or dp=='3':
-        image_size = 16
-        bytes_per_pixel = 2
-        is_ph = True
-    else:
-        raise Exception("bad data product %s"%dp)
-
-    if is_ph:
-        process_file(fname, image_size, bytes_per_pixel, is_ph, verbose)
-        do_save_data(fname[:-4])
-    else:
-        raise Warning(f'{fname} is not a ph packet')
-
-    if op == 'show-plot':
+        mod_num = parsed['module']
+    if cmd == 'load':
+        do_load_data(fname)
+    elif cmd == 'process':
+        # Get data mode
+        if fname == 'img':
+            dp = 'img16'
+        elif fname == 'ph':
+            dp = 'ph16'
+        else:
+            dp = parsed['dp']
+        # Get file metadata
+        if dp == 'img16' or dp == '1':
+            image_size = 32
+            bytes_per_pixel = 2
+            is_ph = False
+        elif dp == 'ph16' or dp == '3':
+            image_size = 16
+            bytes_per_pixel = 2
+            is_ph = True
+        else:
+            raise Exception("bad data product %s" % dp)
+        # Process the data if fname is a ph file.
+        if is_ph:
+            process_file(fname, image_size, bytes_per_pixel)
+            do_save_data(fname[:-4])
+        else:
+            raise Warning(f'{fname} is not a ph packet')
+    # Draw plots if passed the option --show-plot
+    if not ops['--no-show-plot']:
         draw_plt()
 
 if __name__ == '__main__':
     main()
-
-#do_test(data_gen=False)
