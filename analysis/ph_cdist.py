@@ -1,29 +1,33 @@
 #! /usr/bin/env python3
 
 import sys
+import os
+import json
 import numpy as np
 import matplotlib.pyplot as plt
-import time
+
+sys.path.append('../util')
+import pff
+import show_pff
 
 # Quabo (4) x Pixels (256) x Raw adc value range (2**12)
 shape = (4, 256, 2**12)
-threshold_pe = 0
+threshold_pe = 1000
 counts = np.zeros(shape, dtype='uint64')
 print(f'Array size: {counts.size:,}')
 
 #np.random.seed(seed=10)
 
-
 def style_fig(fig):
     # Clean the plot
-    fig.suptitle('Log-scaled cumulative pulse height distributions')
+    fig.suptitle('TEST Log-scaled cumulative pulse height distributions')
 
 
 def style_ax(fig, ax, quabo):
     ax.grid(True)
-    ax.set_xlabel('PE')
+    ax.set_xlabel('Pulse Height (Raw ADC)')
     ax.set_ylabel('Count')
-    #ax.set_yscale('log')
+    ax.set_yscale('log')
     ax.set_title('Quabo {0}'.format(quabo))
     ax.axvline(x=threshold_pe, color='g', label=f'Threshold pe = {threshold_pe}')
     #ax.legend(loc='upper right')#, bbox_to_anchor=(1, 0.5))
@@ -31,21 +35,21 @@ def style_ax(fig, ax, quabo):
 
 def add_hover_tooltip(fig, ax, plot):
     """
-    Adds a tooltip to show the names of graphs on a mouse down event.
+    Adds a tooltip to show pixel labels on a mouse down event.
     See https://stackoverflow.com/questions/7908636/how-to-add-hovering-annotations-to-a-plot
     """
-    annot = ax.annotate('aksjdfhasjd', xy=(0,0), xytext=(10,10), textcoords='offset points',
-                    bbox=dict(boxstyle='round', fc='w'),
-                    arrowprops=dict(arrowstyle='->'))
+    annot = ax.annotate('', xy=(0,0), xytext=(10,10), textcoords='offset points',
+                        bbox=dict(boxstyle='round', fc='w'),
+                        arrowprops=dict(arrowstyle='->'))
     annot.set_visible(False)
     
     def update_annot(click_event):
         mouse_x, mouse_y = click_event.xdata, click_event.ydata
         annot.xy = mouse_x, mouse_y
-        annot.set_y(annot.get_position()[0] + plot.get_gid() / shape[1] * 10)
         text = plot.get_label()
         #print(text[6:], end='__')
         annot.set_text(text)
+        annot.set_y(annot.get_position()[0] + plot.get_gid() / shape[1] * 10)
         annot.get_bbox_patch().set_alpha(0.4)
 
     def on_click(click_event):
@@ -123,47 +127,119 @@ def update_counts(quabo, img_array):
 
 def do_save_data(filepath):
     """Save the counts array to a binary file."""
+    os.system('mkdir -p .ph_cum_dist_data')
     np.save(filepath, counts)
 
 
 def do_load_data(filepath):
     """Returns an array loaded from a binary file."""
-    return np.load(filepath)
+    try:
+        global counts
+        counts = np.load(filepath)
+    except FileNotFoundError as ferr:
+        print(f'** {filepath} is not a valid path.')
+        raise
+    if counts.shape != shape:
+        msg = f'The shape of the array at {filepath} is {counts.shape},\n'
+        msg += f' which is different from the expected shape: {shape}.'
+        raise Warning(msg)
 
 
-def test(num_images, save_data=True, data_gen=True, filepath='./ph_distrib_counts.npy'):
+def do_test(num_images=10**4, save_data=True, data_gen=True, filepath='./.ph_cum_dist_data/test_ph_cum_dist.npy'):
     """Generate test data and plots."""
     print('**TEST**')
-    np.set_printoptions(threshold=sys.maxsize)
+    #np.set_printoptions(threshold=sys.maxsize)
     if data_gen:
         for quabo in range(shape[0]):
-                print(f'Populating data array for Quabo {quabo}... ', end='')
+                print(f'Generating test data for Quabo {quabo}... ', end='')
                 for x in range(num_images):
                     #test_data = np.ones(shape[1]).astype('int')*2
-                    #test_data = np.random.geometric(0.005, size=shape[1])
-                    #test_data = np.random.poisson(lam=10, size=shape[1])
+                    test_data = np.random.geometric(0.005, size=shape[1])
+                    #test_data = np.random.poisson(lam=1000, size=shape[1])
                     #test_data = np.random.normal(132, 700, size=shape[1])
-                    test_data = np.random.randint(low=0, high=2**12, size=shape[1])
+                    #test_data = np.random.randint(low=0, high=2**12, size=shape[1])
                     update_counts(quabo, test_data)
-                print('Done!')     
-    else:
-        global counts
-        try:
-            counts = do_load_data(filepath)
-        except FileNotFoundError as ferr:
-            print(f'** {filepath} is not a valid path.') 
-            raise
-        if counts.shape != shape:
-            msg = f'The shape of the array at {filepath} is {counts.shape},\n'
-            msg += f' which is different from the expected shape: {shape}.'
-            raise Warning(msg)
-    if save_data:
-        try:
+                print('Done!')
+        if save_data:
             do_save_data(filepath)
-        except FileNotFoundError as ferr:
-            print(f'** {filepath} is not a valid path.') 
-            raise
+    else:
+        do_load_data(filepath)
     draw_plt()
 
 
-test(10**3, data_gen=True)
+def plot_data_from_npy(in_path):
+    do_load_data(in_path)
+    draw_plt()
+
+
+def process_file(fname, img_size, bytes_per_pixel, is_ph, verbose):
+    with open(fname, 'rb') as f:
+        i = 0
+        while True:
+            j = pff.read_json(f)
+            if not j:
+                print('reached EOF')
+                break
+            print(f'Reading data from frame {i}... ', end='')
+            # show_pff.print_json(j.encode(), is_ph, verbose)
+            img = pff.read_image(f, img_size, bytes_per_pixel)
+            quabo_num = j['quabo_num']
+            img_arr = np.array(img)
+            update_counts(quabo_num, img_arr)
+            i += 1
+            print('Done!', end='\r')
+
+
+def usage():
+    print("usage: ph_cdist.py [--show-plot] [--verbose] file")
+
+def main():
+    i = 1
+    fname = None
+    verbose = False
+    op = ''
+
+    argv = sys.argv
+    while i < len(argv):
+        if argv[i] == '--show-plot':
+            op = 'show-plot'
+        elif argv[i] == '--verbose':
+            verbose = True
+        else:
+            fname = argv[i]
+        i += 1
+
+    if not fname:
+        usage()
+        return
+
+    if fname=='img':
+        dp = 'img16'
+    elif fname=='ph':
+        dp = 'ph16'
+    else:
+        dict = pff.parse_name(fname)
+        dp = dict['dp']
+
+    if dp == 'img16' or dp=='1':
+        image_size = 32
+        bytes_per_pixel = 2
+        is_ph = False
+    elif dp == 'ph16' or dp=='3':
+        image_size = 16
+        bytes_per_pixel = 2
+        is_ph = True
+    else:
+        raise Exception("bad data product %s"%dp)
+
+    if is_ph:
+        process_file(fname, image_size, bytes_per_pixel, is_ph, verbose)
+    else:
+        raise Warning(f'{fname} is not a ph packet')
+
+    if op == 'show-plot':
+        draw_plt()
+
+#main()
+
+do_test(data_gen=False)
