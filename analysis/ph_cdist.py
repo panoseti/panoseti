@@ -10,6 +10,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 sys.path.append('../util')
 import pff
 
@@ -26,6 +27,10 @@ def style_fig(fname, fig, mod_num, threshold_pe):
     title = f'Log-scaled cumulative pulse height distributions for module {mod_num} (>= {threshold_pe} pe)'
     title += f'\nFrom file {fname}'
     fig.suptitle(title)
+    fig.tight_layout()
+    canvas = fig.canvas
+    canvas.get_default_filename = lambda: f'{fname[1:]}.{canvas.get_default_filetype()}'
+
 
 def style_ax(fig, ax, quabo, threshold_pe):
     ax.grid(True)
@@ -109,7 +114,6 @@ def draw_plt(fname, mod_num, threshold_pe, enable_tooltip):
         create_quabo_plt(fig, ax, quabo, threshold_pe, enable_tooltip)
         print('Done!')
     style_fig(fname, fig, mod_num, threshold_pe)
-    fig.tight_layout()
     plt.show()
     
 
@@ -199,7 +203,7 @@ def do_test(threshold_pe, enable_tooltip, num_images=10**3,
             do_save_data(fname)
     else:
         do_load_data(fname)
-    draw_plt('TEST', 'TEST', threshold_pe, enable_tooltip)
+    draw_plt('.TEST', 'TEST', threshold_pe, enable_tooltip)
 
 
 def usage():
@@ -270,7 +274,6 @@ def main():
             print(f'unrecognized command: {cmd}')
         usage()
         return
-
     # Use new directory
     if cmd == 'process' and (new_dir := ops['--use-dir']):
         if not os.path.isdir(new_dir):
@@ -278,8 +281,7 @@ def main():
             usage()
             return
         DATA_IN_DIR = new_dir
-
-    # Dispatch commands and options
+    # Use new threshold
     if val := ops['--set-threshold']:
         if val is not None and val.isnumeric():
             threshold_pe = int(val)
@@ -287,12 +289,10 @@ def main():
             print(f'"{val}" is not a valid integer')
             usage()
             return
-
     if cmd == 'test':
         do_test(threshold_pe, ops['--enable-tooltip'])
         return
-
-    # Process fname
+    # Check and parse fname
     if fname is not None:
         fpath = f'{DATA_IN_DIR}/{fname}'
         if not os.path.isfile(fpath):
@@ -304,7 +304,7 @@ def main():
     elif fname is None and not ops['--show-data']:
         usage()
         return
-
+    # Dispatch for 'load' and 'process' commands
     if cmd == 'load':
         if ops['--show-data'] and not fname:
             for f in sorted(os.listdir(DATA_OUT_DIR)):
