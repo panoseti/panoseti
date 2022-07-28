@@ -18,7 +18,7 @@ shape = (4, 256, 2**12)
 threshold_pe = 0
 mod_num = None
 counts = np.zeros(shape, dtype='uint64')
-DATA_OUT_DIR = '.ph_cum_dist_data'
+DATA_OUT_DIR = '.ph_cdist_data'
 
 #np.random.seed(seed=10)
 
