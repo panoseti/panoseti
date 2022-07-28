@@ -15,19 +15,18 @@ import pff
 
 # Quabo (4) x Pixels (256) x Raw adc value range (2**12)
 shape = (4, 256, 2**12)
-threshold_pe = 0
-mod_num = None
 counts = np.zeros(shape, dtype='uint64')
+# Default data directories
+DATA_IN_DIR = '.'
 DATA_OUT_DIR = '.ph_cdist_data'
 
-#np.random.seed(seed=10)
 
-def style_fig(fig):
+def style_fig(fig, mod_num, threshold_pe):
     # Clean the plot
     fig.suptitle(f'Log-scaled cumulative pulse height distributions for module {mod_num} (>= {threshold_pe} pe)')
 
 
-def style_ax(fig, ax, quabo):
+def style_ax(fig, ax, quabo, threshold_pe):
     ax.grid(True)
     ax.set_xlabel('Pulse Height (Raw ADC)')
     ax.set_ylabel('Count')
@@ -51,7 +50,6 @@ def add_hover_tooltip(fig, ax, plot):
         mouse_x, mouse_y = click_event.xdata, click_event.ydata
         annot.xy = mouse_x, mouse_y
         text = plot.get_label()
-        #print(text[6:], end='__')
         annot.set_text(text)
         annot.set_y(annot.get_position()[0] + plot.get_gid() / shape[1] * 10)
         annot.get_bbox_patch().set_alpha(0.4)
@@ -78,44 +76,44 @@ def add_hover_tooltip(fig, ax, plot):
     fig.canvas.mpl_connect('button_press_event', on_click)
 
 
-def create_pixel_plt(fig, ax, data, pixel):
+def create_pixel_plt(fig, ax, data, pixel, threshold_pe, enable_tooltip):
     """
-    Plots a log-scaled cumulative distribution of the number of pulse height
-    events against raw adc values in the range (0..2^12-1)
-    for one pixel.
+    Plots a log-scaled cumulative pulse height distribution
+    of raw adc values in the range (0..2^12-1) for one pixel.
     """
     if np.count_nonzero(data) > 0:
         n_bins = np.arange(threshold_pe, shape[2] + 1)
         sc = ax.stairs(data, n_bins, fill=False, color='grey', label=f'Pixel {pixel}', gid=pixel)
-        add_hover_tooltip(fig, ax, sc)
+        if enable_tooltip:
+            add_hover_tooltip(fig, ax, sc)
         
 
-def create_quabo_plt(fig, ax, quabo):
+def create_quabo_plt(fig, ax, quabo, threshold_pe, enable_tooltip):
     """Plots the distribution for each pixel in a quabo."""
-    style_ax(fig, ax, quabo)
+    style_ax(fig, ax, quabo, threshold_pe)
     for pixel in range(shape[1]):
         data = counts[quabo][pixel]
         # Only use data greater than or equal to threshold_pe
         data = data[threshold_pe:]
         # Create cumulative distribution
         data = data[::-1].cumsum()[::-1]
-        create_pixel_plt(fig, ax, data, pixel)
+        create_pixel_plt(fig, ax, data, pixel, threshold_pe, enable_tooltip)
     
 
-def draw_plt():
+def draw_plt(mod_num, threshold_pe, enable_tooltip):
     """Draws a subplot for each quabo."""
     fig, axs = plt.subplots(2,2, figsize=(8, 4))
     for quabo in range(shape[0]):
         print('Graphing Quabo {0}... '.format(quabo), end='')
         ax = axs[quabo % 2][quabo // 2]
-        create_quabo_plt(fig, ax, quabo)
+        create_quabo_plt(fig, ax, quabo, threshold_pe, enable_tooltip)
         print('Done!')
-    style_fig(fig)
+    style_fig(fig, mod_num, threshold_pe)
     fig.tight_layout()
     plt.show()
     
 
-def update_counts(quabo, img_array):
+def update_counts(quabo, img_array, threshold_pe):
     """
     Identifies the pixels in img_array that have a pe value above threshold_pe and,
     in the counts array, increments the tally for that pe value in the corresponding
@@ -153,12 +151,7 @@ def do_load_data(filepath):
         raise Warning(msg)
 
 
-def plot_data_from_npy(in_path):
-    do_load_data(in_path)
-    draw_plt()
-
-
-def process_file(fname, img_size, bytes_per_pixel):
+def process_file(fname, img_size, bytes_per_pixel, threshold_pe):
     with open(fname, 'rb') as f:
         i = 0
         while True:
@@ -183,55 +176,65 @@ def process_file(fname, img_size, bytes_per_pixel):
             j = json.loads(j.encode())
             quabo_num = j['quabo_num']
             img_arr = np.array(img)
-            update_counts(quabo_num, img_arr)
+            update_counts(quabo_num, img_arr, threshold_pe)
             i += 1
 
 
-def do_test(num_images=10**3, save_data=True, data_gen=True, fname='test_ph_cum_dist'):
+def do_test(threshold_pe, enable_tooltip, num_images=10**3,
+            save_data=True, data_gen=True, fname='test_ph_cum_dist'):
     """Generate test data and plots."""
     print('**TEST**')
     print(f'Array size: {counts.size:,}')
+    # np.random.seed(seed=10)
     #np.set_printoptions(threshold=sys.maxsize)
     if data_gen:
         for quabo in range(shape[0]):
             print(f'Generating test data for Quabo {quabo}... ', end='')
             for x in range(num_images):
                 #test_data = np.ones(shape[1]).astype('int')*2
-                test_data = np.random.geometric(0.005, size=shape[1])
-                #test_data = np.random.poisson(lam=1000, size=shape[1])
+                #test_data = np.random.geometric(0.005, size=shape[1])
+                test_data = np.random.poisson(lam=1000, size=shape[1])
                 #test_data = np.random.normal(132, 700, size=shape[1])
                 #test_data = np.random.randint(low=0, high=2**12, size=shape[1])
-                update_counts(quabo, test_data)
+                update_counts(quabo, test_data, threshold_pe)
             print('Done!')
         if save_data:
             do_save_data(fname)
     else:
         do_load_data(fname)
-    draw_plt()
+    draw_plt('TEST', threshold_pe, enable_tooltip)
 
 
 def usage():
-    msg = "usage: ph_cdist.py process <options> file \t\t\tprocess ph data from a .pff file"
-    msg += "\n   or: ph_cdist.py load <options> [--show-data] file \t\tplot processed ph data from a .npy file"
+    msg = "usage: ph_cdist.py process <options> [--use-dir dir] file \tprocess ph data from a .pff file"
+    msg += "\n   or: ph_cdist.py load <options> file \t\t\t\tplot processed ph data from a .npy file"
     msg += "\n   or: ph_cdist.py test \t\t\t\t\tgenerate test data and plots"
     msg += "\n\noptions:"
-    msg += "\n\t--set-threshold <integer 0..4095>" + '\t' * 3 + 'set the minimum pe threshold'
+    msg += "\n\t--show-data" + '\t' * 6 + 'list available data files'
+    msg += "\n\t--set-threshold <integer 0..4095>" + '\t' * 3 + 'set the minimum pe threshold (default is 0)'
     msg += "\n\t--no-show-plot" + '\t' * 6 + 'hide plots'
+    msg += "\n\t--enable-tooltip" + '\t' * 5 + 'add a pixel selector to the plots'
     print(msg)
 
+
 def main():
-    i = 1
-    global mod_num
-    global threshold_pe
+    """Process CLI inputs and dispatch actions"""
+    global DATA_IN_DIR
     cmds = ['test', 'process', 'load']
     cmd = None
     ops = {
+        '--use-dir': None,
         '--set-threshold': None,
         '--no-show-plot': False,
         '--show-data': False,
+        '--enable-tooltip': False,
     }
+    threshold_pe = 0
     fname = None
+    fpath = None
+    mod_num = None
     # Process CLI commands and options
+    i = 1
     argv = sys.argv
     while i < len(argv):
         if argv[i] in cmds:
@@ -241,7 +244,14 @@ def main():
                 return
             cmd = argv[i]
         elif argv[i] in ops:
-            if argv[i] == '--set-threshold':
+            if argv[i] == '--use-dir':
+                i += 1
+                if i >= len(argv):
+                    print('must supply a directory')
+                    usage()
+                    return
+                ops['--use-dir'] = argv[i]
+            elif argv[i] == '--set-threshold':
                 i += 1
                 if i >= len(argv):
                     print('must supply a number')
@@ -252,15 +262,26 @@ def main():
                 ops[argv[i]] = True
         elif i == len(argv) - 1:
             fname = argv[i]
-            if not os.path.isfile(fname):
-                print(f'{fname} may not be a valid file, or has a bad path')
-                usage()
-                return
         else:
-            print(f'bad input: "{argv[i]}"')
+            print(f'unrecognized input: "{argv[i]}"')
             usage()
             return
         i += 1
+
+    if cmd is None:
+        if fname is not None:
+            print(f'unrecognized command: {cmd}')
+        usage()
+        return
+
+    # Use new directory
+    if cmd == 'process' and (new_dir := ops['--use-dir']):
+        if not os.path.isdir(new_dir):
+            print(f'{new_dir} may not be a valid directory, or has a bad path')
+            usage()
+            return
+        DATA_IN_DIR = new_dir
+
     # Dispatch commands and options
     if val := ops['--set-threshold']:
         if val is not None and val.isnumeric():
@@ -269,27 +290,37 @@ def main():
             print(f'"{val}" is not a valid integer')
             usage()
             return
-    if cmd is None:
-        print('bad command')
-        usage()
-        return
-    elif cmd == 'test':
-        do_test()
+
+    if cmd == 'test':
+        do_test(threshold_pe, ops['--enable-tooltip'])
         return
 
-    if fname is None:
-        if cmd == 'load' and ops['--show-data']:
-            for f in sorted(os.listdir(DATA_OUT_DIR)):
-                print(f'{DATA_OUT_DIR}/{f}')
+    # Process fname
+    if fname is not None:
+        fpath = f'{DATA_IN_DIR}/{fname}'
+        if not os.path.isfile(fpath):
+            print(f'{fname} may not be a valid file, or has a bad path')
+            usage()
             return
-        usage()
-        return
-    else:
         parsed = pff.parse_name(fname)
         mod_num = parsed['module']
+    elif fname is None and not ops['--show-data']:
+        usage()
+        return
+
     if cmd == 'load':
+        if ops['--show-data'] and not fname:
+            for f in sorted(os.listdir(DATA_OUT_DIR)):
+                if f[-4:] == '.npy':
+                    print(f'{DATA_OUT_DIR}/{f}')
+            return
         do_load_data(fname)
     elif cmd == 'process':
+        if ops['--show-data'] and not fname:
+            for f in sorted(os.listdir(DATA_IN_DIR)):
+                if f[-4:] == '.pff':
+                    print(f'{f}')
+            return
         # Get data mode
         if fname == 'img':
             dp = 'img16'
@@ -310,13 +341,14 @@ def main():
             raise Exception("bad data product %s" % dp)
         # Process the data if fname is a ph file.
         if is_ph:
-            process_file(fname, image_size, bytes_per_pixel)
+            process_file(fpath, image_size, bytes_per_pixel, threshold_pe)
             do_save_data(fname[:-4])
         else:
-            raise Warning(f'{fname} is not a ph packet')
+            raise Warning(f'{fname} is not a ph file')
     # Draw plots if passed the option --show-plot
     if not ops['--no-show-plot']:
-        draw_plt()
+        draw_plt(mod_num, threshold_pe, ops['--enable-tooltip'])
+
 
 if __name__ == '__main__':
     main()
