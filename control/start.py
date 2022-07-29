@@ -23,7 +23,7 @@ import pff
 #
 def get_daq_params(data_config):
     do_image = False
-    image_usec = 0
+    image_usec = 1
     image_8bit = False
     do_ph = False
     bl_subtract = True

@@ -319,3 +319,7 @@ stop.py creates symlinks 'img' and 'ph' to first files in run dir
 show_pff.py
     auto-calibrate to 5-95% range
     default to 'img'
+
+6/27/22
+    add nanosec timestamp to video
+    make framebrowser for PH mode

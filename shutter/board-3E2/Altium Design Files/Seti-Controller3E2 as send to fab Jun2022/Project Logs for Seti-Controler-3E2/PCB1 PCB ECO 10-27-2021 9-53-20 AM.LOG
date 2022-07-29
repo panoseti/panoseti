@@ -1,0 +1,30 @@
+Removed Pin From Net: NetName=NetC7_1 Pin=S1-2
+Removed Pin From Net: NetName=GND Pin=S1-3
+Change Component Footprint: Designator=C13 Old Footprint=CAPAE660X610N New Footprint=SMD_Lytic_F
+Change Component Footprint: Designator=C14 Old Footprint=CAPAE660X610N New Footprint=SMD_Lytic_F
+Change Component Comment : Designator=R11 Old Comment=10k New Comment=180k
+Change Component Comment : Designator=C13 Old Comment=100uf/35v New Comment=100uf
+Change Component Comment : Designator=C14 Old Comment=100uf/35v New Comment=100uf
+Change Component Comment : Designator=J24 Old Comment=47590-0001 New Comment=Molex 47590-0001
+Change component parameters: Designator = "C13"; Footprint = "SMD_Lytic_F"; UniqueID = "\BSKQVDBN"
+Change component parameters. Clean all parameters for all variants
+Change component parameters (AddParameter): Name = "Arrow Part Number"; Value = "EEE-HA1V101UP"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Arrow Price/Stock"; Value = "https://www.arrow.com/en/products/eee-ha1v101up/panasonic"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Datasheet Link"; Value = "http://industrial.panasonic.com/cdbs/www-data/pdf/RDE0000/ABA0000C1151.pdf"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Height"; Value = "10mm"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Manufacturer_Name"; Value = "Panasonic"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Manufacturer_Part_Number"; Value = "EEE-HA1V101UP"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mouser Part Number"; Value = "667-EEE-HA1V101UP"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mouser Price/Stock"; Value = "https://www.mouser.co.uk/ProductDetail/Panasonic/EEE-HA1V101UP?qs=ECX%252BeLvXSgSV%2Fbj%252B%2FHs12Q%3D%3D"; VariantName = "[No Variations]"
+Change component parameters: Designator = "C14"; Footprint = "SMD_Lytic_F"; UniqueID = "\FQVUDYTX"
+Change component parameters. Clean all parameters for all variants
+Change component parameters (AddParameter): Name = "Arrow Part Number"; Value = "EEE-HA1V101UP"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Arrow Price/Stock"; Value = "https://www.arrow.com/en/products/eee-ha1v101up/panasonic"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Datasheet Link"; Value = "http://industrial.panasonic.com/cdbs/www-data/pdf/RDE0000/ABA0000C1151.pdf"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Height"; Value = "10mm"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Manufacturer_Name"; Value = "Panasonic"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Manufacturer_Part_Number"; Value = "EEE-HA1V101UP"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mouser Part Number"; Value = "667-EEE-HA1V101UP"; VariantName = "[No Variations]"
+Change component parameters (AddParameter): Name = "Mouser Price/Stock"; Value = "https://www.mouser.co.uk/ProductDetail/Panasonic/EEE-HA1V101UP?qs=ECX%252BeLvXSgSV%2Fbj%252B%2FHs12Q%3D%3D"; VariantName = "[No Variations]"
+Added Member To Class: ClassName=Sheet2 Member=Component C25 4.7uf
+Added Member To Class: ClassName=Sheet1 Member=Component R3 22

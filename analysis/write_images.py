@@ -7,7 +7,7 @@ import sys
 sys.path.append('../util')
 import pff
 
-def do_pff(run):
+def do_run(run):
     for f in os.listdir('data/%s'%run):
         if pff.is_pff_file(f):
             if pff.pff_file_type(f) != 'img16':
@@ -30,6 +30,6 @@ def do_pff(run):
 def main():
     for run in os.listdir('data'):
         if pff.is_pff_dir(run):
-            do_pff(run)
+            do_run(run)
 
 main()

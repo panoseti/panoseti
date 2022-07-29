@@ -1,0 +1,4 @@
+Layer Pairs Export File for PCB: C:\Users\lafleur\Desktop\Altium Projects\Seti-Controller3E2 as send to fab Oct2021\PCB1.PcbDoc
+LayersSetName=Top_Bot_Thru_Holes|DrillFile=pcb1-roundholes.txt|DrillLayers=gtl,gbl
+LayersSetName=Top_Bot_Slot_Holes|DrillFile=pcb1-slotholes.txt|DrillLayers=gtl,gbl
+LayersSetName=Top_Bot_Rect_Holes|DrillFile=pcb1-rectholes.txt|DrillLayers=gtl,gbl
