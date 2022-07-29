@@ -16,8 +16,7 @@ import redis_utils
 import config_file
 import power
 from hv_updater import get_boardloc
-
-# -------------- CONSTANTS --------------- #
+from capture_power import get_ups_rkey
 
 # Seconds between updates.
 UPDATE_INTERVAL = 30
@@ -27,22 +26,19 @@ MIN_DETECTOR_TEMP = -20.0
 MAX_DETECTOR_TEMP = 60.0
 MAX_FPGA_TEMP = 85.0
 
-# Get quabo info.
-obs_config = config_file.get_obs_config()
-
 
 def is_acceptable_temperature(temps: (float, float)):
-    """Returns a tuple of (TEMP1 is ok?, TEMP2 is ok?) if the corresponding
-     sensor temperature is within the specified operating range."""
+    """
+    Returns a tuple of (TEMP1 is ok?, TEMP2 is ok?) if the corresponding
+    sensor temperature is within the specified operating range.
+    """
     temp1_ok = MIN_DETECTOR_TEMP <= temps[0] <= MAX_DETECTOR_TEMP
     temp2_ok = temps[1] <= MAX_FPGA_TEMP
     return temp1_ok, temp2_ok
 
 
 def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
-    """
-    Given a Quabo's redis key, rkey, returns (TEMP1, TEMP2).
-    """
+    """Given a Quabo's redis key, rkey, returns (TEMP1, TEMP2)."""
     try:
         temp1 = float(r.hget(rkey, 'TEMP1'))
         temp2 = float(r.hget(rkey, 'TEMP2'))
@@ -60,17 +56,26 @@ def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
         raise
 
 
-def check_all_module_temps(r: redis.Redis):
+def check_all_module_temps(obs_config, r: redis.Redis):
     """
-    Iterates through each quabo in the observatory, reads its temperature,
-    and, if the temperature is too extreme, turns off corresponding module
-    power supply.
+    Iterates through each quabo in the observatory, reads the detector and fpga temperature.
+    If the temperature is too extreme, turn off corresponding module power supply.
     """
     for dome in obs_config['domes']:
         for module in dome['modules']:
             module_ip_addr = module['ip_addr']
-            # Check whether the UPS socket associated with this module is powered on.
-            if power.quabo_power_query():
+            # Get the UPS status for this module (ON or OFF).
+            module_ups_key = module['ups']
+            rkey = get_ups_rkey(module_ups_key)
+            power_status = 'OFF'
+            try:
+                power_status = str(r.hget(rkey, 'POWER'))
+            except redis.RedisError as rerr:
+                msg = "module_temp_monitor.py: A Redis error occurred. "
+                msg += f"Error msg: {rerr}"
+                print(msg)
+                raise
+            if power_status == 'ON':
                 for quabo_index in range(4):
                     quabo_obj = None
                     try:
@@ -103,19 +108,16 @@ def check_all_module_temps(r: redis.Redis):
                                 msg += "\tAttempting to turn off the power supply for this module..."
                                 print(msg.format(datetime.datetime.now(), quabo_index,
                                                  module_ip_addr, temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP))
-                            else:
+                            if not fpga_temp_ok:
                                 msg = "module_temp_monitor: {0}\n\tThe FPGA temp of quabo {1} with base IP {2} "
                                 msg += "is {3} C, which exceeds the operating temperature of {4} C.\n"
                                 msg += "\tAttempting to turn off the power supply for this module..."
                                 print(msg.format(datetime.datetime.now(), quabo_index,
                                                  module_ip_addr, temps[1], MAX_FPGA_TEMP))
                             try:
-                                ups = obs_config['ups']
-                                url = ups['url']
-                                socket = ups['quabo_socket']
-                                power.quabo_power(False)
-                                msg = "\tSuccessfully turned off power to socket {0} in the UPS with url: {1}."
-                                print(msg.format(socket, url))
+                                power.quabo_power(obs_config[module_ups_key], False)
+                                msg = f'\tSuccessfully turned off power to {module_ups_key}'
+                                print(msg)
                                 break
                             except Exception as err:
                                 msg2 = "*** module_temp_monitor: {0}\n\tFailed to turn off module power supply!"
@@ -126,10 +128,11 @@ def check_all_module_temps(r: redis.Redis):
 
 def main():
     """Makes a call to check_all_module_temps every UPDATE_INTERVAL seconds."""
+    obs_config = config_file.get_obs_config()
     r = redis_utils.redis_init()
     print("module_temp_monitor: Running...")
     while True:
-        check_all_module_temps(r)
+        check_all_module_temps(obs_config, r)
         time.sleep(UPDATE_INTERVAL)
 
 
@@ -138,5 +141,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         msg = "module_temp_monitor: {0} \n\tFailed and exited with the error message: {1}"
-        print(datetime.datetime.now(), msg.format(e))
+        print(msg.format(datetime.datetime.now(), e))
         raise
