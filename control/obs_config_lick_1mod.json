@@ -17,6 +17,7 @@
                     "quabo_version": "qfp",
                     "comment": "not bga",
                     "ip_addr": "192.168.0.4",
+                    "ups": "ups",
                     "azimuth": 77,
                     "elevation": 77,
                     "position_angle": 77

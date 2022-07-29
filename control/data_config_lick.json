@@ -1,6 +1,6 @@
 {
     "run_type": "eng",
-    "gain": 120,
+    "gain": 60,
     "image": {
         "integration_time_usec": 1000,
         "pe_threshold": 2,
