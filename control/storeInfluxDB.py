@@ -45,8 +45,8 @@ def get_datatype(redis_key):
 # Create the json body and write the data to influxDB
 def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str):
     utc_timestamp = data_fields['Computer_UTC']
-    #utc_time_obj = datetime.utcfromtimestamp(utc_timestamp)
-    #t = utc_time_obj.isoformat()
+    utc_time_obj = datetime.utcfromtimestamp(utc_timestamp)
+    t = utc_time_obj.isoformat()
     json_body = [
         {
             "measurement": key,
@@ -55,7 +55,7 @@ def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str)
                 "datatype": datatype
             },
             "fields": data_fields,
-            "time": utc_timestamp
+            "time": t
         }
     ]
     client.write_points(json_body)
