@@ -17,7 +17,11 @@ UPDATE_INTERVAL = 1
 
 def get_ups_fields(ups_dict):
     """Creates a dictionary of values to write into Redis."""
-    power_status = "ON" if power.quabo_power_query(ups_dict) else "OFF"
+    try:
+        power_status = "ON" if power.quabo_power_query(ups_dict) else "OFF"
+    except Exception:
+        print(f'capture_power.py: Failed to query {ups_dict}. The login info for this UPS may be incorrect."')
+        raise
     rkey_fields = {
         'Computer_UTC': time.time(),
         'POWER': power_status
@@ -26,14 +30,8 @@ def get_ups_fields(ups_dict):
 
 
 def get_ups_rkey(ups_key):
-    ups_name = ups_key[3:]
-    if ups_name[0] == '_':
-        ups_name = ups_name[1:]
-    if ups_name:
-        ups_rkey = f'UPS_{ups_name.upper()}'
-    else:
-        ups_rkey = 'UPS_0'
-    return ups_rkey
+    """Returns the Redis key for the ups named 'ups_key'."""
+    return ups_key.upper()
 
 
 def main():
@@ -44,13 +42,12 @@ def main():
     while True:
         for ups_key in ups_keys:
             rkey = get_ups_rkey(ups_key)
-            ups_dict = obs_config[rkey]
+            ups_dict = obs_config[ups_key]
             fields = get_ups_fields(ups_dict)
             redis_utils.store_in_redis(r, rkey, fields)
         time.sleep(UPDATE_INTERVAL)
 
 
 if __name__ == "__main__":
-    #main()
-    ...
+    main()
 

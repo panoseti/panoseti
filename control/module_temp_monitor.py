@@ -87,7 +87,7 @@ def check_all_module_temps(obs_config, r: redis.Redis):
             if power_status == 'OFF':
                 quabos_off = [f'QUABO_{get_boardloc(module_ip_addr, quabo_index)}' for quabo_index in range(4)]
                 msg = 'module_temp_monitor.py: {0}\n\t The module with base IP {1} has been powered off.'
-                msg += '\tThe following quabos are no longer powered: {1}'
+                msg += '\n\tThe following quabos are no longer powered: {2}'
                 print(msg.format(datetime.datetime.now(), module_ip_addr, quabos_off))
                 modules_off.add(module_ip_addr)
                 continue
@@ -116,7 +116,7 @@ def check_all_module_temps(obs_config, r: redis.Redis):
                     # See https://github.com/panoseti/panoseti/issues/58.
                     detector_temp_ok, fpga_temp_ok = is_acceptable_temperature(temps)
                     # If detectors exceed thresholds, inform operator and turn off power to corresponding module.
-                    if not detector_temp_ok or not detector_temp_ok:
+                    if not detector_temp_ok or not fpga_temp_ok:
                         if not detector_temp_ok:
                             msg = "module_temp_monitor: {0}\n\tThe DETECTOR temp of quabo {1} with base IP {2} "
                             msg += " is {3} C, which exceeds the operating temperature range: {4} C to {5} C.\n"
