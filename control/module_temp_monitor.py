@@ -19,12 +19,15 @@ from hv_updater import get_boardloc
 from capture_power import get_ups_rkey
 
 # Seconds between updates.
-UPDATE_INTERVAL = 30
+UPDATE_INTERVAL = 10
 
 # Min & max module operating temperatures (degrees Celsius).
 MIN_DETECTOR_TEMP = -20.0
 MAX_DETECTOR_TEMP = 60.0
 MAX_FPGA_TEMP = 85.0
+
+# Set of modules that have been turned off by this script.
+modules_off = set()
 
 
 def is_acceptable_temperature(temps: (float, float)):
@@ -40,8 +43,8 @@ def is_acceptable_temperature(temps: (float, float)):
 def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
     """Given a Quabo's redis key, rkey, returns (TEMP1, TEMP2)."""
     try:
-        temp1 = float(r.hget(rkey, 'TEMP1'))
-        temp2 = float(r.hget(rkey, 'TEMP2'))
+        temp1 = redis_utils.get_casted_redis_value(r, rkey, 'TEMP1')
+        temp2 = redis_utils.get_casted_redis_value(r, rkey, 'TEMP2')
         return temp1, temp2
     except redis.RedisError as err:
         msg = "module_temp_monitor: A Redis error occurred. "
@@ -58,72 +61,85 @@ def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
 
 def check_all_module_temps(obs_config, r: redis.Redis):
     """
-    Iterates through each quabo in the observatory, reads the detector and fpga temperature.
-    If the temperature is too extreme, turn off corresponding module power supply.
+    Iterates through each quabo in the observatory and reads the detector and fpga temperature from Redis.
+    If the temperature is too extreme, we turn off the corresponding module power supply.
     """
     for dome in obs_config['domes']:
         for module in dome['modules']:
             module_ip_addr = module['ip_addr']
+            # Check if this module has been turned off.
+            if module_ip_addr in modules_off:
+                continue
+
             # Get the UPS status for this module (ON or OFF).
             module_ups_key = module['ups']
             rkey = get_ups_rkey(module_ups_key)
             power_status = 'OFF'
             try:
-                power_status = str(r.hget(rkey, 'POWER'))
+                power_status = redis_utils.get_casted_redis_value(r, rkey, 'POWER')
             except redis.RedisError as rerr:
                 msg = "module_temp_monitor.py: A Redis error occurred. "
                 msg += f"Error msg: {rerr}"
                 print(msg)
                 raise
-            if power_status == 'ON':
-                for quabo_index in range(4):
-                    quabo_obj = None
-                    try:
-                        # Get this Quabo's redis key.
-                        rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
-                        # Get this Quabo's temp, if it exists.
-                        if rkey.encode('utf-8') not in r.keys():
-                            raise Warning("%s is not tracked in Redis." % rkey)
-                        else:
-                            # Get the temperature data for this quabo.
-                            temps = get_redis_temps(r, rkey)
-                    except Warning as werr:
-                        msg = "module_temp_monitor: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
-                        msg += "\tError msg: {3}"
-                        print(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
-                        continue
-                    except redis.RedisError as rerr:
-                        msg = "module_temp_monitor: {0}\n\tA Redis error occurred. "
-                        msg += "\tError msg: {1}"
-                        print(msg.format(datetime.datetime.now(), rerr))
-                        raise
+
+            # If power to this module has been turned off, add its IP to modules_off and inform operator.
+            if power_status == 'OFF':
+                quabos_off = [f'QUABO_{get_boardloc(module_ip_addr, quabo_index)}' for quabo_index in range(4)]
+                msg = 'module_temp_monitor.py: {0}\n\t The module with base IP {1} has been powered off.'
+                msg += '\tThe following quabos are no longer powered: {1}'
+                print(msg.format(datetime.datetime.now(), module_ip_addr, quabos_off))
+                modules_off.add(module_ip_addr)
+                continue
+
+            for quabo_index in range(4):
+                try:
+                    # Get this Quabo's redis key.
+                    rkey = f'QUABO_{get_boardloc(module_ip_addr, quabo_index)}'
+                    # Get this Quabo's detector and fpga temperatures, if they exist.
+                    if rkey.encode('utf-8') not in r.keys():
+                        raise Warning("%s is not tracked in Redis." % rkey)
                     else:
-                        # Checks whether the quabo temperatures are acceptable.
-                        # See https://github.com/panoseti/panoseti/issues/58.
-                        detector_temp_ok, fpga_temp_ok = is_acceptable_temperature(temps)
-                        if not detector_temp_ok or not detector_temp_ok:
-                            if not detector_temp_ok:
-                                msg = "module_temp_monitor: {0}\n\tThe DETECTOR temp of quabo {1} with base IP {2} "
-                                msg += " is {3} C, which exceeds the operating temperature range: {4} C to {5} C.\n"
-                                msg += "\tAttempting to turn off the power supply for this module..."
-                                print(msg.format(datetime.datetime.now(), quabo_index,
-                                                 module_ip_addr, temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP))
-                            if not fpga_temp_ok:
-                                msg = "module_temp_monitor: {0}\n\tThe FPGA temp of quabo {1} with base IP {2} "
-                                msg += "is {3} C, which exceeds the operating temperature of {4} C.\n"
-                                msg += "\tAttempting to turn off the power supply for this module..."
-                                print(msg.format(datetime.datetime.now(), quabo_index,
-                                                 module_ip_addr, temps[1], MAX_FPGA_TEMP))
-                            try:
-                                power.quabo_power(obs_config[module_ups_key], False)
-                                msg = f'\tSuccessfully turned off power to {module_ups_key}'
-                                print(msg)
-                                break
-                            except Exception as err:
-                                msg2 = "*** module_temp_monitor: {0}\n\tFailed to turn off module power supply!"
-                                msg += "Error msg: {1}"
-                                print(msg.format(datetime.datetime.now(), err))
-                                continue
+                        temps = get_redis_temps(r, rkey)
+                except Warning as werr:
+                    msg = "module_temp_monitor: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
+                    msg += "\tError msg: {3}"
+                    print(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
+                    continue
+                except redis.RedisError as rerr:
+                    msg = "module_temp_monitor: {0}\n\tA Redis error occurred. "
+                    msg += "\tError msg: {1}"
+                    print(msg.format(datetime.datetime.now(), rerr))
+                    raise
+                else:
+                    # Checks whether the quabo temperatures are acceptable.
+                    # See https://github.com/panoseti/panoseti/issues/58.
+                    detector_temp_ok, fpga_temp_ok = is_acceptable_temperature(temps)
+                    # If detectors exceed thresholds, inform operator and turn off power to corresponding module.
+                    if not detector_temp_ok or not detector_temp_ok:
+                        if not detector_temp_ok:
+                            msg = "module_temp_monitor: {0}\n\tThe DETECTOR temp of quabo {1} with base IP {2} "
+                            msg += " is {3} C, which exceeds the operating temperature range: {4} C to {5} C.\n"
+                            msg += "\tAttempting to turn off the power supply for this module..."
+                            print(msg.format(datetime.datetime.now(), quabo_index,
+                                             module_ip_addr, temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP))
+                        if not fpga_temp_ok:
+                            msg = "module_temp_monitor: {0}\n\tThe FPGA temp of quabo {1} with base IP {2} "
+                            msg += "is {3} C, which exceeds the operating temperature of {4} C.\n"
+                            msg += "\tAttempting to turn off the power supply for this module..."
+                            print(msg.format(datetime.datetime.now(), quabo_index,
+                                             module_ip_addr, temps[1], MAX_FPGA_TEMP))
+                        try:
+                            ups_dict = obs_config[module_ups_key]
+                            power.quabo_power(ups_dict, False)
+                            msg = f'\tSuccessfully turned off power to {module_ups_key}'
+                            print(msg)
+                            break
+                        except Exception as err:
+                            msg = "*** module_temp_monitor: {0}\n\tFailed to turn off module power supply!"
+                            msg += "Error msg: {1}"
+                            print(msg.format(datetime.datetime.now(), err))
+                            continue
 
 
 def main():

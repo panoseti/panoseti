@@ -26,9 +26,11 @@ def get_ups_fields(ups_dict):
 
 
 def get_ups_rkey(ups_key):
-    ups_num = ups_key[3:]
-    if ups_num:
-        ups_rkey = f'UPS_{ups_num}'
+    ups_name = ups_key[3:]
+    if ups_name[0] == '_':
+        ups_name = ups_name[1:]
+    if ups_name:
+        ups_rkey = f'UPS_{ups_name.upper()}'
     else:
         ups_rkey = 'UPS_0'
     return ups_rkey
@@ -49,5 +51,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    #main()
+    ...
 
