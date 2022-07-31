@@ -9,7 +9,7 @@ log data is recorded in a file with the following structure:
     ]
 }
 
-This script can be run on 1st and 15th of every month at 9am as a cronjob:
+This script can be run on the 1st and 15th of every month at 9am with a cronjob:
 With email notifications:
 MAILTO="" # Add email address
 0 9 1,15 * * /path/to/this/script/backup_influxdb.py --backup
@@ -36,9 +36,7 @@ def get_backup_folder_path(date):
 
 
 def get_last_backup_date():
-    """
-    Returns the last backup date, or None if this is the first backup.
-    """
+    """Returns the last backup date, or None if this is the first backup."""
     last_backup_date = None
     if os.path.exists(backup_log_path):
         with open(backup_log_path) as f:
@@ -49,9 +47,7 @@ def get_last_backup_date():
 
 
 def update_backup_log(backup_folder_path, date, exit_status):
-    """
-    Updates the json file (creating it if necessary) and storing backup log data
-    """
+    """Updates the backup json file (creating it if necessary) with a new log entry."""
     new_log_data = {
         "backup_number": 0,
         "backup_path": os.path.abspath(backup_folder_path),
@@ -80,9 +76,9 @@ def update_backup_log(backup_folder_path, date, exit_status):
 
 def do_backup():
     """
-    1. Creates a new directory: 'influx_backup_{current date in year-month-day-format},
+    1. Creates a new directory: 'influx_backup_{current date in year-month-day-format}',
     2. Creates a backup of the influxdb data generated since the last backup, and
-    3. Adds a log entry to the log file.
+    3. Calls update_backup_log to add a log entry for this backup.
     """
     date = datetime.datetime.utcnow()
     backup_folder_path = get_backup_folder_path(date)
@@ -111,10 +107,10 @@ def do_backup():
 def restore_one_backup(path_to_backup):
     """
     Restores one backup. Note that InfluxDB does not allow us to directly restore backups to
-     an existing database, so we must:
-        1) restore a backup to a temporary database,
-        2) write the data from the temp database into the target database, and
-        3) delete the temporary database.
+     an existing database, so we must do the following:
+        1) Restore the backup to a temporary database,
+        2) Write the data from the temporary database into the metadata database, and
+        3) Delete the temporary database.
     """
     print("Restoring the backup to the temporary database 'metadata-tmp'...")
     command_1 = 'influxd restore -portable -db "metadata" -newdb "metadata-tmp" {0}'.format(path_to_backup)
@@ -131,9 +127,7 @@ def restore_one_backup(path_to_backup):
 
 
 def do_restore():
-    """
-    Restore the metadata database using the backups stored in the restore directory.
-    """
+    """Restore the metadata database from the backups in the specified restore directory."""
     try:
         backup_directories = [name for name in os.listdir(RESTORE_DIR_PATH)]
         backup_directories.remove(backup_log_filename)
@@ -158,10 +152,10 @@ def do_restore():
 
 
 def usage():
-    print('''Usage:
-    --backup\t\t create a backup of the influxdb data since the last update, and write it to the directory specified by BACKUP_DIR_PATH.
-    --restore\t\t restore the metadata database from backups stored in the directory specified by RESTORE_DIR_PATH.
-    ''')
+    msg = 'Usage:'
+    msg += '\n\t--backup\tcreate a backup of the influxdb data since the last update and save it in the directory specified by BACKUP_DIR_PATH.'
+    msg += '\n\t--restore\trestore the metadata database from backups in the directory specified by RESTORE_DIR_PATH.'
+    print(msg)
 
 # Facilitates command-line use.
 if __name__ == '__main__':
