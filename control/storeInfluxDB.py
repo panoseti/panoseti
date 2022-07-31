@@ -12,15 +12,18 @@ from influxdb import InfluxDBClient
 import redis
 import time
 import re
+import config_file
 from redis_utils import *
 
-#UTC_OFFSET = 7*3600 #ns
-UTC_OFFSET = 0
+UTC_OFFSET = 7*3600 #ns
 TIMEFORMAT = "%Y-%m-%dT%H:%M:%SZ"
-OBSERVATORY = 'test'
-DATATYPE_FORMAT = {'housekeeping': re.compile("QUABO_[0-9]*"),
+OBSERVATORY = config_file.get_obs_config()["name"]
+DATATYPE_FORMAT = {
+    'housekeeping': re.compile("QUABO_[0-9]*"),
     'GPS': re.compile("GPS.*"),
-    'whiterabbit': re.compile("WRSWITCH.*")}
+    'whiterabbit': re.compile("WRSWITCH.*"),
+    'outlet': re.compile("UPS_.*")
+}
 #List of keys with the time stamp values
 key_timestamps = {}
 
@@ -61,7 +64,14 @@ def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list,
     for rkey in redis_keys:
         data_fields = dict()
         for key in r.hkeys(rkey):
-            data_fields[key.decode('utf-8')] = get_casted_redis_value(r, rkey, key)
+            val = get_casted_redis_value(r, rkey, key)
+            if val is not None:
+                data_fields[key.decode('utf-8')] = val
+            else:
+                msg = f"storeInfluxDB.py: No data in ({rkey.decode('utf-8')}, {key.decode('utf-8')}!"
+                msg += "\n Aborting influx write..."
+                print(msg)
+                return
         write_influx(client, rkey, data_fields, get_datatype(rkey))
         key_timestamps[rkey] = data_fields['Computer_UTC']
 
