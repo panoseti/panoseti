@@ -5,8 +5,19 @@
 import re
 import redis
 
+
 def redis_init():
     return redis.Redis(host='localhost', port=6379, db=0)
+
+
+def store_in_redis(r: redis.Redis, rkey: [bytes, str], rkey_fields: dict):
+    """
+    Writes every field from rkey_fields into the hashset stored at rkey
+    in the Redis database represented by the object r.
+    """
+    for field, value in rkey_fields.items():
+        r.hset(rkey, field, value)
+
 
 def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
     avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
@@ -23,8 +34,9 @@ def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
             pass
     return list_of_updates
 
-def get_casted_redis_value(r:redis.Redis, rkey: [bytes, str], key: [bytes, str]):
-    """Returns val = r.hget(rkey, key) casted to int, float, or string
+
+def get_casted_redis_value(r:redis.Redis, rkey: [bytes, str], field: [bytes, str]):
+    """Returns val = r.hget(rkey, field) casted to int, float, or string
      as follows:
         1. int, if val has the form X where X.isnumeric(),
         2. float, if val has the form (-)X.Y where X.isnumeric() and Y.isnumeric(),
@@ -33,7 +45,7 @@ def get_casted_redis_value(r:redis.Redis, rkey: [bytes, str], key: [bytes, str])
     val = None
     # Checks if val exists in the provided Redis database.
     try:
-        val = r.hget(rkey, key)
+        val = r.hget(rkey, field)
     except redis.RedisError as rerr:
         msg = "redis_utils.py: A Redis error occurred: {0}."
         print(msg.format(rerr))

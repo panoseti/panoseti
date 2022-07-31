@@ -274,19 +274,23 @@ def main():
             print(f'unrecognized command: {cmd}')
         usage()
         return
+
     # Use new directory
-    if cmd == 'process' and (new_dir := ops['--use-dir']):
+    new_dir = ops['--use-dir']
+    if cmd == 'process' and new_dir:
         if not os.path.isdir(new_dir):
             print(f'{new_dir} may not be a valid directory, or has a bad path')
             usage()
             return
         DATA_IN_DIR = new_dir
+
     # Use new threshold
-    if val := ops['--set-threshold']:
-        if val is not None and val.isnumeric():
-            threshold_pe = int(val)
+    new_threshold = ops['--set-threshold']
+    if new_threshold:
+        if new_threshold is not None and new_threshold.isnumeric():
+            threshold_pe = int(new_threshold)
         else:
-            print(f'"{val}" is not a valid integer')
+            print(f'"{new_threshold}" is not a valid integer')
             usage()
             return
     if cmd == 'test':
