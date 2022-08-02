@@ -29,7 +29,7 @@ function main($start, $n, $file, $pixel, $type, $dur) {
         $path = "tmp/graph.csv";
     }
 
-    $url = "https://setiathome.berkeley.edu/panoseti/$path";
+    $url = "https://visigoth.ucolick.org/$path";
     [$xmin, $xmax, $ymin, $ymax, $xname, $yname] = get_extrema($path);
 
     // kludge

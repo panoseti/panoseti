@@ -17,7 +17,7 @@ def do_run(run):
             #
             cmd = 'write_images < data/%s/%s > derived/%s/%s/images.bin'%(run,f,run,f)
             print(cmd)
-            #os.system(cmd)
+            os.system(cmd)
 
             # generate images.mp4
             #
