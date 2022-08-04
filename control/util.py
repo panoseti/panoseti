@@ -199,6 +199,9 @@ def start_hk_recorder(daq_config, run_name):
         
 # Start high-voltage updater daemon
 def start_hv_updater():
+    if is_hv_updater_running():
+        print('hv_updater.py is already running')
+        return
     try:
         subprocess.Popen([hv_updater_name])
     except:
@@ -208,12 +211,14 @@ def start_hv_updater():
 
 # Start module temperature monitor daemon.
 def start_module_temp_monitor():
-    if not is_module_temp_monitor_running():
-        try:
-            subprocess.Popen([module_temp_monitor_name])
-        except:
-            print("can't launch module temperature monitor")
-            raise
+    if is_module_temp_monitor_running():
+        print('module_temp_monitor.py is already running')
+        return
+    try:
+        subprocess.Popen([module_temp_monitor_name])
+    except:
+        print("can't launch module temperature monitor")
+        raise
 
 
 # write run name to a file, and symlink 'run' to the run dir

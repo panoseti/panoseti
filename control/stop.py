@@ -87,9 +87,6 @@ def stop_run(daq_config, quabo_uids):
     print("stopping data recording")
     stop_recording(daq_config)
 
-    print("stopping module temperature monitor")
-    kill_module_temp_monitor()
-
     print("stopping HV updater")
     kill_hv_updater()
 
