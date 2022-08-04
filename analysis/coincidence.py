@@ -19,21 +19,22 @@ sys.path.append('../control')
 import config_file
 
 # Default data paths
-DATA_IN_DIR = '/Users/nico/Downloads/719_ph_12pe'
-DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_19_100ns_1500pe'
+DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
+DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_100ns_1500pe_nexdome_and_astrograph'
 
 
 #fname_a = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
 #fname_b = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff'
 
 # July 19
-fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+#fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 # July 20
-#fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-#fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 fpath_a = f'{DATA_IN_DIR}/{fname_a}'
@@ -47,9 +48,20 @@ def get_module_file(module_ip_addr):
 '''
 
 
+class Frame:
+    def __init__(self, module_num, frame_num, json, img):
+        self.module_num = module_num
+        self.frame_num = frame_num
+        self.json = json
+        self.img = img
+        self.group_num = None
+
+
+
 def get_max_pe(frame):
     """Returns the maximum raw adc from the image in frame."""
     return max(frame[2])
+
 
 def get_pkt_timestamp(frame):
     """Returns the pkt timestamp of frame."""
@@ -90,6 +102,7 @@ def get_next_frame(file_obj, frame_num):
     try:
         j = pff.read_json(file_obj)
         j = json.loads(j.encode())
+        # Img size = 16 x 16 and bytes per pixel = 2.
         img = pff.read_image(file_obj, 16, 2)
     except Exception as e:
         # Deal with EOF issue in pff.read_json
@@ -101,7 +114,13 @@ def get_next_frame(file_obj, frame_num):
     return frame
 
 
-def search(a_path, b_path, max_time_diff, threshold_max_pe):
+def search_1_module(a_path, max_time_diff, threshold_max_pe):
+    """Same as search_2_modules, except applied to one module. Indented to identify coincident events in one module
+    for grouping purposes. """
+    ...
+
+
+def search_2_modules(a_path, b_path, max_time_diff, threshold_max_pe):
     """
     Identify all pairs of frames from the files a_path and b_path with timestamps that
     differ by no more than 100ns.
@@ -148,7 +167,8 @@ def search(a_path, b_path, max_time_diff, threshold_max_pe):
                         frame_pair = a_frame, b_frame
                         if frame_pair in pairs:
                             print(f'duplicate frame pair: \n\t{frame_pair[0]}\n\t{frame_pair[1]}')
-                        pairs.append(frame_pair)
+                        elif a_frame != b_frame:
+                            pairs.append(frame_pair)
                     right_index += 1
                     if right_index >= len(b_deque):
                         b_deque_right_append_next_frame(fb)
@@ -158,20 +178,32 @@ def search(a_path, b_path, max_time_diff, threshold_max_pe):
     return pairs
 
 
-def get_image_2d(image_1d):
-    """Converts a 1x256 element array to a 16x16 array."""
-    rect = np.zeros((16,16,))
+def get_16x16_image(image_1x256):
+    """Converts a 1x256 array to a 16x16 array."""
+    img_16x16 = np.zeros((16,16,))
     for row in range(16):
         for col in range(16):
-            rect[row][col] = image_1d[16 * row + col]
-    return rect
+            img_16x16[row][col] = image_1x256[16 * row + col]
+    return img_16x16
 
 
-def style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe):
+def get_32x32_image(q0, q1, q2, q3):
+    """Return a 32x32 array image from the four 16x16 arrays qX:
+     q0  |  q1
+    ---- | ----
+     q2  |  q3
+    """
+    row_0 = np.append(q0, q1, axis=1)
+    row_1 = np.append(q2, q3, axis=1)
+    img_32x32 = np.append(row_0, row_1, axis=0)
+    return img_32x32
+
+
+def style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, frame_a, frame_b):
     # Style each figure
     parsed_a, parsed_b = pff.parse_name(fname_a), pff.parse_name(fname_b)
-    title = "Pulse Height Event from Module {0} and Module {1} within {2:,} ns and max(pe) >= {3:,}".format(
-        parsed_a['module'], parsed_b['module'], max_time_diff, threshold_max_pe
+    title = "Pulse Height Event from Module {0} and Module {1} within {2:,} ns and max(pe) >= {3:,}. Abs time diff={4:,} ns".format(
+        parsed_a['module'], parsed_b['module'], max_time_diff, threshold_max_pe, abs(get_timestamp_ns_diff(frame_a, frame_b))
     )
     title += "\nLeft: Dome: {0}, Module {1}; Start: {2}; Seq No: {3}".format(
         parsed_a['dome'], parsed_a['module'], parsed_a['start'], parsed_a['seqno']
@@ -192,7 +224,7 @@ def style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe):
 def style_ax(fig, ax, frame, plot):
     # Style each plot.
     ax.set_box_aspect(1)
-    metadata_text = 'Mod {0}, Quabo {1}: frame#{2:,},\npkt_num={3}, pkt_utc={4}, pkt_nsec={5},\n tv_sec={6}, tv_usec={6}'.format(
+    metadata_text = 'Mod {0}, Quabo {1}:, frame#{2:,},\npkt_num={3}, pkt_utc={4}, pkt_nsec={5},\n tv_sec={6}, tv_usec={7}'.format(
         frame[1]['mod_num'], frame[1]['quabo_num'], frame[0], frame[1]['pkt_num'],
         'N/A' if 'pkt_utc' not in frame[1] else frame[1]['pkt_utc'],
         frame[1]['pkt_nsec'], frame[1]['tv_sec'], frame[1]['tv_usec'])
@@ -202,20 +234,21 @@ def style_ax(fig, ax, frame, plot):
     cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
 
 
-def plot_frame(fig, ax, frame):
+def plot_frame(fig, ax, frame, vmax=None):
     # Draw the 2d image of a frame.
-    frame_img = get_image_2d(frame[2])
-    plot = ax.pcolormesh(np.arange(16), np.arange(16), frame_img)
+    frame_img = get_16x16_image(frame[2])
+    plot = ax.pcolormesh(np.arange(16), np.arange(16), frame_img, vmin=0, vmax=vmax)
     style_ax(fig, ax, frame, plot)
 
 
-def plot_coincidence(fig_num, a, b, max_time_diff, threshold_max_pe, save_fig=False):
+def plot_coincident_quabos(fig_num, a, b, max_time_diff, threshold_max_pe, save_fig=False):
     fig, axs = plt.subplots(1, 2, figsize=(15, 8))
     for ax, frame in zip(axs, [a, b]):
         plot_frame(fig, ax, frame)
-    style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe)
+    style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, a, b)
     #input(fig.canvas.get_default_filename())
     if save_fig:
+        os.system(f'mkdir -p {DATA_OUT_DIR}')
         plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
         plt.close(fig)
     else:
@@ -223,13 +256,25 @@ def plot_coincidence(fig_num, a, b, max_time_diff, threshold_max_pe, save_fig=Fa
         plt.close(fig)
 
 
-def do_search(verbose=True):
-    max_time_diff = 100
-    # Only include images with a max pe value of at least the following:
-    threshold_max_pe = 1500
-    pairs = sorted(search(fpath_a, fpath_b, max_time_diff, threshold_max_pe))
+def plot_coincident_modules(fig_num, a, b, max_time_diff, threshold_max_pe, save_fig=False):
+    fig, axs = plt.subplots(1, 2, figsize=(15, 8))
+    for ax, frame in zip(axs, [a, b]):
+        plot_frame(fig, ax, frame)
+    style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, a, b)
+    #input(fig.canvas.get_default_filename())
+    if save_fig:
+        os.system(f'mkdir -p {DATA_OUT_DIR}')
+        plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
+        plt.close(fig)
+    else:
+        plt.show()
+        plt.close(fig)
+
+
+def do_search_quabo(a_path, b_path, max_time_diff=500, threshold_max_pe=0, verbose=True):
+    pairs = sorted(search_2_modules(a_path, b_path, max_time_diff, threshold_max_pe))
     if len(pairs) == 0:
-        print(f'No coincident frames found within {max_time_diff:,} ns of each other.')
+        print(f'No coincident frames found within {max_time_diff:,} ns of each other and with max(pe) >= {threshold_max_pe}.')
         sys.exit(0)
     do_plot = input(f'Plot {len(pairs)} figures? (Y/N): ')
     if do_plot.lower() == 'y':
@@ -237,10 +282,27 @@ def do_search(verbose=True):
             if verbose: print(f'\nFigure {fig_num:,}:')
             mod_a, mod_b = pair[0], pair[1]
             if verbose: print(f'Left module: {mod_a[1]}\nRight module : {mod_b[1]}')
-            plot_coincidence(fig_num, mod_a, mod_b, max_time_diff, threshold_max_pe, save_fig=False)
+            plot_coincident_quabos(fig_num, mod_a, mod_b, max_time_diff, threshold_max_pe, save_fig=False)
             fig_num += 1
 
 
+def do_search_module(a_path, b_path, max_time_diff=500, threshold_max_pe=0, verbose=True):
+
+    pairs = sorted(search_2_modules(a_path, b_path, max_time_diff, threshold_max_pe))
+    if len(pairs) == 0:
+        print(f'No coincident frames found within {max_time_diff:,} ns of each other and with max(pe) >= {threshold_max_pe}.')
+        sys.exit(0)
+    do_plot = input(f'Plot {len(pairs)} figures? (Y/N): ')
+    if do_plot.lower() == 'y':
+        for fig_num, pair in enumerate(pairs):
+            if verbose: print(f'\nFigure {fig_num:,}:')
+            mod_a, mod_b = pair[0], pair[1]
+            if verbose: print(f'Left module: {mod_a[1]}\nRight module : {mod_b[1]}')
+            plot_coincident_quabos(fig_num, mod_a, mod_b, max_time_diff, threshold_max_pe, save_fig=False)
+            fig_num += 1
+
+
+
 if __name__ == '__main__':
-    do_search()
+    do_search_module(fpath_a, fpath_b)
     #check_order(fpath_a)
