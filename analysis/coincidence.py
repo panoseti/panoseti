@@ -28,8 +28,8 @@ DATA_OUT_DIR = '.'
 #fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 # July 20
-fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 fpath_a = f'{DATA_IN_DIR}/{fname_a}'
@@ -43,46 +43,18 @@ def get_module_file(module_ip_addr):
 '''
 
 
-def process_file(fpath, collect: list):
-    """Returns COLLECT, a list of tuples in the form: [frame number], [frame json data].
-    Assumes that fpath is a ph file."""
-    img_size = 16
-    bytes_per_pixel = 2
-    print(f'Reading {fpath}')
-    with open(fpath, 'rb') as f:
-        frame_num = 0
-        while True:
-            j = None
-            # Deal with EOF issue pff.read_json
-            try:
-                j = pff.read_json(f)
-            except Exception as e:
-                if repr(e)[:26] == "Exception('bad type code',":
-                    print('\n\tReached EOF.')
-                    break
-            if not j:
-                print('\n\tReached EOF.')
-                break
-            print(f'\tProcessed up to frame {frame_num:,}.', end='\r')
-            c = json.loads(j.encode())
-            img = pff.read_image(f, img_size, bytes_per_pixel)
-            frame = (frame_num, c, img)
-            collect.append(get_timestamp(frame))
-            frame_num += 1
-
-
-def get_frames(a_path, b_path):
-    a_list, b_list = list(), list()
-    process_file(a_path, a_list)
-    process_file(b_path, b_list)
-    return a_list, b_list
-
-
-def get_timestamp(frame):
-    """Returns a tuple of [pkt_utc], [pkt_nsec]."""
+def get_pkt_timestamp(frame):
+    """Returns the pkt timestamp of frame."""
     pkt_utc = frame[1]['pkt_utc']
     pkt_nsec = frame[1]['pkt_nsec']
     return pkt_utc * 10**9 + pkt_nsec
+
+
+def get_timestamp(frame):
+    """Returns a timestamp for frame."""
+    tv_sec = frame[1]['tv_sec']
+    pkt_nsec = frame[1]['pkt_nsec']
+    return tv_sec * 10**9 + pkt_nsec
 
 
 def get_timestamp_ns_diff(a, b):
@@ -92,7 +64,8 @@ def get_timestamp_ns_diff(a, b):
 
 
 def is_coincident(a, b, max_time_diff):
-    """Returns True iff the absolute difference between the timestamps of a and b is less than or equal to max_time_diff."""
+    """Returns True iff the absolute difference between the timestamps
+    of a and b is less than or equal to max_time_diff."""
     within_threshold = abs(get_timestamp_ns_diff(a, b)) <= max_time_diff
     return within_threshold
 
@@ -113,10 +86,8 @@ def get_next_frame(file_obj, frame_num):
     except Exception as e:
         # Deal with EOF issue pff.read_json
         if repr(e)[:26] == "Exception('bad type code',":
-            #print('\n\tReached EOF.')
             return None
     if not j or not img:
-        #print('\n\tReached EOF.')
         return None
     frame = (frame_num, j, img)
     return frame
@@ -124,9 +95,10 @@ def get_next_frame(file_obj, frame_num):
 
 def search(a_path, b_path, max_time_diff, threshold_pe):
     """
-    Identify all pairs of frames from 2 ph files that have timestamps with a difference of no more than 100ns.
-    Assumes that ph frames are in monotonically increasing chronological order.
-    Returns a list of [frame number], [json data] pairs.
+    Identify all pairs of frames from the files a_path and b_path with timestamps that
+    differ by no more than 100ns.
+    Assumes that the timestamps in each ph file are monotonically increasing when read from top to bottom.
+    Returns a list of coincident frame pairs.
     """
     pairs = list()
     a_frame_num, b_frame_num = 0, 0
@@ -152,11 +124,13 @@ def search(a_path, b_path, max_time_diff, threshold_pe):
                     and a_after_b(a_frame, b_deque[0]) \
                     and not is_coincident(a_frame, b_deque[0], max_time_diff):
                 b_deque.popleft()
+                # Right append frames if b_deque runs out of frames.
                 if len(b_deque) == 0:
                     b_deque_right_append_next_frame(fb)
-            # Check frames that appear after b_deque[0] in fb until a non-coincident frame is found.
+            # Check frames that appear after b_deque[0] until a non-coincident frame is found.
             right_index = 0
             while right_index < len(b_deque) and is_coincident(a_frame, b_deque[right_index], max_time_diff):
+                # Each coincident pair of frames is added to the list pairs.
                 frame_pair = a_frame, b_deque[right_index]
                 if frame_pair in pairs:
                     print(f'duplicate frame pair: \n\t{frame_pair[0]}\n\t{frame_pair[1]}')
@@ -170,17 +144,6 @@ def search(a_path, b_path, max_time_diff, threshold_pe):
     return pairs
 
 
-
-
-def check_order(fpath):
-    timestamps = list()
-    process_file(fpath, timestamps)
-    last = timestamps[0]
-    for i in range(1, len(timestamps)):
-        if last > timestamps[i]:
-            print(f'last={last}, timestamps[{i}]={timestamps[i]}, diff={last - timestamps[i]}')
-        last = timestamps[i]
-
 def get_image_2d(image_1d):
     """Converts a 1x256 element array to a 16x16 array."""
     rect = np.zeros((16,16,))
@@ -190,15 +153,20 @@ def get_image_2d(image_1d):
     return rect
 
 
-def style_fig(fig, fname_a, mod_num_a, fname_b, mod_num_b, max_time_diff, fig_num):
-    # Add a title to the plot
-    title = f'Pulse Height Event from Module {mod_num_a} and Module {mod_num_b} within {max_time_diff:,} ns'
-    title += f'\nModule {mod_num_a} from: {fname_a}'
-    title += f'\nModule {mod_num_b} from: {fname_b}'
+def style_fig(fig, fname_a, fname_b, max_time_diff, fig_num):
+    # Configure each figure
+    parsed_a, parsed_b = pff.parse_name(fname_a), pff.parse_name(fname_b)
+    title = f"Pulse Height Event from Module {parsed_a['module']} and Module {parsed_b['module']} within {max_time_diff:,} ns"
+    title += f"\nLeft: Dome: {parsed_a['dome']}, Module {parsed_a['module']}; Start: {parsed_a['start']}; Seq No: {parsed_a['seqno']}"
+    title += f"\nRight: Dome: {parsed_b['dome']}, Module {parsed_b['module']}; Start: {parsed_b['start']}; Seq No: {parsed_b['seqno']}"
     fig.suptitle(title)
     fig.tight_layout()
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
+    canvas.get_default_filename = \
+        lambda: f"start_{parsed_b['start']}.dome_{parsed_a['dome']}.module_{parsed_a['module']}.seqno_{parsed_a['seqno']}" \
+                + f"__dome_{parsed_a['dome']}.module_{parsed_a['module']}.seqno_{parsed_a['seqno']}" + \
+                f".fignum_{fig_num}.{canvas.get_default_filetype()}"
 
 
 def style_ax(fig, ax, frame, plot):
@@ -222,12 +190,12 @@ def plot_coincidence(a, b, max_time_diff, fig_num):
     fig, axs = plt.subplots(1, 2, figsize=(15, 8))
     for ax, frame in zip(axs, [a, b]):
         plot_frame(fig, ax, frame)
-    style_fig(fig, fname_a, a[1]['mod_num'], fname_b, b[1]['mod_num'], max_time_diff, fig_num)
+    style_fig(fig, fname_a, fname_b, max_time_diff, fig_num)
     plt.show()
 
 
 def do_search():
-    max_time_diff = 1000000000
+    max_time_diff = 100
     pairs = sorted(search(fpath_a, fpath_b, max_time_diff, 0))
     if len(pairs) == 0:
         print(f'No coincident frames found within {max_time_diff:,} ns of each other.')
@@ -243,5 +211,5 @@ def do_search():
 
 
 if __name__ == '__main__':
-    #do_search()
-    check_order(fpath_a)
+    do_search()
+    #check_order(fpath_a)
