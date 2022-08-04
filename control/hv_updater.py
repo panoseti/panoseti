@@ -83,14 +83,6 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
         quabo_obj.hv_set(adjusted_hv_values)
 
 
-def get_boardloc(module_ip_addr: str, quabo_index):
-    """Given a module ip address and a quabo index, returns the BOARDLOC of
-    the corresponding quabo."""
-    pieces = module_ip_addr.split('.')
-    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
-    return boardloc
-
-
 def get_redis_temp(r: redis.Redis, rkey: str) -> float:
     """Given a Quabo's redis key, rkey, returns the field value of TEMP1 in Redis."""
     try:
@@ -120,7 +112,7 @@ def update_all_quabos(r: redis.Redis):
                 quabo_obj = None
                 try:
                     # Get this Quabo's redis key.
-                    rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
+                    rkey = "QUABO_{0}".format(util.get_boardloc(module_ip_addr, quabo_index))
                     if rkey in quabos_off:
                         continue
                     uid = module['quabos'][quabo_index]['uid']

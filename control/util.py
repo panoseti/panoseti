@@ -110,6 +110,15 @@ def quabo_ip_addr(base, i):
     x[3] = str(int(x[3])+i)
     return '.'.join(x)
 
+
+def get_boardloc(module_ip_addr, quabo_index):
+    """Given a module ip address and a quabo index, returns the BOARDLOC of
+    the corresponding quabo."""
+    pieces = module_ip_addr.split('.')
+    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
+    return boardloc
+
+
 # get the UID of quabo i in a given module
 #
 def quabo_uid(module, quabo_uids, i):
@@ -199,11 +208,12 @@ def start_hv_updater():
 
 # Start module temperature monitor daemon.
 def start_module_temp_monitor():
-    try:
-        subprocess.Popen([module_temp_monitor_name])
-    except:
-        print("can't launch module temperature monitor")
-        raise
+    if not is_module_temp_monitor_running():
+        try:
+            subprocess.Popen([module_temp_monitor_name])
+        except:
+            print("can't launch module temperature monitor")
+            raise
 
 
 # write run name to a file, and symlink 'run' to the run dir
