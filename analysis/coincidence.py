@@ -19,17 +19,17 @@ sys.path.append('../control')
 import config_file
 
 # Default data
-DATA_IN_DIR = '/Users/nico/Downloads/719_ph_12pe'
+DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
 DATA_OUT_DIR = '.'
 
 
-fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
 #fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
-fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
+#fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 # July 20
-#fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-#fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 fpath_a = f'{DATA_IN_DIR}/{fname_a}'
@@ -66,7 +66,8 @@ def process_file(fpath, collect: list):
             print(f'\tProcessed up to frame {frame_num:,}.', end='\r')
             c = json.loads(j.encode())
             img = pff.read_image(f, img_size, bytes_per_pixel)
-            collect.append((frame_num, c, img))
+            frame = (frame_num, c, img)
+            collect.append(get_timestamp(frame))
             frame_num += 1
 
 
@@ -77,10 +78,10 @@ def get_frames(a_path, b_path):
     return a_list, b_list
 
 
-def get_timestamp(j):
+def get_timestamp(frame):
     """Returns a tuple of [pkt_utc], [pkt_nsec]."""
-    pkt_utc = j[1]['pkt_utc']
-    pkt_nsec = j[1]['pkt_nsec']
+    pkt_utc = frame[1]['pkt_utc']
+    pkt_nsec = frame[1]['pkt_nsec']
     return pkt_utc * 10**9 + pkt_nsec
 
 
@@ -169,6 +170,17 @@ def search(a_path, b_path, max_time_diff, threshold_pe):
     return pairs
 
 
+
+
+def check_order(fpath):
+    timestamps = list()
+    process_file(fpath, timestamps)
+    last = timestamps[0]
+    for i in range(1, len(timestamps)):
+        if last > timestamps[i]:
+            print(f'last={last}, timestamps[{i}]={timestamps[i]}, diff={last - timestamps[i]}')
+        last = timestamps[i]
+
 def get_image_2d(image_1d):
     """Converts a 1x256 element array to a 16x16 array."""
     rect = np.zeros((16,16,))
@@ -197,7 +209,7 @@ def style_ax(fig, ax, frame, plot):
     ax.set_title(metadata_text)
     cbar = fig.colorbar(plot, ax=ax, fraction=0.035, pad=0.05)
     cbar.ax.get_yaxis().labelpad = 15
-    cbar.ax.set_ylabel('Raw ADC', rotation=270)
+    cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
 
 
 def plot_frame(fig, ax, frame):
@@ -207,7 +219,7 @@ def plot_frame(fig, ax, frame):
 
 
 def plot_coincidence(a, b, max_time_diff, fig_num):
-    fig, axs = plt.subplots(1, 2, figsize=(12, 7))
+    fig, axs = plt.subplots(1, 2, figsize=(15, 8))
     for ax, frame in zip(axs, [a, b]):
         plot_frame(fig, ax, frame)
     style_fig(fig, fname_a, a[1]['mod_num'], fname_b, b[1]['mod_num'], max_time_diff, fig_num)
@@ -215,7 +227,7 @@ def plot_coincidence(a, b, max_time_diff, fig_num):
 
 
 def do_search():
-    max_time_diff = 100000
+    max_time_diff = 1000000000
     pairs = sorted(search(fpath_a, fpath_b, max_time_diff, 0))
     if len(pairs) == 0:
         print(f'No coincident frames found within {max_time_diff:,} ns of each other.')
@@ -231,4 +243,5 @@ def do_search():
 
 
 if __name__ == '__main__':
-    do_search()
+    #do_search()
+    check_order(fpath_a)
