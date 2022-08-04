@@ -19,17 +19,21 @@ sys.path.append('../control')
 import config_file
 
 # Default data
-DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
-DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_100ns_1500pe'
+DATA_IN_DIR = '/Users/nico/Downloads/719_ph_12pe'
+DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_19_100ns_1500pe'
 
 
-#fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-#fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+#fname_a = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
+#fname_b = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff'
+
+# July 19
+fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 # July 20
-fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+#fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 fpath_a = f'{DATA_IN_DIR}/{fname_a}'
@@ -83,7 +87,6 @@ def a_after_b(a, b):
 def get_next_frame(file_obj, frame_num):
     # Get the next frame from module A
     j, img = None, None
-    print(f'Processed up to frame {frame_num:,}... ', end='')
     try:
         j = pff.read_json(file_obj)
         j = json.loads(j.encode())
@@ -95,7 +98,6 @@ def get_next_frame(file_obj, frame_num):
     if not j or not img:
         return None
     frame = (frame_num, j, img)
-    print('\r', end='')
     return frame
 
 
@@ -122,9 +124,11 @@ def search(a_path, b_path, max_time_diff, threshold_max_pe):
         while True:
             # Get the next frame for module A and check if we've reached EOF.
             a_frame = get_next_frame(fa, a_frame_num)
+            print(f'Processed up to frame {a_frame_num:,}... ', end='')
             if a_frame is None:
                 break
             elif get_max_pe(a_frame) < threshold_max_pe:
+                print('\r', end='')
                 a_frame_num += 1
                 continue
             else:
@@ -149,7 +153,7 @@ def search(a_path, b_path, max_time_diff, threshold_max_pe):
                     if right_index >= len(b_deque):
                         b_deque_right_append_next_frame(fb)
             a_frame_num += 1
-            #print('\r', end='')
+            print('\r', end='')
     print('Done!')
     return pairs
 
@@ -172,7 +176,7 @@ def style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe):
     title += "\nLeft: Dome: {0}, Module {1}; Start: {2}; Seq No: {3}".format(
         parsed_a['dome'], parsed_a['module'], parsed_a['start'], parsed_a['seqno']
     )
-    title += "\nRight: tDome: {0}, Module {1}; Start: {2}; Seq No: {3}".format(
+    title += "\nRight: Dome: {0}, Module {1}; Start: {2}; Seq No: {3}".format(
         parsed_b['dome'], parsed_b['module'], parsed_b['start'], parsed_b['seqno']
     )
     fig.suptitle(title)
@@ -189,7 +193,8 @@ def style_ax(fig, ax, frame, plot):
     # Style each plot.
     ax.set_box_aspect(1)
     metadata_text = 'Mod {0}, Quabo {1}: frame#{2:,},\npkt_num={3}, pkt_utc={4}, pkt_nsec={5},\n tv_sec={6}, tv_usec={6}'.format(
-        frame[1]['mod_num'], frame[1]['quabo_num'], frame[0], frame[1]['pkt_num'], frame[1]['pkt_utc'],
+        frame[1]['mod_num'], frame[1]['quabo_num'], frame[0], frame[1]['pkt_num'],
+        'N/A' if 'pkt_utc' not in frame[1] else frame[1]['pkt_utc'],
         frame[1]['pkt_nsec'], frame[1]['tv_sec'], frame[1]['tv_usec'])
     ax.set_title(metadata_text)
     cbar = fig.colorbar(plot, ax=ax, fraction=0.035, pad=0.05)
