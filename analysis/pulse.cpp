@@ -194,13 +194,13 @@ int do_pff(const char* path) {
     // create output directory
     //
     char buf[1024], file_dir[1024];
-    mkdir(out_dir, 0771);
+    mkdir(out_dir, 0775);
     sprintf(buf, "%s/%s", out_dir, dir.c_str());
-    mkdir(buf, 0771);
+    mkdir(buf, 0775);
     sprintf(buf, "%s/%s/%s", out_dir, dir.c_str(), file.c_str());
-    mkdir(buf, 0771);
+    mkdir(buf, 0775);
     sprintf(file_dir, "%s/%s/%s/%d", out_dir, dir.c_str(), file.c_str(), pixel);
-    mkdir(file_dir, 0771);
+    mkdir(file_dir, 0775);
     printf("writing results to %s\n", file_dir);
     open_output_files(file_dir);
 

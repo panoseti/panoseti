@@ -18,7 +18,7 @@ def image_as_text(img, img_size, bytes_per_pixel, min, max):
         s = '|'
         for col in range(img_size):
             x = img[row*img_size+col]
-            if max:
+            if max != min:
                 y = (x-min)/(max-min)
                 if y<0: y=0
                 if y>1: y=1
