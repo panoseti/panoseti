@@ -20,7 +20,7 @@ import config_file
 
 # Default data
 DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
-DATA_OUT_DIR = '.'
+DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_ph_12pe_100ns'
 
 
 #fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
@@ -28,8 +28,8 @@ DATA_OUT_DIR = '.'
 #fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 # July 20
-fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 fpath_a = f'{DATA_IN_DIR}/{fname_a}'
@@ -165,7 +165,7 @@ def style_fig(fig, fname_a, fname_b, max_time_diff, fig_num):
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
     canvas.get_default_filename = \
         lambda: f"start_{parsed_b['start']}.dome_{parsed_a['dome']}.module_{parsed_a['module']}.seqno_{parsed_a['seqno']}" \
-                + f"__dome_{parsed_a['dome']}.module_{parsed_a['module']}.seqno_{parsed_a['seqno']}" + \
+                + f"__dome_{parsed_b['dome']}.module_{parsed_b['module']}.seqno_{parsed_b['seqno']}" + \
                 f".fignum_{fig_num}.{canvas.get_default_filetype()}"
 
 
@@ -191,11 +191,13 @@ def plot_coincidence(a, b, max_time_diff, fig_num):
     for ax, frame in zip(axs, [a, b]):
         plot_frame(fig, ax, frame)
     style_fig(fig, fname_a, fname_b, max_time_diff, fig_num)
+    #input(fig.canvas.get_default_filename())
+    #plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
     plt.show()
 
 
 def do_search():
-    max_time_diff = 100
+    max_time_diff = 0
     pairs = sorted(search(fpath_a, fpath_b, max_time_diff, 0))
     if len(pairs) == 0:
         print(f'No coincident frames found within {max_time_diff:,} ns of each other.')
