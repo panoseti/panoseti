@@ -18,7 +18,7 @@ import pff
 sys.path.append('../control')
 import config_file
 
-# Default data
+# Default data paths
 DATA_IN_DIR = '/Users/nico/Downloads/719_ph_12pe'
 DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_19_100ns_1500pe'
 
@@ -66,7 +66,7 @@ def get_timestamp(frame):
 
 
 def get_timestamp_ns_diff(a, b):
-    """Returns a tuple (diff in pkt_utc, diff in pkt_nsec)."""
+    """Returns the difference in timestamps between a and b."""
     a_time, b_time = get_timestamp(a), get_timestamp(b)
     return a_time - b_time
 
@@ -85,14 +85,14 @@ def a_after_b(a, b):
 
 
 def get_next_frame(file_obj, frame_num):
-    # Get the next frame from module A
+    # Get the next frame from file_obj.
     j, img = None, None
     try:
         j = pff.read_json(file_obj)
         j = json.loads(j.encode())
         img = pff.read_image(file_obj, 16, 2)
     except Exception as e:
-        # Deal with EOF issue pff.read_json
+        # Deal with EOF issue in pff.read_json
         if repr(e)[:26] == "Exception('bad type code',":
             return None
     if not j or not img:
