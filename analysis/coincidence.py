@@ -33,7 +33,7 @@ DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_100ns_1
 
 # July 20
 fname_a = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
 fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
 #fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
@@ -62,18 +62,6 @@ class QuaboFrame:
         if json:
             self.module_num = json['mod_num']
             self.quabo_num = json['quabo_num']
-
-
-    def __eq__(self, frame):
-        if isinstance(frame, QuaboFrame):
-            flag = True
-            flag &= self.frame_num == frame.frame_num
-            flag &= self.json == frame.json
-            flag &= self.img == frame.img
-            flag &= self.group_num == frame.group_num
-            return flag
-        else:
-            return NotImplemented
 
     def get_quabo_name(self):
         return self.module_num * 4 + self.quabo_num
@@ -112,6 +100,27 @@ class QuaboFrame:
                 img_16x16[row][col] = self.img[16 * row + col]
         return img_16x16
 
+    def __eq__(self, frame):
+        if isinstance(frame, QuaboFrame):
+            flag = True
+            flag &= self.frame_num == frame.frame_num
+            flag &= self.json == frame.json
+            flag &= self.img == frame.img
+            flag &= self.group_num == frame.group_num
+            return flag
+        else:
+            return NotImplemented
+
+    def __repr__(self):
+        r = f'Quabo {self.get_quabo_name()}:\t{self.json}'
+        return r
+
+    def __str__(self):
+        use_keys = ['tv_sec', 'pkt_nsec']
+        less_json = {key : self.json[key] for key in use_keys}
+        s = f'Q{self.get_quabo_name()}: {less_json} ns'
+        return s
+
 
 class ModuleFrame:
     def __init__(self, group_num):
@@ -130,7 +139,7 @@ class ModuleFrame:
         """Return a 32x32 array image from the four 16x16 arrays fX.img:
          f0  |  f1
         ---- | ----
-         f2  |  f3
+         f3  |  f2
         """
         imgs = list()
         for i in range(4):
@@ -139,7 +148,7 @@ class ModuleFrame:
             else:
                 imgs.append(QuaboFrame().get_16x16_image())
         row_0 = np.append(imgs[0], imgs[1], axis=1)
-        row_1 = np.append(imgs[2], imgs[3], axis=1)
+        row_1 = np.append(imgs[3], imgs[2], axis=1)
         img_32x32 = np.append(row_0, row_1, axis=0)
         return img_32x32
 
@@ -150,9 +159,54 @@ class ModuleFrame:
                 max_adc = max(max_adc, frame.get_max_pe())
         return max_adc
 
+    def get_frame_names(self):
+        names = list()
+        for frame in self.frames:
+            name = None
+            if frame:
+                name = f'Quabo {frame.get_quabo_name()}'
+            else:
+                name = 'None'
+            names.append(name)
+        return names
+
+    def get_time_diff_str(self, other_module_frame):
+        s = '\nTime differences in nanoseconds (left - right)\n'
+        row_format = '{:>15}' * 5
+        self_frame_names = self.get_frame_names()
+        other_frame_names = other_module_frame.get_frame_names()
+        s += row_format.format('', *other_frame_names)
+        for i in range(4):
+            row_diffs = list()
+            frame = self.frames[i]
+            for j in range(4):
+                other_frame = other_module_frame.frames[j]
+                if frame and other_frame:
+                    diff = frame.get_timestamp() - other_frame.get_timestamp()
+                else:
+                    diff = ''
+                row_diffs.append(diff)
+            s += '\n' + row_format.format(self_frame_names[i], *row_diffs)
+        return s
+
+    def __str__(self):
+        s = f'Module {self.module_num} (group#{self.group_num}):'
+        for quabo_frame in self.frames:
+            s += f'\n{quabo_frame}'
+        return s
+
+    def __repr__(self):
+        r = f'Module {self.module_num}; Event Group# {self.group_num}:'
+        for quabo_frame in self.frames:
+            r += f'\n\t{repr(quabo_frame)}'
+        return r
+
+
+# Coincidence searching
+
 
 def get_next_frame(file_obj, frame_num):
-    # Get the next frame from file_obj.
+    """Get the next frame from file_obj."""
     j, img = None, None
     try:
         j = pff.read_json(file_obj)
@@ -169,18 +223,16 @@ def get_next_frame(file_obj, frame_num):
     return frame
 
 
-def get_groups(path, max_group_time_diff=15):
+def get_groups(path, max_group_time_diff=20):
     """Returns a dictionary of [frame_number]:[group_number] pairs where each frame is no more than
     max_group_time_diff from the others"""
     groups = dict()
-    group_deque = deque()
     group_num = 0
     frame_num = 0
-    def right_append(f_obj):
+    def get_next(f_obj):
         nonlocal frame_num
         frame = get_next_frame(f, frame_num)
         if frame is not None:
-            group_deque.append(frame)
             frame_num += 1
         return frame
 
@@ -189,19 +241,19 @@ def get_groups(path, max_group_time_diff=15):
             groups[frame.frame_num] = group_num
 
     with open(path, 'rb') as f:
-        prev_frame = right_append(f)
+        prev_frame = get_next(f)
         while True:
-            next_frame = right_append(f)
+            next_frame = get_next(f)
             if next_frame is None:
                 break
             if prev_frame.is_coincident(next_frame, max_group_time_diff):
                 add_entry_to_groups(prev_frame)
                 add_entry_to_groups(next_frame)
             else:
-                #if prev_frame.frame_num in groups:
                 group_num += 1
+                if prev_frame.frame_num in groups:
+                    group_num += 1
                 prev_frame = next_frame
-                group_deque.popleft()
     return groups
 
 
@@ -214,6 +266,7 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
     """
     pairs = list()
     a_frame_num, b_frame_num = 0, 0
+    a_none_group_counter, b_none_group_counter = max(a_groups) + 1, max(b_groups) + 1
     b_deque = deque()
 
     def b_deque_right_append_next_frame(b_file_obj):
@@ -248,11 +301,19 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
                 while right_index < len(b_deque) and a_frame.is_coincident(b_deque[right_index], max_time_diff):
                     b_frame = b_deque[right_index]
                     if b_frame.get_max_pe() >= threshold_max_pe:
-                        # Each coincident pair of frames is added to the list pairs.
+                        # Set the group number for frame A.
                         if a_frame.frame_num in a_groups:
                             a_frame.set_group_num(a_groups[a_frame.frame_num])
+                        else:
+                            a_frame.set_group_num(a_none_group_counter)
+                            a_none_group_counter += 1
+                        # Set the group number for frame B.
                         if b_frame.frame_num in b_groups:
                             b_frame.set_group_num(b_groups[b_frame.frame_num])
+                        else:
+                            b_frame.set_group_num(b_none_group_counter)
+                            b_none_group_counter += 1
+                        # Each coincident pair of frames is added to the list pairs.
                         frame_pair = a_frame, b_frame
                         if frame_pair in pairs:
                             print(f'duplicate frame pair: \n\t{frame_pair[0]}\n\t{frame_pair[1]}')
@@ -267,18 +328,16 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
     return pairs
 
 
+# Matplotlib styling
+
+
 def style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, pair):
     # Style each figure
     parsed_a, parsed_b = pff.parse_name(fname_a), pff.parse_name(fname_b)
     title = "Pulse Height Event from Module {0} and Module {1} within {2:,} ns and max(pe) >= {3:,}.".format(
         parsed_a['module'], parsed_b['module'], max_time_diff, threshold_max_pe)
-    title += "\nLeft: Dome: {0}, Module {1}; Start: {2}; Seq No: {3}, Group No: {4}".format(
-        parsed_a['dome'], parsed_a['module'], parsed_a['start'], parsed_a['seqno'], pair[0].group_num
-    )
-    title += "\nRight: Dome: {0}, Module {1}; Start: {2}; Seq No: {3}, Group No: {4}".format(
-        parsed_b['dome'], parsed_b['module'], parsed_b['start'], parsed_b['seqno'], pair[1].group_num
-    )
-    fig.suptitle(title)
+    msg = f'{pair[0].get_time_diff_str(pair[1])}'
+    fig.suptitle(title + msg)
     fig.tight_layout()
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
@@ -291,25 +350,14 @@ def style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, p
 def style_ax(fig, ax, module_frame, plot):
     # Style each plot.
     ax.set_box_aspect(1)
-    '''
-    metadata_text = 'Mod {0}, Quabo {1}:, frame#{2:,},\npkt_num={3}, pkt_utc={4}, pkt_nsec={5},\n tv_sec={6}, tv_usec={7}'.format(
-        module_frame.module_num, module_frame.get_quabo_name(), module_frame.frame_num, module_frame.json['pkt_num'],
-        'N/A' if 'pkt_utc' not in module_frame.json else module_frame.json['pkt_utc'],
-        module_frame.json['pkt_nsec'], module_frame.json['tv_sec'], module_frame.json['tv_usec'])
-    '''
-    metadata_text = 'Module '
+    metadata_text = f'{module_frame}'
     ax.set_title(metadata_text)
     cbar = fig.colorbar(plot, ax=ax, fraction=0.035, pad=0.05)
     cbar.ax.get_yaxis().labelpad = 15
     cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
 
 
-def plot_quabo_frame(fig, ax, frame, vmax=None):
-    # Draw the 2d image of a frame.
-    frame_img = frame.get_16x16_image()
-    plot = ax.pcolormesh(np.arange(16), np.arange(16), frame_img, vmin=0, vmax=vmax)
-    style_ax(fig, ax, frame, plot)
-
+# Matplotlib plotting
 
 def plot_module_frame(fig, ax, module_frame, vmax=None):
     # Draw the 2d image of a frame.
@@ -318,27 +366,11 @@ def plot_module_frame(fig, ax, module_frame, vmax=None):
     style_ax(fig, ax, module_frame, plot)
 
 
-def plot_coincident_quabos(fig_num, a, b, max_time_diff, threshold_max_pe, save_fig=False):
-    fig, axs = plt.subplots(1, 2, figsize=(15, 8))
-    for ax, frame in zip(axs, [a, b]):
-        plot_module_frame(fig, ax, frame)
-    style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, a, b)
-    #input(fig.canvas.get_default_filename())
-    if save_fig:
-        os.system(f'mkdir -p {DATA_OUT_DIR}')
-        plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
-        plt.close(fig)
-    else:
-        plt.show()
-        plt.close(fig)
-
-
 def plot_coincident_modules(fig_num, pair, max_time_diff, threshold_max_pe, save_fig=False):
-    fig, axs = plt.subplots(1, 2, figsize=(15, 8))
+    fig, axs = plt.subplots(1, 2, figsize=(14, 9))
     for ax, module_frame in zip(axs, pair):
         plot_module_frame(fig, ax, module_frame)
     style_fig(fig, fig_num, fname_a, fname_b, max_time_diff, threshold_max_pe, pair)
-    #input(fig.canvas.get_default_filename())
     if save_fig:
         os.system(f'mkdir -p {DATA_OUT_DIR}')
         plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
@@ -348,23 +380,11 @@ def plot_coincident_modules(fig_num, pair, max_time_diff, threshold_max_pe, save
         plt.close(fig)
 
 
-def do_search_quabo(a_path, b_path, max_time_diff=500, threshold_max_pe=0, verbose=True):
-    pairs = sorted(search_2_modules(a_path, b_path, max_time_diff, threshold_max_pe))
-    if len(pairs) == 0:
-        print(f'No coincident frames found within {max_time_diff:,} ns of each other and with max(pe) >= {threshold_max_pe}.')
-        sys.exit(0)
-    do_plot = input(f'Plot {len(pairs)} figures? (Y/N): ')
-    if do_plot.lower() == 'y':
-        for fig_num, pair in enumerate(pairs):
-            if verbose: print(f'\nFigure {fig_num:,}:')
-            mod_a, mod_b = pair[0], pair[1]
-            if verbose: print(f'Left module: {mod_a[1]}\nRight module : {mod_b[1]}')
-            plot_coincident_quabos(fig_num, mod_a, mod_b, max_time_diff, threshold_max_pe, save_fig=False)
-            fig_num += 1
-
-
 def get_module_frame_pairs(quabo_frame_pairs):
+    """Generate a ModuleFrame object for every frame group from each module.
+    Then, create pairs of these objects if two of their QuaboFrames appear in a pair in quabo_frame_pairs."""
     module_frame_pairs = list()
+
     def get_module_frames(i):
         module_frames = dict()
         for pair in quabo_frame_pairs:
@@ -385,7 +405,9 @@ def get_module_frame_pairs(quabo_frame_pairs):
     return module_frame_pairs
 
 
-def do_search_module(a_path, b_path, max_time_diff=100, threshold_max_pe=1000, verbose=True):
+# Control
+
+def do_search_module(a_path, b_path, max_time_diff=500, threshold_max_pe=1000, verbose=True):
     a_groups, b_groups = get_groups(a_path), get_groups(b_path)
     quabo_frame_pairs = search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_pe)
     module_frame_pairs = get_module_frame_pairs(quabo_frame_pairs)
@@ -395,12 +417,14 @@ def do_search_module(a_path, b_path, max_time_diff=100, threshold_max_pe=1000, v
     do_plot = input(f'Plot {len(module_frame_pairs)} figures? (Y/N): ')
     if do_plot.lower() == 'y':
         for fig_num, pair in enumerate(module_frame_pairs):
-            if verbose: print(f'\nFigure {fig_num:,}:')
-            if verbose: print(f'Left module: {pair[0]}\nRight module : {pair[1]}')
+            if verbose:
+                msg = '\n' + ' * ' * 3 + f'\tFigure {fig_num:,}\t' + ' * ' * 2
+                msg += f'Left: {repr(pair[0])}\nRight: {repr(pair[1])}'
+                msg += f'{pair[0].get_time_diff_str(pair[1])}'
+                print(msg)
             plot_coincident_modules(fig_num, pair, max_time_diff, threshold_max_pe, save_fig=False)
             fig_num += 1
 
 
 if __name__ == '__main__':
-    do_search_module(fpath_a, fpath_b)
-    #check_order(fpath_a)
+    do_search_module(fpath_a, fpath_b, max_time_diff=500, threshold_max_pe=0)
