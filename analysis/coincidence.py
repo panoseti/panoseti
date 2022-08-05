@@ -20,21 +20,21 @@ import config_file
 
 # Default data paths
 DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
-DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_19_100ns_0pe_nexdome_and_astrograph_2'
+DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_100ns_0pe_nexdome_and_astrograph_module_254'
 
 
 #fname_a = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
 #fname_b = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff'
 
 # July 19
-#fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-#fname_a = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
-#fname_b = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
+#a_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#b_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+#b_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 # July 20
 a_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
 b_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
-#fname_b = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
+#b_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
 
 
 
@@ -114,9 +114,9 @@ class QuaboFrame:
         return r
 
     def __str__(self):
-        use_keys = ['tv_sec', 'pkt_nsec']
+        use_keys = ['pkt_nsec']
         less_json = {key : self.json[key] for key in use_keys}
-        s = f'Quabo {self.get_boardloc()}: {less_json}'
+        s = f"Quabo {self.get_boardloc()}: frame#{self.frame_num}, pkt_nsec={less_json['pkt_nsec']}"
         return s
 
 
@@ -125,6 +125,8 @@ class ModuleFrame:
         self.group_num = group_num
         self.frames = [None] * 4
         self.module_num = None
+        # List of group numbers with which this module is paired.
+        self.paired_mfs = list()
 
     def add_quabo_frame(self, quabo_frame):
         """Add a quabo frame to this module frame."""
@@ -133,6 +135,10 @@ class ModuleFrame:
             self.module_num = quabo_frame.module_num
             quabo_frame.set_group_num(self.group_num)
             self.frames[quabo_frame.quabo_index] = quabo_frame
+
+    def update_paired_mfs(self, other_mf):
+        assert other_mf.module_num not in self.paired_mfs
+        self.paired_mfs.append(other_mf.group_num)
 
     def get_32x32_image(self):
         """Return a 32x32 array image from the four 16x16 arrays fX.img:
@@ -189,14 +195,23 @@ class ModuleFrame:
             s += '\n' + row_format.format(self_frame_names[i], *row_diffs)
         return s
 
+    def get_group_list_str(self):
+        grps = 'grouped with '
+        for group_num in self.paired_mfs:
+            grps += str(group_num) + ', '
+        grps = grps[:-2]
+        return grps
+
     def __str__(self):
-        s = f'Module {self.module_num} (group#{self.group_num}):'
+        s = f'Module {self.module_num}; Grp#{self.group_num}:'
         for quabo_frame in self.frames:
             s += f'\n{quabo_frame}'
         return s
 
     def __repr__(self):
         r = f'Module {self.module_num}; Event Group# {self.group_num}:'
+        if len(self.paired_mfs) > 1:
+            r += '\nNOTE: This module is ' + self.get_group_list_str()
         for quabo_frame in self.frames:
             r += f'\n\t{repr(quabo_frame)}'
         return r
@@ -351,8 +366,7 @@ def style_fig(fig, fig_num, a_file_name, b_file_name, max_time_diff, threshold_m
 
 def style_ax(fig, ax, module_frame, plot):
     """Style each plot."""
-    metadata_text = f'{module_frame}'
-    ax.set_title(metadata_text)
+    ax.set_title(str(module_frame))
     cbar = fig.colorbar(plot, ax=ax, fraction=0.035, pad=0.05)
     cbar.ax.get_yaxis().labelpad = 15
     cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
@@ -371,7 +385,7 @@ def plot_module_frame(fig, ax, module_frame, vmax=None):
     style_ax(fig, ax, module_frame, plot)
 
 
-def plot_coincident_modules(a_file_name, b_file_name, fig_num, pair, max_time_diff, threshold_max_pe, save_fig=False):
+def plot_coincident_modules(a_file_name, b_file_name, fig_num, pair, max_time_diff, threshold_max_pe, save_fig):
     fig, axs = plt.subplots(1, 2, figsize=(14, 10))
     for ax, module_frame in zip(axs, pair):
         plot_module_frame(fig, ax, module_frame)
@@ -407,6 +421,8 @@ def get_module_frame_pairs(quabo_frame_pairs):
     for pair in quabo_frame_pairs:
         mp = a_mfs[pair[0].group_num], b_mfs[pair[1].group_num]
         if mp not in mf_pairs:
+            mp[0].update_paired_mfs(mp[1])
+            mp[1].update_paired_mfs(mp[0])
             mf_pairs.append(mp)
     return mf_pairs
 
@@ -431,12 +447,12 @@ def do_coincidence_search(a_file_name, b_file_name, max_time_diff=500, threshold
         for fig_num, pair in enumerate(module_frame_pairs):
             if verbose:
                 msg = '\n' + ' * ' * 3 + f' Figure {fig_num:,} ' + ' * ' * 3
-                msg += f'\nLeft: {repr(pair[0])}\n\nRight: {repr(pair[1])}'
-                msg += f'\n{pair[0].get_time_diff_str(pair[1])}'
+                msg += f'\nLeft: {repr(pair[0])}\nRight: {repr(pair[1])}'
+                msg += f'{pair[0].get_time_diff_str(pair[1])}'
                 print(msg)
-            plot_coincident_modules(a_file_name, b_file_name, fig_num, pair, max_time_diff, threshold_max_pe, save_fig=save_fig)
+            plot_coincident_modules(a_file_name, b_file_name, fig_num, pair, max_time_diff, threshold_max_pe, save_fig)
             fig_num += 1
 
 
 if __name__ == '__main__':
-    do_coincidence_search(a_fname, b_fname, max_time_diff=500, threshold_max_pe=0, verbose=True)
+    do_coincidence_search(a_fname, b_fname, max_time_diff=500, threshold_max_pe=0, verbose=True, save_fig=False)
