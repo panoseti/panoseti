@@ -18,26 +18,9 @@ import pff
 sys.path.append('../control')
 import config_file
 
-# Default data paths
-DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
-DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_100ns_0pe_nexdome_and_astrograph_1'
-
-
-#a_fname = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
-#b_fname = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
-#b_fname = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff'
-
-# July 19
-#a_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-#b_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
-#b_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
-
-# July 20
-a_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
-#a_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
-b_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
-
-
+# Obs_config_filename is hardcoded as a global variable, and we must change its path for get_obs_config to work.
+config_file.obs_config_filename = f'../control/{config_file.obs_config_filename}'
+#plt.rcParams['text.usetex'] = True
 
 '''
 def get_module_file(module_ip_addr):
@@ -48,22 +31,20 @@ def get_module_file(module_ip_addr):
 
 class QuaboFrame:
     """Abstraction of a ph data frame"""
-    def __init__(self, frame_num=None, json=None, img=None):
+    start_file_seconds = dict()
+    max_file_seconds = dict()
+
+    def __init__(self, frame_num, json, img):
         self.frame_num = frame_num
+        self.img = img
         self.json = json
-        if img:
-            self.img = img
-        else:
-            self.img = np.zeros(256)
+        self.module_num = json['mod_num']
+        self.quabo_index = json['quabo_num']
         self.group_num = None
-        self.module_num = None
-        self.quabo_index = None
-        if json:
-            self.module_num = json['mod_num']
-            self.quabo_index = json['quabo_num']
+        self.file_second = None
 
     def __key(self):
-        return (self.frame_num, self.module_num, self.quabo_index)
+        return self.frame_num, self.module_num, self.quabo_index
 
     def __hash__(self):
         return hash(self.__key())
@@ -84,10 +65,19 @@ class QuaboFrame:
         return r
 
     def __str__(self):
-        use_keys = ['pkt_nsec']
-        less_json = {key : self.json[key] for key in use_keys}
-        s = f"Quabo {self.get_boardloc()}: frame#{self.frame_num}, pkt_nsec={less_json['pkt_nsec']}"
+        j = self.json
+        s = "Quabo {0}: tv_sec={1}, pkt_nsec={2}, file_sec={3}/{4}".format(
+            self.get_boardloc(), j['tv_sec'], j['pkt_nsec'], self.file_second,
+            self.max_file_seconds[self.module_num]
+        )
         return s
+
+    def set_file_second(self):
+        if self.module_num not in self.start_file_seconds:
+            self.start_file_seconds[self.module_num] = self.json['tv_sec']
+        else:
+            self.file_second = self.json['tv_sec'] - self.start_file_seconds[self.module_num]
+            self.max_file_seconds[self.module_num] = self.file_second
 
     def set_group_num(self, group_num):
         self.group_num = group_num
@@ -96,7 +86,7 @@ class QuaboFrame:
         return self.module_num * 4 + self.quabo_index
 
     def get_timestamp(self):
-        """Returns a timestamp for this frame."""
+        """Returns a timestamp for this quabo frame."""
         tv_sec = self.json['tv_sec']
         pkt_nsec = self.json['pkt_nsec']
         return tv_sec * 10 ** 9 + pkt_nsec
@@ -124,15 +114,20 @@ class QuaboFrame:
         for row in range(16):
             for col in range(16):
                 img_16x16[row][col] = self.img[16 * row + col]
+        # Rotate by 90, 180, 270 CW, depending on quabo index.
+        rotated_16x16 = np.rot90(img_16x16, self.quabo_index, axes=(0,1))
         return img_16x16
 
 
-
 class ModuleFrame:
+    event_nums = dict()
+
     def __init__(self, group_num):
         self.group_num = group_num
         self.frames = [None] * 4
         self.module_num = None
+        self.event_num = None
+        self.dome_name = None
         # List of group numbers with which this module is paired.
         self.paired_mfs = list()
 
@@ -143,13 +138,15 @@ class ModuleFrame:
         return hash(self.__key())
 
     def __str__(self):
-        s = f'Module {self.module_num}; Grp#{self.group_num}:'
+        s = '{0}; Module {1}; Event#{2}/{3}:'.format(
+            self.dome_name, self.module_num, self.event_num, self.event_nums[self.module_num]
+        )
         for quabo_frame in self.frames:
             s += f'\n{quabo_frame}'
         return s
 
     def __repr__(self):
-        r = f'Module {self.module_num}; Event Group# {self.group_num}:'
+        r = f'Module {self.module_num}; Event# {self.event_num}:'
         if len(self.paired_mfs) > 1:
             r += '\nNOTE: This module is ' + self.get_group_list_str()
         for quabo_frame in self.frames:
@@ -160,13 +157,20 @@ class ModuleFrame:
         """Add a quabo frame to this module frame."""
         assert isinstance(quabo_frame, QuaboFrame)
         if quabo_frame:
-            self.module_num = quabo_frame.module_num
             quabo_frame.set_group_num(self.group_num)
+            self.module_num = quabo_frame.module_num
             self.frames[quabo_frame.quabo_index] = quabo_frame
 
     def update_paired_mfs(self, other_mf):
         assert other_mf.group_num not in self.paired_mfs
         self.paired_mfs.append(other_mf.group_num)
+
+    def set_module_event_num(self):
+        if self.module_num in ModuleFrame.event_nums:
+            ModuleFrame.event_nums[self.module_num] += 1
+        else:
+            ModuleFrame.event_nums[self.module_num] = 0
+        self.event_num = ModuleFrame.event_nums[self.module_num]
 
     def get_32x32_image(self):
         """Return a 32x32 array image from the four 16x16 arrays fX.img:
@@ -179,7 +183,7 @@ class ModuleFrame:
             if self.frames[i]:
                 imgs.append(self.frames[i].get_16x16_image())
             else:
-                imgs.append(QuaboFrame().get_16x16_image())
+                imgs.append(np.zeros((16,16)))
         row_0 = np.append(imgs[0], imgs[1], axis=1)
         row_1 = np.append(imgs[3], imgs[2], axis=1)
         img_32x32 = np.append(row_0, row_1, axis=0)
@@ -205,7 +209,7 @@ class ModuleFrame:
         return names
 
     def get_time_diff_str(self, other_module_frame):
-        s = '\nTime differences in nanoseconds (left - right)\n'
+        s = '\nTime differences in nanoseconds (left module - right module)\n'
         row_format = '{:<15}' * 5
         self_frame_names = self.get_frame_names()
         other_frame_names = other_module_frame.get_frame_names()
@@ -237,10 +241,11 @@ class ModuleFrame:
 def get_next_frame(file_obj, frame_num):
     """Get the next frame from file_obj."""
     j, img = None, None
+    start_timestamp = None
     try:
         j = pff.read_json(file_obj)
         j = json.loads(j.encode())
-        # Img size = 16 x 16 and bytes per pixel = 2.
+        # For ph files: img size = 16 x 16 and bytes per pixel = 2.
         img = pff.read_image(file_obj, 16, 2)
     except Exception as e:
         # Deal with EOF issue in pff.read_json
@@ -248,7 +253,9 @@ def get_next_frame(file_obj, frame_num):
             return None
     if not j or not img:
         return None
-    return QuaboFrame(frame_num, j, img)
+    qf = QuaboFrame(frame_num, j, img)
+    qf.set_file_second()
+    return qf
 
 
 def get_groups(path, max_group_time_diff=300):
@@ -288,17 +295,14 @@ def get_groups(path, max_group_time_diff=300):
     return groups
 
 
-def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_pe, stable):
+def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_pe):
     """
     Identify all pairs of frames from the files a_path and b_path with timestamps that
     differ by no more than 100ns.
     Assumes that the timestamps in each ph file are monotonically increasing when read from top to bottom.
     Returns a list of coincident frame pairs.
     """
-    if stable:
-        pairs = list()
-    else:
-        pairs = set()
+    pairs = set()
     a_qf_num, b_qf_num = 0, 0
     none_counters = [max(a_groups) + 1, max(b_groups) + 1]
     b_deque = deque()
@@ -354,10 +358,7 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
                         # Each coincident pair of frames is added to the list pairs.
                         frame_pair = tuple((a_qf, b_frame))
                         if a_qf != b_frame:
-                            if stable:
-                                pairs.append(frame_pair)
-                            else:
-                                pairs.add(frame_pair)
+                            pairs.add(frame_pair)
                     right_index += 1
                     if right_index >= len(b_deque):
                         append_next_b_frame(fb)
@@ -373,11 +374,11 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
 def style_fig(fig, fig_num, a_file_name, b_file_name, max_time_diff, threshold_max_pe, pair):
     """Style each figure."""
     parsed_a, parsed_b = pff.parse_name(a_file_name), pff.parse_name(b_file_name)
-    title = "Pulse Height Event from Module {0} and Module {1} within {2:,} ns and max(pe) >= {3:,}".format(
+    title = "Pulse Height Event from Module {0} and Module {1} within $\pm${2:,} ns and max(pe) $\geq$ {3:,}".format(
         parsed_a['module'], parsed_b['module'], max_time_diff, threshold_max_pe
     )
-    msg = f'{pair[0].get_time_diff_str(pair[1])}'
-    fig.suptitle(title + msg)
+    time_diffs = f'{pair[0].get_time_diff_str(pair[1])}'
+    fig.suptitle(title + time_diffs)
     fig.tight_layout()
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
@@ -394,24 +395,29 @@ def style_ax(fig, ax, module_frame, plot):
     cbar.ax.get_yaxis().labelpad = 15
     cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
     ax.invert_yaxis()
-    ax.set_axis_off()
+    #ax.set_axis_off()
     ax.set_box_aspect(1)
 
 
 # Matplotlib plotting
 
 
-def plot_module_frame(fig, ax, module_frame, vmax=None):
+def plot_module_frame(fig, ax, module_frame, max_pe):
     # Draw the 2d image of a frame.
     mf_img = module_frame.get_32x32_image()
-    plot = ax.pcolormesh(np.arange(32), np.arange(32), mf_img, vmin=0, vmax=module_frame.get_max_pe())
+    plot = ax.pcolormesh(np.arange(32), np.arange(32), mf_img, vmin=0, vmax=max_pe)
     style_ax(fig, ax, module_frame, plot)
 
 
 def plot_coincident_modules(a_file_name, b_file_name, fig_num, pair, max_time_diff, threshold_max_pe, save_fig):
+    obs_config = config_file.get_obs_config()
+    parsed_a, parsed_b = pff.parse_name(a_file_name), pff.parse_name(b_file_name)
+    max_pe = max(pair[0].get_max_pe(), pair[1].get_max_pe())
     fig, axs = plt.subplots(1, 2, figsize=(14, 10))
     for ax, module_frame in zip(axs, pair):
-        plot_module_frame(fig, ax, module_frame)
+        dome_index = int(parsed_a['dome'])
+        module_frame.dome_name = obs_config['domes'][dome_index]['name'].title()
+        plot_module_frame(fig, ax, module_frame, max_pe)
     style_fig(fig, fig_num, a_file_name, b_file_name, max_time_diff, threshold_max_pe, pair)
     if save_fig:
         os.system(f'mkdir -p {DATA_OUT_DIR}')
@@ -422,38 +428,34 @@ def plot_coincident_modules(a_file_name, b_file_name, fig_num, pair, max_time_di
         plt.close(fig)
 
 
-def get_module_frame_pairs(quabo_frame_pairs, stable):
+def get_module_frame_pairs(quabo_frame_pairs):
     """For both modules, generate a collection of ModuleFrame objects for every frame group number.
     Then, join two ModuleFrame objects if at least one of each of their QuaboFrames appear as a pair in
     quabo_frame_pairs.
     """
     def get_module_frames(i):
         # Initialize Module Frames
+        event_num = 0
         module_frames = dict()
         for pair in quabo_frame_pairs:
             qf = pair[i]
             if qf.group_num not in module_frames:
                 mf = ModuleFrame(qf.group_num)
                 mf.add_quabo_frame(pair[i])
+                mf.set_module_event_num()
                 module_frames[qf.group_num] = mf
             else:
                 module_frames[qf.group_num].add_quabo_frame(pair[i])
         return module_frames
     a_mfs = get_module_frames(0)
     b_mfs = get_module_frames(1)
-    if stable:
-        mf_pairs = list()
-    else:
-        mf_pairs = set()
+    mf_pairs = set()
     for pair in quabo_frame_pairs:
         mp = a_mfs[pair[0].group_num], b_mfs[pair[1].group_num]
         if mp not in mf_pairs:
             mp[0].update_paired_mfs(mp[1])
             mp[1].update_paired_mfs(mp[0])
-            if stable:
-                mf_pairs.append(mp)
-            else:
-                mf_pairs.add(mp)
+            mf_pairs.add(mp)
     return mf_pairs
 
 
@@ -464,16 +466,15 @@ def get_file_path(file_name):
     return f'{DATA_IN_DIR}/{file_name}'
 
 
-def do_coincidence_search(a_file_name, b_file_name, max_time_diff=500, threshold_max_pe=1000, stable=True, verbose=True, save_fig=False):
+def do_coincidence_search(a_file_name, b_file_name, max_time_diff=500, threshold_max_pe=1000, verbose=True, save_fig=False):
     """
     Dispatch function for finding coincidences and plotting module frames.
-    If stable is set to True, the order of figure generation is deterministic, but slow. Otherwise, figure generation
-    is non-deterministic and more efficient.
     """
     a_path, b_path = get_file_path(a_file_name), get_file_path(b_file_name)
     a_groups, b_groups = get_groups(a_path), get_groups(b_path)
-    quabo_frame_pairs = search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_pe, stable)
-    module_frame_pairs = get_module_frame_pairs(quabo_frame_pairs, stable)
+    qfps = search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_pe)
+    module_frame_pairs_unsorted = get_module_frame_pairs(sorted(qfps, key=lambda p: p[0].frame_num))
+    module_frame_pairs = sorted(module_frame_pairs_unsorted, key=lambda mfp: mfp[0].event_num)
     if len(module_frame_pairs) == 0:
         print(f'No coincident frames found within {max_time_diff:,} ns of each other and with max(pe) >= {threshold_max_pe}.')
         sys.exit(0)
@@ -489,5 +490,25 @@ def do_coincidence_search(a_file_name, b_file_name, max_time_diff=500, threshold
             fig_num += 1
 
 
+
+# Default data paths
+DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
+DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_500ns_0pe_nexdome_and_astrograph_254'
+
+
+#a_fname = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
+#b_fname = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff'
+#b_fname = 'start_2022-06-28T19_06_14Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff'
+
+# July 19
+#a_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+#a_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+#b_fname = 'start_2022-07-20T06_44_48Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
+
+# July 20
+#a_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_1.seqno_0.pff' # astrograph 1
+a_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_254.seqno_0.pff' # astrograph 2
+b_fname = 'start_2022-07-21T06_03_03Z.dp_ph16.bpp_2.dome_0.module_3.seqno_0.pff' # nexdome
+
 if __name__ == '__main__':
-    do_coincidence_search(a_fname, b_fname, max_time_diff=500, threshold_max_pe=0, stable=True, verbose=True, save_fig=False)
+    do_coincidence_search(a_fname, b_fname, max_time_diff=500, threshold_max_pe=0, verbose=True, save_fig=False)
