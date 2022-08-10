@@ -3,10 +3,18 @@
 Script that periodically reads each quabo's temperature and
 turns off the corresponding module power supply if its temperature
 exceeds a safe temperature range.
-
-Note: this script calls stop.py if any boards or detectors get too hot.
-
 See https://github.com/panoseti/panoseti/issues/58.
+
+NOTE: this script calls stop.py if any boards or detectors get too hot.
+
+This script can be started with:
+    ./config.py --temp_monitors
+    ./start.py (automatic)
+
+and stopped with:
+    ./config.py --stop_temp_monitors
+    kill 9 [PID of this script]
+
 """
 
 import time
