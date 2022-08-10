@@ -1,5 +1,10 @@
 <?php
 
+function is_pff($f) {
+    if ($f == 'hk.pff') return false;
+    return strstr($f, '.pff');
+}
+
 function page_head($title) {
     echo sprintf('
 <!DOCTYPE html>
@@ -37,7 +42,10 @@ function get_str($key) {
 }
 
 function post_str($key) {
-    return $_POST[$key];
+    if (array_key_exists($key, $_POST)) {
+        return $_POST[$key];
+    }
+    return null;
 }
 
 // make sure a path doesn't go above current dir.
@@ -164,6 +172,31 @@ function row_heading($x, $class='bg-primary') {
     echo sprintf('<tr><th class="%s" colspan=99>%s</th></tr>
         ', $class, $x
     );
+}
+
+function date_str($x) {
+    if ($x == 0) return "---";
+    return gmdate('j M Y', $x);
+}
+
+function time_str($x) {
+    if ($x == 0) return "---";
+    return gmdate('j M Y, G:i:s', $x) . " UTC";
+}
+
+function local_time_str($x) {
+    if ($x == 0) return "---";
+    return date('j M Y, H:i T', $x);
+}
+
+function parse_pff_name($name) {
+    $x = [];
+    foreach (explode('.', $name) as $part) {
+        $p = explode('_', $part);
+        if (count($p)<2) break;
+        $x[$p[0]] = $p[1];
+    }
+    return $x;
 }
 
 ?>

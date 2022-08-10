@@ -43,7 +43,7 @@ def body():
 
     return x
 
-print(body())
+#print(body())
 
 def application(environ, start_response):
     start_response('200 OK', [('Content-type','text/html')])
