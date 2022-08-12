@@ -29,6 +29,14 @@ function tags($run) {
     return $x;
 }
 
+function duration($run, $start_dt) {
+    $end = @file_get_contents("data/$run/run_complete");
+    if (!$end) return 'unknown';
+    $end_dt = DateTime::createFromFormat('Y-m-d\TH:i:s', $end);
+    $diff = $start_dt->diff($end_dt);
+    return $diff->format('%H:%I:%S');
+}
+
 function main() {
     page_head("PanoSETI");
     echo "
@@ -50,22 +58,26 @@ function main() {
     usort($runs, 'compare');
     $prev_day =  '';
     start_table('table_striped');
-    table_header('Start', 'Run type', 'Tags', 'Click to view');
+    table_header('Start<br><small>Click to view</a>', 'Duration', 'Run type', 'Tags');
     foreach ($runs as $run) {
         $name = $run[1];
         $n = parse_pff_name($name);
         $start = $run[0];
-        $s = explode('T', $start);
-        $day = $s[0];
-        $time = $s[1];
+        $dt = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $start,
+            new DateTimeZone("UTC")
+        );
+        $dt->setTimezone(new DateTimeZone("America/Los_Angeles"));
+        $day = $dt->format('d M Y');
+        $time = $dt->format('H:i:s');
         if ($day != $prev_day) {
             row1($day, 99, 'info');
             $prev_day = $day;
         }
         table_row(
-            $time, $n['runtype'],
-            tags($name),
-            "<a href=run.php?name=$name>View</a>"
+            "<a href=run.php?name=$name>$time</a>",
+            duration($name, $dt),
+            $n['runtype'],
+            tags($name)
         );
     }
     end_table();
