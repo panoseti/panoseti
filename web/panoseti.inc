@@ -5,7 +5,13 @@ function is_pff($f) {
     return strstr($f, '.pff');
 }
 
-function page_head($title) {
+define('LOGIN_MANDATORY', 1);
+define('LOGIN_OPTIONAL',  2);
+define('LOGIN_NONE',      3);
+
+$login_name = null;
+
+function page_head($title, $login) {
     echo sprintf('
 <!DOCTYPE html>
 <html lang="en">
@@ -21,6 +27,29 @@ function page_head($title) {
     );
     echo '<div class="container-fluid">';
     echo "<h1>$title</h1>";
+
+    if ($login == LOGIN_NONE) {
+        return;
+    }
+    global $login_name;
+    $login_name = get_login(true);
+    if ($login == LOGIN_MANDATORY && !$login_name) {
+        echo "You must be logged in to view this page.
+            <a href=login.php>Log in</a>.
+        ";
+        page_tail();
+        exit;
+    }
+    if ($login_name) {
+        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.";
+    } else {
+        echo "<a href=login.php>Log in</a>";
+    }
+}
+
+function login_name() {
+    global $login_name;
+    return $login_name;
 }
 
 function page_tail() {
@@ -197,6 +226,37 @@ function parse_pff_name($name) {
         $x[$p[0]] = $p[1];
     }
     return $x;
+}
+
+function hash_passwd($p) {
+    return md5($p."blahblah");
+}
+
+function check_passwd_hash($name, $passwd_hash) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!isset($passwds->$name)) return null;
+    $u = $passwds->$name;
+    if ($u->passwd_hash != $passwd_hash) return null;
+    return $u;
+}
+
+function check_auth($name, $auth) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!isset($passwds->$name)) return null;
+    $u = $passwds->$name;
+    if ($u->auth != $auth) return null;
+    return $u;
+}
+
+function get_login($optional) {
+    $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
+    $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
+    if (!$auth || !$name || !check_auth($name, $auth)) {
+        if ($optional) return null;
+        Header("Location: login.php");
+        exit;
+    }
+    return $name;
 }
 
 ?>

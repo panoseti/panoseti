@@ -6,7 +6,7 @@ require_once("panoseti.inc");
 require_once("pulse.inc");
 
 function show_list($file, $pixel, $dur, $nsigma) {
-    page_head("Pulses above $nsigma sigma");
+    page_head("Pulses above $nsigma sigma", LOGIN_OPTIONAL);
     $fname = pulse_file_name($file, $pixel, 'all', $dur);
     $lines = file($fname);
     start_table("table-striped");

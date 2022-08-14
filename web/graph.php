@@ -16,7 +16,7 @@ function make_url($file, $pixel, $type, $dur, $start, $n) {
 }
 
 function main($start, $n, $file, $pixel, $type, $dur) {
-    page_head(pulse_title($type));
+    page_head(pulse_title($type), LOGIN_OPTIONAL);
 
     $path = pulse_file_name($file, $pixel, $type, $dur);
 
