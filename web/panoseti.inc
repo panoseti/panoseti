@@ -1,6 +1,17 @@
 <?php
 
-function page_head($title) {
+function is_pff($f) {
+    if ($f == 'hk.pff') return false;
+    return strstr($f, '.pff');
+}
+
+define('LOGIN_MANDATORY', 1);
+define('LOGIN_OPTIONAL',  2);
+define('LOGIN_NONE',      3);
+
+$login_name = null;
+
+function page_head($title, $login=LOGIN_MANDATORY) {
     echo sprintf('
 <!DOCTYPE html>
 <html lang="en">
@@ -16,6 +27,29 @@ function page_head($title) {
     );
     echo '<div class="container-fluid">';
     echo "<h1>$title</h1>";
+
+    if ($login == LOGIN_NONE) {
+        return;
+    }
+    global $login_name;
+    $login_name = get_login(true);
+    if ($login == LOGIN_MANDATORY && !$login_name) {
+        echo "You must be logged in to view this page.
+            <a href=login.php>Log in</a>.
+        ";
+        page_tail();
+        exit;
+    }
+    if ($login_name) {
+        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.";
+    } else {
+        echo "<a href=login.php>Log in</a>";
+    }
+}
+
+function login_name() {
+    global $login_name;
+    return $login_name;
 }
 
 function page_tail() {
@@ -37,7 +71,10 @@ function get_str($key) {
 }
 
 function post_str($key) {
-    return $_POST[$key];
+    if (array_key_exists($key, $_POST)) {
+        return $_POST[$key];
+    }
+    return null;
 }
 
 // make sure a path doesn't go above current dir.
@@ -164,6 +201,69 @@ function row_heading($x, $class='bg-primary') {
     echo sprintf('<tr><th class="%s" colspan=99>%s</th></tr>
         ', $class, $x
     );
+}
+
+function date_str($x) {
+    if ($x == 0) return "---";
+    return gmdate('j M Y', $x);
+}
+
+function time_str($x) {
+    if ($x == 0) return "---";
+    return gmdate('j M Y, G:i:s', $x) . " UTC";
+}
+
+function local_time_str($x) {
+    if ($x == 0) return "---";
+    return date('j M Y, H:i T', $x);
+}
+
+function parse_pff_name($name) {
+    $x = [];
+    foreach (explode('.', $name) as $part) {
+        $p = explode('_', $part);
+        if (count($p)<2) break;
+        $x[$p[0]] = $p[1];
+    }
+    return $x;
+}
+
+function hash_passwd($p) {
+    return md5($p."blahblah");
+}
+
+function check_passwd_hash($name, $passwd_hash) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!$passwds) {
+        die ("can't parse passwd file");
+    }
+    if (!isset($passwds->$name)) {
+        return null;
+    }
+    $u = $passwds->$name;
+    if ($u->passwd_hash != $passwd_hash) {
+        return null;
+    }
+    return $u;
+}
+
+function check_auth($name, $auth) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!isset($passwds->$name)) return null;
+    $u = $passwds->$name;
+    if ($u->auth != $auth) return null;
+    return $u;
+}
+
+function get_login($optional) {
+    $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
+    $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
+    if (!$auth || !$name || !check_auth($name, $auth)) {
+        if ($optional) return null;
+        Header("Location: login.php");
+        exit;
+    }
+    return $name;
 }
 
 ?>

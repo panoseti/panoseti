@@ -1,6 +1,7 @@
 # control script utilities
 
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
+import __main__
 import netifaces
 
 #-------------- DEFAULTS ---------------
@@ -300,6 +301,19 @@ def kill_module_temp_monitor():
         if module_temp_monitor_name in p.cmdline():
             os.kill(p.pid, signal.SIGKILL)
 
+# write a message to per-run log file, and to stdout
+#
+def write_log(msg):
+    now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
+    print('%s: %s: %s'%(__main__.__file__, now, msg))
+    try:
+        f = open('run/log.txt', 'a')
+        f.write('%s: %s: %s'%(__main__.__file__, now, msg))
+        f.close()
+    except:
+        print("Can't open log file")
+
+write_log('foobar')
 
 def disk_usage(dir):
     x = 0
