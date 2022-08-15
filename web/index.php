@@ -38,7 +38,7 @@ function duration($run, $start_dt) {
 }
 
 function main() {
-    page_head("PanoSETI", LOGIN_OPTIONAL);
+    page_head("PanoSETI");
     echo "
         <h2>Graphical parameter logs</h2>
         <p>

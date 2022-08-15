@@ -126,7 +126,7 @@ function show_comments($run) {
 }
 
 function main($name) {
-    page_head("Observing run: $name", LOGIN_OPTIONAL);
+    page_head("Observing run: $name");
 
     $dir = "data/$name";
 

@@ -11,7 +11,7 @@ define('LOGIN_NONE',      3);
 
 $login_name = null;
 
-function page_head($title, $login) {
+function page_head($title, $login=LOGIN_MANDATORY) {
     echo sprintf('
 <!DOCTYPE html>
 <html lang="en">
@@ -234,9 +234,16 @@ function hash_passwd($p) {
 
 function check_passwd_hash($name, $passwd_hash) {
     $passwds = json_decode(file_get_contents('passwd.json'));
-    if (!isset($passwds->$name)) return null;
+    if (!$passwds) {
+        die ("can't parse passwd file");
+    }
+    if (!isset($passwds->$name)) {
+        return null;
+    }
     $u = $passwds->$name;
-    if ($u->passwd_hash != $passwd_hash) return null;
+    if ($u->passwd_hash != $passwd_hash) {
+        return null;
+    }
     return $u;
 }
 

@@ -32,7 +32,7 @@ function movie_links($run, $fname) {
 }
 
 function do_pff($run, $fname) {
-    page_head("PanoSETI derived data", LOGIN_OPTIONAL);
+    page_head("PanoSETI derived data");
 
     echo "<font size=+1>";
 

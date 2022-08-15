@@ -37,7 +37,7 @@ function sigma_form($file, $pixel, $dur) {
 }
 
 function main($file, $pixel) {
-    page_head("Software pulse info", LOGIN_OPTIONAL);
+    page_head("Software pulse info");
     $x = explode('/', $file);
     echo sprintf("Run: %s", $x[0]);
     echo sprintf("<p>File: %s", $x[1]);
