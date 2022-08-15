@@ -13,8 +13,10 @@ import redis
 import time
 from datetime import datetime
 import re
+
 import config_file
 from redis_utils import *
+import util
 
 OBSERVATORY = config_file.get_obs_config()["name"]
 DATATYPE_FORMAT = {
@@ -71,7 +73,7 @@ def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list,
             else:
                 msg = f"storeInfluxDB.py: No data in ({rkey.decode('utf-8')}, {key.decode('utf-8')}!"
                 msg += "\n Aborting influx write..."
-                print(msg)
+                util.write_log(msg)
                 continue
         write_influx(client, rkey, data_fields, get_datatype(rkey))
         key_timestamps[rkey] = data_fields['Computer_UTC']
