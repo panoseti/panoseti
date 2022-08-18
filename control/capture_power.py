@@ -15,12 +15,12 @@ import redis_utils
 UPDATE_INTERVAL = 1
 
 
-def get_ups_fields(ups_dict):
+def get_wps_fields(wps_dict):
     """Creates a dictionary of values to write into Redis."""
     try:
-        power_status = "ON" if power.quabo_power_query(ups_dict) else "OFF"
+        power_status = "ON" if power.quabo_power_query(wps_dict) else "OFF"
     except Exception:
-        print(f'capture_power.py: Failed to query {ups_dict}. The login info for this UPS may be incorrect."')
+        print(f'capture_power.py: Failed to query {wps_dict}. The login info for this UPS may be incorrect."')
         raise
     rkey_fields = {
         'Computer_UTC': time.time(),
@@ -29,21 +29,21 @@ def get_ups_fields(ups_dict):
     return rkey_fields
 
 
-def get_ups_rkey(ups_key):
-    """Returns the Redis key for the ups named 'ups_key'."""
-    return ups_key.upper()
+def get_wps_rkey(wps_key):
+    """Returns the Redis key for the wps named 'wps_key'."""
+    return wps_key.upper()
 
 
 def main():
     r = redis_utils.redis_init()
     obs_config = config_file.get_obs_config()
-    ups_keys = [key for key in obs_config.keys() if 'ups' in key.lower()]
+    wps_keys = [key for key in obs_config.keys() if 'wps' in key.lower()]
     print("capture_power.py: Running...")
     while True:
-        for ups_key in ups_keys:
-            rkey = get_ups_rkey(ups_key)
-            ups_dict = obs_config[ups_key]
-            fields = get_ups_fields(ups_dict)
+        for wps_key in wps_keys:
+            rkey = get_wps_rkey(wps_key)
+            wps_dict = obs_config[wps_key]
+            fields = get_wps_fields(wps_dict)
             redis_utils.store_in_redis(r, rkey, fields)
         time.sleep(UPDATE_INTERVAL)
 

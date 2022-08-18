@@ -16,7 +16,7 @@ import redis_utils
 import config_file
 import power
 from hv_updater import get_boardloc
-from capture_power import get_ups_rkey
+from capture_power import get_wps_rkey
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
@@ -72,8 +72,8 @@ def check_all_module_temps(obs_config, r: redis.Redis):
                 continue
 
             # Get the UPS status for this module (ON or OFF).
-            module_ups_key = module['ups']
-            rkey = get_ups_rkey(module_ups_key)
+            module_wps_key = module['wps']
+            rkey = get_wps_rkey(module_wps_key)
             power_status = 'OFF'
             try:
                 power_status = redis_utils.get_casted_redis_value(r, rkey, 'POWER')
@@ -130,9 +130,9 @@ def check_all_module_temps(obs_config, r: redis.Redis):
                             print(msg.format(datetime.datetime.now(), quabo_index,
                                              module_ip_addr, temps[1], MAX_FPGA_TEMP))
                         try:
-                            ups_dict = obs_config[module_ups_key]
-                            power.quabo_power(ups_dict, False)
-                            msg = f'\tSuccessfully turned off power to {module_ups_key}'
+                            wps_dict = obs_config[module_wps_key]
+                            power.quabo_power(wps_dict, False)
+                            msg = f'\tSuccessfully turned off power to {module_wps_key}'
                             print(msg)
                             break
                         except Exception as err:
