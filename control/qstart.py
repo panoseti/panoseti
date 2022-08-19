@@ -5,7 +5,7 @@
 
 import config_file, quabo_driver
 
-def qtest():
+def qstart(s):
     obs_config = config_file.get_obs_config()
     d = obs_config['domes'][0]
     m = d['modules'][0]
@@ -13,10 +13,10 @@ def qtest():
     quabo = quabo_driver.QUABO(ip_addr)
     quabo.send_daq_params(
         quabo_driver.DAQ_PARAMS(
-            True, 10000-1, False, False, False
+            s, 1000-1, False, False, True
         )
     )
     quabo.close()
 
 if __name__ == "__main__":
-    qtest()
+    qstart(True)
