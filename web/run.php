@@ -16,11 +16,11 @@ function add_tag($run) {
         $tags = [];
     }
     $tag = new stdClass;
-    $tag->who = post_str('who');
+    $tag->who = login_name();
     $tag->when = time();
     $tag->tag = post_str('tag');
     if (!$tag->who) {
-        die("must give your name");
+        die("must be logged in");
     }
     if (!$tag->tag) {
         die("must give a tag");
@@ -31,16 +31,17 @@ function add_tag($run) {
 }
 
 function tags_form($run) {
+    if (!login_name()) {
+        echo "<a href=login.php>Log in</a> to add a tag.";
+        return;
+    }
     echo "
         <p>
         Add tag:
-        <p>
         <form method=post action=run.php>
         <input type=hidden name=name value=$run>
-        Tag: <input name=tag>
+        <input name=tag>
         <p><p>
-        Your name: <input name=who>
-        <p>
         <input type=submit name=add_tag value=OK>
         </form>
     ";
@@ -73,11 +74,11 @@ function add_comment($run) {
         $comments = [];
     }
     $c = new stdClass;
-    $c->who = post_str('who');
+    $c->who = login_name();
     $c->when = time();
     $c->comment = post_str('comment');
     if (!$c->who) {
-        die("must give your name");
+        die("must be logged in");
     }
     if (!$c->comment) {
         die("must give a comment");
@@ -88,6 +89,10 @@ function add_comment($run) {
 }
 
 function comments_form($run) {
+    if (!login_name()) {
+        echo "<a href=login.php>Log in</a> to add a comment.";
+        return;
+    }
     echo "
         <p>
         Add comment:
@@ -95,8 +100,6 @@ function comments_form($run) {
         <form method=post action=run.php>
         <input type=hidden name=name value=$run>
         <textarea name=comment rows4 cols=40></textarea>
-        <p>
-        Your name: <input name=who>
         <p>
         <input type=submit name=add_comment value=OK>
         </form>
