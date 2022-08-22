@@ -1,4 +1,4 @@
-# read the first nframes of a PFF file.
+# read the first N frames of a PFF file.
 # compute the x and 1-x quantiles of the pixels
 
 import os, sys

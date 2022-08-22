@@ -131,17 +131,42 @@ function main($name) {
     $dir = "data/$name";
 
     echo "<h2>Data files</h2>";
+    start_table('table-striped');
+    table_header(
+        "Start time<br><small>click for details</small>",
+        "Type",
+        "Dome",
+        "Module",
+        "Seqno",
+        "Size (MB)"
+    );
     foreach (scandir($dir) as $f) {
         if ($f[0] == ".") continue;
         if (!is_pff($f)) continue;
         $n = filesize("data/$name/$f");
         if (!$n) continue;
         $n = number_format($n/1e6, 2);
-        echo "
-            <br>
-            <a href=file.php?run=$name&fname=$f>$f</a> ($n MB)
+        $p = parse_name($f);
+        $start = iso_to_dt($p['start']);
+        dt_to_local($start);
+        table_row(
+            sprintf(
+                '<a href=file.php?run=%s&fname=%s>%s</a>',
+                $name, $f, dt_time_str($start)
+            ),
+            $p['dp'], $p['dome'], $p['module'], $p['seqno'], $n
+        );
+    }
+    end_table();
+    echo "<h2>Derived files</h2>\n";
+    if (!is_dir("derived/$name")) {
+        echo "<a href=process_run.php?run=$name>Generate files</a>";
+    } else {
+        echo "see file details.
+            <p><a href=clean_run.php?name=$name>Remove derived files</a>
         ";
     }
+
     echo "<h2>Ancillary files</h2>";
     foreach (scandir($dir) as $f) {
         if ($f[0] == ".") continue;
