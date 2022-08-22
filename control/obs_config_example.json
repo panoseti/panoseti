@@ -1,7 +1,7 @@
 {
     "name": "Lick",
     "comment": "Example config file",
-    "ups": {
+    "wps": {
         "url": "http://admin:1234@192.168.0.100",
         "quabo_socket": 4
     },

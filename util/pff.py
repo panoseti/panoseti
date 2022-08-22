@@ -84,8 +84,6 @@ def parse_name(name):
         d[y[0]] = y[1]
     return d
 
-    print(time.strptime('2022-06-30T21:03:20Z', '%Y-%m-%dT%H:%M:%SZ'))
-
 # return the directory name for a run
 #
 def run_dir_name(obs_name, run_type):

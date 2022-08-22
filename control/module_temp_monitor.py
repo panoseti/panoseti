@@ -26,8 +26,9 @@ import redis
 import redis_utils
 import config_file
 import power
+
 from util import get_boardloc, are_redis_daemons_running, write_log
-from capture_power import get_ups_rkey
+from capture_power import get_wps_rkey
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
@@ -79,8 +80,8 @@ def check_all_module_temps(obs_config, r: redis.Redis, startup: bool):
         for module in dome['modules']:
             module_ip_addr = module['ip_addr']
             # Get the UPS status for this module (ON or OFF).
-            module_ups_key = module['ups']
-            rkey = get_ups_rkey(module_ups_key)
+            module_wps_key = module['wps']
+            rkey = get_wps_rkey(module_wps_key)
             power_status = 'OFF'
             try:
                 power_status = redis_utils.get_casted_redis_value(r, rkey, 'POWER')
@@ -145,8 +146,9 @@ def check_all_module_temps(obs_config, r: redis.Redis, startup: bool):
                             # Stop any active runs.
                             write_log(f'\tRunning ./stop.py...')
                             os.system('./stop.py')
-                            ups_dict = obs_config[module_ups_key]
-                            power.quabo_power(ups_dict, False)
+                            wps_dict = obs_config[module_wps_key]
+                            power.quabo_power(wps_dict, False)
+                            write_log(f'\tSuccessfully turned off power to {module_wps_key}')
                             break
                         except Exception as err:
                             msg = "*** module_temp_monitor: \n\tFailed to turn off module power supply!"

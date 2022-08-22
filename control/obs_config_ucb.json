@@ -1,7 +1,7 @@
 {
     "name": "UCB_lab",
     "comment": "radio astronomy lab, 425 Campbell",
-    "ups": {
+    "wps": {
         "url": "http://admin:1234@192.168.0.100",
         "quabo_socket": 1
     }, 
@@ -18,7 +18,7 @@
                     "mobo_serialno": "M11",
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.3.248",
-                    "ups": "ups",
+                    "wps": "wps",
                     "azimuth": 77,
                     "elevation": 77,
                     "position_angle": 77

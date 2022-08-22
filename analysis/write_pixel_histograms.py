@@ -1,3 +1,4 @@
+DEPRECATED
 #! /usr/bin/env python3
 
 # write_pixel_histograms.py
@@ -15,19 +16,18 @@ def do_file(infile, outfile, nframes):
         fout.write('%d %d\n'%(i*256, hist[i]))
     print('write histogram for %s'%infile)
 
-def main():
+def do_run(run):
+    for f in os.listdir('data/%s'%run):
+        if not pff.is_pff_file(f):
+            continue
+        if pff.pff_file_type(f) != 'img16':
+            continue
+        do_file(
+            'data/%s/%s'%(run, f),
+            'derived/%s/%s/pixel_histogram.dat'%(run, f),
+            100
+        )
+
+if __name__ == '__main__':
     for run in os.listdir('data'):
         if not pff.is_pff_dir(run): continue
-        for f in os.listdir('data/%s'%run):
-            if not pff.is_pff_file(f):
-                continue
-            if pff.pff_file_type(f) != 'img16':
-                continue
-
-            do_file(
-                'data/%s/%s'%(run, f),
-                'derived/%s/%s/pixel_histogram.dat'%(run, f),
-                100
-            )
-
-main()

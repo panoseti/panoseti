@@ -1,26 +1,26 @@
 #! /usr/bin/env python3
 
-# power.py [ups1] [on|off]
+# power.py [wps1] [on|off]
 #
-# on/off: turn quabo power on/off
+# on/off: turn a web power switch (WPS) on or off
 # neither: query quabo power
-# ups1 (or other name):
-#   use the "ups1" element from obs_config.json
-#   default is "ups"
+# wps1 (or other name):
+#   use the "wps1" element from obs_config.json
+#   default is "wps"
 
 # the Quabos are plugged into a particular socket in
-# a Digital Loggers Inc LPC9 UPS.
+# a Digital Loggers Inc LPC9 WPS.
 # This function turns the power to this socket on or off.
-# The IP addr of the UPS and the socket # come from a config file
+# The IP addr of the WPS and the socket # come from a config file
 # This can be used as a module or a script.
 
 import config_file, sys, os
 
 # turn power on or off
 #
-def quabo_power(ups, on):
-    url = ups['url']
-    socket = ups['quabo_socket']
+def quabo_power(wps, on):
+    url = wps['url']
+    socket = wps['quabo_socket']
     value = 'ON' if on else 'OFF'
     cmd = 'curl -s %s/outlet?%d=%s > /dev/null'%(url,socket,value)
     ret = os.system(cmd)
@@ -29,9 +29,9 @@ def quabo_power(ups, on):
 
 # return True if power is on
 #
-def quabo_power_query(ups):
-    url = ups['url']
-    socket = ups['quabo_socket']
+def quabo_power_query(wps):
+    url = wps['url']
+    socket = wps['quabo_socket']
     cmd = 'curl -s %s/status'%(url)
     out = os.popen(cmd).read()
     off = out.find('state">')
@@ -43,7 +43,7 @@ def quabo_power_query(ups):
 
 if __name__ == "__main__":
     op = 'query'
-    ups_name = 'ups'
+    wps_name = 'wps'
     i = 1
     while i<len(sys.argv):
         if sys.argv[i] == 'on':
@@ -51,19 +51,19 @@ if __name__ == "__main__":
         elif sys.argv[1] == 'off':
             op = 'off'
         else:
-            ups_name = sys.argv[i]
+            wps_name = sys.argv[i]
         i += 1
 
     c = config_file.get_obs_config()
-    ups = c[ups_name]
+    wps = c[wps_name]
     if op == 'query':
-        if quabo_power_query(ups):
+        if quabo_power_query(wps):
             print("Quabo power is on")
         else:
             print("Quabo power is off")
     elif op == 'on':
-        quabo_power(ups, True)
+        quabo_power(wps, True)
     elif op == 'off':
-        quabo_power(ups, False)
+        quabo_power(wps, False)
     else:
-        raise Exception('usage: power.py [ups1] [on|off]')
+        raise Exception('usage: power.py [wps1] [on|off]')
