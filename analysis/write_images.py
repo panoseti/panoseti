@@ -4,14 +4,14 @@
 
 import os, sys
 sys.path.append('/home/panosetigraph/dpa/panoseti/util')
-import pff, make_dirs
+import pff, analysis_util
 
 def do_run(run):
     for f in os.listdir('data/%s'%run):
         if pff.is_pff_file(f):
             if pff.pff_file_type(f) != 'img16':
                 continue
-            make_dirs.make_dirs(run, f)
+            analysis_util.make_dirs(run, f)
 
             # generate images.bin
             #

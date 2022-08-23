@@ -14,7 +14,7 @@
 import os
 import sys
 sys.path.append('../util')
-import pff, make_dirs
+import pff, analysis_util
 
 # make histogram data for pixel values
 #
@@ -49,7 +49,7 @@ def do_run(run):
         if pff.pff_file_type(f) != 'img16':
             continue
         print('processing file ', f)
-        make_dirs.make_dirs(run, f)
+        analysis_util.make_dirs(run, f)
         for pixel in {0, 64, 128, 256, 320, 384}:
             cmd = './pulse --file data/%s/%s --pixel %d'%(run, f, pixel)
             print(cmd)
