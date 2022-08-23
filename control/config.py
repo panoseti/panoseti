@@ -30,8 +30,6 @@ def usage():
 --hv_off                disable detectors
 --maroc_config          configure MAROCs based on data_config.json
                         and quabo_calib_*.json
---temp_monitor         start module_temp_monitor.py.
---stop_temp_monitor    stop the above
 ''')
     sys.exit()
 
@@ -260,12 +258,6 @@ if __name__ == "__main__":
         elif argv[i] == '--maroc_config':
             nops += 1
             op = 'maroc_config'
-        elif argv[i] == '--temp_monitors':
-            nops += 1
-            op = 'temp_monitors'
-        elif argv[i] == '--stop_temp_monitors':
-            nops += 1
-            op = 'stop_temp_monitors'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -308,7 +300,3 @@ if __name__ == "__main__":
     elif op == 'maroc_config':
         data_config = config_file.get_data_config()
         do_maroc_config(modules, quabo_uids, quabo_info, data_config)
-    elif op == 'temp_monitor':
-        util.start_module_temp_monitor()
-    elif op == 'stop_temp_monitor':
-        util.kill_module_temp_monitor()
