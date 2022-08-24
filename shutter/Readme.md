@@ -32,7 +32,7 @@ Connect the .05in, 10pin cable to ATMEL-ICE and to connector J23 on the Shutter 
 The shutter controller board needs external power powered via an adapter board or from the system board.
 
 1)	Start ATMEL Studio 7, on a PC (no Mac or Linux option!)
-2)	See section: Flashing a SAMD21 M0 Board with Atmel Studio in Adafruit reference 3 below as a guide.
+2)	See section: Flashing a SAMD21 M0 Board with Atmel Studio in Adafruit reference 4 below as a guide.
 3)	Select the programming tool, Select Tool->ATMEL-ICE, and set the interface to SWD.
 4)	Select the device, Select -> ATSAMD21G18A
 5)	Un-set Bootloader Protection Fuse, and set it to 0x07 hex, or zero bytes.
