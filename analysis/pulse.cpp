@@ -1,5 +1,5 @@
 // pulse --file path [options]
-// find pulses in a file and output:
+// find pulses in an image file and output:
 //      - pulses above stddev threshold
 //      - optionally, a log of all pulses
 //      - optionally, a log of mean and stddev
@@ -156,22 +156,6 @@ void open_output_files(const char* file_dir) {
             FILE*f = fopen(buf, "w");
             fprintf(f, "frame,value\n");
             all_fout.push_back(f);
-        }
-    }
-}
-
-// flush output files.
-// This is needed because HDF5 crashes at random times :-(
-//
-void flush_output_files() {
-    for (int i=0; i<nlevels; i++) {
-        fflush(thresh_fout[i]);
-        if (log_stats) {
-            fflush(mean_fout[i]);
-            fflush(stddev_fout[i]);
-        }
-        if (log_pulses) {
-            fflush(all_fout[i]);
         }
     }
 }

@@ -12,6 +12,7 @@ quabo_uids_filename = 'quabo_uids.json'
 quabo_info_filename = '../quabos/quabo_info.json'
 detector_info_filename = '../quabos/detector_info.json'
 quabo_calib_filename = '../quabos/quabo_calib_%s.json'
+pointing_filename = 'pointing.json'
 
 # list of config files copied to data dir
 config_file_names = [

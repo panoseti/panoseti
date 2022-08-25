@@ -323,3 +323,10 @@ show_pff.py
 6/27/22
     add nanosec timestamp to video
     make framebrowser for PH mode
+
+8/25/22
+hashpipe.py: make BINDHOST a param in daq_config.py
+start.py without HV on?
+    don't run Nico script either
+start.py
+    send data_packet_dest cmd

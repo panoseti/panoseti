@@ -296,9 +296,7 @@ def write_log(msg):
         f.write('%s: %s: %s'%(__main__.__file__, now, msg))
         f.close()
     except:
-        print("Can't open log file")
-
-write_log('foobar')
+        f = fopen('log.txt', 'a')
 
 def disk_usage(dir):
     x = 0

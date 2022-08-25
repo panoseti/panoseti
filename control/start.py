@@ -47,25 +47,38 @@ def get_daq_params(data_config):
         daq_params.set_flash_params(fp['rate'], fp['level'], fp['width'])
     return daq_params
 
-# start data flow from the quabos
-# for each one:
-# - tell it where to send data
+# Start data flow from the quabos.
+# For each quabo:
+# - tell it where to send HK packets
+# - tell it where to send data packets
 # - set its DAQ mode
 #
-def start_data_flow(quabo_uids, data_config):
+def start_data_flow(quabo_uids, data_config, daq_config):
     daq_params = get_daq_params(data_config)        
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
             if 'daq_node' not in module:
                 continue
             base_ip_addr = module['ip_addr']
+            module_id = util.ip_addr_to_module_id(base_ip_addr)
+            daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
+            daq_node_ip_addr = daq_node['ip_addr']
+            head_node_ip_addr = daq_config['head_node_ip_addr']
             for i in range(4):
                 quabo = module['quabos'][i]
                 if quabo['uid'] == '':
                     continue
                 ip_addr = util.quabo_ip_addr(base_ip_addr, i)
-                print('starting quabo %s'%ip_addr)
                 quabo = quabo_driver.QUABO(ip_addr)
+                print('setting HK packet dest to %s on quabo %s'%(
+                    head_node_ip_addr, ip_addr
+                ))
+                quabo.hk_packet_destination(daq_node_ip_addr)
+                print('setting data packet dest to %s on quabo %s'%(
+                    daq_node_ip_addr, ip_addr
+                ))
+                quabo.data_packet_destination(daq_node_ip_addr)
+                print('setting DAQ mode on quabo %s'%ip_addr)
                 quabo.send_daq_params(daq_params)
                 quabo.close()
 
@@ -170,7 +183,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         config_file.associate(daq_config, quabo_uids)
         config_file.show_daq_assignments(quabo_uids)
         print('starting data flow from quabos')
-        start_data_flow(quabo_uids, data_config)
+        start_data_flow(quabo_uids, data_config, daq_config)
         print('starting recording')
         start_recording(data_config, daq_config, run_name)
     except:
