@@ -89,7 +89,7 @@ def start_data_flow(quabo_uids, data_config, daq_config):
 #       copy config files to run directory
 #       start hashpipe program
 #
-def start_recording(data_config, daq_config, run_name):
+def start_recording(data_config, daq_config, run_name, no_hv):
     my_ip = util.local_ip()
 
     # copy config files to run dir on this node
@@ -119,11 +119,12 @@ def start_recording(data_config, daq_config, run_name):
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
 
-    # start high-voltage updater
-    util.start_hv_updater()
+    if not no_hv:
+        # start high-voltage updater
+        util.start_hv_updater()
 
-    # start module temperature monitor
-    util.start_module_temp_monitor()
+        # start module temperature monitor
+        util.start_module_temp_monitor()
 
     # start hashpipe on DAQ nodes
 
@@ -149,7 +150,7 @@ def start_recording(data_config, daq_config, run_name):
         ret = os.system(cmd)
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
-def start_run(obs_config, daq_config, quabo_uids, data_config):
+def start_run(obs_config, daq_config, quabo_uids, data_config, no_hv):
     my_ip = util.local_ip()
     if my_ip != daq_config['head_node_ip_addr']:
         print('This is not the head node; see daq_config.json')
@@ -185,7 +186,7 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         print('starting data flow from quabos')
         start_data_flow(quabo_uids, data_config, daq_config)
         print('starting recording')
-        start_recording(data_config, daq_config, run_name)
+        start_recording(data_config, daq_config, run_name, no_hv)
     except:
         print(traceback.format_exc())
         print("Couldn't start run.  Run stop.py, then try again.")
@@ -198,13 +199,17 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
 
 if __name__ == "__main__":
     argv = sys.argv
+    no_hv = False
     i = 1
     while i < len(argv):
-        raise Exception('bad arg %s'%argv[i])
+        if argv[i] == '--no_hv':
+            no_hv = True
+        else:
+            raise Exception('bad arg %s'%argv[i])
         i += 1
 
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
-    start_run(obs_config, daq_config, quabo_uids, data_config)
+    start_run(obs_config, daq_config, quabo_uids, data_config, no_hv)
