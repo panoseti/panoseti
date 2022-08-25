@@ -13,6 +13,7 @@ function show_list($file, $pixel, $dur, $nsigma) {
     table_header("time (sec)", "mean intensity", "sigma");
     foreach ($lines as $line) {
         $x = explode(',', $line);
+        if (count($x) < 3) continue;
         $s = (double)$x[2];
         if ($s > $nsigma) {
             table_row($x[0], $x[1], $s);

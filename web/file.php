@@ -45,7 +45,6 @@ function do_pff($run, $fname) {
     start_table();
     row2("Observing run", $run);
     row2("File", $fname);
-    row2("Pixel value histogram", "<a href=derived/$run/$fname/pixel_histogram.dat>View</a>");
     row2("Frame browser",
         "<a href=image.php?run=$run&fname=$fname&frame=0>View</a>"
     );

@@ -41,7 +41,7 @@ function page_head($title, $login=LOGIN_MANDATORY) {
         exit;
     }
     if ($login_name) {
-        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.";
+        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.<p>";
     } else {
         echo "<a href=login.php>Log in</a>";
     }
@@ -203,6 +203,10 @@ function row_heading($x, $class='bg-primary') {
     );
 }
 
+// -------------  date/time stuff --------------
+
+// Unix time to UTC date string
+//
 function date_str($x) {
     if ($x == 0) return "---";
     return gmdate('j M Y', $x);
@@ -217,6 +221,45 @@ function local_time_str($x) {
     if ($x == 0) return "---";
     return date('j M Y, H:i T', $x);
 }
+
+// ISO format string to DateTime
+//
+function iso_to_dt($x) {
+    return DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $x,
+        new DateTimeZone("UTC")
+    );
+}
+
+// local format string to DateTime
+//
+function local_to_dt($x) {
+    return DateTime::createFromFormat('Y-m-d\TH:i:s', $x);
+}
+
+// convert DateTime from UTC to local timezone
+//
+function dt_to_local($dt) {
+    $dt->setTimezone(new DateTimeZone("America/Los_Angeles"));
+}
+
+// difference of DateTimes as string
+//
+function dt_diff_str($dt1, $dt2) {
+     $diff = $dt1->diff($dt2);
+     return $diff->format('%H:%I:%S');
+}
+
+// DateTime to string
+//
+function dt_date_str($dt) {
+    return $dt->format('d M Y');
+}
+
+function dt_time_str($dt) {
+    return $dt->format('H:i:s');
+}
+
+// ---------------------------
 
 function parse_pff_name($name) {
     $x = [];
@@ -265,5 +308,18 @@ function get_login($optional) {
     }
     return $name;
 }
+
+function parse_name($name) {
+    $x = explode('.', $name);
+    $p = [];
+    for ($i=0; $i<count($x)-1; $i++) {
+        $y = $x[$i];
+        $z = explode('_', $y);
+        $p[$z[0]] = $z[1];
+    }
+    return $p;
+}
+
+//print_r(parse_name('start_2022-08-01T03:20:35Z.dp_img16.bpp_2.dome_0.module_1.seqno_0.pff'));
 
 ?>

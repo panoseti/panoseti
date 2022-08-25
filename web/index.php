@@ -32,9 +32,8 @@ function tags($run) {
 function duration($run, $start_dt) {
     $end = @file_get_contents("data/$run/run_complete");
     if (!$end) return 'unknown';
-    $end_dt = DateTime::createFromFormat('Y-m-d\TH:i:s', $end);
-    $diff = $start_dt->diff($end_dt);
-    return $diff->format('%H:%I:%S');
+    $end_dt = local_to_dt($end);
+    return dt_diff_str($start_dt, $end_dt);
 }
 
 function main() {
@@ -63,12 +62,10 @@ function main() {
         $name = $run[1];
         $n = parse_pff_name($name);
         $start = $run[0];
-        $dt = DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $start,
-            new DateTimeZone("UTC")
-        );
-        $dt->setTimezone(new DateTimeZone("America/Los_Angeles"));
-        $day = $dt->format('d M Y');
-        $time = $dt->format('H:i:s');
+        $dt = iso_to_dt($start);
+        dt_to_local($dt);
+        $day = dt_date_str($dt);
+        $time = dt_time_str($dt);
         if ($day != $prev_day) {
             row1($day, 99, 'info');
             $prev_day = $day;
