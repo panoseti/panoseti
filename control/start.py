@@ -73,7 +73,7 @@ def start_data_flow(quabo_uids, data_config, daq_config):
                 print('setting HK packet dest to %s on quabo %s'%(
                     head_node_ip_addr, ip_addr
                 ))
-                quabo.hk_packet_destination(daq_node_ip_addr)
+                quabo.hk_packet_destination(head_node_ip_addr)
                 print('setting data packet dest to %s on quabo %s'%(
                     daq_node_ip_addr, ip_addr
                 ))
