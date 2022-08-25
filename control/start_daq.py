@@ -1,6 +1,12 @@
 #! /usr/bin/env python3
 
-# start_daq.py --run_dir dirname --max_file_size_mb N --daq_ip_addr a.b.c.d --module_id M1 ... --module_id Mn
+# start_daq.py
+#   --run_dir dirname
+#   --max_file_size_mb N
+#   --daq_ip_addr a.b.c.d
+#   --module_id M1 ...
+#   --module_id Mn
+#   [--bindhost x]
 #
 # This script is run (remotely) on a DAQ node to start recording.
 # The run directory already exists.
@@ -25,6 +31,7 @@ def main():
     run_dir = None
     daq_ip_addr = None
     module_ids = []
+    bindhost = "0.0.0.0"
     while i<len(argv):
         if argv[i] == '--run_dir':
             i += 1
@@ -38,6 +45,9 @@ def main():
         elif argv[i] == '--module_id':
             i += 1
             module_ids.append(int(argv[i]))
+        elif argv[i] == '--bindhost':
+            bindhost = argv[i]
+            i += 1
         i += 1
     if not run_dir:
         raise Exception('no run dir specified')
@@ -69,7 +79,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
+    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script

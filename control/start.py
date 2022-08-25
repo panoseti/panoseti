@@ -140,6 +140,8 @@ def start_recording(data_config, daq_config, run_name, no_hv):
         remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d'%(
             node['ip_addr'], run_name, max_file_size_mb
         )
+        if 'bindhost' in node.keys():
+            remote_cmd += ' --bindhost %s'%node['bindhost']
         for m in node['modules']:
             module_id = util.ip_addr_to_module_id(m['ip_addr'])
             remote_cmd += ' --module_id %d'%module_id
