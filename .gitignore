@@ -1,0 +1,4 @@
+control/__pycache__/*
+control/flashuid
+control/get_uids.py
+
