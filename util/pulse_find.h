@@ -68,9 +68,12 @@ struct LEVEL {
     }
 };
 
+// pulse finder for a particular pixel, all time scales
+//
 struct PULSE_FIND {
     long nsamples;  // how many samples processed so far
     int nlevels;
+    int pixel;
     vector<LEVEL> levels;   // 1st and 2nd aren't used
 
     // Called when a pulse is complete.
