@@ -248,13 +248,24 @@ class QUABO:
                 self.have_hk_sock = False
                 return None
 
+    # set destination IP addr for both PH and image packets
+    #
     def data_packet_destination(self, ip_addr_str):
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
         cmd = self.make_cmd(0x0a)
         for i in range(4):
             cmd[i+1] = ip_addr_bytes[i]
             cmd[i+5] = ip_addr_bytes[i]
+        self.flush_rx_buf()
         self.send(cmd)
+        reply = self.sock.recvfrom(12)
+        bytes = reply[0]
+        count = len(bytes)
+        print('got %d bytes in reply'%count)
+        if count != 12:
+            return
+        print('Mac addr for PH packets: %s'%(util.mac_addr_str(bytes[0:6])))
+        print('Mac addr for image packets: %s'%(util.mac_addr_str(bytes[6:12])))
 
     def hk_packet_destination(self, ip_addr_str):
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
@@ -287,7 +298,7 @@ class QUABO:
                 count += 1
             except:
                 break
-        print('got %d bytes'%nbytes)
+        print('flush_rx_buffer: got %d bytes'%nbytes)
 
     def parse_hv_params(self, fhand, cmd):
         for line in fhand:
