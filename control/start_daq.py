@@ -46,8 +46,8 @@ def main():
             i += 1
             module_ids.append(int(argv[i]))
         elif argv[i] == '--bindhost':
-            bindhost = argv[i]
             i += 1
+            bindhost = argv[i]
         i += 1
     if not run_dir:
         raise Exception('no run dir specified')
