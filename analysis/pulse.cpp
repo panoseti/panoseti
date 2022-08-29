@@ -1,36 +1,26 @@
-// pulse --file path [options]
-// find pulses in an image file and output:
-//      - pulses above stddev threshold
-//      - optionally, a log of all pulses
-//      - optionally, a log of mean and stddev
-// The above are output separately for each pulse duration
+// pulse --infile path [options]
 //
-// The output files are written in a directory determined as follows:
-//      input filename is of the form D/F
-//      out_dir/
-//          D/
-//              F/
-//                  pixel/      (0..1023)
+// find pulses in an image file (or 2 files) and output
+//      (for each pulse duration level i: 0,1,...)
 //
-// In either case, the output files are:
-//      thresh_i     pulses above threshold
-//          (i=pulse duration level: 0,1,...)
-//      all_i       all pulses
-//      mean_i      mean
-//      stddev_i    stddev
+//      thresh_i     pulses above a stddev threshold
+//          frame, value, cur_mean, cur_stddev, nsigma, pixel
+//      all_i       all pulses (optional)
+//          frame, value, cur_mean, cur_stddev, nsigma, pixel
 //
 // options:
 //
+// --infile2 path   2nd input file.  Take product of corresponding samples
 // --pixel n        pixel (0..1023)
+//                  if not specified, do all pixels
 // --nlevels n      number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
 //                  default: 64
 // --thresh x       threshold is x times stddev
 //                  default: 3
-// --out_dir x      top-level output directory (see above)
-//                  default: derived
-// --log_pulses     output pulses
-// --log_stats      output history of stats for each pulse duration
+// --out_dir x      output directory
+// --log_all        output all pulses
+// --nframes n      do only first n frames
 //
 
 #include <sys/stat.h>
@@ -42,19 +32,27 @@
 
 #include "pff.h"
 #include "pulse_find.h"
-#include "window_stats.h"
 
 #define WIN_SIZE_DEFAULT    64
 #define MAX_VAL             65536        // ignore values larger than this
 
 int win_size = WIN_SIZE_DEFAULT;
-int pixel=0;
-const char* out_dir = "derived";
+int pixel=-1;
+double nsec = 0;
+const char* out_dir = ".";
+double thresh = 3;
+bool log_all = true;
+vector<FILE*> thresh_fout;
+vector<FILE*> all_fout;
+int nlevels = 16;
+long nframes=0;
+
 
 void usage() {
     printf("options:\n"
-        "   --file x            data file\n"
-        "   --pixel n           pixel (0..255)\n"
+        "   --infile x          input file name\n"
+        "   --infile2 x         2nd input file name\n"
+        "   --pixel n           pixel, 0..1023 (default: all pixels)\n"
         "   --nlevels n         duration levels (default 16)\n"
         "   --win_size n        stats window is n times pulse duration\n"
         "                       default: 64\n"
@@ -62,20 +60,11 @@ void usage() {
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
         "                       default: derived\n"
-        "   --log_pulses        output pulses length 4 and up\n"
-        "   --log_stats         output history of mean and stddev for each pulse duration\n"
+        "   --log_all           output all pulses length 4 and up\n"
+        "   --nframes N         do only first N frames\n"
     );
     exit(1);
 }
-
-double thresh = 3;
-bool log_stats = true, log_pulses=true;
-vector<FILE*> thresh_fout;
-vector<FILE*> mean_fout;
-vector<FILE*> stddev_fout;
-vector<FILE*> all_fout;
-vector<WINDOW_STATS> window_stats;
-int nlevels = 16;
 
 inline double sample_to_sec(long i) {
     return ((double)i)/200.;
@@ -84,24 +73,13 @@ inline double sample_to_sec(long i) {
 // called when a pulse is complete
 //
 void PULSE_FIND::pulse_complete(int level, double value, long isample) {
-    //printf("pulse complete: level %d value %f sample %ld\n", level, value, isample);
-
     int idur = 1<<level;
     isample = isample + 1 - idur;
     if (isample < 0) return;
     value /= idur;
 
-    WINDOW_STATS &wstats = window_stats[level];
+    WINDOW_STATS &wstats = levels[level].window_stats;
     double stddev = wstats.stddev();
-    if (log_stats) {
-        fprintf(mean_fout[level], "%f,%f\n",
-            sample_to_sec(isample), wstats.mean
-        );
-        fprintf(stddev_fout[level], "%f,%f\n",
-            sample_to_sec(isample), stddev
-        );
-    }
-
 #if 0
     printf("pulse_complete: level %d value %f mean %f stddev %f\n",
         level, value, wstats.mean, wstats.stddev
@@ -111,14 +89,14 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     if (value > wstats.mean && stddev>0) {
         nsigma = (value-wstats.mean)/stddev;
         if (nsigma > thresh) {
-            fprintf(thresh_fout[level], "%f,%f\n",
-                sample_to_sec(isample), value
+            fprintf(thresh_fout[level], "%ld,%f,%f,%f,%f,%d\n",
+                isample, value, wstats.mean, stddev, nsigma, pixel
             );
         }
     }
-    if (log_pulses) {
-        fprintf(all_fout[level], "%f,%f,%f\n",
-            sample_to_sec(isample), value, nsigma
+    if (log_all) {
+        fprintf(all_fout[level], "%ld,%f,%f,%f,%f,%d\n",
+            isample, value, wstats.mean, stddev, nsigma, pixel
         );
     }
 
@@ -127,34 +105,22 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     wstats.add_value(value);
 }
 
-// open output files
-//
-void open_output_files(const char* file_dir) {
+void open_output_files() {
     char buf[1024];
     for (int i=0; i<nlevels; i++) {
-        sprintf(buf, "%s/thresh_%d", file_dir, i);
+        sprintf(buf, "%s/thresh_%d", out_dir, i);
         FILE *f = fopen(buf, "w");
         if (!f) {
             printf("can't open %s\n", buf);
             exit(1);
         }
-        fprintf(f, "frame,value\n");
+        fprintf(f, "frame,value,mean,stddev,nsigma,pixel\n");
         thresh_fout.push_back(f);
-        if (log_stats) {
-            sprintf(buf, "%s/mean_%d", file_dir, i);
-            FILE *f = fopen(buf, "w");
-            fprintf(f, "frame,mean\n");
-            mean_fout.push_back(f);
 
-            sprintf(buf, "%s/stddev_%d", file_dir, i);
-            f = fopen(buf, "w");
-            fprintf(f, "frame,stddev\n");
-            stddev_fout.push_back(f);
-        }
-        if (log_pulses) {
-            sprintf(buf, "%s/all_%d", file_dir, i);
+        if (log_all) {
+            sprintf(buf, "%s/all_%d", out_dir, i);
             FILE*f = fopen(buf, "w");
-            fprintf(f, "frame,value\n");
+            fprintf(f, "frame,value,mean,stddev,nsigma,pixel\n");
             all_fout.push_back(f);
         }
     }
@@ -162,37 +128,19 @@ void open_output_files(const char* file_dir) {
 
 unsigned short image[1024];
 
-int do_pff(const char* path) {
-    string dir, file;
-    int retval = pff_parse_path(path, dir, file);
-    if (retval) {
-        fprintf(stderr, "bad path: %s\n", path);
-        exit(1);
-    }
-    FILE *f = fopen(path, "r");
+void do_pixel(const char* infile) {
+    FILE *f = fopen(infile, "r");
     if (!f) {
-        fprintf(stderr, "can't open %s\n", path);
+        fprintf(stderr, "can't open %s\n", infile);
         exit(1);
     }
-
-    // create output directory
-    //
-    char buf[1024], file_dir[1024];
-    mkdir(out_dir, 0777);
-    sprintf(buf, "%s/%s", out_dir, dir.c_str());
-    mkdir(buf, 0777);
-    sprintf(buf, "%s/%s/%s", out_dir, dir.c_str(), file.c_str());
-    mkdir(buf, 0777);
-    sprintf(file_dir, "%s/%s/%s/%d", out_dir, dir.c_str(), file.c_str(), pixel);
-    mkdir(file_dir, 0777);
-    printf("writing results to %s\n", file_dir);
-    open_output_files(file_dir);
+    open_output_files();
 
     string s;
-    PULSE_FIND pulse_find(nlevels);
+    PULSE_FIND pulse_find(nlevels, win_size, pixel);
     int isample = 0;
     while (1) {
-        retval = pff_read_json(f, s);
+        int retval = pff_read_json(f, s);
         if (retval) break;
         retval = pff_read_image(f, sizeof(image), image);
         if (retval) break;
@@ -202,17 +150,49 @@ int do_pff(const char* path) {
         }
         pulse_find.add_sample((double)val);
         isample++;
+        if (isample == nframes) break;
+    }
+}
+
+void do_all_pixels(const char* infile) {
+    FILE *f = fopen(infile, "r");
+    if (!f) {
+        fprintf(stderr, "can't open %s\n", infile);
+        exit(1);
+    }
+    open_output_files();
+    vector<PULSE_FIND*> pfs(1024);
+    for (int i=0; i<1024; i++) {
+        pfs[i] = new PULSE_FIND(nlevels, win_size, i);
+    }
+
+    int isample = 0;
+    string s;
+    while (1) {
+        int retval = pff_read_json(f, s);
+        if (retval) break;
+        retval = pff_read_image(f, sizeof(image), image);
+        if (retval) break;
+        for (pixel=0; pixel<1024; pixel++) {
+            uint16_t val = image[pixel];
+            if (val >= MAX_VAL) {
+                val = 0;
+            }
+            pfs[pixel]->add_sample((double)val);
+        }
+        isample++;
+        if (isample == nframes) break;
     }
 }
 
 int main(int argc, char **argv) {
-    const char* file = 0;
+    const char* infile = 0;
     int i;
     int retval;
 
     for (i=1; i<argc; i++) {
-        if (!strcmp(argv[i], "--file")) {
-            file = argv[++i];
+        if (!strcmp(argv[i], "--infile")) {
+            infile = argv[++i];
         } else if (!strcmp(argv[i], "--pixel")) {
             pixel = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--nlevels")) {
@@ -223,29 +203,26 @@ int main(int argc, char **argv) {
             thresh = atof(argv[++i]);
         } else if (!strcmp(argv[i], "--out_dir")) {
             out_dir = argv[++i];
-        } else if (!strcmp(argv[i], "--log_stats")) {
-            log_stats = true;
-        } else if (!strcmp(argv[i], "--log_pulses")) {
-            log_pulses = true;
+        } else if (!strcmp(argv[i], "--log_all")) {
+            log_all = true;
+        } else if (!strcmp(argv[i], "--nframes")) {
+            nframes = atof(argv[++i]);
         } else {
             usage();
         }
     }
-    if (!file) {
+    if (!infile) {
         usage();
     }
 
-    // set up the stats 
 
-    WINDOW_STATS w(win_size);
-    for (i=0; i<nlevels; i++) {
-        window_stats.push_back(w);
-    }
-
-    if (ends_with(file, ".pff")) {
-        do_pff(file);
-    } else {
-        fprintf(stderr, "unknown file type: %s\n", file);
+    if (!is_pff_file(infile)) {
+        fprintf(stderr, "%s is not a PFF file\n", infile);
         exit(1);
+    }
+    if (pixel >= 0) {
+        do_pixel(infile);
+    } else {
+        do_all_pixels(infile);
     }
 }

@@ -19,7 +19,7 @@ struct WINDOW_STATS {
     double var_by_n;            // variance times window size
     double mean;
 
-    WINDOW_STATS(int _window_size) {
+    void init(int _window_size) {
         window_size = _window_size;
         values.resize(window_size, 0);
         pos = 0;
