@@ -147,6 +147,10 @@ bool ends_with(const char* s, const char* suffix) {
     return (strcmp(s+n-m, suffix)) == 0;
 }
 
+bool is_pff_file(const char* path) {
+    return ends_with(path, ".pff");
+}
+
 void DIRNAME_INFO::make_dirname(string &s) {
     char buf[1024], tbuf[256];
 

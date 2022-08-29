@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <vector>
 
+#include "window_stats.h"
+
 using std::vector;
 
 #define DEBUG 0
@@ -42,7 +44,9 @@ using std::vector;
 //
 struct LEVEL {
     double count[4];
-    int phase;      // which phase if about to start
+    int phase;      // which phase is about to start
+    WINDOW_STATS window_stats;
+        // this is a handy place to keep this
 
     LEVEL() {
         phase = 0;
@@ -68,9 +72,12 @@ struct LEVEL {
     }
 };
 
+// pulse finder for a particular pixel, all time scales
+//
 struct PULSE_FIND {
     long nsamples;  // how many samples processed so far
     int nlevels;
+    int pixel;
     vector<LEVEL> levels;   // 1st and 2nd aren't used
 
     // Called when a pulse is complete.
@@ -82,14 +89,16 @@ struct PULSE_FIND {
         long isample    // index of last sample of pulse
     );
 
-    PULSE_FIND(int _nlevels) {
+    PULSE_FIND(int _nlevels, int window_size, int _pixel) {
         nlevels = _nlevels;
+        pixel = _pixel;
         if (nlevels <= 2) {
             fprintf(stderr, "nlevels must be > 2\n");
             exit(1);
         }
-        LEVEL level;
         for (int i=0; i<nlevels; i++) {
+            LEVEL level;
+            level.window_stats.init(window_size);
             levels.push_back(level);
         }
         nsamples = 0;

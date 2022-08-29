@@ -71,7 +71,7 @@ def local_ip():
     raise Exception("can't get local IP")
 
 def ip_addr_str_to_bytes(ip_addr_str):
-    pieces = ip_addr_str.split('.')
+    pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
         raise Exception('bad IP addr %s'%ip_addr_str)
     bytes = bytearray(4)
@@ -93,6 +93,12 @@ def ip_addr_to_module_id(ip_addr_str):
     pieces = ip_addr_str.split('.')
     n = int(pieces[3]) + 256*int(pieces[2])
     return (n>>2)&255
+
+def mac_addr_str(bytes):
+    s = ['']*6
+    for i in range(6):
+        s[i] = hex(bytes[i])[2:]
+    return ':'.join(s)
 
 #-------------- BINARY DATA ---------------
 
@@ -311,9 +317,7 @@ def write_log(msg):
         f.write('%s: %s: %s'%(__main__.__file__, now, msg))
         f.close()
     except:
-        print("Can't open log file")
-
-write_log('foobar')
+        f = fopen('log.txt', 'a')
 
 def disk_usage(dir):
     x = 0

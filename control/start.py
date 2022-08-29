@@ -47,25 +47,38 @@ def get_daq_params(data_config):
         daq_params.set_flash_params(fp['rate'], fp['level'], fp['width'])
     return daq_params
 
-# start data flow from the quabos
-# for each one:
-# - tell it where to send data
+# Start data flow from the quabos.
+# For each quabo:
+# - tell it where to send HK packets
+# - tell it where to send data packets
 # - set its DAQ mode
 #
-def start_data_flow(quabo_uids, data_config):
+def start_data_flow(quabo_uids, data_config, daq_config):
     daq_params = get_daq_params(data_config)        
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
             if 'daq_node' not in module:
                 continue
             base_ip_addr = module['ip_addr']
+            module_id = util.ip_addr_to_module_id(base_ip_addr)
+            daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
+            daq_node_ip_addr = daq_node['ip_addr']
+            head_node_ip_addr = daq_config['head_node_ip_addr']
             for i in range(4):
                 quabo = module['quabos'][i]
                 if quabo['uid'] == '':
                     continue
                 ip_addr = util.quabo_ip_addr(base_ip_addr, i)
-                print('starting quabo %s'%ip_addr)
                 quabo = quabo_driver.QUABO(ip_addr)
+                print('setting HK packet dest to %s on quabo %s'%(
+                    head_node_ip_addr, ip_addr
+                ))
+                quabo.hk_packet_destination(head_node_ip_addr)
+                print('setting data packet dest to %s on quabo %s'%(
+                    daq_node_ip_addr, ip_addr
+                ))
+                quabo.data_packet_destination(daq_node_ip_addr)
+                print('setting DAQ mode on quabo %s'%ip_addr)
                 quabo.send_daq_params(daq_params)
                 quabo.close()
 
@@ -76,7 +89,7 @@ def start_data_flow(quabo_uids, data_config):
 #       copy config files to run directory
 #       start hashpipe program
 #
-def start_recording(data_config, daq_config, run_name):
+def start_recording(data_config, daq_config, run_name, no_hv):
     my_ip = util.local_ip()
 
     # copy config files to run dir on this node
@@ -106,11 +119,12 @@ def start_recording(data_config, daq_config, run_name):
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
 
-    # start high-voltage updater
-    util.start_hv_updater()
+    if not no_hv:
+        # start high-voltage updater
+        util.start_hv_updater()
 
-    # start module temperature monitor
-    util.start_module_temp_monitor()
+        # start module temperature monitor
+        util.start_module_temp_monitor()
 
     # start hashpipe on DAQ nodes
 
@@ -126,6 +140,8 @@ def start_recording(data_config, daq_config, run_name):
         remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d'%(
             node['ip_addr'], run_name, max_file_size_mb
         )
+        if 'bindhost' in node.keys():
+            remote_cmd += ' --bindhost %s'%node['bindhost']
         for m in node['modules']:
             module_id = util.ip_addr_to_module_id(m['ip_addr'])
             remote_cmd += ' --module_id %d'%module_id
@@ -136,15 +152,16 @@ def start_recording(data_config, daq_config, run_name):
         ret = os.system(cmd)
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
-def start_run(obs_config, daq_config, quabo_uids, data_config):
+def start_run(obs_config, daq_config, quabo_uids, data_config, no_hv):
     my_ip = util.local_ip()
     if my_ip != daq_config['head_node_ip_addr']:
-        print('This is not the head node; see daq_config.json')
+        print('This node (%s) is not the head node specified in daq_config.json (%s)'%(my_ip, daq_config['head_node_ip_addr']))
         return False
 
     rn = util.read_run_name()
     if (rn):
-        print('A run is already in progress.  Run stop.py, then try again.')
+        print('A run is already in progress: %s' %rn)
+        print('Run stop.py, then try again.')
         return False
 
     if util.is_hk_recorder_running():
@@ -170,9 +187,9 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
         config_file.associate(daq_config, quabo_uids)
         config_file.show_daq_assignments(quabo_uids)
         print('starting data flow from quabos')
-        start_data_flow(quabo_uids, data_config)
+        start_data_flow(quabo_uids, data_config, daq_config)
         print('starting recording')
-        start_recording(data_config, daq_config, run_name)
+        start_recording(data_config, daq_config, run_name, no_hv)
     except:
         print(traceback.format_exc())
         print("Couldn't start run.  Run stop.py, then try again.")
@@ -185,13 +202,17 @@ def start_run(obs_config, daq_config, quabo_uids, data_config):
 
 if __name__ == "__main__":
     argv = sys.argv
+    no_hv = False
     i = 1
     while i < len(argv):
-        raise Exception('bad arg %s'%argv[i])
+        if argv[i] == '--no_hv':
+            no_hv = True
+        else:
+            raise Exception('bad arg %s'%argv[i])
         i += 1
 
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
-    start_run(obs_config, daq_config, quabo_uids, data_config)
+    start_run(obs_config, daq_config, quabo_uids, data_config, no_hv)
