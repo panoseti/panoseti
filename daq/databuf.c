@@ -29,7 +29,7 @@ hashpipe_databuf_t *HSD_output_databuf_create(int instance_id, int databuf_id){
     // Calc databuf sizes
     size_t header_size = sizeof(hashpipe_databuf_t) + sizeof(HSD_output_header_cache_alignment);
     size_t block_size = sizeof(HSD_output_block_t);
-    int n_block = N_INPUT_BLOCKS;
+    int n_block = N_OUTPUT_BLOCKS;
     return hashpipe_databuf_create(
         instance_id, databuf_id, header_size, block_size, n_block
     );
