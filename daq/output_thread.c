@@ -20,6 +20,16 @@
 #include "pff.h"
 #include "dp.h"
 
+// Use this stdio buffer size (1M) for image-mode files.
+// Default is 4K
+//
+#define IM_BUFSIZE 1048576
+
+void increase_buffer(FILE* f, int bufsize) {
+    char* b = (char*)malloc(bufsize);
+    setvbuf(f, b, _IOFBF, bufsize);
+}
+
 // Structure for storing file pointers opened by output thread.
 // A file is created for all possible data products described by pff.h
 //
@@ -27,9 +37,9 @@ struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;
     FILE *bit16Img, *bit8Img, *PHImg;
-    FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
-    void make_files(const char *diskDir, const char *file_mode);
-    void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
+    FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo);
+    void make_files(const char *diskDir);
+    void new_dp_file(DATA_PRODUCT dp, const char *diskDir);
     void increment_seqno();
     int set_bpp(int value);
 };
@@ -37,49 +47,49 @@ struct FILE_PTRS{
 // Constructor for file pointer structure
 // diskDir: directory used for writing all files monitored by file pointer
 // fileInfo: file information structure stored by file pointer
-// file_mode: file editing mode for all files within file pointer
 
-FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode){
+FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo){
     fileInfo->copy_to(&(this->file_info));
-    this->make_files(diskDir, file_mode);
+    make_files(diskDir);
 }
 
 // Create files for the file pointer stucture given a directory.
-// diskDir: directory for where the files will be created by file pointers
-// file_mode: file editing mode for the new file created
+// diskDir: directory where the files will be created
 
-void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
+void FILE_PTRS::make_files(const char *diskDir){
     string fileName;
     string dirName;
     dirName = diskDir;
     
     for (int dp = DP_BIT16_IMG; dp <= DP_PH_IMG; dp++){
-        this->file_info.data_product = (DATA_PRODUCT)dp;
+        file_info.data_product = (DATA_PRODUCT)dp;
         
         switch (dp){
             case DP_BIT16_IMG:
-                this->set_bpp(2);
+                set_bpp(2);
                 break;
             case DP_BIT8_IMG:
-                this->set_bpp(1);
+                set_bpp(1);
                 break;
             case DP_PH_IMG:
-                this->set_bpp(2);
+                set_bpp(2);
                 break;
             default:
                 break;
         }
 
-        this->file_info.make_filename(fileName);
+        file_info.make_filename(fileName);
         switch (dp){
             case DP_BIT16_IMG:
-                this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
+                bit16Img = fopen((dirName + fileName).c_str(), "w");
+                increase_buffer(bit16Img, IM_BUFSIZE);
                 break;
             case DP_BIT8_IMG:
-                this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
+                bit8Img = fopen((dirName + fileName).c_str(), "w");
+                increase_buffer(bit8Img, IM_BUFSIZE);
                 break;
             case DP_PH_IMG:
-                this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
+                PHImg = fopen((dirName + fileName).c_str(), "w");
                 break;
             default:
                 break;
@@ -95,32 +105,31 @@ void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
 // Create a new file for a specified data product within file structure.
 // called when a certain data product file has reached max file size.
 // dp: Data product of the file that needs to be created.
-// diskDir: Disk directory for the file pointer.
-// file_mode: File mode of the new file created.
+// diskDir: directory
 
-void FILE_PTRS::new_dp_file(
-    DATA_PRODUCT dp, const char *diskDir, const char *file_mode
-){
+void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir){
     string fileName;
     string dirName;
     dirName = diskDir;
 
-    this->file_info.data_product = (DATA_PRODUCT)dp;
-    this->file_info.start_time = time(NULL);
-    this->file_info.make_filename(fileName);
+    file_info.data_product = (DATA_PRODUCT)dp;
+    file_info.start_time = time(NULL);
+    file_info.make_filename(fileName);
 
     switch (dp){
         case DP_BIT16_IMG:
-            fclose(this->bit16Img);
-            this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
+            fclose(bit16Img);
+            bit16Img = fopen((dirName + fileName).c_str(), "w");
+            increase_buffer(bit16Img, IM_BUFSIZE);
             break;
         case DP_BIT8_IMG:
-            fclose(this->bit8Img);
-            this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
+            fclose(bit8Img);
+            bit8Img = fopen((dirName + fileName).c_str(), "w");
+            increase_buffer(bit8Img, IM_BUFSIZE);
             break;
         case DP_PH_IMG:
-            fclose(this->PHImg);
-            this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
+            fclose(PHImg);
+            PHImg = fopen((dirName + fileName).c_str(), "w");
             break;
         default:
             break;
@@ -132,20 +141,20 @@ void FILE_PTRS::new_dp_file(
     printf("Created file %s\n", (dirName + fileName).c_str());
 }
 
-// Increments the seqno for the filename of new files
+// Increment the seqno for the filename of new files
 
 void FILE_PTRS::increment_seqno(){
-    this->file_info.seqno += 1;
+    file_info.seqno += 1;
 }
 
-// Sets the value for bytes per pixel of new files
+// Set the value for bytes per pixel of new files
 // return 1 if it was successful and return 0 if it failed
 
 int FILE_PTRS::set_bpp(int value){
     if (value != 1 && value != 2){
         return 0;
     } 
-    this->file_info.bytes_per_pixel = value;
+    file_info.bytes_per_pixel = value;
     return 1;
 }
 
@@ -168,7 +177,7 @@ FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
     time_t t = time(NULL);
 
     FILENAME_INFO filenameInfo(t, DP_NONE, 0, dome, module, 0);
-    return new FILE_PTRS(diskDir, &filenameInfo, "w");
+    return new FILE_PTRS(diskDir, &filenameInfo);
 }
 
 // Write image header as JSON
@@ -238,10 +247,10 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
         moduleToWrite->increment_seqno();
         if (bits_per_pixel == 16){
             moduleToWrite->set_bpp(2);
-            moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
+            moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory);
         } else if (bits_per_pixel == 8){
             moduleToWrite->set_bpp(1);
-            moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory, "w");
+            moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory);
         }
     }
 
@@ -306,7 +315,7 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
         moduleToWrite->increment_seqno();
         if (mode == 0x1){
             moduleToWrite->set_bpp(2);
-            moduleToWrite->new_dp_file(DP_PH_IMG, run_directory, "w");
+            moduleToWrite->new_dp_file(DP_PH_IMG, run_directory);
         }
     }
     return 1;
@@ -398,7 +407,8 @@ static int init(hashpipe_thread_args_t *args) {
     // Remove old run directory so that info isn't saved for next run.
     hdel(st.buf, "RUNDIR");
 
-    // Check to see if the run directory provided is an accurage directory
+    // Check if the run directory exits
+    //
     switch(check_directory(run_directory)) {
         case DIR_EXISTS:
             printf("Run directory: %s\n", run_directory);
