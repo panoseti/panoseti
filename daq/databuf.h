@@ -32,8 +32,8 @@
     // Number of input packets stored in each block of the input buffer
 #define OUT_MOD_PER_BLOCK           16384
     // Max Number of Modules stored in each block of the output buffer
-#define OUT_COINC_PER_BLOCK         16384
-    // Max Number of coincidence packets stored in each block of the output buffer
+#define OUT_PH_IMG_PER_BLOCK         16384
+    // Max # of PH packets stored in each block of the output buffer
 
 // Imaging Data Values and characteristics of modules
 
@@ -52,9 +52,9 @@
 #define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME
     // Byte size of output frame block.
     // Contains frames for modules excluding headers
-#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE
-    // Byte size of output coincidence block.
-    // Contains frames for coincidence packets excluding headers
+#define BYTES_PER_OUTPUT_PH_BLOCK    OUT_PH_IMG_PER_BLOCK*BYTES_PER_PKT_IMAGE
+    // Byte size of output PH block.
+    // Contains frames for PH packets excluding headers
 
 // the algorithm constants for the hashpipe framework threads.
 // Nanosecond threshold is used for syncing and grouping packets
@@ -170,8 +170,8 @@ typedef struct HSD_output_block_header {
     MODULE_IMAGE_HEADER img_mod_head[OUT_MOD_PER_BLOCK];
     int n_img_module;
 
-    PACKET_HEADER coinc_pkt_head[OUT_COINC_PER_BLOCK];
-    int n_coinc_img;
+    PACKET_HEADER ph_pkt_head[OUT_PH_IMG_PER_BLOCK];
+    int n_ph_img;
 
     int INTSIG;
 } HSD_output_block_header_t;
@@ -187,7 +187,7 @@ typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;
     char img_block[BYTES_PER_OUTPUT_FRAME_BLOCK];
-    char coinc_block[BYTES_PER_OUTPUT_COINC_BLOCK];
+    char ph_block[BYTES_PER_OUTPUT_PH_BLOCK];
 } HSD_output_block_t;
 
 // Output data buffer containing multiple data blocks

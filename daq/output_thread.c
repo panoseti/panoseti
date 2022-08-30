@@ -228,32 +228,32 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     return 1;
 }
 
-// Write the coincidence header information to file.
+// Write PH header information to file.
 //
-int write_coinc_header_json(
+int write_ph_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int packetIndex
 ){
     fprintf(f,
         "{ \"acq_mode\": %u, \"mod_num\": %u, \"quabo_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
-        dataHeader->coinc_pkt_head[packetIndex].acq_mode,
-        dataHeader->coinc_pkt_head[packetIndex].mod_num,
-        dataHeader->coinc_pkt_head[packetIndex].quabo_num,
-        dataHeader->coinc_pkt_head[packetIndex].pkt_num,
-        dataHeader->coinc_pkt_head[packetIndex].pkt_utc,
-        dataHeader->coinc_pkt_head[packetIndex].pkt_nsec,
-        dataHeader->coinc_pkt_head[packetIndex].tv_sec,
-        dataHeader->coinc_pkt_head[packetIndex].tv_usec
+        dataHeader->ph_pkt_head[packetIndex].acq_mode,
+        dataHeader->ph_pkt_head[packetIndex].mod_num,
+        dataHeader->ph_pkt_head[packetIndex].quabo_num,
+        dataHeader->ph_pkt_head[packetIndex].pkt_num,
+        dataHeader->ph_pkt_head[packetIndex].pkt_utc,
+        dataHeader->ph_pkt_head[packetIndex].pkt_nsec,
+        dataHeader->ph_pkt_head[packetIndex].tv_sec,
+        dataHeader->ph_pkt_head[packetIndex].tv_usec
     );
 }
 
-// Write the coincidence(Pulse Height) image to file
+// Write a Pulse Height image to file
 // dataBlock: Data block of the images to be written
 // packetIndex: The packet index for the specified output block.
 
-int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
+int write_module_ph_file(HSD_output_block_t *dataBlock, int packetIndex){
     FILE *f;
-    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coinc_pkt_head[packetIndex].mod_num];
-    char mode = dataBlock->header.coinc_pkt_head[packetIndex].acq_mode;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.ph_pkt_head[packetIndex].mod_num];
+    char mode = dataBlock->header.ph_pkt_head[packetIndex].acq_mode;
 
     if (mode == 0x1) {
         f = moduleToWrite->PHImg;
@@ -273,13 +273,13 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
 
     pff_start_json(f);
 
-    write_coinc_header_json(f, &(dataBlock->header), packetIndex);
+    write_ph_header_json(f, &(dataBlock->header), packetIndex);
 
     pff_end_json(f);
 
     pff_write_image(f, 
         PIXELS_PER_IMAGE*2, 
-        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE)
+        dataBlock->ph_block + (packetIndex*BYTES_PER_PKT_IMAGE)
     );
 
     if (ftell(f) > max_file_size){
@@ -485,8 +485,8 @@ static void *run(hashpipe_thread_args_t *args) {
             write_module_img_file(&(db->block[block_idx]), i);
         }
 
-        for (int i = 0; i < db->block[block_idx].header.n_coinc_img; i++){
-            write_module_coinc_file(&(db->block[block_idx]), i);
+        for (int i = 0; i < db->block[block_idx].header.n_ph_img; i++){
+            write_module_ph_file(&(db->block[block_idx]), i);
         }
 
         if (QUITSIG) {
