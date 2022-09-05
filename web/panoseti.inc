@@ -9,6 +9,8 @@ define('LOGIN_MANDATORY', 1);
 define('LOGIN_OPTIONAL',  2);
 define('LOGIN_NONE',      3);
 
+define('ANALYSIS_ROOT', 'analysis')
+
 $login_name = null;
 
 function page_head($title, $login=LOGIN_MANDATORY) {

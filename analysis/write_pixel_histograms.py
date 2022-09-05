@@ -24,7 +24,7 @@ def do_run(run):
             continue
         do_file(
             'data/%s/%s'%(run, f),
-            'derived/%s/%s/pixel_histogram.dat'%(run, f),
+            '%s/%s/%s/pixel_histogram.dat'%(ANALYSIS_ROOT, run, f),
             100
         )
 

@@ -8,7 +8,7 @@
 
 import sys, random, json
 sys.path.insert(0, '../util')
-import pff, pixel_histogram
+import pff, image_quantiles
 
 def image_as_text(img, img_size, bytes_per_pixel, min, max):
     scale = ' .,-+=#@'
@@ -123,7 +123,7 @@ def main():
     else:
         raise Exception("bad data product %s"%dp)
 
-    [min, max] = pixel_histogram.get_quantiles(
+    [min, max] = image_quantiles.get_quantiles(
         fname, image_size, bytes_per_pixel, quantile
     )
     print('pixel 10/90 percentiles: %d, %d'%(min, max))

@@ -159,17 +159,17 @@ function main($name) {
     }
     end_table();
     echo "<h2>Analysis</h2>\n";
-    if (!is_dir("derived/$name")) {
+    if (!is_dir(ANALYSIS_ROOT."/$name")) {
         echo "<a href=process_run.php?run=$name>Generate files</a>";
     } else {
-        $sname = "derived/$name/summary.json";
+        $sname = ANALYSIS_ROOT."/$name/summary.json";
         if (file_exists($sname)) {
             $s = json_decode(file_get_contents($sname));
             echo "Analysis done $s->when";
             echo "<p><a href=$sname>Parameters</a>";
         }
         echo "<p>See data file details.
-            <p><a href=clean_run.php?name=$name>Remove derived files</a>
+            <p><a href=clean_run.php?name=$name>Remove analysis files</a>
         ";
     }
 

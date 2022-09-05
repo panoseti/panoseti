@@ -11,6 +11,7 @@
 // options:
 //
 // --infile2 path   2nd input file.  Take product of corresponding samples
+//                  (not implemented)
 // --pixel n        pixel (0..1023)
 //                  if not specified, do all pixels
 // --nlevels n      number of duration octaves (default 16)
@@ -59,7 +60,7 @@ void usage() {
         "   --thresh x          threshold is mean + x times stddev\n"
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
-        "                       default: derived\n"
+        "                       default: .\n"
         "   --log_all           output all pulses length 4 and up\n"
         "   --nframes N         do only first N frames\n"
     );

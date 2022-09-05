@@ -23,20 +23,20 @@ function movie_form($run, $fname) {
 
 function movie_links($run, $fname) {
     $x = [];
-    foreach (scandir("derived/$run/$fname") as $f) {
+    foreach (scandir(ANALYSIS_ROOT."/$run/$fname") as $f) {
         if (strstr($f, '.mp4')) {
-            $x[] = "<a href=derived/$run/$fname/$f>$f</a>";
+            $x[] = "<a href=".ANALYSIS_ROOT."/$run/$fname/$f>$f</a>";
         }
     }
     return implode('<br>', $x);
 }
 
 function do_pff($run, $fname) {
-    page_head("PanoSETI derived data");
+    page_head("PanoSETI analysis data");
 
     echo "<font size=+1>";
 
-    $dir = "derived/$run/$fname";
+    $dir = ANALYSIS_ROOT."/$run/$fname";
     if (!is_dir($dir)) {
         echo "<p>No data available - may need to run analysis scripts.\n";
         page_tail();
@@ -51,13 +51,16 @@ function do_pff($run, $fname) {
     row2("Movies", movie_links($run, $fname));
     row2("Make new movie", movie_form($run, $fname));
     $x = 'Pixels: ';
-    foreach (scandir("derived/$run/$fname") as $pixel) {
+    foreach (scandir(ANALYSIS_ROOT."/$run/$fname") as $pixel) {
         if ($pixel[0] == ".") continue;
         if (!is_numeric($pixel)) continue;
         $url = "pulse.php?file=$run/$fname&pixel=$pixel";
         $x .= "&nbsp;&nbsp <a href=$url>$pixel</a>\n";
     }
     row2("Pulse info", $x);
+    row2("Download",
+        "<a href=data/$run/$fname>PFF</a> &middot; FITS"
+    );
     end_table();
     page_tail();
 }
