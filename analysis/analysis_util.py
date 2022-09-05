@@ -14,14 +14,15 @@ ANALYSIS_ROOT = 'analysis'
 #
 def write_summary(analysis_dir, summary):
     summary['when'] = datetime.datetime.utcnow().replace(microsecond=0).isoformat()+'Z'
-    with open(analysis_dir, 'w') as f:
+    with open('%s/summary.json'%analysis_dir, 'w') as f:
         f.write(json.dumps(summary, indent=4))
 
 # if dir doesn't exist, create it and set ownership and permissions
 # so that both panosetigraph and www-data can r/w it
 #
 def make_dir(path):
-    if os.path.exists(path): return
+    if os.path.exists(path):
+        return path
     os.mkdir(path)
     shutil.chown(path, group='panosetigraph')
     os.chmod(path, 0o775)

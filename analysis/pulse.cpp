@@ -13,8 +13,8 @@
 // --infile2 path   2nd input file.  Take product of corresponding samples
 //                  (not implemented)
 // --pixel n        pixel (0..1023)
-//                  if not specified, do all pixels
-// --nlevels n      number of duration octaves (default 16)
+//                  default: do all pixels
+// --ndurs n        number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
 //                  default: 64
 // --thresh x       threshold is x times stddev
@@ -34,18 +34,17 @@
 #include "pff.h"
 #include "pulse_find.h"
 
-#define WIN_SIZE_DEFAULT    64
 #define MAX_VAL             65536        // ignore values larger than this
 
-int win_size = WIN_SIZE_DEFAULT;
+int win_size = -1;
 int pixel=-1;
 double nsec = 0;
 const char* out_dir = ".";
-double thresh = 3;
+double thresh = -1;
 bool log_all = true;
 vector<FILE*> thresh_fout;
 vector<FILE*> all_fout;
-int nlevels = 16;
+int ndurs = -1;
 long nframes=0;
 
 
@@ -54,7 +53,7 @@ void usage() {
         "   --infile x          input file name\n"
         "   --infile2 x         2nd input file name\n"
         "   --pixel n           pixel, 0..1023 (default: all pixels)\n"
-        "   --nlevels n         duration levels (default 16)\n"
+        "   --ndurs n           duration levels (default 16)\n"
         "   --win_size n        stats window is n times pulse duration\n"
         "                       default: 64\n"
         "   --thresh x          threshold is mean + x times stddev\n"
@@ -108,7 +107,7 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
 
 void open_output_files() {
     char buf[1024];
-    for (int i=0; i<nlevels; i++) {
+    for (int i=0; i<ndurs; i++) {
         sprintf(buf, "%s/thresh_%d", out_dir, i);
         FILE *f = fopen(buf, "w");
         if (!f) {
@@ -138,7 +137,7 @@ void do_pixel(const char* infile) {
     open_output_files();
 
     string s;
-    PULSE_FIND pulse_find(nlevels, win_size, pixel);
+    PULSE_FIND pulse_find(ndurs, win_size, pixel);
     int isample = 0;
     while (1) {
         int retval = pff_read_json(f, s);
@@ -164,7 +163,7 @@ void do_all_pixels(const char* infile) {
     open_output_files();
     vector<PULSE_FIND*> pfs(1024);
     for (int i=0; i<1024; i++) {
-        pfs[i] = new PULSE_FIND(nlevels, win_size, i);
+        pfs[i] = new PULSE_FIND(ndurs, win_size, i);
     }
 
     int isample = 0;
@@ -196,8 +195,8 @@ int main(int argc, char **argv) {
             infile = argv[++i];
         } else if (!strcmp(argv[i], "--pixel")) {
             pixel = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--nlevels")) {
-            nlevels = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--ndurs")) {
+            ndurs = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--win_size")) {
             win_size = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--thresh")) {
@@ -212,7 +211,7 @@ int main(int argc, char **argv) {
             usage();
         }
     }
-    if (!infile) {
+    if (!infile || ndurs<0 || thresh<0 || win_size<0) {
         usage();
     }
 

@@ -25,23 +25,34 @@ sys.path.append('../util')
 import pff
 from analysis_util import *
 
+# default params
+params = {
+    'ndurs': 16,
+    'win_size': 64,
+    'thresh': 3
+}
+
 def do_file(run, f, pixels):
     print('processing file ', f)
     analysis_dir = make_analysis_dir(ANALYSIS_TYPE_IMAGE_PULSE, run)
+    p = '--ndurs %d --win_size %d --thresh %f'%(
+        params['ndurs'], params['win_size'], params['thresh']
+    )
     if pixels:
         for pixel in pixels:
             pixel_dir = make_dir('%s/%d'%(analysis_dir, pixel))
-            cmd = './pulse --infile data/%s/%s --pixel %d --out_dir %s'%(
-                run, f, pixel, pixel_dir
+            cmd = './pulse --infile data/%s/%s --pixel %d --out_dir %s %s'%(
+                run, f, pixel, pixel_dir, p
             )
             print(cmd)
             os.system(cmd)
     else:
-        cmd = './pulse --infile data/%s/%s --out_dir %s'%(
-            run, f, analysis_dir
+        cmd = './pulse --infile data/%s/%s --out_dir %s %s'%(
+            run, f, analysis_dir, p
         )
         print(cmd)
         os.system(cmd)
+    write_summary(analysis_dir, params)
 
 def do_run(run, pixels):
     print('processing run', run);
@@ -70,6 +81,15 @@ if __name__ == '__main__':
             p = argv[i]
             p = p.split(',')
             pixels = [int(x) for x in p]
+        elif argv[i] == '--ndurs':
+            i += 1
+            params['ndurs'] = int(argv[i])
+        elif argv[i] == '--win_size':
+            i += 1
+            params['win_size'] = int(argv[i])
+        elif argv[i] == '--thresh':
+            i += 1
+            params['thresh'] = float(argv[i])
         else:
             raise Exception('bad arg: %s'%argv[i])
         i += 1
