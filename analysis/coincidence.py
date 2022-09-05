@@ -3,7 +3,7 @@
 """
 Find and plot the coincident pulse height events between two modules with the same orientation.
 """
-
+import math
 import sys
 import os
 import json
@@ -38,6 +38,7 @@ class QuaboFrame:
         self.quabo_index = j['quabo_num']
         self.group_num = None
         self.file_second = None
+        self.img_16 = None
         self.set_file_second()
 
     def __key(self):
@@ -101,9 +102,30 @@ class QuaboFrame:
         """Returns True iff the timestamp of self is greater than the timestamp of other_qf."""
         return self.get_timestamp_ns_diff(other_qf) > 0
 
-    def get_max_pe(self):
+    def get_max_adc(self):
         """Returns the maximum raw adc from the image in frame."""
         return max(self.img)
+
+    def get_max_adc_pixel_offset(self):
+        """Compute position offset from center of module."""
+        max_adc = self.get_max_adc()
+        if not self.img_16:
+            self.get_16x16_image()
+        pixel_index = np.nonzero(self.img_16 == max_adc)
+        # The 0.5 offset makes x,y represent the coordinate of the center of the pixel rather than a vertex.
+        x, y = np.mean(pixel_index[0]) + 0.5, np.mean(pixel_index[1]) + 0.5
+        #print(max_adc)
+        #print(x)
+        #input(f'x: {x}, y: {y}')
+        # Place pixel coordinate in correct quadrant.
+        x_offset, y_offset = x, y
+        if self.quabo_index in [0, 3]:
+            x_offset = -x
+        if self.quabo_index in [2, 3]:
+            y_offset = -y
+        #input(f'quabo_index = {self.quabo_index}, x_offset: {x_offset}, y_offset: {y_offset}')
+        return x_offset, y_offset
+
 
     def get_16x16_image(self):
         """Converts the 1x256 array to a 16x16 array."""
@@ -113,7 +135,9 @@ class QuaboFrame:
                 img_16x16[row][col] = self.img[16 * row + col]
         # Rotate by 90, 180, 270 CW, depending on quabo index.
         rotated_16x16 = np.rot90(img_16x16, self.quabo_index, axes=(0,1))
+        self.img_16 = img_16x16
         return img_16x16
+
 
 
 class ModuleFrame:
@@ -128,6 +152,8 @@ class ModuleFrame:
         self.dome_name = None
         # List of group numbers with which this module is paired.
         self.paired_mfs = list()
+        self.img = None
+        self.max_adc_offset = None
 
     def __key(self):
         return self.group_num, self.module_num
@@ -187,15 +213,29 @@ class ModuleFrame:
         row_0 = np.append(imgs[0], imgs[1], axis=1)
         row_1 = np.append(imgs[3], imgs[2], axis=1)
         img_32x32 = np.append(row_0, row_1, axis=0)
+        self.img = img_32x32
         return img_32x32
 
-    def get_max_pe(self):
+    def get_max_adc(self):
         """Get the max raw adc among the 16x16 images in the quabo frames."""
         max_adc = -1
+        frame_with_max_adc = None
         for frame in self.frames:
-            if frame:
-                max_adc = max(max_adc, frame.get_max_pe())
+            if frame and frame.get_max_adc() > max_adc:
+                max_adc = frame.get_max_adc()
+                frame_with_max_adc = frame
+        self.max_adc_offset = frame_with_max_adc.get_max_adc_pixel_offset()
         return max_adc
+
+    def get_distance_between_max_adc(self, other_mf):
+        """Return the distance between the max adc pixel coord in self and other_mf."""
+        if not self.max_adc_offset:
+            self.get_max_adc()
+        if not other_mf.max_adc_offset:
+            other_mf.get_max_adc()
+        x_diff = self.max_adc_offset[0] - other_mf.max_adc_offset[0]
+        y_diff = self.max_adc_offset[1] - other_mf.max_adc_offset[1]
+        return round(math.sqrt(x_diff**2 + y_diff**2), 3)
 
     def get_frame_names(self):
         """Returns a list of the quabo boardlocs associated with this module frame."""
@@ -346,7 +386,7 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
                 print(f'Searched for coincident module events up to frame {a_qf_num:,}... ', end='')
             if a_qf is None:
                 break
-            elif a_qf.get_max_pe() < threshold_max_pe:
+            elif a_qf.get_max_adc() < threshold_max_pe:
                 if verbose:
                     print('\r', end='')
                 a_qf_num += 1
@@ -363,7 +403,7 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
                 right_index = 0
                 while right_index < len(b_deque) and a_qf.is_coincident(b_deque[right_index], max_time_diff):
                     b_frame = b_deque[right_index]
-                    if b_frame.get_max_pe() >= threshold_max_pe:
+                    if b_frame.get_max_adc() >= threshold_max_pe:
                         set_group_num(a_qf, 0)
                         set_group_num(b_frame, 1)
                         # Each coincident pair of frames is added to the list pairs.
@@ -385,14 +425,17 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
 # Matplotlib styling
 
 
-def style_fig(fig, fig_num, right_ax, plot, a_file_name, b_file_name, max_time_diff, threshold_max_pe, pair):
+def style_fig(fig, fig_num, right_ax, plot, a_file_name, b_file_name, max_time_diff, threshold_max_pe, pixel_distance, pair):
     """Style each figure."""
     parsed_a, parsed_b = pff.parse_name(a_file_name), pff.parse_name(b_file_name)
     title = "Pulse Height Event from Module {0} and Module {1} within $\pm${2:,} ns and max(pe) $\geq$ {3:,}".format(
         parsed_a['module'], parsed_b['module'], max_time_diff, threshold_max_pe
     )
+    altitude_estimation = "\nApprox. (Pixel) Distance between Centroid of Event Maxima {0}".format(
+        pixel_distance
+    )
     time_diffs = f'{pair[0].get_time_diff_str(pair[1])}'
-    fig.suptitle(title + time_diffs)
+    fig.suptitle(title + altitude_estimation + time_diffs)
     #fig.tight_layout()
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
@@ -429,14 +472,15 @@ def plot_coincident_modules(a_file_name, b_file_name, fig_num, mf_pair, max_time
     """Create a single figure displaying the 32x32 image in the coincident module frames in mf_pair."""
     obs_config = config_file.get_obs_config()
     parsed_a, parsed_b = pff.parse_name(a_file_name), pff.parse_name(b_file_name)
-    max_pe = max(mf_pair[0].get_max_pe(), mf_pair[1].get_max_pe())
+    max_pe = max(mf_pair[0].get_max_adc(), mf_pair[1].get_max_adc())
+    pixel_distance = mf_pair[0].get_distance_between_max_adc(mf_pair[1])
     fig, axs = plt.subplots(1, 2, figsize=(14, 10), constrained_layout=True)
     plot = None
     for ax, module_frame in zip(axs, mf_pair):
         dome_index = int(parsed_a['dome'])
         module_frame.dome_name = obs_config['domes'][dome_index]['name'].title()
         plot = plot_module_frame(fig, ax, module_frame, max_pe)
-    style_fig(fig, fig_num, axs[1], plot, a_file_name, b_file_name, max_time_diff, threshold_max_pe, mf_pair)
+    style_fig(fig, fig_num, axs[1], plot, a_file_name, b_file_name, max_time_diff, threshold_max_pe, pixel_distance, mf_pair)
     if save_fig:
         os.system(f'mkdir -p {DATA_OUT_DIR}')
         plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
