@@ -1,17 +1,53 @@
 <?php
 
-function is_pff($f) {
-    if ($f == 'hk.pff') return false;
-    return strstr($f, '.pff');
-}
+ini_set('display_errors', 1);
+
+
+// ------------ login and password --------------
 
 define('LOGIN_MANDATORY', 1);
 define('LOGIN_OPTIONAL',  2);
 define('LOGIN_NONE',      3);
 
-define('ANALYSIS_ROOT', 'analysis')
-
 $login_name = null;
+
+function hash_passwd($p) {
+    return md5($p."blahblah");
+}
+
+function check_passwd_hash($name, $passwd_hash) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!$passwds) {
+        die ("can't parse passwd file");
+    }
+    if (!isset($passwds->$name)) {
+        return null;
+    }
+    $u = $passwds->$name;
+    if ($u->passwd_hash != $passwd_hash) {
+        return null;
+    }
+    return $u;
+}
+
+function check_auth($name, $auth) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!isset($passwds->$name)) return null;
+    $u = $passwds->$name;
+    if ($u->auth != $auth) return null;
+    return $u;
+}
+
+function get_login($optional) {
+    $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
+    $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
+    if (!$auth || !$name || !check_auth($name, $auth)) {
+        if ($optional) return null;
+        Header("Location: login.php");
+        exit;
+    }
+    return $name;
+}
 
 function page_head($title, $login=LOGIN_MANDATORY) {
     echo sprintf('
@@ -58,25 +94,45 @@ function page_tail() {
     echo "</div></body></html>";
 }
 
-function get_int($key) {
-    if (array_key_exists($key, $_GET)) {
-        return (int)$_GET[$key];
-    }
-    return null;
+function error_page($msg) {
+    page_head("Unable to handle request");
+    echo $msg;
+    page_tail();
+    exit();
 }
 
-function get_str($key) {
+// ---------------- form stuff ------------
+
+function get_int($name, $optional=false) {
+    $x=null;
+    if (isset($_GET[$name])) $x = $_GET[$name];
+    if (!is_numeric($x)) {
+        if ($optional) {
+            if ($x) {
+                error_page("bad value for $name");
+            }
+            return null;
+        } else {
+            error_page("missing $name");
+        }
+    }
+    return (int)$x;
+}
+
+function get_str($key, $optional=false) {
     if (array_key_exists($key, $_GET)) {
         return $_GET[$key];
     }
-    return null;
+    if ($optional) return null;
+    error_page("missing arg: $key");
 }
 
-function post_str($key) {
+function post_str($key, $optional=false) {
     if (array_key_exists($key, $_POST)) {
         return $_POST[$key];
     }
-    return null;
+    if ($optional) return null;
+    error_page("missing arg: $key");
 }
 
 // make sure a path doesn't go above current dir.
@@ -261,57 +317,14 @@ function dt_time_str($dt) {
     return $dt->format('H:i:s');
 }
 
-// ---------------------------
+// -------------- PFF ----------------
+
+function is_pff($f) {
+    if ($f == 'hk.pff') return false;
+    return strstr($f, '.pff');
+}
 
 function parse_pff_name($name) {
-    $x = [];
-    foreach (explode('.', $name) as $part) {
-        $p = explode('_', $part);
-        if (count($p)<2) break;
-        $x[$p[0]] = $p[1];
-    }
-    return $x;
-}
-
-function hash_passwd($p) {
-    return md5($p."blahblah");
-}
-
-function check_passwd_hash($name, $passwd_hash) {
-    $passwds = json_decode(file_get_contents('passwd.json'));
-    if (!$passwds) {
-        die ("can't parse passwd file");
-    }
-    if (!isset($passwds->$name)) {
-        return null;
-    }
-    $u = $passwds->$name;
-    if ($u->passwd_hash != $passwd_hash) {
-        return null;
-    }
-    return $u;
-}
-
-function check_auth($name, $auth) {
-    $passwds = json_decode(file_get_contents('passwd.json'));
-    if (!isset($passwds->$name)) return null;
-    $u = $passwds->$name;
-    if ($u->auth != $auth) return null;
-    return $u;
-}
-
-function get_login($optional) {
-    $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
-    $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
-    if (!$auth || !$name || !check_auth($name, $auth)) {
-        if ($optional) return null;
-        Header("Location: login.php");
-        exit;
-    }
-    return $name;
-}
-
-function parse_name($name) {
     $x = explode('.', $name);
     $p = [];
     for ($i=0; $i<count($x)-1; $i++) {
@@ -322,6 +335,5 @@ function parse_name($name) {
     return $p;
 }
 
-//print_r(parse_name('start_2022-08-01T03:20:35Z.dp_img16.bpp_2.dome_0.module_1.seqno_0.pff'));
 
 ?>

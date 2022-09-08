@@ -12,8 +12,10 @@ ANALYSIS_ROOT = 'analysis'
 
 # write a JSON file saying when analysis was done and with what params
 #
-def write_summary(analysis_dir, summary):
+def write_summary(analysis_dir, params):
+    summary = {}
     summary['when'] = datetime.datetime.utcnow().replace(microsecond=0).isoformat()+'Z'
+    summary['params'] = params
     with open('%s/summary.json'%analysis_dir, 'w') as f:
         f.write(json.dumps(summary, indent=4))
 

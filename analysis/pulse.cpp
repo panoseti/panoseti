@@ -14,7 +14,7 @@
 //                  (not implemented)
 // --pixel n        pixel (0..1023)
 //                  default: do all pixels
-// --ndurs n        number of duration octaves (default 16)
+// --nlevels n      number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
 //                  default: 64
 // --thresh x       threshold is x times stddev
@@ -44,7 +44,7 @@ double thresh = -1;
 bool log_all = true;
 vector<FILE*> thresh_fout;
 vector<FILE*> all_fout;
-int ndurs = -1;
+int nlevels = -1;
 long nframes=0;
 
 
@@ -53,7 +53,7 @@ void usage() {
         "   --infile x          input file name\n"
         "   --infile2 x         2nd input file name\n"
         "   --pixel n           pixel, 0..1023 (default: all pixels)\n"
-        "   --ndurs n           duration levels (default 16)\n"
+        "   --nlevels n         duration levels (default 16)\n"
         "   --win_size n        stats window is n times pulse duration\n"
         "                       default: 64\n"
         "   --thresh x          threshold is mean + x times stddev\n"
@@ -107,7 +107,7 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
 
 void open_output_files() {
     char buf[1024];
-    for (int i=0; i<ndurs; i++) {
+    for (int i=0; i<nlevels; i++) {
         sprintf(buf, "%s/thresh_%d", out_dir, i);
         FILE *f = fopen(buf, "w");
         if (!f) {
@@ -137,7 +137,7 @@ void do_pixel(const char* infile) {
     open_output_files();
 
     string s;
-    PULSE_FIND pulse_find(ndurs, win_size, pixel);
+    PULSE_FIND pulse_find(nlevels, win_size, pixel);
     int isample = 0;
     while (1) {
         int retval = pff_read_json(f, s);
@@ -163,7 +163,7 @@ void do_all_pixels(const char* infile) {
     open_output_files();
     vector<PULSE_FIND*> pfs(1024);
     for (int i=0; i<1024; i++) {
-        pfs[i] = new PULSE_FIND(ndurs, win_size, i);
+        pfs[i] = new PULSE_FIND(nlevels, win_size, i);
     }
 
     int isample = 0;
@@ -195,8 +195,8 @@ int main(int argc, char **argv) {
             infile = argv[++i];
         } else if (!strcmp(argv[i], "--pixel")) {
             pixel = atoi(argv[++i]);
-        } else if (!strcmp(argv[i], "--ndurs")) {
-            ndurs = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--nlevels")) {
+            nlevels = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--win_size")) {
             win_size = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--thresh")) {
@@ -208,10 +208,11 @@ int main(int argc, char **argv) {
         } else if (!strcmp(argv[i], "--nframes")) {
             nframes = atof(argv[++i]);
         } else {
+            printf("unrecognized arg %s\n", argv[i]);
             usage();
         }
     }
-    if (!infile || ndurs<0 || thresh<0 || win_size<0) {
+    if (!infile || nlevels<0 || thresh<0 || win_size<0) {
         usage();
     }
 

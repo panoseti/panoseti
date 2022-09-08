@@ -1,7 +1,5 @@
 <?php
 
-ini_set('display_errors', 1);
-
 // show a PFF file as a grayscale image,
 // with buttons for moving forward or back in time
 

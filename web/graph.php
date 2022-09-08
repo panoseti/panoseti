@@ -1,7 +1,5 @@
 <?php
 
-ini_set('display_errors', 1);
-
 // show a zoomable graph of a .csv file specified by path
 //
 // Also, since graphs with lots of points are slow to draw in Javascript,

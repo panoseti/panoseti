@@ -4,9 +4,8 @@
 // show links to the component files,
 // and show comments and tags
 
-ini_set('display_errors', 1);
-
 require_once("panoseti.inc");
+require_once("analysis.inc");
 
 function add_tag($run) {
     $t = @file_get_contents("data/$run/tags.json");
@@ -146,7 +145,7 @@ function main($name) {
         $n = filesize("data/$name/$f");
         if (!$n) continue;
         $n = number_format($n/1e6, 2);
-        $p = parse_name($f);
+        $p = parse_pff_name($f);
         $start = iso_to_dt($p['start']);
         dt_to_local($start);
         table_row(
@@ -159,19 +158,7 @@ function main($name) {
     }
     end_table();
     echo "<h2>Analysis</h2>\n";
-    if (!is_dir(ANALYSIS_ROOT."/$name")) {
-        echo "<a href=process_run.php?run=$name>Generate files</a>";
-    } else {
-        $sname = ANALYSIS_ROOT."/$name/summary.json";
-        if (file_exists($sname)) {
-            $s = json_decode(file_get_contents($sname));
-            echo "Analysis done $s->when";
-            echo "<p><a href=$sname>Parameters</a>";
-        }
-        echo "<p>See data file details.
-            <p><a href=clean_run.php?name=$name>Remove analysis files</a>
-        ";
-    }
+    show_analysis_types($name);
 
     echo "<h2>Ancillary files</h2>";
     foreach (scandir($dir) as $f) {

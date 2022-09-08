@@ -1,10 +1,10 @@
 #! /usr/bin/env python3
 
-# run image pulse analysis on PFF image files in data/
+# run image pulse analysis on PFF image file in data/
 #
 # cmdline args:
 #
-# --obs_run R           process run R
+# --run R               process run R
 # --pixels a,b,c        process pixels a,b,c (default all)
 # --log_all             write complete info (big)
 #   pulse-finding params (see pulse.cpp):
@@ -27,7 +27,7 @@ from analysis_util import *
 
 # default params
 params = {
-    'ndurs': 16,
+    'nlevels': 16,
     'win_size': 64,
     'thresh': 3
 }
@@ -35,8 +35,8 @@ params = {
 def do_file(run, f, pixels):
     print('processing file ', f)
     analysis_dir = make_analysis_dir(ANALYSIS_TYPE_IMAGE_PULSE, run)
-    p = '--ndurs %d --win_size %d --thresh %f'%(
-        params['ndurs'], params['win_size'], params['thresh']
+    p = '--nlevels %d --win_size %d --thresh %f'%(
+        params['nlevels'], params['win_size'], params['thresh']
     )
     if pixels:
         for pixel in pixels:
@@ -66,24 +66,24 @@ def do_run(run, pixels):
 
 if __name__ == '__main__':
 
-    obs_run = None
+    run = None
     pixels = None
     argv = sys.argv
     i = 1
     while i<len(argv):
-        if argv[i] == '--obs_run':
+        if argv[i] == '--run':
             i += 1
-            obs_run = argv[i]
+            run = argv[i]
         elif argv[i] == '--all_runs':
-            obs_run = 'all'
+            run = 'all'
         elif argv[i] == '--pixels':
             i += 1
             p = argv[i]
             p = p.split(',')
             pixels = [int(x) for x in p]
-        elif argv[i] == '--ndurs':
+        elif argv[i] == '--nlevels':
             i += 1
-            params['ndurs'] = int(argv[i])
+            params['nlevels'] = int(argv[i])
         elif argv[i] == '--win_size':
             i += 1
             params['win_size'] = int(argv[i])
@@ -93,12 +93,12 @@ if __name__ == '__main__':
         else:
             raise Exception('bad arg: %s'%argv[i])
         i += 1
-    print(obs_run)
-    if obs_run == 'all':
+    print(run)
+    if run == 'all':
         for run in os.listdir('data'):
             if pff.is_pff_dir(run):
                 do_run(run, pixels);
-    elif obs_run:
-        do_run(obs_run, pixels)
+    elif run:
+        do_run(run, pixels)
     else:
         raise Exception('no run specified')
