@@ -5,7 +5,8 @@
 # cmdline args:
 #
 # --run R               process run R
-# --pixels a,b,c        process pixels a,b,c (default all)
+# --pixels a,b,c        process pixels a,b,c
+# --all_pixels          process all pixels
 # --log_all             write complete info (big)
 #   pulse-finding params (see pulse.cpp):
 # --nlevels             default 16
@@ -19,55 +20,59 @@
 #       thresh_i: pulses above threshold (i=pulse duration level; 0,1,...)
 #       all_i: all pulses and stats
 
-import os
-import sys
+import os, sys, getpass
 sys.path.append('../util')
 import pff
 from analysis_util import *
 
-# default params
-params = {
-    'nlevels': 16,
-    'win_size': 64,
-    'thresh': 3
-}
-
-def do_file(run, f, pixels):
+def do_file(run, analysis_dir, f, params):
     print('processing file ', f)
-    analysis_dir = make_analysis_dir(ANALYSIS_TYPE_IMAGE_PULSE, run)
+    file_attrs = pff.parse_name(f)
+    module = file_attrs['module']
+    module_dir = make_dir('%s/module_%s'%(analysis_dir, module))
     p = '--nlevels %d --win_size %d --thresh %f'%(
         params['nlevels'], params['win_size'], params['thresh']
     )
-    if pixels:
-        for pixel in pixels:
-            pixel_dir = make_dir('%s/%d'%(analysis_dir, pixel))
-            cmd = './pulse --infile data/%s/%s --pixel %d --out_dir %s %s'%(
+    if params['pixels']:
+        for pixel in params['pixels']:
+            pixel_dir = make_dir('%s/pixel_%d'%(module_dir, pixel))
+            cmd = './img_pulse --infile data/%s/%s --pixel %d --out_dir %s %s'%(
                 run, f, pixel, pixel_dir, p
             )
             print(cmd)
             os.system(cmd)
-    else:
-        cmd = './pulse --infile data/%s/%s --out_dir %s %s'%(
-            run, f, analysis_dir, p
+    if params['all_pixels']:
+        all_dir = make_dir('%s/all_pixels'%(module_dir))
+        cmd = './img_pulse --infile data/%s/%s --out_dir %s %s'%(
+            run, f, all_dir, p
         )
         print(cmd)
         os.system(cmd)
-    write_summary(analysis_dir, params)
 
-def do_run(run, pixels):
+def do_run(run, params, username):
+    analysis_dir = make_analysis_dir(ANALYSIS_TYPE_IMAGE_PULSE, run)
     print('processing run', run);
     for f in os.listdir('data/%s'%run):
         if not pff.is_pff_file(f):
             continue
         if pff.pff_file_type(f) != 'img16':
             continue
-        do_file(run, f, pixels)
-        break
+        do_file(run, analysis_dir, f, params)
+    write_summary(analysis_dir, params, username)
 
 if __name__ == '__main__':
 
+    # default params
+    params = {
+        'nlevels': 16,
+        'win_size': 64,
+        'thresh': 3,
+        'pixels': '',
+        'all_pixels': False
+    }
+
     run = None
-    pixels = None
+    username = None
     argv = sys.argv
     i = 1
     while i<len(argv):
@@ -80,7 +85,7 @@ if __name__ == '__main__':
             i += 1
             p = argv[i]
             p = p.split(',')
-            pixels = [int(x) for x in p]
+            params['pixels'] = [int(x) for x in p]
         elif argv[i] == '--nlevels':
             i += 1
             params['nlevels'] = int(argv[i])
@@ -90,15 +95,23 @@ if __name__ == '__main__':
         elif argv[i] == '--thresh':
             i += 1
             params['thresh'] = float(argv[i])
+        elif argv[i] == '--username':
+            i += 1
+            username = argv[i]
+        elif argv[i] == '--all_pixels':
+            params['all_pixels'] = True
         else:
             raise Exception('bad arg: %s'%argv[i])
         i += 1
-    print(run)
+    if not params['all_pixels'] and not params['pixels']:
+        raise Exception("no pixels specified")
+    if not username:
+        username = getpass.getuser()
     if run == 'all':
         for run in os.listdir('data'):
             if pff.is_pff_dir(run):
-                do_run(run, pixels);
+                do_run(run, params, username);
     elif run:
-        do_run(run, pixels)
+        do_run(run, params, username)
     else:
         raise Exception('no run specified')

@@ -17,20 +17,19 @@
 
 #ifdef STATS
 #include "window_stats.h"
-vector<WINDOW_STATS> window_stats;
 #define WIN_SIZE    64
 #endif
 
 vector <FILE*> fout;
 bool perf=false;
 
-void PULSE_FIND::pulse_complete(int level, double value, long isample) {
+void PULSE_FIND::pulse_complete(int level, double value, size_t isample) {
 #if 0
     fprintf(fout[level], "%ld %f\n", isample, value);
 #endif
 
 #ifdef STATS
-    WINDOW_STATS &wstats = window_stats[level];
+    WINDOW_STATS &wstats = levels[level].window_stats;
     wstats.add_value(value);
 #endif
 }
@@ -54,12 +53,8 @@ int main(int argc, char** argv) {
 
     if (perf) {
         int nlevels = 16;
-        PULSE_FIND pf(nlevels);
+        PULSE_FIND pf(nlevels, WIN_SIZE, 0);
 #ifdef STATS
-        WINDOW_STATS w(WIN_SIZE);
-        for (int i=0; i<nlevels; i++) {
-            window_stats.push_back(w);
-        }
         printf("stats: yes\n");
 #else
         printf("stats: no\n");
@@ -93,7 +88,7 @@ int main(int argc, char** argv) {
         int nlevels = 4;
         char buf[256];
 
-        PULSE_FIND pf(nlevels);
+        PULSE_FIND pf(nlevels, WIN_SIZE, 0);
         for (int i=0; i<nlevels; i++) {
             sprintf(buf, "out_%d", i);
             fout.push_back(fopen(buf, "w"));

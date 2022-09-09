@@ -9,22 +9,21 @@ function main($run, $nlevels, $win_size, $thresh, $pixels, $all_pixels) {
     if (!$all_pixels && strlen($pixels)==0) {
         error_page("no pixels specified");
     }
+    $cmd = sprintf(
+        'img_pulse.py --run %s --nlevels %d --win_size %d --thresh %f',
+        $run, $nlevels, $win_size, $thresh
+    );
     if ($all_pixels) {
-        $cmd = sprintf(
-            'pulse.py --run %s --nlevels %d --win_size %d --thresh %f',
-            $run, $nlevels, $win_size, $thresh
-        );
-        //echo $cmd;
-        system($cmd);
+        $cmd .= ' --all_pixels';
     }
     if (strlen($pixels)) {
         $pixels = str_replace(' ', '', $pixels);
-        $cmd = sprintf(
-            'pulse.py --run %s --nlevels %d --win_size %d --thresh %f --pixels %s',
-            $run, $nlevels, $win_size, $thresh, $pixels
-        );
-        //echo $cmd;
-        system($cmd);
+        $cmd .= " --pixels $pixels";
+    }
+    system($cmd, $retval);
+    if ($retval) {
+        echo "$cmd returned $retval";
+        return;
     }
     header("Location: analysis_type.php?type=img_pulse&run=$run");
 }

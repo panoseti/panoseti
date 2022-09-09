@@ -7,7 +7,7 @@
 
 require_once("panoseti.inc");
 require_once("graph.inc");
-require_once("pulse.inc");
+require_once("img_pulse.inc");
 
 function make_url($file, $pixel, $type, $dur, $start, $n) {
     return "graph.php?file=$file&pixel=$pixel&type=$type&dur=$dur&start=$start&n=$n";

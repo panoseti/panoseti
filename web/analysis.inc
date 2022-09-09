@@ -36,18 +36,24 @@ function show_analysis_types($run) {
 function get_analyses_aux($dir) {
     if (!is_dir($dir)) return [];
     $analyses = [];
-    foreach (scandir($dir) as $d) {
+    foreach (scandir($dir) as $f) {
+        if (substr($f, 0, 1) == '.') continue;
         $d = new stdClass;
-        $d->when = $d;
-        $d->who = '??";
-        $d->comments = '??";
-        $d->params = '??";
-        $f = "$dir/$d";
-        if (file_exists($f)) {
-            $x = json_decode(file_get_contents($f));
-            $d->who = $x->who;
-            $d->comments = $x->comments;
+        $d->dir = $f;
+        $d->when = $f;
+        $d->username = '??';
+        $d->comments = '';
+        $d->params = '??';
+        $path = "$dir/$f/summary.json";
+        if (file_exists($path)) {
+            $x = json_decode(file_get_contents($path));
+            $d->username = $x->username;
             $d->params = $x->params;
+        }
+        $path = "$dir/$f/comments.json";
+        if (file_exists($path)) {
+            $x = json_decode(file_get_contents($path));
+            $d->comments = $x;
         }
         $analyses[] = $d;
     }

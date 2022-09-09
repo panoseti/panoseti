@@ -32,7 +32,7 @@
 #include <math.h>
 
 #include "pff.h"
-#include "pulse_find.h"
+#include "img_pulse.h"
 
 #define MAX_VAL             65536        // ignore values larger than this
 
@@ -72,7 +72,7 @@ inline double sample_to_sec(long i) {
 
 // called when a pulse is complete
 //
-void PULSE_FIND::pulse_complete(int level, double value, long isample) {
+void PULSE_FIND::pulse_complete(int level, double value, size_t isample) {
     int idur = 1<<level;
     isample = isample + 1 - idur;
     if (isample < 0) return;

@@ -6,15 +6,16 @@ import os, shutil, json, datetime
 
 # analysis types
 #
-ANALYSIS_TYPE_IMAGE_PULSE = 'image_pulse'
+ANALYSIS_TYPE_IMAGE_PULSE = 'img_pulse'
 
 ANALYSIS_ROOT = 'analysis'
 
 # write a JSON file saying when analysis was done and with what params
 #
-def write_summary(analysis_dir, params):
+def write_summary(analysis_dir, params, username):
     summary = {}
     summary['when'] = datetime.datetime.utcnow().replace(microsecond=0).isoformat()+'Z'
+    summary['username'] = username
     summary['params'] = params
     with open('%s/summary.json'%analysis_dir, 'w') as f:
         f.write(json.dumps(summary, indent=4))

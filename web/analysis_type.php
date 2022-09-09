@@ -13,13 +13,21 @@ function show_analyses($type, $run) {
         return;
     }
     start_table("table-striped");
-    table_header("Date", "Who", "Comments", "Params");
+    table_header(
+        "Date<br><small>Click for details</small>",
+        "Who",
+        "Comments",
+        "Params"
+    );
     foreach ($analyses as $a) {
         table_row(
-            $a->when,
-            $a->who,
+            sprintf(
+                "<a href=%s_show.php?run=%s&analysis=%s>%s</a>",
+                $type, $run, $a->dir, $a->when
+            ),
+            $a->username,
             $a->comments,
-            $a->params
+            json_encode($a->params)
         );
     }
     end_table();

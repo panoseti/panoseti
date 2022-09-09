@@ -25,9 +25,8 @@ function img_pulse_form($run) {
     form_end();
 }
 
-// deprecated
-function img_pulse_file_name($file, $pixel, $type, $dur) {
-    $x = "derived/$file/$pixel/$type";
+function img_pulse_file_path($run, $analysis_dir, $module_dir, $pixel_dir, $type, $dur) {
+    $x = "analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir/$type";
     switch($type) {
     case "value":
     case "value_hist":
