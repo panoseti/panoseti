@@ -3,7 +3,6 @@
 # functions to read and parse config files
 
 import os,sys,json
-import util
 
 obs_config_filename = 'obs_config.json'
 daq_config_filename = 'daq_config.json'
@@ -20,6 +19,20 @@ config_file_names = [
     quabo_uids_filename
 ]
 
+# compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
+#
+def ip_addr_to_module_id(ip_addr_str):
+    pieces = ip_addr_str.split('.')
+    n = int(pieces[3]) + 256*int(pieces[2])
+    return (n>>2)&255
+
+# given module base IP address, return IP addr of quabo i
+#
+def quabo_ip_addr(base, i):
+    x = base.split('.')
+    x[3] = str(int(x[3])+i)
+    return '.'.join(x)
+
 # assign sequential numbers to domes,
 # and IDs to modules
 #
@@ -29,7 +42,7 @@ def assign_numbers(c):
         dome['num'] = ndome
         ndome += 1
         for module in dome['modules']:
-            module['id'] = util.ip_addr_to_module_id(module['ip_addr'])
+            module['id'] = ip_addr_to_module_id(module['ip_addr'])
 
 # input: a string of the form "0-2, 5-6"
 # output: a list of integers, e.g. 0,1,2,5,6
@@ -87,9 +100,10 @@ def get_daq_config():
     expand_ranges(c)
     return c
 
-def get_data_config():
-    check_config_file(data_config_filename)
-    with open(data_config_filename) as f:
+def get_data_config(dir='.'):
+    path = '%s/%s'%(dir, data_config_filename)
+    check_config_file(path)
+    with open(path) as f:
         c = f.read()
     conf = json.loads(c)
     if 'flash_params' in conf:
@@ -180,7 +194,7 @@ def show_daq_assignments(quabo_uids):
             for i in range(4):
                 q = module['quabos'][i];
                 print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], util.quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
+                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
                 )
 
 if __name__ == "__main__":

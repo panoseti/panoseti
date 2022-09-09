@@ -3,7 +3,9 @@
 # show the status of a recording run
 
 import subprocess
-import util, config_file
+import util
+sys.path.insert(0, '../util')
+import config_file
 
 def status():
     run_name = util.read_run_name()

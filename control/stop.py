@@ -9,10 +9,10 @@
 # - if a run is in progress, collect data files
 
 import os, sys
-import config_file, collect, quabo_driver
+import collect, quabo_driver
 from util import *
 sys.path.insert(0, '../util')
-import pff
+import pff, config_file
 
 # tell the quabos to stop sending data
 #
@@ -27,7 +27,7 @@ def stop_data_flow(quabo_uids):
                 quabo = module['quabos'][i]
                 if quabo['uid'] == '':
                     continue
-                ip_addr = quabo_ip_addr(base_ip_addr, i)
+                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
                 quabo = quabo_driver.QUABO(ip_addr)
                 quabo.send_daq_params(daq_params)
                 quabo.close()

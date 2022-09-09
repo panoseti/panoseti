@@ -5,7 +5,9 @@
 # --run_dir X    specify run dir
 
 import sys
-import config_file, file_xfer, util
+import file_xfer, util
+sys.path.insert(0, '../util')
+import config_file
 
 def collect_data(daq_config, run_dir):
     my_ip = util.local_ip()

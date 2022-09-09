@@ -6,8 +6,10 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import util, config_file, sys, struct
+import util , sys, struct
 from panoseti_tftp import tftpw
+sys.path.insert(0, '../util')
+import config_file
 
 # return quabo UID as hex string
 #
@@ -49,7 +51,7 @@ def get_uids(obs_config, exclude):
             for i in range(4):
                 uid = ''
                 if i not in exclude:
-                    ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+                    ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
                     if util.ping(ip_addr):
                         uid = get_uid(ip_addr)
                         print("%s has UID %s"%(ip_addr, uid))

@@ -7,6 +7,8 @@
 //          frame, value, cur_mean, cur_stddev, nsigma, pixel
 //      all_i       all pulses (optional)
 //          frame, value, cur_mean, cur_stddev, nsigma, pixel
+//      The above are written in a fixed-length format
+//      so you can seek to a given frame in all_i
 //
 // options:
 //
@@ -89,13 +91,13 @@ void PULSE_FIND::pulse_complete(int level, double value, size_t isample) {
     if (value > wstats.mean && stddev>0) {
         nsigma = (value-wstats.mean)/stddev;
         if (nsigma > thresh) {
-            fprintf(thresh_fout[level], "%ld,%f,%f,%f,%f,%d\n",
+            fprintf(thresh_fout[level], "%10ld,%12.4e,%12.4e,%12.4e,%12.4e,%4d\n",
                 isample, value, wstats.mean, stddev, nsigma, pixel
             );
         }
     }
     if (log_all) {
-        fprintf(all_fout[level], "%ld,%f,%f,%f,%f,%d\n",
+        fprintf(all_fout[level], "%10ld,%12.4e,%12.4e,%12.4e,%12.4e,%4d\n",
             isample, value, wstats.mean, stddev, nsigma, pixel
         );
     }

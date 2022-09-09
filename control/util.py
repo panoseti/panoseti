@@ -87,13 +87,6 @@ def ip_addr_str_to_bytes(ip_addr_str):
 def ping(ip_addr):
     return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
 
-# compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
-#
-def ip_addr_to_module_id(ip_addr_str):
-    pieces = ip_addr_str.split('.')
-    n = int(pieces[3]) + 256*int(pieces[2])
-    return (n>>2)&255
-
 def mac_addr_str(bytes):
     s = ['']*6
     for i in range(6):
@@ -109,13 +102,6 @@ def print_binary(data):
         print("%d: %d"%(i, data[i]))
 
 #-------------- QUABO OPS ---------------
-
-# given module base IP address, return IP addr of quabo i
-#
-def quabo_ip_addr(base, i):
-    x = base.split('.')
-    x[3] = str(int(x[3])+i)
-    return '.'.join(x)
 
 # get the UID of quabo i in a given module
 #

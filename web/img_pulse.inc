@@ -17,10 +17,18 @@ function img_pulse_form($run) {
     form_start("img_pulse_run.php");
     form_input_hidden('run', $run);
     form_input_text("# of duration octaves", "nlevels");
-    form_input_text("size of window for mean/stddev", "win_size");
-    form_input_text("threshold", "thresh");
-    form_input_text("Pixels", "pixels");
+    form_input_text("Size of window for mean/stddev", "win_size");
+    form_input_text("Threshold", "thresh");
+    form_input_text(
+        "Seconds<br><small>Analyze first N seconds of files</small>",
+        "seconds"
+    );
+    form_input_text("Pixels<br><small>comma-separated list of pixels (0-1023)</small>", "pixels");
     form_checkboxes("All pixels", [['all_pixels', '', false]]);
+    form_checkboxes(
+        "Record all<br><small>Write all samples to a separate file (can be huge)</small>",
+        [['record_all', '', false]]
+    );
     form_submit("OK");
     form_end();
 }

@@ -9,14 +9,13 @@ See https://github.com/panoseti/panoseti/issues/58.
 
 import time
 import datetime
-
 import redis
-
 import redis_utils
-import config_file
 import power
 from hv_updater import get_boardloc
 from capture_power import get_wps_rkey
+sys.path.insert(0, '../util')
+import config_file
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10

@@ -12,13 +12,12 @@ for more info about the detector constants used in this script.
 """
 
 import time
-
 import redis
-
 import redis_utils
 import quabo_driver
-import config_file
 import util
+sys.path.insert(0, '../util')
+import config_file
 
 #-------------- CONSTANTS ---------------#
 
@@ -133,7 +132,7 @@ def update_all_quabos(r: redis.Redis):
                         # Get the temperature data for this quabo.
                         temp = get_redis_temp(r, rkey)
                     # Get quabo object
-                    q_ip_addr = util.quabo_ip_addr(module_ip_addr, quabo_index)
+                    q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
                     quabo_obj = quabo_driver.QUABO(q_ip_addr)
                     # Get the list of detector serial numbers for this quabo.
                     q_info = quabo_info[uid]

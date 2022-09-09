@@ -9,11 +9,12 @@ firmware_silver_bga = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess, time
-import util, config_file, file_xfer, quabo_driver
+import util, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
 sys.path.insert(0, '../util')
 import pixel_coords
+import config_file
 
 def usage():
     print('''usage:
@@ -44,7 +45,7 @@ def show_config(obs_config, quabo_uids):
             print('   module ID %d'%module_id)
             print('      Mobo serial#: %s'%module['mobo_serialno'])
             for i in range(4):
-                quabo_ip = util.quabo_ip_addr(ip_addr, i)
+                quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
                 print('      quabo %d'%i)
                 print('         IP addr: %s'%quabo_ip)
     print("This node's IP addr: %s"%util.local_ip())
@@ -61,7 +62,7 @@ def do_reboot(modules, quabo_uids):
         for module in modules:
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('rebooting quabo at %s'%ip_addr)
             x = tftpw(ip_addr)
             x.reboot()
@@ -71,7 +72,7 @@ def do_reboot(modules, quabo_uids):
         for module in modules:
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('waiting for ping of %s'%ip_addr)
             while True:
                 if util.ping(ip_addr):
@@ -86,7 +87,7 @@ def do_loads(modules, quabo_uids):
         for i in range(4):
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if util.is_quabo_old_version(module, i):
                 fw = firmware_silver_qfp
             else:
@@ -102,7 +103,7 @@ def do_loadg(modules):
 def do_ping(modules):
     for module in modules:
         for i in range(4):
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if util.ping(ip_addr):
                 print("pinged %s"%ip_addr)
             else:
@@ -114,7 +115,7 @@ def do_hk_dest(modules):
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.hk_packet_destination(my_ip_addr)
             quabo.close()
@@ -130,7 +131,7 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info):
                 det_ser = qi['detector_serialno'][j]
                 op_voltage = detector_info[det_ser]
                 v[j] = int(op_voltage/.00114)
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.hv_set(v)
             quabo.close()
@@ -144,7 +145,7 @@ def do_hv_off(modules, quabo_uids):
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
             v = [0]*4
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.hv_set(v)
             quabo.close()
@@ -176,7 +177,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
             qi = quabo_info[uid]
             serialno = qi['serialno'][3:]
             quabo_calib = config_file.get_quabo_calib(serialno)
-            ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
 
             # compute DAC1[] and possibly DAC2 based on calibration data
             dac1 = [0]*4

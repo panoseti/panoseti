@@ -7,7 +7,9 @@
 # --run R               process run R
 # --pixels a,b,c        process pixels a,b,c
 # --all_pixels          process all pixels
+#                       (the above not mutually exclusive)
 # --log_all             write complete info (big)
+# --seconds X           analyze X seconds of data
 #   pulse-finding params (see pulse.cpp):
 # --nlevels             default 16
 # --win_size            default 64
@@ -22,8 +24,13 @@
 
 import os, sys, getpass
 sys.path.append('../util')
-import pff
+import pff, config_file
 from analysis_util import *
+
+def img_seconds_to_frames(run, seconds):
+    data_config = config_file.get_data_config('data/%s'%run)
+    x = float(data_config['image']['integration_time_usec'])
+    return seconds*1.e6/x
 
 def do_file(run, analysis_dir, f, params):
     print('processing file ', f)
@@ -33,6 +40,9 @@ def do_file(run, analysis_dir, f, params):
     p = '--nlevels %d --win_size %d --thresh %f'%(
         params['nlevels'], params['win_size'], params['thresh']
     )
+    if params['seconds'] > 0:
+        nframes = img_seconds_to_frames(run, params['seconds'])
+        p += ' --nframes %d'%nframes
     if params['pixels']:
         for pixel in params['pixels']:
             pixel_dir = make_dir('%s/pixel_%d'%(module_dir, pixel))
@@ -68,7 +78,9 @@ if __name__ == '__main__':
         'win_size': 64,
         'thresh': 3,
         'pixels': '',
-        'all_pixels': False
+        'seconds': -1,
+        'all_pixels': False,
+        'log_all': False
     }
 
     run = None
@@ -100,6 +112,9 @@ if __name__ == '__main__':
             username = argv[i]
         elif argv[i] == '--all_pixels':
             params['all_pixels'] = True
+        elif argv[i] == '--seconds':
+            i += 1
+            params['seconds'] = float(argv[i])
         else:
             raise Exception('bad arg: %s'%argv[i])
         i += 1

@@ -14,7 +14,9 @@
 # The IP addr of the WPS and the socket # come from a config file
 # This can be used as a module or a script.
 
-import config_file, sys, os
+import sys, os
+sys.path.insert(0, '../util')
+import config_file
 
 # turn power on or off
 #
