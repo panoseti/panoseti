@@ -13,11 +13,11 @@
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
 import os, sys, traceback, shutil
-import config_file, util, file_xfer, quabo_driver
+import util, file_xfer, quabo_driver
 
 sys.path.insert(0, '../util')
 
-import pff
+import pff, config_file
 
 # parse the data config file to get DAQ params for quabos
 #
@@ -60,7 +60,7 @@ def start_data_flow(quabo_uids, data_config, daq_config):
             if 'daq_node' not in module:
                 continue
             base_ip_addr = module['ip_addr']
-            module_id = util.ip_addr_to_module_id(base_ip_addr)
+            module_id = config_file.ip_addr_to_module_id(base_ip_addr)
             daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
             daq_node_ip_addr = daq_node['ip_addr']
             head_node_ip_addr = daq_config['head_node_ip_addr']
@@ -68,7 +68,7 @@ def start_data_flow(quabo_uids, data_config, daq_config):
                 quabo = module['quabos'][i]
                 if quabo['uid'] == '':
                     continue
-                ip_addr = util.quabo_ip_addr(base_ip_addr, i)
+                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
                 quabo = quabo_driver.QUABO(ip_addr)
                 print('setting HK packet dest to %s on quabo %s'%(
                     head_node_ip_addr, ip_addr
@@ -143,7 +143,7 @@ def start_recording(data_config, daq_config, run_name, no_hv):
         if 'bindhost' in node.keys():
             remote_cmd += ' --bindhost %s'%node['bindhost']
         for m in node['modules']:
-            module_id = util.ip_addr_to_module_id(m['ip_addr'])
+            module_id = config_file.ip_addr_to_module_id(m['ip_addr'])
             remote_cmd += ' --module_id %d'%module_id
         cmd = 'ssh %s@%s "cd %s; %s"'%(
             username, node['ip_addr'], data_dir, remote_cmd

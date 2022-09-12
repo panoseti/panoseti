@@ -4,9 +4,8 @@
 // show links to the component files,
 // and show comments and tags
 
-ini_set('display_errors', 1);
-
 require_once("panoseti.inc");
+require_once("analysis.inc");
 
 function add_tag($run) {
     $t = @file_get_contents("data/$run/tags.json");
@@ -125,10 +124,10 @@ function show_comments($run) {
     }
 }
 
-function main($name) {
-    page_head("Observing run: $name");
+function main($run) {
+    page_head("Observing run: $run");
 
-    $dir = "data/$name";
+    $dir = "data/$run";
 
     echo "<h2>Data files</h2>";
     start_table('table-striped');
@@ -143,35 +142,23 @@ function main($name) {
     foreach (scandir($dir) as $f) {
         if ($f[0] == ".") continue;
         if (!is_pff($f)) continue;
-        $n = filesize("data/$name/$f");
+        $n = filesize("data/$run/$f");
         if (!$n) continue;
         $n = number_format($n/1e6, 2);
-        $p = parse_name($f);
+        $p = parse_pff_name($f);
         $start = iso_to_dt($p['start']);
         dt_to_local($start);
         table_row(
             sprintf(
                 '<a href=file.php?run=%s&fname=%s>%s</a>',
-                $name, $f, dt_time_str($start)
+                $run, $f, dt_time_str($start)
             ),
             $p['dp'], $p['dome'], $p['module'], $p['seqno'], $n
         );
     }
     end_table();
     echo "<h2>Analysis</h2>\n";
-    if (!is_dir("derived/$name")) {
-        echo "<a href=process_run.php?run=$name>Generate files</a>";
-    } else {
-        $sname = "derived/$name/summary.json";
-        if (file_exists($sname)) {
-            $s = json_decode(file_get_contents($sname));
-            echo "Analysis done $s->when";
-            echo "<p><a href=$sname>Parameters</a>";
-        }
-        echo "<p>See data file details.
-            <p><a href=clean_run.php?name=$name>Remove derived files</a>
-        ";
-    }
+    show_analysis_types($run);
 
     echo "<h2>Ancillary files</h2>";
     foreach (scandir($dir) as $f) {
@@ -179,30 +166,30 @@ function main($name) {
         if (is_pff($f)) continue;
         if (in_array($f, ['comments.json', 'tags.json'])) continue;
         echo "<br>
-            <a href=data/$name/$f>$f</a>
+            <a href=data/$run/$f>$f</a>
         ";
     }
 
     echo "<h2>Comments</h2>";
-    show_comments($name);
-    comments_form($name);
+    show_comments($run);
+    comments_form($run);
 
     echo "<h2>Tags</h2>";
-    show_tags($name);
-    tags_form($name);
+    show_tags($run);
+    tags_form($run);
     page_tail();
 }
 
-$name = get_str('name');
-if (!$name) $name = post_str('name');
-check_filename($name);
+$run = get_str('name', true);
+if (!$run) $run = post_str('name');
+check_filename($run);
 
-if (post_str('add_comment')) {
-    add_comment($name);
-} else if (post_str('add_tag')) {
-    add_tag($name);
+if (post_str('add_comment', true)) {
+    add_comment($run);
+} else if (post_str('add_tag', true)) {
+    add_tag($run);
 } else {
-    main($name);
+    main($run);
 }
 
 ?>

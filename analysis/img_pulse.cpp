@@ -7,12 +7,15 @@
 //          frame, value, cur_mean, cur_stddev, nsigma, pixel
 //      all_i       all pulses (optional)
 //          frame, value, cur_mean, cur_stddev, nsigma, pixel
+//      The above are written in a fixed-length format
+//      so you can seek to a given frame in all_i
 //
 // options:
 //
 // --infile2 path   2nd input file.  Take product of corresponding samples
+//                  (not implemented)
 // --pixel n        pixel (0..1023)
-//                  if not specified, do all pixels
+//                  default: do all pixels
 // --nlevels n      number of duration octaves (default 16)
 // --win_size n     stats window is n times pulse duration
 //                  default: 64
@@ -31,20 +34,19 @@
 #include <math.h>
 
 #include "pff.h"
-#include "pulse_find.h"
+#include "img_pulse.h"
 
-#define WIN_SIZE_DEFAULT    64
 #define MAX_VAL             65536        // ignore values larger than this
 
-int win_size = WIN_SIZE_DEFAULT;
+int win_size = -1;
 int pixel=-1;
 double nsec = 0;
 const char* out_dir = ".";
-double thresh = 3;
+double thresh = -1;
 bool log_all = true;
 vector<FILE*> thresh_fout;
 vector<FILE*> all_fout;
-int nlevels = 16;
+int nlevels = -1;
 long nframes=0;
 
 
@@ -59,7 +61,7 @@ void usage() {
         "   --thresh x          threshold is mean + x times stddev\n"
         "                       default: 1\n"
         "   --out_dir x         output directory\n"
-        "                       default: derived\n"
+        "                       default: .\n"
         "   --log_all           output all pulses length 4 and up\n"
         "   --nframes N         do only first N frames\n"
     );
@@ -72,7 +74,7 @@ inline double sample_to_sec(long i) {
 
 // called when a pulse is complete
 //
-void PULSE_FIND::pulse_complete(int level, double value, long isample) {
+void PULSE_FIND::pulse_complete(int level, double value, size_t isample) {
     int idur = 1<<level;
     isample = isample + 1 - idur;
     if (isample < 0) return;
@@ -89,13 +91,13 @@ void PULSE_FIND::pulse_complete(int level, double value, long isample) {
     if (value > wstats.mean && stddev>0) {
         nsigma = (value-wstats.mean)/stddev;
         if (nsigma > thresh) {
-            fprintf(thresh_fout[level], "%ld,%f,%f,%f,%f,%d\n",
+            fprintf(thresh_fout[level], "%10ld,%12.4e,%12.4e,%12.4e,%12.4e,%4d\n",
                 isample, value, wstats.mean, stddev, nsigma, pixel
             );
         }
     }
     if (log_all) {
-        fprintf(all_fout[level], "%ld,%f,%f,%f,%f,%d\n",
+        fprintf(all_fout[level], "%10ld,%12.4e,%12.4e,%12.4e,%12.4e,%4d\n",
             isample, value, wstats.mean, stddev, nsigma, pixel
         );
     }
@@ -208,10 +210,11 @@ int main(int argc, char **argv) {
         } else if (!strcmp(argv[i], "--nframes")) {
             nframes = atof(argv[++i]);
         } else {
+            printf("unrecognized arg %s\n", argv[i]);
             usage();
         }
     }
-    if (!infile) {
+    if (!infile || nlevels<0 || thresh<0 || win_size<0) {
         usage();
     }
 

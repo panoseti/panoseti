@@ -1,7 +1,5 @@
 <?php
 
-ini_set('display_errors', 1);
-
 // show a PFF file as a grayscale image,
 // with buttons for moving forward or back in time
 
@@ -72,7 +70,7 @@ function main($run, $fname, $frame) {
     page_head("Image");
     echo "<p>Run: <a href=run.php?name=$run>$run</a>\n";
     echo "<p>File: <a href=file.php?run=$run&fname=$fname>$fname</a>\n";
-    $path = "derived/$run/$fname/images.bin";
+    $path = ANALYSIS_ROOT."/$run/$fname/images.bin";
     $t = $frame/200.;
     echo "<p>Frame: $frame ($t sec)\n";
     $x = get_frame($path, $frame);

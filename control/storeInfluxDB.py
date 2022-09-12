@@ -13,10 +13,10 @@ import redis
 import time
 from datetime import datetime
 import re
-
-import config_file
-from redis_utils import *
 import util
+from redis_utils import *
+sys.path.insert(0, '../util')
+import config_file
 
 OBSERVATORY = config_file.get_obs_config()["name"]
 DATATYPE_FORMAT = {

@@ -1,11 +1,10 @@
 <?php
 
-ini_set('display_errors', 1);
-
 // top-level page: show list of data files,
 // with link to per-file pages
 
 require_once("panoseti.inc");
+require_once("analysis.inc");
 
 function compare($x, $y) {
     return $x[0] < $y[0];
@@ -39,10 +38,13 @@ function duration($run, $start_dt) {
 function main() {
     page_head("PanoSETI");
     echo "
-        <h2>Graphical parameter logs</h2>
+        <h2>Hardware parameter logs (Grafana)</h2>
         <p>
         <a href=http://visigoth.ucolick.org:3000>View</a>
     ";
+
+    echo "<h2>Multi-run analysis</h2>";
+    show_global_analysis_types();
 
     echo "
         <h2>Observing runs</h2>

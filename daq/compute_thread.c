@@ -49,19 +49,19 @@ void write_ph_to_out_buffer(
     HSD_output_block_t* out_block,      // block in output buffer
     int quabo_num
 ) {
-    int out_index = out_block->header.n_coinc_img;
+    int out_index = out_block->header.n_ph_img;
 
-    out_block->header.coinc_pkt_head[out_index] = in_block->header.pkt_head[pktIndex];
+    out_block->header.ph_pkt_head[out_index] = in_block->header.pkt_head[pktIndex];
     
     // copy and rotate the image
     //
     quabo16_to_quabo16_copy(
         in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE,
         quabo_num,
-        out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE
+        out_block->ph_block + out_index*BYTES_PER_PKT_IMAGE
     );
 
-    out_block->header.n_coinc_img++;
+    out_block->header.n_ph_img++;
 }
 
 // copy quabo image to module image buffer
@@ -336,7 +336,7 @@ static void *run(hashpipe_thread_args_t * args){
 
         // Resetting the values in the new output block
         db_out->block[curblock_out].header.n_img_module = 0;
-        db_out->block[curblock_out].header.n_coinc_img = 0;
+        db_out->block[curblock_out].header.n_ph_img = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 

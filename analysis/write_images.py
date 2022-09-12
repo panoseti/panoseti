@@ -15,7 +15,9 @@ def do_run(run):
 
             # generate images.bin
             #
-            cmd = './write_images < data/%s/%s > derived/%s/%s/images.bin'%(run,f,run,f)
+            cmd = './write_images < data/%s/%s > %s/%s/%s/images.bin'%(
+                run, f, analysis_util.ANALYSIS_ROOT, run, f
+            )
             print(cmd)
             os.system(cmd)
 
@@ -23,7 +25,10 @@ def do_run(run):
             #
             nframes = 1000
 # see https://stackoverflow.com/questions/20743070/ffmpeg-compressed-mp4-video-not-playing-on-mozilla-firefox-with-a-file-is-corru
-            cmd = 'php pipe_images.php derived/%s/%s/images.bin 0 65536 %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 derived/%s/%s/images_0_65536_%d.mp4 2>&1'%(run,f,nframes,run,f, nframes)
+            cmd = 'php pipe_images.php %s/%s/%s/images.bin 0 65536 %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 %s/%s/%s/images_0_65536_%d.mp4 2>&1'%(
+                analysis_util.ANALYSIS_ROOT, run, f, nframes,
+                analysis_util.ANALYSIS_ROOT, run, f, nframes
+            )
             print(cmd)
             os.system(cmd)
 

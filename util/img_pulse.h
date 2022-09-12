@@ -75,7 +75,7 @@ struct LEVEL {
 // pulse finder for a particular pixel, all time scales
 //
 struct PULSE_FIND {
-    long nsamples;  // how many samples processed so far
+    size_t nsamples;  // how many samples processed so far
     int nlevels;
     int pixel;
     vector<LEVEL> levels;   // 1st and 2nd aren't used
@@ -86,7 +86,7 @@ struct PULSE_FIND {
     void pulse_complete(
         int level,      // pulse duration is 2^level samples
         double value,   // sum of samples in pulse
-        long isample    // index of last sample of pulse
+        size_t isample    // index of last sample of pulse
     );
 
     PULSE_FIND(int _nlevels, int window_size, int _pixel) {

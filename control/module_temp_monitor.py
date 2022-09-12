@@ -12,15 +12,14 @@ import time
 import datetime
 import os
 import sys
-
 import redis
-
 import redis_utils
-import config_file
 import power
 
-from util import get_boardloc, are_redis_daemons_running, write_log
+from util import are_redis_daemons_running, write_log
 from capture_power import get_wps_rkey
+sys.path.insert(0, '../util')
+import config_file
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
@@ -66,7 +65,7 @@ def log_powered_off_modules(wps_name, wps_to_modules):
     quabos_off = list()
     for module_ip_addr in wps_to_modules[wps_name]:
         for quabo_index in range(4):
-            quabos_off.append(f'QUABO_{get_boardloc(module_ip_addr, quabo_index)}')
+            quabos_off.append(f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}')
     write_log(msg.format(wps_name, quabos_off))
 
 
@@ -104,7 +103,7 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
             for quabo_index in range(4):
                 try:
                     # Get this Quabo's redis key.
-                    rkey = f'QUABO_{get_boardloc(module_ip_addr, quabo_index)}'
+                    rkey = f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}'
                     # Get this Quabo's detector and fpga temperatures, if they exist.
                     if rkey.encode('utf-8') not in r.keys():
                         raise Warning("%s is not tracked in Redis." % rkey)
@@ -130,12 +129,12 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
                         if not detector_temp_ok:
                             msg += "The DETECTOR temp of Quabo {0} is {1} C, which exceeds the operating temperature range: {2} C to {3} C. "
                             write_log(msg.format(
-                                get_boardloc(module_ip_addr, quabo_index), temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP)
+                                config_file.get_boardloc(module_ip_addr, quabo_index), temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP)
                             )
                         if not fpga_temp_ok:
                             msg += "The FPGA temp of Quabo {0} is {1} C, which exceeds the operating temperature of {2} C. "
                             write_log(msg.format(
-                                get_boardloc(module_ip_addr, quabo_index), temps[1], MAX_FPGA_TEMP)
+                                config_file.get_boardloc(module_ip_addr, quabo_index), temps[1], MAX_FPGA_TEMP)
                             )
                         msg += f'Attempting to turn off the wps: {module_wps_key}'
                         wps_to_turn_off.add(module_wps_key)

@@ -16,7 +16,10 @@ from signal import signal, SIGINT
 from datetime import datetime
 from datetime import timezone
 from redis_utils import *
-import util, config_file
+import util
+sys.path.insert(0, '../util')
+import config_file
+
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'

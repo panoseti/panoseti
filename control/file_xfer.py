@@ -8,7 +8,9 @@
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
 import sys, os
-import util, config_file
+import util
+sys.path.insert(0, '../util')
+import config_file
 
 # copy a file to a DAQ node
 #

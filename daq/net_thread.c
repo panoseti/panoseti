@@ -22,9 +22,9 @@
 
 // PKTSOCK Params
 // (These should be only changed with caution as it need to change with MMAP)
-#define PKTSOCK_BYTES_PER_FRAME (16384)
-#define PKTSOCK_FRAMES_PER_BLOCK (8)
-#define PKTSOCK_NBLOCKS (20)
+#define PKTSOCK_BYTES_PER_FRAME (1024)
+#define PKTSOCK_FRAMES_PER_BLOCK (1024)
+#define PKTSOCK_NBLOCKS (1024)
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
 // Initialization function for Hashpipe.

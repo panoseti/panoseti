@@ -1,6 +1,6 @@
 DEBUG = 0
 
-PROGS = image_test pulse_test pff_test
+PROGS = image_test img_pulse_test pff_test
 OLD_PROGS = ph5_test fits_test pfits_test
     # these require cfitsio and/or hdf5 libraries
 
@@ -8,7 +8,8 @@ OBJS = image.o
 
 all: $(PROGS)
 
-SRCS = image_test.cpp pulse_test.cpp ph5_test.cpp pfits_test.cpp
+SRCS = image_test.cpp img_pulse_test.cpp
+OLD_SRCS = image_test.cpp img_pulse_test.cpp ph5_test.cpp pfits_test.cpp
 
 H5_INC = -I/usr/include/hdf5/serial
 
@@ -29,8 +30,8 @@ FITS_LIB = -lcfitsio
 image_test: image_test.cpp image.cpp image.h $(OBJS)
 	$(CXX) -o image_test image_test.cpp image.cpp
 
-pulse_test: pulse_test.cpp pulse_find.h
-	$(CXX) -o pulse_test pulse_test.cpp
+img_pulse_test: img_pulse_test.cpp img_pulse.h
+	$(CXX) -o img_pulse_test img_pulse_test.cpp
 
 ph5_test: ph5_test.cpp ph5.o ph5.h
 	$(CXX) -o ph5_test ph5_test.cpp ph5.o $(HDF5_LIB)
@@ -47,7 +48,7 @@ pff_test: pff_test.cpp pff.o
 -include Makefile.deps
 
 Makefile.deps: $(SRCS)
-	 $(CXX) -MM $(H5_INC) *.cpp > Makefile.deps
+	 $(CXX) -MM $(H5_INC) $(SRCS) > Makefile.deps
 
 clean:
 	rm -f $(PROGS) *.o
