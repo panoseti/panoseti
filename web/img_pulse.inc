@@ -2,6 +2,14 @@
 
 require_once("bootstrap.inc");
 
+// fields in output files
+define('OFFSET_SAMPLE', 0);
+define('OFFSET_VALUE',  1);
+define('OFFSET_MEAN',   2);
+define('OFFSET_STDDEV', 3);
+define('OFFSET_NSIGMA', 4);
+define('OFFSET_PIXEL',  5);
+
 function img_pulse_show() {
     $x = 'Pixels: ';
     foreach (scandir(ANALYSIS_ROOT."/$run/$fname") as $pixel) {

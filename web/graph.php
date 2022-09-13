@@ -5,6 +5,8 @@
 // Also, since graphs with lots of points are slow to draw in Javascript,
 // you can zoom and move in the data itself.
 
+DEPRECATED - TOO COMPLEX
+
 require_once("panoseti.inc");
 require_once("graph.inc");
 require_once("img_pulse.inc");

@@ -32,6 +32,13 @@ def img_seconds_to_frames(run, seconds):
     x = float(data_config['image']['integration_time_usec'])
     return seconds*1.e6/x
 
+def sort_output_files(dir, nlevels):
+    for i in range(nlevels):
+        path = '%s/thresh_%d'%(dir, i)
+        if os.path.exists(path):
+            cmd = 'sort -k 5 -r %s > %s.sorted'%(path, path)
+            os.system(cmd)
+
 def do_file(run, analysis_dir, f, params):
     print('processing file ', f)
     file_attrs = pff.parse_name(f)
@@ -51,6 +58,7 @@ def do_file(run, analysis_dir, f, params):
             )
             print(cmd)
             os.system(cmd)
+            sort_output_files(pixel_dir, params['nlevels'])
     if params['all_pixels']:
         all_dir = make_dir('%s/all_pixels'%(module_dir))
         cmd = './img_pulse --infile data/%s/%s --out_dir %s %s'%(
@@ -58,6 +66,7 @@ def do_file(run, analysis_dir, f, params):
         )
         print(cmd)
         os.system(cmd)
+        sort_output_files(all_dir, params['nlevels'])
 
 def do_run(run, params, username):
     analysis_dir = make_analysis_dir(ANALYSIS_TYPE_IMAGE_PULSE, run)

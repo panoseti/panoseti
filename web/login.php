@@ -36,7 +36,7 @@ if ($name) {
     Header("location: index.php");
     exit;
 }
-if (post_str('submit')) {
+if (post_str('submit', true)) {
     login_action();
 } else {
     login_form();

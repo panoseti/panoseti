@@ -19,7 +19,7 @@ function main() {
         error_page("no pixels specified");
     }
     $cmd = sprintf(
-        'img_pulse.py --run %s --nlevels %d --win_size %d --thresh %f',
+        './img_pulse.py --run %s --nlevels %d --win_size %d --thresh %f',
         $run, $nlevels, $win_size, $thresh
     );
     if ($all_pixels) {
@@ -35,7 +35,6 @@ function main() {
         $pixels = str_replace(' ', '', $pixels);
         $cmd .= " --pixels $pixels";
     }
-    //echo $cmd; exit;
     system($cmd, $retval);
     if ($retval) {
         echo "$cmd returned $retval";

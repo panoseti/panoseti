@@ -116,13 +116,11 @@ void open_output_files() {
             printf("can't open %s\n", buf);
             exit(1);
         }
-        fprintf(f, "frame,value,mean,stddev,nsigma,pixel\n");
         thresh_fout.push_back(f);
 
         if (log_all) {
             sprintf(buf, "%s/all_%d", out_dir, i);
             FILE*f = fopen(buf, "w");
-            fprintf(f, "frame,value,mean,stddev,nsigma,pixel\n");
             all_fout.push_back(f);
         }
     }

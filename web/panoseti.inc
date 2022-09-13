@@ -95,7 +95,7 @@ function page_tail() {
 }
 
 function error_page($msg) {
-    page_head("Unable to handle request");
+    page_head("Unable to handle request", LOGIN_NONE);
     echo $msg;
     page_tail();
     exit();

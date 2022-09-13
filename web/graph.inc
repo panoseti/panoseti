@@ -5,6 +5,8 @@
 // see https://www.d3-graph-gallery.com/graph/interactivity_zoom.html
 //
 
+DEPRECATED
+
 // get x/y min/max/name from a .csv file
 //
 function get_extrema($file) {
