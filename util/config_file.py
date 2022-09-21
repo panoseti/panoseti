@@ -33,6 +33,15 @@ def quabo_ip_addr(base, i):
     x[3] = str(int(x[3])+i)
     return '.'.join(x)
 
+
+def get_boardloc(module_ip_addr, quabo_index):
+    """Given a module ip address and a quabo index, returns the BOARDLOC of
+    the corresponding quabo."""
+    pieces = module_ip_addr.split('.')
+    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
+    return boardloc
+
+
 # assign sequential numbers to domes,
 # and IDs to modules
 #
