@@ -183,6 +183,9 @@ def start_hk_recorder(daq_config, run_name):
         
 # Start high-voltage updater daemon
 def start_hv_updater():
+    if is_hv_updater_running():
+        print('hv_updater.py is already running')
+        return
     try:
         subprocess.Popen([hv_updater_name])
     except:
@@ -192,6 +195,9 @@ def start_hv_updater():
 
 # Start module temperature monitor daemon.
 def start_module_temp_monitor():
+    if is_module_temp_monitor_running():
+        print('module_temp_monitor.py is already running')
+        return
     try:
         subprocess.Popen([module_temp_monitor_name])
     except:
@@ -288,7 +294,7 @@ def write_log(msg):
         f.write('%s: %s: %s'%(__main__.__file__, now, msg))
         f.close()
     except:
-        f = fopen('log.txt', 'a')
+        f = open('log.txt', 'a')
 
 def disk_usage(dir):
     x = 0

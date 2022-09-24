@@ -14,6 +14,7 @@ import redis
 import time
 from datetime import datetime
 import re
+import util
 from redis_utils import *
 sys.path.insert(0, '../util')
 import config_file
@@ -23,7 +24,7 @@ DATATYPE_FORMAT = {
     'housekeeping': re.compile("QUABO_\\d*"),
     'GPS': re.compile("GPS.*"),
     'whiterabbit': re.compile("WRSWITCH.*"),
-    'outlet': re.compile("UPS.*")
+    'outlet': re.compile("WPS.*")
 }
 # List of keys with the time stamp values
 key_timestamps = {}
@@ -68,12 +69,12 @@ def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list,
         data_fields = dict()
         for key in r.hkeys(rkey):
             val = get_casted_redis_value(r, rkey, key)
-            if val is not None:
+            if (val is not None) and (val != ""):
                 data_fields[key.decode('utf-8')] = val
             else:
-                msg = f"storeInfluxDB.py: No data in ({rkey.decode('utf-8')}, {key.decode('utf-8')}!"
+                msg = f"storeInfluxDB.py: No data in ({rkey.decode('utf-8')}, {key.decode('utf-8')}): {repr(val)}!"
                 msg += "\n Aborting influx write..."
-                print(msg)
+                util.write_log(msg)
                 continue
         write_influx(client, rkey, data_fields, get_datatype(rkey))
         key_timestamps[rkey] = data_fields['Computer_UTC']
