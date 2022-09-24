@@ -3,6 +3,7 @@
 # Tell a single quabo to send image packets (for timing test)
 # You can use this as a script or a module.
 
+import sys
 import quabo_driver
 sys.path.insert(0, '../util')
 import config_file

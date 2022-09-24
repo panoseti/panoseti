@@ -50,7 +50,7 @@ if __name__ == "__main__":
     while i<len(sys.argv):
         if sys.argv[i] == 'on':
             op = 'on'
-        elif sys.argv[1] == 'off':
+        elif sys.argv[i] == 'off':
             op = 'off'
         else:
             wps_name = sys.argv[i]

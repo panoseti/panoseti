@@ -7,7 +7,7 @@ exceeds a specified temperature range.
 See https://github.com/panoseti/panoseti/issues/58.
 """
 
-import time
+import time, sys
 import datetime
 import redis
 import redis_utils

@@ -7,7 +7,7 @@
 # added to each set of values with a variable labeled as
 # 'Computer_UTC'.
 ##############################################################
-import os
+import os, sys
 import netsnmp
 import redis
 import time

@@ -11,7 +11,7 @@ See the Hamamatsu datasheet for its MPPC arrays: S13361-3050 series
 for more info about the detector constants used in this script.
 """
 
-import time
+import time, sys
 import redis
 import redis_utils
 import quabo_driver

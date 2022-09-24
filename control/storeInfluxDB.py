@@ -7,6 +7,7 @@
 # database 'metadata' in the measurement associated with each 
 # redis set.
 ##############################################################
+import sys
 from os import write
 from influxdb import InfluxDBClient
 import redis

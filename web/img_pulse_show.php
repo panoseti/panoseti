@@ -128,7 +128,7 @@ function show_analysis($run, $analysis_dir) {
                     "img_pulse_show.php?action=detail&run=%s&analysis=%s&module=%s&pixel=%s",
                     $run, $analysis_dir, $mdir,$pdir
                 );
-                echo "<li><a href=$url>$pdir<br>";
+                echo "<li><a href=$url>$pdir</a><br>";
             }
         }
         echo "</ul>";

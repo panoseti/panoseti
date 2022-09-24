@@ -5,7 +5,7 @@ Script for capturing metadata from each ethernet outlet
 and storing it in the Redis database.
 """
 from datetime import datetime
-import time
+import sys, time
 
 import power
 import redis_utils

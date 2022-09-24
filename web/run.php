@@ -146,6 +146,7 @@ function main($run) {
         if (!$n) continue;
         $n = number_format($n/1e6, 2);
         $p = parse_pff_name($f);
+        if (!$p) continue;
         $start = iso_to_dt($p['start']);
         dt_to_local($start);
         table_row(

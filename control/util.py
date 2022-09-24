@@ -296,8 +296,8 @@ def disk_usage(dir):
         x += os.path.getsize('%s/%s'%(dir, f))
     return x
 
-def free_space():
-    total, used, free = shutil.disk_usage('.')
+def free_space(path):
+    total, used, free = shutil.disk_usage(path)
     return free
 
 #-------------- WR and GPS---------------
