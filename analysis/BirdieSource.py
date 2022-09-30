@@ -6,15 +6,21 @@ creation times, durations, and intensities.
 
 Objects can be initialized from a file containing pre-generated birdies or randomly generated.
 """
-from astropy import coordinates
+import astropy.coordinates as c
+import astropy.units as u
+import birdie_injection_utils as utils
+
 
 class BaseBirdieSource:
     """Base class for BirdieSource objects."""
+    def __init__(self, ra, dec, start_date=None, pulse_length=None, period=None):
+        assert 0 <= ra <= 24 and -90 <= dec <= 90
+        self.sky_coord = c.SkyCoord(
+            ra=ra*u.degree, dec=dec*u.degree, frame='icrs'
+        )
 
-    def __init__(self, ra, dec, pulse_length=None, period=None):
-        icrs = coordinates.ICRS(ra=ra, dec=dec)
-        self.sky_coord = coordinates.SkyCoord(frame=icrs, unit='deg')
-
+    def generate_point(self, img_array):
+        pass
 
 
 b = BaseBirdieSource(5, 5)
