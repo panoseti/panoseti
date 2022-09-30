@@ -2,11 +2,14 @@
 #
 # see https://github.com/panoseti/panoseti/wiki/Analysis-framework
 
-import os, shutil, json, datetime
+import os, sys, shutil, json, datetime
+sys.path.append('../util')
+import config_file
 
 # analysis types
 #
 ANALYSIS_TYPE_IMAGE_PULSE = 'img_pulse'
+ANALYSIS_TYPE_VISUAL = 'visual'
 
 ANALYSIS_ROOT = 'analysis'
 
@@ -42,3 +45,11 @@ def make_analysis_dir(analysis_type, run=None):
         type_dir = make_dir('%s/%s'%(ANALYSIS_ROOT, analysis_type))
     now = datetime.datetime.utcnow().replace(microsecond=0).isoformat()+'Z'
     return make_dir('%s/%s'%(type_dir, now))
+
+# convert nsecs to nframes, based on frame rate
+#
+def img_seconds_to_frames(run, seconds):
+    data_config = config_file.get_data_config('data/%s'%run)
+    x = float(data_config['image']['integration_time_usec'])
+    return seconds*1.e6/x
+

@@ -4,9 +4,10 @@
 // with buttons for moving forward or back in time
 
 require_once("panoseti.inc");
+require_once("analysis.inc");
 
-function arrows_str($run, $fname, $frame) {
-    $url = "image.php?run=$run&fname=$fname&frame=";
+function arrows_str($run, $analysis_dir, $module_dir, $frame) {
+    $url = "image.php?run=$run&analysis_dir=$analysis_dir&module_dir=$module_dir&frame=";
     return sprintf(
         '<a class="btn btn-sm btn-primary" href=%s%d><< min</a>
         <a class="btn btn-sm btn-primary" href=%s%d><< sec</a>
@@ -66,25 +67,27 @@ function rand_frame() {
     }
 }
 
-function main($run, $fname, $frame) {
+function main($run, $analysis_dir, $module_dir, $frame) {
     page_head("Image");
     echo "<p>Run: <a href=run.php?name=$run>$run</a>\n";
-    echo "<p>File: <a href=file.php?run=$run&fname=$fname>$fname</a>\n";
-    $path = ANALYSIS_ROOT."/$run/$fname/images.bin";
+    echo "<p>Module: $module_dir\n";
+    $path = ANALYSIS_ROOT."/$run/visual/$analysis_dir/$module_dir/images.bin";
     $t = $frame/200.;
     echo "<p>Frame: $frame ($t sec)\n";
     $x = get_frame($path, $frame);
-    $as = arrows_str($run, $fname, $frame);
+    $as = arrows_str($run, $analysis_dir, $module_dir, $frame);
     show_frame($x, $as);
     page_tail();
 }
 
 $run = get_str("run");
-$fname = get_str("fname");
-check_filename($fname);
 check_filename($run);
+$analysis_dir = get_str("analysis_dir");
+check_filename($analysis_dir);
+$module_dir = get_str("module_dir");
+check_filename($module_dir);
 $frame = get_int("frame");
 
-main($run, $fname, $frame);
+main($run, $analysis_dir, $module_dir, $frame);
 
 ?>

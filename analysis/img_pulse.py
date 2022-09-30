@@ -27,11 +27,6 @@ sys.path.append('../util')
 import pff, config_file
 from analysis_util import *
 
-def img_seconds_to_frames(run, seconds):
-    data_config = config_file.get_data_config('data/%s'%run)
-    x = float(data_config['image']['integration_time_usec'])
-    return seconds*1.e6/x
-
 def sort_output_files(dir, nlevels):
     for i in range(nlevels):
         path = '%s/thresh_%d'%(dir, i)

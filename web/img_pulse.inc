@@ -30,4 +30,11 @@ function img_pulse_form($run) {
     form_end();
 }
 
+function img_pulse_params_str($params) {
+    return sprintf(
+        "#levels: %d<br>Stats window size: %d<br>Threshold: %f<br>Seconds: %f",
+        $params->nlevels, $params->win_size, $params->thresh, $params->seconds
+    );
+}
+
 ?>

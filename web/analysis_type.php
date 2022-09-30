@@ -27,7 +27,7 @@ function show_analyses($type, $run) {
             ),
             $a->username,
             $a->comments,
-            json_encode($a->params)
+            params_str($type, $a->params)
         );
     }
     end_table();
