@@ -105,7 +105,7 @@ function show_list($run, $analysis_dir, $module_dir, $pixel_dir, $level) {
     start_table("table-striped");
     table_header("sample", "pulse", "mean", "stddev", "sigma", "pixel");
     foreach ($lines as $line) {
-        $x = preg_split('/\s+/', trim($line));
+        $x = explode(',', $line);
         table_row(
             (int)$x[OFFSET_SAMPLE], (float)$x[OFFSET_VALUE], (float)$x[OFFSET_MEAN],
             (float)$x[OFFSET_STDDEV], (float)$x[OFFSET_NSIGMA], (int)$x[OFFSET_PIXEL]

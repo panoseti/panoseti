@@ -38,7 +38,7 @@ function check_auth($name, $auth) {
     return $u;
 }
 
-function get_login($optional) {
+function get_login($optional=false) {
     $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
     $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
     if (!$auth || !$name || !check_auth($name, $auth)) {

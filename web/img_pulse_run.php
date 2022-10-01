@@ -6,6 +6,7 @@
 require_once("panoseti.inc");
 
 function main() {
+    $username = get_login();
     $run = get_str('run');
     $nlevels = get_int('nlevels');
     $win_size = get_int('win_size');
@@ -22,6 +23,9 @@ function main() {
         './img_pulse.py --run %s --nlevels %d --win_size %d --thresh %f',
         $run, $nlevels, $win_size, $thresh
     );
+    if ($username) {
+        $cmd .= " --username $username ";
+    }
     if ($all_pixels) {
         $cmd .= ' --all_pixels';
     }

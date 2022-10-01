@@ -6,10 +6,14 @@
 require_once("panoseti.inc");
 
 function main() {
+    $username = get_login();
     $run = get_str('run');
     $seconds = get_int('seconds');
 
     $cmd = sprintf('./write_images.py --run %s', $run);
+    if ($username) {
+        $cmd .= " --username $username ";
+    }
     if ($seconds) {
         $cmd .= " --seconds $seconds";
     }

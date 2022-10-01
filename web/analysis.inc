@@ -27,10 +27,22 @@ function show_global_analysis_types() {
     }
 }
 
+// return the number of analyses of the given type
+//
+function analysis_count($run, $type) {
+    $dir = "analysis/$run/$type";
+    if (!is_dir($dir)) return 0;
+    return count(scandir($dir))-2;
+}
+
 function show_analysis_types($run) {
     global $analysis_type_name;
     foreach ($analysis_type_name as $type=>$name) {
+        $n = analysis_count($run, $type);
         echo "<p><a href=analysis_type.php?type=$type&run=$run>$name</a>";
+        if ($n) {
+            echo " ($n)";
+        }
     }
 }
 
@@ -87,7 +99,7 @@ function run_analyses_str($run) {
             $x[] = $name;
         }
     }
-    return implode(',', $x);
+    return implode(', ', $x);
 }
 
 // return a string summarizing a set of analysis params

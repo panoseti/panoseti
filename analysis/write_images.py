@@ -59,6 +59,9 @@ if __name__ == '__main__':
         elif argv[i] == '--seconds':
             i += 1
             params['seconds'] = float(argv[i])
+        elif argv[i] == '--username':
+            i += 1
+            username = argv[i]
         else:
             raise Exception('bad arg: %s'%argv[i])
         i += 1
