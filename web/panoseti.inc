@@ -38,7 +38,7 @@ function check_auth($name, $auth) {
     return $u;
 }
 
-function get_login($optional) {
+function get_login($optional=false) {
     $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
     $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
     if (!$auth || !$name || !check_auth($name, $auth)) {
@@ -79,7 +79,7 @@ function page_head($title, $login=LOGIN_MANDATORY) {
         exit;
     }
     if ($login_name) {
-        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.<p>";
+        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.<hr>";
     } else {
         echo "<a href=login.php>Log in</a>";
     }
@@ -330,6 +330,7 @@ function parse_pff_name($name) {
     for ($i=0; $i<count($x)-1; $i++) {
         $y = $x[$i];
         $z = explode('_', $y);
+        if (count($z) != 2) continue;
         $p[$z[0]] = $z[1];
     }
     return $p;

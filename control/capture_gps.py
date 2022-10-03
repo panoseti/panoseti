@@ -7,7 +7,7 @@
 # computer and added to each set of values with a variable 
 # labeled as 'Computer_UTC'.
 ##############################################################
-import time
+import time, sys
 import serial
 import struct
 import redis

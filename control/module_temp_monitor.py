@@ -8,7 +8,7 @@ See https://github.com/panoseti/panoseti/issues/58.
 NOTE: this script calls stop.py if any boards or detectors get too hot.
 """
 
-import time
+import time, sys
 import datetime
 import os
 import sys

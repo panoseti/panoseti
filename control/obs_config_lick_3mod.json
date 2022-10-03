@@ -2,11 +2,11 @@
     "name": "Lick",
     "comment": "",
     "wps_astrograph": {
-        "url": "http://admin:1234@192.168.0.100",
+        "url": "http://admin:epowerpanoseti@192.168.0.100",
         "quabo_socket": 5
     },
     "wps_barnard": {
-        "url": "http://admin:1234@192.168.0.101",
+        "url": "http://admin:epowerpanoseti@192.168.0.101",
         "quabo_socket": 1
     },
     "wr_ip_addr": "192.168.1.254",
@@ -18,15 +18,6 @@
             "obsalt": 234,
             "name": "north dome",
             "modules": [
-                {
-                    "mobo_serialno": "M11",
-                    "quabo_version": "qfp",
-                    "ip_addr": "192.168.3.248",
-                    "wps": "wps_astrograph",
-                    "azimuth": 77,
-                    "elevation": 77,
-                    "position_angle": 77
-                },
                 {
                     "mobo_serialno": "M12",
                     "quabo_version": "qfp",

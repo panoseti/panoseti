@@ -9,16 +9,7 @@
     "pulse_height": {
         "pe_threshold": 15
     },
-    "max_file_size_mb": 100,
-    "long_pulse": {
-        "octaves": 16,
-        "threshold_sigma": [
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0
-        ]
-    },
+    "max_file_size_mb": 100000,
     "flash_params": {
         "rate": 7,
         "level": 0,

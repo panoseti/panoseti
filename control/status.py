@@ -2,7 +2,7 @@
 
 # show the status of a recording run
 
-import subprocess
+import subprocess, sys
 import util
 sys.path.insert(0, '../util')
 import config_file

@@ -54,22 +54,37 @@ FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fi){
     make_files(diskDir);
 }
 
+static bool path_exists(const char* path) {
+    struct stat buf;
+    if (stat(path, &buf)) return false;
+    return true;
+}
+
 // Create files for the file pointer stucture given a directory.
 // diskDir: directory where the files will be created
 
-void FILE_PTRS::make_files(const char *diskDir){
-    string fileName;
-    string dirName;
-    dirName = diskDir;
+void FILE_PTRS::make_files(const char *run_dir){
+    char buf[256];
+    string filename;
     
+    sprintf(buf, "module_%d", file_info.module);
+    if (!path_exists(buf)) {
+        if (mkdir(buf, 0777)) {
+            printf("Can't mkdir %s\n", buf);
+            exit(0);
+        }
+    }
     file_info.seqno = 0;
     for (int dp = DP_BIT16_IMG; dp < DP_NONE; dp++){
         file_info.data_product = (DATA_PRODUCT)dp;
         file_info.bytes_per_pixel = bytes_per_pixel((DATA_PRODUCT)dp);
-        file_info.make_filename(fileName);
-        FILE *f = fopen((dirName + fileName).c_str(), "w");
+        file_info.make_filename(filename);
+        sprintf(buf, "module_%d/%s/%s",
+            file_info.module, run_dir, filename.c_str()
+        );
+        FILE *f = fopen(buf, "w");
         if (!f) {
-            printf("Error: can't open file %s\n", (dirName + fileName).c_str());
+            printf("Error: can't open file %s\n", buf);
             exit(0);
         }
         switch (dp){
@@ -87,7 +102,7 @@ void FILE_PTRS::make_files(const char *diskDir){
             default:
                 break;
         }
-        printf("Created file %s\n", (dirName + fileName).c_str());
+        printf("Created file %s\n", buf);
     }
 }
 

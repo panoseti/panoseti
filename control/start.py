@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+# start.py [--no_hv] [--no_redis] [--no_data] [--verbose] [--help]
+#
 # start a recording run:
 #
 # - figure out association of quabos and DAQ nodes,
@@ -9,6 +11,7 @@
 #
 # fail if a recording run is in progress,
 # or if recording activities are active
+#
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
@@ -18,6 +21,14 @@ import util, file_xfer, quabo_driver
 sys.path.insert(0, '../util')
 
 import pff, config_file
+
+verbose = False
+
+def help():
+    print("--no_hv: don't run hv_updater.py")
+    print("--no_redis: OK if redis daemons not running")
+    print("--no_data: set up to record, but don't start data flow or record")
+    print("--verbose: print commands")
 
 # parse the data config file to get DAQ params for quabos
 #
@@ -70,20 +81,73 @@ def start_data_flow(quabo_uids, data_config, daq_config):
                     continue
                 ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
                 quabo = quabo_driver.QUABO(ip_addr)
-                print('setting HK packet dest to %s on quabo %s'%(
-                    head_node_ip_addr, ip_addr
-                ))
+                if verbose:
+                    print('setting HK packet dest to %s on quabo %s'%(
+                        head_node_ip_addr, ip_addr
+                    ))
                 quabo.hk_packet_destination(head_node_ip_addr)
-                print('setting data packet dest to %s on quabo %s'%(
-                    daq_node_ip_addr, ip_addr
-                ))
+                if verbose:
+                    print('setting data packet dest to %s on quabo %s'%(
+                        daq_node_ip_addr, ip_addr
+                    ))
                 quabo.data_packet_destination(daq_node_ip_addr)
-                print('setting DAQ mode on quabo %s'%ip_addr)
+                if verbose:
+                    print('setting DAQ mode on quabo %s'%ip_addr)
                 quabo.send_daq_params(daq_params)
                 quabo.close()
 
+# make run directories; copy config files to them
+# on each DAQ node:
+# data/
+#     run/         config files go here
+#     module_n
+#         run/     .pff files go here
+#
+def make_run_dirs(run_name, daq_config):
+    my_ip = util.local_ip()
+    run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
+    os.mkdir(run_dir)
+
+    # copy config files to run dir on this node
+    local_data_dir = daq_config['head_node_data_dir']
+    for f in config_file.config_file_names:
+        shutil.copyfile(f, '%s/%s'%(local_data_dir, f))
+
+    # make module and run directories on DAQ nodes
+    #
+    for node in daq_config['daq_nodes']:
+        if not node['modules']:
+            continue
+        ip_addr = node['ip_addr']
+        if ip_addr == my_ip:
+            for module in node['modules']:
+                cmd = 'mkdir -p %s/module_%d/%s'%(
+                    daq_config['head_node_data_dir'],
+                    module['id'], run_name
+                )
+                if verbose:
+                    print(cmd)
+                ret = os.system(cmd)
+                if ret: raise Exception('%s returned %d'%(cmd, ret))
+        else:
+            username = node['username']
+            data_dir = node['data_dir']
+            rcmds = ['mkdir %s/%s'%(data_dir, run_name)]
+            for module in node['modules']:
+                rcmds.append('mkdir -p %s/module_%d/%s'%(
+                    data_dir, module['id'], run_name
+                ))
+            rcmd = ';'.join(rcmds)
+            cmd = 'ssh %s@%s "%s"'%(username, ip_addr, rcmd)
+            if verbose:
+                print(cmd)
+            ret = os.system(cmd)
+            if ret: raise Exception('%s returned %d'%(cmd, ret))
+
+    # copy config files to DAQ nodes
+    file_xfer.copy_config_files(daq_config, run_name, verbose)
+
 # start recording data
-#   copy config files to run dir on head node
 #   for each DAQ node that is getting data
 #       create run directory
 #       copy config files to run directory
@@ -91,30 +155,6 @@ def start_data_flow(quabo_uids, data_config, daq_config):
 #
 def start_recording(data_config, daq_config, run_name, no_hv):
     my_ip = util.local_ip()
-
-    # copy config files to run dir on this node
-    local_data_dir = daq_config['head_node_data_dir']
-    for f in config_file.config_file_names:
-        shutil.copyfile(f, '%s/%s'%(local_data_dir, f))
-
-    # make run directories on remote DAQ nodes
-    #
-    for node in daq_config['daq_nodes']:
-        if not node['modules']:
-            continue
-        ip_addr = node['ip_addr']
-        if ip_addr == my_ip:
-            continue
-        username = node['username']
-        data_dir = node['data_dir']
-        cmd = 'ssh %s@%s "mkdir %s/%s"'%(
-            username, ip_addr, data_dir, run_name
-        )
-        ret = os.system(cmd)
-        if ret: raise Exception('%s returned %d'%(cmd, ret))
-
-    # copy config files to DAQ nodes
-    file_xfer.copy_config_files(daq_config, run_name)
 
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
@@ -148,11 +188,14 @@ def start_recording(data_config, daq_config, run_name, no_hv):
         cmd = 'ssh %s@%s "cd %s; %s"'%(
             username, node['ip_addr'], data_dir, remote_cmd
         )
-        print(cmd)
+        if verbose:
+            print(cmd)
         ret = os.system(cmd)
         if ret: raise Exception('%s returned %d'%(cmd, ret))
 
-def start_run(obs_config, daq_config, quabo_uids, data_config, no_hv):
+def start_run(
+    obs_config, daq_config, quabo_uids, data_config, no_hv, no_redis, no_data
+):
     my_ip = util.local_ip()
     if my_ip != daq_config['head_node_ip_addr']:
         print('This node (%s) is not the head node specified in daq_config.json (%s)'%(my_ip, daq_config['head_node_ip_addr']))
@@ -168,12 +211,13 @@ def start_run(obs_config, daq_config, quabo_uids, data_config, no_hv):
         print('The HK recorder is running.  Run stop.py, then try again.')
         return False
         
-    if not util.are_redis_daemons_running():
-        print('Redis daemons are not running')
-        util.show_redis_daemons()
-        return False
+    if not no_redis:
+        if not util.are_redis_daemons_running():
+            print('Redis daemons are not running')
+            util.show_redis_daemons()
+            return False
 
-    # if head node is also DAQ note, make sure data dirs are the same
+    # if head node is also DAQ node, make sure data dirs are the same
     #
     for node in daq_config['daq_nodes']:
         if my_ip == node['ip_addr'] and daq_config['head_node_data_dir'] != node['data_dir']:
@@ -182,14 +226,15 @@ def start_run(obs_config, daq_config, quabo_uids, data_config, no_hv):
 
     try:
         run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
-        run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
-        os.mkdir(run_dir)
         config_file.associate(daq_config, quabo_uids)
         config_file.show_daq_assignments(quabo_uids)
-        print('starting data flow from quabos')
-        start_data_flow(quabo_uids, data_config, daq_config)
-        print('starting recording')
-        start_recording(data_config, daq_config, run_name, no_hv)
+        print('setting up run directories')
+        make_run_dirs(run_name, daq_config)
+        if not no_data:
+            print('starting data flow from quabos')
+            start_data_flow(quabo_uids, data_config, daq_config)
+            print('starting recording')
+            start_recording(data_config, daq_config, run_name, no_hv)
     except:
         print(traceback.format_exc())
         print("Couldn't start run.  Run stop.py, then try again.")
@@ -203,11 +248,23 @@ def start_run(obs_config, daq_config, quabo_uids, data_config, no_hv):
 if __name__ == "__main__":
     argv = sys.argv
     no_hv = False
+    no_redis = False
+    no_data = False
     i = 1
     while i < len(argv):
         if argv[i] == '--no_hv':
             no_hv = True
+        elif argv[i] == '--no_redis':
+            no_redis = True
+        elif argv[i] == '--no_data':
+            no_data = True
+        elif argv[i] == '--verbose':
+            verbose = True
+        elif argv[i] == '--help':
+            help()
+            quit()
         else:
+            help()
             raise Exception('bad arg %s'%argv[i])
         i += 1
 
@@ -215,4 +272,7 @@ if __name__ == "__main__":
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
-    start_run(obs_config, daq_config, quabo_uids, data_config, no_hv)
+    start_run(
+        obs_config, daq_config, quabo_uids, data_config,
+        no_hv, no_redis, no_data
+    )

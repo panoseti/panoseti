@@ -136,7 +136,6 @@ function main($run) {
         "Type",
         "Dome",
         "Module",
-        "Seqno",
         "Size (MB)"
     );
     foreach (scandir($dir) as $f) {
@@ -146,6 +145,7 @@ function main($run) {
         if (!$n) continue;
         $n = number_format($n/1e6, 2);
         $p = parse_pff_name($f);
+        if (!$p) continue;
         $start = iso_to_dt($p['start']);
         dt_to_local($start);
         table_row(
@@ -153,7 +153,7 @@ function main($run) {
                 '<a href=file.php?run=%s&fname=%s>%s</a>',
                 $run, $f, dt_time_str($start)
             ),
-            $p['dp'], $p['dome'], $p['module'], $p['seqno'], $n
+            $p['dp'], $p['dome'], $p['module'], $n
         );
     }
     end_table();
@@ -165,13 +165,14 @@ function main($run) {
         if ($f[0] == ".") continue;
         if (is_pff($f)) continue;
         if (in_array($f, ['comments.json', 'tags.json'])) continue;
-        echo "<br>
+        echo "<p>
             <a href=data/$run/$f>$f</a>
         ";
     }
 
     echo "<h2>Comments</h2>";
     show_comments($run);
+    echo "<p>";
     comments_form($run);
 
     echo "<h2>Tags</h2>";

@@ -10,17 +10,6 @@ define('OFFSET_STDDEV', 3);
 define('OFFSET_NSIGMA', 4);
 define('OFFSET_PIXEL',  5);
 
-function img_pulse_show() {
-    $x = 'Pixels: ';
-    foreach (scandir(ANALYSIS_ROOT."/$run/$fname") as $pixel) {
-        if ($pixel[0] == ".") continue;
-        if (!is_numeric($pixel)) continue;
-        $url = "pulse.php?file=$run/$fname&pixel=$pixel";
-        $x .= "&nbsp;&nbsp <a href=$url>$pixel</a>\n";
-    }
-    row2("Pulse info", $x);
-}
-
 function img_pulse_form($run) {
     form_start("img_pulse_run.php");
     form_input_hidden('run', $run);
@@ -41,26 +30,11 @@ function img_pulse_form($run) {
     form_end();
 }
 
-function img_pulse_file_path($run, $analysis_dir, $module_dir, $pixel_dir, $type, $dur) {
-    $x = "analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir/$type";
-    switch($type) {
-    case "value":
-    case "value_hist":
-        break;
-    default:
-        $x .= "_$dur";
-    }
-    return $x;
-}
-
-function img_pulse_title($type) {
-    if ($type == 'value') return "Pixel values";
-    if ($type == 'value_hist') return "Pixel value histogram";
-    if ($type == 'all') return "Intensity";
-    if ($type == 'mean') return "Local mean intensity";
-    if ($type == 'stddev') return "Local stddev";
-    if ($type == 'thresh') return "Pulses > 3 sigma above mean intensity";
-    return "bad type";
+function img_pulse_params_str($params) {
+    return sprintf(
+        "#levels: %d<br>Stats window size: %d<br>Threshold: %f<br>Seconds: %f",
+        $params->nlevels, $params->win_size, $params->thresh, $params->seconds
+    );
 }
 
 ?>

@@ -1,6 +1,7 @@
 <?php
 
 require_once("img_pulse.inc");
+require_once("visual.inc");
 
 define('ANALYSIS_ROOT', 'analysis');
 
@@ -16,7 +17,7 @@ $analysis_type_name = [
     'visual' => 'Visualizations',
     'stats' => 'Statistics',
     'img_pulse' => 'Image pulses',
-    'ph_coinc' => 'Pulse height coincidence',
+    'ph_coincidence' => 'Pulse height coincidence',
 ];
 
 function show_global_analysis_types() {
@@ -26,13 +27,29 @@ function show_global_analysis_types() {
     }
 }
 
+// return the number of analyses of the given type
+//
+function analysis_count($run, $type) {
+    $dir = "analysis/$run/$type";
+    if (!is_dir($dir)) return 0;
+    return count(scandir($dir))-2;
+}
+
 function show_analysis_types($run) {
     global $analysis_type_name;
     foreach ($analysis_type_name as $type=>$name) {
+        $n = analysis_count($run, $type);
         echo "<p><a href=analysis_type.php?type=$type&run=$run>$name</a>";
+        if ($n) {
+            echo " ($n)";
+        }
     }
 }
 
+// get list of analyses in a given dir,
+// which is either for a run/type (single run)
+// or type (multi-run)
+//
 function get_analyses_aux($dir) {
     if (!is_dir($dir)) return [];
     $analyses = [];
@@ -72,10 +89,39 @@ function get_global_analyses($type) {
     );
 }
 
+// return list of analysis types that have been done for this run
+//
+function run_analyses_str($run) {
+    global $analysis_type_name;
+    $x = [];
+    foreach ($analysis_type_name as $type=>$name) {
+        if (is_dir(sprintf("%s/%s/%s", ANALYSIS_ROOT, $run, $type))) {
+            $x[] = $name;
+        }
+    }
+    return implode(', ', $x);
+}
+
+// return a string summarizing a set of analysis params
+//
+function params_str($type, $params) {
+    switch ($type) {
+    case 'img_pulse':
+        return img_pulse_params_str($params);
+    case 'visual':
+        return visual_params_str($params);
+    default:
+        die("bad type $type");
+    }
+}
+
 function analysis_form($type, $run) {
     switch ($type) {
     case 'img_pulse':
         img_pulse_form($run);
+        break;
+    case 'visual':
+        visual_form($run);
         break;
     default:
         die("bad type $type");

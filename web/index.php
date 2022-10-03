@@ -59,7 +59,7 @@ function main() {
     usort($runs, 'compare');
     $prev_day =  '';
     start_table('table_striped');
-    table_header('Start<br><small>Click to view</a>', 'Duration', 'Run type', 'Tags');
+    table_header('Start<br><small>Click to view</a>', 'Duration', 'Run type', 'Tags', 'Analyses');
     foreach ($runs as $run) {
         $name = $run[1];
         $n = parse_pff_name($name);
@@ -76,7 +76,8 @@ function main() {
             "<a href=run.php?name=$name>$time</a>",
             duration($name, $dt),
             $n['runtype'],
-            tags($name)
+            tags($name),
+            run_analyses_str($name)
         );
     }
     end_table();

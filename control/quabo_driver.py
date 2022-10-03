@@ -199,7 +199,7 @@ class QUABO:
         self.send(cmd)
 
     def fan(self, fanspeed):     # fanspeed is 0..15
-        print('speed: %d'%fanspeed)
+        #print('speed: %d'%fanspeed)
         self.fanspeed = fanspeed
         cmd = self.make_cmd(0x85)
         cmd[6] = self.shutter_open | (self.shutter_power<<1)
@@ -261,11 +261,11 @@ class QUABO:
         reply = self.sock.recvfrom(12)
         bytes = reply[0]
         count = len(bytes)
-        print('got %d bytes in reply'%count)
+        #print('got %d bytes in reply'%count)
         if count != 12:
             return
-        print('Mac addr for PH packets: %s'%(util.mac_addr_str(bytes[0:6])))
-        print('Mac addr for image packets: %s'%(util.mac_addr_str(bytes[6:12])))
+        #print('Mac addr for PH packets: %s'%(util.mac_addr_str(bytes[0:6])))
+        #print('Mac addr for image packets: %s'%(util.mac_addr_str(bytes[6:12])))
 
     def hk_packet_destination(self, ip_addr_str):
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
@@ -298,7 +298,7 @@ class QUABO:
                 count += 1
             except:
                 break
-        print('flush_rx_buffer: got %d bytes'%nbytes)
+        #print('flush_rx_buffer: got %d bytes'%nbytes)
 
     def parse_hv_params(self, fhand, cmd):
         for line in fhand:

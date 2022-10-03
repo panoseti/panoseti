@@ -29,7 +29,19 @@ def status():
     else:
         print('no current run')
 
-    print('disk free: %.0fGB'%(util.free_space()/1.e9))
-
+    print('disk free:')
+    vols = {}
+    for f in os.listdir('.'):
+        if 'module_' in f:
+            x = os.path.realpath(f)
+            x = x.split('/')
+            x = x[0:3]
+            v = '/'.join(x)
+            print('   %s: volume %s'%(f, v))
+            if v not in vols.keys():
+                f = util.free_space(v)
+                vols[v] = f
+    for v, f in vols.items():
+        print('   volume %s: %.0f GB free'%(v, f/1e9))
     
 status()
