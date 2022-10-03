@@ -10,7 +10,7 @@ def ra_dec_to_img_array_indices(ra, dec, img_array):
     ra and dec must be in degrees.
     """
     shape = np.shape(img_array)
-    assert len(shape) == 3, 'img_array must be a 3D matrix.'
+    assert len(shape) == 2, 'img_array must be a 2D matrix.'
     ra_size, dec_size = shape[0], shape[1]
     ra_index = int(ra_size * (ra / 360))
     dec_index = int(dec_size * ((dec + 90) / 180))
@@ -41,10 +41,32 @@ def dec_to_degrees(dec):
     return sign * abs_degrees
 
 
+def get_scaled_image_array(num_ra, num_dec=None, dtype=np.float16):
+    """Returns a 2D array with shape (num_ra, num_dec)."""
+    if num_dec is None:
+        num_dec = num_ra // 2
+    # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
+    array_shape = num_ra, num_dec
+    return np.zeros(array_shape, dtype=dtype)
+
+
+"""
 ra1 = (6, 45, 9)
 dec1 = (-16, 42, 58)
 
-print(ra_to_degrees(ra1))
-print(dec_to_degrees(dec1))
+ra_deg1 = ra_to_degrees(ra1)
+dec_deg1 = dec_to_degrees(dec1)
+
+print(f'ra_deg1 = {ra_deg1}, dec_deg1 = {dec_deg1}')
+
+num_ra1 = 360000
+iarr1 = get_scaled_image_array(num_ra1)
+print(iarr1.shape)
+#print(iarr1)
+
+x1, y1 = ra_dec_to_img_array_indices(ra_deg1, dec_deg1, iarr1)
+
+print(f'x1 = {x1}, y1 = {y1}')
+"""
 
 

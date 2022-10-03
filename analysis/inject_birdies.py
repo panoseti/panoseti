@@ -35,7 +35,6 @@ from astropy.coordinates import SkyCoord
 import sys
 import os
 import json
-from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -44,19 +43,38 @@ import pff
 sys.path.append('../control')
 import config_file
 
-import BirdieSource
-import ModuleView
+from BirdieSource import BaseBirdieSource
+from ModuleView import ModuleView, PixelView
+import birdie_injection_utils as utils
+
+
+np.random.seed(101)
 
 
 def init_birdies():
-    pass
+    ra = np.random.uniform(0, 360)
+    dec = np.random.uniform(-90, 90)
+    return BaseBirdieSource(ra, dec)
+
 
 def init_module():
     pass
 
-def main():
+
+def init_img_array():
     pass
 
 
+def main():
+    num_ra = 360
+    arr = utils.get_scaled_image_array(num_ra)
+    print(arr)
+    b = init_birdies()
+    b.generate_birdie(arr, 10)
+    print(arr)
+
+
+print("RUNNING")
+main()
 if __name__ == 'main':
-    main()
+    pass

@@ -13,14 +13,25 @@ import birdie_injection_utils as utils
 
 class BaseBirdieSource:
     """Base class for BirdieSource objects."""
-    def __init__(self, ra, dec, start_date=None, pulse_length=None, period=None):
-        assert 0 <= ra <= 24 and -90 <= dec <= 90
+    def __init__(self, ra, dec, start_date=None, end_date=None, pulse_duration=None, period=None, intensity=150):
+        #assert 0 <= ra <= 24 and -90 <= dec <= 90
+        self.start_date = start_date
+        self.end_date = end_date
+        self.pulse_duration = pulse_duration
+        self.period = period
+        self.intensity = intensity
+        self.ra = ra
+        self.dec = dec
         self.sky_coord = c.SkyCoord(
-            ra=ra*u.degree, dec=dec*u.degree, frame='icrs'
+            ra=ra*u.deg, dec=dec*u.deg, frame='icrs'
         )
 
-    def generate_point(self, img_array):
-        pass
+    def generate_birdie(self, img_array, frame_utc):
+        """Generate a birdie and add it to img_array."""
+        arrx, arry = utils.ra_dec_to_img_array_indices(self.ra, self.dec, img_array)
+        print(f'arrx = {arrx}, arry = {arry}')
+        img_array[arrx, arry] = self.pulse_intensity(frame_utc)
 
-
-b = BaseBirdieSource(5, 5)
+    def pulse_intensity(self, frame_utc):
+        """Returns the intensity of this birdie at frame_utc in raw adc units."""
+        return self.intensity
