@@ -104,6 +104,8 @@ class QUABO:
         self.make_maroc_cmd(config, cmd)
         self.send(cmd)
 
+    # returns the list of 256 coefficients
+    #
     def calibrate_ph_baseline(self):
         cmd = self.make_cmd(0x07)
         self.flush_rx_buf()
@@ -111,13 +113,11 @@ class QUABO:
         time.sleep(2)
         reply = self.sock.recvfrom(1024)
         bytesback = reply[0]
-        now =time.ctime().split(" ")[3]
-        with open(output_file_path, 'w') as f:
-            f.write(str(now) + ',')
-            for n in range(256):
-                val=bytesback[2*n+4]+256*bytesback[2*n+5]
-                f.write(str(val) + ',')
-            f.write('\n')
+        x = []
+        for n in range(256):
+            val = bytesback[2*n+4] + 256*bytesback[2*n+5]
+            x.append(val)
+        return x
 
     def hv_config(self):
         cmd = self.make_cmd(0x02)

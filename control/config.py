@@ -8,7 +8,7 @@ firmware_silver_qfp = 'quabo_0200_264489B3.bin'
 firmware_silver_bga = 'quabo_0201_2644962F.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess, time
+import sys, os, subprocess, time, datetime, json
 import util, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
@@ -31,6 +31,7 @@ def usage():
 --hv_off                disable detectors
 --maroc_config          configure MAROCs based on data_config.json
                         and quabo_calib_*.json
+--calibrate_ph          run PH baseline calibration on quabos and write to file
 ''')
     sys.exit()
 
@@ -221,6 +222,29 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
             quabo.send_maroc_params(qc_dict)
             quabo.close()
 
+# compute PH baselines on quabos and write to file
+#
+def do_calibrate_ph(modules, quabo_ids):
+    quabos = []
+    for module in modules:
+        for i in range(4):
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            quabo = quabo_driver.QUABO(ip_addr)
+            coefs = quabo.calibrate_ph_baseline()
+            quabo.close()
+            q = {}
+            q['uid'] = uid
+            q['coefs'] = coefs
+            quabos.append(q)
+    x={}
+    d = datetime.datetime.utcnow()
+    x['date'] = d.isoformat()
+    x['quabos'] = quabos;
+    with open("quabo_ph_baseline.json", "w") as f:
+        f.write(json.dumps(x, indent=4))
+
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
@@ -259,6 +283,9 @@ if __name__ == "__main__":
         elif argv[i] == '--maroc_config':
             nops += 1
             op = 'maroc_config'
+        elif argv[i] == '--calibrate_ph':
+            nops += 1
+            op = 'calibrate_ph'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -301,3 +328,5 @@ if __name__ == "__main__":
     elif op == 'maroc_config':
         data_config = config_file.get_data_config()
         do_maroc_config(modules, quabo_uids, quabo_info, data_config)
+    elif op == 'calibrate_ph':
+        do_calibrate_ph(modules, quabo_uids)
