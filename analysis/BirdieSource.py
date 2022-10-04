@@ -14,7 +14,7 @@ np.random.seed(10)
 
 class BaseBirdieSource:
     """Base class for BirdieSource objects."""
-    def __init__(self, ra, dec, start_date=None, end_date=None, pulse_duration=None, period=None, intensity=200):
+    def __init__(self, ra, dec, start_date=None, end_date=None, pulse_duration=None, period=None, intensity=1000):
         #assert 0 <= ra <= 24 and -90 <= dec <= 90
         self.start_date = start_date
         self.end_date = end_date
@@ -35,4 +35,4 @@ class BaseBirdieSource:
 
     def pulse_intensity(self, frame_utc):
         """Returns the intensity of this birdie at frame_utc in raw adc units."""
-        return np.random.uniform(100, self.intensity)
+        return np.random.uniform(500, self.intensity)

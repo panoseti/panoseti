@@ -28,6 +28,7 @@ type: [type of birdie object]
 
 }
 
+TODO: Restrict sky_array to just the strip used by the module.
 
 """
 from astropy.coordinates import SkyCoord
@@ -48,7 +49,7 @@ import pff
 sys.path.append('../control')
 import config_file
 
-np.random.seed(100)
+np.random.seed(383)
 
 
 def init_birdies(num):
@@ -70,25 +71,38 @@ def init_sky_array(num_ra):
 
 
 def main():
-    sky_array = init_sky_array(10000)
+    sky_array = init_sky_array(3600)
     module = init_module()
     # Generate synthetic sky data
     birdie_sources = init_birdies(10000)
     for b in birdie_sources:
         b.generate_birdie(sky_array, 10)
-    kernel = Gaussian2DKernel(x_stddev=0.5)
+    kernel = Gaussian2DKernel(x_stddev=1)
     convolved_sky_array = convolve_fft(sky_array, kernel)
 
     # Simulate image mode data
+    module.update_center_ra_dec_coords(1694809000)
+    module.simulate_all_pixel_fovs(convolved_sky_array)
+    module.plot_32x32_image()
+
+    module.update_center_ra_dec_coords(1694809500)
     module.simulate_all_pixel_fovs(convolved_sky_array)
     module.plot_32x32_image()
 
     # Wraps around...
-    module.update_center_ra_dec_coords(1694810080)
+    module.update_center_ra_dec_coords(1694810000)
     module.simulate_all_pixel_fovs(convolved_sky_array)
-
     module.plot_32x32_image()
 
+    print('start time test')
+    import time
+    s = time.time()
+    for x in range(1000):
+        module.update_center_ra_dec_coords(1694810000 + 60*x)
+        module.simulate_all_pixel_fovs(convolved_sky_array)
+    print(f'Average per simulation {(time.time() - s) / 100}')
+
+    module.simulate_all_pixel_fovs(sky_array, plot_fov=True)
 
 print("RUNNING")
 main()

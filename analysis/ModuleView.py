@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import birdie_injection_utils as utils
+import time
 
 
 class ModuleView:
@@ -36,12 +37,16 @@ class ModuleView:
             lat=obslat*u.deg, lon=obslon*u.deg, height=obsalt*u.m, ellipsoid='WGS84'
         )
         # Current field of view RA-DEC coordinates
-        self.current_pixel_corner_coords = None
+        self.ra_offsets = None
+        self.dec_offsets = None
+        self.init_offset_arrays()
+        self.pixel_grid_ra = None
+        self.pixel_grid_dec = None
         self.current_pos = None
         self.update_center_ra_dec_coords(start_time_utc)
         # Simulated data
         self.simulated_img_arr = np.zeros(self.pixels_per_side**2)
-        self.sarr = None
+        self.fov_array = None
 
     def set_pixel_value(self, px, py, val):
         """In the simulated image frame, set the value of pixel (px, py) to val."""
@@ -81,28 +86,32 @@ class ModuleView:
         self.current_pos = alt_alz_coords.transform_to('icrs')
         self.update_pixel_coord_grid()
 
-    def update_pixel_coord_grid(self):
-        """Updates the coordinates associated with each pixel corner in this module."""
-        ra_offsets = []
-        dec_offsets = []
+    def init_offset_arrays(self):
+        shape = (self.pixels_per_side + 1, self.pixels_per_side + 1)
+        """These can be saved (only have to be generated once)."""
+        self.ra_offsets = np.empty(shape)
+        self.dec_offsets = np.empty(shape)
         # Populate ra_offsets and dec_offsets.
         for i in range(self.pixels_per_side + 1):
             ra_offset = (i - self.pixels_per_side // 2) * self.pixel_scale
             for j in range(self.pixels_per_side + 1):
                 dec_offset = (-j + self.pixels_per_side // 2) * self.pixel_scale
-                ra_offsets.append(ra_offset)
-                dec_offsets.append(dec_offset)
-        #print(f'ra_offsets = {ra_offsets}\ndec_offsets = {dec_offsets}')
-        self.current_pixel_corner_coords = self.current_pos.spherical_offsets_by(
-            ra_offsets * u.deg, dec_offsets * u.deg
-        )
+                self.ra_offsets[i, j] = ra_offset
+                self.dec_offsets[i, j] = dec_offset
+
+    def update_pixel_coord_grid(self):
+        """Updates the coordinates associated with each pixel corner in this module."""
+        current_ra = (self.current_pos.ra / u.deg).value
+        current_dec = (self.current_pos.dec / u.deg).value
+        self.pixel_grid_ra = self.ra_offsets + current_ra
+        self.pixel_grid_dec = self.dec_offsets + current_dec
+        #print(f'ra grid = {self.pixel_grid_ra}\ndec grid = {self.pixel_grid_dec}')
+
 
     def get_pixel_coord(self, i, j):
         """Return a tuple containing the RA-DEC coordinates of the pixel corner at index (i,j)."""
-        index_1d = i * (self.pixels_per_side + 1) + j
-        pixel_sky_coord = self.current_pixel_corner_coords[index_1d]
-        pixel_ra = pixel_sky_coord.ra / u.deg
-        pixel_dec = pixel_sky_coord.dec / u.deg
+        pixel_ra = self.pixel_grid_ra[i, j]
+        pixel_dec = self.pixel_grid_dec[i, j]
         return pixel_ra, pixel_dec
 
     def simulate_one_pixel_fov(self, px, py, sky_array):
@@ -118,23 +127,28 @@ class ModuleView:
         x = x0
         max_ra_index = sky_array.shape[0]
         # RA coordinates wrap around.
-        while x % max_ra_index < x1:
+        while x % max_ra_index < x1 % max_ra_index:
+            x %= max_ra_index
             for y in range(y1, y0 + 1):
-                #print(f'x,y={x},{y}')
-                self.sarr[x, y] += 10
                 total_intensity += sky_array[x, y]
+                #self.fov_array[x, y] = 50
                 #if sky_array[x, y] > 0:
                     #print(f'pixel ({px},{py}):')
                     #print(f'\t({x}, {y}): {sky_array[x, y]}')
             x += 1
         self.set_pixel_value(px, py, total_intensity)
 
-    def simulate_all_pixel_fovs(self, sky_array):
-        self.sarr = np.copy(sky_array)
+    def simulate_all_pixel_fovs(self, sky_array, plot_fov=False):
+        #s = time.time()
+        #if self.fov_array is None:
+            #self.fov_array = np.zeros(sky_array.shape)
         for i in range(self.pixels_per_side):
             for j in range(self.pixels_per_side):
                 self.simulate_one_pixel_fov(i, j, sky_array)
-        utils.graph_sky_array(self.sarr)
+        #input(f'avg time per pixel fov sim = {(e - s) / self.pixels_per_side**2}')
+        #input(f'total time per pixel fov sim = {(e - s)}')
+        #if plot_fov:
+            #utils.graph_sky_array(self.fov_array)
 
 """
 num_ra = 360
