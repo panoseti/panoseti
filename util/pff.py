@@ -37,13 +37,17 @@ def read_image(f, img_size, bytes_per_pixel):
     if img_size == 32:
         if bytes_per_pixel == 2:
             return struct.unpack("1024H", f.read(2048))
+        elif bytes_per_pixel == 1:
+            return struct.unpack("1024B", f.read(1024))
         else:
-            raise Exception("bad bytes per pixel"%bytes_per_pixel)
+            raise Exception("bad bytes per pixel: %d"%bytes_per_pixel)
     elif img_size == 16:
         if bytes_per_pixel == 2:
             return struct.unpack("256H", f.read(512))
+        elif bytes_per_pixel == 2:
+            return struct.unpack("256B", f.read(256))
         else:
-            raise Exception("bad bytes per pixel"%bytes_per_pixel)
+            raise Exception("bad bytes per pixel: %d"%bytes_per_pixel)
     else:
         raise Exception("bad image size"%image_size)
 
@@ -104,7 +108,4 @@ def pff_file_type(name):
     n = parse_name(name)
     if 'dp' not in n.keys():
         return None
-    dp = n['dp']
-    if dp == '1':
-        return 'img16'
-    return dp
+    return n['dp']

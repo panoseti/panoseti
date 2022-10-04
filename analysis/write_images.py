@@ -17,27 +17,39 @@ def do_run(run, params, username):
     nframes = img_seconds_to_frames(run, params['seconds'])
     for f in os.listdir('data/%s'%run):
         if not pff.is_pff_file(f): continue
-        if pff.pff_file_type(f) != 'img16': continue
+        t = pff.pff_file_type(f)
+        if t == 'img16':
+            bytes_per_pixel = 2
+        elif t == 'img8':
+            bytes_per_pixel = 1
+        else:
+            raise Exception('bad file type %s'%t)
+
+        file_path = 'data/%s/%s'%(run, f)
+        if os.path.getsize(file_path) == 0: continue;
+
         file_attrs = pff.parse_name(f)
         module = file_attrs['module']
         module_dir =  make_dir('%s/module_%s'%(analysis_dir, module))
 
         # generate images.bin
         #
-        cmd = './write_images --nframes %d< data/%s/%s > %s/images.bin'%(
-            nframes, run, f,
-            module_dir
+        cmd = './write_images --bytes_per_pixel --nframes %d< %s> %s/images.bin'%(
+            bytes_per_pixel, nframes, file_path, module_dir
         )
         print(cmd)
         os.system(cmd)
 
         # generate images.mp4
-        # the 0 65536 means full-range scaling to 0..255.
-        # might want to make this a parameter
-        #
+        
+        # pixel values for black and white;
+        # max = 0 means use full range
+        # TODO: use quantiles instead
+        minval = 0
+        maxval = 0
 # see https://stackoverflow.com/questions/20743070/ffmpeg-compressed-mp4-video-not-playing-on-mozilla-firefox-with-a-file-is-corru
-        cmd = 'php pipe_images.php %s/images.bin 0 65536 %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 %s/images.mp4 2>&1'%(
-            module_dir, nframes,
+        cmd = 'php pipe_images.php %s/images.bin %d %d %d %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 %s/images.mp4 2>&1'%(
+            module_dir, minval, maxval, nframes, bytes_per_pixel
             module_dir
         )
         print(cmd)

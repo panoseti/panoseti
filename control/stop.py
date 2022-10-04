@@ -63,7 +63,7 @@ def write_run_complete_file(daq_config, run_name):
         path = '%s/%s/%s'%(data_dir, run_name, f)
         if not pff.is_pff_file(path): continue
         if os.path.getsize(path) == 0: continue
-        if not did_img and pff.pff_file_type(path)=='img16':
+        if not did_img and pff.pff_file_type(path) in ['img16', 'img8']:
             os.symlink(path, img_symlink)
             did_img = True
             print('linked %s to %s'%(img_symlink, f))

@@ -14,14 +14,19 @@ ini_set('display_errors', 1);
 // output 1024 4-byte argb, 4x4 blocks
 //
 
-function output_frame($frame, $min, $max) {
+function output_frame($frame, $min, $max, $bytes_per_pixel) {
     $s = 4;
     $x = [];
-    if ($min == 0 && $max == 65536) {
+    if ($max == 0) {
+        // no scaling
         for ($i=0; $i<32; $i++) {
             for ($ii=0; $ii<$s; $ii++) {
                 for ($j=0; $j<32; $j++) {
-                    $v = $frame[$i*32+$j] >> 8;
+                    if ($bytes_per_pixel == 2) {
+                        $v = $frame[$i*32+$j] >> 8;
+                    } else {
+                        $v = $frame[$i*32+$j];
+                    }
                     for ($jj=0; $jj<$s; $jj++) {
                         $x[] = 255;     // alpha
                         $x[] = $v;
@@ -54,18 +59,24 @@ function output_frame($frame, $min, $max) {
     echo pack("C$n", ...$x);
 }
 
-function output_frames($file, $min, $max, $nframes) {
+function output_frames($file, $min, $max, $nframes, $bytes_per_pixel) {
     $f = fopen($file, "rb");
     for ($i=0; $i<$nframes; $i++) {
         if (feof($f)) break;
-        $x = fread($f, 1024*2);
+        $x = fread($f, 1024*$bytes_per_pixel);
         if (strlen($x)==0 ) break;
-        $y = array_merge(unpack("S1024", $x));
-            // unpack makes 1-offset array - ?????
+        if ($bytes_per_pixel == 2) {
+            $y = array_merge(unpack("S1024", $x));
+        } else {
+            $y = array_merge(unpack("C1024", $x));
+        }
+        // unpack returns a 1-offset array - huh?????
+        // array_merge() makes it 0-offset
+            
         if (!$y) {
             die("unpack");
         }
-        output_frame($y, $min, $max);
+        output_frame($y, $min, $max, $bytes_per_pixel);
     }
 }
 
@@ -73,6 +84,7 @@ $fname = $argv[1];
 $min = (int)$argv[2];
 $max = (int)$argv[3];
 $nframes = (int)$argv[4];
-output_frames($fname, $min, $max, $nframes);
+$bytes_per_pixel = (int)$argv[5];
+output_frames($fname, $min, $max, $nframes, $bytes_per_pixel);
 
 ?>

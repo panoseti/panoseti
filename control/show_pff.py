@@ -6,7 +6,7 @@
 #   default: 0.1
 # if no filename specified, use 'img'
 
-import sys, random, json
+import os, sys, random, json
 sys.path.insert(0, '../util')
 import pff, image_quantiles
 
@@ -104,19 +104,20 @@ def main():
         usage()
         return
 
-    if fname=='img':
-        dp = 'img16'
-    elif fname=='ph':
-        dp = 'ph16'
-    else:
-        dict = pff.parse_name(fname)
-        dp = dict['dp']
+    path = os.path.realpath(fname)
+    real_fname = os.path.basename(path)
+    dict = pff.parse_name(real_fname)
+    dp = dict['dp']
 
-    if dp == 'img16' or dp=='1':
+    if dp == 'img16':
         image_size = 32
         bytes_per_pixel = 2
         is_ph = False
-    elif dp == 'ph16' or dp=='3':
+    elif dp == 'img8':
+        image_size = 32
+        bytes_per_pixel = 1
+        is_ph = False
+    elif dp == 'ph16':
         image_size = 16
         bytes_per_pixel = 2
         is_ph = True

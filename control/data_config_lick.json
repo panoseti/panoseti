@@ -4,7 +4,7 @@
     "image": {
         "integration_time_usec": 1000,
         "pe_threshold": 2,
-        "quabo_sample_size": 16
+        "quabo_sample_size": 8
     },
     "pulse_height": {
         "pe_threshold": 15
