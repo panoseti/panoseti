@@ -128,4 +128,23 @@ function analysis_form($type, $run) {
     }
 }
 
+// type-independent info for analysis pages.
+// Put this at top of page
+//
+function analysis_page_intro($analysis_dir, $dirpath) {
+    echo "<p>Analysis time: $analysis_dir";
+    $summary_path = "$dirpath/summary.json";
+    if (file_exists($summary_path)) {
+        $s = json_decode(file_get_contents($summary_path));
+        echo "<p>Run by: $s->username";
+        echo "<p>Parameters:";
+        echo "<pre>";
+        print_r($s->params);
+        echo "</pre>";
+    } else {
+        echo "<p>No summary file";
+    }
+    echo "<p><a href=$dirpath>View analysis directory</a>";
+}
+
 ?>

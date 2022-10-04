@@ -8,13 +8,16 @@
 //          link to frame browser
 
 require_once("panoseti.inc");
+require_once("analysis.inc");
 
 function show_analysis($run, $analysis_dir) {
     $dirpath = "analysis/$run/visual/$analysis_dir";
     page_head("Visual analysis");
+    analysis_page_intro($analysis_dir, $dirpath);
     foreach (scandir($dirpath) as $mdir) {
         if (substr($mdir, 0, 7) != 'module_') continue;
-        echo "<h3>$mdir</h3>";
+        $mnum = substr($mdir, 7);
+        echo "<h3>Module $mnum</h3>";
         echo "<ul>
             <li> <a href=image.php?run=$run&analysis_dir=$analysis_dir&module_dir=$mdir&frame=0>Frame browser</a>
             <li> <a href=analysis/$run/visual/$analysis_dir/$mdir/images.mp4>Movie</a>

@@ -21,6 +21,7 @@
 
 require_once("panoseti.inc");
 require_once("img_pulse.inc");
+require_once("analysis.inc");
 
 function sigma_form($run, $analysis_dir, $module_dir, $pixel_dir, $dur) {
     echo "<li><form action=pulse_sigma.php>Pulses above
@@ -118,9 +119,11 @@ function show_list($run, $analysis_dir, $module_dir, $pixel_dir, $level) {
 function show_analysis($run, $analysis_dir) {
     $dirpath = "analysis/$run/img_pulse/$analysis_dir";
     page_head("Image pulse analysis");
+    analysis_page_intro($analysis_dir, $dirpath);
     foreach (scandir($dirpath) as $mdir) {
         if (substr($mdir, 0, 7) != 'module_') continue;
-        echo "<h3>$mdir</h3><ul>";
+        $mnum = substr($mdir, 7);
+        echo "<h3>Module $mnum</h3><ul>";
         $subdir = "$dirpath/$mdir";
         foreach (scandir($subdir) as $pdir) {
             if ($pdir == 'all_pixels' || substr($pdir, 0, 6) == 'pixel_') {

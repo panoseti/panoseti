@@ -157,10 +157,7 @@ function main($run) {
         );
     }
     end_table();
-    echo "<h2>Analysis</h2>\n";
-    show_analysis_types($run);
-
-    echo "<h2>Ancillary files</h2>";
+    echo "<h2>Other files</h2>";
     foreach (scandir($dir) as $f) {
         if ($f[0] == ".") continue;
         if (is_pff($f)) continue;
@@ -169,6 +166,9 @@ function main($run) {
             <a href=data/$run/$f>$f</a>
         ";
     }
+
+    echo "<h2>Analyses</h2>\n";
+    show_analysis_types($run);
 
     echo "<h2>Comments</h2>";
     show_comments($run);
