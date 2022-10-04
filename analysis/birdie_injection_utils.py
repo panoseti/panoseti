@@ -3,13 +3,13 @@ Utility functions for the birdie injection program.
 """
 import numpy as np
 
-def ra_dec_to_img_array_indices(ra, dec, img_array):
+def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     """
-    Given img_array, a 3D image array recording light intensities at each RA-DEC coordinate,
-    returns the indices in img_array corresponding to the point (ra, dec).
+    Given sky_array, a 2D sky array recording light intensities at RA-DEC coordinates,
+    returns the indices in sky_array corresponding to the point (ra, dec).
     ra and dec must be in degrees.
     """
-    shape = np.shape(img_array)
+    shape = np.shape(sky_array)
     assert len(shape) == 2, 'img_array must be a 2D matrix.'
     ra_size, dec_size = shape[0], shape[1]
     ra_index = int(ra_size * (ra / 360))
@@ -41,13 +41,14 @@ def dec_to_degrees(dec):
     return sign * abs_degrees
 
 
-def get_scaled_image_array(num_ra, num_dec=None, dtype=np.float16):
+def get_sky_image_array(num_ra, num_dec=None, dtype=np.float16):
     """Returns a 2D array with shape (num_ra, num_dec)."""
     if num_dec is None:
         num_dec = num_ra // 2
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     array_shape = num_ra, num_dec
     return np.zeros(array_shape, dtype=dtype)
+
 
 
 """

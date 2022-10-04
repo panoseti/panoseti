@@ -61,13 +61,13 @@ def init_module():
     pass
 
 
-def init_img_array():
+def init_sky_array():
     pass
 
 
 def main():
     num_ra = 360
-    arr = utils.get_scaled_image_array(num_ra)
+    arr = utils.get_sky_image_array(num_ra)
     print(arr)
     b = init_birdies()
     b.generate_birdie(arr, 10)

@@ -26,11 +26,11 @@ class BaseBirdieSource:
             ra=ra*u.deg, dec=dec*u.deg, frame='icrs'
         )
 
-    def generate_birdie(self, img_array, frame_utc):
-        """Generate a birdie and add it to img_array."""
-        arrx, arry = utils.ra_dec_to_img_array_indices(self.ra, self.dec, img_array)
+    def generate_birdie(self, sky_array, frame_utc):
+        """Generate a birdie and add it to sky_array."""
+        arrx, arry = utils.ra_dec_to_sky_array_indices(self.ra, self.dec, sky_array)
         print(f'arrx = {arrx}, arry = {arry}')
-        img_array[arrx, arry] = self.pulse_intensity(frame_utc)
+        sky_array[arrx, arry] = self.pulse_intensity(frame_utc)
 
     def pulse_intensity(self, frame_utc):
         """Returns the intensity of this birdie at frame_utc in raw adc units."""
