@@ -38,43 +38,60 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
+from BirdieSource import BaseBirdieSource
+from ModuleView import ModuleView
+import birdie_injection_utils as utils
+from astropy.convolution import convolve, convolve_fft, Gaussian2DKernel
+
 sys.path.append('../util')
 import pff
 sys.path.append('../control')
 import config_file
 
-from BirdieSource import BaseBirdieSource
-from ModuleView import ModuleView, PixelView
-import birdie_injection_utils as utils
+np.random.seed(100)
 
 
-np.random.seed(101)
-
-
-def init_birdies():
-    ra = np.random.uniform(0, 360)
-    dec = np.random.uniform(-90, 90)
-    return BaseBirdieSource(ra, dec)
+def init_birdies(num):
+    birdie_sources = []
+    for x in range(num):
+        ra = np.random.uniform(0, 360)
+        dec = np.random.uniform(-90, 90)
+        birdie_sources.append(BaseBirdieSource(ra, dec))
+    return birdie_sources
 
 
 def init_module():
-    pass
+    m1 = ModuleView(42, 1656443180, 10.3, 44.2, 234, 77, 77, 77)
+    return m1
 
 
-def init_sky_array():
-    pass
+def init_sky_array(num_ra):
+    return utils.get_sky_image_array(num_ra)
 
 
 def main():
-    num_ra = 360
-    arr = utils.get_sky_image_array(num_ra)
-    print(arr)
-    b = init_birdies()
-    b.generate_birdie(arr, 10)
-    print(arr)
+    sky_array = init_sky_array(10000)
+    module = init_module()
+    # Generate synthetic sky data
+    birdie_sources = init_birdies(10000)
+    for b in birdie_sources:
+        b.generate_birdie(sky_array, 10)
+    kernel = Gaussian2DKernel(x_stddev=0.5)
+    convolved_sky_array = convolve_fft(sky_array, kernel)
+
+    # Simulate image mode data
+    module.simulate_all_pixel_fovs(convolved_sky_array)
+    module.plot_32x32_image()
+
+    # Wraps around...
+    module.update_center_ra_dec_coords(1694810080)
+    module.simulate_all_pixel_fovs(convolved_sky_array)
+
+    module.plot_32x32_image()
 
 
 print("RUNNING")
 main()
+print("DONE")
 if __name__ == 'main':
     pass

@@ -2,6 +2,8 @@
 Utility functions for the birdie injection program.
 """
 import numpy as np
+import matplotlib.pyplot as plt
+import math
 
 def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     """
@@ -12,8 +14,8 @@ def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     shape = np.shape(sky_array)
     assert len(shape) == 2, 'img_array must be a 2D matrix.'
     ra_size, dec_size = shape[0], shape[1]
-    ra_index = int(ra_size * (ra / 360))
-    dec_index = int(dec_size * ((dec + 90) / 180))
+    ra_index = math.floor(ra_size * (ra / 360))
+    dec_index = math.floor(dec_size * ((dec + 90) / 180))
     return ra_index, dec_index
 
 
@@ -49,6 +51,10 @@ def get_sky_image_array(num_ra, num_dec=None, dtype=np.float16):
     array_shape = num_ra, num_dec
     return np.zeros(array_shape, dtype=dtype)
 
+def graph_sky_array(sky_array):
+    plt.imshow(np.matrix.transpose(sky_array), interpolation='none')
+    plt.gca().invert_yaxis()
+    plt.show()
 
 
 """

@@ -9,11 +9,12 @@ Objects can be initialized from a file containing pre-generated birdies or rando
 import astropy.coordinates as c
 import astropy.units as u
 import birdie_injection_utils as utils
-
+import numpy as np
+np.random.seed(10)
 
 class BaseBirdieSource:
     """Base class for BirdieSource objects."""
-    def __init__(self, ra, dec, start_date=None, end_date=None, pulse_duration=None, period=None, intensity=150):
+    def __init__(self, ra, dec, start_date=None, end_date=None, pulse_duration=None, period=None, intensity=200):
         #assert 0 <= ra <= 24 and -90 <= dec <= 90
         self.start_date = start_date
         self.end_date = end_date
@@ -29,9 +30,9 @@ class BaseBirdieSource:
     def generate_birdie(self, sky_array, frame_utc):
         """Generate a birdie and add it to sky_array."""
         arrx, arry = utils.ra_dec_to_sky_array_indices(self.ra, self.dec, sky_array)
-        print(f'arrx = {arrx}, arry = {arry}')
+        #print(f'arrx = {arrx}, arry = {arry}')
         sky_array[arrx, arry] = self.pulse_intensity(frame_utc)
 
     def pulse_intensity(self, frame_utc):
         """Returns the intensity of this birdie at frame_utc in raw adc units."""
-        return self.intensity
+        return np.random.uniform(100, self.intensity)
