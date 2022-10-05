@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "pulse_find.h"
+#include "img_pulse.h"
 
 #define STATS
     // whether to compute mean/stddev

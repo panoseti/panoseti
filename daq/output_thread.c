@@ -156,15 +156,14 @@ static long long max_file_size = 0; //IN UNITS OF BYTES
 static FILE_PTRS *data_files[MAX_MODULE_INDEX] = {NULL};
 
 
-// Create a file pointers for a given dome and module.
+// Create a file pointers for a given module.
 // diskDir: directory of the file created for the file pointer structure
-// dome: dome number of the files
 // module: module number of the files
 
-FILE_PTRS* data_file_init(const char *diskDir, int dome, int module) {
+FILE_PTRS* data_file_init(const char *diskDir, int module) {
     time_t t = time(NULL);
 
-    FILENAME_INFO fi(t, DP_NONE, 0, dome, module, 0);
+    FILENAME_INFO fi(t, DP_NONE, 0, module, 0);
     return new FILE_PTRS(diskDir, &fi);
 }
 
@@ -326,7 +325,7 @@ int create_data_files_from_config(){
         if (cbuf != '#') {
             if (fscanf(configFile, "%u\n", &modNum) == 1){
                 if (data_files[modNum] == NULL) {
-                    data_files[modNum] = data_file_init(run_directory, 0, modNum);
+                    data_files[modNum] = data_file_init(run_directory, modNum);
                     printf("Created Data file for Module %u\n", modNum);
                 }
             }

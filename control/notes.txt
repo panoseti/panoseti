@@ -330,3 +330,14 @@ start.py without HV on?
     don't run Nico script either
 start.py
     send data_packet_dest cmd
+
+9/19/22
+    coincidence between image pulse
+    repeated events within 1 obs run (different pixels)
+        divide into pixel
+        do it on the fly?
+
+    clouds?
+        autodetect?
+
+    keep log of sky coverage?

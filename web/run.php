@@ -134,7 +134,6 @@ function main($run) {
     table_header(
         "Start time<br><small>click for details</small>",
         "Type",
-        "Dome",
         "Module",
         "Size (MB)"
     );
@@ -153,7 +152,7 @@ function main($run) {
                 '<a href=file.php?run=%s&fname=%s>%s</a>',
                 $run, $f, dt_time_str($start)
             ),
-            $p['dp'], $p['dome'], $p['module'], $n
+            $p['dp'], $p['module'], $n
         );
     }
     end_table();

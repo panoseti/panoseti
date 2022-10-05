@@ -74,19 +74,17 @@ struct FILENAME_INFO {
     double start_time;
     DATA_PRODUCT data_product;
     int bytes_per_pixel;
-    int dome;
     int module;
     int seqno;
 
     FILENAME_INFO(){}
     FILENAME_INFO(
         double _start_time, DATA_PRODUCT _data_product, int _bytes_per_pixel,
-        int _dome, int _module, int _seqno
+        int _module, int _seqno
     ) {
         start_time = _start_time;
         data_product = _data_product;
         bytes_per_pixel = _bytes_per_pixel;
-        dome = _dome;
         module = _module;
         seqno = _seqno;
     }

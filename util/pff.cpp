@@ -202,11 +202,10 @@ void FILENAME_INFO::make_filename(string &s) {
     time_t x = (time_t)start_time;
     struct tm* tm = gmtime(&x);
     strftime(tbuf, sizeof(tbuf), "%FT%TZ", tm);
-    sprintf(buf, "start%c%s%cdp%c%s%cbpp%c%d%cdome%c%d%cmodule%c%d%cseqno%c%d.pff",
+    sprintf(buf, "start%c%s%cdp%c%s%cbpp%c%d%cmodule%c%d%cseqno%c%d.pff",
         VAL_SEP, tbuf,
     PAIR_SEP, VAL_SEP, dp_to_str(data_product),
     PAIR_SEP, VAL_SEP, bytes_per_pixel,
-    PAIR_SEP, VAL_SEP, dome,
     PAIR_SEP, VAL_SEP, module,
     PAIR_SEP, VAL_SEP, seqno
     );
@@ -234,8 +233,6 @@ int FILENAME_INFO::parse_filename(char* name) {
             data_product = str_to_dp(nvp.value);
         } else if (!strcmp(nvp.name, "bpp")) {
             bytes_per_pixel = atoi(nvp.value);
-        } else if (!strcmp(nvp.name, "dome")) {
-            dome = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "module")) {
             module = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "seqno")) {
@@ -251,7 +248,6 @@ int FILENAME_INFO::copy_to(FILENAME_INFO* fileInfo){
     fileInfo->start_time = this->start_time;
     fileInfo->data_product = this->data_product;
     fileInfo->bytes_per_pixel = this->bytes_per_pixel;
-    fileInfo->dome = this->dome;
     fileInfo->module = this->module;
     fileInfo->seqno = this->seqno;
     return 1;
@@ -278,7 +274,6 @@ int main(int, char**) {
     fi.start_time = time(0);
     fi.data_product = DP_PH_IMG;
     fi.bytes_per_pixel = 2;
-    fi.dome = 0;
     fi.module=14;
     fi.seqno = 5;
     fi.make_filename(s);
@@ -287,9 +282,9 @@ int main(int, char**) {
     printf("file name: %s\n", buf);
 
     fi.parse_filename(buf);
-    printf("parsed: time %f dp %d bpp %d dome %d module %d seqno %d\n",
+    printf("parsed: time %f dp %d bpp %d module %d seqno %d\n",
         fi.start_time, fi.data_product, fi.bytes_per_pixel,
-        fi.dome, fi.module, fi.seqno
+        fi.module, fi.seqno
     );
 }
 #endif
