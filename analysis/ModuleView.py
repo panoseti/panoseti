@@ -97,6 +97,12 @@ class ModuleView:
         self.pixel_grid_dec = self.dec_offsets + self.center_dec
         #print(f'ra grid = {self.pixel_grid_ra}\ndec grid = {self.pixel_grid_dec}')
 
+    def get_module_ra_at_time(self, frame_utc):
+        """Return the new """
+        # Earth rotates approx 360 degrees in 24 hrs.
+        dt = frame_utc - self.current_utc
+        return self.center_ra + dt * 360 / (24 * 60 * 60)
+
     def update_center_ra_dec_coords(self, frame_utc):
         """Return the RA-DEC coordinates of the center of the module's field of view at frame_utc."""
         if self.center_ra is None or self.center_dec is None:
@@ -110,10 +116,8 @@ class ModuleView:
             self.center_dec = pos.dec.value
         else:
             assert frame_utc >= self.current_utc, f'frame_utc must be at least as large as self.current_utc'
-            dt = frame_utc - self.current_utc
+            self.center_ra = self.get_module_ra_at_time(frame_utc) % 360
             self.current_utc = frame_utc
-            # Earth rotates approx 360 degrees in 24 hrs.
-            self.center_ra += dt * 360 / (24 * 60 * 60)
         self.update_pixel_coord_grid()
 
     def simulate_one_pixel_fov(self, px, py, sky_array, draw_sky_band):

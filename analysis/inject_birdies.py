@@ -44,7 +44,7 @@ import pff
 sys.path.append('../control')
 import config_file
 
-#np.random.seed(383)
+np.random.seed(383)
 
 
 def get_birdie_config_vector(param_ranges):
@@ -70,8 +70,8 @@ def init_module(start_utc):
     return m1
 
 
-def init_sky_array(num_ra):
-    return utils.get_sky_image_array(num_ra)
+def init_sky_array(array_resolution):
+    return utils.get_sky_image_array(array_resolution)
 
 
 def init_birdies(num, param_ranges):
@@ -99,20 +99,25 @@ def init_birdie_param_ranges(start_utc, end_utc):
         'ra': (180, 360),
         'dec': utils.dec_bounds,
         'file_time_range': (start_utc, end_utc),
-        'duty_cycle': (0.25, 1),#(1e-3, 1e-1),
+        'duty_cycle': (1, 1),#(1e-3, 1e-1),
         'period': (1, 4),
         'intensity': (100, 150),
     }
     return param_ranges
 
 
-def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, num_steps):
-    max_counter = 0
+def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integration_time):
+    num_steps = math.ceil((end_utc - start_utc) / integration_time)
+    run_sim = input(f'Run simulation with {num_steps} steps? Y / N: ')
+    if not run_sim:
+        return
+    total_time = max_counter = 0
     step = (end_utc - start_utc) // num_steps
     t = start_utc
     print('Start simulation')
     while t < end_utc:
         utils.show_progress(t, start_utc, end_utc, step, module)
+        s = time.time()
         # Update sky
         sky_array.fill(0)
         update_birdies(t, sky_array, birdie_sources)
@@ -122,32 +127,38 @@ def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, num_ste
         # Simulate image mode data
         module.update_center_ra_dec_coords(t)
         module.simulate_all_pixel_fovs(blurred_sky_array, draw_sky_band=True)
-
+        e = time.time()
+        total_time += e - s
         max_counter = max(max_counter, max(module.simulated_img_arr))
         t += step
-    print()
-    #print(f'\nNum sims = {num_reps}, avg sim time = {avg_time}s, total sim time = {total_time}s')
-    #print(f'max image counter = {max_counter}')
+    avg_time = total_time / num_steps
+    print(f'\nNum sims = {num_steps}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
+    print(f'Max image counter value = {max_counter}')
 
 
 def main():
-    start_utc = 1656443180
+    # File time interval
+    start_utc = 1666456180
     end_utc = start_utc + 2 * 3600
+    # Number of pixels per degree RA and degree DEC
+    array_resolution = 2
+    # Number of birdies to generate
+    num_birdies = 1000
+    # Number of frames (in seconds)
+    integration_time = 20
 
     # Init ModuleView object
     module = init_module(start_utc)
 
-    # Generate sky array
+    # Limit the simulation to relevant RA-DEC ranges.
+    utils.reduce_ra_range(module, start_utc, end_utc)
     utils.reduce_dec_range(module)
-    # 30 pixels per degree
-    array_resolution = 360 * 30
     sky_array = init_sky_array(array_resolution)
-
     # Init birdies and convolution kernel.
     param_ranges = init_birdie_param_ranges(start_utc, end_utc)
-    birdie_sources = init_birdies(1000, param_ranges)
+    birdie_sources = init_birdies(num_birdies, param_ranges)
 
-    do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, 100)
+    do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integration_time)
     utils.graph_sky_array(module.sky_band)
     utils.graph_sky_array(sky_array)
 
