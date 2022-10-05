@@ -6,7 +6,12 @@
 # - tell DAQs to stop recording
 # - stop HK recorder process
 # - tell quabos to stop sending data
-# - if a run is in progress, collect data files
+# - if a run is in progress, copy data files to head and delete from DAQs
+#
+# options:
+#   --verbose         print details
+#   --no_collect      don't copy files to head node
+#   --no_cleanup      don't delete files from DAQ nodes
 
 import os, sys
 import collect, quabo_driver
@@ -83,7 +88,9 @@ def write_run_complete_file(daq_config, run_name):
     if not did_hk:
         print('No nonempty housekeeping file')
 
-def stop_run(daq_config, quabo_uids, verbose=False, no_cleanup=False):
+def stop_run(
+    daq_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False
+):
     if local_ip() != daq_config['head_node_ip_addr']:
         raise Exception(
             'This computer (%s) is not the head node specified in daq_config.json (%s)'%(
@@ -105,8 +112,10 @@ def stop_run(daq_config, quabo_uids, verbose=False, no_cleanup=False):
 
     run_dir = read_run_name()
     if run_dir:
-        print("collecting data from DAQ nodes")
-        success = collect.collect_data(daq_config, run_dir, verbose)
+        success = True
+        if not no_collect:
+            print("collecting data from DAQ nodes")
+            success = collect.collect_data(daq_config, run_dir, verbose)
         if not no_cleanup:
             print("cleaning up DAQ nodes")
             collect.cleanup_daq(daq_config, run_dir, verbose)
@@ -124,15 +133,18 @@ if __name__ == "__main__":
     argv = sys.argv
     verbose = False
     no_cleanup = False
+    no_collect = False
     while i < len(argv):
         if argv[i] == '--verbose':
             verbose = True
         elif argv[i] == '--no_cleanup':
             no_cleanup = True
+        elif argv[i] == '--no_collect':
+            no_collect = True
         else:
             raise Exception('bad arg %s'%argv[i])
         i += 1
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.associate(daq_config, quabo_uids)
-    stop_run(daq_config, quabo_uids, verbose, no_cleanup)
+    stop_run(daq_config, quabo_uids, verbose, no_cleanup, no_collect)
