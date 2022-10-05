@@ -111,19 +111,21 @@ void FILE_PTRS::make_files(const char *run_dir){
 // dp: Data product of the file that needs to be created.
 // diskDir: directory
 
-void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir){
-    string fileName;
-    string dirName;
-    dirName = diskDir;
+void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *run_dir){
+    string filename;
+    char buf[256];
 
     file_info.seqno = DP_PH_IMG?ph_seqno:image_seqno;
     file_info.data_product = (DATA_PRODUCT)dp;
     file_info.start_time = time(NULL);
     file_info.bytes_per_pixel = bytes_per_pixel(dp);
-    file_info.make_filename(fileName);
-    FILE* f = fopen((dirName + fileName).c_str(), "w");
+    file_info.make_filename(filename);
+    sprintf(buf, "module_%d/%s/%s",
+        file_info.module, run_dir, filename.c_str()
+    );
+    FILE* f = fopen(buf, "w");
     if (!f) {
-        printf("Error: can't open file %s\n", (dirName + fileName).c_str());
+        printf("Error: can't open file %s\n", buf);
         exit(0);
     }
     switch (dp){
@@ -144,7 +146,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir){
         default:
             break;
     }
-    printf("new_dp_file(): created file %s\n", (dirName + fileName).c_str());
+    printf("new_dp_file(): created file %s\n", buf);
 }
 
 static char config_location[STR_BUFFER_SIZE];

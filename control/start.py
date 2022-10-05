@@ -111,7 +111,7 @@ def make_run_dirs(run_name, daq_config):
     # copy config files to run dir on this node
     local_data_dir = daq_config['head_node_data_dir']
     for f in config_file.config_file_names:
-        shutil.copyfile(f, '%s/%s'%(local_data_dir, f))
+        shutil.copyfile(f, '%s/%s'%(run_dir, f))
 
     # make module and run directories on DAQ nodes
     #
