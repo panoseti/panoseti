@@ -39,7 +39,7 @@ def usage():
 #
 def show_config(obs_config, quabo_uids):
     for dome in obs_config['domes']:
-        print('dome %s'%dome['num'])
+        print('dome %s'%dome['name'])
         for module in dome['modules']:
             module_id = module['id']
             ip_addr = module['ip_addr']
@@ -305,6 +305,7 @@ if __name__ == "__main__":
     config_file.associate(daq_config, quabo_uids)
     if op == 'reboot':
         do_reboot(modules, quabo_uids)
+        do_hk_dest(modules)
     elif op == 'loads':
         do_loads(modules, quabo_uids)
     elif op == 'ping':

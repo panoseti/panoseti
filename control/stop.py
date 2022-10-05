@@ -83,7 +83,7 @@ def write_run_complete_file(daq_config, run_name):
     if not did_hk:
         print('No nonempty housekeeping file')
 
-def stop_run(daq_config, quabo_uids, verbose=False):
+def stop_run(daq_config, quabo_uids, verbose=False, no_cleanup=False):
     if local_ip() != daq_config['head_node_ip_addr']:
         raise Exception(
             'This computer (%s) is not the head node specified in daq_config.json (%s)'%(
@@ -107,8 +107,9 @@ def stop_run(daq_config, quabo_uids, verbose=False):
     if run_dir:
         print("collecting data from DAQ nodes")
         collect.collect_data(daq_config, run_dir, verbose)
-        print("cleaning up DAQ nodes")
-        collect.cleanup_daq(daq_config, run_dir, verbose)
+        if not no_cleanup:
+            print("cleaning up DAQ nodes")
+            collect.cleanup_daq(daq_config, run_dir, verbose)
         write_run_complete_file(daq_config, run_dir)
         print('completed run %s'%run_dir)
         remove_run_name()
@@ -119,16 +120,16 @@ if __name__ == "__main__":
     i = 1;
     argv = sys.argv
     verbose = False
-    test = False
+    no_cleanup = False
     while i < len(argv):
         if argv[i] == '--verbose':
             verbose = True
-        elif argv[i] == '--test':
-            test = True
+        elif argv[i] == '--no_cleanup':
+            no_cleanup = True
         else:
             raise Exception('bad arg %s'%argv[i])
         i += 1
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.associate(daq_config, quabo_uids)
-    stop_run(daq_config, quabo_uids, verbose)
+    stop_run(daq_config, quabo_uids, verbose, no_cleanup)
