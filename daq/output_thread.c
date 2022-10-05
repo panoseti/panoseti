@@ -144,7 +144,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *diskDir){
         default:
             break;
     }
-    printf("Created file %s\n", (dirName + fileName).c_str());
+    printf("new_dp_file(): created file %s\n", (dirName + fileName).c_str());
 }
 
 static char config_location[STR_BUFFER_SIZE];

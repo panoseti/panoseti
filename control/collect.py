@@ -9,8 +9,11 @@ import file_xfer, util
 sys.path.insert(0, '../util')
 import config_file
 
+# return True if data collection was successful
+#
 def collect_data(daq_config, run_dir, verbose=False):
     my_ip = util.local_ip()
+    success = True
     for node in daq_config['daq_nodes']:
         for module in node['modules']:
             module_id = module['id']
@@ -27,9 +30,10 @@ def collect_data(daq_config, run_dir, verbose=False):
                 if ret:
                     raise Exception('command %s failed: %d'%(cmd, ret))
             else:
-                file_xfer.copy_dir_from_node(
+                success = success and file_xfer.copy_dir_from_node(
                     run_dir, daq_config, node, module_id, verbose
                 )
+    return success
 
 # remove stuff from DAQ nodes no longer needed after run
 # remote:

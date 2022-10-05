@@ -106,12 +106,15 @@ def stop_run(daq_config, quabo_uids, verbose=False, no_cleanup=False):
     run_dir = read_run_name()
     if run_dir:
         print("collecting data from DAQ nodes")
-        collect.collect_data(daq_config, run_dir, verbose)
+        success = collect.collect_data(daq_config, run_dir, verbose)
         if not no_cleanup:
             print("cleaning up DAQ nodes")
             collect.cleanup_daq(daq_config, run_dir, verbose)
-        write_run_complete_file(daq_config, run_dir)
-        print('completed run %s'%run_dir)
+        if success:
+            write_run_complete_file(daq_config, run_dir)
+            print('completed run %s'%run_dir)
+        else:
+            print('Failed to collect data from DAQ nodes')
         remove_run_name()
     else:
         print("No run is in progress")
