@@ -115,7 +115,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *run_dir){
     string filename;
     char buf[256];
 
-    file_info.seqno = DP_PH_IMG?ph_seqno:image_seqno;
+    file_info.seqno = (dp==DP_PH_IMG)?ph_seqno:image_seqno;
     file_info.data_product = (DATA_PRODUCT)dp;
     file_info.start_time = time(NULL);
     file_info.bytes_per_pixel = bytes_per_pixel(dp);

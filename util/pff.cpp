@@ -204,10 +204,10 @@ void FILENAME_INFO::make_filename(string &s) {
     strftime(tbuf, sizeof(tbuf), "%FT%TZ", tm);
     sprintf(buf, "start%c%s%cdp%c%s%cbpp%c%d%cmodule%c%d%cseqno%c%d.pff",
         VAL_SEP, tbuf,
-    PAIR_SEP, VAL_SEP, dp_to_str(data_product),
-    PAIR_SEP, VAL_SEP, bytes_per_pixel,
-    PAIR_SEP, VAL_SEP, module,
-    PAIR_SEP, VAL_SEP, seqno
+        PAIR_SEP, VAL_SEP, dp_to_str(data_product),
+        PAIR_SEP, VAL_SEP, bytes_per_pixel,
+        PAIR_SEP, VAL_SEP, module,
+        PAIR_SEP, VAL_SEP, seqno
     );
     s = buf;
 }
