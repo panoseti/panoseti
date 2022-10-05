@@ -14,17 +14,6 @@ TODO:
         - Check if we’ve reached EOF in any of the image mode files.
         - Simulate module image mode output.
         - Update image frames (if applicable).
-
-birdie config file format
-{
-
-}
-
-BirdieSource object json data:
-{
-type: [type of birdie object]
-
-}
 """
 import math
 import time
@@ -44,7 +33,7 @@ import pff
 sys.path.append('../control')
 import config_file
 
-np.random.seed(383)
+np.random.seed(978)
 
 
 def get_birdie_config_vector(param_ranges):
@@ -56,8 +45,8 @@ def get_birdie_config_vector(param_ranges):
     config_vector = (
         unif(*param_ranges['ra']),
         unif(*param_ranges['dec']),
-        min(times),
-        max(times),
+        param_ranges['file_time_range'][0],#min(times),
+        param_ranges['file_time_range'][1],#max(times),
         unif(*param_ranges['duty_cycle']),
         unif(*param_ranges['period']),
         unif(*param_ranges['intensity'])
@@ -75,18 +64,28 @@ def init_sky_array(array_resolution):
 
 
 def init_birdies(num, param_ranges):
+    #birdie_sources = {d: [] for d in range(360)}
     birdie_sources = []
     for x in range(num):
         config_vector = get_birdie_config_vector(param_ranges)
         b = BaseBirdieSource(*config_vector)
         birdie_sources.append(b)
+    #    birdie_sources[int(b.ra)].append(b)
     return birdie_sources
 
 
-def update_birdies(frame_utc, sky_array, birdie_sources):
+def update_birdies(frame_utc, module, sky_array, birdie_sources):
+    """
+    left = int(np.min(module.pixel_grid_ra)) - 10
+    right = int(np.max(module.pixel_grid_ra)) + 10
+    i = left
+    while (right - i) % 360 < (right - left) % 360:
+        for b in birdie_sources[i % 360]:
+            b.generate_birdie(frame_utc, sky_array)
+        i += 1
+    """
     for b in birdie_sources:
         b.generate_birdie(frame_utc, sky_array)
-
 
 def apply_psf(sky_array, sigma):
     """Apply a 2d gaussian filter to simulate optical distortion."""
@@ -108,25 +107,30 @@ def init_birdie_param_ranges(start_utc, end_utc):
 
 def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integration_time):
     num_steps = math.ceil((end_utc - start_utc) / integration_time)
-    run_sim = input(f'Run simulation with {num_steps} steps? Y / N: ')
+    run_sim = True#input(f'Run simulation with {num_steps} steps? Y / N: ')
     if not run_sim:
         return
     total_time = max_counter = 0
     step = (end_utc - start_utc) // num_steps
     t = start_utc
     print('Start simulation')
+    noise_mean = 40
     while t < end_utc:
-        utils.show_progress(t, start_utc, end_utc, step, module)
+        img = np.random.poisson(noise_mean, [32, 32])
+        utils.show_progress(t, img, start_utc, end_utc, step, module, num_updates=20, plot_images=True)
         s = time.time()
-        # Update sky
+
+        # Update sky array
         sky_array.fill(0)
-        update_birdies(t, sky_array, birdie_sources)
-        # Sigma = 2 is currently an arbitrary value.
-        blurred_sky_array = apply_psf(sky_array, sigma=2)
+        update_birdies(t, module, sky_array, birdie_sources)
+
+        # Sigma is currently an arbitrary value.
+        blurred_sky_array = apply_psf(sky_array, sigma=1)
 
         # Simulate image mode data
         module.update_center_ra_dec_coords(t)
         module.simulate_all_pixel_fovs(blurred_sky_array, draw_sky_band=True)
+
         e = time.time()
         total_time += e - s
         max_counter = max(max_counter, max(module.simulated_img_arr))
@@ -138,12 +142,12 @@ def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integra
 
 def main():
     # File time interval
-    start_utc = 1666456180
-    end_utc = start_utc + 2 * 3600
+    start_utc = 1676456180
+    end_utc = start_utc + 3600
     # Number of pixels per degree RA and degree DEC
-    array_resolution = 2
+    array_resolution = 42
     # Number of birdies to generate
-    num_birdies = 1000
+    num_birdies = 100
     # Number of frames (in seconds)
     integration_time = 20
 
@@ -160,7 +164,8 @@ def main():
 
     do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integration_time)
     utils.graph_sky_array(module.sky_band)
-    utils.graph_sky_array(sky_array)
+    #utils.graph_sky_array(sky_array)
+    plt.close()
 
 print("RUNNING")
 main()

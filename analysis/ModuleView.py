@@ -78,12 +78,11 @@ class ModuleView:
     def clear_simulated_img_arr(self):
         self.simulated_img_arr.fill(0)
 
-    def plot_simulated_image(self):
+    def plot_simulated_image(self, img=np.zeros((32, 32))):
         """Converts the 1x1024 simulated img array to a 32x32 array."""
         s = self.pixels_per_side
-        img = np.zeros((s, s,))
         for row in range(s):
-            img[row] = self.simulated_img_arr[s*row:s*(row+1)]
+            img[row] += self.simulated_img_arr[s*row:s*(row+1)]
         fig1, ax = plt.subplots()
         ax.pcolormesh(np.arange(s), np.arange(s), img, vmin=0, vmax=150)
         ax.set_aspect('equal', adjustable='box')
@@ -135,14 +134,14 @@ class ModuleView:
         # RA coordinates may wrap around if larger than 24hrs.
         if left_index > right_index:
             if draw_sky_band:
-                self.sky_band[left_index:, low_index:high_index + 1] = 10
-                self.sky_band[:right_index + 1, low_index:high_index + 1] = 10
+                self.sky_band[left_index:, low_index:high_index + 1] += 5
+                self.sky_band[:right_index + 1, low_index:high_index + 1] += 5
             l_sum = sky_array[left_index:, low_index:high_index + 1].sum()
             r_sum = sky_array[:right_index + 1, low_index:high_index + 1].sum()
             total_intensity += l_sum + r_sum
         else:
             if draw_sky_band:
-                self.sky_band[left_index:right_index + 1, low_index:high_index + 1] = 10
+                self.sky_band[left_index:right_index + 1, low_index:high_index + 1] += 5
             total_intensity += sky_array[left_index:right_index + 1, low_index:high_index + 1].sum()
         self.set_pixel_value(px, py, round(total_intensity))
 

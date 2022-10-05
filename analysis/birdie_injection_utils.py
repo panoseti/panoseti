@@ -1,6 +1,8 @@
 """
 Utility functions for the birdie injection program.
 """
+import time
+
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -24,8 +26,8 @@ def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     dist = (ra_bounds[1] - ra_bounds[0]) % 360
     if dist == 0:
         dist = 360
-    ra_index = math.floor(ra_size * ((ra - ra_bounds[0]) % 360 / dist)) % shape[0]
-    dec_index = math.floor(dec_size * ((dec - dec_bounds[0]) / (dec_bounds[1] - dec_bounds[0])))
+    ra_index = int(ra_size * ((ra - ra_bounds[0]) % 360 / dist)) % shape[0]
+    dec_index = int(dec_size * ((dec - dec_bounds[0]) / (dec_bounds[1] - dec_bounds[0])))
     return ra_index, dec_index
 
 
@@ -75,6 +77,7 @@ def get_sky_image_array(elem_per_deg):
 
 def graph_sky_array(sky_array):
     """Plot sky_array, labeled with the appropriate RA and DEC ranges."""
+    fig, ax = plt.subplots()
     if sky_array is None:
         print('No data to graph.')
         return
@@ -85,27 +88,30 @@ def graph_sky_array(sky_array):
     else:
         ra_labels_in_deg = (np.linspace(0, dist, 7, dtype=np.int) + ra_bounds[0]) % 360
     ra_labels_in_hrs = 24 * ra_labels_in_deg / 360
-    plt.xticks(
+    ax.set_xticks(
         np.linspace(0, sky_array.shape[0] - 1, 7),
         ra_labels_in_hrs.round(3)
     )
     # Add DEC tick marks
-    plt.yticks(
+    ax.set_yticks(
         np.linspace(0, sky_array.shape[1] - 1, 3),
         np.linspace(dec_bounds[0], dec_bounds[1], 3).round(2)
     )
-    plt.xlabel("Right Ascension")
-    plt.ylabel("Declination")
-    plt.imshow(np.matrix.transpose(sky_array), interpolation='none')
-    plt.gca().invert_yaxis()
+    ax.set_xlabel("Right Ascension")
+    ax.set_ylabel("Declination")
+    ax.pcolormesh(np.matrix.transpose(sky_array))
     plt.show()
+    plt.close(fig)
 
 
-def show_progress(t, start_utc, end_utc, step, module, num_updates=10):
-    if math.fmod(t - start_utc, (end_utc - start_utc) // (num_updates * step)) < 0.5:
+def show_progress(t, img, start_utc, end_utc, step, module, num_updates=10, plot_images=False):
+    if math.fmod(t - start_utc, (end_utc - start_utc) // (num_updates * step)) < 0.05:
         v = math.ceil(100 * (t - start_utc) / (end_utc - start_utc))
         print(f'\tProgress: {v:<2}% [{"*" * (v // 10):<10}]', end='\r')
-        module.plot_simulated_image()
+        if plot_images:
+            time.sleep(0.01)
+            module.plot_simulated_image(img)
+
 
 def ra_to_degrees(ra):
     """
