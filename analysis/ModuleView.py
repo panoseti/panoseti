@@ -8,6 +8,7 @@ Then, the coordinates of each pixel are computed relative to the module's center
 These coordinates are used to determine the FoV of each pixel and integrate over the visible simulated signals
  produced by BirdieSource objects.
 """
+import datetime
 
 import astropy.coordinates as c
 import astropy.units as u
@@ -30,7 +31,6 @@ class ModuleView:
     def __init__(self, module_id, start_time_utc, obslat, obslon, obsalt, azimuth, elevation, pos_angle):
         self.module_id = module_id
         # Module orientation
-        self.start_time_utc = start_time_utc
         self.azimuth = azimuth * u.deg
         self.elevation = elevation * u.deg
         self.pos_angle = pos_angle
@@ -38,14 +38,20 @@ class ModuleView:
             lat=obslat*u.deg, lon=obslon*u.deg, height=obsalt*u.m, ellipsoid='WGS84'
         )
         # Current field of view RA-DEC coordinates
+        self.current_utc = start_time_utc
+        self.center_ra = self.center_dec = None
         self.ra_offsets = self.dec_offsets = None
-        self.init_offset_arrays()
         self.pixel_grid_ra = self.pixel_grid_dec = None
-        self.current_pos = None
+        self.init_offset_arrays()
         self.update_center_ra_dec_coords(start_time_utc)
         # Simulated data
         self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.int16)
         self.sky_band = None
+
+    def __str__(self):
+        s = f'Module {self.module_id} @ {datetime.datetime.fromtimestamp(self.current_utc)}\n' \
+            f'RA: {round(self.center_ra, 1):>6}$^\circ$, DEC: {round(self.center_dec, 1):5>}$^\circ$'
+        return s
 
     def init_offset_arrays(self):
         shape = (self.pixels_per_side + 1, self.pixels_per_side + 1)
@@ -61,6 +67,7 @@ class ModuleView:
 
     def set_pixel_value(self, px, py, val):
         """In the simulated image frame, set the value of pixel (px, py) to val."""
+        # FAST
         if val < 0:
             val = 0
         elif val > self.max_pixel_counter_value:
@@ -80,53 +87,66 @@ class ModuleView:
         fig1, ax = plt.subplots()
         ax.pcolormesh(np.arange(s), np.arange(s), img, vmin=0, vmax=150)
         ax.set_aspect('equal', adjustable='box')
-        plt.show()
-        return img
+        fig1.suptitle(self)
+        fig1.show()
 
     def update_pixel_coord_grid(self):
         """Updates the coordinates associated with each pixel corner in this module."""
-        current_ra = self.current_pos.ra.value
-        current_dec = self.current_pos.dec.value
-        self.pixel_grid_ra = self.ra_offsets + current_ra
-        self.pixel_grid_dec = self.dec_offsets + current_dec
+        # FAST
+        self.pixel_grid_ra = self.ra_offsets + self.center_ra
+        self.pixel_grid_dec = self.dec_offsets + self.center_dec
         #print(f'ra grid = {self.pixel_grid_ra}\ndec grid = {self.pixel_grid_dec}')
 
     def update_center_ra_dec_coords(self, frame_utc):
         """Return the RA-DEC coordinates of the center of the module's field of view at frame_utc."""
-        obstime = t.Time(frame_utc, format='unix')
-        alt_alz_coords = c.SkyCoord(
-            az=self.azimuth, alt=self.elevation, location=self.earth_loc,
-            obstime=obstime, frame=c.AltAz
-        )
-        self.current_pos = alt_alz_coords.transform_to('icrs')
+        if self.center_ra is None or self.center_dec is None:
+            obstime = t.Time(frame_utc, format='unix')
+            alt_alz_coords = c.SkyCoord(
+                az=self.azimuth, alt=self.elevation, location=self.earth_loc,
+                obstime=obstime, frame=c.AltAz
+            )
+            pos = alt_alz_coords.transform_to('icrs')
+            self.center_ra = pos.ra.value
+            self.center_dec = pos.dec.value
+        else:
+            assert frame_utc >= self.current_utc, f'frame_utc must be at least as large as self.current_utc'
+            dt = frame_utc - self.current_utc
+            self.current_utc = frame_utc
+            # Earth rotates approx 360 degrees in 24 hrs.
+            self.center_ra += dt * 360 / (24 * 60 * 60)
         self.update_pixel_coord_grid()
 
-    def simulate_one_pixel_fov(self, px, py, sky_array):
+    def simulate_one_pixel_fov(self, px, py, sky_array, draw_sky_band):
         """Sum the intensities in each element of sky_array visible by pixel (px, py) and return a counter value
         to add to the current image frame. We approximate the pixel FoV as a square determined by the RA-DEC
          coordinates of the top left and bottom right corner of the pixel."""
         total_intensity = 0.0
         left_index, high_index = utils.ra_dec_to_sky_array_indices(
-            self.pixel_grid_ra[px, py], self.pixel_grid_dec[px, py], sky_array)
+            self.pixel_grid_ra[px, py], self.pixel_grid_dec[px, py], sky_array
+        )
         right_index, low_index = utils.ra_dec_to_sky_array_indices(
-            self.pixel_grid_ra[px + 1, py + 1], self.pixel_grid_dec[px + 1, py + 1], sky_array)
-        #print(f'(x0, y0) = ({x0}, {y0}). (x1, y1) = ({x1}, {y1})')
+            self.pixel_grid_ra[px + 1, py + 1], self.pixel_grid_dec[px + 1, py + 1], sky_array
+        )
         max_ra_index = sky_array.shape[0]
-        # RA coordinates may wrap around.
+        # RA coordinates may wrap around if larger than 24hrs.
         if left_index > right_index:
-            self.sky_band[left_index:, low_index:high_index + 1] = 50
-            self.sky_band[:right_index + 1, low_index:high_index + 1] = 50
+            if draw_sky_band:
+                self.sky_band[left_index:, low_index:high_index + 1] = 10
+                self.sky_band[:right_index + 1, low_index:high_index + 1] = 10
             l_sum = sky_array[left_index:, low_index:high_index + 1].sum()
             r_sum = sky_array[:right_index + 1, low_index:high_index + 1].sum()
             total_intensity += l_sum + r_sum
         else:
-            self.sky_band[left_index:right_index + 1, low_index:high_index + 1] = 50
+            if draw_sky_band:
+                self.sky_band[left_index:right_index + 1, low_index:high_index + 1] = 10
             total_intensity += sky_array[left_index:right_index + 1, low_index:high_index + 1].sum()
         self.set_pixel_value(px, py, round(total_intensity))
 
-    def simulate_all_pixel_fovs(self, sky_array):
+    def simulate_all_pixel_fovs(self, sky_array, draw_sky_band=False):
+        """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
+        containing only birdies."""
         if self.sky_band is None:
-            self.sky_band = np.zeros(sky_array.shape)
+            self.sky_band = np.copy(sky_array)
         for i in range(self.pixels_per_side):
             for j in range(self.pixels_per_side):
-                self.simulate_one_pixel_fov(i, j, sky_array)
+                self.simulate_one_pixel_fov(i, j, sky_array, draw_sky_band)

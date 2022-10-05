@@ -14,7 +14,7 @@ def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     returns the indices in sky_array corresponding to the point (ra, dec).
     ra and dec must be in degrees.
     """
-    assert dec_bounds[0] <= dec <= dec_bounds[1], f'lower dec bound = {dec_bounds[0]}, upper dec bound = {dec_bounds[1]}, given dec: {dec}'
+    #assert dec_bounds[0] <= dec <= dec_bounds[1], f'lower dec bound = {dec_bounds[0]}, upper dec bound = {dec_bounds[1]}, given dec: {dec}'
     shape = np.shape(sky_array)
     ra_size, dec_size = shape[0], shape[1]
     ra_index = math.floor(ra_size * (ra / 360)) % shape[0]
@@ -28,18 +28,18 @@ def get_sky_image_array(num_ra, num_dec=None, dtype=np.float16):
         num_dec = int(num_ra * ((dec_bounds[1] - dec_bounds[0]) / 360))
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     array_shape = num_ra, num_dec
-    return np.zeros(array_shape, dtype=dtype)
+    return np.zeros(array_shape)
 
 
 def reduce_dec_range(mod: ModuleView):
     global dec_bounds
-    center_dec = mod.current_pos.dec.value
+    center_dec = mod.center_dec
     pixel_scale = mod.pixel_scale
     pixels_per_side = mod.pixels_per_side
-    lower_bound = max(-90, center_dec - pixel_scale * (1.5 * pixels_per_side))
-    upper_bound = min(90, center_dec + pixel_scale * (1.5 * pixels_per_side))
+    lower_bound = max(-90, center_dec - pixel_scale * (0.75 * pixels_per_side))
+    upper_bound = min(90, center_dec + pixel_scale * (0.75 * pixels_per_side))
     dec_bounds = lower_bound, upper_bound
-    #print(f'dec bounds = {dec_bounds}')
+    print(f'Declination bounds = {dec_bounds}')
     return dec_bounds
 
 
@@ -68,7 +68,9 @@ def dec_to_degrees(dec):
 
 
 def graph_sky_array(sky_array):
-    print(dec_bounds)
+    if sky_array is None:
+        print('No data to graph.')
+        return
     plt.yticks(np.linspace(0, sky_array.shape[1] - 1, 2), np.linspace(
         round(dec_bounds[0], 1), round(dec_bounds[1], 1), 2, dtype=float))
     plt.xticks(np.linspace(0, sky_array.shape[0] - 1, 7), np.linspace(0, 24, 7, dtype=np.int))
@@ -79,23 +81,9 @@ def graph_sky_array(sky_array):
     plt.show()
 
 
-"""
-ra1 = (6, 45, 9)
-dec1 = (-16, 42, 58)
-
-ra_deg1 = ra_to_degrees(ra1)
-dec_deg1 = dec_to_degrees(dec1)
-
-print(f'ra_deg1 = {ra_deg1}, dec_deg1 = {dec_deg1}')
-
-num_ra1 = 360000
-iarr1 = get_scaled_image_array(num_ra1)
-print(iarr1.shape)
-#print(iarr1)
-
-x1, y1 = ra_dec_to_img_array_indices(ra_deg1, dec_deg1, iarr1)
-
-print(f'x1 = {x1}, y1 = {y1}')
-"""
-
+def show_progress(t, start_utc, end_utc, step, module, num_updates=10):
+    if math.fmod(t - start_utc, (end_utc - start_utc) // (num_updates * step)) < 0.1:
+        v = math.ceil(100 * (t - start_utc) / (end_utc - start_utc))
+        print(f'\tProgress: {v:<2}% [{"*" * (v // 10):<10}]', end='\r')
+        module.plot_simulated_image()
 
