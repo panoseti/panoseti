@@ -4,6 +4,9 @@ Utility functions for the birdie injection program.
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import ModuleView
+
+dec_bounds = -90, 90
 
 def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     """
@@ -11,12 +14,33 @@ def ra_dec_to_sky_array_indices(ra, dec, sky_array):
     returns the indices in sky_array corresponding to the point (ra, dec).
     ra and dec must be in degrees.
     """
+    assert dec_bounds[0] <= dec <= dec_bounds[1], f'lower dec bound = {dec_bounds[0]}, upper dec bound = {dec_bounds[1]}, given dec: {dec}'
     shape = np.shape(sky_array)
-    assert len(shape) == 2, 'img_array must be a 2D matrix.'
     ra_size, dec_size = shape[0], shape[1]
-    ra_index = math.floor(ra_size * (ra / 360))
-    dec_index = math.floor(dec_size * ((dec + 90) / 180))
+    ra_index = math.floor(ra_size * (ra / 360)) % shape[0]
+    dec_index = math.floor(dec_size * ((dec - dec_bounds[0]) / (dec_bounds[1] - dec_bounds[0])))
     return ra_index, dec_index
+
+
+def get_sky_image_array(num_ra, num_dec=None, dtype=np.float16):
+    """Returns a 2D array with shape (num_ra, num_dec)."""
+    if num_dec is None:
+        num_dec = int(num_ra * ((dec_bounds[1] - dec_bounds[0]) / 360))
+    # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
+    array_shape = num_ra, num_dec
+    return np.zeros(array_shape, dtype=dtype)
+
+
+def reduce_dec_range(mod: ModuleView):
+    global dec_bounds
+    center_dec = mod.current_pos.dec.value
+    pixel_scale = mod.pixel_scale
+    pixels_per_side = mod.pixels_per_side
+    lower_bound = max(-90, center_dec - pixel_scale * (1.5 * pixels_per_side))
+    upper_bound = min(90, center_dec + pixel_scale * (1.5 * pixels_per_side))
+    dec_bounds = lower_bound, upper_bound
+    #print(f'dec bounds = {dec_bounds}')
+    return dec_bounds
 
 
 def ra_to_degrees(ra):
@@ -43,15 +67,13 @@ def dec_to_degrees(dec):
     return sign * abs_degrees
 
 
-def get_sky_image_array(num_ra, num_dec=None, dtype=np.float16):
-    """Returns a 2D array with shape (num_ra, num_dec)."""
-    if num_dec is None:
-        num_dec = num_ra // 2
-    # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
-    array_shape = num_ra, num_dec
-    return np.zeros(array_shape, dtype=dtype)
-
 def graph_sky_array(sky_array):
+    print(dec_bounds)
+    plt.yticks(np.linspace(0, sky_array.shape[1] - 1, 2), np.linspace(
+        round(dec_bounds[0], 1), round(dec_bounds[1], 1), 2, dtype=float))
+    plt.xticks(np.linspace(0, sky_array.shape[0] - 1, 7), np.linspace(0, 24, 7, dtype=np.int))
+    plt.xlabel("Right Ascension")
+    plt.ylabel("Declination")
     plt.imshow(np.matrix.transpose(sky_array), interpolation='none')
     plt.gca().invert_yaxis()
     plt.show()
