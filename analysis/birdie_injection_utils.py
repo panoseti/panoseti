@@ -104,8 +104,8 @@ def graph_sky_array(sky_array):
     plt.close(fig)
 
 
-def show_progress(t, img, start_utc, end_utc, step, module, num_updates=10, plot_images=False):
-    if math.fmod(t - start_utc, (end_utc - start_utc) // (num_updates * step)) < 0.05:
+def show_progress(t, img, start_utc, end_utc, step, module, num_updates=20, plot_images=False):
+    if math.fmod(t - start_utc, (end_utc - start_utc) / num_updates) < 1e-6:
         v = math.ceil(100 * (t - start_utc) / (end_utc - start_utc))
         print(f'\tProgress: {v:<2}% [{"*" * (v // 10):<10}]', end='\r')
         if plot_images:

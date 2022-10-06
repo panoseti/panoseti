@@ -84,7 +84,7 @@ class ModuleView:
         for row in range(s):
             img[row] += self.simulated_img_arr[s*row:s*(row+1)]
         fig1, ax = plt.subplots()
-        ax.pcolormesh(np.arange(s), np.arange(s), img, vmin=0, vmax=150)
+        ax.pcolormesh(np.arange(s), np.arange(s), img, vmin=0, vmax=255)
         ax.set_aspect('equal', adjustable='box')
         fig1.suptitle(self)
         fig1.show()

@@ -23,7 +23,7 @@ class BaseBirdieSource:
                  duty_cycle,
                  period,
                  intensity):
-        self.ra = ra
+        self.ra = ra % 360
         self.dec = dec
         self.start_utc = start_utc
         self.end_utc = end_utc

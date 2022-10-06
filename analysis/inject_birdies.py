@@ -40,17 +40,10 @@ def get_birdie_config_vector(param_ranges):
     """Generates a tuple of BirdieSource initialization parameters with uniform distribution
     on the ranges of possible values, provided by param_ranges."""
     unif = np.random.uniform
-    # Param order: 'ra', 'dec', 'start_utc', 'end_utc', 'duty_cycle', 'period', 'intensity'
-    times = unif(*param_ranges['file_time_range'], 2)
-    config_vector = (
-        unif(*param_ranges['ra']),
-        unif(*param_ranges['dec']),
-        param_ranges['file_time_range'][0],#min(times),
-        param_ranges['file_time_range'][1],#max(times),
-        unif(*param_ranges['duty_cycle']),
-        unif(*param_ranges['period']),
-        unif(*param_ranges['intensity'])
-    )
+    config_vector = []
+    param_order = ['ra', 'dec', 'start_utc', 'end_utc', 'duty_cycle', 'period', 'intensity']
+    for param in param_order:
+        config_vector.append(unif(*(param_ranges[param])))
     return config_vector
 
 
@@ -64,28 +57,29 @@ def init_sky_array(array_resolution):
 
 
 def init_birdies(num, param_ranges):
-    #birdie_sources = {d: [] for d in range(360)}
-    birdie_sources = []
+    """Initialize BirdieSource objects with randomly selected parameter values
+     and store them in a hashmap indexed by RA."""
+    birdie_sources = {d: [] for d in range(360)}
     for x in range(num):
         config_vector = get_birdie_config_vector(param_ranges)
         b = BaseBirdieSource(*config_vector)
-        birdie_sources.append(b)
-    #    birdie_sources[int(b.ra)].append(b)
+        birdie_sources[int(b.ra)].append(b)
     return birdie_sources
 
 
 def update_birdies(frame_utc, module, sky_array, birdie_sources):
-    """
-    left = int(np.min(module.pixel_grid_ra)) - 10
-    right = int(np.max(module.pixel_grid_ra)) + 10
+    """Call the generate_birdie method on every BirdieSource object with an RA
+    that may be visible by the given module."""
+    left = int(module.center_ra - (module.pixels_per_side // 2) * module.pixel_scale * 1.3)
+    right = int(module.center_ra + (module.pixels_per_side // 2) * module.pixel_scale * 1.3)
+    if right < left:
+        right += 360
     i = left
-    while (right - i) % 360 < (right - left) % 360:
+    while i <= right:
         for b in birdie_sources[i % 360]:
             b.generate_birdie(frame_utc, sky_array)
         i += 1
-    """
-    for b in birdie_sources:
-        b.generate_birdie(frame_utc, sky_array)
+
 
 def apply_psf(sky_array, sigma):
     """Apply a 2d gaussian filter to simulate optical distortion."""
@@ -94,13 +88,17 @@ def apply_psf(sky_array, sigma):
 
 def init_birdie_param_ranges(start_utc, end_utc):
     """Param_ranges specifies the range of possible values for each BirdieSource parameter."""
+    l_ra, r_ra = utils.ra_bounds
+    if r_ra < l_ra:
+        r_ra += 360
     param_ranges = {
-        'ra': (180, 360),
+        'ra': (l_ra, r_ra),
         'dec': utils.dec_bounds,
-        'file_time_range': (start_utc, end_utc),
-        'duty_cycle': (1, 1),#(1e-3, 1e-1),
-        'period': (1, 4),
-        'intensity': (100, 150),
+        'start_utc': (start_utc, start_utc),
+        'end_utc': (end_utc, end_utc),
+        'duty_cycle': (0.25, 1),#(1e-3, 1e-1),
+        'period': (1, 10),
+        'intensity': (100, 300),
     }
     return param_ranges
 
@@ -111,30 +109,33 @@ def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integra
     if not run_sim:
         return
     total_time = max_counter = 0
-    step = (end_utc - start_utc) // num_steps
+    step = (end_utc - start_utc) / num_steps
     t = start_utc
-    print('Start simulation')
-    noise_mean = 40
+    print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({num_steps} steps)'
+          f'\n\tEstimated time to completion: {0.03 * num_steps // 60} min {0.03 * num_steps % 60} s')
+    noise_mean = 60
+    s = time.time()
     while t < end_utc:
         img = np.random.poisson(noise_mean, [32, 32])
-        utils.show_progress(t, img, start_utc, end_utc, step, module, num_updates=20, plot_images=True)
-        s = time.time()
+        utils.show_progress(
+            t, img, start_utc, end_utc, step, module, num_updates=50, plot_images=True
+        )
 
         # Update sky array
         sky_array.fill(0)
         update_birdies(t, module, sky_array, birdie_sources)
 
         # Sigma is currently an arbitrary value.
-        blurred_sky_array = apply_psf(sky_array, sigma=1)
+        blurred_sky_array = apply_psf(sky_array, sigma=2.3)
 
         # Simulate image mode data
         module.update_center_ra_dec_coords(t)
         module.simulate_all_pixel_fovs(blurred_sky_array, draw_sky_band=True)
 
-        e = time.time()
-        total_time += e - s
         max_counter = max(max_counter, max(module.simulated_img_arr))
         t += step
+    e = time.time()
+    total_time += e - s
     avg_time = total_time / num_steps
     print(f'\nNum sims = {num_steps}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
     print(f'Max image counter value = {max_counter}')
@@ -142,14 +143,14 @@ def do_simulation(start_utc, end_utc, module, sky_array, birdie_sources, integra
 
 def main():
     # File time interval
-    start_utc = 1676456180
-    end_utc = start_utc + 3600
+    start_utc = 1685415643
+    end_utc = start_utc + 2 * 3600
     # Number of pixels per degree RA and degree DEC
-    array_resolution = 42
+    array_resolution = 40
     # Number of birdies to generate
     num_birdies = 100
-    # Number of frames (in seconds)
-    integration_time = 20
+    # Integration time (in seconds)
+    integration_time = 20e-1
 
     # Init ModuleView object
     module = init_module(start_utc)
@@ -158,6 +159,7 @@ def main():
     utils.reduce_ra_range(module, start_utc, end_utc)
     utils.reduce_dec_range(module)
     sky_array = init_sky_array(array_resolution)
+    
     # Init birdies and convolution kernel.
     param_ranges = init_birdie_param_ranges(start_utc, end_utc)
     birdie_sources = init_birdies(num_birdies, param_ranges)
