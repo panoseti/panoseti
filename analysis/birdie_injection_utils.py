@@ -37,7 +37,7 @@ def reduce_ra_range(mod: ModuleView, start_utc, end_utc):
     start_ra = mod.center_ra
     end_ra = mod.get_module_ra_at_time(end_utc)
     # Ratio of reduced ra range length to module fov width
-    r = 1.5
+    r = 1.25
     margin = mod.pixel_scale * mod.pixels_per_side * (r / 2)
     lower_bound = start_ra - margin
     upper_bound = end_ra + margin
@@ -51,7 +51,7 @@ def reduce_ra_range(mod: ModuleView, start_utc, end_utc):
 def reduce_dec_range(mod: ModuleView):
     global dec_bounds
     # Ratio of reduced dec range length to module fov width
-    r = 1.5
+    r = 1.25
     margin = mod.pixel_scale * mod.pixels_per_side * (r / 2)
     center_dec = mod.center_dec
     lower_bound = max(-90, center_dec - margin)
@@ -72,6 +72,7 @@ def get_sky_image_array(elem_per_deg):
     array_shape = ra_size, dec_size
     print(f'Array elements per:\n'
           f'\tdeg ra: {round(ra_size / dist, 4):<10}\tdeg dec: {round(dec_size / (dec_bounds[1] - dec_bounds[0]), 4):<10}')
+    print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape)
 
 
@@ -104,11 +105,11 @@ def graph_sky_array(sky_array):
     plt.close(fig)
 
 
-def show_progress(t, img, start_utc, end_utc, step, module, num_updates=20, plot_images=False):
-    if math.fmod(t - start_utc, (end_utc - start_utc) / num_updates) < 1e-6:
-        v = math.ceil(100 * (t - start_utc) / (end_utc - start_utc))
-        print(f'\tProgress: {v:<2}% [{"*" * (v // 10):<10}]', end='\r')
-        if plot_images:
+def show_progress(step_num, img, module, num_steps, num_updates, plot_images=False):
+    if step_num % (num_steps // num_updates) == 0:
+        v = math.ceil(100 * step_num / num_steps)
+        print(f'\tProgress: {v:<2}% [{"*" * (v // 5) + "-" * (20 - (v // 5)):<20}]', end='\r')
+        if plot_images and step_num != 0:
             time.sleep(0.01)
             module.plot_simulated_image(img)
 
