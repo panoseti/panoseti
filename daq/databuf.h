@@ -24,9 +24,9 @@
 
 #define CACHE_ALIGNMENT             256
     // Align the cache within the buffer
-#define N_INPUT_BLOCKS              256
+#define N_INPUT_BLOCKS              512
     // Number of blocks in the input buffer
-#define N_OUTPUT_BLOCKS             64
+#define N_OUTPUT_BLOCKS             128
     // Number of blocks in the output buffer
 #define IN_PKT_PER_BLOCK            16384
     // Number of input packets stored in each block of the input buffer
