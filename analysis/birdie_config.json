@@ -1,0 +1,10 @@
+{
+    "array_resolution": 50,
+    "psf_sigma": 6,
+    "num_birdies": 30,
+    "param_ranges": {
+        "duty_cycle": [0.1, 1],
+        "period": [1, 10],
+        "intensity": [100, 400]
+    }
+}

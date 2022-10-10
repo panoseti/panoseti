@@ -6,7 +6,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-import ModuleView
+from ModuleView import ModuleView
 
 # Possible RA and DEC values in this simulation.
 ra_bounds = 0, 360
@@ -37,7 +37,7 @@ def reduce_ra_range(mod: ModuleView, start_utc, end_utc):
     start_ra = mod.center_ra
     end_ra = mod.get_module_ra_at_time(end_utc)
     # Ratio of reduced ra range length to module fov width
-    r = 1.25
+    r = 1.2
     margin = mod.pixel_scale * mod.pixels_per_side * (r / 2)
     lower_bound = start_ra - margin
     upper_bound = end_ra + margin
@@ -51,7 +51,7 @@ def reduce_ra_range(mod: ModuleView, start_utc, end_utc):
 def reduce_dec_range(mod: ModuleView):
     global dec_bounds
     # Ratio of reduced dec range length to module fov width
-    r = 1.25
+    r = 1.2
     margin = mod.pixel_scale * mod.pixels_per_side * (r / 2)
     center_dec = mod.center_dec
     lower_bound = max(-90, center_dec - margin)
@@ -61,7 +61,7 @@ def reduce_dec_range(mod: ModuleView):
     return dec_bounds
 
 
-def get_sky_image_array(elem_per_deg):
+def get_sky_image_array(elem_per_deg, verbose=False):
     """Returns a 2D array with shape (num_ra, num_dec)."""
     dist = (ra_bounds[1] - ra_bounds[0]) % 360
     if dist == 0:
@@ -70,9 +70,10 @@ def get_sky_image_array(elem_per_deg):
     dec_size = round(elem_per_deg * (dec_bounds[1] - dec_bounds[0]))
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     array_shape = ra_size, dec_size
-    print(f'Array elements per:\n'
-          f'\tdeg ra: {round(ra_size / dist, 4):<10}\tdeg dec: {round(dec_size / (dec_bounds[1] - dec_bounds[0]), 4):<10}')
-    print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
+    if verbose:
+        print(f'Array elements per:\n'
+              f'\tdeg ra: {round(ra_size / dist, 4):<10}\tdeg dec: {round(dec_size / (dec_bounds[1] - dec_bounds[0]), 4):<10}')
+        print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape)
 
 
@@ -115,10 +116,8 @@ def show_progress(step_num, img, module, num_steps, num_updates, plot_images=Fal
 
 
 def ra_to_degrees(ra):
-    """
-    Returns the degree equivalent of a given right ascension coordinate
-    ra in the form: (hours, minutes, seconds).
-    """
+    """Returns the degree equivalent of a right ascension coordinate
+    in the form: (hours, minutes, seconds)."""
     assert len(ra) == 3
     hours = ra[0] + (ra[1] / 60) + (ra[2] / 3600)
     # Rotate 360 degrees in 24 hours.
@@ -127,12 +126,11 @@ def ra_to_degrees(ra):
 
 
 def dec_to_degrees(dec):
-    """
-    Returns the degree equivalent of a given declination coordinate
-    dec in the form: (degrees, arcminutes, arcseconds).
-    """
+    """Returns the degree equivalent of a declination coordinate
+    in the form: (degrees, arcminutes, arcseconds)."""
     assert len(dec) == 3
     # 60 arcminutes in 1 degree, 3600 arcseconds in 1 degree.
     abs_degrees = abs(dec[0]) + (dec[1] / 60) + (dec[2] / 3600)
     sign = dec[0] / abs(dec[0])
     return sign * abs_degrees
+
