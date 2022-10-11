@@ -6,7 +6,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-import ModuleView
+from ModuleView import ModuleView
 
 # Possible RA and DEC values in this simulation.
 ra_bounds = 0, 360
