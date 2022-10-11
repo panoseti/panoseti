@@ -9,9 +9,10 @@
 # - if a run is in progress, copy data files to head and delete from DAQs
 #
 # options:
-#   --verbose         print details
-#   --no_collect      don't copy files to head node
-#   --no_cleanup      don't delete files from DAQ nodes
+#   --verbose           print details
+#   --no_collect        don't copy files to head node
+#   --no_cleanup        don't delete files from DAQ nodes
+#   --run X             clean up run X (default: read from current_run)
 
 import os, sys
 import collect, quabo_driver
@@ -89,7 +90,8 @@ def write_run_complete_file(daq_config, run_name):
         print('No nonempty housekeeping file')
 
 def stop_run(
-    daq_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False
+    daq_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False,
+    run_dir = None
 ):
     if local_ip() != daq_config['head_node_ip_addr']:
         raise Exception(
@@ -110,7 +112,8 @@ def stop_run(
     print("stopping data generation")
     stop_data_flow(quabo_uids)
 
-    run_dir = read_run_name()
+    if not run_dir:
+        run_dir = read_run_name()
     if run_dir:
         success = True
         if not no_collect:
@@ -134,6 +137,7 @@ if __name__ == "__main__":
     verbose = False
     no_cleanup = False
     no_collect = False
+    run = None
     while i < len(argv):
         if argv[i] == '--verbose':
             verbose = True
@@ -141,10 +145,13 @@ if __name__ == "__main__":
             no_cleanup = True
         elif argv[i] == '--no_collect':
             no_collect = True
+        elif argv[i] == '--run':
+            i += 1
+            run = argv[i]
         else:
             raise Exception('bad arg %s'%argv[i])
         i += 1
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.associate(daq_config, quabo_uids)
-    stop_run(daq_config, quabo_uids, verbose, no_cleanup, no_collect)
+    stop_run(daq_config, quabo_uids, verbose, no_cleanup, no_collect, run)

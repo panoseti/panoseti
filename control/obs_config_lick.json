@@ -9,10 +9,10 @@
     "gps_port": "/dev/ttyUSB0",
     "domes": [
         {
-            "obslat": 10.3,
-            "obslon": 44.2,
-            "obsalt": 234,
-            "name": "north dome",
+            "obslat": 37.3425,
+            "obslon": -121.63777,
+            "obsalt": 1283,
+            "name": "astrograph",
             "modules": [
                 {
                     "mobo_serialno": "M11",
