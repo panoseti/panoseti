@@ -1,90 +1,134 @@
 [
-    {
-        "uid": "6ae310480d02824",
-        "serialno": "SN013",
-        "board_version": " ",
-        "detector_serialno": [
-            "1080",
-            "1079",
-            "1082",
-            "1081"
-        ]
-    },
-    {
-        "uid": "6ae310480d06c23",
-        "serialno": "SN020",
-        "board_version": " ",
-        "detector_serialno": [
-            "1076",
-            "1075",
-            "1074",
-            "1077"
-        ]
-    },
-    {
-        "uid": "6ae310480d07c22",
-        "serialno": "SN017",
-        "board_version": " ",
-        "detector_serialno": [
-            "509",
-            "510",
-            "508",
-            "507"
-        ]
-    },
-    {
-        "uid": "6ae310480d05022",
-        "serialno": "SN018",
-        "board_version": " ",
-        "detector_serialno": [
-            "1084",
-            "1078",
-            "1068",
-            "1083"
-        ]
-    },
-    {
-        "uid": "6ae310480d05824",
-        "serialno": "SN015",
-        "board_version": " ",
-        "detector_serialno": [
-            "1232",
-            "1233",
-            "1236",
-            "1235"
-        ]
-    },
-    {
-        "uid": "6ae310480d08c24",
-        "serialno": "SN010",
-        "board_version": " ",
-        "detector_serialno": [
-            "1263",
-            "1264",
-            "1266",
-            "1265"
-        ]
-    },
-    {
-        "uid": "6ae310480d03022",
-        "serialno": "SN012",
-        "board_version": " ",
-        "detector_serialno": [
-            "1271",
-            "1272",
-            "1274",
-            "1273"
-        ]
-    },
-    {
-        "uid": "6ae310480d07024",
-        "serialno": "SN014",
-        "board_version": " ",
-        "detector_serialno": [
-            "1275",
-            "1277",
-            "1279",
-            "1278"
-        ]
-    }
+  {
+    "uid": "6ae310480d0a425",
+    "serialno": "SN019",
+    "board_version": " ",
+    "detector_serialno": [
+      1280,
+      1271,
+      1283,
+      1282
+    ]
+  },
+  {
+    "uid": "6a238a180e0b417",
+    "serialno": "SN008",
+    "board_version": " ",
+    "detector_serialno": [
+      1271,
+      1272,
+      1274,
+      1273
+    ]
+  },
+  {
+    "uid": "6ae310480d0c024",
+    "serialno": "SN011",
+    "board_version": " ",
+    "detector_serialno": [
+      1267,
+      1268,
+      1270,
+      1269
+    ]
+  },
+  {
+    "uid": "6a238a180e0b416",
+    "serialno": "SN005",
+    "board_version": " ",
+    "detector_serialno": [
+      1237,
+      1242,
+      1243,
+      1244
+    ]
+  },
+  {
+    "uid": "6ae310480d02824",
+    "serialno": "SN013",
+    "board_version": " ",
+    "detector_serialno": [
+      1080,
+      1079,
+      1082,
+      1081
+    ]
+  },
+  {
+    "uid": "6ae310480d06c23",
+    "serialno": "SN020",
+    "board_version": " ",
+    "detector_serialno": [
+      1076,
+      1075,
+      1074,
+      1077
+    ]
+  },
+  {
+    "uid": "6ae310480d07c22",
+    "serialno": "SN017",
+    "board_version": " ",
+    "detector_serialno": [
+      509,
+      510,
+      508,
+      507
+    ]
+  },
+  {
+    "uid": "6ae310480d05022",
+    "serialno": "SN018",
+    "board_version": " ",
+    "detector_serialno": [
+      1084,
+      1078,
+      1068,
+      1083
+    ]
+  },
+  {
+    "uid": "6ae310480d05824",
+    "serialno": "SN015",
+    "board_version": " ",
+    "detector_serialno": [
+      1232,
+      1233,
+      1236,
+      1235
+    ]
+  },
+  {
+    "uid": "6ae310480d08c24",
+    "serialno": "SN010",
+    "board_version": " ",
+    "detector_serialno": [
+      1263,
+      1264,
+      1266,
+      1265
+    ]
+  },
+  {
+    "uid": "6ae310480d03022",
+    "serialno": "SN012",
+    "board_version": " ",
+    "detector_serialno": [
+      1271,
+      1272,
+      1274,
+      1273
+    ]
+  },
+  {
+    "uid": "6ae310480d07024",
+    "serialno": "SN014",
+    "board_version": " ",
+    "detector_serialno": [
+      1275,
+      1277,
+      1279,
+      1278
+    ]
+  }
 ]

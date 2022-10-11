@@ -1,3 +1,7 @@
+% The code is used for converting matlab calibration files to
+% quabo_calib_xx.json
+%
+
 clear;
 clc;
 close all;
