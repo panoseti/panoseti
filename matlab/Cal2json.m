@@ -17,7 +17,7 @@ gainmap_inc= load(['.' filesep 'gainmap_inc.mat']);
 
 for i = 1:r
     % create json file name
-    fname = ['quabo_calib_',int2str(CalibrationDB.quaboDETtable(i,1)),'.json'];
+    fname = sprintf('quabo_calib_%02d.json',CalibrationDB.quaboDETtable(i,1));
     % get quabo_SN from calibration file
     content.pixel_gain = gainmap_inc.gainmapallgmeanSN(:,:,i);
     % get detector_SN, a and b from calibration file
