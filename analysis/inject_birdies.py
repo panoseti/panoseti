@@ -9,11 +9,11 @@ TODO:
             - Module ID, module orientation (alt-az + observatory GPS), integration time, start time, and end time.
     - Setup procedure:
         - Create or update birdie log file.
-        - Open a file object for the image file.
+        - Open a file object for the image file. Done
     - Main loop
-        - Check if we’ve reached EOF in any of the image mode files.
-        - Simulate module image mode output.
-        - Update image frames (if applicable).
+        - Check if we’ve reached EOF in any of the image mode files. Done
+        - Simulate module image mode output. Done
+        - Update image frames (if applicable). Done
 
 """
 import math
@@ -33,15 +33,12 @@ import birdie_injection_utils as birdie_utils
 
 sys.path.append('../util')
 import pff
-sys.path.append('../control')
 import config_file
+sys.path.append('../control')
 
 np.random.seed(300)
 
 # File IO
-
-DATA_DIR = 'nico/downloads/test_data/data/obs_Lick.start_2022-05-11T23/38/29Z.runtype_eng.pffd'
-fname = 'start_2022-05-11T23/39/15Z.dp_1.bpp_2.dome_0.module_1.seqno_1.pff'
 
 
 def get_birdie_config(birdie_config_path):
@@ -61,12 +58,10 @@ def get_birdie_config(birdie_config_path):
     psf_sigma: value of sigma used in the simulated (gaussian) point-spread function.
     param_ranges: possible values for BirdieSource objects.
     """
-    if os.path.exists(birdie_config_path):
-        with open(birdie_config_path, 'r+') as f:
-            birdie_config = json.loads(f.read())
-            return birdie_config
-    else:
-        print(f'{birdie_config_path} is not a valid path.')
+    config_file.check_config_file(birdie_config_path)
+    with open(birdie_config_path, 'r+') as f:
+        birdie_config = json.loads(f.read())
+        return birdie_config
 
 
 def update_birdie_log(birdie_log_path):
@@ -94,9 +89,8 @@ def update_birdie_log(birdie_log_path):
             f.write(json_obj)
 
 
-def get_obs_config(data_dir_path):
+def get_obs_config(data_dir, run):
     pass
-
 
 
 def get_next_frame(file_obj):
@@ -114,7 +108,7 @@ def get_next_frame(file_obj):
             return None
     if not j or not img:
         return None
-    return img
+    return img, j
 
 
 # Simulation set up
@@ -216,6 +210,7 @@ def do_simulation(start_utc,
                   birdie_sources,
                   birdie_config,
                   nframes,
+                  integration_time,
                   fin,
                   fout,
                   noise_mean=0,
@@ -224,23 +219,28 @@ def do_simulation(start_utc,
                   draw_sky_band=False):
     time_step = (end_utc - start_utc) / nframes
     print(time_step)
-    step_num = 0
+    frame_num = 0
     print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({nframes} frames)'
           f'\n\tEstimated time to completion: {round(0.07 * nframes // 60)} min {round(0.07 * nframes % 60)} s')
     total_time = max_counter = 0
     s = time.time()
     t = start_utc
     while t < end_utc:
-        #noisy_img = np.random.poisson(noise_mean, 1024)
-        raw_img = get_next_frame(fin)
+        noisy_img = np.random.poisson(noise_mean, 1024)
+        #raw_img, j = get_next_frame(fin)
+        #print(j)
+        input(f"\t calculated timestamp={start_utc + frame_num * integration_time}, actual tv_sec={j['tv_sec']}")
         #input(raw_img)
-        birdie_utils.show_progress(step_num, raw_img, module, nframes, num_updates, plot_images)
+        birdie_utils.show_progress(frame_num, noisy_img, module, nframes, num_updates, plot_images)
 
         # Update module on-sky position.
         module.update_center_ra_dec_coords(t)
 
         # Update birdie signal points.
+        s1 = time.time()
         sky_array.fill(0)
+        e1 = time.time()
+        input(e1-s1)
         center_ra = module.center_ra
         birdies_in_view = update_birdies(t, center_ra, sky_array, birdie_sources)
 
@@ -249,10 +249,10 @@ def do_simulation(start_utc,
         module.simulate_all_pixel_fovs(blurred_sky_array, birdies_in_view, draw_sky_band)
 
         #def write_image_1D(f, img, img_size, bytes_per_pixel):
-        pff.write_image_1D(fout, module.add_birdies_to_image_array(raw_img), 32, 2)
+        #pff.write_image_1D(fout, module.add_birdies_to_image_array(noisy_img), 32, 2)
         max_counter = max(max_counter, max(module.simulated_img_arr))
         t += time_step
-        step_num += 1
+        frame_num += 1
     e = time.time()
     total_time += e - s
     avg_time = total_time / nframes
@@ -260,7 +260,7 @@ def do_simulation(start_utc,
     print(f'Max image counter value = {max_counter}')
 
 
-def do_file(run, data_dir, analysis_dir, fin_name, params):
+def do_file(data_dir, run, analysis_dir, fin_name, params):
     #input(run)
     print('processing file ', fin_name)
     file_attrs = pff.parse_name(fin_name)
@@ -275,9 +275,11 @@ def do_file(run, data_dir, analysis_dir, fin_name, params):
         end_iso = f.readline()  # use the timestamp in "data/$run/run_complete"
     start_utc = birdie_utils.iso_to_utc(start_iso)
     end_utc = birdie_utils.iso_to_utc(end_iso)
+    integration_time = birdie_utils.get_integration_time(data_dir, run)
+    print(f'start_utc={start_utc}, end_utc={end_utc}, integration_time={integration_time}us')
 
     # Get the number of image frames
-    nframes = analysis_util.img_seconds_to_frames(f'{run}', end_utc - start_utc)
+    nframes = 1e6 * (end_utc - start_utc) / integration_time
 
     # Initialize objects
     module, sky_array, birdie_sources = do_setup(start_utc, end_utc, birdie_config)
@@ -291,6 +293,7 @@ def do_file(run, data_dir, analysis_dir, fin_name, params):
                 module, sky_array, birdie_sources,
                 birdie_config,
                 nframes,
+                integration_time,
                 fin,
                 fout,
                 noise_mean=0,
@@ -304,19 +307,21 @@ def do_file(run, data_dir, analysis_dir, fin_name, params):
     plt.close()
 
 
-def do_run(run, data_dir, params, username):
-    analysis_dir = analysis_util.make_dir('./birdie_injection_test')#analysis_util.make_analysis_dir('birdie_injection', run)
+def do_run(data_dir, run, params, username):
+    analysis_dir = analysis_util.make_dir('birdie_injection_test')#analysis_util.make_analysis_dir('birdie_injection', run)
     print('processing run', run)
     for f in os.listdir(f'{data_dir}/{run}'):
         if not pff.is_pff_file(f):
-            #input('not pff')
             continue
         if pff.pff_file_type(f) != 'img16':
-            #input(pff.pff_file_type(f))
             continue
         #input(pff.parse_name(run))
-        do_file(run, data_dir, analysis_dir, f, params)
+        do_file(data_dir, run, analysis_dir, f, params)
     analysis_util.write_summary(analysis_dir, params, username)
+
+
+DATA_DIR = '/Users/nico/Downloads/test_data/data'
+fname = 'start_2022-05-11T23/39/15Z.dp_1.bpp_2.dome_0.module_1.seqno_1.pff'
 
 
 def main():
@@ -324,8 +329,7 @@ def main():
     params = {
         'seconds': 1
     }
-    data_dir = '/Users/nico/Downloads/test_data/data'
-    do_run('obs_Lick.start_2022-05-11T23:38:29Z.runtype_eng.pffd', data_dir, params, 'nico')
+    do_run(DATA_DIR, 'obs_Lick.start_2022-05-11T23:38:29Z.runtype_eng.pffd', params, 'nico')
 
 
 if __name__ == '__main__':

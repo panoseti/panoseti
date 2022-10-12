@@ -6,14 +6,24 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-import datetime
 from dateutil import parser
 import json
+import sys
 from ModuleView import ModuleView
+
+sys.path.append('../util')
+import pff
+import config_file
 
 # Possible RA and DEC values in this simulation.
 ra_bounds = 0, 360
 dec_bounds = -90, 90
+
+
+def get_integration_time(data_dir, run):
+    data_config = config_file.get_data_config(f'{data_dir}/{run}')
+    x = float(data_config['image']['integration_time_usec'])
+    return x
 
 
 def iso_to_utc(iso_date_string):
