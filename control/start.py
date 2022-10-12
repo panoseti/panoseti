@@ -50,6 +50,13 @@ def get_daq_params(data_config):
         image_usec = image['integration_time_usec']
     if 'pulse_height' in data_config:
         do_ph = True
+    if do_image:
+        if image_8bit:
+            if image_usec < 20:
+                raise Exception('integration time must be >= 20 usec in 8 bit mode')
+        else:
+            if image_usec < 40:
+                raise Exception('integration time must be >= 40 usec in 16 bit mode')
     daq_params = quabo_driver.DAQ_PARAMS(
         do_image, image_usec - 1, image_8bit, do_ph, bl_subtract
     )
