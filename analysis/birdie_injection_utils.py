@@ -6,7 +6,14 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+from dateutil import parser
+import json
+import sys
 from ModuleView import ModuleView
+
+sys.path.append('../util')
+import pff
+import config_file
 
 # Possible RA and DEC values in this simulation.
 ra_range = [0, 360]
@@ -37,6 +44,16 @@ def init_ra_dec_ranges(t_start, t_end, initial_bounding_box):
     dec_high = initial_bounding_box[1][1]
     update_dec_range(dec_low=dec_low, dec_high=dec_high)
     print(f'ra_range={ra_range}, dec_range={dec_range}')
+
+
+def get_integration_time(data_dir, run):
+    data_config = config_file.get_data_config(f'{data_dir}/{run}')
+    x = float(data_config['image']['integration_time_usec'])
+    return x
+
+
+def iso_to_utc(iso_date_string):
+    return float(parser.parse(iso_date_string).timestamp())
 
 
 def ra_dec_to_sky_array_indices(ra, dec, sky_shape, bounding_box):
