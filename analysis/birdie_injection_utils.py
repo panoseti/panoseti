@@ -9,70 +9,90 @@ import math
 from ModuleView import ModuleView
 
 # Possible RA and DEC values in this simulation.
-ra_bounds = 0, 360
-dec_bounds = -90, 90
+ra_range = [0, 360]
+dec_range = [-90, 90]
 
 
-def ra_dec_to_sky_array_indices(ra, dec, sky_array):
-    """
-    Given sky_array, a 2D sky array recording light intensities at RA-DEC coordinates,
+def update_ra_range(ra_left=None, ra_right=None):
+    if ra_left:
+        ra_range[0] = ra_left
+    if ra_right:
+        ra_range[1] = ra_right
+
+
+def update_dec_range(dec_low=None, dec_high=None):
+    if dec_low:
+        dec_range[0] = dec_low
+    if dec_high:
+        dec_range[1] = dec_high
+
+
+def init_ra_dec_ranges(t_start, t_end, initial_bounding_box):
+    ra_left = initial_bounding_box[0][0]
+    ra_right = initial_bounding_box[0][1] + (t_end - t_start) * 360 / (24 * 60 * 60)
+    if abs(ra_right - ra_left) > 360:
+        ra_left, ra_right = 0, 360
+    update_ra_range(ra_left=ra_left, ra_right=ra_right)
+    dec_low = initial_bounding_box[1][0]
+    dec_high = initial_bounding_box[1][1]
+    update_dec_range(dec_low=dec_low, dec_high=dec_high)
+    print(f'ra_range={ra_range}, dec_range={dec_range}')
+
+
+def ra_dec_to_sky_array_indices(ra, dec, sky_shape, bounding_box):
+    """Given sky_array, a 2D sky array recording light intensities at RA-DEC coordinates,
     returns the indices in sky_array corresponding to the point (ra, dec).
-    ra and dec must be in degrees.
-    """
-    assert dec_bounds[0] <= dec <= dec_bounds[1], f'lower dec bound = {dec_bounds[0]}, upper dec bound = {dec_bounds[1]}, given dec: {dec}'
-    assert dec_bounds[0] <= dec <= dec_bounds[1], f'lower dec bound = {dec_bounds[0]}, upper dec bound = {dec_bounds[1]}, given dec: {dec}'
-    shape = np.shape(sky_array)
-    ra_size, dec_size = shape[0], shape[1]
-    dist = (ra_bounds[1] - ra_bounds[0]) % 360
-    if dist == 0:
-        dist = 360
-    ra_index = int(ra_size * ((ra - ra_bounds[0]) % 360 / dist)) % shape[0]
-    dec_index = int(dec_size * ((dec - dec_bounds[0]) / (dec_bounds[1] - dec_bounds[0])))
+    ra and dec must be in degrees."""
+    #assert bounding_box[0][0] <= ra <= bounding_box[0][1], f'ra={ra}, bounding_ra={bounding_box[0]}'
+    ra_size, dec_size = sky_shape[0], sky_shape[1]
+    ra_length = bounding_box[0][1] - bounding_box[0][0]
+    dec_length = bounding_box[1][1] - bounding_box[1][0]
+
+    ra_index = int(ra_size * ((ra - bounding_box[0][0]) % 360) / ra_length) % ra_size
+    dec_index = int(dec_size * ((dec - bounding_box[1][1]) / dec_length))
     return ra_index, dec_index
 
 
-def reduce_ra_range(mod: ModuleView, start_utc, end_utc):
-    global ra_bounds
-    # RA of module center at start_utc
-    start_ra = mod.center_ra
-    end_ra = mod.get_module_ra_at_time(end_utc)
-    # Ratio of reduced ra range length to module fov width
-    r = 1.2
-    margin = mod.pixel_scale * mod.pixels_per_side * (r / 2)
-    lower_bound = start_ra - margin
-    upper_bound = end_ra + margin
-    if abs(lower_bound - upper_bound) < 360:
-        ra_bounds = lower_bound % 360, upper_bound % 360
-    print(f'Right ascension bounds = ({round(ra_bounds[0], 2)}, {round(ra_bounds[1], 2)}) <deg> '
-          f'or ({round(24 * ra_bounds[0] / 360, 2)}, {round(24 * ra_bounds[1] / 360, 2)}) <hr>')
-    return ra_bounds
+def get_ra_bounds(ra_center, r, pixel_scale, pixels_per_side):
+    """Return an interval of ra coordinates given ra_center, the center of the interval,
+    and r, the ratio of interval length to the module's fov width."""
+    interval_radius = pixel_scale * pixels_per_side * (r / 2)
+    left_bound = ra_center - interval_radius
+    right_bound = ra_center + interval_radius
+    ra_interval = left_bound, right_bound
+    return ra_interval
 
 
-def reduce_dec_range(mod: ModuleView):
-    global dec_bounds
-    # Ratio of reduced dec range length to module fov width
-    r = 1.2
-    margin = mod.pixel_scale * mod.pixels_per_side * (r / 2)
-    center_dec = mod.center_dec
-    lower_bound = max(-90, center_dec - margin)
-    upper_bound = min(90, center_dec + margin)
-    dec_bounds = lower_bound, upper_bound
-    print(f'Declination bounds = ({round(dec_bounds[0], 2)}, {round(dec_bounds[1], 2)}) <deg>')
-    return dec_bounds
+def get_dec_bounds(dec_center, r, pixel_scale, pixels_per_side):
+    """Return an interval of ra coordinates given ra_center, the center of the interval,
+    and r, the ratio of interval length to the module's fov width."""
+    interval_radius = pixel_scale * pixels_per_side * (r / 2)
+    lower_bound = dec_center - interval_radius
+    upper_bound = dec_center + interval_radius
+    dec_interval = lower_bound, upper_bound
+    return dec_interval
 
 
-def get_sky_image_array(elem_per_deg, verbose=False):
+def get_coord_bounding_box(ra_center, dec_center, r=1.25, pixel_scale=0.31, pixels_per_side=32):
+    """Return the ra-dec coordinates of the simulation bounding box centered at ra_center, dec_center."""
+    ra_interval = get_ra_bounds(ra_center, r, pixel_scale, pixels_per_side)
+    dec_interval = get_dec_bounds(dec_center, r, pixel_scale, pixels_per_side)
+    return ra_interval, dec_interval
+
+
+def get_sky_image_array(elem_per_deg, r, verbose=False):
     """Returns a 2D array with shape (num_ra, num_dec)."""
-    dist = (ra_bounds[1] - ra_bounds[0]) % 360
-    if dist == 0:
-        dist = 360
-    ra_size = round(elem_per_deg * dist)
-    dec_size = round(elem_per_deg * (dec_bounds[1] - dec_bounds[0]))
+    bounding_box = get_coord_bounding_box(0, 0, r)
+    ra_length = bounding_box[0][1] - bounding_box[0][0]
+    dec_length = bounding_box[1][1] - bounding_box[1][0]
+
+    ra_size = round(elem_per_deg * ra_length)
+    dec_size = round(elem_per_deg * dec_length)
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     array_shape = ra_size, dec_size
     if verbose:
         print(f'Array elements per:\n'
-              f'\tdeg ra: {round(ra_size / dist, 4):<10}\tdeg dec: {round(dec_size / (dec_bounds[1] - dec_bounds[0]), 4):<10}')
+              f'\tdeg ra: {round(ra_size / ra_length, 4):<10}\tdeg dec: {round(dec_size / dec_length, 4):<10}')
         print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape)
 
@@ -84,11 +104,11 @@ def graph_sky_array(sky_array):
         print('No data to graph.')
         return
     # Add RA tick marks
-    dist = (ra_bounds[1] - ra_bounds[0]) % 360
+    dist = (ra_range[1] - ra_range[0]) % 360
     if dist == 0:
         ra_labels_in_deg = np.linspace(0, 360, 7, dtype=np.int)
     else:
-        ra_labels_in_deg = (np.linspace(0, dist, 7, dtype=np.int) + ra_bounds[0]) % 360
+        ra_labels_in_deg = (np.linspace(0, dist, 7, dtype=np.int) + ra_range[0]) % 360
     ra_labels_in_hrs = 24 * ra_labels_in_deg / 360
     ax.set_xticks(
         np.linspace(0, sky_array.shape[0] - 1, 7),
@@ -97,7 +117,7 @@ def graph_sky_array(sky_array):
     # Add DEC tick marks
     ax.set_yticks(
         np.linspace(0, sky_array.shape[1] - 1, 3),
-        np.linspace(dec_bounds[0], dec_bounds[1], 3).round(2)
+        np.linspace(dec_range[0], dec_range[1], 3).round(2)
     )
     ax.set_xlabel("Right Ascension")
     ax.set_ylabel("Declination")

@@ -116,7 +116,7 @@ class ModuleView:
             self.current_utc = frame_utc
         self.get_pixel_corner_coord = sky_band.get_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
 
-    def simulate_one_pixel_fov(self, px, py, sky_array, draw_sky_band):
+    def simulate_one_pixel_fov(self, px, py, sky_array, bounding_box, draw_sky_band):
         """Sum the intensities in each element of sky_array visible by pixel (px, py) and return a counter value
         to add to the current image frame. We approximate the pixel FoV as a square determined by the RA-DEC
          coordinates of the top left and bottom right corner of the pixel."""
@@ -126,10 +126,10 @@ class ModuleView:
         right_ra, low_dec = self.get_pixel_corner_coord(px, py, 1, 1)
 
         left_index, high_index = birdie_utils.ra_dec_to_sky_array_indices(
-            left_ra, high_dec, sky_array
+            left_ra, high_dec, sky_array.shape, bounding_box
         )
         right_index, low_index = birdie_utils.ra_dec_to_sky_array_indices(
-            right_ra, low_dec, sky_array
+            right_ra, low_dec, sky_array.shape, bounding_box
         )
         max_ra_index = sky_array.shape[0]
         # RA coordinates may wrap around if larger than 24hrs.
@@ -146,7 +146,7 @@ class ModuleView:
             total_intensity += sky_array[left_index:right_index + 1, low_index:high_index + 1].sum()
         self.set_pixel_value(px, py, math.floor(total_intensity))
 
-    def simulate_all_pixel_fovs(self, sky_array, birdies_in_view, draw_sky_band=False):
+    def simulate_all_pixel_fovs(self, sky_array, bounding_box, birdies_in_view, draw_sky_band=False):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
         containing only birdies."""
         if self.sky_band is None:
@@ -154,6 +154,6 @@ class ModuleView:
         if birdies_in_view:
             for i in range(self.pixels_per_side):
                 for j in range(self.pixels_per_side):
-                    self.simulate_one_pixel_fov(i, j, sky_array, draw_sky_band)
+                    self.simulate_one_pixel_fov(i, j, sky_array, bounding_box, draw_sky_band)
         else:
             self.clear_simulated_img_arr()

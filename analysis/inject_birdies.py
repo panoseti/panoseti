@@ -30,6 +30,7 @@ import analysis_util
 from BirdieSource import BaseBirdieSource
 from ModuleView import ModuleView
 import birdie_injection_utils as birdie_utils
+import sky_band
 
 sys.path.append('../util')
 import pff
@@ -107,7 +108,7 @@ def init_module(start_utc):
 
 
 def init_sky_array(array_resolution):
-    return birdie_utils.get_sky_image_array(array_resolution, verbose=True)
+    return birdie_utils.get_sky_image_array(array_resolution, 1.25, verbose=True)
 
 
 def get_birdie_config_vector(param_ranges):
@@ -132,10 +133,10 @@ def init_birdies(num, param_ranges):
     return birdie_sources
 
 
-def init_birdie_param_ranges(start_utc, end_utc, param_ranges):
+def init_birdie_param_ranges(start_utc, end_utc, bounding_box, param_ranges):
     """Param_ranges specifies the range of possible values for each BirdieSource parameter."""
-    l_ra, r_ra = birdie_utils.ra_bounds
-    l_dec, r_dec = birdie_utils.dec_bounds
+    l_ra, r_ra = birdie_utils.ra_range
+    l_dec, r_dec = birdie_utils.dec_range
     if r_ra < l_ra:
         r_ra += 360
     param_ranges['ra'] = (l_ra, r_ra)
@@ -148,18 +149,19 @@ def init_birdie_param_ranges(start_utc, end_utc, param_ranges):
 # Birdie Simulation
 
 
-def update_birdies(frame_utc, center_ra, sky_array, birdie_sources, pixels_per_side=32, pixel_scale=0.31):
+def update_birdies(frame_utc, bounding_box, sky_array, birdie_sources):
     """Call the generate_birdie method on every BirdieSource object with an RA
     that may be visible by the given module."""
     birdies_in_view = False
-    left = int(center_ra - (pixels_per_side // 2) * pixel_scale * 1.1)
-    right = int(center_ra + (pixels_per_side // 2) * pixel_scale * 1.1)
+    left = int(bounding_box[0][0] % 360)
+    right = int(bounding_box[0][1] % 360) - 1
     if right < left:
         right += 360
     i = left
-    while i <= right:
+    #input(f'left={left}, right={right}')
+    while i < right:
         for b in birdie_sources[i % 360]:
-            point_added = b.generate_birdie(frame_utc, sky_array)
+            point_added = b.generate_birdie(frame_utc, sky_array, bounding_box)
             birdies_in_view = birdies_in_view or point_added
         i += 1
     return birdies_in_view
@@ -194,15 +196,16 @@ def do_simulation(start_utc,
 
         # Update module on-sky position.
         module.update_center_ra_dec_coords(t)
+        bounding_box = birdie_utils.get_coord_bounding_box(module.center_ra, module.center_dec)
 
         # Update birdie signal points.
         sky_array.fill(0)
         center_ra = module.center_ra
-        birdies_in_view = update_birdies(t, center_ra, sky_array, birdie_sources)
+        birdies_in_view = update_birdies(t, bounding_box, sky_array, birdie_sources)
 
         # Simulate image mode data
         blurred_sky_array = apply_psf(sky_array, sigma=birdie_config['psf_sigma'])
-        module.simulate_all_pixel_fovs(blurred_sky_array, birdies_in_view, draw_sky_band)
+        module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, birdies_in_view, draw_sky_band)
 
         max_counter = max(max_counter, max(module.simulated_img_arr))
         t += time_step
@@ -219,24 +222,21 @@ def do_setup(start_utc, end_utc, birdie_config):
 
     # Init ModuleView object
     mod = init_module(start_utc)
-
-    # Limit the simulation to relevant RA-DEC ranges.
-    birdie_utils.reduce_ra_range(mod, start_utc, end_utc)
-    birdie_utils.reduce_dec_range(mod)
+    bounding_box = birdie_utils.get_coord_bounding_box(mod.center_ra, mod.center_dec)
+    birdie_utils.init_ra_dec_ranges(start_utc, end_utc, bounding_box)
 
     # Init array modeling the sky
     sky_array = init_sky_array(birdie_config['array_resolution'])
 
+
     # Init birdies and convolution kernel.
-    param_ranges = init_birdie_param_ranges(start_utc, end_utc, birdie_config['param_ranges'])
+    param_ranges = init_birdie_param_ranges(start_utc, end_utc, bounding_box, birdie_config['param_ranges'])
     birdie_sources = init_birdies(birdie_config['num_birdies'], param_ranges)
 
     return mod, sky_array, birdie_sources
 
 
-def main():
-    #analysis_dir = analysis_util.make_analysis_dir('birdie_injection', run)
-
+def test_simulation():
     start_utc = 1685417643
     end_utc = start_utc + 3600
     integration_time = 20e-1
@@ -252,13 +252,17 @@ def main():
         nframes,
         noise_mean=0,
         num_updates=20,
-        plot_images=True,
-        draw_sky_band=True
+        plot_images=1,
+        draw_sky_band=0
     )
 
     # Plot a heatmap of the sky covered during the simulation.
     module.plot_sky_band()
     plt.close()
+
+
+def main():
+    test_simulation()
 
 
 if __name__ == '__main__':

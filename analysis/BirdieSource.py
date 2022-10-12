@@ -35,7 +35,7 @@ class BaseBirdieSource:
             ra=ra*u.deg, dec=dec*u.deg, frame='icrs'
         )
 
-    def generate_birdie(self, frame_utc, sky_array):
+    def generate_birdie(self, frame_utc, sky_array, bounding_box):
         """Generate a birdie and add it to sky_array. Returns True if sky_array is modified and False otherwise."""
         sky_array_modified = False
         max_dt = self.end_utc - self.start_utc
@@ -43,7 +43,7 @@ class BaseBirdieSource:
         if 0 <= dt <= max_dt:
             cycle_pos = math.fmod(dt, self.period)
             if cycle_pos / self.period <= self.duty_cycle:
-                ax, ay = birdie_utils.ra_dec_to_sky_array_indices(self.ra, self.dec, sky_array)
+                ax, ay = birdie_utils.ra_dec_to_sky_array_indices(self.ra, self.dec, sky_array.shape, bounding_box)
                 sky_array[ax, ay] = self.pulse_intensity(frame_utc)
                 sky_array_modified = True
         return sky_array_modified
