@@ -6,11 +6,18 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import datetime
+from dateutil import parser
+import json
 from ModuleView import ModuleView
 
 # Possible RA and DEC values in this simulation.
 ra_bounds = 0, 360
 dec_bounds = -90, 90
+
+
+def iso_to_utc(iso_date_string):
+    return float(parser.parse(iso_date_string).timestamp())
 
 
 def ra_dec_to_sky_array_indices(ra, dec, sky_array):

@@ -98,7 +98,26 @@ def get_obs_config(data_dir_path):
     pass
 
 
-# Object initialization
+
+def get_next_frame(file_obj):
+    """Returns the next image frame from file_obj."""
+    j, img = None, None
+    start_timestamp = None
+    try:
+        j = pff.read_json(file_obj)
+        j = json.loads(j.encode())
+        # For ph files: img size = 16 x 16 and bytes per pixel = 2.
+        img = pff.read_image(file_obj, 32, 2)
+    except Exception as e:
+        # Deal with EOF issue in pff.read_json
+        if repr(e)[:26] == "Exception('bad type code',":
+            return None
+    if not j or not img:
+        return None
+    return img
+
+
+# Simulation set up
 
 
 def init_module(start_utc):
@@ -145,7 +164,27 @@ def init_birdie_param_ranges(start_utc, end_utc, param_ranges):
     return param_ranges
 
 
-# Birdie Simulation
+def do_setup(start_utc, end_utc, birdie_config):
+    """Initialize objects and arrays for birdie injection."""
+
+    # Init ModuleView object
+    mod = init_module(start_utc)
+
+    # Limit the simulation to relevant RA-DEC ranges.
+    birdie_utils.reduce_ra_range(mod, start_utc, end_utc)
+    birdie_utils.reduce_dec_range(mod)
+
+    # Init array modeling the sky
+    sky_array = init_sky_array(birdie_config['array_resolution'])
+
+    # Init birdies and convolution kernel.
+    param_ranges = init_birdie_param_ranges(start_utc, end_utc, birdie_config['param_ranges'])
+    birdie_sources = init_birdies(birdie_config['num_birdies'], param_ranges)
+
+    return mod, sky_array, birdie_sources
+
+
+# Birdie simulation routine
 
 
 def update_birdies(frame_utc, center_ra, sky_array, birdie_sources, pixels_per_side=32, pixel_scale=0.31):
@@ -177,20 +216,25 @@ def do_simulation(start_utc,
                   birdie_sources,
                   birdie_config,
                   nframes,
+                  fin,
+                  fout,
                   noise_mean=0,
                   num_updates=10,
                   plot_images=False,
                   draw_sky_band=False):
     time_step = (end_utc - start_utc) / nframes
+    print(time_step)
     step_num = 0
-    print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({nframes} steps)'
+    print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({nframes} frames)'
           f'\n\tEstimated time to completion: {round(0.07 * nframes // 60)} min {round(0.07 * nframes % 60)} s')
     total_time = max_counter = 0
     s = time.time()
     t = start_utc
     while t < end_utc:
-        noisy_img = np.random.poisson(noise_mean, 1024)
-        birdie_utils.show_progress(step_num, noisy_img, module, nframes, num_updates, plot_images)
+        #noisy_img = np.random.poisson(noise_mean, 1024)
+        raw_img = get_next_frame(fin)
+        #input(raw_img)
+        birdie_utils.show_progress(step_num, raw_img, module, nframes, num_updates, plot_images)
 
         # Update module on-sky position.
         module.update_center_ra_dec_coords(t)
@@ -204,6 +248,8 @@ def do_simulation(start_utc,
         blurred_sky_array = apply_psf(sky_array, sigma=birdie_config['psf_sigma'])
         module.simulate_all_pixel_fovs(blurred_sky_array, birdies_in_view, draw_sky_band)
 
+        #def write_image_1D(f, img, img_size, bytes_per_pixel):
+        pff.write_image_1D(fout, module.add_birdies_to_image_array(raw_img), 32, 2)
         max_counter = max(max_counter, max(module.simulated_img_arr))
         t += time_step
         step_num += 1
@@ -214,51 +260,72 @@ def do_simulation(start_utc,
     print(f'Max image counter value = {max_counter}')
 
 
-def do_setup(start_utc, end_utc, birdie_config):
-    """Initialize objects and arrays for birdie injection."""
-
-    # Init ModuleView object
-    mod = init_module(start_utc)
-
-    # Limit the simulation to relevant RA-DEC ranges.
-    birdie_utils.reduce_ra_range(mod, start_utc, end_utc)
-    birdie_utils.reduce_dec_range(mod)
-
-    # Init array modeling the sky
-    sky_array = init_sky_array(birdie_config['array_resolution'])
-
-    # Init birdies and convolution kernel.
-    param_ranges = init_birdie_param_ranges(start_utc, end_utc, birdie_config['param_ranges'])
-    birdie_sources = init_birdies(birdie_config['num_birdies'], param_ranges)
-
-    return mod, sky_array, birdie_sources
-
-
-def main():
-    #analysis_dir = analysis_util.make_analysis_dir('birdie_injection', run)
-
-    start_utc = 1685417643
-    end_utc = start_utc + 3600
-    integration_time = 20e-1
+def do_file(run, data_dir, analysis_dir, fin_name, params):
+    #input(run)
+    print('processing file ', fin_name)
+    file_attrs = pff.parse_name(fin_name)
+    module_id = file_attrs['module']
+    module_dir = analysis_util.make_dir('%s/module_%s_with_birdies'%(analysis_dir, module_id))
     birdie_config = get_birdie_config('birdie_config.json')
 
+    # Get start and end utc timestamps
+    start_iso = pff.parse_name(run)['start']  # use the timestamp from the run directory name.
+    run_complete_path = f'{data_dir}/{run}/run_complete'
+    with open(run_complete_path) as f:
+        end_iso = f.readline()  # use the timestamp in "data/$run/run_complete"
+    start_utc = birdie_utils.iso_to_utc(start_iso)
+    end_utc = birdie_utils.iso_to_utc(end_iso)
+
+    # Get the number of image frames
+    nframes = analysis_util.img_seconds_to_frames(f'{run}', end_utc - start_utc)
+
+    # Initialize objects
     module, sky_array, birdie_sources = do_setup(start_utc, end_utc, birdie_config)
 
-    nframes = math.ceil((end_utc - start_utc) / integration_time)
-    do_simulation(
-        start_utc, end_utc,
-        module, sky_array, birdie_sources,
-        birdie_config,
-        nframes,
-        noise_mean=0,
-        num_updates=20,
-        plot_images=True,
-        draw_sky_band=True
-    )
+    # Do simulation
+    #input(f'{module_dir}/birdie-injection.{fin_name}')
+    with open(f'{data_dir}/{run}/{fin_name}', 'rb') as fin:
+        with open(f'{module_dir}/birdie-injection.{fin_name}', 'w+b') as fout:
+            do_simulation(
+                start_utc, end_utc,
+                module, sky_array, birdie_sources,
+                birdie_config,
+                nframes,
+                fin,
+                fout,
+                noise_mean=0,
+                num_updates=20,
+                plot_images=True,
+                draw_sky_band=True
+            )
 
     # Plot a heatmap of the sky covered during the simulation.
     module.plot_sky_band()
     plt.close()
+
+
+def do_run(run, data_dir, params, username):
+    analysis_dir = analysis_util.make_dir('./birdie_injection_test')#analysis_util.make_analysis_dir('birdie_injection', run)
+    print('processing run', run)
+    for f in os.listdir(f'{data_dir}/{run}'):
+        if not pff.is_pff_file(f):
+            #input('not pff')
+            continue
+        if pff.pff_file_type(f) != 'img16':
+            #input(pff.pff_file_type(f))
+            continue
+        #input(pff.parse_name(run))
+        do_file(run, data_dir, analysis_dir, f, params)
+    analysis_util.write_summary(analysis_dir, params, username)
+
+
+def main():
+    #analysis_dir = analysis_util.make_analysis_dir('birdie_injection', run)
+    params = {
+        'seconds': 1
+    }
+    data_dir = '/Users/nico/Downloads/test_data/data'
+    do_run('obs_Lick.start_2022-05-11T23:38:29Z.runtype_eng.pffd', data_dir, params, 'nico')
 
 
 if __name__ == '__main__':

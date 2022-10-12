@@ -73,9 +73,9 @@ class ModuleView:
 
     def add_birdies_to_image_array(self, raw_img):
         assert len(raw_img) == len(self.simulated_img_arr)
-        raw_with_birdies = raw_img+ self.simulated_img_arr
-        indices_above_max_counter_val = np.nonzero(raw_with_birdies > self.max_pixel_counter_value)
-        raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
+        raw_with_birdies = raw_img + self.simulated_img_arr
+        #indices_above_max_counter_val = np.nonzero(raw_with_birdies > self.max_pixel_counter_value)
+        #raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
         return raw_with_birdies
 
     def plot_simulated_image(self, raw_img):
@@ -84,7 +84,7 @@ class ModuleView:
         raw_with_birdies = self.add_birdies_to_image_array(raw_img)
         raw_with_birdies_32x32 = np.resize(raw_with_birdies, (32, 32))
         fig1, ax = plt.subplots()
-        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32, vmin=0, vmax=255)
+        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32)#, vmin=0, vmax=255)
         ax.set_aspect('equal', adjustable='box')
         fig1.suptitle(self)
         fig1.show()
