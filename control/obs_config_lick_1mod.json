@@ -13,14 +13,15 @@
             "obsalt": 1283,
             "modules": [
                 {
+                    "name": "East",
                     "mobo_serialno": "M12",
                     "quabo_version": "qfp",
                     "comment": "not bga",
                     "ip_addr": "192.168.0.4",
                     "wps": "wps",
-                    "azimuth": 77,
-                    "elevation": 77,
-                    "position_angle": 77
+                    "azimuth": 184.19,
+                    "elevation": 78.041,
+                    "position_angle": -0.35
                 }
             ]
         }

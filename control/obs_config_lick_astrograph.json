@@ -1,7 +1,7 @@
 {
     "name": "Lick",
-    "comment": "",
-    "wps": {
+    "comment": "Lick config with just the 2 Astrograph modules",
+    "wps_astrograph": {
         "url": "http://admin:epowerpanoseti@192.168.0.100",
         "quabo_socket": 5
     },
@@ -9,28 +9,30 @@
     "gps_port": "/dev/ttyUSB0",
     "domes": [
         {
+            "name": "astrograph",
             "obslat": 37.3425,
             "obslon": -121.63777,
             "obsalt": 1283,
-            "name": "astrograph",
             "modules": [
                 {
+                    "name": "East",
                     "mobo_serialno": "M11",
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.3.248",
                     "wps": "wps",
-                    "azimuth": 77,
-                    "elevation": 77,
-                    "position_angle": 77
+                    "azimuth": 184.19,
+                    "elevation": 78.041,
+                    "position_angle": -0.35 
                 },
                 {
+                    "name": "West",
                     "mobo_serialno": "M12",
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.0.4",
-                    "wps": "wps",
-                    "azimuth": 77,
-                    "elevation": 77,
-                    "position_angle": 77
+                    "wps": "wps_astrograph",
+                    "azimuth": 184.29,
+                    "elevation": 78.506,
+                    "position_angle": -1.7899
 		}
             ]
         }
