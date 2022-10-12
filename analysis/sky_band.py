@@ -78,4 +78,4 @@ def get_sky_band_corner_coords(t_start, t_end, azimuth, elevation, obslat, obslo
     return sky_band_corner_coords
 
 
-#get_sky_band_corner_coords(1665164683, 1665225883, 77, 77, 37.3414, 121.64292, 234)
+#print(get_sky_band_corner_coords(1665164683, 1665225883, 77, 77, 37.3414, 121.64292, 234))

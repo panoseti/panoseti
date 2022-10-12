@@ -2,7 +2,11 @@
 
 # collect files from remote DAQ nodes at the end of a recording run
 #
-# --run_dir X    specify run dir
+# options when run as a cmdline script:
+#
+# --run_dir X   specify run dir
+# --cleanup     clean up DAQ nodes; don't collect
+# --verbose
 
 import os, sys
 import file_xfer, util
@@ -72,19 +76,25 @@ if __name__ == "__main__":
     i = 1
     run_dir = ''
     verbose = False
+    cleanup = False
     while i<len(sys.argv):
         if sys.argv[i] == '--run_dir':
             i += 1
             run_dir = sys.argv[i]
         elif sys.argv[i] == '--verbose':
             verbose = True
+        elif sys.argv[i] == '--cleanup':
+            cleanup = True
         i += 1
     if not run_dir:
         run_dir = util.read_run_name()
         if not run_dir:
-            print("No run found")
-            sys.exit()
+            raise Exception("No run found")
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.associate(daq_config, quabo_uids)
-    collect_data(daq_config, run_dir, verbose)
+    if cleanup:
+        cleanup_daq(daq_config, run_dir, verbose)
+    else:
+        ret = collect_data(daq_config, run_dir, verbose)
+        print('success' if ret else 'failed')

@@ -24,6 +24,9 @@ def main():
         os.unlink(util.daq_hashpipe_pid_filename)
 
     util.kill_hashpipe()
+
+    # if the HK recorder is running on a remote DAQ, we didn't start it.
+    # But it shouldn't be there, so kill it
     util.kill_hk_recorder()
 
     try:
