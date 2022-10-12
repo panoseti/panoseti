@@ -18,8 +18,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import rotate
 
-import birdie_injection_utils as utils
-import time
+import birdie_injection_utils as birdie_utils
+import sky_band
 
 
 class ModuleView:
@@ -41,9 +41,7 @@ class ModuleView:
         # Current field of view RA-DEC coordinates
         self.current_utc = start_time_utc
         self.center_ra = self.center_dec = None
-        self.ra_offsets = self.dec_offsets = None
-        self.pixel_grid_ra = self.pixel_grid_dec = None
-        self.init_offset_arrays()
+        self.get_pixel_corner_coord = None
         self.update_center_ra_dec_coords(start_time_utc)
         # Simulated data
         self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.int16)
@@ -60,18 +58,6 @@ class ModuleView:
         """
         return s
 
-    def init_offset_arrays(self):
-        shape = (self.pixels_per_side + 1, self.pixels_per_side + 1)
-        self.ra_offsets = np.empty(shape)
-        self.dec_offsets = np.empty(shape)
-        # Populate ra_offsets and dec_offsets.
-        for i in range(self.pixels_per_side + 1):
-            ra_offset = (i - self.pixels_per_side // 2) * self.pixel_scale
-            for j in range(self.pixels_per_side + 1):
-                dec_offset = (-j + self.pixels_per_side // 2) * self.pixel_scale
-                self.ra_offsets[i, j] = ra_offset
-                self.dec_offsets[i, j] = dec_offset
-
     def set_pixel_value(self, px, py, val):
         """In the simulated image frame, set the value of pixel (px, py) to val."""
         # FAST
@@ -87,9 +73,9 @@ class ModuleView:
 
     def add_birdies_to_image_array(self, raw_img):
         assert len(raw_img) == len(self.simulated_img_arr)
-        raw_with_birdies = raw_img+ self.simulated_img_arr
-        indices_above_max_counter_val = np.nonzero(raw_with_birdies > self.max_pixel_counter_value)
-        raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
+        raw_with_birdies = raw_img + self.simulated_img_arr
+        #indices_above_max_counter_val = np.nonzero(raw_with_birdies > self.max_pixel_counter_value)
+        #raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
         return raw_with_birdies
 
     def plot_simulated_image(self, raw_img):
@@ -98,21 +84,14 @@ class ModuleView:
         raw_with_birdies = self.add_birdies_to_image_array(raw_img)
         raw_with_birdies_32x32 = np.resize(raw_with_birdies, (32, 32))
         fig1, ax = plt.subplots()
-        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32, vmin=0, vmax=255)
+        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32)#, vmin=0, vmax=255)
         ax.set_aspect('equal', adjustable='box')
         fig1.suptitle(self)
         fig1.show()
 
     def plot_sky_band(self):
         """Plot a heatmap of the sky covered during the simulation."""
-        utils.graph_sky_array(self.sky_band)
-
-    def update_pixel_coord_grid(self):
-        """Updates the coordinates associated with each pixel corner in this module."""
-        # FAST
-        self.pixel_grid_ra = self.ra_offsets + self.center_ra
-        self.pixel_grid_dec = self.dec_offsets + self.center_dec
-        #print(f'ra grid = {self.pixel_grid_ra}\ndec grid = {self.pixel_grid_dec}')
+        birdie_utils.graph_sky_array(self.sky_band)
 
     def get_module_ra_at_time(self, frame_utc):
         """Return the new """
@@ -135,18 +114,22 @@ class ModuleView:
             assert frame_utc >= self.current_utc, f'frame_utc must be at least as large as self.current_utc'
             self.center_ra = self.get_module_ra_at_time(frame_utc) % 360
             self.current_utc = frame_utc
-        self.update_pixel_coord_grid()
+        self.get_pixel_corner_coord = sky_band.get_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
 
-    def simulate_one_pixel_fov(self, px, py, sky_array, draw_sky_band):
+    def simulate_one_pixel_fov(self, px, py, sky_array, bounding_box, draw_sky_band):
         """Sum the intensities in each element of sky_array visible by pixel (px, py) and return a counter value
         to add to the current image frame. We approximate the pixel FoV as a square determined by the RA-DEC
          coordinates of the top left and bottom right corner of the pixel."""
         total_intensity = 0.0
-        left_index, high_index = utils.ra_dec_to_sky_array_indices(
-            self.pixel_grid_ra[px, py], self.pixel_grid_dec[px, py], sky_array
+
+        left_ra, high_dec = self.get_pixel_corner_coord(px, py, 0, 0)
+        right_ra, low_dec = self.get_pixel_corner_coord(px, py, 1, 1)
+
+        left_index, high_index = birdie_utils.ra_dec_to_sky_array_indices(
+            left_ra, high_dec, sky_array.shape, bounding_box
         )
-        right_index, low_index = utils.ra_dec_to_sky_array_indices(
-            self.pixel_grid_ra[px + 1, py + 1], self.pixel_grid_dec[px + 1, py + 1], sky_array
+        right_index, low_index = birdie_utils.ra_dec_to_sky_array_indices(
+            right_ra, low_dec, sky_array.shape, bounding_box
         )
         max_ra_index = sky_array.shape[0]
         # RA coordinates may wrap around if larger than 24hrs.
@@ -163,11 +146,14 @@ class ModuleView:
             total_intensity += sky_array[left_index:right_index + 1, low_index:high_index + 1].sum()
         self.set_pixel_value(px, py, math.floor(total_intensity))
 
-    def simulate_all_pixel_fovs(self, sky_array, draw_sky_band=False):
+    def simulate_all_pixel_fovs(self, sky_array, bounding_box, birdies_in_view, draw_sky_band=False):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
         containing only birdies."""
         if self.sky_band is None:
             self.sky_band = np.copy(sky_array)
-        for i in range(self.pixels_per_side):
-            for j in range(self.pixels_per_side):
-                self.simulate_one_pixel_fov(i, j, sky_array, draw_sky_band)
+        if birdies_in_view:
+            for i in range(self.pixels_per_side):
+                for j in range(self.pixels_per_side):
+                    self.simulate_one_pixel_fov(i, j, sky_array, bounding_box, draw_sky_band)
+        else:
+            self.clear_simulated_img_arr()

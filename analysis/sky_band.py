@@ -51,9 +51,8 @@ def get_pixel_corner_coord_ftn(center_ra, center_dec):
     return get_pixel_corner_coord
 
 
-def get_module_corner_coords(t, azimuth, elevation, obslat, obslon, obsalt):
+def get_module_corner_coords(center_ra, center_dec):
     """Return a 2x2 list containing the RA-DEC coordinates of the corners of a module's FoV."""
-    center_ra, center_dec = get_module_center_ra_dec(t, azimuth, elevation, obslat, obslon, obsalt)
     get_pixel_coord = get_pixel_corner_coord_ftn(center_ra, center_dec)
     corner_coords = []
     for i in range(2):
@@ -69,8 +68,11 @@ def get_sky_band_corner_coords(t_start, t_end, azimuth, elevation, obslat, obslo
     """Return a 2x2 list of RA-DEC coordinates bounding the region of sky observed by a module
     between t_start and t_end. The positions are zero-indexed from the top left corner."""
     assert t_end >= t_start, 'End time cannot be before start time.'
-    start_corner_coords = get_module_corner_coords(t_start, azimuth, elevation, obslat, obslon, obsalt)
-    end_corner_coords = get_module_corner_coords(t_end, azimuth, elevation, obslat, obslon, obsalt)
+    center_start_ra, center_start_dec = get_module_center_ra_dec(t_start, azimuth, elevation, obslat, obslon, obsalt)
+    start_corner_coords = get_module_corner_coords(center_start_ra, center_start_dec)
+
+    center_end_ra, center_end_dec = get_module_center_ra_dec(t_end, azimuth, elevation, obslat, obslon, obsalt)
+    end_corner_coords = get_module_corner_coords(center_end_ra, center_end_dec)
     sky_band_corner_coords = [
         [start_corner_coords[0][0], end_corner_coords[0][1]],
         [start_corner_coords[1][0], end_corner_coords[1][1]]

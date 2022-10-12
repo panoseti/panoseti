@@ -56,7 +56,7 @@ def write_image_1D(f, img, img_size, bytes_per_pixel):
     f.write(b'*')
     if img_size == 32:
         if bytes_per_pixel == 2:
-            f.write(struct.pack("1024H", img))
+            f.write(struct.pack("1024H", *img))
             return
     raise Exception('bad params')
 
