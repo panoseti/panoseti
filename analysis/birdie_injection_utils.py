@@ -7,15 +7,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from dateutil import parser
-import json
 import sys
-from ModuleView import ModuleView
+from functools import cache
 
 sys.path.append('../util')
 import pff
 import config_file
 
-# Possible RA and DEC values in this simulation.
+# Frequently used constants.
 ra_range = [0, 360]
 dec_range = [-90, 90]
 
@@ -56,55 +55,39 @@ def iso_to_utc(iso_date_string):
     return float(parser.parse(iso_date_string).timestamp())
 
 
-def ra_dec_to_sky_array_indices(ra, dec, sky_shape, bounding_box):
+#@cache
+def ra_dec_to_sky_array_indices(ra, dec, bounding_box):
     """Given sky_array, a 2D sky array recording light intensities at RA-DEC coordinates,
     returns the indices in sky_array corresponding to the point (ra, dec).
     ra and dec must be in degrees."""
-    #assert bounding_box[0][0] <= ra <= bounding_box[0][1], f'ra={ra}, bounding_ra={bounding_box[0]}'
-    ra_size, dec_size = sky_shape[0], sky_shape[1]
-    ra_length = bounding_box[0][1] - bounding_box[0][0]
-    dec_length = bounding_box[1][1] - bounding_box[1][0]
-
     ra_index = int(ra_size * ((ra - bounding_box[0][0]) % 360) / ra_length) % ra_size
     dec_index = int(dec_size * ((dec - bounding_box[1][1]) / dec_length))
     return ra_index, dec_index
 
 
-def get_ra_bounds(ra_center, r, pixel_scale, pixels_per_side):
-    """Return an interval of ra coordinates given ra_center, the center of the interval,
-    and r, the ratio of interval length to the module's fov width."""
-    interval_radius = pixel_scale * pixels_per_side * (r / 2)
-    left_bound = ra_center - interval_radius
-    right_bound = ra_center + interval_radius
-    ra_interval = left_bound, right_bound
-    return ra_interval
-
-
-def get_dec_bounds(dec_center, r, pixel_scale, pixels_per_side):
-    """Return an interval of ra coordinates given ra_center, the center of the interval,
-    and r, the ratio of interval length to the module's fov width."""
-    interval_radius = pixel_scale * pixels_per_side * (r / 2)
-    lower_bound = dec_center - interval_radius
-    upper_bound = dec_center + interval_radius
-    dec_interval = lower_bound, upper_bound
-    return dec_interval
-
-
 def get_coord_bounding_box(ra_center, dec_center, r=1.25, pixel_scale=0.31, pixels_per_side=32):
-    """Return the ra-dec coordinates of the simulation bounding box centered at ra_center, dec_center."""
-    ra_interval = get_ra_bounds(ra_center, r, pixel_scale, pixels_per_side)
-    dec_interval = get_dec_bounds(dec_center, r, pixel_scale, pixels_per_side)
+    """Return the ra-dec coordinates of the simulation bounding box centered at ra_center, dec_center.
+    r is the ratio of interval length to the module's fov width."""
+    interval_radius = pixel_scale * pixels_per_side * (r / 2)
+    # Interval of ra coordinates given ra_center, the center of the interval,
+    ra_interval = ra_center - interval_radius, ra_center + interval_radius
+    # Interval of dec coordinates given dec_center, the center of the interval,
+    dec_interval = dec_center - interval_radius, dec_center + interval_radius
     return ra_interval, dec_interval
+
+
+def init_sky_array_constants(elem_per_deg, r):
+    global ra_length, ra_size, dec_length, dec_size
+    bounding_box = get_coord_bounding_box(0, 0, r)
+    ra_length = bounding_box[0][1] - bounding_box[0][0]
+    dec_length = bounding_box[1][1] - bounding_box[1][0]
+    ra_size = round(elem_per_deg * ra_length)
+    dec_size = round(elem_per_deg * dec_length)
 
 
 def get_sky_image_array(elem_per_deg, r, verbose=False):
     """Returns a 2D array with shape (num_ra, num_dec)."""
-    bounding_box = get_coord_bounding_box(0, 0, r)
-    ra_length = bounding_box[0][1] - bounding_box[0][0]
-    dec_length = bounding_box[1][1] - bounding_box[1][0]
-
-    ra_size = round(elem_per_deg * ra_length)
-    dec_size = round(elem_per_deg * dec_length)
+    init_sky_array_constants(elem_per_deg, r)
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     array_shape = ra_size, dec_size
     if verbose:

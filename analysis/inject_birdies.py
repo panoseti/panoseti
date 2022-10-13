@@ -30,6 +30,7 @@ import analysis_util
 from BirdieSource import BaseBirdieSource
 from ModuleView import ModuleView
 import birdie_injection_utils as birdie_utils
+from birdie_injection_utils import get_coord_bounding_box
 import sky_band
 
 sys.path.append('../util')
@@ -163,7 +164,7 @@ def do_setup(start_utc, end_utc, birdie_config):
 
     # Init ModuleView object
     mod = init_module(start_utc)
-    bounding_box = birdie_utils.get_coord_bounding_box(mod.center_ra, mod.center_dec)
+    bounding_box = get_coord_bounding_box(mod.center_ra, mod.center_dec)
     birdie_utils.init_ra_dec_ranges(start_utc, end_utc, bounding_box)
 
     # Init array modeling the sky
@@ -200,7 +201,7 @@ def update_birdies(frame_utc, bounding_box, sky_array, birdie_sources):
 
 def apply_psf(sky_array, sigma):
     """Apply a 2d gaussian filter to simulate optical distortion."""
-    return gaussian_filter(sky_array, sigma=sigma)
+    return
 
 
 def do_simulation(start_utc,
@@ -221,12 +222,13 @@ def do_simulation(start_utc,
     print(time_step)
     frame_num = 0
     print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({nframes} frames)'
-          f'\n\tEstimated time to completion: {round(0.07 * nframes // 60)} min {round(0.07 * nframes % 60)} s')
+          f'\n\tEstimated time to completion: {round(0.015 * nframes // 60)} min {round(0.015 * nframes % 60)} s')
     total_time = max_counter = 0
     s = time.time()
     t = start_utc
+    sigma = birdie_config['psf_sigma']
     while t < end_utc:
-        noisy_img = np.random.poisson(noise_mean, 1024)
+        #noisy_img = np.random.poisson(noise_mean, 1024)
         raw_img, j = get_next_frame(fin)
         #print(j)
         #input(f"\t calculated timestamp={start_utc + frame_num * integration_time}, actual tv_sec={j['tv_sec']}")
@@ -235,16 +237,15 @@ def do_simulation(start_utc,
 
         # Update module on-sky position.
         module.update_center_ra_dec_coords(t)
-        bounding_box = birdie_utils.get_coord_bounding_box(module.center_ra, module.center_dec)
+        bounding_box = get_coord_bounding_box(module.center_ra, module.center_dec)
 
         # Update birdie signal points.
         sky_array.fill(0)
-        center_ra = module.center_ra
         birdies_in_view = update_birdies(t, bounding_box, sky_array, birdie_sources)
 
         # Simulate image mode data
-        blurred_sky_array = apply_psf(sky_array, sigma=birdie_config['psf_sigma'])
-        module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, birdies_in_view, draw_sky_band)
+        blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
+        module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, draw_sky_band)
 
         #def write_image_1D(f, img, img_size, bytes_per_pixel):
         #pff.write_image_1D(fout, module.add_birdies_to_image_array(noisy_img), 32, 2)
@@ -275,35 +276,35 @@ def do_test_simulation(start_utc,
     time_step = (end_utc - start_utc) / nframes
     frame_num = 0
     print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({nframes} frames)'
-          f'\n\tEstimated time to completion: {round(0.07 * nframes // 60)} min {round(0.07 * nframes % 60)} s')
+          f'\n\tEstimated time to completion: {round(0.015 * nframes // 60)} min {round(0.015 * nframes % 60)} s')
     total_time = max_counter = 0
+    noisy_img = np.random.poisson(noise_mean, 1024)
     s = time.time()
     t = start_utc
+    sigma = birdie_config['psf_sigma']
     while t < end_utc:
-        noisy_img = np.random.poisson(noise_mean, 1024)
         birdie_utils.show_progress(frame_num, noisy_img, module, nframes, num_updates, plot_images)
 
         # Update module on-sky position.
         module.update_center_ra_dec_coords(t)
-        bounding_box = birdie_utils.get_coord_bounding_box(module.center_ra, module.center_dec)
+        bounding_box = get_coord_bounding_box(module.center_ra, module.center_dec)
 
         # Update birdie signal points.
         sky_array.fill(0)
-        center_ra = module.center_ra
         birdies_in_view = update_birdies(t, bounding_box, sky_array, birdie_sources)
 
-        # Simulate image mode data
-        blurred_sky_array = apply_psf(sky_array, sigma=birdie_config['psf_sigma'])
-        module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, birdies_in_view, draw_sky_band)
+        if birdies_in_view:
+            # Simulate image mode data
+            blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
 
-        max_counter = max(max_counter, max(module.simulated_img_arr))
+            module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, draw_sky_band)
+
         t += time_step
         frame_num += 1
     e = time.time()
     total_time += e - s
     avg_time = total_time / nframes
     print(f'\nNum sims = {nframes}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
-    print(f'Max image counter value = {max_counter}')
     if draw_sky_band:
         # Plot a heatmap of the sky covered during the simulation.
         module.plot_sky_band()
@@ -325,7 +326,7 @@ def test_simulation():
         nframes,
         noise_mean=0,
         num_updates=20,
-        plot_images=1,
+        plot_images=0,
         draw_sky_band=0
     )
 

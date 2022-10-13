@@ -6,6 +6,7 @@ import numpy as np
 import astropy.time
 import astropy.units
 import astropy.coordinates
+from functools import cache
 
 
 def get_module_center_ra_dec(t, azimuth, elevation, obslat, obslon, obsalt):
@@ -32,13 +33,10 @@ def get_module_center_ra_dec(t, azimuth, elevation, obslat, obslon, obsalt):
     return center_ra, center_dec
 
 
-def get_pixel_corner_coord_ftn(center_ra, center_dec):
+def get_pixel_corner_coord_ftn(center_ra, center_dec, pixel_size=0.31):
     """Output a function which returns the RA-DEC coordinate of
     the corner (x,y) = (0..1, 0..1) of pixel (row, col) = (0..31, 0..31).
     Pixels and corner positions are zero-indexed from the top left."""
-    # Width of pixel FoV, in degrees
-    pixel_size = 0.31
-
     corner_indices = np.linspace(-16, 16, 33)
     ra_offsets = corner_indices * pixel_size
     dec_offsets = np.flip(ra_offsets)
