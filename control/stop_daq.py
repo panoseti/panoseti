@@ -34,6 +34,6 @@ def main():
     except:
         pass
 
-    print('OK')
+    print('stop_daq.py: OK')
 
 main()

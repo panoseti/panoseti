@@ -341,3 +341,40 @@ start.py
         autodetect?
 
     keep log of sky coverage?
+------------
+improved record-keeping of run end
+
+Ending a run has several steps
+- tell DAQ nodes to stop recording data
+- turning off HV updater and HK recorder
+- tell quabos to stop producing data
+- copy files from DAQ nodes to head node
+- delete files from DAQ nodes
+
+Any of these can fail for reasons that may be transient.
+The collect step can take several hours.
+
+Currently we write a file "run_complete" at the end of all this;
+its contents are the time when everything finished.
+
+Problems:
+1) There's no easy way to find when data recording stopped.
+2) If something failed, there's no info about what it was,
+    and no easy way to retry.
+
+Proposal:
+files to write at end of a run:
+
+recording_ended
+    time when stopped recording data
+
+collect_complete
+    time when collect completed
+
+run_complete
+    time when everything completed
+
+stop_errors
+    log of errors, if any
+
+Change stop.py so that it doesn't repeat completed steps.

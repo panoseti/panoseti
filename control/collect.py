@@ -13,11 +13,11 @@ import file_xfer, util
 sys.path.insert(0, '../util')
 import config_file
 
-# return True if data collection was successful
+# return '' if data collection was successful, else error msg
 #
 def collect_data(daq_config, run_dir, verbose=False):
     my_ip = util.local_ip()
-    success = True
+    error_msg = ''
     for node in daq_config['daq_nodes']:
         for module in node['modules']:
             module_id = module['id']
@@ -32,12 +32,12 @@ def collect_data(daq_config, run_dir, verbose=False):
                     print(cmd)
                 ret = os.system(cmd)
                 if ret:
-                    raise Exception('command %s failed: %d'%(cmd, ret))
+                    error_msg += 'command %s failed: %d'%(cmd, ret)
             else:
-                success = success and file_xfer.copy_dir_from_node(
+                error_msg += file_xfer.copy_dir_from_node(
                     run_dir, daq_config, node, module_id, verbose
                 )
-    return success
+    return error_msg
 
 # remove stuff from DAQ nodes no longer needed after run
 # remote:
@@ -45,9 +45,11 @@ def collect_data(daq_config, run_dir, verbose=False):
 #    data/module_n/run
 # local
 #    data/module_n/run (should be empty dir)
-
+# return error message or ''
+#
 def cleanup_daq(daq_config, run_dir, verbose=False):
     my_ip = util.local_ip()
+    error_msg = ''
     for node in daq_config['daq_nodes']:
         if node['ip_addr'] == my_ip:
             cmd = 'rm -rf %s/module_*/%s'%(
@@ -57,7 +59,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                 print(cmd)
             ret = os.system(cmd)
             if ret:
-                raise Exception('command %s failed: %d'%(cmd, ret))
+                error_msg += 'cleanup_daq(): %s returned %d '%(cmd, ret)
         else:
             rcmd = 'rm -rf %s/module_*/%s; rm -rf %s/%s'%(
                 node['data_dir'], run_dir,
@@ -70,7 +72,8 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                 print(cmd)
             ret = os.system(cmd)
             if ret:
-                raise Exception('command %s failed: %d'%(cmd, ret))
+                error_msg += 'cleanup_daq(): %s returned %d '%(cmd, ret)
+    return error_msg
 
 if __name__ == "__main__":
     i = 1

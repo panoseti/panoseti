@@ -10,7 +10,7 @@
 #
 # options:
 #   --verbose           print details
-#   --no_collect        don't copy files to head node
+#   --no_collect        don't copy data files to head node
 #   --no_cleanup        don't delete files from DAQ nodes
 #   --run X             clean up run X (default: read from current_run)
 
@@ -19,6 +19,14 @@ import collect, quabo_driver
 from util import *
 sys.path.insert(0, '../util')
 import pff, config_file
+
+# write message to error log
+#
+def log_error(msg, run_dir):
+    print(msg)
+    log_path = '%s/stop_errors'%run_dir if run_dir else 'stop_errors'
+    with open(log_path, 'a') as f:
+        f.write('%s: %s\n'%(now_str(), msg))
 
 # tell the quabos to stop sending data
 #
@@ -40,24 +48,28 @@ def stop_data_flow(quabo_uids):
 
 # tell all DAQ nodes to stop recording
 #
-def stop_recording(daq_config):
+def stop_recording(daq_config, run_dir, verbose):
     for node in daq_config['daq_nodes']:
         cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(
             node['username'], node['ip_addr'], node['data_dir']
         )
-        print(cmd)
+        if verbose:
+            print(cmd)
         ret = os.system(cmd)
-        if ret: raise Exception('%s returned %d'%(cmd, ret))
+        if ret:
+            msg = '%s returned %d'%(cmd, ret)
+            log_error(msg, run_dir)
+            raise Exception(msg)
 
-# write a "run complete" file in the current run dir,
-# and make symlinks to the first nonempty image and ph files in that dir
+# write a "complete file" in the run dir,
 #
-def write_run_complete_file(daq_config, run_name):
-    data_dir = daq_config['head_node_data_dir']
-    path = '%s/%s/%s'%(data_dir, run_name, run_complete_file)
-    with open(path, 'w') as f:
+def write_complete_file(run_dir, filename):
+    with open('%s/%s'%(run_dir, filename), 'w') as f:
         f.write(now_str())
 
+# make symlinks to the first nonempty image and ph files in that dir
+#
+def make_links(run_dir, verbose):
     if os.path.exists(img_symlink):
         os.unlink(img_symlink)
     if os.path.exists(ph_symlink):
@@ -65,33 +77,36 @@ def write_run_complete_file(daq_config, run_name):
     did_img = False
     did_ph = False
     did_hk = False
-    for f in os.listdir('%s/%s'%(data_dir, run_name)):
-        path = '%s/%s/%s'%(data_dir, run_name, f)
+    for f in os.listdir(run_dir):
+        path = '%s/%s'%(run_dir, f)
         if not pff.is_pff_file(path): continue
         if os.path.getsize(path) == 0: continue
         if not did_img and pff.pff_file_type(path) in ['img16', 'img8']:
             os.symlink(path, img_symlink)
             did_img = True
-            print('linked %s to %s'%(img_symlink, f))
+            if verbose:
+                print('linked %s to %s'%(img_symlink, f))
         elif not did_ph and pff.pff_file_type(path)=='ph16':
             os.symlink(path, ph_symlink)
             did_ph = True
-            print('linked %s to %s'%(ph_symlink, f))
+            if verbose:
+                print('linked %s to %s'%(ph_symlink, f))
         elif not did_hk and pff.pff_file_type(path)=='hk':
             os.symlink(path, hk_symlink)
             did_hk = True
-            print('linked %s to %s'%(hk_symlink, f))
+            if verbose:
+                print('linked %s to %s'%(hk_symlink, f))
         if did_img and did_ph and did_hk: break
     if not did_img:
-        print('No nonempty image file')
+        print('make_links(): No nonempty image file')
     if not did_ph:
-        print('No nonempty PH file')
+        print('make_links(): No nonempty PH file')
     if not did_hk:
-        print('No nonempty housekeeping file')
+        print('make_links(): No nonempty housekeeping file')
 
 def stop_run(
     daq_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False,
-    run_dir = None
+    run = None
 ):
     if local_ip() != daq_config['head_node_ip_addr']:
         raise Exception(
@@ -100,8 +115,17 @@ def stop_run(
             )
         )
 
+    if not run:
+        run = read_run_name()
+    data_dir = daq_config['head_node_data_dir']
+    run_dir = '%s/%s'%(data_dir, run)
+    if not os.path.exists(run_dir):
+        run_dir = None
+
+    # do things that don't depend on having a run dir
+
     print("stopping data recording")
-    stop_recording(daq_config)
+    stop_recording(daq_config, run_dir, verbose)
 
     print("stopping HV updater")
     kill_hv_updater()
@@ -112,21 +136,26 @@ def stop_run(
     print("stopping data generation")
     stop_data_flow(quabo_uids)
 
-    if not run_dir:
-        run_dir = read_run_name()
     if run_dir:
-        success = True
+        write_complete_file(run_dir, recording_ended_filename)
+        collect_error = ''
         if not no_collect:
             print("collecting data from DAQ nodes")
-            success = collect.collect_data(daq_config, run_dir, verbose)
-        if not no_cleanup:
-            print("cleaning up DAQ nodes")
-            collect.cleanup_daq(daq_config, run_dir, verbose)
-        if success:
-            write_run_complete_file(daq_config, run_dir)
-            print('completed run %s'%run_dir)
+            collect_error = collect.collect_data(daq_config, run, verbose)
+            if collect_error == '':
+                write_complete_file(run_dir, collect_complete_filename)
+        if collect_error == '':
+            if not no_cleanup:
+                if verbose:
+                    print("cleaning up DAQ nodes")
+                error_msg = collect.cleanup_daq(daq_config, run, verbose)
+                if error_msg != '':
+                    log_error(error_msg, run_dir)
+            make_links(run_dir, verbose)
+            write_complete_file(run_dir, run_complete_filename)
+            print('completed run %s'%run)
         else:
-            print('Failed to collect data from DAQ nodes')
+            log_error(collect_error, run_dir)
         remove_run_name()
     else:
         print("No run is in progress")

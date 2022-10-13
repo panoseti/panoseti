@@ -22,7 +22,10 @@ hk_symlink= 'hk'
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
-run_complete_file = 'run_complete'
+# files written by stop.py
+recording_ended_filename = 'recording_ended'
+collect_complete_filename = 'collect_complete'
+run_complete_filename = 'run_complete'
 
 hk_recorder_name = './store_redis_data.py'
 
