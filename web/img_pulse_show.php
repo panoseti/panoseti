@@ -119,7 +119,7 @@ function show_list($run, $analysis_dir, $module_dir, $pixel_dir, $level) {
 function show_analysis($run, $analysis_dir) {
     $dirpath = "analysis/$run/img_pulse/$analysis_dir";
     page_head("Image pulse analysis");
-    analysis_page_intro($analysis_dir, $dirpath);
+    analysis_page_intro('img_pulse', $analysis_dir, $dirpath);
     foreach (scandir($dirpath) as $mdir) {
         if (substr($mdir, 0, 7) != 'module_') continue;
         $mnum = substr($mdir, 7);

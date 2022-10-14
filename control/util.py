@@ -114,7 +114,7 @@ def quabo_uid(module, quabo_uids, i):
             if m['ip_addr'] == module['ip_addr']:
                 q = m['quabos'][i]
                 return q['uid']
-    raise Exception("no such module")
+    raise Exception("no module %s found; run get_uids.py"%module['ip_addr'])
 
 # see if quabo is alive by seeing if we got its UID
 #

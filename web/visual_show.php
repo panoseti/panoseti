@@ -13,7 +13,7 @@ require_once("analysis.inc");
 function show_analysis($run, $analysis_dir) {
     $dirpath = "analysis/$run/visual/$analysis_dir";
     page_head("Visual analysis");
-    analysis_page_intro($analysis_dir, $dirpath);
+    analysis_page_intro('visual', $analysis_dir, $dirpath);
     foreach (scandir($dirpath) as $mdir) {
         if (substr($mdir, 0, 7) != 'module_') continue;
         $mnum = substr($mdir, 7);
