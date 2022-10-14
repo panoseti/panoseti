@@ -117,7 +117,7 @@ def get_next_frame(file_obj):
 
 
 def init_module(start_utc):
-    m1 = ModuleView('test', start_utc, 10.3, 44.2, 234, 77, 77, 77)
+    m1 = ModuleView('test', start_utc, 37.3425, -121.63777, 1283, 184.29, 78.506, -1.7899)
     return m1
 
 
@@ -326,8 +326,8 @@ def test_simulation():
         nframes,
         noise_mean=0,
         num_updates=20,
-        plot_images=0,
-        draw_sky_band=0
+        plot_images=True,
+        draw_sky_band=True
     )
 
 
@@ -398,8 +398,8 @@ def main():
     params = {
         'seconds': 1
     }
-    do_run(DATA_DIR, 'obs_Lick.start_2022-05-11T23:38:29Z.runtype_eng.pffd', params, 'nico')
-    #test_simulation()
+    #do_run(DATA_DIR, 'obs_Lick.start_2022-05-11T23:38:29Z.runtype_eng.pffd', params, 'nico')
+    test_simulation()
 
 
 if __name__ == '__main__':

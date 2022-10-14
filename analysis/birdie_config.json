@@ -1,7 +1,7 @@
 {
     "array_resolution": 40,
     "psf_sigma": 6,
-    "num_birdies": 10,
+    "num_birdies": 100,
     "param_ranges": {
         "duty_cycle": [1, 1],
         "period": [1, 10],

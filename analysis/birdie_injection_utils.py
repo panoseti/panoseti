@@ -61,11 +61,11 @@ def ra_dec_to_sky_array_indices(ra, dec, bounding_box):
     returns the indices in sky_array corresponding to the point (ra, dec).
     ra and dec must be in degrees."""
     ra_index = int(ra_size * ((ra - bounding_box[0][0]) % 360) / ra_length) % ra_size
-    dec_index = int(dec_size * ((dec - bounding_box[1][1]) / dec_length))
+    dec_index = int(dec_size * ((dec - bounding_box[1][1]) / dec_length)) % dec_size
     return ra_index, dec_index
 
 
-def get_coord_bounding_box(ra_center, dec_center, r=1.25, pixel_scale=0.31, pixels_per_side=32):
+def get_coord_bounding_box(ra_center, dec_center, r=2, pixel_scale=0.31, pixels_per_side=32):
     """Return the ra-dec coordinates of the simulation bounding box centered at ra_center, dec_center.
     r is the ratio of interval length to the module's fov width."""
     interval_radius = pixel_scale * pixels_per_side * (r / 2)

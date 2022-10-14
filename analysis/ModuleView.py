@@ -20,14 +20,14 @@ from scipy.ndimage import rotate
 
 from birdie_injection_utils import ra_dec_to_sky_array_indices, graph_sky_array
 import sky_band
-from sky_band import get_pixel_corner_coord_ftn
+from sky_band import get_module_pixel_corner_coord_ftn
 
 
 class ModuleView:
     """Simulates the FoV of a PanoSETI module on the celestial sphere."""
     # See pixel scale on https://oirlab.ucsd.edu/PANOinstr.html.
     pixels_per_side = 32
-    pixel_scale = 0.31
+    pixel_size = 0.31
     max_pixel_counter_value = 2**8 - 1
 
     def __init__(self, module_id, start_time_utc, obslat, obslon, obsalt, azimuth, elevation, pos_angle):
@@ -43,6 +43,9 @@ class ModuleView:
         self.current_utc = start_time_utc
         self.center_ra = self.center_dec = None
         self.get_pixel_corner_coord = None
+        self.get_module_pixel_corner_coord_ftn = get_module_pixel_corner_coord_ftn(
+            pos_angle, pixel_size=ModuleView.pixel_size
+        )
         self.init_center_ra_dec_coords(start_time_utc)
         # Simulated data
         self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.int16)
@@ -69,7 +72,7 @@ class ModuleView:
             pos = alt_alz_coords.transform_to('icrs')
             self.center_ra = pos.ra.value
             self.center_dec = pos.dec.value
-        self.get_pixel_corner_coord = get_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
+        self.get_pixel_corner_coord = self.get_module_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
 
     def add_birdies_to_image_array(self, raw_img):
         assert len(raw_img) == len(self.simulated_img_arr)
@@ -100,7 +103,7 @@ class ModuleView:
         # Earth rotates approx 360 degrees in 24 hrs.)
         self.center_ra = (self.center_ra + dt * 360 / (24 * 60 * 60)) % 360
         self.current_utc = frame_utc
-        self.get_pixel_corner_coord = get_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
+        self.get_pixel_corner_coord = self.get_module_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
 
     def simulate_one_pixel_fov(self, px, py, sky_array, bounding_box, draw_sky_band):
         """Sum the intensities in each element of sky_array visible by pixel (px, py) and return a counter value
@@ -121,9 +124,9 @@ class ModuleView:
             right = sky_array[:right_index + 1, low_index:high_index + 1]
             total_intensity = math.floor((left + right).sum())
         else:
-            if draw_sky_band:
-                self.sky_band[left_index:right_index + 1, low_index:high_index + 1] += 5
         """
+        if draw_sky_band:
+            self.sky_band[left_index:right_index + 1, low_index:high_index + 1] += 5
         total_intensity = math.floor(sky_array[left_index:right_index + 1, low_index:high_index + 1].sum())
         # Set pixel value
         if total_intensity > self.max_pixel_counter_value:
@@ -133,8 +136,8 @@ class ModuleView:
     def simulate_all_pixel_fovs(self, sky_array, bounding_box, draw_sky_band=False):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
         containing only birdies."""
-        #if self.sky_band is None:
-        #    self.sky_band = np.copy(sky_array)
+        if self.sky_band is None:
+            self.sky_band = np.copy(sky_array)
         for i in range(self.pixels_per_side):
             for j in range(self.pixels_per_side):
                 self.simulate_one_pixel_fov(i, j, sky_array, bounding_box, draw_sky_band)
