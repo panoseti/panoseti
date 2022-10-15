@@ -65,9 +65,9 @@ def ra_dec_to_sky_array_indices(ra, dec, bounding_box):
     return ra_index, dec_index
 
 
-def get_coord_bounding_box(ra_center, dec_center, r=2, pixel_scale=0.31, pixels_per_side=32):
+def get_coord_bounding_box(ra_center, dec_center, r=1.5, pixel_scale=0.31, pixels_per_side=32):
     """Return the ra-dec coordinates of the simulation bounding box centered at ra_center, dec_center.
-    r is the ratio of interval length to the module's fov width."""
+    """
     interval_radius = pixel_scale * pixels_per_side * (r / 2)
     # Interval of ra coordinates given ra_center, the center of the interval,
     ra_interval = ra_center - interval_radius, ra_center + interval_radius
@@ -76,18 +76,19 @@ def get_coord_bounding_box(ra_center, dec_center, r=2, pixel_scale=0.31, pixels_
     return ra_interval, dec_interval
 
 
-def init_sky_array_constants(elem_per_deg, r):
+def init_sky_array_constants(elem_per_deg):
+    """r is the ratio of interval length to the module's fov width."""
     global ra_length, ra_size, dec_length, dec_size
-    bounding_box = get_coord_bounding_box(0, 0, r)
+    bounding_box = get_coord_bounding_box(0, 0)
     ra_length = bounding_box[0][1] - bounding_box[0][0]
     dec_length = bounding_box[1][1] - bounding_box[1][0]
     ra_size = round(elem_per_deg * ra_length)
     dec_size = round(elem_per_deg * dec_length)
 
 
-def get_sky_image_array(elem_per_deg, r, verbose=False):
+def get_sky_image_array(elem_per_deg, verbose=False):
     """Returns a 2D array with shape (num_ra, num_dec)."""
-    init_sky_array_constants(elem_per_deg, r)
+    init_sky_array_constants(elem_per_deg)
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     array_shape = ra_size, dec_size
     if verbose:
@@ -112,7 +113,7 @@ def graph_sky_array(sky_array):
     ra_labels_in_hrs = 24 * ra_labels_in_deg / 360
     ax.set_xticks(
         np.linspace(0, sky_array.shape[0] - 1, 7),
-        ra_labels_in_hrs.round(3)
+        ra_labels_in_deg.round(3)
     )
     # Add DEC tick marks
     ax.set_yticks(
@@ -153,4 +154,29 @@ def dec_to_degrees(dec):
     abs_degrees = abs(dec[0]) + (dec[1] / 60) + (dec[2] / 3600)
     sign = dec[0] / abs(dec[0])
     return sign * abs_degrees
+
+def line(x0, y0, x1, y1, pts):
+    """"Bresenham's line algorithm:
+    https://circuitcellar.com/resources/bresenhams-algorithm
+    """
+    dx = x1 - x0 if x1 >= x0 else x0 - x1
+    dy = y0 - y1 if y1 >= y0 else y1 - y0
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y1 >= y0 else -1
+    err = dx + dy
+    x = x0
+    y = y0
+    #print(f'dx, dy, sx, sy, err, x, y={dx, dy, sx, sy, err, x, y}')
+    #print(f'x0, y0, x1, y1={x0, y0, x1, y1}')
+    while True:
+        pts[y][0], pts[y][1] = min(pts[y][0], x), max(pts[y][1], x)
+        if x == x1 and y == y1:
+            break
+        e2 = 2 * err
+        if e2 >= dy: # step x
+            err += dy
+            x += sx
+        if e2 <= dx: # step y
+            err += dx
+            y += sy
 

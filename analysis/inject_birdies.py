@@ -122,7 +122,7 @@ def init_module(start_utc):
 
 
 def init_sky_array(array_resolution):
-    return birdie_utils.get_sky_image_array(array_resolution, 1.25, verbose=True)
+    return birdie_utils.get_sky_image_array(array_resolution, verbose=True)
 
 
 def get_birdie_config_vector(param_ranges):
@@ -259,8 +259,8 @@ def do_simulation(start_utc,
     print(f'Max image counter value = {max_counter}')
     if draw_sky_band:
         # Plot a heatmap of the sky covered during the simulation.
-        module.plot_sky_band()
-
+        #module.plot_sky_band()
+        pass
 
 def do_test_simulation(start_utc,
                   end_utc,
@@ -307,7 +307,8 @@ def do_test_simulation(start_utc,
     print(f'\nNum sims = {nframes}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
     if draw_sky_band:
         # Plot a heatmap of the sky covered during the simulation.
-        module.plot_sky_band()
+        #module.plot_sky_band()
+        pass
 
 
 def test_simulation():

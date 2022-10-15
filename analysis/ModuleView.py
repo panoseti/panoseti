@@ -18,7 +18,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import rotate
 
-from birdie_injection_utils import ra_dec_to_sky_array_indices, graph_sky_array
+from birdie_injection_utils import ra_dec_to_sky_array_indices, graph_sky_array, line
 import sky_band
 from sky_band import get_module_pixel_corner_coord_ftn
 
@@ -104,6 +104,7 @@ class ModuleView:
         self.center_ra = (self.center_ra + dt * 360 / (24 * 60 * 60)) % 360
         self.current_utc = frame_utc
         self.get_pixel_corner_coord = self.get_module_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
+        print(f'center_ra, center_dec = {self.center_ra, self.center_dec}')
 
     def simulate_one_pixel_fov(self, px, py, sky_array, bounding_box, draw_sky_band):
         """Sum the intensities in each element of sky_array visible by pixel (px, py) and return a counter value
@@ -114,30 +115,46 @@ class ModuleView:
 
         left_index, high_index = ra_dec_to_sky_array_indices(left_ra, high_dec, bounding_box)
         right_index, low_index = ra_dec_to_sky_array_indices(right_ra, low_dec, bounding_box)
-        # RA coordinates may wrap around if larger than 24hrs.
-        """
-        if left_index > right_index:
-            if draw_sky_band:
-                self.sky_band[left_index:, low_index:high_index + 1] += 5
-                self.sky_band[:right_index + 1, low_index:high_index + 1] += 5
-            left = sky_array[left_index:, low_index:high_index + 1]
-            right = sky_array[:right_index + 1, low_index:high_index + 1]
-            total_intensity = math.floor((left + right).sum())
-        else:
-        """
+
         if draw_sky_band:
             self.sky_band[left_index:right_index + 1, low_index:high_index + 1] += 5
         total_intensity = math.floor(sky_array[left_index:right_index + 1, low_index:high_index + 1].sum())
         # Set pixel value
+        self.pixel_convex_raster(px, py, bounding_box)
         if total_intensity > self.max_pixel_counter_value:
             total_intensity = self.max_pixel_counter_value
         self.simulated_img_arr[px * self.pixels_per_side + py] = total_intensity
 
+    def pixel_convex_raster(self, px, py, bounding_box):
+        # Get sky_array indices for the corners of detector (px, py)
+        indices = [-1] * 4
+        for row in range(2):
+            for col in range(2):
+                x, y = self.get_pixel_corner_coord(px, py, row, col)
+                indices[2*row + col] = ra_dec_to_sky_array_indices(x, y, bounding_box)
+        #min_x, max_x = min(indices, key=lambda p: p[0]), max(indices, key=lambda p: p[0])
+        min_y, max_y = min(indices, key=lambda p: p[1])[1], max(indices, key=lambda p: p[1])[1]
+        #print(indices)
+        pts = {y: [float('inf'), float('-inf')] for y in range(min_y, max_y + 1)}
+        corners = [0, 1, 3, 2, 0]
+        for i in range(4):
+            x1, y1 = indices[corners[i]]
+            x0, y0 = indices[corners[i + 1]]
+            line(x0, y0, x1, y1, pts)
+
+        #print(f'pts={pts}')
+        for y in pts:
+            for x in range(pts[y][0], pts[y][1] + 1):
+                self.sky_band[x, y] = 10000
+
     def simulate_all_pixel_fovs(self, sky_array, bounding_box, draw_sky_band=False):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
         containing only birdies."""
+        print(bounding_box)
         if self.sky_band is None:
             self.sky_band = np.copy(sky_array)
         for i in range(self.pixels_per_side):
             for j in range(self.pixels_per_side):
                 self.simulate_one_pixel_fov(i, j, sky_array, bounding_box, draw_sky_band)
+        self.plot_sky_band()
+        input(f'i, j = {i, j}')

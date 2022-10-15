@@ -1,5 +1,5 @@
 {
-    "array_resolution": 40,
+    "array_resolution": 100,
     "psf_sigma": 6,
     "num_birdies": 100,
     "param_ranges": {
