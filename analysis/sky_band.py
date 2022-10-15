@@ -39,7 +39,7 @@ def get_module_pixel_corner_coord_ftn(pos_angle, pixel_size=0.31):
     this function makes module-wide constants available throughout the simulation.
         pos_angle: orientation of the astronomical instr/image on the plane
         of the sky, measured in degrees from North to East"""
-    pos_angle = -79
+    pos_angle = 7
     # Pixel offsets from the center of the module's FoV.
     col_offsets, row_offsets = np.linspace(-16, 16, 33), np.linspace(16, -16, 33)
     #input(f'col_offsets={col_offsets}, \nrow_offsets={row_offsets}')

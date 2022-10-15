@@ -116,8 +116,8 @@ def get_next_frame(file_obj):
 # Simulation set up
 
 
-def init_module(start_utc):
-    m1 = ModuleView('test', start_utc, 37.3425, -121.63777, 1283, 184.29, 78.506, -1.7899)
+def init_module(start_utc, sky_array):
+    m1 = ModuleView('test', start_utc, 37.3425, -121.63777, 1283, 184.29, 78.506, -1.7899, sky_array)
     return m1
 
 
@@ -162,13 +162,14 @@ def init_birdie_param_ranges(start_utc, end_utc, bounding_box, param_ranges):
 def do_setup(start_utc, end_utc, birdie_config):
     """Initialize objects and arrays for birdie injection."""
 
+    # Init array modeling the sky
+    sky_array = init_sky_array(birdie_config['array_resolution'])
+
     # Init ModuleView object
-    mod = init_module(start_utc)
+    mod = init_module(start_utc, sky_array)
     bounding_box = get_coord_bounding_box(mod.center_ra, mod.center_dec)
     birdie_utils.init_ra_dec_ranges(start_utc, end_utc, bounding_box)
 
-    # Init array modeling the sky
-    sky_array = init_sky_array(birdie_config['array_resolution'])
 
 
     # Init birdies and convolution kernel.
@@ -296,8 +297,9 @@ def do_test_simulation(start_utc,
         if birdies_in_view:
             # Simulate image mode data
             blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
+            np.copyto(sky_array, blurred_sky_array)
 
-            module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, draw_sky_band)
+            module.simulate_all_pixel_fovs()
 
         t += time_step
         frame_num += 1

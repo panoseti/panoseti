@@ -67,7 +67,9 @@ def ra_dec_to_sky_array_indices(ra, dec, bounding_box):
 
 def get_coord_bounding_box(ra_center, dec_center, r=1.5, pixel_scale=0.31, pixels_per_side=32):
     """Return the ra-dec coordinates of the simulation bounding box centered at ra_center, dec_center.
+    r is the ratio of interval length to the module's fov width.
     """
+    assert r >= 1.42, 'r must be at least sqrt 2. Needed to avoid weird results in the case where pos_angle = 45 degrees.'
     interval_radius = pixel_scale * pixels_per_side * (r / 2)
     # Interval of ra coordinates given ra_center, the center of the interval,
     ra_interval = ra_center - interval_radius, ra_center + interval_radius
@@ -77,7 +79,6 @@ def get_coord_bounding_box(ra_center, dec_center, r=1.5, pixel_scale=0.31, pixel
 
 
 def init_sky_array_constants(elem_per_deg):
-    """r is the ratio of interval length to the module's fov width."""
     global ra_length, ra_size, dec_length, dec_size
     bounding_box = get_coord_bounding_box(0, 0)
     ra_length = bounding_box[0][1] - bounding_box[0][0]
@@ -95,7 +96,7 @@ def get_sky_image_array(elem_per_deg, verbose=False):
         print(f'Array elements per:\n'
               f'\tdeg ra: {round(ra_size / ra_length, 4):<10}\tdeg dec: {round(dec_size / dec_length, 4):<10}')
         print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
-    return np.zeros(array_shape)
+    return np.zeros(array_shape, dtype=np.float32)
 
 
 def graph_sky_array(sky_array):
