@@ -8,7 +8,7 @@ Objects can be initialized from a file containing pre-generated birdies or rando
 """
 import astropy.coordinates as c
 import astropy.units as u
-from birdie_injection_utils import ra_dec_to_sky_array_indices
+from birdie_utils import ra_dec_to_sky_array_indices
 import numpy as np
 import math
 np.random.seed(10)

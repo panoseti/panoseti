@@ -17,7 +17,7 @@ import astropy.time as t
 import numpy as np
 import matplotlib.pyplot as plt
 
-from birdie_injection_utils import ra_dec_to_sky_array_indices, graph_sky_array, line, get_coord_bounding_box
+from birdie_utils import ra_dec_to_sky_array_indices, bresenham_line, get_coord_bounding_box
 import sky_band
 from sky_band import get_module_pixel_corner_coord_ftn
 
@@ -85,9 +85,9 @@ class ModuleView:
                 self.pixel_fovs[px, py] = self.compute_pixel_raster(px, py, bounding_box, sky_array)
 
     def compute_pixel_raster(self, px, py, bounding_box, sky_array):
-        """Return a masked numpy view into sky_array corresponding the region
-        of sky_array visible by detector px, py. Essentially, this creates a matrix of
-        pointers to elements in sky_array."""
+        """Return a masked numpy view into sky_array corresponding the scanline rasterization
+        of the region of sky_array visible by the detector at coordinates px, py.
+        The program uses top left corner zero-indexing."""
         # Get sky_array indices for the corners of detector (px, py)
         indices = [-1] * 4
         for row in range(2):
@@ -97,12 +97,15 @@ class ModuleView:
         # Get pixel horizontal slices part of this pixel's FoV.
         min_x, max_x = min(indices, key=lambda p: p[0])[0], max(indices, key=lambda p: p[0])[0]
         min_y, max_y = min(indices, key=lambda p: p[1])[1], max(indices, key=lambda p: p[1])[1]
-        pts = {y: [float('inf'), float('-inf')] for y in range(min_y, max_y + 1)}
+        # Dictionary of [y-index] : [min_x index, max_x index].
+        pts = {
+            y: [float('inf'), float('-inf')] for y in range(min_y, max_y + 1)
+        }
         corners = [0, 1, 3, 2, 0]
         for i in range(4):
             x1, y1 = indices[corners[i]]
             x0, y0 = indices[corners[i + 1]]
-            line(x0, y0, x1, y1, pts)
+            bresenham_line(x0, y0, x1, y1, pts)
         # Create masked numpy view:
         mask_shape = max_y - min_y + 1, max_x - min_x + 1
         pixel_mask = np.ones(mask_shape)
@@ -150,8 +153,3 @@ class ModuleView:
         ax.set_aspect('equal', adjustable='box')
         fig1.suptitle(self)
         fig1.show()
-
-    def plot_sky_band(self):
-        """Plot a heatmap of the sky covered during the simulation."""
-        graph_sky_array(self.sky_band)
-
