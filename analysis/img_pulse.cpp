@@ -24,6 +24,7 @@
 // --out_dir x      output directory
 // --log_all        output all pulses
 // --nframes n      do only first n frames
+// --bits_per_pixel default: 16
 //
 
 #include <sys/stat.h>
@@ -36,19 +37,20 @@
 #include "pff.h"
 #include "img_pulse.h"
 
-#define MAX_VAL             65536        // ignore values larger than this
+#define MAX_VAL16            65536        // ignore values larger than this
+#define MAX_VAL8             256
 
 int win_size = -1;
 int pixel=-1;
 double nsec = 0;
 const char* out_dir = ".";
 double thresh = -1;
-bool log_all = true;
+bool log_all = false;
 vector<FILE*> thresh_fout;
 vector<FILE*> all_fout;
 int nlevels = -1;
 long nframes=0;
-
+int bits_per_pixel = 16;
 
 void usage() {
     printf("options:\n"
@@ -64,6 +66,7 @@ void usage() {
         "                       default: .\n"
         "   --log_all           output all pulses length 4 and up\n"
         "   --nframes N         do only first N frames\n"
+        "   --bits_per_pixel N  default: 16\n"
     );
     exit(1);
 }
@@ -84,7 +87,7 @@ void PULSE_FIND::pulse_complete(int level, double value, size_t isample) {
     double stddev = wstats.stddev();
 #if 0
     printf("pulse_complete: level %d value %f mean %f stddev %f\n",
-        level, value, wstats.mean, wstats.stddev
+        level, value, wstats.mean, stddev
     );
 #endif
     double nsigma = 0;
@@ -126,7 +129,8 @@ void open_output_files() {
     }
 }
 
-unsigned short image[1024];
+unsigned short image16[1024];
+unsigned char image8[1024];
 
 void do_pixel(const char* infile) {
     FILE *f = fopen(infile, "r");
@@ -142,13 +146,21 @@ void do_pixel(const char* infile) {
     while (1) {
         int retval = pff_read_json(f, s);
         if (retval) break;
-        retval = pff_read_image(f, sizeof(image), image);
-        if (retval) break;
-        uint16_t val = image[pixel];
-        if (val >= MAX_VAL) {
-            val = 0;
+        double dval;
+        if (bits_per_pixel == 16) {
+            retval = pff_read_image(f, sizeof(image16), image16);
+            if (retval) break;
+            unsigned short val = image16[pixel];
+            if (val >= MAX_VAL16) val = 0;
+            dval = (double)val;
+        } else {
+            retval = pff_read_image(f, sizeof(image8), image8);
+            if (retval) break;
+            unsigned char val = image8[pixel];
+            if (val >= MAX_VAL8) val = 0;
+            dval = (double)val;
         }
-        pulse_find.add_sample((double)val);
+        pulse_find.add_sample(dval);
         isample++;
         if (isample == nframes) break;
     }
@@ -171,14 +183,24 @@ void do_all_pixels(const char* infile) {
     while (1) {
         int retval = pff_read_json(f, s);
         if (retval) break;
-        retval = pff_read_image(f, sizeof(image), image);
+        if (bits_per_pixel == 16) {
+            retval = pff_read_image(f, sizeof(image16), image16);
+        } else {
+            retval = pff_read_image(f, sizeof(image8), image8);
+        }
         if (retval) break;
+        double dval;
         for (pixel=0; pixel<1024; pixel++) {
-            uint16_t val = image[pixel];
-            if (val >= MAX_VAL) {
-                val = 0;
+            if (bits_per_pixel == 16) {
+                unsigned short val = image16[pixel];
+                if (val >= MAX_VAL16) val = 0;
+                dval = (double)val;
+            } else {
+                unsigned char val = image8[pixel];
+                if (val >= MAX_VAL8) val = 0;
+                dval = (double)val;
             }
-            pfs[pixel]->add_sample((double)val);
+            pfs[pixel]->add_sample(dval);
         }
         isample++;
         if (isample == nframes) break;
@@ -207,6 +229,8 @@ int main(int argc, char **argv) {
             log_all = true;
         } else if (!strcmp(argv[i], "--nframes")) {
             nframes = atof(argv[++i]);
+        } else if (!strcmp(argv[i], "--bits_per_pixel")) {
+            bits_per_pixel = atoi(argv[++i]);
         } else {
             printf("unrecognized arg %s\n", argv[i]);
             usage();
@@ -215,7 +239,9 @@ int main(int argc, char **argv) {
     if (!infile || nlevels<0 || thresh<0 || win_size<0) {
         usage();
     }
-
+    if (bits_per_pixel!=8 && bits_per_pixel!=16) {
+        fprintf(stderr, "bad bits_per_pixel %d\n", bits_per_pixel);
+    }
 
     if (!is_pff_file(infile)) {
         fprintf(stderr, "%s is not a PFF file\n", infile);
@@ -224,6 +250,9 @@ int main(int argc, char **argv) {
     if (pixel >= 0) {
         do_pixel(infile);
     } else {
+        if (log_all) {
+            fprintf(stderr, "can't use --log_all with all pixels");
+        }
         do_all_pixels(infile);
     }
 }

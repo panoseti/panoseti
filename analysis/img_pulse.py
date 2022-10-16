@@ -34,17 +34,19 @@ def sort_output_files(dir, nlevels):
             cmd = 'sort -k 5 -r %s > %s.sorted'%(path, path)
             os.system(cmd)
 
-def do_file(run, analysis_dir, f, params):
+def do_file(run, analysis_dir, f, params, bits_per_pixel):
     print('processing file ', f)
     file_attrs = pff.parse_name(f)
     module = file_attrs['module']
     module_dir = make_dir('%s/module_%s'%(analysis_dir, module))
-    p = '--nlevels %d --win_size %d --thresh %f'%(
-        params['nlevels'], params['win_size'], params['thresh']
+    p = '--nlevels %d --win_size %d --thresh %f --bits_per_pixel %d'%(
+        params['nlevels'], params['win_size'], params['thresh'], bits_per_pixel
     )
     if params['seconds'] > 0:
         nframes = img_seconds_to_frames(run, params['seconds'])
         p += ' --nframes %d'%nframes
+    if params['log_all']:
+        p += ' --log_all'
     if params['pixels']:
         for pixel in params['pixels']:
             pixel_dir = make_dir('%s/pixel_%d'%(module_dir, pixel))
@@ -66,12 +68,16 @@ def do_file(run, analysis_dir, f, params):
 def do_run(run, params, username):
     analysis_dir = make_analysis_dir(ANALYSIS_TYPE_IMAGE_PULSE, run)
     print('processing run', run);
-    for f in os.listdir('data/%s'%run):
+    run_dir = 'data/%s'%run
+    for f in os.listdir(run_dir):
         if not pff.is_pff_file(f):
             continue
-        if pff.pff_file_type(f) != 'img16':
-            continue
-        do_file(run, analysis_dir, f, params)
+        if os.path.getsize('%s/%s'%(run_dir, f)) == 0:
+            continue;
+        if pff.pff_file_type(f) == 'img16':
+            do_file(run, analysis_dir, f, params, 16)
+        elif pff.pff_file_type(f) == 'img8':
+            do_file(run, analysis_dir, f, params, 8)
     write_summary(analysis_dir, params, username)
 
 if __name__ == '__main__':
@@ -116,6 +122,8 @@ if __name__ == '__main__':
             username = argv[i]
         elif argv[i] == '--all_pixels':
             params['all_pixels'] = True
+        elif argv[i] == '--log_all':
+            params['log_all'] = True
         elif argv[i] == '--seconds':
             i += 1
             params['seconds'] = float(argv[i])
