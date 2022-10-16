@@ -167,8 +167,7 @@ def line(x0, y0, x1, y1, pts):
     err = dx + dy
     x = x0
     y = y0
-    #print(f'dx, dy, sx, sy, err, x, y={dx, dy, sx, sy, err, x, y}')
-    #print(f'x0, y0, x1, y1={x0, y0, x1, y1}')
+
     while True:
         pts[y][0], pts[y][1] = min(pts[y][0], x), max(pts[y][1], x)
         if x == x1 and y == y1:

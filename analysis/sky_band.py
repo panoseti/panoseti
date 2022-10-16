@@ -39,10 +39,9 @@ def get_module_pixel_corner_coord_ftn(pos_angle, pixel_size=0.31):
     this function makes module-wide constants available throughout the simulation.
         pos_angle: orientation of the astronomical instr/image on the plane
         of the sky, measured in degrees from North to East"""
-    pos_angle = 7
+    #pos_angle = 45
     # Pixel offsets from the center of the module's FoV.
     col_offsets, row_offsets = np.linspace(-16, 16, 33), np.linspace(16, -16, 33)
-    #input(f'col_offsets={col_offsets}, \nrow_offsets={row_offsets}')
 
     # Get the rotation matrix according to the position angle of the module.
     theta = np.radians(-pos_angle)
@@ -56,42 +55,22 @@ def get_module_pixel_corner_coord_ftn(pos_angle, pixel_size=0.31):
     i_hat = rotation_matrix.dot(np.array((1, 0))) * pixel_size
     j_hat = rotation_matrix.dot(np.array((0, 1))) * pixel_size
 
-    #input(f'i_hat={i_hat[:, np.newaxis]}, \nj_hat={j_hat[:, np.newaxis]}')
-
-    #input(f'i_hat * col_offsets={col_offsets * i_hat[:, np.newaxis]}')
-    #input(f'j_hat * row_offsets={row_offsets * j_hat[:, np.newaxis]}')
-
     pixel_corner_i_hat_coords = col_offsets * i_hat[:, np.newaxis]
     pixel_corner_j_hat_coords = row_offsets * j_hat[:, np.newaxis]
-    #coords = pixel_corner_i_hat_coords + pixel_corner_j_hat_coords
-    #input(coords)
 
     def get_pixel_corner_coord_ftn(center_ra, center_dec):
         """Returns a function that returns the RA-DEC coordinate of
         the corner (x,y) = (0..1, 0..1) of pixel (row, col) = (0..31, 0..31).
         Pixels and corner positions are zero-indexed from the top left."""
+        # 33 x 33 matrix corresponding to the RA-DEC corner coords of each pixel.
         corner_coords_ra = center_ra + pixel_corner_i_hat_coords[0][:, np.newaxis] + pixel_corner_j_hat_coords[0]
         corner_coords_dec = center_dec + pixel_corner_i_hat_coords[1][:, np.newaxis] + pixel_corner_j_hat_coords[1]
-        #input(f'center_ra, center_dec = {center_ra, center_dec}')
-        #input(f'corner_coords_ra={corner_coords_ra}\n corner_coords_dec={corner_coords_dec}')
 
         def get_pixel_corner_coord(row, col, x, y):
             """Returns the RA-DEC coordinate of the corner (x,y) = (0..1, 0..1) of
             pixel (row, col) = (0..31, 0..31).
             Pixels and corner positions are zero-indexed from the top left."""
-            #input(corner_coords_ra[col + y], corner_coords_dec[row + x])
-            #coord_ra = center_ra + pixel_corner_i_hat_coords[0][col + y] + pixel_corner_j_hat_coords[0][row + x]
-            #coord_dec = center_dec + pixel_corner_i_hat_coords[1][col + y] + pixel_corner_j_hat_coords[1][row + x]
-            #return coord_ra, coord_dec
             return corner_coords_ra[row + x, col + y], corner_coords_dec[row + x, col + y]
-            #print(f'i_hat * (col + y) = {i_hat * (col + y)}')
-            #input(f'i_hat * (col + y) + j_hat * (row + x) = {i_hat * (col + y) + j_hat * (row + x)}')
-            #input(f'col_offsets[col + y] = {col_offsets[col + y]}')
-            #input(f'row_offsets[row + x] = {row_offsets[row + x]}')
-            #coord = i_hat * col_offsets[col + y] + j_hat * row_offsets[row + x]
-            #print(f'row, col, x, y = {row, col, x, y}, coord_ra = {center_ra + coord[0]}, coord_dec = {center_dec + coord[1]}')
-            #print(center_ra + coord[0], center_dec + coord[1])
-            #return center_ra + coord[0], center_dec + coord[1]
         return get_pixel_corner_coord
     return get_pixel_corner_coord_ftn
 

@@ -216,7 +216,7 @@ def do_simulation(start_utc,
                   fin,
                   fout,
                   noise_mean=0,
-                  num_updates=10,
+                  num_updates=20,
                   plot_images=False,
                   draw_sky_band=False):
     time_step = (end_utc - start_utc) / nframes
@@ -229,11 +229,7 @@ def do_simulation(start_utc,
     t = start_utc
     sigma = birdie_config['psf_sigma']
     while t < end_utc:
-        #noisy_img = np.random.poisson(noise_mean, 1024)
         raw_img, j = get_next_frame(fin)
-        #print(j)
-        #input(f"\t calculated timestamp={start_utc + frame_num * integration_time}, actual tv_sec={j['tv_sec']}")
-        #input(raw_img)
         birdie_utils.show_progress(frame_num, raw_img, module, nframes, num_updates, plot_images)
 
         # Update module on-sky position.
@@ -244,9 +240,13 @@ def do_simulation(start_utc,
         sky_array.fill(0)
         birdies_in_view = update_birdies(t, bounding_box, sky_array, birdie_sources)
 
-        # Simulate image mode data
-        blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
-        module.simulate_all_pixel_fovs(blurred_sky_array, bounding_box, draw_sky_band)
+        if birdies_in_view:
+            # Simulate image mode data
+            blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
+            # We must copy the filtered array because the views initialized in module
+            # are linked to the original sky_array for efficiency purposes.
+            np.copyto(sky_array, blurred_sky_array)
+            module.simulate_all_pixel_fovs()
 
         #def write_image_1D(f, img, img_size, bytes_per_pixel):
         #pff.write_image_1D(fout, module.add_birdies_to_image_array(noisy_img), 32, 2)
@@ -297,8 +297,9 @@ def do_test_simulation(start_utc,
         if birdies_in_view:
             # Simulate image mode data
             blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
+            # We must copy the filtered array because the views initialized in module
+            # are linked to the original sky_array for efficiency purposes.
             np.copyto(sky_array, blurred_sky_array)
-
             module.simulate_all_pixel_fovs()
 
         t += time_step
@@ -307,16 +308,12 @@ def do_test_simulation(start_utc,
     total_time += e - s
     avg_time = total_time / nframes
     print(f'\nNum sims = {nframes}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
-    if draw_sky_band:
-        # Plot a heatmap of the sky covered during the simulation.
-        #module.plot_sky_band()
-        pass
 
 
 def test_simulation():
     start_utc = 1685417643
-    end_utc = start_utc + 3600
-    integration_time = 20e-1
+    end_utc = start_utc + 5 * 3600
+    integration_time = 30e-2
     birdie_config = get_birdie_config('birdie_config.json')
 
     # Initialize objects
@@ -328,7 +325,7 @@ def test_simulation():
         birdie_config,
         nframes,
         noise_mean=0,
-        num_updates=20,
+        num_updates=10,
         plot_images=True,
         draw_sky_band=True
     )

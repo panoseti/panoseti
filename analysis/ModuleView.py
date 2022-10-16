@@ -24,7 +24,7 @@ from sky_band import get_module_pixel_corner_coord_ftn
 
 class ModuleView:
     """Simulates the FoV of a PanoSETI module on the celestial sphere."""
-    # See pixel scale on https://oirlab.ucsd.edu/PANOinstr.html.
+    # See pixel size on https://oirlab.ucsd.edu/PANOinstr.html.
     pixels_per_side = 32
     pixel_size = 0.31
     max_pixel_counter_value = 2**8 - 1
@@ -76,14 +76,18 @@ class ModuleView:
         self.init_pixel_rasters(sky_array)
 
     def init_pixel_rasters(self, sky_array):
+        """Initialize self.pixel_fovs, a dictionary of pixel coordinate: pixel raster pairs.
+        Each pixel raster is a view into sky_array corresponding to the region of the sky
+        visible by that detector."""
         bounding_box = get_coord_bounding_box(self.center_ra, self.center_dec)
         for px in range(32):
             for py in range(32):
                 self.pixel_fovs[px, py] = self.compute_pixel_raster(px, py, bounding_box, sky_array)
 
-
     def compute_pixel_raster(self, px, py, bounding_box, sky_array):
-        """Return a masked numpy view into sky_array representing the region of sky_array visible by detector px, py."""
+        """Return a masked numpy view into sky_array corresponding the region
+        of sky_array visible by detector px, py. Essentially, this creates a matrix of
+        pointers to elements in sky_array."""
         # Get sky_array indices for the corners of detector (px, py)
         indices = [-1] * 4
         for row in range(2):
@@ -107,7 +111,6 @@ class ModuleView:
             pixel_mask[y - min_y, left:right] = 0
         # Get a view into the portion of sky_array corresponding to the FoV of this pixel.
         pixel_sky_array_slice = sky_array[min_y:max_y + 1, min_x:max_x + 1]
-        #pixel_sky_array_slice += 1000
         return np.ma.array(pixel_sky_array_slice, mask=pixel_mask)
 
     def update_center_ra_dec_coords(self, frame_utc):
@@ -127,33 +130,15 @@ class ModuleView:
         #raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
         return raw_with_birdies
 
-    def simulate_one_pixel_fov(self, px, py):
-        """
-        left_ra, high_dec = self.get_pixel_corner_coord(px, py, 0, 0)
-        right_ra, low_dec = self.get_pixel_corner_coord(px, py, 1, 1)
-
-        left_index, high_index = ra_dec_to_sky_array_indices(left_ra, high_dec, bounding_box)
-        right_index, low_index = ra_dec_to_sky_array_indices(right_ra, low_dec, bounding_box)
-
-        if draw_sky_band:
-            self.sky_band[left_index:right_index + 1, low_index:high_index + 1] += 5
-        total_intensity = math.floor(sky_array[left_index:right_index + 1, low_index:high_index + 1].sum())
-        # Set pixel value
-        pixel_raster_mask = self.compute_pixel_raster(px, py, bounding_box)
-        if total_intensity > self.max_pixel_counter_value:
-            total_intensity = self.max_pixel_counter_value
-        self.simulated_img_arr[px * self.pixels_per_side + py] = total_intensity
-        """
-
     def simulate_all_pixel_fovs(self):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
         containing only birdies."""
-        for px in range(self.pixels_per_side):
-            for py in range(self.pixels_per_side):
-                # Sum the intensities in each element of sky_array visible by pixel (px, py) and return a counter value
-                # to add to the current image frame.
+        for px in range(32):
+            for py in range(32):
+                # Sum the intensities in each element of sky_array visible by pixel (px, py) and
+                # return a counter value to add to the current image frame.
                 total_intensity = self.pixel_fovs[px, py].sum()
-                self.simulated_img_arr[px * self.pixels_per_side + py] = total_intensity
+                self.simulated_img_arr[px * 32 + py] = total_intensity
 
     def plot_simulated_image(self, raw_img):
         """Plot the simulated image array."""
