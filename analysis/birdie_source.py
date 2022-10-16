@@ -8,7 +8,7 @@ Objects can be initialized from a file containing pre-generated birdies or rando
 """
 import astropy.coordinates as c
 import astropy.units as u
-import birdie_injection_utils as birdie_utils
+from birdie_utils import ra_dec_to_sky_array_indices
 import numpy as np
 import math
 np.random.seed(10)
@@ -43,7 +43,7 @@ class BaseBirdieSource:
         if 0 <= dt <= max_dt:
             cycle_pos = math.fmod(dt, self.period)
             if cycle_pos / self.period <= self.duty_cycle:
-                ax, ay = birdie_utils.ra_dec_to_sky_array_indices(self.ra, self.dec, sky_array.shape, bounding_box)
+                ax, ay = ra_dec_to_sky_array_indices(self.ra, self.dec, bounding_box)
                 sky_array[ax, ay] = self.pulse_intensity(frame_utc)
                 sky_array_modified = True
         return sky_array_modified
@@ -51,3 +51,6 @@ class BaseBirdieSource:
     def pulse_intensity(self, frame_utc):
         """Returns the intensity of this birdie at frame_utc in raw adc units."""
         return self.intensity
+
+    def get_log_entry(self):
+        pass

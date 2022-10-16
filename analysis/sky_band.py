@@ -6,6 +6,7 @@ import numpy as np
 import astropy.time
 import astropy.units
 import astropy.coordinates
+from functools import cache
 
 
 def get_module_center_ra_dec(t, azimuth, elevation, obslat, obslon, obsalt):
@@ -32,28 +33,51 @@ def get_module_center_ra_dec(t, azimuth, elevation, obslat, obslon, obsalt):
     return center_ra, center_dec
 
 
-def get_pixel_corner_coord_ftn(center_ra, center_dec):
-    """Output a function which returns the RA-DEC coordinate of
-    the corner (x,y) = (0..1, 0..1) of pixel (row, col) = (0..31, 0..31).
-    Pixels and corner positions are zero-indexed from the top left."""
-    # Width of pixel FoV, in degrees
-    pixel_size = 0.31
+def get_module_pixel_corner_coord_ftn(pos_angle, pixel_size=0.31):
+    """Returns a higher-order function that returns functions that
+    return the RA-DEC coordinate of a pixel corner. The environment of
+    this function makes module-wide constants available throughout the simulation.
+        pos_angle: orientation of the astronomical instr/image on the plane
+        of the sky, measured in degrees from North to East"""
+    #pos_angle = 45
+    # Pixel offsets from the center of the module's FoV.
+    col_offsets, row_offsets = np.linspace(-16, 16, 33), np.linspace(16, -16, 33)
 
-    corner_indices = np.linspace(-16, 16, 33)
-    ra_offsets = corner_indices * pixel_size
-    dec_offsets = np.flip(ra_offsets)
+    # Get the rotation matrix according to the position angle of the module.
+    theta = np.radians(-pos_angle)
+    c, s = np.cos(theta), np.sin(theta)
+    rotation_matrix = np.array(
+        ((c, -s),
+         (s, c))
+    )
+    # Basis vectors for coordinate grid positions.
+    # (x, y) = (RA coordinate, DEC coordinate)
+    i_hat = rotation_matrix.dot(np.array((1, 0))) * pixel_size
+    j_hat = rotation_matrix.dot(np.array((0, 1))) * pixel_size
 
-    corner_coords_ra = center_ra + ra_offsets
-    corner_coords_dec = center_dec + dec_offsets
+    pixel_corner_i_hat_coords = col_offsets * i_hat[:, np.newaxis]
+    pixel_corner_j_hat_coords = row_offsets * j_hat[:, np.newaxis]
 
-    def get_pixel_corner_coord(row, col, x, y):
-        return corner_coords_ra[col + y], corner_coords_dec[row + x]
-    return get_pixel_corner_coord
+    def get_pixel_corner_coord_ftn(center_ra, center_dec):
+        """Returns a function that returns the RA-DEC coordinate of
+        the corner (x,y) = (0..1, 0..1) of pixel (row, col) = (0..31, 0..31).
+        Pixels and corner positions are zero-indexed from the top left."""
+        # 33 x 33 matrix corresponding to the RA-DEC corner coords of each pixel.
+        corner_coords_ra = center_ra + pixel_corner_i_hat_coords[0][:, np.newaxis] + pixel_corner_j_hat_coords[0]
+        corner_coords_dec = center_dec + pixel_corner_i_hat_coords[1][:, np.newaxis] + pixel_corner_j_hat_coords[1]
+
+        def get_pixel_corner_coord(row, col, x, y):
+            """Returns the RA-DEC coordinate of the corner (x,y) = (0..1, 0..1) of
+            pixel (row, col) = (0..31, 0..31).
+            Pixels and corner positions are zero-indexed from the top left."""
+            return corner_coords_ra[row + x, col + y], corner_coords_dec[row + x, col + y]
+        return get_pixel_corner_coord
+    return get_pixel_corner_coord_ftn
 
 
-def get_module_corner_coords(center_ra, center_dec):
+def get_module_corner_coords(center_ra, center_dec, pos_angle):
     """Return a 2x2 list containing the RA-DEC coordinates of the corners of a module's FoV."""
-    get_pixel_coord = get_pixel_corner_coord_ftn(center_ra, center_dec)
+    get_pixel_coord = get_module_pixel_corner_coord_ftn(pos_angle)(center_ra, center_dec)
     corner_coords = []
     for i in range(2):
         row = []
@@ -64,15 +88,15 @@ def get_module_corner_coords(center_ra, center_dec):
     return corner_coords
 
 
-def get_sky_band_corner_coords(t_start, t_end, azimuth, elevation, obslat, obslon, obsalt):
+def get_sky_band_corner_coords(t_start, t_end, azimuth, elevation, obslat, obslon, obsalt, pos_angle):
     """Return a 2x2 list of RA-DEC coordinates bounding the region of sky observed by a module
     between t_start and t_end. The positions are zero-indexed from the top left corner."""
     assert t_end >= t_start, 'End time cannot be before start time.'
     center_start_ra, center_start_dec = get_module_center_ra_dec(t_start, azimuth, elevation, obslat, obslon, obsalt)
-    start_corner_coords = get_module_corner_coords(center_start_ra, center_start_dec)
+    start_corner_coords = get_module_corner_coords(center_start_ra, center_start_dec, pos_angle)
 
     center_end_ra, center_end_dec = get_module_center_ra_dec(t_end, azimuth, elevation, obslat, obslon, obsalt)
-    end_corner_coords = get_module_corner_coords(center_end_ra, center_end_dec)
+    end_corner_coords = get_module_corner_coords(center_end_ra, center_end_dec, pos_angle)
     sky_band_corner_coords = [
         [start_corner_coords[0][0], end_corner_coords[0][1]],
         [start_corner_coords[1][0], end_corner_coords[1][1]]
