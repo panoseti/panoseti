@@ -91,7 +91,7 @@ struct PACKET_HEADER {
     uint16_t pkt_num;
     uint16_t mod_num;       // 0..255
     uint8_t quabo_num;        // 0..3
-    uint32_t pkt_utc;
+    uint32_t pkt_tai;       // Temps Atomique International
     uint32_t pkt_nsec;
     long int tv_sec;
     long int tv_usec;
@@ -100,11 +100,11 @@ struct PACKET_HEADER {
                 " pkt_num = " + std::to_string(this->pkt_num) +
                 " mod_num = " + std::to_string(this->mod_num) +
                 " quabo_num = " + std::to_string(this->quabo_num) +
-                " pkt_utc = " + std::to_string(this->pkt_utc) +
+                " pkt_tai = " + std::to_string(this->pkt_tai) +
                 " pkt_nsec = " + std::to_string(this->pkt_nsec) +
                 " tv_sec = " + std::to_string(this->tv_sec) +
                 " tv_sec = " + std::to_string(this->tv_usec);
-    };
+    }
 };
 
 // info about a module image:

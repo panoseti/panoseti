@@ -378,3 +378,7 @@ stop_errors
     log of errors, if any
 
 Change stop.py so that it doesn't repeat completed steps.
+-------------
+RA format
+fixed-size JSON headers
+    function to seek

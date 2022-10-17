@@ -170,6 +170,7 @@ FILE_PTRS* data_file_init(const char *diskDir, int module) {
 }
 
 // Write image header as JSON
+// TOTAL SIZE MUST BE FIXED (but it doesn't matter what the size is)
 //
 int write_img_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
@@ -177,12 +178,10 @@ int write_img_header_json(
     fprintf(f, "{\n");
     for (int i=0; i<QUABO_PER_MODULE; i++){
         fprintf(f,
-        "   \"quabo_%u\": { \"acq_mode\": %u, \"mod_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
+        "   \"quabo_%1u\": { \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
         i,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].acq_mode,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].mod_num,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_num,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_utc,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_tai,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_nsec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_sec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_usec
@@ -244,18 +243,16 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
     return 1;
 }
 
-// Write PH header information to file.
+// Write PH header information as JSON.  Fixed-length format.
 //
 int write_ph_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int packetIndex
 ){
     fprintf(f,
-        "{ \"acq_mode\": %u, \"mod_num\": %u, \"quabo_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
-        dataHeader->ph_pkt_head[packetIndex].acq_mode,
-        dataHeader->ph_pkt_head[packetIndex].mod_num,
+        "{ \"quabo_num\": %1u, \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
         dataHeader->ph_pkt_head[packetIndex].quabo_num,
         dataHeader->ph_pkt_head[packetIndex].pkt_num,
-        dataHeader->ph_pkt_head[packetIndex].pkt_utc,
+        dataHeader->ph_pkt_head[packetIndex].pkt_tai,
         dataHeader->ph_pkt_head[packetIndex].pkt_nsec,
         dataHeader->ph_pkt_head[packetIndex].tv_sec,
         dataHeader->ph_pkt_head[packetIndex].tv_usec
