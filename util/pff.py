@@ -109,3 +109,79 @@ def pff_file_type(name):
     if 'dp' not in n.keys():
         return None
     return n['dp']
+
+# return time from parsed JSON header
+#
+def header_time(h):
+    return h['tv_sec'] + h['tv_usec']/1e6
+
+# return:
+# frame_size
+# nframes
+# first_t
+# last_t
+#
+def img_info(f, bytes_per_image):
+    h = read_json(f)
+    header_size = f.tell()
+    frame_size = header_size + bytes_per_image
+    file_size = f.seek(0, SEEK_END)
+    if (file_size % frame_size):
+        raise Exception('file size %d is not a multiple of frame size %d'%(
+            file_size, frame_size
+        ))
+    nframes = file_size/frame_size
+    first_t = header_time(h)
+    f.seek(-frame_size, SEEK_END)
+    h = read_json(f)
+    last_t = header_time(h)
+    return [frame_size, nframes, first_t, last_t]
+
+# return time of frame
+#
+def img_frame_time(f, frame, frame_size):
+    f.seek(frame*frame_size)
+    s = read_json(f)
+    return header_time(s)
+
+# f is a file object, open to the start of an image file
+# with integration time frame_time and the given bytes per image.
+# Position it (using seek) to a frame whose time is close to t
+#
+# The file may be missing frames,
+# so the frame at the expected position may be after t.
+#
+def time_seek(f, frame_time, bytes_per_image, t):
+    (frame_size, nframes, first_t, last_t) = img_info(f)
+
+    if t < first_t+frame_time:
+        f.seek(0)
+        return
+    elif t > last_t-frame_time:
+        f.seek(nframes-1, frame_size)
+        return
+
+    min_t = first_t
+    min_f = 0
+    max_t = last_t
+    max_f = nframes-1
+
+    while True:
+        frac = (t-min_t)/(max_t-min_t)
+        new_f = min_f + int(frac*(max_f-min_f))
+        if new_f <= min_f+1:
+            new_f = min_f
+            break
+        if new_f >= max_f-1:
+            break
+        new_t = img_frame_time(f, new_f, frame_size)
+        if new_t < t - frame_time:
+            min_t = new_t
+            min_f = new_f
+        elif new_t < t + frame_time:
+            f.seek(new_f*frame_size)
+            return
+        else:
+            max_t = new_t
+            max_f = new_f
+    f.seek(new_f*frame_size)
