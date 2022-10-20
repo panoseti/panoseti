@@ -44,7 +44,7 @@ def get_module_pixel_corner_coord_ftn(pos_angle, pixel_size=0.31):
     col_offsets, row_offsets = np.linspace(-16, 16, 33), np.linspace(16, -16, 33)
 
     # Get the rotation matrix according to the position angle of the module.
-    theta = np.radians(-pos_angle)
+    theta = np.radians(pos_angle)
     c, s = np.cos(theta), np.sin(theta)
     rotation_matrix = np.array(
         ((c, -s),

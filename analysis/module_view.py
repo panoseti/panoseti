@@ -18,7 +18,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from birdie_utils import ra_dec_to_sky_array_indices, bresenham_line, get_coord_bounding_box
-import sky_band
 from sky_band import get_module_pixel_corner_coord_ftn
 
 
@@ -49,12 +48,11 @@ class ModuleView:
         self.init_center_ra_dec_coords(start_time_utc, sky_array)
         # Simulated data
         self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.int16)
-        self.sky_band = None
 
     def __str__(self):
         loc_geodetic = self.earth_loc.to_geodetic(ellipsoid="WGS84")
         s = f'Module "{self.module_id}" view @ {datetime.datetime.fromtimestamp(self.current_utc)}\n' \
-            f'centered at RA={round(self.center_ra, 1):>6}<deg>, DEC={round(self.center_dec, 1):5>}<deg>'
+            f'centered at RA={round(self.center_ra, 1):>6}<deg>, DEC={round(self.center_dec, 1):5>}<deg>, pos angle={self.pos_angle}<deg>'
         """
         f'Lon={round(loc_geodetic.lon.value, 3)}<deg>, ' \
         f'Lat={round(loc_geodetic.lat.value, 3)}<deg>, ' \
@@ -85,7 +83,7 @@ class ModuleView:
                 self.pixel_fovs[px, py] = self.compute_pixel_raster(px, py, bounding_box, sky_array)
 
     def compute_pixel_raster(self, px, py, bounding_box, sky_array):
-        """Return a masked numpy view into sky_array corresponding the scanline rasterization
+        """Return a masked numpy view into sky_array corresponding to the scanline rasterization
         of the region of sky_array visible by the detector at coordinates px, py.
         The program uses top left corner zero-indexing."""
         # Get sky_array indices for the corners of detector (px, py)
@@ -149,7 +147,8 @@ class ModuleView:
         raw_with_birdies = self.add_birdies_to_image_array(raw_img)
         raw_with_birdies_32x32 = np.resize(raw_with_birdies, (32, 32))
         fig1, ax = plt.subplots()
-        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32, vmin=0)#vmax=2000)
+        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32, vmin=0, vmax=3000)
         ax.set_aspect('equal', adjustable='box')
         fig1.suptitle(self)
-        fig1.show()
+        #fig1.show()
+        return fig1

@@ -19,7 +19,7 @@ def init_sky_array(array_resolution):
 
 
 def init_module(sky_array, module_id, start_utc):
-    m1 = ModuleView(module_id, start_utc, 37.3425, -121.63777, 1283, 184.29, 78.506, -139.7899, sky_array)
+    m1 = ModuleView(module_id, start_utc, 37.3425, -121.63777, 1283, 184.29, 78.506, 0, sky_array)
     return m1
 
 
@@ -173,6 +173,8 @@ def do_simulation(start_utc,
     total_time = e - s
     avg_time = total_time / num_frames
     print(f'\nNum sims = {num_frames}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
+    if plot_images:
+        birdie_utils.build_gif()
 
 
 #raw_img, j = get_next_frame(fin)

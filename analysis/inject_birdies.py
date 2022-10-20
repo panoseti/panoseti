@@ -2,6 +2,8 @@
 The program uses models of the modules in an observatory and the
 celestial sphere to generate birdies and simulate image mode data for a single image file.
 
+The output is a pff file of simulated image mode data containing birdies.
+
 TODO:
     - File IO:
         - Add utility methods to import image mode files, read their metadata and image arrays, and write RAW + birdie frames.
@@ -9,11 +11,9 @@ TODO:
             - Module ID, module orientation (alt-az + observatory GPS), integration time, start time, and end time.
     - Setup procedure:
         - Create or update birdie log file.
-        - Open a file object for the image file. Done
+        - Create a file object for the simulated image file (birdies only).
     - Main loop
-        - Check if we’ve reached EOF in any of the image mode files. Done
-        - Simulate module image mode output. Done
-        - Update image frames (if applicable). Done
+        - Check if we’ve reached EOF in any of the image mode files.
 
 """
 import math
@@ -21,7 +21,7 @@ import time
 import sys
 import os
 import numpy as np
-
+import cProfile
 
 import analysis_util
 import birdie_utils
@@ -32,24 +32,25 @@ import pff
 import config_file
 sys.path.append('../control')
 
-np.random.seed(300)
+np.random.seed(301)
 
 
 def test_simulation():
     start_utc = 1685417643
-    end_utc = start_utc + 3600
+    end_utc = start_utc + 5
     # integration time in usec
-    integration_time = 1e6
+    integration_time = 20
     birdie_config = birdie_utils.get_birdie_config('birdie_config.json')
 
-    birdie_sim.do_simulation(
+    f = '''birdie_sim.do_simulation(
         start_utc, end_utc,
         birdie_config,
         integration_time,
         noise_mean=0,
-        num_updates=20,
-        plot_images=True,
-    )
+        num_updates=30,
+        plot_images=False,
+    )'''
+    cProfile.runctx(f, globals(), locals(), sort='tottime')
 
 
 def do_file(data_dir, run, analysis_dir, fin_name, params):
@@ -109,10 +110,11 @@ def main():
         'seconds': 1
     }
     #do_run(DATA_DIR, 'obs_Lick.start_2022-05-11T23:38:29Z.runtype_eng.pffd', params, 'nico')
+    #exec('test_simulation()')
     test_simulation()
-
 
 if __name__ == '__main__':
     print("RUNNING")
     main()
+    #cProfile.runctx('main()', globals(), locals(), sort='tottime')
     print("DONE")

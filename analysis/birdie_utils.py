@@ -2,14 +2,15 @@
 Utility functions for the birdie injection program.
 """
 import time
+import math
+import json
+import sys
+import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-import math
-import json
 from dateutil import parser
-import sys
-import os
+import imageio
 
 sys.path.append('../util')
 import pff
@@ -98,7 +99,6 @@ def get_sky_image_array(elem_per_deg, verbose=False):
         print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape, dtype=np.float32)
 
-
 def graph_sky_array(sky_array, module_id):
     """Plot sky_array, labeled with the appropriate RA and DEC ranges."""
     fig, ax = plt.subplots()
@@ -130,13 +130,30 @@ def graph_sky_array(sky_array, module_id):
     plt.close(fig)
 
 
+file_names = []
+os.system(f'mkdir -p birdie_test_images')
+
 def show_progress(step_num, img, module, num_steps, num_updates, plot_images=False):
     if step_num % (num_steps // num_updates) == 0:
         v = math.ceil(100 * step_num / num_steps)
         print(f'\tProgress: {v:<2}% [{"*" * (v // 5) + "-" * (20 - (v // 5)):<20}]', end='\r')
         if plot_images and step_num != 0:
-            time.sleep(0.01)
-            module.plot_simulated_image(img)
+            fig = module.plot_simulated_image(img)
+            fname = f'birdie_test_images/{time.time()}.png'
+            file_names.append(fname)
+            plt.savefig(fname)
+            plt.close(fig)
+
+
+def build_gif():
+    with imageio.get_writer(f'birdie_test_images/test{time.time()}.gif', mode='I') as writer:
+        for fname in file_names:
+            image = imageio.imread(fname)
+            writer.append_data(image)
+    for filename in file_names:
+        os.remove(filename)
+    print('finished writing gif.')
+
 
 
 def ra_to_degrees(ra):
