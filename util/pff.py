@@ -114,10 +114,13 @@ def pff_file_type(name):
 
 # return time from parsed JSON header
 #
-def header_time(h):
-    return h['tv_sec'] + h['tv_usec']/1e6
+def pkt_header_time(h):
+    return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], ['tv_sec'])
 
-# return:
+def img_header_time(h):
+    return pkt_header_time(h['quabo_0'])
+
+# return info about an image file; f points to start
 # frame_size
 # nframes
 # first_t
@@ -133,18 +136,18 @@ def img_info(f, bytes_per_image):
             file_size, frame_size
         ))
     nframes = file_size/frame_size
-    first_t = header_time(h)
+    first_t = img_header_time(h)
     f.seek(-frame_size, os.SEEK_END)
     h = read_json(f)
-    last_t = header_time(h)
+    last_t = img_header_time(h)
     return [frame_size, nframes, first_t, last_t]
 
-# return time of frame
+# return time of given frame
 #
 def img_frame_time(f, frame, frame_size):
     f.seek(frame*frame_size)
     s = read_json(f)
-    return header_time(s)
+    return img_header_time(s)
 
 # f is a file object, open to the start of an image file
 # with integration time frame_time and the given bytes per image.
@@ -198,7 +201,7 @@ def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
             max_f = new_f
     f.seek(new_f*frame_size)
 
-# Given a WR packet time with only 10 bits of sec,
+# Given a WR packet time (TAI) with only 10 bits of sec,
 # and a Unix time that's within a few ms,
 # return the complete WR time (in Unix time, not TAI)
 #
