@@ -52,16 +52,16 @@ def print_json(j, is_ph, verbose):
     else:
         j = json.loads(j)
         if is_ph:
-            print('quabo %d: pkt_num %d, pkt_utc %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
+            print('quabo %d: pkt_num %d, pkt_tai %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
                 j['quabo_num'], j['pkt_num'],
-                j['pkt_utc'], j['pkt_nsec'],
+                j['pkt_tai'], j['pkt_nsec'],
                 j['tv_sec'], j['tv_usec']
             ))
         else:
             for i in range(4):
                 q = j['quabo_%d'%i]
-                print('quabo %d: pkt_num %d, pkt_utc %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
-                    i, q['pkt_num'], q['pkt_utc'], q['pkt_nsec'],
+                print('quabo %d: pkt_num %d, pkt_tai %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
+                    i, q['pkt_num'], q['pkt_tai'], q['pkt_nsec'],
                     q['tv_sec'], q['tv_usec']
                 ))
         
