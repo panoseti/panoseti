@@ -87,6 +87,7 @@ function page_head($title, $login=LOGIN_MANDATORY) {
 
 function login_name() {
     global $login_name;
+    $login_name = get_login();
     return $login_name;
 }
 
@@ -346,5 +347,61 @@ function parse_pff_name($name) {
     return $p;
 }
 
+// return list of data products in run
+//
+function run_data_products($name) {
+    $s = [];
+    $dc = json_decode(@file_get_contents("data/$name/data_config.json"));
+    if (!$dc) {
+        $s[] = '---';
+        return $s;
+    }
+    if (!empty($dc->image)) {
+        $x = $dc->image;
+        $s[] = sprintf("Image, %d bit, %d usec",
+            $x->quabo_sample_size, $x->integration_time_usec
+        );
+    }
+    if (array_key_exists('pulse_height', $dc)) {
+        $x = $dc->pulse_height;
+        $s[] = sprintf("Pulse height, threshold %d", $x->pe_threshold);
+    }
+    return $s;
+}
+
+// return list of modules in run
+//
+function run_modules($name) {
+    $s = [];
+    $oc = json_decode(@file_get_contents("data/$name/obs_config.json"));
+    if (!$oc) {
+        $s[] = '---';
+        return $s;
+    }
+    foreach ($oc->domes as $dome) {
+        foreach ($dome->modules as $module) {
+            $s[] = module_str($module, $dome);
+        }
+    }
+    return $s; 
+}
+
+function module_str($module, $dome) {
+    $x = ip_addr_to_module_num($module->ip_addr);
+    if (!empty($dome->name)) {
+        if (!empty($module->name)) {
+            $x .= " ($dome->name, $module->name)";
+        } else {
+            $x .= " ($dome->name)";
+        }
+    }
+    return $x;
+}
+
+function ip_addr_to_module_num($ip_addr) {
+    $x = explode('.', $ip_addr);
+    $n = (int)$x[3] + 256*(int)$x[2];
+    return ($n>>2)&255;
+}
 
 ?>

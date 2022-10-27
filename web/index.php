@@ -79,6 +79,8 @@ function main() {
         'Recording time',
         'Copy time',
         'Cleanup time',
+        'Files',
+        'Modules',
         'Run type',
         'Tags',
         'Analyses'
@@ -101,6 +103,8 @@ function main() {
             $rec_dur,
             $collect_dur,
             $cleanup_dur,
+            implode('<br>', run_data_products($name)),
+            implode('<br>', run_modules($name)),
             $n['runtype'],
             tags($name),
             run_analyses_str($name)

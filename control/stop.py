@@ -61,11 +61,16 @@ def stop_recording(daq_config, run_dir, verbose):
             log_error(msg, run_dir)
             raise Exception(msg)
 
-# write a "complete file" in the run dir,
+# write a "complete file" in the run dir
 #
 def write_complete_file(run_dir, filename):
-    with open('%s/%s'%(run_dir, filename), 'w') as f:
+    path = '%s/%s'%(run_dir, filename)
+    with open(path , 'w') as f:
         f.write(now_str())
+
+def complete_file_exists(run_dir, filename):
+    path = '%s/%s'%(run_dir, filename)
+    return os.path.exists(path)
 
 # make symlinks to the first nonempty image and ph files in that dir
 #
@@ -137,9 +142,10 @@ def stop_run(
     stop_data_flow(quabo_uids)
 
     if run_dir:
-        write_complete_file(run_dir, recording_ended_filename)
+        if not complete_file_exists(run_dir, recording_ended_filename):
+            write_complete_file(run_dir, recording_ended_filename)
         collect_error = ''
-        if not no_collect:
+        if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
             print("collecting data from DAQ nodes")
             collect_error = collect.collect_data(daq_config, run, verbose)
             if collect_error == '':
