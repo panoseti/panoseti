@@ -161,7 +161,7 @@ function main($run) {
         if ($f[0] == ".") continue;
         if (is_pff($f)) continue;
         if (in_array($f, ['comments.json', 'tags.json'])) continue;
-        echo "<p>
+        echo "<br>
             <a href=data/$run/$f>$f</a>
         ";
     }

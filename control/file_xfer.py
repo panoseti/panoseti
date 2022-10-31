@@ -34,14 +34,14 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
 # so we copy the dir to a temp directory (data/IP_ADDR/run),
 # then move (rename) the files into the target dir
 #
-# return True on success
+# return error message, or '' on success
 #
 def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
     local_data_dir = daq_config['head_node_data_dir']
     run_dir_path = '%s/%s'%(local_data_dir, run_name)
 
     if not os.path.isdir(run_dir_path):
-        raise Exception('no run dir %s'%run_dir_path)
+        return 'copy_dir_from_node(): no run dir %s'%run_dir_path
 
     # copy PFF files from remote node to this node
     cmd = 'rsync -P %s@%s:%s/module_%d/%s/* %s'%(
@@ -54,9 +54,8 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
     try:
         ret = os.system(cmd)
     except:
-        print('ERROR: %s returned %d'%(cmd, ret))
-        return False
-    return True
+        return 'copy_dir_from_node(): %s returned %d'%(cmd, ret)
+    return ''
 
 # create a directory on DAQ nodes
 #

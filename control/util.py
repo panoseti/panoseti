@@ -22,7 +22,10 @@ hk_symlink= 'hk'
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
-run_complete_file = 'run_complete'
+# files written by stop.py
+recording_ended_filename = 'recording_ended'
+collect_complete_filename = 'collect_complete'
+run_complete_filename = 'run_complete'
 
 hk_recorder_name = './store_redis_data.py'
 
@@ -111,7 +114,7 @@ def quabo_uid(module, quabo_uids, i):
             if m['ip_addr'] == module['ip_addr']:
                 q = m['quabos'][i]
                 return q['uid']
-    raise Exception("no such module")
+    raise Exception("no module %s found; run get_uids.py"%module['ip_addr'])
 
 # see if quabo is alive by seeing if we got its UID
 #

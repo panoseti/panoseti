@@ -85,8 +85,8 @@ def module_id_to_daq_node(daq_config, module_id):
             return node
     raise Exception("no DAQ node is handling module %d"%module_id)
 
-def check_config_file(name):
-    if not os.path.exists(name):
+def check_config_file(name, dir='.'):
+    if not os.path.exists('%s/%s'%(dir, name)):
         print("The config file '%s' doesn't exist."%name)
         print("Create a symbolic link from %s to a specific config file, e.g.:"%name)
         print("   ln -s %s_lick.json %s"%(name.split('.')[0], name))
@@ -94,9 +94,8 @@ def check_config_file(name):
         sys.exit()
 
 def get_obs_config(dir='.'):
-    path = '%s/%s'%(dir, obs_config_filename)
-    check_config_file(path)
-    with open(path) as f:
+    check_config_file(obs_config_filename, dir)
+    with open('%s/%s'%(dir, obs_config_filename)) as f:
         s = f.read()
     c = json.loads(s)
     assign_numbers(c)

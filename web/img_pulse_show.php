@@ -50,6 +50,7 @@ function max_nsigma($path) {
     return [(float)$x[OFFSET_NSIGMA], $n/strlen($s)];
 }
 
+// show results for a pixel, or all pixels
 // for each level, show:
 //      - max sigma
 //      - link to show top pulses
@@ -65,35 +66,45 @@ function show_pixel_dir($run, $analysis_dir, $module_dir, $pixel_dir) {
     $spath = "analysis/$run/img_pulse/$analysis_dir/summary.json";
     $s = json_decode(file_get_contents($spath));
     $nlevels = $s->params->nlevels;
+    start_table();
+    if ($pixel_dir == 'all_pixels') {
+        table_header(
+            "Pulse duration",
+            "Pulses above threshold",
+            "Max nsigma"
+        );
+    } else {
+        table_header(
+            "Pulse duration",
+            "Pulses above threshold",
+            "Max nsigma",
+            "All pulses"
+        );
+    }
     for ($i=0; $i<$nlevels; $i++) {
-        $x = 1<<$i;
-        echo "<h3>Pulse duration $x</h3>\n";
+        $x1 = 1<<$i;
         $path = "analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir/thresh_$i.sorted";
         [$x, $n] = max_nsigma($path);
-        echo "<ul>";
-        echo "<li> Pulses with nsigma above threshhold
-            <ul>
-                <li> Number: $n
-        ";
         if ($n) {
-            echo "
-                <li> Max nsigma: $x
-                <li> <a href=img_pulse_show.php?action=list&run=$run&analysis=$analysis_dir&module=$module_dir&pixel=$pixel_dir&level=$i>View</a>
-            ";
+            $x2 = "<a href=img_pulse_show.php?action=list&run=$run&analysis=$analysis_dir&module=$module_dir&pixel=$pixel_dir&level=$i>$n</a>";
+            $x3 = $x;
+        } else {
+            $x2 = 0;
+            $x3 = '---';
         }
-        echo "
-            </ul>
-        ";
-        $path = "analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir/all_$i";
-        if (file_exists($path)) {
-            echo "<li> All pulses
-                <ul>
-                    <li> <a href=img_pulse_show.php?action=graph&run=$run&analysis=$analysis_dir&module=$module_dir&pixel=$pixel_dir&level=$i&start=0&n=1000>View graph</a>
-                </ul>
-            ";
+        if ($pixel_dir == 'all_pixels') {
+            table_row($x1, $x2, $x3);
+        } else {
+            $path = "analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir/all_$i";
+            if (file_exists($path)) {
+                $x4 = "<a href=img_pulse_show.php?action=graph&run=$run&analysis=$analysis_dir&module=$module_dir&pixel=$pixel_dir&level=$i&start=0&n=1000>View graph</a>";
+            } else {
+                $x4 = '---';
+            }
+            table_row($x1, $x2, $x3, $x4);
         }
-        echo "</ul>";
     }
+    end_table();
     page_tail();
 }
 
@@ -119,7 +130,7 @@ function show_list($run, $analysis_dir, $module_dir, $pixel_dir, $level) {
 function show_analysis($run, $analysis_dir) {
     $dirpath = "analysis/$run/img_pulse/$analysis_dir";
     page_head("Image pulse analysis");
-    analysis_page_intro($analysis_dir, $dirpath);
+    analysis_page_intro('img_pulse', $analysis_dir, $dirpath);
     foreach (scandir($dirpath) as $mdir) {
         if (substr($mdir, 0, 7) != 'module_') continue;
         $mnum = substr($mdir, 7);
@@ -160,13 +171,13 @@ function show_graph(
     fclose($f);
     $s = sprintf('
         set terminal png size 1000, 1000
-        plot "ip_data.tmp" using %d:%d title "value" with lines, "graph.tmp" using %d:%d title "mean" with lines
+        plot "ip_data.tmp" using %d:%d title "value" with lines, "ip_data.tmp" using %d:%d title "mean" with lines
         ', OFFSET_SAMPLE+1, OFFSET_VALUE+1, OFFSET_SAMPLE+1, OFFSET_MEAN+1
     );
-    $f = fopen('plot.gp', 'w');
+    $f = fopen('ip_plot.gp', 'w');
     fwrite($f, $s);
     fclose($f);
-    $cmd = 'gnuplot plot.gp > ip.png';
+    $cmd = 'rm ip.png; gnuplot ip_plot.gp > ip.png';
     system($cmd);
     page_head("Image pulse");
     echo "<img src=ip.png>";

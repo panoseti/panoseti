@@ -24,16 +24,19 @@ function img_pulse_form($run) {
     form_checkboxes("All pixels", [['all_pixels', '', false]]);
     form_checkboxes(
         "Record all<br><small>Write all samples to a separate file (can be huge)</small>",
-        [['record_all', '', false]]
+        [['log_all', '', false]]
     );
     form_submit("OK");
     form_end();
 }
 
 function img_pulse_params_str($params) {
+    $p = $params->pixels?implode(',', $params->pixels):'';
     return sprintf(
-        "#levels: %d<br>Stats window size: %d<br>Threshold: %f<br>Seconds: %f",
-        $params->nlevels, $params->win_size, $params->thresh, $params->seconds
+        "#levels: %d<br>Stats window size: %d<br>Threshold: %f<br>Seconds: %f<br>Pixels: %s<br>All pixels: %s<br>Log all: %s",
+        $params->nlevels, $params->win_size, $params->thresh, $params->seconds,
+        $p, $params->all_pixels?"Yes":"No",
+        $params->log_all?"Yes":"No"
     );
 }
 

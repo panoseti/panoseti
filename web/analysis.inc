@@ -55,22 +55,22 @@ function get_analyses_aux($dir) {
     $analyses = [];
     foreach (scandir($dir) as $f) {
         if (substr($f, 0, 1) == '.') continue;
+        $path = "$dir/$f/summary.json";
+        if (!file_exists($path)) continue;
+
         $d = new stdClass;
         $d->dir = $f;
         $d->when = $f;
-        $d->username = '??';
-        $d->comments = '';
-        $d->params = '??';
-        $path = "$dir/$f/summary.json";
-        if (file_exists($path)) {
-            $x = json_decode(file_get_contents($path));
-            $d->username = $x->username;
-            $d->params = $x->params;
-        }
+        $x = json_decode(file_get_contents($path));
+        $d->username = $x->username;
+        $d->params = $x->params;
+
         $path = "$dir/$f/comments.json";
         if (file_exists($path)) {
             $x = json_decode(file_get_contents($path));
             $d->comments = $x;
+        } else {
+            $d->comments = '';
         }
         $analyses[] = $d;
     }
@@ -131,20 +131,17 @@ function analysis_form($type, $run) {
 // type-independent info for analysis pages.
 // Put this at top of page
 //
-function analysis_page_intro($analysis_dir, $dirpath) {
-    echo "<p>Analysis time: $analysis_dir";
+function analysis_page_intro($type, $analysis_dir, $dirpath) {
+    text_start();
+    start_table('table-striped');
+    row2("Analysis time", $analysis_dir);
     $summary_path = "$dirpath/summary.json";
-    if (file_exists($summary_path)) {
-        $s = json_decode(file_get_contents($summary_path));
-        echo "<p>Run by: $s->username";
-        echo "<p>Parameters:";
-        echo "<pre>";
-        print_r($s->params);
-        echo "</pre>";
-    } else {
-        echo "<p>No summary file";
-    }
-    echo "<p><a href=$dirpath>View analysis directory</a>";
+    $s = json_decode(file_get_contents($summary_path));
+    row2("Run by", $s->username);
+    row2("Parameters", params_str($type, $s->params));
+    row2("Analysis directory", "<a href=$dirpath>View</a>");
+    end_table();
+    text_end();
 }
 
 ?>

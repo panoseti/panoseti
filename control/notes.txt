@@ -341,3 +341,114 @@ start.py
         autodetect?
 
     keep log of sky coverage?
+------------
+improved record-keeping of run end
+
+Ending a run has several steps
+- tell DAQ nodes to stop recording data
+- turning off HV updater and HK recorder
+- tell quabos to stop producing data
+- copy files from DAQ nodes to head node
+- delete files from DAQ nodes
+
+Any of these can fail for reasons that may be transient.
+The collect step can take several hours.
+
+Currently we write a file "run_complete" at the end of all this;
+its contents are the time when everything finished.
+
+Problems:
+1) There's no easy way to find when data recording stopped.
+2) If something failed, there's no info about what it was,
+    and no easy way to retry.
+
+Proposal:
+files to write at end of a run:
+
+recording_ended
+    time when stopped recording data
+
+collect_complete
+    time when collect completed
+
+run_complete
+    time when everything completed
+
+stop_errors
+    log of errors, if any
+
+Change stop.py so that it doesn't repeat completed steps.
+-------------
+RA format
+fixed-size JSON headers
+    function to seek
+------
+Data with birdies: proposal
+
+Currently our dir structure is:
+
+data/
+    obs_run/
+        files
+analysis/
+    obs_run/
+        analysis_type/
+            analysis_1
+            analysis_2
+
+Where does birdie data go?
+I propose that it go under data/, same as real data.
+There are two cases:
+1) birdie data derived from real data
+    Say, the first 5 minutes of an image-mode file with some added flashes.
+    Put this in a dir with the same name as the real data,
+    with 'birdie_N' added.
+    For example
+    obs_Lick.start_2022-10-14T21:45:29Z.runtype_eng.birdie_0.pffd
+    N is a sequence number in case you use the same data multiple times
+2) synthetic data
+    Put it in a dir with obs = 'synthetic': e.g.
+    obs_synthetic.start_2022-10-14T21:45:29Z.runtype_eng.pffd
+
+In both cases the directory should contain a JSON file "birdies.json"
+describing the birdies that were added
+(and in the synthetic case, the parameters of the background noise)
+
+This scheme lets use run analyses on birdie data,
+with no modifications to the analysis framework.
+The results of analysis of birdie data will go under
+analysis/
+    obs_run
+where obs_run is the name of the birdie data dir
+----------------
+Image headers have (for each quabo)
+    pkt_tai
+    pkt_nsec
+        TAI is from white rabbit; it's unix time + 37
+        pkt_tai is the low 10 bits of seconds
+    tv_sec
+    tv_usec
+        unix time on the DAQ node
+These should agree within a few milliseconds; if not something is wrong
+
+We have only the low 10 bits of WR seconds
+How to go from these to (full) WR time?
+The following don't work:
+- tv_sec + pkt_nsec
+    this will be off by 1 sec for a few milliseconds every second
+    (when WR has wrapped around but Unix time hasn't, or vice versa)
+- tv_sec with low 10 bits replaced by (pkt_tai-37)%1024 + pkt_nsec
+    this will be off by 1024 sec for a few milliseconds every 1024 seconds
+
+Instead:
+
+d = (tv_usec - tai_sec + 37)%1024
+
+if d == 0:
+    x = tv_usec + tai_nsec
+elif d == 1:
+    x = tv_usec-1 + tai_nsec
+elif d == 1023:
+    x = tv_usec+1 + tai_nsec
+else:
+    error: WR/Unix clocks are off by more than 1 sec

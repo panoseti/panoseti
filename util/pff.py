@@ -1,17 +1,16 @@
 # functions to parse PFF files,
 # and to create and parse PFF dir/file names
 
-import struct
-import time, datetime
+import struct, os, time, datetime
 
-# returns the string; parse it with json
+# returns the string (doesn't parse it)
 #
 def read_json(f):
     c = f.read(1)
     if c == '':
         return None
     if c != b'{':
-        raise Exception('bad type code', c)
+        raise Exception('read_json(): expected {, got', c)
     s = '{'
     last_nl = False
     while True:
@@ -51,6 +50,9 @@ def read_image(f, img_size, bytes_per_pixel):
     else:
         raise Exception("bad image size"%image_size)
 
+def skip_image(f, img_size, bytes_per_pixel):
+    f.seek(img_size*img_size*bytes_per_pixel+1, os.SEEK_CUR)
+    
 # write an image; image is a list
 def write_image_1D(f, img, img_size, bytes_per_pixel):
     f.write(b'*')
@@ -109,3 +111,106 @@ def pff_file_type(name):
     if 'dp' not in n.keys():
         return None
     return n['dp']
+
+# return time from parsed JSON header
+#
+def pkt_header_time(h):
+    return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], ['tv_sec'])
+
+def img_header_time(h):
+    return pkt_header_time(h['quabo_0'])
+
+# return info about an image file; f points to start
+# frame_size
+# nframes
+# first_t
+# last_t
+#
+def img_info(f, bytes_per_image):
+    h = read_json(f)
+    header_size = f.tell()
+    frame_size = header_size + bytes_per_image
+    file_size = f.seek(0, os.SEEK_END)
+    if (file_size % frame_size):
+        raise Exception('file size %d is not a multiple of frame size %d'%(
+            file_size, frame_size
+        ))
+    nframes = file_size/frame_size
+    first_t = img_header_time(h)
+    f.seek(-frame_size, os.SEEK_END)
+    h = read_json(f)
+    last_t = img_header_time(h)
+    return [frame_size, nframes, first_t, last_t]
+
+# return time of given frame
+#
+def img_frame_time(f, frame, frame_size):
+    f.seek(frame*frame_size)
+    s = read_json(f)
+    return img_header_time(s)
+
+# f is a file object, open to the start of an image file
+# with integration time frame_time and the given bytes per image.
+# Position it (using seek) to a frame whose time is close to t
+#
+# The file may be missing frames,
+# so the frame at the expected position may be after t.
+#
+# bytes_per_image includes the "*" char
+#
+def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
+    (frame_size, nframes, first_t, last_t) = img_info(f, bytes_per_image)
+
+    if t < first_t+frame_time:
+        f.seek(0)
+        return
+    elif t > last_t-frame_time:
+        f.seek(nframes-1, frame_size)
+        return
+
+    min_t = first_t
+    min_f = 0
+    max_t = last_t
+    max_f = nframes-1
+
+    while True:
+        frac = (t-min_t)/(max_t-min_t)
+        new_f = min_f + int(frac*(max_f-min_f))
+        if new_f <= min_f+1:
+            if verbose:
+                print('new_f %d is close to min_f %d'%(new_f, min_f))
+            new_f = min_f
+            break
+        if new_f >= max_f-1:
+            if verbose:
+                print('new_f %d is close to max_f %d'%(new_f, max_f))
+            break
+        new_t = img_frame_time(f, new_f, frame_size)
+        if verbose:
+            print('new_t', new_t)
+        if new_t < t - frame_time:
+            min_t = new_t
+            min_f = new_f
+        elif new_t < t + frame_time:
+            if verbose:
+                print('new_t %f is close to t %f'%(new_t, t))
+            f.seek(new_f*frame_size)
+            return
+        else:
+            max_t = new_t
+            max_f = new_f
+    f.seek(new_f*frame_size)
+
+# Given a WR packet time (TAI) with only 10 bits of sec,
+# and a Unix time that's within a few ms,
+# return the complete WR time (in Unix time, not TAI)
+#
+def wr_to_unix(pkt_tai, pkt_nsec, tv_sec):
+    d = (tv_sec - pkt_tai + 37)%1024
+    if d == 0:
+        return tv_sec + pkt_nsec/1e9
+    elif d == 1:
+        return tv_sec - 1 + pkt_nsec/1e9
+    elif d == 1023:
+        return tv_sec + 1 + pkt_nsec/1e9
+    raise Exception('WR and Unix times differ by > 1 sec: %d %d'%(pkt_tai, tv_usze))

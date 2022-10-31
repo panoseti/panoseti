@@ -48,7 +48,7 @@ def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
     """Given a detector serial number and a temperature in degrees Celsius,
      returns the desired adjusted high-voltage value."""
     try:
-        nominal_hv = detector_info[det_serial_num]
+        nominal_hv = detector_info[str(det_serial_num)]
     except KeyError as kerr:
         msg = "hv_updater: Failed to get the nominal HV for the detector with serial number: '{0}'."
         msg += "detector_info.json might be missing an entry for this detector. "

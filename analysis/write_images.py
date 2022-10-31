@@ -23,7 +23,7 @@ def do_run(run, params, username):
         elif t == 'img8':
             bytes_per_pixel = 1
         else:
-            raise Exception('bad file type %s'%t)
+            continue
 
         file_path = 'data/%s/%s'%(run, f)
         if os.path.getsize(file_path) == 0: continue;
@@ -34,7 +34,7 @@ def do_run(run, params, username):
 
         # generate images.bin
         #
-        cmd = './write_images --bytes_per_pixel --nframes %d< %s> %s/images.bin'%(
+        cmd = './write_images --bytes_per_pixel %d --nframes %d < %s > %s/images.bin'%(
             bytes_per_pixel, nframes, file_path, module_dir
         )
         print(cmd)
@@ -49,7 +49,7 @@ def do_run(run, params, username):
         maxval = 0
 # see https://stackoverflow.com/questions/20743070/ffmpeg-compressed-mp4-video-not-playing-on-mozilla-firefox-with-a-file-is-corru
         cmd = 'php pipe_images.php %s/images.bin %d %d %d %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 %s/images.mp4 2>&1'%(
-            module_dir, minval, maxval, nframes, bytes_per_pixel
+            module_dir, minval, maxval, nframes, bytes_per_pixel,
             module_dir
         )
         print(cmd)

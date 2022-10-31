@@ -9,7 +9,7 @@ D1_D2=0,0,0,0
 *These are the Half Bipolar Fast Shaper parameters
 SW_FSB2_50F=1,1,1,1
 SW_FSB2_100F=1,1,1,1
-SW_FSB2_100K=0,0,0,0
+SW_FSB2_100K=1,1,1,1
 SW_FSB2_50K=0,0,0,0
 
 *These are the Bipolar Fast Shaper parameters
