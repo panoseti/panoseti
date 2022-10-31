@@ -93,9 +93,10 @@ def check_config_file(name):
 
         sys.exit()
 
-def get_obs_config():
-    check_config_file(obs_config_filename)
-    with open(obs_config_filename) as f:
+def get_obs_config(dir='.'):
+    path = '%s/%s'%(dir, obs_config_filename)
+    check_config_file(path)
+    with open(path) as f:
         s = f.read()
     c = json.loads(s)
     assign_numbers(c)
