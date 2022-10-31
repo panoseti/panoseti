@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 from dateutil import parser
 import imageio
 
+import analysis_util
+
 sys.path.append('../util')
 import pff
 import config_file
@@ -47,7 +49,7 @@ def init_ra_dec_ranges(t_start, t_end, initial_bounding_box, module_id):
     dec_low = initial_bounding_box[1][0]
     dec_high = initial_bounding_box[1][1]
     dec_range = dec_low, dec_high
-    print(f"module '{module_id}': ra_range={round(ra_range[0], 3), round(ra_range[1], 3)} <deg>, "
+    print(f"\tmodule '{module_id}': ra_range={round(ra_range[0], 3), round(ra_range[1], 3)} <deg>, "
           f"dec_range={round(dec_range[0], 3), round(dec_range[1], 3)} <deg>")
     module_constants[module_id]['coord_ranges'] = ra_range, dec_range
 
@@ -94,9 +96,9 @@ def get_sky_image_array(elem_per_deg, verbose=False):
     ra_length, dec_length = sky_arr_consts['coord_lens']
     array_shape = sky_arr_consts['shape']
     if verbose:
-        print(f'Array elements per:\n'
-              f'\tdeg ra: {round(array_shape[0] / ra_length, 4):<10}\tdeg dec: {round(array_shape[1] / dec_length, 4):<10}')
-        print(f'Array shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
+        print(f'\tArray elements per:\n'
+              f'\t\tdeg ra: {round(array_shape[0] / ra_length, 4):<10}\t\tdeg dec: {round(array_shape[1] / dec_length, 4):<10}')
+        print(f'\tArray shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape, dtype=np.float32)
 
 def graph_sky_array(sky_array, module_id):
@@ -130,6 +132,9 @@ def graph_sky_array(sky_array, module_id):
     plt.close(fig)
 
 
+# Simulation utils
+
+
 file_names = []
 os.system(f'mkdir -p birdie_test_images')
 
@@ -145,8 +150,8 @@ def show_progress(step_num, img, module, num_steps, num_updates, plot_images=Fal
             plt.close(fig)
 
 
-def build_gif():
-    with imageio.get_writer(f'birdie_test_images/test{time.time()}.gif', mode='I') as writer:
+def build_gif(data_dir, birdie_dir):
+    with imageio.get_writer(f'{data_dir}/{birdie_dir}/test{time.time()}.gif', mode='I') as writer:
         for fname in file_names:
             image = imageio.imread(fname)
             writer.append_data(image)
@@ -254,18 +259,37 @@ def get_birdie_config(birdie_config_path):
         return birdie_config
 
 
-def get_obs_config(data_dir, run):
-    """Get the observatory config file for the given run."""
-    pass
-
-
-def get_integration_time(data_dir, run):
+def get_integration_time(data_dir, run_dir):
     """Get the integration time for this run."""
-    data_config = config_file.get_data_config(f'{data_dir}/{run}')
+    data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
     x = float(data_config['image']['integration_time_usec'])
     return x
+
+
+def get_birdie_sequence_num(data_dir, run_dir):
+    """Get birdie sequence number, equal to current max birdie
+    sequence number for run_dir plus 1."""
+    max_sequence_num = 0
+    run_name_without_pffd = run_dir.replace('.pffd', '')
+    for f in os.listdir(f'{data_dir}'):
+        if run_name_without_pffd in f.replace('.pffd', ''):
+            run_attrs = pff.parse_name(f)
+            if 'birdie' in run_attrs:
+                max_sequence_num = max(max_sequence_num, int(run_attrs['birdie']))
+    return max_sequence_num + 1
+
+
+def make_birdie_dir(data_dir, run_dir, sequence_num):
+    """Create directory for run + birdie data."""
+    birdie_dir = run_dir.replace('.pffd', '') + f'.birdie_{sequence_num}.pffd'
+    analysis_util.make_dir(f'{data_dir}/{birdie_dir}')
+    return birdie_dir
+
+
+# Misc
 
 
 def iso_to_utc(iso_date_string):
     """Return the UTC timestamp of a given ISO formatted string."""
     return float(parser.parse(iso_date_string).timestamp())
+

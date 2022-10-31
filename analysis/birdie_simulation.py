@@ -18,9 +18,34 @@ def init_sky_array(array_resolution):
     return birdie_utils.get_sky_image_array(array_resolution, verbose=True)
 
 
-def init_module(sky_array, module_id, start_utc):
-    m1 = ModuleView(module_id, start_utc, 37.3425, -121.63777, 1283, 184.29, 78.506, 0, sky_array)
-    return m1
+def init_module(sky_array, obs_config, module_id, start_utc):
+    if obs_config:
+        for dome in obs_config['domes']:
+            for module in dome['modules']:
+                if module['id'] == module_id:
+                    return ModuleView(
+                        module_id,
+                        start_utc,
+                        dome['obslat'],
+                        dome['obslon'],
+                        dome['obsalt'],
+                        module['azimuth'],
+                        module['elevation'],
+                        module['position_angle'],
+                        sky_array
+                    )
+    else:
+        return ModuleView(
+            module_id,
+            start_utc,
+            37.3425,
+            -121.63777,
+            1283,
+            184.29,
+            78.506,
+            0,
+            sky_array
+        )
 
 
 def init_birdies(num, param_ranges):
@@ -34,15 +59,15 @@ def init_birdies(num, param_ranges):
     return birdie_sources
 
 
-def do_setup(start_utc, end_utc, integration_time, birdie_config, module_id='test'):
+def do_setup(start_utc, end_utc, obs_config, birdie_config, integration_time, module_id):
     """Initialize objects and arrays for birdie injection.
     integration_time is in usec. birdie_config is a file object."""
-
+    print('Setup simulation:')
     # Init array modeling the sky
     sky_array = init_sky_array(birdie_config['array_resolution'])
 
     # Init ModuleView object
-    mod = init_module(sky_array, module_id, start_utc)
+    mod = init_module(sky_array, obs_config, module_id, start_utc)
     initial_bounding_box = birdie_utils.get_coord_bounding_box(mod.center_ra, mod.center_dec)
     birdie_utils.init_ra_dec_ranges(start_utc, end_utc, initial_bounding_box, module_id)
 
@@ -60,22 +85,26 @@ def do_setup(start_utc, end_utc, integration_time, birdie_config, module_id='tes
 # Simulation loop routines
 
 
-def update_birdies(frame_utc, bounding_box, sky_array, birdie_sources):
-    """Call the generate_birdie method on every BirdieSource object with an RA
-    that may be visible by the given module."""
-    birdies_in_view = False
+def get_birdie_sources_in_view(frame_utc, bounding_box, birdie_sources):
+    birdie_sources_in_view = []
     left = int(bounding_box[0][0] % 360)
     right = int(bounding_box[0][1] % 360) - 1
     if right < left:
         right += 360
     i = left
-    #input(f'left={left}, right={right}')
     while i < right:
         for b in birdie_sources[i % 360]:
-            point_added = b.generate_birdie(frame_utc, sky_array, bounding_box)
-            birdies_in_view = birdies_in_view or point_added
+            if b.is_in_view(frame_utc):
+                birdie_sources_in_view.append(b)
         i += 1
-    return birdies_in_view
+    return birdie_sources_in_view
+
+
+def update_birdies(frame_utc, bounding_box, sky_array, birdie_sources_in_view):
+    """Call the generate_birdie method on every BirdieSource object with an RA
+    that may be visible by the given module."""
+    for b in birdie_sources_in_view:
+        point_added = b.generate_birdie(frame_utc, sky_array, bounding_box)
 
 
 def update_birdie_log(birdie_log_path):
@@ -124,20 +153,25 @@ def get_next_frame(file_obj):
 # Simulation loop.
 
 
-def do_simulation(start_utc,
+def do_simulation(data_dir,
+                  birdie_dir,
+                  start_utc,
                   end_utc,
+                  obs_config,
                   birdie_config,
                   integration_time,
                   fin=None,
                   fout=None,
                   noise_mean=0,
                   num_updates=20,
-                  plot_images=False,
-                  avg_t_per_frame=0.015):
+                  module_id='test',
+                  plot_images=False
+                  ):
     # Setup simulation.
     module, sky_array, birdie_sources, sigma, num_frames, time_step = \
-        do_setup(start_utc, end_utc, integration_time, birdie_config)
+        do_setup(start_utc, end_utc, obs_config, birdie_config, integration_time, module_id)
 
+    avg_t_per_frame = 0.015
     print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({num_frames} frames)'
           f'\n\tEstimated time to completion: {round(avg_t_per_frame * num_frames // 60)} '
           f'min {round(avg_t_per_frame * num_frames % 60)} s')
@@ -153,12 +187,12 @@ def do_simulation(start_utc,
         module.update_center_ra_dec_coords(t)
         bounding_box = birdie_utils.get_coord_bounding_box(module.center_ra, module.center_dec)
 
-        # Update birdie signal points.
-        sky_array.fill(0)
-        birdies_in_view = update_birdies(t, bounding_box, sky_array, birdie_sources)
-
         # Check if any birdies are visible by the module, and
-        if birdies_in_view:
+        birdie_sources_in_view = get_birdie_sources_in_view(t, bounding_box, birdie_sources)
+        if birdie_sources_in_view:
+            # Update birdie signal points.
+            sky_array.fill(0)
+            update_birdies(t, bounding_box, sky_array, birdie_sources_in_view)
             # Apply a 2d gaussian filter to simulate optical distortion due to the Fesnel lens.
             blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
             # We must copy the filtered array because the views initialized in module
@@ -174,7 +208,7 @@ def do_simulation(start_utc,
     avg_time = total_time / num_frames
     print(f'\nNum sims = {num_frames}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
     if plot_images:
-        birdie_utils.build_gif()
+        birdie_utils.build_gif(data_dir, birdie_dir)
 
 
 #raw_img, j = get_next_frame(fin)

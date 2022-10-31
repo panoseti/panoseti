@@ -37,15 +37,17 @@ class BaseBirdieSource:
         self.max_dt = self.end_utc - self.start_utc
         self.max_cycle_pos = self.duty_cycle * self.period
 
-    def generate_birdie(self, frame_utc, sky_array, bounding_box):
-        """Generate a birdie and add it to sky_array. Returns True if sky_array is modified and False otherwise."""
+    def is_in_view(self, frame_utc):
         dt = frame_utc - self.start_utc
         if 0 <= dt <= self.max_dt:
             if math.fmod(dt, self.period) <= self.max_cycle_pos:
-                ax, ay = ra_dec_to_sky_array_indices(self.ra, self.dec, bounding_box)
-                sky_array[ax, ay] = self.intensity#self.pulse_intensity(frame_utc)
                 return True
         return False
+
+    def generate_birdie(self, frame_utc, sky_array, bounding_box):
+        """Generate a birdie and add it to sky_array. Returns True if sky_array is modified and False otherwise."""
+        ax, ay = ra_dec_to_sky_array_indices(self.ra, self.dec, bounding_box)
+        sky_array[ax, ay] = self.pulse_intensity(frame_utc)
 
     def pulse_intensity(self, frame_utc):
         """Returns the intensity of this birdie at frame_utc in raw adc units."""
