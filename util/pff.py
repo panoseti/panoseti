@@ -57,6 +57,9 @@ def skip_image(f, img_size, bytes_per_pixel):
 def write_image_1D(f, img, img_size, bytes_per_pixel):
     f.write(b'*')
     if img_size == 32:
+        if bytes_per_pixel == 1:
+            f.write(struct.pack("1024B", *img))
+            return
         if bytes_per_pixel == 2:
             f.write(struct.pack("1024H", *img))
             return

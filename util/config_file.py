@@ -111,7 +111,7 @@ def get_daq_config():
 
 def get_data_config(dir='.'):
     path = '%s/%s'%(dir, data_config_filename)
-    check_config_file(path)
+    check_config_file(data_config_filename, dir)
     with open(path) as f:
         c = f.read()
     conf = json.loads(c)

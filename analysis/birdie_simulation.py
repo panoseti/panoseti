@@ -4,12 +4,15 @@ import numpy as np
 import math
 import json
 import os
+import sys
 from scipy.ndimage import gaussian_filter
 
 import birdie_utils
 from birdie_source import BaseBirdieSource
 from module_view import ModuleView
 
+sys.path.append('../util')
+import pff
 
 # Setup / Initialization
 
@@ -18,7 +21,7 @@ def init_sky_array(array_resolution):
     return birdie_utils.get_sky_image_array(array_resolution, verbose=True)
 
 
-def init_module(sky_array, obs_config, module_id, start_utc):
+def init_module(start_utc, obs_config, module_id, bytes_per_pixel, sky_array):
     if obs_config:
         for dome in obs_config['domes']:
             for module in dome['modules']:
@@ -32,6 +35,7 @@ def init_module(sky_array, obs_config, module_id, start_utc):
                         module['azimuth'],
                         module['elevation'],
                         module['position_angle'],
+                        bytes_per_pixel,
                         sky_array
                     )
     else:
@@ -59,7 +63,7 @@ def init_birdies(num, param_ranges):
     return birdie_sources
 
 
-def do_setup(start_utc, end_utc, obs_config, birdie_config, integration_time, module_id):
+def do_setup(start_utc, end_utc, obs_config, birdie_config, bytes_per_pixel, integration_time, module_id):
     """Initialize objects and arrays for birdie injection.
     integration_time is in usec. birdie_config is a file object."""
     print('Setup simulation:')
@@ -67,7 +71,7 @@ def do_setup(start_utc, end_utc, obs_config, birdie_config, integration_time, mo
     sky_array = init_sky_array(birdie_config['array_resolution'])
 
     # Init ModuleView object
-    mod = init_module(sky_array, obs_config, module_id, start_utc)
+    mod = init_module(start_utc, obs_config, module_id, bytes_per_pixel, sky_array)
     initial_bounding_box = birdie_utils.get_coord_bounding_box(mod.center_ra, mod.center_dec)
     birdie_utils.init_ra_dec_ranges(start_utc, end_utc, initial_bounding_box, module_id)
 
@@ -132,21 +136,46 @@ def update_birdie_log(birdie_log_path):
             f.write(json_obj)
 
 
-def get_next_frame(file_obj):
+def get_next_frame(file_obj, bytes_per_pixel):
     """Returns the next image frame from file_obj."""
     j, img = None, None
     start_timestamp = None
     try:
+        #j0 = file_obj.tell()
         j = pff.read_json(file_obj)
         j = json.loads(j.encode())
-        # For ph files: img size = 16 x 16 and bytes per pixel = 2.
-        img = pff.read_image(file_obj, 32, 2)
+        #j1 = file_obj.tell()
+        img = pff.read_image(file_obj, 32, bytes_per_pixel)
+        #j2 = file_obj.tell()
+        #json_len = j1 - j0
+        #img_len = j2 - j1
+        # fin.seek(922972-580)
+        #print(f'before img: ={j1}, after img: {j2}, num_bytes={j2-j1}')
+        # input(pff.read_json(fin))
     except Exception as e:
         # Deal with EOF issue in pff.read_json
-        if repr(e)[:26] == "Exception('bad type code',":
-            return None
+        if str(e) == "('read_json(): expected {, got', b'')":
+            return None, None
+        else:
+            raise
+    '''
     if not j or not img:
-        return None
+        if not j:
+            print('no json')
+            print(f'file_pointer = {file_obj.tell()}"')
+        if not img:
+            print('no img')
+            print(f'file_pointer = {file_obj.tell()}')
+        return None, None
+    
+    if json_len != 583:
+        print(f'json_len={json_len} at {j0}')
+        input(j)
+        input
+    if img_len != 1025:
+        print(f'img_len={img_len} at {j1}')
+        input(img)
+    '''
     return img, j
 
 
@@ -159,17 +188,31 @@ def do_simulation(data_dir,
                   end_utc,
                   obs_config,
                   birdie_config,
+                  bytes_per_pixel,
                   integration_time,
-                  fin=None,
-                  fout=None,
+                  f,
                   noise_mean=0,
                   num_updates=20,
                   module_id='test',
                   plot_images=False
                   ):
     # Setup simulation.
-    module, sky_array, birdie_sources, sigma, num_frames, time_step = \
-        do_setup(start_utc, end_utc, obs_config, birdie_config, integration_time, module_id)
+    module, sky_array, birdie_sources, sigma, num_frames, time_step = do_setup(
+        start_utc, end_utc, obs_config, birdie_config, bytes_per_pixel, integration_time, module_id
+    )
+    frame_size = bytes_per_pixel * 1024 + 1
+
+    """
+    while True:
+        print("\nNEXT FRAME:")
+        img, j = get_next_frame(f, bytes_per_pixel)
+        print(f'current img:\n\t{img}')
+        print(f'file pointer before ={f.tell()}')
+        next_img = np.ones(1024, dtype=np.int8) * 30
+        input(f'next img:\n\t{next_img}')
+        f.seek(-frame_size, 1)
+        pff.write_image_1D(f, next_img, 32, bytes_per_pixel)
+    """
 
     avg_t_per_frame = 0.015
     print(f'Start simulation of {round((end_utc - start_utc) / 60, 2)} minute file ({num_frames} frames)'
@@ -179,9 +222,18 @@ def do_simulation(data_dir,
     s = time.time()
 
     noisy_img = np.random.poisson(noise_mean, 1024)
-    t = start_utc
-    while t < end_utc:
-        birdie_utils.show_progress(frame_num, noisy_img, module, num_frames, num_updates, plot_images)
+    #t = start_utc
+    while True:
+        img, j = get_next_frame(f, bytes_per_pixel)
+        t = pff.img_header_time(j)
+        if img is None or t >= end_utc:
+            if img is None:
+                print('\tReached EOF.')
+            if t >= end_utc:
+                print('\tReached last frame before specified end_utc.')
+            break
+
+        birdie_utils.show_progress(frame_num, img, module, num_frames, num_updates, plot_images)
 
         # Update module on-sky position.
         module.update_center_ra_dec_coords(t)
@@ -199,8 +251,12 @@ def do_simulation(data_dir,
             # are linked to the original sky_array for efficiency purposes.
             np.copyto(sky_array, blurred_sky_array)
             module.simulate_all_pixel_fovs()
+            # Add simulated image to img.
+            f.seek(-frame_size, 1)
+            raw_plus_birdie_img = module.add_birdies_to_image_array(img)
+            pff.write_image_1D(f, raw_plus_birdie_img, 32, bytes_per_pixel)
 
-        t += time_step
+        #t += time_step
         frame_num += 1
 
     e = time.time()

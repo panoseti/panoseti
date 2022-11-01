@@ -59,6 +59,7 @@ def do_file(data_dir, run_dir, birdie_dir, fin_name, sequence_num, params):
     print('Injecting birdies into', fin_name)
     print('Setup:')
     file_attrs = pff.parse_name(fin_name)
+    bytes_per_pixel = 1 if file_attrs['dp'] == 'img8' else 2
     birdie_config = birdie_utils.get_birdie_config('birdie_config.json')
     obs_config = config_file.get_obs_config(f'{data_dir}/{run_dir}')
 
@@ -67,7 +68,7 @@ def do_file(data_dir, run_dir, birdie_dir, fin_name, sequence_num, params):
     with open(f'{data_dir}/{run_dir}/run_complete') as f:
         end_iso = f.readline()  # use the timestamp in "data/$run/run_complete"
 
-    # Get timing info
+    # Get timing info default is currently min and max filetimes.
     start_utc = birdie_utils.iso_to_utc(start_iso)
     end_utc = birdie_utils.iso_to_utc(end_iso)
     integration_time = birdie_utils.get_integration_time(data_dir, run_dir)
@@ -83,25 +84,29 @@ def do_file(data_dir, run_dir, birdie_dir, fin_name, sequence_num, params):
     #print(f"fin= {fin_path},\nfout={fout_path}")
     # Create a copy of the file fin_name for birdie injection.
     with open(fin_path, 'rb') as fin, open(fout_path, 'w+b') as fout:
-        print(f'\tCopying:\n\t\tFrom:\t{fin_name}\n\t\tTo:\t\t{fout_name}')
+        #print(f'\tCopying:\n\t\tFrom:\t{fin_name}\n\t\tTo:\t\t{fout_name}')
         shutil.copy(fin_path, fout_path)
-        # Do simulation
+        # Move file pointers to the frame closest to start_utc
+        #pff.time_seek(fin, integration_time, bytes_per_pixel * 1024, start_utc)
+        #pff.time_seek(fout, integration_time, bytes_per_pixel, start_utc)
         birdie_sim.do_simulation(
-                data_dir,
-                birdie_dir,
-                start_utc,
-                end_utc,
-                obs_config,
-                birdie_config,
-                integration_time,
-                fin=fin,
-                fout=fout,
-                noise_mean=0,
-                num_updates=20,
-                module_id=int(file_attrs['module']),
-                plot_images=False
-            )
+            data_dir,
+            birdie_dir,
+            start_utc,
+            end_utc,
+            obs_config,
+            birdie_config,
+            bytes_per_pixel,
+            integration_time,
+            fout,
+            noise_mean=0,
+            num_updates=20,
+            module_id=int(file_attrs['module']),
+            plot_images=False
+        )
 
+    #with open(fout_path, 'w+b') as f:
+# Do simulation
 
 def do_run(data_dir, run_dir, fin_name, params):
     """Run birdie injection on a real observing run."""

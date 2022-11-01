@@ -28,7 +28,7 @@ class ModuleView:
     pixel_size = 0.31
     max_pixel_counter_value = 2**8 - 1
 
-    def __init__(self, module_id, start_time_utc, obslat, obslon, obsalt, azimuth, elevation, pos_angle, sky_array):
+    def __init__(self, module_id, start_time_utc, obslat, obslon, obsalt, azimuth, elevation, pos_angle, bytes_per_pixel, sky_array):
         self.module_id = module_id
         # Module orientation
         self.azimuth = azimuth * u.deg
@@ -46,8 +46,15 @@ class ModuleView:
         )
         self.pixel_fovs = dict()
         self.init_center_ra_dec_coords(start_time_utc, sky_array)
-        # Simulated data
-        self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.int16)
+        # Simulated data array. dtype is double the max possible value
+        if bytes_per_pixel == 1:
+            self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.uint16)
+            self.max_pixel_counter_value = 2**8 - 1
+        elif bytes_per_pixel == 2:
+            self.simulated_img_arr = np.zeros(self.pixels_per_side**2, dtype=np.uint32)
+            self.max_pixel_counter_value = 2**16 - 1
+        else:
+            raise Warning(f'bytes_per_pixel must be 1 or 2, not "{bytes_per_pixel}"')
 
     def __str__(self):
         loc_geodetic = self.earth_loc.to_geodetic(ellipsoid="WGS84")
@@ -127,9 +134,9 @@ class ModuleView:
     def add_birdies_to_image_array(self, raw_img):
         assert len(raw_img) == len(self.simulated_img_arr)
         raw_with_birdies = raw_img + self.simulated_img_arr
+        return np.clip(raw_with_birdies, 0, self.max_pixel_counter_value)
         #indices_above_max_counter_val = np.nonzero(raw_with_birdies > self.max_pixel_counter_value)
         #raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
-        return raw_with_birdies
 
     def simulate_all_pixel_fovs(self):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
@@ -139,7 +146,7 @@ class ModuleView:
                 # Sum the intensities in each element of sky_array visible by pixel (px, py) and
                 # return a counter value to add to the current image frame.
                 total_intensity = self.pixel_fovs[px, py].sum()
-                self.simulated_img_arr[px * 32 + py] = total_intensity
+                self.simulated_img_arr[px * 32 + py] = min(total_intensity, self.max_pixel_counter_value)
 
     def plot_simulated_image(self, raw_img):
         """Plot the simulated image array."""
