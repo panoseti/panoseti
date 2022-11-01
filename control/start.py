@@ -15,7 +15,7 @@
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
-import os, sys, traceback, shutil
+import os, sys, traceback, shutil, time
 import util, file_xfer, quabo_driver
 
 sys.path.insert(0, '../util')
@@ -29,6 +29,18 @@ def help():
     print("--no_redis: OK if redis daemons not running")
     print("--no_data: set up to record, but don't start data flow or record")
     print("--verbose: print commands")
+
+# check that PH calibration file is present, nonempty, and at most 24 hours old
+#
+def ph_baseline_file_ok():
+    if not os.path.exists(config_file.quabo_ph_baseline_filename):
+        print('quabo_ph_baseline.json not found.  Run config.py --calibrate_ph')
+        return False
+    if os.path.getmtime(config_file.quabo_ph_baseline_filename) < time.time() - 24*86400:
+        print('quabo_ph_baseline.json is too old.  Run config.py --calibrate_ph')
+        return False
+    return True
+
 
 # parse the data config file to get DAQ params for quabos
 #
@@ -220,9 +232,12 @@ def start_run(
         
     if not no_redis:
         if not util.are_redis_daemons_running():
-            print('Redis daemons are not running')
+            print('Redis daemons are not running.  Run config.py --redis_daemons')
             util.show_redis_daemons()
             return False
+
+    if not ph_baseline_file_ok():
+        return False
 
     # if head node is also DAQ node, make sure data dirs are the same
     #

@@ -79,7 +79,7 @@ function main() {
         'Recording time',
         'Copy time',
         'Cleanup time',
-        'Files',
+        'Data',
         'Modules',
         'Run type',
         'Tags',
