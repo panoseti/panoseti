@@ -12,10 +12,10 @@ sys.path.append('../util')
 import pff
 from analysis_util import *
 
-def do_run(run, params, username):
-    analysis_dir = make_analysis_dir(ANALYSIS_TYPE_VISUAL, run)
-    nframes = img_seconds_to_frames(run, params['seconds'])
-    for f in os.listdir('data/%s'%run):
+def do_run(vol, run, params, username):
+    analysis_dir = make_analysis_dir(ANALYSIS_TYPE_VISUAL, vol, run)
+    nframes = img_seconds_to_frames(vol, run, params['seconds'])
+    for f in os.listdir('%s/data/%s'%(vol, run)):
         if not pff.is_pff_file(f): continue
         t = pff.pff_file_type(f)
         if t == 'img16':
@@ -25,7 +25,7 @@ def do_run(run, params, username):
         else:
             continue
 
-        file_path = 'data/%s/%s'%(run, f)
+        file_path = '%s/data/%s/%s'%(vol, run, f)
         if os.path.getsize(file_path) == 0: continue;
 
         file_attrs = pff.parse_name(f)
@@ -61,6 +61,7 @@ if __name__ == '__main__':
         'seconds': 10
     }
     run = None
+    vol = None
     username = None
     argv = sys.argv
     i = 1
@@ -68,6 +69,9 @@ if __name__ == '__main__':
         if argv[i] == '--run':
             i += 1
             run = argv[i]
+        elif argv[i] == '--vol':
+            i += 1
+            vol = argv[i]
         elif argv[i] == '--seconds':
             i += 1
             params['seconds'] = float(argv[i])
@@ -79,7 +83,9 @@ if __name__ == '__main__':
         i += 1
     if not run:
         raise Exception('no run specified')
+    if not vol:
+        raise Exception('no volume specified')
     if not username:
         username = getpass.getuser()
 
-    do_run(run, params, username)
+    do_run(vol, run, params, username)

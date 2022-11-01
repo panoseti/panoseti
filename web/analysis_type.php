@@ -6,8 +6,8 @@ require_once("analysis.inc");
 // show analyses of the given type for an obs run,
 // and a form for doing another analysis
 
-function show_analyses($type, $run) {
-    $analyses = get_analyses($type, $run);
+function show_analyses($type, $vol, $run) {
+    $analyses = get_analyses($type, $vol, $run);
     if (!$analyses) {
         echo "No analyses";
         return;
@@ -22,8 +22,8 @@ function show_analyses($type, $run) {
     foreach ($analyses as $a) {
         table_row(
             sprintf(
-                "<a href=%s_show.php?run=%s&analysis=%s>%s</a>",
-                $type, $run, $a->dir, $a->when
+                "<a href=%s_show.php?vol=%s&run=%s&analysis=%s>%s</a>",
+                $type, $vol, $run, $a->dir, $a->when
             ),
             $a->username,
             $a->comments,
@@ -33,19 +33,22 @@ function show_analyses($type, $run) {
     end_table();
 }
 
-function main($type, $run) {
+function main($type, $vol, $run) {
     global $analysis_type_name;
     page_head(sprintf('%s for %s', $analysis_type_name[$type], $run));
     echo "<h2>Analyses</h2>\n";
-    show_analyses($type, $run);
+    show_analyses($type, $vol, $run);
     echo "<h2>Do analysis</h2>\n";
-    analysis_form($type, $run);
+    analysis_form($type, $vol, $run);
     page_tail();
 }
 
 $type = get_str('type');
 $run = get_str('run');
+$vol = get_str('vol');
+check_filename($run);
+check_filename($vol);
 
-main($type, $run);
+main($type, $vol, $run);
 
 ?>

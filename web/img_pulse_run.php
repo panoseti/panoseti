@@ -8,6 +8,7 @@ require_once("panoseti.inc");
 function main() {
     $username = get_login();
     $run = get_str('run');
+    $vol = get_str('vol');
     $nlevels = get_int('nlevels');
     $win_size = get_int('win_size');
     $thresh = (double)get_str('thresh');
@@ -20,8 +21,8 @@ function main() {
         error_page("no pixels specified");
     }
     $cmd = sprintf(
-        './img_pulse.py --run %s --nlevels %d --win_size %d --thresh %f',
-        $run, $nlevels, $win_size, $thresh
+        './img_pulse.py --vol %s --run %s --nlevels %d --win_size %d --thresh %f',
+        $vol, $run, $nlevels, $win_size, $thresh
     );
     if ($username) {
         $cmd .= " --username $username ";
@@ -44,7 +45,7 @@ function main() {
         echo "$cmd returned $retval";
         return;
     }
-    header("Location: analysis_type.php?type=img_pulse&run=$run");
+    header("Location: analysis_type.php?type=img_pulse&vol=$vol&run=$run");
 }
 
 main();

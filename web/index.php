@@ -10,8 +10,8 @@ function compare($x, $y) {
     return $x[0] < $y[0];
 }
 
-function tags($run) {
-    $t = @file_get_contents("data/$run/tags.json");
+function tags($vol, $run) {
+    $t = @file_get_contents("$vol/data/$run/tags.json");
     if ($t) {
         $tags = json_decode($t);
     } else {
@@ -28,19 +28,19 @@ function tags($run) {
     return $x;
 }
 
-function get_durations($run, $start_dt) {
+function get_durations($vol, $run, $start_dt) {
     $rec_dur = '---';
     $collect_dur = '---';
     $cleanup_dur = '---';
-    $rec_end = @file_get_contents("data/$run/recording_ended");
+    $rec_end = @file_get_contents("$vol/data/$run/recording_ended");
     if ($rec_end) {
         $rec_end_dt = local_to_dt($rec_end);
         $rec_dur = dt_diff_str($start_dt, $rec_end_dt);
-        $collect_end = @file_get_contents("data/$run/collect_complete");
+        $collect_end = @file_get_contents("$vol/data/$run/collect_complete");
         if ($collect_end) {
             $collect_end_dt = local_to_dt($collect_end);
             $collect_dur = dt_diff_str($rec_end_dt, $collect_end_dt);
-            $cleanup_end = @file_get_contents("data/$run/run_complete");
+            $cleanup_end = @file_get_contents("$vol/data/$run/run_complete");
             if ($cleanup_end) {
                 $cleanup_end_dt = local_to_dt($cleanup_end);
                 $cleanup_dur = dt_diff_str($collect_end_dt, $cleanup_end_dt);
@@ -65,11 +65,14 @@ function main() {
         <h2>Observing runs</h2>
         <p>
     ";
+    $vols = ['home', 'data10'];
     $runs = [];
-    foreach (scandir("data") as $f) {
-        if (!strstr($f, '.pffd')) continue;
-        $n = parse_pff_name($f);
-        $runs[] = [$n['start'], $f];
+    foreach ($vols as $vol) {
+        foreach (scandir("$vol/data") as $f) {
+            if (!strstr($f, '.pffd')) continue;
+            $n = parse_pff_name($f);
+            $runs[] = [$n['start'], $f, $vol];
+        }
     }
     usort($runs, 'compare');
     $prev_day =  '';
@@ -82,11 +85,13 @@ function main() {
         'Data',
         'Modules',
         'Run type',
+        'Volume',
         'Tags',
         'Analyses'
     );
     foreach ($runs as $run) {
         $name = $run[1];
+        $vol = $run[2];
         $n = parse_pff_name($name);
         $start = $run[0];
         $start_dt = iso_to_dt($start);
@@ -97,17 +102,18 @@ function main() {
             row1($day, 99, 'info');
             $prev_day = $day;
         }
-        [$rec_dur, $collect_dur, $cleanup_dur] = get_durations($name, $start_dt);
+        [$rec_dur, $collect_dur, $cleanup_dur] = get_durations($vol, $name, $start_dt);
         table_row(
-            "<a href=run.php?name=$name>$time</a>",
+            "<a href=run.php?vol=$vol&name=$name>$time</a>",
             $rec_dur,
             $collect_dur,
             $cleanup_dur,
-            implode('<br>', run_data_products($name)),
-            implode('<br>', run_modules($name)),
+            implode('<br>', run_data_products($vol, $name)),
+            implode('<br>', run_modules($vol, $name)),
             $n['runtype'],
-            tags($name),
-            run_analyses_str($name)
+            $vol,
+            tags($vol, $name),
+            run_analyses_str($vol, $name)
         );
     }
     end_table();

@@ -140,8 +140,8 @@ function post_str($key, $optional=false) {
 // Do this for any filename passed in a URL
 //
 function check_filename($name) {
-    if (strstr($name, "..")) die("");
-    if ($name[0] == "/") die("");
+    if (strstr($name, "..")) die("bad filename");
+    if ($name[0] == "/") die("bad filename");
 }
 
 // various stuff copied from boinc/html/inc/util.inc
@@ -349,9 +349,9 @@ function parse_pff_name($name) {
 
 // return list of data products in run
 //
-function run_data_products($name) {
+function run_data_products($vol, $name) {
     $s = [];
-    $dc = json_decode(@file_get_contents("data/$name/data_config.json"));
+    $dc = json_decode(@file_get_contents("$vol/data/$name/data_config.json"));
     if (!$dc) {
         $s[] = '---';
         return $s;
@@ -371,9 +371,9 @@ function run_data_products($name) {
 
 // return list of modules in run
 //
-function run_modules($name) {
+function run_modules($vol, $name) {
     $s = [];
-    $oc = json_decode(@file_get_contents("data/$name/obs_config.json"));
+    $oc = json_decode(@file_get_contents("$vol/data/$name/obs_config.json"));
     if (!$oc) {
         $s[] = '---';
         return $s;

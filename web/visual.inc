@@ -2,8 +2,9 @@
 
 require_once("bootstrap.inc");
 
-function visual_form($run) {
+function visual_form($vol, $run) {
     form_start("visual_run.php");
+    form_input_hidden('vol', $vol);
     form_input_hidden('run', $run);
     form_input_text(
         "Seconds<br><small>Analyze first N seconds of files</small>",

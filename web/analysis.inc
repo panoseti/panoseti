@@ -29,17 +29,17 @@ function show_global_analysis_types() {
 
 // return the number of analyses of the given type
 //
-function analysis_count($run, $type) {
-    $dir = "analysis/$run/$type";
+function analysis_count($vol, $run, $type) {
+    $dir = "$vol/analysis/$run/$type";
     if (!is_dir($dir)) return 0;
     return count(scandir($dir))-2;
 }
 
-function show_analysis_types($run) {
+function show_analysis_types($vol, $run) {
     global $analysis_type_name;
     foreach ($analysis_type_name as $type=>$name) {
-        $n = analysis_count($run, $type);
-        echo "<p><a href=analysis_type.php?type=$type&run=$run>$name</a>";
+        $n = analysis_count($vol, $run, $type);
+        echo "<p><a href=analysis_type.php?type=$type&vol=$vol&run=$run>$name</a>";
         if ($n) {
             echo " ($n)";
         }
@@ -77,25 +77,25 @@ function get_analyses_aux($dir) {
     return $analyses;
 }
 
-function get_analyses($type, $run) {
+function get_analyses($type, $vol, $run) {
     return get_analyses_aux(
-        sprintf('%s/%s/%s', ANALYSIS_ROOT, $run, $type)
+        sprintf('%s/analysis/%s/%s', $vol, $run, $type)
     );
 }
 
 function get_global_analyses($type) {
     return get_analyses_aux(
-        sprintf('%s/%s', ANALYSIS_ROOT, $type)
+        sprintf('analysis/%s', $type)
     );
 }
 
 // return list of analysis types that have been done for this run
 //
-function run_analyses_str($run) {
+function run_analyses_str($vol, $run) {
     global $analysis_type_name;
     $x = [];
     foreach ($analysis_type_name as $type=>$name) {
-        if (is_dir(sprintf("%s/%s/%s", ANALYSIS_ROOT, $run, $type))) {
+        if (is_dir(sprintf("%s/analysis/%s/%s", $vol, $run, $type))) {
             $x[] = $name;
         }
     }
@@ -115,13 +115,13 @@ function params_str($type, $params) {
     }
 }
 
-function analysis_form($type, $run) {
+function analysis_form($type, $vol, $run) {
     switch ($type) {
     case 'img_pulse':
-        img_pulse_form($run);
+        img_pulse_form($vol, $run);
         break;
     case 'visual':
-        visual_form($run);
+        visual_form($vol, $run);
         break;
     default:
         die("bad type $type");

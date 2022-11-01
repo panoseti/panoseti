@@ -36,10 +36,10 @@ def make_dir(path):
 
 # create an analysis run directory; return path
 #
-def make_analysis_dir(analysis_type, run=None):
+def make_analysis_dir(analysis_type, vol=None, run=None):
     make_dir(ANALYSIS_ROOT)
     if run:
-        run_dir = make_dir('%s/%s'%(ANALYSIS_ROOT, run))
+        run_dir = make_dir('%s/%s/%s'%(vol, ANALYSIS_ROOT, run))
         type_dir = make_dir('%s/%s'%(run_dir, analysis_type))
     else:
         type_dir = make_dir('%s/%s'%(ANALYSIS_ROOT, analysis_type))
@@ -48,8 +48,8 @@ def make_analysis_dir(analysis_type, run=None):
 
 # convert nsecs to nframes, based on frame rate
 #
-def img_seconds_to_frames(run, seconds):
-    data_config = config_file.get_data_config('data/%s'%run)
+def img_seconds_to_frames(vol, run, seconds):
+    data_config = config_file.get_data_config('%s/data/%s'%(vol, run))
     x = float(data_config['image']['integration_time_usec'])
     return seconds*1.e6/x
 
