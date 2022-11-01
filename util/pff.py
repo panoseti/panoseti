@@ -1,7 +1,7 @@
 # functions to parse PFF files,
 # and to create and parse PFF dir/file names
 
-import struct, os, time, datetime
+import struct, os, time, datetime, json
 
 # returns the string (doesn't parse it)
 #
@@ -118,7 +118,7 @@ def pff_file_type(name):
 # return time from parsed JSON header
 #
 def pkt_header_time(h):
-    return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], ['tv_sec'])
+    return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
 
 def img_header_time(h):
     return pkt_header_time(h['quabo_0'])
@@ -130,7 +130,7 @@ def img_header_time(h):
 # last_t
 #
 def img_info(f, bytes_per_image):
-    h = read_json(f)
+    h = json.loads(read_json(f))
     header_size = f.tell()
     frame_size = header_size + bytes_per_image
     file_size = f.seek(0, os.SEEK_END)
@@ -141,7 +141,7 @@ def img_info(f, bytes_per_image):
     nframes = file_size/frame_size
     first_t = img_header_time(h)
     f.seek(-frame_size, os.SEEK_END)
-    h = read_json(f)
+    h = json.loads(read_json(f))
     last_t = img_header_time(h)
     return [frame_size, nframes, first_t, last_t]
 
