@@ -10,8 +10,9 @@ define('OFFSET_STDDEV', 3);
 define('OFFSET_NSIGMA', 4);
 define('OFFSET_PIXEL',  5);
 
-function img_pulse_form($run) {
+function img_pulse_form($vol, $run) {
     form_start("img_pulse_run.php");
+    form_input_hidden('vol', $vol);
     form_input_hidden('run', $run);
     form_input_text("# of duration octaves", "nlevels");
     form_input_text("Size of window for mean/stddev", "win_size");

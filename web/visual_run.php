@@ -7,10 +7,11 @@ require_once("panoseti.inc");
 
 function main() {
     $username = get_login();
+    $vol = get_str('vol');
     $run = get_str('run');
     $seconds = get_int('seconds');
 
-    $cmd = sprintf('./write_images.py --run %s', $run);
+    $cmd = sprintf('./write_images.py --vol %s --run %s', $vol, $run);
     if ($username) {
         $cmd .= " --username $username ";
     }
@@ -22,7 +23,7 @@ function main() {
         echo "$cmd returned $retval";
         return;
     }
-    header("Location: analysis_type.php?type=visual&run=$run");
+    header("Location: analysis_type.php?type=visual&vol=$vol&run=$run");
 }
 
 main();

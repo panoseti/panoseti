@@ -7,8 +7,8 @@
 require_once("panoseti.inc");
 require_once("analysis.inc");
 
-function add_tag($run) {
-    $t = @file_get_contents("data/$run/tags.json");
+function add_tag($vol, $run) {
+    $t = @file_get_contents("$vol/data/$run/tags.json");
     if ($t) {
         $tags = json_decode($t);
     } else {
@@ -25,11 +25,11 @@ function add_tag($run) {
         die("must give a tag");
     }
     $tags[] = $tag;
-    file_put_contents("data/$run/tags.json", json_encode($tags));
-    header("Location: run.php?name=$run");
+    file_put_contents("$vol/data/$run/tags.json", json_encode($tags));
+    header("Location: run.php?vol=$vol&name=$run");
 }
 
-function tags_form($run) {
+function tags_form($vol, $run) {
     if (!login_name()) {
         echo "<a href=login.php>Log in</a> to add a tag.";
         return;
@@ -39,6 +39,7 @@ function tags_form($run) {
         Add tag:
         <form method=post action=run.php>
         <input type=hidden name=name value=$run>
+        <input type=hidden name=vol value=$vol>
         <input name=tag>
         <p><p>
         <input type=submit name=add_tag value=OK>
@@ -46,8 +47,8 @@ function tags_form($run) {
     ";
 }
 
-function show_tags($run) {
-    $t = @file_get_contents("data/$run/tags.json");
+function show_tags($vol, $run) {
+    $t = @file_get_contents("$vol/data/$run/tags.json");
     if ($t) {
         $tags = json_decode($t);
     } else {
@@ -65,8 +66,8 @@ function show_tags($run) {
     }
 }
 
-function add_comment($run) {
-    $t = @file_get_contents("data/$run/comments.json");
+function add_comment($vol, $run) {
+    $t = @file_get_contents("$vol/data/$run/comments.json");
     if ($t) {
         $comments = json_decode($t);
     } else {
@@ -83,11 +84,11 @@ function add_comment($run) {
         die("must give a comment");
     }
     $comments[] = $c;
-    file_put_contents("data/$run/comments.json", json_encode($comments));
-    header("Location: run.php?name=$run");
+    file_put_contents("$vol/data/$run/comments.json", json_encode($comments));
+    header("Location: run.php?vol=$vol&name=$run");
 }
 
-function comments_form($run) {
+function comments_form($vol, $run) {
     if (!login_name()) {
         echo "<a href=login.php>Log in</a> to add a comment.";
         return;
@@ -98,6 +99,7 @@ function comments_form($run) {
         <p>
         <form method=post action=run.php>
         <input type=hidden name=name value=$run>
+        <input type=hidden name=vol value=$vol>
         <textarea name=comment rows4 cols=40></textarea>
         <p>
         <input type=submit name=add_comment value=OK>
@@ -105,8 +107,8 @@ function comments_form($run) {
     ";
 }
 
-function show_comments($run) {
-    $t = @file_get_contents("data/$run/comments.json");
+function show_comments($vol, $run) {
+    $t = @file_get_contents("$vol/data/$run/comments.json");
     if ($t) {
         $comments = json_decode($t);
     } else {
@@ -124,10 +126,10 @@ function show_comments($run) {
     }
 }
 
-function main($run) {
-    page_head("Observing run: $run");
+function main($vol, $run) {
+    page_head("Observing run: $vol $run");
 
-    $dir = "data/$run";
+    $dir = "$vol/data/$run";
 
     echo "<h2>Data files</h2>";
     start_table('table-striped');
@@ -140,7 +142,7 @@ function main($run) {
     foreach (scandir($dir) as $f) {
         if ($f[0] == ".") continue;
         if (!is_pff($f)) continue;
-        $n = filesize("data/$run/$f");
+        $n = filesize("$vol/data/$run/$f");
         if (!$n) continue;
         $n = number_format($n/1e6, 2);
         $p = parse_pff_name($f);
@@ -149,8 +151,8 @@ function main($run) {
         dt_to_local($start);
         table_row(
             sprintf(
-                '<a href=file.php?run=%s&fname=%s>%s</a>',
-                $run, $f, dt_time_str($start)
+                '<a href=file.php?vol=%s&run=%s&fname=%s>%s</a>',
+                $vol, $run, $f, dt_time_str($start)
             ),
             $p['dp'], $p['module'], $n
         );
@@ -162,34 +164,40 @@ function main($run) {
         if (is_pff($f)) continue;
         if (in_array($f, ['comments.json', 'tags.json'])) continue;
         echo "<br>
-            <a href=data/$run/$f>$f</a>
+            <a href=$vol/data/$run/$f>$f</a>
         ";
     }
 
     echo "<h2>Analyses</h2>\n";
-    show_analysis_types($run);
+    show_analysis_types($vol, $run);
 
     echo "<h2>Comments</h2>";
-    show_comments($run);
+    show_comments($vol, $run);
     echo "<p>";
-    comments_form($run);
+    comments_form($vol, $run);
 
     echo "<h2>Tags</h2>";
-    show_tags($run);
-    tags_form($run);
+    show_tags($vol, $run);
+    tags_form($vol, $run);
     page_tail();
 }
 
 $run = get_str('name', true);
-if (!$run) $run = post_str('name');
+if ($run) {
+    $vol = get_str('vol');
+} else {
+    $run = post_str('name');
+    $vol = post_str('vol');
+}
+check_filename($vol);
 check_filename($run);
 
 if (post_str('add_comment', true)) {
-    add_comment($run);
+    add_comment($vol, $run);
 } else if (post_str('add_tag', true)) {
-    add_tag($run);
+    add_tag($vol, $run);
 } else {
-    main($run);
+    main($vol, $run);
 }
 
 ?>

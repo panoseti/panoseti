@@ -242,7 +242,7 @@ def do_calibrate_ph(modules, quabo_ids):
     d = datetime.datetime.utcnow()
     x['date'] = d.isoformat()
     x['quabos'] = quabos;
-    with open("quabo_ph_baseline.json", "w") as f:
+    with open(config_file.quabo_ph_baseline_filename, "w") as f:
         f.write(json.dumps(x, indent=4))
 
 if __name__ == "__main__":
