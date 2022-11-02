@@ -9,7 +9,6 @@ These coordinates are used to determine the FoV of each pixel and integrate over
  produced by BirdieSource objects.
 """
 import datetime
-import math
 
 import astropy.coordinates as c
 import astropy.units as u
@@ -59,12 +58,8 @@ class ModuleView:
     def __str__(self):
         loc_geodetic = self.earth_loc.to_geodetic(ellipsoid="WGS84")
         s = f'Module "{self.module_id}" view @ {datetime.datetime.fromtimestamp(self.current_utc)}\n' \
-            f'centered at RA={round(self.center_ra, 1):>6}<deg>, DEC={round(self.center_dec, 1):5>}<deg>, pos angle={self.pos_angle}<deg>'
-        """
-        f'Lon={round(loc_geodetic.lon.value, 3)}<deg>, ' \
-        f'Lat={round(loc_geodetic.lat.value, 3)}<deg>, ' \
-        f'Height={round(loc_geodetic.height.value, 3)}<m>'
-        """
+            f'centered at RA={round(self.center_ra, 1):>6}<deg>, ' \
+            f'DEC={round(self.center_dec, 1):5>}<deg>, pos angle={self.pos_angle}<deg>'
         return s
 
     def init_center_ra_dec_coords(self, frame_utc, sky_array):
@@ -129,14 +124,11 @@ class ModuleView:
         self.center_ra = (self.center_ra + dt * 360 / (24 * 60 * 60)) % 360
         self.current_utc = frame_utc
         self.get_pixel_corner_coord = self.get_module_pixel_corner_coord_ftn(self.center_ra, self.center_dec)
-        #print(f'center_ra, center_dec = {self.center_ra, self.center_dec}')
 
     def add_birdies_to_image_array(self, raw_img):
         assert len(raw_img) == len(self.simulated_img_arr)
         raw_with_birdies = raw_img + self.simulated_img_arr
         return np.clip(raw_with_birdies, 0, self.max_pixel_counter_value)
-        #indices_above_max_counter_val = np.nonzero(raw_with_birdies > self.max_pixel_counter_value)
-        #raw_with_birdies[indices_above_max_counter_val] = self.max_pixel_counter_value
 
     def simulate_all_pixel_fovs(self):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
@@ -154,8 +146,7 @@ class ModuleView:
         raw_with_birdies = self.add_birdies_to_image_array(raw_img)
         raw_with_birdies_32x32 = np.resize(raw_with_birdies, (32, 32))
         fig1, ax = plt.subplots()
-        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32, vmin=0, vmax=3000)
+        ax.pcolormesh(np.arange(s), np.arange(s), raw_with_birdies_32x32, vmin=0, vmax=self.max_pixel_counter_value)
         ax.set_aspect('equal', adjustable='box')
         fig1.suptitle(self)
-        #fig1.show()
         return fig1
