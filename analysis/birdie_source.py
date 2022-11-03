@@ -11,8 +11,6 @@ from birdie_utils import ra_dec_to_sky_array_indices
 import numpy as np
 import math
 
-np.random.seed(10)
-
 
 class BaseBirdieSource:
     """Base class for BirdieSource objects."""
@@ -62,7 +60,7 @@ class BaseBirdieSource:
             }
         """
         log_entry = {
-            'birdie_id': hash(self),
+            'birdie_id': str(hash(self)),
             'intensity': pulse_intensity
         }
         return log_entry

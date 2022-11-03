@@ -20,8 +20,10 @@ from module_view import ModuleView
 sys.path.append('../util')
 from pff import time_seek, read_image, read_json, img_header_time, write_image_1D
 
+np.random.seed(42)
 
-# Setup / Initialization
+
+# Setup: BirdieSources, ModuleView, and sky array.
 
 
 def init_sky_array(array_resolution, verbose):
@@ -60,13 +62,39 @@ def init_module(start_t, obs_config, module_id, bytes_per_pixel, sky_array):
         )
 
 
+def init_birdie_param_ranges(start_t, end_t, param_ranges, module_id):
+    """Param_ranges specifies the range of possible values for each BirdieSource parameter."""
+    l_ra, r_ra = birdie_utils.get_ra_dec_ranges('ra', module_id)
+    l_dec, r_dec = birdie_utils.get_ra_dec_ranges('dec', module_id)
+    if r_ra < l_ra:
+        r_ra += 360
+
+    param_ranges['ra'] = (l_ra, r_ra)
+    param_ranges['dec'] = (l_dec, r_dec)
+    param_ranges['start_t'] = (start_t, (start_t + end_t) / 2)
+    param_ranges['end_t'] = ((start_t + end_t) / 2, end_t)
+    return param_ranges
+
+
+def get_birdie_source_config(param_ranges):
+    """Generates a tuple of BirdieSource initialization parameters with uniform distribution
+    on the ranges of possible values, provided by param_ranges."""
+    unif = np.random.uniform
+    birdie_config = dict()
+    param_order = ['ra', 'dec', 'start_t', 'end_t', 'duty_cycle', 'period', 'intensity']
+    for param in param_order:
+        birdie_config[param] = unif(*(param_ranges[param]))
+    birdie_config['ra'] %= 360
+    return birdie_config
+
+
 def init_birdies(num, param_ranges, birdie_sources_path):
     """Initialize BirdieSource objects with randomly selected parameter values
      and store them in a hashmap indexed by RA."""
     birdie_source_metadata = dict()
     birdie_sources = {d: [] for d in range(360)}
     for x in range(num):
-        birdie_source_config = birdie_utils.get_birdie_source_config(param_ranges)
+        birdie_source_config = get_birdie_source_config(param_ranges)
         b = BaseBirdieSource(birdie_source_config)
         birdie_sources[int(b.config['ra'])].append(b)
         # Save metadata entry for this birdie.
@@ -83,7 +111,7 @@ def do_setup(start_t, end_t, obs_config, birdie_config, bytes_per_pixel,
              integration_time, module_id, birdie_sources_path, verbose):
     """Initialize objects and arrays for birdie injection.
     integration_time is in usec. birdie_config is a file object."""
-    if verbose: print('Setup simulation:')
+    if verbose: print('\tSimulation setup:')
     # Init array modeling the sky
     sky_array = init_sky_array(birdie_config['array_resolution'], verbose)
 
@@ -93,13 +121,12 @@ def do_setup(start_t, end_t, obs_config, birdie_config, bytes_per_pixel,
     birdie_utils.init_ra_dec_ranges(start_t, end_t, initial_bounding_box, module_id, verbose)
 
     # Init birdies and convolution kernel.
-    param_ranges = birdie_utils.init_birdie_param_ranges(
+    param_ranges = init_birdie_param_ranges(
         start_t, end_t, birdie_config['param_ranges'], module_id
     )
     birdie_sources = init_birdies(birdie_config['num_birdies'], param_ranges, birdie_sources_path)
     sigma = birdie_config['psf_sigma']
-    time_step = 1e-6 * integration_time
-    return mod, sky_array, birdie_sources, sigma, time_step
+    return mod, sky_array, birdie_sources, sigma
 
 
 # Simulation loop routines
@@ -155,6 +182,7 @@ def do_simulation(data_dir,
                   end_t,
                   obs_config,
                   birdie_config,
+                  module_id,
                   bytes_per_pixel,
                   integration_time,
                   f,
@@ -162,32 +190,28 @@ def do_simulation(data_dir,
                   nframes,
                   verbose,
                   num_updates=20,
-                  module_id='test',
                   plot_images=False
                   ):
     """Dispatch function for simulation routines."""
     # Setup simulation.
-    module, sky_array, birdie_sources, sigma, time_step = do_setup(
+    module, sky_array, birdie_sources, sigma = do_setup(
         start_t, end_t, obs_config, birdie_config, bytes_per_pixel,
         integration_time, module_id, birdie_sources_path, verbose
     )
     birdie_log_dict = dict()
 
-    avg_t_per_frame = 0.001
-    print(f'Start simulation of {round((end_t - start_t) / 60, 2)} minute file ({nframes} frames)'
-          f'\n\tEstimated time to completion: {round(avg_t_per_frame * nframes // 60)} '
-          f'min {round(avg_t_per_frame * nframes % 60)} s')
+    print(f'\tStart simulation of {round((end_t - start_t) / 60, 2)} minute file ({round(nframes)} frames):')
     frame_num = 0
     s = time.time()
     while True:
         # Read next json and image array; exiting if they do not exist.
         img, j = get_next_frame(f, bytes_per_pixel)
         if img is None:
-            print('\n\tReached EOF.')
+            print('\n\t\tReached EOF.')
             break
         t = img_header_time(j)
         if t > end_t:
-            print('\n\tReached last frame in specified range (ok).')
+            print('\n\t\tReached last frame in specified range (ok).')
             break
 
         birdie_utils.show_progress(frame_num, img, module, nframes, num_updates, plot_images)
@@ -220,6 +244,6 @@ def do_simulation(data_dir,
     e = time.time()
     total_time = e - s
     avg_time = total_time / nframes
-    if verbose: print(f'\nNum sims = {nframes}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
+    #print(f'Number of loops = {nframes}, avg time per loop = {round(avg_time, 5)}s, total time = {round(total_time, 4)}s')
     if plot_images:
-        birdie_utils.build_gif(data_dir, birdie_dir, verbose)
+        birdie_utils.build_gif(data_dir, birdie_dir, module_id, verbose)

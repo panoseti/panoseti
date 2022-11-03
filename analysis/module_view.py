@@ -59,7 +59,7 @@ class ModuleView:
         loc_geodetic = self.earth_loc.to_geodetic(ellipsoid="WGS84")
         s = f'Module "{self.module_id}" view @ {datetime.datetime.fromtimestamp(self.current_utc)}\n' \
             f'centered at RA={round(self.center_ra, 1):>6}<deg>, ' \
-            f'DEC={round(self.center_dec, 1):5>}<deg>, pos angle={self.pos_angle}<deg>'
+            f'DEC={round(self.center_dec, 1):5>}<deg>, pos angle={round(self.pos_angle, 2)}<deg>'
         return s
 
     def init_center_ra_dec_coords(self, frame_utc, sky_array):

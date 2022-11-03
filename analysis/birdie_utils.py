@@ -23,7 +23,6 @@ module_constants = dict()
 sky_arr_consts = dict()
 
 
-np.random.seed(10)
 # Interface between RA-DEC coordinates and the sky_array abstraction.
 
 
@@ -50,7 +49,7 @@ def init_ra_dec_ranges(t_start, t_end, initial_bounding_box, module_id, verbose)
     dec_low = initial_bounding_box[1][0]
     dec_high = initial_bounding_box[1][1]
     dec_range = dec_low, dec_high
-    if verbose: print(f"\tmodule '{module_id}': ra_range={round(ra_range[0], 3), round(ra_range[1], 3)} <deg>, "
+    if verbose: print(f"\t\tmodule '{module_id}': ra_range={round(ra_range[0], 3), round(ra_range[1], 3)} <deg>, "
           f"dec_range={round(dec_range[0], 3), round(dec_range[1], 3)} <deg>")
     module_constants[module_id]['coord_ranges'] = ra_range, dec_range
 
@@ -97,10 +96,11 @@ def get_sky_image_array(elem_per_deg, verbose):
     ra_length, dec_length = sky_arr_consts['coord_lens']
     array_shape = sky_arr_consts['shape']
     if verbose:
-        print(f'\tArray elements per:\n'
-              f'\t\tdeg ra: {round(array_shape[0] / ra_length, 4):<10}\t\tdeg dec: {round(array_shape[1] / dec_length, 4):<10}')
-        print(f'\tArray shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
+        print(f'\t\tArray elements per:\n'
+              f'\t\t\tdeg ra: {round(array_shape[0] / ra_length, 4):<10}\t\tdeg dec: {round(array_shape[1] / dec_length, 4):<10}')
+        print(f'\t\tArray shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape, dtype=np.float32)
+
 
 def graph_sky_array(sky_array, module_id):
     """Plot sky_array, labeled with the appropriate RA and DEC ranges."""
@@ -135,57 +135,38 @@ def graph_sky_array(sky_array, module_id):
 
 # Simulation utils
 
+module_plots = dict()
 
-file_names = []
-os.system(f'mkdir -p birdie_test_images')
 
 def show_progress(step_num, img, module, num_steps, num_updates, plot_images=False):
     if step_num % (num_steps // num_updates) == 0:
         v = math.ceil(100 * step_num / num_steps)
-        print(f'\tProgress: {v:<2}% [{"*" * (v // 5) + "-" * (20 - (v // 5)):<20}]', end='\r')
+        print(f'\t\tProgress: {v:<2}% [{"*" * (v // 5) + "-" * (20 - (v // 5)):<20}]', end='\r')
         if plot_images and step_num != 0:
+            if module.module_id not in module_plots:
+                os.system(f'mkdir -p ./birdie_injection_plots')
+                module_plots[module.module_id] = []
             fig = module.plot_simulated_image(img)
             fname = f'birdie_test_images/{time.time()}.png'
-            file_names.append(fname)
+            module_plots[module.module_id].append(fname)
             plt.savefig(fname)
             plt.close(fig)
 
 
-def build_gif(data_dir, birdie_dir, verbose):
-    with imageio.get_writer(f'{data_dir}/{birdie_dir}/test{time.time()}.gif', mode='I') as writer:
-        for fname in file_names:
+def build_gif(data_dir, birdie_dir, module_id, verbose):
+    with imageio.get_writer(f'{data_dir}/{birdie_dir}/{module_id}_{time.time()}.gif', mode='I') as writer:
+        for fname in module_plots[module_id]:
             image = imageio.imread(fname)
             writer.append_data(image)
-    for filename in file_names:
+    for filename in module_plots[module_id]:
         os.remove(filename)
-    if verbose: print('finished writing gif.')
-
-
-
-def ra_to_degrees(ra):
-    """Returns the degree equivalent of a right ascension coordinate
-    in the form: (hours, minutes, seconds)."""
-    assert len(ra) == 3
-    hours = ra[0] + (ra[1] / 60) + (ra[2] / 3600)
-    # Rotate 360 degrees in 24 hours.
-    degrees = hours * (360 / 24)
-    return degrees
-
-
-def dec_to_degrees(dec):
-    """Returns the degree equivalent of a declination coordinate
-    in the form: (degrees, arcminutes, arcseconds)."""
-    assert len(dec) == 3
-    # 60 arcminutes in 1 degree, 3600 arcseconds in 1 degree.
-    abs_degrees = abs(dec[0]) + (dec[1] / 60) + (dec[2] / 3600)
-    sign = dec[0] / abs(dec[0])
-    return sign * abs_degrees
 
 
 def bresenham_line(x0, y0, x1, y1, pts):
     """"Bresenham's line algorithm implementation from
     https://circuitcellar.com/resources/bresenhams-algorithm.
-    pts is a dictionary of [y-index] : [min_x index, max_x index], for scanline rasterization.
+    pts is a dictionary of [y-index] : [min_x index, max_x index],
+    for scanline rasterization.
     """
     dx = x1 - x0 if x1 >= x0 else x0 - x1
     dy = y0 - y1 if y1 >= y0 else y1 - y0
@@ -208,35 +189,7 @@ def bresenham_line(x0, y0, x1, y1, pts):
             y += sy
 
 
-# Initialize / Import BirdieSource object configurations.
-
-
-def get_birdie_source_config(param_ranges):
-    """Generates a tuple of BirdieSource initialization parameters with uniform distribution
-    on the ranges of possible values, provided by param_ranges."""
-    unif = np.random.uniform
-    birdie_config = dict()
-    param_order = ['ra', 'dec', 'start_t', 'end_t', 'duty_cycle', 'period', 'intensity']
-    for param in param_order:
-        birdie_config[param] = unif(*(param_ranges[param]))
-    birdie_config['ra'] %= 360
-    return birdie_config
-
-
-def init_birdie_param_ranges(start_utc, end_utc, param_ranges, module_id):
-    """Param_ranges specifies the range of possible values for each BirdieSource parameter."""
-    l_ra, r_ra = get_ra_dec_ranges('ra', module_id)
-    l_dec, r_dec = get_ra_dec_ranges('dec', module_id)
-    if r_ra < l_ra:
-        r_ra += 360
-    param_ranges['ra'] = (l_ra, r_ra)
-    param_ranges['dec'] = (l_dec, r_dec)
-    param_ranges['start_t'] = (start_utc, start_utc)
-    param_ranges['end_t'] = (end_utc, end_utc)
-    return param_ranges
-
-
-# File IO
+# Config file IO
 
 def get_birdie_config(birdie_config_path):
     """Loads a birdie injection config file with the form:
@@ -268,6 +221,9 @@ def get_integration_time(data_dir, run_dir):
     return x
 
 
+# Setup birdie run directory
+
+
 def get_birdie_sequence_num(data_dir, run_dir, verbose):
     """Get birdie sequence number, equal to current max birdie
     sequence number for run_dir plus 1."""
@@ -278,7 +234,7 @@ def get_birdie_sequence_num(data_dir, run_dir, verbose):
             run_attrs = pff.parse_name(f)
             if 'birdie' in run_attrs:
                 max_sequence_num = max(max_sequence_num, int(run_attrs['birdie']))
-    if verbose: print(f'\tBirdie sequence_num = {max_sequence_num + 1}')
+    if verbose: print(f'\t\tBirdie sequence_num = {max_sequence_num + 1}')
     return max_sequence_num + 1
 
 
@@ -298,7 +254,7 @@ def make_birdie_dir(data_dir, run_dir, sequence_num):
     return birdie_dir
 
 
-def make_birdie_log_files(data_dir, birdie_dir):
+def make_birdie_log_files(data_dir, birdie_dir, module_id):
     """Creates birdie log files.
     birdie_log.json stores information about every birdie added to an image frame.
     This file has the format:
@@ -329,8 +285,8 @@ def make_birdie_log_files(data_dir, birdie_dir):
         }
     }
     """
-    birdie_log_path = f'{data_dir}/{birdie_dir}/birdie_log.json'
-    birdie_sources_path = f'{data_dir}/{birdie_dir}/birdie_sources.json'
+    birdie_log_path = f'{data_dir}/{birdie_dir}/birdie_log.module_{module_id}.json'
+    birdie_sources_path = f'{data_dir}/{birdie_dir}/birdie_sources.module_{module_id}.json'
     with open(birdie_log_path, 'x'), open(birdie_sources_path, 'x'):
         pass
     return birdie_log_path, birdie_sources_path

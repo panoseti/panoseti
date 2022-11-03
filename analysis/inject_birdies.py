@@ -8,7 +8,6 @@ data, and calls the simulation routine for birdie injection.
 import sys
 import os
 import shutil
-import numpy as np
 import cProfile
 
 import birdie_utils
@@ -19,47 +18,25 @@ import pff
 import config_file
 sys.path.append('../control')
 
-np.random.seed(301)
 
-
-def test_simulation():
-    start_utc = 1685417643
-    end_utc = start_utc + 5
-    # integration time in usec
-    integration_time = 20
-    birdie_config = birdie_utils.get_birdie_config('birdie_config.json')
-
-    f = '''birdie_sim.do_simulation(
-        start_utc, end_utc,
-        birdie_config,
-        integration_time,
-        noise_mean=0,
-        num_updates=30,
-        plot_images=False,
-    )'''
-    cProfile.runctx(f, globals(), locals(), sort='tottime')
-
-
-def do_file(data_dir, run_dir, fin_name, params, verbose):
+def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbose, plot_images):
     """Inject birdies into a single file."""
-    print('* Injecting birdies into', fin_name)
-    # Get sequence number for this run.
-    sequence_num = birdie_utils.get_birdie_sequence_num(data_dir, run_dir, verbose)
+    print('\n* Injecting birdies into', fin_name)
+    # Get config info.
+    birdie_config = birdie_utils.get_birdie_config('birdie_config.json')
+    obs_config = config_file.get_obs_config(f'{data_dir}/{run_dir}')
+    file_attrs = pff.parse_name(fin_name)
 
-    # Create birdie run directory.
-    birdie_dir = birdie_utils.make_birdie_dir(data_dir, run_dir, sequence_num)
+    module_id = int(file_attrs['module'])
+
+    # Create birdie log files.
     shutil.copy('birdie_config.json', f'{data_dir}/{birdie_dir}/birdie_config.json')
-    birdie_log_path, birdie_sources_path = birdie_utils.make_birdie_log_files(data_dir, birdie_dir)
+    birdie_log_path, birdie_sources_path = birdie_utils.make_birdie_log_files(data_dir, birdie_dir, module_id)
 
     # Input and output pff file paths
     fin_path = os.path.abspath(f'{data_dir}/{run_dir}/{fin_name}')
     fout_name = fin_name.replace('.pff', '') + f'.birdie_{sequence_num}.pff'
     fout_path = f'{data_dir}/{birdie_dir}/{fout_name}'
-
-    # Get config info.
-    birdie_config = birdie_utils.get_birdie_config('birdie_config.json')
-    obs_config = config_file.get_obs_config(f'{data_dir}/{run_dir}')
-    file_attrs = pff.parse_name(fin_name)
 
     # Note: we use a 1 byte char '*' to delimit the start of an image array.
     bytes_per_pixel = int(file_attrs['bpp'])
@@ -71,7 +48,7 @@ def do_file(data_dir, run_dir, fin_name, params, verbose):
 
     # Get timing info; default is min and max filetimes.
     start_unix_t = first_t
-    end_unix_t = last_t
+    end_unix_t = last_t#start_unix_t + (last_t - first_t) / 100
     if 'start_t' in params:
         start_unix_t = params['start_t']
     if 'end_t' in params:
@@ -97,38 +74,45 @@ def do_file(data_dir, run_dir, fin_name, params, verbose):
             end_unix_t,
             obs_config,
             birdie_config,
+            module_id,
             bytes_per_pixel,
             integration_time,
             fout,
             bytes_per_image,
             nframes,
             verbose,
-            module_id=int(file_attrs['module']),
             num_updates=20,
-            plot_images=True
+            plot_images=plot_images
         )
-    print(f'Finished injecting birdies.\n')
 
-def do_run(data_dir, run_dir, fin_name, params, verbose=False):
-    """Run birdie injection on a real observing run."""
+def do_run(data_dir, run_dir, params, verbose=False, plot_images=False):
+    """Run birdie injection on a real or synthetic observing run."""
     if not pff.is_pff_dir(run_dir):
         print(f'"{run_dir}" is not a pff directory')
         return
-    print('** Processing run', run_dir, '\n')
-    do_file(data_dir, run_dir, fin_name, params, verbose)
+    print('** Processing run', run_dir)
+    # Get sequence number for this run.
+    sequence_num = birdie_utils.get_birdie_sequence_num(data_dir, run_dir, verbose)
+    birdie_dir = birdie_utils.make_birdie_dir(data_dir, run_dir, sequence_num)
+    for fname in os.listdir(f'{data_dir}/{run_dir}'):
+        if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
+            do_file(data_dir, run_dir, birdie_dir, sequence_num, fname, params, verbose, plot_images)
+    print(f'Finished injecting birdies.')
 
 
 # These file paths are hardcoded for program development. Will be changed later.
 DATA_DIR = '/Users/nico/Downloads/test_data/obs_data'
 RUN = 'obs_Lick.start_2022-10-26T20:01:33Z.runtype_eng.pffd'
-fname = 'start_2022-10-26T20_02_00Z.dp_img8.bpp_1.module_1.seqno_0.pff'
 
+
+# TODO: Add command line input
+# TODO: Add additional parameters.
 
 def main():
     params = {
         'seconds': 1
     }
-    do_run(DATA_DIR, RUN, fname, params, verbose=False)
+    do_run(DATA_DIR, RUN, params, verbose=True, plot_images=True)
 
 
 if __name__ == '__main__':
