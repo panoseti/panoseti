@@ -2,7 +2,7 @@
 
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
-import netifaces
+import netifaces, json
 
 #-------------- DEFAULTS ---------------
 
@@ -308,6 +308,39 @@ def disk_usage(dir):
 def free_space(path):
     total, used, free = shutil.disk_usage(path)
     return free
+
+# estimate bytes per second per module for a given data config
+def daq_bytes_per_sec_per_module(data_config):
+    img_json_header_size = 600
+    ph_json_header_size = 150
+    x = 0
+
+    # hk.pff
+    x += 2000 + 800*4
+
+    if 'image' in data_config:
+        image = data_config['image']
+        fps = 1e6/image['integration_time_usec']
+        if image['quabo_sample_size'] == 8:
+            bpf = 1
+        else:
+            bpf = 2
+        x += fps*(1024*bpf + img_json_header_size)
+    if 'pulse_height' in data_config:
+        # assume one PH event per sec per quabo
+        ph_per_sec = 1
+        x += ph_per_sec*(4*(256*2+ph_json_header_size))
+    return x
+
+def get_daq_node_status(node):
+    x = subprocess.run(['ssh',
+        '%s@%s'%(node['username'], node['ip_addr']),
+        'cd %s; ./status_daq.py'%(node['data_dir']),
+        ],
+        stdout = subprocess.PIPE
+    )
+    y = x.stdout.decode()
+    return json.loads(y)
 
 #-------------- WR and GPS---------------
 

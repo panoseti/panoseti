@@ -245,6 +245,27 @@ def do_calibrate_ph(modules, quabo_ids):
     with open(config_file.quabo_ph_baseline_filename, "w") as f:
         f.write(json.dumps(x, indent=4))
 
+def do_disk_space(data_config, daq_config):
+    bps = util.daq_bytes_per_sec_per_module(data_config)
+    print('bytes per sec per module: ', bps)
+    nmod_total = 0
+    for node in daq_config['daq_nodes']:
+        if not node['modules']:
+            continue
+        nmod = len(node['modules'])
+        nmod_total += nmod
+        ip_addr = node['ip_addr']
+        print('DAQ node %s: %d modules'%(ip_addr, nmod))
+        j = util.get_daq_node_status(node)
+        vols = j['vols']
+        for name in vols.keys():
+            vol = vols[name]
+            print('   %s: %.2f hours'%(name, vol['free']/(3600.*bps)))
+    hnd = daq_config['head_node_data_dir']
+    hfree = util.free_space(hnd)
+    print('head node (%s): %.2f hours'%(hnd, hfree/(3600*bps*nmod_total)))
+
+
 if __name__ == "__main__":
     argv = sys.argv
     nops = 0
@@ -286,6 +307,9 @@ if __name__ == "__main__":
         elif argv[i] == '--calibrate_ph':
             nops += 1
             op = 'calibrate_ph'
+        elif argv[i] == '--disk_space':
+            nops += 1
+            op = 'disk_space'
         else:
             print('bad arg: %s'%argv[i])
             usage()
@@ -303,6 +327,7 @@ if __name__ == "__main__":
     daq_config = config_file.get_daq_config()
     quabo_info = config_file.get_quabo_info()
     config_file.associate(daq_config, quabo_uids)
+    data_config = config_file.get_data_config()
     if op == 'reboot':
         do_reboot(modules, quabo_uids)
         do_hk_dest(modules)
@@ -327,7 +352,8 @@ if __name__ == "__main__":
     elif op == 'hv_off':
         do_hv_off(modules, quabo_uids)
     elif op == 'maroc_config':
-        data_config = config_file.get_data_config()
         do_maroc_config(modules, quabo_uids, quabo_info, data_config)
     elif op == 'calibrate_ph':
         do_calibrate_ph(modules, quabo_uids)
+    elif op == 'disk_space':
+        do_disk_space(data_config, daq_config)
