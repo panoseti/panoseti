@@ -306,7 +306,7 @@ def disk_usage(dir):
     return x
 
 def free_space(path):
-    total, used, free = shutil.disk_usage(path)
+    total, used, free = shutil.disk_usage(os.path.realpath(path))
     return free
 
 # estimate bytes per second per module for a given data config

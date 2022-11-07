@@ -65,7 +65,7 @@ function main() {
         <h2>Observing runs</h2>
         <p>
     ";
-    $vols = ['home', 'data10'];
+    $vols = json_decode(file_get_contents('head_node_volumes.json'));
     $runs = [];
     foreach ($vols as $vol) {
         foreach (scandir("$vol/data") as $f) {

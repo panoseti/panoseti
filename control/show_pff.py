@@ -104,6 +104,7 @@ def main():
         usage()
         return
 
+    # fname might be a symbolic link like img or ph
     path = os.path.realpath(fname)
     real_fname = os.path.basename(path)
     dict = pff.parse_name(real_fname)

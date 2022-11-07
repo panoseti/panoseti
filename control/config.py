@@ -247,7 +247,7 @@ def do_calibrate_ph(modules, quabo_ids):
 
 def do_disk_space(data_config, daq_config):
     bps = util.daq_bytes_per_sec_per_module(data_config)
-    print('bytes per sec per module: ', bps)
+    print('Data rate per module: %.2f MB/sec'%(bps/1e6))
     nmod_total = 0
     for node in daq_config['daq_nodes']:
         if not node['modules']:
@@ -261,9 +261,16 @@ def do_disk_space(data_config, daq_config):
         for name in vols.keys():
             vol = vols[name]
             print('   %s: %.2f hours'%(name, vol['free']/(3600.*bps)))
+    head_node_vols = json.loads(open("/home/panosetigraph/web/head_node_volumes.json").read())
     hnd = daq_config['head_node_data_dir']
-    hfree = util.free_space(hnd)
-    print('head node (%s): %.2f hours'%(hnd, hfree/(3600*bps*nmod_total)))
+    hnd = os.path.realpath(hnd)
+    print('head node:')
+    for vol in head_node_vols:
+        path = '/home/panosetigraph/web/%s/data'%vol
+        path = os.path.realpath(path)
+        hfree = util.free_space(path)
+        x = '-> ' if hnd == path else ''
+        print('   %s%s; %s: %.2f hours'%(x, vol, path, hfree/(3600*bps*nmod_total)))
 
 
 if __name__ == "__main__":
