@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 """
 Dispatch script for a signal injection and recovery program, which we call
 'birdie injection' after a similarly named practice in radio astronomy.
@@ -12,6 +14,7 @@ import cProfile
 
 import birdie_utils
 import birdie_simulation as birdie_sim
+import analysis_util
 
 sys.path.append('../util')
 import pff
@@ -44,39 +47,36 @@ def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbo
 
     # Get img info:
     with open(f'{data_dir}/{run_dir}/{fin_name}', 'rb') as fin:
-        frame_size, nframes, first_t, last_t = pff.img_info(fin, bytes_per_image)
-
-    # Get timing info; default is min and max filetimes.
-    start_unix_t = first_t
-    end_unix_t = last_t#start_unix_t + (last_t - first_t) / 100
-    if 'start_t' in params:
-        start_unix_t = params['start_t']
-    if 'end_t' in params:
-        end_unix_t = params['end_t']
+        frame_size, nframes, first_unix_t, last_unix_t = pff.img_info(fin, bytes_per_image)
+    # Get timing info
+    start_t = first_unix_t
+    end_t = min(first_unix_t + params['seconds'], last_unix_t)
     integration_time = birdie_utils.get_integration_time(data_dir, run_dir)
-    if verbose: print(f'\tstart time (unix)={start_unix_t}, end time (unix)={end_unix_t},'
+    if verbose: print(f'\tstart time (unix)={start_t}, end time (unix)={end_t},'
                       f' integration_time={integration_time} us')
-
     with open(fout_path, 'w+b') as fout:
         with open(fin_path, 'rb') as fin:
             # Create a copy of the file fin_name for birdie injection.
-            if verbose: print(f'\tCopying:\n\t\tFrom:\t{fin_name}\n\t\tTo:\t\t{fout_name}')
             shutil.copy(fin_path, fout_path)
-        # Move the file pointer to the frame closest to start_unix_t.
-        pff.time_seek(fout, integration_time, bytes_per_image, start_unix_t)
+        # Get nframes
+        pff.time_seek(fout, integration_time * 1e-6, bytes_per_image, end_t)
+        last_file_pos = fout.tell()
+        fout.seek(0)
+        pff.time_seek(fout, integration_time * 1e-6, bytes_per_image, start_t)
+        first_file_pos = fout.tell()
+        nframes = 1 + (last_file_pos - first_file_pos) / frame_size
         # Do simulation
         birdie_sim.do_simulation(
             data_dir,
             birdie_dir,
             birdie_log_path,
             birdie_sources_path,
-            start_unix_t,
-            end_unix_t,
+            start_t,
+            end_t,
             obs_config,
             birdie_config,
             module_id,
             bytes_per_pixel,
-            integration_time,
             fout,
             bytes_per_image,
             nframes,
@@ -84,6 +84,7 @@ def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbo
             num_updates=20,
             plot_images=plot_images
         )
+
 
 def do_run(data_dir, run_dir, params, verbose=False, plot_images=False):
     """Run birdie injection on a real or synthetic observing run."""
@@ -98,25 +99,50 @@ def do_run(data_dir, run_dir, params, verbose=False, plot_images=False):
         if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
             do_file(data_dir, run_dir, birdie_dir, sequence_num, fname, params, verbose, plot_images)
     print(f'Finished injecting birdies.')
+    analysis_util.write_summary(f'{data_dir}/{birdie_dir}', params, 'TEST')
+
+
+def main():
+    # Default parameters
+    params = {
+        'seconds': 1,
+    }
+    run = None
+    vol = None
+    argv = sys.argv
+    i = 1
+    while i < len(argv):
+        option = argv[i].replace('--', '')
+        if option in params:
+            i += 1
+            params[option] = argv[i]
+        elif option == 'run':
+            i += 1
+            run = argv[i]
+        elif option == 'vol':
+            i += 1
+            vol = argv[i]
+        else:
+            print(f'unrecognized input: "--{option} {argv[i]}". Options have the form: "--[option]".')
+            return
+        i += 1
+
+    if not vol:
+        raise Warning('no volume specified')
+    if not run:
+        raise Warning('no run specified')
+
+    data_dir = f'{vol}/data'
+    print("RUNNING")
+    do_run(data_dir, RUN, params, verbose=True)
+    print("DONE")
 
 
 # These file paths are hardcoded for program development. Will be changed later.
 DATA_DIR = '/Users/nico/Downloads/test_data/obs_data'
 RUN = 'obs_Lick.start_2022-10-26T20:01:33Z.runtype_eng.pffd'
 
-
-# TODO: Add command line input
-# TODO: Add additional parameters.
-
-def main():
-    params = {
-        'seconds': 1
-    }
-    do_run(DATA_DIR, RUN, params, verbose=True, plot_images=True)
-
-
 if __name__ == '__main__':
-    print("RUNNING")
+    sys.argv = ['file', '--vol', DATA_DIR, '--run', RUN]
     main()
     #cProfile.runctx('main()', globals(), locals(), sort='tottime')
-    print("DONE")

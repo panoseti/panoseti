@@ -147,19 +147,20 @@ def show_progress(step_num, img, module, num_steps, num_updates, plot_images=Fal
                 os.system(f'mkdir -p ./birdie_injection_plots')
                 module_plots[module.module_id] = []
             fig = module.plot_simulated_image(img)
-            fname = f'birdie_test_images/{time.time()}.png'
+            fname = f'./birdie_injection_plots/{time.time()}.png'
             module_plots[module.module_id].append(fname)
             plt.savefig(fname)
             plt.close(fig)
 
 
-def build_gif(data_dir, birdie_dir, module_id, verbose):
-    with imageio.get_writer(f'{data_dir}/{birdie_dir}/{module_id}_{time.time()}.gif', mode='I') as writer:
-        for fname in module_plots[module_id]:
-            image = imageio.imread(fname)
-            writer.append_data(image)
-    for filename in module_plots[module_id]:
-        os.remove(filename)
+def build_gif(data_dir, birdie_dir, module_id):
+    if module_id in module_plots:
+        with imageio.get_writer(f'{data_dir}/{birdie_dir}/{module_id}_{time.time()}.gif', mode='I') as writer:
+            for fname in module_plots[module_id]:
+                image = imageio.imread(fname)
+                writer.append_data(image)
+            for filename in module_plots[module_id]:
+                os.remove(filename)
 
 
 def bresenham_line(x0, y0, x1, y1, pts):
@@ -286,8 +287,12 @@ def make_birdie_log_files(data_dir, birdie_dir, module_id):
     }
     """
     birdie_log_path = f'{data_dir}/{birdie_dir}/birdie_log.module_{module_id}.json'
-    birdie_sources_path = f'{data_dir}/{birdie_dir}/birdie_sources.module_{module_id}.json'
-    with open(birdie_log_path, 'x'), open(birdie_sources_path, 'x'):
-        pass
+    birdie_sources_path = f'{data_dir}/{birdie_dir}/birdie_sources.json'
+    if not os.path.exists(birdie_log_path):
+        with open(birdie_log_path, 'w'):
+            pass
+    if not os.path.exists(birdie_sources_path):
+        with open(birdie_sources_path, 'w'):
+            pass
     return birdie_log_path, birdie_sources_path
 

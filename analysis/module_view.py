@@ -25,7 +25,6 @@ class ModuleView:
     # See pixel size on https://oirlab.ucsd.edu/PANOinstr.html.
     pixels_per_side = 32
     pixel_size = 0.31
-    max_pixel_counter_value = 2**8 - 1
 
     def __init__(self, module_id, start_time_utc, obslat, obslon, obsalt, azimuth, elevation, pos_angle, bytes_per_pixel, sky_array):
         self.module_id = module_id
@@ -127,12 +126,13 @@ class ModuleView:
 
     def add_birdies_to_image_array(self, raw_img):
         assert len(raw_img) == len(self.simulated_img_arr)
-        raw_with_birdies = raw_img + self.simulated_img_arr
-        return np.clip(raw_with_birdies, 0, self.max_pixel_counter_value)
+        raw_with_birdies = np.clip(raw_img + self.simulated_img_arr, 0, self.max_pixel_counter_value)
+        return raw_with_birdies
 
     def simulate_all_pixel_fovs(self):
         """Simulate every pixel FoV in this module, resulting in a simulated 32x32 image array
         containing only birdies."""
+        self.simulated_img_arr.fill(0)
         for px in range(32):
             for py in range(32):
                 # Sum the intensities in each element of sky_array visible by pixel (px, py) and

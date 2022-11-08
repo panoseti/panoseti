@@ -30,7 +30,7 @@ def make_dir(path):
     if os.path.exists(path):
         return path
     os.mkdir(path)
-    #shutil.chown(path, group='panosetigraph')
+    shutil.chown(path, group='panosetigraph')
     os.chmod(path, 0o775)
     return path
 
