@@ -42,6 +42,7 @@ def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbo
     fout_path = f'{data_dir}/{birdie_dir}/{fout_name}'
 
     # Note: we use a 1 byte char '*' to delimit the start of an image array.
+    file_attrs = pff.parse_name(fin_name)
     bytes_per_pixel = int(file_attrs['bpp'])
     bytes_per_image = 1 + bytes_per_pixel * 1024
 
@@ -92,14 +93,19 @@ def do_run(data_dir, run_dir, params, verbose=False, plot_images=False):
         print(f'"{run_dir}" is not a pff directory')
         return
     print('** Processing run', run_dir)
-    # Get sequence number for this run.
-    sequence_num = birdie_utils.get_birdie_sequence_num(data_dir, run_dir, verbose)
-    birdie_dir = birdie_utils.make_birdie_dir(data_dir, run_dir, sequence_num)
+    files_to_process = []
     for fname in os.listdir(f'{data_dir}/{run_dir}'):
         if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
+            files_to_process.append(fname)
+    if birdie_utils.check_image_files(data_dir, run_dir, files_to_process):
+        sequence_num = birdie_utils.get_birdie_sequence_num(data_dir, run_dir, verbose)
+        birdie_dir = birdie_utils.make_birdie_dir(data_dir, run_dir, sequence_num)
+        for fname in files_to_process:
             do_file(data_dir, run_dir, birdie_dir, sequence_num, fname, params, verbose, plot_images)
-    print(f'Finished injecting birdies.')
-    analysis_util.write_summary(f'{data_dir}/{birdie_dir}', params, 'TEST')
+        print(f'Finished injecting birdies.')
+        analysis_util.write_summary(f'{data_dir}/{birdie_dir}', params, 'TEST')
+    else:
+        print('No valid files for birdie injection found.')
 
 
 def main():
@@ -134,15 +140,16 @@ def main():
 
     data_dir = f'{vol}/data'
     print("RUNNING")
-    do_run(data_dir, RUN, params, verbose=True)
+    do_run(data_dir, run, params, verbose=False)
     print("DONE")
 
 
 # These file paths are hardcoded for program development. Will be changed later.
-DATA_DIR = '/Users/nico/Downloads/test_data/obs_data'
+DATA_DIR = '/Users/nico/Downloads/test_data'
 RUN = 'obs_Lick.start_2022-10-26T20:01:33Z.runtype_eng.pffd'
+#RUN = 'obs_Lick.start_2022-10-13T00:08:12Z.runtype_eng.pffd'
 
 if __name__ == '__main__':
-    sys.argv = ['file', '--vol', DATA_DIR, '--run', RUN]
+    #sys.argv = ['file', '--vol', DATA_DIR, '--run', RUN]
     main()
     #cProfile.runctx('main()', globals(), locals(), sort='tottime')

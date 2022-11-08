@@ -239,6 +239,26 @@ def get_birdie_sequence_num(data_dir, run_dir, verbose):
     return max_sequence_num + 1
 
 
+def check_image_files(data_dir, run_dir, fnames):
+    files_ok = []
+    for fname in fnames:
+        f_path = f'{data_dir}/{run_dir}/{fname}'
+        if os.path.exists(f_path):
+            file_attrs = pff.parse_name(fname)
+            bytes_per_pixel = int(file_attrs['bpp'])
+            bytes_per_image = 1 + bytes_per_pixel * 1024
+            with open(f_path, 'rb') as fin:
+                try:
+                    frame_size, nframes, first_unix_t, last_unix_t = pff.img_info(fin, bytes_per_image)
+                except Exception as e:
+                    msg = f'"{f_path}" may have variable-length json.\nError message: "{e}"\n'
+                    print(msg)
+                    files_ok.append(False)
+                    continue
+                files_ok.append(True)
+    return all(files_ok)
+
+
 def make_birdie_dir(data_dir, run_dir, sequence_num):
     """Create directory for run + birdie data."""
     birdie_dir = run_dir.replace('.pffd', '') + f'.birdie_{sequence_num}.pffd'
