@@ -51,7 +51,7 @@ def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbo
         frame_size, nframes, first_unix_t, last_unix_t = pff.img_info(fin, bytes_per_image)
     # Get timing info
     start_t = first_unix_t
-    end_t = min(first_unix_t + params['seconds'], last_unix_t)
+    end_t = min(first_unix_t + float(params['seconds']), last_unix_t)
     integration_time = birdie_utils.get_integration_time(data_dir, run_dir)
     if verbose: print(f'\tstart time (unix)={start_t}, end time (unix)={end_t},'
                       f' integration_time={integration_time} us')
@@ -140,16 +140,16 @@ def main():
 
     data_dir = f'{vol}/data'
     print("RUNNING")
-    do_run(data_dir, run, params, verbose=False)
+    do_run(data_dir, run, params, verbose=True, plot_images=False)
     print("DONE")
 
 
 # These file paths are hardcoded for program development. Will be changed later.
-DATA_DIR = '/Users/nico/Downloads/test_data'
+DATA_DIR = '/Users/nico/Downloads/test_data/obs_data'
 RUN = 'obs_Lick.start_2022-10-26T20:01:33Z.runtype_eng.pffd'
 #RUN = 'obs_Lick.start_2022-10-13T00:08:12Z.runtype_eng.pffd'
 
 if __name__ == '__main__':
-    #sys.argv = ['file', '--vol', DATA_DIR, '--run', RUN]
+    #sys.argv = ['file', '--vol', DATA_DIR, '--run', RUN, '--seconds', '10']
     main()
     #cProfile.runctx('main()', globals(), locals(), sort='tottime')
