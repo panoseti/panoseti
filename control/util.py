@@ -339,6 +339,8 @@ def get_daq_node_status(node):
         ],
         stdout = subprocess.PIPE
     )
+    if x=='':
+        raise Exception("can't talk to DAQ node")
     y = x.stdout.decode()
     return json.loads(y)
 

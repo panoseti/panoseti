@@ -51,7 +51,7 @@ def status():
     n = n[0:3]
     name = '/'.join(n)
     if name in vols.keys():
-        vols['name']['modules'].append(-1)
+        vols[name]['modules'].append(-1)
     else:
         vol = {}
         vol['modules'] = [-1]
