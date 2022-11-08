@@ -149,7 +149,7 @@ def img_info(f, bytes_per_image):
 #
 def img_frame_time(f, frame, frame_size):
     f.seek(frame*frame_size)
-    s = read_json(f)
+    s = json.loads(read_json(f))
     return img_header_time(s)
 
 # f is a file object, open to the start of an image file
@@ -168,7 +168,7 @@ def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
         f.seek(0)
         return
     elif t > last_t-frame_time:
-        f.seek(nframes-1, frame_size)
+        f.seek(int(nframes-1) * frame_size)
         return
 
     min_t = first_t

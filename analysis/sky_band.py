@@ -6,7 +6,6 @@ import numpy as np
 import astropy.time
 import astropy.units
 import astropy.coordinates
-from functools import cache
 
 
 def get_module_center_ra_dec(t, azimuth, elevation, obslat, obslon, obsalt):

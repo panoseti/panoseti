@@ -1,9 +1,15 @@
-import time
+"""
+Routines for generating simulated images for birdie injection, including:
+    - Module view and birdie source initialization.
+    - Birdie metadata recording.
+    - Simulated image generation.
+    - Combination of simulated image and raw image.
+    - Editing pff files with birdie + raw images.
+"""
 
+import time
 import numpy as np
-import math
 import json
-import os
 import sys
 from scipy.ndimage import gaussian_filter
 
@@ -14,21 +20,24 @@ from module_view import ModuleView
 sys.path.append('../util')
 from pff import time_seek, read_image, read_json, img_header_time, write_image_1D
 
-# Setup / Initialization
+np.random.seed(100)
 
 
-def init_sky_array(array_resolution):
-    return birdie_utils.get_sky_image_array(array_resolution, verbose=True)
+# Setup: BirdieSources, ModuleView, and sky array.
 
 
-def init_module(start_utc, obs_config, module_id, bytes_per_pixel, sky_array):
+def init_sky_array(array_resolution, verbose):
+    return birdie_utils.get_sky_image_array(array_resolution, verbose)
+
+
+def init_module(start_t, obs_config, module_id, bytes_per_pixel, sky_array):
     if obs_config:
         for dome in obs_config['domes']:
             for module in dome['modules']:
                 if module['id'] == module_id:
                     return ModuleView(
                         module_id,
-                        start_utc,
+                        start_t,
                         dome['obslat'],
                         dome['obslon'],
                         dome['obsalt'],
@@ -41,54 +50,95 @@ def init_module(start_utc, obs_config, module_id, bytes_per_pixel, sky_array):
     else:
         return ModuleView(
             module_id,
-            start_utc,
+            start_t,
             37.3425,
             -121.63777,
             1283,
             184.29,
             78.506,
             0,
+            bytes_per_pixel,
             sky_array
         )
 
 
-def init_birdies(num, param_ranges):
+def init_birdie_param_ranges(start_t, end_t, param_ranges, module_id):
+    """Param_ranges specifies the range of possible values for each BirdieSource parameter."""
+    l_ra, r_ra = birdie_utils.get_ra_dec_ranges('ra', module_id)
+    l_dec, r_dec = birdie_utils.get_ra_dec_ranges('dec', module_id)
+    if r_ra < l_ra:
+        r_ra += 360
+
+    param_ranges['ra'] = (l_ra, r_ra)
+    param_ranges['dec'] = (l_dec, r_dec)
+    param_ranges['time_interval'] = (start_t, end_t)
+    return param_ranges
+
+
+def get_birdie_source_config(param_ranges):
+    """Generates a tuple of BirdieSource initialization parameters with uniform distribution
+    on the ranges of possible values, provided by param_ranges."""
+    unif = np.random.uniform
+    birdie_config = dict()
+    params = ['ra', 'dec', 'start_t', 'end_t', 'duty_cycle', 'period', 'intensity']
+    for param in param_ranges:
+        if param == 'time_interval':
+            times = unif(*(param_ranges['time_interval']), 2)
+            birdie_config['start_t'] = min(times)
+            birdie_config['end_t'] = max(times)
+        else:
+            birdie_config[param] = unif(*(param_ranges[param]))
+    birdie_config['ra'] %= 360
+    return birdie_config
+
+
+birdie_sources = None
+def generate_birdie_sources(num, param_ranges, birdie_sources_path):
     """Initialize BirdieSource objects with randomly selected parameter values
      and store them in a hashmap indexed by RA."""
+    global birdie_sources
     birdie_sources = {d: [] for d in range(360)}
+    birdie_source_metadata = dict()
     for x in range(num):
-        config_vector = birdie_utils.get_birdie_config_vector(param_ranges)
-        b = BaseBirdieSource(*config_vector)
-        birdie_sources[int(b.ra)].append(b)
-    return birdie_sources
+        birdie_source_config = get_birdie_source_config(param_ranges)
+        b = BaseBirdieSource(birdie_source_config)
+        birdie_sources[int(b.config['ra'])].append(b)
+        # Save metadata entry for this birdie.
+        birdie_source_metadata[hash(b)] = {
+            'class': type(b).__name__,
+            'birdie_config': birdie_source_config
+        }
+    with open(birdie_sources_path, 'w') as f:
+        json.dump(birdie_source_metadata, f, indent=4)
 
 
-def do_setup(start_utc, end_utc, obs_config, birdie_config, bytes_per_pixel, integration_time, module_id):
+def do_setup(start_t, end_t, obs_config, birdie_config, bytes_per_pixel,
+             module_id, birdie_sources_path, verbose):
     """Initialize objects and arrays for birdie injection.
     integration_time is in usec. birdie_config is a file object."""
-    print('Setup simulation:')
+    if verbose: print('\tSimulation setup:')
     # Init array modeling the sky
-    sky_array = init_sky_array(birdie_config['array_resolution'])
+    sky_array = init_sky_array(birdie_config['array_resolution'], verbose)
 
     # Init ModuleView object
-    mod = init_module(start_utc, obs_config, module_id, bytes_per_pixel, sky_array)
+    mod = init_module(start_t, obs_config, module_id, bytes_per_pixel, sky_array)
     initial_bounding_box = birdie_utils.get_coord_bounding_box(mod.center_ra, mod.center_dec)
-    birdie_utils.init_ra_dec_ranges(start_utc, end_utc, initial_bounding_box, module_id)
+    birdie_utils.init_ra_dec_ranges(start_t, end_t, initial_bounding_box, module_id, verbose)
 
-    # Init birdies and convolution kernel.
-    param_ranges = birdie_utils.init_birdie_param_ranges(
-        start_utc, end_utc, birdie_config['param_ranges'], module_id
-    )
-    birdie_sources = init_birdies(birdie_config['num_birdies'], param_ranges)
+    if not birdie_sources:
+        # Init birdies and convolution kernel.
+        param_ranges = init_birdie_param_ranges(
+            start_t, end_t, birdie_config['param_ranges'], module_id
+        )
+        generate_birdie_sources(birdie_config['num_birdies'], param_ranges, birdie_sources_path)
     sigma = birdie_config['psf_sigma']
-    time_step = 1e-6 * integration_time
-    return mod, sky_array, birdie_sources, sigma, time_step
+    return mod, sky_array, sigma
 
 
 # Simulation loop routines
 
 
-def get_birdie_sources_in_view(frame_utc, bounding_box, birdie_sources):
+def get_birdie_sources_in_view(frame_t, bounding_box):
     birdie_sources_in_view = []
     left = int(bounding_box[0][0] % 360)
     right = int(bounding_box[0][1] % 360) - 1
@@ -97,42 +147,20 @@ def get_birdie_sources_in_view(frame_utc, bounding_box, birdie_sources):
     i = left
     while i < right:
         for b in birdie_sources[i % 360]:
-            if b.is_in_view(frame_utc):
+            if b.is_in_view(frame_t):
                 birdie_sources_in_view.append(b)
         i += 1
     return birdie_sources_in_view
 
 
-def update_birdies(frame_utc, bounding_box, sky_array, birdie_sources_in_view):
+def update_birdies(frame_t, bounding_box, sky_array, birdie_sources_in_view, birdie_log_dict):
     """Call the generate_birdie method on every BirdieSource object with an RA
     that may be visible by the given module."""
+    birdies = []
     for b in birdie_sources_in_view:
-        point_added = b.generate_birdie(frame_utc, sky_array, bounding_box)
-
-
-def update_birdie_log(birdie_log_path):
-    """Updates the birdie_log.json file (creating it if necessary) with metadata about each birdie."""
-    new_log_data = {
-    }
-    if os.path.exists(birdie_log_path):
-        with open(birdie_log_path, 'r+') as f:
-            s = f.read()
-            c = json.loads(s)
-            # Add new birdie log data
-            # Example below
-            new_log_data["backup_number"] = c["backups"][-1]["backup_number"] + 1
-            c["backups"].append(new_log_data)
-
-            json_obj = json.dumps(c, indent=4)
-            f.seek(0)
-            f.write(json_obj)
-    else:
-        c = {
-            'Stuff'
-        }
-        with open(birdie_log_path, 'w+') as f:
-            json_obj = json.dumps(c, indent=4)
-            f.write(json_obj)
+        log_entry = b.generate_birdie(frame_t, sky_array, bounding_box)
+        birdies.append(log_entry)
+    birdie_log_dict[frame_t]['birdies'] = birdies
 
 
 def get_next_frame(file_obj, bytes_per_pixel):
@@ -154,38 +182,41 @@ def get_next_frame(file_obj, bytes_per_pixel):
 
 def do_simulation(data_dir,
                   birdie_dir,
+                  birdie_log_path,
+                  birdie_sources_path,
                   start_t,
                   end_t,
                   obs_config,
                   birdie_config,
+                  module_id,
                   bytes_per_pixel,
-                  integration_time,
                   f,
+                  bytes_per_image,
                   nframes,
+                  verbose,
                   num_updates=20,
-                  module_id='test',
                   plot_images=False
                   ):
+    """Dispatch function for simulation routines."""
     # Setup simulation.
-    module, sky_array, birdie_sources, sigma, time_step = do_setup(
-        start_t, end_t, obs_config, birdie_config, bytes_per_pixel, integration_time, module_id
+    module, sky_array, sigma = do_setup(
+        start_t, end_t, obs_config, birdie_config, bytes_per_pixel,
+        module_id, birdie_sources_path, verbose
     )
-    frame_size = bytes_per_pixel * 1024 + 1
-    avg_t_per_frame = 0.001
-    print(f'Start simulation of {round((end_t - start_t) / 60, 2)} minute file ({nframes} frames)'
-          f'\n\tEstimated time to completion: {round(avg_t_per_frame * nframes // 60)} '
-          f'min {round(avg_t_per_frame * nframes % 60)} s')
+    birdie_log_dict = dict()
+
+    print(f'\tStart simulation of {round((end_t - start_t) / 60, 2)} minute file ({round(nframes)} frames):')
     frame_num = 0
     s = time.time()
-
     while True:
+        # Read next json and image array; exiting if they do not exist.
         img, j = get_next_frame(f, bytes_per_pixel)
         if img is None:
-            print('\n\tReached EOF.')
+            print('\n\t\tReached EOF.')
             break
         t = img_header_time(j)
         if t > end_t:
-            print('\n\tReached last frame in specified range (ok).')
+            print('\n\t\tReached last frame in specified range (ok).')
             break
 
         birdie_utils.show_progress(frame_num, img, module, nframes, num_updates, plot_images)
@@ -195,11 +226,13 @@ def do_simulation(data_dir,
         bounding_box = birdie_utils.get_coord_bounding_box(module.center_ra, module.center_dec)
 
         # Check if any birdies are visible by the module, and
-        birdie_sources_in_view = get_birdie_sources_in_view(t, bounding_box, birdie_sources)
+        birdie_sources_in_view = get_birdie_sources_in_view(t, bounding_box)
         if birdie_sources_in_view:
-            # Update birdie signal points.
+            # Clear sky array.
             sky_array.fill(0)
-            update_birdies(t, bounding_box, sky_array, birdie_sources_in_view)
+            # Update birdie signal points.
+            birdie_log_dict[t] = dict()
+            update_birdies(t, bounding_box, sky_array, birdie_sources_in_view, birdie_log_dict)
             # Apply a 2d gaussian filter to simulate optical distortion due to the Fesnel lens.
             blurred_sky_array = gaussian_filter(sky_array, sigma=sigma)
             # We must copy the filtered array because the views initialized in module
@@ -208,12 +241,14 @@ def do_simulation(data_dir,
             module.simulate_all_pixel_fovs()
             # Add simulated image to img.
             raw_plus_birdie_img = module.add_birdies_to_image_array(img)
-            f.seek(-frame_size, 1)
+            f.seek(-bytes_per_image, 1)
             write_image_1D(f, raw_plus_birdie_img, 32, bytes_per_pixel)
         frame_num += 1
+    with open(birdie_log_path, 'w') as f:
+        json.dump(birdie_log_dict, f, indent=4)
     e = time.time()
     total_time = e - s
     avg_time = total_time / nframes
-    print(f'\nNum sims = {nframes}, avg sim time = {round(avg_time, 5)}s, total sim time = {round(total_time, 4)}s')
+    if verbose: print(f'\t\tNumber of loops = {nframes}, avg time per loop = {round(avg_time, 5)}s, total time = {round(total_time, 4)}s')
     if plot_images:
-        birdie_utils.build_gif(data_dir, birdie_dir)
+        birdie_utils.build_gif(data_dir, birdie_dir, module_id)

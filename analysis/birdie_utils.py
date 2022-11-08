@@ -6,17 +6,17 @@ import math
 import json
 import sys
 import os
+import shutil
 
 import numpy as np
 import matplotlib.pyplot as plt
-from dateutil import parser
 import imageio
 
-import analysis_util
 
 sys.path.append('../util')
 import pff
 import config_file
+import analysis_util
 
 # Dicts of simulation-level constants.
 module_constants = dict()
@@ -36,7 +36,7 @@ def get_ra_dec_ranges(coord, module_id):
         assert False, f'coord must be equal to either "ra" or "dec", not {coord}.'
 
 
-def init_ra_dec_ranges(t_start, t_end, initial_bounding_box, module_id):
+def init_ra_dec_ranges(t_start, t_end, initial_bounding_box, module_id, verbose):
     """Initialize the ranges of possible RA and DEC coordinates in the
     simulation for module module_id."""
     if module_id not in module_constants:
@@ -49,7 +49,7 @@ def init_ra_dec_ranges(t_start, t_end, initial_bounding_box, module_id):
     dec_low = initial_bounding_box[1][0]
     dec_high = initial_bounding_box[1][1]
     dec_range = dec_low, dec_high
-    print(f"\tmodule '{module_id}': ra_range={round(ra_range[0], 3), round(ra_range[1], 3)} <deg>, "
+    if verbose: print(f"\t\tmodule '{module_id}': ra_range={round(ra_range[0], 3), round(ra_range[1], 3)} <deg>, "
           f"dec_range={round(dec_range[0], 3), round(dec_range[1], 3)} <deg>")
     module_constants[module_id]['coord_ranges'] = ra_range, dec_range
 
@@ -89,17 +89,18 @@ def init_sky_array_constants(elem_per_deg):
     sky_arr_consts['shape'] = shape
 
 
-def get_sky_image_array(elem_per_deg, verbose=False):
+def get_sky_image_array(elem_per_deg, verbose):
     """Returns a 2D array with shape (num_ra, num_dec)."""
     init_sky_array_constants(elem_per_deg)
     # 1st dim: RA coords, 2nd dim: DEC coords (both in degrees)
     ra_length, dec_length = sky_arr_consts['coord_lens']
     array_shape = sky_arr_consts['shape']
     if verbose:
-        print(f'\tArray elements per:\n'
-              f'\t\tdeg ra: {round(array_shape[0] / ra_length, 4):<10}\t\tdeg dec: {round(array_shape[1] / dec_length, 4):<10}')
-        print(f'\tArray shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
+        print(f'\t\tArray elements per:\n'
+              f'\t\t\tdeg ra: {round(array_shape[0] / ra_length, 4):<10}\t\tdeg dec: {round(array_shape[1] / dec_length, 4):<10}')
+        print(f'\t\tArray shape: {array_shape}, number of elements = {array_shape[0] * array_shape[1]:,}')
     return np.zeros(array_shape, dtype=np.float32)
+
 
 def graph_sky_array(sky_array, module_id):
     """Plot sky_array, labeled with the appropriate RA and DEC ranges."""
@@ -134,57 +135,39 @@ def graph_sky_array(sky_array, module_id):
 
 # Simulation utils
 
+module_plots = dict()
 
-file_names = []
-os.system(f'mkdir -p birdie_test_images')
 
 def show_progress(step_num, img, module, num_steps, num_updates, plot_images=False):
     if step_num % (num_steps // num_updates) == 0:
         v = math.ceil(100 * step_num / num_steps)
-        print(f'\tProgress: {v:<2}% [{"*" * (v // 5) + "-" * (20 - (v // 5)):<20}]', end='\r')
+        print(f'\t\tProgress: {v:<2}% [{"*" * (v // 5) + "-" * (20 - (v // 5)):<20}]', end='\r')
         if plot_images and step_num != 0:
+            if module.module_id not in module_plots:
+                os.system(f'mkdir -p ./birdie_injection_plots')
+                module_plots[module.module_id] = []
             fig = module.plot_simulated_image(img)
-            fname = f'birdie_test_images/{time.time()}.png'
-            file_names.append(fname)
+            fname = f'./birdie_injection_plots/{time.time()}.png'
+            module_plots[module.module_id].append(fname)
             plt.savefig(fname)
             plt.close(fig)
 
 
-def build_gif(data_dir, birdie_dir):
-    with imageio.get_writer(f'{data_dir}/{birdie_dir}/test{time.time()}.gif', mode='I') as writer:
-        for fname in file_names:
-            image = imageio.imread(fname)
-            writer.append_data(image)
-    for filename in file_names:
-        os.remove(filename)
-    print('finished writing gif.')
-
-
-
-def ra_to_degrees(ra):
-    """Returns the degree equivalent of a right ascension coordinate
-    in the form: (hours, minutes, seconds)."""
-    assert len(ra) == 3
-    hours = ra[0] + (ra[1] / 60) + (ra[2] / 3600)
-    # Rotate 360 degrees in 24 hours.
-    degrees = hours * (360 / 24)
-    return degrees
-
-
-def dec_to_degrees(dec):
-    """Returns the degree equivalent of a declination coordinate
-    in the form: (degrees, arcminutes, arcseconds)."""
-    assert len(dec) == 3
-    # 60 arcminutes in 1 degree, 3600 arcseconds in 1 degree.
-    abs_degrees = abs(dec[0]) + (dec[1] / 60) + (dec[2] / 3600)
-    sign = dec[0] / abs(dec[0])
-    return sign * abs_degrees
+def build_gif(data_dir, birdie_dir, module_id):
+    if module_id in module_plots:
+        with imageio.get_writer(f'{data_dir}/{birdie_dir}/{module_id}_{time.time()}.gif', mode='I') as writer:
+            for fname in module_plots[module_id]:
+                image = imageio.imread(fname)
+                writer.append_data(image)
+            for filename in module_plots[module_id]:
+                os.remove(filename)
 
 
 def bresenham_line(x0, y0, x1, y1, pts):
     """"Bresenham's line algorithm implementation from
     https://circuitcellar.com/resources/bresenhams-algorithm.
-    pts is a dictionary of [y-index] : [min_x index, max_x index], for scanline rasterization.
+    pts is a dictionary of [y-index] : [min_x index, max_x index],
+    for scanline rasterization.
     """
     dx = x1 - x0 if x1 >= x0 else x0 - x1
     dy = y0 - y1 if y1 >= y0 else y1 - y0
@@ -207,34 +190,7 @@ def bresenham_line(x0, y0, x1, y1, pts):
             y += sy
 
 
-# Initialize / Import BirdieSource object configurations.
-
-
-def get_birdie_config_vector(param_ranges):
-    """Generates a tuple of BirdieSource initialization parameters with uniform distribution
-    on the ranges of possible values, provided by param_ranges."""
-    unif = np.random.uniform
-    config_vector = []
-    param_order = ['ra', 'dec', 'start_utc', 'end_utc', 'duty_cycle', 'period', 'intensity']
-    for param in param_order:
-        config_vector.append(unif(*(param_ranges[param])))
-    return config_vector
-
-
-def init_birdie_param_ranges(start_utc, end_utc, param_ranges, module_id):
-    """Param_ranges specifies the range of possible values for each BirdieSource parameter."""
-    l_ra, r_ra = get_ra_dec_ranges('ra', module_id)
-    l_dec, r_dec = get_ra_dec_ranges('dec', module_id)
-    if r_ra < l_ra:
-        r_ra += 360
-    param_ranges['ra'] = (l_ra, r_ra)
-    param_ranges['dec'] = (l_dec, r_dec)
-    param_ranges['start_utc'] = (start_utc, start_utc)
-    param_ranges['end_utc'] = (end_utc, end_utc)
-    return param_ranges
-
-
-# File IO
+# Config file IO
 
 def get_birdie_config(birdie_config_path):
     """Loads a birdie injection config file with the form:
@@ -266,7 +222,10 @@ def get_integration_time(data_dir, run_dir):
     return x
 
 
-def get_birdie_sequence_num(data_dir, run_dir):
+# Setup birdie run directory
+
+
+def get_birdie_sequence_num(data_dir, run_dir, verbose):
     """Get birdie sequence number, equal to current max birdie
     sequence number for run_dir plus 1."""
     max_sequence_num = 0
@@ -276,20 +235,84 @@ def get_birdie_sequence_num(data_dir, run_dir):
             run_attrs = pff.parse_name(f)
             if 'birdie' in run_attrs:
                 max_sequence_num = max(max_sequence_num, int(run_attrs['birdie']))
+    if verbose: print(f'\t\tBirdie sequence_num = {max_sequence_num + 1}')
     return max_sequence_num + 1
+
+
+def check_image_files(data_dir, run_dir, fnames):
+    files_ok = []
+    for fname in fnames:
+        f_path = f'{data_dir}/{run_dir}/{fname}'
+        if os.path.exists(f_path):
+            file_attrs = pff.parse_name(fname)
+            bytes_per_pixel = int(file_attrs['bpp'])
+            bytes_per_image = 1 + bytes_per_pixel * 1024
+            with open(f_path, 'rb') as fin:
+                try:
+                    frame_size, nframes, first_unix_t, last_unix_t = pff.img_info(fin, bytes_per_image)
+                except Exception as e:
+                    msg = f'"{f_path}" may have variable-length json.\nError message: "{e}"\n'
+                    print(msg)
+                    files_ok.append(False)
+                    continue
+                files_ok.append(True)
+    return all(files_ok)
 
 
 def make_birdie_dir(data_dir, run_dir, sequence_num):
     """Create directory for run + birdie data."""
     birdie_dir = run_dir.replace('.pffd', '') + f'.birdie_{sequence_num}.pffd'
     analysis_util.make_dir(f'{data_dir}/{birdie_dir}')
+    for fname in os.listdir(f'{data_dir}/{run_dir}'):
+        if not pff.is_pff_file(fname):
+            shutil.copy(
+                f'{data_dir}/{run_dir}/{fname}',
+                f'{data_dir}/{birdie_dir}/{fname}'
+            )
+            continue
+        if pff.pff_file_type(fname) not in ('img16', 'img8'):
+            continue
     return birdie_dir
 
 
-# Misc
+def make_birdie_log_files(data_dir, birdie_dir, module_id):
+    """Creates birdie log files.
+    birdie_log.json stores information about every birdie added to an image frame.
+    This file has the format:
+    {
+        frame unix time: {
+            'birdies': [
+                Birdie log entries for every birdie added to the frame with timestamp t.
+                Each birdie log entry has the form:
+                {
+                    'birdie_id': hash identifying a birdie source in birdie_sources.json,
+                    'intensity': intensity in raw adc of birdie.
+                }
+            ]
+        }
+    }
+    Since the RA-DEC coordinates of a birdie source are (presumably) static, we only store the birdie source object
+    hash and the intensity (which may change as a function of time). To get the static metadata about a particular
+    birdie source, we can use key birdie_id in the birdie_sources.json, described below.
 
-
-def iso_to_utc(iso_date_string):
-    """Return the UTC timestamp of a given ISO formatted string."""
-    return float(parser.parse(iso_date_string).timestamp())
+    birdie_sources.json stores configuration information about each birdie source used in birdie injection.
+    This file has the format:
+    {
+        birdie source object hash: {
+            'class_name': name of subclass used for this birdie source.
+            'params': {
+                configuration params and their values.
+            }
+        }
+    }
+    """
+    birdie_log_path = f'{data_dir}/{birdie_dir}/birdie_log.module_{module_id}.json'
+    birdie_sources_path = f'{data_dir}/{birdie_dir}/birdie_sources.json'
+    if not os.path.exists(birdie_log_path):
+        with open(birdie_log_path, 'w'):
+            pass
+    if not os.path.exists(birdie_sources_path):
+        with open(birdie_sources_path, 'w'):
+            pass
+    return birdie_log_path, birdie_sources_path
 
