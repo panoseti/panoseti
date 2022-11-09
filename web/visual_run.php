@@ -18,7 +18,7 @@ function main() {
     if ($seconds) {
         $cmd .= " --seconds $seconds";
     }
-    page_head("Visualization");
+    page_head("Visualization analysis run");
     echo "Command: $cmd
         <p>Output:
         <p>
