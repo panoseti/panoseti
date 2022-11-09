@@ -18,12 +18,25 @@ function main() {
     if ($seconds) {
         $cmd .= " --seconds $seconds";
     }
+    page_head("Visualization");
+    echo "Command: $cmd
+        <p>Output:
+        <p>
+        <pre>
+    ";
+
     system($cmd, $retval);
+    echo "</pre>";
     if ($retval) {
         echo "$cmd returned $retval";
-        return;
     }
-    header("Location: analysis_type.php?type=visual&vol=$vol&run=$run");
+    echo "<p>
+        <a href=analysis_type.php?type=visual&vol=$vol&run=$run>
+            Visual analyses of this run
+        </a>
+        <p>
+    ";
+    page_tail();
 }
 
 main();

@@ -19,9 +19,10 @@ function login_action() {
     $name = post_str('name');
     $passwd = post_str('passwd');
     $u = check_passwd_hash($name, hash_passwd($passwd));
+    $expire = time()+86400*365;
     if ($u) {
-        setcookie('auth', $u->auth, time()+1000000, '/');
-        setcookie('name', $name, time()+1000000, '/');
+        setcookie('auth', $u->auth, $expire, '/');
+        setcookie('name', $name, $expire, '/');
         page_head("Logged in as $name", LOGIN_NONE);
         echo "Go to the <a href=index.php>PanoSETI home page</a>.";
         page_tail();

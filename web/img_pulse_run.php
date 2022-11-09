@@ -40,12 +40,25 @@ function main() {
         $pixels = str_replace(' ', '', $pixels);
         $cmd .= " --pixels $pixels";
     }
+    page_head("Image pulse analysis run");
+    echo "Command: $cmd
+        <p>Output:
+        <p>
+        <pre>
+    ";
     system($cmd, $retval);
+    echo "</pre>";
     if ($retval) {
         echo "$cmd returned $retval";
         return;
     }
-    header("Location: analysis_type.php?type=img_pulse&vol=$vol&run=$run");
+    echo "<p>
+        <a href=analysis_type.php?type=img_pulse&vol=$vol&run=$run>
+            Image pulse analysis of this run
+        </a>
+        </p>
+    ";
+    page_tail();
 }
 
 main();
