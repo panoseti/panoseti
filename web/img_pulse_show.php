@@ -36,6 +36,35 @@ function sigma_form($run, $analysis_dir, $module_dir, $pixel_dir, $dur) {
     ";
 }
 
+// get the # of pulses in a pixel (or all-pixels) dir
+//
+function npulses_pixel($vol, $run, $analysis_dir, $module_dir, $pixel_dir) {
+    $dirpath = "$vol/analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir";
+    $n = 0;
+    foreach (scandir($dirpath) as $f) {
+        if (strstr($f, '_sorted')) {
+            $n += count(file("$dirpath/$f"));
+        }
+    }
+    return $n;
+}
+
+// get the # of pulses for an entire analysis
+//
+function npulses_analysis($vol, $run, $analysis_dir) {
+    $dirpath = "$vol/analysis/$run/img_pulse/$analysis_dir";
+    $n = 0;
+    foreach (scandir($dirpath) as $mdir) {
+        if (substr($mdir, 0, 7) != 'module_') continue;
+        foreach (scandir($subdir) as $pdir) {
+            if ($pdir == 'all_pixels' || substr($pdir, 0, 6) == 'pixel_') {
+                $n += npulses_pixel($vol, $run, $analysis_dir, $mdir, $pdir);
+            }
+        }
+    }
+    return $n;
+}
+
 // get the max nsigma of pulses in file
 // (file is sorted by nsigma, so it's the first one).
 // Also return # of pulses in file
@@ -142,7 +171,8 @@ function show_analysis($vol, $run, $analysis_dir) {
                     "img_pulse_show.php?action=detail&vol=%s&run=%s&analysis=%s&module=%s&pixel=%s",
                     $vol, $run, $analysis_dir, $mdir,$pdir
                 );
-                echo "<li><a href=$url>$pdir</a><br>";
+                $n = npulses_pixel($vol, $run, $analysis_dir, $mdir, $pdir);
+                echo "<li><a href=$url>$pdir</a>($n pulses)<br>";
             }
         }
         echo "</ul>";

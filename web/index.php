@@ -56,6 +56,8 @@ function main() {
         <h2>Hardware parameter logs (Grafana)</h2>
         <p>
         <a href=http://visigoth.ucolick.org:3000>View</a>
+        <br
+        <small>(User: admin; password: visigoth password)</small>
     ";
 
     echo "<h2>Multi-run analysis</h2>";
@@ -71,7 +73,11 @@ function main() {
         foreach (scandir("$vol/data") as $f) {
             if (!strstr($f, '.pffd')) continue;
             $n = parse_pff_name($f);
-            $runs[] = [$n['start'], $f, $vol];
+            $birdie_seq = -1;
+            if (array_key_exists('birdie', $n)) {
+                $birdie_seq = $n['birdie'];
+            }
+            $runs[] = [$n['start'], $f, $vol, $birdie_seq];
         }
     }
     usort($runs, 'compare');
@@ -103,8 +109,14 @@ function main() {
             $prev_day = $day;
         }
         [$rec_dur, $collect_dur, $cleanup_dur] = get_durations($vol, $name, $start_dt);
+
+        $birdie_seq = $run[3];
+        $b = '';
+        if ($birdie_seq >= 0) {
+            $b = "<br>(birdie seq $birdie_seq)";
+        }
         table_row(
-            "<a href=run.php?vol=$vol&name=$name>$time</a>",
+            "<a href=run.php?vol=$vol&name=$name>$time</a>$b",
             $rec_dur,
             $collect_dur,
             $cleanup_dur,

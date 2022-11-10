@@ -452,3 +452,10 @@ elif d == 1023:
     x = tv_usec+1 + tai_nsec
 else:
     error: WR/Unix clocks are off by more than 1 sec
+
+web: back links at diff levels
+    img pulse: show #pulses per pixels
+
+start.py:
+    --duration
+    --don't finalize (power off, shut dome)
