@@ -42,6 +42,16 @@ def ph_baseline_file_ok():
     return True
 
 
+# check validity of image params (rate, bpp)
+#
+def check_img_params(image_8bit, image_usec):
+    if image_8bit:
+        if image_usec < 20 or image_usec > 25:
+            raise Exception('integration time must be 20-25 usec in 8 bit mode')
+    else:
+        if image_usec < 40:
+            raise Exception('integration time must be >= 40 usec in 16 bit mode')
+
 # parse the data config file to get DAQ params for quabos
 #
 def get_daq_params(data_config):
@@ -60,15 +70,9 @@ def get_daq_params(data_config):
         elif image['quabo_sample_size'] != 16:
             raise Exception('quabo_sample_size must be 8 or 16')
         image_usec = image['integration_time_usec']
+        check_img_params(image_8bit, image_usec)
     if 'pulse_height' in data_config:
         do_ph = True
-    if do_image:
-        if image_8bit:
-            if image_usec < 20:
-                raise Exception('integration time must be >= 20 usec in 8 bit mode')
-        else:
-            if image_usec < 40:
-                raise Exception('integration time must be >= 40 usec in 16 bit mode')
     daq_params = quabo_driver.DAQ_PARAMS(
         do_image, image_usec - 1, image_8bit, do_ph, bl_subtract
     )
