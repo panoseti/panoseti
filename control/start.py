@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 # start.py [--no_hv] [--no_redis] [--no_data] [--verbose] [--help]
+#          [--nsecs N] [--stop_session]
 #
 # start a recording run:
 #
@@ -16,7 +17,7 @@
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
 import os, sys, traceback, shutil, time
-import util, file_xfer, quabo_driver
+import util, file_xfer, quabo_driver, stop, session_stop
 
 sys.path.insert(0, '../util')
 
@@ -28,6 +29,8 @@ def help():
     print("--no_hv: don't run hv_updater.py")
     print("--no_redis: OK if redis daemons not running")
     print("--no_data: set up to record, but don't start data flow or record")
+    print("--nsecs N: record for N seconds, then stop run")
+    print("--stop_session: stop session at end of run (with --nsecs)")
     print("--verbose: print commands")
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
@@ -276,6 +279,8 @@ if __name__ == "__main__":
     no_hv = False
     no_redis = False
     no_data = False
+    nsecs = 0
+    stop_session = False
     i = 1
     while i < len(argv):
         if argv[i] == '--no_hv':
@@ -286,6 +291,11 @@ if __name__ == "__main__":
             no_data = True
         elif argv[i] == '--verbose':
             verbose = True
+        elif argv[i] == '--nsecs':
+            i += 1
+            nsecs = int(argv[i])
+        elif argv[i] == '--stop_session':
+            stop_session = True
         elif argv[i] == '--help':
             help()
             quit()
@@ -302,3 +312,8 @@ if __name__ == "__main__":
         obs_config, daq_config, quabo_uids, data_config,
         no_hv, no_redis, no_data
     )
+    if nsecs:
+        time.sleep(nsecs)
+        stop.stop_run(daq_config, quabo_uids)
+        if stop_session:
+            session_stop.session_stop(obs_config)
