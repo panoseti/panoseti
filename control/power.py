@@ -56,7 +56,11 @@ def do_wps(name, obs_config, op):
     elif op == 'off':
         quabo_power(wps, False)
         print("%s: turned power off"%name)
-        
+
+def do_all(obs_config, op):
+    for key in [k for k in obs_config.keys() if 'wps' in k.lower()]:
+        do_wps(key, obs_config, op)
+
 if __name__ == "__main__":
     op = 'query'
     wps_name = 'wps'
@@ -71,5 +75,4 @@ if __name__ == "__main__":
         i += 1
 
     c = config_file.get_obs_config()
-    for key in [k for k in c.keys() if 'wps' in k.lower()]:
-        do_wps(key, c, op)
+    do_all(c, op)

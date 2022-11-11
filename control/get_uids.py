@@ -21,7 +21,7 @@ def get_uid(ip_addr):
         i = struct.unpack('q', f.read(8))
         return "%x"%(i[0])
 
-def get_uids(obs_config, exclude):
+def get_uids(obs_config, exclude=[]):
     f = open(config_file.quabo_uids_filename, 'w')
     f.write(
 '''{
@@ -80,11 +80,11 @@ def get_uids(obs_config, exclude):
 ''')
     f.close()
 
-def usage():
-    print("usage: get_uids.py [--exclude N ...]")
-    sys.exit()
+if __name__ == "__main__":
+    def usage():
+        print("usage: get_uids.py [--exclude N ...]")
+        sys.exit()
 
-def main():
     obs_config = config_file.get_obs_config()
     i = 1
     exclude = []
@@ -96,5 +96,3 @@ def main():
             usage()
         i += 1
     get_uids(obs_config, exclude)
-
-main()
