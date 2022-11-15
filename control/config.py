@@ -245,10 +245,15 @@ def do_calibrate_ph(modules, quabo_ids):
     with open(config_file.quabo_ph_baseline_filename, "w") as f:
         f.write(json.dumps(x, indent=4))
 
-def do_disk_space(data_config, daq_config):
+# compute available recording time, given data config and free disk space.
+# If verbose, show details
+#
+def do_disk_space(data_config, daq_config, verbose=False):
     bps = util.daq_bytes_per_sec_per_module(data_config)
-    print('Data rate per module: %.2f MB/sec'%(bps/1e6))
+    if verbose:
+        print('Data rate per module: %.2f MB/sec'%(bps/1e6))
     nmod_total = 0
+    available_hours = 1e9
 
     # loop over DAQ nodes
     #
@@ -258,7 +263,8 @@ def do_disk_space(data_config, daq_config):
         nmod = len(node['modules'])
         nmod_total += nmod
         ip_addr = node['ip_addr']
-        print('DAQ node %s: %d modules'%(ip_addr, nmod))
+        if verbose:
+            print('DAQ node %s: %d modules'%(ip_addr, nmod))
 
         # get list of volumes on the DAQ node
         #
@@ -292,12 +298,19 @@ def do_disk_space(data_config, daq_config):
             vol = vols[name]
             free = vol['free']
             nmods = len(['mods_here'])
-            print('   %s:'%name)
+            if verbose:
+                print('   %s:'%name)
             if nmods:
-                print('      modules: ', vol['mods_here'])
-                print('      space: %.2fTB (%.2f hours)'%(free/1e12, free/(3600.*bps*nmods)))
+                t = free/(3600.*bps*nmods)
+                if verbose:
+                    print('      modules: ', vol['mods_here'])
+                    print('      space: %.2fTB (%.2f hours)'%(free/1e12, t))
+                if t < available_hours:
+                    available_hours = t
             else:
-                print('      space: %.2fTB'%(free/1e12))
+                if verbose:
+                    print('      space: %.2fTB'%(free/1e12))
+
     head_node_vols = json.loads(open("/home/panosetigraph/web/head_node_volumes.json").read())
     hnd = daq_config['head_node_data_dir']
     hnd = os.path.realpath(hnd)
@@ -306,10 +319,19 @@ def do_disk_space(data_config, daq_config):
         path = '/home/panosetigraph/web/%s/data'%vol
         path = os.path.realpath(path)
         hfree = util.free_space(path)
-        print('   %s (%s)'%(path, vol))
+        if verbose:
+            print('   %s (%s)'%(path, vol))
+        t = hfree/(3600*bps*nmod_total)
         if hnd == path:
-            print('      selected for write')
-        print('      space: %.2fTB (%.2f hours)'%(hfree/1e12, hfree/(3600*bps*nmod_total)))
+            if t < available_hours:
+                available_hours = t
+            if verbose:
+                print('      selected for write')
+        print('      space: %.2fTB (%.2f hours)'%(hfree/1e12, t))
+
+    if verbose:
+        print('---------------\nAvailable recording time: %.2f hours'%available_hours)
+    return available_hours
 
 if __name__ == "__main__":
     argv = sys.argv
@@ -401,4 +423,4 @@ if __name__ == "__main__":
     elif op == 'calibrate_ph':
         do_calibrate_ph(modules, quabo_uids)
     elif op == 'disk_space':
-        do_disk_space(data_config, daq_config)
+        do_disk_space(data_config, daq_config, True)
