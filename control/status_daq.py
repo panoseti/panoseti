@@ -25,7 +25,7 @@ def status():
     # for each volume:
     # - name
     # - free space
-    # - list of volumes that go there; -1 if default
+    # - list of modules that go there; -1 if default
     vols = {}
     for f in os.listdir('.'):
         y = f.split('_')

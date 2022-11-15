@@ -459,3 +459,24 @@ web: back links at diff levels
 start.py:
     --duration
     --don't finalize (power off, shut dome)
+
+--------------
+disk space
+for each DAQ node volume
+    see which modules are being written here
+    show time based on that (--- if none)
+
+node.modules: list of modules directed here
+    each has .id
+
+status_daq reply:
+    vols; each has modules (list of IDs or -1)
+    v0 = volume with -1 (default)
+    for each vol
+        vol.mods_here=[]
+    for each id in node.modules
+        if id is in some volume.modules
+            volume.mods_here.append(id)
+        else
+            add id to v0.mods_here
+    display volumes based on mods_here

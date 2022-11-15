@@ -249,6 +249,9 @@ def do_disk_space(data_config, daq_config):
     bps = util.daq_bytes_per_sec_per_module(data_config)
     print('Data rate per module: %.2f MB/sec'%(bps/1e6))
     nmod_total = 0
+
+    # loop over DAQ nodes
+    #
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
@@ -256,11 +259,45 @@ def do_disk_space(data_config, daq_config):
         nmod_total += nmod
         ip_addr = node['ip_addr']
         print('DAQ node %s: %d modules'%(ip_addr, nmod))
+
+        # get list of volumes on the DAQ node
+        #
         j = util.get_daq_node_status(node)
         vols = j['vols']
+
+        # initialize list of module IDs each vol will handle,
+        # and find the default volume for this node
+        #
+        default_vol = None
+        for vol in vols.values():
+            vol['mods_here'] = []
+            if -1 in vol['modules']:
+                default_vol = vol
+
+        # loop over module IDs going to this DAQ node,
+        # and add them to the mods_here list for the appropriate volume
+        #
+        for module in node['modules']:
+            mid = module['id']
+            found = False
+            for vol in vols.values():
+                if mid in vol['modules']:
+                    vol['mods_here'].append(mid)
+                    found = True
+                    break
+            if not found:
+                default_vol['mods_here'].append(mid)
+
         for name in vols.keys():
             vol = vols[name]
-            print('   %s: %.2f hours'%(name, vol['free']/(3600.*bps)))
+            free = vol['free']
+            nmods = len(['mods_here'])
+            print('   %s:'%name)
+            if nmods:
+                print('      modules: ', vol['mods_here'])
+                print('      space: %.2fTB (%.2f hours)'%(free/1e12, free/(3600.*bps*nmods)))
+            else:
+                print('      space: %.2fTB'%(free/1e12))
     head_node_vols = json.loads(open("/home/panosetigraph/web/head_node_volumes.json").read())
     hnd = daq_config['head_node_data_dir']
     hnd = os.path.realpath(hnd)
@@ -269,9 +306,10 @@ def do_disk_space(data_config, daq_config):
         path = '/home/panosetigraph/web/%s/data'%vol
         path = os.path.realpath(path)
         hfree = util.free_space(path)
-        x = '-> ' if hnd == path else ''
-        print('   %s%s; %s: %.2f hours'%(x, vol, path, hfree/(3600*bps*nmod_total)))
-
+        print('   %s (%s)'%(path, vol))
+        if hnd == path:
+            print('      selected for write')
+        print('      space: %.2fTB (%.2f hours)'%(hfree/1e12, hfree/(3600*bps*nmod_total)))
 
 if __name__ == "__main__":
     argv = sys.argv
