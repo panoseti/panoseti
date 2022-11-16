@@ -3,24 +3,17 @@
 """
 Find and plot the coincident pulse height events between two modules with the same orientation.
 """
-import math
 import sys
 import json
 from collections import deque
-import numpy as np
 
-from search_ph_utils import *
+from search_ph_utils import QuaboFrame, ModuleFrame, plot_coincident_modules
 
 sys.path.append('../util')
 import pff
-import config_file
-
-
-#config_file.obs_config_filename = f'../control/{config_file.obs_config_filename}'
 
 
 # Coincidence searching
-
 
 def get_next_frame(file_obj, frame_num):
     """Returns the next quabo frame from file_obj."""
@@ -198,34 +191,34 @@ def get_module_frame_pairs(quabo_frame_pairs, verbose):
     return mf_pairs_sorted
 
 
-def do_coincidence_search(fpair_dir,
-                          a_file_name,
-                          b_file_name,
+def do_coincidence_search(analysis_out_dir,
+                          obs_config,
+                          a_fname,
+                          a_path,
+                          b_fname,
+                          b_path,
                           bytes_per_pixel,
                           max_time_diff,
                           threshold_max_adc,
                           max_group_time_diff,
-                          verbose=True,
-                          save_fig=False):
+                          verbose,
+                          save_fig):
     """Dispatch function for finding coincidences and plotting module frames."""
-    a_path, b_path = get_file_path(a_file_name), get_file_path(b_file_name)
     a_groups, b_groups = get_groups(a_path, max_group_time_diff, verbose), get_groups(b_path, max_group_time_diff, verbose)
     qf_pairs = search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_adc, verbose)
     module_frame_pairs = get_module_frame_pairs(qf_pairs, verbose)
     if len(module_frame_pairs) == 0:
         print(f'No coincident frames found within {max_time_diff:,} ns of each other and with max(pe) >= {threshold_max_adc}.')
         sys.exit(0)
-    do_plot = input(f'Plot {len(module_frame_pairs)} figures? (y/n): ')
-    if do_plot.lower() == 'y':
+    if verbose:
+        do_plot = input(f'Plot {len(module_frame_pairs)} figures? (y/n): ').lower() == 'y'
+    else:
+        do_plot = True
+    if do_plot:
         for fig_num, mf_pair in enumerate(module_frame_pairs):
             if verbose:
                 msg = '\n' + ' * ' * 3 + f' Figure {fig_num:,} ' + ' * ' * 3
                 msg += f'\nLeft: {repr(mf_pair[0])}\nRight: {repr(mf_pair[1])}'
                 msg += f'{mf_pair[0].get_time_diff_str(mf_pair[1])}'
                 print(msg)
-            plot_coincident_modules(fpair_dir, a_file_name, b_file_name, fig_num, mf_pair, max_time_diff, threshold_max_adc, save_fig)
-
-
-# Default data paths
-DATA_IN_DIR = '/Users/nico/Downloads/720_ph_12pe'
-DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_2astro'
+            plot_coincident_modules(analysis_out_dir, obs_config, a_fname, b_fname, fig_num, mf_pair, max_time_diff, threshold_max_adc, save_fig)

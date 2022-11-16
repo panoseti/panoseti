@@ -1,17 +1,11 @@
 """Utility functions for the program that finds coincident pulse-height events."""
 
-import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-import analysis_util
-
 sys.path.append('../util')
 import pff
-import config_file
-
-DATA_OUT_DIR = '/Users/nico/panoseti/data_figures/coincidence/2022_07_20_2astro'
 
 
 # Matplotlib styling
@@ -60,9 +54,8 @@ def plot_module_frame(fig, ax, module_frame, max_pe):
     return plot
 
 
-def plot_coincident_modules(fpair_dir, a_fname, b_fname, fig_num, mf_pair, max_time_diff, threshold_max_pe, save_fig):
+def plot_coincident_modules(analysis_out_dir, obs_config, a_fname, b_fname, fig_num, mf_pair, max_time_diff, threshold_max_pe, save_fig):
     """Create a single figure displaying the 32x32 image in the coincident module frames in mf_pair."""
-    obs_config = config_file.get_obs_config(dir='../control')
     parsed_a, parsed_b = pff.parse_name(a_fname), pff.parse_name(b_fname)
     max_pe = max(mf_pair[0].get_max_adc(), mf_pair[1].get_max_adc())
     pixel_distance = mf_pair[0].get_distance_between_max_adc(mf_pair[1])
@@ -74,8 +67,7 @@ def plot_coincident_modules(fpair_dir, a_fname, b_fname, fig_num, mf_pair, max_t
         plot = plot_module_frame(fig, ax, module_frame, max_pe)
     style_fig(fig, fig_num, axs[1], plot, a_fname, b_fname, max_time_diff, threshold_max_pe, pixel_distance, mf_pair)
     if save_fig:
-        os.system(f'mkdir -p {DATA_OUT_DIR}')
-        plt.savefig(f'{DATA_OUT_DIR}/{fig.canvas.get_default_filename()}')
+        plt.savefig(f'{analysis_out_dir}/{fig.canvas.get_default_filename()}')
         plt.close(fig)
     else:
         plt.show()
