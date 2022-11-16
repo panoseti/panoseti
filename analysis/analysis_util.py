@@ -10,6 +10,7 @@ import config_file
 #
 ANALYSIS_TYPE_IMAGE_PULSE = 'img_pulse'
 ANALYSIS_TYPE_VISUAL = 'visual'
+ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE = 'ph_coincidence'
 
 ANALYSIS_ROOT = 'analysis'
 
