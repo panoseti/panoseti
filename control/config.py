@@ -191,13 +191,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
                 bh= quad['bh']
                 if do_img:
                     dac1[j] = int(a*gain*pe_thresh1 + b)
-                    qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
-                    print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1']))
-                elif do_ph:
+                if do_ph:
                     dac2[j] = int(ah*gain*pe_thresh1 + bh)
-                    qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
-                    print('%s: DAC2 = %s'%(ip_addr, qc_dict['DAC2']))
-               
+            if do_img:
+                qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
+                print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1'])) 
+            if do_ph:
+                qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
+                print('%s: DAC2 = %s'%(ip_addr, qc_dict['DAC2']))
             # compute GAIN0[]..GAIN63[] based on calibration data
             # TODO: fix indexing
             maroc_gain = [[0]*4 for i in range(64)]
