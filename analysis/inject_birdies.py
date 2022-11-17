@@ -44,7 +44,7 @@ def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbo
     # Note: we use a 1 byte char '*' to delimit the start of an image array.
     file_attrs = pff.parse_name(fin_name)
     bytes_per_pixel = int(file_attrs['bpp'])
-    bytes_per_image = 1 + bytes_per_pixel * 1024
+    bytes_per_image = bytes_per_pixel * 1024
 
     # Get img info:
     with open(f'{data_dir}/{run_dir}/{fin_name}', 'rb') as fin:

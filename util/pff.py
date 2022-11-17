@@ -123,22 +123,21 @@ def pkt_header_time(h):
 def img_header_time(h):
     return pkt_header_time(h['quabo_0'])
 
-# return info about an image file; f points to start
-# frame_size
-# nframes
-# first_t
-# last_t
+# return info about an image file
+#   f points to start of file
+#   bytes_per_image: e.g. 1024*2
+# returns:
+#   frame_size: bytes/frame, including header and image
+#   nframes
+#   first_t
+#   last_t
 #
 def img_info(f, bytes_per_image):
     h = json.loads(read_json(f))
     header_size = f.tell()
-    frame_size = header_size + bytes_per_image
+    frame_size = header_size + bytes_per_image + 1
     file_size = f.seek(0, os.SEEK_END)
-    if (file_size % frame_size):
-        raise Exception('file size %d is not a multiple of frame size %d'%(
-            file_size, frame_size
-        ))
-    nframes = file_size/frame_size
+    nframes = int(file_size/frame_size)
     first_t = img_header_time(h)
     f.seek(-frame_size, os.SEEK_END)
     h = json.loads(read_json(f))
@@ -158,8 +157,6 @@ def img_frame_time(f, frame, frame_size):
 #
 # The file may be missing frames,
 # so the frame at the expected position may be after t.
-#
-# bytes_per_image includes the "*" char
 #
 def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
     (frame_size, nframes, first_t, last_t) = img_info(f, bytes_per_image)

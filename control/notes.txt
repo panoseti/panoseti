@@ -480,3 +480,12 @@ status_daq reply:
         else
             add id to v0.mods_here
     display volumes based on mods_here
+----------------
+visual
+    don't generate flat image file;
+    index into pff
+
+on the fly "video"
+    video_daq.py --module M --ph --nframes N --nsec N
+        return a stream of images from run in progress
+    video.py --module M --ph --nsec N

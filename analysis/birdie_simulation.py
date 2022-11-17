@@ -241,7 +241,8 @@ def do_simulation(data_dir,
             module.simulate_all_pixel_fovs()
             # Add simulated image to img.
             raw_plus_birdie_img = module.add_birdies_to_image_array(img)
-            f.seek(-bytes_per_image, 1)
+            f.seek(-(bytes_per_image+1), 1)
+                # +1 because of the * that precedes the image
             write_image_1D(f, raw_plus_birdie_img, 32, bytes_per_pixel)
         frame_num += 1
     with open(birdie_log_path, 'w') as f:

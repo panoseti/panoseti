@@ -246,7 +246,7 @@ def check_image_files(data_dir, run_dir, fnames):
         if os.path.exists(f_path):
             file_attrs = pff.parse_name(fname)
             bytes_per_pixel = int(file_attrs['bpp'])
-            bytes_per_image = 1 + bytes_per_pixel * 1024
+            bytes_per_image = bytes_per_pixel * 1024
             with open(f_path, 'rb') as fin:
                 try:
                     pff.img_info(fin, bytes_per_image)
