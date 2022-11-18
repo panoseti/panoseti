@@ -14,10 +14,11 @@ def status():
     x = {}
     x['hashpipe_running'] = 1 if util.is_hashpipe_running() else 0
 
-    if os.path.exists(util.daq_run_name_filename):
-        with open(util.daq_run_name_filename) as f:
-            run_name = f.read().strip()
-            x['current_run'] = run_name
+    run_name = util.daq_get_run_name()
+    if run_name:
+        x['current_run'] = run_name
+
+        # the following is invalid.  need to look in module_N/run
         if os.path.exists(run_name):
             used = util.disk_usage(run_name)
             x['current_run_disk'] = used

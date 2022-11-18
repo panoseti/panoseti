@@ -77,13 +77,15 @@ def copy_config_files(daq_config, run_dir, verbose=False):
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
-def copy_hashpipe(daq_config):
+def copy_daq_files(daq_config):
     for node in daq_config['daq_nodes']:
         copy_file_to_node('../daq/hashpipe.so', daq_config, node)
         copy_file_to_node('start_daq.py', daq_config, node)
         copy_file_to_node('stop_daq.py', daq_config, node)
         copy_file_to_node('status_daq.py', daq_config, node)
         copy_file_to_node('util.py', daq_config, node)
+        copy_file_to_node('../util/pff.py', daq_config, node)
+        copy_file_to_node('video_daq.py', daq_config, node)
 
 if __name__ == "__main__":
 

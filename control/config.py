@@ -110,7 +110,7 @@ def do_ping(modules):
             else:
                 print("can't ping %s"%ip_addr)
 
-def do_hk_dest(modules):
+def do_hk_dest(modules, quabo_uids):
     my_ip_addr = util.local_ip()
     for module in modules:
         for i in range(4):
@@ -121,7 +121,7 @@ def do_hk_dest(modules):
             quabo.hk_packet_destination(my_ip_addr)
             quabo.close()
 
-def do_hv_on(modules, quabo_uids, quabo_info, detector_info):
+def do_hv_on(modules, quabo_uids, quabo_info, detector_info, verbose=False):
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
@@ -136,9 +136,10 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info):
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.hv_set(v)
             quabo.close()
-            print('%s: set HV to [%d %d %d %d]'%(
-                ip_addr, v[0], v[1], v[2], v[3]
-            ))
+            if verbose:
+                print('%s: set HV to [%d %d %d %d]'%(
+                    ip_addr, v[0], v[1], v[2], v[3]
+                ))
 
 def do_hv_off(modules, quabo_uids):
     for module in modules:
@@ -154,7 +155,7 @@ def do_hv_off(modules, quabo_uids):
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False):
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -191,12 +192,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
                 if do_img and do_ph:
                     dac2[j] = int(a*gain*pe_thresh2 + b)
             qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
-            print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1']))
+            if verbose:
+                print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1']))
             if do_img and do_ph:
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(
                     dac2[0], dac2[1], dac2[2], dac2[3]
                 )
-                print('%s: DAC2 = %s'%(ip_addr, qc_dict['DAC2']))
+                if verbose:
+                    print('%s: DAC2 = %s'%(ip_addr, qc_dict['DAC2']))
 
 
             # compute GAIN0[]..GAIN63[] based on calibration data
@@ -215,7 +218,8 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
                     maroc_gain[k][0], maroc_gain[k][1],
                     maroc_gain[k][2], maroc_gain[k][3]
                 )
-                print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
+                if verbose:
+                    print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
 
             # send MAROC params to the quabo
             quabo = quabo_driver.QUABO(ip_addr)
@@ -224,7 +228,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config):
 
 # compute PH baselines on quabos and write to file
 #
-def do_calibrate_ph(modules, quabo_ids):
+def do_calibrate_ph(modules, quabo_uids):
     quabos = []
     for module in modules:
         for i in range(4):
@@ -334,93 +338,95 @@ def do_disk_space(data_config, daq_config, verbose=False):
     return available_hours
 
 if __name__ == "__main__":
-    argv = sys.argv
-    nops = 0
-    i = 1
-    while i < len(argv):
-        if argv[i] == '--show':
-            nops += 1
-            op = 'show'
-        elif argv[i] == '--reboot':
-            nops += 1
-            op = 'reboot'
-        elif argv[i] == '--loads':
-            nops += 1
-            op = 'loads'
-        elif argv[i] == '--ping':
-            nops += 1
-            op = 'ping'
-        elif argv[i] == '--init_daq_nodes':
-            nops += 1
-            op = 'init_daq_nodes'
-        elif argv[i] == '--hk_dest':
-            nops += 1
-            op = 'hk_dest'
-        elif argv[i] == '--redis_daemons':
-            nops += 1
-            op = 'redis_daemons'
-        elif argv[i] == '--stop_redis_daemons':
-            nops += 1
-            op = 'stop_redis_daemons'
-        elif argv[i] == '--hv_on':
-            nops += 1
-            op = 'hv_on'
-        elif argv[i] == '--hv_off':
-            nops += 1
-            op = 'hv_off'
-        elif argv[i] == '--maroc_config':
-            nops += 1
-            op = 'maroc_config'
-        elif argv[i] == '--calibrate_ph':
-            nops += 1
-            op = 'calibrate_ph'
-        elif argv[i] == '--disk_space':
-            nops += 1
-            op = 'disk_space'
-        else:
-            print('bad arg: %s'%argv[i])
+    def main():
+        argv = sys.argv
+        nops = 0
+        i = 1
+        while i < len(argv):
+            if argv[i] == '--show':
+                nops += 1
+                op = 'show'
+            elif argv[i] == '--reboot':
+                nops += 1
+                op = 'reboot'
+            elif argv[i] == '--loads':
+                nops += 1
+                op = 'loads'
+            elif argv[i] == '--ping':
+                nops += 1
+                op = 'ping'
+            elif argv[i] == '--init_daq_nodes':
+                nops += 1
+                op = 'init_daq_nodes'
+            elif argv[i] == '--hk_dest':
+                nops += 1
+                op = 'hk_dest'
+            elif argv[i] == '--redis_daemons':
+                nops += 1
+                op = 'redis_daemons'
+            elif argv[i] == '--stop_redis_daemons':
+                nops += 1
+                op = 'stop_redis_daemons'
+            elif argv[i] == '--hv_on':
+                nops += 1
+                op = 'hv_on'
+            elif argv[i] == '--hv_off':
+                nops += 1
+                op = 'hv_off'
+            elif argv[i] == '--maroc_config':
+                nops += 1
+                op = 'maroc_config'
+            elif argv[i] == '--calibrate_ph':
+                nops += 1
+                op = 'calibrate_ph'
+            elif argv[i] == '--disk_space':
+                nops += 1
+                op = 'disk_space'
+            else:
+                print('bad arg: %s'%argv[i])
+                usage()
+            i += 1
+
+        if nops == 0:
             usage()
-        i += 1
+        if nops > 1:
+            print('must specify a single op')
+            usage()
 
-    if nops == 0:
-        usage()
-    if nops > 1:
-        print('must specify a single op')
-        usage()
-
-    obs_config = config_file.get_obs_config()
-    modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
-    daq_config = config_file.get_daq_config()
-    quabo_info = config_file.get_quabo_info()
-    config_file.associate(daq_config, quabo_uids)
-    data_config = config_file.get_data_config()
-    if op == 'reboot':
-        do_reboot(modules, quabo_uids)
-        do_hk_dest(modules)
-    elif op == 'loads':
-        do_loads(modules, quabo_uids)
-    elif op == 'ping':
-        do_ping(modules)
-    elif op == 'init_daq_nodes':
-        file_xfer.copy_hashpipe(daq_config)
-    elif op == 'hk_dest':
-        do_hk_dest(modules)
-    elif op == 'redis_daemons':
-        util.start_redis_daemons()
-    elif op == 'stop_redis_daemons':
-        util.stop_redis_daemons()
-    elif op == 'show':
-        show_config(obs_config, quabo_uids)
-        util.show_redis_daemons()
-    elif op == 'hv_on':
-        detector_info = config_file.get_detector_info()
-        do_hv_on(modules, quabo_uids, quabo_info, detector_info)
-    elif op == 'hv_off':
-        do_hv_off(modules, quabo_uids)
-    elif op == 'maroc_config':
-        do_maroc_config(modules, quabo_uids, quabo_info, data_config)
-    elif op == 'calibrate_ph':
-        do_calibrate_ph(modules, quabo_uids)
-    elif op == 'disk_space':
-        do_disk_space(data_config, daq_config, True)
+        obs_config = config_file.get_obs_config()
+        modules = config_file.get_modules(obs_config)
+        quabo_uids = config_file.get_quabo_uids()
+        daq_config = config_file.get_daq_config()
+        quabo_info = config_file.get_quabo_info()
+        config_file.associate(daq_config, quabo_uids)
+        data_config = config_file.get_data_config()
+        if op == 'reboot':
+            do_reboot(modules, quabo_uids)
+            do_hk_dest(modules, quabo_uids)
+        elif op == 'loads':
+            do_loads(modules, quabo_uids)
+        elif op == 'ping':
+            do_ping(modules)
+        elif op == 'init_daq_nodes':
+            file_xfer.copy_daq_files(daq_config)
+        elif op == 'hk_dest':
+            do_hk_dest(modules, quabo_uids)
+        elif op == 'redis_daemons':
+            util.start_redis_daemons()
+        elif op == 'stop_redis_daemons':
+            util.stop_redis_daemons()
+        elif op == 'show':
+            show_config(obs_config, quabo_uids)
+            util.show_redis_daemons()
+        elif op == 'hv_on':
+            detector_info = config_file.get_detector_info()
+            do_hv_on(modules, quabo_uids, quabo_info, detector_info, True)
+        elif op == 'hv_off':
+            do_hv_off(modules, quabo_uids)
+        elif op == 'maroc_config':
+            do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
+        elif op == 'calibrate_ph':
+            do_calibrate_ph(modules, quabo_uids)
+        elif op == 'disk_space':
+            do_disk_space(data_config, daq_config, True)
+    main()
