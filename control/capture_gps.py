@@ -236,40 +236,34 @@ def initialize():
 
 def main():
     data = b''
-    dataSize = 0
-    bytesToRead = 0
-    recv_byte = 0
+    data_size = 0
     last_recv_byte = 0
 
     ser, r = initialize()
 
     print('Running')
     while True:
-        while bytesToRead == 0:
-            bytesToRead = ser.inWaiting()
-        # as I tested, bytesToRead is always 1.
-        # If it's not 1, the algorithm here will not work
-        recv_byte = ser.read(bytesToRead)
-        if(recv_byte == b'\x10' and last_recv_byte == b'\x10'):
+        recv_byte = ser.read()
+        if recv_byte == b'\x10' and last_recv_byte == b'\x10':
             pass
         else:
             data += recv_byte
-            dataSize += bytesToRead
+            data_size += 1
         last_recv_byte = recv_byte
-        bytesToRead = 0
-        if data[dataSize-1:dataSize] == b'\x03' and data[dataSize-2:dataSize-1] == b'\x10':
+        if data[data_size - 1:data_size] == b'\x03' and data[data_size - 2:data_size - 1] == b'\x10':
             if data[0:1] == b'\x10':
                 id = data[1:3]
                 if id == b'\x8f\xab':
-                    primaryTimingPacket(data[2:dataSize-2], r)
+                    primaryTimingPacket(data[2:data_size - 2], r)
                 elif id == b'\x8f\xac':
-                    supplementaryTimingPacket(data[2:dataSize-2], r)
+                    supplementaryTimingPacket(data[2:data_size - 2], r)
                 else:
-                    print(data[1:dataSize-2])
-                    print(len(data[2:dataSize-2]))
-            
+                    print('****fishy packet')
+                    print(data[1:data_size - 2])
+                    print(len(data[2:data_size - 2]))
             data = b''
-            dataSize = 0
+            data_size = 0
+
 
 if __name__ == "__main__":
     main()
