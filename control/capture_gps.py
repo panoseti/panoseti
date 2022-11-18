@@ -224,7 +224,7 @@ def initialize():
     ser = serial.Serial(
         port=util.get_gps_port(config_file.get_obs_config()),
         baudrate=9600,
-        timeout=1,
+        timeout=None,
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,
         bytesize=serial.EIGHTBITS
