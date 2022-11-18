@@ -6,7 +6,7 @@ import netifaces, json
 
 #-------------- DEFAULTS ---------------
 
-default_max_file_size_mb = 1000
+default_max_file_size_mb = 0        # no limit
 
 #-------------- FILE NAMES ---------------
 
@@ -343,6 +343,15 @@ def get_daq_node_status(node):
         raise Exception("can't talk to DAQ node")
     y = x.stdout.decode()
     return json.loads(y)
+
+#-------------- functions only for DAQ nodes ---------------
+
+def daq_get_run_name():
+    if os.path.exists(daq_run_name_filename):
+        with open(daq_run_name_filename) as f:
+            return f.read().strip()
+    return None
+
 
 #-------------- WR and GPS---------------
 

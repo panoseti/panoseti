@@ -213,4 +213,6 @@ def wr_to_unix(pkt_tai, pkt_nsec, tv_sec):
         return tv_sec - 1 + pkt_nsec/1e9
     elif d == 1023:
         return tv_sec + 1 + pkt_nsec/1e9
-    raise Exception('WR and Unix times differ by > 1 sec: %d %d'%(pkt_tai, tv_usze))
+    else:
+        return 0
+        #raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))

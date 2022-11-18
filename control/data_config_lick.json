@@ -2,14 +2,13 @@
     "run_type": "eng",
     "gain": 60,
     "image": {
-        "integration_time_usec": 20,
+        "integration_time_usec": 2000,
         "pe_threshold": 2,
-        "quabo_sample_size": 8
+        "quabo_sample_size": 16
     },
     "pulse_height": {
         "pe_threshold": 15
     },
-    "max_file_size_mb": 100000,
     "flash_params": {
         "rate": 7,
         "level": 0,

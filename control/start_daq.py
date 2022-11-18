@@ -27,7 +27,7 @@ import util
 def main():
     argv = sys.argv
     i = 1
-    max_file_size_mb = None
+    max_file_size_mb = -1
     run_dir = None
     daq_ip_addr = None
     module_ids = []
@@ -51,7 +51,7 @@ def main():
         i += 1
     if not run_dir:
         raise Exception('no run dir specified')
-    if not max_file_size_mb:
+    if max_file_size_mb<0:
         raise Exception('no max file size specified')
     if len(module_ids) == 0:
         raise Exception('no module IDs specified')

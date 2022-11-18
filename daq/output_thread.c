@@ -231,7 +231,7 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
         dataBlock->img_block + (frameIndex*BYTES_PER_MODULE_FRAME)
     );
 
-    if (ftell(f) > max_file_size){
+    if (max_file_size && (ftell(f) > max_file_size)){
         moduleToWrite->image_seqno++;
         if (bits_per_pixel == 16){
             moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory);
@@ -295,7 +295,7 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int packetIndex){
         dataBlock->ph_block + (packetIndex*BYTES_PER_PKT_IMAGE)
     );
 
-    if (ftell(f) > max_file_size){
+    if (max_file_size && (ftell(f) > max_file_size)){
         moduleToWrite->ph_seqno++;
         if (mode == 0x1){
             moduleToWrite->new_dp_file(DP_PH_IMG, run_directory);
