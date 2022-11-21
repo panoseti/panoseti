@@ -160,14 +160,11 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
 
-    if do_img and do_ph:
+    if do_img:
         pe_thresh1 = float(data_config['image']['pe_threshold'])
+    if do_ph:
         pe_thresh2 = float(data_config['pulse_height']['pe_threshold'])
-    elif do_img:
-        pe_thresh1 = float(data_config['image']['pe_threshold'])
-    elif do_ph:
-        pe_thresh1 = float(data_config['pulse_height']['pe_threshold'])
-    else:
+    if not do_img or not do_ph:
         raise Exception('data_config.json specifies no data products')
 
     qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
@@ -193,7 +190,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
                 if do_img:
                     dac1[j] = int(a*gain*pe_thresh1 + b)
                 if do_ph:
-                    dac2[j] = int(ah*gain*pe_thresh1 + bh)
+                    dac2[j] = int(ah*gain*pe_thresh2 + bh)
             if do_img:
                 qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
                 print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1'])) 
