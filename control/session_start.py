@@ -2,7 +2,7 @@
 
 import sys, time
 
-import config, power, get_uids, util
+import config, power, get_uids, util, file_xfer
 
 sys.path.insert(0, '../util')
 import config_file
@@ -30,7 +30,7 @@ def session_start(obs_config, quabo_info, data_config, daq_config):
 
     detector_info = config_file.get_detector_info()
     print('turning on HV')
-    config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+    #config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
 
     print('configuring Marocs')
     config.do_maroc_config(modules, quabo_uids, quabo_info, data_config)
