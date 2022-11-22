@@ -93,7 +93,7 @@ class QUABO:
 
     def send_maroc_params_file(self):
         cmd = bytearray(492)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             config = parse_quabo_config_file(self.config_file_path)
         self.make_maroc_cmd(config, cmd)
         self.flush_rx_buf()
@@ -121,7 +121,7 @@ class QUABO:
 
     def hv_config(self):
         cmd = self.make_cmd(0x02)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             self.parse_hv_params(f, cmd)
         self.flush_rx_buf()     # needed?
         self.send(cmd)
@@ -147,14 +147,14 @@ class QUABO:
 
     def send_acq_parameters_file(self):
         cmd = self.make_cmd(0x03)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             self.parse_acq_parameters(f, cmd)
         self.flush_rx_buf()
         self.send(cmd)
 
     def send_trigger_mask(self):
         cmd = self.make_cmd(0x06)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             self.parse_trigger_mask(f, cmd)
         self.flush_rx_buf()
         self.send(cmd)
