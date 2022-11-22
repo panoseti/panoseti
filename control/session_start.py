@@ -12,7 +12,7 @@ def open_domes(obs_config):
     for dome in obs_config['domes']:
         print('   ', dome['name'])
 
-def session_start(obs_config, quabo_info, data_config, daq_config):
+def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
     open_domes(obs_config);
 
     power.do_all(obs_config, 'on')
@@ -28,9 +28,10 @@ def session_start(obs_config, quabo_info, data_config, daq_config):
     print('rebooting quabos')
     config.do_reboot(modules, quabo_uids)
 
-    detector_info = config_file.get_detector_info()
-    print('turning on HV')
-    #config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+    if not no_hv: 
+        print('turning on HV')
+        detector_info = config_file.get_detector_info()
+        config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
 
     print('configuring Marocs')
     config.do_maroc_config(modules, quabo_uids, quabo_info, data_config)
@@ -46,10 +47,20 @@ def session_start(obs_config, quabo_info, data_config, daq_config):
 
 if __name__ == "__main__":
     def main():
+        no_hv = False
+        i = 1
+        argv = sys.argv
+        while i<len(argv):
+            if argv[i] == '--no_hv':
+                no_hv = True
+            else:
+                raise Exception('bad arg %s'%argv[i])
+            i += 1
         session_start(
             config_file.get_obs_config(),
             config_file.get_quabo_info(),
             config_file.get_data_config(),
-            config_file.get_daq_config()
+            config_file.get_daq_config(),
+            no_hv
         )
     main()

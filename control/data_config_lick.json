@@ -3,7 +3,7 @@
     "gain": 60,
     "image": {
         "integration_time_usec": 100,
-        "pe_threshold": 2,
+        "pe_threshold": 15,
         "quabo_sample_size": 16
     },
     "pulse_height": {
