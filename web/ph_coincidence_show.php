@@ -14,23 +14,16 @@ function show_analysis($vol, $run, $analysis_dir) {
     $dirpath = "$vol/analysis/$run/ph_coincidence/$analysis_dir";
     page_head("Pulse height pulse analysis");
     analysis_page_intro('ph_coincidence', $analysis_dir, $dirpath);
-    $module_pair_fname_pattern = "{module_(\d+)\.module_(\d+)}"
+    $module_pair_fname_pattern = "/module_(\d+)\.module_(\d+)/";
     foreach (scandir($dirpath) as $mpdir) {
         if (preg_match($module_pair_fname_pattern, $mpdir, $matches)) {
-            $modules = implode(',', array_slice($matches, 1);
-            //TODO: Fix stuff after this line
-            echo "<h3>Module $mnum</h3><ul>";
-            $subdir = "$dirpath/$mdir";
-            foreach (scandir($subdir) as $pdir) {
-                if ($pdir == 'all_pixels' || substr($pdir, 0, 6) == 'pixel_') {
-                    $url = sprintf(
-                        "img_pulse_show.php?action=detail&vol=%s&run=%s&analysis=%s&module=%s&pixel=%s",
-                        $vol, $run, $analysis_dir, $mdir,$pdir
-                    );
-                    $n = npulses_pixel($vol, $run, $analysis_dir, $mdir, $pdir);
-                    echo "<li><a href=$url>$pdir</a>($n pulses)<br>";
-                }
-            }
+            $module_pair_nums = implode(',', array_slice($matches, 1);
+            echo "<h3>Module $module_pair_nums</h3><ul>";
+            $subdir = "$dirpath/$mpdir";
+            echo "<ul>
+                <li> <a href=ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&event=0>Event browser</a>
+                </ul>
+            ";
         }
         echo "</ul>";
     }
@@ -39,33 +32,15 @@ function show_analysis($vol, $run, $analysis_dir) {
 
 $run = get_str("run");
 $vol = get_str("vol");
+$analysis_dir = get_str("analysis");
 check_filename($run);
 check_filename($vol);
-$analysis_dir = get_str("analysis");
 check_filename($analysis_dir);
 
 $action = get_str('action', true);
 
 if (!$action) {
     show_analysis($vol, $run, $analysis_dir);
-} else if ($action == 'detail') {
-    $module_dir = get_str('module', true);
-    $pixel_dir = get_str('pixel', true);
-    show_pixel_dir($vol, $run, $analysis_dir, $module_dir, $pixel_dir);
-} else if ($action == 'list') {
-    $module_dir = get_str('module', true);
-    $pixel_dir = get_str('pixel', true);
-    $level = get_int('level');
-    show_list($vol, $run, $analysis_dir, $module_dir, $pixel_dir, $level);
-} else if ($action == 'graph') {
-    $module_dir = get_str('module', true);
-    $pixel_dir = get_str('pixel', true);
-    $level = get_int('level');
-    $start = get_int('start');
-    $n = get_int('n');
-    show_graph(
-        $vol, $run, $analysis_dir, $module_dir, $pixel_dir, $level, $start, $n
-    );
 } else {
     error_page("bad action $action");
 }

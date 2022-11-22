@@ -22,24 +22,22 @@ def style_fig(fig, fig_num, right_ax, plot, a_file_name, b_file_name, max_time_d
     )
     time_diffs = f'{pair[0].get_time_diff_str(pair[1])}'
     fig.suptitle(title + altitude_estimation + time_diffs)
-    #fig.tight_layout()
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
-    save_name = "fig-num_{0}.ns-diff_{1}.threshold-pe_{2}.left-module_{3}.right-module_{4}.{5}".format(
-        fig_num, max_time_diff, threshold_max_pe, a_file_name[:-4], b_file_name[:-4], canvas.get_default_filetype()
+    save_name = "event_{0}.{1}".format(
+        fig_num, canvas.get_default_filetype()
     )
     canvas.get_default_filename = lambda: save_name
 
     cbar = fig.colorbar(plot, ax=right_ax, fraction=0.035, pad=0.05)
     cbar.ax.get_yaxis().labelpad = 15
-    cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
+    cbar.ax.set_ylabel('Raw ADC', rotation=270)
 
 
 def style_ax(fig, ax, module_frame, plot):
     """Style each plot."""
     ax.set_title(str(module_frame))
     ax.invert_yaxis()
-    #ax.set_axis_off()
     ax.set_box_aspect(1)
 
 
