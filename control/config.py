@@ -164,7 +164,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
         pe_thresh1 = float(data_config['image']['pe_threshold'])
     if do_ph:
         pe_thresh2 = float(data_config['pulse_height']['pe_threshold'])
-    if not do_img or not do_ph:
+    if not do_img and not do_ph:
         raise Exception('data_config.json specifies no data products')
 
     qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
@@ -220,6 +220,8 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
             # send MAROC params to the quabo
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.send_maroc_params(qc_dict)
+            time.sleep(0.1)
+            quabo.send_trigger_mask()
             quabo.close()
 
 # compute PH baselines on quabos and write to file
