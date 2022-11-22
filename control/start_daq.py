@@ -99,7 +99,7 @@ def main():
     try:
         child_pid = int(result.stdout)
     except:
-        raise Exception("can't get hashpipe PID; it may have crashed");
+        raise Exception("can't get hashpipe PID; it may have crashed: %s"%result.stdout);
 
     # write it to a file
 

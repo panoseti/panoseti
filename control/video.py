@@ -6,11 +6,15 @@ sys.path.insert(0, '../util')
 
 import config_file
 
-def main(daq_config):
+def main(module, daq_config):
     node = daq_config['daq_nodes'][0]
+    cmd = 'cd %s; ./video_daq.py --module %d --bytes_per_pixel %d'%(
+            node['data_dir'], module, 2
+    )
+    print(cmd)
     process = subprocess.Popen(['ssh',
         '%s@%s'%(node['username'], node['ip_addr']),
-        'cd %s; ./video_daq.py'%(node['data_dir']),
+        cmd,
         ],
         shell=False, stdout = subprocess.PIPE
     )
@@ -21,5 +25,13 @@ def main(daq_config):
         if output:
             print(output.decode())
 
-daq_config = config_file.get_daq_config()
-main(daq_config)
+i = 1
+module = -1
+argv = sys.argv
+while i<len(argv):
+    if argv[i] == '--module':
+        i += 1
+        module = int(argv[i])
+if module<0:
+    raise Exception('no module specified')
+main(module, config_file.get_daq_config())

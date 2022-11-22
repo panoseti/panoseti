@@ -57,7 +57,7 @@ def main(ph, nsecs, module, bytes_per_pixel):
         if nframes > last_frame+1:
             last_frame = nframes-1
             f.seek(last_frame*frame_size, os.SEEK_SET)
-            sys.stdout.write(f.read(frame_size).decode('utf-8'))
+            sys.stdout.buffer.write(f.read(frame_size))
         sys.stdout.flush()
         time.sleep(nsecs)
 
@@ -81,7 +81,7 @@ while i<len(argv):
         bytes_per_pixel = int(argv[i])
     i += 1
 if module < 0:
-    print('no module')
+    print('no module specified')
 elif bytes_per_pixel < 0:
     print('no bytes per pixel')
 else:

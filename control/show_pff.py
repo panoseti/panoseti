@@ -80,55 +80,59 @@ def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
             i += 1
             input('Enter for next frame')
 
-def usage():
-    print("usage: show_pff.py [--quantile x] [--verbose] file")
+if __name__ == "__main__":
 
-def main():
-    i = 1
-    fname = None
-    quantile = .1
-    verbose = False
+    def usage():
+        print("usage: show_pff.py [--quantile x] [--verbose] file")
 
-    argv = sys.argv
-    while i<len(argv):
-        if argv[i] == '--quantile':
+    def main():
+        i = 1
+        fname = None
+        quantile = .1
+        verbose = False
+
+        argv = sys.argv
+        while i<len(argv):
+            if argv[i] == '--quantile':
+                i += 1
+                min = float(argv[i])  
+            elif argv[i] == '--verbose':
+                verbose = True
+            else:
+                fname = argv[i]
             i += 1
-            min = float(argv[i])  
-        elif argv[i] == '--verbose':
-            verbose = True
+
+        if not fname:
+            usage()
+            return
+
+        # fname might be a symbolic link like img or ph
+        path = os.path.realpath(fname)
+        real_fname = os.path.basename(path)
+        dict = pff.parse_name(real_fname)
+        if not dict:
+            raise Exception('bad PFF filename %s'%real_fname)
+        dp = dict['dp']
+
+        if dp == 'img16':
+            image_size = 32
+            bytes_per_pixel = 2
+            is_ph = False
+        elif dp == 'img8':
+            image_size = 32
+            bytes_per_pixel = 1
+            is_ph = False
+        elif dp == 'ph16':
+            image_size = 16
+            bytes_per_pixel = 2
+            is_ph = True
         else:
-            fname = argv[i]
-        i += 1
+            raise Exception("bad data product %s"%dp)
 
-    if not fname:
-        usage()
-        return
+        [min, max] = image_quantiles.get_quantiles(
+            fname, image_size, bytes_per_pixel, quantile
+        )
+        print('pixel 10/90 percentiles: %d, %d'%(min, max))
+        show_file(fname, image_size, bytes_per_pixel, min, max, is_ph, verbose)
 
-    # fname might be a symbolic link like img or ph
-    path = os.path.realpath(fname)
-    real_fname = os.path.basename(path)
-    dict = pff.parse_name(real_fname)
-    dp = dict['dp']
-
-    if dp == 'img16':
-        image_size = 32
-        bytes_per_pixel = 2
-        is_ph = False
-    elif dp == 'img8':
-        image_size = 32
-        bytes_per_pixel = 1
-        is_ph = False
-    elif dp == 'ph16':
-        image_size = 16
-        bytes_per_pixel = 2
-        is_ph = True
-    else:
-        raise Exception("bad data product %s"%dp)
-
-    [min, max] = image_quantiles.get_quantiles(
-        fname, image_size, bytes_per_pixel, quantile
-    )
-    print('pixel 10/90 percentiles: %d, %d'%(min, max))
-    show_file(fname, image_size, bytes_per_pixel, min, max, is_ph, verbose)
-
-main()
+    main()

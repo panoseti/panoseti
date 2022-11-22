@@ -353,15 +353,15 @@ STIM_RATE = 2
 *CHANMASK_8[7:0] are the OR-trigger bits (2 from each MAROC)
 *CHANMASK_8[8] is the external trigger input (connected to other QUABOS)
 
-CHANMASK_0 = 0x0
-CHANMASK_1 = 0x0
-CHANMASK_2 = 0x0
-CHANMASK_3 = 0x0
-CHANMASK_4 = 0x0
-CHANMASK_5 = 0x0
-CHANMASK_6 = 0x0
-CHANMASK_7 = 0x0
-CHANMASK_8 = 0x0
+CHANMASK_0 = 0xffffffff
+CHANMASK_1 = 0xffffffff
+CHANMASK_2 = 0xffffffff
+CHANMASK_3 = 0xffffffff
+CHANMASK_4 = 0xffffffff
+CHANMASK_5 = 0xffffffff
+CHANMASK_6 = 0xffffffff
+CHANMASK_7 = 0xffffffff
+CHANMASK_8 = 0x155
 
 FLASH_RATE = 7
 FLASH_LEVEL = 31
