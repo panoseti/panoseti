@@ -1,5 +1,17 @@
 #! /usr/bin/env python3
 
+# start an "observing session":
+# - open domes (TBD)
+# - power on relevant modules
+# - wait for quabos to come up
+# - get quabo UIDs
+# - reboot quabos
+# - turn on HV (using levels from quabo config files)
+# - set gain params of Marocs
+# - do PH baseline calibration
+# - start the Redis daemons
+# - copy software to DAQ nodes
+
 import sys, time
 
 import config, power, get_uids, util, file_xfer
