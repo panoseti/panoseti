@@ -158,15 +158,7 @@ function main($vol, $run) {
         );
     }
     end_table();
-    echo "<h2>Other files</h2>";
-    foreach (scandir($dir) as $f) {
-        if ($f[0] == ".") continue;
-        if (is_pff($f)) continue;
-        if (in_array($f, ['comments.json', 'tags.json'])) continue;
-        echo "<br>
-            <a href=$vol/data/$run/$f>$f</a>
-        ";
-    }
+    echo "<p><a href=$vol/data/$run/>See all files</a> (config files, HK data)<p>";
 
     echo "<h2>Analyses</h2>\n";
     show_analysis_types($vol, $run);

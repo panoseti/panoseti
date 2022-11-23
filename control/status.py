@@ -38,9 +38,9 @@ def status():
         else:
             print('   hashpipe is not running')
         if 'current_run' in j.keys():
-            print('   current run:', ['current_run'])
+            print('   current run:', j['current_run'])
             if 'current_run_disk' in j.keys():
-                print('   disk usage:', ['current_run_disk'])
+                print('   disk usage:', j['current_run_disk'])
             else:
                 print("   run dir doesn't exist")
         else:

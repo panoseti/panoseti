@@ -48,7 +48,7 @@ def read_image(f, img_size, bytes_per_pixel):
         else:
             raise Exception("bad bytes per pixel: %d"%bytes_per_pixel)
     else:
-        raise Exception("bad image size"%image_size)
+        raise Exception("bad image size"%img_size)
 
 def skip_image(f, img_size, bytes_per_pixel):
     f.seek(img_size*img_size*bytes_per_pixel+1, os.SEEK_CUR)

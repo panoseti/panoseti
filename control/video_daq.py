@@ -45,7 +45,7 @@ def main(ph, nsecs, module, bytes_per_pixel):
         time.sleep(1)
 
     # get file info, e.g. frame size
-    print('file: ', filepath)
+    #print('file: ', filepath)
     f = open(filepath, 'rb')
     (frame_size, nframes, first_t, last_t) = pff.img_info(f, bytes_per_image)
 
@@ -53,7 +53,7 @@ def main(ph, nsecs, module, bytes_per_pixel):
     while True:
         fsize = f.seek(0, os.SEEK_END)
         nframes = int(fsize/frame_size)
-        print('fsize: ', fsize, ' nframes: ', nframes, ' last_frame: ', last_frame)
+        #print('fsize: ', fsize, ' nframes: ', nframes, ' last_frame: ', last_frame)
         if nframes > last_frame+1:
             last_frame = nframes-1
             f.seek(last_frame*frame_size, os.SEEK_SET)
@@ -61,15 +61,24 @@ def main(ph, nsecs, module, bytes_per_pixel):
         sys.stdout.flush()
         time.sleep(nsecs)
 
+def do_test():
+    while True:
+        print('x')
+        sys.stdout.flush()
+        time.sleep(1)
+
 ph = False
 nsecs = 1
 module = -1
 bytes_per_pixel = -1
 argv = sys.argv
+test = False
 i = 1
 while i<len(argv):
     if argv[i] == '--ph':
         ph = True
+    elif argv[i] == '--test':
+        test = True
     elif argv[i] == '--nsecs':
         i += 1
         nsecs = float(argv[i])
@@ -80,7 +89,9 @@ while i<len(argv):
         i += 1
         bytes_per_pixel = int(argv[i])
     i += 1
-if module < 0:
+if test:
+    do_test()
+elif module < 0:
     print('no module specified')
 elif bytes_per_pixel < 0:
     print('no bytes per pixel')
