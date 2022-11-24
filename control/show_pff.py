@@ -78,7 +78,9 @@ def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
             img = pff.read_image(f, img_size, bytes_per_pixel)
             image_as_text(img, img_size, bytes_per_pixel, min, max)
             i += 1
-            input('Enter for next frame')
+            x = input("Enter for next frame, 'q' to quit: ")
+            if x == 'q':
+                break
 
 if __name__ == "__main__":
 
@@ -95,7 +97,7 @@ if __name__ == "__main__":
         while i<len(argv):
             if argv[i] == '--quantile':
                 i += 1
-                min = float(argv[i])  
+                quantile = float(argv[i])  
             elif argv[i] == '--verbose':
                 verbose = True
             else:
