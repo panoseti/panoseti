@@ -2,7 +2,7 @@
     "run_type": "eng",
     "gain": 60,
     "image": {
-        "integration_time_usec": 10000,
+        "integration_time_usec": 1000,
         "pe_threshold": 15,
         "quabo_sample_size": 16
     },
