@@ -2,7 +2,7 @@
 
 require_once("panoseti.inc");
 
-function do_pff($vol, $run, $fname) {
+function main($vol, $run, $fname) {
     page_head("PFF file $fname");
 
     echo "<font size=+1>";
@@ -10,6 +10,7 @@ function do_pff($vol, $run, $fname) {
     start_table();
     row2("Observing run", $run);
     row2("File", $fname);
+    row2("Frame browser", "<a href=image.php?vol=$vol&run=$run&file=$fname&frame=0>View</a>");
     row2("Download",
         "<a href=$vol/data/$run/$fname>PFF</a> &middot; FITS"
     );
@@ -23,6 +24,6 @@ $fname = get_str('fname');
 check_filename($fname);
 check_filename($run);
 check_filename($vol);
-do_pff($vol, $run, $fname);
+main($vol, $run, $fname);
 
 ?>
