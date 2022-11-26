@@ -49,7 +49,7 @@ function get_login($optional=false) {
     return $name;
 }
 
-function page_head($title, $login=LOGIN_MANDATORY) {
+function page_head($title, $login=LOGIN_MANDATORY, $is_front=false) {
     echo sprintf('
 <!DOCTYPE html>
 <html lang="en">
@@ -64,7 +64,6 @@ function page_head($title, $login=LOGIN_MANDATORY) {
     "PanoSETI: $title"
     );
     echo '<div class="container-fluid">';
-    echo "<h1>$title</h1>";
 
     if ($login == LOGIN_NONE) {
         return;
@@ -79,9 +78,18 @@ function page_head($title, $login=LOGIN_MANDATORY) {
         exit;
     }
     if ($login_name) {
-        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.<hr>";
+        $x = "Logged in as $login_name.  <a href=logout.php>Log out</a>.";
     } else {
-        echo "<a href=login.php>Log in</a>";
+        $x = "<a href=login.php>Log in</a>";
+    }
+    echo sprintf(
+        '<p><table width=100%%><tr><td><font size=+3>%s</font></td><td align=right>%s</a></td></tr></table>',
+        $is_front?"PanoSETI home page":'<a href=index.php>Return to home page</a>',
+        $x
+    );
+    echo "<hr>";
+    if (!$is_front) {
+        echo "<h1>$title</h1>";
     }
 }
 
@@ -402,6 +410,19 @@ function ip_addr_to_module_num($ip_addr) {
     $x = explode('.', $ip_addr);
     $n = (int)$x[3] + 256*(int)$x[2];
     return ($n>>2)&255;
+}
+
+// return length of header (JSON + 1 for the *)
+//
+function header_size($f) {
+    $n = 0;
+    while (1) {
+        $s = fgets($f);
+        if (!$s) break;
+        $n += strlen($s);
+        if ($s == "\n") break;
+    }
+    return $n+1;
 }
 
 ?>

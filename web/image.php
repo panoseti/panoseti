@@ -6,8 +6,9 @@
 require_once("panoseti.inc");
 require_once("analysis.inc");
 
-function arrows_str($vol, $run, $analysis_dir, $module_dir, $frame) {
-    $url = "image.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_dir=$module_dir&frame=";
+function arrows_str($vol, $run, $file, $usecs, $frame) {
+    $url = "image.php?vol=$vol&run=$run&file=$file&frame=";
+    $fps = 1e6/$usecs;
     return sprintf(
         '<a class="btn btn-sm btn-primary" href=%s%d><< min</a>
         <a class="btn btn-sm btn-primary" href=%s%d><< sec</a>
@@ -15,22 +16,24 @@ function arrows_str($vol, $run, $analysis_dir, $module_dir, $frame) {
         <a class="btn btn-sm btn-primary" href=%s%d> frame >></a>
         <a class="btn btn-sm btn-primary" href=%s%d> sec >></a>
         <a class="btn btn-sm btn-primary" href=%s%d> min >></a>',
-        $url, $frame - 200*60,
-        $url, $frame - 200,
+        $url, $frame - (int)($fps*60),
+        $url, $frame - (int)($fps),
         $url, $frame - 1,
         $url, $frame + 1,
-        $url, $frame + 200,
-        $url, $frame + 200*60
+        $url, $frame + (int)($fps),
+        $url, $frame + (int)($fps*60)
     );
 }
 
-function show_frame($data, $arrows) {
+function show_frame($data, $arrows, $bytes_pix) {
     echo "<table>";
     for ($i=0; $i<32; $i++) {
         echo "<tr>";
         for ($j=0; $j<32; $j++) {
             $v = $data[$i*32+$j];
-            $v  >>= 8;
+            if ($bytes_pix == 2) {
+                $v  >>= 8;
+            }
             if ($v > 255) $v = 255;
             $color = sprintf("#%02x%02x%02x", $v, $v, $v);
             echo sprintf(
@@ -44,52 +47,55 @@ function show_frame($data, $arrows) {
     echo "</table>";
 }
 
-function get_frame($file, $frame) {
-    $f = fopen($file, "r");
-    if (fseek($f, $frame*1024*2) < 0) {
+function get_frame($f, $hs, $frame, $bytes_pix) {
+    $frame_size = $hs + 1024*$bytes_pix;
+    $offset = $frame*$frame_size + $hs;
+    if (fseek($f, $offset) < 0) {
         die("no such frame");
     }
-    $x = fread($f, 1024*2);
+    $x = fread($f, 1024*$bytes_pix);
     if (strlen($x)==0 ) die("no such frame");
-    $y = array();
-    $y = array_merge(unpack("S1024", $x));
-        // unpack returns 1-offset array - BOOOOOOO!!!!!!
+ 
+    // unpack returns 1-offset array - WTF???
+    // array_merge() changes it to 0-offset
+    //
+    if ($bytes_pix == 1) {
+        $y = array_merge(unpack("C1024", $x));
+    } else {
+        $y = array_merge(unpack("S1024", $x));
+    }
     if (!$y) {
         die("unpack");
     }
     return $y;
 }
 
-function rand_frame() {
-    $x = array();
-    for ($i=0; $i<1024; $i++) {
-        $x[] = rand(0, 255);
-    }
-}
-
-function main($vol, $run, $analysis_dir, $module_dir, $frame) {
+function main($vol, $run, $file, $frame) {
+    $dc = json_decode(file_get_contents("$vol/data/$run/data_config.json"));
+    $usecs = $dc->image->integration_time_usec;
+    $bytes_pix = $dc->image->quabo_sample_size/8;
     page_head("Image");
     echo "<p>Run: <a href=run.php?vol=$vol&name=$run>$run</a>\n";
-    echo "<p>Module: $module_dir\n";
-    $path = "$vol/analysis/$run/visual/$analysis_dir/$module_dir/images.bin";
+    echo "<p>File: <a href=file.php?vol=$vol&run=$run&fname=$file>$file</a>\n";
+    $path = "$vol/data/$run/$file";
+    $f = fopen($path, "r");
+    $hs = header_size($f);
     $t = $frame/200.;
     echo "<p>Frame: $frame ($t sec)\n";
-    $x = get_frame($path, $frame);
-    $as = arrows_str($vol, $run, $analysis_dir, $module_dir, $frame);
-    show_frame($x, $as);
+    $x = get_frame($f, $hs, $frame, $bytes_pix);
+    $as = arrows_str($vol, $run, $file, $usecs, $frame);
+    show_frame($x, $as, $bytes_pix);
     page_tail();
 }
 
-$run = get_str("run");
 $vol = get_str("vol");
-check_filename($run);
+$run = get_str("run");
+$file = get_str("file");
 check_filename($vol);
-$analysis_dir = get_str("analysis_dir");
-check_filename($analysis_dir);
-$module_dir = get_str("module_dir");
-check_filename($module_dir);
+check_filename($run);
+check_filename($file);
 $frame = get_int("frame");
 
-main($vol, $run, $analysis_dir, $module_dir, $frame);
+main($vol, $run, $file, $frame);
 
 ?>
