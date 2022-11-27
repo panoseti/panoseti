@@ -1,5 +1,7 @@
 <?php
 
+DEPRECATED
+
 require_once("panoseti.inc");
 
 $run = get_str('run');

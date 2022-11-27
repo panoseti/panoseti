@@ -1,13 +1,15 @@
 <?php
 
-// pipe_images.php dir min max nframes
-// input: dir/images.bin
+// pipe_images.php path min max nframes
+// input: an image mode PFF file
 // output: a stream of images in argb format,
 //      with each pixel expanded to a 4x4 block.
 //      Scale data so min->0, max->255
 //      This is piped into ffmpeg
 
 ini_set('display_errors', 1);
+
+require_once("panoseti.inc");
 
 // output RGB frames (for ffmpeg)
 // $frame is 1024 16-bit numbers
@@ -61,7 +63,11 @@ function output_frame($frame, $min, $max, $bytes_per_pixel) {
 
 function output_frames($file, $min, $max, $nframes, $bytes_per_pixel) {
     $f = fopen($file, "rb");
+    $hs = header_size($f);
+    $fs = $hs + 1024*$bytes_per_pixel;
+
     for ($i=0; $i<$nframes; $i++) {
+        fseek($f, $i*$fs + $hs, SEEK_SET);
         if (feof($f)) break;
         $x = fread($f, 1024*$bytes_per_pixel);
         if (strlen($x)==0 ) break;
