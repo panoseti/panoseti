@@ -11,14 +11,14 @@ function main() {
     $run = get_str('run');
     $seconds = get_int('seconds');
 
-    $cmd = sprintf('./write_images.py --vol %s --run %s', $vol, $run);
+    $cmd = sprintf('./make_mp4.py --vol %s --run %s', $vol, $run);
     if ($username) {
         $cmd .= " --username $username ";
     }
     if ($seconds) {
         $cmd .= " --seconds $seconds";
     }
-    page_head("Visualization analysis run");
+    page_head("Video run");
     echo "Command: $cmd
         <p>Output:
         <p>
@@ -32,7 +32,7 @@ function main() {
     }
     echo "<p>
         <a href=analysis_type.php?type=visual&vol=$vol&run=$run>
-            Visual analyses of this run
+            Videos of this run
         </a>
         <p>
     ";

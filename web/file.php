@@ -8,7 +8,7 @@ function main($vol, $run, $fname) {
     echo "<font size=+1>";
 
     start_table();
-    row2("Observing run", $run);
+    row2("Observing run", "<a href=run.php?vol=$vol&name=$run>$run</a>");
     row2("File", $fname);
     row2("Frame browser", "<a href=image.php?vol=$vol&run=$run&file=$fname&frame=0>View</a>");
     row2("Download",

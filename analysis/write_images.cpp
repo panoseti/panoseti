@@ -4,6 +4,8 @@
 // remove the JSON, write a binary file with just images
 // (for display purposes)
 
+DEPRECATED - IMAGES NOW HAVE FIXED-LENGTH HEADERS SO WE DON'T NEED THIS
+
 #include <stdio.h>
 #include <string.h>
 #include "pff.h"

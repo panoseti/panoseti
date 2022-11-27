@@ -124,7 +124,7 @@ function analysis_form($type, $vol, $run) {
         img_pulse_form($vol, $run);
         break;
     case 'ph_coincidence':
-        ph_coincidence_form($vol, $run;
+        ph_coincidence_form($vol, $run);
         break;
     case 'visual':
         visual_form($vol, $run);

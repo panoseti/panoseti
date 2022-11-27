@@ -24,7 +24,9 @@ import config_file
 
 
 def do_pair(run_path, analysis_dir, params, obs_config, modules_to_process, bytes_per_pixel, module_a, module_b):
-    print(f'Processing modules {module_a} and {module_b}.')
+    dome_a = modules_to_process[module_a]['dome']
+    dome_b = modules_to_process[module_b]['dome']
+    print(f'Processing the pair: Module {module_a} (Dome {dome_a}) and Module {module_b} (Dome {dome_b}).')
     a_fname = modules_to_process[module_a]['fname']
     b_fname = modules_to_process[module_b]['fname']
     a_path = f'{run_path}/{modules_to_process[module_a]["fname"]}'
@@ -73,7 +75,7 @@ def check_all_module_pairs(available_modules, module_pairs_to_process):
 
 def do_run(vol, run, params, username):
     run_path = f'{vol}/data/{run}'
-    obs_config = config_file.get_obs_config(dir='../control')
+    obs_config = config_file.get_obs_config(dir=run_path)
     bytes_per_pixel = None
 
     # Get filepaths to each module specified by the user.
@@ -104,10 +106,13 @@ def do_run(vol, run, params, username):
     if available_modules:
         if params['modules'] == 'all_modules':
             # Process all distinct pairs of modules in modules_to_process
-            module_pairs_to_process = list(itertools.combinations(available_modules.keys(), 2))
+            module_pairs_to_process = []
+            for module_a, module_b in list(itertools.combinations(available_modules.keys(), 2)):
+                if available_modules[module_a]['dome'] != available_modules[module_b]['dome']:
+                    module_pairs_to_process.append((module_a, module_b))
         else:
             module_pairs_to_process = params['modules']
-        check_all_module_pairs(available_modules, module_pairs_to_process)
+            check_all_module_pairs(available_modules, module_pairs_to_process)
         analysis_dir = make_analysis_dir(ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE, vol, run)
         for module_a, module_b in module_pairs_to_process:
             do_pair(
@@ -144,30 +149,34 @@ def main():
         if option in params:
             if option == 'modules':
                 # Since --modules receives user-input, we have to ensure the input is valid.
-                if argv[i + 1] == 'all_modules':
-                    if len(params['modules']) == 0:
-                        params['modules'] = argv[i + 1]
-                    else:
-                        raise Warning(f'Cannot supply both all_modules and module pairs with --modules.')
-                else:
-                    module_pair_pattern = re.compile("^(\d+),(\d+)$")
-                    while True:
-                        i += 1
-                        if i >= len(argv):
-                            break
-                        match = module_pair_pattern.match(argv[i])
-                        if '--' in argv[i]:
+                module_pair_pattern = re.compile("^(\d+),(\d+)$")
+                while True:
+                    i += 1
+                    if i >= len(argv):
+                        break
+                    match = module_pair_pattern.match(argv[i])
+                    if '--' in argv[i]:
+                        if params['modules']:
                             i -= 1
                             break
-                        elif match is not None:
-                            module_pair = int(match.group(1)), int(match.group(2))
-                            params['modules'].append(module_pair)
-                        elif argv[i] == 'all_modules':
-                            raise Warning(f'Cannot supply both all_modules and module pairs with --modules.')
                         else:
                             raise Warning('After --module, Expected either "all_modules" or a list of space-separated,'
-                                          'comma-separated module number pairs (e.g. "1,3 254,3"), '
-                                          f'not the given input: "{argv[i]}"')
+                                          'comma-separated module number pairs (e.g. "1,3 254,3")')
+                    elif match is not None:
+                        if params['modules'] == 'all_modules':
+                            raise Warning(f'Cannot supply both all_modules and module pairs with --modules.')
+                        else:
+                            module_pair = int(match.group(1)), int(match.group(2))
+                            params['modules'].append(module_pair)
+                    elif argv[i] == 'all_modules':
+                        if params['modules'] != 'all_modules' and len(params['modules']) == 0:
+                            params['modules'] = 'all_modules'
+                        else:
+                            raise Warning(f'Cannot supply both all_modules and module pairs with --modules.')
+                    else:
+                        raise Warning('After --module, Expected either "all_modules" or a list of space-separated,'
+                                      'comma-separated module number pairs (e.g. "1,3 254,3"), '
+                                      f'not the given input: "{argv[i]}"')
             elif option in ('verbose', 'save_fig'):
                 i += 1
                 params[option] = argv[i].lower() == 'true'
@@ -186,7 +195,6 @@ def main():
         else:
             raise Warning(f'unrecognized input: "{option}". Options have the form: "--[option]".')
         i += 1
-
     if not run:
         raise Warning('no run specified')
     if not vol:
@@ -195,12 +203,14 @@ def main():
         username = getpass.getuser()
     if not params['modules']:
         raise Warning('no modules specified')
-
-
     do_run(vol, run, params, username)
 
 
 if __name__ == '__main__':
     print('RUNNING')
-    main()
+    try:
+        main()
+    except Warning as w:
+        print(w)
     print('DONE')
+

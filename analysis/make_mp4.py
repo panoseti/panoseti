@@ -1,11 +1,8 @@
 #! /usr/bin/env python3
 
-# write_images.py --run X --seconds N
+# make_mp4.py --run X --seconds N
 #
-# for a run's image files:
-# - write images.bin (for frame browser)
-# - write video (.mp4)
-# do this for the first N seconds of data
+# for a run's image files: make video (.mp4) of the first N seconds of data
 
 import os, sys, getpass
 sys.path.append('../util')
@@ -32,14 +29,6 @@ def do_run(vol, run, params, username):
         module = file_attrs['module']
         module_dir =  make_dir('%s/module_%s'%(analysis_dir, module))
 
-        # generate images.bin
-        #
-        cmd = './write_images --bytes_per_pixel %d --nframes %d < %s > %s/images.bin'%(
-            bytes_per_pixel, nframes, file_path, module_dir
-        )
-        print(cmd)
-        os.system(cmd)
-
         # generate images.mp4
         
         # pixel values for black and white;
@@ -48,9 +37,11 @@ def do_run(vol, run, params, username):
         minval = 0
         maxval = 0
 # see https://stackoverflow.com/questions/20743070/ffmpeg-compressed-mp4-video-not-playing-on-mozilla-firefox-with-a-file-is-corru
-        cmd = 'php pipe_images.php %s/images.bin %d %d %d %d | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 %s/images.mp4 2>&1'%(
-            module_dir, minval, maxval, nframes, bytes_per_pixel,
-            module_dir
+        pipe_cmd = 'php pipe_images.php %s %d %d %d %d'%(
+            file_path, minval, maxval, nframes, bytes_per_pixel
+        )
+        cmd = '%s | ffmpeg -y -f rawvideo -pix_fmt argb -s 128x128 -r 25 -i - -pix_fmt yuv420p -c:v libx264 -movflags +faststart -vf scale=512:512 %s/images.mp4 2>&1'%(
+            pipe_cmd, module_dir
         )
         print(cmd)
         os.system(cmd)
