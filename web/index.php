@@ -51,7 +51,7 @@ function get_durations($vol, $run, $start_dt) {
 }
 
 function main() {
-    page_head("PanoSETI");
+    page_head("PanoSETI", LOGIN_MANDATORY, true);
     echo "
         <h2>Hardware parameter logs (Grafana)</h2>
         <p>

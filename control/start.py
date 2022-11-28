@@ -7,6 +7,10 @@
 #
 # - figure out association of quabos and DAQ nodes,
 #   based on config files
+# - create "run directories" on head node, DAQ nodes
+# - start the HK recorder
+# - start the HV updater
+# - start the temperature monitor
 # - start the flow of data: set DAQ mode and dest IP addr of quabos
 # - send commands to DAQ nodes to start hashpipe program
 #

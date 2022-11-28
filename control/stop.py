@@ -75,10 +75,12 @@ def complete_file_exists(run_dir, filename):
 # make symlinks to the first nonempty image and ph files in that dir
 #
 def make_links(run_dir, verbose):
-    if os.path.exists(img_symlink):
+    if os.path.lexists(img_symlink):
         os.unlink(img_symlink)
-    if os.path.exists(ph_symlink):
+    if os.path.lexists(ph_symlink):
         os.unlink(ph_symlink)
+    if os.path.lexists(hk_symlink):
+        os.unlink(hk_symlink)
     did_img = False
     did_ph = False
     did_hk = False
@@ -86,17 +88,18 @@ def make_links(run_dir, verbose):
         path = '%s/%s'%(run_dir, f)
         if not pff.is_pff_file(path): continue
         if os.path.getsize(path) == 0: continue
-        if not did_img and pff.pff_file_type(path) in ['img16', 'img8']:
+        ftype = pff.pff_file_type(f)
+        if not did_img and ftype in ['img16', 'img8']:
             os.symlink(path, img_symlink)
             did_img = True
             if verbose:
                 print('linked %s to %s'%(img_symlink, f))
-        elif not did_ph and pff.pff_file_type(path)=='ph16':
+        elif not did_ph and ftype == 'ph16':
             os.symlink(path, ph_symlink)
             did_ph = True
             if verbose:
                 print('linked %s to %s'%(ph_symlink, f))
-        elif not did_hk and pff.pff_file_type(path)=='hk':
+        elif not did_hk and ftype == 'hk':
             os.symlink(path, hk_symlink)
             did_hk = True
             if verbose:

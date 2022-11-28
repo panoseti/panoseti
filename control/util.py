@@ -212,7 +212,7 @@ def start_module_temp_monitor():
 def write_run_name(daq_config, run_name):
     with open(run_name_file, 'w') as f:
         f.write(run_name)
-    if os.path.exists(run_symlink):
+    if os.path.lexists(run_symlink):
         os.unlink(run_symlink)
     run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
     os.symlink(run_dir, run_symlink, True)

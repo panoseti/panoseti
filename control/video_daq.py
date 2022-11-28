@@ -2,16 +2,15 @@
 
 # return images from an in-progress run
 #
-# --ph          return PH images, else image mode
+# --dp          data product (img8/img16/ph)
 # --nsecs X     return at most 1 image per X sec
 # --module N    images from module N
-# --bytes_per_pixel N
 
 import time, sys, os
 
 import pff, util
 
-def main(ph, nsecs, module, bytes_per_pixel):
+def main(dp, nsecs, module):
     run = util.daq_get_run_name()
     if not run:
         print('no run')
@@ -22,20 +21,19 @@ def main(ph, nsecs, module, bytes_per_pixel):
         if not pff.is_pff_file(f):
             continue
         finfo = pff.parse_name(f)
-        if ph and finfo['dp'] == 'ph':
+        if finfo['dp'] == dp:
             file = f
-            bytes_per_image = 256*2
-            break
-        elif finfo['dp'] == 'img16' and bytes_per_pixel == 2:
-            file = f
-            bytes_per_image = 1024*2
-            break
-        elif finfo['dp'] == 'img8' and bytes_per_pixel == 1:
-            file = f
-            bytes_per_image = 1024
             break
     if not file:
+        print('no file of type %s'%dp)
         return
+    if dp == 'img8':
+        bytes_per_image = 1024
+    elif dp == 'img16':
+        bytes_per_image = 2048
+    elif dp == 'ph':
+        bytes_per_image = 512
+
     filepath = '%s/%s'%(dir, file)
 
     # wait for file to be nonempty
@@ -45,7 +43,7 @@ def main(ph, nsecs, module, bytes_per_pixel):
         time.sleep(1)
 
     # get file info, e.g. frame size
-    print('file: ', filepath)
+    #print('file: ', filepath)
     f = open(filepath, 'rb')
     (frame_size, nframes, first_t, last_t) = pff.img_info(f, bytes_per_image)
 
@@ -53,7 +51,7 @@ def main(ph, nsecs, module, bytes_per_pixel):
     while True:
         fsize = f.seek(0, os.SEEK_END)
         nframes = int(fsize/frame_size)
-        print('fsize: ', fsize, ' nframes: ', nframes, ' last_frame: ', last_frame)
+        #print('fsize: ', fsize, ' nframes: ', nframes, ' last_frame: ', last_frame)
         if nframes > last_frame+1:
             last_frame = nframes-1
             f.seek(last_frame*frame_size, os.SEEK_SET)
@@ -61,28 +59,36 @@ def main(ph, nsecs, module, bytes_per_pixel):
         sys.stdout.flush()
         time.sleep(nsecs)
 
-ph = False
+def do_test():
+    while True:
+        print('x')
+        sys.stdout.flush()
+        time.sleep(1)
+
+dp = None
 nsecs = 1
 module = -1
-bytes_per_pixel = -1
 argv = sys.argv
+test = False
 i = 1
 while i<len(argv):
-    if argv[i] == '--ph':
-        ph = True
+    if argv[i] == '--dp':
+        i += 1
+        dp = argv[i]
+    elif argv[i] == '--test':
+        test = True
     elif argv[i] == '--nsecs':
         i += 1
         nsecs = float(argv[i])
     elif argv[i] == '--module':
         i += 1
         module = int(argv[i])
-    elif argv[i] == '--bytes_per_pixel':
-        i += 1
-        bytes_per_pixel = int(argv[i])
     i += 1
-if module < 0:
+if test:
+    do_test()
+elif module < 0:
     print('no module specified')
-elif bytes_per_pixel < 0:
-    print('no bytes per pixel')
+elif not dp:
+    print('no dp specified')
 else:
-    main(ph, nsecs, module, bytes_per_pixel)
+    main(dp, nsecs, module)

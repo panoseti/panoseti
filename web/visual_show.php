@@ -19,7 +19,6 @@ function show_analysis($vol, $run, $analysis_dir) {
         $mnum = substr($mdir, 7);
         echo "<h3>Module $mnum</h3>";
         echo "<ul>
-            <li> <a href=image.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_dir=$mdir&frame=0>Frame browser</a>
             <li> <a href=$vol/analysis/$run/visual/$analysis_dir/$mdir/images.mp4>Movie</a>
             </ul>
         ";

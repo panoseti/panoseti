@@ -1,6 +1,6 @@
 DEBUG = 1
 
-PROGS = img_pulse write_images
+PROGS = img_pulse
 
 all: $(PROGS)
 
