@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 """Utility functions for the program that finds coincident pulse-height events."""
 
 import sys
