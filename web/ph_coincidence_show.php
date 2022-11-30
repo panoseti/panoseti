@@ -17,11 +17,11 @@ function show_analysis($vol, $run, $analysis_dir) {
     $module_pair_fname_pattern = "/module_(\d+)\.module_(\d+)/";
     foreach (scandir($dirpath) as $mpdir) {
         if (preg_match($module_pair_fname_pattern, $mpdir, $matches)) {
-            $module_pair_nums = implode(',', array_slice($matches, 1);
-            echo "<h3>Module $module_pair_nums</h3><ul>";
+            $module_pair = implode(',', array_slice($matches, 1));
+            echo "<h3>Module pair: $module_pair</h3><ul>";
             $subdir = "$dirpath/$mpdir";
             echo "<ul>
-                <li> <a href=ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&event=0>Event browser</a>
+                <li> <a href=ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&module_pair=$module_pair&event=0>Event browser</a>
                 </ul>
             ";
         }
