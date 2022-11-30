@@ -15,10 +15,10 @@ function ph_coincidence_form($vol, $run) {
 }
 
 function ph_coincidence_params_str($params) {
-    if (strcmp($params->modules, 'all_modules') == 0) {
+    if (strcmp(gettype($params->modules[0][0]), 'string') == 0) {
         $m = 'all_modules';
     } else {
-        $m = $params->modules?implode(',', $params->modules):'';
+        $m = implode(',', $params->modules[0]);
     }
     return sprintf(
         "Max time diff: %f<br>Threshold: %f<br>Modules: %s",

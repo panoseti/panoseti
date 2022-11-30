@@ -79,7 +79,6 @@ def check_all_module_pairs(available_modules, module_pairs_to_process):
 
 def do_run(vol, run, params, username):
     run_path = f'{vol}/data/{run}'
-    print(run_path)
     obs_config = config_file.get_obs_config(dir=run_path)
     module_to_dome = get_module_to_dome_dict(obs_config)
     bytes_per_pixel = None
