@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 """Utility functions for the program that finds coincident pulse-height events."""
 
 import sys
@@ -6,6 +8,7 @@ import matplotlib.pyplot as plt
 
 sys.path.append('../util')
 import pff
+import config_file
 
 
 # Matplotlib styling
@@ -22,24 +25,22 @@ def style_fig(fig, fig_num, right_ax, plot, a_file_name, b_file_name, max_time_d
     )
     time_diffs = f'{pair[0].get_time_diff_str(pair[1])}'
     fig.suptitle(title + altitude_estimation + time_diffs)
-    #fig.tight_layout()
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
-    save_name = "fig-num_{0}.ns-diff_{1}.threshold-pe_{2}.left-module_{3}.right-module_{4}.{5}".format(
-        fig_num, max_time_diff, threshold_max_pe, a_file_name[:-4], b_file_name[:-4], canvas.get_default_filetype()
+    save_name = "event_{0}.{1}".format(
+        fig_num, canvas.get_default_filetype()
     )
     canvas.get_default_filename = lambda: save_name
 
     cbar = fig.colorbar(plot, ax=right_ax, fraction=0.035, pad=0.05)
     cbar.ax.get_yaxis().labelpad = 15
-    cbar.ax.set_ylabel('Photoelectrons (Raw ADC)', rotation=270)
+    cbar.ax.set_ylabel('Raw ADC', rotation=270)
 
 
 def style_ax(fig, ax, module_frame, plot):
     """Style each plot."""
     ax.set_title(str(module_frame))
     ax.invert_yaxis()
-    #ax.set_axis_off()
     ax.set_box_aspect(1)
 
 
@@ -54,15 +55,23 @@ def plot_module_frame(fig, ax, module_frame, max_pe):
     return plot
 
 
-def plot_coincident_modules(analysis_out_dir, obs_config, a_fname, b_fname, fig_num, mf_pair, max_time_diff, threshold_max_pe, save_fig):
+def plot_coincident_modules(analysis_out_dir,
+                            obs_config,
+                            a_fname,
+                            b_fname,
+                            fig_num,
+                            mf_pair,
+                            max_time_diff,
+                            threshold_max_pe,
+                            save_fig):
     """Create a single figure displaying the 32x32 image in the coincident module frames in mf_pair."""
-    parsed_a, parsed_b = pff.parse_name(a_fname), pff.parse_name(b_fname)
+    module_to_dome = get_module_to_dome_dict(obs_config)
     max_pe = max(mf_pair[0].get_max_adc(), mf_pair[1].get_max_adc())
     pixel_distance = mf_pair[0].get_distance_between_max_adc(mf_pair[1])
     fig, axs = plt.subplots(1, 2, figsize=(14, 10), constrained_layout=True)
     plot = None
     for ax, module_frame in zip(axs, mf_pair):
-        dome_index = int(parsed_a['dome'])
+        dome_index = module_to_dome[module_frame.module_id]
         module_frame.dome_name = obs_config['domes'][dome_index]['name'].title()
         plot = plot_module_frame(fig, ax, module_frame, max_pe)
     style_fig(fig, fig_num, axs[1], plot, a_fname, b_fname, max_time_diff, threshold_max_pe, pixel_distance, mf_pair)
@@ -79,19 +88,19 @@ class QuaboFrame:
     start_file_seconds = dict()
     max_file_seconds = dict()
 
-    def __init__(self, frame_num, j, img):
+    def __init__(self, module_id, frame_num, j, img):
         self.frame_num = frame_num
         self.img = img
         self.json = j
-        self.module_num = j['mod_num']
-        self.quabo_index = j['quabo_num']
+        self.module_num = module_id
+        self.quabo_num = j['quabo_num']
         self.group_num = None
         self.file_second = None
         self.img_16 = None
         self.set_file_second()
 
     def __key(self):
-        return self.frame_num, self.module_num, self.quabo_index
+        return self.frame_num, self.module_num, self.quabo_num
 
     def __hash__(self):
         return hash(self.__key())
@@ -113,9 +122,9 @@ class QuaboFrame:
 
     def __str__(self):
         j = self.json
-        s = "Quabo {0}: file_sec={1}/{2}, tv_sec={3}, pkt_nsec={4}".format(
+        s = "Quabo {0}: file_sec={1}/{2}, frame_timestamp={3}".format(
             self.get_boardloc(), self.file_second, self.max_file_seconds[self.module_num],
-            j['tv_sec'], j['pkt_nsec'],
+            self.get_timestamp(),
         )
         return s
 
@@ -130,13 +139,11 @@ class QuaboFrame:
 
     def get_boardloc(self):
         """Return the board loc of this quabo frame."""
-        return self.module_num * 4 + self.quabo_index
+        return self.module_num * 4 + self.quabo_num
 
     def get_timestamp(self):
         """Returns a timestamp for this quabo frame."""
-        tv_sec = self.json['tv_sec']
-        pkt_nsec = self.json['pkt_nsec']
-        return tv_sec * 10 ** 9 + pkt_nsec
+        return pff.pkt_header_time(self.json)
 
     def get_timestamp_ns_diff(self, other_qf):
         """Returns the difference in timestamps between self and other_qf."""
@@ -168,9 +175,9 @@ class QuaboFrame:
         #input(f'x: {x}, y: {y}')
         # Place pixel coordinate in correct quadrant.
         x_offset, y_offset = x, y
-        if self.quabo_index in [0, 3]:
+        if self.quabo_num in [0, 3]:
             x_offset = -x
-        if self.quabo_index in [2, 3]:
+        if self.quabo_num in [2, 3]:
             y_offset = -y
         #input(f'quabo_index = {self.quabo_index}, x_offset: {x_offset}, y_offset: {y_offset}')
         return x_offset, y_offset
@@ -183,7 +190,7 @@ class QuaboFrame:
             for col in range(16):
                 img_16x16[row][col] = self.img[16 * row + col]
         # Rotate by 90, 180, 270 CW, depending on quabo index.
-        rotated_16x16 = np.rot90(img_16x16, self.quabo_index, axes=(0,1))
+        rotated_16x16 = np.rot90(img_16x16, self.quabo_num, axes=(0, 1))
         self.img_16 = img_16x16
         return img_16x16
 
@@ -195,7 +202,7 @@ class ModuleFrame:
     def __init__(self, group_num):
         self.group_num = group_num
         self.frames = [None] * 4
-        self.module_num = None
+        self.module_id = None
         self.event_num = None
         self.dome_name = None
         # List of group numbers with which this module is paired.
@@ -204,21 +211,21 @@ class ModuleFrame:
         self.max_adc_offset = None
 
     def __key(self):
-        return self.group_num, self.module_num
+        return self.group_num, self.module_id
 
     def __hash__(self):
         return hash(self.__key())
 
     def __str__(self):
         s = '{0}; Module {1}; Event#{2:,}/{3:,}:'.format(
-            self.dome_name, self.module_num, self.event_num, self.event_nums[self.module_num]
+            self.dome_name, self.module_id, self.event_num, self.event_nums[self.module_id]
         )
         for quabo_frame in self.frames:
             s += f'\n{quabo_frame}'
         return s
 
     def __repr__(self):
-        r = f'Module {self.module_num}; Event# {self.event_num}:'
+        r = f'Module {self.module_id}; Event# {self.event_num}:'
         if len(self.paired_mfs) > 1:
             r += '\nNOTE: This module is ' + self.get_group_list_str()
         for quabo_frame in self.frames:
@@ -230,8 +237,8 @@ class ModuleFrame:
         assert isinstance(quabo_frame, QuaboFrame)
         if quabo_frame:
             quabo_frame.group_num = self.group_num
-            self.module_num = quabo_frame.module_num
-            self.frames[quabo_frame.quabo_index] = quabo_frame
+            self.module_id = quabo_frame.module_num
+            self.frames[quabo_frame.quabo_num] = quabo_frame
 
     def update_paired_mfs(self, other_mf):
         """Record the group number of other_mf, a module frame plotted with this module frame."""
@@ -240,11 +247,11 @@ class ModuleFrame:
 
     def set_module_event_num(self):
         """Set the module event number of this module frame."""
-        if self.module_num in ModuleFrame.event_nums:
-            ModuleFrame.event_nums[self.module_num] += 1
+        if self.module_id in ModuleFrame.event_nums:
+            ModuleFrame.event_nums[self.module_id] += 1
         else:
-            ModuleFrame.event_nums[self.module_num] = 1
-        self.event_num = ModuleFrame.event_nums[self.module_num]
+            ModuleFrame.event_nums[self.module_id] = 1
+        self.event_num = ModuleFrame.event_nums[self.module_id]
 
     def get_32x32_image(self):
         """Return a 32x32 array image from the four 16x16 arrays fX.img:
@@ -327,4 +334,16 @@ class ModuleFrame:
         grps = grps[:-2]
         return grps
 
+# Misc
 
+
+def get_module_to_dome_dict(obs_config):
+    """Dictionary storing pairs of [module_id]:[Dome]"""
+    module_to_dome = dict()
+    for dome in obs_config['domes']:
+        for module in dome['modules']:
+            module_ip_addr = module['ip_addr']
+            module_id = config_file.ip_addr_to_module_id(module_ip_addr)
+            dome_num = dome['num']
+            module_to_dome[module_id] = dome_num
+    return module_to_dome

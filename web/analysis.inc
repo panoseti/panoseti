@@ -2,6 +2,7 @@
 
 require_once("img_pulse.inc");
 require_once("visual.inc");
+require_once("ph_coincidence.inc");
 
 define('ANALYSIS_ROOT', 'analysis');
 
@@ -108,6 +109,8 @@ function params_str($type, $params) {
     switch ($type) {
     case 'img_pulse':
         return img_pulse_params_str($params);
+    case 'ph_coincidence':
+        return ph_coincidence_params_str($params);
     case 'visual':
         return visual_params_str($params);
     default:
@@ -119,6 +122,9 @@ function analysis_form($type, $vol, $run) {
     switch ($type) {
     case 'img_pulse':
         img_pulse_form($vol, $run);
+        break;
+    case 'ph_coincidence':
+        ph_coincidence_form($vol, $run);
         break;
     case 'visual':
         visual_form($vol, $run);
