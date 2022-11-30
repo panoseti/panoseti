@@ -15,7 +15,7 @@ import pff
 
 # Coincidence searching
 
-def get_next_frame(file_obj, frame_num):
+def get_next_frame(module_id, file_obj, frame_num):
     """Returns the next quabo frame from file_obj."""
     j, img = None, None
     start_timestamp = None
@@ -30,11 +30,11 @@ def get_next_frame(file_obj, frame_num):
             return None
     if not j or not img:
         return None
-    qf = QuaboFrame(frame_num, j, img)
+    qf = QuaboFrame(module_id, frame_num, j, img)
     return qf
 
 
-def get_groups(path, max_group_time_diff, verbose):
+def get_groups(module_id, path, max_group_time_diff, verbose):
     """Returns a dictionary of [frame_number]:[group_number] pairs. Within a group,
     frames are no more than max_group_time_diff from the others"""
     parsed = pff.parse_name(path)
@@ -45,7 +45,7 @@ def get_groups(path, max_group_time_diff, verbose):
     def get_next(f_obj):
         """Returns the next quabo frame and increments the frame count."""
         nonlocal frame_num
-        frame = get_next_frame(f, frame_num)
+        frame = get_next_frame(module_id, f, frame_num)
         if frame is not None:
             frame_num += 1
         return frame
@@ -77,7 +77,7 @@ def get_groups(path, max_group_time_diff, verbose):
     return groups
 
 
-def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_adc, verbose):
+def search_2_modules(a_id, a_path, a_groups, b_id, b_path, b_groups, max_time_diff, threshold_max_adc, verbose):
     """
     Identify all pairs of frames from the files a_path and b_path with timestamps that
     differ by no more than 100ns.
@@ -92,7 +92,7 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
     def append_next_b_frame(b_file_obj):
         """Right append the next frame in b_file_obj to b_deque"""
         nonlocal b_qf_num
-        b_qf = get_next_frame(b_file_obj, b_qf_num)
+        b_qf = get_next_frame(b_id, b_file_obj, b_qf_num)
         if b_qf is not None:
             b_deque.append(b_qf)
             b_qf_num += 1
@@ -113,7 +113,7 @@ def search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshol
         append_next_b_frame(fb)
         while True:
             # Get the next frame for module A and check if we've reached EOF.
-            a_qf = get_next_frame(fa, a_qf_num)
+            a_qf = get_next_frame(a_id, fa, a_qf_num)
             if verbose:
                 print(f'Searched for coincident module events up to frame {a_qf_num:,}... ', end='')
             if a_qf is None:
@@ -193,8 +193,10 @@ def get_module_frame_pairs(quabo_frame_pairs, verbose):
 
 def do_coincidence_search(analysis_out_dir,
                           obs_config,
+                          a_id,
                           a_fname,
                           a_path,
+                          b_id,
                           b_fname,
                           b_path,
                           bytes_per_pixel,
@@ -204,8 +206,9 @@ def do_coincidence_search(analysis_out_dir,
                           verbose,
                           save_fig):
     """Dispatch function for finding coincidences and plotting module frames."""
-    a_groups, b_groups = get_groups(a_path, max_group_time_diff, verbose), get_groups(b_path, max_group_time_diff, verbose)
-    qf_pairs = search_2_modules(a_path, a_groups, b_path, b_groups, max_time_diff, threshold_max_adc, verbose)
+    a_groups = get_groups(a_id, a_path, max_group_time_diff, verbose)
+    b_groups = get_groups(b_id, b_path, max_group_time_diff, verbose)
+    qf_pairs = search_2_modules(a_id, a_path, a_groups, b_id, b_path, b_groups, max_time_diff, threshold_max_adc, verbose)
     module_frame_pairs = get_module_frame_pairs(qf_pairs, verbose)
     if len(module_frame_pairs) == 0:
         print(f'No coincident frames found within {max_time_diff:,} ns of each other and with max(pe) >= {threshold_max_adc}.')

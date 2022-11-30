@@ -15,6 +15,7 @@ import re
 import pprint
 
 from search_ph import do_coincidence_search
+from search_ph_utils import get_module_to_dome_dict
 from analysis_util import make_dir, make_analysis_dir, write_summary, ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE
 
 sys.path.append('../util')
@@ -33,16 +34,13 @@ def do_pair(run_path, analysis_dir, params, obs_config, modules_to_process, byte
     a_path = f'{run_path}/{modules_to_process[module_a]["fname"]}'
     b_path = f'{run_path}/{modules_to_process[module_b]["fname"]}'
     analysis_out_dir = make_dir(f'{analysis_dir}/module_{module_a}.module_{module_b}')
-    #print('program will find coincidences between:'
-    #      f'\n\t{a_fname} and {b_fname}'
-    #      f'\nand store the result in {analysis_out_dir} using params:'
-    #      f'\n\t{params}')
-
     do_coincidence_search(
         analysis_out_dir,
         obs_config,
+        module_a,
         a_fname,
         a_path,
+        module_b,
         b_fname,
         b_path,
         bytes_per_pixel,
@@ -56,13 +54,19 @@ def do_pair(run_path, analysis_dir, params, obs_config, modules_to_process, byte
 
 def check_all_module_pairs(available_modules, module_pairs_to_process):
     """Return True only if:
+        - module_a and module_b are different.
         - module_a and module_b have valid ph files in the specified run directory.
         - module_a and module_b are in different domes.
     """
+    same_module_error_msg = 'Each pair of modules must contain different modules. Please change the input: {0},{1}.'
     no_ph_file_error_msg = 'Module {0} does not have a valid ph file in the specified run directory.'
     not_in_diff_domes_error_msg = "Modules pairs must contain modules from different domes. " \
                                   "Modules {0} and {1} are in the same dome."
+    return True
     for module_a, module_b in module_pairs_to_process:
+        # Modules are different?
+        if module_a == module_b:
+            raise Warning(same_module_error_msg.format(module_a, module_b))
         # Valid ph files?
         if module_a not in available_modules:
             raise Warning(no_ph_file_error_msg.format(module_a))
@@ -74,19 +78,9 @@ def check_all_module_pairs(available_modules, module_pairs_to_process):
     return True
 
 
-def get_module_to_dome_dict(obs_config):
-    """Dictionary storing pairs of [module_id]:[Dome]"""
-    module_to_dome = dict()
-    for dome in obs_config['domes']:
-        for module in dome['modules']:
-            module_ip_addr = module['ip_addr']
-            module_id = config_file.ip_addr_to_module_id(module_ip_addr)
-            dome_num = dome['num']
-            module_to_dome[module_id] = dome_num
-    return module_to_dome
-
 def do_run(vol, run, params, username):
     run_path = f'{vol}/data/{run}'
+    print(run_path)
     obs_config = config_file.get_obs_config(dir=run_path)
     module_to_dome = get_module_to_dome_dict(obs_config)
     bytes_per_pixel = None
@@ -118,7 +112,7 @@ def do_run(vol, run, params, username):
             }
     if available_modules:
         if params['modules'] == 'all_modules':
-            # Process all distinct pairs of modules in modules_to_process
+            # Generate all distinct pairs of modules in available_modules from different domes.
             module_pairs_to_process = []
             for module_a, module_b in list(itertools.combinations(available_modules.keys(), 2)):
                 if available_modules[module_a]['dome'] != available_modules[module_b]['dome']:
@@ -132,18 +126,20 @@ def do_run(vol, run, params, username):
             check_all_module_pairs(available_modules, module_pairs_to_process)
         analysis_dir = make_analysis_dir(ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE, vol, run)
         print('RUNNING')
-        for module_a, module_b in module_pairs_to_process:
-            do_pair(
-                run_path,
-                analysis_dir,
-                params,
-                obs_config,
-                available_modules,
-                bytes_per_pixel,
-                module_a,
-                module_b
-            )
-        write_summary(analysis_dir, params, username)
+        try:
+            for module_a, module_b in module_pairs_to_process:
+                do_pair(
+                    run_path,
+                    analysis_dir,
+                    params,
+                    obs_config,
+                    available_modules,
+                    bytes_per_pixel,
+                    module_a,
+                    module_b
+                )
+        finally:
+            write_summary(analysis_dir, params, username)
         print('DONE')
     else:
         print('No usable ph files found.')
