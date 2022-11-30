@@ -15,11 +15,15 @@ function ph_coincidence_form($vol, $run) {
 }
 
 function ph_coincidence_params_str($params) {
-    $m = $params->modules?implode(',', $params->modules):'';
+    if (strcmp($params->modules, 'all_modules') == 0) {
+        $m = 'all_modules';
+    } else {
+        $m = $params->modules?implode(',', $params->modules):'';
+    }
     return sprintf(
-        "Max time diff: %f<br>Threshold: %f<br>Modules: %s<br>All Modules: %s",
-        $params->max_time_diff, $params->threshold,
-        $m, $params->all_modules?"Yes":"No"
+        "Max time diff: %f<br>Threshold: %f<br>Modules: %s",
+        $params->max_time_diff, $params->threshold_max_adc,
+        $m
     );
 }
 

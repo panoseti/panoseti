@@ -12,6 +12,7 @@ import sys
 import getpass
 import itertools
 import re
+import pprint
 
 from search_ph import do_coincidence_search
 from analysis_util import make_dir, make_analysis_dir, write_summary, ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE
@@ -73,9 +74,21 @@ def check_all_module_pairs(available_modules, module_pairs_to_process):
     return True
 
 
+def get_module_to_dome_dict(obs_config):
+    """Dictionary storing pairs of [module_id]:[Dome]"""
+    module_to_dome = dict()
+    for dome in obs_config['domes']:
+        for module in dome['modules']:
+            module_ip_addr = module['ip_addr']
+            module_id = config_file.ip_addr_to_module_id(module_ip_addr)
+            dome_num = dome['num']
+            module_to_dome[module_id] = dome_num
+    return module_to_dome
+
 def do_run(vol, run, params, username):
     run_path = f'{vol}/data/{run}'
     obs_config = config_file.get_obs_config(dir=run_path)
+    module_to_dome = get_module_to_dome_dict(obs_config)
     bytes_per_pixel = None
 
     # Get filepaths to each module specified by the user.
@@ -97,7 +110,7 @@ def do_run(vol, run, params, username):
         if os.path.getsize(file_path) != 0:
             file_attrs = pff.parse_name(f)
             module = int(file_attrs['module'])
-            dome = int(file_attrs['dome'])
+            dome = module_to_dome[module]
             if module in available_modules:
                 raise Warning(f'Expected exactly one ph file for module {module} but found more than one.')
             available_modules[module] = {
@@ -110,10 +123,15 @@ def do_run(vol, run, params, username):
             for module_a, module_b in list(itertools.combinations(available_modules.keys(), 2)):
                 if available_modules[module_a]['dome'] != available_modules[module_b]['dome']:
                     module_pairs_to_process.append((module_a, module_b))
+            if len(module_pairs_to_process) == 0:
+                raise Warning(f'No usable ph files found in both domes. '
+                              f'Only the following modules have usable ph files:'
+                              f'\n{pprint.pformat(available_modules, width=1)}')
         else:
             module_pairs_to_process = params['modules']
             check_all_module_pairs(available_modules, module_pairs_to_process)
         analysis_dir = make_analysis_dir(ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE, vol, run)
+        print('RUNNING')
         for module_a, module_b in module_pairs_to_process:
             do_pair(
                 run_path,
@@ -126,6 +144,7 @@ def do_run(vol, run, params, username):
                 module_b
             )
         write_summary(analysis_dir, params, username)
+        print('DONE')
     else:
         print('No usable ph files found.')
 
@@ -207,10 +226,8 @@ def main():
 
 
 if __name__ == '__main__':
-    print('RUNNING')
     try:
         main()
     except Warning as w:
         print(w)
-    print('DONE')
 

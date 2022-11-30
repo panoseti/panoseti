@@ -17,7 +17,7 @@ function show_analysis($vol, $run, $analysis_dir) {
     $module_pair_fname_pattern = "/module_(\d+)\.module_(\d+)/";
     foreach (scandir($dirpath) as $mpdir) {
         if (preg_match($module_pair_fname_pattern, $mpdir, $matches)) {
-            $module_pair_nums = implode(',', array_slice($matches, 1);
+            $module_pair_nums = implode(',', array_slice($matches, 1));
             echo "<h3>Module $module_pair_nums</h3><ul>";
             $subdir = "$dirpath/$mpdir";
             echo "<ul>
