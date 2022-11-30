@@ -62,7 +62,6 @@ def check_all_module_pairs(available_modules, module_pairs_to_process):
     no_ph_file_error_msg = 'Module {0} does not have a valid ph file in the specified run directory.'
     not_in_diff_domes_error_msg = "Modules pairs must contain modules from different domes. " \
                                   "Modules {0} and {1} are in the same dome."
-    return True
     for module_a, module_b in module_pairs_to_process:
         # Modules are different?
         if module_a == module_b:
