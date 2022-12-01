@@ -26,12 +26,9 @@ function show_analysis($vol, $run, $analysis_dir) {
     page_tail();
 }
 
-$run = get_str("run");
-$vol = get_str("vol");
-$analysis_dir = get_str("analysis");
-check_filename($vol);
-check_filename($run);
-check_filename($analysis_dir);
+$run = get_filename("run");
+$vol = get_filename("vol");
+$analysis_dir = get_filename("analysis");
 show_analysis($vol, $run, $analysis_dir);
 
 ?>

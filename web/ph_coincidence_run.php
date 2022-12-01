@@ -7,8 +7,8 @@ require_once("panoseti.inc");
 
 function main() {
     $username = get_login();
-    $run = get_str('run');
-    $vol = get_str('vol');
+    $run = get_filename('run');
+    $vol = get_filename('vol');
     $max_time_diff = (double)get_str('max_time_diff');
     $threshold_max_adc = (double)get_str('threshold_max_adc');
     $modules = get_str('modules');

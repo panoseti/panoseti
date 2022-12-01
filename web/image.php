@@ -88,12 +88,9 @@ function main($vol, $run, $file, $frame) {
     page_tail();
 }
 
-$vol = get_str("vol");
-$run = get_str("run");
-$file = get_str("file");
-check_filename($vol);
-check_filename($run);
-check_filename($file);
+$vol = get_filename("vol");
+$run = get_filename("run");
+$file = get_filename("file");
 $frame = get_int("frame");
 
 main($vol, $run, $file, $frame);

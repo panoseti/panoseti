@@ -7,8 +7,8 @@ require_once("panoseti.inc");
 
 function main() {
     $username = get_login();
-    $vol = get_str('vol');
-    $run = get_str('run');
+    $vol = get_filename('vol');
+    $run = get_filename('run');
     $seconds = get_int('seconds');
 
     $cmd = sprintf('./make_mp4.py --vol %s --run %s', $vol, $run);

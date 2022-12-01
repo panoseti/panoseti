@@ -82,7 +82,7 @@ function main() {
     }
     usort($runs, 'compare');
     $prev_day =  '';
-    start_table('table_striped');
+    start_table('table-striped');
     table_header(
         'Start<br><small>Click to view</a>',
         'Recording time',

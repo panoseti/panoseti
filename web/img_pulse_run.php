@@ -7,12 +7,13 @@ require_once("panoseti.inc");
 
 function main() {
     $username = get_login();
-    $run = get_str('run');
-    $vol = get_str('vol');
+    $run = get_filename('run');
+    $vol = get_filename('vol');
     $nlevels = get_int('nlevels');
     $win_size = get_int('win_size');
     $thresh = (double)get_str('thresh');
     $pixels = get_str('pixels');
+        // TODO: check the syntax
     $seconds = get_int('seconds');
     $all_pixels = get_str('all_pixels', true)?1:0;
     $log_all = get_str('log_all', true)?1:0;

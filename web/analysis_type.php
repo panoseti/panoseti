@@ -44,10 +44,8 @@ function main($type, $vol, $run) {
 }
 
 $type = get_str('type');
-$run = get_str('run');
-$vol = get_str('vol');
-check_filename($run);
-check_filename($vol);
+$run = get_filename('run');
+$vol = get_filename('vol');
 
 main($type, $vol, $run);
 

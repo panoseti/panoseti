@@ -144,12 +144,26 @@ function post_str($key, $optional=false) {
     error_page("missing arg: $key");
 }
 
-// make sure a path doesn't go above current dir.
-// Do this for any filename passed in a URL
+// Do this for any file or dir name passed in a URL
 //
 function check_filename($name) {
-    if (strstr($name, "..")) die("bad filename");
-    if ($name[0] == "/") die("bad filename");
+    if (preg_match('/[^a-z0-9\_\.\-\:]/i', $name)) {
+        error_page("bad file/dir name: $name");
+    }
+}
+
+// get a file or dir name from GET
+//
+function get_filename($key) {
+    $x = get_str($key);
+    check_filename($x);
+    return $x;
+}
+
+function post_filename($key) {
+    $x = post_str($key);
+    check_filename($x);
+    return $x;
 }
 
 // various stuff copied from boinc/html/inc/util.inc

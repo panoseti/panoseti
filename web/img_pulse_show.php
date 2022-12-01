@@ -214,12 +214,9 @@ function show_graph(
     page_tail();
 }
 
-$run = get_str("run");
-$vol = get_str("vol");
-check_filename($run);
-check_filename($vol);
-$analysis_dir = get_str("analysis");
-check_filename($analysis_dir);
+$run = get_filename("run");
+$vol = get_filename("vol");
+$analysis_dir = get_filename("analysis");
 
 $action = get_str('action', true);
 

@@ -118,14 +118,12 @@ function main($start, $n, $file, $pixel, $type, $dur) {
     page_tail();
 }
 
-$file = get_str('file');
+$file = get_filename('file');
 $pixel = get_int('pixel');
 $type = get_str('type');
 $dur = get_int('dur');
 $start = get_int('start');
 $n = get_int('n');
-
-check_filename($file);
 
 main($start, $n, $file, $pixel, $type, $dur);
 

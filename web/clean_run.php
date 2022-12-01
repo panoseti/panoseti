@@ -4,8 +4,7 @@
 
 require_once("panoseti.inc");
 
-$run = get_str('name');
-check_filename($run);
+$run = get_filename('name');
 $path = ANALYSIS_ROOT."/$run";
 if (!file_exists($path)) {
     die("no such dir");

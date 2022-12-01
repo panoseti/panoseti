@@ -18,12 +18,9 @@ function main($vol, $run, $fname) {
     page_tail();
 }
 
-$vol = get_str('vol');
-$run = get_str('run');
-$fname = get_str('fname');
-check_filename($fname);
-check_filename($run);
-check_filename($vol);
+$vol = get_filename('vol');
+$run = get_filename('run');
+$fname = get_filename('fname');
 main($vol, $run, $fname);
 
 ?>

@@ -14,10 +14,8 @@ function main($run, $fname, $min, $max, $nframes) {
 
 }
 
-$run = post_str('run');
-$fname = post_str('fname');
-check_filename($run);
-check_filename($fname);
+$run = post_filename('run');
+$fname = post_filename('fname');
 $min = (int)post_str('min');
 $max = (int)post_str('max');
 $nframes = (int)post_str('nframes');

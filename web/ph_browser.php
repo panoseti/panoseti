@@ -64,14 +64,10 @@ function main($vol, $run, $analysis_dir, $module_pair_dir, $module_pair, $num_ev
 }
 
 
-$run = get_str("run");
-$vol = get_str("vol");
-check_filename($run);
-check_filename($vol);
-$analysis_dir = get_str("analysis_dir");
-check_filename($analysis_dir);
-$module_pair_dir = get_str("module_pair_dir");
-check_filename($module_pair_dir);
+$run = get_filename("run");
+$vol = get_filename("vol");
+$analysis_dir = get_filename("analysis_dir");
+$module_pair_dir = get_filename("module_pair_dir");
 $module_pair = get_str("module_pair");
 $num_events = get_int("num_events");
 $event = get_int("event");
