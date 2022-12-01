@@ -186,6 +186,7 @@ function get_rec_size($f) {
 }
 
 function show_graph(
+    page_head("Image pulse");
     $vol, $run, $analysis_dir, $module_dir, $pixel_dir, $level, $start, $n
 ) {
     $path = "$vol/analysis/$run/img_pulse/$analysis_dir/$module_dir/$pixel_dir/all_$level";
@@ -209,7 +210,6 @@ function show_graph(
     fclose($f);
     $cmd = 'rm ip.png; gnuplot ip_plot.gp > ip.png';
     system($cmd);
-    page_head("Image pulse");
     echo "<img src=ip.png>";
     page_tail();
 }
