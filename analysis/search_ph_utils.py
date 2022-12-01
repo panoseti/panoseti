@@ -20,11 +20,11 @@ def style_fig(fig, fig_num, right_ax, plot, a_file_name, b_file_name, max_time_d
     title = "Pulse Height Event from Module {0} and Module {1} within $\pm${2:,} ns and max(pe) $\geq$ {3:,}".format(
         parsed_a['module'], parsed_b['module'], max_time_diff, threshold_max_pe
     )
-    altitude_estimation = "\nApprox. (Pixel) Distance between Centroid of Event Maxima {0}".format(
-        pixel_distance
-    )
+    #altitude_estimation = "\nApprox. (Pixel) Distance between Centroid of Event Maxima {0}".format(
+    #    pixel_distance
+    #)
     time_diffs = f'{pair[0].get_time_diff_str(pair[1])}'
-    fig.suptitle(title + altitude_estimation + time_diffs)
+    fig.suptitle(title + time_diffs)
     canvas = fig.canvas
     canvas.manager.set_window_title(f'Figure {fig_num:,}')
     save_name = "event_{0}.{1}".format(
@@ -67,7 +67,7 @@ def plot_coincident_modules(analysis_out_dir,
     """Create a single figure displaying the 32x32 image in the coincident module frames in mf_pair."""
     module_to_dome = get_module_to_dome_dict(obs_config)
     max_pe = max(mf_pair[0].get_max_adc(), mf_pair[1].get_max_adc())
-    pixel_distance = mf_pair[0].get_distance_between_max_adc(mf_pair[1])
+    pixel_distance = None #mf_pair[0].get_distance_between_max_adc(mf_pair[1])
     fig, axs = plt.subplots(1, 2, figsize=(14, 10), constrained_layout=True)
     plot = None
     for ax, module_frame in zip(axs, mf_pair):
@@ -143,6 +143,11 @@ class QuaboFrame:
 
     def get_timestamp(self):
         """Returns a timestamp for this quabo frame."""
+        """
+        tv_sec = self.json['tv_sec']
+        pkt_nsec = self.json['pkt_nsec']
+        return tv_sec * 10 ** 9 + pkt_nsec
+        """
         return pff.pkt_header_time(self.json)
 
     def get_timestamp_ns_diff(self, other_qf):
@@ -165,7 +170,7 @@ class QuaboFrame:
     def get_max_adc_pixel_offset(self):
         """Compute position offset from center of module."""
         max_adc = self.get_max_adc()
-        if not self.img_16:
+        if self.img_16 is not None:
             self.get_16x16_image()
         pixel_index = np.nonzero(self.img_16 == max_adc)
         # The 0.5 offset makes x,y represent the coordinate of the center of the pixel rather than a vertex.
@@ -279,7 +284,7 @@ class ModuleFrame:
             if frame and frame.get_max_adc() > max_adc:
                 max_adc = frame.get_max_adc()
                 frame_with_max_adc = frame
-        self.max_adc_offset = frame_with_max_adc.get_max_adc_pixel_offset()
+        #self.max_adc_offset = frame_with_max_adc.get_max_adc_pixel_offset()
         return max_adc
 
     def get_distance_between_max_adc(self, other_mf):
