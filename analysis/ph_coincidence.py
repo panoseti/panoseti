@@ -123,6 +123,7 @@ def do_run(vol, run, params, username):
             module_pairs_to_process = params['modules']
             check_all_module_pairs(available_modules, module_pairs_to_process)
         analysis_dir = make_analysis_dir(ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE, vol, run)
+        write_summary(analysis_dir, params, username)
         print('RUNNING')
         try:
             for module_a, module_b in module_pairs_to_process:
@@ -136,8 +137,9 @@ def do_run(vol, run, params, username):
                     module_a,
                     module_b
                 )
-        finally:
-            write_summary(analysis_dir, params, username)
+        except Exception as e:
+            print(e)
+            raise e
         print('DONE')
     else:
         print('No usable ph files found.')
@@ -146,7 +148,7 @@ def do_run(vol, run, params, username):
 def main():
     params = {
         'modules': [],
-        'max_time_diff': 500,
+        'max_time_diff': 300,
         'threshold_max_adc': 0,
         'max_group_time_diff': 300,
         'verbose': False,

@@ -10,6 +10,18 @@ require_once("panoseti.inc");
 require_once("ph_coincidence.inc");
 require_once("analysis.inc");
 
+function get_num_events($vol, $run, $analysis_dir, $module_pair_dir) {
+    $dirpath = "$vol/analysis/$run/ph_coincidence/$analysis_dir/$module_pair_dir";
+    $event_pattern = "/^event_\d+.*/";
+    $n = 0;
+    foreach(scandir($dirpath) as $event) {
+        if (preg_match($event_pattern, $event)) {
+            $n += 1;
+        }
+    }
+    return $n;
+}
+
 function show_analysis($vol, $run, $analysis_dir) {
     $dirpath = "$vol/analysis/$run/ph_coincidence/$analysis_dir";
     page_head("Pulse height pulse analysis");
@@ -17,11 +29,12 @@ function show_analysis($vol, $run, $analysis_dir) {
     $module_pair_fname_pattern = "/module_(\d+)\.module_(\d+)/";
     foreach (scandir($dirpath) as $mpdir) {
         if (preg_match($module_pair_fname_pattern, $mpdir, $matches)) {
+            $num_events = get_num_events($vol, $run, $analysis_dir, $mpdir);
             $module_pair = implode(',', array_slice($matches, 1));
             echo "<h3>Module pair: $module_pair</h3><ul>";
-            $subdir = "$dirpath/$mpdir";
             echo "<ul>
-                <li> <a href=ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&module_pair=$module_pair&event=0>Event browser</a>
+                <li> <a href=ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&module_pair=$module_pair&num_events=$num_events&event=0>Event browser</a>
+                ($num_events)
                 </ul>
             ";
         }
