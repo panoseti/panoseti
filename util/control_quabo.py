@@ -31,12 +31,17 @@
 #       (2) Added "HK-IP" for setting IP address of HK packets.
 #           The default IP address of HK packets is 192.168.1.100.
 #v11.1: LF0 is old flasher led, and LF1 is new flasher led
+#V11.2: added two new commands:
+#       (1) read ph data triggered by SW;
+#       (2) write BL data to FPGA memory from a host computer.
 
 import time
 import string
 import socket
 import sys
 import os
+import struct
+
 #run this under Python 3.x
 if (sys.version_info < (3,0)):
 	print("Must run under python 3.x")
@@ -515,6 +520,8 @@ while True:
     "LF1" to select new Led Flasher on mobo with new firmware(>= V11.8)
     "IM-PH-IP" to set IP addresses for PH and IM packets
     "HK-IP" to set IP address for HK packets
+    "R-PH" to read ph data triggered by SW(firmware ver >=20.3)
+    "W-BL" to write BL data through the host computer(firmware ver >=20.3)
     or "q" to quit
     ''')
     if inp == 'q':
@@ -754,4 +761,34 @@ while True:
         cmd_payload[2] = hk_ip[1]
         cmd_payload[3] = hk_ip[2]
         cmd_payload[4] = hk_ip[3]
+        sendit(cmd_payload)
+    elif inp == 'R-PH':
+        cmd_payload = bytearray(64)
+        for i in range(64): cmd_payload[i]=0
+        cmd_payload[0] = 0x0c
+        sendit(cmd_payload)
+        time.sleep(0.5)
+        reply = sock.recvfrom(1024)
+        bytesback = reply[0]
+        print(len(bytesback))
+        now =time.ctime().split(" ")[3]
+        fp = open('quabo_ph.csv', 'w')
+        fp.write(str(now) + ',')
+        for n in range(256):
+            val=bytesback[2*n+4]+256*bytesback[2*n+5]
+            fp.write(str(val) + ',')
+        fp.write('\n')
+        fp.close()
+    elif inp == 'W-BL':
+        cmd_payload = bytearray(514)
+        for i in range(514): cmd_payload[i]=0
+        cmd_payload[0] = 0x0d
+        fp = open('bl.txt','r')
+        d_str = fp.readlines()
+        n = 2
+        for i in range(256):
+            tmp = struct.pack('h',int(d_str[i]))
+            cmd_payload[n] = tmp[0]
+            cmd_payload[n+1] = tmp[1]
+            n = n+2
         sendit(cmd_payload)
