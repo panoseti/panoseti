@@ -83,13 +83,13 @@ def do_reboot(modules, quabo_uids):
 
     print('All quabos rebooted')
 
-def do_loads(modules, quabo_uids):
+def do_loads(modules, quabo_uids, quabo_info):
     for module in modules:
         for i in range(4):
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            if util.is_quabo_old_version(module, i):
+            if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
                 fw = firmware_silver_qfp
             else:
                 fw = firmware_silver_bga
@@ -172,7 +172,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
-            is_qfp = util.is_quabo_old_version(module, i)
+            is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
             qi = quabo_info[uid]
             serialno = qi['serialno'][3:]
             quabo_calib = config_file.get_quabo_calib(serialno)
@@ -403,7 +403,7 @@ if __name__ == "__main__":
             do_reboot(modules, quabo_uids)
             do_hk_dest(modules, quabo_uids)
         elif op == 'loads':
-            do_loads(modules, quabo_uids)
+            do_loads(modules, quabo_uids, quabo_info)
         elif op == 'ping':
             do_ping(modules)
         elif op == 'init_daq_nodes':

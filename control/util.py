@@ -124,12 +124,26 @@ def is_quabo_alive(module, quabo_uids, i):
 # is quabo new or old hardware version, as specified in obs_config?
 # can be specified as either string or array of 4 strings
 #
+'''
 def is_quabo_old_version(module, i):
     v = module['quabo_version']
     if isinstance(v, list):
         v = v[i]
     return v == 'qfp'
-
+'''
+def is_quabo_old_version(module, i, quabo_uids, quabo_info):
+    domes = quabo_uids['domes']
+    for dome in domes:
+        modules = dome['modules']
+        for m in modules:
+            if m['ip_addr'] == module['ip_addr']:
+                uid = m['quabos'][i]['uid']
+    try:
+        v = quabo_info[uid]['board_version']
+    except:
+        print('uid: %s can\'t be found in quabo_info.json'%uid)
+        return
+    return v == 'qfp'
 #-------------- RECORDING ---------------
 
 def start_daemon(prog):
