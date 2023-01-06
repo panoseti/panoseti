@@ -223,6 +223,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
             quabo.send_maroc_params(qc_dict)
             time.sleep(0.1)
             quabo.send_trigger_mask()
+            quabo.send_goe_mask()
             quabo.close()
 
 # compute PH baselines on quabos and write to file

@@ -363,8 +363,11 @@ CHANMASK_6 = 0xffffffff
 CHANMASK_7 = 0xffffffff
 CHANMASK_8 = 0x155
 
-* 0x1, ph event will be triggered by more than 2 pixels(at least 3)
-* 0x2 or 0x0, ph event will be triggered by more than 1 pixel(at least 2)
+* 0x1, ph event will be triggered by 3 or more pixels
+* 0x2 or 0x0, ph event will be triggered by 2 or more pixels
+* The above settings are used for cherenkov experiments searching for extended sources
+* 0x3, ph event will be triggered by 1 or more pixels, which is used for astrophysics/seti experiments searching for point sources
+* This is the default status
 GOEMASK = 0x1
 
 FLASH_RATE = 7

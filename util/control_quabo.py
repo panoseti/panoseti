@@ -34,6 +34,7 @@
 #V11.2: added two new commands:
 #       (1) read ph data triggered by SW;
 #       (2) write BL data to FPGA memory from a host computer.
+#V11.3: add a new command for setting GOE mask
 
 import time
 import string
@@ -47,7 +48,7 @@ if (sys.version_info < (3,0)):
 	print("Must run under python 3.x")
 	quit()
 
-configfilename = "./config/quabo_config.txt"
+configfilename = "quabo_config.txt"
 baseline_fname = "./quabo_baseline.csv"
 #Send to hard-coded quabo address
 if (len(sys.argv) > 1):
@@ -454,7 +455,30 @@ def send_trigger_mask(fhand):
     if connected ==1:
         flush_rx_buf()
         sendit(cmd_payload)
-    
+
+def send_goe_mask(fhand):
+    cmd_payload = bytearray(64)
+    for i in range(64): cmd_payload[i]=0
+    cmd_payload[0] = 0x0e
+    for line in fhand:
+        if line.startswith("*"): continue
+        #strip off the comment
+        strippedline = line.split('*')[0]
+        #Split the tag field from the cs value field
+        fields = strippedline.split("=")
+        if len(fields) !=2: continue
+        tag = fields[0].strip()
+        chan_mask = [0]
+        if (tag.startswith("GOEMASK")):
+            val = int(fields[1],0)
+            print(val)
+            cmd_payload[4]=val & 0xff
+            cmd_payload[5]=(val>>8) & 0xff
+            cmd_payload[6]=(val>>16) & 0xff
+            cmd_payload[7]=(val>>24) & 0xff         
+    if connected ==1:
+        flush_rx_buf()
+        sendit(cmd_payload)
 # convert IP addr string, eg. '192.0.100.3' to a byte array
 # Do error checking.
 #
@@ -508,6 +532,7 @@ while True:
     "VV" to turn off all HVs,
     "A" to load only the acquisition mode parameters from quabo_config.txt,
     "T" to load the trigger mask values from the quabo_config.txt file,
+    "GT" to load the GOE mask values from the quabo_config.txt file,
     "R" to send a system reset,   
     "ST" to move the focus stepper,
     "SHO" to open shutter with previous firmware(<= V11.1),
@@ -615,7 +640,13 @@ while True:
             continue
         send_trigger_mask(fhand)
         fhand.close()
-        
+    elif inp == 'GT':
+        try:
+            fhand = open(configfilename)
+        except Exception as e:
+            print (e)
+            continue
+        send_goe_mask(fhand)
     elif inp == 'R':
         cmd_payload = bytearray(64)
         for i in range(64): cmd_payload[i]=0

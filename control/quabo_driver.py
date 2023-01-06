@@ -159,6 +159,13 @@ class QUABO:
         self.flush_rx_buf()
         self.send(cmd)
 
+    def send_goe_mask(self):
+        cmd = self.make_cmd(0x0e)
+        with open(self.config_file_path) as f:
+            self.parse_goe_mask(f, cmd)
+        self.flush_rx_buf()
+        self.send(cmd)
+        
     def reset(self):
         cmd = self.make_cmd(0x04)
         self.send(cmd)
@@ -339,6 +346,20 @@ class QUABO:
                     cmd[4*chan+5]=(val>>8) & 0xff
                     cmd[4*chan+6]=(val>>16) & 0xff
                     cmd[4*chan+7]=(val>>24) & 0xff
+
+    def parse_goe_mask(self, fhand, cmd):
+        for line in fhand:
+            if line.startswith("*"): continue
+            #strip off the comment
+            strippedline = line.split('*')[0]
+            #Split the tag field from the cs value field
+            fields = strippedline.split("=")
+            if len(fields) !=2: continue
+            tag = fields[0].strip()
+            goe_mask = 0
+            if (tag.startswith("GOEMASK")):
+                val = int(fields[1],0)
+                cmd[4] = val & 0x03
 
     def parse_acq_parameters(self, fhand, cmd):
         for line in fhand:
