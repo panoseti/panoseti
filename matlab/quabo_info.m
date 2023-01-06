@@ -53,9 +53,13 @@ for i = 1:r
                     n = n + 1;
                     q_info(n).uid = ip_uid{j,k+1};
                     q_serialno = Panoconfig.config{i, k*(DetectorsonQubao + 1)-2};
-                    serialno_str = strsplit(q_serialno,'o');
+                    serialno_str = strsplit(q_serialno,'0');
                     q_info(n).serialno = serialno_str{2};
-                    q_info(n).board_version=' ';
+                    if(str2num(q_info(n).serialno) < 30) 
+                        q_info(n).board_version='qfp';
+                    else
+                        q_info(n).board_version='bga';
+                    end
                     q_info(n).detector_serialno = [];
                     for m = 1:DetectorsonQubao
                         q_info(n).detector_serialno = [q_info(n).detector_serialno, ...
