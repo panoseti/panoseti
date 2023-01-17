@@ -38,14 +38,16 @@ extern bool ends_with(const char* s, const char* suffix);
 typedef enum {
     DP_BIT16_IMG = 1,       // this must be first
     DP_BIT8_IMG,
-    DP_PH_IMG,
+    DP_PH_256_IMG,
+    DP_PH_1024_IMG,
     DP_NONE                 // this must be last
 } DATA_PRODUCT;
 
 inline int bytes_per_pixel(DATA_PRODUCT dp) {
     if (dp == DP_BIT16_IMG) return 2;
     if (dp == DP_BIT8_IMG) return 1;
-    if (dp == DP_PH_IMG) return 2;
+    if (dp == DP_PH_256_IMG) return 2;
+    if (dp == DP_PH_1024_IMG) return 2;
 }
 
 // the info encoded in a dir name

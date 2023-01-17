@@ -37,7 +37,7 @@ struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;
     int image_seqno, ph_seqno;
-    FILE *bit16Img, *bit8Img, *PHImg;
+    FILE *bit16Img, *bit8Img, *PH256Img, *PH1024Img;
     FILE_PTRS(const char *diskDir, FILENAME_INFO *fi);
     void make_files(const char *diskDir);
     void new_dp_file(DATA_PRODUCT dp, const char *diskDir);
@@ -96,8 +96,11 @@ void FILE_PTRS::make_files(const char *run_dir){
                 increase_buffer(f, IM_BUFSIZE);
                 bit8Img = f;
                 break;
-            case DP_PH_IMG:
-                PHImg = f;
+            case DP_PH_256_IMG:
+                PH256Img = f;
+                break;
+            case DP_PH_1024_IMG:
+                PH1024Img = f;
                 break;
             default:
                 break;
@@ -115,7 +118,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *run_dir){
     string filename;
     char buf[256];
 
-    file_info.seqno = (dp==DP_PH_IMG)?ph_seqno:image_seqno;
+    file_info.seqno = (dp==DP_PH_256_IMG||dp==DP_PH_1024_IMG)?ph_seqno:image_seqno;
     file_info.data_product = (DATA_PRODUCT)dp;
     file_info.start_time = time(NULL);
     file_info.bytes_per_pixel = bytes_per_pixel(dp);
@@ -139,9 +142,13 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *run_dir){
             fclose(bit8Img);
             bit8Img = f;
             break;
-        case DP_PH_IMG:
-            fclose(PHImg);
-            PHImg = f;
+        case DP_PH_256_IMG:
+            fclose(PH256Img);
+            PH256Img = f;
+            break;
+        case DP_PH_1024_IMG:
+            fclose(PH1024Img);
+            PH1024Img = f;
             break;
         default:
             break;
@@ -269,7 +276,7 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int packetIndex){
     char mode = dataBlock->header.ph_pkt_head[packetIndex].acq_mode;
 
     if (mode == 0x1) {
-        f = moduleToWrite->PHImg;
+        f = moduleToWrite->PH256Img;
     } else {
         printf("Mode %c not recognized\n", mode);
         printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[packetIndex].toString().c_str());
@@ -298,7 +305,7 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int packetIndex){
     if (max_file_size && (ftell(f) > max_file_size)){
         moduleToWrite->ph_seqno++;
         if (mode == 0x1){
-            moduleToWrite->new_dp_file(DP_PH_IMG, run_directory);
+            moduleToWrite->new_dp_file(DP_PH_256_IMG, run_directory);
         }
     }
     return 1;
@@ -440,7 +447,7 @@ void close_files() {
         if (data_files[i] != NULL){
             fclose(data_files[i]->bit16Img);
             fclose(data_files[i]->bit8Img);
-            fclose(data_files[i]->PHImg);
+            fclose(data_files[i]->PH256Img);
         }
     }
 }
