@@ -67,6 +67,8 @@ def get_daq_params(data_config):
     image_8bit = False
     do_ph = False
     bl_subtract = True
+    do_any_trigger = False
+    do_group_frames = False
     if 'image' in data_config:
         do_image = True
         image = data_config['image']
@@ -80,8 +82,17 @@ def get_daq_params(data_config):
         check_img_params(image_8bit, image_usec)
     if 'pulse_height' in data_config:
         do_ph = True
+        if 'any_trigger' in data_config['pulse_height']:
+            do_any_trigger = True
+            any_trigger = data_config['pulse_height']['any_trigger']
+            if 'group_frames' not in any_trigger:
+                raise Exception('missing "group_frames" param for "any_trigger" in data_config.json')
+            if any_trigger['group_frames'] == 1:
+                do_group_frames = True
+            else:
+                raise Exception('group_frames for any_trigger in data_config.json must be 0 or 1.')
     daq_params = quabo_driver.DAQ_PARAMS(
-        do_image, image_usec - 1, image_8bit, do_ph, bl_subtract
+        do_image, image_usec - 1, image_8bit, do_ph, bl_subtract, do_any_trigger, do_group_frames
     )
     if 'flash_params' in data_config:
         fp = data_config['flash_params']
@@ -202,13 +213,14 @@ def start_recording(data_config, daq_config, run_name, no_hv):
         max_file_size_mb = int(data_config['max_file_size_mb'])
     else:
         max_file_size_mb = util.default_max_file_size_mb
+    daq_params = get_daq_params(data_config)
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
         username = node['username']
         data_dir = node['data_dir']
-        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d'%(
-            node['ip_addr'], run_name, max_file_size_mb
+        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d --group_frames %d'%(
+            node['ip_addr'], run_name, max_file_size_mb, daq_params.do_group_frames
         )
         if 'bindhost' in node.keys():
             remote_cmd += ' --bindhost %s'%node['bindhost']
