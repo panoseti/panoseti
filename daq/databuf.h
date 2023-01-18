@@ -32,7 +32,7 @@
     // Number of input packets stored in each block of the input buffer
 #define OUT_MOD_PER_BLOCK           16384
     // Max Number of Modules stored in each block of the output buffer
-#define OUT_PH_IMG_PER_BLOCK         16384
+#define OUT_PH_IMG_PER_BLOCK        16384
     // Max # of PH packets stored in each block of the output buffer
 
 // Imaging Data Values and characteristics of modules
@@ -44,6 +44,11 @@
 #define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
     // Size of module image allocated in buffer
 
+// Pulse Height data values
+
+#define BYTES_PER_PH_FRAME      QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+    // Size of PH image allocated in buffer
+
 // the Block Sizes for the Input and Ouput Buffers
 
 #define BYTES_PER_INPUT_IMAGE_BLOCK     IN_PKT_PER_BLOCK*BYTES_PER_PKT_IMAGE
@@ -52,7 +57,7 @@
 #define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME
     // Byte size of output frame block.
     // Contains frames for modules excluding headers
-#define BYTES_PER_OUTPUT_PH_BLOCK    OUT_PH_IMG_PER_BLOCK*BYTES_PER_PKT_IMAGE
+#define BYTES_PER_OUTPUT_PH_BLOCK       OUT_PH_IMG_PER_BLOCK*BYTES_PER_PH_FRAME
     // Byte size of output PH block.
     // Contains frames for PH packets excluding headers
 
@@ -71,6 +76,10 @@
 
 #define NANOSEC_THRESHOLD        100
     // Nanosecond threshold used for grouping quabo images
+
+
+#define PH_NANOSEC_THRESHOLD        100
+    // Nanosecond threshold used for grouping PH images
 
 // Module index is used for defining the array for storing pointers
 // of module structures for both compute and output threads.
@@ -126,6 +135,31 @@ struct MODULE_IMAGE_HEADER {
     }
 };
 
+// info about a PH image:
+// - the packet headers for the 4 quabo images comprising it
+//      - If hashpipe is not configured to group frames (default behavior),
+//      only the first element of pkt_head will contain meaningful information.
+// - the module number
+// produced by the compute thread, consumed by the output thread
+// 
+struct PH_IMAGE_HEADER {
+    int group_frames;
+    uint16_t mod_num;
+    PACKET_HEADER pkt_head[QUABO_PER_MODULE];
+    std::string toString(){
+        std::string return_string = "group_frames = " + std::to_string(this->group_frames) + "\n";
+        return_string += "mod_num = " + std::to_string(this->mod_num);
+        if (this->group_frames) {
+            for (int i = 0; i < QUABO_PER_MODULE; i++){
+                return_string += "\n" + pkt_head[i].toString();
+            }
+        } else {
+            return_string += "\n" + pkt_head[0].toString();
+        }
+        return return_string;
+    }
+};
+
 
 // INPUT BUFFER STRUCTURES
 
@@ -170,7 +204,7 @@ typedef struct HSD_output_block_header {
     MODULE_IMAGE_HEADER img_mod_head[OUT_MOD_PER_BLOCK];
     int n_img_module;
 
-    PACKET_HEADER ph_pkt_head[OUT_PH_IMG_PER_BLOCK];
+    PH_IMAGE_HEADER ph_img_head[OUT_PH_IMG_PER_BLOCK];
     int n_ph_img;
 
     int INTSIG;
