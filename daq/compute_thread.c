@@ -51,7 +51,7 @@ void write_ph_to_out_buffer(
 ) {
     int out_index = out_block->header.n_ph_img;
 
-    out_block->header.ph_pkt_head[out_index] = in_block->header.pkt_head[pktIndex];
+    out_block->header.ph_img_head[out_index] = in_block->header.pkt_head[pktIndex];
     
     // copy and rotate the image
     //
@@ -64,11 +64,14 @@ void write_ph_to_out_buffer(
     out_block->header.n_ph_img++;
 }
 
+
+
 // copy quabo image to module image buffer
 // If needed, copy module image to output buffer first
 //
 void storeData(
     MODULE_IMAGE_BUFFER* mod_data,        // module image
+    PH_IMAGE_BUFFER* ph_data,             // PH 1024 image
     HSD_input_block_t* in_block,    // block in input buffer (quabo images)
     HSD_output_block_t* out_block,  // block in output buffer (module images)
     int pktIndex                    // index in input buffer
@@ -85,8 +88,10 @@ void storeData(
 
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
-        write_ph_to_out_buffer(in_block, pktIndex, out_block, quabo_num);
-        return;
+        if (!group_ph_frames) {
+            write_ph_to_out_buffer(in_block, pktIndex, out_block, quabo_num);
+            return;
+        }
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
         bytes_per_pixel = 2;
@@ -198,6 +203,14 @@ quabo_info_t* quabo_info_t_new(){
 //
 static MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
+//array of pointers to module PH images
+//
+static PH_IMAGE_BUFFER* PHmoduleInd[MAX_MODULE_INDEX] = {NULL};
+
+// Store user input for GROUPFRAMES
+//
+static int group_ph_frames;
+
 // Initialization function
 // is called once when the thread is created
 //
@@ -216,6 +229,14 @@ static int init(hashpipe_thread_args_t * args){
     hgets(st.buf, "CONFIG", STR_BUFFER_SIZE, config_location);
     printf("Config Location: %s\n", config_location);
     FILE *modConfig_file = fopen(config_location, "r");
+
+    // Fetch user input for whether to PH frames are to be grouped.
+    hgeti4(st.buf, "GROUPFRAMES", &group_ph_frames);
+    if (group_ph_frames) {
+        printf("Group frames is %i (True). Hashpipe will group incoming PH frames.\n", group_ph_frames);
+    } else {
+        printf("Group frames is %i (False). Hashpipe will not group incoming PH frames.\n", group_ph_frames);
+    }
 
     char fbuf[100];
     char cbuf;
@@ -236,7 +257,14 @@ static int init(hashpipe_thread_args_t * args){
             if (fscanf(modConfig_file, "%u\n", &modName) == 1){
                 if (moduleInd[modName] == NULL){
                     moduleInd[modName] = new MODULE_IMAGE_BUFFER();
-                    fprintf(stdout, "Created Module: %u.%u-%u\n", 
+                    fprintf(stdout, "Created Module (Image mode): %u.%u-%u\n", 
+                        (unsigned int) (modName << 2)/0x100,
+                        (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3
+                    );
+                }
+                if (PHmoduleInd[modName] == NULL){
+                    PHmoduleInd[modName] = new PH_IMAGE_BUFFER();
+                    fprintf(stdout, "Created Module (Pulse-height): %u.%u-%u\n", 
                         (unsigned int) (modName << 2)/0x100,
                         (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3
                     );
@@ -353,6 +381,7 @@ static void *run(hashpipe_thread_args_t * args){
 
             storeData(
                 moduleInd[moduleNum],
+                PHmoduleInd[moduleNum],
                 &(db_in->block[curblock_in]),
                 &(db_out->block[curblock_out]),
                 i

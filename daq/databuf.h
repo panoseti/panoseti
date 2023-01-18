@@ -143,13 +143,13 @@ struct MODULE_IMAGE_HEADER {
 // produced by the compute thread, consumed by the output thread
 // 
 struct PH_IMAGE_HEADER {
-    int group_frames;
+    int group_ph_frames;
     uint16_t mod_num;
     PACKET_HEADER pkt_head[QUABO_PER_MODULE];
     std::string toString(){
-        std::string return_string = "group_frames = " + std::to_string(this->group_frames) + "\n";
+        std::string return_string = "group_ph_frames = " + std::to_string(this->group_ph_frames) + "\n";
         return_string += "mod_num = " + std::to_string(this->mod_num);
-        if (this->group_frames) {
+        if (this->group_ph_frames) {
             for (int i = 0; i < QUABO_PER_MODULE; i++){
                 return_string += "\n" + pkt_head[i].toString();
             }

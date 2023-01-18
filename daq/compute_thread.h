@@ -20,4 +20,20 @@ struct MODULE_IMAGE_BUFFER {
     }
 };
 
+// structure used by the compute thread to accumulate a pulse-height image;
+// only some of the quabo sub-images may be present
+
+struct PH_IMAGE_BUFFER {
+    uint32_t max_nanosec;       // min/max arrival times of quabo images
+    uint32_t min_nanosec;
+    char quabos_bitmap;         // bitmap for which quabos images are present
+    PH_IMAGE_HEADER ph_head;   // packet headers stored here
+    uint8_t data[BYTES_PER_PH_FRAME];
+    PH_IMAGE_BUFFER() {
+        clear();
+    }
+    void clear(){
+        memset(this, 0, sizeof(*this));
+    }
+};
 #endif

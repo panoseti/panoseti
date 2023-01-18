@@ -100,6 +100,7 @@ void FILE_PTRS::make_files(const char *run_dir){
                 PH256Img = f;
                 break;
             case DP_PH_1024_IMG:
+                increase_buffer(f, IM_BUFSIZE);
                 PH1024Img = f;
                 break;
             default:
@@ -147,6 +148,7 @@ void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *run_dir){
             PH256Img = f;
             break;
         case DP_PH_1024_IMG:
+            increase_buffer(f, IM_BUFSIZE);
             fclose(PH1024Img);
             PH1024Img = f;
             break;
@@ -251,35 +253,67 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
 }
 
 // Write PH header information as JSON.  Fixed-length format.
+// Note:
+//      - If hashpipe is in grouping mode (group_ph_frames = 1), writes all 4 packet headers stored in the PH image header at frameIndex.
+//      - Otherwise (group_ph_frames = 0), writes only the packet header at index 0 in the PH image header at frameIndex.
 //
 int write_ph_header_json(
-    FILE *f, HSD_output_block_header_t *dataHeader, int packetIndex
+    FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
 ){
-    fprintf(f,
-        "{ \"quabo_num\": %1u, \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
-        dataHeader->ph_pkt_head[packetIndex].quabo_num,
-        dataHeader->ph_pkt_head[packetIndex].pkt_num,
-        dataHeader->ph_pkt_head[packetIndex].pkt_tai,
-        dataHeader->ph_pkt_head[packetIndex].pkt_nsec,
-        dataHeader->ph_pkt_head[packetIndex].tv_sec,
-        dataHeader->ph_pkt_head[packetIndex].tv_usec
-    );
+    if (dataBlock->header.ph_img_head[frameIndex].group_ph_frames) {
+        fprintf(f, "{\n");
+        for (int i=0; i<QUABO_PER_MODULE; i++){
+            fprintf(f,
+            "   \"quabo_%1u\": { \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
+            i,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].pkt_num,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].pkt_tai,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].pkt_nsec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].tv_sec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].tv_usec
+            );
+            if (i < QUABO_PER_MODULE-1){
+                fprintf(f, ", ");
+            }
+            fprintf(f, "\n");
+        }
+        fprintf(f, "}");
+    } else {
+        fprintf(f,
+            "{ \"quabo_num\": %1u, \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
+            0,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_num,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_tai,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_nsec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].tv_sec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].tv_usec
+        );
+    }
 }
 
 // Write a Pulse Height image to file
 // dataBlock: Data block of the images to be written
-// packetIndex: The packet index for the specified output block.
-
-int write_module_ph_file(HSD_output_block_t *dataBlock, int packetIndex){
+// frameIndex: The frame index for the specified output block.
+// Note: 
+//      - If hashpipe is in grouping mode (group_ph_frames = 1), writes the entire PH image block at frameIndex.
+//      - Otherwise (group_ph_frames = 0), writes only the first 512 bytes of the PH image block at frameIndex.
+//
+int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
     FILE *f;
-    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.ph_pkt_head[packetIndex].mod_num];
-    char mode = dataBlock->header.ph_pkt_head[packetIndex].acq_mode;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.ph_img_head[frameIndex].mod_num];
+    char mode = dataBlock->header.ph_img_head[frameIndex].pkt_head[0].acq_mode;
+    int group_ph_frames = dataBlock->header.ph_img_head[frameIndex].group_ph_frames;
+    int num_ph_frames_to_write = (group_ph_frames ? 4 : 1);
 
     if (mode == 0x1) {
-        f = moduleToWrite->PH256Img;
+        if (group_ph_frames) {
+            f = moduleToWrite->PH1024Img;
+        } else {
+            f = moduleToWrite->PH256Img;
+        }
     } else {
         printf("Mode %c not recognized\n", mode);
-        printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[packetIndex].toString().c_str());
+        printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[frameIndex].toString().c_str());
         return 0;
     }
 
@@ -293,19 +327,23 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int packetIndex){
 
     pff_start_json(f);
 
-    write_ph_header_json(f, &(dataBlock->header), packetIndex);
+    write_ph_header_json(f, &(dataBlock->header), frameIndex);
 
     pff_end_json(f);
 
     pff_write_image(f, 
-        PIXELS_PER_IMAGE*2, 
-        dataBlock->ph_block + (packetIndex*BYTES_PER_PKT_IMAGE)
+        num_ph_frames_to_write*PIXELS_PER_IMAGE*2, 
+        dataBlock->ph_block + (frameIndex*BYTES_PER_PH_FRAME)
     );
 
     if (max_file_size && (ftell(f) > max_file_size)){
         moduleToWrite->ph_seqno++;
         if (mode == 0x1){
-            moduleToWrite->new_dp_file(DP_PH_256_IMG, run_directory);
+            if (group_ph_frames) {
+                moduleToWrite->new_dp_file(DP_PH_1024_IMG, run_directory);
+            } else {
+                moduleToWrite->new_dp_file(DP_PH_256_IMG, run_directory);
+            }
         }
     }
     return 1;
@@ -448,6 +486,7 @@ void close_files() {
             fclose(data_files[i]->bit16Img);
             fclose(data_files[i]->bit8Img);
             fclose(data_files[i]->PH256Img);
+            fclose(data_files[i]->PH1024Img);
         }
     }
 }
