@@ -260,8 +260,8 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
 int write_ph_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
 ){
-    if (dataBlock->header.ph_img_head[frameIndex].group_ph_frames) {
-        // Frame grouping is enabled
+    if (dataHeader->ph_img_head[frameIndex].group_ph_frames) {
+        // Frame grouping is enabled. Write a 1024 pixel PH image.
         //
         fprintf(f, "{\n");
         for (int i=0; i<QUABO_PER_MODULE; i++){

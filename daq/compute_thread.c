@@ -21,6 +21,11 @@
 //
 #define NUM_OF_MODES 7
 
+// Store user input for the GROUPFRAMES option. 
+// Equal to 0 (write 256 pixel PH images) or 1 (write 1024 pixel PH images).
+//
+static int group_ph_frames;
+
 // copy image data from the module data to output buffer.
 //
 void write_frame_to_out_buffer(
@@ -45,7 +50,7 @@ void write_frame_to_out_buffer(
 //
 void write_ph_to_out_buffer(
     PH_IMAGE_BUFFER* ph_data,
-    HSD_output_block_t* out_block,      // block in output buffer
+    HSD_output_block_t* out_block      // block in output buffer
 ) {
     int out_index = out_block->header.n_ph_img;
     HSD_output_block_header_t* out_header = &(out_block->header);
@@ -242,7 +247,7 @@ void storeData(
         if (do_write) {    
             // A PH 1024 frame is now final.
 
-            write_frame_to_out_buffer(ph_data, out_block);
+            write_ph_to_out_buffer(ph_data, out_block);
 
             // clear PH frame buffer
             ph_data->clear();
@@ -294,9 +299,6 @@ static MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
 //
 static PH_IMAGE_BUFFER* PHmoduleInd[MAX_MODULE_INDEX] = {NULL};
 
-// Store user input for GROUPFRAMES
-//
-static int group_ph_frames;
 
 // Initialization function
 // is called once when the thread is created
