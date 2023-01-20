@@ -261,6 +261,8 @@ int write_ph_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
 ){
     if (dataBlock->header.ph_img_head[frameIndex].group_ph_frames) {
+        // Frame grouping is enabled
+        //
         fprintf(f, "{\n");
         for (int i=0; i<QUABO_PER_MODULE; i++){
             fprintf(f,
@@ -281,7 +283,7 @@ int write_ph_header_json(
     } else {
         fprintf(f,
             "{ \"quabo_num\": %1u, \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
-            0,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].quabo_num,
             dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_num,
             dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_tai,
             dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_nsec,
@@ -331,6 +333,8 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
 
     pff_end_json(f);
 
+    // NOTE: when group_ph_frames=0, only the first 512 bytes of the PH data block
+    // will contain meaningful data.
     pff_write_image(f, 
         num_ph_frames_to_write*PIXELS_PER_IMAGE*2, 
         dataBlock->ph_block + (frameIndex*BYTES_PER_PH_FRAME)

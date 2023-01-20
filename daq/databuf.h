@@ -74,12 +74,11 @@
 // and the new module data is created starting with the new packet.
 // More information can be seen in the compute thread.
 
-#define NANOSEC_THRESHOLD        100
+#define IMG_NANOSEC_THRESHOLD       100
     // Nanosecond threshold used for grouping quabo images
 
-
-#define PH_NANOSEC_THRESHOLD        100
-    // Nanosecond threshold used for grouping PH images
+#define PH_NANOSEC_THRESHOLD        25 
+    // Nanosecond threshold used for grouping PH images when grouping is enabled
 
 // Module index is used for defining the array for storing pointers
 // of module structures for both compute and output threads.
