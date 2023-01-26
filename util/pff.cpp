@@ -26,6 +26,7 @@ DATA_PRODUCT str_to_dp(const char* s) {
     if (!strcmp(s, "img8")) return DP_BIT8_IMG;
     if (!strcmp(s, "ph256_bit16")) return DP_PH_256_IMG;
     if (!strcmp(s, "ph1024_bit16")) return DP_PH_1024_IMG;
+    return DP_NONE;
 }
 
 void pff_start_json(FILE* f) {

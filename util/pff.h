@@ -48,6 +48,7 @@ inline int bytes_per_pixel(DATA_PRODUCT dp) {
     if (dp == DP_BIT8_IMG) return 1;
     if (dp == DP_PH_256_IMG) return 2;
     if (dp == DP_PH_1024_IMG) return 2;
+    return DP_BIT16_IMG;
 }
 
 // the info encoded in a dir name

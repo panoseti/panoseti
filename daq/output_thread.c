@@ -201,6 +201,7 @@ int write_img_header_json(
         fprintf(f, "\n");
     }
     fprintf(f, "}");
+    return 0;
 }
 
 // Write the image module structure to file
@@ -291,6 +292,7 @@ int write_ph_header_json(
             dataHeader->ph_img_head[frameIndex].pkt_head[0].tv_usec
         );
     }
+    return 0;
 }
 
 // Write a Pulse Height image to file
@@ -388,6 +390,7 @@ int create_data_files_from_config(){
     if (fclose(configFile) == EOF) {
         printf("Warning: Unable to close module configuration file.\n");
     }
+    return 0;
 }
 
 typedef enum {
