@@ -89,7 +89,7 @@ def get_daq_params(data_config):
                 raise Exception('missing "group_frames" param for "any_trigger" in data_config.json')
             if any_trigger['group_frames'] == 1:
                 do_group_frames = True
-            else:
+            elif any_trigger['group_frames'] != 0:
                 raise Exception('group_frames for any_trigger in data_config.json must be 0 or 1.')
     daq_params = quabo_driver.DAQ_PARAMS(
         do_image, image_usec - 1, image_8bit, do_ph, bl_subtract, do_any_trigger, do_group_frames
