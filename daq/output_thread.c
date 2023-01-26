@@ -339,12 +339,10 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
 
     if (max_file_size && (ftell(f) > max_file_size)){
         moduleToWrite->ph_seqno++;
-        if (mode == 0x1){
-            if (group_ph_frames) {
-                moduleToWrite->new_dp_file(DP_PH_1024_IMG, run_directory);
-            } else {
-                moduleToWrite->new_dp_file(DP_PH_256_IMG, run_directory);
-            }
+        if (group_ph_frames) {
+            moduleToWrite->new_dp_file(DP_PH_1024_IMG, run_directory);
+        } else {
+            moduleToWrite->new_dp_file(DP_PH_256_IMG, run_directory);
         }
     }
     return 1;
