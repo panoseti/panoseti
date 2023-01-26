@@ -305,20 +305,15 @@ int write_ph_header_json(
 int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
     FILE *f;
     FILE_PTRS *moduleToWrite = data_files[dataBlock->header.ph_img_head[frameIndex].mod_num];
-    char mode = dataBlock->header.ph_img_head[frameIndex].pkt_head[0].acq_mode;
     int group_ph_frames = dataBlock->header.ph_img_head[frameIndex].group_ph_frames;
-    int num_ph_frames_to_write = (group_ph_frames ? 4 : 1);
+    int num_ph_frames_to_write;
 
-    if (mode == 0x1) {
-        if (group_ph_frames) {
-            f = moduleToWrite->PH1024Img;
-        } else {
-            f = moduleToWrite->PH256Img;
-        }
+    if (group_ph_frames) {
+        f = moduleToWrite->PH1024Img;
+        num_ph_frames_to_write = 4;
     } else {
-        printf("Mode %c not recognized\n", mode);
-        printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[frameIndex].toString().c_str());
-        return 0;
+        f = moduleToWrite->PH256Img;
+        num_ph_frames_to_write = 1;
     }
 
     if (moduleToWrite == NULL){

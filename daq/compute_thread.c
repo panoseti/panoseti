@@ -187,9 +187,9 @@ void storeData(
         //--------------Process packet as a PH 256 image--------------
         //
         if (!group_ph_frames) {
-            // copy framing grouping setting
+            // Store header metadata
+            ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
             ph_data->ph_head.group_ph_frames = group_ph_frames; 
-
             // copy packet header 
             // Note: when grouping is disabled, all headers are stored at
             // index 0 of the packet header array for this block
