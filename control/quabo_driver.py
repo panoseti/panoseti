@@ -32,14 +32,14 @@ ACQ_NO_BASELINE_SUBTRACT = 0x10
 
 
 class DAQ_PARAMS:
-    def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract, do_any_trigger=False, do_group_frames=False):
+    def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract, do_any_trigger=False, do_group_ph_frames=False):
         self.do_image = do_image
         self.image_us = image_us
         self.image_8bit = image_8bit
         self.do_ph = do_ph
         self.bl_subtract = bl_subtract
         self.do_any_trigger = do_any_trigger
-        self.do_group_frames = do_group_frames
+        self.do_group_ph_frames = do_group_ph_frames
         self.do_flash = False
 
     def set_flash_params(self, rate, level, width):

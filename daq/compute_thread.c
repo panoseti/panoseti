@@ -21,7 +21,7 @@
 //
 #define NUM_OF_MODES 7
 
-// Store user input for the GROUPFRAMES option. 
+// Store user input for the GROUPPHFRAMES option. 
 // Equal to 0 (write 256 pixel PH images) or 1 (write 1024 pixel PH images).
 //
 static int group_ph_frames;
@@ -320,7 +320,7 @@ static int init(hashpipe_thread_args_t * args){
     FILE *modConfig_file = fopen(config_location, "r");
 
     // Fetch user input for whether to PH frames are to be grouped.
-    hgeti4(st.buf, "GROUPFRAMES", &group_ph_frames);
+    hgeti4(st.buf, "GROUPPHFRAMES", &group_ph_frames);
     if (group_ph_frames) {
         printf("Group frames is %i (True). Hashpipe will group incoming PH frames.\n", group_ph_frames);
     } else {

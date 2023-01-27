@@ -28,7 +28,7 @@ def main():
     argv = sys.argv
     i = 1
     max_file_size_mb = -1
-    group_frames = 0
+    group_ph_frames = 0
     run_dir = None
     daq_ip_addr = None
     module_ids = []
@@ -43,9 +43,9 @@ def main():
         elif argv[i] == '--max_file_size_mb':
             i += 1
             max_file_size_mb = int(argv[i])
-        elif argv[i] == '--group_frames':
+        elif argv[i] == '--group_ph_frames':
             i += 1
-            group_frames = int(argv[i])
+            group_ph_frames = int(argv[i])
         elif argv[i] == '--module_id':
             i += 1
             module_ids.append(int(argv[i]))
@@ -83,7 +83,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o GROUPFRAMES=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, group_frames, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
+    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o GROUPPHFRAMES=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, group_ph_frames, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script

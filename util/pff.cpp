@@ -15,8 +15,8 @@ const char* dp_to_str(DATA_PRODUCT dp) {
     switch (dp) {
     case DP_BIT16_IMG: return "img16";
     case DP_BIT8_IMG: return "img8";
-    case DP_PH_256_IMG: return "ph256_bit16";
-    case DP_PH_1024_IMG: return "ph1024_bit16";
+    case DP_PH_256_IMG: return "ph256";
+    case DP_PH_1024_IMG: return "ph1024";
     }
     return "unknown";
 }
@@ -24,8 +24,8 @@ const char* dp_to_str(DATA_PRODUCT dp) {
 DATA_PRODUCT str_to_dp(const char* s) {
     if (!strcmp(s, "img16")) return DP_BIT16_IMG;
     if (!strcmp(s, "img8")) return DP_BIT8_IMG;
-    if (!strcmp(s, "ph256_bit16")) return DP_PH_256_IMG;
-    if (!strcmp(s, "ph1024_bit16")) return DP_PH_1024_IMG;
+    if (!strcmp(s, "ph256")) return DP_PH_256_IMG;
+    if (!strcmp(s, "ph1024")) return DP_PH_1024_IMG;
     return DP_NONE;
 }
 

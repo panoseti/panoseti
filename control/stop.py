@@ -94,7 +94,7 @@ def make_links(run_dir, verbose):
             did_img = True
             if verbose:
                 print('linked %s to %s'%(img_symlink, f))
-        elif not did_ph and ftype == 'ph16':
+        elif not did_ph and ftype in ['ph256', 'ph1024']:
             os.symlink(path, ph_symlink)
             did_ph = True
             if verbose:
