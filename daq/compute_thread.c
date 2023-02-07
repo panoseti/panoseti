@@ -233,7 +233,6 @@ void storeData(
 
         // see if we should add PH 1024 frame to output buffer
         // - the quabo position of the new packet is already filled in pulse-height buf
-        // - or bytes/pixel is different (should never happen)
         // - or time threshold is exceeded
         //
         bool do_write = false;

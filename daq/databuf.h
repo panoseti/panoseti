@@ -78,7 +78,7 @@
     // Nanosecond threshold used for grouping quabo images
 
 #define PH_NANOSEC_THRESHOLD        25 
-    // Nanosecond threshold used for grouping PH images when grouping is enabled
+    // Nanosecond threshold used for grouping PH images when frame grouping is enabled
 
 // Module index is used for defining the array for storing pointers
 // of module structures for both compute and output threads.

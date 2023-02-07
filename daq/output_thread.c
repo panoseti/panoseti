@@ -255,8 +255,8 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
 
 // Write PH header information as JSON.  Fixed-length format.
 // Note:
-//      - If hashpipe is in grouping mode (group_ph_frames = 1), writes all 4 packet headers stored in the PH image header at frameIndex.
-//      - Otherwise (group_ph_frames = 0), writes only the packet header at index 0 in the PH image header at frameIndex.
+//      - If hashpipe is in grouping mode (group_ph_frames == 1), writes all 4 packet headers stored in the PH image header at frameIndex.
+//      - Otherwise (group_ph_frames == 0), writes only the packet header at index 0 in the PH image header at frameIndex.
 //
 int write_ph_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
@@ -300,8 +300,8 @@ int write_ph_header_json(
 // dataBlock: Data block of the images to be written
 // frameIndex: The frame index for the specified output block.
 // Note: 
-//      - If hashpipe is in grouping mode (group_ph_frames = 1), writes the entire PH image block at frameIndex.
-//      - Otherwise (group_ph_frames = 0), writes only the first 512 bytes of the PH image block at frameIndex.
+//      - If hashpipe is in grouping mode (group_ph_frames == 1), writes the entire PH image block at frameIndex.
+//      - Otherwise (group_ph_frames == 0), writes only the first 512 bytes of the PH image block at frameIndex.
 //
 int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
     FILE *f;
@@ -331,7 +331,7 @@ int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
 
     pff_end_json(f);
 
-    // NOTE: when group_ph_frames=0, only the first 512 bytes of the PH data block
+    // NOTE: when group_ph_frames==0, only the first 512 bytes of the PH data block
     // will contain meaningful data.
     pff_write_image(f, 
         num_ph_frames_to_write*PIXELS_PER_IMAGE*2, 
