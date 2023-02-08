@@ -48,6 +48,9 @@ def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
     print('configuring Marocs')
     config.do_maroc_config(modules, quabo_uids, quabo_info, data_config)
 
+    print('configuring Masks')
+    config.do_maroc_config(modules, data_config)
+    
     print('calibrating PH')
     config.do_calibrate_ph(modules, quabo_uids)
 
