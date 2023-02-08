@@ -236,7 +236,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
 
 # set CHANMASK and GOEMASK for modules
 #
-def dp_mask_config(modules, data_config, verbose=False):
+def do_mask_config(modules, data_config, verbose=False):
     qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
     do_ph = 'pulse_height' in data_config.keys()
     if do_ph:
@@ -470,7 +470,7 @@ if __name__ == "__main__":
         elif op == 'maroc_config':
             do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
         elif op == 'mask_config':
-            do_mask_config()
+            do_mask_config(modules, data_config, True)
         elif op == 'calibrate_ph':
             do_calibrate_ph(modules, quabo_uids)
         elif op == 'disk_space':
