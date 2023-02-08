@@ -156,17 +156,15 @@ class QUABO:
         self.flush_rx_buf()
         self.send(cmd)
 
-    def send_trigger_mask(self):
+    def send_trigger_mask(self, config):
         cmd = self.make_cmd(0x06)
-        with open(self.config_file_path) as f:
-            self.parse_trigger_mask(f, cmd)
+        self.make_trigger_mask_cmd(config, cmd)
         self.flush_rx_buf()
         self.send(cmd)
 
-    def send_goe_mask(self):
+    def send_goe_mask(self, config):
         cmd = self.make_cmd(0x0e)
-        with open(self.config_file_path) as f:
-            self.parse_goe_mask(f, cmd)
+        self.make_goe_mask_cmd(config, cmd)
         self.flush_rx_buf()
         self.send(cmd)
         
@@ -552,6 +550,22 @@ class QUABO:
                 cmd[ii+132] = self.MAROC_regs[1][ii]
                 cmd[ii+260] = self.MAROC_regs[2][ii]
                 cmd[ii+388] = self.MAROC_regs[3][ii]
+
+    # given a config dictionary, make a trigger mask config command
+    #
+    def make_trigger_mask_cmd(self, config, cmd):
+        for tag, val in config.items():
+            if(tag.startwith('CHANMASK')):
+                ch = tag.split('_')[1]
+                for j in range(8): 
+                    cmd[4+ch*8+j] == (val>>j) & 0xff 
+
+    # given a config dictionary, make a goe mask config command
+    #
+    def make_goe_mask_cmd(self, config, cmd):
+        for tag, val in config.items():
+            if(tag == 'GOEMASK'):
+                cmd[4] = val & 0x03
 
     # Set bits in MAROC_regs[chip] according to the input values.
     # Maximum value for field_width is 16 (a value can only span three bytes)

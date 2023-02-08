@@ -217,13 +217,53 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
                 )
                 if verbose:
                     print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
-
+            # set D1_D2 based on the two_pixel_trigger and three_pixel_trigger in data_config.json
+            if do_ph:
+                if 'two_pixel_trigger' in data_config['pulse_height']:
+                    do_two_pixel_trigger = data_config['pulse_height']['two_pixel_trigger']
+                if 'three_pixel_trigger' in data_config['pulse_height']:
+                    do_three_pixel_trigger = data_config['pulse_height']['three_pixel_trigger']
+            # if using 2/3 pixel trigger, D1_D2 should be set to 1,1,1,1
+            if do_two_pixel_trigger or do_three_pixel_trigger:
+                qc_dict['D1_D2'] = '%d,%d,%d,%d'%(1,1,1,1)
+            if verbose:
+                print('%s: %s = %s'%(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
             quabo = quabo_driver.QUABO(ip_addr)
             quabo.send_maroc_params(qc_dict)
-            time.sleep(0.1)
-            quabo.send_trigger_mask()
-            quabo.send_goe_mask()
+            quabo.close()
+
+# set CHANMASK and GOEMASK for modules
+#
+def dp_mask_config(modules, data_config, verbose=False):
+    qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
+    do_ph = 'pulse_height' in data_config.keys()
+    if do_ph:
+        # if we use anytrigger mode, bit8 in CHANMASK_8 should be set to 1 
+        if 'any_trigger' in data_config['pulse_height']:
+            qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] & 0x0ff
+        else:
+            qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | (0x100)
+        # if we use 2 pixel trigger, GOEMASK should be 2, CHANMASK_8 should be 0x0ff or 0x1ff
+        if 'two_pixel_trigger' in data_config['pulse_height']:
+            if data_config['pulse_height']['two_pixel_trigger']:
+                qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
+                qc_dict['GOEMASK'] = 2
+        # if we use 3 pixel trigger, GOEMASK should be 1, CHANMASK_8 should be 0x0ff or 0x1ff
+        if 'three_pixel_trigger' in data_config['pulse_height']:
+            if data_config['pulse_height']['three_pixel_trigger']:
+                qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
+                qc_dict['GOEMASK'] = 1
+    for module in modules:
+        for i in range(4):
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            for tag in ['CHANMASK_8', 'GOEMASK']:
+                if verbose:
+                    print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
+            # send MASK params to the quabo
+            quabo = quabo_driver.QUABO(ip_addr)
+            quabo.send_trigger_mask(qc_dict)
+            quabo.send_goe_mask(qc_dict)
             quabo.close()
 
 # compute PH baselines on quabos and write to file
@@ -376,6 +416,9 @@ if __name__ == "__main__":
             elif argv[i] == '--maroc_config':
                 nops += 1
                 op = 'maroc_config'
+            elif argv[i] == '--mask_config':
+                nops += 1
+                op = 'mask_config'
             elif argv[i] == '--calibrate_ph':
                 nops += 1
                 op = 'calibrate_ph'
@@ -425,6 +468,8 @@ if __name__ == "__main__":
             do_hv_off(modules, quabo_uids)
         elif op == 'maroc_config':
             do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
+        elif op == 'mask_config':
+            do_mask_config()
         elif op == 'calibrate_ph':
             do_calibrate_ph(modules, quabo_uids)
         elif op == 'disk_space':
