@@ -219,6 +219,8 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
                 if verbose:
                     print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
             # set D1_D2 based on the two_pixel_trigger and three_pixel_trigger in data_config.json
+            do_two_pixel_trigger = False
+            do_three_pixel_trigger = False
             if do_ph:
                 if 'two_pixel_trigger' in data_config['pulse_height']:
                     do_two_pixel_trigger = data_config['pulse_height']['two_pixel_trigger']
