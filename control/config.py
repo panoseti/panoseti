@@ -31,6 +31,7 @@ def usage():
 --hv_off                disable detectors
 --maroc_config          configure MAROCs based on data_config.json
                         and quabo_calib_*.json
+--mask_config           configure masks based on data_config.json
 --calibrate_ph          run PH baseline calibration on quabos and write to file
 ''')
     sys.exit()
