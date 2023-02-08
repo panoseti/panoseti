@@ -30,14 +30,18 @@ ACQ_IMAGE = 0x2
 ACQ_IMAGE_8BIT = 0x4
 ACQ_NO_BASELINE_SUBTRACT = 0x10
 
+
 class DAQ_PARAMS:
-    def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract):
+    def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract, do_any_trigger=False, do_group_ph_frames=False):
         self.do_image = do_image
         self.image_us = image_us
         self.image_8bit = image_8bit
         self.do_ph = do_ph
         self.bl_subtract = bl_subtract
+        self.do_any_trigger = do_any_trigger
+        self.do_group_ph_frames = do_group_ph_frames
         self.do_flash = False
+
     def set_flash_params(self, rate, level, width):
         self.do_flash = True
         self.flash_rate = rate
@@ -93,7 +97,7 @@ class QUABO:
 
     def send_maroc_params_file(self):
         cmd = bytearray(492)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             config = parse_quabo_config_file(self.config_file_path)
         self.make_maroc_cmd(config, cmd)
         self.flush_rx_buf()
@@ -104,6 +108,8 @@ class QUABO:
         self.make_maroc_cmd(config, cmd)
         self.send(cmd)
 
+    # returns the list of 256 coefficients
+    #
     def calibrate_ph_baseline(self):
         cmd = self.make_cmd(0x07)
         self.flush_rx_buf()
@@ -111,17 +117,15 @@ class QUABO:
         time.sleep(2)
         reply = self.sock.recvfrom(1024)
         bytesback = reply[0]
-        now =time.ctime().split(" ")[3]
-        with open(output_file_path, 'w') as f:
-            f.write(str(now) + ',')
-            for n in range(256):
-                val=bytesback[2*n+4]+256*bytesback[2*n+5]
-                f.write(str(val) + ',')
-            f.write('\n')
+        x = []
+        for n in range(256):
+            val = bytesback[2*n+4] + 256*bytesback[2*n+5]
+            x.append(val)
+        return x
 
     def hv_config(self):
         cmd = self.make_cmd(0x02)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             self.parse_hv_params(f, cmd)
         self.flush_rx_buf()     # needed?
         self.send(cmd)
@@ -147,18 +151,23 @@ class QUABO:
 
     def send_acq_parameters_file(self):
         cmd = self.make_cmd(0x03)
-        with open(config_file_path) as f:
+        with open(self.config_file_path) as f:
             self.parse_acq_parameters(f, cmd)
         self.flush_rx_buf()
         self.send(cmd)
 
-    def send_trigger_mask(self):
+    def send_trigger_mask(self, config):
         cmd = self.make_cmd(0x06)
-        with open(config_file_path) as f:
-            self.parse_trigger_mask(f, cmd)
+        self.make_trigger_mask_cmd(config, cmd)
         self.flush_rx_buf()
         self.send(cmd)
 
+    def send_goe_mask(self, config):
+        cmd = self.make_cmd(0x0e)
+        self.make_goe_mask_cmd(config, cmd)
+        self.flush_rx_buf()
+        self.send(cmd)
+        
     def reset(self):
         cmd = self.make_cmd(0x04)
         self.send(cmd)
@@ -199,7 +208,7 @@ class QUABO:
         self.send(cmd)
 
     def fan(self, fanspeed):     # fanspeed is 0..15
-        print('speed: %d'%fanspeed)
+        #print('speed: %d'%fanspeed)
         self.fanspeed = fanspeed
         cmd = self.make_cmd(0x85)
         cmd[6] = self.shutter_open | (self.shutter_power<<1)
@@ -248,13 +257,24 @@ class QUABO:
                 self.have_hk_sock = False
                 return None
 
+    # set destination IP addr for both PH and image packets
+    #
     def data_packet_destination(self, ip_addr_str):
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
         cmd = self.make_cmd(0x0a)
         for i in range(4):
             cmd[i+1] = ip_addr_bytes[i]
             cmd[i+5] = ip_addr_bytes[i]
+        self.flush_rx_buf()
         self.send(cmd)
+        reply = self.sock.recvfrom(12)
+        bytes = reply[0]
+        count = len(bytes)
+        #print('got %d bytes in reply'%count)
+        if count != 12:
+            return
+        #print('Mac addr for PH packets: %s'%(util.mac_addr_str(bytes[0:6])))
+        #print('Mac addr for image packets: %s'%(util.mac_addr_str(bytes[6:12])))
 
     def hk_packet_destination(self, ip_addr_str):
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
@@ -287,7 +307,7 @@ class QUABO:
                 count += 1
             except:
                 break
-        print('got %d bytes'%nbytes)
+        #print('flush_rx_buffer: got %d bytes'%nbytes)
 
     def parse_hv_params(self, fhand, cmd):
         for line in fhand:
@@ -328,6 +348,20 @@ class QUABO:
                     cmd[4*chan+5]=(val>>8) & 0xff
                     cmd[4*chan+6]=(val>>16) & 0xff
                     cmd[4*chan+7]=(val>>24) & 0xff
+
+    def parse_goe_mask(self, fhand, cmd):
+        for line in fhand:
+            if line.startswith("*"): continue
+            #strip off the comment
+            strippedline = line.split('*')[0]
+            #Split the tag field from the cs value field
+            fields = strippedline.split("=")
+            if len(fields) !=2: continue
+            tag = fields[0].strip()
+            goe_mask = 0
+            if (tag.startswith("GOEMASK")):
+                val = int(fields[1],0)
+                cmd[4] = val & 0x03
 
     def parse_acq_parameters(self, fhand, cmd):
         for line in fhand:
@@ -516,6 +550,22 @@ class QUABO:
                 cmd[ii+132] = self.MAROC_regs[1][ii]
                 cmd[ii+260] = self.MAROC_regs[2][ii]
                 cmd[ii+388] = self.MAROC_regs[3][ii]
+
+    # given a config dictionary, make a trigger mask config command
+    #
+    def make_trigger_mask_cmd(self, config, cmd):
+        for tag, val in config.items():
+            if(tag.startwith('CHANMASK')):
+                ch = tag.split('_')[1]
+                for j in range(8): 
+                    cmd[4+ch*8+j] == (val>>j) & 0xff 
+
+    # given a config dictionary, make a goe mask config command
+    #
+    def make_goe_mask_cmd(self, config, cmd):
+        for tag, val in config.items():
+            if(tag == 'GOEMASK'):
+                cmd[4] = val & 0x03
 
     # Set bits in MAROC_regs[chip] according to the input values.
     # Maximum value for field_width is 16 (a value can only span three bytes)

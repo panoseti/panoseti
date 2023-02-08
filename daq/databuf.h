@@ -24,16 +24,16 @@
 
 #define CACHE_ALIGNMENT             256
     // Align the cache within the buffer
-#define N_INPUT_BLOCKS              4
+#define N_INPUT_BLOCKS              512
     // Number of blocks in the input buffer
-#define N_OUTPUT_BLOCKS             8
+#define N_OUTPUT_BLOCKS             128
     // Number of blocks in the output buffer
-#define IN_PKT_PER_BLOCK            320
+#define IN_PKT_PER_BLOCK            16384
     // Number of input packets stored in each block of the input buffer
-#define OUT_MOD_PER_BLOCK           320
+#define OUT_MOD_PER_BLOCK           16384
     // Max Number of Modules stored in each block of the output buffer
-#define OUT_COINC_PER_BLOCK         320
-    // Max Number of coincidence packets stored in each block of the output buffer
+#define OUT_PH_IMG_PER_BLOCK        16384
+    // Max # of PH packets stored in each block of the output buffer
 
 // Imaging Data Values and characteristics of modules
 
@@ -44,6 +44,11 @@
 #define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
     // Size of module image allocated in buffer
 
+// Pulse Height data values
+
+#define BYTES_PER_PH_FRAME      QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+    // Size of PH image allocated in buffer
+
 // the Block Sizes for the Input and Ouput Buffers
 
 #define BYTES_PER_INPUT_IMAGE_BLOCK     IN_PKT_PER_BLOCK*BYTES_PER_PKT_IMAGE
@@ -52,9 +57,9 @@
 #define BYTES_PER_OUTPUT_FRAME_BLOCK    OUT_MOD_PER_BLOCK*BYTES_PER_MODULE_FRAME
     // Byte size of output frame block.
     // Contains frames for modules excluding headers
-#define BYTES_PER_OUTPUT_COINC_BLOCK    OUT_COINC_PER_BLOCK*BYTES_PER_PKT_IMAGE
-    // Byte size of output coincidence block.
-    // Contains frames for coincidence packets excluding headers
+#define BYTES_PER_OUTPUT_PH_BLOCK       OUT_PH_IMG_PER_BLOCK*BYTES_PER_PH_FRAME
+    // Byte size of output PH block.
+    // Contains frames for PH packets excluding headers
 
 // the algorithm constants for the hashpipe framework threads.
 // Nanosecond threshold is used for syncing and grouping packets
@@ -69,8 +74,11 @@
 // and the new module data is created starting with the new packet.
 // More information can be seen in the compute thread.
 
-#define NANOSEC_THRESHOLD        100
+#define IMG_NANOSEC_THRESHOLD       100
     // Nanosecond threshold used for grouping quabo images
+
+#define PH_NANOSEC_THRESHOLD        25 
+    // Nanosecond threshold used for grouping PH images when frame grouping is enabled
 
 // Module index is used for defining the array for storing pointers
 // of module structures for both compute and output threads.
@@ -91,7 +99,7 @@ struct PACKET_HEADER {
     uint16_t pkt_num;
     uint16_t mod_num;       // 0..255
     uint8_t quabo_num;        // 0..3
-    uint32_t pkt_utc;
+    uint32_t pkt_tai;       // Temps Atomique International
     uint32_t pkt_nsec;
     long int tv_sec;
     long int tv_usec;
@@ -100,11 +108,11 @@ struct PACKET_HEADER {
                 " pkt_num = " + std::to_string(this->pkt_num) +
                 " mod_num = " + std::to_string(this->mod_num) +
                 " quabo_num = " + std::to_string(this->quabo_num) +
-                " pkt_utc = " + std::to_string(this->pkt_utc) +
+                " pkt_tai = " + std::to_string(this->pkt_tai) +
                 " pkt_nsec = " + std::to_string(this->pkt_nsec) +
                 " tv_sec = " + std::to_string(this->tv_sec) +
                 " tv_sec = " + std::to_string(this->tv_usec);
-    };
+    }
 };
 
 // info about a module image:
@@ -121,6 +129,31 @@ struct MODULE_IMAGE_HEADER {
         return_string += "mod_num = " + std::to_string(this->mod_num);
         for (int i = 0; i < QUABO_PER_MODULE; i++){
             return_string += "\n" + pkt_head[i].toString();
+        }
+        return return_string;
+    }
+};
+
+// info about a PH image:
+// - the packet headers for the 4 quabo images comprising it
+//      - If hashpipe is not configured to group frames (default behavior),
+//      only the first element of pkt_head will contain meaningful information.
+// - the module number
+// produced by the compute thread, consumed by the output thread
+// 
+struct PH_IMAGE_HEADER {
+    int group_ph_frames;
+    uint16_t mod_num;
+    PACKET_HEADER pkt_head[QUABO_PER_MODULE];
+    std::string toString(){
+        std::string return_string = "group_ph_frames = " + std::to_string(this->group_ph_frames) + "\n";
+        return_string += "mod_num = " + std::to_string(this->mod_num);
+        if (this->group_ph_frames) {
+            for (int i = 0; i < QUABO_PER_MODULE; i++){
+                return_string += "\n" + pkt_head[i].toString();
+            }
+        } else {
+            return_string += "\n" + pkt_head[0].toString();
         }
         return return_string;
     }
@@ -170,8 +203,8 @@ typedef struct HSD_output_block_header {
     MODULE_IMAGE_HEADER img_mod_head[OUT_MOD_PER_BLOCK];
     int n_img_module;
 
-    PACKET_HEADER coinc_pkt_head[OUT_COINC_PER_BLOCK];
-    int n_coinc_img;
+    PH_IMAGE_HEADER ph_img_head[OUT_PH_IMG_PER_BLOCK];
+    int n_ph_img;
 
     int INTSIG;
 } HSD_output_block_header_t;
@@ -187,7 +220,7 @@ typedef struct HSD_output_block {
     HSD_output_block_header_t header;
     HSD_output_header_cache_alignment padding;
     char img_block[BYTES_PER_OUTPUT_FRAME_BLOCK];
-    char coinc_block[BYTES_PER_OUTPUT_COINC_BLOCK];
+    char ph_block[BYTES_PER_OUTPUT_PH_BLOCK];
 } HSD_output_block_t;
 
 // Output data buffer containing multiple data blocks

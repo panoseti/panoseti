@@ -1,29 +1,30 @@
 {
     "name": "Lick",
-    "comment": "",
+    "comment": "Configuration at Lick using only Astrograph",
     "wps": {
-        "url": "http://admin:1234@192.168.0.100",
+        "url": "http://admin:epowerpanoseti@192.168.0.100",
         "quabo_socket": 5
     },
     "wr_ip_addr": "192.168.1.254",
     "gps_port": "/dev/ttyUSB0",
     "domes": [
         {
-            "obslat": 10.3,
-            "obslon": 44.2,
-            "obsalt": 234,
-            "name": "north dome",
+            "name": "astrograph",
+            "obslat": 37.3425,
+            "obslon": -121.63777,
+            "obsalt": 1283,
             "modules": [
                 {
+                    "name": "East",
                     "mobo_serialno": "M12",
                     "quabo_version": "qfp",
                     "comment": "not bga",
                     "ip_addr": "192.168.0.4",
                     "wps": "wps",
-                    "azimuth": 77,
-                    "elevation": 77,
-                    "position_angle": 77
-		}
+                    "azimuth": 184.19,
+                    "elevation": 78.041,
+                    "position_angle": -0.35
+                }
             ]
         }
     ]

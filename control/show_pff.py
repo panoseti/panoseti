@@ -6,9 +6,9 @@
 #   default: 0.1
 # if no filename specified, use 'img'
 
-import sys, random, json
+import os, sys, random, json
 sys.path.insert(0, '../util')
-import pff, pixel_histogram
+import pff, image_quantiles
 
 def image_as_text(img, img_size, bytes_per_pixel, min, max):
     scale = ' .,-+=#@'
@@ -52,16 +52,16 @@ def print_json(j, is_ph, verbose):
     else:
         j = json.loads(j)
         if is_ph:
-            print('quabo %d: pkt_num %d, pkt_utc %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
+            print('quabo %d: pkt_num %d, pkt_tai %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
                 j['quabo_num'], j['pkt_num'],
-                j['pkt_utc'], j['pkt_nsec'],
+                j['pkt_tai'], j['pkt_nsec'],
                 j['tv_sec'], j['tv_usec']
             ))
         else:
             for i in range(4):
                 q = j['quabo_%d'%i]
-                print('quabo %d: pkt_num %d, pkt_utc %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
-                    i, q['pkt_num'], q['pkt_utc'], q['pkt_nsec'],
+                print('quabo %d: pkt_num %d, pkt_tai %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
+                    i, q['pkt_num'], q['pkt_tai'], q['pkt_nsec'],
                     q['tv_sec'], q['tv_usec']
                 ))
         
@@ -78,55 +78,63 @@ def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
             img = pff.read_image(f, img_size, bytes_per_pixel)
             image_as_text(img, img_size, bytes_per_pixel, min, max)
             i += 1
-            input('Enter for next frame')
+            x = input("Enter for next frame, 'q' to quit: ")
+            if x == 'q':
+                break
 
-def usage():
-    print("usage: show_pff.py [--quantile x] [--verbose] file")
+if __name__ == "__main__":
 
-def main():
-    i = 1
-    fname = None
-    quantile = .1
-    verbose = False
+    def usage():
+        print("usage: show_pff.py [--quantile x] [--verbose] file")
 
-    argv = sys.argv
-    while i<len(argv):
-        if argv[i] == '--quantile':
+    def main():
+        i = 1
+        fname = None
+        quantile = .1
+        verbose = False
+
+        argv = sys.argv
+        while i<len(argv):
+            if argv[i] == '--quantile':
+                i += 1
+                quantile = float(argv[i])  
+            elif argv[i] == '--verbose':
+                verbose = True
+            else:
+                fname = argv[i]
             i += 1
-            min = float(argv[i])  
-        elif argv[i] == '--verbose':
-            verbose = True
-        else:
-            fname = argv[i]
-        i += 1
 
-    if not fname:
-        usage()
-        return
+        if not fname:
+            usage()
+            return
 
-    if fname=='img':
-        dp = 'img16'
-    elif fname=='ph':
-        dp = 'ph16'
-    else:
-        dict = pff.parse_name(fname)
+        # fname might be a symbolic link like img or ph
+        path = os.path.realpath(fname)
+        real_fname = os.path.basename(path)
+        dict = pff.parse_name(real_fname)
+        if not dict:
+            raise Exception('bad PFF filename %s'%real_fname)
         dp = dict['dp']
 
-    if dp == 'img16' or dp=='1':
-        image_size = 32
-        bytes_per_pixel = 2
-        is_ph = False
-    elif dp == 'ph16' or dp=='3':
-        image_size = 16
-        bytes_per_pixel = 2
-        is_ph = True
-    else:
-        raise Exception("bad data product %s"%dp)
+        if dp == 'img16':
+            image_size = 32
+            bytes_per_pixel = 2
+            is_ph = False
+        elif dp == 'img8':
+            image_size = 32
+            bytes_per_pixel = 1
+            is_ph = False
+        elif dp == 'ph16':
+            image_size = 16
+            bytes_per_pixel = 2
+            is_ph = True
+        else:
+            raise Exception("bad data product %s"%dp)
 
-    [min, max] = pixel_histogram.get_quantiles(
-        fname, image_size, bytes_per_pixel, quantile
-    )
-    print('pixel 10/90 percentiles: %d, %d'%(min, max))
-    show_file(fname, image_size, bytes_per_pixel, min, max, is_ph, verbose)
+        [min, max] = image_quantiles.get_quantiles(
+            fname, image_size, bytes_per_pixel, quantile
+        )
+        print('pixel 10/90 percentiles: %d, %d'%(min, max))
+        show_file(fname, image_size, bytes_per_pixel, min, max, is_ph, verbose)
 
-main()
+    main()

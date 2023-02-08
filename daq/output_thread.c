@@ -20,135 +20,143 @@
 #include "pff.h"
 #include "dp.h"
 
+// Use this stdio buffer size (1M) for image-mode files.
+// Default is 4K
+//
+#define IM_BUFSIZE 1048576
+
+void increase_buffer(FILE* f, int bufsize) {
+    char* b = (char*)malloc(bufsize);
+    setvbuf(f, b, _IOFBF, bufsize);
+}
+
 // Structure for storing file pointers opened by output thread.
 // A file is created for all possible data products described by pff.h
 //
 struct FILE_PTRS{
     DIRNAME_INFO dir_info;
     FILENAME_INFO file_info;
-    FILE *bit16Img, *bit8Img, *PHImg;
-    FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode);
-    void make_files(const char *diskDir, const char *file_mode);
-    void new_dp_file(DATA_PRODUCT dp, const char *diskDir, const char *file_mode);
-    void increment_seqno();
-    int set_bpp(int value);
+    int image_seqno, ph_seqno;
+    FILE *bit16Img, *bit8Img, *PH256Img, *PH1024Img;
+    FILE_PTRS(const char *diskDir, FILENAME_INFO *fi);
+    void make_files(const char *diskDir);
+    void new_dp_file(DATA_PRODUCT dp, const char *diskDir);
 };
 
 // Constructor for file pointer structure
 // diskDir: directory used for writing all files monitored by file pointer
 // fileInfo: file information structure stored by file pointer
-// file_mode: file editing mode for all files within file pointer
 
-FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fileInfo, const char *file_mode){
-    fileInfo->copy_to(&(this->file_info));
-    this->make_files(diskDir, file_mode);
+FILE_PTRS::FILE_PTRS(const char *diskDir, FILENAME_INFO *fi){
+    image_seqno = 0;
+    ph_seqno = 0;
+    file_info = *fi;
+    make_files(diskDir);
+}
+
+static bool path_exists(const char* path) {
+    struct stat buf;
+    if (stat(path, &buf)) return false;
+    return true;
 }
 
 // Create files for the file pointer stucture given a directory.
-// diskDir: directory for where the files will be created by file pointers
-// file_mode: file editing mode for the new file created
+// diskDir: directory where the files will be created
 
-void FILE_PTRS::make_files(const char *diskDir, const char *file_mode){
-    string fileName;
-    string dirName;
-    dirName = diskDir;
+void FILE_PTRS::make_files(const char *run_dir){
+    char buf[256];
+    string filename;
     
-    for (int dp = DP_BIT16_IMG; dp <= DP_PH_IMG; dp++){
-        this->file_info.data_product = (DATA_PRODUCT)dp;
-        
-        switch (dp){
-            case DP_BIT16_IMG:
-                this->set_bpp(2);
-                break;
-            case DP_BIT8_IMG:
-                this->set_bpp(1);
-                break;
-            case DP_PH_IMG:
-                this->set_bpp(2);
-                break;
-            default:
-                break;
-        }
-
-        this->file_info.make_filename(fileName);
-        switch (dp){
-            case DP_BIT16_IMG:
-                this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            case DP_BIT8_IMG:
-                this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            case DP_PH_IMG:
-                this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
-                break;
-            default:
-                break;
-        }
-        if (access(dirName.c_str(), F_OK) == -1) {
-            printf("Error: Unable to access directory - %s\n", dirName.c_str());
+    sprintf(buf, "module_%d", file_info.module);
+    if (!path_exists(buf)) {
+        if (mkdir(buf, 0777)) {
+            printf("Can't mkdir %s\n", buf);
             exit(0);
         }
-        printf("Created file %s\n", (dirName + fileName).c_str());
+    }
+    file_info.seqno = 0;
+    for (int dp = DP_BIT16_IMG; dp < DP_NONE; dp++){
+        file_info.data_product = (DATA_PRODUCT)dp;
+        file_info.bytes_per_pixel = bytes_per_pixel((DATA_PRODUCT)dp);
+        file_info.make_filename(filename);
+        sprintf(buf, "module_%d/%s/%s",
+            file_info.module, run_dir, filename.c_str()
+        );
+        FILE *f = fopen(buf, "w");
+        if (!f) {
+            printf("Error: can't open file %s\n", buf);
+            exit(0);
+        }
+        switch (dp){
+            case DP_BIT16_IMG:
+                increase_buffer(f, IM_BUFSIZE);
+                bit16Img = f;
+                break;
+            case DP_BIT8_IMG:
+                increase_buffer(f, IM_BUFSIZE);
+                bit8Img = f;
+                break;
+            case DP_PH_256_IMG:
+                PH256Img = f;
+                break;
+            case DP_PH_1024_IMG:
+                increase_buffer(f, IM_BUFSIZE);
+                PH1024Img = f;
+                break;
+            default:
+                break;
+        }
+        printf("Created file %s\n", buf);
     }
 }
 
 // Create a new file for a specified data product within file structure.
 // called when a certain data product file has reached max file size.
 // dp: Data product of the file that needs to be created.
-// diskDir: Disk directory for the file pointer.
-// file_mode: File mode of the new file created.
+// diskDir: directory
 
-void FILE_PTRS::new_dp_file(
-    DATA_PRODUCT dp, const char *diskDir, const char *file_mode
-){
-    string fileName;
-    string dirName;
-    dirName = diskDir;
+void FILE_PTRS::new_dp_file(DATA_PRODUCT dp, const char *run_dir){
+    string filename;
+    char buf[256];
 
-    this->file_info.data_product = (DATA_PRODUCT)dp;
-    this->file_info.start_time = time(NULL);
-    this->file_info.make_filename(fileName);
-
+    file_info.seqno = (dp==DP_PH_256_IMG||dp==DP_PH_1024_IMG)?ph_seqno:image_seqno;
+    file_info.data_product = (DATA_PRODUCT)dp;
+    file_info.start_time = time(NULL);
+    file_info.bytes_per_pixel = bytes_per_pixel(dp);
+    file_info.make_filename(filename);
+    sprintf(buf, "module_%d/%s/%s",
+        file_info.module, run_dir, filename.c_str()
+    );
+    FILE* f = fopen(buf, "w");
+    if (!f) {
+        printf("Error: can't open file %s\n", buf);
+        exit(0);
+    }
     switch (dp){
         case DP_BIT16_IMG:
-            fclose(this->bit16Img);
-            this->bit16Img = fopen((dirName + fileName).c_str(), file_mode);
+            increase_buffer(f, IM_BUFSIZE);
+            fclose(bit16Img);
+            bit16Img = f;
             break;
         case DP_BIT8_IMG:
-            fclose(this->bit8Img);
-            this->bit8Img = fopen((dirName + fileName).c_str(), file_mode);
+            increase_buffer(f, IM_BUFSIZE);
+            fclose(bit8Img);
+            bit8Img = f;
             break;
-        case DP_PH_IMG:
-            fclose(this->PHImg);
-            this->PHImg = fopen((dirName + fileName).c_str(), file_mode);
+        case DP_PH_256_IMG:
+            fclose(PH256Img);
+            PH256Img = f;
+            break;
+        case DP_PH_1024_IMG:
+            increase_buffer(f, IM_BUFSIZE);
+            fclose(PH1024Img);
+            PH1024Img = f;
             break;
         default:
             break;
     }
-    if (access(dirName.c_str(), F_OK) == -1) {
-        printf("Error: Unable to access directory - %s\n", dirName.c_str());
-        exit(0);
-    }
-    printf("Created file %s\n", (dirName + fileName).c_str());
+    printf("new_dp_file(): created file %s\n", buf);
 }
-
-// Increments the seqno for the filename of new files
-
-void FILE_PTRS::increment_seqno(){
-    this->file_info.seqno += 1;
-}
-
-// Sets the value for bytes per pixel of new files
-// return 1 if it was successful and return 0 if it failed
-
-int FILE_PTRS::set_bpp(int value){
-    if (value != 1 && value != 2){
-        return 0;
-    } 
-    this->file_info.bytes_per_pixel = value;
-    return 1;
-}
-
 
 static char config_location[STR_BUFFER_SIZE];
 
@@ -159,19 +167,19 @@ static long long max_file_size = 0; //IN UNITS OF BYTES
 static FILE_PTRS *data_files[MAX_MODULE_INDEX] = {NULL};
 
 
-// Create a file pointers for a given dome and module.
+// Create a file pointers for a given module.
 // diskDir: directory of the file created for the file pointer structure
-// dome: dome number of the files
 // module: module number of the files
 
-FILE_PTRS *data_file_init(const char *diskDir, int dome, int module) {
+FILE_PTRS* data_file_init(const char *diskDir, int module) {
     time_t t = time(NULL);
 
-    FILENAME_INFO filenameInfo(t, DP_NONE, 0, dome, module, 0);
-    return new FILE_PTRS(diskDir, &filenameInfo, "w");
+    FILENAME_INFO fi(t, DP_NONE, 0, module, 0);
+    return new FILE_PTRS(diskDir, &fi);
 }
 
 // Write image header as JSON
+// TOTAL SIZE MUST BE FIXED (but it doesn't matter what the size is)
 //
 int write_img_header_json(
     FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
@@ -179,12 +187,10 @@ int write_img_header_json(
     fprintf(f, "{\n");
     for (int i=0; i<QUABO_PER_MODULE; i++){
         fprintf(f,
-        "   \"quabo_%u\": { \"acq_mode\": %u, \"mod_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
+        "   \"quabo_%1u\": { \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
         i,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].acq_mode,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].mod_num,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_num,
-        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_utc,
+        dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_tai,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].pkt_nsec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_sec,
         dataHeader->img_mod_head[frameIndex].pkt_head[i].tv_usec
@@ -195,6 +201,7 @@ int write_img_header_json(
         fprintf(f, "\n");
     }
     fprintf(f, "}");
+    return 0;
 }
 
 // Write the image module structure to file
@@ -234,53 +241,80 @@ int write_module_img_file(HSD_output_block_t *dataBlock, int frameIndex){
         dataBlock->img_block + (frameIndex*BYTES_PER_MODULE_FRAME)
     );
 
-    if (ftell(f) > max_file_size){
-        moduleToWrite->increment_seqno();
+    if (max_file_size && (ftell(f) > max_file_size)){
+        moduleToWrite->image_seqno++;
         if (bits_per_pixel == 16){
-            moduleToWrite->set_bpp(2);
-            moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory, "w");
+            moduleToWrite->new_dp_file(DP_BIT16_IMG, run_directory);
         } else if (bits_per_pixel == 8){
-            moduleToWrite->set_bpp(1);
-            moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory, "w");
+            moduleToWrite->new_dp_file(DP_BIT8_IMG, run_directory);
         }
     }
 
     return 1;
 }
 
-// Write the coincidence header information to file.
+// Write PH header information as JSON.  Fixed-length format.
+// Note:
+//      - If hashpipe is in grouping mode (group_ph_frames == 1), writes all 4 packet headers stored in the PH image header at frameIndex.
+//      - Otherwise (group_ph_frames == 0), writes only the packet header at index 0 in the PH image header at frameIndex.
 //
-int write_coinc_header_json(
-    FILE *f, HSD_output_block_header_t *dataHeader, int packetIndex
+int write_ph_header_json(
+    FILE *f, HSD_output_block_header_t *dataHeader, int frameIndex
 ){
-    fprintf(f,
-        "{ \"acq_mode\": %u, \"mod_num\": %u, \"quabo_num\": %u, \"pkt_num\": %u, \"pkt_utc\": %u, \"pkt_nsec\": %u, \"tv_sec\": %li, \"tv_usec\": %li}",
-        dataHeader->coinc_pkt_head[packetIndex].acq_mode,
-        dataHeader->coinc_pkt_head[packetIndex].mod_num,
-        dataHeader->coinc_pkt_head[packetIndex].quabo_num,
-        dataHeader->coinc_pkt_head[packetIndex].pkt_num,
-        dataHeader->coinc_pkt_head[packetIndex].pkt_utc,
-        dataHeader->coinc_pkt_head[packetIndex].pkt_nsec,
-        dataHeader->coinc_pkt_head[packetIndex].tv_sec,
-        dataHeader->coinc_pkt_head[packetIndex].tv_usec
-    );
+    if (dataHeader->ph_img_head[frameIndex].group_ph_frames) {
+        // Frame grouping is enabled. Write a 1024 pixel PH image.
+        // Note: PH1024 image headers have the same format as image mode headers.
+        //
+        fprintf(f, "{\n");
+        for (int i=0; i<QUABO_PER_MODULE; i++){
+            fprintf(f,
+            "   \"quabo_%1u\": { \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
+            i,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].pkt_num,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].pkt_tai,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].pkt_nsec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].tv_sec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[i].tv_usec
+            );
+            if (i < QUABO_PER_MODULE-1){
+                fprintf(f, ", ");
+            }
+            fprintf(f, "\n");
+        }
+        fprintf(f, "}");
+    } else {
+        fprintf(f,
+            "{ \"quabo_num\": %1u, \"pkt_num\": %10u, \"pkt_tai\": %4u, \"pkt_nsec\": %9u, \"tv_sec\": %10li, \"tv_usec\": %6li}",
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].quabo_num,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_num,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_tai,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].pkt_nsec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].tv_sec,
+            dataHeader->ph_img_head[frameIndex].pkt_head[0].tv_usec
+        );
+    }
+    return 0;
 }
 
-// Write the coincidence(Pulse Height) image to file
-// dataBlock: Data block of the containing the images to be written to disk
-// packetIndex: The packet index for the specified output block.
-
-int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
+// Write a Pulse Height image to file
+// dataBlock: Data block of the images to be written
+// frameIndex: The frame index for the specified output block.
+// Note: 
+//      - If hashpipe is in grouping mode (group_ph_frames == 1), writes the entire PH image block at frameIndex.
+//      - Otherwise (group_ph_frames == 0), writes only the first 512 bytes of the PH image block at frameIndex.
+//
+int write_module_ph_file(HSD_output_block_t *dataBlock, int frameIndex){
     FILE *f;
-    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.coinc_pkt_head[packetIndex].mod_num];
-    char mode = dataBlock->header.coinc_pkt_head[packetIndex].acq_mode;
+    FILE_PTRS *moduleToWrite = data_files[dataBlock->header.ph_img_head[frameIndex].mod_num];
+    int group_ph_frames = dataBlock->header.ph_img_head[frameIndex].group_ph_frames;
+    int num_ph_frames_to_write;
 
-    if (mode == 0x1) {
-        f = moduleToWrite->PHImg;
+    if (group_ph_frames) {
+        f = moduleToWrite->PH1024Img;
+        num_ph_frames_to_write = 4;
     } else {
-        printf("Mode %c not recognized\n", mode);
-        printf("Module Header Value\n%s\n", dataBlock->header.img_mod_head[packetIndex].toString().c_str());
-        return 0;
+        f = moduleToWrite->PH256Img;
+        num_ph_frames_to_write = 1;
     }
 
     if (moduleToWrite == NULL){
@@ -293,21 +327,24 @@ int write_module_coinc_file(HSD_output_block_t *dataBlock, int packetIndex){
 
     pff_start_json(f);
 
-    write_coinc_header_json(f, &(dataBlock->header), packetIndex);
+    write_ph_header_json(f, &(dataBlock->header), frameIndex);
 
     pff_end_json(f);
 
+    // NOTE: when group_ph_frames==0, only the first 512 bytes of the PH data block
+    // will contain meaningful data.
     pff_write_image(f, 
-        PIXELS_PER_IMAGE*2, 
-        dataBlock->coinc_block + (packetIndex*BYTES_PER_PKT_IMAGE)
+        num_ph_frames_to_write*PIXELS_PER_IMAGE*2, 
+        dataBlock->ph_block + (frameIndex*BYTES_PER_PH_FRAME)
     );
 
-    if (ftell(f) > max_file_size){
-        moduleToWrite->increment_seqno();
-        if (mode == 0x1){
-            moduleToWrite->set_bpp(2);
-            moduleToWrite->new_dp_file(DP_PH_IMG, run_directory, "w");
-        }
+    if (max_file_size && (ftell(f) > max_file_size)){
+        moduleToWrite->ph_seqno++;
+            if (group_ph_frames) {
+                moduleToWrite->new_dp_file(DP_PH_1024_IMG, run_directory);
+            } else {
+                moduleToWrite->new_dp_file(DP_PH_256_IMG, run_directory);
+            }
     }
     return 1;
 }
@@ -332,7 +369,7 @@ int create_data_files_from_config(){
         if (cbuf != '#') {
             if (fscanf(configFile, "%u\n", &modNum) == 1){
                 if (data_files[modNum] == NULL) {
-                    data_files[modNum] = data_file_init(run_directory, 0, modNum);
+                    data_files[modNum] = data_file_init(run_directory, modNum);
                     printf("Created Data file for Module %u\n", modNum);
                 }
             }
@@ -347,6 +384,7 @@ int create_data_files_from_config(){
     if (fclose(configFile) == EOF) {
         printf("Warning: Unable to close module configuration file.\n");
     }
+    return 0;
 }
 
 typedef enum {
@@ -398,7 +436,8 @@ static int init(hashpipe_thread_args_t *args) {
     // Remove old run directory so that info isn't saved for next run.
     hdel(st.buf, "RUNDIR");
 
-    // Check to see if the run directory provided is an accurage directory
+    // Check if the run directory exits
+    //
     switch(check_directory(run_directory)) {
         case DIR_EXISTS:
             printf("Run directory: %s\n", run_directory);
@@ -447,7 +486,8 @@ void close_files() {
         if (data_files[i] != NULL){
             fclose(data_files[i]->bit16Img);
             fclose(data_files[i]->bit8Img);
-            fclose(data_files[i]->PHImg);
+            fclose(data_files[i]->PH256Img);
+            fclose(data_files[i]->PH1024Img);
         }
     }
 }
@@ -505,8 +545,8 @@ static void *run(hashpipe_thread_args_t *args) {
             write_module_img_file(&(db->block[block_idx]), i);
         }
 
-        for (int i = 0; i < db->block[block_idx].header.n_coinc_img; i++){
-            write_module_coinc_file(&(db->block[block_idx]), i);
+        for (int i = 0; i < db->block[block_idx].header.n_ph_img; i++){
+            write_module_ph_file(&(db->block[block_idx]), i);
         }
 
         if (QUITSIG) {

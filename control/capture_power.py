@@ -5,11 +5,12 @@ Script for capturing metadata from each ethernet outlet
 and storing it in the Redis database.
 """
 from datetime import datetime
-import time
+import sys, time
 
-import config_file
 import power
 import redis_utils
+sys.path.insert(0, '../util')
+import config_file
 
 # Time between updates.
 UPDATE_INTERVAL = 1

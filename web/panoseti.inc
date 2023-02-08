@@ -1,9 +1,9 @@
 <?php
 
-function is_pff($f) {
-    if ($f == 'hk.pff') return false;
-    return strstr($f, '.pff');
-}
+ini_set('display_errors', 1);
+
+
+// ------------ login and password --------------
 
 define('LOGIN_MANDATORY', 1);
 define('LOGIN_OPTIONAL',  2);
@@ -11,7 +11,45 @@ define('LOGIN_NONE',      3);
 
 $login_name = null;
 
-function page_head($title, $login=LOGIN_MANDATORY) {
+function hash_passwd($p) {
+    return md5($p."blahblah");
+}
+
+function check_passwd_hash($name, $passwd_hash) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!$passwds) {
+        die ("can't parse passwd file");
+    }
+    if (!isset($passwds->$name)) {
+        return null;
+    }
+    $u = $passwds->$name;
+    if ($u->passwd_hash != $passwd_hash) {
+        return null;
+    }
+    return $u;
+}
+
+function check_auth($name, $auth) {
+    $passwds = json_decode(file_get_contents('passwd.json'));
+    if (!isset($passwds->$name)) return null;
+    $u = $passwds->$name;
+    if ($u->auth != $auth) return null;
+    return $u;
+}
+
+function get_login($optional=false) {
+    $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
+    $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
+    if (!$auth || !$name || !check_auth($name, $auth)) {
+        if ($optional) return null;
+        Header("Location: login.php");
+        exit;
+    }
+    return $name;
+}
+
+function page_head($title, $login=LOGIN_MANDATORY, $is_front=false) {
     echo sprintf('
 <!DOCTYPE html>
 <html lang="en">
@@ -26,7 +64,6 @@ function page_head($title, $login=LOGIN_MANDATORY) {
     "PanoSETI: $title"
     );
     echo '<div class="container-fluid">';
-    echo "<h1>$title</h1>";
 
     if ($login == LOGIN_NONE) {
         return;
@@ -41,14 +78,24 @@ function page_head($title, $login=LOGIN_MANDATORY) {
         exit;
     }
     if ($login_name) {
-        echo "Logged in as $login_name.  <a href=logout.php>Log out</a>.<p>";
+        $x = "Logged in as $login_name.  <a href=logout.php>Log out</a>.";
     } else {
-        echo "<a href=login.php>Log in</a>";
+        $x = "<a href=login.php>Log in</a>";
+    }
+    echo sprintf(
+        '<p><table width=100%%><tr><td><font size=+3>%s</font></td><td align=right>%s</a></td></tr></table>',
+        $is_front?"PanoSETI home page":'<a href=index.php>Return to home page</a>',
+        $x
+    );
+    echo "<hr>";
+    if (!$is_front) {
+        echo "<h1>$title</h1>";
     }
 }
 
 function login_name() {
     global $login_name;
+    $login_name = get_login();
     return $login_name;
 }
 
@@ -56,33 +103,67 @@ function page_tail() {
     echo "</div></body></html>";
 }
 
-function get_int($key) {
-    if (array_key_exists($key, $_GET)) {
-        return (int)$_GET[$key];
-    }
-    return null;
+function error_page($msg) {
+    page_head("Unable to handle request", LOGIN_NONE);
+    echo $msg;
+    page_tail();
+    exit();
 }
 
-function get_str($key) {
+// ---------------- form stuff ------------
+
+function get_int($name, $optional=false) {
+    $x=null;
+    if (isset($_GET[$name])) $x = $_GET[$name];
+    if (!is_numeric($x)) {
+        if ($optional) {
+            if ($x) {
+                error_page("bad value for $name");
+            }
+            return null;
+        } else {
+            error_page("missing $name");
+        }
+    }
+    return (int)$x;
+}
+
+function get_str($key, $optional=false) {
     if (array_key_exists($key, $_GET)) {
         return $_GET[$key];
     }
-    return null;
+    if ($optional) return null;
+    error_page("missing arg: $key");
 }
 
-function post_str($key) {
+function post_str($key, $optional=false) {
     if (array_key_exists($key, $_POST)) {
         return $_POST[$key];
     }
-    return null;
+    if ($optional) return null;
+    error_page("missing arg: $key");
 }
 
-// make sure a path doesn't go above current dir.
-// Do this for any filename passed in a URL
+// Do this for any file or dir name passed in a URL
 //
 function check_filename($name) {
-    if (strstr($name, "..")) die("");
-    if ($name[0] == "/") die("");
+    if (preg_match('/[^a-z0-9\_\.\-\:]/i', $name)) {
+        error_page("bad file/dir name: $name");
+    }
+}
+
+// get a file or dir name from GET
+//
+function get_filename($key) {
+    $x = get_str($key);
+    check_filename($x);
+    return $x;
+}
+
+function post_filename($key) {
+    $x = post_str($key);
+    check_filename($x);
+    return $x;
 }
 
 // various stuff copied from boinc/html/inc/util.inc
@@ -203,6 +284,16 @@ function row_heading($x, $class='bg-primary') {
     );
 }
 
+// use the following around text with long lines,
+// to limit the width and make it more readable.
+//
+function text_start($width=640) {
+    echo sprintf("<div style=\"max-width: %dpx;\">\n", $width);
+}
+function text_end() {
+    echo "</div>\n";
+}
+
 // -------------  date/time stuff --------------
 
 // Unix time to UTC date string
@@ -259,67 +350,93 @@ function dt_time_str($dt) {
     return $dt->format('H:i:s');
 }
 
-// ---------------------------
+// -------------- PFF ----------------
+
+function is_pff($f) {
+    if ($f == 'hk.pff') return false;
+    return strstr($f, '.pff');
+}
 
 function parse_pff_name($name) {
-    $x = [];
-    foreach (explode('.', $name) as $part) {
-        $p = explode('_', $part);
-        if (count($p)<2) break;
-        $x[$p[0]] = $p[1];
-    }
-    return $x;
-}
-
-function hash_passwd($p) {
-    return md5($p."blahblah");
-}
-
-function check_passwd_hash($name, $passwd_hash) {
-    $passwds = json_decode(file_get_contents('passwd.json'));
-    if (!$passwds) {
-        die ("can't parse passwd file");
-    }
-    if (!isset($passwds->$name)) {
-        return null;
-    }
-    $u = $passwds->$name;
-    if ($u->passwd_hash != $passwd_hash) {
-        return null;
-    }
-    return $u;
-}
-
-function check_auth($name, $auth) {
-    $passwds = json_decode(file_get_contents('passwd.json'));
-    if (!isset($passwds->$name)) return null;
-    $u = $passwds->$name;
-    if ($u->auth != $auth) return null;
-    return $u;
-}
-
-function get_login($optional) {
-    $auth = isset($_COOKIE['auth']) ? $_COOKIE['auth'] : null;
-    $name = isset($_COOKIE['name']) ? $_COOKIE['name'] : null;
-    if (!$auth || !$name || !check_auth($name, $auth)) {
-        if ($optional) return null;
-        Header("Location: login.php");
-        exit;
-    }
-    return $name;
-}
-
-function parse_name($name) {
     $x = explode('.', $name);
     $p = [];
     for ($i=0; $i<count($x)-1; $i++) {
         $y = $x[$i];
         $z = explode('_', $y);
+        if (count($z) != 2) continue;
         $p[$z[0]] = $z[1];
     }
     return $p;
 }
 
-//print_r(parse_name('start_2022-08-01T03:20:35Z.dp_img16.bpp_2.dome_0.module_1.seqno_0.pff'));
+// return list of data products in run
+//
+function run_data_products($vol, $name) {
+    $s = [];
+    $dc = json_decode(@file_get_contents("$vol/data/$name/data_config.json"));
+    if (!$dc) {
+        $s[] = '---';
+        return $s;
+    }
+    if (!empty($dc->image)) {
+        $x = $dc->image;
+        $s[] = sprintf("Image, %d bit, %d usec",
+            $x->quabo_sample_size, $x->integration_time_usec
+        );
+    }
+    if (array_key_exists('pulse_height', $dc)) {
+        $x = $dc->pulse_height;
+        $s[] = sprintf("Pulse height, threshold %d", $x->pe_threshold);
+    }
+    return $s;
+}
+
+// return list of modules in run
+//
+function run_modules($vol, $name) {
+    $s = [];
+    $oc = json_decode(@file_get_contents("$vol/data/$name/obs_config.json"));
+    if (!$oc) {
+        $s[] = '---';
+        return $s;
+    }
+    foreach ($oc->domes as $dome) {
+        foreach ($dome->modules as $module) {
+            $s[] = module_str($module, $dome);
+        }
+    }
+    return $s; 
+}
+
+function module_str($module, $dome) {
+    $x = ip_addr_to_module_num($module->ip_addr);
+    if (!empty($dome->name)) {
+        if (!empty($module->name)) {
+            $x .= " ($dome->name, $module->name)";
+        } else {
+            $x .= " ($dome->name)";
+        }
+    }
+    return $x;
+}
+
+function ip_addr_to_module_num($ip_addr) {
+    $x = explode('.', $ip_addr);
+    $n = (int)$x[3] + 256*(int)$x[2];
+    return ($n>>2)&255;
+}
+
+// return length of header (JSON + 1 for the *)
+//
+function header_size($f) {
+    $n = 0;
+    while (1) {
+        $s = fgets($f);
+        if (!$s) break;
+        $n += strlen($s);
+        if ($s == "\n") break;
+    }
+    return $n+1;
+}
 
 ?>

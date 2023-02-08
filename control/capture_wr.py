@@ -7,7 +7,7 @@
 # added to each set of values with a variable labeled as
 # 'Computer_UTC'.
 ##############################################################
-import os
+import os, sys
 import netsnmp
 import redis
 import time
@@ -15,7 +15,9 @@ from signal import signal, SIGINT
 import time
 from datetime import datetime
 from redis_utils import *
-import config_file, util
+import util
+sys.path.insert(0, '../util')
+import config_file
 
 from panoseti_snmp import wrs_snmp
 

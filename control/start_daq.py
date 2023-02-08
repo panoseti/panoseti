@@ -1,6 +1,12 @@
 #! /usr/bin/env python3
 
-# start_daq.py --run_dir dirname --max_file_size_mb N --daq_ip_addr a.b.c.d --module_id M1 ... --module_id Mn
+# start_daq.py
+#   --run_dir dirname
+#   --max_file_size_mb N
+#   --daq_ip_addr a.b.c.d
+#   --module_id M1 ...
+#   --module_id Mn
+#   [--bindhost x]
 #
 # This script is run (remotely) on a DAQ node to start recording.
 # The run directory already exists.
@@ -21,10 +27,12 @@ import util
 def main():
     argv = sys.argv
     i = 1
-    max_file_size_mb = None
+    max_file_size_mb = -1
+    group_ph_frames = 0
     run_dir = None
     daq_ip_addr = None
     module_ids = []
+    bindhost = "0.0.0.0"
     while i<len(argv):
         if argv[i] == '--run_dir':
             i += 1
@@ -35,13 +43,19 @@ def main():
         elif argv[i] == '--max_file_size_mb':
             i += 1
             max_file_size_mb = int(argv[i])
+        elif argv[i] == '--group_ph_frames':
+            i += 1
+            group_ph_frames = int(argv[i])
         elif argv[i] == '--module_id':
             i += 1
             module_ids.append(int(argv[i]))
+        elif argv[i] == '--bindhost':
+            i += 1
+            bindhost = argv[i]
         i += 1
     if not run_dir:
         raise Exception('no run dir specified')
-    if not max_file_size_mb:
+    if max_file_size_mb<0:
         raise Exception('no max file size specified')
     if len(module_ids) == 0:
         raise Exception('no module IDs specified')
@@ -69,7 +83,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="0.0.0.0" -o MAXFILESIZE=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(max_file_size_mb, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
+    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o GROUPPHFRAMES=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, group_ph_frames, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script
@@ -86,7 +100,10 @@ def main():
         result = subprocess.run(['pgrep', '-P', str(pid)], stdout=subprocess.PIPE)
         if result.stdout != '': break
         time.sleep(1)
-    child_pid = int(result.stdout)
+    try:
+        child_pid = int(result.stdout)
+    except:
+        raise Exception("can't get hashpipe PID; it may have crashed: %s"%result.stdout);
 
     # write it to a file
 

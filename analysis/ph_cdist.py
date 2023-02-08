@@ -330,11 +330,11 @@ def main():
         else:
             dp = parsed['dp']
         # Get file metadata
-        if dp == 'img16' or dp == '1':
+        if dp == 'img16':
             image_size = 32
             bytes_per_pixel = 2
             is_ph = False
-        elif dp == 'ph16' or dp == '3':
+        elif dp == 'ph16':
             image_size = 16
             bytes_per_pixel = 2
             is_ph = True

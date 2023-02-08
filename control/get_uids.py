@@ -6,8 +6,10 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import util, config_file, sys, struct
+import util , sys, struct
 from panoseti_tftp import tftpw
+sys.path.insert(0, '../util')
+import config_file
 
 # return quabo UID as hex string
 #
@@ -19,7 +21,7 @@ def get_uid(ip_addr):
         i = struct.unpack('q', f.read(8))
         return "%x"%(i[0])
 
-def get_uids(obs_config, exclude):
+def get_uids(obs_config, exclude=[]):
     f = open(config_file.quabo_uids_filename, 'w')
     f.write(
 '''{
@@ -49,7 +51,7 @@ def get_uids(obs_config, exclude):
             for i in range(4):
                 uid = ''
                 if i not in exclude:
-                    ip_addr = util.quabo_ip_addr(module['ip_addr'], i)
+                    ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
                     if util.ping(ip_addr):
                         uid = get_uid(ip_addr)
                         print("%s has UID %s"%(ip_addr, uid))
@@ -78,11 +80,11 @@ def get_uids(obs_config, exclude):
 ''')
     f.close()
 
-def usage():
-    print("usage: get_uids.py [--exclude N ...]")
-    sys.exit()
+if __name__ == "__main__":
+    def usage():
+        print("usage: get_uids.py [--exclude N ...]")
+        sys.exit()
 
-def main():
     obs_config = config_file.get_obs_config()
     i = 1
     exclude = []
@@ -94,5 +96,3 @@ def main():
             usage()
         i += 1
     get_uids(obs_config, exclude)
-
-main()

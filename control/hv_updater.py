@@ -11,14 +11,13 @@ See the Hamamatsu datasheet for its MPPC arrays: S13361-3050 series
 for more info about the detector constants used in this script.
 """
 
-import time
-
+import time, sys
 import redis
-
 import redis_utils
 import quabo_driver
-import config_file
 import util
+sys.path.insert(0, '../util')
+import config_file
 
 #-------------- CONSTANTS ---------------#
 
@@ -49,12 +48,12 @@ def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
     """Given a detector serial number and a temperature in degrees Celsius,
      returns the desired adjusted high-voltage value."""
     try:
-        nominal_hv = detector_info[det_serial_num]
+        nominal_hv = detector_info[str(det_serial_num)]
     except KeyError as kerr:
         msg = "hv_updater: Failed to get the nominal HV for the detector with serial number: '{0}'."
         msg += "detector_info.json might be missing an entry for this detector. "
         msg += "Error msg: {1}"
-        print(msg.format(det_serial_num, kerr))
+        util.write_log(msg.format(det_serial_num, kerr))
         raise
     else:
         # Formula from GitHub Issue 47.
@@ -77,18 +76,10 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
     except KeyError as kerr:
         msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
         msg += "Error message: {1}"
-        print(msg.format(quabo_obj.ip_addr, kerr))
+        util.write_log(msg.format(quabo_obj.ip_addr, kerr))
         raise
     else:
         quabo_obj.hv_set(adjusted_hv_values)
-
-
-def get_boardloc(module_ip_addr: str, quabo_index):
-    """Given a module ip address and a quabo index, returns the BOARDLOC of
-    the corresponding quabo."""
-    pieces = module_ip_addr.split('.')
-    boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
-    return boardloc
 
 
 def get_redis_temp(r: redis.Redis, rkey: str) -> float:
@@ -99,13 +90,13 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
-        print(msg.format(err))
+        util.write_log(msg.format(err))
         raise
     except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += "Temperature HK data may be missing. "
         msg += "Error msg: {1}"
-        print(msg.format(rkey, terr))
+        util.write_log(msg.format(rkey, terr))
         raise
 
 
@@ -120,7 +111,7 @@ def update_all_quabos(r: redis.Redis):
                 quabo_obj = None
                 try:
                     # Get this Quabo's redis key.
-                    rkey = "QUABO_{0}".format(get_boardloc(module_ip_addr, quabo_index))
+                    rkey = "QUABO_{0}".format(config_file.get_boardloc(module_ip_addr, quabo_index))
                     if rkey in quabos_off:
                         continue
                     uid = module['quabos'][quabo_index]['uid']
@@ -133,7 +124,7 @@ def update_all_quabos(r: redis.Redis):
                         # Get the temperature data for this quabo.
                         temp = get_redis_temp(r, rkey)
                     # Get quabo object
-                    q_ip_addr = util.quabo_ip_addr(module_ip_addr, quabo_index)
+                    q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
                     quabo_obj = quabo_driver.QUABO(q_ip_addr)
                     # Get the list of detector serial numbers for this quabo.
                     q_info = quabo_info[uid]
@@ -141,17 +132,17 @@ def update_all_quabos(r: redis.Redis):
                 except Warning as werr:
                     msg = "hv_updater: Failed to update quabo at index {0} with base IP {1}. "
                     msg += "Error msg: {2} \n"
-                    print(msg.format(quabo_index, module_ip_addr, werr))
+                    util.write_log(msg.format(quabo_index, module_ip_addr, werr))
                     continue
                 except redis.RedisError as rerr:
                     msg = "hv_updater: A Redis error occurred. "
                     msg += "Error msg: {0}"
-                    print(msg.format(rerr))
+                    util.write_log(msg.format(rerr))
                     raise
                 except KeyError as kerr:
                     msg = "hv_updater: Quabo {0} with base IP {1} may be missing from a config file. "
                     msg += "Error msg: {2}"
-                    print(msg.format(quabo_index, module_ip_addr, kerr))
+                    util.write_log(msg.format(quabo_index, module_ip_addr, kerr))
                     raise
                 else:
                     # Checks whether the quabo temperature is acceptable.
@@ -162,15 +153,15 @@ def update_all_quabos(r: redis.Redis):
                         msg = "hv_updater: The temperature of quabo {0} with base IP {1} is {2} C, "
                         msg += "which exceeds the maximum operating temperatures. \n"
                         msg += "Attempting to power down the detectors on this quabo..."
-                        print(msg.format(quabo_index, module_ip_addr, temp))
+                        util.write_log(msg.format(quabo_index, module_ip_addr, temp))
                         try:
                             quabo_obj.hv_set([0] * 4)
                             quabos_off.add(rkey)
-                            print("Successfully powered down.")
+                            util.write_log("Successfully powered down.")
                         except Exception as err:
                             msg = "*** hv_updater: Failed to power down detectors. "
                             msg += "Error msg: {0}"
-                            print(msg.format(err))
+                            util.write_log(msg.format(err))
                             continue
                 # TODO: Determine when (or if) we should turn detectors back on after a temperature-related power down.
                 finally:
@@ -192,5 +183,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         msg = "hv_updater failed and exited with the error message: {0}"
-        print(msg.format(e))
+        util.write_log(msg.format(e))
         raise

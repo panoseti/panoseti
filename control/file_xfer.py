@@ -3,16 +3,18 @@
 # copy files to/from daq nodes
 #
 # options when run as a script:
-# --config              copy data products config file to noes
+# --config              copy data products config file to nodes
 # --hashpipe            copy hashpipe executable (hashpipe.so) to nodes
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
 import sys, os
-import util, config_file
+import util
+sys.path.insert(0, '../util')
+import config_file
 
 # copy a file to a DAQ node
 #
-def copy_file_to_node(file, daq_config, node, run_dir=''):
+def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
     dest_path = node['data_dir']
     if run_dir:
         dest_path += '/%s'%(run_dir)
@@ -21,53 +23,39 @@ def copy_file_to_node(file, daq_config, node, run_dir=''):
     cmd = 'scp -q %s %s@%s:%s'%(
         file, node['username'], node['ip_addr'], dest_path
     )
-    print(cmd)
+    if verbose:
+        print(cmd)
     ret = os.system(cmd)
     if ret: raise Exception('%s returned %d'%(cmd, ret))
 
-# copy the contents of a run dir from a DAQ node.
-# to the corresponding run dir on this (head) node
+# Copy the contents of a module/run dir from a DAQ node
+# to the corresponding run dir on this (head) node.
 # scp doesn't let you do this directly,
 # so we copy the dir to a temp directory (data/IP_ADDR/run),
 # then move (rename) the files into the target dir
 #
-def copy_dir_from_node(run_name, daq_config, node):
+# return error message, or '' on success
+#
+def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
     local_data_dir = daq_config['head_node_data_dir']
     run_dir_path = '%s/%s'%(local_data_dir, run_name)
-    if not run_dir_path:
-        raise Exception('No run dir %s'%run_name)
-    # run dir should have already been created, but just in case
+
     if not os.path.isdir(run_dir_path):
-        os.mkdir(run_dir_path)
+        return 'copy_dir_from_node(): no run dir %s'%run_dir_path
 
-    # make a temp dir if needed
-    #
-    node_tmp_dir = '%s/%s'%(local_data_dir, node['ip_addr'])
-    if not os.path.isdir(node_tmp_dir):
-        os.mkdir(node_tmp_dir)
-
-    # copy run dir from remote node to temp dir
-    cmd = 'scp -q -r %s@%s:%s/%s %s'%(
+    # copy PFF files from remote node to this node
+    cmd = 'rsync -P %s@%s:%s/module_%d/%s/* %s'%(
         node['username'], node['ip_addr'],
-        node['data_dir'], run_name,
-        node_tmp_dir
+        node['data_dir'], module_id, run_name,
+        run_dir_path
     )
-    print(cmd)
-    ret = os.system(cmd)
-    if ret: raise Exception('%s returned %d'%(cmd, ret))
-
-    # move non-config files from temp dir to head node data dir
-    run_tmp_dir = '%s/%s'%(node_tmp_dir, run_name)
-    for fn in os.listdir(run_tmp_dir):
-        if fn.find('config')>=0 or fn.find('quabo_uids')>=0:
-            #os.unlink('%s/%s'%(tmp_dir, fn))
-            continue
-        cmd = 'mv %s/%s %s/'%(run_tmp_dir, fn, run_dir_path)
+    if verbose:
         print(cmd)
+    try:
         ret = os.system(cmd)
-        if ret: raise Exception('%s returned %d'%(cmd, ret))
-
-#os.rmdir(tmp_dir)
+    except:
+        return 'copy_dir_from_node(): %s returned %d'%(cmd, ret)
+    return ''
 
 # create a directory on DAQ nodes
 #
@@ -82,20 +70,22 @@ def make_remote_dirs(daq_config, dirname):
 
 # copy config files to run dirs on DAQ nodes
 #
-def copy_config_files(daq_config, run_dir):
+def copy_config_files(daq_config, run_dir, verbose=False):
     for node in daq_config['daq_nodes']:
         for f in config_file.config_file_names:
-            copy_file_to_node(f, daq_config, node, run_dir)
+            copy_file_to_node(f, daq_config, node, run_dir, verbose)
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
-def copy_hashpipe(daq_config):
+def copy_daq_files(daq_config):
     for node in daq_config['daq_nodes']:
         copy_file_to_node('../daq/hashpipe.so', daq_config, node)
         copy_file_to_node('start_daq.py', daq_config, node)
         copy_file_to_node('stop_daq.py', daq_config, node)
         copy_file_to_node('status_daq.py', daq_config, node)
         copy_file_to_node('util.py', daq_config, node)
+        copy_file_to_node('../util/pff.py', daq_config, node)
+        copy_file_to_node('video_daq.py', daq_config, node)
 
 if __name__ == "__main__":
 

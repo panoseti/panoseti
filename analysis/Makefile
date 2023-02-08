@@ -1,10 +1,10 @@
 DEBUG = 1
 
-PROGS = pulse write_images
+PROGS = img_pulse
 
 all: $(PROGS)
 
-SRCS = pulse.php
+SRCS = img_pulse.php
 
 UTIL_INC = -I../util
 
@@ -19,8 +19,8 @@ CXX = g++ $(CXXFLAGS) $(UTIL_INC)
 .cpp.o:
 	$(CXX) -c -o $*.o $<
 
-pulse: pulse.cpp ../util/pff.cpp
-	$(CXX) -o pulse pulse.cpp ../util/pff.cpp
+img_pulse: img_pulse.cpp ../util/pff.cpp
+	$(CXX) -o img_pulse img_pulse.cpp ../util/pff.cpp
 
 write_images: write_images.cpp ../util/pff.cpp
 	$(CXX) -o write_images write_images.cpp ../util/pff.cpp

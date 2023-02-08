@@ -22,9 +22,9 @@
 
 // PKTSOCK Params
 // (These should be only changed with caution as it need to change with MMAP)
-#define PKTSOCK_BYTES_PER_FRAME (16384)
-#define PKTSOCK_FRAMES_PER_BLOCK (8)
-#define PKTSOCK_NBLOCKS (20)
+#define PKTSOCK_BYTES_PER_FRAME (1024)
+#define PKTSOCK_FRAMES_PER_BLOCK (4096)
+#define PKTSOCK_NBLOCKS (512)
 #define PKTSOCK_NFRAMES (PKTSOCK_FRAMES_PER_BLOCK * PKTSOCK_NBLOCKS)
 
 // Initialization function for Hashpipe.
@@ -130,8 +130,8 @@ static inline void get_header(
         | ((pkt_data[4] >> 2) & 0x003f);
     block_header->pkt_head[i].quabo_num = ((pkt_data[4]) & 0x03);
 
-    // quabo only sends 10 bits of UTC
-    block_header->pkt_head[i].pkt_utc = ((pkt_data[7] << 8) & 0x00000300)
+    // quabo only sends 10 bits of TAI
+    block_header->pkt_head[i].pkt_tai = ((pkt_data[7] << 8) & 0x00000300)
         | ((pkt_data[6]) & 0x000000ff);
                         
     block_header->pkt_head[i].pkt_nsec = ((pkt_data[13] << 24) & 0xff000000) 

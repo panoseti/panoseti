@@ -36,12 +36,20 @@ extern bool ends_with(const char* s, const char* suffix);
 ////////// DIR AND FILE NAMES ////////////////
 
 typedef enum {
-    DP_BIT16_IMG = 1,
+    DP_BIT16_IMG = 1,       // this must be first
     DP_BIT8_IMG,
-    DP_PH_IMG,
-    DP_NONE
+    DP_PH_256_IMG,
+    DP_PH_1024_IMG,
+    DP_NONE                 // this must be last
 } DATA_PRODUCT;
 
+inline int bytes_per_pixel(DATA_PRODUCT dp) {
+    if (dp == DP_BIT16_IMG) return 2;
+    if (dp == DP_BIT8_IMG) return 1;
+    if (dp == DP_PH_256_IMG) return 2;
+    if (dp == DP_PH_1024_IMG) return 2;
+    return DP_BIT16_IMG;
+}
 
 // the info encoded in a dir name
 //
@@ -69,19 +77,17 @@ struct FILENAME_INFO {
     double start_time;
     DATA_PRODUCT data_product;
     int bytes_per_pixel;
-    int dome;
     int module;
     int seqno;
 
     FILENAME_INFO(){}
     FILENAME_INFO(
         double _start_time, DATA_PRODUCT _data_product, int _bytes_per_pixel,
-        int _dome, int _module, int _seqno
+        int _module, int _seqno
     ) {
         start_time = _start_time;
         data_product = _data_product;
         bytes_per_pixel = _bytes_per_pixel;
-        dome = _dome;
         module = _module;
         seqno = _seqno;
     }
@@ -93,5 +99,6 @@ struct FILENAME_INFO {
 // given a string of the form .../d/f, return d and f
 //
 extern int pff_parse_path(const char* path, string& dir, string& file);
+extern bool is_pff_file(const char*);
 
 #endif

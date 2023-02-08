@@ -1,31 +1,56 @@
 # utility functions for analysis
+#
+# see https://github.com/panoseti/panoseti/wiki/Analysis-framework
 
-import os, shutil, json, datetime
+import os, sys, shutil, json, datetime
+sys.path.append('../util')
+import config_file
+
+# analysis types
+#
+ANALYSIS_TYPE_IMAGE_PULSE = 'img_pulse'
+ANALYSIS_TYPE_VISUAL = 'visual'
+ANALYSIS_TYPE_PULSE_HEIGHT_COINCIDENCE = 'ph_coincidence'
+
+ANALYSIS_ROOT = 'analysis'
 
 # write a JSON file saying when analysis was done and with what params
 #
-def write_summary(run, summary):
+def write_summary(analysis_dir, params, username):
+    summary = {}
     summary['when'] = datetime.datetime.utcnow().replace(microsecond=0).isoformat()+'Z'
-    with open('derived/%s/summary.json'%run, 'w') as f:
+    summary['username'] = username
+    summary['params'] = params
+    with open('%s/summary.json'%analysis_dir, 'w') as f:
         f.write(json.dumps(summary, indent=4))
 
-# create run and file directories as needed for derived files
+# if dir doesn't exist, create it and set ownership and permissions
+# so that both panosetigraph and www-data can r/w it
 #
-def make_dirs(run=None, f=None):
-    if not os.path.exists('derived'):
-        os.mkdir('derived')
-        shutil.chown('derived', group='panosetigraph')
-        os.chmod('derived', 0o775)
+def make_dir(path):
+    if os.path.exists(path):
+        return path
+    os.mkdir(path)
+    shutil.chown(path, group='panosetigraph')
+    os.chmod(path, 0o775)
+    return path
+
+# create an analysis run directory; return path
+#
+def make_analysis_dir(analysis_type, vol=None, run=None):
+    make_dir(ANALYSIS_ROOT)
     if run:
-        if not os.path.exists('derived/%s'%run):
-            os.mkdir('derived/%s'%run)
-            shutil.chown('derived/%s'%run, group='panosetigraph')
-            os.chmod('derived/%s'%run, 0o775)
-    if f:
-        if not run:
-            raise Exception('must specify run')
-        if not os.path.exists('derived/%s/%s'%(run, f)):
-            os.mkdir('derived/%s/%s'%(run, f))
-            shutil.chown('derived/%s/%s'%(run, f), group='panosetigraph')
-            os.chmod('derived/%s/%s'%(run, f), 0o775)
+        run_dir = make_dir('%s/%s/%s'%(vol, ANALYSIS_ROOT, run))
+        type_dir = make_dir('%s/%s'%(run_dir, analysis_type))
+    else:
+        type_dir = make_dir('%s/%s'%(ANALYSIS_ROOT, analysis_type))
+    now = datetime.datetime.utcnow().replace(microsecond=0).isoformat()+'Z'
+    return make_dir('%s/%s'%(type_dir, now))
+
+# convert nsecs to nframes, based on frame rate
+#
+def img_seconds_to_frames(vol, run, seconds):
+    data_config = config_file.get_data_config('%s/data/%s'%(vol, run))
+    x = float(data_config['image']['integration_time_usec'])
+    return seconds*1.e6/x
 

@@ -1,15 +1,15 @@
 <?php
 
-ini_set('display_errors', 1);
-
 // show a zoomable graph of a .csv file specified by path
 //
 // Also, since graphs with lots of points are slow to draw in Javascript,
 // you can zoom and move in the data itself.
 
+DEPRECATED - TOO COMPLEX
+
 require_once("panoseti.inc");
 require_once("graph.inc");
-require_once("pulse.inc");
+require_once("img_pulse.inc");
 
 function make_url($file, $pixel, $type, $dur, $start, $n) {
     return "graph.php?file=$file&pixel=$pixel&type=$type&dur=$dur&start=$start&n=$n";
@@ -118,14 +118,12 @@ function main($start, $n, $file, $pixel, $type, $dur) {
     page_tail();
 }
 
-$file = get_str('file');
+$file = get_filename('file');
 $pixel = get_int('pixel');
 $type = get_str('type');
 $dur = get_int('dur');
 $start = get_int('start');
 $n = get_int('n');
-
-check_filename($file);
 
 main($start, $n, $file, $pixel, $type, $dur);
 

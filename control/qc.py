@@ -26,7 +26,10 @@ def do_cmd(quabo, words):
     elif cmd == 'M':
         quabo.send_maroc_params_file()
     elif cmd == 'B':
-        quabo.calibrate_ph_baseline(baseline_filename)
+        coefs = quabo.calibrate_ph_baseline(baseline_filename)
+        print('baseline coefficients:')
+        for i in range(256):
+            print(coefs[i])
     elif cmd == 'V':
         quabo.hv_config(config_filename)
     elif cmd == 'v':

@@ -15,7 +15,8 @@ const char* dp_to_str(DATA_PRODUCT dp) {
     switch (dp) {
     case DP_BIT16_IMG: return "img16";
     case DP_BIT8_IMG: return "img8";
-    case DP_PH_IMG: return "ph16";
+    case DP_PH_256_IMG: return "ph256";
+    case DP_PH_1024_IMG: return "ph1024";
     }
     return "unknown";
 }
@@ -23,7 +24,9 @@ const char* dp_to_str(DATA_PRODUCT dp) {
 DATA_PRODUCT str_to_dp(const char* s) {
     if (!strcmp(s, "img16")) return DP_BIT16_IMG;
     if (!strcmp(s, "img8")) return DP_BIT8_IMG;
-    if (!strcmp(s, "ph16")) return DP_PH_IMG;
+    if (!strcmp(s, "ph256")) return DP_PH_256_IMG;
+    if (!strcmp(s, "ph1024")) return DP_PH_1024_IMG;
+    return DP_NONE;
 }
 
 void pff_start_json(FILE* f) {
@@ -147,6 +150,10 @@ bool ends_with(const char* s, const char* suffix) {
     return (strcmp(s+n-m, suffix)) == 0;
 }
 
+bool is_pff_file(const char* path) {
+    return ends_with(path, ".pff");
+}
+
 void DIRNAME_INFO::make_dirname(string &s) {
     char buf[1024], tbuf[256];
 
@@ -198,13 +205,12 @@ void FILENAME_INFO::make_filename(string &s) {
     time_t x = (time_t)start_time;
     struct tm* tm = gmtime(&x);
     strftime(tbuf, sizeof(tbuf), "%FT%TZ", tm);
-    sprintf(buf, "start%c%s%cdp%c%s%cbpp%c%d%cdome%c%d%cmodule%c%d%cseqno%c%d.pff",
+    sprintf(buf, "start%c%s%cdp%c%s%cbpp%c%d%cmodule%c%d%cseqno%c%d.pff",
         VAL_SEP, tbuf,
-    PAIR_SEP, VAL_SEP, dp_to_str(data_product),
-    PAIR_SEP, VAL_SEP, bytes_per_pixel,
-    PAIR_SEP, VAL_SEP, dome,
-    PAIR_SEP, VAL_SEP, module,
-    PAIR_SEP, VAL_SEP, seqno
+        PAIR_SEP, VAL_SEP, dp_to_str(data_product),
+        PAIR_SEP, VAL_SEP, bytes_per_pixel,
+        PAIR_SEP, VAL_SEP, module,
+        PAIR_SEP, VAL_SEP, seqno
     );
     s = buf;
 }
@@ -230,8 +236,6 @@ int FILENAME_INFO::parse_filename(char* name) {
             data_product = str_to_dp(nvp.value);
         } else if (!strcmp(nvp.name, "bpp")) {
             bytes_per_pixel = atoi(nvp.value);
-        } else if (!strcmp(nvp.name, "dome")) {
-            dome = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "module")) {
             module = atoi(nvp.value);
         } else if (!strcmp(nvp.name, "seqno")) {
@@ -247,7 +251,6 @@ int FILENAME_INFO::copy_to(FILENAME_INFO* fileInfo){
     fileInfo->start_time = this->start_time;
     fileInfo->data_product = this->data_product;
     fileInfo->bytes_per_pixel = this->bytes_per_pixel;
-    fileInfo->dome = this->dome;
     fileInfo->module = this->module;
     fileInfo->seqno = this->seqno;
     return 1;
@@ -274,7 +277,6 @@ int main(int, char**) {
     fi.start_time = time(0);
     fi.data_product = DP_PH_IMG;
     fi.bytes_per_pixel = 2;
-    fi.dome = 0;
     fi.module=14;
     fi.seqno = 5;
     fi.make_filename(s);
@@ -283,9 +285,9 @@ int main(int, char**) {
     printf("file name: %s\n", buf);
 
     fi.parse_filename(buf);
-    printf("parsed: time %f dp %d bpp %d dome %d module %d seqno %d\n",
+    printf("parsed: time %f dp %d bpp %d module %d seqno %d\n",
         fi.start_time, fi.data_product, fi.bytes_per_pixel,
-        fi.dome, fi.module, fi.seqno
+        fi.module, fi.seqno
     );
 }
 #endif

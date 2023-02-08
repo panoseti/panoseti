@@ -14,7 +14,9 @@
 # The IP addr of the WPS and the socket # come from a config file
 # This can be used as a module or a script.
 
-import config_file, sys, os
+import sys, os
+sys.path.insert(0, '../util')
+import config_file
 
 # turn power on or off
 #
@@ -41,6 +43,24 @@ def quabo_power_query(wps):
     if(status&(1<<(socket-1))):
         return 'true'
 
+def do_wps(name, obs_config, op):
+    wps = obs_config[name]
+    if op == 'query':
+        if quabo_power_query(wps):
+            print("%s: power is on"%name)
+        else:
+            print("%s: power is off"%name)
+    elif op == 'on':
+        quabo_power(wps, True)
+        print("%s: turned power on"%name)
+    elif op == 'off':
+        quabo_power(wps, False)
+        print("%s: turned power off"%name)
+
+def do_all(obs_config, op):
+    for key in [k for k in obs_config.keys() if 'wps' in k.lower()]:
+        do_wps(key, obs_config, op)
+
 if __name__ == "__main__":
     op = 'query'
     wps_name = 'wps'
@@ -51,19 +71,8 @@ if __name__ == "__main__":
         elif sys.argv[i] == 'off':
             op = 'off'
         else:
-            wps_name = sys.argv[i]
+            raise Exception('usage: power.py [on|off]')
         i += 1
 
     c = config_file.get_obs_config()
-    wps = c[wps_name]
-    if op == 'query':
-        if quabo_power_query(wps):
-            print("Quabo power is on")
-        else:
-            print("Quabo power is off")
-    elif op == 'on':
-        quabo_power(wps, True)
-    elif op == 'off':
-        quabo_power(wps, False)
-    else:
-        raise Exception('usage: power.py [wps1] [on|off]')
+    do_all(c, op)

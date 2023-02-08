@@ -21,6 +21,11 @@
 //
 #define NUM_OF_MODES 7
 
+// Store user input for the GROUPPHFRAMES option. 
+// Equal to 0 (write 256 pixel PH images) or 1 (write 1024 pixel PH images).
+//
+static int group_ph_frames;
+
 // copy image data from the module data to output buffer.
 //
 void write_frame_to_out_buffer(
@@ -44,31 +49,29 @@ void write_frame_to_out_buffer(
 // Copy a pulse height image to the output buffer.
 //
 void write_ph_to_out_buffer(
-    HSD_input_block_t* in_block,        // data block in input buffer
-    int pktIndex,                       // index into block
-    HSD_output_block_t* out_block,      // block in output buffer
-    int quabo_num
+    PH_IMAGE_BUFFER* ph_data,
+    HSD_output_block_t* out_block      // block in output buffer
 ) {
-    int out_index = out_block->header.n_coinc_img;
-
-    out_block->header.coinc_pkt_head[out_index] = in_block->header.pkt_head[pktIndex];
+    int out_index = out_block->header.n_ph_img;
+    HSD_output_block_header_t* out_header = &(out_block->header);
     
-    // copy and rotate the image
-    //
-    quabo16_to_quabo16_copy(
-        in_block->data_block + pktIndex*BYTES_PER_PKT_IMAGE,
-        quabo_num,
-        out_block->coinc_block + out_index*BYTES_PER_PKT_IMAGE
+    out_header->ph_img_head[out_index] = ph_data->ph_head;
+    
+    memcpy(
+        out_block->ph_block + (out_index * BYTES_PER_PH_FRAME),
+        ph_data->data,
+        BYTES_PER_PH_FRAME
     );
-
-    out_block->header.n_coinc_img++;
+    out_block->header.n_ph_img++;
 }
+
 
 // copy quabo image to module image buffer
 // If needed, copy module image to output buffer first
 //
 void storeData(
     MODULE_IMAGE_BUFFER* mod_data,        // module image
+    PH_IMAGE_BUFFER* ph_data,             // PH 1024 image
     HSD_input_block_t* in_block,    // block in input buffer (quabo images)
     HSD_output_block_t* out_block,  // block in output buffer (module images)
     int pktIndex                    // index in input buffer
@@ -82,11 +85,10 @@ void storeData(
     uint8_t quabo_bit = 1 << quabo_num;
 
     // see what kind of packet it is
-
+    bool is_ph_packet = false;
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
-        write_ph_to_out_buffer(in_block, pktIndex, out_block, quabo_num);
-        return;
+        is_ph_packet = true;
     } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
         bytes_per_pixel = 2;
@@ -104,79 +106,173 @@ void storeData(
         return;
     }
 
-    // set min/max times of quabo images in module image
-    //
-    if (mod_data->quabos_bitmap == 0){
-        // no quabo images yet.
-        // set both the upper and lower limit to current time
+    if (!is_ph_packet) {
+        //--------------Process packet as part of a module image--------------
         //
+
+        // set min/max times of quabo images in module image
+        //
+        if (mod_data->quabos_bitmap == 0){
+            // no quabo images yet.
+            // set both the upper and lower limit to current time
+            //
+            mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+            mod_data->mod_head.bits_per_pixel = bits_per_pixel;
+            mod_data->max_nanosec = nanosec;
+            mod_data->min_nanosec = nanosec;
+        } else if (nanosec > mod_data->max_nanosec){
+            mod_data->max_nanosec = nanosec;
+        } else if (nanosec < mod_data->min_nanosec){
+            mod_data->min_nanosec = nanosec;
+        }
+
+        // see if we should add module frame to output buffer
+        // - the quabo position of the new packet is already filled in module buf
+        // - or bytes/pixel is different (should never happen)
+        // - or time threshold is exceeded
+        //
+        bool do_write = false;
+        if (mod_data->quabos_bitmap & quabo_bit) {
+            //printf("bit already set: %d %d\n", mod_data->quabos_bitmap, quabo_bit);
+            do_write = true;
+        } else if (mod_data->mod_head.bits_per_pixel != bits_per_pixel) {
+            //printf("new bits_per_pixel %d %d\n", mod_data->mod_head.bits_per_pixel, bits_per_pixel);
+            do_write = true;
+        } else if (mod_data->max_nanosec - mod_data->min_nanosec > IMG_NANOSEC_THRESHOLD) {
+            //printf("elapsed time %d %d\n", mod_data->max_nanosec, mod_data->min_nanosec);
+            do_write = true;
+        }
+        if (do_write) {    
+            // A module frame is now final.
+            // do long pulse finding or other stuff here.
+            //
+            // process_frame(mod_data);
+
+            write_frame_to_out_buffer(mod_data, out_block);
+            
+            // clear module frame buffer
+            mod_data->clear();
+            mod_data->max_nanosec = nanosec;
+            mod_data->min_nanosec = nanosec;
+        }
+
+        // copy rotated quabo image to module image
+        //
+        if (bytes_per_pixel == 1) {
+            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+            quabo8_to_module8_copy(
+                p,
+                quabo_num,
+                mod_data->data
+            );
+        } else {
+            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+            quabo16_to_module16_copy(
+                p,
+                quabo_num,
+                mod_data->data
+            );
+        }
+        
+        // copy the header
+        //
+        mod_data->mod_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
+
+        // Mark the quabo slot as taken
+        //
+        mod_data->quabos_bitmap |= quabo_bit;
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         mod_data->mod_head.bits_per_pixel = bits_per_pixel;
-        mod_data->max_nanosec = nanosec;
-        mod_data->min_nanosec = nanosec;
-    } else if (nanosec > mod_data->max_nanosec){
-        mod_data->max_nanosec = nanosec;
-    } else if (nanosec < mod_data->min_nanosec){
-        mod_data->min_nanosec = nanosec;
-    }
-
-    // see if we should add module frame to output buffer
-    // - the quabo position of the new packet is already filled in module buf
-    // - or bytes/pixel is different (should never happen)
-    // - or time threshold is exceeded
-    //
-    bool do_write = false;
-    if (mod_data->quabos_bitmap & quabo_bit) {
-        //printf("bit already set: %d %d\n", mod_data->quabos_bitmap, quabo_bit);
-        do_write = true;
-    } else if (mod_data->mod_head.bits_per_pixel != bits_per_pixel) {
-        //printf("new bits_per_pixel %d %d\n", mod_data->mod_head.bits_per_pixel, bits_per_pixel);
-        do_write = true;
-    } else if (mod_data->max_nanosec - mod_data->min_nanosec > NANOSEC_THRESHOLD) {
-        //printf("elapsed time %d %d\n", mod_data->max_nanosec, mod_data->min_nanosec);
-        do_write = true;
-    }
-    if (do_write) {    
-        // A module frame is now final.
-        // do long pulse finding or other stuff here.
-        //
-        // process_frame(mod_data);
-
-        write_frame_to_out_buffer(mod_data, out_block);
-
-        // clear module frame buffer
-        mod_data->clear();
-        mod_data->max_nanosec = nanosec;
-        mod_data->min_nanosec = nanosec;
-    }
-
-    // copy rotated quabo image to module image
-    //
-    if (bytes_per_pixel == 1) {
-        void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
-        quabo8_to_module8_copy(
-            p,
-            quabo_num,
-            mod_data->data
-        );
     } else {
+        //--------------Process packet as a PH 256 image--------------
+        //
+        if (!group_ph_frames) {
+            // Store header metadata
+            ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+            ph_data->ph_head.group_ph_frames = group_ph_frames; 
+            // copy packet header 
+            // Note: when grouping is disabled, all headers are stored at
+            // index 0 of the packet header array for this block
+            //
+            ph_data->ph_head.pkt_head[0] = in_block->header.pkt_head[pktIndex];
+ 
+            // rotate the image and copy to first 512 bytes of the data array in ph_data.
+            //
+            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+            quabo16_to_quabo16_copy(
+                p,
+                quabo_num,
+                ph_data->data
+            );
+            write_ph_to_out_buffer(ph_data, out_block);
+
+            // clear PH frame buffer
+            ph_data->clear();
+            ph_data->max_nanosec = nanosec;
+            ph_data->min_nanosec = nanosec;
+            return;
+        }
+        //--------------Process packet as part of a PH 1024 image-------------- 
+        //
+        
+        // set min/max times of quabo PH 256 pixel images in PH 1024 pixel image
+        //
+        if (ph_data->quabos_bitmap == 0){
+            // no quabo images yet.
+            // set both the upper and lower limit to current time
+            //
+            ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+            ph_data->ph_head.group_ph_frames = group_ph_frames;
+            ph_data->max_nanosec = nanosec;
+            ph_data->min_nanosec = nanosec;
+        } else if (nanosec > ph_data->max_nanosec){
+            ph_data->max_nanosec = nanosec;
+        } else if (nanosec < ph_data->min_nanosec){
+            ph_data->min_nanosec = nanosec;
+        }
+
+        // see if we should add PH 1024 frame to output buffer
+        // - the quabo position of the new packet is already filled in pulse-height buf
+        // - or time threshold is exceeded
+        //
+        bool do_write = false;
+        if (ph_data->quabos_bitmap & quabo_bit) {
+            //printf("bit already set: %d %d\n", mod_data->quabos_bitmap, quabo_bit);
+            do_write = true;
+        } else if (ph_data->max_nanosec - ph_data->min_nanosec > PH_NANOSEC_THRESHOLD) {
+            //printf("elapsed time %d %d\n", mod_data->max_nanosec, mod_data->min_nanosec);
+            do_write = true;
+        }
+        if (do_write) {    
+            // A PH 1024 frame is now final.
+
+            write_ph_to_out_buffer(ph_data, out_block);
+
+            // clear PH frame buffer
+            ph_data->clear();
+            ph_data->max_nanosec = nanosec;
+            ph_data->min_nanosec = nanosec;
+        }
+
+        // copy rotated quabo image to PH 1024 image
+        //
         void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
         quabo16_to_module16_copy(
             p,
             quabo_num,
-            mod_data->data
+            ph_data->data
         );
-    }
-    
-    // copy the header
-    //
-    mod_data->mod_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
+        
+        // copy the header
+        //
+        ph_data->ph_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
 
-    // Mark the quabo slot as taken
-    //
-    mod_data->quabos_bitmap |= quabo_bit;
-    mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-    mod_data->mod_head.bits_per_pixel = bits_per_pixel;
+        // Mark the quabo slot as taken
+        //
+        ph_data->quabos_bitmap |= quabo_bit;
+        ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+        ph_data->ph_head.group_ph_frames = group_ph_frames; 
+    }
 }
 
 
@@ -198,6 +294,11 @@ quabo_info_t* quabo_info_t_new(){
 //
 static MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
+//array of pointers to module PH images
+//
+static PH_IMAGE_BUFFER* PHmoduleInd[MAX_MODULE_INDEX] = {NULL};
+
+
 // Initialization function
 // is called once when the thread is created
 //
@@ -216,6 +317,14 @@ static int init(hashpipe_thread_args_t * args){
     hgets(st.buf, "CONFIG", STR_BUFFER_SIZE, config_location);
     printf("Config Location: %s\n", config_location);
     FILE *modConfig_file = fopen(config_location, "r");
+
+    // Fetch user input for whether to PH frames are to be grouped.
+    hgeti4(st.buf, "GROUPPHFRAMES", &group_ph_frames);
+    if (group_ph_frames) {
+        printf("Group frames is %i (True). Hashpipe will group incoming PH frames.\n", group_ph_frames);
+    } else {
+        printf("Group frames is %i (False). Hashpipe will not group incoming PH frames.\n", group_ph_frames);
+    }
 
     char fbuf[100];
     char cbuf;
@@ -236,7 +345,14 @@ static int init(hashpipe_thread_args_t * args){
             if (fscanf(modConfig_file, "%u\n", &modName) == 1){
                 if (moduleInd[modName] == NULL){
                     moduleInd[modName] = new MODULE_IMAGE_BUFFER();
-                    fprintf(stdout, "Created Module: %u.%u-%u\n", 
+                    fprintf(stdout, "Created Module (Image mode): %u.%u-%u\n", 
+                        (unsigned int) (modName << 2)/0x100,
+                        (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3
+                    );
+                }
+                if (PHmoduleInd[modName] == NULL){
+                    PHmoduleInd[modName] = new PH_IMAGE_BUFFER();
+                    fprintf(stdout, "Created Module (Pulse-height): %u.%u-%u\n", 
                         (unsigned int) (modName << 2)/0x100,
                         (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3
                     );
@@ -336,7 +452,7 @@ static void *run(hashpipe_thread_args_t * args){
 
         // Resetting the values in the new output block
         db_out->block[curblock_out].header.n_img_module = 0;
-        db_out->block[curblock_out].header.n_coinc_img = 0;
+        db_out->block[curblock_out].header.n_ph_img = 0;
         db_out->block[curblock_out].header.INTSIG = db_in->block[curblock_in].header.INTSIG;
         INTSIG = db_in->block[curblock_in].header.INTSIG;
 
@@ -353,6 +469,7 @@ static void *run(hashpipe_thread_args_t * args){
 
             storeData(
                 moduleInd[moduleNum],
+                PHmoduleInd[moduleNum],
                 &(db_in->block[curblock_in]),
                 &(db_out->block[curblock_out]),
                 i

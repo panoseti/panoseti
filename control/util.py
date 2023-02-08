@@ -2,11 +2,11 @@
 
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
-import netifaces
+import netifaces, json
 
 #-------------- DEFAULTS ---------------
 
-default_max_file_size_mb = 1000
+default_max_file_size_mb = 0        # no limit
 
 #-------------- FILE NAMES ---------------
 
@@ -22,7 +22,10 @@ hk_symlink= 'hk'
 hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
-run_complete_file = 'run_complete'
+# files written by stop.py
+recording_ended_filename = 'recording_ended'
+collect_complete_filename = 'collect_complete'
+run_complete_filename = 'run_complete'
 
 hk_recorder_name = './store_redis_data.py'
 
@@ -71,7 +74,7 @@ def local_ip():
     raise Exception("can't get local IP")
 
 def ip_addr_str_to_bytes(ip_addr_str):
-    pieces = ip_addr_str.split('.')
+    pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
         raise Exception('bad IP addr %s'%ip_addr_str)
     bytes = bytearray(4)
@@ -87,12 +90,11 @@ def ip_addr_str_to_bytes(ip_addr_str):
 def ping(ip_addr):
     return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
 
-# compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
-#
-def ip_addr_to_module_id(ip_addr_str):
-    pieces = ip_addr_str.split('.')
-    n = int(pieces[3]) + 256*int(pieces[2])
-    return (n>>2)&255
+def mac_addr_str(bytes):
+    s = ['']*6
+    for i in range(6):
+        s[i] = hex(bytes[i])[2:]
+    return ':'.join(s)
 
 #-------------- BINARY DATA ---------------
 
@@ -104,13 +106,6 @@ def print_binary(data):
 
 #-------------- QUABO OPS ---------------
 
-# given module base IP address, return IP addr of quabo i
-#
-def quabo_ip_addr(base, i):
-    x = base.split('.')
-    x[3] = str(int(x[3])+i)
-    return '.'.join(x)
-
 # get the UID of quabo i in a given module
 #
 def quabo_uid(module, quabo_uids, i):
@@ -119,7 +114,7 @@ def quabo_uid(module, quabo_uids, i):
             if m['ip_addr'] == module['ip_addr']:
                 q = m['quabos'][i]
                 return q['uid']
-    raise Exception("no such module")
+    raise Exception("no module %s found; run get_uids.py"%module['ip_addr'])
 
 # see if quabo is alive by seeing if we got its UID
 #
@@ -129,12 +124,26 @@ def is_quabo_alive(module, quabo_uids, i):
 # is quabo new or old hardware version, as specified in obs_config?
 # can be specified as either string or array of 4 strings
 #
+'''
 def is_quabo_old_version(module, i):
     v = module['quabo_version']
     if isinstance(v, list):
         v = v[i]
     return v == 'qfp'
-
+'''
+def is_quabo_old_version(module, i, quabo_uids, quabo_info):
+    domes = quabo_uids['domes']
+    for dome in domes:
+        modules = dome['modules']
+        for m in modules:
+            if m['ip_addr'] == module['ip_addr']:
+                uid = m['quabos'][i]['uid']
+    try:
+        v = quabo_info[uid]['board_version']
+    except:
+        print('uid: %s can\'t be found in quabo_info.json'%uid)
+        return
+    return v == 'qfp'
 #-------------- RECORDING ---------------
 
 def start_daemon(prog):
@@ -191,6 +200,9 @@ def start_hk_recorder(daq_config, run_name):
         
 # Start high-voltage updater daemon
 def start_hv_updater():
+    if is_hv_updater_running():
+        print('hv_updater.py is already running')
+        return
     try:
         subprocess.Popen([hv_updater_name])
     except:
@@ -200,6 +212,9 @@ def start_hv_updater():
 
 # Start module temperature monitor daemon.
 def start_module_temp_monitor():
+    if is_module_temp_monitor_running():
+        print('module_temp_monitor.py is already running')
+        return
     try:
         subprocess.Popen([module_temp_monitor_name])
     except:
@@ -211,7 +226,7 @@ def start_module_temp_monitor():
 def write_run_name(daq_config, run_name):
     with open(run_name_file, 'w') as f:
         f.write(run_name)
-    if os.path.exists(run_symlink):
+    if os.path.lexists(run_symlink):
         os.unlink(run_symlink)
     run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
     os.symlink(run_dir, run_symlink, True)
@@ -296,7 +311,7 @@ def write_log(msg):
         f.write('%s: %s: %s'%(__main__.__file__, now, msg))
         f.close()
     except:
-        f = fopen('log.txt', 'a')
+        f = open('log.txt', 'a')
 
 def disk_usage(dir):
     x = 0
@@ -304,9 +319,53 @@ def disk_usage(dir):
         x += os.path.getsize('%s/%s'%(dir, f))
     return x
 
-def free_space():
-    total, used, free = shutil.disk_usage('.')
+def free_space(path):
+    total, used, free = shutil.disk_usage(os.path.realpath(path))
     return free
+
+# estimate bytes per second per module for a given data config
+def daq_bytes_per_sec_per_module(data_config):
+    img_json_header_size = 600
+    ph_json_header_size = 150
+    x = 0
+
+    # hk.pff
+    x += 2000 + 800*4
+
+    if 'image' in data_config:
+        image = data_config['image']
+        fps = 1e6/image['integration_time_usec']
+        if image['quabo_sample_size'] == 8:
+            bpf = 1
+        else:
+            bpf = 2
+        x += fps*(1024*bpf + img_json_header_size)
+    if 'pulse_height' in data_config:
+        # assume one PH event per sec per quabo
+        ph_per_sec = 1
+        x += ph_per_sec*(4*(256*2+ph_json_header_size))
+    return x
+
+def get_daq_node_status(node):
+    x = subprocess.run(['ssh',
+        '%s@%s'%(node['username'], node['ip_addr']),
+        'cd %s; ./status_daq.py'%(node['data_dir']),
+        ],
+        stdout = subprocess.PIPE
+    )
+    if x=='':
+        raise Exception("can't talk to DAQ node")
+    y = x.stdout.decode()
+    return json.loads(y)
+
+#-------------- functions only for DAQ nodes ---------------
+
+def daq_get_run_name():
+    if os.path.exists(daq_run_name_filename):
+        with open(daq_run_name_filename) as f:
+            return f.read().strip()
+    return None
+
 
 #-------------- WR and GPS---------------
 
