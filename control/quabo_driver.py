@@ -555,10 +555,11 @@ class QUABO:
     #
     def make_trigger_mask_cmd(self, config, cmd):
         for tag, val in config.items():
-            if(tag.startwith('CHANMASK')):
+            if(tag.startswith('CHANMASK')):
                 ch = tag.split('_')[1]
-                for j in range(8): 
-                    cmd[4+ch*8+j] == (val>>j) & 0xff 
+                ch = int(ch)
+                for j in range(4): 
+                    cmd[4+ch*4+j] = (val>>j*8) & 0xff 
 
     # given a config dictionary, make a goe mask config command
     #

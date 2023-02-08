@@ -1,13 +1,13 @@
 {
-    "run_type": "engineering",
-    "image": {
-        "integration_time_usec": 1000
-    },
+    "run_type": "eng",
+    "gain": 60,
     "max_file_size_mb": 0,
     "pulse_height": {
-        "ph_threshold": 2,
+        "pe_threshold": 50,
         "any_trigger": {
             "group_ph_frames": 0
-        }
+        },
+        "two_pixel_trigger": 0,
+        "three_pixel_trigger": 0
     }
 }

@@ -3,7 +3,7 @@
 
 *Begin MAROC PARAMS
 SMALL_DAC=0,0,0,0
-DAC1=210,210,210,210
+DAC1=510,510,510,510
 D1_D2=0,0,0,0
 
 *These are the Half Bipolar Fast Shaper parameters
@@ -331,7 +331,7 @@ HV_3 = 48700
 *ACQMODE =0x02 for IM MODE
 *ACQMODE =0x11 for PH MODE, no BL subtract
 *ACQMODE =0x00 for using the MONitor SMA, without the readout disturbing things
-ACQMODE = 0x02
+ACQMODE = 0x01
 
 ACQINT = 9      *frame interval for IMage mode, x1us
 HOLD1 = 0       *time after trigger that hold1 is asserted, x5ns, 0 to 15
@@ -342,9 +342,9 @@ HOLD2 = 0       *time after trigger that hold1 is asserted, x5ns, 0 to 15
 *MONCHAN: SET TO 69 for normal data-taking;
 * set to N+2 to look at fast shaper of channel N on MON SMA
 MONCHAN = 69
-STIMON = 1
-STIM_LEVEL = 32  *0 to 255
-STIM_RATE = 2
+STIMON = 0
+STIM_LEVEL = 255  *0 to 255
+STIM_RATE = 0
 
 *CHANNEL MASK BITS
 *EACH bit of each 32b CHANMASK word, when 1, disables one trigger channel
@@ -368,8 +368,8 @@ CHANMASK_8 = 0x155
 * The above settings are used for cherenkov experiments searching for extended sources
 * 0x3, ph event will be triggered by 1 or more pixels, which is used for astrophysics/seti experiments searching for point sources
 * This is the default status
-GOEMASK = 0x1
+GOEMASK = 0x3
 
 FLASH_RATE = 7
-FLASH_LEVEL = 31
+FLASH_LEVEL = 0
 FLASH_WIDTH = 15
