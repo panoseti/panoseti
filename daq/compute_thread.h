@@ -44,7 +44,7 @@ struct PH_IMAGE_BUFFER {
 struct CIRCULAR_PH_IMAGE_BUFFER {
     PH_IMAGE_BUFFER* buf[CIRCULAR_PH_BUFFER_LENGTH];
     int oldest_img_ind;
-    int current_img_ind;
+    int newest_img_ind;
     CIRCULAR_PH_IMAGE_BUFFER() {
         oldest_img_ind = 0;
         newest_img_ind = 0;
