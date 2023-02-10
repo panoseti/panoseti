@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -196,11 +197,10 @@ void storeData(
         ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         ph_data->ph_head.group_ph_frames = group_ph_frames; 
         // copy packet header 
-        // Note: when grouping is disabled, all headers are stored at
-        // index 0 of the packet header array for this block
+        //      - Note: when grouping is disabled, all headers are stored at index 0 of 
+        //      the packet header array for this block.
         //
         ph_data->ph_head.pkt_head[0] = in_block->header.pkt_head[pktIndex];
-
         // rotate the image and copy to first 512 bytes of the data array in ph_data.
         //
         void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
@@ -209,6 +209,7 @@ void storeData(
             quabo_num,
             ph_data->data
         );
+
         write_ph_to_out_buffer(ph_data, out_block);
 
         // clear PH frame buffer
@@ -220,15 +221,24 @@ void storeData(
 
     //--------------Process packet as part of a PH 1024 image-------------- 
     //
+    // This routine assumes that, in any module, at least one packet from each PH trigger
+    // always arrives before every packet of all future PH triggers. Consequently,
+    // the images in the circular buffer are chronologically ordered from oldest to newest
+    // anytrig readout.
 
-    PH_IMAGE_BUFFER* ph_data;
-    int ph_buf_ind = ph_data_buffer->oldest_img_ind;
-p
-    while (ph_buf_ind <= ph_data_buffer->newest_img_ind) {
-        ph_data = ph_data_buffer[ph_buf_ind]
-        // see if we should add PH 1024 frame to output buffer
-        bool do_write = false;
-        if (ph_data->quabos_bitmap == 0){
+    // For a given packet, iterate through the PH image buffers for this module, oldest to newest.
+    // For each buffer, determine if the packet should be added.
+    // The loop only exits when the packet is added to a buffer.
+    // Only the oldest buffered image in the circular buffer is ever written to file.
+    //
+    int currind = ph_data_buffer->oldest_img_ind;
+    PH_IMAGE_BUFFER* ph_data = ph_data_buffer->buf[currind];
+    while (true) {
+        // decide how to process the packet.
+        bool do_write, add_packet_to_buffer, packet_belongs_in_current_buffer;
+        do_write = add_packet_to_buffer = packet_belongs_in_current_buffer = false;
+
+        if (ph_data->quabos_bitmap == 0) {
             // no quabo images yet.
             // set both the upper and lower limit to current time
             //
@@ -236,52 +246,78 @@ p
             ph_data->ph_head.group_ph_frames = group_ph_frames;
             ph_data->max_nanosec = nanosec;
             ph_data->min_nanosec = nanosec;
-        } else if (ph_buf_ind == ph_data_buffer->oldest_img_ind && ph_data->quabos_bitmap == 0xf) {
-            // the ph1024 image at this index is complete and the oldest in the buffer.
-            // we write the image.
-            do_write = true;
-        } else if (ph_data->quabos_bitmap & quabo_bit) {
-            // the quabo position of the new packet is already filled in pulse-height buf
-        } else {
-            // the ph1024 frame is missing the quabo number common to this packet.
-            //  - Now: check if the absolute time difference between this packet and the min/max
-            //  packet nanosecond in this buffer is less than the threshold.
-            //      - If this is the case, update the min/max nanosecond times in this PH1024 buffer.
+            add_packet_to_buffer = packet_belongs_in_current_buffer = true;
+        } else if (ph_data->quabos_bitmap == 0xf && currind == ph_data_buffer->oldest_img_ind) {
+            // the PH1024 image in this buffer contains all 4 quabo frames and is oldest among the 
+            // buffered images for this module
             //
-            bool add_packet_to_buffer = false;
+            do_write = packet_belongs_in_current_buffer = true;
+        } else if (ph_data->quabos_bitmap & quabo_bit == 0) {
+            // the PH1024 buffer is missing a frame from the quabo that created this packet.
+            //  - Check if the time difference between this packet and the min or max packet nanosecond
+            //  in this buffer is less than the ph nanosecond grouping threshold.
+            //      - If the time difference is within the threshold
+            //          - update the min/max nanosecond times for this PH1024 buffer and add the packet to the buffer.
+            //      - Otherwise, examine the next buffer
+            //
             if (nanosec > ph_data->max_nanosec && nanosec - ph_data->min_nanosec <= PH_NANOSEC_THRESHOLD){
                 ph_data->max_nanosec = nanosec;
-                add_packet_to_buffer = true;
+                add_packet_to_buffer = packet_belongs_in_current_buffer = true;
             } else if (nanosec < ph_data->min_nanosec && ph_data->max_nanosec - nanosec <= PH_NANOSEC_THRESHOLD){
                 ph_data->min_nanosec = nanosec;
-                add_packet_to_buffer = true;
+                add_packet_to_buffer = packet_belongs_in_current_buffer = true;
             }
+        }
 
-            if (add_packet_to_buffer) {
-                // copy rotated quabo image to PH 1024 image
-                //
-                void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
-                quabo16_to_module16_copy(
-                    p,
-                    quabo_num,
-                    ph_data->data
-                );
-                
-                // copy the header
-                //
-                ph_data->ph_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
-
-                // Mark the quabo slot as taken
-                //
-                ph_data->quabos_bitmap |= quabo_bit;
-                ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-                ph_data->ph_head.group_ph_frames = group_ph_frames;
-                return;
+        if (!packet_belongs_in_current_buffer) {
+            // The packet is not part of the image being accumulated in the current buffer.
+            //  - If the current buffer is the newest buffer, the next buffer is either empty or the oldest.
+            //      - If the next buffer is empty (i.e. quabos_bitmap == 0)
+            //          - increment newest_img_ind and add this packet to the buffer.
+            //      - Otherwise,
+            //          - flush the oldest frame and add the packet to the now-empty buffer.
+            //  - Otherwise:
+            //      - increment currind and continue to the next loop.
+            //
+            int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
+            if (currind == ph_data_buf->newest_img_ind) {
+                if (ph_data_buf->buf[nextind]->quabos_bitmap == 0) {
+                    ph_data_buf->newest_img_ind = nextind;
+                } else if (next_ind == ph_data_buf->oldest_img_ind) {
+                    do_write = true;
+                } else {
+                    fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);
+                }
             }
+            currind = nextind;
+            ph_data = ph_data_buffer->buf[nextind];
+        }
+
+        if (add_packet_to_buffer) {
+            // rotate and copy quabo image to PH 1024 image
+            //
+            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+            quabo16_to_module16_copy(
+                p,
+                quabo_num,
+                ph_data->data
+            );
+            
+            // copy the header
+            //
+            ph_data->ph_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
+
+            // Mark the quabo slot as taken
+            //
+            ph_data->quabos_bitmap |= quabo_bit;
+            ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+            ph_data->ph_head.group_ph_frames = group_ph_frames;
+            return;
         }
 
         if (do_write) {    
             // A PH 1024 frame is now final.
+            //
 
             write_ph_to_out_buffer(ph_data, out_block);
 
@@ -289,17 +325,7 @@ p
             ph_data->clear();
             ph_data->max_nanosec = nanosec;
             ph_data->min_nanosec = nanosec;
-
-            if (ph_data_buffer->oldest_img_ind == ph_data_buffer->newest_img_ind) {
-                //TODO: Handle cascade writes, where the next buffer is also complete
-                // several blocks may get written all at once.
-                // Do this loop in this part of the routine. It will simplify the code.
-            }
         }
-        // TODO: increment the buffer index
-        // TODO: handle the case where the current packet begins a new ph frame. 
-        // TODO: handle the case where we must force a write if the circular buffer is
-        //       full and the packet doesn't fit in any of the partial buffers.
     }
 }
 
