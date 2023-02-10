@@ -70,11 +70,11 @@ void write_ph_to_out_buffer(
 // If needed, copy module image to output buffer first
 //
 void storeData(
-    MODULE_IMAGE_BUFFER* mod_data,        // module image
-    PH_IMAGE_BUFFER* ph_data,             // PH 1024 image
-    HSD_input_block_t* in_block,    // block in input buffer (quabo images)
-    HSD_output_block_t* out_block,  // block in output buffer (module images)
-    int pktIndex                    // index in input buffer
+    MODULE_IMAGE_BUFFER* mod_data,                  // module image
+    CIRCULAR_PH_IMAGE_BUFFER* ph_data_buffer,       // circular PH image buffer
+    HSD_input_block_t* in_block,                    // block in input buffer (quabo images)
+    HSD_output_block_t* out_block,                  // block in output buffer (module images)
+    int pktIndex                                    // index in input buffer
         // TODO: pass the packet header rather than the index
 ){
     int bits_per_pixel, bytes_per_pixel;
@@ -183,38 +183,49 @@ void storeData(
         mod_data->quabos_bitmap |= quabo_bit;
         mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         mod_data->mod_head.bits_per_pixel = bits_per_pixel;
-    } else {
+        return;
+    } 
+
+    if (!group_ph_frames) {
         //--------------Process packet as a PH 256 image--------------
         //
-        if (!group_ph_frames) {
-            // Store header metadata
-            ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-            ph_data->ph_head.group_ph_frames = group_ph_frames; 
-            // copy packet header 
-            // Note: when grouping is disabled, all headers are stored at
-            // index 0 of the packet header array for this block
-            //
-            ph_data->ph_head.pkt_head[0] = in_block->header.pkt_head[pktIndex];
- 
-            // rotate the image and copy to first 512 bytes of the data array in ph_data.
-            //
-            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
-            quabo16_to_quabo16_copy(
-                p,
-                quabo_num,
-                ph_data->data
-            );
-            write_ph_to_out_buffer(ph_data, out_block);
 
-            // clear PH frame buffer
-            ph_data->clear();
-            ph_data->max_nanosec = nanosec;
-            ph_data->min_nanosec = nanosec;
-            return;
-        }
-        //--------------Process packet as part of a PH 1024 image-------------- 
+        // Use only the PH_IMAGE_BUFFER at index 0. No need to accumulate frames.
+        PH_IMAGE_BUFFER* ph_data = ph_data_buffer->buf[0]
+        // Store header metadata
+        ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+        ph_data->ph_head.group_ph_frames = group_ph_frames; 
+        // copy packet header 
+        // Note: when grouping is disabled, all headers are stored at
+        // index 0 of the packet header array for this block
         //
-        
+        ph_data->ph_head.pkt_head[0] = in_block->header.pkt_head[pktIndex];
+
+        // rotate the image and copy to first 512 bytes of the data array in ph_data.
+        //
+        void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+        quabo16_to_quabo16_copy(
+            p,
+            quabo_num,
+            ph_data->data
+        );
+        write_ph_to_out_buffer(ph_data, out_block);
+
+        // clear PH frame buffer
+        ph_data->clear();
+        ph_data->max_nanosec = nanosec;
+        ph_data->min_nanosec = nanosec;
+        return;
+    }
+
+    //--------------Process packet as part of a PH 1024 image-------------- 
+    //
+
+    PH_IMAGE_BUFFER* ph_data;
+    int ph_buf_ind = ph_data_buffer->oldest_img_ind;
+
+    while (ph_buf_ind != ph_data_buffer->newest_img_ind) {
+        ph_data = ph_data_buffer[ph_buf_ind]
         // set min/max times of quabo PH 256 pixel images in PH 1024 pixel image
         //
         if (ph_data->quabos_bitmap == 0){
@@ -225,6 +236,13 @@ void storeData(
             ph_data->ph_head.group_ph_frames = group_ph_frames;
             ph_data->max_nanosec = nanosec;
             ph_data->min_nanosec = nanosec;
+        } else if (ph_buf_ind == ph_data_buffer->oldest_img_ind && ph_data->quabos_bitmap == 0xf) {
+            // the ph1024 image is complete and the oldest in the buffer.
+            // we now write the image.
+            
+
+        } else if (ph_data->quabos_bitmap & quabo_bit) {
+
         } else if (nanosec > ph_data->max_nanosec){
             ph_data->max_nanosec = nanosec;
         } else if (nanosec < ph_data->min_nanosec){
@@ -294,9 +312,9 @@ quabo_info_t* quabo_info_t_new(){
 //
 static MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
-//array of pointers to module PH images
+// array of pointers to an array of PH image buffers.
 //
-static PH_IMAGE_BUFFER* PHmoduleInd[MAX_MODULE_INDEX] = {NULL};
+static CIRCULAR_PH_IMAGE_BUFFER* PHmoduleInd[MAX_MODULE_INDEX] = {NULL};
 
 
 // Initialization function
@@ -351,7 +369,7 @@ static int init(hashpipe_thread_args_t * args){
                     );
                 }
                 if (PHmoduleInd[modName] == NULL){
-                    PHmoduleInd[modName] = new PH_IMAGE_BUFFER();
+                    PHmoduleInd[modName] = new CIRCULAR_PH_IMAGE_BUFFER();
                     fprintf(stdout, "Created Module (Pulse-height): %u.%u-%u\n", 
                         (unsigned int) (modName << 2)/0x100,
                         (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3

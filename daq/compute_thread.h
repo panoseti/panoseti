@@ -5,7 +5,7 @@
 
 // structure used by the compute thread to accumulate a module image;
 // only some of the quabo sub-images may be present
-
+//
 struct MODULE_IMAGE_BUFFER {
     uint32_t max_nanosec;       // min/max arrival times of quabo images
     uint32_t min_nanosec;
@@ -22,11 +22,12 @@ struct MODULE_IMAGE_BUFFER {
 
 // structure used by the compute thread to accumulate a pulse-height image;
 // only some of the quabo sub-images may be present
-
+//
 struct PH_IMAGE_BUFFER {
     uint32_t max_nanosec;       // min/max arrival times of quabo images
     uint32_t min_nanosec;
     char quabos_bitmap;         // bitmap for which quabos images are present
+    char
     PH_IMAGE_HEADER ph_head;   // packet headers stored here
     uint8_t data[BYTES_PER_PH_FRAME];
     PH_IMAGE_BUFFER() {
@@ -36,4 +37,18 @@ struct PH_IMAGE_BUFFER {
         memset(this, 0, sizeof(*this));
     }
 };
+
+// structure used by the compute thread to accumulate multiple pulse-height images
+// in a circular buffer of PH_IMAGE_BUFFERs.
+// 
+struct CIRCULAR_PH_IMAGE_BUFFER {
+    PH_IMAGE_BUFFER* buf[CIRCULAR_PH_BUFFER_LENGTH];
+    int oldest_img_ind;
+    int current_img_ind;
+    CIRCULAR_PH_IMAGE_BUFFER() {
+        oldest_img_ind = 0;
+        newest_img_ind = 0;
+        //TODO: do we need to call the constructors for elements of buf here?
+    }
+}
 #endif
