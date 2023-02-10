@@ -173,7 +173,7 @@ void storeData(
                 quabo_num,
                 mod_data->data
             );
-        }a
+        }
         
         // copy the header
         //
@@ -192,7 +192,7 @@ void storeData(
         //
 
         // Use only the PH_IMAGE_BUFFER at index 0. No need to accumulate frames.
-        PH_IMAGE_BUFFER* ph_data = ph_data_buffer->buf[0]
+        PH_IMAGE_BUFFER* ph_data = ph_data_buffer->buf[0];
         // Store header metadata
         ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         ph_data->ph_head.group_ph_frames = group_ph_frames; 
@@ -280,10 +280,10 @@ void storeData(
             //      - increment currind and continue to the next loop.
             //
             int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
-            if (currind == ph_data_buf->newest_img_ind) {
+            if (currind == ph_data_buffer->newest_img_ind) {
                 if (ph_data_buf->buf[nextind]->quabos_bitmap == 0) {
                     ph_data_buf->newest_img_ind = nextind;
-                } else if (next_ind == ph_data_buf->oldest_img_ind) {
+                } else if (nextind == ph_data_buf->oldest_img_ind) {
                     do_write = true;
                 } else {
                     fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);

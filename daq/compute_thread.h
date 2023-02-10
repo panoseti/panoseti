@@ -27,7 +27,6 @@ struct PH_IMAGE_BUFFER {
     uint32_t max_nanosec;       // min/max arrival times of quabo images
     uint32_t min_nanosec;
     char quabos_bitmap;         // bitmap for which quabos images are present
-    char
     PH_IMAGE_HEADER ph_head;   // packet headers stored here
     uint8_t data[BYTES_PER_PH_FRAME];
     PH_IMAGE_BUFFER() {
@@ -50,5 +49,5 @@ struct CIRCULAR_PH_IMAGE_BUFFER {
         newest_img_ind = 0;
         //TODO: do we need to call the constructors for elements of buf here?
     }
-}
+};
 #endif
