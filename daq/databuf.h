@@ -46,8 +46,16 @@
 
 // Pulse Height data values
 
-#define BYTES_PER_PH_FRAME      QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
-    // Size of PH image allocated in buffer
+#define BYTES_PER_PH_FRAME          QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+    // Size of PH image allocated in one PH buffer
+#define CIRCULAR_PH_BUFFER_LENGTH   2
+    // Number of PH image buffers per module.
+    // At high data rates and/or a large number of modules, the assumption
+    // that the four packets from a module readout always arrive before any of the 
+    // packets from the next readout from that module may break down.
+    // For example, in observing runs with high PH data rates, we found instances 
+    // where two consecutive packets came from the same quabo and module at different readouts.
+    // To address this possibility, we need multiple image accumulation buffers.
 
 // the Block Sizes for the Input and Ouput Buffers
 
