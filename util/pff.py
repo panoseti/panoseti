@@ -7,7 +7,7 @@ import struct, os, time, datetime, json
 #
 def read_json(f):
     c = f.read(1)
-    if c == '':
+    if c ==b'':
         return None
     if c != b'{':
         raise Exception('read_json(): expected {, got', c)
