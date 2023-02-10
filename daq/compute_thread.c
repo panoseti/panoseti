@@ -281,9 +281,9 @@ void storeData(
             //
             int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
             if (currind == ph_data_buffer->newest_img_ind) {
-                if (ph_data_buf->buf[nextind]->quabos_bitmap == 0) {
-                    ph_data_buf->newest_img_ind = nextind;
-                } else if (nextind == ph_data_buf->oldest_img_ind) {
+                if (ph_data_buffer->buf[nextind]->quabos_bitmap == 0) {
+                    ph_data_buffer->newest_img_ind = nextind;
+                } else if (nextind == ph_data_buffer->oldest_img_ind) {
                     do_write = true;
                 } else {
                     fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);
