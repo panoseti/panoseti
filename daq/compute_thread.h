@@ -42,12 +42,13 @@ struct PH_IMAGE_BUFFER {
 // 
 struct CIRCULAR_PH_IMAGE_BUFFER {
     PH_IMAGE_BUFFER* buf[CIRCULAR_PH_BUFFER_LENGTH];
-    int oldest_img_ind;
-    int newest_img_ind;
+    int oldest_ind;
+    int newest_ind;
     CIRCULAR_PH_IMAGE_BUFFER() {
-        oldest_img_ind = 0;
-        newest_img_ind = 0;
-        //TODO: do we need to call the constructors for elements of buf here?
+        oldest_ind = newest_ind = 0;
+        for (int i = 0; i < CIRCULAR_PH_BUFFER_LENGTH; i++) {
+            buf[i] = new PH_IMAGE_BUFFER();
+        }
     }
 };
 #endif

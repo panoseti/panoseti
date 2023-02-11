@@ -66,13 +66,35 @@ void write_ph_to_out_buffer(
     out_block->header.n_ph_img++;
 }
 
+// flush at least the oldest buffer in a cirular ph buffer.
+//  - the function will continue flushing complete images in subsequent buffers
+//  until it reaches a buffer with an empty or incomplete image.
+void write_from_oldest_buffer(
+    CIRCULAR_PH_IMAGE_BUFFER* ph_data_buf, 
+    HSD_output_block_t* out_block 
+) {
+    PH_IMAGE_BUFFER* ph_data = ph_data_buf->buf[ph_data_buf->oldest_ind]; // oldest buffer
+    do {
+        // write the oldest buffered image, even if it is incomplete.
+        //
+        write_ph_to_out_buffer(ph_data, out_block);
+
+        // clear the PH frame buffer
+        //
+        ph_data->clear();
+        if (ph_data_buf->oldest_ind != ph_data_buf->newest_ind) {
+            ph_data_buf->oldest_ind = (ph_data_buf->oldest_ind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
+            ph_data = ph_data_buf->buf[ph_data_buf->oldest_ind];
+        }
+    } while (ph_data->quabos_bitmap == 0xf);
+}
 
 // copy quabo image to module image buffer
 // If needed, copy module image to output buffer first
 //
 void storeData(
     MODULE_IMAGE_BUFFER* mod_data,                  // module image
-    CIRCULAR_PH_IMAGE_BUFFER* ph_data_buffer,       // circular PH image buffer
+    CIRCULAR_PH_IMAGE_BUFFER* ph_data_buf,       // circular PH image buffer
     HSD_input_block_t* in_block,                    // block in input buffer (quabo images)
     HSD_output_block_t* out_block,                  // block in output buffer (module images)
     int pktIndex                                    // index in input buffer
@@ -90,7 +112,7 @@ void storeData(
     if (pkt_head->acq_mode == 0x1){
         //PH Mode
         is_ph_packet = true;
-    } else if(pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
+    } else if (pkt_head->acq_mode == 0x2 || pkt_head->acq_mode == 0x3){
         //16 bit Imaging mode
         bytes_per_pixel = 2;
         bits_per_pixel = 16;
@@ -192,8 +214,10 @@ void storeData(
         //
 
         // Use only the PH_IMAGE_BUFFER at index 0. No need to accumulate frames.
-        PH_IMAGE_BUFFER* ph_data = ph_data_buffer->buf[0];
+        //
+        PH_IMAGE_BUFFER* ph_data = ph_data_buf->buf[0];
         // Store header metadata
+        //
         ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
         ph_data->ph_head.group_ph_frames = group_ph_frames; 
         // copy packet header 
@@ -209,10 +233,10 @@ void storeData(
             quabo_num,
             ph_data->data
         );
-
         write_ph_to_out_buffer(ph_data, out_block);
 
         // clear PH frame buffer
+        //
         ph_data->clear();
         ph_data->max_nanosec = nanosec;
         ph_data->min_nanosec = nanosec;
@@ -231,70 +255,55 @@ void storeData(
     // The loop only exits when the packet is added to a buffer.
     // Only the oldest buffered image in the circular buffer is ever written to file.
     //
-    int currind = ph_data_buffer->oldest_img_ind;
-    PH_IMAGE_BUFFER* ph_data = ph_data_buffer->buf[currind];
+    int currind = ph_data_buf->oldest_ind;
+    PH_IMAGE_BUFFER* ph_data = ph_data_buf->buf[currind]; // "current buffer" for the loop below.
     while (true) {
         // decide how to process the packet.
-        bool do_write, add_packet_to_buffer, packet_belongs_in_current_buffer;
-        do_write = add_packet_to_buffer = packet_belongs_in_current_buffer = false;
+        //
+        bool add_packet_to_current_buffer = true;;
 
         if (ph_data->quabos_bitmap == 0) {
-            // no quabo images yet.
-            // set both the upper and lower limit to current time
+            // empty buffer (quabo images yet).
+            // add the packet to current buffer and set both the upper and lower limit to current time
             //
             ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
             ph_data->ph_head.group_ph_frames = group_ph_frames;
             ph_data->max_nanosec = nanosec;
             ph_data->min_nanosec = nanosec;
-            add_packet_to_buffer = packet_belongs_in_current_buffer = true;
-        } else if (ph_data->quabos_bitmap == 0xf && currind == ph_data_buffer->oldest_img_ind) {
-            // the PH1024 image in this buffer contains all 4 quabo frames and is oldest among the 
-            // buffered images for this module
+            add_packet_to_current_buffer = true;
+        } else if (ph_data->quabos_bitmap == 0xf) {
+            // the current buffer contains a complete image (has 4 quabo frames).
+            // the packet does not belong in this buffer.
+            // if the current buffer is not the oldest, examine the next buffer.
             //
-            do_write = packet_belongs_in_current_buffer = true;
+            if (currind == ph_data_buf->oldest_ind){
+                // the current buffer is also oldest.
+                // write from the oldest buffer, then set currind to the new oldest buffer index.
+                // updating currind is necessary because additional complete images may be written.
+                //
+                write_from_oldest_buffer(ph_data_buf, out_block);
+                currind = ph_data_buf->oldest_ind;
+                continue;
+            }
         } else if (ph_data->quabos_bitmap & quabo_bit == 0) {
-            // the PH1024 buffer is missing a frame from the quabo that created this packet.
+            // the current buffer is missing a frame from the same quabo that created this packet.
             //  - Check if the time difference between this packet and the min or max packet nanosecond
-            //  in this buffer is less than the ph nanosecond grouping threshold.
-            //      - If the time difference is within the threshold
-            //          - update the min/max nanosecond times for this PH1024 buffer and add the packet to the buffer.
-            //      - Otherwise, examine the next buffer
+            //  in the current buffer is less than the ph nanosecond grouping threshold.
+            //  - If the time difference is within the threshold, update the min/max nanosecond times 
+            //  for the current buffer and add the packet.
+            //  - Otherwise, examine the next buffer.
             //
             if (nanosec > ph_data->max_nanosec && nanosec - ph_data->min_nanosec <= PH_NANOSEC_THRESHOLD){
                 ph_data->max_nanosec = nanosec;
-                add_packet_to_buffer = packet_belongs_in_current_buffer = true;
+                add_packet_to_current_buffer = true; 
             } else if (nanosec < ph_data->min_nanosec && ph_data->max_nanosec - nanosec <= PH_NANOSEC_THRESHOLD){
                 ph_data->min_nanosec = nanosec;
-                add_packet_to_buffer = packet_belongs_in_current_buffer = true;
+                add_packet_to_current_buffer = true;
             }
         }
 
-        if (!packet_belongs_in_current_buffer) {
-            // The packet is not part of the image being accumulated in the current buffer.
-            //  - If the current buffer is the newest buffer, the next buffer is either empty or the oldest.
-            //      - If the next buffer is empty (i.e. quabos_bitmap == 0)
-            //          - increment newest_img_ind and add this packet to the buffer.
-            //      - Otherwise,
-            //          - flush the oldest frame and add the packet to the now-empty buffer.
-            //  - Otherwise:
-            //      - increment currind and continue to the next loop.
-            //
-            int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
-            if (currind == ph_data_buffer->newest_img_ind) {
-                if (ph_data_buffer->buf[nextind]->quabos_bitmap == 0) {
-                    ph_data_buffer->newest_img_ind = nextind;
-                } else if (nextind == ph_data_buffer->oldest_img_ind) {
-                    do_write = true;
-                } else {
-                    fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);
-                }
-            }
-            currind = nextind;
-            ph_data = ph_data_buffer->buf[nextind];
-        }
-
-        if (add_packet_to_buffer) {
-            // rotate and copy quabo image to PH 1024 image
+        if (add_packet_to_current_buffer) {
+            // rotate and copy quabo image to the current PH 1024 image buffer
             //
             void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
             quabo16_to_module16_copy(
@@ -313,22 +322,28 @@ void storeData(
             ph_data->ph_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
             ph_data->ph_head.group_ph_frames = group_ph_frames;
             return;
-        }
-
-        if (do_write) {    
-            // A PH 1024 frame is now final.
+        } else {
+            // The packet is not part of the image being accumulated in the current buffer.
+            //  - If the current buffer is the newest buffer, the next buffer is either empty or the oldest.
+            //      - If the next buffer is empty, increment newest_ind and add this packet to the buffer.
+            //      - If the next buffer is oldest, flush from the oldest buffer, and set currind to the new oldest buffer.
+            //  In any case, examine the next buffer.
             //
-
-            write_ph_to_out_buffer(ph_data, out_block);
-
-            // clear PH frame buffer
-            ph_data->clear();
-            ph_data->max_nanosec = nanosec;
-            ph_data->min_nanosec = nanosec;
+            int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
+            if (currind == ph_data_buf->newest_ind) {
+                if (ph_data_buf->buf[nextind]->quabos_bitmap == 0) {
+                    ph_data_buf->newest_ind = nextind;
+                } else if (nextind == ph_data_buf->oldest_ind) {
+                    write_from_oldest_buffer(ph_data_buf, out_block);
+                } else {
+                    fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);
+                }
+            }
+            currind = nextind;
+            ph_data = ph_data_buf->buf[nextind];
         }
     }
 }
-
 
 // quabo info for determining packet loss
 //
