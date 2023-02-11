@@ -246,13 +246,13 @@ void storeData(
     //--------------Process packet as part of a PH 1024 image-------------- 
     //
     // This routine assumes that, in any module, at least one packet from each PH trigger
-    // always arrives before every packet of all future PH triggers. Consequently,
-    // the images in the circular buffer are chronologically ordered from oldest to newest
-    // anytrig readout.
+    // always arrives before every packet of all future PH triggers. If this is true,
+    // the images in the circular buffer will be chronologically ordered from oldest to newest any-trigger readout
+    //
 
-    // For a given packet, iterate through the PH image buffers for this module, oldest to newest.
+    // Iterate through the PH image buffers in ph_data_buf, oldest to newest.
     // For each buffer, determine if the packet should be added.
-    // The loop only exits when the packet is added to a buffer.
+    // The loop exits when the packet is added to a buffer.
     // Only the oldest buffered image in the circular buffer is ever written to file.
     //
     int currind = ph_data_buf->oldest_ind;
@@ -260,7 +260,7 @@ void storeData(
     while (true) {
         // decide how to process the packet.
         //
-        bool add_packet_to_current_buffer = true;;
+        bool add_packet_to_current_buffer = false;
 
         if (ph_data->quabos_bitmap == 0) {
             // empty buffer (quabo images yet).
@@ -272,14 +272,14 @@ void storeData(
             ph_data->min_nanosec = nanosec;
             add_packet_to_current_buffer = true;
         } else if (ph_data->quabos_bitmap == 0xf) {
-            // the current buffer contains a complete image (has 4 quabo frames).
-            // the packet does not belong in this buffer.
+            // the current buffer contains a complete image (has 4 quabo frames),
+            // which the packet is not part of.
             // if the current buffer is not the oldest, examine the next buffer.
             //
             if (currind == ph_data_buf->oldest_ind){
                 // the current buffer is also oldest.
-                // write from the oldest buffer, then set currind to the new oldest buffer index.
-                // updating currind is necessary because additional complete images may be written.
+                // write at least the oldest buffer, then set currind to the new oldest buffer index.
+                // updating currind is necessary because several complete images may also be written.
                 //
                 write_from_oldest_buffer(ph_data_buf, out_block);
                 currind = ph_data_buf->oldest_ind;
@@ -311,11 +311,9 @@ void storeData(
                 quabo_num,
                 ph_data->data
             );
-            
             // copy the header
             //
             ph_data->ph_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
-
             // Mark the quabo slot as taken
             //
             ph_data->quabos_bitmap |= quabo_bit;
@@ -323,11 +321,10 @@ void storeData(
             ph_data->ph_head.group_ph_frames = group_ph_frames;
             return;
         } else {
-            // The packet is not part of the image being accumulated in the current buffer.
+            // The packet is not part of the image in current buffer.
             //  - If the current buffer is the newest buffer, the next buffer is either empty or the oldest.
-            //      - If the next buffer is empty, increment newest_ind and add this packet to the buffer.
-            //      - If the next buffer is oldest, flush from the oldest buffer, and set currind to the new oldest buffer.
-            //  In any case, examine the next buffer.
+            //      - If the next buffer is empty, add the packet to that buffer.
+            //      - If the next buffer is oldest, write it because the circular buffer is full.
             //
             int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
             if (currind == ph_data_buf->newest_ind) {
@@ -335,6 +332,17 @@ void storeData(
                     ph_data_buf->newest_ind = nextind;
                 } else if (nextind == ph_data_buf->oldest_ind) {
                     write_from_oldest_buffer(ph_data_buf, out_block);
+                    // if the current buffer is not empty after the write, examine the next buffer.
+                    //
+                    if (ph_data->quabos_bitmap == 0) {
+                        // the image buffer at currind is now empty.
+                        // this may occur if every non-empty buffer besides the oldest buffer contained a 
+                        // complete image, resulting in the entire circular buffer being cleared in a write cascade.
+                        // in this case, we should not advance newest_ind.
+                        // instead, add the packet to the current buffer.
+                        //
+                        continue;
+                    }
                 } else {
                     fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);
                 }
