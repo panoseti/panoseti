@@ -4,8 +4,8 @@
 # See usage() for options.
 # see matlab/initq.m, startq*.py
 
-firmware_silver_qfp = 'quabo_0200_264489B3.bin'
-firmware_silver_bga = 'quabo_0201_2644962F.bin'
+firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
+firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess, time, datetime, json
