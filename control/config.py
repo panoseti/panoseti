@@ -241,6 +241,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
 def do_mask_config(modules, data_config, verbose=False):
     qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
     do_ph = 'pulse_height' in data_config.keys()
+    qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
         qc_dict['CHANMASK_'+str(i)] = int(qc_dict['CHANMASK_'+str(i)], 16)
     if do_ph:
@@ -252,7 +253,6 @@ def do_mask_config(modules, data_config, verbose=False):
             qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | (0x100)
         
         # config GOEMASK for 2/3 pixel_trigger
-        qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
         # if we use 3 pixel trigger, GOEMASK should be 1, CHANMASK_8 should be 0x0ff or 0x1ff
         if 'three_pixel_trigger' in data_config['pulse_height']:
             if data_config['pulse_height']['three_pixel_trigger']:
@@ -263,7 +263,7 @@ def do_mask_config(modules, data_config, verbose=False):
             if data_config['pulse_height']['two_pixel_trigger']:
                 qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
                 qc_dict['GOEMASK'] = qc_dict['GOEMASK'] & 0x2
-        
+
     for module in modules:
         for i in range(4):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
