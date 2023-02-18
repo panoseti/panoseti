@@ -48,14 +48,12 @@
 
 #define BYTES_PER_PH_FRAME          QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
     // Size of PH image allocated in one PH buffer
-#define CIRCULAR_PH_BUFFER_LENGTH   2
-    // Number of PH image buffers per module.
-    // At high data rates and/or a large number of modules, the assumption
-    // that the four packets from a module readout always arrive before any of the 
-    // packets from the next readout from that module may break down.
-    // For example, in observing runs with high PH data rates, we found instances 
-    // where two consecutive packets came from the same quabo and module at different readouts.
-    // To address this possibility, we need multiple image accumulation buffers.
+#define CIRCULAR_PH_BUFFER_LENGTH   2 
+    // Number of PH image buffers per module. NOTE: this number should always be at least one. 
+    // Higher values give the compute thread greater tolerance for packet delays before it must write partial PH1024 images.
+    // Increasing this parameter is recommended if your configuration has a high data rate because packets from distinct 
+    // any-trigger readouts are more likely to arrive out of chronological order.
+    // 
 
 // the Block Sizes for the Input and Ouput Buffers
 
