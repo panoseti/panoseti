@@ -42,10 +42,10 @@ struct PH_IMAGE_BUFFER {
 // 
 struct CIRCULAR_PH_IMAGE_BUFFER {
     PH_IMAGE_BUFFER* buf[CIRCULAR_PH_BUFFER_LENGTH];
-    int oldest_ind;
-    int newest_ind;
+    int first, last;
+    uint64_t partial_image_writes = 0;
     CIRCULAR_PH_IMAGE_BUFFER() {
-        oldest_ind = newest_ind = 0;
+        first = last = 0;
         for (int i = 0; i < CIRCULAR_PH_BUFFER_LENGTH; i++) {
             buf[i] = new PH_IMAGE_BUFFER();
         }
