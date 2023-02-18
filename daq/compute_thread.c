@@ -78,7 +78,6 @@ void write_from_oldest_ph1024_buffer(
         // write the oldest buffered image, even if it is incomplete.
         //
         write_ph_to_out_buffer(ph_data, out_block);
-
         // clear the PH frame buffer
         //
         ph_data->clear();
@@ -259,10 +258,14 @@ void storeData(
     PH_IMAGE_BUFFER* ph_data; // "current buffer" for the loop below.
     while (true) {
         ph_data = ph_data_buf->buf[currind];
+        fprintf(stdout, "\nnew loop: currind=%d, quabos_bitmap=%d\n", currind, ph_data_buf->buf[currind]->quabos_bitmap);
+        fprintf(stdout, "ph_data->quabos_bitmap & quabo_bitmap=%d\n", ph_data->quabos_bitmap & quabo_bit);
+        fprintf(stdout, "quabo_num=%d\n", quabo_num);
         // decide how to process the packet.
         //
         bool add_packet_to_current_buffer = false;
         if (ph_data->quabos_bitmap == 0) {
+            fprintf(stdout, "empty buffer\n");
             // empty buffer (quabo images yet).
             // add the packet to current buffer and set both the upper and lower limit to current time
             //
@@ -272,6 +275,7 @@ void storeData(
             ph_data->max_nanosec = nanosec;
             ph_data->min_nanosec = nanosec;
         } else if (ph_data->quabos_bitmap == 0xf) {
+            fprintf(stdout, "current buffer has complete image\n");
             // the current buffer contains a complete image (has 4 quabo frames),
             // which the packet is not part of.
             // if the current buffer is not the oldest, examine the next buffer.
@@ -285,7 +289,7 @@ void storeData(
                 currind = ph_data_buf->oldest_ind;
                 continue;
             }
-        } else if (ph_data->quabos_bitmap & quabo_bit == 0) {
+        } else if ((ph_data->quabos_bitmap & quabo_bit) == 0) {
             // the current buffer is missing a frame from the same quabo that created this packet.
             //  - Check if the time difference between this packet and the min or max packet nanosecond
             //  in the current buffer is less than the ph nanosecond grouping threshold.
@@ -293,18 +297,25 @@ void storeData(
             //  for the current buffer and add the packet.
             //  - Otherwise, examine the next buffer.
             //
-            if (nanosec > ph_data->max_nanosec && nanosec - ph_data->min_nanosec <= PH_NANOSEC_THRESHOLD){
-                add_packet_to_current_buffer = true; 
-                ph_data->max_nanosec = nanosec;
-            } else if (nanosec < ph_data->min_nanosec && ph_data->max_nanosec - nanosec <= PH_NANOSEC_THRESHOLD){
+            fprintf(stdout, "nanosec=%d, max_nanosec=%d, min_nanosec=%d\n", nanosec, ph_data->max_nanosec, ph_data->min_nanosec);
+            fprintf(stdout, "nanosec-max_nanosec=%d, nanosec-min_nanosec=%d\n", nanosec- ph_data->max_nanosec, nanosec-ph_data->min_nanosec);
+            if (nanosec >= ph_data->min_nanosec && nanosec - ph_data->min_nanosec <= PH_NANOSEC_THRESHOLD) {
+                if (nanosec > ph_data->max_nanosec) {
+                    ph_data->max_nanosec = nanosec;
+                }
                 add_packet_to_current_buffer = true;
-                ph_data->min_nanosec = nanosec;
+            } else if (nanosec < ph_data->max_nanosec && ph_data->max_nanosec - nanosec <= PH_NANOSEC_THRESHOLD) {
+                if (nanosec < ph_data->min_nanosec) {
+                    ph_data->min_nanosec = nanosec;
+                }
+                add_packet_to_current_buffer = true;
             }
         }
 
         if (add_packet_to_current_buffer) {
             // rotate and copy quabo image to the current PH 1024 image buffer
             //
+            fprintf(stdout, "do add\n");
             void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
             quabo16_to_module16_copy(
                 p,
@@ -325,14 +336,20 @@ void storeData(
             //      - If the next buffer is oldest, write it because the circular buffer is full.
             //
             int nextind = (currind + 1) % CIRCULAR_PH_BUFFER_LENGTH;
+            bool set_newest_ind_to_nextind = false;
             if (currind == ph_data_buf->newest_ind) {
                 if (ph_data_buf->buf[nextind]->quabos_bitmap == 0) {
-                    ph_data_buf->newest_ind = nextind;
+                        fprintf(stdout, "no add, branch 1\n");
+                    set_newest_ind_to_nextind = true;
+                    //ph_data_buf->newest_ind = nextind;
                 } else if (nextind == ph_data_buf->oldest_ind) {
+                        fprintf(stdout, "no add, branch 2\n");
                     write_from_oldest_ph1024_buffer(ph_data_buf, out_block);
                     // if the current buffer is not empty after the write, examine the next buffer.
                     //
                     if (ph_data->quabos_bitmap == 0) {
+                        fprintf(stdout, "no add, branch 3\n");
+
                         // the image buffer at currind is now empty.
                         // this may occur if every non-empty buffer besides the oldest buffer contained a 
                         // complete image.
@@ -340,9 +357,15 @@ void storeData(
                         //
                         continue;
                     }
+                    set_newest_ind_to_nextind = true;
                 } else {
-                    fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d", currind, nextind);
+                fprintf(stdout, "currind=%d, quabos_bitmap=%d\n", currind, ph_data_buf->buf[currind]->quabos_bitmap);
+                    fprintf(stdout, "strange ph circular buffer behavior. currind=%d, nextind=%d\n", currind, nextind);
                 }
+            }
+            fprintf(stdout, "no add, update currind to %d\n", nextind);
+            if (set_newest_ind_to_nextind) {
+                ph_data_buf->newest_ind = nextind;
             }
             currind = nextind;
         }
@@ -539,6 +562,7 @@ static void *run(hashpipe_thread_args_t * args){
                 fprintf(stderr, "Packet skipping\n");
                 continue;
             }
+            printf("calc block, index = %d\n", i);
 
             storeData(
                 moduleInd[moduleNum],
@@ -547,6 +571,8 @@ static void *run(hashpipe_thread_args_t * args){
                 &(db_out->block[curblock_out]),
                 i
             );
+            
+            fprintf(stdout, "\n\n");
             
             //------------End CALCULATION BLOCK----------------
 
