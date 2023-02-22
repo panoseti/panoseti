@@ -77,7 +77,7 @@ void write_from_first_ph1024_buffer(
     if (ph_data->quabos_bitmap != 0xf) {
         fprintf(stdout, "Wrote partial PH1024 image:\n");
         fprintf(stdout, "%s\n\n", (ph_data->ph_head.toString()).c_str());
-        ph_data_buf->partial_image_writes += 1;
+        ph_data_buf->partial_PH1024_image_write = true;
     }
     do {
         // write the first buffered image, even if it is incomplete.
@@ -487,6 +487,9 @@ static void *run(hashpipe_thread_args_t * args){
     int total_lost_pkts = 0;
     int current_pkt_lost;
     
+    // Counter for partial PH1024 image writes
+    int total_partial_PH1024_image_writes = 0;
+    
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
         hputi4(st.buf, "COMBLKIN", curblock_in);
@@ -555,10 +558,10 @@ static void *run(hashpipe_thread_args_t * args){
             
             //------------End CALCULATION BLOCK----------------
 
-            // Display number of partial PH1024 image writes in status.
-            hashpipe_status_lock_safe(&st);
-           	hputi8(st.buf, "PTRLPH1024OUT", PHmoduleInd[moduleNum]->partial_image_writes);
-            hashpipe_status_unlock_safe(&st);
+            if (PHmoduleInd[moduleNum]->partial_PH1024_image_write) {
+                total_partial_PH1024_image_writes += 1;
+                PHmoduleInd[moduleNum]->partial_PH1024_image_write = false;
+            }
 
             // Find the packet number and compute the loss of packets
             // by using packet number
@@ -632,6 +635,11 @@ static void *run(hashpipe_thread_args_t * args){
             hputi4(st.buf, "M7PKTLST", currentQuabo->lost_pkts[7]);
             hashpipe_status_unlock_safe(&st);
         }
+
+        // Display number of partial PH1024 image writes in status.
+        hashpipe_status_lock_safe(&st);
+        hputi4(st.buf, "PTRLPH1024OUT", total_partial_PH1024_image_writes);
+        hashpipe_status_unlock_safe(&st);
 
         // Check for cancel
         pthread_testcancel();

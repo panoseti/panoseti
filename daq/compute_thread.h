@@ -43,7 +43,7 @@ struct PH_IMAGE_BUFFER {
 struct CIRCULAR_PH_IMAGE_BUFFER {
     PH_IMAGE_BUFFER* buf[CIRCULAR_PH_BUFFER_LENGTH];
     int first, last;
-    uint64_t partial_image_writes = 0;
+    bool partial_PH1024_image_write = false;
     CIRCULAR_PH_IMAGE_BUFFER() {
         first = last = 0;
         for (int i = 0; i < CIRCULAR_PH_BUFFER_LENGTH; i++) {
