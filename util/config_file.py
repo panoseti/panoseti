@@ -13,11 +13,11 @@ detector_info_filename = '../quabos/detector_info.json'
 quabo_calib_filename = '../quabos/quabo_calib_%s.json'
 pointing_filename = 'pointing.json'
 quabo_ph_baseline_filename = 'quabo_ph_baseline.json'
-
+sw_info_filename = 'sw_info.json'
 # list of config files copied to data dir
 config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename,
-    quabo_uids_filename, quabo_ph_baseline_filename
+    quabo_uids_filename, quabo_ph_baseline_filename, sw_info_filename
 ]
 
 # compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
