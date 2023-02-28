@@ -324,6 +324,7 @@ bool daylight = true;
 bool presentdirection=true;   //FA
 bool directionnotestablished=true;
 
+bool movemore = false;
 /* ************************************************************* */
 // These are used in the interrupt service routine so they may need be volatile
 static bool AtLimitCW   = false;            // current state of limit switch CW
@@ -659,6 +660,7 @@ void loop()
     long moveangle = 720;
     if(desireddirection==true) moveangle=-moveangle;
     stepper.startRotate(moveangle);
+    movemore = true;
   }
   presentdirection=desireddirection;                          // now that we have possibly reversed,
                                                               // our present direction is the desired one
@@ -669,23 +671,22 @@ void loop()
 // limit switch actions
     if(presentdirection==true && digitalRead(LimitCW_Pin)) {  // check if the shutter is open or not
       stepper.stop();
-      
-      stepper.enable();
-      long deg = -10;
-      stepper.startRotate(deg);
-      stepper.stop();
-      
       debug1("stopped at CW limit\n");
+      if(movemore==true)
+      {
+        movemore=false;
+        debug1("moving a bit more...");
+        stepper.enable();
+        long deg = -90;
+        long r_steps = stepper.startRotate(deg);
+        while(r_steps>0) 
+          r_steps = stepper.startRotate(deg);
+        stepper.stop();
+      }
     }
     if(presentdirection==false && digitalRead(LimitCCW_Pin)) { // check if the shutter is closed or not
       stepper.stop();
-      /*
-      stepper.enable();
-      long deg = 10;
-      stepper.startRotate(deg);
-      stepper.stop();
-      */ 
-//      stepper.disable();                                    // should we disable motor in the shutter closed state?  Dunno.
+      stepper.disable();                                    // should we disable motor in the shutter closed state?  Dunno.
 // I choose to leave motor enabled, because we've turned on the feature that reduces motor current when stopped, so power consumption is low.
       debug1("stopped at CCW limit\n");
     }
