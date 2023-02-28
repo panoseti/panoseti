@@ -667,20 +667,24 @@ void loop()
 
   if(wait_time_micros >0) {                                   // if motor is moving, we might need to stop it at limit switches
 // limit switch actions
-    if(presentdirection==true && digitalRead(LimitCW_Pin)) {
+    if(presentdirection==true && digitalRead(LimitCW_Pin)) {  // check if the shutter is open or not
       stepper.stop();
+      
       stepper.enable();
-      long deg = 10;
+      long deg = -10;
       stepper.startRotate(deg);
       stepper.stop();
+      
       debug1("stopped at CW limit\n");
     }
-    if(presentdirection==false && digitalRead(LimitCCW_Pin)) {
+    if(presentdirection==false && digitalRead(LimitCCW_Pin)) { // check if the shutter is closed or not
       stepper.stop();
+      /*
       stepper.enable();
       long deg = 10;
       stepper.startRotate(deg);
-      stepper.stop(); 
+      stepper.stop();
+      */ 
 //      stepper.disable();                                    // should we disable motor in the shutter closed state?  Dunno.
 // I choose to leave motor enabled, because we've turned on the feature that reduces motor current when stopped, so power consumption is low.
       debug1("stopped at CCW limit\n");
