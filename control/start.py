@@ -22,6 +22,7 @@
 
 import os, sys, traceback, shutil, time
 import util, file_xfer, quabo_driver, stop, session_stop
+from sw_info import get_sw_info
 
 sys.path.insert(0, '../util')
 
@@ -262,6 +263,8 @@ def start_run(
     if not ph_baseline_file_ok():
         return False
 
+    # get git commit info, and write the info into sw_info.json
+    get_sw_info()
     # if head node is also DAQ node, make sure data dirs are the same
     #
     for node in daq_config['daq_nodes']:
