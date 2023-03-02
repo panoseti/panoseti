@@ -47,6 +47,35 @@ void write_frame_to_out_buffer(
     out_block->header.n_img_module++;
 }
 
+// Write at least the first buffer in a given cirular ph buffer.
+// continue writing complete images in subsequent buffers
+// until a buffer with an empty or incomplete image is reached.
+void write_from_first_module_image_buffer(
+    CIRCULAR_MODULE_IMAGE_BUFFER* mod_data_buf, 
+    HSD_output_block_t* out_block
+) {
+    MODULE_IMAGE_BUFFER* mod_data = mod_data_buf->buf[mod_data_buf->first];
+    if (mod_data->quabos_bitmap != 0xf) {
+        fprintf(stdout, "Wrote partial module image:\n");
+        fprintf(stdout, "%s\n\n", (mod_data->mod_head.toString()).c_str());
+        mod_data_buf->partial_module_image_write = true;
+    }
+    do {
+        // write the first buffered image, even if it is incomplete.
+        //
+        
+        write_frame_to_out_buffer(mod_data, out_block);
+        // clear the module image buffer
+        //
+        mod_data->clear();
+        if (mod_data_buf->first != mod_data_buf->last) {
+            mod_data_buf->first = (mod_data_buf->first + 1) % CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH;
+            mod_data = mod_data_buf->buf[mod_data_buf->first];
+        }
+    } while (mod_data->quabos_bitmap == 0xf);
+}
+
+
 // Copy a pulse height image to the output buffer.
 //
 void write_ph_to_out_buffer(
@@ -98,8 +127,8 @@ void write_from_first_ph1024_buffer(
 // If needed, copy module image to output buffer first
 //
 void storeData(
-    MODULE_IMAGE_BUFFER* mod_data,                  // module image
-    CIRCULAR_PH_IMAGE_BUFFER* ph_data_buf,       // circular PH image buffer
+    CIRCULAR_MODULE_IMAGE_BUFFER* mod_data_buf,     // circular module image
+    CIRCULAR_PH_IMAGE_BUFFER* ph_data_buf,          // circular PH image buffer
     HSD_input_block_t* in_block,                    // block in input buffer (quabo images)
     HSD_output_block_t* out_block,                  // block in output buffer (module images)
     int pktIndex                                    // index in input buffer
@@ -137,81 +166,130 @@ void storeData(
     if (!is_ph_packet) {
         //--------------Process packet as part of a module image--------------
         //
-
-        // set min/max times of quabo images in module image
+        // Iterate through the module image buffers in mod_data_buf, first to last.
+        //  - for each buffer, determine if the packet should be added.
+        //  - the loop exits when the packet is added to a buffer.
+        //  - only the first image in the circular buffer is ever written to file.
         //
-        if (mod_data->quabos_bitmap == 0){
-            // no quabo images yet.
-            // set both the upper and lower limit to current time
+        int currind = mod_data_buf->first;
+        MODULE_IMAGE_BUFFER* mod_data; // "current buffer" for the loop below.
+        while (true) {
+            mod_data = mod_data_buf->buf[currind];
+            // see if we should add the packet to the current buffer.
+            // - the quabo position of the packet is already filled in mod_data
+            // - or bytes/pixel is different (should never happen)
+            // - or time threshold is exceeded
+            // - or the image in mod_data is complete
             //
-            mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-            mod_data->mod_head.bits_per_pixel = bits_per_pixel;
-            mod_data->max_nanosec = nanosec;
-            mod_data->min_nanosec = nanosec;
-        } else if (nanosec > mod_data->max_nanosec){
-            mod_data->max_nanosec = nanosec;
-        } else if (nanosec < mod_data->min_nanosec){
-            mod_data->min_nanosec = nanosec;
-        }
+            bool add_packet_to_current_buffer = false;
+            if (mod_data->quabos_bitmap == 0) {
+                // empty buffer (quabo images yet).
+                // add the packet to current buffer and set both the upper and lower limit to current time
+                //
+                add_packet_to_current_buffer = true;
+                mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+                mod_data->mod_head.bits_per_pixel = bits_per_pixel;
+                mod_data->max_nanosec = nanosec;
+                mod_data->min_nanosec = nanosec;
+            } else if (mod_data->mod_head.bits_per_pixel != bits_per_pixel) {
+                // the bits per pixel of the packet do not match the bits per pixel of the image in the current buffer
+                // write an error message, then continue to the next buffer.
+                //
+                fprintf(stderr, "new bits_per_pixel %d %d\n", mod_data->mod_head.bits_per_pixel, bits_per_pixel);
+            } else if ((mod_data->quabos_bitmap & quabo_bit) == 0) {
+                // the current buffer is missing a frame from the same quabo that created this packet.
+                //  - Check if the time difference between this packet and the min or max packet nanosecond
+                //  in the current buffer is less than the ph nanosecond grouping threshold.
+                //  - If the time difference is within the threshold, update the min/max nanosecond times 
+                //  for the current buffer and add the packet.
+                //  - Otherwise, examine the next buffer.
+                //
+                if (nanosec >= mod_data->min_nanosec && nanosec - mod_data->min_nanosec <= IMG_NANOSEC_THRESHOLD) {
+                    if (nanosec > mod_data->max_nanosec) {
+                        mod_data->max_nanosec = nanosec;
+                    }
+                    add_packet_to_current_buffer = true;
+                } else if (nanosec <= mod_data->max_nanosec && mod_data->max_nanosec - nanosec <= IMG_NANOSEC_THRESHOLD) {
+                    if (nanosec < mod_data->min_nanosec) {
+                        mod_data->min_nanosec = nanosec;
+                    }
+                    add_packet_to_current_buffer = true;
+                }
+            } else if (mod_data->quabos_bitmap == 0xf) {
+                // the current buffer contains a complete image (has 4 quabo frames), which the packet is not part of.
+                // if the current buffer is not the first, examine the next buffer.
+                //
+                if (currind == mod_data_buf->first){
+                    // the current buffer is also first.
+                    // write at least the first buffer, then set currind to the new first buffer index.
+                    // updating currind is necessary because several images could be written.
+                    //
+                    write_from_first_module_image_buffer(mod_data_buf, out_block);
+                    currind = mod_data_buf->first;
+                    continue;
+                }
+            } 
 
-        // see if we should add module frame to output buffer
-        // - the quabo position of the new packet is already filled in module buf
-        // - or bytes/pixel is different (should never happen)
-        // - or time threshold is exceeded
-        //
-        bool do_write = false;
-        if (mod_data->quabos_bitmap & quabo_bit) {
-            //printf("bit already set: %d %d\n", mod_data->quabos_bitmap, quabo_bit);
-            do_write = true;
-        } else if (mod_data->mod_head.bits_per_pixel != bits_per_pixel) {
-            //printf("new bits_per_pixel %d %d\n", mod_data->mod_head.bits_per_pixel, bits_per_pixel);
-            do_write = true;
-        } else if (mod_data->max_nanosec - mod_data->min_nanosec > IMG_NANOSEC_THRESHOLD) {
-            //printf("elapsed time %d %d\n", mod_data->max_nanosec, mod_data->min_nanosec);
-            do_write = true;
+            if (add_packet_to_current_buffer) {
+                // copy rotated quabo image to module image
+                //
+                if (bytes_per_pixel == 1) {
+                    void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+                    quabo8_to_module8_copy(
+                        p,
+                        quabo_num,
+                        mod_data->data
+                    );
+                } else {
+                    void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
+                    quabo16_to_module16_copy(
+                        p,
+                        quabo_num,
+                        mod_data->data
+                    );
+                }
+                // copy the header
+                //
+                mod_data->mod_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
+                // Mark the quabo slot as taken
+                //
+                mod_data->quabos_bitmap |= quabo_bit;
+                mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
+                return;
+            } else {
+                // The packet is not part of the image in current buffer.
+                //  - If the current buffer is the last buffer, the next buffer is either empty or first.
+                //      - If the next buffer is empty, add the packet to it.
+                //      - If the next buffer is first, write the image in it because the circular buffer is full.
+                //
+                int nextind = (currind + 1) % CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH;
+                bool set_last_to_nextind = false;
+                if (currind == mod_data_buf->last) {
+                    if (mod_data_buf->buf[nextind]->quabos_bitmap == 0) {
+                        set_last_to_nextind = true;
+                    } else if (nextind == mod_data_buf->first) {
+                        write_from_first_module_image_buffer(mod_data_buf, out_block);
+                        // if the current buffer is not empty after the write, examine the next buffer.
+                        //
+                        if (mod_data->quabos_bitmap == 0) {
+                            // the image buffer at currind is now empty.
+                            // this may occur if every non-empty buffer besides the first buffer contained a complete image.
+                            // add the packet to the current buffer. 
+                            //
+                            continue;
+                        }
+                        set_last_to_nextind = true;
+                    } else {
+                        fprintf(stdout, "currind=%d, quabos_bitmap=%d\n", currind, mod_data_buf->buf[currind]->quabos_bitmap);
+                        fprintf(stdout, "strange circular module image buffer behavior. currind=%d, nextind=%d\n", currind, nextind);
+                    }
+                }
+                if (set_last_to_nextind) {
+                    mod_data_buf->last = nextind;
+                }
+                currind = nextind;
+            }
         }
-        if (do_write) {    
-            // A module frame is now final.
-            // do long pulse finding or other stuff here.
-            //
-            // process_frame(mod_data);
-
-            write_frame_to_out_buffer(mod_data, out_block);
-            
-            // clear module frame buffer
-            mod_data->clear();
-            mod_data->max_nanosec = nanosec;
-            mod_data->min_nanosec = nanosec;
-        }
-
-        // copy rotated quabo image to module image
-        //
-        if (bytes_per_pixel == 1) {
-            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
-            quabo8_to_module8_copy(
-                p,
-                quabo_num,
-                mod_data->data
-            );
-        } else {
-            void *p = in_block->data_block + (pktIndex*BYTES_PER_PKT_IMAGE);
-            quabo16_to_module16_copy(
-                p,
-                quabo_num,
-                mod_data->data
-            );
-        }
-        
-        // copy the header
-        //
-        mod_data->mod_head.pkt_head[quabo_num] = in_block->header.pkt_head[pktIndex];
-
-        // Mark the quabo slot as taken
-        //
-        mod_data->quabos_bitmap |= quabo_bit;
-        mod_data->mod_head.mod_num = in_block->header.pkt_head[pktIndex].mod_num;
-        mod_data->mod_head.bits_per_pixel = bits_per_pixel;
-        return;
     } 
 
     if (!group_ph_frames) {
@@ -246,11 +324,11 @@ void storeData(
     }
 
     //--------------Process packet as part of a PH 1024 image-------------- 
-
+    //
     // Iterate through the PH image buffers in ph_data_buf, first to last.
     //  - for each buffer, determine if the packet should be added.
     //  - the loop exits when the packet is added to a buffer.
-    //  - tnly the first image in the circular buffer is ever written to file.
+    //  - only the first image in the circular buffer is ever written to file.
     //
     int currind = ph_data_buf->first;
     PH_IMAGE_BUFFER* ph_data; // "current buffer" for the loop below.
@@ -370,7 +448,7 @@ quabo_info_t* quabo_info_t_new(){
 
 // array of pointers to module objects
 //
-static MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
+static CIRCULAR_MODULE_IMAGE_BUFFER* moduleInd[MAX_MODULE_INDEX] = {NULL};
 
 // array of pointers to an array of PH image buffers.
 //
@@ -422,7 +500,7 @@ static int init(hashpipe_thread_args_t * args){
         if (cbuf != '#'){
             if (fscanf(modConfig_file, "%u\n", &modName) == 1){
                 if (moduleInd[modName] == NULL){
-                    moduleInd[modName] = new MODULE_IMAGE_BUFFER();
+                    moduleInd[modName] = new CIRCULAR_MODULE_IMAGE_BUFFER();
                     fprintf(stdout, "Created Module (Image mode): %u.%u-%u\n", 
                         (unsigned int) (modName << 2)/0x100,
                         (modName << 2) % 0x100, ((modName << 2) % 0x100) + 3
@@ -487,8 +565,9 @@ static void *run(hashpipe_thread_args_t * args){
     int total_lost_pkts = 0;
     int current_pkt_lost;
     
-    // Counter for partial PH1024 image writes
+    // Counter for partial image writes
     int total_partial_PH1024_image_writes = 0;
+    int total_partial_module_image_writes = 0;
     
     while(run_threads()){
         hashpipe_status_lock_safe(&st);
@@ -558,6 +637,10 @@ static void *run(hashpipe_thread_args_t * args){
             
             //------------End CALCULATION BLOCK----------------
 
+            if (moduleInd[moduleNum]->partial_module_image_write) {
+                total_partial_module_image_writes += 1;
+                moduleInd[moduleNum]->partial_module_image_write = false;
+            }
             if (PHmoduleInd[moduleNum]->partial_PH1024_image_write) {
                 total_partial_PH1024_image_writes += 1;
                 PHmoduleInd[moduleNum]->partial_PH1024_image_write = false;
@@ -639,6 +722,7 @@ static void *run(hashpipe_thread_args_t * args){
         // Display number of partial PH1024 image writes in status.
         hashpipe_status_lock_safe(&st);
         hputi4(st.buf, "PTRLPH1024OUT", total_partial_PH1024_image_writes);
+        hputi4(st.buf, "PTRLMODIMGOUT", total_partial_module_image_writes);
         hashpipe_status_unlock_safe(&st);
 
         // Check for cancel

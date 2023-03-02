@@ -37,12 +37,13 @@
 
 // Imaging Data Values and characteristics of modules
 
-#define QUABO_PER_MODULE        4
+#define QUABO_PER_MODULE                        4
     // Max Number of Quabos associated with a Module
-#define PIXELS_PER_IMAGE        256
+#define PIXELS_PER_IMAGE                        256
     // Number of pixels for each image data
-#define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+#define BYTES_PER_MODULE_FRAME                  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
     // Size of module image allocated in buffer
+#define CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH     2 
 
 // Pulse Height data values
 

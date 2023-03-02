@@ -20,6 +20,23 @@ struct MODULE_IMAGE_BUFFER {
     }
 };
 
+
+// structure used by the compute thread to accumulate multiple module images
+// in a circular buffer of MODULE_IMAGE_BUFFERs.
+// 
+struct CIRCULAR_MODULE_IMAGE_BUFFER {
+    MODULE_IMAGE_BUFFER* buf[CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH];
+    int first, last;
+    bool partial_module_image_write = false;
+    CIRCULAR_MODULE_IMAGE_BUFFER() {
+        first = last = 0;
+        for (int i = 0; i < CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH; i++) {
+            buf[i] = new MODULE_IMAGE_BUFFER();
+        }
+    }
+};
+
+
 // structure used by the compute thread to accumulate a pulse-height image;
 // only some of the quabo sub-images may be present
 //
