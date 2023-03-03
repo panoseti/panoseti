@@ -10,7 +10,7 @@ def get_sw_info():
     commit_date = repo.head.commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S")
     sw_info={'commit':commit,'author':author,'branch':branch,'commit_date':commit_date}
     with open('sw_info.json','w') as f:
-        json.dump(sw_info, f)
+        json.dump(sw_info, f, indent=4)
 
 if __name__ == '__main__':
     get_sw_info()
