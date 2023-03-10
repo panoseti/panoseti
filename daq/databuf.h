@@ -37,17 +37,24 @@
 
 // Imaging Data Values and characteristics of modules
 
-#define QUABO_PER_MODULE        4
+#define QUABO_PER_MODULE                        4
     // Max Number of Quabos associated with a Module
-#define PIXELS_PER_IMAGE        256
+#define PIXELS_PER_IMAGE                        256
     // Number of pixels for each image data
-#define BYTES_PER_MODULE_FRAME  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+#define BYTES_PER_MODULE_FRAME                  QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
     // Size of module image allocated in buffer
+#define CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH     2 
 
 // Pulse Height data values
 
-#define BYTES_PER_PH_FRAME      QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
-    // Size of PH image allocated in buffer
+#define BYTES_PER_PH_FRAME          QUABO_PER_MODULE*PIXELS_PER_IMAGE*2
+    // Size of PH image allocated in one PH buffer
+#define CIRCULAR_PH_BUFFER_LENGTH   2 
+    // Number of PH image buffers per module. NOTE: this number should always be at least one. 
+    // Higher values give the compute thread greater tolerance for packet delays before it must write partial PH1024 images.
+    // Increasing this parameter is recommended if your configuration has a high data rate because packets from distinct 
+    // any-trigger readouts are more likely to arrive out of chronological order.
+    // 
 
 // the Block Sizes for the Input and Ouput Buffers
 

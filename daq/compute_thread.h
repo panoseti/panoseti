@@ -5,7 +5,7 @@
 
 // structure used by the compute thread to accumulate a module image;
 // only some of the quabo sub-images may be present
-
+//
 struct MODULE_IMAGE_BUFFER {
     uint32_t max_nanosec;       // min/max arrival times of quabo images
     uint32_t min_nanosec;
@@ -20,9 +20,26 @@ struct MODULE_IMAGE_BUFFER {
     }
 };
 
+
+// structure used by the compute thread to accumulate multiple module images
+// in a circular buffer of MODULE_IMAGE_BUFFERs.
+// 
+struct CIRCULAR_MODULE_IMAGE_BUFFER {
+    MODULE_IMAGE_BUFFER* buf[CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH];
+    int first, last;
+    bool partial_module_image_write = false;
+    CIRCULAR_MODULE_IMAGE_BUFFER() {
+        first = last = 0;
+        for (int i = 0; i < CIRCULAR_MODULE_IMAGE_BUFFER_LENGTH; i++) {
+            buf[i] = new MODULE_IMAGE_BUFFER();
+        }
+    }
+};
+
+
 // structure used by the compute thread to accumulate a pulse-height image;
 // only some of the quabo sub-images may be present
-
+//
 struct PH_IMAGE_BUFFER {
     uint32_t max_nanosec;       // min/max arrival times of quabo images
     uint32_t min_nanosec;
@@ -34,6 +51,21 @@ struct PH_IMAGE_BUFFER {
     }
     void clear(){
         memset(this, 0, sizeof(*this));
+    }
+};
+
+// structure used by the compute thread to accumulate multiple pulse-height images
+// in a circular buffer of PH_IMAGE_BUFFERs.
+// 
+struct CIRCULAR_PH_IMAGE_BUFFER {
+    PH_IMAGE_BUFFER* buf[CIRCULAR_PH_BUFFER_LENGTH];
+    int first, last;
+    bool partial_PH1024_image_write = false;
+    CIRCULAR_PH_IMAGE_BUFFER() {
+        first = last = 0;
+        for (int i = 0; i < CIRCULAR_PH_BUFFER_LENGTH; i++) {
+            buf[i] = new PH_IMAGE_BUFFER();
+        }
     }
 };
 #endif
