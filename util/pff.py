@@ -22,14 +22,14 @@ def read_json(f):
         else:
             last_nl = False
         s += c.decode()
-    return s;
+    return s
 
 # returns the image as a list of N numbers
 # see https://docs.python.org/3/library/struct.html
 #
 def read_image(f, img_size, bytes_per_pixel):
     c = f.read(1)
-    if c == '':
+    if c == b'':
         return None
     if c != b'*':
         raise Exception('bad type code')
