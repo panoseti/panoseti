@@ -6,10 +6,6 @@
 require_once("panoseti.inc");
 require_once("analysis.inc");
 
-function truemod($num, $mod) {
-    return ($mod + ($num % $mod)) % $mod;
-}
-
 function arrows_str($vol, $run, $file, $frame) {
     $url = "ph_file_browser.php?vol=$vol&run=$run&file=$file&frame=";
     return sprintf(
@@ -54,7 +50,7 @@ function show_frame_ph1024($data, $arrows, $bytes_pix) {
     echo "</table>";
 }
 
-function get_frame($f, $hs, $frame, $bytes_pix) {
+function get_frame_ph1024($f, $hs, $frame, $bytes_pix) {
     $frame_size = $hs + 1024*$bytes_pix;
     $offset = $frame*$frame_size + $hs;
     if (fseek($f, $offset) < 0) {
@@ -77,8 +73,54 @@ function get_frame($f, $hs, $frame, $bytes_pix) {
     return $y;
 }
 
+function get_frame_ph256($f, $hs, $frame, $bytes_pix) {
+    $frame_size = $hs + 256*$bytes_pix;
+    $offset = $frame*$frame_size + $hs;
+    if (fseek($f, $offset) < 0) {
+        die("no such frame");
+    }
+    $x = fread($f, 256*$bytes_pix);
+    if (strlen($x)==0 ) die("no such frame");
+ 
+    // unpack returns 1-offset array - WTF???
+    // array_merge() changes it to 0-offset
+    //
+    if ($bytes_pix == 1) {
+        $y = array_merge(unpack("C256", $x));
+    } else {
+        $y = array_merge(unpack("S256", $x));
+    }
+    if (!$y) {
+        die("unpack");
+    }
+    return $y;
+}
+
+function show_frame_ph256($data, $arrows, $bytes_pix) {
+    echo "<table>";
+    for ($i=0; $i<16; $i++) {
+        echo "<tr>";
+        for ($j=0; $j<16; $j++) {
+            $v = $data[$i*16+$j];
+            if ($bytes_pix == 2) {
+                $v  >>= 8;
+            }
+            if ($v > 255) $v = 255;
+            $color = sprintf("#%02x%02x%02x", $v, $v, $v);
+            echo sprintf(
+                '<td width=%dpx height=%dpx bgcolor="%s"> </td>',
+                16, 16, $color
+            );
+        }
+        echo "</tr>\n";
+    }
+    echo "<tr><td colspan=16 align=center><br>$arrows</td></tr>\n";
+    echo "</table>";
+}
+
 function main($vol, $run, $file, $frame) {
     $p = parse_pff_name($file);
+    $dp = $p['dp'];
     $bytes_pix = intval($p['bpp']);
     page_head("Pulse-Height");
     echo "<p>Run: <a href=run.php?vol=$vol&name=$run>$run</a>\n";
@@ -87,9 +129,18 @@ function main($vol, $run, $file, $frame) {
     $f = fopen($path, "r");
     $hs = header_size($f);
     echo "<p>Frame: $frame\n";
-    $x = get_frame($f, $hs, $frame, $bytes_pix);
     $as = arrows_str($vol, $run, $file, $frame);
-    show_frame($x, $as, $bytes_pix);
+
+    if ($dp == "ph1024") {
+        $x = get_frame_ph1024($f, $hs, $frame, $bytes_pix);
+        show_frame_ph1024($x, $as, $bytes_pix);
+    } else if ($dp == "ph256") {
+        $x = get_frame_ph256($f, $hs, $frame, $bytes_pix);
+        show_frame_ph256($x, $as, $bytes_pix);
+    } else {
+        echo "Unsupported pulse-height data type.";
+    }
+
     page_tail();
 }
 
