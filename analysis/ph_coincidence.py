@@ -88,7 +88,7 @@ def do_run(vol, run, params, username):
     for f in os.listdir(run_path):
         if not pff.is_pff_file(f): continue
         t = pff.pff_file_type(f)
-        if t == 'ph16':
+        if t in ['ph16', 'ph256', 'ph1024']:
             if bytes_per_pixel and bytes_per_pixel != 2:
                 raise Warning("Ph files with different bytes per pixel found.")
             bytes_per_pixel = 2
