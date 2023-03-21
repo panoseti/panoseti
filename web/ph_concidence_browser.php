@@ -12,7 +12,7 @@ function truemod($num, $mod) {
 }
 
 function arrows_str($vol, $run, $analysis_dir, $module_pair_dir, $module_pair, $num_events, $event) {
-    $url = "ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$module_pair_dir&module_pair=$module_pair&num_events=$num_events&event=";
+    $url = "ph_coincidence_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$module_pair_dir&module_pair=$module_pair&num_events=$num_events&event=";
     if ($num_events > 0) {
         return sprintf(
             '<a class="btn btn-sm btn-primary" href=%s%d><< 100 </a>

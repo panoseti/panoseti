@@ -33,7 +33,7 @@ function show_analysis($vol, $run, $analysis_dir) {
             $module_pair = implode(',', array_slice($matches, 1));
             echo "<h3>Module pair: $module_pair</h3><ul>";
             echo "<ul>
-                <li> <a href=ph_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&module_pair=$module_pair&num_events=$num_events&event=0>Event browser</a>
+                <li> <a href=ph_coincidence_browser.php?vol=$vol&run=$run&analysis_dir=$analysis_dir&module_pair_dir=$mpdir&module_pair=$module_pair&num_events=$num_events&event=0>Event browser</a>
                 ($num_events)
                 </ul>
             ";
