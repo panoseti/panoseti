@@ -5,9 +5,13 @@
         "url": "http://admin:epowerpanoseti@192.168.0.100",
         "quabo_socket": 5
     },
-    "wps_barnard": {
+    "wps_barnard_24V": {
         "url": "http://admin:epowerpanoseti@192.168.0.101",
         "quabo_socket": 1
+    },
+    "wps_barnard_70V": {
+        "url": "http://admin:epowerpanoseti@192.168.0.101",
+        "quabo_socket": 2
     },
     "wr_ip_addr": "192.168.1.254",
     "gps_port": "/dev/ttyUSB0",
