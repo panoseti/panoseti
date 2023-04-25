@@ -14,7 +14,7 @@ quabo_calib_filename = '../quabos/quabo_calib_%s.json'
 pointing_filename = 'pointing.json'
 quabo_ph_baseline_filename = 'quabo_ph_baseline.json'
 sw_info_filename = 'sw_info.json'
-stdout_info_file = 'hphp_stdout_*'
+stdout_info_file = 'hp_stdout_*'
 # list of config files copied to data dir
 config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename,
