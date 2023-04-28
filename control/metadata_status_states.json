@@ -1,0 +1,73 @@
+{
+  "housekeeping": [
+    {
+      "name": "template",
+      "influx_keys": [],
+      "status_states": [
+        {
+          "status": "",
+          "message": "",
+          "condition": [[]]
+        }
+      ]
+    },
+    {
+      "name": "FPGA_temp",
+      "influx_keys": ["TEMP2"],
+      "status_states": [
+        {
+          "status": "ok",
+          "message": "",
+          "condition": [[5, 80]]
+        },
+        {
+          "status": "warn",
+          "message": "FPGA close to temp limits",
+          "condition": [[0, 85]]
+        },
+        {
+          "status": "critical",
+          "message": "FPGA close to temp limits",
+          "condition": "else"
+        }
+      ]
+    },
+    {
+      "name": "detector_temp",
+      "influx_keys": ["TEMP1"],
+      "status_states": [
+       {
+         "status": "ok",
+         "message": "",
+         "condition": [[-10, 55]]
+       },
+       {
+         "status": "warn",
+         "message": "detectors close to temp limits",
+         "condition": [[-20, 10], [55, 60]]
+       },
+       {
+         "status": "critical",
+         "message": "detectors overheating",
+         "condition": "else"
+       }
+      ]
+    },
+    {
+      "name": "detector_hv",
+      "influx_keys": ["HVMON0", "HVMON1", "HVMON2", "HVMON3"],
+      "status_states": [
+        {
+          "status": "warn",
+          "message": "detector hv is off",
+          "condition": [[-15, 15]]
+        },
+        {
+          "status": "ok",
+          "message": "",
+          "condition": "else"
+        }
+      ]
+    }
+  ]
+}
