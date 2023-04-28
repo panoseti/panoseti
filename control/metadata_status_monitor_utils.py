@@ -6,22 +6,34 @@ import json
 with open("metadata_status_monitor_config.json", "r") as f:
     status_states = json.load(f)
 
+status_map = {
+    "ok": 0,
+    "warn": 1,
+    "critical": 2
+}
+
 status_history = dict()
 
 
-def get_status(datatype, redis_key, metadata_dict):
+def write_status(datatype, redis_key, metadata_dict):
     """
-    Get the current status message for redis_key.
-    Returns the current status message if it has changed since its last update.
+    Get the current status message and level (0,1,2) for redis_key. Then, write into metadata_dict either:
+        1. The status message and level if status has changed since last update.
+        2. "" for status message and -1 for status level if the status has not changed since the last update.
+    The purpose of 2 is to save memory by reducing redundant log messages.
     """
-    status_msg = generate_status_msg(datatype, metadata_dict)
-    if (redis_key not in status_history) or (status_history[redis_key] != status_msg):
-        status_history[redis_key] = status_msg
-        return status_msg
-    return status_msg
+    status = get_status("housekeeping", metadata_dict)
+    new_status = (redis_key not in status_history) or (status_history[redis_key] != status)
+    if new_status:
+        status_history[redis_key] = status
+        metadata_dict['AGG_STATUS_MSG'] = status[0]
+        metadata_dict['AGG_STATUS_LEVEL'] = status[1]
+    else:
+        metadata_dict['AGG_STATUS_MSG'] = ""
+        metadata_dict['AGG_STATUS_LEVEL'] = -1
 
 
-def generate_status_msg(datatype, metadata_dict):
+def get_status(datatype, metadata_dict):
     """
     This creates a log message for the Grafana webpage to report warnings or more serious issues
     an operator should address while monitoring an observing run.
@@ -33,6 +45,7 @@ def generate_status_msg(datatype, metadata_dict):
     before it gets entered into redis.
     """
     status_msg = ""
+    status_level = -1
     for entry in status_states[datatype]:
         if len(entry["fields"]) == 0:
             continue
@@ -47,6 +60,7 @@ def generate_status_msg(datatype, metadata_dict):
             for condition in state["condition"]:
                 if state["condition"] == "else":
                     in_this_state = True
+                    #print(f'{name}, else')
                     break
                 for val in metadata_values:
                     in_this_state |= condition[0] <= val < condition[1]
@@ -54,11 +68,12 @@ def generate_status_msg(datatype, metadata_dict):
             if in_this_state:
                 if status != "ok":
                     status_msg += f"<<{name}:{status}:'{message}'>>"
+                status_level = max(status_level, status_map[status])
                 break
-    #print(status_msg)
-    return status_msg
+    return status_msg, status_level
 
 
+"""
 test = {
     "TEMP2": 4.99,
     "TEMP1": -10.1,
@@ -68,10 +83,31 @@ test = {
     "HVMON3": 20,
 }
 
-'''
-print(get_status("housekeeping", "TEST", test))
-print(get_status("housekeeping", "TEST", test))
-test["TEMP1"] = 5
-print(get_status("housekeeping", "TEST", test))
-print(get_status("housekeeping", "TEST", test))
-'''
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+test["TEMP1"] = 87
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+test["TEMP2"] = 100
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+test["TEMP2"] = 15
+test["TEMP1"] = 17
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+test["HVMON0"] = 20
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+write_status("housekeeping", "TEST", test)
+print(test['AGG_STATUS_LEVEL'])
+"""

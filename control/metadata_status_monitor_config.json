@@ -27,7 +27,7 @@
         },
         {
           "status": "critical",
-          "message": "FPGA close to temp limits",
+          "message": "FPGA overheating",
           "condition": "else"
         }
       ]

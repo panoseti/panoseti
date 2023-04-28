@@ -118,10 +118,11 @@ def storeInRedis(packet, r:redis.Redis):
         'FWTIME': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
         'FWVER': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),
         
-        'StartUp': startUp
+        'StartUp': startUp,
+        'AGG_STATUS_MSG': "",
+        'AGG_STATUS_LEVEL': 0
     }
-    status_msg = md_utils.get_status("housekeeping", boardName, redis_set)
-    redis_set['STATUS_MSG'] = status_msg
+    md_utils.write_status("housekeeping", boardName, redis_set)
 
     for key in redis_set.keys():
         r.hset(boardName, key, redis_set[key])
