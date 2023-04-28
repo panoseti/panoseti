@@ -16,6 +16,7 @@ from datetime import datetime
 from redis_utils import *
 
 from panosetiSIconvert import HKconvert
+import metadata_status_monitor_utils as md_utils
 HKconv = HKconvert()
 HKconv.changeUnits('V')
 HKconv.changeUnits('A')
@@ -119,6 +120,8 @@ def storeInRedis(packet, r:redis.Redis):
         
         'StartUp': startUp
     }
+    status_msg = md_utils.get_status("housekeeping", boardName, redis_set)
+    redis_set['STATUS_MSG'] = status_msg
 
     for key in redis_set.keys():
         r.hset(boardName, key, redis_set[key])
@@ -128,7 +131,7 @@ def initialize():
     r = redis_init()
     return sock, r
     
-    
+
     
 signal(SIGINT, handler)
 

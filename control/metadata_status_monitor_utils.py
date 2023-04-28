@@ -3,25 +3,25 @@
  Log messages are added to the appropriate metadata field and are displayed on the Grafana webpage."""
 import json
 
-with open("metadata_status_states.json", "r") as f:
+with open("metadata_status_monitor_config.json", "r") as f:
     status_states = json.load(f)
 
 status_history = dict()
 
 
-def update_status(datatype, redis_key, metadata_dict):
+def get_status(datatype, redis_key, metadata_dict):
     """
     Get the current status message for redis_key.
-    Returns True iff the status for redis_key has changed from its last update.
+    Returns the current status message if it has changed since its last update.
     """
-    status_msg = get_status(datatype, metadata_dict)
+    status_msg = generate_status_msg(datatype, metadata_dict)
     if (redis_key not in status_history) or (status_history[redis_key] != status_msg):
         status_history[redis_key] = status_msg
-        return True
-    return False
+        return status_msg
+    return status_msg
 
 
-def get_status(datatype, metadata_dict):
+def generate_status_msg(datatype, metadata_dict):
     """
     This creates a log message for the Grafana webpage to report warnings or more serious issues
     an operator should address while monitoring an observing run.
@@ -55,11 +55,10 @@ def get_status(datatype, metadata_dict):
                 if status != "ok":
                     status_msg += f"<<{name}:{status}:'{message}'>>"
                 break
-    print(status_msg)
+    #print(status_msg)
     return status_msg
 
 
-"""
 test = {
     "TEMP2": 4.99,
     "TEMP1": -10.1,
@@ -68,9 +67,11 @@ test = {
     "HVMON2": 20,
     "HVMON3": 20,
 }
-print(update_status("housekeeping", "TEST", test))
-print(update_status("housekeeping", "TEST", test))
+
+'''
+print(get_status("housekeeping", "TEST", test))
+print(get_status("housekeeping", "TEST", test))
 test["TEMP1"] = 5
-print(update_status("housekeeping", "TEST", test))
-print(update_status("housekeeping", "TEST", test))
-"""
+print(get_status("housekeeping", "TEST", test))
+print(get_status("housekeeping", "TEST", test))
+'''
