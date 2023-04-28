@@ -2,8 +2,8 @@
   "housekeeping": [
     {
       "name": "template",
-      "influx_keys": [],
-      "status_states": [
+      "fields": [],
+      "states": [
         {
           "status": "",
           "message": "",
@@ -13,8 +13,8 @@
     },
     {
       "name": "FPGA_temp",
-      "influx_keys": ["TEMP2"],
-      "status_states": [
+      "fields": ["TEMP2"],
+      "states": [
         {
           "status": "ok",
           "message": "",
@@ -23,7 +23,7 @@
         {
           "status": "warn",
           "message": "FPGA close to temp limits",
-          "condition": [[0, 85]]
+          "condition": [[0, 5], [80, 85]]
         },
         {
           "status": "critical",
@@ -34,32 +34,32 @@
     },
     {
       "name": "detector_temp",
-      "influx_keys": ["TEMP1"],
-      "status_states": [
-       {
-         "status": "ok",
-         "message": "",
-         "condition": [[-10, 55]]
-       },
-       {
-         "status": "warn",
-         "message": "detectors close to temp limits",
-         "condition": [[-20, 10], [55, 60]]
-       },
-       {
-         "status": "critical",
-         "message": "detectors overheating",
-         "condition": "else"
-       }
+      "fields": ["TEMP1"],
+      "states": [
+         {
+           "status": "ok",
+           "message": "",
+           "condition": [[-10, 55]]
+         },
+         {
+           "status": "warn",
+           "message": "detectors close to temp limits",
+           "condition": [[-20, 10], [55, 60]]
+         },
+         {
+           "status": "critical",
+           "message": "detectors overheating",
+           "condition": "else"
+         }
       ]
     },
     {
       "name": "detector_hv",
-      "influx_keys": ["HVMON0", "HVMON1", "HVMON2", "HVMON3"],
-      "status_states": [
+      "fields": ["HVMON0", "HVMON1", "HVMON2", "HVMON3"],
+      "states": [
         {
           "status": "warn",
-          "message": "detector hv is off",
+          "message": "detector hv may be off",
           "condition": [[-15, 15]]
         },
         {
