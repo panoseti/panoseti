@@ -22,15 +22,19 @@ def write_status(datatype, redis_key, metadata_dict):
         2. "" for status message and -1 for status level if the status has not changed since the last update.
     The purpose of 2 is to save memory by reducing redundant log messages.
     """
-    status = get_status("housekeeping", metadata_dict)
+    status = get_status(datatype, metadata_dict)
     new_status = (redis_key not in status_history) or (status_history[redis_key] != status)
+    status_history[redis_key] = status
+    metadata_dict['AGG_STATUS_MSG'] = status[0]
+    metadata_dict['AGG_STATUS_LEVEL'] = status[1]
+    '''
     if new_status:
         status_history[redis_key] = status
         metadata_dict['AGG_STATUS_MSG'] = status[0]
-        metadata_dict['AGG_STATUS_LEVEL'] = status[1]
     else:
         metadata_dict['AGG_STATUS_MSG'] = ""
         metadata_dict['AGG_STATUS_LEVEL'] = -1
+    '''
 
 
 def get_status(datatype, metadata_dict):
@@ -70,6 +74,8 @@ def get_status(datatype, metadata_dict):
                     status_msg += f"<<{name}:{status}:'{message}'>>"
                 status_level = max(status_level, status_map[status])
                 break
+    if len(status_msg) == 0:
+        status_msg = "<<default:ok:''>>"
     return status_msg, status_level
 
 
