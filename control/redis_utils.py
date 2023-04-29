@@ -53,7 +53,7 @@ def get_casted_redis_value(r:redis.Redis, rkey: [bytes, str], field: [bytes, str
     if val is not None:
         val = val.decode('utf-8')
         # Checks if val has the form X, with X numeric.
-        if val.isnumeric():
+        if val.isnumeric() or (val[0] == '-' and val[1:].isnumeric()):
             return int(val)
         # Checks if val has the form (-)X.Y, with X and Y numeric.
         pattern = re.compile("^-*([0-9]+)\.([0-9]+?)(?:[eE]-?\+?([0-9]+))?$")
