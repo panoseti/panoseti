@@ -42,7 +42,18 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
 
     if not os.path.isdir(run_dir_path):
         return 'copy_dir_from_node(): no run dir %s'%run_dir_path
-
+    # copy stdout from remote node to this node
+    cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
+        node['username'], node['ip_addr'],
+        node['data_dir'], run_name, util.hp_stdout_prefix,
+        run_dir_path
+    )
+    if verbose:
+        print(cmd)
+    try:
+        ret = os.system(cmd)
+    except:
+        return 'copy_dir_from_node(): %s returned %d'%(cmd, ret)
     # copy PFF files from remote node to this node
     cmd = 'rsync -P %s@%s:%s/module_%d/%s/* %s'%(
         node['username'], node['ip_addr'],
