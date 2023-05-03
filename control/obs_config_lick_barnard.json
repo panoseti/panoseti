@@ -1,0 +1,29 @@
+{
+    "name": "Lick",
+    "comment": "Configuration at Lick using only Barnard",
+    "wps_barnard_24V": {
+        "url": "http://admin:epowerpanoseti@192.168.0.101",
+        "quabo_socket": 1
+    },
+    "wr_ip_addr": "192.168.1.254",
+    "gps_port": "/dev/ttyUSB0",
+    "domes": [
+        {
+            "name": "barnard",
+            "obslat": 37.339166,
+            "obslon": -121.64416,
+            "obsalt": 1239,
+            "modules": [
+                {
+                    "mobo_serialno": "M13",
+                    "quabo_version": ["qfp", "qfp", "qfp", "qfp"],
+                    "ip_addr": "192.168.0.12",
+                    "wps": "wps_barnard",
+                    "azimuth": 180.78,
+                    "elevation": 77.111,
+                    "position_angle": -7.5946
+		        }
+            ]
+        }
+    ]
+}
