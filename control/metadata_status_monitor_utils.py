@@ -8,8 +8,9 @@ with open("metadata_status_monitor_config.json", "r") as f:
 
 status_map = {
     "ok": 0,
-    "warn": 1,
-    "critical": 2
+    "info": 8,
+    "warn": 16,
+    "critical": 32
 }
 
 status_history = dict()
@@ -17,29 +18,18 @@ status_history = dict()
 
 def write_status(datatype, redis_key, metadata_dict):
     """
-    Get the current status message and level (0,1,2) for redis_key. Then, write into metadata_dict either:
-        1. The status message and level if status has changed since last update.
-        2. "" for status message and -1 for status level if the status has not changed since the last update.
-    The purpose of 2 is to save memory by reducing redundant log messages.
+    Get the current status redis_key then write it into metadata_dict.
     """
     status = get_status(datatype, metadata_dict)
     new_status = (redis_key not in status_history) or (status_history[redis_key] != status)
     status_history[redis_key] = status
     metadata_dict['AGG_STATUS_MSG'] = status[0]
     metadata_dict['AGG_STATUS_LEVEL'] = status[1]
-    '''
-    if new_status:
-        status_history[redis_key] = status
-        metadata_dict['AGG_STATUS_MSG'] = status[0]
-    else:
-        metadata_dict['AGG_STATUS_MSG'] = ""
-        metadata_dict['AGG_STATUS_LEVEL'] = -1
-    '''
 
 
 def get_status(datatype, metadata_dict):
     """
-    This creates a log message for the Grafana webpage to report warnings or more serious issues
+    This creates a log message for the Grafana webpage to report statuses
     an operator should address while monitoring an observing run.
 
     datatype is either 'housekeeping' for quabos, 'GPS',
@@ -60,7 +50,6 @@ def get_status(datatype, metadata_dict):
         in_this_state = False
         for state in entry["states"]:
             status = state["status"]
-            message = state["message"]
             for condition in state["condition"]:
                 if state["condition"] == "else":
                     in_this_state = True
@@ -71,11 +60,11 @@ def get_status(datatype, metadata_dict):
                     #print(f'{name}, {condition[0]}<={val}<{condition[1]} == {condition[0] <= val < condition[1]}')
             if in_this_state:
                 if status != "ok":
-                    status_msg += f"<<{name}:{status}:'{message}'>>"
+                    status_msg += f"{name},"
                 status_level = max(status_level, status_map[status])
                 break
     if len(status_msg) == 0:
-        status_msg = "<<default:ok:''>>"
+        status_msg = "ok,"
     return status_msg, status_level
 
 

@@ -6,7 +6,6 @@
       "states": [
         {
           "status": "",
-          "message": "",
           "condition": [[]]
         }
       ]
@@ -17,54 +16,46 @@
       "states": [
         {
           "status": "ok",
-          "message": "",
           "condition": [[5, 80]]
         },
         {
           "status": "warn",
-          "message": "FPGA close to temp limits",
           "condition": [[0, 5], [80, 85]]
         },
         {
           "status": "critical",
-          "message": "FPGA overheating",
           "condition": "else"
         }
       ]
     },
     {
-      "name": "detector_temp",
+      "name": "detr_temp",
       "fields": ["TEMP1"],
       "states": [
          {
            "status": "ok",
-           "message": "",
            "condition": [[-10, 55]]
          },
          {
            "status": "warn",
-           "message": "detectors close to temp limits",
            "condition": [[-20, 10], [55, 60]]
          },
          {
            "status": "critical",
-           "message": "detectors overheating",
            "condition": "else"
          }
       ]
     },
     {
-      "name": "detector_hv",
+      "name": "detr_hv",
       "fields": ["HVMON0", "HVMON1", "HVMON2", "HVMON3"],
       "states": [
         {
-          "status": "warn",
-          "message": "detector hv may be off",
+          "status": "info",
           "condition": [[-15, 15]]
         },
         {
           "status": "ok",
-          "message": "",
           "condition": "else"
         }
       ]

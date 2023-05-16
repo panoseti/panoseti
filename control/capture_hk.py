@@ -49,6 +49,19 @@ signed = [
     0,0,0,0                     # FWID0 and FWID1
 ]
 
+def get_true_detector_current(raw_detector_current_uA, detector_hv_volts):
+    """The detector current metadata we receive from the quabos has a voltage-dependent offset from the true detector current.
+    (See https://github.com/panoseti/panoseti/issues/149 for more details).
+
+    raw_detector_current_uA = HVIMONx, the raw measured current in uA for detector array x. 
+    detector_hv_volts = HVMONx, the detector high-voltage in volts for detector array x.
+
+    Returns the true current for detector array x.
+    """
+    true_detector_current = raw_detector_current_uA - (abs(detector_hv_volts) / 0.499)
+    return true_detector_current
+
+
 def handler(signal_recieved, frame):
     print('\nSIGINT or CTRL-C detected. Exiting')
     exit(0)
@@ -123,6 +136,10 @@ def storeInRedis(packet, r:redis.Redis):
         'AGG_STATUS_LEVEL': 0
     }
     md_utils.write_status("housekeeping", boardName, redis_set)
+
+    for x in range(4):
+        true_detector_x_current_uA = get_true_detector_current(redis_set[f'HVIMON{x}'], redis_set[f'HVMON{x}'])
+        redis_set[f'DETR{x}_CURR'] = true_detector_x_current_uA
 
     for key in redis_set.keys():
         r.hset(boardName, key, redis_set[key])
