@@ -58,7 +58,7 @@ def get_true_detector_current(raw_detector_current_uA, detector_hv_volts):
 
     Returns the true current for detector array x.
     """
-    true_detector_current = raw_detector_current_uA - (abs(detector_hv_volts) / 0.499)
+    true_detector_current = raw_detector_current_uA - (abs(detector_hv_volts) / 0.499) / 1000000
     return true_detector_current
 
 
