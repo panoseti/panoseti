@@ -10,7 +10,7 @@ status_map = {
     "ok": 0,
     "info": 8,
     "warn": 16,
-    "critical": 32
+    "crit": 32
 }
 
 status_history = dict()
@@ -60,7 +60,7 @@ def get_status(datatype, metadata_dict):
                     #print(f'{name}, {condition[0]}<={val}<{condition[1]} == {condition[0] <= val < condition[1]}')
             if in_this_state:
                 if status != "ok":
-                    status_msg += f"{name},"
+                    status_msg += f"{name}:{status},"
                 status_level = max(status_level, status_map[status])
                 break
     if len(status_msg) == 0:
@@ -68,7 +68,7 @@ def get_status(datatype, metadata_dict):
     return status_msg, status_level
 
 
-"""
+
 test = {
     "TEMP2": 4.99,
     "TEMP1": -10.1,
@@ -84,7 +84,7 @@ write_status("housekeeping", "TEST", test)
 print(test['AGG_STATUS_LEVEL'])
 test["TEMP1"] = 87
 write_status("housekeeping", "TEST", test)
-print(test['AGG_STATUS_LEVEL'])
+print(test['AGG_STATUS_MSG'])
 write_status("housekeeping", "TEST", test)
 print(test['AGG_STATUS_LEVEL'])
 write_status("housekeeping", "TEST", test)
@@ -105,4 +105,4 @@ write_status("housekeeping", "TEST", test)
 print(test['AGG_STATUS_LEVEL'])
 write_status("housekeeping", "TEST", test)
 print(test['AGG_STATUS_LEVEL'])
-"""
+
