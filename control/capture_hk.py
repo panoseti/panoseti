@@ -58,7 +58,7 @@ def get_true_detector_current(raw_detector_current_uA, detector_hv_volts):
 
     Returns the true current for detector array x.
     """
-    true_detector_current = raw_detector_current_uA - (detector_hv_volts / 0.499)
+    true_detector_current = raw_detector_current_uA - (abs(detector_hv_volts) / 0.499)
     return true_detector_current
 
 
@@ -139,7 +139,7 @@ def storeInRedis(packet, r:redis.Redis):
 
     for x in range(4):
         true_detector_x_current_uA = get_true_detector_current(redis_set[f'HVIMON{x}'], redis_set[f'HVMON{x}'])
-        redis_set[f'TRUE_DETR{x}_CURR'] = true_detector_x_current_uA
+        redis_set[f'DETR{x}_CURR'] = true_detector_x_current_uA
 
     for key in redis_set.keys():
         r.hset(boardName, key, redis_set[key])
