@@ -47,13 +47,13 @@ def main(quabo_uids, module_id, dp):
         shell=False, stdout = subprocess.PIPE
     )
     ph = False
-    if dp == 'img16':
+    if dp == 'img16' or dp == 'ph1024':
         image_size = 32
         bpp = 2
     elif dp == 'img8':
         image_size = 32
         bpp = 1
-    elif dp == 'ph':
+    elif dp == 'ph256':
         image_size = 16
         ph = True
     while True:
@@ -67,7 +67,8 @@ def main(quabo_uids, module_id, dp):
         show_pff.print_json(j, ph, False)
         #print('got header')
         img = pff.read_image(process.stdout, image_size, bpp)
-        show_pff.image_as_text(img, image_size, bpp, 0, 256)
+        #show_pff.image_as_text(img, image_size, bpp, 0, 256)
+        show_pff.image_as_figure(figure, im, np.array(img).reshape(image_size,image_size))
         if process.poll() is not None:
             break
 
@@ -80,7 +81,8 @@ while i<len(argv):
         i += 1
         module_id = int(argv[i])
     elif argv[i] == '--ph':
-        ph = True
+        i += 1
+        ph = int(argv[i])
     i += 1
 
 
@@ -91,7 +93,12 @@ data_config = config_file.get_data_config()
 if ph:
     if 'pulse_height' not in data_config.keys():
         raise Exception('no pulse height being recorded')
-    dp = 'ph'
+    if ph == 1024:
+        dp = 'ph1024'
+    elif ph == 256:
+        dp = 'ph256'
+    else:
+        raise Exception('ph%d not supported'%(ph))
 else:
     if 'image' not in data_config.keys():
         raise Exception('no image data being recorded')

@@ -7,8 +7,25 @@
 # if no filename specified, use 'img'
 
 import os, sys, random, json
+import matplotlib.pyplot as plt
+import numpy as np
 sys.path.insert(0, '../util')
 import pff, image_quantiles
+
+def create_figure(image_size):
+    imshape = (image_size,image_size)
+    plt.ion()
+    figure, ax = plt.subplots()
+    imdata = np.random.rand(*imshape)
+    im = ax.imshow(imdata,cmap='plasma')
+    return figure, im
+
+def image_as_figure(figure, im, img):
+    # update image data
+    im.set_data(img)
+    # draw and flush the figure .
+    figure.canvas.draw()
+    figure.canvas.flush_events()
 
 def image_as_text(img, img_size, bytes_per_pixel, min, max):
     scale = ' .,-+=#@'
@@ -116,7 +133,7 @@ if __name__ == "__main__":
             raise Exception('bad PFF filename %s'%real_fname)
         dp = dict['dp']
 
-        if dp == 'img16':
+        if dp == 'img16' or dp == 'ph1024':
             image_size = 32
             bytes_per_pixel = 2
             is_ph = False
@@ -124,7 +141,7 @@ if __name__ == "__main__":
             image_size = 32
             bytes_per_pixel = 1
             is_ph = False
-        elif dp == 'ph16':
+        elif dp == 'ph256':
             image_size = 16
             bytes_per_pixel = 2
             is_ph = True

@@ -29,9 +29,9 @@ def main(dp, nsecs, module):
         return
     if dp == 'img8':
         bytes_per_image = 1024
-    elif dp == 'img16':
+    elif dp == 'img16' or dp == 'ph1024':
         bytes_per_image = 2048
-    elif dp == 'ph':
+    elif dp == 'ph256':
         bytes_per_image = 512
 
     filepath = '%s/%s'%(dir, file)

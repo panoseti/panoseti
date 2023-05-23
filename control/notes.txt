@@ -489,3 +489,7 @@ on the fly "video"
     video_daq.py --module M --ph --nframes N --nsec N
         return a stream of images from run in progress
     video.py --module M --ph --nsec N
+---------
+05/23/2023
+visual
+    added code based on matplotlib, to show images.
