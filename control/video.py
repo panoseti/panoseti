@@ -10,6 +10,7 @@
 # monitors the relevant PFF file and returns frames from the end
 
 import sys, subprocess, pty
+import numpy as np
 
 import show_pff, util
 
@@ -41,7 +42,7 @@ def main(quabo_uids, module_id, dp):
     )
     print(cmd)
     process = subprocess.Popen(['ssh',
-        '%s@%s'%(node['username'], node['ip_addr']),
+        '%s@%s'%(daq_node['username'], daq_node['ip_addr']),
         cmd,
         ],
         shell=False, stdout = subprocess.PIPE
@@ -56,6 +57,7 @@ def main(quabo_uids, module_id, dp):
     elif dp == 'ph256':
         image_size = 16
         ph = True
+    figure, im = show_pff.create_figure(image_size)
     while True:
         j = ''
         while True:
