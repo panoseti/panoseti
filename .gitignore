@@ -1,4 +1,12 @@
 control/__pycache__/*
 control/flashuid
-control/get_uids.py
+control/quabo_uids.json
+control/obs_config.json
+control/daq_config.json
+control/data_config.json
+control/sw_info.json
+control/quabo_ph_baseline.json
+
+util/__pycache__/*
+
 
