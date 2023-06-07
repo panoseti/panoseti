@@ -20,6 +20,8 @@ sys.path.insert(0, '../util')
 import config_file
 
 #-------------- CONSTANTS ---------------#
+# HV offset
+HV_OFFSET = 1.073
 
 # Seconds between updates.
 UPDATE_INTERVAL = 5
@@ -72,7 +74,7 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             det_serial_num = det_serial_nums[detector_index]
             adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
             # Save int encoding
-            adjusted_hv_values[detector_index] = int(adjusted_hv / 0.00114)
+            adjusted_hv_values[detector_index] = int((adjusted_hv + HV_OFFSET) / 0.0011453)
     except KeyError as kerr:
         msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
         msg += "Error message: {1}"
