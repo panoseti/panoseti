@@ -677,10 +677,11 @@ void loop()
         movemore=false;
         debug1("moving a bit more...");
         stepper.enable();
-        long deg = -90;
-        long r_steps = stepper.startRotate(deg);
+        long deg = -30;
+        stepper.startRotate(deg);
+        long r_steps = stepper.nextAction();
         while(r_steps>0) 
-          r_steps = stepper.startRotate(deg);
+          r_steps = stepper.nextAction();
         stepper.stop();
       }
     }
