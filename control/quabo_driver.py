@@ -87,7 +87,7 @@ class QUABO:
         cmd[2] = mode
         cmd[4] = params.image_us % 256
         cmd[5] = params.image_us // 256
-        cmd[12] = 70
+        cmd[12] = 69
         if params.do_flash:
             cmd[22] = params.flash_rate
             cmd[24] = params.flash_level
