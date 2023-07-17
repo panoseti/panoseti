@@ -8,7 +8,7 @@ close all;
 
 % load the calibration tables
 CalibrationDB = load(['.' filesep 'CalibrationDB.mat']);
-gainmap_inc= load(['.' filesep 'gainmap_inc.mat']);
+gainmap_inc= load(['.' filesep 'gainmap5pe_inc_halfbp.mat']);
 
 % get the size of quaboDETtable
 % in this table the meanings of columns are:
