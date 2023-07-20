@@ -10,6 +10,9 @@ import unittest
 
 from numpy import place
 
+hv_factor = 499/7.87*1.25/2**16 * 10**9
+hvi_factor = 2.5/65536*10**6
+
 convertValues = {r'[A-Z]':1e9, r'm[A-Z]':1e6, r'u[A-Z]':1e3, r'n[A-Z]':1 }
 
 class HKconvert():
@@ -30,10 +33,10 @@ class HKconvert():
         self.currentFactor = 1e9
         
     def HVMON(self, value):
-        return -value*1.22*1e6 / self.voltageFactor
+        return -value*hv_factor / self.voltageFactor
 
     def HVIMON(self, value):
-        return (65535-value)*38.1 / self.currentFactor
+        return (65535-value)*hvi_factor / self.currentFactor
 
     def RAWHVMON(self, value):
         return -value*1.22*1e6 / self.voltageFactor

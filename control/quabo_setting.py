@@ -6,6 +6,10 @@
 import quabo_driver
 import json
 
+HV_OFFSET = 1.073
+# HV_FACTOR = 2.5/2**16*(301/(4.99+4.99))
+HV_FACTOR = 0.0011453
+
 class QUABO_SETTING(object):
     '''
     Class: This class contains low level functions for setting quabos
@@ -54,10 +58,6 @@ class QUABO_SETTING(object):
             d1_d2[0], d1_d2[1], 
             d1_d2[2], d1_d2[3]
         )
-
-    def write_config(self, fn = 'quabo_config.txt'):
-        with open(fn, 'wb') as f:
-            json.load(f, self.config, indent=2)
     
     def set_acq_mode(self, acq):
         self.config['ACQMODE'] = '0x%x'%(acq)
@@ -65,6 +65,11 @@ class QUABO_SETTING(object):
     def set_acq_int(self, integration):
         self.config['ACQINT'] = '%d'%(integration - 1)
     
+    def set_hv(self, i, vol):
+        tag = 'HV_%d'%(i)
+        hv_val = int((vol + HV_OFFSET) / HV_FACTOR)
+        self.config[tag] = '%d'%(hv_val)
+
     # config maroc
     def send_maroc_config(self):
         quabo = quabo_driver.QUABO(self.ip)
@@ -83,6 +88,15 @@ class QUABO_SETTING(object):
         quabo.send_goe_mask(config)
         quabo.close()
     
+    def send_hv(self):
+        hv_vals = [0, 0, 0, 0]
+        for i in range(4):
+            tag = 'HV_%d'%(i)
+            hv_vals[i] = int(self.config[tag])
+        quabo = quabo_driver.QUABO(self.ip)
+        quabo.hv_set(hv_vals)
+        quabo.close()
+
     def send_acq_config(self, params):
         quabo = quabo_driver.QUABO(self.ip)
         quabo.send_daq_params(params)
@@ -91,5 +105,4 @@ class QUABO_SETTING(object):
     def write_config(self, fn = 'quabo_config.json'):
         with open(fn, 'w') as f:
             json.dump(self.config, f, indent=4)
-    
     
