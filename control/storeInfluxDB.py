@@ -72,7 +72,7 @@ def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list,
             if (val is not None) and (val != ""):
                 data_fields[key.decode('utf-8')] = val
             else:
-                msg = f"storeInfluxDB.py: No data in ({rkey.decode('utf-8')}, {key.decode('utf-8')}): {repr(val)}!"
+                msg = f"storeInfluxDB.py: No data in ({rkey}, {key.decode('utf-8')}): {repr(val)}!"
                 msg += "\n Aborting influx write..."
                 util.write_log(msg)
                 continue
