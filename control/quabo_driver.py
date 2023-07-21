@@ -14,7 +14,7 @@
 #
 # See https://github.com/panoseti/panoseti/wiki/Quabo-device-driver
 
-import socket, time
+import socket, time, json
 import util
 
 UDP_CMD_PORT= 60000
@@ -30,7 +30,7 @@ ACQ_IMAGE = 0x2
 ACQ_IMAGE_8BIT = 0x4
 ACQ_NO_BASELINE_SUBTRACT = 0x10
 
-
+QUABO_CONFIG = 'quabo_config'
 class DAQ_PARAMS:
     def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract, do_any_trigger=False, do_group_ph_frames=False):
         self.do_image = do_image
@@ -106,6 +106,7 @@ class QUABO:
     def send_maroc_params(self, config):
         cmd = bytearray(492)
         self.make_maroc_cmd(config, cmd)
+        self.write_maroc_config(config, '%s_%s.json'%(QUABO_CONFIG,self.ip_addr))
         self.send(cmd)
 
     # returns the list of 256 coefficients
@@ -159,12 +160,14 @@ class QUABO:
     def send_trigger_mask(self, config):
         cmd = self.make_cmd(0x06)
         self.make_trigger_mask_cmd(config, cmd)
+        self.write_trigger_mask_config(config, '%s_%s.json'%(QUABO_CONFIG,self.ip_addr))
         self.flush_rx_buf()
         self.send(cmd)
 
     def send_goe_mask(self, config):
         cmd = self.make_cmd(0x0e)
         self.make_goe_mask_cmd(config, cmd)
+        self.write_goe_mask_config(config, '%s_%s.json'%(QUABO_CONFIG,self.ip_addr))
         self.flush_rx_buf()
         self.send(cmd)
         
@@ -226,6 +229,74 @@ class QUABO:
         cmd = self.make_cmd(0x09)
         cmd[1] = 0x01 if val else 0x0
         self.send(cmd)
+
+    def write_maroc_config(self, config, config_file='quabo_config.json'):
+        try:
+            with open(config_file, 'rb') as f:
+                cfg = json.load(f)
+        except:
+            cfg = {}
+        # create the tag list
+        tag_list = ['OTABG_ON'      , 'DAC_ON'      , 'SMALL_DAC'       , 'DAC2'    ,
+                    'DAC1'          , 'ENB_OUT_ADC' , 'INV_START_GRAY'  , 'RAMP8B'  ,
+                    'RAMP10B'       , 'CMD_CK_MUX'  , 'D1_D2'           , 'INV_DISCR_ADC',
+                    'POLAR_DISCRI'  , 'ENB3ST'      , 'VAL_DC_FSB2'     , 'SW_FSB2_50F',
+                    'SW_FSB2_100F'  , 'SW_FSB2_100K', 'SW_FSB2_50K'     , 'VALID_DC_FS',
+                    'CMD_FSB_FSU'   , 'SW_FSB1_50F' , 'SW_FSB1_100F'    , 'SW_FSB1_100K',
+                    'SW_FSB1_50k'   , 'SW_FSU_100K' , 'SW_FSU_50K'      , 'SW_FSU_25K',
+                    'SW_FSU_40F'    , 'SW_FSU_20F'  , 'H1H2_CHOICE'     , 'EN_ADC',
+                    'SW_SS_1200F'   , 'SW_SS_600F'  , 'SW_SS_300F'      , 'ON_OFF_SS',
+                    'SWB_BUF_2P'    , 'SWB_BUF_1P'  , 'SWB_BUF_500F'    , 'SWB_BUF_250F',
+                    'CMD_FSB'       , 'CMD_SS'      , 'CMD_FSU']            
+        # add GAIN to the tag list
+        for i in range(64):
+            tag_list.append('GAIN%d'%(i))
+        # add CTEST to the tag list
+        for i in range(64):
+            tag_list.append('CTEST_%d'%(i))
+        # add MASKOR1 to the tag list
+        for i in range(64):
+            tag_list.append('MASKOR1_%d'%(i))
+        # added MASKOR2 to the tag list
+        for i in range(64):
+            tag_list.append('MASKOR2_%d'%(i))
+        
+        # get the maroc config params from config
+        for tag in tag_list:
+            cfg[tag] = config[tag]
+        # write the maroc config params back to config file
+        with open(config_file, 'w') as f:
+            json.dump(cfg, f, indent=2)
+    
+    def write_trigger_mask_config(self, config,  config_file='quabo_config.json'):
+        try:
+            with open(config_file, 'rb') as f:
+                cfg = json.load(f)
+        except:
+            cfg = {}
+        # create the tag list
+        tag_list = []
+        for i in range(9):
+            tag_list.append('CHANMASK_%d'%(i))
+        # get trigger mask params from config
+        for tag in tag_list:
+            cfg[tag] = hex(config[tag])
+        # write the trigger mask params back to config file
+        with open(config_file, 'w') as f:
+            json.dump(cfg, f, indent=2)
+
+    def write_goe_mask_config(self, config, config_file='quabo_config.json'):
+        try:
+            with open(config_file, 'rb') as f:
+                cfg = json.load(f)
+        except:
+            cfg = {}
+        # create the tag list
+        tag = 'GOEMASK'
+        cfg[tag] = hex(config[tag])
+        # write the trigger mask params back to config file
+        with open(config_file, 'w') as f:
+            json.dump(cfg, f, indent=2)
 
     # read from housekeeping socket, wait for one from this quabo
     # (discard ones from other quabos)
