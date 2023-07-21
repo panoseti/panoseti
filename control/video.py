@@ -56,6 +56,7 @@ def main(quabo_uids, module_id, dp):
         bpp = 1
     elif dp == 'ph256':
         image_size = 16
+        bpp = 2
         ph = True
     figure, im = show_pff.create_figure(image_size)
     while True:

@@ -121,7 +121,13 @@ def pkt_header_time(h):
     return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
 
 def img_header_time(h):
-    return pkt_header_time(h['quabo_0'])
+    try:
+        # this is for img16, img8 and ph1024
+        t = pkt_header_time(h['quabo_0'])
+    except:
+        # this is for ph256
+        t = pkt_header_time(h)
+    return t
 
 # return info about an image file
 #   f points to start of file
