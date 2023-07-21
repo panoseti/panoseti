@@ -7,6 +7,7 @@
 # --module N    images from module N
 
 import time, sys, os
+from glob import glob
 
 import pff, util
 
@@ -16,17 +17,15 @@ def main(dp, nsecs, module):
         print('no run')
         return
     dir = 'module_%d/%s'%(module, run)
-    file = None
-    for f in os.listdir(dir):
-        if not pff.is_pff_file(f):
-            continue
-        finfo = pff.parse_name(f)
-        if finfo['dp'] == dp:
-            file = f
-            break
-    if not file:
+
+    files = glob('%s/*%s*.pff'%(dir,dp))
+    nfiles = len(files) 
+    if nfiles == 0:
         print('no file of type %s'%dp)
         return
+    else:
+        file = sorted(files)[-1]
+
     if dp == 'img8':
         bytes_per_image = 1024
     elif dp == 'img16' or dp == 'ph1024':
@@ -34,7 +33,7 @@ def main(dp, nsecs, module):
     elif dp == 'ph256':
         bytes_per_image = 512
 
-    filepath = '%s/%s'%(dir, file)
+    filepath = file
 
     # wait for file to be nonempty
     while True:
@@ -49,6 +48,15 @@ def main(dp, nsecs, module):
 
     last_frame = -1
     while True:
+        # check if we have a new file
+        files = glob('%s/*%s*.pff'%(dir,dp))
+        if len(files) > nfiles:
+            nfiles = len(files)
+            f.close()
+            file = sorted(files)[-1]
+            filepath = file
+            f = open(filepath, 'rb')
+            last_frame = -1
         fsize = f.seek(0, os.SEEK_END)
         nframes = int(fsize/frame_size)
         #print('fsize: ', fsize, ' nframes: ', nframes, ' last_frame: ', last_frame)
