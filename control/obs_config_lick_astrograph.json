@@ -20,9 +20,9 @@
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.3.248",
                     "wps": "wps",
-                    "azimuth": 184.19,
-                    "elevation": 78.041,
-                    "position_angle": -0.35 
+                    "azimuth": 182.8320,
+                    "elevation": 78.3467,
+                    "position_angle": -1.7899 
                 },
                 {
                     "name": "West",
@@ -30,9 +30,9 @@
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.0.4",
                     "wps": "wps_astrograph",
-                    "azimuth": 184.29,
-                    "elevation": 78.506,
-                    "position_angle": -1.7899
+                    "azimuth": 182.9870,
+                    "elevation": 79.4016,
+                    "position_angle": -1.4321
 		}
             ]
         }

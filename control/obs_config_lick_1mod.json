@@ -21,9 +21,9 @@
                     "comment": "not bga",
                     "ip_addr": "192.168.0.4",
                     "wps": "wps",
-                    "azimuth": 184.19,
-                    "elevation": 78.041,
-                    "position_angle": -0.35
+                    "azimuth": 182.8320,
+                    "elevation": 78.3467,
+                    "position_angle": -1.7899
                 }
             ]
         }
