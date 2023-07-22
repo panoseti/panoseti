@@ -6,7 +6,7 @@ control/daq_config.json
 control/data_config.json
 control/sw_info.json
 control/quabo_ph_baseline.json
-
+control/quabo_config*.json
 util/__pycache__/*
 
 
