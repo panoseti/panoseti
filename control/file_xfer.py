@@ -21,24 +21,15 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
         dest_path += '/%s'%(run_dir)
     else:
         dest_path += '/'
-    try:
+    files = glob(file)
+    for f in files:
         cmd = 'scp -q %s %s@%s:%s'%(
-        file, node['username'], node['ip_addr'], dest_path
+            f, node['username'], node['ip_addr'], dest_path
         )
         if verbose:
             print(cmd)
         ret = os.system(cmd)
-    except:
-        files = glob(file)
-        for f in files:
-            cmd = 'scp -q %s %s@%s:%s'%(
-            f, node['username'], node['ip_addr'], dest_path
-            )
-            if verbose:
-                print(cmd)
-            ret = os.system(cmd)
-    
-    if ret: raise Exception('%s returned %d'%(cmd, ret))
+        if ret: raise Exception('%s returned %d'%(cmd, ret))
 
 # Copy the contents of a module/run dir from a DAQ node
 # to the corresponding run dir on this (head) node.
