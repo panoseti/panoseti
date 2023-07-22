@@ -21,6 +21,7 @@
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
 import os, sys, traceback, shutil, time
+from glob import glob
 import util, file_xfer, quabo_driver, stop, session_stop
 from sw_info import get_sw_info
 
@@ -157,7 +158,9 @@ def make_run_dirs(run_name, daq_config):
         try:
             shutil.copyfile(f, '%s/%s'%(run_dir, f))
         except:
-            pass
+            files = glob(f)
+            for file in files:
+                shutil.copyfile(file, '%s/%s'%(run_dir, f))
 
     # make module and run directories on DAQ nodes
     #
