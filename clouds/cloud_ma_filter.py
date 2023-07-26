@@ -21,52 +21,62 @@ fname = 'start_2023-07-19T06_07_59Z.dp_img16.bpp_2.module_1.seqno_0.pff'
 data_dir = DATA_DIR + '/data'
 run_dir = RUN_DIR
 
+
 def get_next_frame(f, frame_size, bytes_per_pixel, step_size):
     """Returns the next image frame and json header from f."""
     j = json.loads(pff.read_json(f))
     img = pff.read_image(f, 32, bytes_per_pixel)
-    f.seek((step_size - 1) * frame_size, os.SEEK_CUR) # Skip step_size - 1 images
+    f.seek((step_size - 1) * frame_size, os.SEEK_CUR)   # Skip step_size - 1 images
     return img, j
 
 
-def get_img_brightness_signal(f, data, arr_offset, img_size, bytes_per_pixel, step_size):
-    frame_size, nframes, first_unix_t, last_unix_t = pff.img_info(f, img_size)
-    f.seek(0)
-    for i in range(nframes // step_size):
-        img, j = get_next_frame(f, frame_size, bytes_per_pixel, step_size)
-        data[arr_offset + i] = np.sum(img)
+def process_file(file_info, data, itr_info, step_size):
+    """On a sample of the frames in the file represented by file_info, add the total
+    image brightness to the data array beginning at data_offset."""
+    with open(f"{data_dir}/{run_dir}/{file_info['fname']}", "rb") as f:
+        # Start file pointer with an offset based on the previous file -> ensures even frame sampling
+        f.seek(
+            itr_info['fstart_offset'] * file_info['frame_size'],
+            os.SEEK_CUR
+        )
+        new_nframes = file_info['nframes'] - itr_info['fstart_offset']
+        for i in range(new_nframes // step_size):
+            img, j = get_next_frame(f,
+                                    file_info['frame_size'],
+                                    file_info['bytes_per_pixel'],
+                                    step_size)
+            data[itr_info['data_offset'] + i] = np.sum(img)
+        itr_info['fstart_offset'] = file_info['nframes'] - (new_nframes // step_size) * step_size
 
 
-def process_file(fname, data, arr_offset, step_size):
-    with open(f'{data_dir}/{run_dir}/{fname}', 'rb') as f:
-        file_attrs = pff.parse_name(fname)
-        bytes_per_pixel = int(file_attrs['bpp'])
-        img_size = bytes_per_pixel * 1024
-        get_img_brightness_signal(f, data, arr_offset, img_size, bytes_per_pixel, step_size)
-
-
-def get_file_nframes(files_to_process):
-    file_nframes = []
-    for fname in files_to_process:
+def get_file_attrs_array(files_to_process):
+    """Returns an array of dictionaries storing the attributes of all the files to process."""
+    file_attrs = [None] * len(files_to_process)
+    for i in range(len(files_to_process)):
+        fname = files_to_process[i]
+        attrs = {"fname": fname}
         with open(f'{data_dir}/{run_dir}/{fname}', 'rb') as f:
-            file_attrs = pff.parse_name(fname)
-            bytes_per_pixel = int(file_attrs['bpp'])
+            parsed_name = pff.parse_name(fname)
+            bytes_per_pixel = int(parsed_name['bpp'])
             img_size = bytes_per_pixel * 1024
-            frame_size, nframes, first_unix_t, last_unix_t = pff.img_info(f, img_size)
-        file_nframes += [nframes]
-    return file_nframes
+            attrs["frame_size"], attrs["nframes"], attrs["first_unix_t"], attrs["last_unix_t"] \
+                = pff.img_info(f, img_size)
+            attrs["img_size"] = img_size
+            attrs["bytes_per_pixel"] = bytes_per_pixel
+        file_attrs[i] = attrs
+    return file_attrs
 
 
-def get_empty_data_array(file_nframes, step_size):
+def get_empty_data_array(file_attrs, step_size):
     data_size = 0
-    for i in range(len(file_nframes)):
-        data_size += file_nframes[i] // step_size
+    for i in range(len(file_attrs)):
+        data_size += file_attrs[i]['nframes'] // step_size
     return np.zeros(data_size)
 
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 4096
+step_size = 128
 
 # Assumes only one module in directory (for now)
 files_to_process = []
@@ -76,20 +86,23 @@ for fname in os.listdir(f'{data_dir}/{run_dir}'):
 
 
 def fname_sort_key(fname):
-    file_attrs = pff.parse_name(fname)
-    return int(file_attrs["seqno"])
+    parsed_name = pff.parse_name(fname)
+    return int(parsed_name["seqno"])
 
 
-files_to_process.sort(key=fname_sort_key)
-# files_to_process = files_to_process[:5]
-file_nframes = get_file_nframes(files_to_process)
-data = get_empty_data_array(file_nframes, step_size)
+files_to_process.sort(key=fname_sort_key)   # Sort files_to_process in ascending order by file sequence number
+file_attrs_array = get_file_attrs_array(files_to_process)
+data = get_empty_data_array(file_attrs_array, step_size)
 
-arr_offset = 0
+itr_info = {
+    "data_offset": 0,
+    "fstart_offset": 0  # Ensures frame step size across files
+}
 for i in range(len(files_to_process)):
     print(f"Processing {files_to_process[i]}")
-    process_file(files_to_process[i], data, arr_offset, step_size)
-    arr_offset += file_nframes[i] // step_size
+    file_info = file_attrs_array[i]
+    process_file(file_info, data, itr_info, step_size)
+    itr_info['data_offset'] += file_info["nframes"] // step_size
 
 
 # Moving average impulse responses
