@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import json
+import seaborn as sns
+import pandas as pd
 import math
 
 sys.path.append("../util")
@@ -76,7 +78,7 @@ def get_empty_data_array(file_attrs, step_size):
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 128
+step_size = 64
 
 # Assumes only one module in directory (for now)
 files_to_process = []
@@ -105,32 +107,52 @@ for i in range(len(files_to_process)):
     itr_info['data_offset'] += file_info["nframes"] // step_size
 
 
-# Moving average impulse responses
-MA5 = np.ones(5) / 5
-MA25 = np.ones(25) / 25
-MA75 = np.ones(75) / 75
-MA150 = np.ones(150) / 150
-
-# Moving averages
-y5 = np.convolve(data, MA5, "same")
-y25 = np.convolve(data, MA25, "same")
-y75 = np.convolve(data, MA75, "same")
-y150 = np.convolve(data, MA150, "same")
-
-x = np.arange(len(data)) * step_size * integration_time
-
-plt.plot(x, data)
-plt.plot(x, y5)
-plt.plot(x, y25)
-plt.plot(x, y75)
-plt.plot(x, y150)
-
 
 def ema_filter(length):
     alpha = 2/(length+1)
     # Create and return an EMA filter with length "length"
     h = (1 - alpha) ** np.arange(length)
     return h / np.sum(h)
+
+# Moving average impulse responses
+MA5 = np.ones(5) / 5
+MA25 = np.ones(25) / 25
+MA75 = np.ones(75) / 75
+MA500 = np.ones(500) / 500
+MA1000 = np.ones(1000) / 1000
+MA5000 = np.ones(5000) / 5000
+MAVar_size = len(data) // 20
+MAVar = np.ones(MAVar_size) / MAVar_size
+
+EMA_size = len(data) // 20
+EMA = ema_filter(EMA_size)
+
+# Moving averages
+y5 = np.convolve(data, MA5, "same")
+y25 = np.convolve(data, MA25, "same")
+y75 = np.convolve(data, MA75, "same")
+y500 = np.convolve(data, MA500, "same")
+y1000 = np.convolve(data, MA1000, "same")
+y5000 = np.convolve(data, MA5000, "same")
+yVar = np.convolve(data, MAVar, "same")
+yEMA = np.convolve(data, EMA, "same")
+
+x = np.arange(len(data)) * step_size * integration_time
+
+# pd_obj = pd.DataFrame({"x": x, "y": data})
+# pd_obj = pd_obj.set_index("x")
+# print(pd_obj)
+# sns.lineplot(data=pd_obj["y"])
+#
+
+
+plt.plot(x, data)
+plt.plot(x, y5)
+plt.plot(x, y25)
+plt.plot(x, y75)
+plt.plot(x, yVar)
+plt.plot(x, yEMA)
+
 
 print(len(data))
 
@@ -140,13 +162,14 @@ ylow = np.mean(data) - 5 * np.std(data)
 yhigh = np.mean(data) + 5 * np.std(data)
 plt.ylim([ylow, yhigh])
 # plt.ylim([min(data) * 0.999, max(data) * 1.001])
-plt.legend(('Total Brightness', '5-Point Average', '25-Point Average', '75-Point Average', '150-Point Average'))
+plt.legend(('Total Brightness', '5-Point Average', '25-Point Average', '75-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
 # plt.legend(('Total Brightness', '25-Point Average', '75-Point Average'))
 
 plt.ylabel("Total counts")
 plt.xlabel("Seconds since start of run")
 # plt.xlabel("Frame index")
 plt.title(f"Moving Averaged Movie Frame Brightness @ 100 µs (frame step size={step_size})")
+
+
+
 plt.show()
-
-
