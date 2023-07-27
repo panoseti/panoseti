@@ -90,10 +90,14 @@ def ema_filter(length):
     h = (1 - alpha) ** np.arange(length)
     return h / np.sum(h)
 
+def get_PDT_timestamp(unix_t):
+    dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=-7)))
+    return dt.strftime("%m/%d/%Y, %H:%M:%S")
+
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 2048
+step_size = 1024
 
 # Assumes only one module in directory (for now)
 files_to_process = []
@@ -103,6 +107,7 @@ for fname in os.listdir(f'{data_dir}/{run_dir}'):
 
 
 files_to_process.sort(key=fname_sort_key)   # Sort files_to_process in ascending order by file sequence number
+# files_to_process = files_to_process[:len(files_to_process) - 18]
 files_to_process = files_to_process[:len(files_to_process) - 18]
 file_attrs_array = get_file_attrs_array(files_to_process)
 data = get_empty_data_array(file_attrs_array, step_size)
@@ -124,6 +129,44 @@ for i in range(len(files_to_process)):
     itr_info['data_offset'] += file_info["nframes"] // step_size
 
 
+
+x = np.arange(len(data)) * step_size * integration_time
+
+# pd_obj = pd.DataFrame({"x": x, "y": data})
+# pd_obj = pd_obj.set_index("x")
+# print(pd_obj)
+# sns.lineplot(data=pd_obj["y"])
+#
+
+width = 100
+spike_centers = []
+spikes = pd.DataFrame(
+    columns=["Timestamp", "Elapsed run time (sec)", "Cumulative brightness", "Local mean", "Local std", "Local z-score"]
+)
+mean = np.mean(data)
+std = np.std(data)
+
+for i in range(width, len(data) - width):
+    local_mean = np.mean(data[i-width:i+width])
+    local_std = np.std(data[i-width:i+width])
+    zscore = (data[i] - local_mean) / local_std
+    if abs(zscore) > 6:
+        obs_time = get_PDT_timestamp(start_unix_t + x[i])
+        spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
+        spike_centers.append(i)
+
+
+print()
+print(spikes)
+print()
+
+print(f'# frames processed = {len(data)}')
+for i in spike_centers:
+    sns.histplot(data=data[i - width:i + width], stat="density", )
+    plt.show()
+
+
+# ---- Plot MA and EMAs ----
 
 # Moving average impulse responses
 MA5 = np.ones(5) / 5
@@ -148,33 +191,6 @@ y5000 = np.convolve(data, MA5000, "same")
 yVar = np.convolve(data, MAVar, "same")
 yEMA = np.convolve(data, EMA, "same")
 
-x = np.arange(len(data)) * step_size * integration_time
-
-# pd_obj = pd.DataFrame({"x": x, "y": data})
-# pd_obj = pd_obj.set_index("x")
-# print(pd_obj)
-# sns.lineplot(data=pd_obj["y"])
-#
-
-spikes = pd.DataFrame(columns=["Obs Time", "Delta T (sec)", "Total brightness", "Local Mean", "Local Std", "Z-Score"])
-mean = np.mean(data)
-std = np.std(data)
-
-def get_PDT_timestamp(unix_t):
-    dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=-7)))
-    return dt.strftime("%m/%d/%Y, %H:%M:%S")
-
-for i in range(50, len(data) - 50):
-    local_mean = np.mean(data[i-50:i+50])
-    local_std = np.std(data[i-50:i+50])
-    zscore = (data[i] - local_mean) / local_std
-    if abs(zscore) > 6:
-        obs_time = get_PDT_timestamp(start_unix_t) + x[i]
-        spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
-
-print(f'mean={mean}, std={std}')
-print(spikes)
-
 plt.plot(x, data)
 #plt.plot(x, y5)
 #plt.plot(x, y25)
@@ -183,7 +199,6 @@ plt.plot(x, yVar)
 plt.plot(x, yEMA)
 
 
-print(len(data))
 
 # plt.xlim([75 * step_size * integration_time, (len(x) - 75) * step_size * integration_time])
 plt.xlim([0, len(x) * step_size * integration_time])
@@ -199,8 +214,6 @@ plt.xlabel("Seconds since start of run")
 # plt.xlabel("Frame index")
 plt.title(f"Moving Averaged Movie Frame Brightness @ 100 µs (frame step size={step_size})")
 
-plt.show()
+# plt.show()
 
 
-sns.histplot(data=data, stat="density")
-plt.show()
