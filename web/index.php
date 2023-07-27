@@ -53,17 +53,19 @@ function get_durations($vol, $run, $start_dt) {
 function get_pointing_info($vol, $run) {
     // Returns the elevation of the Barnard dome module (Module 3) for prototype obs planning.
     // NOTE: must generalize this function for full system.
-    $obs_config = json_decode(file_get_contents("$vol/data/$run/obs_config.json"));
+    $file_path = "$vol/data/$run/obs_config.json";
+    if (!file_exists($file_path)) return "---";
+    $obs_config = json_decode(file_get_contents($file_path));
     // Check if we observed with the Astrograph and Barnard domes
-    if (count($obs_config->domes) != 2) return "---";
+    if (sizeof($obs_config->domes) != 2) return "---";
     if (!strcmp($obs_config->domes[0]->name, "barnard")) {
-        $elevation = $obs_config->domes[0]->modules->elevation;
+        $elevation = $obs_config->domes[0]->modules[0]->elevation;
     } else if (!strcmp($obs_config->domes[1]->name, "barnard")) {
-        $elevation = $obs_config->domes[1]->modules->elevation;
+        $elevation = $obs_config->domes[1]->modules[0]->elevation;
     } else {
         return "---";
     }
-    return $elevation;
+    return $elevation . "&deg";
 }
 
 function main() {
@@ -104,9 +106,9 @@ function main() {
         'Recording time',
         'Copy time',
         'Cleanup time',
-        'Data',
         'Modules',
         'Elevation (Module 3)',
+        'Data',
         'Run type',
         'Volume',
         'Tags',
@@ -137,9 +139,9 @@ function main() {
             $rec_dur,
             $collect_dur,
             $cleanup_dur,
-            implode('<br>', run_data_products($vol, $name)),
             implode('<br>', run_modules($vol, $name)),
             get_pointing_info($vol, $name),
+            implode('<br>', run_data_products($vol, $name)),
             $n['runtype'],
             $vol,
             tags($vol, $name),
