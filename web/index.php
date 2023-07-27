@@ -50,6 +50,22 @@ function get_durations($vol, $run, $start_dt) {
     return [$rec_dur, $collect_dur, $cleanup_dur];
 }
 
+function get_pointing_info($vol, $run) {
+    // Returns the elevation of the Barnard dome module (Module 3) for prototype obs planning.
+    // NOTE: must generalize this function for full system.
+    $obs_config = json_decode(file_get_contents("$vol/data/$run/obs_config.json"));
+    // Check if we observed with the Astrograph and Barnard domes
+    if (count($obs_config->domes) != 2) return "---";
+    if (!strcmp($obs_config->domes[0]->name, "barnard")) {
+        $elevation = $obs_config->domes[0]->modules->elevation;
+    } else if (!strcmp($obs_config->domes[1]->name, "barnard")) {
+        $elevation = $obs_config->domes[1]->modules->elevation;
+    } else {
+        return "---";
+    }
+    return $elevation;
+}
+
 function main() {
     page_head("PanoSETI", LOGIN_MANDATORY, true);
     echo "
@@ -90,6 +106,7 @@ function main() {
         'Cleanup time',
         'Data',
         'Modules',
+        'Elevation (Module 3)',
         'Run type',
         'Volume',
         'Tags',
@@ -122,6 +139,7 @@ function main() {
             $cleanup_dur,
             implode('<br>', run_data_products($vol, $name)),
             implode('<br>', run_modules($vol, $name)),
+            get_pointing_info($vol, $name),
             $n['runtype'],
             $vol,
             tags($vol, $name),
