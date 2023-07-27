@@ -11,6 +11,7 @@ import json
 import seaborn as sns
 import pandas as pd
 import math
+import datetime
 
 sys.path.append("../util")
 import config_file
@@ -22,6 +23,8 @@ fname = 'start_2023-07-19T06_07_59Z.dp_img16.bpp_2.module_1.seqno_0.pff'
 
 data_dir = DATA_DIR + '/data'
 run_dir = RUN_DIR
+
+
 
 
 def get_next_frame(f, frame_size, bytes_per_pixel, step_size):
@@ -76,9 +79,21 @@ def get_empty_data_array(file_attrs, step_size):
     return np.zeros(data_size)
 
 
+def fname_sort_key(fname):
+    parsed_name = pff.parse_name(fname)
+    return int(parsed_name["seqno"])
+
+
+def ema_filter(length):
+    alpha = 2/(length+1)
+    # Create and return an EMA filter with length "length"
+    h = (1 - alpha) ** np.arange(length)
+    return h / np.sum(h)
+
+
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 64
+step_size = 2048
 
 # Assumes only one module in directory (for now)
 files_to_process = []
@@ -87,32 +102,28 @@ for fname in os.listdir(f'{data_dir}/{run_dir}'):
         files_to_process.append(fname)
 
 
-def fname_sort_key(fname):
-    parsed_name = pff.parse_name(fname)
-    return int(parsed_name["seqno"])
-
-
 files_to_process.sort(key=fname_sort_key)   # Sort files_to_process in ascending order by file sequence number
+files_to_process = files_to_process[:len(files_to_process) - 18]
 file_attrs_array = get_file_attrs_array(files_to_process)
 data = get_empty_data_array(file_attrs_array, step_size)
+
+start_unix_t = file_attrs_array[0]['first_unix_t']
 
 itr_info = {
     "data_offset": 0,
     "fstart_offset": 0  # Ensures frame step size across files
 }
+
+#pd_data = pd.DataFrame()
+
 for i in range(len(files_to_process)):
     print(f"Processing {files_to_process[i]}")
     file_info = file_attrs_array[i]
     process_file(file_info, data, itr_info, step_size)
+
     itr_info['data_offset'] += file_info["nframes"] // step_size
 
 
-
-def ema_filter(length):
-    alpha = 2/(length+1)
-    # Create and return an EMA filter with length "length"
-    h = (1 - alpha) ** np.arange(length)
-    return h / np.sum(h)
 
 # Moving average impulse responses
 MA5 = np.ones(5) / 5
@@ -145,11 +156,29 @@ x = np.arange(len(data)) * step_size * integration_time
 # sns.lineplot(data=pd_obj["y"])
 #
 
+spikes = pd.DataFrame(columns=["Obs Time", "Delta T (sec)", "Total brightness", "Local Mean", "Local Std", "Z-Score"])
+mean = np.mean(data)
+std = np.std(data)
+
+def get_PDT_timestamp(unix_t):
+    dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=-7)))
+    return dt.strftime("%m/%d/%Y, %H:%M:%S")
+
+for i in range(50, len(data) - 50):
+    local_mean = np.mean(data[i-50:i+50])
+    local_std = np.std(data[i-50:i+50])
+    zscore = (data[i] - local_mean) / local_std
+    if abs(zscore) > 6:
+        obs_time = get_PDT_timestamp(start_unix_t) + x[i]
+        spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
+
+print(f'mean={mean}, std={std}')
+print(spikes)
 
 plt.plot(x, data)
-plt.plot(x, y5)
-plt.plot(x, y25)
-plt.plot(x, y75)
+#plt.plot(x, y5)
+#plt.plot(x, y25)
+plt.plot(x, y1000)
 plt.plot(x, yVar)
 plt.plot(x, yEMA)
 
@@ -162,14 +191,16 @@ ylow = np.mean(data) - 5 * np.std(data)
 yhigh = np.mean(data) + 5 * np.std(data)
 plt.ylim([ylow, yhigh])
 # plt.ylim([min(data) * 0.999, max(data) * 1.001])
-plt.legend(('Total Brightness', '5-Point Average', '25-Point Average', '75-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
-# plt.legend(('Total Brightness', '25-Point Average', '75-Point Average'))
+#plt.legend(('Total Brightness', '5-Point Average', '25-Point Average', '75-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
+plt.legend(('Total Brightness', '10000-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
 
 plt.ylabel("Total counts")
 plt.xlabel("Seconds since start of run")
 # plt.xlabel("Frame index")
 plt.title(f"Moving Averaged Movie Frame Brightness @ 100 µs (frame step size={step_size})")
 
+plt.show()
 
 
+sns.histplot(data=data, stat="density")
 plt.show()
