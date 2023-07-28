@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import sys
 import json
 import seaborn as sns
+import seaborn.objects as so
 import pandas as pd
 import math
 import datetime
@@ -17,22 +18,14 @@ sys.path.append("../util")
 import config_file
 import pff
 
+from cloud_utils import get_file_info_array, get_next_frame, get_PDT_timestamp
+
 DATA_DIR = '/Users/nico/Downloads/test_data/obs_data'
 RUN_DIR = 'obs_Lick.start_2023-07-19T06:07:34Z.runtype_sci-obs.pffd'
 fname = 'start_2023-07-19T06_07_59Z.dp_img16.bpp_2.module_1.seqno_0.pff'
 
 data_dir = DATA_DIR + '/data'
 run_dir = RUN_DIR
-
-
-
-
-def get_next_frame(f, frame_size, bytes_per_pixel, step_size):
-    """Returns the next image frame and json header from f."""
-    j = json.loads(pff.read_json(f))
-    img = pff.read_image(f, 32, bytes_per_pixel)
-    f.seek((step_size - 1) * frame_size, os.SEEK_CUR)   # Skip step_size - 1 images
-    return img, j
 
 
 def process_file(file_info, data, itr_info, step_size):
@@ -54,24 +47,6 @@ def process_file(file_info, data, itr_info, step_size):
         itr_info['fstart_offset'] = file_info['nframes'] - (new_nframes // step_size) * step_size
 
 
-def get_file_attrs_array(files_to_process):
-    """Returns an array of dictionaries storing the attributes of all the files to process."""
-    file_attrs = [None] * len(files_to_process)
-    for i in range(len(files_to_process)):
-        fname = files_to_process[i]
-        attrs = {"fname": fname}
-        with open(f'{data_dir}/{run_dir}/{fname}', 'rb') as f:
-            parsed_name = pff.parse_name(fname)
-            bytes_per_pixel = int(parsed_name['bpp'])
-            img_size = bytes_per_pixel * 1024
-            attrs["frame_size"], attrs["nframes"], attrs["first_unix_t"], attrs["last_unix_t"] \
-                = pff.img_info(f, img_size)
-            attrs["img_size"] = img_size
-            attrs["bytes_per_pixel"] = bytes_per_pixel
-        file_attrs[i] = attrs
-    return file_attrs
-
-
 def get_empty_data_array(file_attrs, step_size):
     data_size = 0
     for i in range(len(file_attrs)):
@@ -90,14 +65,10 @@ def ema_filter(length):
     h = (1 - alpha) ** np.arange(length)
     return h / np.sum(h)
 
-def get_PDT_timestamp(unix_t):
-    dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=-7)))
-    return dt.strftime("%m/%d/%Y, %H:%M:%S")
-
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 1024
+step_size = 4
 
 # Assumes only one module in directory (for now)
 files_to_process = []
@@ -109,61 +80,69 @@ for fname in os.listdir(f'{data_dir}/{run_dir}'):
 files_to_process.sort(key=fname_sort_key)   # Sort files_to_process in ascending order by file sequence number
 # files_to_process = files_to_process[:len(files_to_process) - 18]
 files_to_process = files_to_process[:len(files_to_process) - 18]
-file_attrs_array = get_file_attrs_array(files_to_process)
-data = get_empty_data_array(file_attrs_array, step_size)
+file_info_array = get_file_info_array(data_dir, run_dir, files_to_process)
+data = get_empty_data_array(file_info_array, step_size)
 
-start_unix_t = file_attrs_array[0]['first_unix_t']
+start_unix_t = file_info_array[0]['first_unix_t']
 
 itr_info = {
     "data_offset": 0,
     "fstart_offset": 0  # Ensures frame step size across files
 }
 
-#pd_data = pd.DataFrame()
-
 for i in range(len(files_to_process)):
     print(f"Processing {files_to_process[i]}")
-    file_info = file_attrs_array[i]
+    file_info = file_info_array[i]
     process_file(file_info, data, itr_info, step_size)
 
     itr_info['data_offset'] += file_info["nframes"] // step_size
 
 
-
 x = np.arange(len(data)) * step_size * integration_time
 
-# pd_obj = pd.DataFrame({"x": x, "y": data})
-# pd_obj = pd_obj.set_index("x")
-# print(pd_obj)
-# sns.lineplot(data=pd_obj["y"])
-#
-
 width = 100
+sigma = 7
 spike_centers = []
 spikes = pd.DataFrame(
-    columns=["Timestamp", "Elapsed run time (sec)", "Cumulative brightness", "Local mean", "Local std", "Local z-score"]
+    columns=["Timestamp", "Elapsed Run Time (sec)", "Cumulative Brightness", "Local Mean", "Local Std", "Local Z-score"]
 )
-mean = np.mean(data)
-std = np.std(data)
 
 for i in range(width, len(data) - width):
     local_mean = np.mean(data[i-width:i+width])
     local_std = np.std(data[i-width:i+width])
     zscore = (data[i] - local_mean) / local_std
-    if abs(zscore) > 6:
+    if abs(zscore) > sigma:
         obs_time = get_PDT_timestamp(start_unix_t + x[i])
         spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
         spike_centers.append(i)
 
+title = f"Movie Frames with Total Counts >{sigma} Sigma Relative to Local {2 * width}-Point Sample (integration time={round(integration_time * 10**6)} µs, step_size={step_size})"
+p = (
+        so.Plot(spikes, x="Elapsed Run Time (sec)", y="Local Z-score")
+        .add(so.Dot(), color="Timestamp")
+        # .scale(y="log")
+        .label(title=title)
+)
+# .move_legend(p, "upper left", bbox_to_anchor=(1, 1))
 
-print()
-print(spikes)
-print()
+mean = np.mean(data)
+std = np.std(data)
 
-print(f'# frames processed = {len(data)}')
-for i in spike_centers:
-    sns.histplot(data=data[i - width:i + width], stat="density", )
-    plt.show()
+str_out = f"{data_dir}/{run_dir}:\n" \
+          f"\t{files_to_process[0]}\n" \
+          f"\t{files_to_process[-1]}\n\n" \
+          f"{title}\n\n" \
+          f"{spikes}\n\n" \
+          f"# frames processed = {len(data)}\n" \
+          f"mean={mean}, std={std}"
+
+with open(title + '.txt', "w") as f:
+    f.write(str_out)
+print(str_out)
+p.show()
+# for i in spike_centers:
+#     sns.histplot(data=data[i - width:i + width], stat="density", )
+#     plt.show()
 
 
 # ---- Plot MA and EMAs ----
