@@ -32,10 +32,11 @@ def get_file_info_array(data_dir, run_dir, files_to_process):
             parsed_name = pff.parse_name(fname)
             bytes_per_pixel = int(parsed_name['bpp'])
             img_size = bytes_per_pixel * 1024
-            attrs["frame_size"], attrs["nframes"], attrs["first_unix_t"], attrs["last_unix_t"] \
-                = pff.img_info(f, img_size)
+            attrs["frame_size"], attrs["nframes"], attrs["first_unix_t"], attrs["last_unix_t"] = pff.img_info(f, img_size)
             attrs["img_size"] = img_size
             attrs["bytes_per_pixel"] = bytes_per_pixel
+            attrs["module"] = int(parsed_name["module"])
+            attrs["seqno"] = int(parsed_name['seqno'])
         file_attrs[i] = attrs
     return file_attrs
 

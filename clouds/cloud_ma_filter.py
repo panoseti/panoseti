@@ -13,6 +13,7 @@ import seaborn.objects as so
 import pandas as pd
 import math
 import datetime
+from pathlib import Path
 
 sys.path.append("../util")
 import config_file
@@ -66,9 +67,57 @@ def ema_filter(length):
     return h / np.sum(h)
 
 
+def get_img_spike_dir(file_info0, file_info1, analysis_info):
+    return f"{analysis_info['run_dir']}" \
+               f".module_{file_info0['module']}" \
+               f".seqno0_{file_info0['seqno']}" \
+               f".seqno1_{file_info1['seqno']}" \
+               f".sigma_{analysis_info['sigma']}" \
+               f".window-width_{analysis_info['window_width']}" \
+               f".step-size_{analysis_info['step_size']}"
+
+
+def gen_npy_fname(img_spike_dir):
+    npy_fname = f"image_spikes/{img_spike_dir}/data.npy"
+    path = Path(f"image_spikes/{img_spike_dir}/{fname}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return npy_fname
+    # return f"image_spikes/{get_img_spike_dir(run_dir, module, seqno0, seqno1, sigma, window_width, step_size)}.npy"
+
+
+def get_data(img_spike_dir, step_size):
+    # Save reduced data to file
+    npy_fname = gen_npy_fname(img_spike_dir)
+    if os.path.exists(npy_fname):
+        data_arr = np.load(npy_fname)
+        return data_arr
+    itr_info = {
+        "data_offset": 0,
+        "fstart_offset": 0  # Ensures frame step size across files
+    }
+    data_arr = get_empty_data_array(file_info_array, step_size)
+    for i in range(len(files_to_process)):
+        print(f"Processing {files_to_process[i]}")
+        file_info = file_info_array[i]
+        process_file(file_info, data_arr, itr_info, step_size)
+        itr_info['data_offset'] += file_info["nframes"] // step_size
+
+    np.save(npy_fname, data_arr)
+    return data_arr
+
+
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 4
+step_size = 2
+window_width = 10**4
+sigma = 5
+
+analysis_info = {
+    "run_dir": run_dir,
+    "sigma": sigma,
+    "window_width": window_width,
+    "step_size": step_size
+}
 
 # Assumes only one module in directory (for now)
 files_to_process = []
@@ -76,53 +125,49 @@ for fname in os.listdir(f'{data_dir}/{run_dir}'):
     if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
         files_to_process.append(fname)
 
-
-files_to_process.sort(key=fname_sort_key)   # Sort files_to_process in ascending order by file sequence number
+files_to_process.sort(key=fname_sort_key)  # Sort files_to_process in ascending order by file sequence number
 # files_to_process = files_to_process[:len(files_to_process) - 18]
 files_to_process = files_to_process[:len(files_to_process) - 18]
 file_info_array = get_file_info_array(data_dir, run_dir, files_to_process)
-data = get_empty_data_array(file_info_array, step_size)
 
 start_unix_t = file_info_array[0]['first_unix_t']
 
-itr_info = {
-    "data_offset": 0,
-    "fstart_offset": 0  # Ensures frame step size across files
-}
 
-for i in range(len(files_to_process)):
-    print(f"Processing {files_to_process[i]}")
-    file_info = file_info_array[i]
-    process_file(file_info, data, itr_info, step_size)
-
-    itr_info['data_offset'] += file_info["nframes"] // step_size
-
-
+img_spike_dir = get_img_spike_dir(file_info_array[0], file_info_array[-1], analysis_info)
+data = get_data(img_spike_dir, step_size)
 x = np.arange(len(data)) * step_size * integration_time
 
-width = 100
-sigma = 7
 spike_centers = []
 spikes = pd.DataFrame(
     columns=["Timestamp", "Elapsed Run Time (sec)", "Cumulative Brightness", "Local Mean", "Local Std", "Local Z-score"]
 )
 
-for i in range(width, len(data) - width):
-    local_mean = np.mean(data[i-width:i+width])
-    local_std = np.std(data[i-width:i+width])
+for i in range(window_width, len(data) - window_width):
+    local_mean = np.mean(data[i - window_width:i + window_width])
+    local_std = np.std(data[i - window_width:i + window_width])
     zscore = (data[i] - local_mean) / local_std
     if abs(zscore) > sigma:
         obs_time = get_PDT_timestamp(start_unix_t + x[i])
         spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
         spike_centers.append(i)
 
-title = f"Movie Frames with Total Counts >{sigma} Sigma Relative to Local {2 * width}-Point Sample (integration time={round(integration_time * 10**6)} µs, step_size={step_size})"
-p = (
-        so.Plot(spikes, x="Elapsed Run Time (sec)", y="Local Z-score")
-        .add(so.Dot(), color="Timestamp")
-        # .scale(y="log")
-        .label(title=title)
-)
+title = f"Movie Frames with Total Counts >{sigma} Sigma Relative to Local {2 * window_width}-Point Sample (integration time={round(integration_time * 10 ** 6)} µs, step_size={step_size})"
+sns.set_style("darkgrid")
+sns.color_palette("viridis", as_cmap=True)
+# ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Local Z-score", hue="Local Z-score", palette="flare_r")
+ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Cumulative Brightness", hue="Cumulative Brightness", palette="flare_r")
+plt.title(label=title[:len(title)//2] + '\n' + title[len(title)//2:])
+# # Put a legend below current axis
+# plt.legend(bbox_to_anchor=(1.05, 0.5), loc='center left')#, label='Total Frame Counts')
+plt.legend(markerscale=1)
+plt.tight_layout()
+plt.savefig(f"image_spikes/{img_spike_dir}/seaborn_plot.svg")#, bbox_inches="tight")
+# p = (
+#         so.Plot(spikes, x="Elapsed Run Time (sec)", y="Local Z-score")
+#         .add(so.Dots())
+#         # .scale(y="log")
+#         .label(title=title[:len(title)//2] + '\n' + title[len(title)//2:])
+# )
 # .move_legend(p, "upper left", bbox_to_anchor=(1, 1))
 
 mean = np.mean(data)
@@ -132,17 +177,39 @@ str_out = f"{data_dir}/{run_dir}:\n" \
           f"\t{files_to_process[0]}\n" \
           f"\t{files_to_process[-1]}\n\n" \
           f"{title}\n\n" \
-          f"{spikes}\n\n" \
+          f"{spikes.to_string()}\n\n" \
           f"# frames processed = {len(data)}\n" \
           f"mean={mean}, std={std}"
 
-with open(title + '.txt', "w") as f:
+filepath = Path(f"image_spikes/{img_spike_dir}/spike_data.csv")
+filepath.parent.mkdir(parents=True, exist_ok=True)
+spikes.to_csv(filepath)
+
+with open(f"image_spikes/{img_spike_dir}/summary.txt", "w") as f:
     f.write(str_out)
+
+
+
 print(str_out)
-p.show()
+
+
+
+
+#p.show()
+
 # for i in spike_centers:
 #     sns.histplot(data=data[i - width:i + width], stat="density", )
 #     plt.show()
+
+
+
+
+
+
+
+
+
+
 
 
 # ---- Plot MA and EMAs ----
