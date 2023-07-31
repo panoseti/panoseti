@@ -279,6 +279,16 @@ def do_mask_config(modules, data_config, verbose=False):
 # compute PH baselines on quabos and write to file
 #
 def do_calibrate_ph(modules, quabo_uids):
+    # Before starting to calibrate ph, we need to take some ph data.
+    # We seem to have a bug in firmware, but this is an easy fix in software.
+    daq_start = quabo_driver.DAQ_PARAMS(
+        do_image=False,
+        image_us=4999,
+        image_8bit=False,
+        do_ph=True,
+        bl_subtract=True
+    )
+    daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     quabos = []
     for module in modules:
         for i in range(4):
@@ -286,6 +296,9 @@ def do_calibrate_ph(modules, quabo_uids):
             if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
+            quabo.send_daq_params(daq_start)
+            time.sleep(1)
+            quabo.send_daq_params(daq_stop)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
             q = {}
