@@ -15,7 +15,6 @@
 #define IMG_SIZE 1024
 
 uint16_t nfiles = 0;
-uint64_t nframes = 0;
 int bits_per_pixel = 16;
 
 
@@ -69,72 +68,67 @@ void open_output_files() {
 }
 
 
-uint16_t image16[1024];
-uint8_t image8[1024];
 
-void do_file(const char* infile, ) {
+void do_file(const char* infile, int nframes) {
     FILE *f = fopen(infile, "r");
     if (!f) {
         fprintf(stderr, "can't open %s\n", infile);
         exit(1);
     }
     //open_output_files();
-
+    //uint32_t *reduced = (uint32_t *) malloc(nframes * sizeof(uint32_t));
+    uint32_t reduced[nframes];
+    uint16_t image16[1024];
+    uint8_t image8[1024];
     string s;
-    while (1) {
+    for (int i = 0; i < nframes; i++) {
         int retval = pff_read_json(f, s);
-        if (retval) break;
-        uint32_t sum_val = 0;
+        if (retval != 0) {
+            fprintf(stderr, "Image read error [%d] in %s at frame index %d \n", retval, infile, i);
+            break;
+        }
         if (bits_per_pixel == 16) {
             retval = pff_read_image(f, sizeof(image16), image16);
             if (retval) break;
-
-
-        } else {
-            retval = pff_read_image(f, sizeof(image8), image8);
-            if (retval) break;
-            unsigned char val = image8[pixel];
-            if (val >= MAX_VAL8) val = 0;
-            dval = (double)val;
+            reduced[i] = reduce_image16_nonSIMD(image16)
         }
-        pulse_find.add_sample(dval);
-        isample++;
-        if (isample == nframes) break;
     }
+    free(reduced);
+    fclose(f);
 }
 
 
 
 void usage() {
     printf("options:\n"
-        "   --infile x          input file name\n"
-        "   --pixel n           pixel, 0..1023 (default: all pixels)\n"
-        "   --nlevels n         duration levels (default 16)\n"
-        "   --win_size n        stats window is n times pulse duration\n"
-        "                       default: 64\n"
-        "   --thresh x          threshold is mean + x times stddev\n"
-        "                       default: 1\n"
-        "   --out_dir x         output directory\n"
-        "                       default: .\n"
-        "   --log_all           output all pulses length 4 and up\n"
-        "   --nframes N         do only first N frames\n"
-        "   --bits_per_pixel N  default: 16\n"
+        "   --infile_name x     input file name\n"
+        "   --infile_nframes n  number of frames in the input file. Must follow each input file name\n"
     );
     exit(1);
 }
 
 
+
+
 int main(int argc, char **argv) {
-    const char* infiles[MAX_IN_FILES] = 0;
+    const char* infiles[MAX_IN_FILES];
+    const int nframes[MAX_IN_FILES];
     int i;
     int retval;
 
     for (i=1; i<argc; i++) {
-        if (!strcmp(argv[i], "--infile")) {
-            while (is_pff_file(argv[++i])) {
-                infiles[nfiles++] = argv[i];
+        if (!strcmp(argv[i], "--infile_name")) {
+            infile = argv[++i];
+            if (!is_pff_file(infile)) {
+                fprintf(stderr, "%s is not a PFF file\n", infile);
+                exit(1);
             }
-            i--;
+            if (strcmp(argv[++i], "--infile_nframes")) {
+                fprintf(stderr, "%s must be followed by '--infile_nframes n'\n", infile);
+                exit(1);
+            }
+            nframes[nfiles] = atoi(argv[++i]);
+            nfiles++;
         } else if (!strcmp(argv[i], "--nframes")) {
             nframes = atof(argv[++i]);
         } else {
@@ -154,7 +148,7 @@ int main(int argc, char **argv) {
         exit(1);
     } else {
         for (int i = 0; i < nfiles; i++) {
-            do_file() // TODO
+            do_file(infiles[i], nframes[i])
         }
     }
 }
