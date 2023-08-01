@@ -89,7 +89,7 @@ void open_output_files() {
 */
 
 void free_img_info(FILE_INFO **info_arr) {
-    for (int i = 0; i < MAX_IN_FILES, i++) {
+    for (int i = 0; i < MAX_IN_FILES; i++) {
         if (info_arr[i] != NULL){
             free(info_arr[i]);
         }
@@ -108,6 +108,7 @@ FILE_INFO* get_img_info(const char *fname, int32_t seqno) {
         fprintf(stderr, "Could not malloc enough space\n");
         exit(1);
     }
+    string s;
     int retval = pff_read_json(f, s);
     if (retval != 0) {
         fprintf(stderr, "Image read error [%d] in %s at frame index %d \n", retval, fname, 0);
@@ -119,7 +120,8 @@ FILE_INFO* get_img_info(const char *fname, int32_t seqno) {
         exit(1);
     }
     int64_t frame_size = header_size + bytes_per_image + 1;
-    int64_t file_size = f.seek(f, 0, SEEK_END);
+    f.seek(f, 0, SEEK_END);
+    int64_t file_size = ftell(f);
     int64_t nframes = file_size / frame_size;
 
     finfo->file_size = file_size;
@@ -145,7 +147,7 @@ void do_file(const FILE_INFO *fin_info, FILE *fout_ptr) {
 
         num_threads = omp_get_num_threads();
         uint16_t thread_id = omp_get_thread_num();
-        chunk_size = nframes / num_threads;
+        chunk_size = fin_info->nframes / num_threads;
         string s;
         // Last chunk may have a different amount of frames
         int64_t upper_limit = thread_id != (num_threads - 1) ? chunk_size * (thread_id + 1) : nframes;
@@ -153,7 +155,7 @@ void do_file(const FILE_INFO *fin_info, FILE *fout_ptr) {
             fseek(fin_ptr, chunk_size*thread_id*(fin_info->frame_size), SEEK_SET);
             int retval = pff_read_json(fin_ptr, s);
             if (retval != 0) {
-                fprintf(stderr, "Image read error [%d] in %s at frame index %d \n", retval, fin_info->fname, i);
+                fprintf(stderr, "Image read error [%d] in %s at frame index %ld \n", retval, fin_info->fname, i);
                 break;
             }
             if (bits_per_pixel == 16) {
@@ -180,8 +182,8 @@ int main(int argc, char **argv) {
 
     for (i=1; i<argc; i++) {
         if (!strcmp(argv[i], "--infiles")) {
-            while (is_pff_file[arg[++i]]) {
-                info_arr[nfiles] = get_img_info(argv[i]);
+            while (is_pff_file[argv[++i]]) {
+                info_arr[nfiles] = get_img_info(argv[i], nfiles);
                 nfiles++;
             }
             i--;
