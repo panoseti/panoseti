@@ -72,7 +72,6 @@ def get_img_spike_dir(file_info0, file_info1, analysis_info):
                f".module_{file_info0['module']}" \
                f".seqno0_{file_info0['seqno']}" \
                f".seqno1_{file_info1['seqno']}" \
-               f".sigma_{analysis_info['sigma']}" \
                f".window-width_{analysis_info['window_width']}" \
                f".step-size_{analysis_info['step_size']}"
 
@@ -108,9 +107,9 @@ def get_data(img_spike_dir, step_size):
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 2
+step_size = 512
 window_width = 10**4
-sigma = 5
+sigma = 4
 
 analysis_info = {
     "run_dir": run_dir,
@@ -137,10 +136,15 @@ img_spike_dir = get_img_spike_dir(file_info_array[0], file_info_array[-1], analy
 data = get_data(img_spike_dir, step_size)
 x = np.arange(len(data)) * step_size * integration_time
 
+print(img_spike_dir)
+
 spike_centers = []
 spikes = pd.DataFrame(
-    columns=["Timestamp", "Elapsed Run Time (sec)", "Cumulative Brightness", "Local Mean", "Local Std", "Local Z-score"]
+    columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts", "Local Mean", "Local Std", "Local Z-score"]
 )
+
+MAfilter = np.ones(500) / 500
+y5 = np.convolve(data, MAfilter, "same")
 
 for i in range(window_width, len(data) - window_width):
     local_mean = np.mean(data[i - window_width:i + window_width])
@@ -153,21 +157,15 @@ for i in range(window_width, len(data) - window_width):
 
 title = f"Movie Frames with Total Counts >{sigma} Sigma Relative to Local {2 * window_width}-Point Sample (integration time={round(integration_time * 10 ** 6)} µs, step_size={step_size})"
 sns.set_style("darkgrid")
-sns.color_palette("viridis", as_cmap=True)
+sns.color_palette("flare_r", as_cmap=True)
 # ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Local Z-score", hue="Local Z-score", palette="flare_r")
-ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Cumulative Brightness", hue="Cumulative Brightness", palette="flare_r")
+ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Total Counts", hue="Total Counts", palette="flare_r")
 plt.title(label=title[:len(title)//2] + '\n' + title[len(title)//2:])
 # # Put a legend below current axis
-# plt.legend(bbox_to_anchor=(1.05, 0.5), loc='center left')#, label='Total Frame Counts')
-plt.legend(markerscale=1)
+#plt.legend(bbox_to_anchor=(1.05, 0.5), loc='center left')#, label='Total Frame Counts')
+#plt.legend(markerscale=1)
 plt.tight_layout()
 plt.savefig(f"image_spikes/{img_spike_dir}/seaborn_plot.svg")#, bbox_inches="tight")
-# p = (
-#         so.Plot(spikes, x="Elapsed Run Time (sec)", y="Local Z-score")
-#         .add(so.Dots())
-#         # .scale(y="log")
-#         .label(title=title[:len(title)//2] + '\n' + title[len(title)//2:])
-# )
 # .move_legend(p, "upper left", bbox_to_anchor=(1, 1))
 
 mean = np.mean(data)
@@ -240,9 +238,9 @@ yEMA = np.convolve(data, EMA, "same")
 plt.plot(x, data)
 #plt.plot(x, y5)
 #plt.plot(x, y25)
-plt.plot(x, y1000)
-plt.plot(x, yVar)
-plt.plot(x, yEMA)
+#plt.plot(x, y1000)
+#plt.plot(x, yVar)
+#plt.plot(x, yEMA)
 
 
 
@@ -250,16 +248,16 @@ plt.plot(x, yEMA)
 plt.xlim([0, len(x) * step_size * integration_time])
 ylow = np.mean(data) - 5 * np.std(data)
 yhigh = np.mean(data) + 5 * np.std(data)
-plt.ylim([ylow, yhigh])
+#plt.ylim([ylow, yhigh])
 # plt.ylim([min(data) * 0.999, max(data) * 1.001])
 #plt.legend(('Total Brightness', '5-Point Average', '25-Point Average', '75-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
-plt.legend(('Total Brightness', '10000-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
+#plt.legend(('Total Brightness', '10000-Point Average', f'{MAVar_size}-Point Average', f'{EMA_size}-Point EMA'))
 
-plt.ylabel("Total counts")
-plt.xlabel("Seconds since start of run")
+# plt.ylabel("Total counts")
+#plt.xlabel("Seconds since start of run")
 # plt.xlabel("Frame index")
-plt.title(f"Moving Averaged Movie Frame Brightness @ 100 µs (frame step size={step_size})")
+#plt.title(f"Moving Averaged Movie Frame Brightness @ 100 µs (frame step size={step_size})")
 
-# plt.show()
+plt.show()
 
 
