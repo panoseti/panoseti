@@ -136,23 +136,46 @@ x = np.arange(len(data)) * step_size * integration_time
 
 print(img_spike_dir)
 
-spike_centers = []
-spikes = pd.DataFrame(
-    columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts", f"{MA_pts}-Pt Mean", f"{MA_pts}-Pt Std", f"{MA_pts}-Pt Z-score"]
-)
-#MAfilter = np.ones(MA_pts) / MA_pts
-#yMA = np.convolve(data, MAfilter, "same")
-for i in range(MA_pts, len(data)):
-    local_mean = np.mean(data[i - MA_pts:i])
-    local_std = np.std(data[i - MA_pts:i])
-    zscore = (data[i] - local_mean) / local_std
-    if zscore < sigma:
-        obs_time = get_PDT_timestamp(start_unix_t + x[i])
-        spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
-        spike_centers.append(i)
-
-
 title = f"Movie Frames with Total Counts <{sigma} Sigma Relative to \n{MA_pts}-Point Moving Average (integration time={round(integration_time * 10 ** 6)} µs, frame step size={step_size})"
+filepath = f"image_spikes/{img_spike_dir}/spike_data.csv"
+if not os.path.exists(filepath):
+    # Compute spike locations
+    spike_centers = []
+    spikes = pd.DataFrame(
+        columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts", f"{MA_pts}-Pt Mean", f"{MA_pts}-Pt Std",
+                 f"{MA_pts}-Pt Z-score"]
+    )
+    for i in range(MA_pts, len(data)):
+        local_mean = np.mean(data[i - MA_pts:i])
+        local_std = np.std(data[i - MA_pts:i])
+        zscore = (data[i] - local_mean) / local_std
+        if zscore < sigma:
+            obs_time = get_PDT_timestamp(start_unix_t + x[i])
+            spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
+            spike_centers.append(i)
+    os.makedirs(filepath)
+    spikes.to_csv(filepath)
+
+    # Generate summary table
+    mean = np.mean(data)
+    std = np.std(data)
+    str_out = f"{data_dir}/{run_dir}:\n" \
+              f"\t{files_to_process[0]}\n" \
+              f"\t{files_to_process[-1]}\n\n" \
+              f"{title}\n\n" \
+              f"{spikes.to_string()}\n\n" \
+              f"# frames processed = {len(data)}\n" \
+              f"mean={mean}, std={std}"
+    with open(f"image_spikes/{img_spike_dir}/summary.txt", "w") as f:
+        f.write(str_out)
+
+else:
+    spikes = pd.read_csv(filepath)
+    with open(f"image_spikes/{img_spike_dir}/summary.txt", "r") as f:
+        str_out = f.read()
+
+print(str_out)
+
 sns.set_style("darkgrid")
 sns.color_palette("flare_r", as_cmap=True)
 # ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Local Z-score", hue="Local Z-score", palette="flare_r")
@@ -165,36 +188,14 @@ plt.tight_layout()
 plt.savefig(f"image_spikes/{img_spike_dir}/seaborn_plot.svg")#, bbox_inches="tight")
 # .move_legend(p, "upper left", bbox_to_anchor=(1, 1))
 
-mean = np.mean(data)
-std = np.std(data)
-
-str_out = f"{data_dir}/{run_dir}:\n" \
-          f"\t{files_to_process[0]}\n" \
-          f"\t{files_to_process[-1]}\n\n" \
-          f"{title}\n\n" \
-          f"{spikes.to_string()}\n\n" \
-          f"# frames processed = {len(data)}\n" \
-          f"mean={mean}, std={std}"
-
-filepath = Path(f"image_spikes/{img_spike_dir}/spike_data.csv")
-filepath.parent.mkdir(parents=True, exist_ok=True)
-spikes.to_csv(filepath)
-
-with open(f"image_spikes/{img_spike_dir}/summary.txt", "w") as f:
-    f.write(str_out)
-
-
-
-print(str_out)
-EMA_size = len(data) // 20
-EMA = ema_filter(EMA_size)
 
 l_original, = plt.plot(x, data)
 # second_legend = plt.legend(handles=[l_original], loc='upper right')
 
 #plt.xlim([0, len(x) * step_size * integration_time])
-ylow = np.mean(data) - 5 * np.std(data)
-yhigh = np.mean(data) + 5 * np.std(data)
+ylow = np.min(data) - np.std(data)
+yhigh = np.mean(data) + 10 * np.std(data)
+plt.ylim(ylow, yhigh)
 plt.show()
 
 

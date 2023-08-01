@@ -182,7 +182,7 @@ int main(int argc, char **argv) {
 
     for (i=1; i<argc; i++) {
         if (!strcmp(argv[i], "--infiles")) {
-            while (is_pff_file(argv[++])) {
+            while (is_pff_file(argv[++i])) {
                 info_arr[nfiles] = get_img_info(argv[i], nfiles);
                 nfiles++;
             }
