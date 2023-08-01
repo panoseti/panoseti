@@ -68,7 +68,7 @@ def ema_filter(length):
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 4
+step_size = 2048
 
 # Assumes only one module in directory (for now)
 files_to_process = []

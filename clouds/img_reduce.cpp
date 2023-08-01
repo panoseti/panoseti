@@ -12,11 +12,26 @@
 #include "pff.h"
 
 #define MAX_IN_FILES 100
-#define IMG_SIZE 1024
+#define PIXELS_PER_IMAGE 1024
 
 uint16_t nfiles = 0;
-int bits_per_pixel = 16;
+uint8_t bits_per_pixel = 16;
+uint8_t bytes_per_image = (bits_per_pixel / 8) * PIXELS_PER_IMAGE;
 
+typedef struct FILE_INFO {
+    const char* fname;
+    int64_t file_size;
+    int64_t nframes;
+};
+
+void usage() {
+    printf("options:\n"
+        "   --infile_name x     input file name\n"
+        "   --infile_nframes n  number of frames in the input file. Must follow each input file name\n"
+        "   --bits_per_pixel N  default: 16\n"
+    );
+    exit(1);
+}
 
 /*
 
@@ -27,7 +42,7 @@ uint32_t reduce_image16(uint16_t *img16) {
     __m128i sum_vec, tmp;
     sum_vec = _mm_setzero_si128();  // Accumulates 4 uint32_t pixel sums in a 128-bit register
     // Sum 4 pixels at a time
-    for (uint16_t i = 0; i < (IMG_SIZE / 4) * 4; i += 4) {
+    for (uint16_t i = 0; i < (PIXELS_PER_IMAGE / 4) * 4; i += 4) {
         tmp = _mm_loadu_si128((__m128i*) (img16 + i));
         sum_vec = _mm_add_epi32(sum_vec, tmp);
     }
@@ -42,12 +57,13 @@ uint32_t reduce_image16(uint16_t *img16) {
 
 uint32_t reduce_image16_nonSIMD(uint16_t *img16) {
     uint32_t result = 0;
-    for (uint16_t i = 0; i < IMG_SIZE; i++) {
+    for (uint16_t i = 0; i < PIXELS_PER_IMAGE; i++) {
         result += image16[i];
     }
     return result;
 }
 
+/*
 void open_output_files() {
     char buf[1024];
     for (int i=0; i<nlevels; i++) {
@@ -66,53 +82,82 @@ void open_output_files() {
         }
     }
 }
+*/
 
+void free_img_info()
 
-
-void do_file(const char* infile, int nframes) {
-    FILE *f = fopen(infile, "r");
+void get_img_info(const char **infiles, uint16_t nfiles, **FILE_INFO info_arr) {
+    // Check file and compute frame size 
+    FILE *f = fopen(infiles, "r");
     if (!f) {
-        fprintf(stderr, "can't open %s\n", infile);
+        fprintf(stderr, "can't open %s\n", infiles);
         exit(1);
     }
-    //open_output_files();
-    //uint32_t *reduced = (uint32_t *) malloc(nframes * sizeof(uint32_t));
-    uint32_t reduced[nframes];
-    uint16_t image16[1024];
-    uint8_t image8[1024];
-    string s;
-    for (int i = 0; i < nframes; i++) {
-        int retval = pff_read_json(f, s);
+    for (int i = 0; i < nfiles; i++) {
+        FILE_INFO *ret = (FILE_INFO *) malloc(sizeof(FILE_INFO));
+        if (ret == NULL) {
+            fprintf(stderr, "Could not malloc enough space\n");
+            exit(1);
+        }
+        int rv = pff_read_json(f, s);
         if (retval != 0) {
-            fprintf(stderr, "Image read error [%d] in %s at frame index %d \n", retval, infile, i);
-            break;
+            fprintf(stderr, "Image read error [%d] in %s at frame index %d \n", retval, infiles, 0);
+            exit(1);
         }
-        if (bits_per_pixel == 16) {
-            retval = pff_read_image(f, sizeof(image16), image16);
-            if (retval) break;
-            reduced[i] = reduce_image16_nonSIMD(image16)
+        int64_t header_size = ftell(f);
+        if (header_size == -1) {
+            fprintf(stderr, "ftell error [%d] in %s at frame index %d \n", retval, infiles, 0);
+            exit(1);
         }
+        int64_t frame_size = header_size + bytes_per_image + 1;
+        int64_t file_size = f.seek(f, 0, SEEK_END);
+        int64_t nframes = file_size / frame_size;
+
+        ret->file_size = file_size;
+        ret->nframes = nframes;
+        FILE_INFO[i] = ret;
     }
-    free(reduced);
     fclose(f);
 }
 
 
 
-void usage() {
-    printf("options:\n"
-        "   --infile_name x     input file name\n"
-        "   --infile_nframes n  number of frames in the input file. Must follow each input file name\n"
-    );
-    exit(1);
-}
+void do_file(const char* infile, uint64_t nframes, uint32_t **data_ptr) {
+    //open_output_files();
+    uint32_t *reduced = (uint32_t *) malloc(nframes * sizeof(uint32_t));
+    uint16_t num_threads;
+    #pragma omp parallel
+    {
+        FILE *f = fopen(infile, "r");
+        uint16_t image16[1024];
+        uint8_t image8[1024];
 
+        num_threads = omp_get_num_threads(); 
+        uint16_t thread_id = omp_get_thread_num();
+        uint16_t chunk_size = nframes / num_threads;
+        string s;
+        for (int i = chunk_size * thread_id; i < chunk_size * (thread_id + 1); i++) {
+            int retval = pff_read_json(f, s);
+            if (retval != 0) {
+                fprintf(stderr, "Image read error [%d] in %s at frame index %d \n", retval, infile, i);
+                break;
+            }
+            if (bits_per_pixel == 16) {
+                retval = pff_read_image(f, sizeof(image16), image16);
+                if (retval) break;
+                reduced[i] = reduce_image16_nonSIMD(image16);   // potential race condition?
+            }
+        }
+        fclose(f);
+    }
+    *data_ptr = reduced;
+}
 
 
 
 int main(int argc, char **argv) {
     const char* infiles[MAX_IN_FILES];
-    const int nframes[MAX_IN_FILES];
+    const uint_64 nframes[MAX_IN_FILES];
     int i;
     int retval;
 
@@ -123,14 +168,9 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "%s is not a PFF file\n", infile);
                 exit(1);
             }
-            if (strcmp(argv[++i], "--infile_nframes")) {
-                fprintf(stderr, "%s must be followed by '--infile_nframes n'\n", infile);
-                exit(1);
-            }
-            nframes[nfiles] = atoi(argv[++i]);
             nfiles++;
-        } else if (!strcmp(argv[i], "--nframes")) {
-            nframes = atof(argv[++i]);
+        } else if (!strcmp(argv[i], "--bits_per_pixel")) {
+            bits_per_pixel = atoi(argv[++i]);
         } else {
             printf("unrecognized arg %s\n", argv[i]);
             usage();

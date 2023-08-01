@@ -6,7 +6,7 @@ CFLAGS_SIMD=-Wall -sse2
 img_reduce: img_reduce.o
 	$(CC) $(LDFLAGS_OMP) $^ -o $@
 
-img_reduce.o: img_reduce.c
+img_reduce.o: img_reduce.cpp
 	$(CC) $(CFLAGS_OMP) $< -o $@
 
 clean:
