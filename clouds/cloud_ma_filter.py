@@ -32,7 +32,7 @@ data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
 step_size = 1
 MA_pts = 10**4
-sigma = 10
+sigma = -6
 
 analysis_info = {
     "run_dir": run_dir,
@@ -138,7 +138,7 @@ print(img_spike_dir)
 
 spike_centers = []
 spikes = pd.DataFrame(
-    columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts", f"{MA_pts}-Pt Mean", "{MA_pts}-Pt Std", "{MA_pts}-Pt Z-score"]
+    columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts", f"{MA_pts}-Pt Mean", f"{MA_pts}-Pt Std", f"{MA_pts}-Pt Z-score"]
 )
 #MAfilter = np.ones(MA_pts) / MA_pts
 #yMA = np.convolve(data, MAfilter, "same")
@@ -146,18 +146,18 @@ for i in range(MA_pts, len(data)):
     local_mean = np.mean(data[i - MA_pts:i])
     local_std = np.std(data[i - MA_pts:i])
     zscore = (data[i] - local_mean) / local_std
-    if abs(zscore) > sigma:
+    if zscore < sigma:
         obs_time = get_PDT_timestamp(start_unix_t + x[i])
         spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], local_mean, local_std, zscore]
         spike_centers.append(i)
 
 
-title = f"Movie Frames with Total Counts >{sigma} Sigma Relative to {MA_pts}-Point Moving Average (integration time={round(integration_time * 10 ** 6)} µs, frame step size={step_size})"
+title = f"Movie Frames with Total Counts <{sigma} Sigma Relative to \n{MA_pts}-Point Moving Average (integration time={round(integration_time * 10 ** 6)} µs, frame step size={step_size})"
 sns.set_style("darkgrid")
 sns.color_palette("flare_r", as_cmap=True)
 # ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Local Z-score", hue="Local Z-score", palette="flare_r")
 ax = sns.scatterplot(data=spikes, x="Elapsed Run Time (sec)", y="Total Counts", hue="Total Counts", palette="flare_r")
-plt.title(label=title[:len(title)//2] + '\n' + title[len(title)//2:])
+plt.title(label=title)
 # # Put a legend below current axis
 #plt.legend(bbox_to_anchor=(1.05, 0.5), loc='center left')#, label='Total Frame Counts')
 #plt.legend(markerscale=1)
