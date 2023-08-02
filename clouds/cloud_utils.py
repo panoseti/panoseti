@@ -22,9 +22,20 @@ def get_next_frame(f, frame_size, bytes_per_pixel, step_size):
     return img, j
 
 
-def get_file_info_array(data_dir, run_dir, files_to_process):
+def fname_sort_key(fname):
+    parsed_name = pff.parse_name(fname)
+    return int(parsed_name["seqno"])
+
+
+def get_file_info_array(data_dir, run_dir, module):
     """Returns an array of dictionaries storing the attributes of all the files to process."""
-    file_attrs = [None] * len(files_to_process)
+    files_to_process = []
+    for fname in os.listdir(f'{data_dir}/{run_dir}'):
+        if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
+            files_to_process.append(fname)
+    files_to_process.sort(key=fname_sort_key)  # Sort files_to_process in ascending order by file sequence number
+
+    file_info_array = [None] * len(files_to_process)
     for i in range(len(files_to_process)):
         fname = files_to_process[i]
         attrs = {"fname": fname}
@@ -37,8 +48,8 @@ def get_file_info_array(data_dir, run_dir, files_to_process):
             attrs["bytes_per_pixel"] = bytes_per_pixel
             attrs["module"] = int(parsed_name["module"])
             attrs["seqno"] = int(parsed_name['seqno'])
-        file_attrs[i] = attrs
-    return file_attrs
+        file_info_array[i] = attrs
+    return file_info_array
 
 def get_PDT_timestamp(unix_t):
     dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=-7)))
