@@ -29,15 +29,13 @@ run_dir = RUN_DIR
 
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
-step_size = 2043
-MA_pts = 10**4
+step_size = 1
 sigma = 5
-module = 1
+module = 3
 
 analysis_info = {
     "run_dir": run_dir,
     "sigma": sigma,
-    "MA_pts": MA_pts,
     "step_size": step_size
 }
 
@@ -129,10 +127,12 @@ data = get_data(file_info_array, analysis_dir, step_size)
 x = np.arange(len(data)) * step_size * integration_time
 
 
-title = f"Movie Frames with Total Count Z-score >{sigma} \n(integration time={round(integration_time * 10 ** 6)} µs, frame step size={step_size})"
 mean = np.mean(data)
 std = np.std(data)
-
+title = f"Movie Frames with Total Count Z-score >{sigma}\n" \
+        f"run_start={get_PDT_timestamp(start_unix_t)}\n" \
+        f"integration time={round(integration_time * 10 ** 6)} µs, frame step size={step_size}, frames={len(data)}\n" \
+        f"mean={round(float(mean), 3)}, std={round(float(std), 3)}"
 csv_filepath = f"{analysis_dir}/spike_data.csv"
 summary_filepath = f"{analysis_dir}/summary.txt"
 
@@ -144,13 +144,10 @@ else:
     # Compute spike locations
     spike_centers = []
     spikes = pd.DataFrame(
-        columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts",#, f"{MA_pts}-Pt Mean", f"{MA_pts}-Pt Std",
-                 f"Z-score"]
+        columns=["Timestamp", "Elapsed Run Time (sec)", "Total Counts", "Z-score"]
     )
-    for i in range(MA_pts, len(data)):
-        local_mean = mean #np.mean(data[i - MA_pts:i])
-        local_std = std#np.std(data[i - MA_pts:i])
-        zscore = (data[i] - local_mean) / local_std
+    for i in range(0, len(data)):
+        zscore = (data[i] - mean) / std
         if abs(zscore) > sigma:
             obs_time = get_PDT_timestamp(start_unix_t + x[i])
             spikes.loc[len(spikes.index)] = [obs_time, x[i], data[i], zscore]
@@ -158,7 +155,7 @@ else:
     spikes.to_csv(csv_filepath)
 
     # Generate summary table
-    summary_txt = f"{data_dir}/{run_dir}:\n" \
+    summary_txt = f"\n{data_dir}/{run_dir}:\n" \
               f"\tfirst: {file_info_array[0]['fname']}\n" \
               f"\tlast: {file_info_array[-1]['fname']}\n\n" \
               f"# frames processed = {len(data)}\n" \
