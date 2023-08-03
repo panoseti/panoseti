@@ -33,6 +33,8 @@ def usage():
                         and quabo_calib_*.json
 --mask_config           configure masks based on data_config.json
 --calibrate_ph          run PH baseline calibration on quabos and write to file
+--shutter_open          open all module shutters
+--shutter_close         close all module shutters
 ''')
     sys.exit()
 
@@ -400,6 +402,14 @@ def do_disk_space(data_config, daq_config, verbose=False):
         print('---------------\nAvailable recording time: %.2f hours'%available_hours)
     return available_hours
 
+
+def do_shutter(action):
+    if action == "open":
+        os.system("./shutter.py --open")
+    elif action == "close":
+        os.system("./shutter.py --close")
+
+
 if __name__ == "__main__":
     def main():
         argv = sys.argv
@@ -448,6 +458,12 @@ if __name__ == "__main__":
             elif argv[i] == '--disk_space':
                 nops += 1
                 op = 'disk_space'
+            elif argv[i] == '--shutter_open':
+                nops += 1
+                op = 'shutter_open'
+            elif argv[i] == '--shutter_close':
+                nops += 1
+                op = 'shutter_close'
             else:
                 print('bad arg: %s'%argv[i])
                 usage()
@@ -497,4 +513,8 @@ if __name__ == "__main__":
             do_calibrate_ph(modules, quabo_uids)
         elif op == 'disk_space':
             do_disk_space(data_config, daq_config, True)
+        elif op == 'shutter_open':
+            do_shutter("open")
+        elif op == 'shutter_close':
+            do_shutter("close")
     main()
