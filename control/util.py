@@ -41,7 +41,8 @@ daq_run_name_filename = 'daq_run_name'
     # stores name of current run
 hp_stdout_prefix = 'hp_stdout_'
     # hashpipe stdout file is prefix_ipaddr
-
+pss_prefix = 'pss_'
+    # process snapshot file is pss_prefix_ipaddr
 redis_daemons = [
     'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'capture_power.py', 'storeInfluxDB.py'
 ]
