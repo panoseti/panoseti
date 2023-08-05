@@ -184,7 +184,7 @@ def make_run_dirs(run_name, daq_config):
                     data_dir, module['id'], run_name
                 ))
             # create process snapshot
-            rcmds.append('cd %s/%s; ps -ax > pss_%s.log'%(data_dir,run_name, ip_addr))
+            rcmds.append('cd %s/%s; ps -ux > pss_%s.log'%(data_dir,run_name, ip_addr))
             rcmd = ';'.join(rcmds)
             cmd = 'ssh %s@%s "%s"'%(username, ip_addr, rcmd)
             if verbose:
