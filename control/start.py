@@ -157,7 +157,8 @@ def make_run_dirs(run_name, daq_config):
         files = glob(f)
         for file in files:
             shutil.copyfile(file, '%s/%s'%(run_dir, file))
-
+    
+     
     # make module and run directories on DAQ nodes
     #
     for node in daq_config['daq_nodes']:
@@ -182,6 +183,8 @@ def make_run_dirs(run_name, daq_config):
                 rcmds.append('mkdir -p %s/module_%d/%s'%(
                     data_dir, module['id'], run_name
                 ))
+            # create process snapshot
+            rcmds.append('cd %s/%s; ps -ux > pss_%s.log'%(data_dir,run_name, ip_addr))
             rcmd = ';'.join(rcmds)
             cmd = 'ssh %s@%s "%s"'%(username, ip_addr, rcmd)
             if verbose:

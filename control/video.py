@@ -70,8 +70,12 @@ def main(quabo_uids, module_id, dp):
         show_pff.print_json(j, ph, False)
         #print('got header')
         img = pff.read_image(process.stdout, image_size, bpp)
+        img = np.array(img)
+        if dp == 'ph256' or dp == 'ph1024':
+            img = img.astype(np.int16)
+        print('max: %d, min: %d'%(max(img), min(img)))
         #show_pff.image_as_text(img, image_size, bpp, 0, 256)
-        show_pff.image_as_figure(figure, im, np.array(img).reshape(image_size,image_size))
+        show_pff.image_as_figure(figure, im, img.reshape(image_size,image_size))
         if process.poll() is not None:
             break
 

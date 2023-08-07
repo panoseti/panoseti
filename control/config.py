@@ -33,6 +33,8 @@ def usage():
                         and quabo_calib_*.json
 --mask_config           configure masks based on data_config.json
 --calibrate_ph          run PH baseline calibration on quabos and write to file
+--shutter_open          open all module shutters
+--shutter_close         close all module shutters
 ''')
     sys.exit()
 
@@ -279,6 +281,16 @@ def do_mask_config(modules, data_config, verbose=False):
 # compute PH baselines on quabos and write to file
 #
 def do_calibrate_ph(modules, quabo_uids):
+    # Before starting to calibrate ph, we need to take some ph data.
+    # We seem to have a bug in firmware, but this is an easy fix in software.
+    daq_start = quabo_driver.DAQ_PARAMS(
+        do_image=False,
+        image_us=4999,
+        image_8bit=False,
+        do_ph=True,
+        bl_subtract=True
+    )
+    daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     quabos = []
     for module in modules:
         for i in range(4):
@@ -286,6 +298,9 @@ def do_calibrate_ph(modules, quabo_uids):
             if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
+            quabo.send_daq_params(daq_start)
+            time.sleep(1)
+            quabo.send_daq_params(daq_stop)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
             q = {}
@@ -387,6 +402,14 @@ def do_disk_space(data_config, daq_config, verbose=False):
         print('---------------\nAvailable recording time: %.2f hours'%available_hours)
     return available_hours
 
+
+def do_shutter(action):
+    if action == "open":
+        os.system("./shutter.py --open")
+    elif action == "close":
+        os.system("./shutter.py --close")
+
+
 if __name__ == "__main__":
     def main():
         argv = sys.argv
@@ -435,6 +458,12 @@ if __name__ == "__main__":
             elif argv[i] == '--disk_space':
                 nops += 1
                 op = 'disk_space'
+            elif argv[i] == '--shutter_open':
+                nops += 1
+                op = 'shutter_open'
+            elif argv[i] == '--shutter_close':
+                nops += 1
+                op = 'shutter_close'
             else:
                 print('bad arg: %s'%argv[i])
                 usage()
@@ -484,4 +513,8 @@ if __name__ == "__main__":
             do_calibrate_ph(modules, quabo_uids)
         elif op == 'disk_space':
             do_disk_space(data_config, daq_config, True)
+        elif op == 'shutter_open':
+            do_shutter("open")
+        elif op == 'shutter_close':
+            do_shutter("close")
     main()
