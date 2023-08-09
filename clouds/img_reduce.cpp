@@ -1,10 +1,13 @@
 #include <sys/stat.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <math.h>
 #include <time.h>
+
+#include <string>
+#include <vector>
+using namespace std;
 
 #include <omp.h>
 #include <x86intrin.h>
@@ -20,7 +23,7 @@ uint16_t nfiles = 0;
 uint8_t bits_per_pixel = 16;
 uint8_t bytes_per_image = (bits_per_pixel / 8) * PIXELS_PER_IMAGE;
 
-typedef struct FILE_INFO {
+struct FILE_INFO {
     const char* fname;
     int64_t file_size;
     int64_t frame_size;
@@ -97,7 +100,7 @@ void free_img_info(FILE_INFO **info_arr) {
 }
 
 FILE_INFO* get_img_info(const char *fname, int32_t seqno) {
-    // Check file and compute frame size 
+    // Check file and compute frame size
     FILE *f = fopen(fname, "r");
     if (!f) {
         fprintf(stderr, "can't open %s\n", fname);
@@ -143,7 +146,7 @@ void do_file(const FILE_INFO *fin_info, FILE *fout_ptr) {
         // Each thread processes a mutually exclusive set of image frames.
         FILE *fin_ptr = fopen(fin_info->fname, "r");
         uint16_t image16[1024];
-        uint8_t image8[1024];
+        //uint8_t image8[1024];
 
         num_threads = omp_get_num_threads();
         uint16_t thread_id = omp_get_thread_num();
@@ -178,10 +181,14 @@ void do_file(const FILE_INFO *fin_info, FILE *fout_ptr) {
 int main(int argc, char **argv) {
     FILE_INFO *info_arr[MAX_IN_FILES];
     int i;
-    int retval;
+    //int retval;
+    vector<string> all_args(argv, argv + argc);
+    string infiles_flag = "--infiles";
+    string bpp_flag = "--bits_per_pixel";
+    printf("all_args = %s\n", all_args[0].c_str());
 
     for (i=1; i<argc; i++) {
-        if (!strcmp(argv[i], "--infiles")) {
+        if (all_args[i] == infiles_flag) {
             while (is_pff_file(argv[++i])) {
                 info_arr[nfiles] = get_img_info(argv[i], nfiles);
                 nfiles++;
@@ -191,7 +198,7 @@ int main(int argc, char **argv) {
             //     fprintf(stderr, "%s is not a PFF file\n", argv[i]);
             //     exit(1);
             // }
-        } else if (!strcmp(argv[i], "--bits_per_pixel")) {
+        } else if (all_args[i] == bpp_flag) {
             bits_per_pixel = atoi(argv[++i]);
         } else {
             printf("unrecognized arg %s\n", argv[i]);
