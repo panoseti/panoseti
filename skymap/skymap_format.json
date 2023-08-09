@@ -1,0 +1,72 @@
+{
+	"run_type": "sci-obs_meridian-survey",
+	"start_date": "2023-08-08T18:06:40Z",
+	"stop_date": "2023-08-08T18:40:00Z",
+	"start_unix_t": 1691518000,
+	"stop_unix_t": 1691520000,
+	"software_config": {
+		"type": "matlab",
+		"version": "1.0"
+	},
+	"observer_info": {
+		"names": ["Jerome", "Wei", "Sophie", "Rachel", "Nico"],
+		"comments": [
+			"Here are some example comments.",
+			"Clear skies until 12am. Partly cloudy rest of the night.",
+			"Tape is loose on some LEDs in the Barnard dome. Blinking visible.",
+			"Poor air quality due to nearby wildfires."
+		]
+	},
+	"observatory_config": {
+		"name": "Lick",
+		"domes": [
+			{
+				"name": "astrograph",
+				"latitude": 37.3425,
+				"longitude": -121.63777,
+				"altitude": 1283,
+				"modules": [
+					{
+						"mobo_serialno": "M11",
+						"ip_address": "192.168.3.248",
+						"azimuth": 182.8320,
+						"elevation": 78.3467,
+						"parallactic_angle": -1.7899
+					},
+					{
+						"mobo_serialno": "M12",
+						"ip_address": "192.168.0.4",
+						"azimuth": 182.9870,
+						"elevation": 79.4016,
+						"parallactic_angle": -1.4321
+					}
+				]
+			},
+			{
+				"name": "barnard",
+				"latitude": 37.339166,
+				"longitude": -121.64416,
+				"altitude": 1239,
+				"modules": [
+					{
+						"mobo_serialno": "M13",
+						"ip_address": "192.168.0.12",
+						"azimuth": 185.0020,
+						"elevation": 78.8126,
+						"parallactic_angle": -5.3558
+					}
+				]
+			}
+		]
+	},
+	"data_config": {
+		"image": {
+		    "integration_time_usec": 100,
+		    "pe_threshold": 3,
+		    "bits_per_pixel": 16
+		},
+		"pulse_height": {
+		    "pe_threshold": 15
+		}
+	}
+}
