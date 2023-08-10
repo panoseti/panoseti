@@ -162,6 +162,13 @@ def get_quabo_info():
         d[q['uid']] = q
     return d;
 
+def get_quabo_ph_baselines():
+    check_config_file(quabo_ph_baseline_filename)
+    with open(quabo_ph_baseline_filename) as f:
+        s = f.read()
+    c = json.loads(s)
+    return c
+
 # get quabo calibration info
 #
 def get_quabo_calib(serialno):
