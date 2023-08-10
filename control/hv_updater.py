@@ -146,6 +146,8 @@ def update_all_quabos(r: redis.Redis):
                     msg += "Error msg: {2}"
                     util.write_log(msg.format(quabo_index, module_ip_addr, kerr))
                     raise
+                except OSError as oserr:
+                    continue
                 else:
                     # Checks whether the quabo temperature is acceptable.
                     # See https://github.com/panoseti/panoseti/issues/58.

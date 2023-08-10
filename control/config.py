@@ -8,7 +8,7 @@ firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess, time, datetime, json
+import sys, os, subprocess, time, datetime, json, statistics
 import util, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
@@ -33,6 +33,7 @@ def usage():
                         and quabo_calib_*.json
 --mask_config           configure masks based on data_config.json
 --calibrate_ph          run PH baseline calibration on quabos and write to file
+--check_ph_baselines    show summary stats for PH baselines
 --shutter_open          open all module shutters
 --shutter_close         close all module shutters
 ''')
@@ -114,10 +115,8 @@ def do_ping(modules, verbose=False):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if util.ping(ip_addr):
                 ping_record["ping_true"].append(ip_addr)
-                print("pinged %s"%ip_addr)
             else:
                 ping_record["ping_false"].append(ip_addr)
-                print("can't ping %s"%ip_addr)
     if verbose:
         for ip in ping_record["ping_true"]:
             print("pinged %s" % ip)
@@ -326,6 +325,32 @@ def do_calibrate_ph(modules, quabo_uids):
     with open(config_file.quabo_ph_baseline_filename, "w") as f:
         f.write(json.dumps(x, indent=4))
 
+
+# show the mean and standard deviation for the PH baseline levels of each quabo
+def do_check_ph_baselines(quabo_uids):
+    quabo_ph_baselines = config_file.get_quabo_ph_baselines()
+    msg = f"Creation date: {quabo_ph_baselines['date']}\n"
+    for dome in quabo_uids['domes']:
+        for module in dome['modules']:
+            module_ip_addr = module['ip_addr']
+            msg += f'module_ip_addr:\n'
+            for quabo_index in range(4):
+                quabo_num = config_file.get_boardloc(module_ip_addr, quabo_index)
+                quabo_uid = module['quabos'][quabo_index]['uid']
+                quabo_baselines = None
+                for q in quabo_ph_baselines['quabos']:
+                    if q['uid'] == quabo_uid:
+                        quabo_baselines = q
+                if quabo_baselines is None:
+                    msg += f'\tquabo {quabo_num}: found no ph baseline data\n'
+                else:
+                    mean = statistics.mean(quabo_baselines['coefs'])
+                    stdev = statistics.stdev(quabo_baselines['coefs'])
+                    msg += f'\tquabo {quabo_num}: mean={mean}, stdev={stdev}\n'
+    print(msg)
+
+
+
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
 #
@@ -467,6 +492,9 @@ if __name__ == "__main__":
             elif argv[i] == '--calibrate_ph':
                 nops += 1
                 op = 'calibrate_ph'
+            elif argv[i] == '--check_ph_baselines':
+                nops += 1
+                op = 'check_ph_baselines'
             elif argv[i] == '--disk_space':
                 nops += 1
                 op = 'disk_space'
@@ -529,4 +557,7 @@ if __name__ == "__main__":
             do_shutter("open")
         elif op == 'shutter_close':
             do_shutter("close")
+        elif op == 'check_ph_baselines':
+            do_check_ph_baselines(quabo_uids)
+
     main()

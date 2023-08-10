@@ -24,7 +24,8 @@ def open_domes(obs_config):
     for dome in obs_config['domes']:
         print('   ', dome['name'])
 
-def session_start(obs_config, modules, quabo_info, data_config, daq_config, no_hv):
+def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
+    modules = config_file.get_modules(obs_config)
     open_domes(obs_config)
 
     power.do_all(obs_config, 'on')
@@ -61,7 +62,9 @@ def session_start(obs_config, modules, quabo_info, data_config, daq_config, no_h
     if not no_hv:
         print('turning on HV')
         detector_info = config_file.get_detector_info()
-        config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+        util.start_hv_updater()
+        #config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+        time.sleep(5) # Wait for hv_updater to start
 
     print('configuring Marocs')
     config.do_maroc_config(modules, quabo_uids, quabo_info, data_config)
@@ -91,7 +94,6 @@ if __name__ == "__main__":
             i += 1
         session_start(
             config_file.get_obs_config(),
-            config_file.get_modules(),
             config_file.get_quabo_info(),
             config_file.get_data_config(),
             config_file.get_daq_config(),
