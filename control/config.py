@@ -33,7 +33,7 @@ def usage():
                         and quabo_calib_*.json
 --mask_config           configure masks based on data_config.json
 --calibrate_ph          run PH baseline calibration on quabos and write to file
---check_ph_baselines    show summary stats for PH baselines
+--show_ph_baselines    show PH baseline calibration summary statistics
 --shutter_open          open all module shutters
 --shutter_close         close all module shutters
 ''')
@@ -326,14 +326,14 @@ def do_calibrate_ph(modules, quabo_uids):
         f.write(json.dumps(x, indent=4))
 
 
-# show the mean and standard deviation for the PH baseline levels of each quabo
-def do_check_ph_baselines(quabo_uids):
+# show summary statistics for the PH baseline calibrations of each quabo
+def do_show_ph_baselines(quabo_uids):
     quabo_ph_baselines = config_file.get_quabo_ph_baselines()
     msg = f"Creation date: {quabo_ph_baselines['date']}\n"
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
             module_ip_addr = module['ip_addr']
-            msg += f'module_ip_addr:\n'
+            msg += f'module {module_ip_addr}:\n'
             for quabo_index in range(4):
                 quabo_num = config_file.get_boardloc(module_ip_addr, quabo_index)
                 quabo_uid = module['quabos'][quabo_index]['uid']
@@ -344,9 +344,13 @@ def do_check_ph_baselines(quabo_uids):
                 if quabo_baselines is None:
                     msg += f'\tquabo {quabo_num}: found no ph baseline data\n'
                 else:
-                    mean = statistics.mean(quabo_baselines['coefs'])
-                    stdev = statistics.stdev(quabo_baselines['coefs'])
-                    msg += f'\tquabo {quabo_num}: mean={mean}, stdev={stdev}\n'
+                    coefs = quabo_baselines['coefs']
+                    mean = statistics.mean(coefs)
+                    median = statistics.median(coefs)
+                    stdev = statistics.stdev(coefs)
+                    msg += f'\tquabo {quabo_num}: mean={round(mean, 2)}, ' \
+                           f'median={round(median, 2)}, stdev={round(stdev, 2)}\n,' \
+                           f' min={min(coefs)}, max={max(coefs)}'
     print(msg)
 
 
@@ -492,9 +496,9 @@ if __name__ == "__main__":
             elif argv[i] == '--calibrate_ph':
                 nops += 1
                 op = 'calibrate_ph'
-            elif argv[i] == '--check_ph_baselines':
+            elif argv[i] == '--show_ph_baselines':
                 nops += 1
-                op = 'check_ph_baselines'
+                op = 'show_ph_baselines'
             elif argv[i] == '--disk_space':
                 nops += 1
                 op = 'disk_space'
@@ -557,7 +561,7 @@ if __name__ == "__main__":
             do_shutter("open")
         elif op == 'shutter_close':
             do_shutter("close")
-        elif op == 'check_ph_baselines':
-            do_check_ph_baselines(quabo_uids)
+        elif op == 'show_ph_baselines':
+            do_show_ph_baselines(quabo_uids)
 
     main()
