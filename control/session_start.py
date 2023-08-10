@@ -53,27 +53,28 @@ def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
     print('rebooting quabos')
     config.do_reboot(modules, quabo_uids)
 
-    print('starting Redis daemons')
-    util.start_redis_daemons()
-
     print('setting hk dest to this computer')
     config.do_hk_dest(modules, quabo_uids)
+
+    print('starting Redis daemons')
+    util.start_redis_daemons()
 
     if not no_hv:
         print('turning on HV')
         detector_info = config_file.get_detector_info()
-        util.start_hv_updater()
         #config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+        util.start_hv_updater()
         time.sleep(5) # Wait for hv_updater to start
 
     print('configuring Marocs')
-    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config)
+    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
 
     print('configuring Masks')
-    config.do_mask_config(modules, data_config)
+    config.do_mask_config(modules, data_config, True)
     
     print('calibrating PH')
     config.do_calibrate_ph(modules, quabo_uids)
+    config.do_show_ph_baselines(quabo_uids)
 
     print('opening shutters')
     config.do_shutter("open")

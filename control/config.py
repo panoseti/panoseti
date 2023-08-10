@@ -348,9 +348,9 @@ def do_show_ph_baselines(quabo_uids):
                     mean = statistics.mean(coefs)
                     median = statistics.median(coefs)
                     stdev = statistics.stdev(coefs)
-                    msg += f'\tquabo {quabo_num}: mean={round(mean, 2)}, ' \
-                           f'median={round(median, 2)}, stdev={round(stdev, 2)}\n,' \
-                           f' min={min(coefs)}, max={max(coefs)}'
+                    msg += f'\tquabo {quabo_num: 5}: mean={round(mean, 2): 7}, ' \
+                           f'median={round(median, 2): 7}, stdev={round(stdev, 2): 7},' \
+                           f' min={min(coefs): 5}, max={max(coefs): 5}\n'
     print(msg)
 
 
