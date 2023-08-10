@@ -26,7 +26,7 @@ def get_file_info_array(data_dir, run_dir, module):
     """Returns an array of dictionaries storing the attributes of all the files to process."""
     file_info_array = []
     for fname in os.listdir(f'{data_dir}/{run_dir}'):
-        if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
+        if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8') and os.path.getsize(f'{data_dir}/{run_dir}/{fname}') > 0:
             parsed_name = pff.parse_name(fname)
             if int(parsed_name["module"]) == module:
                 attrs = {"fname": fname}

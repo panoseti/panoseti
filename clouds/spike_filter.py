@@ -21,7 +21,7 @@ import pff
 
 from cloud_utils import get_file_info_array, get_next_frame, get_PDT_timestamp
 
-DATA_DIR = '/Users/nico/Downloads/test_data/obs_data'
+DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data'
 RUN_DIR = 'obs_Lick.start_2023-07-19T06:07:34Z.runtype_sci-obs.pffd'
 
 data_dir = DATA_DIR + '/data'
