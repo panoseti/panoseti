@@ -24,13 +24,25 @@ def open_domes(obs_config):
     for dome in obs_config['domes']:
         print('   ', dome['name'])
 
-def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
+def session_start(obs_config, modules, quabo_info, data_config, daq_config, no_hv):
     open_domes(obs_config)
 
     power.do_all(obs_config, 'on')
 
     print('waiting 40 secs for quabos to come up')
     time.sleep(40)      # wait for quabos to be pingable.  30 is not enough
+
+    # Wait until all quabos are pingable
+    all_pinged = False
+    while not all_pinged:
+        print("pinging quabos...")
+        ping_record = config.do_ping(modules, True)
+        if len(ping_record["ping_false"]) == 0:
+            print("pinged all quabos!")
+            all_pinged = True
+        else:
+            print("failed to ping all quabos. retrying in 5 seconds...")
+            time.sleep(5)
 
     print('getting quabo UIDs')
     get_uids.get_uids(obs_config)
@@ -79,6 +91,7 @@ if __name__ == "__main__":
             i += 1
         session_start(
             config_file.get_obs_config(),
+            config_file.get_modules(),
             config_file.get_quabo_info(),
             config_file.get_data_config(),
             config_file.get_daq_config(),

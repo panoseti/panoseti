@@ -104,14 +104,26 @@ def do_loadg(modules):
     print("not supported")
     #x.put_bin_file(firmware_gold, 0x0)
 
-def do_ping(modules):
+def do_ping(modules, verbose=False):
+    ping_record = {
+        "ping_true": [],
+        "ping_false": []
+    }
     for module in modules:
         for i in range(4):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if util.ping(ip_addr):
+                ping_record["ping_true"].append(ip_addr)
                 print("pinged %s"%ip_addr)
             else:
+                ping_record["ping_false"].append(ip_addr)
                 print("can't ping %s"%ip_addr)
+    if verbose:
+        for ip in ping_record["ping_true"]:
+            print("pinged %s" % ip)
+        for ip in ping_record["ping_false"]:
+            print("can't ping %s" % ip)
+    return ping_record
 
 def do_hk_dest(modules, quabo_uids):
     my_ip_addr = util.local_ip()
@@ -488,7 +500,7 @@ if __name__ == "__main__":
         elif op == 'loads':
             do_loads(modules, quabo_uids, quabo_info)
         elif op == 'ping':
-            do_ping(modules)
+            do_ping(modules, verbose=True)
         elif op == 'init_daq_nodes':
             file_xfer.copy_daq_files(daq_config)
         elif op == 'hk_dest':
