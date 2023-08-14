@@ -246,6 +246,26 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
                 print('%s: %s = %s'%(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
             quabo = quabo_driver.QUABO(ip_addr)
+            # For ph mode, we seem to have a bug in firmware.
+            # we need to set DAC2 to low, and make the quabos send out data first.
+            if do_ph:
+                # set the DAC2 value very low
+                qc_dict['DAC2'] = '210,210,210,210'
+                quabo.send_maroc_params(qc_dict)
+                # make the quabos send out some ph packets
+                daq_start = quabo_driver.DAQ_PARAMS(
+                        do_image=False,
+                        image_us=4999,
+                        image_8bit=False,
+                        do_ph=True,
+                        bl_subtract=True
+                    )
+                daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+                quabo.send_daq_params(daq_start)
+                time.sleep(0.1)
+                quabo.send_daq_params(daq_stop)
+                # set the DAC2 values back
+                qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
             quabo.send_maroc_params(qc_dict)
             quabo.close()
 
@@ -292,16 +312,6 @@ def do_mask_config(modules, data_config, verbose=False):
 # compute PH baselines on quabos and write to file
 #
 def do_calibrate_ph(modules, quabo_uids):
-    # Before starting to calibrate ph, we need to take some ph data.
-    # We seem to have a bug in firmware, but this is an easy fix in software.
-    daq_start = quabo_driver.DAQ_PARAMS(
-        do_image=False,
-        image_us=4999,
-        image_8bit=False,
-        do_ph=True,
-        bl_subtract=True
-    )
-    daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     quabos = []
     for module in modules:
         for i in range(4):
@@ -309,9 +319,6 @@ def do_calibrate_ph(modules, quabo_uids):
             if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
-            quabo.send_daq_params(daq_start)
-            time.sleep(1)
-            quabo.send_daq_params(daq_stop)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
             q = {}
