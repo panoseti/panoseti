@@ -30,8 +30,8 @@ def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
 
     power.do_all(obs_config, 'on')
 
-    print('waiting 40 secs for quabos to come up')
-    time.sleep(40)      # wait for quabos to be pingable.  30 is not enough
+    print('waiting 60 secs for quabos to come up')
+    time.sleep(60)      # wait for quabos to be pingable.  30 is not enough
 
     # Wait until all quabos are pingable
     all_pinged = False
@@ -66,11 +66,11 @@ def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
         util.start_hv_updater()
         time.sleep(5) # Wait for hv_updater to start
 
-    print('configuring Marocs')
-    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
-
     print('configuring Masks')
     config.do_mask_config(modules, data_config, True)
+
+    print('configuring Marocs')
+    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
     
     print('calibrating PH')
     config.do_calibrate_ph(modules, quabo_uids)

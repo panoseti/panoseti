@@ -249,8 +249,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
             # For ph mode, we seem to have a bug in firmware.
             # we need to set DAC2 to low, and make the quabos send out data first.
             if do_ph:
-                # set the DAC2 value very low
-                qc_dict['DAC2'] = '210,210,210,210'
+                tmp = [0] * 4
+                # set the DAC2 value very low, 5.5 pe
+                for j in range(4):      # 4 detectors in a quabo
+                    quad = quabo_calib['quadrants'][j]
+                    ah = quad['ah']
+                    bh = quad['bh']
+                    tmp[j] = int(ah*gain*5.5 + bh)
+                qc_dict['DAC2'] = '%d,%d,%d,%d'%(tmp[0],tmp[1],tmp[2],tmp[3])
                 quabo.send_maroc_params(qc_dict)
                 # make the quabos send out some ph packets
                 daq_start = quabo_driver.DAQ_PARAMS(
@@ -261,8 +267,12 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
                         bl_subtract=True
                     )
                 daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+                # This IP is not important, so I put a static IP here.
+                # It's just for generating a ph packet
+                daq_node_ip_addr = '192.168.1.100'
+                quabo.data_packet_destination(daq_node_ip_addr)
                 quabo.send_daq_params(daq_start)
-                time.sleep(0.1)
+                time.sleep(1)
                 quabo.send_daq_params(daq_stop)
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
