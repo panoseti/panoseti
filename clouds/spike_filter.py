@@ -19,7 +19,7 @@ sys.path.append("../util")
 import config_file
 import pff
 
-from cloud_utils import get_file_info_array, get_next_frame, get_PDT_timestamp
+from cloud_utils import get_file_info_array, get_next_frame, get_PDT_timestamp, get_img_spike_dir
 
 DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data'
 RUN_DIR = 'obs_Lick.start_2023-07-19T06:07:34Z.runtype_sci-obs.pffd'
@@ -30,8 +30,8 @@ run_dir = RUN_DIR
 data_config = config_file.get_data_config(f'{data_dir}/{run_dir}')
 integration_time = float(data_config["image"]["integration_time_usec"]) * 10 ** (-6)  # 100 * 10**(-6)
 step_size = 1
-sigma = 5
-module = 3
+sigma = 10
+module = 1
 
 analysis_info = {
     "run_dir": run_dir,
@@ -71,14 +71,6 @@ def ema_filter(length):
     # Create and return an EMA filter with length "length"
     h = (1 - alpha) ** np.arange(length)
     return h / np.sum(h)
-
-
-def get_img_spike_dir(file_info0, file_info1, analysis_info):
-    return f"{analysis_info['run_dir']}" \
-               f".module_{file_info0['module']}" \
-               f".seqno0_{file_info0['seqno']}" \
-               f".seqno1_{file_info1['seqno']}" \
-               f".step-size_{analysis_info['step_size']}"
 
 
 def gen_npy_fname(analysis_dir):
@@ -129,7 +121,7 @@ x = np.arange(len(data)) * step_size * integration_time
 
 mean = np.mean(data)
 std = np.std(data)
-title = f"Movie Frames with Total Count Z-score >{sigma}\n" \
+title = f"Module {module} Movie Frames with Total Count Z-score >{sigma}\n" \
         f"run_start={get_PDT_timestamp(start_unix_t)}\n" \
         f"integration time={round(integration_time * 10 ** 6)} µs, frame step size={step_size}, frames={len(data)}\n" \
         f"mean={round(float(mean), 3)}, std={round(float(std), 3)}"
