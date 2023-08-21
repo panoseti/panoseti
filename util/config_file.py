@@ -146,8 +146,14 @@ def get_detector_info():
         s = f.read()
     c = json.loads(s)
     d = {}
+    with open(obs_config_filename) as f:
+        s = f.read()
+    obs_config = json.loads(s)
     for det in c:
-        d[str(det['serialno'])] = float(det['operating_voltage'])
+        try:
+            d[str(det['serialno'])] = float(det['operating_voltage'])
+        except:
+            d[str(det['serialno'])] = float(det['breakdonw_voltage']) + obs_config['detector_overvoltage']
     return d;
 
 # get quabo info as an array indexed by uid

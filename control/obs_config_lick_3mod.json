@@ -15,6 +15,7 @@
     },
     "wr_ip_addr": "192.168.1.254",
     "gps_port": "/dev/ttyUSB0",
+    "detector_overvoltage": 3,
     "domes": [
         {
             "name": "astrograph",
