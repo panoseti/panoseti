@@ -153,7 +153,7 @@ def get_detector_info():
         try:
             d[str(det['serialno'])] = float(det['operating_voltage'])
         except:
-            d[str(det['serialno'])] = float(det['breakdonw_voltage']) + obs_config['detector_overvoltage']
+            d[str(det['serialno'])] = float(det['breakdown_voltage']) + obs_config['detector_overvoltage']
     return d;
 
 # get quabo info as an array indexed by uid
