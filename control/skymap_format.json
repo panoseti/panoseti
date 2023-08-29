@@ -1,0 +1,17 @@
+{
+	"run_type": "",
+	"start_date": "",
+	"stop_date": "",
+	"start_unix_t": 0,
+	"stop_unix_t": 0,
+	"software_config": {
+		"type": "",
+		"version": ""
+	},
+	"observer_info": {
+		"names": [],
+		"comments": []
+	},
+	"observatory_config": {},
+	"data_config": {}
+}
