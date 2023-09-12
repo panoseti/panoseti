@@ -4,6 +4,8 @@ import sys
 
 import power, util
 
+import skymap_helper
+
 sys.path.insert(0, '../util')
 import config_file
 
@@ -24,3 +26,4 @@ def session_stop(obs_config):
 if __name__ == "__main__":
     obs_config = config_file.get_obs_config()
     session_stop(obs_config)
+    skymap_helper.stop_skymap_info_gen()

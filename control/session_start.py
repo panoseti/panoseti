@@ -16,6 +16,8 @@ import sys, time, os
 
 import config, power, get_uids, util, file_xfer
 
+import skymap_helper
+
 sys.path.insert(0, '../util')
 import config_file
 
@@ -100,4 +102,5 @@ if __name__ == "__main__":
             config_file.get_daq_config(),
             no_hv
         )
+        skymap_helper.start_skymap_info_gen()
     main()
