@@ -119,4 +119,8 @@ def stop_skymap_info_gen(skymap_info_file='skymap_info.json'):
     with open(skymap_info_file) as f:
         skymap_t = json.load(f)
     add_stop_time(skymap_t)
+    # write the data back to the json file
+    json_object = json.dumps(skymap_t, indent=4)
+    with open(skymap_info_file,'w') as f:
+        f.write(json_object)
     write_complete_entry(skymap_t)
