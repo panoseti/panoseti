@@ -75,6 +75,8 @@ def main(quabo_uids, module_id, dp):
             img = img.astype(np.int16)
         print('max: %d, min: %d'%(max(img), min(img)))
         #show_pff.image_as_text(img, image_size, bpp, 0, 256)
+        img = img - img.min()
+        img = img/img.max()
         show_pff.image_as_figure(figure, im, img.reshape(image_size,image_size))
         if process.poll() is not None:
             break
