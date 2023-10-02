@@ -12,7 +12,7 @@
 # - start the Redis daemons
 # - copy software to DAQ nodes
 
-import sys, time
+import sys, time, os
 
 import config, power, get_uids, util, file_xfer
 
@@ -25,12 +25,25 @@ def open_domes(obs_config):
         print('   ', dome['name'])
 
 def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
-    open_domes(obs_config);
+    modules = config_file.get_modules(obs_config)
+    open_domes(obs_config)
 
     power.do_all(obs_config, 'on')
 
     print('waiting 40 secs for quabos to come up')
     time.sleep(40)      # wait for quabos to be pingable.  30 is not enough
+
+    # Wait until all quabos are pingable
+    all_pinged = False
+    while not all_pinged:
+        print("pinging quabos...")
+        ping_record = config.do_ping(modules, True)
+        if len(ping_record["ping_false"]) == 0:
+            print("pinged all quabos!")
+            all_pinged = True
+        else:
+            print("failed to ping all quabos. retrying in 5 seconds...")
+            time.sleep(5)
 
     print('getting quabo UIDs')
     get_uids.get_uids(obs_config)
@@ -40,22 +53,31 @@ def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
     print('rebooting quabos')
     config.do_reboot(modules, quabo_uids)
 
-    if not no_hv: 
-        print('turning on HV')
-        detector_info = config_file.get_detector_info()
-        config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
-
-    print('configuring Marocs')
-    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config)
-
-    print('configuring Masks')
-    config.do_maroc_config(modules, data_config)
-    
-    print('calibrating PH')
-    config.do_calibrate_ph(modules, quabo_uids)
+    print('setting hk dest to this computer')
+    config.do_hk_dest(modules, quabo_uids)
 
     print('starting Redis daemons')
     util.start_redis_daemons()
+
+    if not no_hv:
+        print('turning on HV')
+        detector_info = config_file.get_detector_info()
+        #config.do_hv_on(modules, quabo_uids, quabo_info, detector_info)
+        util.start_hv_updater()
+        time.sleep(5) # Wait for hv_updater to start
+
+    print('configuring Marocs')
+    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
+
+    print('configuring Masks')
+    config.do_mask_config(modules, data_config, True)
+    
+    print('calibrating PH')
+    config.do_calibrate_ph(modules, quabo_uids)
+    config.do_show_ph_baselines(quabo_uids)
+
+    print('opening shutters')
+    config.do_shutter("open")
 
     print('Copying software to DAQ nodes')
     file_xfer.copy_daq_files(daq_config)

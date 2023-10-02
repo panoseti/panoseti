@@ -8,7 +8,7 @@ firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess, time, datetime, json
+import sys, os, subprocess, time, datetime, json, statistics
 import util, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
@@ -33,6 +33,9 @@ def usage():
                         and quabo_calib_*.json
 --mask_config           configure masks based on data_config.json
 --calibrate_ph          run PH baseline calibration on quabos and write to file
+--show_ph_baselines    show PH baseline calibration summary statistics
+--shutter_open          open all module shutters
+--shutter_close         close all module shutters
 ''')
     sys.exit()
 
@@ -102,14 +105,24 @@ def do_loadg(modules):
     print("not supported")
     #x.put_bin_file(firmware_gold, 0x0)
 
-def do_ping(modules):
+def do_ping(modules, verbose=False):
+    ping_record = {
+        "ping_true": [],
+        "ping_false": []
+    }
     for module in modules:
         for i in range(4):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if util.ping(ip_addr):
-                print("pinged %s"%ip_addr)
+                ping_record["ping_true"].append(ip_addr)
             else:
-                print("can't ping %s"%ip_addr)
+                ping_record["ping_false"].append(ip_addr)
+    if verbose:
+        for ip in ping_record["ping_true"]:
+            print("pinged %s" % ip)
+        for ip in ping_record["ping_false"]:
+            print("can't ping %s" % ip)
+    return ping_record
 
 def do_hk_dest(modules, quabo_uids):
     my_ip_addr = util.local_ip()
@@ -279,6 +292,16 @@ def do_mask_config(modules, data_config, verbose=False):
 # compute PH baselines on quabos and write to file
 #
 def do_calibrate_ph(modules, quabo_uids):
+    # Before starting to calibrate ph, we need to take some ph data.
+    # We seem to have a bug in firmware, but this is an easy fix in software.
+    daq_start = quabo_driver.DAQ_PARAMS(
+        do_image=False,
+        image_us=4999,
+        image_8bit=False,
+        do_ph=True,
+        bl_subtract=True
+    )
+    daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     quabos = []
     for module in modules:
         for i in range(4):
@@ -286,6 +309,9 @@ def do_calibrate_ph(modules, quabo_uids):
             if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             quabo = quabo_driver.QUABO(ip_addr)
+            quabo.send_daq_params(daq_start)
+            time.sleep(1)
+            quabo.send_daq_params(daq_stop)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
             q = {}
@@ -298,6 +324,36 @@ def do_calibrate_ph(modules, quabo_uids):
     x['quabos'] = quabos;
     with open(config_file.quabo_ph_baseline_filename, "w") as f:
         f.write(json.dumps(x, indent=4))
+
+
+# show summary statistics for the PH baseline calibrations of each quabo
+def do_show_ph_baselines(quabo_uids):
+    quabo_ph_baselines = config_file.get_quabo_ph_baselines()
+    msg = f"Creation date: {quabo_ph_baselines['date']}\n"
+    for dome in quabo_uids['domes']:
+        for module in dome['modules']:
+            module_ip_addr = module['ip_addr']
+            msg += f'module {module_ip_addr}:\n'
+            for quabo_index in range(4):
+                quabo_num = config_file.get_boardloc(module_ip_addr, quabo_index)
+                quabo_uid = module['quabos'][quabo_index]['uid']
+                quabo_baselines = None
+                for q in quabo_ph_baselines['quabos']:
+                    if q['uid'] == quabo_uid:
+                        quabo_baselines = q
+                if quabo_baselines is None:
+                    msg += f'\tquabo {quabo_num}: found no ph baseline data\n'
+                else:
+                    coefs = quabo_baselines['coefs']
+                    mean = statistics.mean(coefs)
+                    median = statistics.median(coefs)
+                    stdev = statistics.stdev(coefs)
+                    msg += f'\tquabo {quabo_num: 5}: mean={round(mean, 2): 7}, ' \
+                           f'median={round(median, 2): 7}, stdev={round(stdev, 2): 7},' \
+                           f' min={min(coefs): 5}, max={max(coefs): 5}\n'
+    print(msg)
+
+
 
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
@@ -387,6 +443,14 @@ def do_disk_space(data_config, daq_config, verbose=False):
         print('---------------\nAvailable recording time: %.2f hours'%available_hours)
     return available_hours
 
+
+def do_shutter(action):
+    if action == "open":
+        os.system("./shutter.py --open")
+    elif action == "close":
+        os.system("./shutter.py --close")
+
+
 if __name__ == "__main__":
     def main():
         argv = sys.argv
@@ -432,9 +496,18 @@ if __name__ == "__main__":
             elif argv[i] == '--calibrate_ph':
                 nops += 1
                 op = 'calibrate_ph'
+            elif argv[i] == '--show_ph_baselines':
+                nops += 1
+                op = 'show_ph_baselines'
             elif argv[i] == '--disk_space':
                 nops += 1
                 op = 'disk_space'
+            elif argv[i] == '--shutter_open':
+                nops += 1
+                op = 'shutter_open'
+            elif argv[i] == '--shutter_close':
+                nops += 1
+                op = 'shutter_close'
             else:
                 print('bad arg: %s'%argv[i])
                 usage()
@@ -459,7 +532,7 @@ if __name__ == "__main__":
         elif op == 'loads':
             do_loads(modules, quabo_uids, quabo_info)
         elif op == 'ping':
-            do_ping(modules)
+            do_ping(modules, verbose=True)
         elif op == 'init_daq_nodes':
             file_xfer.copy_daq_files(daq_config)
         elif op == 'hk_dest':
@@ -484,4 +557,11 @@ if __name__ == "__main__":
             do_calibrate_ph(modules, quabo_uids)
         elif op == 'disk_space':
             do_disk_space(data_config, daq_config, True)
+        elif op == 'shutter_open':
+            do_shutter("open")
+        elif op == 'shutter_close':
+            do_shutter("close")
+        elif op == 'show_ph_baselines':
+            do_show_ph_baselines(quabo_uids)
+
     main()
