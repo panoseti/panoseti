@@ -72,7 +72,7 @@ def session_start(obs_config, quabo_info, data_config, daq_config, no_hv):
     config.do_mask_config(modules, data_config, True)
 
     print('configuring Marocs')
-    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
+    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, True)
     
     print('calibrating PH')
     config.do_calibrate_ph(modules, quabo_uids)

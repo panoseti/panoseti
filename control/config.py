@@ -169,7 +169,7 @@ def do_hv_off(modules, quabo_uids):
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False):
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, verbose=False):
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -189,7 +189,13 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, verbose=False)
             is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
             qi = quabo_info[uid]
             serialno = qi['serialno'][3:]
-            quabo_calib = config_file.get_quabo_calib(serialno)
+            # try to find the detector overvoltage in obs_config.abs
+            # if we can't find it, we will use 3v by default.
+            try:
+                detovervol = obs_config['detector_overvoltage']
+            except:
+                detovervol = 3
+            quabo_calib = config_file.get_quabo_calib(serialno, detovervol)
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
 
             # compute DAC1[] and possibly DAC2 based on calibration data
@@ -567,7 +573,7 @@ if __name__ == "__main__":
         elif op == 'hv_off':
             do_hv_off(modules, quabo_uids)
         elif op == 'maroc_config':
-            do_maroc_config(modules, quabo_uids, quabo_info, data_config, True)
+            do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, True)
         elif op == 'mask_config':
             do_mask_config(modules, data_config, True)
         elif op == 'calibrate_ph':
