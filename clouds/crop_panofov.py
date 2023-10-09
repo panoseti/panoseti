@@ -11,9 +11,9 @@ import os
 
 from PIL import Image
 
-pixel_data_file = 'sky_cam_pixels.json'
-sc2_imgs = 'all_sky_matlab/SC2_imgs'
-out_dir = 'cropped_imgs'
+pixel_data_file = 'skycam_pixels.json'
+sc2_imgs = 'SC2_imgs_2023-08-15'
+out_dir = 'cropped_imgs_2023-08-15'
 
 # Get pixel corner data created by panofovlickwebc.m
 with open(pixel_data_file, 'r') as fp:
@@ -21,8 +21,10 @@ with open(pixel_data_file, 'r') as fp:
     x_corners = np.round(pixel_data['SC2']['astrometry_entries'][0]['x_corners'])
     y_corners = np.round(pixel_data['SC2']['astrometry_entries'][0]['y_corners'])
     # Stack coords into an array of 2D points
+    # Points should be in the following order: in top left, top right, bottom right, bottom left
     corners = np.vstack((x_corners, y_corners)).astype(np.int64).T
     corners = np.expand_dims(corners, axis=1)
+    print(corners)
 
 for img_fname in os.listdir(sc2_imgs):
     # Transformation code from https://jdhao.github.io/2019/02/23/crop_rotated_rectangle_opencv/
@@ -56,13 +58,12 @@ for img_fname in os.listdir(sc2_imgs):
     # directly warp the rotated rectangle to get the straightened rectangle
     try:
         warped = cv2.warpPerspective(img, M, (width, height))
+        # save cropped img to file
+        cropped_img_fname = f'{out_dir}/{img_fname[:-4]}_cropped.jpg'
+        cv2.imwrite(cropped_img_fname, warped)
     except Exception:
         print(img_fname)
         print(img)
         print("shape of corners: {}".format(corners.shape))
         print("rect: {}".format(rect))
         print("bounding box: {}".format(box))
-
-    # save cropped img to file
-    cropped_img_fname = f'{out_dir}/{img_fname[:-4]}_cropped.jpg'
-    cv2.imwrite(cropped_img_fname, warped)
