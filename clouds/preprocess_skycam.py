@@ -73,8 +73,11 @@ def crop_img(img, corners, cropped_fpath):
     try:
         warped = cv2.warpPerspective(img, M, (width, height))
         # save cropped img to file
-        cv2.imwrite(cropped_fpath, warped)
-    except Exception:
+        curr_shape = np.array(warped.shape[:2])
+        rescaled = cv2.resize(warped, dsize=curr_shape*3, interpolation=cv2.INTER_CUBIC)
+        cv2.imwrite(cropped_fpath, rescaled)
+    except Exception as e:
+        print(e)
         print(cropped_fpath)
         print(img)
         print("shape of corners: {}".format(corners.shape))
@@ -85,14 +88,14 @@ def crop_img(img, corners, cropped_fpath):
 def plot_pfov(skycam_img, corners, pfov_fpath):
     """Plot the panoseti module FoV on the sky camera image"""
     # Blue color in BGR
-    color = (255, 0, 0)
+    color = (255, 255, 255)
     #skycam_img = skycam_img.reshape((-1, 1, 2))
     #print(skycam_img)
     poly_img = cv2.polylines(skycam_img,
                              [corners],
                              isClosed=True,
                              color=color,
-                             thickness=2)
+                             thickness=1)
     # Save the image
     cv2.imwrite(pfov_fpath, poly_img)
 
