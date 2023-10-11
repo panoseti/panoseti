@@ -15,7 +15,7 @@ import math
 import datetime
 from pathlib import Path
 
-sys.path.append("../util")
+sys.path.append("../../util")
 import config_file
 import pff
 

@@ -11,7 +11,7 @@ import seaborn as sns
 
 from cloud_utils import get_pd_data, get_file_info_array, get_img_spike_dir
 
-sys.path.append("../util")
+sys.path.append("../../util")
 import config_file
 import pff
 import image_quantiles

@@ -6,8 +6,8 @@
 %close all
 %clear all
 %% Modify the following parameters:
-webcrep='SC_imgs/'; % the directory of the Lick webcam images
-choosewebcam=1; %=1 reduces Lick AllSky images (skycam2); =2 reduces Lick SkyCam images
+webcrep='SC2_imgs/'; % the directory of the Lick webcam images
+choosewebcam=2; %=1 reduces Lick AllSky images (skycam2); =2 reduces Lick SkyCam images
 dateproc='20230801'; % to search the proper panoseti astrometry, enter the date of the Lick webcam images as yyyyMMdd of the 
 %%%
 
@@ -24,7 +24,7 @@ end
 % field-of-view
 firstimc=1;
 tic
-for ii=firstimc:5  %size(fwebc,1)
+for ii=firstimc:3  %size(fwebc,1)
     
     figure('Position',[40 40 1200 800],'Color','w')
    

@@ -9,13 +9,13 @@ import os
 import shutil
 import cProfile
 
-sys.path.append('../analysis')
+sys.path.append('../../analysis')
 import analysis_util
 
-sys.path.append('../util')
+sys.path.append('../../util')
 import pff
 import config_file
-sys.path.append('../control')
+sys.path.append('../../control')
 
 
 def do_file(data_dir, run_dir, birdie_dir, sequence_num, fin_name, params, verbose, plot_images):

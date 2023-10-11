@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-sys.path.append("../util")
+sys.path.append("../../util")
 import config_file
 import pff
 import image_quantiles
 
-sys.path.append('../control')
+sys.path.append('../../control')
 
 
 def get_next_frame(f, frame_size, bytes_per_pixel, step_size):
