@@ -9,28 +9,24 @@ import tarfile
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
+from data_labeling_utils import get_skycam_dir, get_img_subdirs, is_data_downloaded, get_img_time
 
-def get_skycam_link(skycam, year, month, day):
+
+def get_skycam_link(skycam_type, year, month, day):
     """
     Skycam link formats
       0 = 4 digit year
       1 = 2 digit month
       2 = 2 digit day, 1-indexed
     """
-    if skycam == 'SC':
+    if skycam_type == 'SC':
         return f'https://mthamilton.ucolick.org/data/{year}-{month:0>2}/{day:0>2}/allsky/public/'
-    elif skycam == 'SC2':
+    elif skycam_type == 'SC2':
         return f'https://mthamilton.ucolick.org/data/{year}-{month:0>2}/{day:0>2}/skycam2/public/'
 
 
-def get_out_dir(skycam, year, month, day):
-    if skycam == 'SC':
-        return f'SC_img_{year}-{month:0>2}-{day:}'
-    elif skycam == 'SC2':
-        return f'SC2_img_{year}-{month:0>2}-{day:}'
 
-
-def download_wait(directory, timeout, nfiles=None):
+def download_wait(directory, timeout, nfiles=None, verbose=False):
     """
     Wait for downloads to finish with a specified timeout.
 
@@ -69,7 +65,7 @@ def download_wait(directory, timeout, nfiles=None):
                 else:
                     last_download_fsizes[fname] = current_fsize
 
-        if num_crdownload_files == 0:
+        if num_crdownload_files == 0 and verbose:
             print('Successfully downloaded all files')
 
         dl_wait = num_crdownload_files > 0
@@ -77,7 +73,7 @@ def download_wait(directory, timeout, nfiles=None):
     return seconds
 
 
-def download_skycam_data(skycam, year, month, day):
+def download_skycam_data(skycam_type, year, month, day, verbose):
     """
     Downloads all the skycam images collected on year-month-day from 12pm up to 12pm the next day (in PDT).
 
@@ -90,17 +86,14 @@ def download_skycam_data(skycam, year, month, day):
     assert 1 <= month <= 12, 'Month must be between 1 and 12, inclusive'
     assert 1 <= day <= 31, 'Day must be between 1 and 31, inclusive'
 
+
+    # Create skycam directory
+    skycam_dir = get_skycam_dir(skycam_type, year, month, day)
+    os.makedirs(skycam_dir, exist_ok=True)
+
     # Set Chrome driver options
-    out_dir = get_out_dir(skycam, year, month, day)
-    try:
-        os.makedirs(out_dir, exist_ok=True)
-        if os.path.exists(f'{out_dir}/original'):
-            raise FileExistsError(f"Data already downloaded at {out_dir}/original")
-    except FileExistsError as e:
-        print(e)
-        return None
     prefs = {
-        'download.default_directory': out_dir
+        'download.default_directory': skycam_dir
     }
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_experimental_option('prefs', prefs)
@@ -109,9 +102,8 @@ def download_skycam_data(skycam, year, month, day):
     driver = webdriver.Chrome(options=chrome_options)
 
     # Open URL to Lick skycam archive
-    link = get_skycam_link(skycam, year, month, day)
+    link = get_skycam_link(skycam_type, year, month, day)
     driver.get(link)
-    #print(f'link={link}, out_dir={out_dir}')
 
     # Check if download page exists
     title = driver.title
@@ -131,19 +123,19 @@ def download_skycam_data(skycam, year, month, day):
         movie_checkboxes[i].click()
 
     # Download tarball file to out_dir
-    print('Downloading data...')
+    if verbose: print(f'Downloading data from {link}')
     download_tarball = driver.find_element(By.XPATH, "//input[@type='submit']")
     download_tarball.click()
 
-    download_wait(directory=out_dir, timeout=30, nfiles=1)
-    driver.close()
+    download_wait(directory=skycam_dir, timeout=30, nfiles=1, verbose=verbose)
+    #driver.close()
 
-    return out_dir
+    return skycam_dir
 
 
 def unzip_images(skycam_dir):
     """Unpack image files from tarball."""
-    original_skycam_img_dir = f'{skycam_dir}/original'
+    img_subdirs = get_img_subdirs(skycam_dir)
     downloaded_fname = ''
 
     for fname in os.listdir(skycam_dir):
@@ -157,42 +149,33 @@ def unzip_images(skycam_dir):
 
         for path in os.listdir(skycam_dir):
             if os.path.isdir(f'{skycam_dir}/{path}') and path.startswith('data'):
-                os.rename(f'{skycam_dir}/{path}', original_skycam_img_dir)
+                os.rename(f'{skycam_dir}/{path}', img_subdirs['original'])
     
-
-def get_img_time(skycam_fname):
-    """Returns datetime object based on the image timestamp contained in skycam_fname."""
-    if skycam_fname[-4:] != '.jpg':
-        raise Warning('Expected a .jpg file')
-    # Example: SC2_20230625190102 -> SC2, 20230625190102
-    skycam_type, t = skycam_fname[:-4].split('_')
-    # 20230625190102 -> 2023, 06, 25, 19, 01, 02
-    time_fields = t[0:4], t[4:6], t[6:8], t[8:10], t[10:12], t[12:14]
-    year, month, day, hour, minute, second = [int(tf) for tf in time_fields]
-
-    timestamp = datetime(year, month, day, hour, minute, second)
-    return timestamp
 
 
 
 def remove_day_images(skycam_dir):
     """Remove skycam images taken during the day."""
-    original_skycam_img_dir = f'{skycam_dir}/original'
+    img_subdirs = get_img_subdirs(skycam_dir)
     PST_offset = timedelta(hours=-7)
-    for skycam_fname in sorted(os.listdir(original_skycam_img_dir)):
-        pst_time = get_img_time(skycam_fname) + PST_offset
+    for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
+        pst_time = get_img_time(skycam_img_fname) + PST_offset
         # Delete images taken between 5am and 8pm, inclusive
         if 5 <= pst_time.hour <= 12 + 8:
-            #print(f'{original_skycam_img_dir}/{skycam_fname}')
-            #print(os.path.exists(f'{original_skycam_img_dir}/{skycam_fname}'))
-            os.remove(f'{original_skycam_img_dir}/{skycam_fname}')
+            os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
 
-def download_night_skycam_imgs(skycam, year, month, day):
-    skycam_dir = download_skycam_data(skycam, year, month, day)
+def download_night_skycam_imgs(skycam_type, year, month, day, verbose=False):
+    skycam_dir = download_skycam_data(skycam_type, year, month, day, verbose)
+    is_data_downloaded(skycam_dir)
     if skycam_dir:
+        if verbose: print("Unzipping files...")
         unzip_images(skycam_dir)
+        if verbose: print("Removing day images..")
         remove_day_images(skycam_dir)
+        return 'Success'
+ 
 
 
-download_night_skycam_imgs('SC2', 2023, 6, 25)
+if __name__ == '__main__':
+    download_night_skycam_imgs('SC2', 2023, 10, 13, verbose=True)

@@ -5,15 +5,15 @@ import os
 import json
 import math
 import time
+from datetime import datetime, timedelta, tzinfo
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
-from IPython import display
+#from IPython import display
 
-import preprocess_skycam
 
 plt.figure(figsize=(15, 15))
 
@@ -21,18 +21,104 @@ data_labels_file = 'skycam_labels.json'
 with open(data_labels_file, 'r') as f:
     labels = json.load(f)
 
+# Skycam directory utils
+
+valid_image_types = ['original', 'cropped', 'pfov']
+
+def get_img_subdirs(skycam_dir):
+    """Return dict of skycam image directories."""
+    img_subdirs = {}
+    for img_type in valid_image_types:
+        img_subdirs[img_type] = f'{skycam_dir}/{img_type}'
+    return img_subdirs
+
+
+def get_img_path(original_fname, img_type, skycam_dir):
+    assert img_type in valid_image_types, f"{img_type} is not supported"
+    img_subdirs = get_img_subdirs(skycam_dir)
+    if original_fname[-4:] != '.jpg':
+        return None
+    if img_type == 'original':
+        return f"{img_subdirs['original']}/{original_fname}"
+    elif img_type == 'cropped':
+        return f"{img_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
+    elif img_type == 'pfov':
+        return f"{img_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
+    else:
+        return None
+
+
+def get_skycam_dir(skycam_type, year, month, day):
+    if skycam_type == 'SC':
+        return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
+    elif skycam_type == 'SC2':
+        return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
+
+
+def init_preprocessing_dirs(skycam_dir):
+    """Initialize pre-processing directories."""
+    img_subdirs = get_img_subdirs(skycam_dir)
+    is_data_preprocessed(skycam_dir)
+    #for dir_name in [img_subdirs['cropped'], img_subdirs['pfov']]:
+    for dir_name in img_subdirs.values():
+        os.makedirs(dir_name, exist_ok=True)
+
+
+def is_initialized(skycam_dir):
+    img_subdirs = get_img_subdirs(skycam_dir)
+    if os.path.exists(skycam_dir) and len(os.listdir()) > 0:
+        is_initialized = False
+        for path in os.listdir():
+            if path in img_subdirs:
+                is_initialized |= len(os.listdir()) > 0
+            if os.path.isfile(path):
+                is_initialized = False
+        if is_initialized:
+            raise FileExistsError(f"Expected directory {skycam_dir} to be uninitialized, but found the following files:\n\t"
+                                    f"{os.walk(skycam_dir)}")
+
+
+def is_data_downloaded(skycam_dir):
+    """Checks if data is already downloaded."""
+    img_subdirs = get_img_subdirs(skycam_dir)
+    if os.path.exists(img_subdirs['original']) and len(os.listdir(img_subdirs['original'])) > 0:
+        raise FileExistsError(f"Data already downloaded at {img_subdirs['original']}")
+    is_initialized(skycam_dir)
+
+def is_data_preprocessed(skycam_dir):
+    """Checks if data is already processed."""
+    img_subdirs = get_img_subdirs(skycam_dir)
+    if os.path.exists(img_subdirs['cropped']) and len(os.listdir(img_subdirs['cropped'])) > 0:
+        raise FileExistsError(f"Data in {skycam_dir} already processed")
+    is_initialized(skycam_dir)
+
+
+def get_img_time(skycam_fname):
+    """Returns datetime object based on the image timestamp contained in skycam_fname."""
+    if skycam_fname[-4:] != '.jpg':
+        raise Warning('Expected a .jpg file')
+    # Example: SC2_20230625190102 -> SC2, 20230625190102
+    skycam_type, t = skycam_fname[:-4].split('_')
+    # 20230625190102 -> 2023, 06, 25, 19, 01, 02
+    time_fields = t[0:4], t[4:6], t[6:8], t[8:10], t[10:12], t[12:14]
+    year, month, day, hour, minute, second = [int(tf) for tf in time_fields]
+
+    timestamp = datetime(year, month, day, hour, minute, second)
+    return timestamp
+
+
 
 # Plotting routines
 def get_img_uid_to_data(img_metadata_df, skycam_dir):
     """Returns a function that maps uids of original skycam images to the corresponding image data array."""
-    original_skycam_img_dir, cropped_out_dir, pfov_out_dir = preprocess_skycam.get_img_dirs(skycam_dir)
+    img_subdirs = get_img_subdirs(skycam_dir)
 
     def img_uid_to_data(img_uid, img_type):
         original_fname = (img_metadata_df.loc[(img_metadata_df.img_uid == img_uid), 'fname']).iloc[0]
 
-        if img_type not in ['original', 'cropped', 'pfov']:
+        if img_type not in img_subdirs:
             raise Warning(f"'{img_type}' is not a valid skycam image type.")
-        fpath = preprocess_skycam.get_img_path(original_fname, img_type, skycam_dir)
+        fpath = get_img_path(original_fname, img_type, skycam_dir)
         img = np.asarray(Image.open(fpath))
         return img
 
@@ -142,8 +228,8 @@ def add_labeled_data(labeled_df, unlabeled_df, img_uid, user_uid, label):
 
 
 def init_skycam_df(skycam_df, unlabeled_data_df, skycam_dir):
-    original_skycam_img_dir, cropped_out_dir, pfov_out_dir = preprocess_skycam.get_img_dirs(skycam_dir)
-    for fname in os.listdir(original_skycam_img_dir):
+    img_subdirs = get_img_subdirs(skycam_dir)
+    for fname in os.listdir(img_subdirs['original']):
         if fname[-4:] == '.jpg':
             add_skycam_img(skycam_df, fname, 'SC2')
             add_unlabeled_data(unlabeled_data_df, get_uid(fname))
