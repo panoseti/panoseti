@@ -12,12 +12,13 @@ from PIL import Image
 from IPython import display
 
 from skycam_utils import get_img_subdirs, get_img_path, get_skycam_dir, get_img_time, get_batch_dir
-from labeling_utils import get_uid, get_dataframe, add_labeled_data, add_unlabeled_data, add_skycam_img
+from labeling_utils import get_uid, get_dataframe, add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df
 
 class LabelSession:
     data_labels_file = 'skycam_labels.json'
-    top_level_batch_dir = 'data_batches'
+    root_data_batch_dir = 'data_batches'
     img_paths_info_file = 'img_path_info.json'
+    root_labeled_data_dir = 'batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
         self.name = name
@@ -26,11 +27,11 @@ class LabelSession:
         self.batch_id = batch_id
         self.task = task
         self.batch_dir = get_batch_dir(task, batch_id)
-        self.batch_path = LabelSession.top_level_batch_dir + '/' + self.batch_dir
+        self.batch_path = LabelSession.root_data_batch_dir + '/' + self.batch_dir
 
-        self.img_df = get_dataframe('img')
-        self.unlabeled_df = get_dataframe('unlabeled_data')
-        self.labeled_df = get_dataframe('labeled_data')
+        self.img_df = self.init_dataframe('img')
+        self.unlabeled_df = self.init_dataframe('unlabeled-data')
+        self.labeled_df = self.init_dataframe('labeled-data')
         self.data_to_label = None
 
         self.skycam_paths = {}
@@ -46,7 +47,10 @@ class LabelSession:
         with open(f'{self.batch_path}/{self.img_paths_info_file}', 'r') as f:
             self.skycam_paths = json.load(f)
         for skycam_dir in self.skycam_paths:
-            self.init_skycam_df(skycam_dir)
+            self.init_img_uid_to_skycam_dir(skycam_dir)
+            # Populate dataframes if necessary
+            if len(self.img_df) == 0 and len(self.unlabeled_df) == 0:
+                self.init_skycam_df(skycam_dir)
 
     def init_skycam_df(self, skycam_dir):
         """Initialize img_df, unlabeled_df, and index (img_uid:skycam_dir) relations"""
@@ -62,8 +66,22 @@ class LabelSession:
                 # Add entries to img_df and unlabeled_df
                 add_skycam_img(self.img_df, fname, skycam_type, timestamp)
                 add_unlabeled_data(self.unlabeled_df, img_uid)
-                # Save uid -> path relation for fast lookup later
+
+    def init_img_uid_to_skycam_dir(self, skycam_dir):
+        """Save uid -> path relation for fast lookup later."""
+        original_img_dir = self.skycam_paths[skycam_dir]['img_subdirs']['original']
+        for fname in os.listdir(original_img_dir):
+            if fname[-4:] == '.jpg':
+                img_uid = get_uid(fname)
                 self.img_uid_to_skycam_dir[img_uid] = skycam_dir
+
+    def init_dataframe(self, df_type):
+        """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
+        df = load_df(self.user_uid, self.batch_id, df_type, self.task, is_temp=True)
+        if df is None:
+            df = get_dataframe(df_type)
+        return df
+
 
     def img_uid_to_data(self, img_uid, img_type):
         original_fname = self.img_df.loc[self.img_df.img_uid == img_uid, 'fname'].iloc[0]
@@ -201,3 +219,14 @@ class LabelSession:
             display.clear_output(wait=True)
             print(self.get_progress_str())
             print('Exiting and saving your labels...')
+            self.save_progress()
+
+    def save_progress(self):
+        save_df(self.img_df, 'img', self.user_uid, self.batch_id,  self.task, is_temp=True)
+        save_df(self.labeled_df, 'labeled-data', self.user_uid, self.batch_id, self.task, is_temp=True)
+        save_df(self.unlabeled_df, 'unlabeled-data', self.user_uid, self.batch_id,  self.task, is_temp=True)
+
+    def save_for_upload(self):
+        save_df(self.img_df, 'img', self.user_uid, self.batch_id,  self.task, is_temp=True)
+        save_df(self.labeled_df, 'labeled-data', self.user_uid, self.batch_id, self.task, is_temp=True)
+        save_df(self.unlabeled_df, 'unlabeled-data', self.user_uid, self.batch_id,  self.task, is_temp=True)

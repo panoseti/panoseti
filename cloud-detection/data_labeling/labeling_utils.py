@@ -1,44 +1,56 @@
 import hashlib
-import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+import os
+
+# Database IO routines
+
+def get_batch_label_dir(task, batch_id, root_labeled_data_dir='batch_labels'):
+    dir_name = "task_{0}.batch_{1}".format(task, batch_id)
+    dir_path = f'{root_labeled_data_dir}/{dir_name}'
+    return dir_path
+
+def get_df_save_name(df_type, user_uid, is_temp):
+    save_name = "type_{0}.user-uid_{1}".format(df_type, user_uid)
+    if is_temp:
+        save_name += f'.TEMP'
+    return save_name + '.csv'
+
+
+def save_df(df, df_type, user_uid, batch_id, task, is_temp, overwrite_ok=True, root_labeled_data_dir='batch_labels'):
+    """Save a pandas dataframe as a csv file. If is_temp is True, add the postfix TEMP to the filename."""
+    batch_label_dir = get_batch_label_dir(task, batch_id)
+    os.makedirs(batch_label_dir, exist_ok=True)
+
+    df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
+    if os.path.exists(df_path) and not overwrite_ok:
+        raise FileExistsError(f'{df_path} exists. Aborting save.')
+    else:
+        with open(df_path, 'w'):
+            df.to_csv(df_path)
+
+
+def load_df(user_uid, batch_id, df_type, task, is_temp, root_labeled_data_dir='batch_labels'):
+    batch_label_dir = get_batch_label_dir(task, batch_id)
+    df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
+    if os.path.exists(df_path):
+        with open(df_path, 'r') as f:
+            df = pd.read_csv(f)
+            return df
+    else:
+        return None
+
 
 
 # Database formats
+
 def get_dataframe_formats():
     dataframe_formats = {
         'user': ['user_uid', 'name'],
         'img': ['img_uid', 'fname', 'type', 'unix_t'],
-        'unlabeled_data': ['img_uid', 'is_labeled'],
-        'labeled_data': ['img_uid', 'user_uid', 'label']
+        'unlabeled-data': ['img_uid', 'is_labeled'],
+        'labeled-data': ['img_uid', 'user_uid', 'label']
     }
     return dataframe_formats
-
-def get_dataframe(df_type):
-    dataframe_formats = get_dataframe_formats()
-    assert df_type in dataframe_formats, f"'{df_type}' is not a supported dataframe format"
-    return pd.DataFrame(columns=dataframe_formats[df_type])
-
-def get_df_save_name(user_uid, batch_id, df_type):
-    # TODO: reverse order
-    return "user-uid_{0}.batch-id_{1}.type_{2}.csv".format(user_uid, batch_id, df_type)
-
-def save_df(user_uid, batch_id, df_type):
-    dataframe_formats = get_dataframe_formats()
-    for df_type, df_format in dataframe_formats.items():
-        df = get_dataframe(df_type)
-        df.to_csv(get_df_save_name())
-
-def load_df(batch_id, df_type):
-    ...
-
-# Database IO routines
-
-
-
-def load_database_formats(data_batch_dir, batch_id):
-    ...
-
 
 # Database interface routines
 
@@ -80,10 +92,8 @@ def add_labeled_data(labeled_df, unlabeled_df, img_uid, user_uid, label):
     labeled_df.loc[len(labeled_df)] = [img_uid, user_uid, label]
     unlabeled_df.loc[(unlabeled_df['img_uid'] == img_uid), 'is_labeled'] = True
 
+def get_dataframe(df_type):
+    dataframe_formats = get_dataframe_formats()
+    assert df_type in dataframe_formats, f"'{df_type}' is not a supported dataframe format"
+    return pd.DataFrame(columns=dataframe_formats[df_type])
 
-# name = "Nicolas Rault-Wang"
-# batch_id = 0
-#
-# #user_uid = add_user(user_df, name)
-# session = LabelSession('cloud-detection', name, batch_id)
-# session.start()
