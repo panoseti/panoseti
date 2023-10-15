@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import os
+import json
 from datetime import datetime, timedelta, tzinfo
 
 
@@ -88,3 +89,29 @@ def get_img_time(skycam_fname):
     return timestamp
 
 
+def get_batch_dir(task, batch_id):
+    return "task_{0}.batch_{1}".format(task, batch_id)
+
+def make_skycam_paths_json(task, batch_id, top_level_batch_dir='data_batches', save_name='img_path_info.json'):
+    batch_path = top_level_batch_dir + '/' + get_batch_dir(task, batch_id)
+    skycam_paths = {}
+    assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
+    for path in os.listdir(batch_path):
+        if os.path.isdir(f'{batch_path}/{path}') and 'SC' in path and 'imgs' in path:
+            skycam_dir = f'{batch_path}/{path}'
+            skycam_paths[skycam_dir] = {
+                "img_subdirs": {},
+                "imgs_per_subdir": -1,
+            }
+            img_subdirs = get_img_subdirs(skycam_dir)
+            skycam_paths[skycam_dir]["img_subdirs"] = img_subdirs
+            num_imgs_per_subdir = []
+            for subdir in img_subdirs.values():
+                num_imgs_per_subdir.append(len(os.listdir(subdir)))
+            if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
+                raise Warning(f"Unequal number of images in {skycam_dir}")
+            skycam_paths[skycam_dir]["imgs_per_subdir"] = num_imgs_per_subdir[0]
+    with open(f"{batch_path}/{save_name}", 'w') as f:
+        f.write(json.dumps(skycam_paths, indent=4))
+
+#make_skycam_paths_json('cloud-detection', 0)

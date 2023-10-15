@@ -10,8 +10,8 @@ import cv2
 import os
 import traceback
 
-from fetch_skycam_imgs import get_skycam_dir, download_night_skycam_imgs
-from data_labeling_utils import get_img_subdirs, get_img_path, init_preprocessing_dirs, is_data_preprocessed, is_data_downloaded
+from fetch_skycam_imgs import download_night_skycam_imgs
+from skycam_utils import get_skycam_dir, get_img_subdirs, get_img_path, init_preprocessing_dirs, is_data_preprocessed, is_data_downloaded
 
 
 pixel_data_file = 'skycam_pixels.json'
@@ -116,4 +116,4 @@ def preprocess_skycam_imgs(skycam_type, year, month, day, verbose=False):
 
 
 if __name__ == '__main__':
-    preprocess_skycam_imgs('SC2', 2023, 10, 12, verbose=True)
+    preprocess_skycam_imgs('SC2', 2023, 8, 1, verbose=True)

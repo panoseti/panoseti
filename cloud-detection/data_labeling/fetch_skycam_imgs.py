@@ -10,7 +10,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 
-from data_labeling_utils import get_skycam_dir, get_img_subdirs, is_data_downloaded, get_img_time
+from skycam_utils import get_skycam_dir, get_img_subdirs, is_data_downloaded, get_img_time
 
 
 def get_skycam_link(skycam_type, year, month, day):
