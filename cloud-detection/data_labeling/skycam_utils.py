@@ -92,8 +92,8 @@ def get_img_time(skycam_fname):
 def get_batch_dir(task, batch_id):
     return "task_{0}.batch_{1}".format(task, batch_id)
 
-def make_skycam_paths_json(task, batch_id, top_level_batch_dir='data_batches', save_name='img_path_info.json'):
-    batch_path = top_level_batch_dir + '/' + get_batch_dir(task, batch_id)
+def make_skycam_paths_json(task, batch_id, root, save_name='img_path_info.json'):
+    batch_path = root + '/' + get_batch_dir(task, batch_id)
     skycam_paths = {}
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     for path in os.listdir(batch_path):
@@ -114,4 +114,4 @@ def make_skycam_paths_json(task, batch_id, top_level_batch_dir='data_batches', s
     with open(f"{batch_path}/{save_name}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
 
-#make_skycam_paths_json('cloud-detection', 0)
+make_skycam_paths_json('cloud-detection', 0, 'batch_data')

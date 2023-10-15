@@ -2,11 +2,25 @@ import hashlib
 import pandas as pd
 import os
 
-# Database IO routines
+# Database formats
 
-def get_batch_label_dir(task, batch_id, root_labeled_data_dir='batch_labels'):
+def get_dataframe_formats():
+    dataframe_formats = {
+        'user': ['user_uid', 'name'],
+        'img': ['img_uid', 'fname', 'unix_t', 'type'],
+        'unlabeled-data': ['img_uid', 'is_labeled'],
+        'labeled-data': ['img_uid', 'user_uid', 'label']
+    }
+    return dataframe_formats
+
+# Database IO routines
+def get_data_export_dir(task, batch_id, user_uid):
+    dir_name = "task_{0}.batch_{1}.user-uid_{2}".format(task, batch_id, user_uid)
+    return dir_name
+
+def get_batch_label_dir(task, batch_id, root):
     dir_name = "task_{0}.batch_{1}".format(task, batch_id)
-    dir_path = f'{root_labeled_data_dir}/{dir_name}'
+    dir_path = f'{root}/{dir_name}'
     return dir_path
 
 def get_df_save_name(df_type, user_uid, is_temp):
@@ -16,9 +30,8 @@ def get_df_save_name(df_type, user_uid, is_temp):
     return save_name + '.csv'
 
 
-def save_df(df, df_type, user_uid, batch_id, task, is_temp, overwrite_ok=True, root_labeled_data_dir='batch_labels'):
+def save_df(df, df_type, user_uid, batch_id, task, is_temp, batch_label_dir, overwrite_ok=True):
     """Save a pandas dataframe as a csv file. If is_temp is True, add the postfix TEMP to the filename."""
-    batch_label_dir = get_batch_label_dir(task, batch_id)
     os.makedirs(batch_label_dir, exist_ok=True)
 
     df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
@@ -29,28 +42,16 @@ def save_df(df, df_type, user_uid, batch_id, task, is_temp, overwrite_ok=True, r
             df.to_csv(df_path)
 
 
-def load_df(user_uid, batch_id, df_type, task, is_temp, root_labeled_data_dir='batch_labels'):
-    batch_label_dir = get_batch_label_dir(task, batch_id)
+def load_df(user_uid, batch_id, df_type, task, is_temp, root='batch_labels'):
+    batch_label_dir = get_batch_label_dir(task, batch_id, root)
     df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
     if os.path.exists(df_path):
         with open(df_path, 'r') as f:
-            df = pd.read_csv(f)
+            df = pd.read_csv(f, index_col=0)
             return df
     else:
         return None
 
-
-
-# Database formats
-
-def get_dataframe_formats():
-    dataframe_formats = {
-        'user': ['user_uid', 'name'],
-        'img': ['img_uid', 'fname', 'type', 'unix_t'],
-        'unlabeled-data': ['img_uid', 'is_labeled'],
-        'labeled-data': ['img_uid', 'user_uid', 'label']
-    }
-    return dataframe_formats
 
 # Database interface routines
 
@@ -74,7 +75,7 @@ def add_user(user_df, name, verbose=False):
 def add_skycam_img(skycam_df, fname, skycam_type, timestamp, verbose=False):
     img_uid = get_uid(fname)
     if not skycam_df.loc[:, 'img_uid'].str.contains(img_uid).any():
-        skycam_df.loc[len(skycam_df)] = [img_uid, fname, skycam_type, timestamp]
+        skycam_df.loc[len(skycam_df)] = [img_uid, fname, timestamp, skycam_type]
     elif verbose:
         print(f'An entry for "{fname}" already exists')
     return img_uid

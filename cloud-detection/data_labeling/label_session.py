@@ -1,4 +1,5 @@
 import os
+import shutil
 import json
 import math
 import time
@@ -12,11 +13,11 @@ from PIL import Image
 from IPython import display
 
 from skycam_utils import get_img_subdirs, get_img_path, get_skycam_dir, get_img_time, get_batch_dir
-from labeling_utils import get_uid, get_dataframe, add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df
+from labeling_utils import get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir, add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df
 
 class LabelSession:
     data_labels_file = 'skycam_labels.json'
-    root_data_batch_dir = 'data_batches'
+    root_data_batch_dir = 'batch_data'
     img_paths_info_file = 'img_path_info.json'
     root_labeled_data_dir = 'batch_labels'
 
@@ -29,8 +30,10 @@ class LabelSession:
         self.batch_dir = get_batch_dir(task, batch_id)
         self.batch_path = LabelSession.root_data_batch_dir + '/' + self.batch_dir
 
+        self.loaded_dfs_from_file = False
         self.img_df = self.init_dataframe('img')
         self.unlabeled_df = self.init_dataframe('unlabeled-data')
+        self.unlabeled_df = self.unlabeled_df.sample(frac=1).reset_index(drop=True)
         self.labeled_df = self.init_dataframe('labeled-data')
         self.data_to_label = None
 
@@ -48,8 +51,8 @@ class LabelSession:
             self.skycam_paths = json.load(f)
         for skycam_dir in self.skycam_paths:
             self.init_img_uid_to_skycam_dir(skycam_dir)
-            # Populate dataframes if necessary
-            if len(self.img_df) == 0 and len(self.unlabeled_df) == 0:
+            # Populate dataframes if they have not been loaded from file.
+            if not self.loaded_dfs_from_file:
                 self.init_skycam_df(skycam_dir)
 
     def init_skycam_df(self, skycam_dir):
@@ -80,6 +83,8 @@ class LabelSession:
         df = load_df(self.user_uid, self.batch_id, df_type, self.task, is_temp=True)
         if df is None:
             df = get_dataframe(df_type)
+        else:
+            self.loaded_dfs_from_file = True
         return df
 
 
@@ -220,13 +225,77 @@ class LabelSession:
             print(self.get_progress_str())
             print('Exiting and saving your labels...')
             self.save_progress()
+            print('Success!')
 
     def save_progress(self):
-        save_df(self.img_df, 'img', self.user_uid, self.batch_id,  self.task, is_temp=True)
-        save_df(self.labeled_df, 'labeled-data', self.user_uid, self.batch_id, self.task, is_temp=True)
-        save_df(self.unlabeled_df, 'unlabeled-data', self.user_uid, self.batch_id,  self.task, is_temp=True)
+        batch_label_dir = get_batch_label_dir(self.task, self.batch_id, self.root_labeled_data_dir)
 
-    def save_for_upload(self):
-        save_df(self.img_df, 'img', self.user_uid, self.batch_id,  self.task, is_temp=True)
-        save_df(self.labeled_df, 'labeled-data', self.user_uid, self.batch_id, self.task, is_temp=True)
-        save_df(self.unlabeled_df, 'unlabeled-data', self.user_uid, self.batch_id,  self.task, is_temp=True)
+        save_df(self.img_df,
+                'img',
+                self.user_uid,
+                self.batch_id,
+                self.task,
+                True,
+                batch_label_dir
+                )
+
+        save_df(self.labeled_df,
+                'labeled-data',
+                self.user_uid,
+                self.batch_id,
+                self.task,
+                True,
+                batch_label_dir
+                )
+
+        save_df(self.unlabeled_df,
+                'unlabeled-data',
+                self.user_uid,
+                self.batch_id,
+                self.task,
+                True,
+                batch_label_dir
+                )
+
+    def create_export_zipfile(self):
+        data_export_dir = get_data_export_dir(self.task, self.batch_id, self.user_uid)
+        os.makedirs(data_export_dir, exist_ok=True)
+
+        save_df(self.img_df,
+                'img',
+                self.user_uid,
+                self.batch_id,
+                self.task,
+                False,
+                data_export_dir
+                )
+
+        save_df(self.labeled_df,
+                'labeled-data',
+                self.user_uid,
+                self.batch_id,
+                self.task,
+                False,
+                data_export_dir
+                )
+
+        save_df(self.unlabeled_df,
+                'unlabeled-data',
+                self.user_uid,
+                self.batch_id,
+                self.task,
+                False,
+                data_export_dir
+                )
+
+        # Save user info
+        user_info = {
+            'name': self.name,
+            'user-uid': self.user_uid
+        }
+        user_info_path = data_export_dir + '/' + 'user_info.json'
+        with open(user_info_path, 'w') as f:
+            f.write(json.dumps(user_info))
+
+        shutil.make_archive(data_export_dir, 'zip', data_export_dir)
+        shutil.rmtree(data_export_dir)
