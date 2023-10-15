@@ -1,5 +1,7 @@
 {
-  "0": "not_cloudy",
-  "1": "cloudy",
-  "2": "not_sure"
+  "0": "clear",
+  "1": "partly_cloudy",
+  "2": "mostly_cloudy",
+  "3": "overcast",
+  "4": "not_sure"
 }
