@@ -9,6 +9,7 @@ import tarfile
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
+
 from data_labeling_utils import get_skycam_dir, get_img_subdirs, is_data_downloaded, get_img_time
 
 
@@ -54,7 +55,6 @@ def download_wait(directory, timeout, nfiles=None, verbose=False):
         num_crdownload_files = 0
         for fname in files:
             if fname.endswith('.crdownload'):
-                #print(last_download_fsizes)
                 num_crdownload_files += 1
                 current_fsize = os.path.getsize(f'{directory}/{fname}')
                 if fname in last_download_fsizes:
@@ -93,11 +93,12 @@ def download_skycam_data(skycam_type, year, month, day, verbose):
 
     # Set Chrome driver options
     prefs = {
-        'download.default_directory': skycam_dir
+        'download.default_directory': os.path.abspath(skycam_dir)
     }
+    print(os.path.abspath(skycam_dir))
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_experimental_option('prefs', prefs)
-    chrome_options.add_argument("--headless")   # Don't open a browser window
+    #chrome_options.add_argument("--headless")   # Don't open a browser window
     # Open Chrome driver
     driver = webdriver.Chrome(options=chrome_options)
 
@@ -128,7 +129,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose):
     download_tarball.click()
 
     download_wait(directory=skycam_dir, timeout=30, nfiles=1, verbose=verbose)
-    #driver.close()
+    driver.close()
 
     return skycam_dir
 
@@ -151,8 +152,6 @@ def unzip_images(skycam_dir):
             if os.path.isdir(f'{skycam_dir}/{path}') and path.startswith('data'):
                 os.rename(f'{skycam_dir}/{path}', img_subdirs['original'])
     
-
-
 
 def remove_day_images(skycam_dir):
     """Remove skycam images taken during the day."""

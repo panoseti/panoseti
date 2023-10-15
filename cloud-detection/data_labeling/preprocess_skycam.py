@@ -115,4 +115,5 @@ def preprocess_skycam_imgs(skycam_type, year, month, day, verbose=False):
         plot_pfov(original_img, corners_4x1x2, pfov_fpath)
 
 
-preprocess_skycam_imgs('SC2', 2023, 10, 14, verbose=True)
+if __name__ == '__main__':
+    preprocess_skycam_imgs('SC2', 2023, 10, 12, verbose=True)
