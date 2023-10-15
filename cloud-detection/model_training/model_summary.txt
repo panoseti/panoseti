@@ -20,33 +20,35 @@ Layer (type:depth-idx)                   Param #
 |    └─ReLU: 2-15                        --
 |    └─BatchNorm2d: 2-16                 512
 |    └─Dropout2d: 2-17                   --
-|    └─Conv2d: 2-18                      590,080
-|    └─ReLU: 2-19                        --
-|    └─BatchNorm2d: 2-20                 512
-|    └─Dropout2d: 2-21                   --
-|    └─MaxPool2d: 2-22                   --
+|    └─MaxPool2d: 2-18                   --
+|    └─Conv2d: 2-19                      590,080
+|    └─ReLU: 2-20                        --
+|    └─BatchNorm2d: 2-21                 512
+|    └─Dropout2d: 2-22                   --
+|    └─MaxPool2d: 2-23                   --
 ├─Sequential: 1-3                        --
-|    └─Conv2d: 2-23                      922,000
-|    └─ReLU: 2-24                        --
-|    └─BatchNorm2d: 2-25                 800
-|    └─Dropout2d: 2-26                   --
-|    └─Conv2d: 2-27                      1,440,400
-|    └─ReLU: 2-28                        --
-|    └─BatchNorm2d: 2-29                 800
-|    └─Dropout2d: 2-30                   --
-|    └─MaxPool2d: 2-31                   --
+|    └─Conv2d: 2-24                      922,000
+|    └─ReLU: 2-25                        --
+|    └─BatchNorm2d: 2-26                 800
+|    └─Dropout2d: 2-27                   --
+|    └─MaxPool2d: 2-28                   --
+|    └─Conv2d: 2-29                      1,440,400
+|    └─ReLU: 2-30                        --
+|    └─BatchNorm2d: 2-31                 800
+|    └─Dropout2d: 2-32                   --
+|    └─MaxPool2d: 2-33                   --
 ├─Flatten: 1-4                           --
 ├─Sequential: 1-5                        --
-|    └─Linear: 2-32                      1,638,656
-|    └─ReLU: 2-33                        --
-|    └─BatchNorm1d: 2-34                 512
-|    └─Dropout1d: 2-35                   --
-|    └─Linear: 2-36                      65,792
-|    └─ReLU: 2-37                        --
-|    └─BatchNorm1d: 2-38                 512
-|    └─Linear: 2-39                      2,570
+|    └─Linear: 2-34                      401,000
+|    └─ReLU: 2-35                        --
+|    └─BatchNorm1d: 2-36                 2,000
+|    └─Dropout1d: 2-37                   --
+|    └─Linear: 2-38                      256,256
+|    └─ReLU: 2-39                        --
+|    └─BatchNorm1d: 2-40                 512
+|    └─Linear: 2-41                      2,570
 =================================================================
-Total params: 5,257,834
-Trainable params: 5,257,834
+Total params: 4,212,130
+Trainable params: 4,212,130
 Non-trainable params: 0
 =================================================================
