@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta, tzinfo
 import os
 import tarfile
+import shutil
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -73,7 +74,7 @@ def download_wait(directory, timeout, nfiles=None, verbose=False):
     return seconds
 
 
-def download_skycam_data(skycam_type, year, month, day, verbose):
+def download_skycam_data(skycam_type, year, month, day, verbose, root):
     """
     Downloads all the skycam images collected on year-month-day from 12pm up to 12pm the next day (in PDT).
 
@@ -88,17 +89,17 @@ def download_skycam_data(skycam_type, year, month, day, verbose):
 
 
     # Create skycam directory
-    skycam_dir = get_skycam_dir(skycam_type, year, month, day)
+    skycam_dir = get_skycam_dir(skycam_type, year, month, day, root)
     os.makedirs(skycam_dir, exist_ok=True)
 
     # Set Chrome driver options
     prefs = {
         'download.default_directory': os.path.abspath(skycam_dir)
     }
-    print(os.path.abspath(skycam_dir))
+    #print(os.path.abspath(skycam_dir))
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_experimental_option('prefs', prefs)
-    #chrome_options.add_argument("--headless")   # Don't open a browser window
+    chrome_options.add_argument("--headless")   # Don't open a browser window
     # Open Chrome driver
     driver = webdriver.Chrome(options=chrome_options)
 
@@ -111,6 +112,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose):
     if title == '404 Not Found' or title != 'Mt. Hamilton Data Repository':
         print(f"The link '{link}' does not contain valid skycam data. Exiting...")
         driver.close()
+        shutil.rmtree(skycam_dir)
         return None
 
     # Select all files to download
@@ -163,16 +165,30 @@ def remove_day_images(skycam_dir):
         if 5 <= pst_time.hour <= 12 + 8:
             os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
+def filter_by_timestamp(t_start: datetime, t_end: datetime, skycam_dir: str):
+    """Remove skycam images between t_start and t_end."""
+    # TODO
+    img_subdirs = get_img_subdirs(skycam_dir)
+    PST_offset = timedelta(hours=-7)
+    for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
+        pst_time = get_img_time(skycam_img_fname) + PST_offset
+        if not (t_start <= pst_time.hour <= t_end):
+            os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
-def download_night_skycam_imgs(skycam_type, year, month, day, verbose=False):
-    skycam_dir = download_skycam_data(skycam_type, year, month, day, verbose)
-    is_data_downloaded(skycam_dir)
+
+
+def download_night_skycam_imgs(skycam_type, year, month, day, verbose=False, root='.'):
+    skycam_dir = download_skycam_data(skycam_type, year, month, day, verbose, root=root)
     if skycam_dir:
+        is_data_downloaded(skycam_dir)
         if verbose: print("Unzipping files...")
         unzip_images(skycam_dir)
         if verbose: print("Removing day images..")
         remove_day_images(skycam_dir)
-        return 'Success'
+        return skycam_dir
+    else:
+        # No valid data found
+        return None
  
 
 

@@ -12,7 +12,7 @@ from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
 from IPython import display
 
-from skycam_utils import get_img_subdirs, get_img_path, get_skycam_dir, get_img_time, get_batch_dir
+from skycam_utils import get_img_path, get_img_time, get_batch_dir
 from labeling_utils import get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir, add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df
 
 class LabelSession:

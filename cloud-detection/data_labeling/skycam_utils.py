@@ -30,11 +30,11 @@ def get_img_path(original_fname, img_type, skycam_dir):
         return None
 
 
-def get_skycam_dir(skycam_type, year, month, day):
+def get_skycam_dir(skycam_type, year, month, day, root='.'):
     if skycam_type == 'SC':
-        return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
+        return f'{root}/SC_imgs_{year}-{month:0>2}-{day:0>2}'
     elif skycam_type == 'SC2':
-        return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
+        return f'{root}/SC2_imgs_{year}-{month:0>2}-{day:0>2}'
 
 
 def init_preprocessing_dirs(skycam_dir):
