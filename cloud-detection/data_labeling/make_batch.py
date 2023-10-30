@@ -2,7 +2,7 @@
 import os
 import random
 
-from skycam_utils import get_batch_dir
+from skycam_utils import get_batch_dir, make_skycam_paths_json
 from preprocess_skycam import preprocess_skycam_imgs
 
 def make_batch_dir(task, batch_id, root='batch_data'):
@@ -55,6 +55,7 @@ def init_batch(task, batch_id):
                                sample['month'],
                                sample['day'],
                                root=batch_path)
+    make_skycam_paths_json(task, batch_id, root=batch_path)
         
 
 if __name__ == '__main__':

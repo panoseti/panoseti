@@ -27,7 +27,10 @@ class LabelSession:
 
         self.batch_id = batch_id
         self.task = task
+
         self.batch_dir = get_batch_dir(task, batch_id)
+        os.makedirs(LabelSession.root_data_batch_dir, exist_ok=True)
+        os.makedirs(LabelSession.root_labeled_data_dir, exist_ok=True)
         self.batch_path = LabelSession.root_data_batch_dir + '/' + self.batch_dir
 
         self.loaded_dfs_from_file = False

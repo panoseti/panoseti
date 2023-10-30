@@ -114,4 +114,4 @@ def make_skycam_paths_json(task, batch_id, root, save_name='img_path_info.json')
     with open(f"{batch_path}/{save_name}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
 
-make_skycam_paths_json('cloud-detection', 0, 'batch_data')
+#make_skycam_paths_json('cloud-detection', 0, 'batch_data')
