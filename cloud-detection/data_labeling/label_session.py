@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
 from IPython import display
+import warnings
 
 from skycam_utils import get_img_path, get_img_time, get_batch_dir
 from labeling_utils import get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir, add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df
@@ -23,6 +24,8 @@ class LabelSession:
 
     def __init__(self, name, batch_id, task='cloud-detection'):
         self.name = name
+        if name == "YOUR NAME":
+            raise ValueError(f"Please enter your full name")
         self.user_uid = get_uid(name)
 
         self.batch_id = batch_id
@@ -50,8 +53,13 @@ class LabelSession:
             self.labels = json.load(f)
 
     def init_skycam_paths(self):
-        with open(f'{self.batch_path}/{self.img_paths_info_file}', 'r') as f:
-            self.skycam_paths = json.load(f)
+        try:
+            with open(f'{self.batch_path}/{self.img_paths_info_file}', 'r') as f:
+                self.skycam_paths = json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
+                                    f"Try adding the (unzipped) data folder to the following directory:\n"
+                                    f"\x1b[31m{os.path.abspath(self.root_data_batch_dir)}\x1b[0m")
         for skycam_dir in self.skycam_paths:
             self.init_img_uid_to_skycam_dir(skycam_dir)
             # Populate dataframes if they have not been loaded from file.
@@ -214,7 +222,7 @@ class LabelSession:
                 plt.show()
 
                 # Get image label
-                time.sleep(0.001)  # Sleep to avoid issues with display clearing routine
+                time.sleep(0.002)  # Sleep to avoid issues with display clearing routine
                 label = self.get_user_label()
                 if label == 'exit':
                     break
