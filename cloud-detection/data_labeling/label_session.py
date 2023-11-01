@@ -14,7 +14,8 @@ from IPython import display
 import warnings
 
 from skycam_utils import get_img_path, get_img_time, get_batch_dir
-from labeling_utils import get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir, add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df
+from labeling_utils import (get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir,
+                            add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df, unpack_batch_data)
 
 class LabelSession:
     data_labels_file = 'skycam_labels.json'
@@ -54,6 +55,7 @@ class LabelSession:
 
     def init_skycam_paths(self):
         try:
+            unpack_batch_data(batch_data_root_dir=self.root_data_batch_dir)
             with open(f'{self.batch_path}/{self.img_paths_info_file}', 'r') as f:
                 self.skycam_paths = json.load(f)
         except FileNotFoundError:

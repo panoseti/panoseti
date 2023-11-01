@@ -92,8 +92,7 @@ def get_img_time(skycam_fname):
 def get_batch_dir(task, batch_id):
     return "task_{0}.batch_{1}".format(task, batch_id)
 
-def make_skycam_paths_json(task, batch_id, root, save_name='img_path_info.json'):
-    batch_path = root + '/' + get_batch_dir(task, batch_id)
+def make_skycam_paths_json(batch_path, save_name='img_path_info.json'):
     skycam_paths = {}
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     for path in os.listdir(batch_path):

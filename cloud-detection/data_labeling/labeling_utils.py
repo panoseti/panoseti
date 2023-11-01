@@ -1,6 +1,7 @@
 import hashlib
 import pandas as pd
 import os
+import shutil
 
 # Database formats
 
@@ -98,3 +99,19 @@ def get_dataframe(df_type):
     assert df_type in dataframe_formats, f"'{df_type}' is not a supported dataframe format"
     return pd.DataFrame(columns=dataframe_formats[df_type])
 
+
+# Unzip files
+def unpack_batch_data(batch_data_root_dir='batch_data'):
+    """Unpack image files from batch data gztar file."""
+    downloaded_fname = ''
+    batch_dir = ''
+
+    for fname in os.listdir(batch_data_root_dir):
+        if fname.endswith('.tar.gz'):
+            downloaded_fname = fname
+            batch_dir = fname.rstrip('.tar.gz')
+    if downloaded_fname:
+        downloaded_fpath = f'{batch_data_root_dir}/{downloaded_fname}'
+        batch_dir_path = f'{batch_data_root_dir}/{batch_dir}'
+        shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
+        os.remove(downloaded_fpath)
