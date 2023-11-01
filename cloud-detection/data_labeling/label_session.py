@@ -60,7 +60,7 @@ class LabelSession:
                 self.skycam_paths = json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
-                                    f"Try adding the (unzipped) data folder to the following directory:\n"
+                                    f"Try adding the zipped data batch file to the following directory:\n"
                                     f"\x1b[31m{os.path.abspath(self.root_data_batch_dir)}\x1b[0m")
         for skycam_dir in self.skycam_paths:
             self.init_img_uid_to_skycam_dir(skycam_dir)

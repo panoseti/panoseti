@@ -22,13 +22,11 @@ RUN cd /home/jovyan/ \
         cloud-detection/data_labeling/skycam_utils.py \
         cloud-detection/data_labeling/skycam_labels.json \
         cloud-detection/data_labeling/start-notebook.py \
-    # Use customized start-notebook.py script
-    && mv cloud-detection/data_labeling/start-notebook.py /usr/local/bin/start-notebook.py \
     # Create symbolic link to labeling interface sub-directory
     && cd .. \
     && mv panoseti .panoseti \
     && ln -s .panoseti/cloud-detection/data_labeling labeling \
-    && mkdir -p labeling/batch_data \
+    && mkdir -p labeling/batch_data
 
 
 

@@ -1,6 +1,17 @@
 #! /bin/bash
 
-#sudo docker run -it -d panoseti_data_labeling --name panoseti_data_labeling start.sh "jupyter notebook"
+DATA_PATH="$PWD/panoseti_labeling_container_data"
+mkdir -p $DATA_PATH
+
+#sudo docker rm -f panoseti_data_labeling
+#sudo docker run -it \
+#  --name panoseti_data_labeling \
+#  -p 8888:8888 \
+#  -v $DATA_PATH:/home/jovyan/work \
+#  panoseti_data_labeling:latest \
+#  start.sh jupyter notebook
+
+#sudo docker run -it -p 8888:8888  --name panoseti_data_labeling  panoseti_data_labeling start.sh jupyter notebook
 #sudo docker run -i panoseti_data_labeling start.sh "jupyter notebook
 sudo docker start --attach -i panoseti_data_labeling
 
