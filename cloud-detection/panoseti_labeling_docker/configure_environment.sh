@@ -40,7 +40,7 @@ if [ ! -d "/home/jovyan/work/.panoseti" ]; then
 else
     cd $WORK_DIR/.panoseti
     echo "Checking for labeling software updates..."
-    if git fetch | grep -q '*'; then
+    if git fetch | grep ".*"; then
       echo "Updating labeling software..."
       git stash 1> /dev/null
       git pull
