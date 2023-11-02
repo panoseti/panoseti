@@ -6,9 +6,14 @@ services:
     container_name: panoseti_data_labeling
     volumes:
       - .:/home/jovyan/work
-      - ./configure_environment.sh:/usr/local/bin/before-notebook.d/configure_environment.sh
     ports:
       - 8888:8888
     environment:
       - DOCKER_STACKS_JUPYTER_CMD=nbclassic
     working_dir: /home/jovyan/work/
+    command:
+      - /bin/sh
+      - -c
+      - |
+        ./configure_environment.sh
+        jupyter nbclassic --notebook-dir=labeling

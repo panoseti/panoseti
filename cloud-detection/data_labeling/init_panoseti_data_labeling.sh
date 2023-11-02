@@ -1,5 +1,6 @@
 WORK_DIR="/home/jovyan/work"
 if [ ! -d "/home/jovyan/work/.panoseti" ]; then
+    echo "Setting up labeling software..."
     cd $WORK_DIR
     # Do a sparse git clone of the cloud-detection-USER branch
     git clone --depth 1 \
@@ -20,20 +21,18 @@ if [ ! -d "/home/jovyan/work/.panoseti" ]; then
         cloud-detection/data_labeling/skycam_labels.json
     mkdir /home/jovyan/work/panoseti/cloud-detection/data_labeling/batch_data
 
-    # Make panoseti volume hidden
+    # Make panoseti volume hidden for simplicity
     cd $WORK_DIR
     mv $WORK_DIR/panoseti $WORK_DIR/.panoseti
 
     # Create symbolic link to labeling interface sub-directory
     ln -s .panoseti/cloud-detection/data_labeling labeling
-    echo "\033[32mAll files downloaded\033[0m"
+    echo "Done setting up labeling software."
 else
     cd $WORK_DIR/.panoseti
-    git fetch
-    git checkout cloud-detection-USER -- \
-        cloud-detection/data_labeling/labeling_utils.py \
-        cloud-detection/data_labeling/label_session.py \
-        cloud-detection/data_labeling/skycam_utils.py \
-        cloud-detection/data_labeling/skycam_labels.json
-    echo "The labeling directory already exists."
+    echo "Updating labeling software..."
+    git stash 1> /dev/null
+    git pull
+    git stash pop 1> /dev/null
+    echo "Done updating labeling software."
 fi
