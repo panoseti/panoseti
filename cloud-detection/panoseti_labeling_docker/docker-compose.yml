@@ -2,7 +2,7 @@ version: "1"
 
 services:
   jupyter:
-    image: jupyter/minimal-notebook
+    image: quay.io/jupyter/minimal-notebook
     container_name: panoseti_data_labeling
     volumes:
       - .:/home/jovyan/work
@@ -11,4 +11,4 @@ services:
       - 8888:8888
     environment:
       - DOCKER_STACKS_JUPYTER_CMD=nbclassic
-    working_dir: /home/jovyan/work/labeling
+    working_dir: /home/jovyan/work/
