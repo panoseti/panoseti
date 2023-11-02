@@ -1,5 +1,5 @@
+WORK_DIR="/home/jovyan/work"
 if [ ! -d "/home/jovyan/work/.panoseti" ]; then
-    WORK_DIR="/home/jovyan/work"
     cd $WORK_DIR
     # Do a sparse git clone of the cloud-detection-USER branch
     git clone --depth 1 \
@@ -28,5 +28,7 @@ if [ ! -d "/home/jovyan/work/.panoseti" ]; then
     ln -s .panoseti/cloud-detection/data_labeling labeling
     echo "\033[32mAll files downloaded\033[0m"
 else
+    cd $WORK_DIR/.panoseti
+    git pull
     echo "The labeling directory already exists."
 fi
