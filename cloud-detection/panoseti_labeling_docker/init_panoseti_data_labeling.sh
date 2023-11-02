@@ -29,6 +29,11 @@ if [ ! -d "/home/jovyan/work/.panoseti" ]; then
     echo "\033[32mAll files downloaded\033[0m"
 else
     cd $WORK_DIR/.panoseti
-    git pull
+    git fetch
+    git checkout cloud-detection-USER -- \
+        cloud-detection/data_labeling/labeling_utils.py \
+        cloud-detection/data_labeling/label_session.py \
+        cloud-detection/data_labeling/skycam_utils.py \
+        cloud-detection/data_labeling/skycam_labels.json
     echo "The labeling directory already exists."
 fi
