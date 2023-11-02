@@ -1,4 +1,5 @@
 if [ ! -d ".panoseti" ]; then
+    cd ~/work
     # Do a sparse git clone of the cloud-detection-USER branch
     git clone --depth 1 \
         --branch cloud-detection-USER \
@@ -15,13 +16,12 @@ if [ ! -d ".panoseti" ]; then
         cloud-detection/data_labeling/labeling_utils.py \
         cloud-detection/data_labeling/label_session.py \
         cloud-detection/data_labeling/skycam_utils.py \
-        cloud-detection/data_labeling/skycam_labels.json \
-        > /dev/null
-
+        cloud-detection/data_labeling/skycam_labels.json
     # Create symbolic link to labeling interface sub-directory
     cd ..
     mv panoseti .panoseti
     ln -s .panoseti/cloud-detection/data_labeling labeling
+    mkdir -p labeling/batch_data
 
     #echo "\033[32mAll files downloaded\033[0m"
 else

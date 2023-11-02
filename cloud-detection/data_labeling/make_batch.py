@@ -20,31 +20,37 @@ samples = [
         'skycam_type': 'SC2',
         'year': 2023,
         'month': 7,
-        'day': 24
+        'day': 29
     },
     {
         'skycam_type': 'SC2',
         'year': 2023,
         'month': 6,
-        'day': 24
+        'day': 1
     },
+    # {
+    #     'skycam_type': 'SC2',
+    #     'year': 2020,
+    #     'month': 6,
+    #     'day': 24
+    # },
+    # {
+    #     'skycam_type': 'SC2',
+    #     'year': 2021,
+    #     'month': 6,
+    #     'day': 24
+    # },
     {
         'skycam_type': 'SC2',
-        'year': 2020,
-        'month': 6,
-        'day': 24
-    },
-    {
-        'skycam_type': 'SC2',
-        'year': 2021,
-        'month': 6,
+        'year': 2023,
+        'month': 5,
         'day': 24
     },
     {
         'skycam_type': 'SC2',
         'year': 2023,
-        'month': 6,
-        'day': 24
+        'month': 8,
+        'day': 17
     }
 ]
 
@@ -73,4 +79,4 @@ def zip_batch(task, batch_id, root='batch_data_zipfiles'):
 
 
 if __name__ == '__main__':
-    init_batch(task='cloud-detection', batch_id=1, do_zip=True)
+    init_batch(task='cloud-detection', batch_id=0, do_zip=True)
