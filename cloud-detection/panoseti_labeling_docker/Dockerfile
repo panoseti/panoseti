@@ -2,7 +2,7 @@ FROM quay.io/jupyter/minimal-notebook
 
 WORKDIR /home/jovyan/work/
 
-EXPOSE 8888
+EXPOSE 16113
 
 COPY start.sh start.sh
 COPY requirements.txt requirements.txt

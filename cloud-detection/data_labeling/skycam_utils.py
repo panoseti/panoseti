@@ -113,4 +113,4 @@ def make_skycam_paths_json(batch_path, save_name='img_path_info.json'):
     with open(f"{batch_path}/{save_name}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
 
-#make_skycam_paths_json('cloud-detection', 0, 'batch_data')
+#make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch_0')
