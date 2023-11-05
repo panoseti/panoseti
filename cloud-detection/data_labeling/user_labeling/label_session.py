@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import json
 import math
@@ -11,17 +12,17 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
 from IPython import display
-import warnings
 
+sys.path.append('../')
 from skycam_utils import get_img_path, get_img_time, get_batch_dir
 from labeling_utils import (get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir,
                             add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df, unpack_batch_data)
 
 class LabelSession:
-    data_labels_file = 'skycam_labels.json'
-    root_data_batch_dir = 'batch_data'
+    data_labels_file = '../skycam_labels.json'
+    root_data_batch_dir = '../batch_data'
     img_paths_info_file = 'img_path_info.json'
-    root_labeled_data_dir = 'batch_labels'
+    root_labeled_data_dir = '../batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
         self.name = name
