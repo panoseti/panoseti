@@ -22,12 +22,12 @@ samples = [
         'month': 7,
         'day': 29
     },
-    {
-        'skycam_type': 'SC2',
-        'year': 2023,
-        'month': 6,
-        'day': 1
-    },
+    # {
+    #     'skycam_type': 'SC2',
+    #     'year': 2023,
+    #     'month': 6,
+    #     'day': 1
+    # },
     # {
     #     'skycam_type': 'SC2',
     #     'year': 2020,
@@ -40,18 +40,18 @@ samples = [
     #     'month': 6,
     #     'day': 24
     # },
-    {
-        'skycam_type': 'SC2',
-        'year': 2023,
-        'month': 5,
-        'day': 24
-    },
-    {
-        'skycam_type': 'SC2',
-        'year': 2023,
-        'month': 8,
-        'day': 17
-    }
+    # {
+    #     'skycam_type': 'SC2',
+    #     'year': 2023,
+    #     'month': 5,
+    #     'day': 24
+    # },
+    # {
+    #     'skycam_type': 'SC2',
+    #     'year': 2023,
+    #     'month': 8,
+    #     'day': 17
+    # }
 ]
 
 

@@ -20,9 +20,9 @@ from labeling_utils import (get_uid, get_batch_label_dir, get_dataframe, get_dat
 
 class LabelSession:
     data_labels_file = '../skycam_labels.json'
-    root_data_batch_dir = '../batch_data'
+    root_data_batch_dir = './batch_data'
     img_paths_info_file = 'img_path_info.json'
-    root_labeled_data_dir = '../batch_labels'
+    root_labeled_data_dir = './batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
         self.name = name
