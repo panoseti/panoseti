@@ -40,9 +40,9 @@ class LabelSession:
 
         self.loaded_dfs_from_file = False
         self.img_df = self.init_dataframe('img')
-        self.unlabeled_df = self.init_dataframe('unlabeled-data')
+        self.unlabeled_df = self.init_dataframe('unlabeled')
         self.unlabeled_df = self.unlabeled_df.sample(frac=1).reset_index(drop=True)
-        self.labeled_df = self.init_dataframe('labeled-data')
+        self.labeled_df = self.init_dataframe('labeled')
         self.data_to_label = None
 
         self.skycam_paths = {}
@@ -254,7 +254,7 @@ class LabelSession:
                 )
 
         save_df(self.labeled_df,
-                'labeled-data',
+                'labeled',
                 self.user_uid,
                 self.batch_id,
                 self.task,
@@ -263,7 +263,7 @@ class LabelSession:
                 )
 
         save_df(self.unlabeled_df,
-                'unlabeled-data',
+                'unlabeled',
                 self.user_uid,
                 self.batch_id,
                 self.task,
@@ -285,7 +285,7 @@ class LabelSession:
                 )
 
         save_df(self.labeled_df,
-                'labeled-data',
+                'labeled',
                 self.user_uid,
                 self.batch_id,
                 self.task,
@@ -294,7 +294,7 @@ class LabelSession:
                 )
 
         save_df(self.unlabeled_df,
-                'unlabeled-data',
+                'unlabeled',
                 self.user_uid,
                 self.batch_id,
                 self.task,

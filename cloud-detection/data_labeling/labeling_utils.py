@@ -9,8 +9,8 @@ def get_dataframe_formats():
     dataframe_formats = {
         'user': ['user_uid', 'name'],
         'img': ['img_uid', 'fname', 'unix_t', 'type'],
-        'unlabeled-data': ['img_uid', 'is_labeled'],
-        'labeled-data': ['img_uid', 'user_uid', 'label']
+        'unlabeled': ['img_uid', 'is_labeled'],
+        'labeled': ['img_uid', 'user_uid', 'label']
     }
     return dataframe_formats
 
