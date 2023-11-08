@@ -13,9 +13,9 @@ from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
 from IPython import display
 
-sys.path.append('../')
-from skycam_utils import get_img_path, get_img_time, get_batch_dir
-from labeling_utils import (get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir,
+# sys.path.append('../')
+from ..skycam_utils import get_img_path, get_img_time, get_batch_dir
+from ..labeling_utils import (get_uid, get_batch_label_dir, get_dataframe, get_data_export_dir,
                             add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df, unpack_batch_data)
 
 class LabelSession:
@@ -40,6 +40,7 @@ class LabelSession:
 
         self.loaded_dfs_from_file = False
         self.img_df = self.init_dataframe('img')
+        # TODO: generate image_df and unlabeled_df definitions in the databatch
         self.unlabeled_df = self.init_dataframe('unlabeled')
         self.unlabeled_df = self.unlabeled_df.sample(frac=1).reset_index(drop=True)
         self.labeled_df = self.init_dataframe('labeled')
@@ -271,8 +272,14 @@ class LabelSession:
                 batch_label_dir
                 )
 
-    def create_export_zipfile(self):
-        data_export_dir = get_data_export_dir(self.task, self.batch_id, self.user_uid)
+    def create_export_zipfile(self, allow_partial_batch=False):
+        """Create an export zipfile for the data only if all data has been labeled."""
+        self.data_to_label = self.unlabeled_df[self.unlabeled_df.is_labeled == False]
+        if not allow_partial_batch and len(self.data_to_label) > 0:
+            print(f'Please label all data in the batch before exporting.')
+            return
+        print('Zipping batch labels...')
+        data_export_dir = get_data_export_dir(self.task, self.batch_id, self.user_uid, root='.')
         os.makedirs(data_export_dir, exist_ok=True)
 
         save_df(self.img_df,
@@ -313,3 +320,4 @@ class LabelSession:
 
         shutil.make_archive(data_export_dir, 'zip', data_export_dir)
         shutil.rmtree(data_export_dir)
+        print('Done!')

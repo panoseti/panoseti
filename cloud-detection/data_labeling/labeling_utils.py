@@ -16,9 +16,10 @@ def get_dataframe_formats():
     return dataframe_formats
 
 # Database IO routines
-def get_data_export_dir(task, batch_id, user_uid):
+def get_data_export_dir(task, batch_id, user_uid, root):
     dir_name = "task_{0}.batch-id_{1}.user-uid_{2}".format(task, batch_id, user_uid)
-    return dir_name
+    dir_path = f'{root}/{dir_name}'
+    return dir_path
 
 def get_batch_label_dir(task, batch_id, root):
     dir_name = "task_{0}.batch-id_{1}".format(task, batch_id)
@@ -44,9 +45,13 @@ def save_df(df, df_type, user_uid, batch_id, task, is_temp, batch_label_dir, ove
             df.to_csv(df_path)
 
 
-def load_df(user_uid, batch_id, df_type, task, is_temp, root='batch_labels'):
-    batch_label_dir = get_batch_label_dir(task, batch_id, root)
+def load_df(user_uid, batch_id, df_type, task, is_temp, root='batch_labels', from_export=False):
+    if from_export:
+        batch_label_dir = get_data_export_dir(task, batch_id, user_uid, root)
+    else:
+        batch_label_dir = get_batch_label_dir(task, batch_id, root)
     df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
+    print(df_path)
     if os.path.exists(df_path):
         with open(df_path, 'r') as f:
             df = pd.read_csv(f, index_col=0)
@@ -64,13 +69,20 @@ def get_uid(data: str):
     return data_uid
 
 
-def add_user(user_df, name, verbose=False):
+def add_user(user_df, user_uid, name, verbose=False):
     """Adds new user to user_df."""
-    user_uid = get_uid(name)
     if not user_df.loc[:, 'user_uid'].str.contains(user_uid).any():
         user_df.loc[len(user_df)] = [user_uid, name]
     elif verbose:
         print(f'An entry for "{name}" already exists')
+    return user_uid
+
+def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
+    """Adds new (user-uid, batch-id) entry to user_df."""
+    if not (ubl_df.loc[ubl_df['user_uid'] == user_uid, 'batch_id'] == batch_id).any():
+        ubl_df.loc[len(ubl_df)] = [user_uid, batch_id]
+    elif verbose:
+        print(f'An entry for "{batch_id}" already exists')
     return user_uid
 
 
