@@ -2,8 +2,10 @@
 import os
 import random
 import shutil
+from datetime import datetime, timedelta
 
-from skycam_utils import get_batch_dir, make_skycam_paths_json
+from skycam_utils import get_batch_dir, make_skycam_paths_json, get_img_time
+from labeling_utils import get_uid, add_skycam_img, add_unlabeled_data, get_dataframe, save_df
 from preprocess_skycam import preprocess_skycam_imgs
 
 def make_batch_dir(task, batch_id, root='batch_data'):
@@ -54,8 +56,23 @@ samples = [
     # }
 ]
 
+def add_skycam_data_to_img_df(img_df, skycam_paths):
+    """Add skycam data to img_df """
+    for skycam_dir in skycam_paths:
+        # Only save original images to databases
+        original_img_dir = skycam_paths[skycam_dir]['img_subdirs']['original']
+        for fname in os.listdir(original_img_dir):
+            if fname[-4:] == '.jpg':
+                # Collect image features
+                img_uid = get_uid(fname)
+                skycam_type = fname.split('_')[0]
+                t = get_img_time(fname)
+                timestamp = (t - datetime(1970, 1, 1)) / timedelta(seconds=1)
+                # Add entries to img_df
+                add_skycam_img(img_df, fname, skycam_type, timestamp)
 
-def init_batch(task, batch_id, do_zip=False):
+
+def build_batch(task, batch_id, do_zip=False):
     batch_path = make_batch_dir(task, batch_id)
     for sample in samples:
         preprocess_skycam_imgs(sample['skycam_type'],
@@ -64,7 +81,10 @@ def init_batch(task, batch_id, do_zip=False):
                                sample['day'],
                                root=batch_path,
                                verbose=True)
-    make_skycam_paths_json(batch_path)
+    skycam_paths = make_skycam_paths_json(batch_path)
+    img_df = get_dataframe('img')
+    add_skycam_data_to_img_df(img_df, skycam_paths)
+    save_df(img_df, 'img', None, batch_id, task, False, batch_path)
     if do_zip:
         zip_batch(task, batch_id)
 
@@ -80,4 +100,4 @@ def zip_batch(task, batch_id, root='batch_data_zipfiles'):
 
 
 if __name__ == '__main__':
-    init_batch(task='cloud-detection', batch_id=0, do_zip=True)
+    build_batch(task='cloud-detection', batch_id=0, do_zip=True)

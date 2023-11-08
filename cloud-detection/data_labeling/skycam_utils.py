@@ -93,8 +93,9 @@ def get_batch_dir(task, batch_id):
     return "task_{0}.batch-id_{1}".format(task, batch_id)
 
 def make_skycam_paths_json(batch_path, save_name='img_path_info.json'):
-    skycam_paths = {}
+    """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
+    skycam_paths = {}
     for path in os.listdir(batch_path):
         if os.path.isdir(f'{batch_path}/{path}') and 'SC' in path and 'imgs' in path:
             skycam_dir = f'{batch_path}/{path}'
@@ -112,5 +113,8 @@ def make_skycam_paths_json(batch_path, save_name='img_path_info.json'):
             skycam_paths[skycam_dir]["imgs_per_subdir"] = num_imgs_per_subdir[0]
     with open(f"{batch_path}/{save_name}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
+    return skycam_paths
+
+
 
 #make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch_0')

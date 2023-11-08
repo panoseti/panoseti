@@ -21,23 +21,21 @@ def get_data_export_dir(task, batch_id, user_uid, root):
     dir_path = f'{root}/{dir_name}'
     return dir_path
 
-def get_batch_label_dir(task, batch_id, root):
-    dir_name = "task_{0}.batch-id_{1}".format(task, batch_id)
-    dir_path = f'{root}/{dir_name}'
-    return dir_path
-
-def get_df_save_name(df_type, user_uid, is_temp):
-    save_name = "type_{0}.user-uid_{1}".format(df_type, user_uid)
+def get_df_save_name(task, batch_id, df_type, user_uid, is_temp):
+    if user_uid is not None:
+        save_name = "task_{0}.batch-id_{1}.type_{2}.user-uid_{3}".format(task, batch_id, df_type, user_uid)
+    else:
+        save_name = "task_{0}.batch-id_{1}.type_{2}".format(task, batch_id, df_type)
     if is_temp:
         save_name += f'.TEMP'
     return save_name + '.csv'
 
 
-def save_df(df, df_type, user_uid, batch_id, task, is_temp, batch_label_dir, overwrite_ok=True):
+def save_df(df, df_type, user_uid, batch_id, task, is_temp, save_dir, overwrite_ok=True):
     """Save a pandas dataframe as a csv file. If is_temp is True, add the postfix TEMP to the filename."""
-    os.makedirs(batch_label_dir, exist_ok=True)
+    #os.makedirs(save_dir, exist_ok=True)
 
-    df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
+    df_path = f'{save_dir}/{get_df_save_name(task, df_type, batch_id, user_uid, is_temp)}'
     if os.path.exists(df_path) and not overwrite_ok:
         raise FileExistsError(f'{df_path} exists. Aborting save.')
     else:
@@ -45,13 +43,8 @@ def save_df(df, df_type, user_uid, batch_id, task, is_temp, batch_label_dir, ove
             df.to_csv(df_path)
 
 
-def load_df(user_uid, batch_id, df_type, task, is_temp, root='batch_labels', from_export=False):
-    if from_export:
-        batch_label_dir = get_data_export_dir(task, batch_id, user_uid, root)
-    else:
-        batch_label_dir = get_batch_label_dir(task, batch_id, root)
-    df_path = f'{batch_label_dir}/{get_df_save_name(df_type, user_uid, is_temp)}'
-    print(df_path)
+def load_df(user_uid, batch_id, df_type, task, is_temp, save_dir):
+    df_path = f'{save_dir}/{get_df_save_name(task, df_type, batch_id, user_uid, is_temp)}'
     if os.path.exists(df_path):
         with open(df_path, 'r') as f:
             df = pd.read_csv(f, index_col=0)
@@ -106,6 +99,7 @@ def add_labeled_data(labeled_df, unlabeled_df, img_uid, user_uid, label):
     # labeled_df.loc[(labeled_df['img_uid'] == img_uid), ['user_uid', 'label']] = [user_uid, label]
     labeled_df.loc[len(labeled_df)] = [img_uid, user_uid, label]
     unlabeled_df.loc[(unlabeled_df['img_uid'] == img_uid), 'is_labeled'] = True
+
 
 def get_dataframe(df_type):
     dataframe_formats = get_dataframe_formats()

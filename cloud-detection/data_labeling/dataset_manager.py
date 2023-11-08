@@ -6,7 +6,7 @@ import shutil
 
 import pandas as pd
 
-from labeling_utils import get_dataframe, load_df, save_df, add_user, add_user_batch_log
+from labeling_utils import get_dataframe, load_df, save_df, add_user, add_user_batch_log, get_data_export_dir
 
 sys.path.append('../../util')
 #from pff import parse_name
@@ -131,7 +131,6 @@ class DatasetManager:
         """Return list of available user-labeled data batches."""
         labeled_batches = []
         if os.path.exists(self.user_labeled_path):
-            print(self.user_labeled_path)
             self.unpack_user_labeled_batches()
             for batch_name in os.listdir(self.user_labeled_path):
                 if not batch_name.startswith('task_'):
@@ -151,30 +150,43 @@ class DatasetManager:
         user_df = self.main_dfs['user']
         for batch_name in labeled_batches:
             parsed = self.parse_name(batch_name)
-            user_uid, batch_id = parsed['user-uid'], parsed['batch-id']
+            user_uid, batch_id = parsed['user-uid'], int(parsed['batch-id'])
+
+            # If user not tracked in user_df, add them here.
+            if user_uid not in user_df['user_uid']:
+                user_info_fname = f"{self.user_labeled_path}/{batch_name}/user_info.json"
+                with open(user_info_fname, "r") as f:
+                    user_info = json.load(f)
+                    add_user(user_df, user_uid, user_info['name'])
+                self.save_main_df('user')
 
             batches_labeled_by_user = ubl_df.loc[
                 ubl_df['user_uid'] == user_uid, 'batch_id'
             ]
             if batch_id not in batches_labeled_by_user:
-
+                # Check if data batch has a complete set of labels
+                user_unlabeled_df = load_df(
+                    user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
+                    save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+                )
+                if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]):
+                    print(f'Some data in "{batch_name}" are missing labels --> '
+                          f'Skipping this batch for now.')
+                    continue
                 add_user_batch_log(ubl_df, user_uid, batch_id)
-                # If user not in user_df, add them
-                if user_uid not in user_df['user_uid']:
-                    user_info_fname = f"{self.user_labeled_path}/{batch_name}/user_info.json"
-                    with open(user_info_fname, "r") as f:
-                        user_info = json.load(f)
-                        add_user(user_df, user_uid, user_info['name'])
+                user_labeled_df = load_df(
+                    user_uid, batch_id, 'labeled', task=self.task, is_temp=False,
+                    save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+                )
                 # If batch
                 # TODO: generate image_df and unlabeled_df definitions in the databatch
-                # Add all labeled data
-                user_labeled_df = load_df(
-                    user_uid, batch_id, 'labeled', task=self.task,
-                    is_temp=False, root=self.user_labeled_path, from_export=True
+                # Concat new labeled data to existing labeled data
+                self.main_dfs['labeled'] = pd.concat(
+                    [self.main_dfs['labeled'], user_labeled_df], ignore_index=True
                 )
-                print(user_labeled_df)
-                # self.save_main_df('user')
-                # self.save_main_df('user-batch-log')
+                # Save dfs at end to ensure all updates are successful before write.
+                self.save_main_df('labeled')
+                self.save_main_df('user-batch-log')
 
 
 
