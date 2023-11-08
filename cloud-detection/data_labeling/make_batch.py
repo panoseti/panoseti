@@ -62,7 +62,8 @@ def init_batch(task, batch_id, do_zip=False):
                                sample['year'],
                                sample['month'],
                                sample['day'],
-                               root=batch_path)
+                               root=batch_path,
+                               verbose=True)
     make_skycam_paths_json(batch_path)
     if do_zip:
         zip_batch(task, batch_id)

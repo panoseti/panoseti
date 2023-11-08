@@ -83,7 +83,7 @@ def plot_pfov(skycam_img, corners, pfov_fpath):
 
 
 
-def preprocess_skycam_imgs(skycam_type, year, month, day, verbose=False, root='.'):
+def preprocess_skycam_imgs(skycam_type, year, month, day, root, verbose=False):
     """Run all preprocessing routines on the """
     skycam_dir = get_skycam_dir(skycam_type, year, month, day, root)
     try:

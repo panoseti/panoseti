@@ -30,7 +30,7 @@ def get_img_path(original_fname, img_type, skycam_dir):
         return None
 
 
-def get_skycam_dir(skycam_type, year, month, day, root='.'):
+def get_skycam_dir(skycam_type, year, month, day, root):
     if skycam_type == 'SC':
         return f'{root}/SC_imgs_{year}-{month:0>2}-{day:0>2}'
     elif skycam_type == 'SC2':
@@ -90,7 +90,7 @@ def get_img_time(skycam_fname):
 
 
 def get_batch_dir(task, batch_id):
-    return "task_{0}.batch_{1}".format(task, batch_id)
+    return "task_{0}.batch-id_{1}".format(task, batch_id)
 
 def make_skycam_paths_json(batch_path, save_name='img_path_info.json'):
     skycam_paths = {}

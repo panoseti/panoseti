@@ -10,17 +10,18 @@ def get_dataframe_formats():
         'user': ['user_uid', 'name'],
         'img': ['img_uid', 'fname', 'unix_t', 'type'],
         'unlabeled': ['img_uid', 'is_labeled'],
-        'labeled': ['img_uid', 'user_uid', 'label']
+        'labeled': ['img_uid', 'user_uid', 'label'],
+        'user-batch-log': ['user_uid', 'batch_id']
     }
     return dataframe_formats
 
 # Database IO routines
 def get_data_export_dir(task, batch_id, user_uid):
-    dir_name = "task_{0}.batch_{1}.user-uid_{2}".format(task, batch_id, user_uid)
+    dir_name = "task_{0}.batch-id_{1}.user-uid_{2}".format(task, batch_id, user_uid)
     return dir_name
 
 def get_batch_label_dir(task, batch_id, root):
-    dir_name = "task_{0}.batch_{1}".format(task, batch_id)
+    dir_name = "task_{0}.batch-id_{1}".format(task, batch_id)
     dir_path = f'{root}/{dir_name}'
     return dir_path
 
