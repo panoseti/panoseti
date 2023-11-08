@@ -8,7 +8,7 @@ import shutil
 def get_dataframe_formats():
     dataframe_formats = {
         'user': ['user_uid', 'name'],
-        'img': ['img_uid', 'fname', 'unix_t', 'type'],
+        'img': ['img_uid', 'fname', 'unix_t', 'type', 'batch_id'],
         'unlabeled': ['img_uid', 'is_labeled'],
         'labeled': ['img_uid', 'user_uid', 'label'],
         'user-batch-log': ['user_uid', 'batch_id']

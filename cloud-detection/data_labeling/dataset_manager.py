@@ -35,6 +35,8 @@ class DatasetManager:
             #self.label_log = self.load_label_log()
             self.init_main_dfs()
 
+        self.labeled_batches = self.get_labeled_batch_info()
+
     def init_dataset_dir(self):
         """
         Initialize dataset directory only if it does not exist
@@ -59,6 +61,7 @@ class DatasetManager:
             self.main_dfs[df_type] = get_dataframe(df_type)  # Create df using standard definition
             self.save_main_df(df_type)
 
+
     @staticmethod
     def get_main_df_save_name(df_type):
         """Get standard main_df filename."""
@@ -76,12 +79,10 @@ class DatasetManager:
             d[y[0]] = y[1]
         return d
 
-
     def init_main_dfs(self):
         """Initialize the aggregated dataframes for the main dataset."""
         for df_type in self.main_dfs:
             self.main_dfs[df_type] = self.load_main_df(df_type)
-
 
     def load_main_df(self, df_type):
         """Load the main dataset dataframes."""
@@ -124,7 +125,9 @@ class DatasetManager:
     def unpack_user_labeled_batches(self):
         for batch_name in os.listdir(self.user_labeled_path):
             if batch_name.endswith('.zip'):
-                shutil.unpack_archive(f'{self.user_labeled_path}/{batch_name}', format='zip')
+                batch_zipfile_path = f'{self.user_labeled_path}/{batch_name}'
+                shutil.unpack_archive(batch_zipfile_path, batch_zipfile_path[:-4], format='zip')
+                os.remove(batch_zipfile_path)
 
 
     def get_labeled_batch_info(self):
@@ -142,13 +145,11 @@ class DatasetManager:
                 labeled_batches.append(batch_name)
         return labeled_batches
 
-
     def update_dataset(self):
         """Incorporate each new user-labeled data batch into the dataset."""
-        labeled_batches = self.get_labeled_batch_info()
         ubl_df = self.main_dfs['user-batch-log']
         user_df = self.main_dfs['user']
-        for batch_name in labeled_batches:
+        for batch_name in self.labeled_batches:
             parsed = self.parse_name(batch_name)
             user_uid, batch_id = parsed['user-uid'], int(parsed['batch-id'])
 
@@ -169,7 +170,7 @@ class DatasetManager:
                     user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
                     save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
                 )
-                if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]):
+                if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
                     print(f'Some data in "{batch_name}" are missing labels --> '
                           f'Skipping this batch for now.')
                     continue
@@ -189,7 +190,7 @@ class DatasetManager:
                 self.save_main_df('user-batch-log')
 
 
-
-test = DatasetManager()
-test.update_dataset()
+if __name__ == '__main__':
+    test = DatasetManager()
+    test.update_dataset()
 
