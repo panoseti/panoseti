@@ -12,7 +12,7 @@ def get_dataframe_formats():
         },
         'img': {
             # batch_data_subdir is defined as the dir relative to the data batch with id 'batch_id' containing the img file.
-            'columns': ['img_uid', 'fname', 'unix_t', 'camera_type', 'batch_id', 'batch_data_subdir'],
+            'columns': ['img_uid', 'batch_id', 'batch_data_subdir', 'fname', 'unix_t', 'camera_type'],
         },
         'unlabeled': {
             'columns': ['img_uid', 'is_labeled'],
@@ -46,7 +46,7 @@ def save_df(df, df_type, user_uid, batch_id, task, is_temp, save_dir, overwrite_
     """Save a pandas dataframe as a csv file. If is_temp is True, add the postfix TEMP to the filename."""
     #os.makedirs(save_dir, exist_ok=True)
 
-    df_path = f'{save_dir}/{get_df_save_name(task, df_type, batch_id, user_uid, is_temp)}'
+    df_path = f'{save_dir}/{get_df_save_name(task, batch_id, df_type, user_uid, is_temp)}'
     if os.path.exists(df_path) and not overwrite_ok:
         raise FileExistsError(f'{df_path} exists. Aborting save.')
     else:
@@ -55,7 +55,7 @@ def save_df(df, df_type, user_uid, batch_id, task, is_temp, save_dir, overwrite_
 
 
 def load_df(user_uid, batch_id, df_type, task, is_temp, save_dir):
-    df_path = f'{save_dir}/{get_df_save_name(task, df_type, batch_id, user_uid, is_temp)}'
+    df_path = f'{save_dir}/{get_df_save_name(task, batch_id, df_type, user_uid, is_temp)}'
     if os.path.exists(df_path):
         with open(df_path, 'r') as f:
             df = pd.read_csv(f, index_col=0)
@@ -63,7 +63,8 @@ def load_df(user_uid, batch_id, df_type, task, is_temp, save_dir):
     else:
         return None
 
-def extend_df(df: pd.DataFrame, df_type: str, data: dict, verify_columns=False, require_complete=True, verify_dtype=True):
+def extend_df(df: pd.DataFrame, df_type: str, data: dict,
+              verify_columns=False, require_complete=True, verify_dtype=True, verify_integrity=False):
     """Extends a df of df_type with entries in the data dictionary.
     If verify_columns=True, raise an error if the given keys do not match the
     Missing entries are filled with NaNs.
@@ -80,11 +81,18 @@ def extend_df(df: pd.DataFrame, df_type: str, data: dict, verify_columns=False, 
             if column not in data:
                 raise KeyError(f"An entry for '{column}' is required for {df_type}, but was not provided in the given data.")
     df_extended = pd.DataFrame.from_dict(data)
-    if verify_dtype and len(df) > 0:
-        if df.dtypes.tolist() != df_extended.dtypes.tolist():
-            raise ValueError(f"dtypes of new data do not match dtypes of existing columns."
-                             f"\nGiven dtypes:\n{df_extended.dtypes} \nExpected dtypes: \n{df.dtypes}")
-    return pd.concat([df, df_extended], keys=df_format, ignore_index=True)
+    if verify_dtype:
+        if len(df) == 0:
+            # If the df is empty, define column dtypes based on first datapoint.
+            for x in df_extended.columns:
+                if x in df.columns:
+                    df[x] = df[x].astype(df_extended[x].dtypes.name)
+        else:
+            if df.dtypes.to_dict() != df_extended.dtypes.to_dict():
+                raise ValueError(f"dtypes of new data do not match dtypes of existing columns."
+                                 f"\nGiven dtypes:\n{df_extended.dtypes} \nExpected dtypes: \n{df.dtypes}")
+
+    return pd.concat([df, df_extended], ignore_index=True, verify_integrity=verify_integrity)
 
 
 
@@ -98,17 +106,16 @@ def get_uid(data: str):
 
 
 def add_user(user_df, user_uid, name, verbose=False):
-    """Adds new user to user_df."""
+    """Returns a df with user added."""
     if not user_df.loc[:, 'user_uid'].str.contains(user_uid).any():
         data = {
             'user_uid': [user_uid],
             'name': [name]
         }
-        extend_df(user_df, 'user', data)
+        return extend_df(user_df, 'user', data)
         #user_df.loc[len(user_df)] = [user_uid, name]
     elif verbose:
         print(f'An entry for "{name}" already exists')
-    return user_uid
 
 def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
     """Adds new (user-uid, batch-id) entry to user_df."""
@@ -117,11 +124,10 @@ def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
             'user_uid': [user_uid],
             'batch_id': [batch_id]
         }
-        extend_df(ubl_df, 'user-batch-log', data)
+        return extend_df(ubl_df, 'user-batch-log', data)
         #ubl_df.loc[len(ubl_df)] = [user_uid, batch_id]
     elif verbose:
         print(f'An entry for "{batch_id}" already exists')
-    return user_uid
 
 
 def add_skycam_img(img_df, fname, skycam_type, timestamp, batch_id, batch_data_subdir, verbose=False):
@@ -130,17 +136,16 @@ def add_skycam_img(img_df, fname, skycam_type, timestamp, batch_id, batch_data_s
     if not img_df.loc[:, 'img_uid'].str.contains(img_uid).any():
         data = {
             'img_uid': [img_uid],
+            'batch_id': [batch_id],
+            'batch_data_subdir': [batch_data_subdir],
             'fname': [fname],
             'unix_t': [timestamp],
             'camera_type': [skycam_type],
-            'batch_id': [batch_id],
-            'batch_data_subdir': [batch_data_subdir]
         }
-        extend_df(img_df, 'img', data)
+        return extend_df(img_df, 'img', data)
         #img_df.loc[len(img_df)] = [img_uid, fname, timestamp, skycam_type]
     elif verbose:
         print(f'An entry for "{fname}" already exists')
-    return img_uid
 
 
 def add_unlabeled_data(unlabeled_df, img_uid, verbose=False):
@@ -149,7 +154,7 @@ def add_unlabeled_data(unlabeled_df, img_uid, verbose=False):
             'img_uid': [img_uid],
             'is_labeled': [False]
         }
-        extend_df(unlabeled_df, 'unlabeled', data)
+        return extend_df(unlabeled_df, 'unlabeled', data)
         #unlabeled_df.loc[len(unlabeled_df)] = [img_uid, False]
     elif verbose:
         print(f'An entry for "{img_uid}" already exists')
@@ -162,9 +167,10 @@ def add_labeled_data(labeled_df, unlabeled_df, img_uid, user_uid, label):
         'user_uid': [user_uid],
         'label': [label]
     }
-    extend_df(labeled_df, 'labeled', data, verify_columns=True)
+    extended_df = extend_df(labeled_df, 'labeled', data, verify_columns=True)
     # labeled_df.loc[len(labeled_df)] = [img_uid, user_uid, label]
     unlabeled_df.loc[(unlabeled_df['img_uid'] == img_uid), 'is_labeled'] = True
+    return extended_df
 
 
 def get_dataframe(df_type):

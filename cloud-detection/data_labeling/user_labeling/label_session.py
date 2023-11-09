@@ -14,9 +14,9 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from skycam_utils import get_img_path, get_img_time, get_batch_dir
+from skycam_utils import get_img_path, get_batch_dir
 from labeling_utils import (get_uid, get_dataframe, get_data_export_dir,
-                            add_labeled_data, add_unlabeled_data, add_skycam_img, save_df, load_df, unpack_batch_data)
+                            add_labeled_data, add_unlabeled_data, save_df, load_df, unpack_batch_data)
 
 class LabelSession:
     data_labels_file = '../skycam_labels.json'
@@ -64,13 +64,13 @@ class LabelSession:
         with open(f'{self.batch_data_path}/{self.img_paths_info_file}', 'r') as f:
             self.skycam_paths = json.load(f)
 
-    def init_img_uid_to_skycam_dir(self, skycam_dir):
-        """Save uid -> path relation for fast lookup later."""
-        original_img_dir = self.skycam_paths[skycam_dir]['img_subdirs']['original']
-        for fname in os.listdir(original_img_dir):
-            if fname[-4:] == '.jpg':
-                img_uid = get_uid(fname)
-                self.img_uid_to_skycam_dir[img_uid] = skycam_dir
+    # def init_img_uid_to_skycam_dir(self, skycam_dir):
+    #     """Save uid -> path relation for fast lookup later."""
+    #     original_img_dir = self.skycam_paths[skycam_dir]['img_subdirs']['original']
+    #     for fname in os.listdir(original_img_dir):
+    #         if fname[-4:] == '.jpg':
+    #             img_uid = get_uid(fname)
+    #             self.img_uid_to_skycam_dir[img_uid] = skycam_dir
 
     def init_dataframe(self, df_type):
         """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
@@ -82,8 +82,8 @@ class LabelSession:
             if df is None:
                 raise ValueError('Image metadata not found in batch directory.')
             # Initialize img_uid->skycam dict
-            for skycam_dir in self.skycam_paths:
-                self.init_img_uid_to_skycam_dir(skycam_dir)
+            # for skycam_dir in self.skycam_paths:
+            #     self.init_img_uid_to_skycam_dir(skycam_dir)
             self.loaded_dfs_from_file['img'] = True
         elif df_type in ['unlabeled', 'labeled']:
             df = load_df(
@@ -99,15 +99,15 @@ class LabelSession:
                     # Note: must initialize img_df before attempting to initialize unlabeled_df
                     for img_uid in self.img_df['img_uid']:
                         # Add entries to unlabeled_df
-                        add_unlabeled_data(df, img_uid)
+                        df = add_unlabeled_data(df, img_uid)
                     df = df.sample(frac=1).reset_index(drop=True)
         else:
             raise ValueError(f'Unsupported df_type: "{df_type}"')
         return df
 
     def img_uid_to_data(self, img_uid, img_type):
-        original_fname = self.img_df.loc[self.img_df.img_uid == img_uid, 'fname'].iloc[0]
-        skycam_dir = self.img_uid_to_skycam_dir[img_uid]
+        original_fname, skycam_dir = self.img_df.loc[self.img_df.img_uid == img_uid, ['fname', 'batch_data_subdir']].iloc[0]
+        # skycam_dir = self.img_uid_to_skycam_dir[img_uid]
         fpath = get_img_path(original_fname, img_type, skycam_dir)
         img = np.asarray(Image.open(fpath))
         return img
@@ -134,7 +134,7 @@ class LabelSession:
     def show_classifications(self):
         """Display all labeled images, organized by assigned class."""
         for key in self.labels.keys():
-            self.make_img_grid(int(key))
+            self.make_img_grid(self.labels[key])
 
 
     def make_img_grid(self, label, cols=8, rows_per_plot=8):
@@ -142,10 +142,10 @@ class LabelSession:
         data_with_given_label = self.labeled_df.loc[(self.labeled_df.label == label), 'img_uid']
         imgs = [self.img_uid_to_data(img_uid, 'cropped') for img_uid in data_with_given_label]
         if len(imgs) == 0:
-            print(f'No images labeled as "{self.labels[str(label)]}"')
+            print(f'No images labeled as "{label}"')
             return
         else:
-            print(f'Images you classified as "{self.labels[str(label)]}":')
+            print(f'Images you classified as "{label}":')
         # Limit num rows in plot to ensure consistently-sized figures
         rows = math.ceil(len(imgs) / cols)
         num_subplots = rows_per_plot * cols
@@ -229,10 +229,11 @@ class LabelSession:
 
                 # Get image label
                 time.sleep(0.002)  # Sleep to avoid issues with display clearing routine
-                label = self.get_user_label()
-                if label == 'exit':
+                label_idx = self.get_user_label()
+                if label_idx == 'exit':
                     break
-                add_labeled_data(self.labeled_df, self.unlabeled_df, img_uid, self.user_uid, label)
+                label_str = self.labels[str(label_idx)]
+                self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, img_uid, self.user_uid, label_str)
                 self.num_labeled += 1
                 plt.close()
         except KeyboardInterrupt:

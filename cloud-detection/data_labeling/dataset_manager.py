@@ -158,7 +158,7 @@ class DatasetManager:
                 user_info_fname = f"{self.user_labeled_path}/{batch_name}/user_info.json"
                 with open(user_info_fname, "r") as f:
                     user_info = json.load(f)
-                    add_user(user_df, user_uid, user_info['name'])
+                    user_df = add_user(user_df, user_uid, user_info['name'])
                 self.save_main_df('user')
 
             batches_labeled_by_user = ubl_df.loc[
@@ -174,7 +174,7 @@ class DatasetManager:
                     print(f'Some data in "{batch_name}" are missing labels --> '
                           f'Skipping this batch for now.')
                     continue
-                add_user_batch_log(ubl_df, user_uid, batch_id)
+                ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)
                 user_labeled_df = load_df(
                     user_uid, batch_id, 'labeled', task=self.task, is_temp=False,
                     save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)

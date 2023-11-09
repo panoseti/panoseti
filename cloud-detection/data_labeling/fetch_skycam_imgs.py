@@ -155,14 +155,13 @@ def unzip_images(skycam_dir):
                 os.rename(f'{skycam_dir}/{path}', img_subdirs['original'])
     
 
-def remove_day_images(skycam_dir):
-    """Remove skycam images taken during the day."""
+def remove_day_images(skycam_dir, morning_hour=4, evening_hour=21):
+    """Remove skycam images taken between morning_hour and evening_hour."""
     img_subdirs = get_img_subdirs(skycam_dir)
     PST_offset = timedelta(hours=-7)
     for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
         pst_time = get_img_time(skycam_img_fname) + PST_offset
-        # Delete images taken between 5am and 8pm, inclusive
-        if 5 <= pst_time.hour <= 12 + 8:
+        if morning_hour <= pst_time.hour <= evening_hour:
             os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
 def filter_by_timestamp(t_start: datetime, t_end: datetime, skycam_dir: str):
