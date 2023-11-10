@@ -11,7 +11,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 
-from skycam_utils import get_skycam_dir, get_img_subdirs, is_data_downloaded, get_img_time
+from skycam_utils import get_skycam_dir, get_skycam_subdirs, is_data_downloaded, get_skycam_img_time
 
 
 def get_skycam_link(skycam_type, year, month, day):
@@ -138,7 +138,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
 
 def unzip_images(skycam_dir):
     """Unpack image files from tarball."""
-    img_subdirs = get_img_subdirs(skycam_dir)
+    img_subdirs = get_skycam_subdirs(skycam_dir)
     downloaded_fname = ''
 
     for fname in os.listdir(skycam_dir):
@@ -157,26 +157,26 @@ def unzip_images(skycam_dir):
 
 def remove_day_images(skycam_dir, morning_hour=4, evening_hour=21):
     """Remove skycam images taken between morning_hour and evening_hour."""
-    img_subdirs = get_img_subdirs(skycam_dir)
+    img_subdirs = get_skycam_subdirs(skycam_dir)
     PST_offset = timedelta(hours=-7)
     for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
-        pst_time = get_img_time(skycam_img_fname) + PST_offset
+        pst_time = get_skycam_img_time(skycam_img_fname) + PST_offset
         if morning_hour <= pst_time.hour <= evening_hour:
             os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
 def filter_by_timestamp(t_start: datetime, t_end: datetime, skycam_dir: str):
     """Remove skycam images between t_start and t_end."""
     # TODO
-    img_subdirs = get_img_subdirs(skycam_dir)
+    img_subdirs = get_skycam_subdirs(skycam_dir)
     PST_offset = timedelta(hours=-7)
     for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
-        pst_time = get_img_time(skycam_img_fname) + PST_offset
+        pst_time = get_skycam_img_time(skycam_img_fname) + PST_offset
         if not (t_start <= pst_time.hour <= t_end):
             os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
 
 
-def download_night_skycam_imgs(skycam_type, year, month, day, verbose=False, root='.'):
+def download_night_skycam_imgs(skycam_type, year, month, day, root, verbose=False):
     skycam_dir = download_skycam_data(skycam_type, year, month, day, verbose, root=root)
     if skycam_dir:
         is_data_downloaded(skycam_dir)

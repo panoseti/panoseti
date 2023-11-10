@@ -11,7 +11,7 @@ import os
 import traceback
 
 from fetch_skycam_imgs import download_night_skycam_imgs
-from skycam_utils import get_skycam_dir, get_img_subdirs, get_img_path, init_preprocessing_dirs, is_data_preprocessed, is_data_downloaded
+from skycam_utils import get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, init_preprocessing_dirs, is_data_preprocessed, is_data_downloaded
 
 
 pixel_data_file = 'skycam_pixels.json'
@@ -102,16 +102,16 @@ def preprocess_skycam_imgs(skycam_type, year, month, day, root, verbose=False):
     if verbose: print('Running pre-processing routines.')
 
     corners_4x1x2 = get_corners(skycam_type)
-    img_subdirs = get_img_subdirs(skycam_dir)
+    img_subdirs = get_skycam_subdirs(skycam_dir)
 
     for original_fname in os.listdir(img_subdirs['original']):
         # load the image
         if original_fname[-4:] != '.jpg':
             continue
 
-        original_img = cv2.imread(get_img_path(original_fname, 'original', skycam_dir))
-        cropped_fpath = get_img_path(original_fname, 'cropped', skycam_dir)
-        pfov_fpath = get_img_path(original_fname, 'pfov', skycam_dir)
+        original_img = cv2.imread(get_skycam_img_path(original_fname, 'original', skycam_dir))
+        cropped_fpath = get_skycam_img_path(original_fname, 'cropped', skycam_dir)
+        pfov_fpath = get_skycam_img_path(original_fname, 'pfov', skycam_dir)
 
         crop_img(original_img, corners_4x1x2, cropped_fpath)
         plot_pfov(original_img, corners_4x1x2, pfov_fpath)

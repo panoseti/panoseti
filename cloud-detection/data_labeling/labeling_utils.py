@@ -3,22 +3,28 @@ import pandas as pd
 import os
 import shutil
 
-# Database formats
+# Database formats / Core routines
 
 def get_dataframe_formats():
     dataframe_formats = {
         'user': {
             'columns': ['user_uid', 'name'],
         },
-        'img': {
+        'skycam': {
             # batch_data_subdir is defined as the dir relative to the data batch with id 'batch_id' containing the img file.
-            'columns': ['img_uid', 'batch_id', 'batch_data_subdir', 'fname', 'unix_t', 'camera_type'],
+            'columns': ['skycam_uid', 'batch_id', 'skycam_dir', 'fname', 'unix_t', 'skycam_type'],
+        },
+        'pano': {
+            'columns': ['pano_uid', 'batch_id', 'run_dir', 'fname', 'module_id', 'unix_t']
+        },
+        'feature': {
+            'columns': ['feature_uid', 'skycam_uid', 'pano_uid', 'batch_id']
         },
         'unlabeled': {
-            'columns': ['img_uid', 'is_labeled'],
+            'columns': ['feature_uid', 'is_labeled'],
         },
         'labeled': {
-            'columns': ['img_uid', 'user_uid', 'label'],
+            'columns': ['feature_uid', 'user_uid', 'label'],
         },
         'user-batch-log': {
             'columns': ['user_uid', 'batch_id'],
@@ -63,6 +69,7 @@ def load_df(user_uid, batch_id, df_type, task, is_temp, save_dir):
     else:
         return None
 
+
 def extend_df(df: pd.DataFrame, df_type: str, data: dict,
               verify_columns=False, require_complete=True, verify_dtype=True, verify_integrity=False):
     """Extends a df of df_type with entries in the data dictionary.
@@ -91,7 +98,6 @@ def extend_df(df: pd.DataFrame, df_type: str, data: dict,
             if df.dtypes.to_dict() != df_extended.dtypes.to_dict():
                 raise ValueError(f"dtypes of new data do not match dtypes of existing columns."
                                  f"\nGiven dtypes:\n{df_extended.dtypes} \nExpected dtypes: \n{df.dtypes}")
-
     return pd.concat([df, df_extended], ignore_index=True, verify_integrity=verify_integrity)
 
 
@@ -130,46 +136,74 @@ def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
         print(f'An entry for "{batch_id}" already exists')
 
 
-def add_skycam_img(img_df, fname, skycam_type, timestamp, batch_id, batch_data_subdir, verbose=False):
-    """Add a skycamera img to the img_df."""
-    img_uid = get_uid(fname)
-    if not img_df.loc[:, 'img_uid'].str.contains(img_uid).any():
+def add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=False):
+    """Add a skycamera img to skycam_df."""
+    skycam_uid = get_uid(original_fname)
+    if not skycam_df.loc[:, 'skycam_uid'].str.contains(skycam_uid).any():
         data = {
-            'img_uid': [img_uid],
+            'skycam_uid': [skycam_uid],
             'batch_id': [batch_id],
-            'batch_data_subdir': [batch_data_subdir],
-            'fname': [fname],
+            'skycam_dir': [skycam_dir],
+            'fname': [original_fname],
             'unix_t': [timestamp],
-            'camera_type': [skycam_type],
+            'skycam_type': [skycam_type],
         }
-        return extend_df(img_df, 'img', data)
-        #img_df.loc[len(img_df)] = [img_uid, fname, timestamp, skycam_type]
+        return extend_df(skycam_df, 'skycam', data)
+        #img_df.loc[len(img_df)] = [skycam_uid, fname, timestamp, skycam_type]
+    elif verbose:
+        print(f'An entry for "{original_fname}" already exists')
+
+def add_pano_img(pano_df, run_dir, fname, module_id, unix_t, batch_id, skycam_dir, verbose=False):
+    """Add a panoseti module img to pano_df."""
+    pano_uid = get_uid(fname)
+    if not pano_df.loc[:, 'pano_uid'].str.contains(pano_uid).any():
+        data = {
+            'pano_uid': [pano_uid],
+            'batch_id': [batch_id],
+            'run_dir': [run_dir],
+            'fname': [fname],
+            'module_id': [module_id],
+            'unix_t': [unix_t]
+        }
+        return extend_df(pano_df, 'pano', data)
     elif verbose:
         print(f'An entry for "{fname}" already exists')
 
-
-def add_unlabeled_data(unlabeled_df, img_uid, verbose=False):
-    if not unlabeled_df.loc[:, 'img_uid'].str.contains(img_uid).any():
+def add_feature_entry(feature_df, feature_uid, skycam_uid, pano_uid, batch_id, verbose=False):
+    if not feature_df.loc[:, 'feature_uid'].str.contains(feature_uid).any():
         data = {
-            'img_uid': [img_uid],
+            'feature_uid': [feature_uid],
+            'skycam_uid': [skycam_uid],
+            'pano_uid': [pano_uid],
+            'batch_id': [batch_id]
+        }
+        return extend_df(feature_df, 'feature', data)
+    elif verbose:
+        print(f'An entry for "{feature_uid}" already exists')
+
+
+def add_unlabeled_data(unlabeled_df, feature_uid, verbose=False):
+    if not unlabeled_df.loc[:, 'feature_uid'].str.contains(feature_uid).any():
+        data = {
+            'feature_uid': [feature_uid],
             'is_labeled': [False]
         }
         return extend_df(unlabeled_df, 'unlabeled', data)
-        #unlabeled_df.loc[len(unlabeled_df)] = [img_uid, False]
+        #unlabeled_df.loc[len(unlabeled_df)] = [feature_uid, False]
     elif verbose:
-        print(f'An entry for "{img_uid}" already exists')
+        print(f'An entry for "{feature_uid}" already exists')
 
 
-def add_labeled_data(labeled_df, unlabeled_df, img_uid, user_uid, label):
-    # labeled_df.loc[(labeled_df['img_uid'] == img_uid), ['user_uid', 'label']] = [user_uid, label]
+def add_labeled_data(labeled_df, unlabeled_df, feature_uid, user_uid, label):
+    # labeled_df.loc[(labeled_df['feature_uid'] == feature_uid), ['user_uid', 'label']] = [user_uid, label]
     data = {
-        'img_uid': [img_uid],
+        'feature_uid': [feature_uid],
         'user_uid': [user_uid],
         'label': [label]
     }
     extended_df = extend_df(labeled_df, 'labeled', data, verify_columns=True)
-    # labeled_df.loc[len(labeled_df)] = [img_uid, user_uid, label]
-    unlabeled_df.loc[(unlabeled_df['img_uid'] == img_uid), 'is_labeled'] = True
+    # labeled_df.loc[len(labeled_df)] = [feature_uid, user_uid, label]
+    unlabeled_df.loc[(unlabeled_df['feature_uid'] == feature_uid), 'is_labeled'] = True
     return extended_df
 
 
@@ -196,9 +230,10 @@ def unpack_batch_data(batch_data_root_dir='batch_data'):
         shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
         os.remove(downloaded_fpath)
 
+
 """
 pd.set_option('display.max_columns', None)
-data = {'user_uid': ['23423'], 'img_uid': ['123423423'], 'label': [0]}
+data = {'user_uid': ['23423'], 'feature_uid': ['123423423'], 'label': [0]}
 df = pd.read_csv('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/dataset_cloud-detection/user_labeled_batches/task_cloud-detection.batch-id_0.user-uid_2a8f7d4a0de094708b0e1b74645c4dcfd789068f/task_cloud-detection.batch-id_labeled.type_0.user-uid_2a8f7d4a0de094708b0e1b74645c4dcfd789068f.csv', index_col=0)
 #print(df)
 print('type', type(df.dtypes.tolist()[0]))
