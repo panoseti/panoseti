@@ -26,11 +26,11 @@ class ObservingRunFileInterface:
         # Unpack relevant data_config attributes
         self.data_config = config_file.get_data_config(self.run_path)
         self.run_type = self.data_config["run_type"]
-        self.has_imaging = False
+        self.has_imaging_data = False
         if "image" in self.data_config:
             self.has_imaging_data = True
             self.intgrn_usec = float(self.data_config["image"]["integration_time_usec"]) * 1e-6
-            self.img_bpp = float(self.data_config["image"]["quabo_sample_size"]) // 8  # Bytes per imaging pixel
+            self.img_bpp = int(self.data_config["image"]["quabo_sample_size"]) // 8  # Bytes per imaging pixel
             self.img_size = self.img_bpp * 32 ** 2
             self.frame_size = None
         self.has_pulse_height = False
@@ -45,13 +45,41 @@ class ObservingRunFileInterface:
             for module in dome["modules"]:
                 module_id = config_file.ip_addr_to_module_id(module["ip_addr"])
                 self.obs_pff_files[module_id] = []
-        if self.has_imaging:
+        if self.has_imaging_data:
             self.check_imaging_files()
             self.get_module_imaging_files()
 
     @staticmethod
+    def get_next_frame(f, step_size, frame_size, bytes_per_pixel):
+        """Returns the next image frame and json header from f."""
+        j, img = None, None
+        json_str = pff.read_json(f)
+        if json_str is not None:
+            j = json.loads(json_str)
+            img = pff.read_image(f, 32, bytes_per_pixel)
+            img = np.array(img)
+            f.seek((step_size - 1) * frame_size, os.SEEK_CUR)  # Skip (step_size - 1) images
+        return j, img
+
+    @staticmethod
     def plot_image(img):
-        ax = isns.imghist(img, cmap="YlGnBu_r", dx=15, units="nm")
+        if img is None or not isinstance(img, np.ndarray):
+            print('no image')
+            return None
+        if img.shape != (32,32):
+            img = np.reshape(img, (32, 32))
+        ax = isns.imghist(img, cmap="viridis", vmin=0, vmax=300)
+        return ax
+
+    @staticmethod
+    def plot_image_fft(img):
+        if img is None or not isinstance(img, np.ndarray):
+            print('no image')
+            return None
+        if img.shape != (32, 32):
+            img = np.reshape(img, (32, 32))
+        ax = isns.fftplot(img, cmap="viridis")
+        return ax.get_figure()
 
     @staticmethod
     def get_tz_timestamp_str(unix_t, tz_hr_offset=0):
@@ -85,7 +113,6 @@ class ObservingRunFileInterface:
 
     def get_module_imaging_files(self):
         """Returns an array of dictionaries storing info for all available pff files for module_id."""
-        file_info_array = []
         for fname in os.listdir(self.run_path):
             fpath = f'{self.run_path}/{fname}'
             if not (pff.is_pff_file(fname)
@@ -99,11 +126,12 @@ class ObservingRunFileInterface:
             attrs["seqno"] = int(parsed_name["seqno"])
             with open(fpath, 'rb') as f:
                 self.frame_size, attrs["nframes"], attrs["first_unix_t"], \
-                    attrs["last_unix_t"] = pff.img_info(f, attrs["img_size"])
+                    attrs["last_unix_t"] = pff.img_info(f, self.img_size)
             self.obs_pff_files[module_id] += [attrs]
         # Sort files_to_process in ascending order by file sequence number
-        file_info_array.sort(key=lambda attrs: attrs["seqno"])
-        return file_info_array
+        for module_id in self.obs_pff_files:
+            self.obs_pff_files[module_id].sort(key=lambda attrs: attrs["seqno"])
+
 
     def frame_iterator(self, fp, step_size):
         return FrameIterator(fp, step_size, self.frame_size, self.img_bpp)
@@ -124,14 +152,10 @@ class FrameIterator:
         return self
 
     def __next__(self):
-        j = json.loads(pff.read_json(self.fp))
-        img = pff.read_image(self.fp, 32, self.bpp)
+        j, img = ObservingRunFileInterface.get_next_frame(self.fp, self.step_size, self.frame_size, self.bpp)
         if img is None:
             raise StopIteration
-        else:
-            self.fp.seek((self.step_size - 1) * self.frame_size, os.SEEK_CUR)  # Skip (step_size - 1) images
-            return img, j
-
+        return j, img
 
 class ModuleImageInterface(ObservingRunFileInterface):
 
@@ -188,7 +212,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
     def process_file(self, file_info, data, itr_info, step_size):
         """On a sample of the frames in the file represented by file_info, add the total
         image brightness to the data array beginning at data_offset."""
-        with open(f"{self.data_dir}/{self.run_dir}/{file_info['fname']}", "rb") as f:
+        with open(f"{self.data_dir}/{self.run_dir}/{file_info['fname']}", 'rb') as f:
             # Start file pointer with an offset based on the previous file -> ensures even frame sampling
             f.seek(
                 itr_info['fstart_offset'] * file_info['frame_size'],
@@ -196,7 +220,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             )
             new_nframes = file_info['nframes'] - itr_info['fstart_offset']
             for i in range(new_nframes // step_size):
-                img, j = self.get_next_frame(f,
+                j, img = self.get_next_frame(f,
                                              file_info['frame_size'],
                                              file_info['bytes_per_pixel'],
                                              step_size)
@@ -231,10 +255,17 @@ if __name__ == '__main__':
 
     #test_batch_builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0)
     test_mii = ModuleImageInterface(DATA_DIR, RUN_DIR, 254)
-    fpath = test_mii.run_path + '/' + test_mii.module_pff_files[0]['fname']
-    with open(fpath, 'rb') as fp:
-        for img, j in test_mii.frame_iterator(fp, 1):
-            print(j)
-            test_mii.plot_image(img)
-            break
+    print(test_mii.module_pff_files[0]['nframes'])
+    for i in range(len(test_mii.module_pff_files)):
+        print(f"Plotting {test_mii.module_pff_files[i]['fname']}")
+        fpath = test_mii.run_path + '/' + test_mii.module_pff_files[i]['fname']
+        with open(fpath, 'rb') as fp:
+            fig = None
+            for j, img in test_mii.frame_iterator(fp, 100000):
+                #print(j)
+                if fig:
+                    plt.close(fig)
+                fig = test_mii.plot_image(img)
+                plt.pause(.05)
+
 
