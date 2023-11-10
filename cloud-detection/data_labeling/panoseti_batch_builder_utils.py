@@ -68,7 +68,10 @@ class ObservingRunFileInterface:
             return None
         if img.shape != (32,32):
             img = np.reshape(img, (32, 32))
-        ax = isns.imghist(img, cmap="viridis", vmin=0, vmax=300)
+        mean = np.mean(img)
+        std = np.std(img)
+        # ax = isns.imghist(img, cmap="viridis", vmin=50, vmax=250)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
+        ax = isns.imghist(img, cmap="viridis", vmin=-3.5, vmax=3.5)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         return ax
 
     @staticmethod
@@ -78,7 +81,7 @@ class ObservingRunFileInterface:
             return None
         if img.shape != (32, 32):
             img = np.reshape(img, (32, 32))
-        ax = isns.fftplot(img, cmap="viridis")
+        ax = isns.fftplot(img, cmap="viridis", window_type='cosine')
         return ax.get_figure()
 
     @staticmethod
@@ -220,10 +223,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             )
             new_nframes = file_info['nframes'] - itr_info['fstart_offset']
             for i in range(new_nframes // step_size):
-                j, img = self.get_next_frame(f,
-                                             file_info['frame_size'],
-                                             file_info['bytes_per_pixel'],
-                                             step_size)
+                j, img = self.get_next_frame(f, file_info['frame_size'], file_info['bytes_per_pixel'], step_size)
                 data[itr_info['data_offset'] + i] = np.sum(img)
             itr_info['fstart_offset'] = file_info['nframes'] - (new_nframes // step_size) * step_size
 
@@ -251,21 +251,32 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
 
 if __name__ == '__main__':
     DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
+    # RUN_DIR = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
     RUN_DIR = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
 
-    #test_batch_builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0)
+    test_batch_builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0)
     test_mii = ModuleImageInterface(DATA_DIR, RUN_DIR, 254)
     print(test_mii.module_pff_files[0]['nframes'])
-    for i in range(len(test_mii.module_pff_files)):
+    for i in range(0, len(test_mii.module_pff_files)):
         print(f"Plotting {test_mii.module_pff_files[i]['fname']}")
         fpath = test_mii.run_path + '/' + test_mii.module_pff_files[i]['fname']
         with open(fpath, 'rb') as fp:
             fig = None
-            for j, img in test_mii.frame_iterator(fp, 100000):
-                #print(j)
+            from collections import deque
+            maxlen = 30
+            hist = []#deque(maxlen=maxlen)
+            for j, img in test_mii.frame_iterator(fp, 10000):
                 if fig:
                     plt.close(fig)
-                fig = test_mii.plot_image(img)
-                plt.pause(.05)
-
+                if len(hist) == maxlen:
+                    mean = np.mean(hist)
+                    std = np.std(hist)
+                    prev_img = hist.pop(0)#popleft()
+                    diff = (img -prev_img) / std
+                    # diff=img
+                    # diff[diff < 0] = 0
+                    fig = test_mii.plot_image(diff)
+                plt.pause(.1)
+                hist.append(img)
+            plt.close(fig)
 
