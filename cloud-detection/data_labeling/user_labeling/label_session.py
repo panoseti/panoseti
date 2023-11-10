@@ -14,14 +14,14 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from skycam_utils import get_img_path, get_batch_dir
-from labeling_utils import (get_uid, get_dataframe, get_data_export_dir,
-                            add_labeled_data, add_unlabeled_data, save_df, load_df, unpack_batch_data)
+from ..skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname
+from ..labeling_utils import (get_uid, get_dataframe, get_data_export_dir, add_labeled_data, add_unlabeled_data,
+                              save_df, load_df, unpack_batch_data, data_labels_fname)
+from ..make_batch import batch_data_root_dir, skycam_imgs_root_dir, pano_imgs_root_dir
 
 class LabelSession:
-    data_labels_file = '../skycam_labels.json'
-    root_batch_data_dir = './batch_data'
-    img_paths_info_file = 'img_path_info.json'
+    data_labels_path = f'../{data_labels_fname}'
+    skycam_path_index_fname = 'img_path_info.json'
     root_batch_labels_dir = './batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
@@ -33,23 +33,31 @@ class LabelSession:
         self.task = task
 
         self.batch_dir_name = get_batch_dir(task, batch_id)
-        self.batch_data_path = self.root_batch_data_dir + '/' + self.batch_dir_name
+        self.batch_data_path = batch_data_root_dir + '/' + self.batch_dir_name
         self.batch_labels_path = self.root_batch_labels_dir + '/' + self.batch_dir_name
+
         # Unzip batched data, if it exists
-        os.makedirs(self.root_batch_data_dir, exist_ok=True)
+        os.makedirs(batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            self.skycam_paths = {}
-            self.img_uid_to_skycam_dir = {}
-            unpack_batch_data(batch_data_root_dir=self.root_batch_data_dir)
-            self.load_skycam_paths()
+            unpack_batch_data(batch_data_root_dir)
+            with open(f'{self.batch_data_path}/{self.skycam_path_index_fname}', 'r') as f:
+                self.skycam_paths = json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir_name}\x1b[0m\n"
                                     f"Try adding the zipped data batch file to the following directory:\n"
-                                    f"\x1b[31m{os.path.abspath(self.root_batch_data_dir)}\x1b[0m")
+                                    f"\x1b[31m{os.path.abspath(batch_data_root_dir)}\x1b[0m")
+        try:
+            with open(self.data_labels_path, 'r') as f:
+                self.labels = json.load(f)
+        except:
+            raise FileNotFoundError(f"Could not find the file {self.data_labels_path}\n"
+                                    f"Try pulling the file from the panoseti github.")
         # Init dataframes
         self.loaded_dfs_from_file = {}
-        self.img_df = self.init_dataframe('img')
+        self.feature_df = self.init_dataframe('feature')
+        self.skycam_df = self.init_dataframe('skycam')
+        self.pano_df = self.init_dataframe('pano')
         self.unlabeled_df = self.init_dataframe('unlabeled')
         self.labeled_df = self.init_dataframe('labeled')
         self.data_to_label = None
@@ -57,35 +65,21 @@ class LabelSession:
         self.num_imgs = len(self.unlabeled_df)
         self.num_labeled = len(self.unlabeled_df.loc[self.unlabeled_df.is_labeled == True])
 
-        with open(LabelSession.data_labels_file, 'r') as f:
-            self.labels = json.load(f)
-
-    def load_skycam_paths(self):
-        with open(f'{self.batch_data_path}/{self.img_paths_info_file}', 'r') as f:
-            self.skycam_paths = json.load(f)
-
-    # def init_img_uid_to_skycam_dir(self, skycam_dir):
-    #     """Save uid -> path relation for fast lookup later."""
-    #     original_img_dir = self.skycam_paths[skycam_dir]['img_subdirs']['original']
-    #     for fname in os.listdir(original_img_dir):
-    #         if fname[-4:] == '.jpg':
-    #             img_uid = get_uid(fname)
-    #             self.img_uid_to_skycam_dir[img_uid] = skycam_dir
-
     def init_dataframe(self, df_type):
         """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
-        if df_type == 'img':
+        if df_type in ['feature', 'skycam', 'pano']:
+            # These dataframes are initialized by make_batch.py and should exist within the downloaded batch data.
             df = load_df(
-                None, self.batch_id, 'img', self.task, is_temp=False,
+                None, self.batch_id, df_type, self.task, is_temp=False,
                 save_dir=self.batch_data_path
             )
             if df is None:
-                raise ValueError('Image metadata not found in batch directory.')
-            # Initialize img_uid->skycam dict
-            # for skycam_dir in self.skycam_paths:
-            #     self.init_img_uid_to_skycam_dir(skycam_dir)
-            self.loaded_dfs_from_file['img'] = True
+                raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
+
+            self.loaded_dfs_from_file[df_type] = True
         elif df_type in ['unlabeled', 'labeled']:
+            # These dataframes must be initialized here because, for simplicity, we
+            # don't collect the user-uid until the user supplies them in the Jupyter notebook.
             df = load_df(
                 self.user_uid, self.batch_id, df_type, self.task, is_temp=True,
                 save_dir=self.batch_labels_path
@@ -96,24 +90,25 @@ class LabelSession:
                 self.loaded_dfs_from_file[df_type] = False
                 df = get_dataframe(df_type)
                 if df_type == 'unlabeled':
-                    # Note: must initialize img_df before attempting to initialize unlabeled_df
-                    for img_uid in self.img_df['img_uid']:
+                    # Note: must initialize feature_df before attempting to initialize unlabeled_df
+                    for feature_uid in self.feature_df['feature_uid']:
                         # Add entries to unlabeled_df
-                        df = add_unlabeled_data(df, img_uid)
+                        df = add_unlabeled_data(df, feature_uid)
                     df = df.sample(frac=1).reset_index(drop=True)
         else:
             raise ValueError(f'Unsupported df_type: "{df_type}"')
         return df
 
-    def img_uid_to_data(self, img_uid, img_type):
-        original_fname, skycam_dir = self.img_df.loc[self.img_df.img_uid == img_uid, ['fname', 'batch_data_subdir']].iloc[0]
-        # skycam_dir = self.img_uid_to_skycam_dir[img_uid]
-        fpath = get_img_path(original_fname, img_type, skycam_dir)
+    def skycam_uid_to_data(self, skycam_uid, img_type):
+        original_fname, skycam_dir = self.skycam_df.loc[
+            self.skycam_df.skycam_uid == skycam_uid, ['fname', 'skycam_dir']
+        ].iloc[0]
+        fpath = get_skycam_img_path(original_fname, img_type, f'{self.batch_data_path}/{skycam_dir}')
         img = np.asarray(Image.open(fpath))
         return img
 
     # Plotting routines
-    def plot_img(self, img_uid):
+    def plot_img(self, feature_uid):
         """Given an image uid, display the corresponding image."""
         fig = plt.figure(figsize=(12, 12))
         grid = ImageGrid(fig, 111,  # similar to subplot(111)
@@ -121,10 +116,13 @@ class LabelSession:
                          axes_pad=0.3,  # pad between axes in inch.
                          share_all=False,
                          )
-        imgs = [self.img_uid_to_data(img_uid, 'cropped'),
-                self.img_uid_to_data(img_uid, 'pfov')]
-        titles = [f'{img_uid[:8]}: cropped fov',
-                  f'{img_uid[:8]}: full img with pfov']
+        skycam_uid = self.feature_df[
+            self.feature_df[feature_uid] == feature_uid, 'skycam_uid'
+        ]
+        imgs = [self.skycam_uid_to_data(skycam_uid, 'cropped'),
+                self.skycam_uid_to_data(skycam_uid, 'pfov')]
+        titles = [f'{skycam_uid[:8]}: cropped fov',
+                  f'{skycam_uid[:8]}: full img with pfov']
 
         for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
             ax.imshow(img, aspect='equal')
@@ -139,8 +137,15 @@ class LabelSession:
 
     def make_img_grid(self, label, cols=8, rows_per_plot=8):
         """Grid of all classified images labeled as the given label"""
-        data_with_given_label = self.labeled_df.loc[(self.labeled_df.label == label), 'img_uid']
-        imgs = [self.img_uid_to_data(img_uid, 'cropped') for img_uid in data_with_given_label]
+        feature_uids_with_given_label = self.labeled_df.loc[
+            (self.labeled_df.label == label), 'feature_uid'
+        ]
+        skycam_uids_with_given_label = self.feature_df.loc[
+            (self.feature_df['feature_uid'].isin(feature_uids_with_given_label)), 'skycam_uid'
+        ]
+        imgs = []
+        for skycam_uid in skycam_uids_with_given_label:
+            imgs.append(self.skycam_uid_to_data(skycam_uid, 'cropped'))
         if len(imgs) == 0:
             print(f'No images labeled as "{label}"')
             return
@@ -160,8 +165,8 @@ class LabelSession:
                 if img_idx < len(imgs):
                     ax = grid[i]
                     img = imgs[img_idx]
-                    img_uid = data_with_given_label.iloc[img_idx]
-                    ax.set_title(f'{23}{img_uid[:6]}')  # Label each plot with first 6 chars of img_uid
+                    feature_uid = feature_uids_with_given_label.iloc[img_idx]
+                    ax.set_title(f'{23}{feature_uid[:6]}')  # Label each plot with first 6 chars of feature_uid
                     ax.imshow(img)
             plt.show()
             plt.close()
@@ -221,8 +226,8 @@ class LabelSession:
         try:
             for i in range(len(self.data_to_label)):
                 # Clear display then show next image to label
-                img_uid = self.data_to_label.iloc[i]['img_uid']
-                self.plot_img(img_uid)
+                feature_uid = self.data_to_label.iloc[i]['feature_uid']
+                self.plot_img(feature_uid)
 
                 display.clear_output(wait=True)
                 plt.show()
@@ -233,7 +238,7 @@ class LabelSession:
                 if label_idx == 'exit':
                     break
                 label_str = self.labels[str(label_idx)]
-                self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, img_uid, self.user_uid, label_str)
+                self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, feature_uid, self.user_uid, label_str)
                 self.num_labeled += 1
                 plt.close()
         except KeyboardInterrupt:
@@ -246,15 +251,6 @@ class LabelSession:
             print('Success!')
 
     def save_progress(self):
-        # save_df(self.img_df,
-        #         'img',
-        #         self.user_uid,
-        #         self.batch_id,
-        #         self.task,
-        #         True,
-        #         self.
-        #         )
-        #
         save_df(self.labeled_df,
                 'labeled',
                 self.user_uid,
@@ -283,15 +279,6 @@ class LabelSession:
         data_export_dir = get_data_export_dir(self.task, self.batch_id, self.user_uid, root='.')
         os.makedirs(data_export_dir, exist_ok=True)
 
-        # save_df(self.img_df,
-        #         'img',
-        #         self.user_uid,
-        #         self.batch_id,
-        #         self.task,
-        #         False,
-        #         data_export_dir
-        #         )
-        #
         save_df(self.labeled_df,
                 'labeled',
                 self.user_uid,

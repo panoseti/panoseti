@@ -24,7 +24,7 @@ class DatasetManager:
         #self.label_log = {}
         self.main_dfs = {   # Aggregated metadata datasets.
             'user': None,
-            'img': None,
+            'skycam': None,
             'labeled': None,
             'user-batch-log': None
         }

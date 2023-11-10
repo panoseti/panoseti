@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import shutil
 
+data_labels_fname = 'skycam_labels.json'
+
 # Database formats / Core routines
 
 def get_dataframe_formats():
@@ -214,7 +216,7 @@ def get_dataframe(df_type):
 
 
 # Unzip files
-def unpack_batch_data(batch_data_root_dir='batch_data'):
+def unpack_batch_data(batch_data_root_dir):
     """Unpack image files from batch data gztar file."""
     downloaded_fname = ''
     batch_dir = ''
@@ -229,6 +231,10 @@ def unpack_batch_data(batch_data_root_dir='batch_data'):
         print(f'Unzipping {downloaded_fpath}. This may take a minute...')
         shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
         os.remove(downloaded_fpath)
+
+# Misc
+
+
 
 
 """
