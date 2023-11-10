@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import datetime
+from itertools import chain
 
 import numpy as np
 import seaborn_image as isns
@@ -11,6 +12,7 @@ sys.path.append("../../util")
 import config_file
 import pff
 import image_quantiles
+
 
 class ObservingRunFileInterface:
 
@@ -29,7 +31,7 @@ class ObservingRunFileInterface:
         self.has_imaging_data = False
         if "image" in self.data_config:
             self.has_imaging_data = True
-            self.intgrn_usec = float(self.data_config["image"]["integration_time_usec"]) * 1e-6
+            self.intgrn_usec = float(self.data_config["image"]["integration_time_usec"])
             self.img_bpp = int(self.data_config["image"]["quabo_sample_size"]) // 8  # Bytes per imaging pixel
             self.img_size = self.img_bpp * 32 ** 2
             self.frame_size = None
@@ -66,30 +68,18 @@ class ObservingRunFileInterface:
         if img is None or not isinstance(img, np.ndarray):
             print('no image')
             return None
-        if img.shape != (32,32):
-            img = np.reshape(img, (32, 32))
-        mean = np.mean(img)
-        std = np.std(img)
-        # ax = isns.imghist(img, cmap="viridis", vmin=50, vmax=250)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
-        ax = isns.imghist(img, cmap="viridis", vmin=-3.5, vmax=3.5)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
-        return ax
-
-    @staticmethod
-    def plot_image_fft(img):
-        if img is None or not isinstance(img, np.ndarray):
-            print('no image')
-            return None
         if img.shape != (32, 32):
             img = np.reshape(img, (32, 32))
-        ax = isns.fftplot(img, cmap="viridis", window_type='cosine')
-        return ax.get_figure()
+        ax = isns.imghist(img, cmap="viridis", vmin=50, vmax=250)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
+        # ax = isns.imghist(img, cmap="viridis", vmin=-100, vmax=100)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
+        # ax = isns.imghist(img, cmap="viridis", vmin=-3.5, vmax=3.5)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
+        return ax
 
     @staticmethod
     def get_tz_timestamp_str(unix_t, tz_hr_offset=0):
         """Returns the timestamp string, offset from utc by tz_hr_offset hours."""
         dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=tz_hr_offset)))
         return dt.strftime("%m/%d/%Y, %H:%M:%S")
-
 
     def check_paths(self):
         """Check if data_dir and run_dir exist."""
@@ -135,10 +125,8 @@ class ObservingRunFileInterface:
         for module_id in self.obs_pff_files:
             self.obs_pff_files[module_id].sort(key=lambda attrs: attrs["seqno"])
 
-
     def frame_iterator(self, fp, step_size):
         return FrameIterator(fp, step_size, self.frame_size, self.img_bpp)
-
 
 
 class FrameIterator:
@@ -159,6 +147,7 @@ class FrameIterator:
         if img is None:
             raise StopIteration
         return j, img
+
 
 class ModuleImageInterface(ObservingRunFileInterface):
 
@@ -182,101 +171,24 @@ class ModuleImageInterface(ObservingRunFileInterface):
         else:
             self.start_unix_t = self.module_pff_files[0]['first_unix_t']
 
-
-class PanosetiBatchBuilder(ObservingRunFileInterface):
-    def __init__(self, data_dir, run_dir, task, batch_id):
-        super().__init__(data_dir, run_dir)
-        self.task = task
-        self.batch_id = batch_id
-
-        self.batch_dir = ...
-
-    def get_panoseti_batch_dir(self):
-        ...
-
-    def gen_npy_fname(self):
-        npy_fname = f"{self.batch_dir}/data.npy"
-        return npy_fname
-
-
-    def get_empty_data_array(self, file_attrs, step_size):
-        data_size = 0
-        for i in range(len(file_attrs)):
-            data_size += file_attrs[i]['nframes'] // step_size
-        return np.zeros(data_size)
-
-    def get_files_to_process(self, data_dir, run_dir, module):
-        files_to_process = []
-        for fname in os.listdir(f'{data_dir}/{run_dir}'):
-            if pff.is_pff_file(fname) and pff.pff_file_type(fname) in ('img16', 'img8'):
-                files_to_process.append(fname)
-        return files_to_process
-
-    def process_file(self, file_info, data, itr_info, step_size):
-        """On a sample of the frames in the file represented by file_info, add the total
-        image brightness to the data array beginning at data_offset."""
-        with open(f"{self.data_dir}/{self.run_dir}/{file_info['fname']}", 'rb') as f:
-            # Start file pointer with an offset based on the previous file -> ensures even frame sampling
-            f.seek(
-                itr_info['fstart_offset'] * file_info['frame_size'],
-                os.SEEK_CUR
-            )
-            new_nframes = file_info['nframes'] - itr_info['fstart_offset']
-            for i in range(new_nframes // step_size):
-                j, img = self.get_next_frame(f, file_info['frame_size'], file_info['bytes_per_pixel'], step_size)
-                data[itr_info['data_offset'] + i] = np.sum(img)
-            itr_info['fstart_offset'] = file_info['nframes'] - (new_nframes // step_size) * step_size
-
-
-    def get_data(self, file_info_array, analysis_dir, step_size):
-        # Save reduced data to file
-        npy_fname = self.gen_npy_fname(analysis_dir)
-        if os.path.exists(npy_fname):
-            data_arr = np.load(npy_fname)
-            return data_arr
-        itr_info = {
-            "data_offset": 0,
-            "fstart_offset": 0  # Ensures frame step size across files
-        }
-        data_arr = self.get_empty_data_array(file_info_array, step_size)
-        for i in range(len(file_info_array)):
-            print(f"Processing {file_info_array[i]['fname']}")
-            file_info = file_info_array[i]
-            self.process_file(file_info, data_arr, itr_info, step_size)
-            itr_info['data_offset'] += file_info["nframes"] // step_size
-
-        np.save(npy_fname, data_arr)
-        return data_arr
-
-
-if __name__ == '__main__':
-    DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
-    # RUN_DIR = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
-    RUN_DIR = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
-
-    test_batch_builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0)
-    test_mii = ModuleImageInterface(DATA_DIR, RUN_DIR, 254)
-    print(test_mii.module_pff_files[0]['nframes'])
-    for i in range(0, len(test_mii.module_pff_files)):
-        print(f"Plotting {test_mii.module_pff_files[i]['fname']}")
-        fpath = test_mii.run_path + '/' + test_mii.module_pff_files[i]['fname']
-        with open(fpath, 'rb') as fp:
-            fig = None
-            from collections import deque
-            maxlen = 30
-            hist = []#deque(maxlen=maxlen)
-            for j, img in test_mii.frame_iterator(fp, 10000):
-                if fig:
-                    plt.close(fig)
-                if len(hist) == maxlen:
-                    mean = np.mean(hist)
-                    std = np.std(hist)
-                    prev_img = hist.pop(0)#popleft()
-                    diff = (img -prev_img) / std
-                    # diff=img
-                    # diff[diff < 0] = 0
-                    fig = test_mii.plot_image(diff)
-                plt.pause(.1)
-                hist.append(img)
-            plt.close(fig)
-
+# class ModuleImageIterator:
+#     def __init__(self, module_image_interface, step_size, frame_size, bytes_per_pixel):
+#         """Returns all available data from the """
+#         assert isinstance(module_image_interface, ModuleImageInterface)
+#         self.module_image_interface = module_image_interface
+#         self.step_size = step_size
+#         self.frame_size = frame_size
+#         self.bytes_per_pixel = bytes_per_pixel
+#
+#
+#     def __iter__(self):
+#
+#         return self
+#
+#     def __next__(self):
+#         m = self.module_image_interface
+#         j, img = m.get_next_frame(m.fp, self.step_size, m.frame_size, m.img_bpp)
+#         if img is None:
+#             raise StopIteration
+#         return j, img
+#
