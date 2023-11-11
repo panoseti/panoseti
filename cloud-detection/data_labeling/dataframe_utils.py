@@ -1,5 +1,6 @@
 import hashlib
 import pandas as pd
+import numpy as np
 import os
 import shutil
 
@@ -171,7 +172,8 @@ def add_pano_img(pano_df, run_dir, fname, module_id, unix_t, batch_id, skycam_di
     elif verbose:
         print(f'An entry for "{fname}" already exists')
 
-def add_feature_entry(feature_df, feature_uid, skycam_uid, pano_uid, batch_id, verbose=False):
+def add_feature_entry(feature_df, skycam_uid, pano_uid, batch_id, verbose=False):
+    feature_uid = get_uid(skycam_uid + str(batch_id))
     if not feature_df.loc[:, 'feature_uid'].str.contains(feature_uid).any():
         data = {
             'feature_uid': [feature_uid],

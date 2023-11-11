@@ -4,6 +4,8 @@ import os
 import json
 from datetime import datetime, timedelta, tzinfo
 
+from dataframe_utils import add_skycam_img
+
 skycam_path_index_fname = 'skycam_path_index.json'
 valid_image_types = ['original', 'cropped', 'pfov']
 
@@ -92,13 +94,13 @@ def get_skycam_img_time(skycam_fname):
 def get_batch_dir(task, batch_id):
     return "task_{0}.batch-id_{1}".format(task, batch_id)
 
-def make_skycam_paths_json(batch_path):
+def make_skycam_paths_json(batch_path, skycam_imgs_path):
     """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     skycam_paths = {}
-    for path in os.listdir(batch_path):
-        if os.path.isdir(f'{batch_path}/{path}') and 'SC' in path and 'imgs' in path:
-            skycam_dir = f'{batch_path}/{path}'
+    for path in os.listdir(skycam_imgs_path):
+        skycam_dir = f'{skycam_imgs_path}/{path}'
+        if os.path.isdir(skycam_imgs_path) and 'SC' in path and 'imgs' in path:
             skycam_paths[skycam_dir] = {
                 "img_subdirs": {},
                 "imgs_per_subdir": -1,
@@ -114,6 +116,20 @@ def make_skycam_paths_json(batch_path):
     with open(f"{batch_path}/{skycam_path_index_fname}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
     return skycam_paths
+
+
+def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose):
+    """Add entries for each skycam image to skycam_df """
+    original_img_dir = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')['original']
+    for original_fname in os.listdir(original_img_dir):
+        if original_fname[-4:] == '.jpg':
+            # Collect image features
+            skycam_type = original_fname.split('_')[0]
+            t = get_skycam_img_time(original_fname)
+            timestamp = (t - datetime(1970, 1, 1)) / timedelta(seconds=1)
+            # Add entries to skycam_df
+            skycam_df = add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=verbose)
+    return skycam_df
 
 
 #make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch_0')

@@ -14,14 +14,12 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from ..skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname
-from ..labeling_utils import (get_uid, get_dataframe, get_data_export_dir, add_labeled_data, add_unlabeled_data,
-                              save_df, load_df, unpack_batch_data, data_labels_fname)
-from ..make_batch import batch_data_root_dir, skycam_imgs_root_dir, pano_imgs_root_dir
+from skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname
+from dataframe_utils import *
+from make_batch import batch_data_root_dir, skycam_imgs_root_dir, pano_imgs_root_dir
 
 class LabelSession:
     data_labels_path = f'../{data_labels_fname}'
-    skycam_path_index_fname = 'img_path_info.json'
     root_batch_labels_dir = './batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
@@ -33,15 +31,17 @@ class LabelSession:
         self.task = task
 
         self.batch_dir_name = get_batch_dir(task, batch_id)
-        self.batch_data_path = batch_data_root_dir + '/' + self.batch_dir_name
-        self.batch_labels_path = self.root_batch_labels_dir + '/' + self.batch_dir_name
+        self.batch_data_path = f'{batch_data_root_dir}/{self.batch_dir_name}'
+        self.batch_labels_path = f'{self.root_batch_labels_dir}/{self.batch_dir_name}'
+        self.skycam_imgs_path = f'{self.batch_data_path}/{skycam_imgs_root_dir}'
+        self.pano_imgs_path = f'{self.batch_data_path}/{pano_imgs_root_dir}'
 
         # Unzip batched data, if it exists
         os.makedirs(batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
             unpack_batch_data(batch_data_root_dir)
-            with open(f'{self.batch_data_path}/{self.skycam_path_index_fname}', 'r') as f:
+            with open(f'{self.batch_data_path}/{skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir_name}\x1b[0m\n"
@@ -101,9 +101,9 @@ class LabelSession:
 
     def skycam_uid_to_data(self, skycam_uid, img_type):
         original_fname, skycam_dir = self.skycam_df.loc[
-            self.skycam_df.skycam_uid == skycam_uid, ['fname', 'skycam_dir']
+            (self.skycam_df.skycam_uid == skycam_uid), ['fname', 'skycam_dir']
         ].iloc[0]
-        fpath = get_skycam_img_path(original_fname, img_type, f'{self.batch_data_path}/{skycam_dir}')
+        fpath = get_skycam_img_path(original_fname, img_type, f'{self.skycam_imgs_path}/{skycam_dir}')
         img = np.asarray(Image.open(fpath))
         return img
 
@@ -116,9 +116,9 @@ class LabelSession:
                          axes_pad=0.3,  # pad between axes in inch.
                          share_all=False,
                          )
-        skycam_uid = self.feature_df[
-            self.feature_df[feature_uid] == feature_uid, 'skycam_uid'
-        ]
+        skycam_uid = self.feature_df.loc[
+            self.feature_df.feature_uid == feature_uid, 'skycam_uid'
+        ].iloc[0]
         imgs = [self.skycam_uid_to_data(skycam_uid, 'cropped'),
                 self.skycam_uid_to_data(skycam_uid, 'pfov')]
         titles = [f'{skycam_uid[:8]}: cropped fov',
@@ -311,5 +311,5 @@ class LabelSession:
         print('Done!')
 
 
-#session = LabelSession('asdf', 0)
-#session.start()
+session = LabelSession('Nico', 0)
+session.start()
