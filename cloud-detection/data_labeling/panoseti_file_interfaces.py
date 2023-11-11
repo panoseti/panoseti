@@ -62,7 +62,7 @@ class ObservingRunFileInterface:
             self.stop_utc = datetime.fromisoformat(iso_str).astimezone(timezone.utc)
 
     @staticmethod
-    def get_next_frame(f, step_size, frame_size, bytes_per_pixel):
+    def read_frame(f, bytes_per_pixel):
         """Returns the next image frame and json header from f."""
         j, img = None, None
         json_str = pff.read_json(f)
@@ -70,7 +70,6 @@ class ObservingRunFileInterface:
             j = json.loads(json_str)
             img = pff.read_image(f, 32, bytes_per_pixel)
             img = np.array(img)
-            f.seek((step_size - 1) * frame_size, os.SEEK_CUR)  # Skip (step_size - 1) images
         return j, img
 
     @staticmethod
@@ -149,12 +148,19 @@ class FrameIterator:
         self.frame_size = frame_size
         self.bpp = bytes_per_pixel
         self.step_size = step_size
+        self.first_itr = True
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        j, img = ObservingRunFileInterface.get_next_frame(self.fp, self.step_size, self.frame_size, self.bpp)
+        if not self.first_itr:
+            seek_dist = (self.step_size - 1) * self.frame_size
+            if seek_dist < 0 and (self.fp.tell() + seek_dist < 0):
+                raise StopIteration
+            self.fp.seek(seek_dist, os.SEEK_CUR)  # Skip (step_size - 1) images
+        self.first_itr = False
+        j, img = ObservingRunFileInterface.read_frame(self.fp, self.bpp)
         if img is None:
             raise StopIteration
         return j, img

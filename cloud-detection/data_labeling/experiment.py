@@ -1,6 +1,6 @@
+from datetime import timedelta
 import os
 import numpy as np
-
 import matplotlib.pyplot as plt
 
 from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInterface
@@ -24,22 +24,31 @@ if __name__ == '__main__':
 
     print(builder.start_utc)
     print(builder.stop_utc)
-    print(builder.start_utc < builder.stop_utc)
 
     make_batch.build_batch('cloud-detection', 0, builder.start_utc, builder.stop_utc)
 
     skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
 
-    for fname in sorted(os.listdir(skycam_subdirs['original']))[:2]:
+    for fname in sorted(os.listdir(skycam_subdirs['original'])):
         if fname.endswith('.jpg'):
             t = get_skycam_img_time(fname)
-            print(t)
-            print(get_unix_from_datetime(t))
-            print(type(t))
+            skycam_unix_t = get_unix_from_datetime(t)
 
             ret = builder.module_file_time_seek(254, get_unix_from_datetime(t))
-            print(ret)
-
+            if ret is not None:
+                builder.time_derivative(
+                    ret['file_idx'],
+                    ret['frame_offset'],
+                    254,
+                    1,
+                    200,
+                    True
+                )
+                file_info = builder.obs_pff_files[254][ret['file_idx']]
+                #print(builder.start_utc <= t <= builder.stop_utc)
+                print('delta_t = ', (file_info['last_unix_t'] - file_info['first_unix_t']))
+                print(file_info['seqno'])
+                print()
 
     """
     for i in range(0, len(test_mii.module_pff_files)):

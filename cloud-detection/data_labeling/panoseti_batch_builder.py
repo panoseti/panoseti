@@ -3,6 +3,8 @@ import os
 import numpy as np
 import sys
 
+from collections import deque
+
 import matplotlib.pyplot as plt
 
 from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInterface
@@ -56,7 +58,6 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         """Search module data to find the frame with timestamp closest to target_time.
         target_time should be a unix timestamp."""
         module_pff_files = self.obs_pff_files[module_id]
-
         # Use binary search to find the file that contains target_time
         l = 0
         r = len(module_pff_files) - 1
@@ -80,9 +81,86 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             pff.time_seek(fp, frame_time, self.img_size, target_time)
             ret = {
                 'file_idx': m,
-                'offset': fp.tell()
+                'frame_offset': int(fp.tell() / self.frame_size)
             }
+            # j, img = self.read_next_frame(fp, 1, self.frame_size, self.img_bpp)
+            # fig = self.plot_image(img)
+            # plt.show()
+            # plt.pause(2)
+            # plt.close(fig)
             return ret
+
+    def time_derivative(self, start_file_idx, start_frame_offset, module_id, step_delta_t, max_delta_t, verbose=False):
+        """Compute time derivative feature relative to the frame at fp.
+        Returns None if time derivative calc is not possible with
+
+        step_delta_t: time step between sampled frames
+        max_delta_t: time derivative
+        n_derivatives: number of evenly spaced time-derivatives
+        """
+        module_pff_files = self.obs_pff_files[module_id]
+
+        frame_step_size = int(step_delta_t / (self.intgrn_usec * 1e-6))
+        assert frame_step_size > 0
+        hist_size = int(max_delta_t / step_delta_t)
+        print(hist_size)
+
+        # Check if it is possible to construct a time-derivative with the given parameters and data
+        s = -1
+        with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
+            f.seek(start_frame_offset * self.frame_size)
+            j, img = self.read_frame(f, self.img_bpp)
+            curr_unix_t = pff.img_header_time(j)
+            s = curr_unix_t
+            if (curr_unix_t - max_delta_t) < module_pff_files[0]['first_unix_t']:
+                return None
+
+        frame_offset = start_frame_offset
+        hist = list()
+        # Iterate backwards through the files
+        for i in range(start_file_idx, -1, -1):
+            if len(hist) == hist_size:
+                break
+            file_info = module_pff_files[i]
+            fpath = f"{self.run_path}/{file_info['fname']}"
+            if verbose: print(f"Processing {file_info['fname']}")
+            with open(fpath, 'rb') as fp:
+                print("newfile")
+                # Start file pointer with an offset based on the previous file -> ensures even frame sampling
+                fp.seek(
+                    frame_offset * self.frame_size,
+                    os.SEEK_CUR
+                )
+                # new_nframes = file_info['nframes'] - frame_offset
+                # Iterate backwards through the file
+                for j, img in self.frame_iterator(fp, (-1 * frame_step_size) + 1):
+                    if j is None or img is None:
+                        break
+                    if len(hist) < hist_size:
+                        hist.insert(0, img)
+                        #print(int(pff.img_header_time(j) - s))
+                        continue
+                    imgs = list()
+                    imgs.append((img - np.mean(hist)) / np.std(hist))
+                    delta_ts = [0]
+                    for k in [hist_size//3, 2*hist_size//3, hist_size]:
+                        delta_ts.append(-step_delta_t * k)
+                        data = (img - hist[k - 1]) / np.std(hist)
+                        imgs.append(data)
+                    print(delta_ts)
+                    # hist.pop()
+                    # prev_img = hist.pop()
+
+                    # fig = test_mii.plot_image((img - np.mean(hist)) / np.std(hist))
+                    fig = plot_image_grid(imgs, delta_ts)
+                    fig.suptitle(f'{delta_ts}, L->R; T->B')
+                    plt.pause(1)
+                    plt.close(fig)
+                    break
+                if i > 0:
+                    next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
+                    frame_offset = int((next_file_size - (frame_step_size * self.frame_size - fp.tell())) / self.frame_size)
+    print('done')
 
     def iterate_module_files(self, module_id, step_size, verbose=False):
         """On a sample of the frames in the file represented by file_info, add the total
@@ -101,7 +179,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 )
                 new_nframes = file_info['nframes'] - frame_offset
                 for _ in range(new_nframes // step_size):
-                    j, img = self.get_next_frame(fp, self.frame_size, self.img_bpp, step_size)
+                    j, img = self.read_frame(fp, step_size)
                     # TODO: do something here
                 frame_offset = file_info['nframes'] - (new_nframes // step_size) * step_size
 
