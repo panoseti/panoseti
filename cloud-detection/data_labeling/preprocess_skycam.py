@@ -83,7 +83,7 @@ def plot_pfov(skycam_img, corners, pfov_fpath):
 
 
 
-def preprocess_skycam_imgs(skycam_type, year, month, day, root, verbose=False):
+def preprocess_skycam_imgs(skycam_type, year, month, day, first_t, last_t, root, verbose=False):
     """Run all preprocessing routines on the """
     skycam_dir = get_skycam_dir(skycam_type, year, month, day, root)
     try:
@@ -93,7 +93,7 @@ def preprocess_skycam_imgs(skycam_type, year, month, day, root, verbose=False):
         return None
     
     try:
-        retval = download_night_skycam_imgs(skycam_type, year, month, day, verbose=verbose, root=root)
+        retval = download_night_skycam_imgs(skycam_type, year, month, day, first_t, last_t, verbose=verbose, root=root)
         if retval is None:
             return None
     except FileExistsError as fee:

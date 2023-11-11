@@ -14,9 +14,9 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname
-from dataframe_utils import *
-from make_batch import batch_data_root_dir, skycam_imgs_root_dir, pano_imgs_root_dir
+from ..skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname, skycam_imgs_root_dir
+from ..panoseti_batch_utils import pano_imgs_root_dir
+from ..dataframe_utils import *
 
 class LabelSession:
     data_labels_path = f'../{data_labels_fname}'
@@ -311,5 +311,6 @@ class LabelSession:
         print('Done!')
 
 
-session = LabelSession('Nico', 0)
-session.start()
+if __name__ == '__main__':
+    session = LabelSession('Nico', 0)
+    session.start()

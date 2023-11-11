@@ -2,18 +2,19 @@
 
 import os
 import json
-from datetime import datetime, timedelta, tzinfo
+from datetime import datetime, timedelta, timezone
 
 from dataframe_utils import add_skycam_img
 
+skycam_imgs_root_dir = 'skycam_imgs'
 skycam_path_index_fname = 'skycam_path_index.json'
 valid_image_types = ['original', 'cropped', 'pfov']
 
-def get_skycam_subdirs(skycam_dir):
+def get_skycam_subdirs(skycam_path):
     """Return dict of skycam image directories."""
     img_subdirs = {}
     for img_type in valid_image_types:
-        img_subdirs[img_type] = f'{skycam_dir}/{img_type}'
+        img_subdirs[img_type] = f'{skycam_path}/{img_type}'
     return img_subdirs
 
 
@@ -87,8 +88,10 @@ def get_skycam_img_time(skycam_fname):
     time_fields = t[0:4], t[4:6], t[6:8], t[8:10], t[10:12], t[12:14]
     year, month, day, hour, minute, second = [int(tf) for tf in time_fields]
 
-    timestamp = datetime(year, month, day, hour, minute, second)
-    return timestamp
+    dt = datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    tz = timezone(timedelta(hours=0))
+    dt = dt.astimezone(tz)
+    return dt
 
 
 def get_batch_dir(task, batch_id):
@@ -126,7 +129,7 @@ def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, sky
             # Collect image features
             skycam_type = original_fname.split('_')[0]
             t = get_skycam_img_time(original_fname)
-            timestamp = (t - datetime(1970, 1, 1)) / timedelta(seconds=1)
+            timestamp = (t - datetime(1970, 1, 1, tzinfo=timezone.utc)) / timedelta(seconds=1)
             # Add entries to skycam_df
             skycam_df = add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=verbose)
     return skycam_df

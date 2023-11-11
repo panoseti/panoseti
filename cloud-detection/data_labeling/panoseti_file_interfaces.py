@@ -1,7 +1,7 @@
 import os
 import json
 import sys
-import datetime
+from datetime import datetime, timezone, timedelta
 from itertools import chain
 
 import numpy as np
@@ -51,6 +51,16 @@ class ObservingRunFileInterface:
             self.check_imaging_files()
             self.get_module_imaging_files()
 
+        # Get start and stop times
+        parsed_run_name = pff.parse_name(run_dir)
+        self.start_utc = parsed_run_name['start'].replace('Z', '') + '+00:00'
+        self.start_utc = datetime.fromisoformat(self.start_utc)
+
+        with (open(f'{self.run_path}/recording_ended', 'r') as f):
+            # recording_ended file is in PDT time
+            iso_str = f.readline().rstrip('\n') + '-07:00'
+            self.stop_utc = datetime.fromisoformat(iso_str).astimezone(timezone.utc)
+
     @staticmethod
     def get_next_frame(f, step_size, frame_size, bytes_per_pixel):
         """Returns the next image frame and json header from f."""
@@ -78,7 +88,7 @@ class ObservingRunFileInterface:
     @staticmethod
     def get_tz_timestamp_str(unix_t, tz_hr_offset=0):
         """Returns the timestamp string, offset from utc by tz_hr_offset hours."""
-        dt = datetime.datetime.fromtimestamp(unix_t, datetime.timezone(datetime.timedelta(hours=tz_hr_offset)))
+        dt = datetime.fromtimestamp(unix_t, timezone(timedelta(hours=tz_hr_offset)))
         return dt.strftime("%m/%d/%Y, %H:%M:%S")
 
     def check_paths(self):

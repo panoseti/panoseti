@@ -4,9 +4,11 @@ import random
 import shutil
 from datetime import datetime, timedelta
 
-from skycam_utils import get_batch_dir, make_skycam_paths_json, add_skycam_data_to_skycam_df, get_skycam_dir
-from dataframe_utils import add_feature_entry, get_dataframe, save_df
+from skycam_utils import *
+from dataframe_utils import add_feature_entry, get_dataframe, save_df, batch_data_root_dir
 from preprocess_skycam import preprocess_skycam_imgs
+from panoseti_batch_utils import pano_imgs_root_dir
+
 """
 batch_data/ file tree
 
@@ -20,9 +22,6 @@ batch_data/ file tree
 """
 
 batch_data_zipfiles_dir = 'batch_data_zipfiles'
-batch_data_root_dir = 'batch_data'
-skycam_imgs_root_dir = 'skycam_imgs'
-pano_imgs_root_dir = 'skycam_imgs'
 
 
 def make_batch_dir(task, batch_id):
@@ -47,26 +46,29 @@ samples = [
     {
         'skycam_type': 'SC2',
         'year': 2023,
-        'month': 8,
-        'day': 1
+        'month': 7,
+        'day': 31
     },
 ]
 
 
 
-def create_skycam_df(batch_id, batch_path):
+def create_skycam_df(batch_id, batch_path, first_t, last_t):
     skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
-    skycam_paths = make_skycam_paths_json(batch_path, skycam_imgs_root_path)
     skycam_df = get_dataframe('skycam')
     for sample in samples:
         preprocess_skycam_imgs(sample['skycam_type'],
                                sample['year'],
                                sample['month'],
                                sample['day'],
+                               first_t,
+                               last_t,
                                root=skycam_imgs_root_path,
                                verbose=True)
         skycam_dir = get_skycam_dir(sample['skycam_type'], sample['year'], sample['month'], sample['day'], '')[1:]
         skycam_df = add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose=True)
+
+    skycam_paths = make_skycam_paths_json(batch_path, skycam_imgs_root_path)
     return skycam_df
 
 def create_pano_df(batch_id, batch_path):
@@ -83,10 +85,10 @@ def create_feature_df(batch_id, batch_path, skycam_df, pano_df):
     return feature_df
 
 
-def build_batch(task, batch_id, do_zip=False):
+def build_batch(task, batch_id, first_utc, last_utc, do_zip=False):
     batch_path = make_batch_dir(task, batch_id)
 
-    skycam_df = create_skycam_df(batch_id, batch_path)
+    skycam_df = create_skycam_df(batch_id, batch_path, first_utc, last_utc)
     pano_df = create_pano_df(batch_id, batch_path)
     feature_df = create_feature_df(batch_id, batch_path, skycam_df, pano_df)
 

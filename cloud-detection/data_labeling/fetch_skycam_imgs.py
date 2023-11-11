@@ -164,26 +164,23 @@ def remove_day_images(skycam_dir, morning_hour=4, evening_hour=21):
         if morning_hour <= pst_time.hour <= evening_hour:
             os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
-def filter_by_timestamp(t_start: datetime, t_end: datetime, skycam_dir: str):
+def filter_images(skycam_dir: str, first_t: datetime, last_t: datetime):
     """Remove skycam images between t_start and t_end."""
-    # TODO
     img_subdirs = get_skycam_subdirs(skycam_dir)
-    PST_offset = timedelta(hours=-7)
     for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
-        pst_time = get_skycam_img_time(skycam_img_fname) + PST_offset
-        if not (t_start <= pst_time.hour <= t_end):
+        skycam_t = get_skycam_img_time(skycam_img_fname)
+        if not (first_t <= skycam_t <= last_t):
             os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
 
-
-def download_night_skycam_imgs(skycam_type, year, month, day, root, verbose=False):
+def download_night_skycam_imgs(skycam_type, year, month, day, first_t, last_t, root, verbose=False):
     skycam_dir = download_skycam_data(skycam_type, year, month, day, verbose, root=root)
     if skycam_dir:
         is_data_downloaded(skycam_dir)
         if verbose: print("Unzipping files...")
         unzip_images(skycam_dir)
         if verbose: print("Removing day images..")
-        remove_day_images(skycam_dir)
+        filter_images(skycam_dir, first_t, last_t)
         return skycam_dir
     else:
         # No valid data found

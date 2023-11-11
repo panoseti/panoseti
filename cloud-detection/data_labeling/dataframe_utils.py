@@ -4,6 +4,7 @@ import numpy as np
 import os
 import shutil
 
+batch_data_root_dir = 'batch_data'
 data_labels_fname = 'skycam_labels.json'
 
 # Database formats / Core routines
