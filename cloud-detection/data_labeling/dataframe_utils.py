@@ -4,6 +4,7 @@ import numpy as np
 import os
 import shutil
 
+pano_imgs_root_dir = 'pano_imgs'
 batch_data_root_dir = 'batch_data'
 data_labels_fname = 'skycam_labels.json'
 

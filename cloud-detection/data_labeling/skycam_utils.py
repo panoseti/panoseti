@@ -121,6 +121,10 @@ def make_skycam_paths_json(batch_path, skycam_imgs_path):
     return skycam_paths
 
 
+def get_unix_from_datetime(t):
+    return (t - datetime(1970, 1, 1, tzinfo=timezone.utc)) / timedelta(seconds=1)
+
+
 def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose):
     """Add entries for each skycam image to skycam_df """
     original_img_dir = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')['original']
@@ -129,7 +133,7 @@ def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, sky
             # Collect image features
             skycam_type = original_fname.split('_')[0]
             t = get_skycam_img_time(original_fname)
-            timestamp = (t - datetime(1970, 1, 1, tzinfo=timezone.utc)) / timedelta(seconds=1)
+            timestamp = get_unix_from_datetime(t)
             # Add entries to skycam_df
             skycam_df = add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=verbose)
     return skycam_df

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInterface
 from panoseti_batch_builder import PanosetiBatchBuilder
 from panoseti_batch_utils import *
-from skycam_utils import get_skycam_img_time, get_skycam_subdirs
+from skycam_utils import get_skycam_img_time, get_skycam_subdirs, get_unix_from_datetime
 import make_batch
 
 
@@ -30,10 +30,15 @@ if __name__ == '__main__':
 
     skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
 
-    for fname in sorted(os.listdir(skycam_subdirs['original']))[:1]:
+    for fname in sorted(os.listdir(skycam_subdirs['original']))[:2]:
         if fname.endswith('.jpg'):
-            print(get_skycam_img_time(fname))
+            t = get_skycam_img_time(fname)
+            print(t)
+            print(get_unix_from_datetime(t))
+            print(type(t))
 
+            ret = builder.module_file_time_seek(254, get_unix_from_datetime(t))
+            print(ret)
 
 
     """

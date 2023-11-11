@@ -143,7 +143,8 @@ class FrameIterator:
     def __init__(self, fp, step_size, frame_size, bytes_per_pixel):
         """From the PFF file pointer fp, returns the image frame
         and json header step_size later than the previous image.
-        Note that frames are NOT necessarily in chronological order"""
+        Note that while imaging frames are typically in chronological order,
+        this is not a guarantee."""
         self.fp = fp
         self.frame_size = frame_size
         self.bpp = bytes_per_pixel
@@ -180,6 +181,8 @@ class ModuleImageInterface(ObservingRunFileInterface):
                 self.start_unix_t = None
         else:
             self.start_unix_t = self.module_pff_files[0]['first_unix_t']
+
+
 
 # class ModuleImageIterator:
 #     def __init__(self, module_image_interface, step_size, frame_size, bytes_per_pixel):

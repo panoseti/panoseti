@@ -5,20 +5,19 @@ import shutil
 from datetime import datetime, timedelta
 
 from skycam_utils import *
-from dataframe_utils import add_feature_entry, get_dataframe, save_df, batch_data_root_dir
+from dataframe_utils import add_feature_entry, get_dataframe, save_df, batch_data_root_dir, pano_imgs_root_dir
 from preprocess_skycam import preprocess_skycam_imgs
-from panoseti_batch_utils import pano_imgs_root_dir
 
 """
-batch_data/ file tree
 
-./batch_data/
+batch_data/
 ├─ task_cloud-detection.batch-id_N/
 │  ├─ skycam_imgs/
 │  ├─ pano_imgs/
 │  ├─ skycam_path_index.json
 │  ├─ pano_path_index.json
 │  ├─ task_cloud-detection.batch-id_N.type_feature.csv
+
 """
 
 batch_data_zipfiles_dir = 'batch_data_zipfiles'

@@ -14,9 +14,8 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from ..skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname, skycam_imgs_root_dir
-from ..panoseti_batch_utils import pano_imgs_root_dir
-from ..dataframe_utils import *
+from skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname, skycam_imgs_root_dir
+from dataframe_utils import *
 
 class LabelSession:
     data_labels_path = f'../{data_labels_fname}'

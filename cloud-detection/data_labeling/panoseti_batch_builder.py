@@ -1,6 +1,7 @@
 
 import os
 import numpy as np
+import sys
 
 import matplotlib.pyplot as plt
 
@@ -8,6 +9,9 @@ from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInter
 from skycam_utils import get_batch_dir
 from panoseti_batch_utils import *
 from dataframe_utils import *
+
+sys.path.append("../../util")
+import pff
 
 
 class PanosetiBatchBuilder(ObservingRunFileInterface):
@@ -48,20 +52,59 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             raise FileExistsError(f"Data in {self.pano_path} already processed")
         self.is_initialized()
 
-    def process_file(self, file_info, data, itr_info, step_size):
+    def module_file_time_seek(self, module_id, target_time):
+        """Search module data to find the frame with timestamp closest to target_time.
+        target_time should be a unix timestamp."""
+        module_pff_files = self.obs_pff_files[module_id]
+
+        # Use binary search to find the file that contains target_time
+        l = 0
+        r = len(module_pff_files) - 1
+        m = -1
+        while l <= r:
+            m = (r + l) // 2
+            file_info = module_pff_files[m]
+            if target_time > file_info['last_unix_t']:
+                l = m + 1
+            elif target_time < file_info['first_unix_t']:
+                r = m - 1
+            else:
+                break
+        file_info = module_pff_files[m]
+        if target_time < file_info['first_unix_t'] or target_time > file_info['last_unix_t']:
+            return None
+        # Use binary search to find the frame closest to target_time
+        fpath = f"{self.run_path}/{file_info['fname']}"
+        with open(fpath, 'rb') as fp:
+            frame_time = self.intgrn_usec * 10 ** (-6)
+            pff.time_seek(fp, frame_time, self.img_size, target_time)
+            ret = {
+                'file_idx': m,
+                'offset': fp.tell()
+            }
+            return ret
+
+    def iterate_module_files(self, module_id, step_size, verbose=False):
         """On a sample of the frames in the file represented by file_info, add the total
         image brightness to the data array beginning at data_offset."""
-        with open(f"{self.data_dir}/{self.run_dir}/{file_info['fname']}", 'rb') as f:
-            # Start file pointer with an offset based on the previous file -> ensures even frame sampling
-            f.seek(
-                itr_info['fstart_offset'] * file_info['frame_size'],
-                os.SEEK_CUR
-            )
-            new_nframes = file_info['nframes'] - itr_info['fstart_offset']
-            for i in range(new_nframes // step_size):
-                j, img = self.get_next_frame(f, file_info['frame_size'], file_info['bytes_per_pixel'], step_size)
-                data[itr_info['data_offset'] + i] = np.sum(img)
-            itr_info['fstart_offset'] = file_info['nframes'] - (new_nframes // step_size) * step_size
+        module_pff_files = self.obs_pff_files[module_id]
+        frame_offset = 0  # For roughly even frame step size across file boundaries
+        for i in range(len(module_pff_files)):
+            file_info = module_pff_files[i]
+            fpath = f"{self.run_path}/{file_info['fname']}"
+            if verbose: print(f"Processing {file_info['fname']}")
+            with open(fpath, 'rb') as fp:
+                # Start file pointer with an offset based on the previous file -> ensures even frame sampling
+                fp.seek(
+                    frame_offset * self.frame_size,
+                    os.SEEK_CUR
+                )
+                new_nframes = file_info['nframes'] - frame_offset
+                for _ in range(new_nframes // step_size):
+                    j, img = self.get_next_frame(fp, self.frame_size, self.img_bpp, step_size)
+                    # TODO: do something here
+                frame_offset = file_info['nframes'] - (new_nframes // step_size) * step_size
+
 
 
 

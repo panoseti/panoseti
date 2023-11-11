@@ -5,7 +5,6 @@ import numpy as np
 import seaborn_image as isns
 import matplotlib.pyplot as plt
 
-pano_imgs_root_dir = 'pano_imgs'
 pano_path_index_fname = 'pano_path_index.json'
 valid_image_types = ['original', 'derivative', 'fft']
 
