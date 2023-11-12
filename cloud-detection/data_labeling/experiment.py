@@ -7,6 +7,7 @@ from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInter
 from panoseti_batch_builder import PanosetiBatchBuilder
 from panoseti_batch_utils import *
 from skycam_utils import get_skycam_img_time, get_skycam_subdirs, get_unix_from_datetime
+from dataframe_utils import *
 import make_batch
 
 
@@ -20,16 +21,18 @@ if __name__ == '__main__':
     RUN_DIR = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
 
     builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
-    test_mii = ModuleImageInterface(DATA_DIR, RUN_DIR, 254)
 
     print(builder.start_utc)
     print(builder.stop_utc)
 
+    builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
     make_batch.build_batch('cloud-detection', 0, builder.start_utc, builder.stop_utc)
     skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
     print(skycam_subdirs)
-
-    builder.create_feature_images(skycam_subdirs['original'])
+    pano_df = get_dataframe('pano')
+    feature_df = get_dataframe('feature')
+    feature_df, pano_df = builder.create_feature_images(feature_df, pano_df, skycam_subdirs['original'], verbose=True)
+    print(pano_df)
 
     #
     # for fname in sorted(os.listdir(skycam_subdirs['original'])):

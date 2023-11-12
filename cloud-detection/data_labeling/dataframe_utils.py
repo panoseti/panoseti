@@ -4,9 +4,14 @@ import numpy as np
 import os
 import shutil
 
+
+skycam_imgs_root_dir = 'skycam_imgs'
 pano_imgs_root_dir = 'pano_imgs'
 batch_data_root_dir = 'batch_data'
+
 data_labels_fname = 'skycam_labels.json'
+pano_path_index_fname = 'pano_path_index.json'
+skycam_path_index_fname = 'skycam_path_index.json'
 
 # Database formats / Core routines
 
@@ -20,7 +25,7 @@ def get_dataframe_formats():
             'columns': ['skycam_uid', 'batch_id', 'skycam_dir', 'fname', 'unix_t', 'skycam_type'],
         },
         'pano': {
-            'columns': ['pano_uid', 'batch_id', 'run_dir', 'fname', 'module_id', 'unix_t']
+            'columns': ['pano_uid', 'batch_id', 'run_dir', 'fname', 'module_id', 'frame_unix_t']
         },
         'feature': {
             'columns': ['feature_uid', 'skycam_uid', 'pano_uid', 'batch_id']
@@ -106,8 +111,7 @@ def extend_df(df: pd.DataFrame, df_type: str, data: dict,
     return pd.concat([df, df_extended], ignore_index=True, verify_integrity=verify_integrity)
 
 
-
-# Database interface routines
+# UID definitions
 
 def get_uid(data: str):
     """Returns SHA1 hash of a string input data."""
@@ -115,6 +119,17 @@ def get_uid(data: str):
     data_uid = hashlib.sha1(data_bytes).hexdigest()
     return data_uid
 
+def get_pano_uid(skycam_uid, pano_original_fname):
+    return get_uid(skycam_uid + pano_original_fname)
+
+def get_feature_uid(skycam_uid, batch_id):
+    return get_uid(skycam_uid + str(batch_id))
+
+def get_skycam_uid(original_skycam_fname):
+    return get_uid(original_skycam_fname)
+
+
+# Database interface routines
 
 def add_user(user_df, user_uid, name, verbose=False):
     """Returns a df with user added."""
@@ -141,9 +156,8 @@ def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
         print(f'An entry for "{batch_id}" already exists')
 
 
-def add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=False):
+def add_skycam_img(skycam_df, skycam_uid, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=False):
     """Add a skycamera img to skycam_df."""
-    skycam_uid = get_uid(original_fname)
     if not skycam_df.loc[:, 'skycam_uid'].str.contains(skycam_uid).any():
         data = {
             'skycam_uid': [skycam_uid],
@@ -158,9 +172,8 @@ def add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, 
     elif verbose:
         print(f'An entry for "{original_fname}" already exists')
 
-def add_pano_img(pano_df, run_dir, fname, module_id, unix_t, batch_id, skycam_dir, verbose=False):
+def add_pano_img(pano_df, pano_uid, run_dir, fname, module_id, unix_t, batch_id, verbose=False):
     """Add a panoseti module img to pano_df."""
-    pano_uid = get_uid(fname)
     if not pano_df.loc[:, 'pano_uid'].str.contains(pano_uid).any():
         data = {
             'pano_uid': [pano_uid],
@@ -168,14 +181,14 @@ def add_pano_img(pano_df, run_dir, fname, module_id, unix_t, batch_id, skycam_di
             'run_dir': [run_dir],
             'fname': [fname],
             'module_id': [module_id],
-            'unix_t': [unix_t]
+            'frame_unix_t': [unix_t]
         }
         return extend_df(pano_df, 'pano', data)
     elif verbose:
         print(f'An entry for "{fname}" already exists')
 
 def add_feature_entry(feature_df, skycam_uid, pano_uid, batch_id, verbose=False):
-    feature_uid = get_uid(skycam_uid + str(batch_id))
+    feature_uid = get_feature_uid(skycam_uid, batch_id)
     if not feature_df.loc[:, 'feature_uid'].str.contains(feature_uid).any():
         data = {
             'feature_uid': [feature_uid],

@@ -4,10 +4,8 @@ import os
 import json
 from datetime import datetime, timedelta, timezone
 
-from dataframe_utils import add_skycam_img
+from dataframe_utils import add_skycam_img, get_skycam_uid, skycam_imgs_root_dir, skycam_path_index_fname
 
-skycam_imgs_root_dir = 'skycam_imgs'
-skycam_path_index_fname = 'skycam_path_index.json'
 valid_image_types = ['original', 'cropped', 'pfov']
 
 def get_skycam_subdirs(skycam_path):
@@ -38,6 +36,10 @@ def get_skycam_dir(skycam_type, year, month, day):
         return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
     elif skycam_type == 'SC2':
         return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
+
+def get_skycam_root_path(batch_path):
+    skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
+    return skycam_imgs_root_path
 
 
 def init_preprocessing_dirs(skycam_dir):
@@ -101,8 +103,9 @@ def make_skycam_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     skycam_paths = {}
-    for path in os.listdir(f'{batch_path}/{skycam_imgs_root_dir}'):
-        skycam_path = f'{skycam_imgs_root_dir}/{path}'
+    skycam_imgs_root_path = get_skycam_root_path(batch_path)
+    for path in os.listdir(skycam_imgs_root_path):
+        skycam_path = f'{skycam_imgs_root_path}/{path}'
         if os.path.isdir(skycam_imgs_root_dir) and 'SC' in path and 'imgs' in path:
             skycam_paths[skycam_path] = {
                 "img_subdirs": {},
@@ -128,14 +131,15 @@ def get_unix_from_datetime(t):
 def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose):
     """Add entries for each skycam image to skycam_df """
     original_img_dir = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')['original']
-    for original_fname in os.listdir(original_img_dir):
-        if original_fname[-4:] == '.jpg':
+    for original_skycam_fname in os.listdir(original_img_dir):
+        if original_skycam_fname.endswith('.jpg'):
             # Collect image features
-            skycam_type = original_fname.split('_')[0]
-            t = get_skycam_img_time(original_fname)
+            skycam_type = original_skycam_fname.split('_')[0]
+            t = get_skycam_img_time(original_skycam_fname)
             timestamp = get_unix_from_datetime(t)
+            skycam_uid = get_skycam_uid(original_skycam_fname)
             # Add entries to skycam_df
-            skycam_df = add_skycam_img(skycam_df, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=verbose)
+            skycam_df = add_skycam_img(skycam_df, skycam_uid, original_skycam_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=verbose)
     return skycam_df
 
 

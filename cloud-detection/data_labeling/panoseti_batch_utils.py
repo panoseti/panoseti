@@ -11,10 +11,9 @@ from matplotlib import colors
 from scipy.fftpack import fftn, fftshift
 from skimage.filters import window
 
-from dataframe_utils import add_pano_img, pano_imgs_root_dir
+from dataframe_utils import add_pano_img, pano_imgs_root_dir, pano_path_index_fname
 
 
-pano_path_index_fname = 'pano_path_index.json'
 valid_image_types = ['original', 'derivative', 'fft-derivative', 'fft']
 
 # File structure abstraction
@@ -24,12 +23,13 @@ def get_pano_subdirs(pano_path):
         pano_subdirs[img_type] = f'{pano_path}/{img_type}'
     return pano_subdirs
 
-def get_pano_img_path(pano_path, original_fname, img_type):
+def get_pano_root_path(batch_path):
+    return f'{batch_path}/{pano_imgs_root_dir}'
+
+def get_pano_img_path(pano_path, pano_uid, img_type):
     assert img_type in valid_image_types, f"{img_type} is not supported"
     pano_subdirs = get_pano_subdirs(pano_path)
-    if original_fname[-4:] != '.pff':
-        return None
-    return f"{pano_subdirs[img_type]}/{original_fname.rstrip('.pff')}.feature-type_{img_type}.png"
+    return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
     # if feature_type == 'original':
     #     return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_original.pff"
     # elif feature_type == 'derivative':
@@ -39,12 +39,15 @@ def get_pano_img_path(pano_path, original_fname, img_type):
     # else:
     #     return None
     #
+
+
 def make_pano_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     pano_paths = {}
-    for path in os.listdir(pano_imgs_root_dir):
-        pano_path = f'{pano_imgs_root_dir}/{path}'
+    pano_imgs_root_path = get_pano_root_path(batch_path)
+    for path in os.listdir(pano_imgs_root_path):
+        pano_path = f'{pano_imgs_root_path}/{path}'
         if os.path.isdir(pano_imgs_root_dir) and 'pffd' in path:
             pano_paths[pano_path] = {
                 "img_subdirs": {},
@@ -150,13 +153,15 @@ def plot_image_fft(data, cmap, **kwargs):
     # shape = kwargs.get("shape", data.shape)
     shape = data.shape
     window_type = "cosine"
-    data = data * window(window_type, shape, None)
+    data = data * window(window_type, shape)
 
     # perform fft and get absolute value
     data = np.abs(fftn(data))
     # shift the DC component to center
     data = fftshift(data)
     data = np.log(data)
+    # print(f'min:{np.min(data)}, max:{np.max(data)}')
+
 
     ax = isns.imgplot(
         data,

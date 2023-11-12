@@ -8,7 +8,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInterface
-from skycam_utils import get_batch_dir, get_skycam_img_time, get_unix_from_datetime
+from skycam_utils import get_batch_dir, get_skycam_img_time, get_unix_from_datetime, get_skycam_root_path, get_skycam_subdirs
 from panoseti_batch_utils import *
 from dataframe_utils import *
 
@@ -80,7 +80,6 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     # TODO: do something here
                 frame_offset = file_info['nframes'] - (new_nframes // step_size) * step_size
 
-
     def module_file_time_seek(self, module_id, target_time):
         """Search module data to find the frame with timestamp closest to target_time.
         target_time should be a unix timestamp."""
@@ -106,9 +105,13 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         with open(fpath, 'rb') as fp:
             frame_time = self.intgrn_usec * 10 ** (-6)
             pff.time_seek(fp, frame_time, self.img_size, target_time)
+            frame_offset = int(fp.tell() / self.frame_size)
+            j, img = self.read_frame(fp, self.img_bpp)
+            frame_unix_t = pff.img_header_time(j)
             ret = {
                 'file_idx': m,
-                'frame_offset': int(fp.tell() / self.frame_size)
+                'frame_offset': frame_offset,
+                'frame_unix_t': frame_unix_t
             }
             # j, img = self.read_frame(fp, self.img_bpp)
             # fig = self.plot_image(img)
@@ -132,7 +135,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             #plt.pause(0.5)
             return fig
 
-    def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, cmap, verbose=False):
+    def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap, verbose=False):
         module_pff_files = self.obs_pff_files[module_id]
         file_info = module_pff_files[start_file_idx]
         fpath = f"{self.run_path}/{file_info['fname']}"
@@ -142,8 +145,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
-            fig = plot_image_fft(img, ax=None, cmap=cmap)
-            #plt.pause(0.1)
+            fig = plot_image_fft(img, vmin=vmin, vmax=vmax, cmap=cmap)
             return fig
 
     def make_time_derivative_figs(self,
@@ -205,7 +207,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         break
                     if len(hist) < hist_size:
                         hist.insert(0, img)
-                        if verbose: print(int(pff.img_header_time(j) - s))
+                        # if verbose: print(int(pff.img_header_time(j) - s))
                         continue
                     imgs = list()
                     delta_ts = []
@@ -215,8 +217,12 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         imgs.append(data)
                     # print(delta_ts)
 
-                    fig_time_derivative = plot_time_derivative(imgs, delta_ts, vmin=vmin, vmax=vmax, cmap=cmap[0])
-                    fig_fft_time_derivative = plot_fft_time_derivative(imgs, delta_ts, 4, vmin, vmax, cmap=cmap[1])
+                    fig_time_derivative = plot_time_derivative(
+                        imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
+                    )
+                    fig_fft_time_derivative = plot_fft_time_derivative(
+                        imgs, delta_ts, 4, vmin[1], vmax[1], cmap=cmap[1]
+                    )
 
                     # plt.pause(0.5)
                     return fig_time_derivative, fig_fft_time_derivative
@@ -226,23 +232,29 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
                     frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
 
-    def create_feature_images(self, skycam_original_subdir, verbose=False):
+    def create_feature_images(self, feature_df, pano_df, skycam_dir, verbose=False, allow_skip=True):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
             3. Generate a corresponding set of panoseti image features relative to that frame.
         Note: must download skycam data before calling this routine.
         """
+        skycam_imgs_root_path = get_skycam_root_path(self.batch_path)
+        skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
+
         module_id = 254
         self.init_preprocessing_dirs()
-        for fname in sorted(os.listdir(skycam_original_subdir))[10:]:
-            if fname.endswith('.jpg'):
-                t = get_skycam_img_time(fname)
+        for original_skycam_fname in sorted(os.listdir(skycam_subdirs['original'])):
+            if original_skycam_fname.endswith('.jpg'):
+                if verbose: print(f'\nGenerating pano features for {original_skycam_fname}...')
+                # Correlate skycam img to panoseti image, if possible
+                t = get_skycam_img_time(original_skycam_fname)
                 skycam_unix_t = get_unix_from_datetime(t)
-
+                skycam_uid = get_skycam_uid(original_skycam_fname)
                 pano_frame_info = self.module_file_time_seek(module_id, skycam_unix_t)
+
                 if pano_frame_info is not None:
-                    #cmap = sns.color_palette("mako", as_cmap=True)
+                    # Generate all features
                     figs = dict()
                     figs['original'] = self.make_original_fig(
                         pano_frame_info['file_idx'],
@@ -257,6 +269,8 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         pano_frame_info['file_idx'],
                         pano_frame_info['frame_offset'],
                         module_id,
+                        vmin=3,
+                        vmax=10,
                         cmap='icefire',
                         verbose=verbose
                     )
@@ -267,32 +281,62 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         1,
                         60,
                         nrows=4,
-                        vmin=-3.5,
-                        vmax=3.5,
+                        vmin=[-3.5, -1],
+                        vmax=[3.5, 6],
                         cmap=["icefire", "icefire"],
                         verbose=verbose
                     )
-
-                    module_pff_files = self.obs_pff_files[module_id]
-                    original_fname = module_pff_files[pano_frame_info['file_idx']]['fname']
-                    plt.pause(.5)
+                    # Check if all figs are valid
+                    all_figs_valid = True
                     for img_type, fig in figs.items():
-                        fig.savefig(get_pano_img_path(self.pano_path, original_fname, img_type))
-                        # if img_type in [ 'original']:
-                        if fig:
+                        if fig is None:
+                            all_figs_valid = False
+                            msg = f'The following frame resulted in a None "{img_type}" figure: {pano_frame_info}.'
+                            if not allow_skip:
+                                raise ValueError(msg)
+                            if verbose: print(msg)
+                    # Skip this image if not all figs are valid
+                    if not all_figs_valid:
+                        for fig in figs.values():
                             plt.close(fig)
-                        print(get_pano_img_path(self.pano_path, original_fname, img_type))
-                    # for img_type, fig in figs.items():
-                    #     plt.close(fig)
+                        continue
+                    # Write figures to data dirs
+                    # plt.pause(.5)
+                    module_pff_files = self.obs_pff_files[module_id]
+                    pano_fname = module_pff_files[pano_frame_info['file_idx']]['fname']
+                    pano_uid = get_pano_uid(skycam_uid, pano_fname)
+                    for img_type, fig in figs.items():
+                        if verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
+                        fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
+                        plt.close(fig)
+                    # Update dataframes
+                    pano_df = add_pano_img(
+                        pano_df,
+                        pano_uid,
+                        self.run_dir,
+                        pano_fname,
+                        module_id,
+                        unix_t=pano_frame_info['frame_unix_t'],
+                        batch_id=self.batch_id
+                    )
+                    feature_df = add_feature_entry(
+                        feature_df,
+                        skycam_uid,
+                        pano_uid,
+                        self.batch_id
+                    )
+        # for img_type, fig in figs.items():
+        #     plt.close(fig)
 
-                    # plt.pause(1)
-                    # plt.close(fig)
-                    # file_info = self.obs_pff_files[module_id][pano_frame_info['file_idx']]
-                    # # print(builder.start_utc <= t <= builder.stop_utc)
-                    # print('delta_t = ', (file_info['last_unix_t'] - file_info['first_unix_t']))
-                    # print(file_info['seqno'])
-                    # print()
-                    #
+        # plt.pause(1)
+        # plt.close(fig)
+        # file_info = self.obs_pff_files[module_id][pano_frame_info['file_idx']]
+        # # print(builder.start_utc <= t <= builder.stop_utc)
+        # print('delta_t = ', (file_info['last_unix_t'] - file_info['first_unix_t']))
+        # print(file_info['seqno'])
+        # print()
+        #
+        return feature_df, pano_df
 
     def add_pano_data_to_pano_df(self, pano_df, batch_id, verbose):
         """Add entries for each pano image to pano_df """
