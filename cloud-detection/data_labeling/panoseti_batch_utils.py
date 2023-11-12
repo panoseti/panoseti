@@ -8,6 +8,9 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import colors
 
+from scipy.fftpack import fftn, fftshift
+from skimage.filters import window
+
 from dataframe_utils import add_pano_img, pano_imgs_root_dir
 
 
@@ -103,7 +106,8 @@ def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
     for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
         #im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
-        im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
+        # im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
+        im = plot_image_fft(img, ax=ax, cmap=cmap)
         ax.set_title(title, x=0.5, y=-0.2)
         #im.set_norm(norm)
         ims.append(im)
@@ -135,11 +139,33 @@ def plot_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
     fig.suptitle(f': derivative', ha='center')
     return fig
 
-def plot_image_fft(img, cmap):
-    if img is None or not isinstance(img, np.ndarray):
+def plot_image_fft(data, cmap, **kwargs):
+    if data is None or not isinstance(data, np.ndarray):
         print('no image')
         return None
-    if img.shape != (32, 32):
-        img = np.reshape(img, (32, 32))
-    ax = isns.fftplot(img, cmap=cmap, window_type='cosine')
+    if data.shape != (32, 32):
+        data = np.reshape(data, (32, 32))
+
+    # window image to improve fft
+    # shape = kwargs.get("shape", data.shape)
+    shape = data.shape
+    window_type = "cosine"
+    data = data * window(window_type, shape, None)
+
+    # perform fft and get absolute value
+    data = np.abs(fftn(data))
+    # shift the DC component to center
+    data = fftshift(data)
+    data = np.log(data)
+
+    ax = isns.imgplot(
+        data,
+        cmap=cmap,
+        cbar=False,
+        showticks=False,
+        describe=False,
+        despine=None,
+        **kwargs
+    )
     return ax.get_figure()
+    ax = isns.fftplot(data, cmap=cmap, window_type='cosine')

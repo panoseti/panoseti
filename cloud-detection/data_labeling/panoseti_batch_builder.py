@@ -142,7 +142,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
-            fig = plot_image_fft(img, cmap=cmap)
+            fig = plot_image_fft(img, ax=None, cmap=cmap)
             #plt.pause(0.1)
             return fig
 
@@ -257,7 +257,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         pano_frame_info['file_idx'],
                         pano_frame_info['frame_offset'],
                         module_id,
-                        cmap='vlag',
+                        cmap='icefire',
                         verbose=verbose
                     )
                     figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
@@ -269,18 +269,19 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         nrows=4,
                         vmin=-3.5,
                         vmax=3.5,
-                        cmap=["icefire", "vlag"],
+                        cmap=["icefire", "icefire"],
                         verbose=verbose
                     )
 
                     module_pff_files = self.obs_pff_files[module_id]
                     original_fname = module_pff_files[pano_frame_info['file_idx']]['fname']
+                    plt.pause(.5)
                     for img_type, fig in figs.items():
                         fig.savefig(get_pano_img_path(self.pano_path, original_fname, img_type))
                         # if img_type in [ 'original']:
-                        plt.close(fig)
+                        if fig:
+                            plt.close(fig)
                         print(get_pano_img_path(self.pano_path, original_fname, img_type))
-                    # plt.pause(2)
                     # for img_type, fig in figs.items():
                     #     plt.close(fig)
 
