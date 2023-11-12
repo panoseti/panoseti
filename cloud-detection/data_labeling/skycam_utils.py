@@ -33,11 +33,11 @@ def get_skycam_img_path(original_fname, img_type, skycam_dir):
         return None
 
 
-def get_skycam_dir(skycam_type, year, month, day, root):
+def get_skycam_dir(skycam_type, year, month, day):
     if skycam_type == 'SC':
-        return f'{root}/SC_imgs_{year}-{month:0>2}-{day:0>2}'
+        return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
     elif skycam_type == 'SC2':
-        return f'{root}/SC2_imgs_{year}-{month:0>2}-{day:0>2}'
+        return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
 
 
 def init_preprocessing_dirs(skycam_dir):
@@ -97,25 +97,25 @@ def get_skycam_img_time(skycam_fname):
 def get_batch_dir(task, batch_id):
     return "task_{0}.batch-id_{1}".format(task, batch_id)
 
-def make_skycam_paths_json(batch_path, skycam_imgs_path):
+def make_skycam_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     skycam_paths = {}
-    for path in os.listdir(skycam_imgs_path):
-        skycam_dir = f'{skycam_imgs_path}/{path}'
-        if os.path.isdir(skycam_imgs_path) and 'SC' in path and 'imgs' in path:
-            skycam_paths[skycam_dir] = {
+    for path in os.listdir(skycam_imgs_root_dir):
+        skycam_path = f'{skycam_imgs_root_dir}/{path}'
+        if os.path.isdir(skycam_imgs_root_dir) and 'SC' in path and 'imgs' in path:
+            skycam_paths[skycam_path] = {
                 "img_subdirs": {},
                 "imgs_per_subdir": -1,
             }
-            skycam_subdirs = get_skycam_subdirs(skycam_dir)
-            skycam_paths[skycam_dir]["img_subdirs"] = skycam_subdirs
+            skycam_subdirs = get_skycam_subdirs(skycam_path)
+            skycam_paths[skycam_path]["img_subdirs"] = skycam_subdirs
             num_imgs_per_subdir = []
             for subdir in skycam_subdirs.values():
                 num_imgs_per_subdir.append(len(os.listdir(subdir)))
             if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
-                raise Warning(f"Unequal number of images in {skycam_dir}")
-            skycam_paths[skycam_dir]["imgs_per_subdir"] = num_imgs_per_subdir[0]
+                raise Warning(f"Unequal number of images in {skycam_path}")
+            skycam_paths[skycam_path]["imgs_per_subdir"] = num_imgs_per_subdir[0]
     with open(f"{batch_path}/{skycam_path_index_fname}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
     return skycam_paths

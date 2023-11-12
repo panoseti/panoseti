@@ -8,6 +8,8 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import colors
 
+from dataframe_utils import add_pano_img, pano_imgs_root_dir
+
 
 pano_path_index_fname = 'pano_path_index.json'
 valid_image_types = ['original', 'derivative', 'fft']
@@ -19,19 +21,59 @@ def get_pano_subdirs(pano_path):
         pano_subdirs[img_type] = f'{pano_path}/{img_type}'
     return pano_subdirs
 
-def get_skycam_img_path(original_fname, img_type, run_dir):
+def get_pano_img_path(pano_path, original_fname, img_type):
     assert img_type in valid_image_types, f"{img_type} is not supported"
-    pano_subdirs = get_pano_subdirs(run_dir)
-    if original_fname[-4:] != '.jpg':
+    pano_subdirs = get_pano_subdirs(pano_path)
+    if original_fname[-4:] != '.pff':
         return None
-    if img_type == 'original':
-        return f"{pano_subdirs['original']}/{original_fname}"
-    elif img_type == 'derivative':
-        return f"{pano_subdirs['derivative']}/{original_fname[:-4]}_cropped.jpg"
-    elif img_type == 'fft':
-        return f"{pano_subdirs['fft']}/{original_fname[:-4]}_pfov.jpg"
-    else:
-        return None
+    return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_{img_type}.png"
+    # if feature_type == 'original':
+    #     return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_original.pff"
+    # elif feature_type == 'derivative':
+    #     return f"{pano_subdirs['derivative']}/{original_fname.rstrip('.pff')}.feature-type_derivative.pff"
+    # elif feature_type == 'fft':
+    #     return f"{pano_subdirs['fft']}/{original_fname.rstrip('.pff')}.feature-type_.pff"
+    # else:
+    #     return None
+    #
+def make_pano_paths_json(batch_path):
+    """Create file for indexing sky-camera image paths."""
+    assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
+    pano_paths = {}
+    for path in os.listdir(pano_imgs_root_dir):
+        pano_path = f'{pano_imgs_root_dir}/{path}'
+        if os.path.isdir(pano_imgs_root_dir) and 'pffd' in path:
+            pano_paths[pano_path] = {
+                "img_subdirs": {},
+                "imgs_per_subdir": -1,
+            }
+            pano_subdirs = get_pano_subdirs(pano_path)
+            pano_paths[pano_path]["img_subdirs"] = pano_subdirs
+            num_imgs_per_subdir = []
+            for subdir in pano_subdirs.values():
+                num_imgs_per_subdir.append(len(os.listdir(subdir)))
+            if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
+                raise Warning(f"Unequal number of images in {pano_path}")
+            pano_paths[pano_path]["imgs_per_subdir"] = num_imgs_per_subdir[0]
+    with open(f"{batch_path}/{pano_path_index_fname}", 'w') as f:
+        f.write(json.dumps(pano_paths, indent=4))
+    return pano_paths
+
+
+
+def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, verbose):
+    """Add entries for each skycam image to skycam_df """
+    original_img_dir = get_pano_subdirs(f'{pano_imgs_root_path}/{pano_dir}')['original']
+    for original_fname in os.listdir(original_img_dir):
+        if original_fname[-4:] == '.jpg':
+            # Collect image features
+
+            # Add entries to skycam_df
+            pano_df = add_pano_img(pano_df, )
+    return pano_df
+
+
+
 
 # Plotting
 def plot_image_grid(imgs, delta_ts, nr, vmin=-4, vmax=4):
@@ -41,7 +83,7 @@ def plot_image_grid(imgs, delta_ts, nr, vmin=-4, vmax=4):
             return None
         if imgs[i].shape != (32, 32):
             imgs[i] = np.reshape(imgs[i], (32, 32))
-    plt.rcParams.update({'axes.titlesize': 'small'})
+    # plt.rcParams.update({'axes.titlesize': 'small'})
     fig = plt.figure(figsize=(2.5, 4.0))
 
     grid = ImageGrid(fig, 111,  # similar to subplot(111)
@@ -64,10 +106,9 @@ def plot_image_grid(imgs, delta_ts, nr, vmin=-4, vmax=4):
         ax.set_title(title, x=-0.3, y=0.35)
         im.set_norm(norm)
         ims.append(im)
-    fig.colorbar(ims[0], ax=grid)
     return fig
 
-def plot_image_grid_isns(imgs, delta_ts):
+def plot_time_derivative(imgs, delta_ts, nr, vmin=-3, vmax=3):
     for i in range(len(imgs)):
         if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
             print('no image')
@@ -76,8 +117,21 @@ def plot_image_grid_isns(imgs, delta_ts):
             imgs[i] = np.reshape(imgs[i], (32, 32))
     # print(delta_ts)
     # ax = isns.ImageGrid(imgs, height=1.5, col_wrap=1, vmin=-100, vmax=100, cmap="viridis", cbar=False)
-    ax = isns.ImageGrid(imgs, height=1.5, col_wrap=1, vmin=-3, vmax=3, cmap="viridis", cbar=False)
-    return ax.fig
+    titles = []
+    for dt in delta_ts:
+        titles.append(f'{dt} s')
+    print('len', len(imgs))
+    ax = isns.ImageGrid(list(reversed(imgs)),
+                        height=3,
+                        aspect=0.8,
+                        vmin=vmin,
+                        vmax=vmax,
+                        cmap='viridis',
+                        cbar_label=list(reversed(titles)),
+                        orientation="h")
+    fig = ax.fig
+    fig.suptitle(f': derivative', ha='center')
+    return fig
 
 def plot_image_fft(img):
     if img is None or not isinstance(img, np.ndarray):

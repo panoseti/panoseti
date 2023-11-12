@@ -85,9 +85,10 @@ def plot_pfov(skycam_img, corners, pfov_fpath):
 
 def preprocess_skycam_imgs(skycam_type, year, month, day, first_t, last_t, root, verbose=False):
     """Run all preprocessing routines on the """
-    skycam_dir = get_skycam_dir(skycam_type, year, month, day, root)
+    skycam_dir = get_skycam_dir(skycam_type, year, month, day)
+    skycam_path = f'{root}/{skycam_dir}'
     try:
-        init_preprocessing_dirs(skycam_dir)
+        init_preprocessing_dirs(skycam_path)
     except FileExistsError as fee:
         print(fee)
         return None
@@ -102,16 +103,16 @@ def preprocess_skycam_imgs(skycam_type, year, month, day, first_t, last_t, root,
     if verbose: print('Running pre-processing routines.')
 
     corners_4x1x2 = get_corners(skycam_type)
-    img_subdirs = get_skycam_subdirs(skycam_dir)
+    img_subdirs = get_skycam_subdirs(skycam_path)
 
     for original_fname in os.listdir(img_subdirs['original']):
         # load the image
         if original_fname[-4:] != '.jpg':
             continue
 
-        original_img = cv2.imread(get_skycam_img_path(original_fname, 'original', skycam_dir))
-        cropped_fpath = get_skycam_img_path(original_fname, 'cropped', skycam_dir)
-        pfov_fpath = get_skycam_img_path(original_fname, 'pfov', skycam_dir)
+        original_img = cv2.imread(get_skycam_img_path(original_fname, 'original', skycam_path))
+        cropped_fpath = get_skycam_img_path(original_fname, 'cropped', skycam_path)
+        pfov_fpath = get_skycam_img_path(original_fname, 'pfov', skycam_path)
 
         crop_img(original_img, corners_4x1x2, cropped_fpath)
         plot_pfov(original_img, corners_4x1x2, pfov_fpath)

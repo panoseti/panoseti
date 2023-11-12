@@ -89,12 +89,12 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
 
 
     # Create skycam directory
-    skycam_dir = get_skycam_dir(skycam_type, year, month, day, root)
-    os.makedirs(skycam_dir, exist_ok=True)
+    skycam_path = f'{root}/{get_skycam_dir(skycam_type, year, month, day)}'
+    os.makedirs(skycam_path, exist_ok=True)
 
     # Set Chrome driver options
     prefs = {
-        'download.default_directory': os.path.abspath(skycam_dir)
+        'download.default_directory': os.path.abspath(skycam_path)
     }
     #print(os.path.abspath(skycam_dir))
     chrome_options = webdriver.ChromeOptions()
@@ -112,7 +112,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
     if title == '404 Not Found' or title != 'Mt. Hamilton Data Repository':
         print(f"The link '{link}' does not contain valid skycam data. Exiting...")
         driver.close()
-        shutil.rmtree(skycam_dir)
+        shutil.rmtree(skycam_path)
         return None
 
     # Select all files to download
@@ -130,10 +130,10 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
     download_tarball = driver.find_element(By.XPATH, "//input[@type='submit']")
     download_tarball.click()
 
-    download_wait(directory=skycam_dir, timeout=30, nfiles=1, verbose=verbose)
+    download_wait(directory=skycam_path, timeout=30, nfiles=1, verbose=verbose)
     driver.close()
 
-    return skycam_dir
+    return skycam_path
 
 
 def unzip_images(skycam_dir):

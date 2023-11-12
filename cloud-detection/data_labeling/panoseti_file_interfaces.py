@@ -79,7 +79,7 @@ class ObservingRunFileInterface:
             return None
         if img.shape != (32, 32):
             img = np.reshape(img, (32, 32))
-        ax = isns.imghist(img, cmap="viridis", vmin=50, vmax=250)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
+        ax = isns.imghist(img, cmap="viridis", vmin=25, vmax=300)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         # ax = isns.imghist(img, cmap="viridis", vmin=-100, vmax=100)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         # ax = isns.imghist(img, cmap="viridis", vmin=-3.5, vmax=3.5)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         return ax

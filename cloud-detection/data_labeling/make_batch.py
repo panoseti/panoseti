@@ -9,15 +9,31 @@ from dataframe_utils import add_feature_entry, get_dataframe, save_df, batch_dat
 from preprocess_skycam import preprocess_skycam_imgs
 
 """
+Batched data file tree:
+------------
 
 batch_data/
+├─ task_cloud-detection.batch-id_0/
+├─ task_cloud-detection.batch-id_1/
+.
+.
+.
 ├─ task_cloud-detection.batch-id_N/
 │  ├─ skycam_imgs/
+│  │  ├─ original/
+│  │  ├─ cropped/
+│  │  ├─ pfov/
 │  ├─ pano_imgs/
+│  │  ├─ original/
+│  │  ├─ derivative/
+│  │  ├─ fft/
 │  ├─ skycam_path_index.json
 │  ├─ pano_path_index.json
 │  ├─ task_cloud-detection.batch-id_N.type_feature.csv
-
+.
+.
+.
+------------
 """
 
 batch_data_zipfiles_dir = 'batch_data_zipfiles'
@@ -64,10 +80,10 @@ def create_skycam_df(batch_id, batch_path, first_t, last_t):
                                last_t,
                                root=skycam_imgs_root_path,
                                verbose=True)
-        skycam_dir = get_skycam_dir(sample['skycam_type'], sample['year'], sample['month'], sample['day'], '')[1:]
+        skycam_dir = get_skycam_dir(sample['skycam_type'], sample['year'], sample['month'], sample['day'])
         skycam_df = add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose=True)
 
-    skycam_paths = make_skycam_paths_json(batch_path, skycam_imgs_root_path)
+    skycam_paths = make_skycam_paths_json(batch_path)
     return skycam_df
 
 def create_pano_df(batch_id, batch_path):
