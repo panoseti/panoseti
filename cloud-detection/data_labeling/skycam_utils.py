@@ -101,7 +101,7 @@ def make_skycam_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
     skycam_paths = {}
-    for path in os.listdir(skycam_imgs_root_dir):
+    for path in os.listdir(f'{batch_path}/{skycam_imgs_root_dir}'):
         skycam_path = f'{skycam_imgs_root_dir}/{path}'
         if os.path.isdir(skycam_imgs_root_dir) and 'SC' in path and 'imgs' in path:
             skycam_paths[skycam_path] = {

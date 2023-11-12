@@ -12,7 +12,7 @@ from dataframe_utils import add_pano_img, pano_imgs_root_dir
 
 
 pano_path_index_fname = 'pano_path_index.json'
-valid_image_types = ['original', 'derivative', 'fft']
+valid_image_types = ['original', 'derivative', 'fft-derivative', 'fft']
 
 # File structure abstraction
 def get_pano_subdirs(pano_path):
@@ -26,7 +26,7 @@ def get_pano_img_path(pano_path, original_fname, img_type):
     pano_subdirs = get_pano_subdirs(pano_path)
     if original_fname[-4:] != '.pff':
         return None
-    return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_{img_type}.png"
+    return f"{pano_subdirs[img_type]}/{original_fname.rstrip('.pff')}.feature-type_{img_type}.png"
     # if feature_type == 'original':
     #     return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_original.pff"
     # elif feature_type == 'derivative':
@@ -69,14 +69,14 @@ def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, v
             # Collect image features
 
             # Add entries to skycam_df
-            pano_df = add_pano_img(pano_df, )
+            pano_df = add_pano_img(pano_df, ...)
     return pano_df
 
 
 
 
 # Plotting
-def plot_image_grid(imgs, delta_ts, nr, vmin=-4, vmax=4):
+def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
     for i in range(len(imgs)):
         if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
             print('no image')
@@ -84,10 +84,10 @@ def plot_image_grid(imgs, delta_ts, nr, vmin=-4, vmax=4):
         if imgs[i].shape != (32, 32):
             imgs[i] = np.reshape(imgs[i], (32, 32))
     # plt.rcParams.update({'axes.titlesize': 'small'})
-    fig = plt.figure(figsize=(2.5, 4.0))
+    fig = plt.figure(figsize=(10., 3.))
 
     grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                     nrows_ncols=(nr, 1),  # creates nr x 1 grid of axes
+                     nrows_ncols=(1, nc),  # creates nr x 1 grid of axes
                      axes_pad=0.1,  # pad between axes in inch.
                      share_all=True
                      )
@@ -102,13 +102,14 @@ def plot_image_grid(imgs, delta_ts, nr, vmin=-4, vmax=4):
     ims = []
     norm = colors.Normalize(vmin=vmin, vmax=vmax)
     for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
-        im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
-        ax.set_title(title, x=-0.3, y=0.35)
-        im.set_norm(norm)
+        #im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
+        im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
+        ax.set_title(title, x=0.5, y=-0.2)
+        #im.set_norm(norm)
         ims.append(im)
     return fig
 
-def plot_time_derivative(imgs, delta_ts, nr, vmin=-3, vmax=3):
+def plot_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
     for i in range(len(imgs)):
         if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
             print('no image')
@@ -120,24 +121,25 @@ def plot_time_derivative(imgs, delta_ts, nr, vmin=-3, vmax=3):
     titles = []
     for dt in delta_ts:
         titles.append(f'{dt} s')
-    print('len', len(imgs))
-    ax = isns.ImageGrid(list(reversed(imgs)),
+    #print('len', len(imgs))
+    ax = isns.ImageGrid(imgs,
                         height=3,
-                        aspect=0.8,
+                        aspect=0.75,
+                        col_wrap=4,
                         vmin=vmin,
                         vmax=vmax,
-                        cmap='viridis',
-                        cbar_label=list(reversed(titles)),
+                        cmap=cmap,
+                        cbar_label=titles,
                         orientation="h")
     fig = ax.fig
     fig.suptitle(f': derivative', ha='center')
     return fig
 
-def plot_image_fft(img):
+def plot_image_fft(img, cmap):
     if img is None or not isinstance(img, np.ndarray):
         print('no image')
         return None
     if img.shape != (32, 32):
         img = np.reshape(img, (32, 32))
-    ax = isns.fftplot(img, cmap="viridis", window_type='cosine')
+    ax = isns.fftplot(img, cmap=cmap, window_type='cosine')
     return ax.get_figure()

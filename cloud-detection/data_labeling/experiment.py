@@ -19,40 +19,43 @@ if __name__ == '__main__':
     # RUN_DIR = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
     RUN_DIR = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
 
-    builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0)
+    builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
     test_mii = ModuleImageInterface(DATA_DIR, RUN_DIR, 254)
 
     print(builder.start_utc)
     print(builder.stop_utc)
 
     make_batch.build_batch('cloud-detection', 0, builder.start_utc, builder.stop_utc)
-
     skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
+    print(skycam_subdirs)
 
-    for fname in sorted(os.listdir(skycam_subdirs['original'])):
-        if fname.endswith('.jpg'):
-            t = get_skycam_img_time(fname)
-            skycam_unix_t = get_unix_from_datetime(t)
+    builder.create_feature_images(skycam_subdirs['original'])
 
-            ret = builder.module_file_time_seek(254, get_unix_from_datetime(t))
-            if ret is not None:
-                fig = builder.time_derivative(
-                    ret['file_idx'],
-                    ret['frame_offset'],
-                    254,
-                    1,
-                    10,
-                    3,
-                    True
-                )
-                plt.pause(1)
-                plt.close(fig)
-                file_info = builder.obs_pff_files[254][ret['file_idx']]
-                #print(builder.start_utc <= t <= builder.stop_utc)
-                print('delta_t = ', (file_info['last_unix_t'] - file_info['first_unix_t']))
-                print(file_info['seqno'])
-                print()
-
+    #
+    # for fname in sorted(os.listdir(skycam_subdirs['original'])):
+    #     if fname.endswith('.jpg'):
+    #         t = get_skycam_img_time(fname)
+    #         skycam_unix_t = get_unix_from_datetime(t)
+    #
+    #         ret = builder.module_file_time_seek(254, get_unix_from_datetime(t))
+    #         if ret is not None:
+    #             fig = builder.time_derivative(
+    #                 ret['file_idx'],
+    #                 ret['frame_offset'],
+    #                 254,
+    #                 1,
+    #                 10,
+    #                 3,
+    #                 True
+    #             )
+    #             plt.pause(1)
+    #             plt.close(fig)
+    #             file_info = builder.obs_pff_files[254][ret['file_idx']]
+    #             #print(builder.start_utc <= t <= builder.stop_utc)
+    #             print('delta_t = ', (file_info['last_unix_t'] - file_info['first_unix_t']))
+    #             print(file_info['seqno'])
+    #             print()
+    #
     """
     for i in range(0, len(test_mii.module_pff_files)):
         fpath = test_mii.run_path + '/' + test_mii.module_pff_files[i]['fname']

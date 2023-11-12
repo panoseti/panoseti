@@ -2,8 +2,8 @@
 import os
 import numpy as np
 import sys
-
 from collections import deque
+import seaborn as sns
 
 import matplotlib.pyplot as plt
 
@@ -18,7 +18,7 @@ import pff
 
 class PanosetiBatchBuilder(ObservingRunFileInterface):
 
-    def __init__(self, data_dir, run_dir, task, batch_id):
+    def __init__(self, data_dir, run_dir, task, batch_id, force_recreate=False):
         super().__init__(data_dir, run_dir)
         self.task = task
         self.batch_id = batch_id
@@ -26,11 +26,16 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
         self.pano_path = f'{self.batch_path}/{pano_imgs_root_dir}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path)
+        self.force_recreate = force_recreate
         os.makedirs(self.pano_path, exist_ok=True)
 
     def init_preprocessing_dirs(self):
         """Initialize pre-processing directories."""
-        self.is_data_preprocessed()
+        try:
+            self.is_data_preprocessed()
+        except FileExistsError as ferr:
+            if not self.force_recreate:
+                raise ferr
         for dir_name in self.pano_subdirs.values():
             os.makedirs(dir_name, exist_ok=True)
 
@@ -112,7 +117,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             # plt.close(fig)
             return ret
 
-    def get_original_fig(self, start_file_idx, start_frame_offset, module_id, verbose=False):
+    def make_original_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap, verbose=False):
         module_pff_files = self.obs_pff_files[module_id]
         file_info = module_pff_files[start_file_idx]
         fpath = f"{self.run_path}/{file_info['fname']}"
@@ -122,10 +127,12 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
-            fig = self.plot_image(img)
+            img = (img - np.median(img)) / np.std(img)
+            fig = self.plot_image(img, vmin=vmin, vmax=vmax, cmap=cmap)
+            #plt.pause(0.5)
             return fig
 
-    def get_fft_fig(self, start_file_idx, start_frame_offset, module_id, verbose=False):
+    def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, cmap, verbose=False):
         module_pff_files = self.obs_pff_files[module_id]
         file_info = module_pff_files[start_file_idx]
         fpath = f"{self.run_path}/{file_info['fname']}"
@@ -135,10 +142,21 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
-            fig = plot_image_fft(img)
+            fig = plot_image_fft(img, cmap=cmap)
+            #plt.pause(0.1)
             return fig
 
-    def get_time_derivative_fig(self, start_file_idx, start_frame_offset, module_id, step_delta_t, max_delta_t, nrows=3, verbose=False):
+    def make_time_derivative_figs(self,
+                                  start_file_idx,
+                                  start_frame_offset,
+                                  module_id,
+                                  step_delta_t,
+                                  max_delta_t,
+                                  nrows,
+                                  vmin,
+                                  vmax,
+                                  cmap,
+                                  verbose=False):
         """Compute time derivative feature relative to the frame specified by start_file_idx and start_frame_offset.
         Returns None if time derivative calc is not possible.
 
@@ -155,7 +173,6 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         frame_step_size = int(step_delta_t / (self.intgrn_usec * 1e-6))
         assert frame_step_size > 0
         hist_size = int(max_delta_t / step_delta_t)
-        print(hist_size)
 
         # Check if it is possible to construct a time-derivative with the given parameters and data
         with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
@@ -164,7 +181,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             curr_unix_t = pff.img_header_time(j)
             s = curr_unix_t
             if (curr_unix_t - max_delta_t) < module_pff_files[0]['first_unix_t']:
-                return None
+                return None, None
 
         frame_offset = start_frame_offset
         hist = list()
@@ -192,19 +209,24 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         continue
                     imgs = list()
                     delta_ts = []
-                    for k in [int(i * hist_size / nrows) for i in range(1, nrows+1)]:
+                    for k in [int(i * hist_size / nrows) for i in range(nrows, 0, -1)]:
                         delta_ts.append(str(-step_delta_t * k))
                         data = (img - hist[k - 1]) / np.std(hist)
                         imgs.append(data)
                     # print(delta_ts)
-                    fig = plot_time_derivative(imgs, delta_ts, nrows)
-                    return fig
+
+                    fig_time_derivative = plot_time_derivative(imgs, delta_ts, vmin=vmin, vmax=vmax, cmap=cmap[0])
+                    fig_fft_time_derivative = plot_fft_time_derivative(imgs, delta_ts, 4, vmin, vmax, cmap=cmap[1])
+
+                    # plt.pause(0.5)
+                    return fig_time_derivative, fig_fft_time_derivative
                 # Compute the frame offset for the next pff file
                 if i > 0:
                     next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
                     curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
                     frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
-    def create_feature_images(self, skycam_original_subdir):
+
+    def create_feature_images(self, skycam_original_subdir, verbose=False):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
@@ -213,41 +235,54 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         """
         module_id = 254
         self.init_preprocessing_dirs()
-        for fname in sorted(os.listdir(skycam_original_subdir)):
+        for fname in sorted(os.listdir(skycam_original_subdir))[10:]:
             if fname.endswith('.jpg'):
                 t = get_skycam_img_time(fname)
                 skycam_unix_t = get_unix_from_datetime(t)
 
                 pano_frame_info = self.module_file_time_seek(module_id, skycam_unix_t)
                 if pano_frame_info is not None:
-                    figs = {
-                        'original': self.get_original_fig(
-                            pano_frame_info['file_idx'],
-                            pano_frame_info['frame_offset'],
-                            module_id
-                        ),
-                        'derivative': self.get_time_derivative_fig(
-                            pano_frame_info['file_idx'],
-                            pano_frame_info['frame_offset'],
-                            module_id,
-                            1,
-                            10,
-                            3,
-                            True
-                        ),
-                        'fft': self.get_fft_fig(
-                            pano_frame_info['file_idx'],
-                            pano_frame_info['frame_offset'],
-                            module_id,
-                        )
-                    }
-                    plt.pause(20)
+                    #cmap = sns.color_palette("mako", as_cmap=True)
+                    figs = dict()
+                    figs['original'] = self.make_original_fig(
+                        pano_frame_info['file_idx'],
+                        pano_frame_info['frame_offset'],
+                        module_id,
+                        vmin=-3.5,
+                        vmax=3.5,
+                        cmap='mako',
+                        verbose=verbose
+                    )
+                    figs['fft'] = self.make_fft_fig(
+                        pano_frame_info['file_idx'],
+                        pano_frame_info['frame_offset'],
+                        module_id,
+                        cmap='vlag',
+                        verbose=verbose
+                    )
+                    figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
+                        pano_frame_info['file_idx'],
+                        pano_frame_info['frame_offset'],
+                        module_id,
+                        1,
+                        60,
+                        nrows=4,
+                        vmin=-3.5,
+                        vmax=3.5,
+                        cmap=["icefire", "vlag"],
+                        verbose=verbose
+                    )
+
                     module_pff_files = self.obs_pff_files[module_id]
-                    original_fname = module_pff_files[pano_frame_info['file_idx']]
-                    for img_type, fig in figs:
-                        # plt.savefig(get_pano_img_path(self.pano_path, original_fname, img_type))
-                        print(get_pano_img_path(self.pano_path, original_fname, img_type))
+                    original_fname = module_pff_files[pano_frame_info['file_idx']]['fname']
+                    for img_type, fig in figs.items():
+                        fig.savefig(get_pano_img_path(self.pano_path, original_fname, img_type))
+                        # if img_type in [ 'original']:
                         plt.close(fig)
+                        print(get_pano_img_path(self.pano_path, original_fname, img_type))
+                    # plt.pause(2)
+                    # for img_type, fig in figs.items():
+                    #     plt.close(fig)
 
                     # plt.pause(1)
                     # plt.close(fig)
