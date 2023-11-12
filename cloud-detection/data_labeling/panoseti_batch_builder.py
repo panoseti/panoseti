@@ -83,14 +83,14 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 'file_idx': m,
                 'frame_offset': int(fp.tell() / self.frame_size)
             }
-            # j, img = self.read_next_frame(fp, 1, self.frame_size, self.img_bpp)
-            # fig = self.plot_image(img)
-            # plt.show()
-            # plt.pause(2)
-            # plt.close(fig)
+            j, img = self.read_frame(fp, self.img_bpp)
+            fig = self.plot_image(img)
+            plt.show()
+            plt.pause(2)
+            plt.close(fig)
             return ret
 
-    def time_derivative(self, start_file_idx, start_frame_offset, module_id, step_delta_t, max_delta_t, verbose=False):
+    def time_derivative(self, start_file_idx, start_frame_offset, module_id, step_delta_t, max_delta_t, nrows=3, verbose=False):
         """Compute time derivative feature relative to the frame at fp.
         Returns None if time derivative calc is not possible with
 
@@ -106,7 +106,6 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         print(hist_size)
 
         # Check if it is possible to construct a time-derivative with the given parameters and data
-        s = -1
         with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
             f.seek(start_frame_offset * self.frame_size)
             j, img = self.read_frame(f, self.img_bpp)
@@ -117,7 +116,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
 
         frame_offset = start_frame_offset
         hist = list()
-        # Iterate backwards through the files
+        # Iterate backwards through the files until hist_size frames have been accumulated
         for i in range(start_file_idx, -1, -1):
             if len(hist) == hist_size:
                 break
@@ -125,42 +124,34 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             fpath = f"{self.run_path}/{file_info['fname']}"
             if verbose: print(f"Processing {file_info['fname']}")
             with open(fpath, 'rb') as fp:
-                print("newfile")
+                if verbose: print("newfile")
                 # Start file pointer with an offset based on the previous file -> ensures even frame sampling
                 fp.seek(
                     frame_offset * self.frame_size,
                     os.SEEK_CUR
                 )
-                # new_nframes = file_info['nframes'] - frame_offset
                 # Iterate backwards through the file
                 for j, img in self.frame_iterator(fp, (-1 * frame_step_size) + 1):
                     if j is None or img is None:
                         break
                     if len(hist) < hist_size:
                         hist.insert(0, img)
-                        #print(int(pff.img_header_time(j) - s))
+                        if verbose: print(int(pff.img_header_time(j) - s))
                         continue
                     imgs = list()
-                    imgs.append((img - np.mean(hist)) / np.std(hist))
-                    delta_ts = [0]
-                    for k in [hist_size//3, 2*hist_size//3, hist_size]:
+                    delta_ts = []
+                    for k in [int(i * hist_size / nrows) for i in range(1, nrows+1)]:
                         delta_ts.append(-step_delta_t * k)
                         data = (img - hist[k - 1]) / np.std(hist)
                         imgs.append(data)
-                    print(delta_ts)
-                    # hist.pop()
-                    # prev_img = hist.pop()
-
-                    # fig = test_mii.plot_image((img - np.mean(hist)) / np.std(hist))
-                    fig = plot_image_grid(imgs, delta_ts)
-                    fig.suptitle(f'{delta_ts}, L->R; T->B')
-                    plt.pause(1)
-                    plt.close(fig)
-                    break
+                    # print(delta_ts)
+                    fig = plot_image_grid(imgs, delta_ts, nrows)
+                    return fig
+                # Compute the frame offset for the next pff file
                 if i > 0:
                     next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
-                    frame_offset = int((next_file_size - (frame_step_size * self.frame_size - fp.tell())) / self.frame_size)
-    print('done')
+                    curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
+                    frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
 
     def iterate_module_files(self, module_id, step_size, verbose=False):
         """On a sample of the frames in the file represented by file_info, add the total

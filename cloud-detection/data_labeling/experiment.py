@@ -36,14 +36,17 @@ if __name__ == '__main__':
 
             ret = builder.module_file_time_seek(254, get_unix_from_datetime(t))
             if ret is not None:
-                builder.time_derivative(
+                fig = builder.time_derivative(
                     ret['file_idx'],
                     ret['frame_offset'],
                     254,
                     1,
-                    200,
+                    10,
+                    3,
                     True
                 )
+                plt.pause(1)
+                plt.close(fig)
                 file_info = builder.obs_pff_files[254][ret['file_idx']]
                 #print(builder.start_utc <= t <= builder.stop_utc)
                 print('delta_t = ', (file_info['last_unix_t'] - file_info['first_unix_t']))
