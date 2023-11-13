@@ -256,14 +256,14 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 t = get_skycam_img_time(original_skycam_fname)
                 skycam_unix_t = get_unix_from_datetime(t)
                 skycam_uid = get_skycam_uid(original_skycam_fname)
-                pano_frame_info = self.module_file_time_seek(module_id, skycam_unix_t)
+                pano_frame_seek_info = self.module_file_time_seek(module_id, skycam_unix_t)
 
-                if pano_frame_info is not None:
+                if pano_frame_seek_info is not None:
                     # Generate all features
                     figs = dict()
                     figs['original'] = self.make_original_fig(
-                        pano_frame_info['file_idx'],
-                        pano_frame_info['frame_offset'],
+                        pano_frame_seek_info['file_idx'],
+                        pano_frame_seek_info['frame_offset'],
                         module_id,
                         vmin=-3.5,
                         vmax=3.5,
@@ -271,8 +271,8 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         verbose=verbose
                     )
                     figs['fft'] = self.make_fft_fig(
-                        pano_frame_info['file_idx'],
-                        pano_frame_info['frame_offset'],
+                        pano_frame_seek_info['file_idx'],
+                        pano_frame_seek_info['frame_offset'],
                         module_id,
                         vmin=3,
                         vmax=10,
@@ -280,8 +280,8 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         verbose=verbose
                     )
                     figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
-                        pano_frame_info['file_idx'],
-                        pano_frame_info['frame_offset'],
+                        pano_frame_seek_info['file_idx'],
+                        pano_frame_seek_info['frame_offset'],
                         module_id,
                         1,
                         60,
@@ -296,7 +296,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     for img_type, fig in figs.items():
                         if fig is None:
                             all_figs_valid = False
-                            msg = f'The following frame resulted in a None "{img_type}" figure: {pano_frame_info}.'
+                            msg = f'The following frame resulted in a None "{img_type}" figure: {pano_frame_seek_info}.'
                             if not allow_skip:
                                 raise ValueError(msg)
                             if verbose: print(msg)
@@ -308,7 +308,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     # Write figures to data dirs
                     # plt.pause(.5)
                     module_pff_files = self.obs_pff_files[module_id]
-                    pano_fname = module_pff_files[pano_frame_info['file_idx']]['fname']
+                    pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
                     pano_uid = get_pano_uid(skycam_uid, pano_fname)
                     for img_type, fig in figs.items():
                         if verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
@@ -320,9 +320,10 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                         pano_uid,
                         self.run_dir,
                         pano_fname,
+                        pano_frame_seek_info['frame_offset'],
                         module_id,
-                        unix_t=pano_frame_info['frame_unix_t'],
-                        batch_id=self.batch_id
+                        pano_frame_seek_info['frame_unix_t'],
+                        self.batch_id
                     )
                     feature_df = add_feature_entry(
                         feature_df,

@@ -15,6 +15,7 @@ skycam_path_index_fname = 'skycam_path_index.json'
 
 # Database formats / Core routines
 
+
 def get_dataframe_formats():
     dataframe_formats = {
         'user': {
@@ -25,7 +26,7 @@ def get_dataframe_formats():
             'columns': ['skycam_uid', 'batch_id', 'skycam_dir', 'fname', 'unix_t', 'skycam_type'],
         },
         'pano': {
-            'columns': ['pano_uid', 'batch_id', 'run_dir', 'fname', 'module_id', 'frame_unix_t']
+            'columns': ['pano_uid', 'batch_id', 'run_dir', 'fname', 'frame_offset', 'module_id', 'frame_unix_t']
         },
         'feature': {
             'columns': ['feature_uid', 'skycam_uid', 'pano_uid', 'batch_id']
@@ -47,6 +48,7 @@ def get_data_export_dir(task, batch_id, user_uid, root):
     dir_name = "task_{0}.batch-id_{1}.user-uid_{2}".format(task, batch_id, user_uid)
     dir_path = f'{root}/{dir_name}'
     return dir_path
+
 
 def get_df_save_name(task, batch_id, df_type, user_uid, is_temp):
     if user_uid is not None:
@@ -172,7 +174,7 @@ def add_skycam_img(skycam_df, skycam_uid, original_fname, skycam_type, timestamp
     elif verbose:
         print(f'An entry for "{original_fname}" already exists')
 
-def add_pano_img(pano_df, pano_uid, run_dir, fname, module_id, unix_t, batch_id, verbose=False):
+def add_pano_img(pano_df, pano_uid, run_dir, fname, frame_offset, module_id, unix_t, batch_id, verbose=False):
     """Add a panoseti module img to pano_df."""
     if not pano_df.loc[:, 'pano_uid'].str.contains(pano_uid).any():
         data = {
@@ -180,6 +182,7 @@ def add_pano_img(pano_df, pano_uid, run_dir, fname, module_id, unix_t, batch_id,
             'batch_id': [batch_id],
             'run_dir': [run_dir],
             'fname': [fname],
+            'frame_offset': [frame_offset],
             'module_id': [module_id],
             'frame_unix_t': [unix_t]
         }
