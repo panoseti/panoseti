@@ -14,7 +14,8 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname, skycam_imgs_root_dir
+from skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname, get_skycam_root_path
+from panoseti_batch_utils import get_pano_img_path, get_pano_subdirs, get_pano_root_path
 from dataframe_utils import *
 
 class LabelSession:
@@ -32,8 +33,8 @@ class LabelSession:
         self.batch_dir_name = get_batch_dir(task, batch_id)
         self.batch_data_path = f'{batch_data_root_dir}/{self.batch_dir_name}'
         self.batch_labels_path = f'{self.root_batch_labels_dir}/{self.batch_dir_name}'
-        self.skycam_imgs_path = f'{self.batch_data_path}/{skycam_imgs_root_dir}'
-        self.pano_imgs_path = f'{self.batch_data_path}/{pano_imgs_root_dir}'
+        self.skycam_imgs_path = get_skycam_root_path(self.batch_data_path)
+        self.pano_imgs_path = get_pano_root_path(self.batch_data_path)
 
         # Unzip batched data, if it exists
         os.makedirs(batch_data_root_dir, exist_ok=True)
@@ -42,6 +43,8 @@ class LabelSession:
             unpack_batch_data(batch_data_root_dir)
             with open(f'{self.batch_data_path}/{skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
+            with open(f'{self.batch_data_path}/{pano_path_index_fname}', 'r') as f:
+                self.pano_paths = json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir_name}\x1b[0m\n"
                                     f"Try adding the zipped data batch file to the following directory:\n"
@@ -106,25 +109,114 @@ class LabelSession:
         img = np.asarray(Image.open(fpath))
         return img
 
-    # Plotting routines
+    def pano_uid_to_data(self, pano_uid, img_type):
+        run_dir = self.pano_df.loc[
+            (self.pano_df.pano_uid == pano_uid), 'run_dir'
+        ].iloc[0]
+        fpath = get_pano_img_path(f'{self.pano_imgs_path}/{run_dir}', pano_uid, img_type)
+        img = np.asarray(Image.open(fpath))
+        return img
+
+    def add_subplot(self, ax, img, title, aspect=None):
+        ax.imshow(img, aspect=aspect)
+        ax.get_yaxis().set_ticks([])
+        ax.get_xaxis().set_ticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.set_title(title)
+
     def plot_img(self, feature_uid):
-        """Given an image uid, display the corresponding image."""
-        fig = plt.figure(figsize=(12, 12))
+        skycam_uid, pano_uid = self.feature_df.loc[
+            self.feature_df.feature_uid == feature_uid, ['skycam_uid', 'pano_uid']
+        ].iloc[0]
+
+        # creating grid for subplots
+        fig = plt.figure()
+        fig.set_figheight(6)
+        fig.set_figwidth(17)
+
+        shape = (8, 22)
+        ax0 = plt.subplot2grid(shape=shape, loc=(0, 4), colspan=10, rowspan=8)
+
+        # ax1 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=2, rowspan=2)
+        ax2 = plt.subplot2grid(shape=shape, loc=(0, 0), colspan=4, rowspan=4)
+        ax3 = plt.subplot2grid(shape=shape, loc=(4, 0), colspan=4, rowspan=4)
+
+        ax4 = plt.subplot2grid(shape=shape, loc=(0, 14), colspan=8, rowspan=4)
+        ax5 = plt.subplot2grid(shape=shape, loc=(4, 14), colspan=8, rowspan=4)
+
+
+
+        # plotting subplots
+        self.add_subplot(
+            ax0,
+            self.skycam_uid_to_data(skycam_uid, 'pfov'),
+            f'{skycam_uid[:8]}: skycam w/ panofov'
+        )
+        # self.add_subplot(
+        #     ax1,
+        #     self.skycam_uid_to_data(skycam_uid, 'cropped'),
+        #     f'{skycam_uid[:8]}: skycam pfov'
+        # )
+        self.add_subplot(
+            ax2,
+            self.pano_uid_to_data(pano_uid, 'original'),
+            f'{pano_uid[:8]}: pano normed'
+        )
+        self.add_subplot(
+            ax3,
+            self.pano_uid_to_data(pano_uid, 'fft'),
+            f'{pano_uid[:8]}: pano fft'
+        )
+        self.add_subplot(
+            ax4,
+            self.pano_uid_to_data(pano_uid, 'derivative'),
+            f'{pano_uid[:8]}: time derivatives'
+        )
+        self.add_subplot(
+            ax5,
+            self.pano_uid_to_data(pano_uid, 'fft-derivative'),
+            f'{pano_uid[:8]}: time derivative ffts'
+        )
+
+
+        # automatically adjust padding horizontally
+        # as well as vertically.
+        plt.tight_layout()
+        return fig
+
+
+    # Plotting routines
+    def plot_img_old(self, feature_uid):
+        """Given an image uid, display the corresponding image features."""
+        fig = plt.figure(figsize=(24, 24))
         grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                         nrows_ncols=(1, 2),  # creates width x height grid of axes
+                         nrows_ncols=(3, 1),  # creates width x height grid of axes
                          axes_pad=0.3,  # pad between axes in inch.
                          share_all=False,
                          )
-        skycam_uid = self.feature_df.loc[
-            self.feature_df.feature_uid == feature_uid, 'skycam_uid'
+        skycam_uid, pano_uid = self.feature_df.loc[
+            self.feature_df.feature_uid == feature_uid, ['skycam_uid', 'pano_uid']
         ].iloc[0]
-        imgs = [self.skycam_uid_to_data(skycam_uid, 'cropped'),
-                self.skycam_uid_to_data(skycam_uid, 'pfov')]
-        titles = [f'{skycam_uid[:8]}: cropped fov',
-                  f'{skycam_uid[:8]}: full img with pfov']
+
+        imgs = [
+            self.pano_uid_to_data(pano_uid, 'fft-derivative'),
+            self.pano_uid_to_data(pano_uid, 'derivative'),
+            self.skycam_uid_to_data(skycam_uid, 'pfov'),
+            #self.skycam_uid_to_data(skycam_uid, 'cropped'),
+        ]
+        titles = [
+            f'{pano_uid[:8]}: time derivative ffts',
+            f'{pano_uid[:8]}: time derivatives',
+            f'{skycam_uid[:8]}: full img with pfov'
+            #f'{skycam_uid[:8]}: cropped fov',
+        ]
 
         for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
-            ax.imshow(img, aspect='equal')
+            print(i)
+            ax.imshow(img)#, aspect='equal')
             ax.set_title(title)
         return fig
 
@@ -139,12 +231,15 @@ class LabelSession:
         feature_uids_with_given_label = self.labeled_df.loc[
             (self.labeled_df.label == label), 'feature_uid'
         ]
-        skycam_uids_with_given_label = self.feature_df.loc[
-            (self.feature_df['feature_uid'].isin(feature_uids_with_given_label)), 'skycam_uid'
+        # skycam_uids_with_given_label = self.feature_df.loc[
+        #     (self.feature_df['feature_uid'].isin(feature_uids_with_given_label)), 'skycam_uid'
+        # ]
+        pano_uids_with_given_label = self.feature_df.loc[
+            (self.feature_df['feature_uid'].isin(feature_uids_with_given_label)), 'pano_uid'
         ]
         imgs = []
-        for skycam_uid in skycam_uids_with_given_label:
-            imgs.append(self.skycam_uid_to_data(skycam_uid, 'cropped'))
+        for pano_uid in pano_uids_with_given_label:
+            imgs.append(self.pano_uid_to_data(pano_uid, 'original'))
         if len(imgs) == 0:
             print(f'No images labeled as "{label}"')
             return
@@ -219,8 +314,9 @@ class LabelSession:
         """Labeling interface that displays an image and prompts user for its class."""
         self.data_to_label = self.unlabeled_df[self.unlabeled_df.is_labeled == False]
 
-        if self.num_imgs == 0:
-            print("All data are labeled! \N{grinning face}")
+        if len(self.data_to_label) == 0:
+            emojis = ['🌈', '💯', '✨', '🎉', '🎃', '🔭', '🌌']
+            print(f"All data are labeled! {np.random.choice(emojis)}")
             return
         try:
             for i in range(len(self.data_to_label)):

@@ -106,7 +106,7 @@ def make_skycam_paths_json(batch_path):
     skycam_imgs_root_path = get_skycam_root_path(batch_path)
     for path in os.listdir(skycam_imgs_root_path):
         skycam_path = f'{skycam_imgs_root_path}/{path}'
-        if os.path.isdir(skycam_imgs_root_dir) and 'SC' in path and 'imgs' in path:
+        if os.path.isdir(skycam_path) and 'SC' in path and 'imgs' in path:
             skycam_paths[skycam_path] = {
                 "img_subdirs": {},
                 "imgs_per_subdir": -1,
@@ -144,3 +144,5 @@ def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, sky
 
 
 #make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch_0')
+if __name__ == '__main__':
+    make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch-id_0')

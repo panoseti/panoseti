@@ -118,7 +118,6 @@ def build_batch(sample_dict, task, batch_id, do_zip=False):
     feature_df, pano_df = pano_builder.create_feature_images(
         feature_df, pano_df, skycam_dir, verbose=True
     )
-    print(pano_df)
 
     save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path)
     save_df(pano_df, 'pano', None, batch_id, task, False, batch_path)

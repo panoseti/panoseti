@@ -2,14 +2,8 @@
 import json
 import os
 import numpy as np
-import seaborn_image as isns
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import ImageGrid
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib import colors
 
-from scipy.fftpack import fftn, fftshift
-from skimage.filters import window
 
 from dataframe_utils import add_pano_img, pano_imgs_root_dir, pano_path_index_fname
 
@@ -26,9 +20,9 @@ def get_pano_subdirs(pano_path):
 def get_pano_root_path(batch_path):
     return f'{batch_path}/{pano_imgs_root_dir}'
 
-def get_pano_img_path(pano_path, pano_uid, img_type):
+def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
     assert img_type in valid_image_types, f"{img_type} is not supported"
-    pano_subdirs = get_pano_subdirs(pano_path)
+    pano_subdirs = get_pano_subdirs(pano_imgs_path)
     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
     # if feature_type == 'original':
     #     return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_original.pff"
@@ -48,7 +42,7 @@ def make_pano_paths_json(batch_path):
     pano_imgs_root_path = get_pano_root_path(batch_path)
     for path in os.listdir(pano_imgs_root_path):
         pano_path = f'{pano_imgs_root_path}/{path}'
-        if os.path.isdir(pano_imgs_root_dir) and 'pffd' in path:
+        if os.path.isdir(pano_path) and 'pffd' in path:
             pano_paths[pano_path] = {
                 "img_subdirs": {},
                 "imgs_per_subdir": -1,
@@ -80,97 +74,5 @@ def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, v
 
 
 
-
-# Plotting
-def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
-    for i in range(len(imgs)):
-        if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
-            print('no image')
-            return None
-        if imgs[i].shape != (32, 32):
-            imgs[i] = np.reshape(imgs[i], (32, 32))
-    # plt.rcParams.update({'axes.titlesize': 'small'})
-    fig = plt.figure(figsize=(10., 3.))
-
-    grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                     nrows_ncols=(1, nc),  # creates nr x 1 grid of axes
-                     axes_pad=0.1,  # pad between axes in inch.
-                     share_all=True
-                     )
-    grid[0].get_yaxis().set_ticks([])
-    grid[0].get_xaxis().set_ticks([])
-
-    titles = []
-    for dt in delta_ts:
-        titles.append(f'{dt} s')
-    fig.suptitle(f': derivative', ha='center')
-
-    ims = []
-    norm = colors.Normalize(vmin=vmin, vmax=vmax)
-    for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
-        #im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
-        # im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
-        im = plot_image_fft(img, ax=ax, cmap=cmap)
-        ax.set_title(title, x=0.5, y=-0.2)
-        #im.set_norm(norm)
-        ims.append(im)
-    return fig
-
-def plot_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
-    for i in range(len(imgs)):
-        if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
-            print('no image')
-            return None
-        if imgs[i].shape != (32, 32):
-            imgs[i] = np.reshape(imgs[i], (32, 32))
-    # print(delta_ts)
-    # ax = isns.ImageGrid(imgs, height=1.5, col_wrap=1, vmin=-100, vmax=100, cmap="viridis", cbar=False)
-    titles = []
-    for dt in delta_ts:
-        titles.append(f'{dt} s')
-    #print('len', len(imgs))
-    ax = isns.ImageGrid(imgs,
-                        height=3,
-                        aspect=0.75,
-                        col_wrap=4,
-                        vmin=vmin,
-                        vmax=vmax,
-                        cmap=cmap,
-                        cbar_label=titles,
-                        orientation="h")
-    fig = ax.fig
-    fig.suptitle(f': derivative', ha='center')
-    return fig
-
-def plot_image_fft(data, cmap, **kwargs):
-    if data is None or not isinstance(data, np.ndarray):
-        print('no image')
-        return None
-    if data.shape != (32, 32):
-        data = np.reshape(data, (32, 32))
-
-    # window image to improve fft
-    # shape = kwargs.get("shape", data.shape)
-    shape = data.shape
-    window_type = "cosine"
-    data = data * window(window_type, shape)
-
-    # perform fft and get absolute value
-    data = np.abs(fftn(data))
-    # shift the DC component to center
-    data = fftshift(data)
-    data = np.log(data)
-    # print(f'min:{np.min(data)}, max:{np.max(data)}')
-
-
-    ax = isns.imgplot(
-        data,
-        cmap=cmap,
-        cbar=False,
-        showticks=False,
-        describe=False,
-        despine=None,
-        **kwargs
-    )
-    return ax.get_figure()
-    ax = isns.fftplot(data, cmap=cmap, window_type='cosine')
+if __name__ == '__main__':
+    make_pano_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch-id_0')
