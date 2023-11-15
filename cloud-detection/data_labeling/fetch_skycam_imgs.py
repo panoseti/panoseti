@@ -101,6 +101,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
     chrome_options.add_experimental_option('prefs', prefs)
     chrome_options.add_argument("--headless")   # Don't open a browser window
     # Open Chrome driver
+    if verbose: print('Initializing Chrome webdriver...')
     driver = webdriver.Chrome(options=chrome_options)
 
     # Open URL to Lick skycam archive
@@ -110,10 +111,10 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
     # Check if download page exists
     title = driver.title
     if title == '404 Not Found' or title != 'Mt. Hamilton Data Repository':
-        print(f"The link '{link}' does not contain valid skycam data. Exiting...")
+        msg = f"The link '{link}' does not contain valid skycam data. Title of webpage at that link: '{title}'. Exiting..."
         driver.close()
         shutil.rmtree(skycam_path)
-        return None
+        raise Warning(msg)
 
     # Select all files to download
     select_all_button = driver.find_element(By.LINK_TEXT, "all")
@@ -126,7 +127,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
         movie_checkboxes[i].click()
 
     # Download tarball file to out_dir
-    if verbose: print(f'Downloading data from {link}')
+    print(f'Downloading data from {link}')
     download_tarball = driver.find_element(By.XPATH, "//input[@type='submit']")
     download_tarball.click()
 
@@ -136,57 +137,55 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
     return skycam_path
 
 
-def unzip_images(skycam_dir):
+def unzip_images(skycam_path):
     """Unpack image files from tarball."""
-    img_subdirs = get_skycam_subdirs(skycam_dir)
+    img_subdirs = get_skycam_subdirs(skycam_path)
     downloaded_fname = ''
 
-    for fname in os.listdir(skycam_dir):
+    for fname in os.listdir(skycam_path):
         if fname.endswith('.tar.gz'):
             downloaded_fname = fname
     if downloaded_fname:
-        downloaded_fpath = f'{skycam_dir}/{downloaded_fname}'
+        downloaded_fpath = f'{skycam_path}/{downloaded_fname}'
         with tarfile.open(downloaded_fpath, 'r') as tar_ref:
-            tar_ref.extractall(skycam_dir)
+            tar_ref.extractall(skycam_path)
         os.remove(downloaded_fpath)
 
-        for path in os.listdir(skycam_dir):
-            if os.path.isdir(f'{skycam_dir}/{path}') and path.startswith('data'):
-                os.rename(f'{skycam_dir}/{path}', img_subdirs['original'])
-    
+        for path in os.listdir(skycam_path):
+            if os.path.isdir(f'{skycam_path}/{path}') and path.startswith('data'):
+                os.rename(f'{skycam_path}/{path}', img_subdirs['original'])
 
-def remove_day_images(skycam_dir, morning_hour=4, evening_hour=21):
-    """Remove skycam images taken between morning_hour and evening_hour."""
-    img_subdirs = get_skycam_subdirs(skycam_dir)
-    PST_offset = timedelta(hours=-7)
-    for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
-        pst_time = get_skycam_img_time(skycam_img_fname) + PST_offset
-        if morning_hour <= pst_time.hour <= evening_hour:
-            os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
 
 def filter_images(skycam_dir: str, first_t: datetime, last_t: datetime):
     """Remove skycam images between t_start and t_end."""
-    img_subdirs = get_skycam_subdirs(skycam_dir)
-    for skycam_img_fname in sorted(os.listdir(img_subdirs['original'])):
-        skycam_t = get_skycam_img_time(skycam_img_fname)
+    path_to_orig_skycam_imgs = get_skycam_subdirs(skycam_dir)['original']
+    for fname in sorted(os.listdir(path_to_orig_skycam_imgs)):
+        if fname.endswith('.mp4') or fname.endswith('.mpg'):
+            os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))
+        skycam_t = get_skycam_img_time(fname)
         if not (first_t <= skycam_t <= last_t):
-            os.remove("{0}/{1}".format(img_subdirs['original'], skycam_img_fname))
+            os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))
 
 
-def download_night_skycam_imgs(skycam_type, year, month, day, first_t, last_t, root, verbose=False):
-    skycam_dir = download_skycam_data(skycam_type, year, month, day, verbose, root=root)
-    if skycam_dir:
-        is_data_downloaded(skycam_dir)
-        if verbose: print("Unzipping files...")
-        unzip_images(skycam_dir)
-        if verbose: print("Removing day images..")
-        filter_images(skycam_dir, first_t, last_t)
-        return skycam_dir
-    else:
-        # No valid data found
-        return None
- 
+def unpack_and_filter_skycam_imgs(skycam_path, first_t, last_t, verbose=False):
+    is_data_downloaded(skycam_path)
+    if verbose: print("Unzipping skycam files...")
+    unzip_images(skycam_path)
+    if verbose: print("Filtering skycam images...")
+    filter_images(skycam_path, first_t, last_t)
 
 
-if __name__ == '__main__':
-    download_night_skycam_imgs('SC2', 2023, 10, 13, verbose=True)
+def get_manual_download_instructions(skycam_path, skycam_type, year, month, day):
+    skycam_link = get_skycam_link(skycam_type, year, month, day)
+    msg = (f'To manually download the data, please do the following:\n'
+            f'\t0. Set manual_skycam_download=True in your call to the build_batch function\n'
+            f'\t1. Visit {skycam_link}\n'
+            f'\t2. Click the blue "all" text\n'
+            f'\t3. Uncheck the .mp4 and .mpg files (should be near the top)\n'
+            f'\t4. Click the "Download tarball" button and wait for the download to finish\n\n'
+            f'\t(Please DO NOT unzip the file)\n\n'
+            f'\t5. Move the downloaded .tar.gz file to \n'
+            f'\t\t{os.path.abspath(skycam_path)}\n'
+            f'\t6. Rerun make_batch.py')
+    return msg
+

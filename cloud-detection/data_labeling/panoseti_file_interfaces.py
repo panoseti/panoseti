@@ -73,13 +73,13 @@ class ObservingRunFileInterface:
         return j, img
 
     @staticmethod
-    def plot_image(img, vmin=50, vmax=300, cmap='viridis'):
+    def plot_image(img, **kwargs):
         if img is None or not isinstance(img, np.ndarray):
             print('no image')
             return None
         if img.shape != (32, 32):
             img = np.reshape(img, (32, 32))
-        ax = isns.imgplot(img, cmap=cmap, vmin=vmin, vmax=vmax)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
+        ax = isns.imghist(img, **kwargs)#vmin=vmin, vmax=vmax, robust=True)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         # ax = isns.imghist(img, cmap="viridis", vmin=-100, vmax=100)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         # ax = isns.imghist(img, cmap="viridis", vmin=-3.5, vmax=3.5)#vmin=max(0, mean - 2.5 * std), vmax=mean + 2.5 * std)
         return ax.get_figure()

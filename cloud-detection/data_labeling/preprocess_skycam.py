@@ -10,8 +10,9 @@ import cv2
 import os
 import traceback
 
-from fetch_skycam_imgs import download_night_skycam_imgs
-from skycam_utils import get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, init_preprocessing_dirs, is_data_preprocessed, is_data_downloaded
+from fetch_skycam_imgs import download_skycam_data, unpack_and_filter_skycam_imgs, get_skycam_link, get_manual_download_instructions
+from skycam_utils import (get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, init_preprocessing_dirs,
+                          is_data_preprocessed, is_data_downloaded, skycam_zip_downloaded, get_skycam_root_path)
 
 
 pixel_data_file = 'skycam_pixels.json'
@@ -83,20 +84,44 @@ def plot_pfov(skycam_img, corners, pfov_fpath):
 
 
 
-def preprocess_skycam_imgs(skycam_type, year, month, day, first_t, last_t, root, verbose=False):
-    """Run all preprocessing routines on the """
+def preprocess_skycam_imgs(skycam_type,
+                           year,
+                           month,
+                           day,
+                           first_t,
+                           last_t,
+                           batch_path,
+                           manual_skycam_download,
+                           verbose=False):
+    """Run all preprocessing routines on the skycam data"""
+    root = get_skycam_root_path(batch_path)
     skycam_dir = get_skycam_dir(skycam_type, year, month, day)
     skycam_path = f'{root}/{skycam_dir}'
     try:
         init_preprocessing_dirs(skycam_path)
+        is_data_preprocessed(skycam_path, batch_path)
     except FileExistsError as fee:
         print(fee)
         return None
-    
+    if manual_skycam_download:
+        if not skycam_zip_downloaded(skycam_path):
+            msg = 'Automatic skycam download is disabled and no skycam data found. \n'
+            msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
+            raise FileNotFoundError(msg)
+    else:
+        try:
+            download_skycam_data(skycam_type, year, month, day, verbose, root=root)
+        except Warning as wee:
+            msg = str(wee)
+            msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
+            raise Warning(wee)
+        except Exception as e:
+            msg = f'\n\n\nOriginal error: "{str(e)}"\n\n'
+            msg += "Failed to automatically download skycam data.\n"
+            msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
+            raise Exception(msg)
     try:
-        retval = download_night_skycam_imgs(skycam_type, year, month, day, first_t, last_t, verbose=verbose, root=root)
-        if retval is None:
-            return None
+        unpack_and_filter_skycam_imgs(skycam_path, first_t, last_t, verbose=verbose)
     except FileExistsError as fee:
         print(fee)
 
