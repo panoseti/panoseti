@@ -134,20 +134,18 @@ class LabelSession:
 
         # creating grid for subplots
         fig = plt.figure()
-        fig.set_figheight(6)
-        fig.set_figwidth(17)
+        fig.set_figheight(8)
+        fig.set_figwidth(18)
 
-        shape = (8, 22)
-        ax0 = plt.subplot2grid(shape=shape, loc=(0, 4), colspan=10, rowspan=8)
+        shape = (8, 17)
+        ax0 = plt.subplot2grid(shape=shape, loc=(0, 0), colspan=8, rowspan=8)
 
         # ax1 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=2, rowspan=2)
-        ax2 = plt.subplot2grid(shape=shape, loc=(0, 0), colspan=4, rowspan=4)
-        ax3 = plt.subplot2grid(shape=shape, loc=(4, 0), colspan=4, rowspan=4)
+        ax2 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=5, rowspan=4)
+        ax3 = plt.subplot2grid(shape=shape, loc=(1, 13), colspan=3, rowspan=3)
 
-        ax4 = plt.subplot2grid(shape=shape, loc=(0, 14), colspan=8, rowspan=4)
-        ax5 = plt.subplot2grid(shape=shape, loc=(4, 14), colspan=8, rowspan=4)
-
-
+        ax4 = plt.subplot2grid(shape=shape, loc=(4, 8), colspan=8, rowspan=4)
+        # ax5 = plt.subplot2grid(shape=shape, loc=(4, 15), colspan=7, rowspan=4)
 
         # plotting subplots
         self.add_subplot(
@@ -175,12 +173,11 @@ class LabelSession:
             self.pano_uid_to_data(pano_uid, 'derivative'),
             f'{pano_uid[:8]}: time derivatives'
         )
-        self.add_subplot(
-            ax5,
-            self.pano_uid_to_data(pano_uid, 'fft-derivative'),
-            f'{pano_uid[:8]}: time derivative ffts'
-        )
-
+        #         self.add_subplot(
+        #             ax5,
+        #             self.pano_uid_to_data(pano_uid, 'fft-derivative'),
+        #             f'{pano_uid[:8]}: time derivative ffts'
+        #         )
 
         # automatically adjust padding horizontally
         # as well as vertically.
@@ -407,5 +404,5 @@ class LabelSession:
 
 
 if __name__ == '__main__':
-    session = LabelSession('Nico', 0)
+    session = LabelSession('Nico', 6)
     session.start()
