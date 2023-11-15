@@ -143,7 +143,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             j, img = self.read_frame(fp, self.img_bpp)
             img = self.img_transform(img)
             #img = (img - np.median(img)) / np.std(img)
-            fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap)
+            fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
             #plt.pause(0.5)
             return fig
 
