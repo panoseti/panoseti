@@ -121,11 +121,12 @@ def get_uid(data: str):
     data_uid = hashlib.sha1(data_bytes).hexdigest()
     return data_uid
 
-def get_pano_uid(skycam_uid, pano_original_fname):
-    return get_uid(skycam_uid + pano_original_fname)
 
-def get_feature_uid(skycam_uid, batch_id):
-    return get_uid(skycam_uid + str(batch_id))
+def get_pano_uid(pano_original_fname, frame_offset):
+    return get_uid(pano_original_fname + str(frame_offset))
+
+def get_feature_uid(skycam_uid, pano_uid, batch_id):
+    return get_uid(skycam_uid + pano_uid + str(batch_id))
 
 def get_skycam_uid(original_skycam_fname):
     return get_uid(original_skycam_fname)
@@ -142,8 +143,7 @@ def add_user(user_df, user_uid, name, verbose=False):
         }
         return extend_df(user_df, 'user', data)
         #user_df.loc[len(user_df)] = [user_uid, name]
-    elif verbose:
-        print(f'An entry for "{name}" already exists')
+    raise ValueError(f'An entry for "{name}" already exists')
 
 def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
     """Adds new (user-uid, batch-id) entry to user_df."""
@@ -154,8 +154,7 @@ def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
         }
         return extend_df(ubl_df, 'user-batch-log', data)
         #ubl_df.loc[len(ubl_df)] = [user_uid, batch_id]
-    elif verbose:
-        print(f'An entry for "{batch_id}" already exists')
+    raise ValueError(f'An entry for "{batch_id}" already exists')
 
 
 def add_skycam_img(skycam_df, skycam_uid, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=False):
@@ -171,8 +170,7 @@ def add_skycam_img(skycam_df, skycam_uid, original_fname, skycam_type, timestamp
         }
         return extend_df(skycam_df, 'skycam', data)
         #img_df.loc[len(img_df)] = [skycam_uid, fname, timestamp, skycam_type]
-    elif verbose:
-        print(f'An entry for "{original_fname}" already exists')
+    raise ValueError(f'An entry for "{original_fname}" already exists')
 
 def add_pano_img(pano_df, pano_uid, run_dir, fname, frame_offset, module_id, unix_t, batch_id, verbose=False):
     """Add a panoseti module img to pano_df."""
@@ -187,11 +185,10 @@ def add_pano_img(pano_df, pano_uid, run_dir, fname, frame_offset, module_id, uni
             'frame_unix_t': [unix_t]
         }
         return extend_df(pano_df, 'pano', data)
-    elif verbose:
-        print(f'An entry for "{fname}" already exists')
+    raise ValueError(f'An entry for "{fname}" already exists')
 
 def add_feature_entry(feature_df, skycam_uid, pano_uid, batch_id, verbose=False):
-    feature_uid = get_feature_uid(skycam_uid, batch_id)
+    feature_uid = get_feature_uid(skycam_uid, pano_uid, batch_id)
     if not feature_df.loc[:, 'feature_uid'].str.contains(feature_uid).any():
         data = {
             'feature_uid': [feature_uid],
@@ -200,8 +197,7 @@ def add_feature_entry(feature_df, skycam_uid, pano_uid, batch_id, verbose=False)
             'batch_id': [batch_id]
         }
         return extend_df(feature_df, 'feature', data)
-    elif verbose:
-        print(f'An entry for "{feature_uid}" already exists')
+    raise ValueError(f'An entry for "{feature_uid}" already exists')
 
 
 def add_unlabeled_data(unlabeled_df, feature_uid, verbose=False):
@@ -212,8 +208,7 @@ def add_unlabeled_data(unlabeled_df, feature_uid, verbose=False):
         }
         return extend_df(unlabeled_df, 'unlabeled', data)
         #unlabeled_df.loc[len(unlabeled_df)] = [feature_uid, False]
-    elif verbose:
-        print(f'An entry for "{feature_uid}" already exists')
+    raise ValueError(f'An entry for "{feature_uid}" already exists')
 
 
 def add_labeled_data(labeled_df, unlabeled_df, feature_uid, user_uid, label):

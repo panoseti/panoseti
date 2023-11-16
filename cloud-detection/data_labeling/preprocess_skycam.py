@@ -110,11 +110,14 @@ def preprocess_skycam_imgs(skycam_type,
             raise FileNotFoundError(msg)
     else:
         try:
-            download_skycam_data(skycam_type, year, month, day, verbose, root=root)
+            if not is_data_downloaded(skycam_path):
+                download_skycam_data(skycam_type, year, month, day, verbose, root=root)
         except Warning as wee:
             msg = str(wee)
             msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
             raise Warning(wee)
+        except FileExistsError as fee:
+            print(fee)
         except Exception as e:
             msg = f'\n\n\nOriginal error: "{str(e)}"\n\n'
             msg += "Failed to automatically download skycam data.\n"

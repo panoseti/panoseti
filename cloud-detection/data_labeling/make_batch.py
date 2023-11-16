@@ -27,11 +27,14 @@ batch_data/
 │  │  ├─ pfov/
 │  ├─ pano_imgs/
 │  │  ├─ original/
-│  │  ├─ derivative/
 │  │  ├─ fft/
+│  │  ├─ derivative/
+│  │  ├─ fft-derivative/
 │  ├─ skycam_path_index.json
 │  ├─ pano_path_index.json
 │  ├─ task_cloud-detection.batch-id_N.type_feature.csv
+│  ├─ task_cloud-detection.batch-id_N.type_pano.csv
+│  ├─ task_cloud-detection.batch-id_N.type_skycam.csv
 .
 .
 .
@@ -142,9 +145,9 @@ def build_batch(sample_dict,
             return
 
     print(f'Creating panoseti features for {sample_dict["pano"]["run_dir"]}')
-    for module_id in [254]:
+    for module_id in [1, 254]:
         feature_df, pano_df = pano_builder.create_feature_images(
-            feature_df, pano_df, skycam_dir, 254, verbose=verbose
+            feature_df, pano_df, skycam_dir, module_id, verbose=verbose
         )
 
     save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path)
@@ -200,5 +203,5 @@ if __name__ == '__main__':
         },
     ]
 
-    build_batch(samples[0], 'cloud-detection', 6, verbose=True, do_zip=True, force_recreate=True, manual_skycam_download=False)
+    build_batch(samples[0], 'cloud-detection', 8, verbose=True, do_zip=True, force_recreate=True, manual_skycam_download=False)
     #zip_batch('cloud-detection', 4, force_recreate=True)

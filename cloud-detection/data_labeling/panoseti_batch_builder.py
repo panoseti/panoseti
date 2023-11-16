@@ -38,11 +38,11 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
     def init_preprocessing_dirs(self):
         """Initialize pre-processing directories."""
         try:
+            for dir_name in self.pano_subdirs.values():
+                os.makedirs(dir_name, exist_ok=True)
             self.is_data_preprocessed()
         except FileExistsError as ferr:
             raise ferr
-        for dir_name in self.pano_subdirs.values():
-            os.makedirs(dir_name, exist_ok=True)
 
     def is_initialized(self):
         """Are pano subdirs initialized?"""
@@ -256,7 +256,8 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         """
         skycam_imgs_root_path = get_skycam_root_path(self.batch_path)
         skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
-
+        if not module_id in self.obs_pff_files or len(self.obs_pff_files[module_id]) == 0:
+            return feature_df, pano_df
         print(f'Generating features for module {module_id}')
         for original_skycam_fname in sorted(os.listdir(skycam_subdirs['original'])):
             if original_skycam_fname.endswith('.jpg'):
@@ -296,7 +297,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     pano_frame_seek_info['file_idx'],
                     pano_frame_seek_info['frame_offset'],
                     module_id,
-                    1,
+                    20,
                     60,
                     ncols=3,
                     vmin=[-3, -1],
@@ -323,7 +324,8 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 # plt.pause(.5)
                 module_pff_files = self.obs_pff_files[module_id]
                 pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
-                pano_uid = get_pano_uid(skycam_uid, pano_fname)
+                frame_offset = pano_frame_seek_info['frame_offset']
+                pano_uid = get_pano_uid(pano_fname, frame_offset)
                 for img_type, fig in figs.items():
                     if verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
                     fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
@@ -334,7 +336,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     pano_uid,
                     self.run_dir,
                     pano_fname,
-                    pano_frame_seek_info['frame_offset'],
+                    frame_offset,
                     module_id,
                     pano_frame_seek_info['frame_unix_t'],
                     self.batch_id
