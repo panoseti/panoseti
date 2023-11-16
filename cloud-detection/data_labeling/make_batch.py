@@ -103,7 +103,7 @@ def create_feature_df(batch_id, batch_path, skycam_df, pano_df):
     return feature_df
 
 
-def build_batch(sample_dict,
+def build_batch(samples,
                 task,
                 batch_id,
                 verbose=False,
@@ -116,39 +116,41 @@ def build_batch(sample_dict,
     pano_df = get_dataframe('pano')
     feature_df = get_dataframe('feature')
 
-    pano_builder = PanosetiBatchBuilder(
-        sample_dict['pano']['data_dir'],
-        sample_dict['pano']['run_dir'],
-        'cloud-detection',
-        batch_id,
-        force_recreate=force_recreate
-    )
-
-    skycam_dir = get_skycam_dir(
-        sample_dict['skycam']['skycam_type'],
-        sample_dict['skycam']['year'],
-        sample_dict['skycam']['month'],
-        sample_dict['skycam']['day']
-    )
-
-    print(f'Creating skycam features for {skycam_dir}')
-    skycam_df = create_skycam_features(
-        sample_dict, skycam_df, batch_id, batch_path, pano_builder.start_utc, pano_builder.stop_utc,
-        manual_skycam_download=manual_skycam_download, verbose=verbose
-    )
-
-    try:
-        pano_builder.init_preprocessing_dirs()
-    except FileExistsError:
-        if not pano_builder.force_recreate:
-            print(f'Data in {pano_builder.pano_path} already processed')
-            return
-
-    print(f'Creating panoseti features for {sample_dict["pano"]["run_dir"]}')
-    for module_id in [1, 254]:
-        feature_df, pano_df = pano_builder.create_feature_images(
-            feature_df, pano_df, skycam_dir, module_id, verbose=verbose
+    for sample_dict in samples:
+        print(f'\n\nBuilding features for {sample_dict}\n')
+        pano_builder = PanosetiBatchBuilder(
+            sample_dict['pano']['data_dir'],
+            sample_dict['pano']['run_dir'],
+            'cloud-detection',
+            batch_id,
+            force_recreate=force_recreate
         )
+
+        skycam_dir = get_skycam_dir(
+            sample_dict['skycam']['skycam_type'],
+            sample_dict['skycam']['year'],
+            sample_dict['skycam']['month'],
+            sample_dict['skycam']['day']
+        )
+
+        print(f'Creating skycam features for {skycam_dir}')
+        skycam_df = create_skycam_features(
+            sample_dict, skycam_df, batch_id, batch_path, pano_builder.start_utc, pano_builder.stop_utc,
+            manual_skycam_download=manual_skycam_download, verbose=verbose
+        )
+
+        try:
+            pano_builder.init_preprocessing_dirs()
+        except FileExistsError:
+            if not pano_builder.force_recreate:
+                print(f'Data in {pano_builder.pano_path} already processed')
+                return
+
+        print(f'Creating panoseti features for {sample_dict["pano"]["run_dir"]}')
+        for module_id in [1, 254]:
+            feature_df, pano_df = pano_builder.create_feature_images(
+                feature_df, pano_df, skycam_dir, module_id, verbose=verbose
+            )
 
     save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path)
     save_df(pano_df, 'pano', None, batch_id, task, False, batch_path)
@@ -180,13 +182,13 @@ if __name__ == '__main__':
         {
             'pano': {
                 'data_dir': DATA_DIR,
-                'run_dir': 'obs_Lick.start_2023-08-08T04:49:29Z.runtype_sci-obs.pffd',
+                'run_dir': 'obs_Lick.start_2023-08-24T04:37:00Z.runtype_sci-obs.pffd',
             },
             'skycam': {
                 'skycam_type': 'SC2',
                 'year': 2023,
                 'month': 8,
-                'day': 7
+                'day': 23
             }
         },
         {
@@ -203,5 +205,6 @@ if __name__ == '__main__':
         },
     ]
 
-    build_batch(samples[0], 'cloud-detection', 8, verbose=True, do_zip=True, force_recreate=True, manual_skycam_download=False)
+    batch_id = 0
+    build_batch(samples, 'cloud-detection', batch_id, verbose=True, do_zip=True, force_recreate=True, manual_skycam_download=False)
     #zip_batch('cloud-detection', 4, force_recreate=True)
