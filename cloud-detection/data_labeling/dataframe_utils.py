@@ -185,7 +185,8 @@ def add_pano_img(pano_df, pano_uid, run_dir, fname, frame_offset, module_id, uni
             'frame_unix_t': [unix_t]
         }
         return extend_df(pano_df, 'pano', data)
-    raise ValueError(f'An entry for "{fname}" already exists')
+    return pano_df
+    # raise ValueError(f'An entry for "{fname}" already exists')
 
 def add_feature_entry(feature_df, skycam_uid, pano_uid, batch_id, verbose=False):
     feature_uid = get_feature_uid(skycam_uid, pano_uid, batch_id)

@@ -73,7 +73,7 @@ def is_data_downloaded(skycam_path):
 def is_data_preprocessed(skycam_path, batch_path):
     """Checks if data is already processed."""
     img_subdirs = get_skycam_subdirs(skycam_path)
-    if os.path.exists(f'{batch_path}/{skycam_path_index_fname}') and os.path.exists(img_subdirs['cropped']) and len(os.listdir(img_subdirs['cropped'])) > 0:
+    if (os.path.exists(f'{batch_path}/{skycam_path_index_fname}') or (os.path.exists(img_subdirs['cropped']) and len(os.listdir(img_subdirs['cropped'])) > 0)):
         raise FileExistsError(f"Data in {skycam_path} already processed")
     is_initialized(skycam_path)
 
