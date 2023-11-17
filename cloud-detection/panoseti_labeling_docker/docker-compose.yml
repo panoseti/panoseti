@@ -1,0 +1,11 @@
+services:
+  labeling:
+    build: .
+    container_name: panoseti_data_labeling
+    ports:
+      - 16113:16113
+    volumes:
+      - labeling_data:/home/jovyan/work/
+
+volumes:
+  labeling_data:
