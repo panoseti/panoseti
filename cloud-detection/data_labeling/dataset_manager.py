@@ -1,4 +1,11 @@
 #! /usr/bin/env python3
+
+"""
+DatasetManager is designed to perform the following tasks:
+    - Aggregate data labels produced by users into a single main dataframe.
+    - Collect and organize all requisite features into a training set ready for ingestion by an ML model.
+"""
+
 import sys
 import os
 import json

@@ -1,3 +1,6 @@
+"""
+PanosetiBatchBuilder creates all panoseti features for a single observing run.
+"""
 
 import os
 import numpy as np

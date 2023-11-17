@@ -1,3 +1,10 @@
+"""
+Back-end for the PANOSETI Data Labeling Interface.
+
+LabelSession maintains the state of a labeling session, manages dataframe IO, and
+collects user labels for each feature in the specified data batch.
+"""
+
 import os
 import sys
 import shutil

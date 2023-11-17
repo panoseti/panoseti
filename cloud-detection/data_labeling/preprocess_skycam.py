@@ -1,8 +1,11 @@
 #! /usr/bin/env python3
-# Crops the panoseti field of view in Lick all-sky camera images
-# Assumes Lick webcam
-#   - SC images are 480x640 pixels
-#   - SC2 images are 521x765 pixels
+"""
+Transformation routines for constructing skycam features.
+
+Assumes Lick skycam images have the following dimensions:
+  - SC images are 480x640 pixels
+  - SC2 images are 521x765 pixels
+"""
 
 import json
 import numpy as np

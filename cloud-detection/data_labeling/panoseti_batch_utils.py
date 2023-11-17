@@ -1,3 +1,6 @@
+"""
+Utility functions for building panoseti features and batch data directories
+"""
 
 import json
 import os

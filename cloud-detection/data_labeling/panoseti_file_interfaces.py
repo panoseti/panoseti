@@ -1,3 +1,9 @@
+"""
+Class interfaces for working with data contained in Panoseti observing runs.
+
+Use these classes to simplify analysis code.
+"""
+
 import os
 import json
 import sys

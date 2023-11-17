@@ -1,3 +1,10 @@
+"""
+Code for testing and prototyping routines.
+
+(For development and experimentation only)
+
+"""
+
 from datetime import timedelta
 import os
 import numpy as np

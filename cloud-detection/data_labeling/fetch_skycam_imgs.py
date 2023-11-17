@@ -1,6 +1,10 @@
 #! /usr/bin/env python3
-# Visit https://mthamilton.ucolick.org/data/ and download archived skycam
-# images at a specified date
+"""
+Scripts for automatically downloading and filtering Lick Observatory skycamera images.
+This occurs in two stages:
+    1. Visit https://mthamilton.ucolick.org/data/ and download archived skycam images at a specified date
+    2. Delete skycam images according to a filter rule
+"""
 import time
 from datetime import datetime, timedelta, tzinfo
 import os

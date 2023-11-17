@@ -1,17 +1,24 @@
 #! /usr/bin/env python3
-import os
-import random
-import shutil
-from datetime import datetime, timedelta
-
-from skycam_utils import *
-from dataframe_utils import get_dataframe, save_df, batch_data_root_dir, pano_imgs_root_dir, skycam_imgs_root_dir, skycam_path_index_fname
-from preprocess_skycam import preprocess_skycam_imgs
-from panoseti_batch_utils import make_pano_paths_json
-from panoseti_batch_builder import PanosetiBatchBuilder
-
 """
-Batched data file tree:
+Builds batches of unlabeled data for human labeling, referred to as "data batches" in the code.
+
+The labeling architecture assumes that these data batches of data are the smallest
+unit of data that is distributed to users. The lifecycle of a data batch is the following:
+    - Data batches are produced by this script, running on a server with access to all requisite source data (i.e. panoseti data).
+    - These batches are uploaded to the cloud for distribution to users.
+    - Users download data batches and label them using the PANOSETI Data Labeling Interface.
+    - Users upload data batch labels to the cloud.
+    - DatasetManager aggregates data batches and user labels into a labeled training dataset.
+
+Specify how to build a batch with a samples.json file (TODO)
+NOTE: to make coordinating labeling efforts simpler, batch definitions
+should never change after being finalized and distributed to labelers.
+Creating new batches and deleting older versions is the preferred way of
+dealing with faulty batches.
+
+Run build_batch to automatically generate a zipped batch.
+
+Each data batch has the following file tree format:
 ------------
 
 batch_data/
@@ -40,6 +47,17 @@ batch_data/
 .
 ------------
 """
+
+import os
+import random
+import shutil
+from datetime import datetime, timedelta
+
+from skycam_utils import *
+from dataframe_utils import get_dataframe, save_df, batch_data_root_dir, pano_imgs_root_dir, skycam_imgs_root_dir, skycam_path_index_fname
+from preprocess_skycam import preprocess_skycam_imgs
+from panoseti_batch_utils import make_pano_paths_json
+from panoseti_batch_builder import PanosetiBatchBuilder
 
 batch_data_zipfiles_dir = 'batch_data_zipfiles'
 

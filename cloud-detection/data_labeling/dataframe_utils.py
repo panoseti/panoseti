@@ -1,9 +1,13 @@
+"""
+Utility functions for manipulating panoseti ML dataframes.
+Use these methods to interact with dataframes to ensure database integrity.
+"""
+
 import hashlib
 import pandas as pd
 import numpy as np
 import os
 import shutil
-
 
 skycam_imgs_root_dir = 'skycam_imgs'
 pano_imgs_root_dir = 'pano_imgs'

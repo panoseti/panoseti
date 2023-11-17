@@ -1,5 +1,9 @@
 #! /usr/bin/env python3
 
+"""
+Routines for building data batch skycam features.
+"""
+
 import os
 import json
 from datetime import datetime, timedelta, timezone
