@@ -3,25 +3,24 @@
 """
 Routines for building data batch skycam features.
 """
-
 import os
 import json
-from datetime import datetime, timedelta, timezone
 
 from dataframe_utils import add_skycam_img, get_skycam_uid, skycam_imgs_root_dir, skycam_path_index_fname
+from batch_building_utils import *
 
-valid_image_types = ['original', 'cropped', 'pfov']
+valid_skycam_img_types = ['original', 'cropped', 'pfov']
 
 def get_skycam_subdirs(skycam_path):
     """Return dict of skycam image directories."""
     img_subdirs = {}
-    for img_type in valid_image_types:
+    for img_type in valid_skycam_img_types:
         img_subdirs[img_type] = f'{skycam_path}/{img_type}'
     return img_subdirs
 
 
 def get_skycam_img_path(original_fname, img_type, skycam_dir):
-    assert img_type in valid_image_types, f"{img_type} is not supported"
+    assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
     skycam_subdirs = get_skycam_subdirs(skycam_dir)
     if original_fname[-4:] != '.jpg':
         return None
@@ -67,14 +66,14 @@ def is_initialized(skycam_path):
                                     f"{os.walk(skycam_path)}")
 
 
-def is_data_downloaded(skycam_path):
+def is_skycam_data_downloaded(skycam_path):
     """Checks if data is already downloaded."""
     img_subdirs = get_skycam_subdirs(skycam_path)
     if os.path.exists(img_subdirs['original']) and len(os.listdir(img_subdirs['original'])) > 0:
         raise FileExistsError(f"Data already downloaded at {img_subdirs['original']}")
     is_initialized(skycam_path)
 
-def is_data_preprocessed(skycam_path, batch_path):
+def is_skycam_data_preprocessed(skycam_path, batch_path):
     """Checks if data is already processed."""
     img_subdirs = get_skycam_subdirs(skycam_path)
     if (os.path.exists(f'{batch_path}/{skycam_path_index_fname}') or (os.path.exists(img_subdirs['cropped']) and len(os.listdir(img_subdirs['cropped'])) > 0)):
@@ -107,8 +106,6 @@ def get_skycam_img_time(skycam_fname):
     return dt
 
 
-def get_batch_dir(task, batch_id):
-    return "task_{0}.batch-id_{1}".format(task, batch_id)
 
 def make_skycam_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""
@@ -133,10 +130,6 @@ def make_skycam_paths_json(batch_path):
     with open(f"{batch_path}/{skycam_path_index_fname}", 'w') as f:
         f.write(json.dumps(skycam_paths, indent=4))
     return skycam_paths
-
-
-def get_unix_from_datetime(t):
-    return (t - datetime(1970, 1, 1, tzinfo=timezone.utc)) / timedelta(seconds=1)
 
 
 def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose):

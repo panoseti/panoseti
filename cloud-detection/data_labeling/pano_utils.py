@@ -8,15 +8,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-from dataframe_utils import add_pano_img, pano_imgs_root_dir, pano_path_index_fname
+from dataframe_utils import add_pano_img
+from batch_building_utils import *
 
 
-valid_image_types = ['original', 'derivative', 'fft-derivative', 'fft']
+valid_pano_img_types = ['original', 'derivative', 'fft-derivative', 'fft']
 
 # File structure abstraction
 def get_pano_subdirs(pano_path):
     pano_subdirs = {}
-    for img_type in valid_image_types:
+    for img_type in valid_pano_img_types:
         pano_subdirs[img_type] = f'{pano_path}/{img_type}'
     return pano_subdirs
 
@@ -24,19 +25,9 @@ def get_pano_root_path(batch_path):
     return f'{batch_path}/{pano_imgs_root_dir}'
 
 def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
-    assert img_type in valid_image_types, f"{img_type} is not supported"
+    assert img_type in valid_pano_img_types, f"{img_type} is not supported"
     pano_subdirs = get_pano_subdirs(pano_imgs_path)
     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
-    # if feature_type == 'original':
-    #     return f"{pano_subdirs['original']}/{original_fname.rstrip('.pff')}.feature-type_original.pff"
-    # elif feature_type == 'derivative':
-    #     return f"{pano_subdirs['derivative']}/{original_fname.rstrip('.pff')}.feature-type_derivative.pff"
-    # elif feature_type == 'fft':
-    #     return f"{pano_subdirs['fft']}/{original_fname.rstrip('.pff')}.feature-type_.pff"
-    # else:
-    #     return None
-    #
-
 
 def make_pano_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""

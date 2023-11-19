@@ -1,0 +1,10 @@
+{
+  "pano_imgs": {
+    "original": {
+      "dimension": [32, 32]
+    },
+    "fft": {
+      "dimension": [32, 32]
+    }
+  }
+}

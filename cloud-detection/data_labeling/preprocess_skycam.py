@@ -15,7 +15,7 @@ import traceback
 
 from fetch_skycam_imgs import download_skycam_data, unpack_and_filter_skycam_imgs, get_skycam_link, get_manual_download_instructions
 from skycam_utils import (get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, init_preprocessing_dirs,
-                          is_data_preprocessed, is_data_downloaded, skycam_zip_downloaded, get_skycam_root_path)
+                          is_skycam_data_preprocessed, is_skycam_data_downloaded, skycam_zip_downloaded, get_skycam_root_path)
 
 
 pixel_data_file = 'skycam_pixels.json'
@@ -102,7 +102,7 @@ def preprocess_skycam_imgs(skycam_type,
     skycam_path = f'{root}/{skycam_dir}'
     try:
         init_preprocessing_dirs(skycam_path)
-        is_data_preprocessed(skycam_path, batch_path)
+        is_skycam_data_preprocessed(skycam_path, batch_path)
     except FileExistsError as fee:
         print(fee)
         return None
@@ -113,7 +113,7 @@ def preprocess_skycam_imgs(skycam_type,
             raise FileNotFoundError(msg)
     else:
         try:
-            if not is_data_downloaded(skycam_path):
+            if not is_skycam_data_downloaded(skycam_path):
                 download_skycam_data(skycam_type, year, month, day, verbose, root=root)
         except Warning as wee:
             msg = str(wee)

@@ -13,7 +13,8 @@ import shutil
 
 import pandas as pd
 
-from dataframe_utils import get_dataframe, load_df, save_df, add_user, add_user_batch_log, get_data_export_dir
+from dataframe_utils import *
+from skycam_utils import get_batch_dir
 
 sys.path.append('../../util')
 #from pff import parse_name
@@ -32,6 +33,8 @@ class DatasetManager:
         self.main_dfs = {   # Aggregated metadata datasets.
             'user': None,
             'skycam': None,
+            'pano': None,
+            'feature': None,
             'labeled': None,
             'user-batch-log': None
         }
@@ -39,10 +42,10 @@ class DatasetManager:
         if not os.path.exists(self.dataset_dir):
             self.init_dataset_dir()
         else:
-            #self.label_log = self.load_label_log()
             self.init_main_dfs()
 
         self.labeled_batches = self.get_labeled_batch_info()
+
 
     def init_dataset_dir(self):
         """
@@ -53,21 +56,10 @@ class DatasetManager:
         # Make dataset_dir
         os.makedirs(self.dataset_dir, exist_ok=False)
         os.makedirs(self.user_labeled_path, exist_ok=False)
-        # Make label_log file
-        # with open(self.label_log_path, 'w') as f:
-        #     self.label_log = {
-        #         'batches': {
-        #             0: {
-        #                 'user-uids': []  # Records which users have labeled this batch
-        #             }
-        #         }
-        #     }
-        #     json.dump(self.label_log, f, indent=4)
         # Make empty dataframes from standard format function
         for df_type in self.main_dfs:
             self.main_dfs[df_type] = get_dataframe(df_type)  # Create df using standard definition
             self.save_main_df(df_type)
-
 
     @staticmethod
     def get_main_df_save_name(df_type):
@@ -75,21 +67,12 @@ class DatasetManager:
         save_name = "type_{0}".format(df_type)
         return save_name + '.csv'
 
-    @staticmethod
-    def parse_name(name):
-        d = {}
-        x = name.split('.')
-        for s in x:
-            y = s.split('_')
-            if len(y) < 2:
-                continue
-            d[y[0]] = y[1]
-        return d
-
     def init_main_dfs(self):
         """Initialize the aggregated dataframes for the main dataset."""
         for df_type in self.main_dfs:
             self.main_dfs[df_type] = self.load_main_df(df_type)
+            if self.main_dfs[df_type] is None:
+                raise ValueError(f"Dataframe for '{df_type}' missing in dataset directory!")
 
     def load_main_df(self, df_type):
         """Load the main dataset dataframes."""
@@ -145,19 +128,39 @@ class DatasetManager:
             for batch_name in os.listdir(self.user_labeled_path):
                 if not batch_name.startswith('task_'):
                     continue
-                parsed = self.parse_name(batch_name)
+                parsed = parse_name(batch_name)
                 if parsed['task'] != self.task:
                     raise ValueError(f"Found data with a task={parsed['task']}, "
                                      f"which does not match the task of this dataset: {self.task}")
                 labeled_batches.append(batch_name)
         return labeled_batches
 
-    def update_dataset(self):
+    def make_batch_data_array(self, batch_path, batch_def):
+        for sample in batch_def:
+            ...
+
+
+    def aggregate_batch_data_features(self, batch_id):
+        batch_data_path = f'{batch_data_root_dir}/{get_batch_dir(self.task, batch_id)}'
+        for df_type in ['pano', 'skycam', 'feature']:
+            df = load_df(
+                None, batch_id, df_type, self.task,
+                is_temp=False, save_dir=batch_data_path
+            )
+            if df is None:
+                raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
+
+            self.main_dfs[df_type] = pd.concat([df, self.main_dfs[df_type]], ignore_index=True, verify_integrity=True)
+            self.main_dfs[df_type] = self.main_dfs[df_type].loc[~self.main_dfs[df_type].duplicated()]
+            # Save dfs at end to ensure all updates are successful before write.
+            self.save_main_df(df_type)
+
+    def aggregate_labeled_data(self):
         """Incorporate each new user-labeled data batch into the dataset."""
         ubl_df = self.main_dfs['user-batch-log']
         user_df = self.main_dfs['user']
         for batch_name in self.labeled_batches:
-            parsed = self.parse_name(batch_name)
+            parsed = parse_name(batch_name)
             user_uid, batch_id = parsed['user-uid'], int(parsed['batch-id'])
 
             # If user not tracked in user_df, add them here.
@@ -168,33 +171,37 @@ class DatasetManager:
                     user_df = add_user(user_df, user_uid, user_info['name'])
                 self.save_main_df('user')
 
-            batches_labeled_by_user = ubl_df.loc[
-                ubl_df['user_uid'] == user_uid, 'batch_id'
-            ]
-            if batch_id not in batches_labeled_by_user:
-                # Check if data batch has a complete set of labels
-                user_unlabeled_df = load_df(
-                    user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
-                    save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
-                )
-                if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
-                    print(f'Some data in "{batch_name}" are missing labels --> '
-                          f'Skipping this batch for now.')
-                    continue
-                ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)
-                user_labeled_df = load_df(
-                    user_uid, batch_id, 'labeled', task=self.task, is_temp=False,
-                    save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
-                )
-                # If batch
-                # TODO: generate image_df and unlabeled_df definitions in the databatch
-                # Concat new labeled data to existing labeled data
-                self.main_dfs['labeled'] = pd.concat(
-                    [self.main_dfs['labeled'], user_labeled_df], ignore_index=True
-                )
-                # Save dfs at end to ensure all updates are successful before write.
-                self.save_main_df('labeled')
-                self.save_main_df('user-batch-log')
+            batches_labeled_by_user = ubl_df.loc[ubl_df['user_uid'] == user_uid, 'batch_id']
+            if batch_id in batches_labeled_by_user:
+                continue
+            # Check if data batch has a complete set of labels
+            user_unlabeled_df = load_df(
+                user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
+                save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+            )
+            if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
+                print(f'Some data in "{batch_name}" are missing labels --> '
+                      f'Skipping this batch for now.')
+                continue
+            ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)
+            user_labeled_df = load_df(
+                user_uid, batch_id, 'labeled', task=self.task, is_temp=False,
+                save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+            )
+
+            # Concat new labeled data to existing labeled data
+            self.main_dfs['labeled'] = pd.concat([self.main_dfs['labeled'], user_labeled_df], ignore_index=True, verify_integrity=True)
+            # Save dfs at end to ensure all updates are successful before write.
+            self.save_main_df('labeled')
+            self.save_main_df('user-batch-log')
+
+    def update_dataset(self):
+        self.aggregate_labeled_data()
+        ubl_df = self.main_dfs['user-batch-log']
+        labeled_batches = ubl_df.loc['batch_id']
+        self.aggregate_batch_data_features()
+
+
 
 
 if __name__ == '__main__':

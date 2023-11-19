@@ -21,8 +21,9 @@ from PIL import Image
 from IPython import display
 
 sys.path.append('../')
-from skycam_utils import get_skycam_img_path, get_batch_dir, skycam_path_index_fname, get_skycam_root_path
-from panoseti_batch_utils import get_pano_img_path, get_pano_subdirs, get_pano_root_path
+from batch_building_utils import *
+from skycam_utils import get_skycam_img_path, get_skycam_root_path
+from pano_utils import get_pano_img_path, get_pano_root_path
 from dataframe_utils import *
 
 class LabelSession:
@@ -103,7 +104,6 @@ class LabelSession:
                     for feature_uid in self.feature_df['feature_uid']:
                         # Add entries to unlabeled_df
                         df = add_unlabeled_data(df, feature_uid)
-                    df = df.sample(frac=1).reset_index(drop=True)
         else:
             raise ValueError(f'Unsupported df_type: "{df_type}"')
         return df
@@ -411,5 +411,5 @@ class LabelSession:
 
 
 if __name__ == '__main__':
-    session = LabelSession('Nico', 6)
+    session = LabelSession('Nico', 5)
     session.start()

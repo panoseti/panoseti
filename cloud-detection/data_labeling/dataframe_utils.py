@@ -3,22 +3,14 @@ Utility functions for manipulating panoseti ML dataframes.
 Use these methods to interact with dataframes to ensure database integrity.
 """
 
-import hashlib
 import pandas as pd
 import numpy as np
 import os
 import shutil
 
-skycam_imgs_root_dir = 'skycam_imgs'
-pano_imgs_root_dir = 'pano_imgs'
-batch_data_root_dir = 'batch_data'
-
-data_labels_fname = 'skycam_labels.json'
-pano_path_index_fname = 'pano_path_index.json'
-skycam_path_index_fname = 'skycam_path_index.json'
+from batch_building_utils import *
 
 # Database formats / Core routines
-
 
 def get_dataframe_formats():
     dataframe_formats = {
@@ -43,15 +35,14 @@ def get_dataframe_formats():
         },
         'user-batch-log': {
             'columns': ['user_uid', 'batch_id'],
+        },
+        'dataset-meta': {
+            'columns': ['feature_uid', 'batch_id', ],
         }
     }
     return dataframe_formats
 
 # Database IO routines
-def get_data_export_dir(task, batch_id, user_uid, root):
-    dir_name = "task_{0}.batch-id_{1}.user-uid_{2}".format(task, batch_id, user_uid)
-    dir_path = f'{root}/{dir_name}'
-    return dir_path
 
 
 def get_df_save_name(task, batch_id, df_type, user_uid, is_temp):
@@ -63,11 +54,8 @@ def get_df_save_name(task, batch_id, df_type, user_uid, is_temp):
         save_name += f'.TEMP'
     return save_name + '.csv'
 
-
 def save_df(df, df_type, user_uid, batch_id, task, is_temp, save_dir, overwrite_ok=True):
     """Save a pandas dataframe as a csv file. If is_temp is True, add the postfix TEMP to the filename."""
-    #os.makedirs(save_dir, exist_ok=True)
-
     df_path = f'{save_dir}/{get_df_save_name(task, batch_id, df_type, user_uid, is_temp)}'
     if os.path.exists(df_path) and not overwrite_ok:
         raise FileExistsError(f'{df_path} exists. Aborting save.')
@@ -115,25 +103,6 @@ def extend_df(df: pd.DataFrame, df_type: str, data: dict,
                 raise ValueError(f"dtypes of new data do not match dtypes of existing columns."
                                  f"\nGiven dtypes:\n{df_extended.dtypes} \nExpected dtypes: \n{df.dtypes}")
     return pd.concat([df, df_extended], ignore_index=True, verify_integrity=verify_integrity)
-
-
-# UID definitions
-
-def get_uid(data: str):
-    """Returns SHA1 hash of a string input data."""
-    data_bytes = data.encode('utf-8')
-    data_uid = hashlib.sha1(data_bytes).hexdigest()
-    return data_uid
-
-
-def get_pano_uid(pano_original_fname, frame_offset):
-    return get_uid(pano_original_fname + str(frame_offset))
-
-def get_feature_uid(skycam_uid, pano_uid, batch_id):
-    return get_uid(skycam_uid + pano_uid + str(batch_id))
-
-def get_skycam_uid(original_skycam_fname):
-    return get_uid(original_skycam_fname)
 
 
 # Database interface routines
@@ -233,27 +202,6 @@ def get_dataframe(df_type):
     dataframe_formats = get_dataframe_formats()
     assert df_type in dataframe_formats, f"'{df_type}' is not a supported dataframe format"
     return pd.DataFrame(columns=dataframe_formats[df_type]['columns'])
-
-
-# Unzip files
-def unpack_batch_data(batch_data_root_dir):
-    """Unpack image files from batch data gztar file."""
-    downloaded_fname = ''
-    batch_dir = ''
-
-    for fname in os.listdir(batch_data_root_dir):
-        if fname.endswith('.tar.gz'):
-            downloaded_fname = fname
-            batch_dir = fname.rstrip('.tar.gz')
-    if downloaded_fname:
-        downloaded_fpath = f'{batch_data_root_dir}/{downloaded_fname}'
-        batch_dir_path = f'{batch_data_root_dir}/{batch_dir}'
-        print(f'Unzipping {downloaded_fpath}. This may take a minute...')
-        shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
-        os.remove(downloaded_fpath)
-
-# Misc
-
 
 
 

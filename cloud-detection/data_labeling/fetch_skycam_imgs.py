@@ -15,7 +15,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 
-from skycam_utils import get_skycam_dir, get_skycam_subdirs, is_data_downloaded, get_skycam_img_time
+from skycam_utils import get_skycam_dir, get_skycam_subdirs, is_skycam_data_downloaded, get_skycam_img_time
 
 
 def get_skycam_link(skycam_type, year, month, day):
@@ -172,7 +172,7 @@ def filter_images(skycam_dir: str, first_t: datetime, last_t: datetime):
 
 
 def unpack_and_filter_skycam_imgs(skycam_path, first_t, last_t, verbose=False):
-    is_data_downloaded(skycam_path)
+    is_skycam_data_downloaded(skycam_path)
     if verbose: print("Unzipping skycam files...")
     unzip_images(skycam_path)
     if verbose: print("Filtering skycam images...")
