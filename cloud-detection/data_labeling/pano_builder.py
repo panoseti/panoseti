@@ -1,26 +1,18 @@
 """
 PanosetiBatchBuilder creates all panoseti features for a single observing run.
 """
-
 import os
 import numpy as np
 import sys
-from collections import deque
 from datetime import timedelta
-
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import ImageGrid
-import seaborn_image as isns
-import seaborn as sns
-from matplotlib import colors
-from scipy.fftpack import fftn, fftshift
-from skimage.filters import window
 
 from batch_building_utils import *
 from panoseti_file_interfaces import ObservingRunFileInterface
 from skycam_utils import get_skycam_img_time, get_skycam_root_path, get_skycam_subdirs
 from pano_utils import *
 from dataframe_utils import *
+from dataset_utils import PanoDatasetBuilder
+
 
 sys.path.append("../../util")
 import pff
@@ -37,6 +29,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
         self.pano_path = f'{self.batch_path}/{pano_imgs_root_dir}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path)
         self.force_recreate = force_recreate
+        self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
         os.makedirs(self.pano_path, exist_ok=True)
 
     def init_preprocessing_dirs(self):
@@ -145,6 +138,8 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
+            img = np.reshape(img, (32, 32))
+            self.pano_dataset_builder.add_img_to_entry(img, 'original')
             img = self.img_transform(img)
             #img = (img - np.median(img)) / np.std(img)
             fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
@@ -161,6 +156,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
+            self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft')
             img = self.img_transform(img)
             fig = plot_image_fft(img, vmin=vmin, vmax=vmax, cmap=cmap)
             return fig
@@ -229,8 +225,12 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                     imgs = list()
                     delta_ts = []
                     for k in [int(i * hist_size / ncols) for i in range(ncols, 0, -1)]:
-                        delta_ts.append(str(-step_delta_t * k))
-                        data = (img - hist[k - 1]) / np.std(hist)
+                        delta_t = -step_delta_t * k
+                        delta_ts.append(str(delta_t))
+                        diff = (img - hist[k - 1])
+                        # if delta_t == -60:
+                        #     self.img_array_builder.add_img_to_entry(diff, 'derivative-60s')
+                        data = diff / k
                         data = self.img_transform(data)
                         imgs.append(data)
                     # print(delta_ts)
@@ -330,6 +330,7 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 for fig in figs.values():
                     plt.close(fig)
                 if verbose: print('Failed to create figures')
+                self.pano_dataset_builder.clear_current_entry()
                 continue
 
             # Write figures to data dirs
@@ -340,6 +341,9 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
                 if verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
                 fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
                 plt.close(fig)
+
+            # Commit entry to data_array for this run_dir
+            self.pano_dataset_builder.write_arrays(pano_uid)
 
             # Update dataframes
             pano_df = add_pano_img(
@@ -360,98 +364,4 @@ class PanosetiBatchBuilder(ObservingRunFileInterface):
             )
         return feature_df, pano_df
 
-
-# Plotting
-def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
-    for i in range(len(imgs)):
-        if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
-            print('no image')
-            return None
-        if imgs[i].shape != (32, 32):
-            imgs[i] = np.reshape(imgs[i], (32, 32))
-    # plt.rcParams.update({'axes.titlesize': 'small'})
-    fig = plt.figure(figsize=(10., 3.))
-
-    grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                     nrows_ncols=(1, nc),  # creates nr x 1 grid of axes
-                     axes_pad=0.1,  # pad between axes in inch.
-                     share_all=True
-                     )
-    grid[0].get_yaxis().set_ticks([])
-    grid[0].get_xaxis().set_ticks([])
-
-    titles = []
-    for dt in delta_ts:
-        titles.append(f'{dt} s')
-    # fig.suptitle(f': derivative', ha='center')
-
-    ims = []
-    norm = colors.Normalize(vmin=vmin, vmax=vmax)
-    for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
-        #im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
-        # im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
-        im = plot_image_fft(img, ax=ax, cmap=cmap)
-        ax.set_title(title, x=0.5, y=-0.2)
-        #im.set_norm(norm)
-        ims.append(im)
-    return fig
-
-def plot_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
-    for i in range(len(imgs)):
-        if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
-            print('no image')
-            return None
-        if imgs[i].shape != (32, 32):
-            imgs[i] = np.reshape(imgs[i], (32, 32))
-    # print(delta_ts)
-    # ax = isns.ImageGrid(imgs, height=1.5, col_wrap=1, vmin=-100, vmax=100, cmap="viridis", cbar=False)
-    titles = []
-    for dt in delta_ts:
-        titles.append(f'{dt} s')
-    #print('len', len(imgs))
-    ax = isns.ImageGrid(imgs,
-                        height=3,
-                        aspect=0.75,
-                        col_wrap=4,
-                        vmin=vmin,
-                        vmax=vmax,
-                        cmap=cmap,
-                        cbar_label=titles,
-                        orientation="h")
-    fig = ax.fig
-    # fig.suptitle(f': derivative', ha='center')
-    return fig
-
-def plot_image_fft(data, cmap, **kwargs):
-    if data is None or not isinstance(data, np.ndarray):
-        print('no image')
-        return None
-    if data.shape != (32, 32):
-        data = np.reshape(data, (32, 32))
-
-    # window image to improve fft
-    # shape = kwargs.get("shape", data.shape)
-    shape = data.shape
-    window_type = "cosine"
-    data = data * window(window_type, shape)
-
-    # perform fft and get absolute value
-    data = np.abs(fftn(data))
-    # shift the DC component to center
-    data = fftshift(data)
-    data = np.log(data)
-    # print(f'min:{np.min(data)}, max:{np.max(data)}')
-
-
-    ax = isns.imgplot(
-        data,
-        cmap=cmap,
-        cbar=False,
-        showticks=False,
-        describe=False,
-        despine=None,
-        **kwargs
-    )
-    return ax.get_figure()
-    ax = isns.fftplot(data, cmap=cmap, window_type='cosine')
 

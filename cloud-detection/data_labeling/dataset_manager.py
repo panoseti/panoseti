@@ -13,21 +13,22 @@ import shutil
 
 import pandas as pd
 
+from batch_building_utils import *
 from dataframe_utils import *
-from skycam_utils import get_batch_dir
+from dataset_utils import *
+from pano_builder import PanosetiBatchBuilder
 
 sys.path.append('../../util')
 #from pff import parse_name
 
 class DatasetManager:
-    label_log_fname = 'label_log.json'
-    user_labeled_dir = 'user_labeled_batches'
 
     def __init__(self, task='cloud-detection'):
         self.task = task
-        self.dataset_dir = f'dataset_{task}'
-        self.label_log_path = f'{self.dataset_dir}/{self.label_log_fname}'
-        self.user_labeled_path = f'{self.dataset_dir}/{self.user_labeled_dir}'
+        self.dataset_dir = get_root_dataset_dir(task)
+        self.label_log_path = f'{self.dataset_dir}/{label_log_fname}'
+        self.user_labeled_path = f'{self.dataset_dir}/{user_labeled_dir}'
+        self.batch_data_array_path = f'{self.dataset_dir}/{batch_data_array_dir}'
 
         #self.label_log = {}
         self.main_dfs = {   # Aggregated metadata datasets.
@@ -56,13 +57,13 @@ class DatasetManager:
         # Make dataset_dir
         os.makedirs(self.dataset_dir, exist_ok=False)
         os.makedirs(self.user_labeled_path, exist_ok=False)
+        os.makedirs(self.batch_data_array_path, exist_ok=False)
         # Make empty dataframes from standard format function
         for df_type in self.main_dfs:
             self.main_dfs[df_type] = get_dataframe(df_type)  # Create df using standard definition
             self.save_main_df(df_type)
 
-    @staticmethod
-    def get_main_df_save_name(df_type):
+    def get_main_df_save_name(self, df_type):
         """Get standard main_df filename."""
         save_name = "type_{0}".format(df_type)
         return save_name + '.csv'
@@ -93,24 +94,24 @@ class DatasetManager:
             with open(df_path, 'w'):
                 df.to_csv(df_path)
 
-    def load_label_log(self):
-        """
-        Load / create the label_log file. This file tracks which
-        user-labeled data batches have been added to the master dataset.
-        """
-        if not os.path.exists(self.label_log_path):
-            raise FileNotFoundError(f'{self.label_log_path} does not exist!')
-        with open(self.label_log_path, 'r') as f:
-            label_log = json.load(f)
-        return label_log
-
-    def save_label_log(self, label_log, overwrite_ok=True):
-        """Save the label_log file."""
-        if os.path.exists(self.label_log_path) and not overwrite_ok:
-            raise FileNotFoundError(f'{self.label_log_path} exists and overwrite_ok=False. Aborting save...')
-        else:
-            with open(self.label_log_path, 'w') as f:
-                json.dump(label_log, f, indent=4)
+    # def load_label_log(self):
+    #     """
+    #     Load / create the label_log file. This file tracks which
+    #     user-labeled data batches have been added to the master dataset.
+    #     """
+    #     if not os.path.exists(self.label_log_path):
+    #         raise FileNotFoundError(f'{self.label_log_path} does not exist!')
+    #     with open(self.label_log_path, 'r') as f:
+    #         label_log = json.load(f)
+    #     return label_log
+    #
+    # def save_label_log(self, label_log, overwrite_ok=True):
+    #     """Save the label_log file."""
+    #     if os.path.exists(self.label_log_path) and not overwrite_ok:
+    #         raise FileNotFoundError(f'{self.label_log_path} exists and overwrite_ok=False. Aborting save...')
+    #     else:
+    #         with open(self.label_log_path, 'w') as f:
+    #             json.dump(label_log, f, indent=4)
 
     def unpack_user_labeled_batches(self):
         for batch_name in os.listdir(self.user_labeled_path):
@@ -118,7 +119,6 @@ class DatasetManager:
                 batch_zipfile_path = f'{self.user_labeled_path}/{batch_name}'
                 shutil.unpack_archive(batch_zipfile_path, batch_zipfile_path[:-4], format='zip')
                 os.remove(batch_zipfile_path)
-
 
     def get_labeled_batch_info(self):
         """Return list of available user-labeled data batches."""
@@ -134,11 +134,6 @@ class DatasetManager:
                                      f"which does not match the task of this dataset: {self.task}")
                 labeled_batches.append(batch_name)
         return labeled_batches
-
-    def make_batch_data_array(self, batch_path, batch_def):
-        for sample in batch_def:
-            ...
-
 
     def aggregate_batch_data_features(self, batch_id):
         batch_data_path = f'{batch_data_root_dir}/{get_batch_dir(self.task, batch_id)}'

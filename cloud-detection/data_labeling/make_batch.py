@@ -61,12 +61,12 @@ from pano_utils import make_pano_paths_json
 from pano_builder import PanosetiBatchBuilder
 from dataset_manager import DatasetManager
 
-batch_data_zipfiles_dir = 'batch_data_zipfiles'
 
+def make_batch_def_json(batch_path, task, batch_id, batch_def):
+    batch_def_fname = get_batch_def_json_fname(task, batch_id)
+    with open(f"{batch_path}/{batch_def_fname}", 'w') as f:
+        f.write(json.dumps(batch_def, indent=4))
 
-def get_batch_path(task, batch_id):
-    batch_path = batch_data_root_dir + '/' + get_batch_dir(task, batch_id)
-    return batch_path
 
 def zip_batch(task, batch_id, force_recreate=True):
     os.makedirs(batch_data_zipfiles_dir, exist_ok=True)
@@ -161,11 +161,13 @@ def build_batch(batch_def,
         save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path, overwrite_ok=False)
         save_df(pano_df, 'pano', None, batch_id, task, False, batch_path, overwrite_ok=False)
         save_df(feature_df, 'feature', None, batch_id, task, False, batch_path, overwrite_ok=False)
+        dataset_manager.aggregate_batch_data_features(batch_id)
     except FileExistsError as fee:
         print('Dataframes already created.')
 
-    skycam_paths = make_skycam_paths_json(batch_path)
-    pano_paths = make_pano_paths_json(batch_path)
+    make_skycam_paths_json(batch_path)
+    make_pano_paths_json(batch_path)
+    make_batch_def_json(batch_path, task, batch_id, batch_def)
 
     if do_zip:
         zip_batch(task, batch_id, force_recreate=True)
@@ -212,7 +214,9 @@ if __name__ == '__main__':
         #     }
         # },
     ]
-    batch_id = 5
+    batch_id = 2
+
+    dataset_manager = DatasetManager()
     build_batch(batch_def_3,
                 'cloud-detection',
                 batch_id,
@@ -220,6 +224,4 @@ if __name__ == '__main__':
                 do_zip=True,
                 force_recreate=False,
                 manual_skycam_download=False)
-
-
     #zip_batch('cloud-detection', 4, force_recreate=True)

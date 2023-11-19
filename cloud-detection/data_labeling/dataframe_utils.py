@@ -204,7 +204,6 @@ def get_dataframe(df_type):
     return pd.DataFrame(columns=dataframe_formats[df_type]['columns'])
 
 
-
 """
 pd.set_option('display.max_columns', None)
 data = {'user_uid': ['23423'], 'feature_uid': ['123423423'], 'label': [0]}
