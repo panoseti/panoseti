@@ -197,7 +197,7 @@ if __name__ == '__main__':
         #     }
         # },
     ]
-    batch_id = 2
+    batch_id = 4
 
     dataset_manager = DatasetManager()
     build_batch(batch_def_3,

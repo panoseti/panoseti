@@ -17,8 +17,6 @@ class CloudDetection(torchvision.datasets.VisionDataset):
         self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
         #self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
 
-
-
     def __getitem__(self, index: int):
         img = self.data[index]
         img = Image.fromarray(img)
@@ -28,4 +26,3 @@ class CloudDetection(torchvision.datasets.VisionDataset):
 
     def __len__(self) -> int:
         return len(self.data)
-

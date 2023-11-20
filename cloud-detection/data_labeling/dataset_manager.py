@@ -93,13 +93,14 @@ class DatasetManager:
 
 class CloudDetectionDatasetBuilder(DatasetManager):
     def __init__(self):
-        super().__init__(task='cloud-detection')
+        self.task = 'cloud-detection'
+        super().__init__(task=self.task)
         # Proportion of labelers that must agree on label for each example to be included in dataset:
-        self.proportion_of_training_data = 0.8
+        # self.
         self.agreement_threshold = 0.5
         self.labeled_batches = self.get_labeled_batches()
 
-
+    """Manage user-produced data"""
     def unpack_user_labeled_batches(self):
         for batch_name in os.listdir(self.user_labeled_path):
             if batch_name.endswith('.zip'):
@@ -122,19 +123,6 @@ class CloudDetectionDatasetBuilder(DatasetManager):
                 labeled_batches.append(batch_name)
         return labeled_batches
 
-    def aggregate_batch_data_features(self, batch_id):
-        batch_data_path = f'{batch_data_root_dir}/{get_batch_dir(self.task, batch_id)}'
-        for df_type in ['pano', 'skycam', 'feature']:
-            df = load_df(
-                None, batch_id, df_type, self.task,
-                is_temp=False, save_dir=batch_data_path
-            )
-            if df is None:
-                raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
-            self.main_dfs[df_type] = pd.concat([df, self.main_dfs[df_type]], ignore_index=True, verify_integrity=True)
-            self.main_dfs[df_type] = self.main_dfs[df_type].loc[~self.main_dfs[df_type].duplicated()]
-            # Save dfs at end to ensure all updates are successful before write.
-            self.save_main_df(df_type)
 
     def majority_vote_agg(self, x):
         y = x.value_counts(normalize=True)
@@ -198,6 +186,40 @@ class CloudDetectionDatasetBuilder(DatasetManager):
         self.save_main_df('labeled')
         self.save_main_df('user-batch-log')
 
+    """Aggregate batch metadata"""
+
+    def aggregate_batch_data_features(self, batch_id):
+        batch_data_path = f'{batch_data_root_dir}/{get_batch_dir(self.task, batch_id)}'
+        for df_type in ['pano', 'skycam', 'feature']:
+            df = load_df(
+                None, batch_id, df_type, self.task,
+                is_temp=False, save_dir=batch_data_path
+            )
+            if df is None:
+                raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
+            self.main_dfs[df_type] = pd.concat([df, self.main_dfs[df_type]], ignore_index=True, verify_integrity=True)
+            self.main_dfs[df_type] = self.main_dfs[df_type].loc[~self.main_dfs[df_type].duplicated()]
+            # Save dfs at end to ensure all updates are successful before write.
+            self.save_main_df(df_type)
+
+    def verify_pano_feature_data(self, batch_id):
+        """Returns True iff all data files for labeled pano_features exist and are not empty."""
+        ftr_df = self.main_dfs['feature']
+        dsl_df = self.main_dfs['dataset-labels']
+        pano_df = self.main_dfs['pano']
+        labeled_feature_uids = dsl_df.loc[:, 'feature_uid']
+        all_valid = True
+        for feature_uid in labeled_feature_uids:
+            pano_uid = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]
+            run_dir = pano_df.loc[pano_df['pano_uid'] == pano_uid, 'run_dir'].iloc[0]
+            pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir)
+            for img_type in PanoDatasetBuilder.supported_img_types:
+                pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
+                all_valid &= os.path.exists(pano_feature_path)
+                all_valid &= os.path.getsize(pano_feature_path) > 0
+        return all_valid
+
+
     def generate_dataset(self):
         print("Aggregating user labels")
         self.aggregate_labeled_data()
@@ -206,8 +228,13 @@ class CloudDetectionDatasetBuilder(DatasetManager):
         print("Aggregating feature metadata")
         for batch_id in batch_ids.iloc[0]:
             self.aggregate_batch_data_features(batch_id)
+            if not self.verify_pano_feature_data(batch_id):
+                raise ValueError('Not all pano features are valid!')
         print("Done")
 
+    def export_dataset(self):
+        # TODO
+        pass
 
 
 
