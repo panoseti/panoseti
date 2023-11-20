@@ -184,22 +184,22 @@ if __name__ == '__main__':
         #         'day': 23
         #     }
         # },
-        # {
-        #     'pano': {
-        #         'data_dir': DATA_DIR,
-        #         'run_dir': 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd',
-        #     },
-        #     'skycam': {
-        #         'skycam_type': 'SC2',
-        #         'year': 2023,
-        #         'month': 8,
-        #         'day': 28
-        #     }
-        # },
+        {
+            'pano': {
+                'data_dir': DATA_DIR,
+                'run_dir': 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd',
+            },
+            'skycam': {
+                'skycam_type': 'SC2',
+                'year': 2023,
+                'month': 8,
+                'day': 28
+            }
+        },
     ]
-    batch_id = 4
+    batch_id = 6
 
-    dataset_manager = CloudDetectionDatasetManager()
+    # dataset_manager = CloudDetectionDatasetManager()
     build_batch(batch_def_3,
                 'cloud-detection',
                 batch_id,
@@ -207,5 +207,6 @@ if __name__ == '__main__':
                 do_zip=True,
                 force_recreate=True,
                 manual_skycam_download=False)
+
 
     #zip_batch('cloud-detection', 4, force_recreate=True)

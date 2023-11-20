@@ -99,7 +99,7 @@ class PanoBatchBuilder(ObservingRunInterface):
             )
             j, img = self.read_frame(fp, self.img_bpp)
             img = np.reshape(img, (32, 32))
-            self.pano_dataset_builder.add_img_to_entry(img, 'original')
+            self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
             img = self.img_transform(img)
             #img = (img - np.median(img)) / np.std(img)
             fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
@@ -116,7 +116,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 os.SEEK_CUR
             )
             j, img = self.read_frame(fp, self.img_bpp)
-            self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft')
+            self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
             img = self.img_transform(img)
             fig = plot_image_fft(img, vmin=vmin, vmax=vmax, cmap=cmap)
             return fig
@@ -190,7 +190,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                         diff = (img - hist[k - 1])
                         # if delta_t == -60:
                         #     self.img_array_builder.add_img_to_entry(diff, 'derivative-60s')
-                        data = diff / k
+                        data = diff / np.std(hist)
                         data = self.img_transform(data)
                         imgs.append(data)
                     # print(delta_ts)
@@ -266,7 +266,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 pano_frame_seek_info['file_idx'],
                 pano_frame_seek_info['frame_offset'],
                 module_id,
-                20,
+                2,
                 60,
                 ncols=3,
                 vmin=[-3, -1],

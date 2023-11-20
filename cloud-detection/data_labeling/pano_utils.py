@@ -149,14 +149,14 @@ def apply_fft(data):
     return data
 
 
-def plot_image_fft(fft_data, cmap, **kwargs):
-    if fft_data is None or not isinstance(fft_data, np.ndarray):
+def plot_image_fft(data, cmap, **kwargs):
+    if data is None or not isinstance(data, np.ndarray):
         print('no image')
         return None
-    if fft_data.shape != (32, 32):
-        fft_data = np.reshape(fft_data, (32, 32))
+    if data.shape != (32, 32):
+        data = np.reshape(data, (32, 32))
 
-    # window image to improve fft
+    fft_data = apply_fft(data)
 
     ax = isns.imgplot(
         fft_data,
