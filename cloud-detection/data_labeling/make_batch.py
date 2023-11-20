@@ -58,7 +58,7 @@ from batch_building_utils import *
 from dataframe_utils import get_dataframe, save_df
 from preprocess_skycam import preprocess_skycam_imgs
 from pano_utils import make_pano_paths_json
-from pano_builder import PanosetiBatchBuilder
+from pano_builder import PanoBatchBuilder
 from dataset_manager import DatasetManager
 
 
@@ -125,7 +125,7 @@ def build_batch(batch_def,
 
     for sample_dict in batch_def:
         print(f'\nBuilding features for {sample_dict}')
-        pano_builder = PanosetiBatchBuilder(
+        pano_builder = PanoBatchBuilder(
             sample_dict['pano']['data_dir'],
             sample_dict['pano']['run_dir'],
             'cloud-detection',
@@ -161,7 +161,6 @@ def build_batch(batch_def,
         save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path, overwrite_ok=False)
         save_df(pano_df, 'pano', None, batch_id, task, False, batch_path, overwrite_ok=False)
         save_df(feature_df, 'feature', None, batch_id, task, False, batch_path, overwrite_ok=False)
-        dataset_manager.aggregate_batch_data_features(batch_id)
     except FileExistsError as fee:
         print('Dataframes already created.')
 
@@ -224,4 +223,5 @@ if __name__ == '__main__':
                 do_zip=True,
                 force_recreate=False,
                 manual_skycam_download=False)
+
     #zip_batch('cloud-detection', 4, force_recreate=True)

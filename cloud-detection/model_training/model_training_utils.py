@@ -1,8 +1,11 @@
 import os
+import sys
 from PIL import Image
 import torchvision
 import numpy as np
 
+sys.path.append('../data_labeling')
+import dataset_manager
 
 class CloudDetection(torchvision.datasets.VisionDataset):
 
@@ -12,7 +15,9 @@ class CloudDetection(torchvision.datasets.VisionDataset):
         self.data = [np.load("TEST_DATA.npy", allow_pickle=False)]
 
         self.data = np.vstack(self.data).reshape(-1, 3, 32, 32)
-        self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
+        #self.data = self.data.transpose((0, 2, 3, 1))  # convert to HWC
+
+
 
     def __getitem__(self, index: int):
         img = self.data[index]

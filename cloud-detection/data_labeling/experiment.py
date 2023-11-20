@@ -10,16 +10,18 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from panoseti_file_interfaces import ObservingRunFileInterface, ModuleImageInterface
-from panoseti_batch_builder import PanosetiBatchBuilder
-from panoseti_batch_utils import *
+from panoseti_file_interfaces import ObservingRunProxy, ModuleImageInterface
+from pano_builder import PanoBatchBuilder
+from pano_utils import *
 from skycam_utils import get_skycam_img_time, get_skycam_subdirs, get_unix_from_datetime
 from dataframe_utils import *
+from batch_building_utils import *
+from dataset_manager import *
 import make_batch
 
 
-skycam_imgs_root_path = '/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch-id_0/skycam_imgs'
-skycam_dir = 'SC2_imgs_2023-07-31'
+# skycam_imgs_root_path = '/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch-id_0/skycam_imgs'
+# skycam_dir = 'SC2_imgs_2023-07-31'
 
 
 if __name__ == '__main__':
@@ -27,20 +29,24 @@ if __name__ == '__main__':
     # RUN_DIR = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
     RUN_DIR = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
 
-    builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
+    #dm = DatasetManager()
+    cddb = CloudDetectionDatasetBuilder()
+    cddb.generate_dataset()
 
-    print(builder.start_utc)
-    print(builder.stop_utc)
-
-    builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
-    make_batch.build_batch('cloud-detection', 0, builder.start_utc, builder.stop_utc)
-    skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
-    print(skycam_subdirs)
-    pano_df = get_dataframe('pano')
-    feature_df = get_dataframe('feature')
-    feature_df, pano_df = builder.create_feature_images(feature_df, pano_df, skycam_subdirs['original'], verbose=True)
-    print(pano_df)
-
+    # builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
+    #
+    # print(builder.start_utc)
+    # print(builder.stop_utc)
+    #
+    # builder = PanosetiBatchBuilder(DATA_DIR, RUN_DIR, 'cloud-detection', 0, force_recreate=True)
+    # make_batch.build_batch('cloud-detection', 0, builder.start_utc, builder.stop_utc)
+    # skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
+    # print(skycam_subdirs)
+    # pano_df = get_dataframe('pano')
+    # feature_df = get_dataframe('feature')
+    # feature_df, pano_df = builder.create_feature_images(feature_df, pano_df, skycam_subdirs['original'], verbose=True)
+    # print(pano_df)
+    #
     #
     # for fname in sorted(os.listdir(skycam_subdirs['original'])):
     #     if fname.endswith('.jpg'):

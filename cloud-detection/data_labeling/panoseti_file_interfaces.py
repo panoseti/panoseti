@@ -20,7 +20,7 @@ import pff
 import image_quantiles
 
 
-class ObservingRunFileInterface:
+class ObservingRunProxy:
 
     def __init__(self, data_dir, run_dir):
         """File manager interface for a single observing run."""
@@ -67,8 +67,7 @@ class ObservingRunFileInterface:
             iso_str = f.readline().rstrip('\n') + '-07:00'
             self.stop_utc = datetime.fromisoformat(iso_str).astimezone(timezone.utc)
 
-    @staticmethod
-    def read_frame(f, bytes_per_pixel):
+    def read_frame(self, f, bytes_per_pixel):
         """Returns the next image frame and json header from f."""
         j, img = None, None
         json_str = pff.read_json(f)
@@ -77,6 +76,46 @@ class ObservingRunFileInterface:
             img = pff.read_image(f, 32, bytes_per_pixel)
             img = np.array(img)
         return j, img
+
+    def module_file_time_seek(self, module_id, target_time):
+        """Search module data to find the frame with timestamp closest to target_time.
+        target_time should be a unix timestamp."""
+        module_pff_files = self.obs_pff_files[module_id]
+        # Use binary search to find the file that contains target_time
+        l = 0
+        r = len(module_pff_files) - 1
+        m = -1
+        while l <= r:
+            m = (r + l) // 2
+            file_info = module_pff_files[m]
+            if target_time > file_info['last_unix_t']:
+                l = m + 1
+            elif target_time < file_info['first_unix_t']:
+                r = m - 1
+            else:
+                break
+        file_info = module_pff_files[m]
+        if target_time < file_info['first_unix_t'] or target_time > file_info['last_unix_t']:
+            return None
+        # Use binary search to find the frame closest to target_time
+        fpath = f"{self.run_path}/{file_info['fname']}"
+        with open(fpath, 'rb') as fp:
+            frame_time = self.intgrn_usec * 10 ** (-6)
+            pff.time_seek(fp, frame_time, self.img_size, target_time)
+            frame_offset = int(fp.tell() / self.frame_size)
+            j, img = self.read_frame(fp, self.img_bpp)
+            frame_unix_t = pff.img_header_time(j)
+            ret = {
+                'file_idx': m,
+                'frame_offset': frame_offset,
+                'frame_unix_t': frame_unix_t
+            }
+            # j, img = self.read_frame(fp, self.img_bpp)
+            # fig = self.plot_image(img)
+            # plt.show()
+            # plt.pause(2)
+            # plt.close(fig)
+            return ret
 
     @staticmethod
     def plot_image(img, **kwargs):
@@ -166,13 +205,13 @@ class FrameIterator:
                 raise StopIteration
             self.fp.seek(seek_dist, os.SEEK_CUR)  # Skip (step_size - 1) images
         self.first_itr = False
-        j, img = ObservingRunFileInterface.read_frame(self.fp, self.bpp)
+        j, img = ObservingRunProxy.read_frame(self.fp, self.bpp)
         if img is None:
             raise StopIteration
         return j, img
 
 
-class ModuleImageInterface(ObservingRunFileInterface):
+class ModuleImageInterface(ObservingRunProxy):
 
     def __init__(self, data_dir, run_dir, module_id, require_data=False):
         """Interface for doing analysis work with images produced by the specified module

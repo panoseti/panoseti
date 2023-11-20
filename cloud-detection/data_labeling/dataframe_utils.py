@@ -36,6 +36,9 @@ def get_dataframe_formats():
         'user-batch-log': {
             'columns': ['user_uid', 'batch_id'],
         },
+        'dataset-labels': {
+            'columns': ['feature_uid', 'label']
+        },
         'dataset-meta': {
             'columns': ['feature_uid', 'batch_id', ],
         }

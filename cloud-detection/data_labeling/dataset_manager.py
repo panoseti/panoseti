@@ -16,7 +16,7 @@ import pandas as pd
 from batch_building_utils import *
 from dataframe_utils import *
 from dataset_utils import *
-from pano_builder import PanosetiBatchBuilder
+from pano_builder import PanoBatchBuilder
 
 sys.path.append('../../util')
 #from pff import parse_name
@@ -30,22 +30,16 @@ class DatasetManager:
         self.user_labeled_path = f'{self.dataset_dir}/{user_labeled_dir}'
         self.batch_data_array_path = f'{self.dataset_dir}/{batch_data_array_dir}'
 
-        #self.label_log = {}
         self.main_dfs = {   # Aggregated metadata datasets.
-            'user': None,
-            'skycam': None,
-            'pano': None,
-            'feature': None,
-            'labeled': None,
-            'user-batch-log': None
+            'user': pd.DataFrame,
+            'skycam': pd.DataFrame,
+            'pano': pd.DataFrame,
+            'feature': pd.DataFrame,
+            'labeled': pd.DataFrame,
+            'dataset-labels': pd.DataFrame,
+            'user-batch-log': pd.DataFrame
         }
-
-        if not os.path.exists(self.dataset_dir):
-            self.init_dataset_dir()
-        else:
-            self.init_main_dfs()
-
-        self.labeled_batches = self.get_labeled_batch_info()
+        self.init_dataset_dir()
 
 
     def init_dataset_dir(self):
@@ -55,13 +49,10 @@ class DatasetManager:
             - Init dataframes
         """
         # Make dataset_dir
-        os.makedirs(self.dataset_dir, exist_ok=False)
-        os.makedirs(self.user_labeled_path, exist_ok=False)
-        os.makedirs(self.batch_data_array_path, exist_ok=False)
-        # Make empty dataframes from standard format function
-        for df_type in self.main_dfs:
-            self.main_dfs[df_type] = get_dataframe(df_type)  # Create df using standard definition
-            self.save_main_df(df_type)
+        os.makedirs(self.dataset_dir, exist_ok=True)
+        os.makedirs(self.user_labeled_path, exist_ok=True)
+        os.makedirs(self.batch_data_array_path, exist_ok=True)
+        self.init_main_dfs()
 
     def get_main_df_save_name(self, df_type):
         """Get standard main_df filename."""
@@ -70,10 +61,16 @@ class DatasetManager:
 
     def init_main_dfs(self):
         """Initialize the aggregated dataframes for the main dataset."""
-        for df_type in self.main_dfs:
-            self.main_dfs[df_type] = self.load_main_df(df_type)
-            if self.main_dfs[df_type] is None:
-                raise ValueError(f"Dataframe for '{df_type}' missing in dataset directory!")
+        if isinstance(self, CloudDetectionDatasetBuilder):
+            # Make empty dataframes from standard format function
+            for df_type in self.main_dfs:
+                self.main_dfs[df_type] = get_dataframe(df_type)  # Create df using standard definition
+                self.save_main_df(df_type)
+        else:
+            for df_type in self.main_dfs:
+                self.main_dfs[df_type] = self.load_main_df(df_type)
+                if self.main_dfs[df_type] is None:
+                    raise ValueError(f"Dataframe for '{df_type}' missing in dataset directory!")
 
     def load_main_df(self, df_type):
         """Load the main dataset dataframes."""
@@ -90,28 +87,18 @@ class DatasetManager:
         df = self.main_dfs[df_type]
         if os.path.exists(df_path) and not overwrite_ok:
             raise FileNotFoundError(f'{df_path} exists and overwrite_ok=False. Aborting save...')
-        else:
-            with open(df_path, 'w'):
-                df.to_csv(df_path)
+        with open(df_path, 'w'):
+            df.to_csv(df_path)
 
-    # def load_label_log(self):
-    #     """
-    #     Load / create the label_log file. This file tracks which
-    #     user-labeled data batches have been added to the master dataset.
-    #     """
-    #     if not os.path.exists(self.label_log_path):
-    #         raise FileNotFoundError(f'{self.label_log_path} does not exist!')
-    #     with open(self.label_log_path, 'r') as f:
-    #         label_log = json.load(f)
-    #     return label_log
-    #
-    # def save_label_log(self, label_log, overwrite_ok=True):
-    #     """Save the label_log file."""
-    #     if os.path.exists(self.label_log_path) and not overwrite_ok:
-    #         raise FileNotFoundError(f'{self.label_log_path} exists and overwrite_ok=False. Aborting save...')
-    #     else:
-    #         with open(self.label_log_path, 'w') as f:
-    #             json.dump(label_log, f, indent=4)
+
+class CloudDetectionDatasetBuilder(DatasetManager):
+    def __init__(self):
+        super().__init__(task='cloud-detection')
+        # Proportion of labelers that must agree on label for each example to be included in dataset:
+        self.proportion_of_training_data = 0.8
+        self.agreement_threshold = 0.5
+        self.labeled_batches = self.get_labeled_batches()
+
 
     def unpack_user_labeled_batches(self):
         for batch_name in os.listdir(self.user_labeled_path):
@@ -120,7 +107,7 @@ class DatasetManager:
                 shutil.unpack_archive(batch_zipfile_path, batch_zipfile_path[:-4], format='zip')
                 os.remove(batch_zipfile_path)
 
-    def get_labeled_batch_info(self):
+    def get_labeled_batches(self):
         """Return list of available user-labeled data batches."""
         labeled_batches = []
         if os.path.exists(self.user_labeled_path):
@@ -144,15 +131,23 @@ class DatasetManager:
             )
             if df is None:
                 raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
-
             self.main_dfs[df_type] = pd.concat([df, self.main_dfs[df_type]], ignore_index=True, verify_integrity=True)
             self.main_dfs[df_type] = self.main_dfs[df_type].loc[~self.main_dfs[df_type].duplicated()]
             # Save dfs at end to ensure all updates are successful before write.
             self.save_main_df(df_type)
 
+    def majority_vote_agg(self, x):
+        y = x.value_counts(normalize=True)
+        majority_label = y.index[0]
+        prop_of_votes_for_maj_label = y[0]
+        if prop_of_votes_for_maj_label >= self.agreement_threshold and majority_label != 'unsure':
+            return majority_label
+        return None
+
     def aggregate_labeled_data(self):
         """Incorporate each new user-labeled data batch into the dataset."""
         ubl_df = self.main_dfs['user-batch-log']
+        lbd_df = self.main_dfs['labeled']
         user_df = self.main_dfs['user']
         for batch_name in self.labeled_batches:
             parsed = parse_name(batch_name)
@@ -185,16 +180,29 @@ class DatasetManager:
             )
 
             # Concat new labeled data to existing labeled data
-            self.main_dfs['labeled'] = pd.concat([self.main_dfs['labeled'], user_labeled_df], ignore_index=True, verify_integrity=True)
-            # Save dfs at end to ensure all updates are successful before write.
-            self.save_main_df('labeled')
-            self.save_main_df('user-batch-log')
+            lbd_df = pd.concat([lbd_df, user_labeled_df], ignore_index=True, verify_integrity=True)
+        # Save dfs at end to ensure all updates are successful before write.
+        grouped = lbd_df.groupby('feature_uid', as_index=False)
+        dsl_df = grouped[['label']].agg(self.majority_vote_agg)
+        dsl_df = dsl_df.loc[~dsl_df.label.isna()]
 
-    def update_dataset(self):
+        self.main_dfs['labeled'] = lbd_df
+        self.main_dfs['dataset-labels'] = dsl_df
+        self.main_dfs['user-batch-log'] = ubl_df
+
+        self.save_main_df('dataset-labels')
+        self.save_main_df('labeled')
+        self.save_main_df('user-batch-log')
+
+    def generate_dataset(self):
+        print("Aggregating user labels")
         self.aggregate_labeled_data()
         ubl_df = self.main_dfs['user-batch-log']
-        labeled_batches = ubl_df.loc['batch_id']
-        self.aggregate_batch_data_features()
+        batch_ids = ubl_df.groupby('batch_id')['batch_id'].unique()
+        print("Aggregating feature metadata")
+        for batch_id in batch_ids.iloc[0]:
+            self.aggregate_batch_data_features(batch_id)
+        print("Done")
 
 
 
