@@ -15,7 +15,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 
-from skycam_utils import get_skycam_dir, get_skycam_subdirs, is_skycam_data_downloaded, get_skycam_img_time
+from skycam_utils import get_skycam_dir, get_skycam_subdirs, get_skycam_img_time
 
 
 def get_skycam_link(skycam_type, year, month, day):
@@ -169,27 +169,3 @@ def filter_images(skycam_dir: str, first_t: datetime, last_t: datetime):
         skycam_t = get_skycam_img_time(fname)
         if not (first_t <= skycam_t <= last_t):
             os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))
-
-
-def unpack_and_filter_skycam_imgs(skycam_path, first_t, last_t, verbose=False):
-    is_skycam_data_downloaded(skycam_path)
-    if verbose: print("Unzipping skycam files...")
-    unzip_images(skycam_path)
-    if verbose: print("Filtering skycam images...")
-    filter_images(skycam_path, first_t, last_t)
-
-
-def get_manual_download_instructions(skycam_path, skycam_type, year, month, day):
-    skycam_link = get_skycam_link(skycam_type, year, month, day)
-    msg = (f'To manually download the data, please do the following:\n'
-            f'\t0. Set manual_skycam_download=True in your call to the build_batch function\n'
-            f'\t1. Visit {skycam_link}\n'
-            f'\t2. Click the blue "all" text\n'
-            f'\t3. Uncheck the .mp4 and .mpg files (should be near the top)\n'
-            f'\t4. Click the "Download tarball" button and wait for the download to finish\n\n'
-            f'\t(Please DO NOT unzip the file)\n\n'
-            f'\t5. Move the downloaded .tar.gz file to \n'
-            f'\t\t{os.path.abspath(skycam_path)}\n'
-            f'\t6. Rerun make_batch.py')
-    return msg
-

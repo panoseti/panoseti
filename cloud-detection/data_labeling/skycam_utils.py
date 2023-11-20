@@ -6,7 +6,7 @@ Routines for building data batch skycam features.
 import os
 import json
 
-from dataframe_utils import add_skycam_img, get_skycam_uid, skycam_imgs_root_dir, skycam_path_index_fname
+from dataframe_utils import add_skycam_img
 from batch_building_utils import *
 
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
@@ -43,51 +43,6 @@ def get_skycam_dir(skycam_type, year, month, day):
 def get_skycam_root_path(batch_path):
     skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
     return skycam_imgs_root_path
-
-
-def init_preprocessing_dirs(skycam_path):
-    """Initialize pre-processing directories."""
-    img_subdirs = get_skycam_subdirs(skycam_path)
-    for dir_name in img_subdirs.values():
-        os.makedirs(dir_name, exist_ok=True)
-
-
-def is_initialized(skycam_path):
-    img_subdirs = get_skycam_subdirs(skycam_path)
-    if os.path.exists(skycam_path) and len(os.listdir()) > 0:
-        is_initialized = False
-        for path in os.listdir():
-            if path in img_subdirs:
-                is_initialized |= len(os.listdir()) > 0
-            if os.path.isfile(path):
-                is_initialized = False
-        if is_initialized:
-            raise FileExistsError(f"Expected directory {skycam_path} to be uninitialized, but found the following files:\n\t"
-                                    f"{os.walk(skycam_path)}")
-
-
-def is_skycam_data_downloaded(skycam_path):
-    """Checks if data is already downloaded."""
-    img_subdirs = get_skycam_subdirs(skycam_path)
-    if os.path.exists(img_subdirs['original']) and len(os.listdir(img_subdirs['original'])) > 0:
-        raise FileExistsError(f"Data already downloaded at {img_subdirs['original']}")
-    is_initialized(skycam_path)
-
-def is_skycam_data_preprocessed(skycam_path, batch_path):
-    """Checks if data is already processed."""
-    img_subdirs = get_skycam_subdirs(skycam_path)
-    if (os.path.exists(f'{batch_path}/{skycam_path_index_fname}') or (os.path.exists(img_subdirs['cropped']) and len(os.listdir(img_subdirs['cropped'])) > 0)):
-        raise FileExistsError(f"Data in {skycam_path} already processed")
-    is_initialized(skycam_path)
-
-
-def skycam_zip_downloaded(skycam_path):
-    img_subdirs = get_skycam_subdirs(skycam_path)
-    downloaded_fname = ''
-    for fname in os.listdir(skycam_path):
-        if fname.endswith('.tar.gz'):
-            downloaded_fname = fname
-    return len(downloaded_fname) > 0
 
 
 def get_skycam_img_time(skycam_fname):

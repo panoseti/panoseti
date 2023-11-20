@@ -13,12 +13,11 @@ import cv2
 import os
 import traceback
 
-from fetch_skycam_imgs import download_skycam_data, unpack_and_filter_skycam_imgs, get_skycam_link, get_manual_download_instructions
-from skycam_utils import (get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, init_preprocessing_dirs,
-                          is_skycam_data_preprocessed, is_skycam_data_downloaded, skycam_zip_downloaded, get_skycam_root_path)
-
+from fetch_skycam_imgs import download_skycam_data,  get_skycam_link
+from skycam_utils import get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, get_skycam_root_path
 
 pixel_data_file = 'skycam_pixels.json'
+
 
 def get_corners(skycam_type):
     """ Read the most recent pixel corner data created by panofovlickwebc.m"""
@@ -84,71 +83,3 @@ def plot_pfov(skycam_img, corners, pfov_fpath):
                              color=color,
                              thickness=1)
     cv2.imwrite(pfov_fpath, poly_img)
-
-
-
-def preprocess_skycam_imgs(skycam_type,
-                           year,
-                           month,
-                           day,
-                           first_t,
-                           last_t,
-                           batch_path,
-                           manual_skycam_download,
-                           verbose=False):
-    """Run all preprocessing routines on the skycam data"""
-    root = get_skycam_root_path(batch_path)
-    skycam_dir = get_skycam_dir(skycam_type, year, month, day)
-    skycam_path = f'{root}/{skycam_dir}'
-    try:
-        init_preprocessing_dirs(skycam_path)
-        is_skycam_data_preprocessed(skycam_path, batch_path)
-    except FileExistsError as fee:
-        print(fee)
-        return None
-    if manual_skycam_download:
-        if not skycam_zip_downloaded(skycam_path):
-            msg = 'Automatic skycam download is disabled and no skycam data found. \n'
-            msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
-            raise FileNotFoundError(msg)
-    else:
-        try:
-            if not is_skycam_data_downloaded(skycam_path):
-                download_skycam_data(skycam_type, year, month, day, verbose, root=root)
-        except Warning as wee:
-            msg = str(wee)
-            msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
-            raise Warning(wee)
-        except FileExistsError as fee:
-            print(fee)
-        except Exception as e:
-            msg = f'\n\n\nOriginal error: "{str(e)}"\n\n'
-            msg += "Failed to automatically download skycam data.\n"
-            msg += get_manual_download_instructions(skycam_path, skycam_type, year, month, day)
-            raise Exception(msg)
-    try:
-        unpack_and_filter_skycam_imgs(skycam_path, first_t, last_t, verbose=verbose)
-    except FileExistsError as fee:
-        print(fee)
-
-    if verbose: print('Running pre-processing routines.')
-
-    corners_4x1x2 = get_corners(skycam_type)
-    img_subdirs = get_skycam_subdirs(skycam_path)
-
-    for original_fname in os.listdir(img_subdirs['original']):
-        # load the image
-        if original_fname[-4:] != '.jpg':
-            continue
-
-        original_img = cv2.imread(get_skycam_img_path(original_fname, 'original', skycam_path))
-        cropped_fpath = get_skycam_img_path(original_fname, 'cropped', skycam_path)
-        pfov_fpath = get_skycam_img_path(original_fname, 'pfov', skycam_path)
-
-        crop_img(original_img, corners_4x1x2, cropped_fpath)
-        plot_pfov(original_img, corners_4x1x2, pfov_fpath)
-
-
-if __name__ == '__main__':
-    preprocess_skycam_imgs('SC2', 2023, 8, 7, verbose=True)
-    

@@ -7,7 +7,7 @@ import sys
 from datetime import timedelta
 
 from batch_building_utils import *
-from panoseti_file_interfaces import ObservingRunProxy
+from panoseti_file_interfaces import ObservingRunInterface
 from skycam_utils import get_skycam_img_time, get_skycam_root_path, get_skycam_subdirs
 from pano_utils import *
 from dataframe_utils import *
@@ -17,9 +17,7 @@ from dataset_utils import PanoDatasetBuilder
 sys.path.append("../../util")
 import pff
 
-class PanoFeature()
-
-class PanoBatchBuilder(ObservingRunProxy):
+class PanoBatchBuilder(ObservingRunInterface):
 
     def __init__(self, data_dir, run_dir, task, batch_id, force_recreate=False):
         super().__init__(data_dir, run_dir)

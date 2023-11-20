@@ -20,11 +20,10 @@ import pff
 import image_quantiles
 
 
-class ObservingRunProxy:
+class ObservingRunInterface:
 
     def __init__(self, data_dir, run_dir):
         """File manager interface for a single observing run."""
-
         # Check data paths
         self.data_dir = data_dir
         self.run_dir = run_dir
@@ -67,7 +66,8 @@ class ObservingRunProxy:
             iso_str = f.readline().rstrip('\n') + '-07:00'
             self.stop_utc = datetime.fromisoformat(iso_str).astimezone(timezone.utc)
 
-    def read_frame(self, f, bytes_per_pixel):
+    @staticmethod
+    def read_frame(f, bytes_per_pixel):
         """Returns the next image frame and json header from f."""
         j, img = None, None
         json_str = pff.read_json(f)
@@ -205,13 +205,13 @@ class FrameIterator:
                 raise StopIteration
             self.fp.seek(seek_dist, os.SEEK_CUR)  # Skip (step_size - 1) images
         self.first_itr = False
-        j, img = ObservingRunProxy.read_frame(self.fp, self.bpp)
+        j, img = ObservingRunInterface.read_frame(self.fp, self.bpp)
         if img is None:
             raise StopIteration
         return j, img
 
 
-class ModuleImageInterface(ObservingRunProxy):
+class ModuleImageInterface(ObservingRunInterface):
 
     def __init__(self, data_dir, run_dir, module_id, require_data=False):
         """Interface for doing analysis work with images produced by the specified module

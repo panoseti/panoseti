@@ -144,22 +144,26 @@ class CloudDetectionDatasetBuilder(DatasetManager):
             return majority_label
         return None
 
+    def add_user(self, batch_name, user_uid):
+        # If user not tracked in user_df, add them here.
+        user_df = self.main_dfs['user']
+        if user_uid not in user_df['user_uid']:
+            user_info_fname = f"{self.user_labeled_path}/{batch_name}/user_info.json"
+            with open(user_info_fname, "r") as f:
+                user_info = json.load(f)
+                user_df = add_user(user_df, user_uid, user_info['name'])
+        self.main_dfs['user'] = user_df
+        self.save_main_df('user')
+
     def aggregate_labeled_data(self):
         """Incorporate each new user-labeled data batch into the dataset."""
         ubl_df = self.main_dfs['user-batch-log']
         lbd_df = self.main_dfs['labeled']
-        user_df = self.main_dfs['user']
-        for batch_name in self.labeled_batches:
-            parsed = parse_name(batch_name)
+        for path in self.labeled_batches:
+            parsed = parse_name(path)
             user_uid, batch_id = parsed['user-uid'], int(parsed['batch-id'])
 
-            # If user not tracked in user_df, add them here.
-            if user_uid not in user_df['user_uid']:
-                user_info_fname = f"{self.user_labeled_path}/{batch_name}/user_info.json"
-                with open(user_info_fname, "r") as f:
-                    user_info = json.load(f)
-                    user_df = add_user(user_df, user_uid, user_info['name'])
-                self.save_main_df('user')
+            self.add_user(path, user_uid)
 
             batches_labeled_by_user = ubl_df.loc[ubl_df['user_uid'] == user_uid, 'batch_id']
             if batch_id in batches_labeled_by_user:
@@ -170,7 +174,7 @@ class CloudDetectionDatasetBuilder(DatasetManager):
                 save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
             )
             if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
-                print(f'Some data in "{batch_name}" are missing labels --> '
+                print(f'Some data in "{path}" are missing labels --> '
                       f'Skipping this batch for now.')
                 continue
             ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)

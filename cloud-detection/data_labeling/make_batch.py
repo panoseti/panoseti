@@ -56,9 +56,12 @@ from datetime import datetime, timedelta
 from skycam_utils import *
 from batch_building_utils import *
 from dataframe_utils import get_dataframe, save_df
-from preprocess_skycam import preprocess_skycam_imgs
+
+from skycam_builder import SkycamBatchBuilder
+
 from pano_utils import make_pano_paths_json
 from pano_builder import PanoBatchBuilder
+
 from dataset_manager import DatasetManager
 
 
@@ -81,32 +84,6 @@ def zip_batch(task, batch_id, force_recreate=True):
         print("Done")
 
 
-def create_skycam_features(sample_dict,
-                           skycam_df,
-                           batch_id,
-                           batch_path,
-                           first_t,
-                           last_t,
-                           manual_skycam_download,
-                           verbose):
-    skycam_info = sample_dict['skycam']
-    skycam_dir = get_skycam_dir(
-        skycam_info['skycam_type'], skycam_info['year'], skycam_info['month'], skycam_info['day']
-    )
-    print(f'Creating skycam features for {skycam_dir}')
-    preprocess_skycam_imgs(skycam_info['skycam_type'],
-                           skycam_info['year'],
-                           skycam_info['month'],
-                           skycam_info['day'],
-                           first_t,
-                           last_t,
-                           batch_path,
-                           manual_skycam_download,
-                           verbose=verbose)
-    skycam_df = add_skycam_data_to_skycam_df(
-        skycam_df, batch_id, get_skycam_root_path(batch_path), skycam_dir, verbose=verbose
-    )
-    return skycam_df
 
 def build_batch(batch_def,
                 task,
@@ -133,16 +110,23 @@ def build_batch(batch_def,
             force_recreate=force_recreate
         )
 
-        skycam_df = create_skycam_features(
-            sample_dict, skycam_df, batch_id, batch_path, pano_builder.start_utc, pano_builder.stop_utc,
-            manual_skycam_download=manual_skycam_download, verbose=verbose
-        )
-
-        skycam_dir = get_skycam_dir(
+        skycam_builder = SkycamBatchBuilder(
+            task,
+            batch_id,
+            batch_path,
             sample_dict['skycam']['skycam_type'],
             sample_dict['skycam']['year'],
             sample_dict['skycam']['month'],
-            sample_dict['skycam']['day']
+            sample_dict['skycam']['day'],
+            verbose=verbose,
+            force_recreate=False
+        )
+
+        skycam_df = skycam_builder.build_skycam_batch_data(
+            skycam_df,
+            pano_builder.start_utc,
+            pano_builder.stop_utc,
+            do_manual_skycam_download=manual_skycam_download
         )
 
         try:
@@ -153,9 +137,9 @@ def build_batch(batch_def,
                 continue
 
         print(f'Creating panoseti features for {sample_dict["pano"]["run_dir"]}')
-        for module_id in [1]:
+        for module_id in [1, 254]:
             feature_df, pano_df = pano_builder.create_feature_images(
-                feature_df, pano_df, skycam_dir, module_id, verbose=verbose
+                feature_df, pano_df, skycam_builder.skycam_dir, module_id, verbose=verbose
             )
     try:
         save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path, overwrite_ok=False)
@@ -221,7 +205,7 @@ if __name__ == '__main__':
                 batch_id,
                 verbose=True,
                 do_zip=True,
-                force_recreate=False,
+                force_recreate=True,
                 manual_skycam_download=False)
 
     #zip_batch('cloud-detection', 4, force_recreate=True)

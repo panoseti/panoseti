@@ -10,7 +10,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from panoseti_file_interfaces import ObservingRunProxy, ModuleImageInterface
+from panoseti_file_interfaces import ObservingRunInterface, ModuleImageInterface
 from pano_builder import PanoBatchBuilder
 from pano_utils import *
 from skycam_utils import get_skycam_img_time, get_skycam_subdirs, get_unix_from_datetime
