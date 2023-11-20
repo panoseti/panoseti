@@ -16,19 +16,20 @@ import pandas as pd
 from batch_building_utils import *
 from dataframe_utils import *
 from dataset_utils import *
-from pano_builder import PanoBatchBuilder
+# from pano_builder import PanoBatchBuilder
 
 sys.path.append('../../util')
 #from pff import parse_name
 
-class DatasetManager:
+class CloudDetectionDatasetManager:
 
-    def __init__(self, task='cloud-detection'):
+    def __init__(self, root='.', task='cloud-detection'):
         self.task = task
         self.dataset_dir = get_root_dataset_dir(task)
-        self.label_log_path = f'{self.dataset_dir}/{label_log_fname}'
-        self.user_labeled_path = f'{self.dataset_dir}/{user_labeled_dir}'
-        self.batch_data_array_path = f'{self.dataset_dir}/{batch_data_array_dir}'
+        self.dataset_path = f'{root}/{self.dataset_dir}'
+        self.label_log_path = f'{self.dataset_path}/{label_log_fname}'
+        self.user_labeled_path = f'{self.dataset_path}/{user_labeled_dir}'
+        self.batch_data_array_path = f'{self.dataset_path}/{batch_data_array_dir}'
 
         self.main_dfs = {   # Aggregated metadata datasets.
             'user': pd.DataFrame,
@@ -49,15 +50,10 @@ class DatasetManager:
             - Init dataframes
         """
         # Make dataset_dir
-        os.makedirs(self.dataset_dir, exist_ok=True)
+        os.makedirs(self.dataset_path, exist_ok=True)
         os.makedirs(self.user_labeled_path, exist_ok=True)
         os.makedirs(self.batch_data_array_path, exist_ok=True)
         self.init_main_dfs()
-
-    def get_main_df_save_name(self, df_type):
-        """Get standard main_df filename."""
-        save_name = "type_{0}".format(df_type)
-        return save_name + '.csv'
 
     def init_main_dfs(self):
         """Initialize the aggregated dataframes for the main dataset."""
@@ -72,9 +68,14 @@ class DatasetManager:
                 if self.main_dfs[df_type] is None:
                     raise ValueError(f"Dataframe for '{df_type}' missing in dataset directory!")
 
+    def get_main_df_save_name(self, df_type):
+        """Get standard main_df filename."""
+        save_name = "type_{0}".format(df_type)
+        return save_name + '.csv'
+
     def load_main_df(self, df_type):
         """Load the main dataset dataframes."""
-        df_path = f'{self.dataset_dir}/{self.get_main_df_save_name(df_type)}'
+        df_path = f'{self.dataset_path}/{self.get_main_df_save_name(df_type)}'
         if not os.path.exists(df_path):
             raise FileNotFoundError(f'{df_path} does not exist!')
         with open(df_path, 'r') as f:
@@ -83,15 +84,36 @@ class DatasetManager:
 
     def save_main_df(self, df_type, overwrite_ok=True):
         """Save the main dataset dataframes."""
-        df_path = f'{self.dataset_dir}/{self.get_main_df_save_name(df_type)}'
+        df_path = f'{self.dataset_path}/{self.get_main_df_save_name(df_type)}'
         df = self.main_dfs[df_type]
         if os.path.exists(df_path) and not overwrite_ok:
             raise FileNotFoundError(f'{df_path} exists and overwrite_ok=False. Aborting save...')
         with open(df_path, 'w'):
             df.to_csv(df_path)
 
+    def verify_pano_feature_data(self):
+        """Returns True iff all data files for labeled pano_features exist and are not empty."""
+        dsl_df = self.main_dfs['dataset-labels']
+        labeled_feature_uids = dsl_df.loc[:, 'feature_uid']
+        all_valid = True
+        for feature_uid in labeled_feature_uids:
+            for img_type in PanoDatasetBuilder.supported_img_types:
+                pano_feature_path = self.get_pano_feature_fpath(feature_uid, img_type)
+                all_valid &= os.path.exists(pano_feature_path)
+                all_valid &= os.path.getsize(pano_feature_path) > 0
+        return all_valid
 
-class CloudDetectionDatasetBuilder(DatasetManager):
+    def get_pano_feature_fpath(self, feature_uid, img_type):
+        ftr_df = self.main_dfs['feature']
+        pano_df = self.main_dfs['pano']
+        pano_uid = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]
+        run_dir, batch_id = pano_df.loc[pano_df['pano_uid'] == pano_uid, ['run_dir', 'batch_id']].iloc[0]
+        pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir, self.dataset_path)
+        pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
+        return pano_feature_path
+
+
+class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
     def __init__(self):
         self.task = 'cloud-detection'
         super().__init__(task=self.task)
@@ -202,23 +224,6 @@ class CloudDetectionDatasetBuilder(DatasetManager):
             # Save dfs at end to ensure all updates are successful before write.
             self.save_main_df(df_type)
 
-    def verify_pano_feature_data(self, batch_id):
-        """Returns True iff all data files for labeled pano_features exist and are not empty."""
-        ftr_df = self.main_dfs['feature']
-        dsl_df = self.main_dfs['dataset-labels']
-        pano_df = self.main_dfs['pano']
-        labeled_feature_uids = dsl_df.loc[:, 'feature_uid']
-        all_valid = True
-        for feature_uid in labeled_feature_uids:
-            pano_uid = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]
-            run_dir = pano_df.loc[pano_df['pano_uid'] == pano_uid, 'run_dir'].iloc[0]
-            pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir)
-            for img_type in PanoDatasetBuilder.supported_img_types:
-                pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
-                all_valid &= os.path.exists(pano_feature_path)
-                all_valid &= os.path.getsize(pano_feature_path) > 0
-        return all_valid
-
 
     def generate_dataset(self):
         print("Aggregating user labels")
@@ -228,8 +233,9 @@ class CloudDetectionDatasetBuilder(DatasetManager):
         print("Aggregating feature metadata")
         for batch_id in batch_ids.iloc[0]:
             self.aggregate_batch_data_features(batch_id)
-            if not self.verify_pano_feature_data(batch_id):
-                raise ValueError('Not all pano features are valid!')
+        print("Verifying pano data paths")
+        if not self.verify_pano_feature_data():
+            raise ValueError('Not all pano features are valid!')
         print("Done")
 
     def export_dataset(self):
@@ -239,6 +245,6 @@ class CloudDetectionDatasetBuilder(DatasetManager):
 
 
 if __name__ == '__main__':
-    test = DatasetManager()
+    test = CloudDetectionDatasetManager()
     test.update_dataset()
 

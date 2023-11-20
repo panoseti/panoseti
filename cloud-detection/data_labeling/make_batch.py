@@ -62,7 +62,7 @@ from skycam_builder import SkycamBatchBuilder
 from pano_utils import make_pano_paths_json
 from pano_builder import PanoBatchBuilder
 
-from dataset_manager import DatasetManager
+from dataset_manager import CloudDetectionDatasetManager
 
 
 def make_batch_def_json(batch_path, task, batch_id, batch_def):
@@ -199,7 +199,7 @@ if __name__ == '__main__':
     ]
     batch_id = 4
 
-    dataset_manager = DatasetManager()
+    dataset_manager = CloudDetectionDatasetManager()
     build_batch(batch_def_3,
                 'cloud-detection',
                 batch_id,

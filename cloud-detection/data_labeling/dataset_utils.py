@@ -10,38 +10,15 @@ batch_data_array_dir = 'batch_data_arrays'
 pano_features_path = ''
 
 
-
-# TODO: everything
-
-# def get_batch_img_array_save_name(task, batch_id):
-#     return f'name_batch-img-array.task_{task}.batch-id_{batch_id}.npy'
-#
-#
-
-def write_dataset(data_dict):
-    ...
-
-
 def get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type):
     assert img_type in valid_pano_img_types, f"{img_type} is not supported"
     pano_subdirs = get_pano_subdirs(pano_dataset_path)
     os.makedirs(pano_subdirs[img_type], exist_ok=True)
     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.npy"
 
-def get_pano_dataset_path(task, batch_id, run_dir):
-    return f'{get_root_dataset_dir(task)}/{batch_data_array_dir}/{get_batch_dir(task, batch_id)}/{run_dir}'
 
-
-def load_dataset():
-    ...
-
-def get_data(file_info_array, analysis_dir, step_size):
-    # Save batch data to file
-    npy_fname = gen_npy_fname(analysis_dir)
-    if os.path.exists(npy_fname):
-        data_arr = np.load(npy_fname)
-        return data_arr
-
+def get_pano_dataset_path(task, batch_id, run_dir, dataset_path):
+    return f'{dataset_path}/{batch_data_array_dir}/{get_batch_dir(task, batch_id)}/{run_dir}'
 
 
 class PanoDatasetBuilder:
@@ -51,8 +28,11 @@ class PanoDatasetBuilder:
         'fft': (32, 32),
         'derivatives': (3, 32, 32)
     }
-    def __init__(self, task, batch_id, run_dir):
-        self.pano_dataset_path = get_pano_dataset_path(task, batch_id, run_dir)
+
+    def __init__(self, task, batch_id, run_dir, root='.'):
+        self.dataset_dir = get_root_dataset_dir(task)
+        self.dataset_path = f'{root}/{self.dataset_dir}'
+        self.pano_dataset_path = get_pano_dataset_path(task, batch_id, run_dir, self.dataset_path)
         os.makedirs(self.pano_dataset_path, exist_ok=True)
         self.task = task
         self.batch_id = batch_id
@@ -62,9 +42,10 @@ class PanoDatasetBuilder:
     def clear_current_entry(self):
         self.data_arrays = dict()
 
-    def add_img_to_entry(self, data, img_type):
+    def add_img_to_entry(self, data, img_type, bytes_per_pixel):
         assert img_type in self.supported_img_types, f'img_type "{img_type}" not supported!'
         assert img_type not in self.data_arrays, f'img_type "{img_type}" already added!'
+
         self.data_arrays[img_type] = data
 
     def write_arrays(self, pano_uid, overwrite_ok=True):
