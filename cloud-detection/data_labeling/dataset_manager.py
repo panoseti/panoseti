@@ -30,6 +30,7 @@ class CloudDetectionDatasetManager:
         self.label_log_path = f'{self.dataset_path}/{label_log_fname}'
         self.user_labeled_path = f'{self.dataset_path}/{user_labeled_dir}'
         self.batch_data_array_path = f'{self.dataset_path}/{batch_data_array_dir}'
+        self.data_labels_path = f'{self.dataset_path}/{data_labels_fname}'
 
         self.main_dfs = {   # Aggregated metadata datasets.
             'user': pd.DataFrame,
@@ -53,6 +54,8 @@ class CloudDetectionDatasetManager:
         os.makedirs(self.dataset_path, exist_ok=True)
         os.makedirs(self.user_labeled_path, exist_ok=True)
         os.makedirs(self.batch_data_array_path, exist_ok=True)
+        if isinstance(self, CloudDetectionDatasetBuilder):
+            shutil.copy(data_labels_fname, self.data_labels_path)
         self.init_main_dfs()
 
     def init_main_dfs(self):
@@ -111,6 +114,12 @@ class CloudDetectionDatasetManager:
         pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir, self.dataset_path)
         pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
         return pano_feature_path
+
+    def get_one_hot_encoding(self):
+        with open(self.data_labels_path, 'r') as f:
+            num_to_label = json.load(f)
+            label_to_num = {label: int(num) for num, label in num_to_label.items()}
+        return label_to_num
 
 
 class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
@@ -223,7 +232,6 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             self.main_dfs[df_type] = self.main_dfs[df_type].loc[~self.main_dfs[df_type].duplicated()]
             # Save dfs at end to ensure all updates are successful before write.
             self.save_main_df(df_type)
-
 
     def generate_dataset(self):
         print("Aggregating user labels")
