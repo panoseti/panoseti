@@ -24,7 +24,7 @@ from dataframe_utils import *
 
 class LabelSession:
     data_labels_path = f'../{data_labels_fname}'
-    root_batch_labels_dir = 'user_labeling/batch_labels'
+    root_batch_labels_dir = 'batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
         self.name = name
