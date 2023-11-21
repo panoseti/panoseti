@@ -66,10 +66,6 @@ class LabelSession:
         self.pano_df = self.init_dataframe('pano')
         self.unlabeled_df = self.init_dataframe('unlabeled')
         self.labeled_df = self.init_dataframe('labeled')
-        self.data_to_label = None
-
-        self.num_imgs = len(self.unlabeled_df)
-        self.num_labeled = len(self.unlabeled_df.loc[self.unlabeled_df.is_labeled == True])
 
     def init_dataframe(self, df_type):
         """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
@@ -166,7 +162,7 @@ class LabelSession:
         self.add_subplot(
             ax2,
             self.pano_uid_to_data(pano_uid, 'original'),
-            f'{pano_uid[:8]}: pano normed'
+            f'{pano_uid[:8]}: pano original'
         )
         self.add_subplot(
             ax3,
@@ -245,17 +241,19 @@ class LabelSession:
         """Returns: string describing all valid labels and their encodings."""
         s = ""
         for key, val in self.labels.items():
-            s += f"{int(key) + 1}='{val}', "
+            s += f"{int(key) + 1}='\x1b[32m{val}\x1b[0m', "
         return s[:-2]
 
-    def get_progress_str(self, num_symbols=50):
+    def get_progress_str(self, num_symbols=75):
         """Generate status progress bar"""
-        num_divisions = min(num_symbols, self.num_imgs)
-        itrs_per_symbol = num_symbols / self.num_imgs
-        prog = int(self.num_labeled * itrs_per_symbol)
-        percent_labeled = self.num_labeled / self.num_imgs * 100
-        progress_bar = '\u2593' * prog + '\u2591' * (num_symbols - prog)    # red text
-        msg = f"|{progress_bar}|" + f"\t{self.num_labeled}/{self.num_imgs} ({percent_labeled:.2f}%)\n"
+        # num_divisions = min(num_symbols, self.num_imgs)
+        num_labeled = len(self.unlabeled_df.loc[self.unlabeled_df.is_labeled == True])
+        num_imgs = len(self.unlabeled_df)
+        itrs_per_symbol = num_symbols / num_imgs
+        prog = int(num_labeled * itrs_per_symbol)
+        percent_labeled = num_labeled / num_imgs * 100
+        progress_bar = '\x1b[32m\u2593\x1b[0m' * prog + '\u2591' * (num_symbols - prog)    # red text
+        msg = f"|{progress_bar}|" + f"\t{num_labeled}/{num_imgs} ({percent_labeled:.2f}%)\n"
         return msg
 
     def get_user_label(self):
@@ -267,49 +265,59 @@ class LabelSession:
         while not valid_label:
             if is_first_itr:
                 prompt = f"{progress_str}" \
-                         f"Valid labels:\t{valid_label_str}" \
+                         f"Valid labels:\t{valid_label_str}\n" \
+                         f"To exit and save: '\x1b[34me\x1b[0m'. To undo last label: '\x1b[34mu\x1b[0m'." \
                          "\nYour label: "
             else:
-                prompt = f"Valid labels:\t{valid_label_str}" \
-                         "\nYour label: "
+                prompt = f"\nYour label: "
             label = input(prompt)
             if label.isnumeric() and str(int(label) - 1) in self.labels:
                 valid_label = True
                 label = int(label) - 1
-            elif label == 'exit':
-                return 'exit'
+            elif label in ['e', 'u']:
+                return label
             else:
-                first_itr = False
-                print(f"\x1b[31mError:\t   '{label}' is not a valid label. "
-                      "(To exit the session, type 'exit')\x1b[0m\n")
+                is_first_itr = False
+                print(f"\x1b[31mError:\t   '{label}' is not a valid label.\x1b[0m")
         return label
+
+    def undo_last_label(self):
+        last_feature_uid = self.labeled_df.iloc[-1]['feature_uid']
+        self.unlabeled_df.loc[(self.unlabeled_df['feature_uid'] == last_feature_uid), 'is_labeled'] = False
+        self.labeled_df.drop(index=len(self.labeled_df) - 1, inplace=True)
 
     def start(self):
         """Labeling interface that displays an image and prompts user for its class."""
-        self.data_to_label = self.unlabeled_df[self.unlabeled_df.is_labeled == False]
+        data_to_label = self.unlabeled_df.loc[self.unlabeled_df.is_labeled == False]
 
-        if len(self.data_to_label) == 0:
+        if len(data_to_label) == 0:
             emojis = ['🌈', '💯', '✨', '🎉', '🎃', '🔭', '🌌']
             print(f"All data are labeled! {np.random.choice(emojis)}")
             return
         try:
-            for i in range(len(self.data_to_label)):
+            i = data_to_label.index[0]
+            while i < len(self.unlabeled_df):
                 # Clear display then show next image to label
-                feature_uid = self.data_to_label.iloc[i]['feature_uid']
+                feature_uid = self.unlabeled_df.iloc[i]['feature_uid']
                 self.plot_img(feature_uid)
 
                 display.clear_output(wait=True)
                 plt.show()
 
                 # Get image label
-                time.sleep(0.002)  # Sleep to avoid issues with display clearing routine
-                label_idx = self.get_user_label()
-                if label_idx == 'exit':
+                time.sleep(0.004)  # Sleep to avoid issues with display clearing routine
+                label_val = self.get_user_label()
+                if label_val == 'e':
                     break
-                label_str = self.labels[str(label_idx)]
+                elif label_val == 'u':
+                    if len(self.labeled_df) > 0:
+                        self.undo_last_label()
+                        i -= 1
+                    continue
+                label_str = self.labels[str(label_val)]
                 self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, feature_uid, self.user_uid, label_str)
-                self.num_labeled += 1
                 plt.close()
+                i += 1
         except KeyboardInterrupt:
             return
         finally:
@@ -342,13 +350,13 @@ class LabelSession:
 
     def create_export_zipfile(self, allow_partial_batch=False):
         """Create an export zipfile for the data only if all data has been labeled."""
-        self.data_to_label = self.unlabeled_df[self.unlabeled_df.is_labeled == False]
-        if not allow_partial_batch and len(self.data_to_label) > 0:
+        data_to_label = self.unlabeled_df[self.unlabeled_df.is_labeled == False]
+        if not allow_partial_batch and len(data_to_label) > 0:
             print(f'Please label all data in the batch before exporting.')
             return
         print('Zipping batch labels...')
-        data_export_dir = get_data_export_dir(self.task, self.batch_id, self.user_uid, root='.')
-        os.makedirs(data_export_dir, exist_ok=True)
+        user_label_export_dir = get_user_label_export_dir(self.task, self.batch_id, self.user_uid, root='.')
+        os.makedirs(user_label_export_dir, exist_ok=True)
 
         save_df(self.labeled_df,
                 'labeled',
@@ -356,7 +364,7 @@ class LabelSession:
                 self.batch_id,
                 self.task,
                 False,
-                data_export_dir
+                user_label_export_dir
                 )
 
         save_df(self.unlabeled_df,
@@ -365,7 +373,7 @@ class LabelSession:
                 self.batch_id,
                 self.task,
                 False,
-                data_export_dir
+                user_label_export_dir
                 )
 
         # Save user info
@@ -373,12 +381,12 @@ class LabelSession:
             'name': self.name,
             'user-uid': self.user_uid
         }
-        user_info_path = data_export_dir + '/' + 'user_info.json'
+        user_info_path = user_label_export_dir + '/' + 'user_info.json'
         with open(user_info_path, 'w') as f:
             f.write(json.dumps(user_info))
 
-        shutil.make_archive(data_export_dir, 'zip', data_export_dir)
-        shutil.rmtree(data_export_dir)
+        shutil.make_archive(user_label_export_dir, 'zip', user_label_export_dir)
+        shutil.rmtree(user_label_export_dir)
         print('Done!')
 
 

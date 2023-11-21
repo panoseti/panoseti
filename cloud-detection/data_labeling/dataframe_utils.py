@@ -94,18 +94,20 @@ def extend_df(df: pd.DataFrame, df_type: str, data: dict,
         for column in df_format['columns']:
             if column not in data:
                 raise KeyError(f"An entry for '{column}' is required for {df_type}, but was not provided in the given data.")
-    df_extended = pd.DataFrame.from_dict(data)
+    df_new = pd.DataFrame.from_dict(data)
     if verify_dtype:
         if len(df) == 0:
             # If the df is empty, define column dtypes based on first datapoint.
-            for x in df_extended.columns:
+            for x in df_new.columns:
                 if x in df.columns:
-                    df[x] = df[x].astype(df_extended[x].dtypes.name)
+                    df[x] = df[x].astype(df_new[x].dtypes.name)
         else:
-            if df.dtypes.to_dict() != df_extended.dtypes.to_dict():
+            if df.dtypes.to_dict() != df_new.dtypes.to_dict():
                 raise ValueError(f"dtypes of new data do not match dtypes of existing columns."
-                                 f"\nGiven dtypes:\n{df_extended.dtypes} \nExpected dtypes: \n{df.dtypes}")
-    return pd.concat([df, df_extended], ignore_index=True, verify_integrity=verify_integrity)
+                                 f"\nGiven dtypes:\n{df_new.dtypes} \nExpected dtypes: \n{df.dtypes}")
+    df_extended = pd.concat([df, df_new], verify_integrity=verify_integrity)
+    df_extended.reset_index(inplace=True, drop=True)
+    return df_extended
 
 
 # Database interface routines
@@ -119,6 +121,7 @@ def add_user(user_df, user_uid, name, verbose=False):
         }
         return extend_df(user_df, 'user', data)
         #user_df.loc[len(user_df)] = [user_uid, name]
+    return user_df
     raise ValueError(f'An entry for "{name}" already exists')
 
 def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):

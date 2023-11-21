@@ -93,9 +93,19 @@ class CloudDetectionDatasetManager:
     def verify_pano_feature_data(self):
         """Returns True iff all data files for labeled pano_features exist and are not empty."""
         dsl_df = self.main_dfs['dataset-labels']
-        labeled_feature_uids = dsl_df.loc[:, 'feature_uid']
+        ftr_df = self.main_dfs['feature']
+        lbd_df = self.main_dfs['labeled']
+
         all_valid = True
+        labeled_feature_uids = dsl_df.loc[:, 'feature_uid']
         for feature_uid in labeled_feature_uids:
+            if feature_uid not in ftr_df.loc[:, 'feature_uid'].values:
+                bad_batch_id = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'batch_id']
+                user_uid = lbd_df.loc[lbd_df['feature_uid'] == feature_uid, 'user_uid']
+
+                raise ValueError(f"feature_uid='{feature_uid}' is not a recognized feature! "
+                                 f"A batch of user-labeled data might disagree with "
+                                 f"the corresponding data_batch_array entry")
             for img_type in PanoDatasetBuilder.supported_img_types:
                 pano_feature_path = self.get_pano_feature_fpath(feature_uid, img_type)
                 all_valid &= os.path.exists(pano_feature_path)
@@ -150,14 +160,21 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
                 labeled_batches.append(batch_name)
         return labeled_batches
 
-
-    def majority_vote_agg(self, x):
+    def label_by_majority_vote(self, x: pd.Series):
+        """Aggregate label"""
         y = x.value_counts(normalize=True)
         majority_label = y.index[0]
         prop_of_votes_for_maj_label = y[0]
         if prop_of_votes_for_maj_label >= self.agreement_threshold and majority_label != 'unsure':
             return majority_label
         return None
+
+    def aggregate_user_labels_for_each_data_point(self, lbd_df):
+        grouped = lbd_df.groupby('feature_uid', as_index=False)
+        dsl_df = grouped[['label']].agg(self.label_by_majority_vote)
+        # Remove datapoints with proportion of user label consensus lower than self.agreement_threshold
+        dsl_df = dsl_df.loc[~dsl_df.label.isna()]
+        return dsl_df
 
     def add_user(self, batch_name, user_uid):
         # If user not tracked in user_df, add them here.
@@ -186,25 +203,20 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             # Check if data batch has a complete set of labels
             user_unlabeled_df = load_df(
                 user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
-                save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+                save_dir=get_user_label_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
             )
             if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
-                print(f'Some data in "{path}" are missing labels --> '
-                      f'Skipping this batch for now.')
-                continue
+                raise ValueError(f'The following data in "{path}" are missing labels\n\n'
+                      f'{user_unlabeled_df.loc[user_unlabeled_df["is_labeled"] == False]}')
             ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)
             user_labeled_df = load_df(
                 user_uid, batch_id, 'labeled', task=self.task, is_temp=False,
-                save_dir=get_data_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+                save_dir=get_user_label_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
             )
-
             # Concat new labeled data to existing labeled data
             lbd_df = pd.concat([lbd_df, user_labeled_df], ignore_index=True, verify_integrity=True)
+        dsl_df = self.aggregate_user_labels_for_each_data_point(lbd_df)
         # Save dfs at end to ensure all updates are successful before write.
-        grouped = lbd_df.groupby('feature_uid', as_index=False)
-        dsl_df = grouped[['label']].agg(self.majority_vote_agg)
-        dsl_df = dsl_df.loc[~dsl_df.label.isna()]
-
         self.main_dfs['labeled'] = lbd_df
         self.main_dfs['dataset-labels'] = dsl_df
         self.main_dfs['user-batch-log'] = ubl_df

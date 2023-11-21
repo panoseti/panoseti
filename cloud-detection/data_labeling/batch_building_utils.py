@@ -31,7 +31,7 @@ def get_batch_path(task, batch_id):
 def get_root_dataset_dir(task):
     return f'dataset_{task}'
 
-def get_data_export_dir(task, batch_id, user_uid, root):
+def get_user_label_export_dir(task, batch_id, user_uid, root):
     dir_name = "task_{0}.batch-id_{1}.user-uid_{2}".format(task, batch_id, user_uid)
     dir_path = f'{root}/{dir_name}'
     return dir_path
