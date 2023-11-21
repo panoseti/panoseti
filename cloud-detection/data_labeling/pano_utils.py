@@ -17,23 +17,8 @@ from dataframe_utils import add_pano_img
 from batch_building_utils import *
 
 
-valid_pano_img_types = ['original', 'derivative', 'fft-derivative', 'fft']
 
 # File structure abstraction
-def get_pano_subdirs(pano_path):
-    pano_subdirs = {}
-    for img_type in valid_pano_img_types:
-        pano_subdirs[img_type] = f'{pano_path}/{img_type}'
-    return pano_subdirs
-
-def get_pano_root_path(batch_path):
-    return f'{batch_path}/{pano_imgs_root_dir}'
-
-def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
-    assert img_type in valid_pano_img_types, f"{img_type} is not supported"
-    pano_subdirs = get_pano_subdirs(pano_imgs_path)
-    return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
-
 def make_pano_paths_json(batch_path):
     """Create file for indexing sky-camera image paths."""
     assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"

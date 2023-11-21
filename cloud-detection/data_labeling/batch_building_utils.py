@@ -1,18 +1,25 @@
 import os
 import shutil
 import hashlib
+import json
 
 from datetime import datetime, timedelta, timezone
 
+"""Directory name definitions"""
 skycam_imgs_root_dir = 'skycam_imgs'
 pano_imgs_root_dir = 'pano_imgs'
 batch_data_root_dir = 'batch_data'
 batch_data_zipfiles_dir = 'batch_data_zipfiles'
 
+"""Json file name definitions"""
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
 pano_path_index_fname = 'pano_path_index.json'
 skycam_path_index_fname = 'skycam_path_index.json'
+
+
+
+"""Batch data directory"""
 
 def get_batch_dir(task, batch_id):
     return "task_{0}.batch-id_{1}".format(task, batch_id)
@@ -32,7 +39,71 @@ def get_data_export_dir(task, batch_id, user_uid, root):
 def get_batch_def_json_fname(task, batch_id):
     return f'name_batch-definition.task_{task}.batch-id_{batch_id}.json'
 
-# UID definitions
+
+
+"""Skycam feature directory"""
+
+
+
+valid_skycam_img_types = ['original', 'cropped', 'pfov']
+
+
+def get_skycam_subdirs(skycam_path):
+    """Return dict of skycam image directories."""
+    img_subdirs = {}
+    for img_type in valid_skycam_img_types:
+        img_subdirs[img_type] = f'{skycam_path}/{img_type}'
+    return img_subdirs
+
+def get_skycam_img_path(original_fname, img_type, skycam_dir):
+    assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
+    skycam_subdirs = get_skycam_subdirs(skycam_dir)
+    if original_fname[-4:] != '.jpg':
+        return None
+    if img_type == 'original':
+        return f"{skycam_subdirs['original']}/{original_fname}"
+    elif img_type == 'cropped':
+        return f"{skycam_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
+    elif img_type == 'pfov':
+        return f"{skycam_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
+    else:
+        return None
+
+def get_skycam_dir(skycam_type, year, month, day):
+    if skycam_type == 'SC':
+        return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
+    elif skycam_type == 'SC2':
+        return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
+
+def get_skycam_root_path(batch_path):
+    skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
+    return skycam_imgs_root_path
+
+
+
+"""Pano feature directory"""
+
+
+valid_pano_img_types = ['original', 'derivative', 'fft-derivative', 'fft']
+
+def get_pano_subdirs(pano_path):
+    pano_subdirs = {}
+    for img_type in valid_pano_img_types:
+        pano_subdirs[img_type] = f'{pano_path}/{img_type}'
+    return pano_subdirs
+
+def get_pano_root_path(batch_path):
+    return f'{batch_path}/{pano_imgs_root_dir}'
+
+def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
+    assert img_type in valid_pano_img_types, f"{img_type} is not supported"
+    pano_subdirs = get_pano_subdirs(pano_imgs_path)
+    return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
+
+
+
+"""UID definitions"""
+
 
 def get_uid(data: str):
     """Returns SHA1 hash of a string input data."""

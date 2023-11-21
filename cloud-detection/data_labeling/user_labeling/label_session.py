@@ -11,7 +11,6 @@ import shutil
 import json
 import math
 import time
-from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -22,8 +21,6 @@ from IPython import display
 
 sys.path.append('../')
 from batch_building_utils import *
-from skycam_utils import get_skycam_img_path, get_skycam_root_path
-from pano_utils import get_pano_img_path, get_pano_root_path
 from dataframe_utils import *
 
 class LabelSession:
@@ -411,5 +408,5 @@ class LabelSession:
 
 
 if __name__ == '__main__':
-    session = LabelSession('Nico', 5)
+    session = LabelSession('Nico', 6)
     session.start()

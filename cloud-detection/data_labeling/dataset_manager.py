@@ -16,10 +16,6 @@ import pandas as pd
 from batch_building_utils import *
 from dataframe_utils import *
 from dataset_utils import *
-# from pano_builder import PanoBatchBuilder
-
-sys.path.append('../../util')
-#from pff import parse_name
 
 class CloudDetectionDatasetManager:
 
@@ -238,6 +234,9 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
         self.aggregate_labeled_data()
         ubl_df = self.main_dfs['user-batch-log']
         batch_ids = ubl_df.groupby('batch_id')['batch_id'].unique()
+        if len(batch_ids) == 0:
+            print("Insufficient valid user-labeled data")
+            return
         print("Aggregating feature metadata")
         for batch_id in batch_ids.iloc[0]:
             self.aggregate_batch_data_features(batch_id)

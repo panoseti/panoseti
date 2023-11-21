@@ -9,41 +9,6 @@ import json
 from dataframe_utils import add_skycam_img
 from batch_building_utils import *
 
-valid_skycam_img_types = ['original', 'cropped', 'pfov']
-
-def get_skycam_subdirs(skycam_path):
-    """Return dict of skycam image directories."""
-    img_subdirs = {}
-    for img_type in valid_skycam_img_types:
-        img_subdirs[img_type] = f'{skycam_path}/{img_type}'
-    return img_subdirs
-
-
-def get_skycam_img_path(original_fname, img_type, skycam_dir):
-    assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
-    skycam_subdirs = get_skycam_subdirs(skycam_dir)
-    if original_fname[-4:] != '.jpg':
-        return None
-    if img_type == 'original':
-        return f"{skycam_subdirs['original']}/{original_fname}"
-    elif img_type == 'cropped':
-        return f"{skycam_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
-    elif img_type == 'pfov':
-        return f"{skycam_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
-    else:
-        return None
-
-
-def get_skycam_dir(skycam_type, year, month, day):
-    if skycam_type == 'SC':
-        return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
-    elif skycam_type == 'SC2':
-        return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
-
-def get_skycam_root_path(batch_path):
-    skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
-    return skycam_imgs_root_path
-
 
 def get_skycam_img_time(skycam_fname):
     """Returns datetime object based on the image timestamp contained in skycam_fname."""
