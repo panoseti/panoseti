@@ -193,8 +193,11 @@ class LabelSession:
 
     def show_classifications(self):
         """Display all labeled images, organized by assigned class."""
-        for key in self.labels.keys():
-            self.make_img_grid(self.labels[key])
+        try:
+            for key in self.labels.keys():
+                self.make_img_grid(self.labels[key])
+        except KeyboardInterrupt:
+            return
 
 
     def make_img_grid(self, label, cols=8, rows_per_plot=8):
