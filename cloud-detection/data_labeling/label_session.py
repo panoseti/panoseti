@@ -19,13 +19,12 @@ from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
 from IPython import display
 
-sys.path.append('../')
 from batch_building_utils import *
 from dataframe_utils import *
 
 class LabelSession:
     data_labels_path = f'../{data_labels_fname}'
-    root_batch_labels_dir = './batch_labels'
+    root_batch_labels_dir = 'user_labeling/batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
         self.name = name
@@ -121,6 +120,8 @@ class LabelSession:
         img = np.asarray(Image.open(fpath))
         return img
 
+    """Plotting"""
+
     def add_subplot(self, ax, img, title, aspect=None):
         ax.imshow(img, aspect=aspect)
         ax.get_yaxis().set_ticks([])
@@ -189,37 +190,6 @@ class LabelSession:
         return fig
 
 
-    # Plotting routines
-    def plot_img_old(self, feature_uid):
-        """Given an image uid, display the corresponding image features."""
-        fig = plt.figure(figsize=(24, 24))
-        grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                         nrows_ncols=(3, 1),  # creates width x height grid of axes
-                         axes_pad=0.3,  # pad between axes in inch.
-                         share_all=False,
-                         )
-        skycam_uid, pano_uid = self.feature_df.loc[
-            self.feature_df.feature_uid == feature_uid, ['skycam_uid', 'pano_uid']
-        ].iloc[0]
-
-        imgs = [
-            self.pano_uid_to_data(pano_uid, 'fft-derivative'),
-            self.pano_uid_to_data(pano_uid, 'derivative'),
-            self.skycam_uid_to_data(skycam_uid, 'pfov'),
-            #self.skycam_uid_to_data(skycam_uid, 'cropped'),
-        ]
-        titles = [
-            f'{pano_uid[:8]}: time derivative ffts',
-            f'{pano_uid[:8]}: time derivatives',
-            f'{skycam_uid[:8]}: full img with pfov'
-            #f'{skycam_uid[:8]}: cropped fov',
-        ]
-
-        for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
-            print(i)
-            ax.imshow(img)#, aspect='equal')
-            ax.set_title(title)
-        return fig
 
     def show_classifications(self):
         """Display all labeled images, organized by assigned class."""
@@ -266,7 +236,7 @@ class LabelSession:
             plt.show()
             plt.close()
 
-    # Labeling interface functions
+    """Labeling interface"""
 
     def get_valid_labels_str(self):
         """Returns: string describing all valid labels and their encodings."""
@@ -345,6 +315,8 @@ class LabelSession:
             print('Exiting and saving your labels...')
             self.save_progress()
             print('Success!')
+
+    """State IO"""
 
     def save_progress(self):
         save_df(self.labeled_df,
