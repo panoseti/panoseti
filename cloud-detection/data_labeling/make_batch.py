@@ -63,6 +63,16 @@ from pano_utils import make_pano_paths_json
 from pano_builder import PanoBatchBuilder
 
 from dataset_manager import CloudDetectionDatasetManager
+from base_classes import GenericDataBatchBuilder
+
+
+class CloudDetectionBatchBuilder:
+    def __init__(self, task, batch_id, verbose, do_zip, force_recreate):
+        self.task = task,
+        self.batch_id = batch_id
+        self.verbose = verbose
+        self.do_zip = do_zip
+        self.force_recreate = force_recreate
 
 
 def make_batch_def_json(batch_path, task, batch_id, batch_def):
@@ -95,6 +105,11 @@ def build_batch(batch_def,
     batch_path = get_batch_path(task, batch_id)
     os.makedirs(batch_path, exist_ok=True)
 
+    # batch_dfs = {
+    #     'feature': get_dataframe('feature'),
+    #     'skycam': get_dataframe('skycam'),
+    #     'pano': get_dataframe('pano'),
+    # }
     skycam_df = get_dataframe('skycam')
     pano_df = get_dataframe('pano')
     feature_df = get_dataframe('feature')
@@ -107,7 +122,8 @@ def build_batch(batch_def,
             sample_dict['pano']['run_dir'],
             'cloud-detection',
             batch_id,
-            force_recreate=force_recreate
+            verbose=verbose,
+            force_recreate=force_recreate,
         )
 
         skycam_builder = SkycamBatchBuilder(
@@ -129,18 +145,10 @@ def build_batch(batch_def,
             do_manual_skycam_download=manual_skycam_download
         )
 
-        try:
-            pano_builder.init_preprocessing_dirs()
-        except FileExistsError:
-            if not pano_builder.force_recreate:
-                print(f'Data in {pano_builder.pano_path} already processed')
-                continue
+        feature_df, pano_df = pano_builder.build_pano_batch_data(
+            feature_df, pano_df, skycam_builder.skycam_dir
+        )
 
-        print(f'Creating panoseti features for {sample_dict["pano"]["run_dir"]}')
-        for module_id in [1, 254]:
-            feature_df, pano_df = pano_builder.create_feature_images(
-                feature_df, pano_df, skycam_builder.skycam_dir, module_id, verbose=verbose
-            )
     try:
         save_df(skycam_df, 'skycam', None, batch_id, task, False, batch_path, overwrite_ok=False)
         save_df(pano_df, 'pano', None, batch_id, task, False, batch_path, overwrite_ok=False)
@@ -154,6 +162,8 @@ def build_batch(batch_def,
 
     if do_zip:
         zip_batch(task, batch_id, force_recreate=True)
+
+
 
 
 if __name__ == '__main__':

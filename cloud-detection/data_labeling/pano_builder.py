@@ -19,7 +19,7 @@ import pff
 
 class PanoBatchBuilder(ObservingRunInterface):
 
-    def __init__(self, data_dir, run_dir, task, batch_id, force_recreate=False):
+    def __init__(self, data_dir, run_dir, task, batch_id, force_recreate=False, verbose=False):
         super().__init__(data_dir, run_dir)
         self.task = task
         self.batch_id = batch_id
@@ -28,6 +28,7 @@ class PanoBatchBuilder(ObservingRunInterface):
         self.pano_path = f'{self.batch_path}/{pano_imgs_root_dir}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path)
         self.force_recreate = force_recreate
+        self.verbose = verbose
         self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
         os.makedirs(self.pano_path, exist_ok=True)
 
@@ -213,15 +214,13 @@ class PanoBatchBuilder(ObservingRunInterface):
 
 
 
-    def create_feature_images(self, feature_df, pano_df, skycam_dir, module_id, verbose=False, allow_skip=True):
+    def create_feature_images(self, feature_df, pano_df, skycam_dir, module_id, allow_skip=True):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
             3. Generate a corresponding set of panoseti image features relative to that frame.
         Note: must download skycam data before calling this routine.
         """
-        if module_id not in self.obs_pff_files or len(self.obs_pff_files[module_id]) == 0:
-            return feature_df, pano_df
         module_pff_files = self.obs_pff_files[module_id]
 
         skycam_imgs_root_path = get_skycam_root_path(self.batch_path)
@@ -230,7 +229,7 @@ class PanoBatchBuilder(ObservingRunInterface):
         for original_skycam_fname in sorted(os.listdir(skycam_subdirs['original'])):
             if not original_skycam_fname.endswith('.jpg'):
                 continue
-            if verbose: print(f'\nGenerating pano features for {original_skycam_fname}...')
+            if self.verbose: print(f'\nGenerating pano features for {original_skycam_fname}...')
 
             # Correlate skycam img to panoseti image, if possible
             t = get_skycam_img_time(original_skycam_fname)
@@ -239,7 +238,7 @@ class PanoBatchBuilder(ObservingRunInterface):
             skycam_uid = get_skycam_uid(original_skycam_fname)
             pano_frame_seek_info = self.module_file_time_seek(module_id, skycam_unix_t)
             if pano_frame_seek_info is None:
-                if verbose: print('Failed to find matching panoseti frames. Skipping...')
+                if self.verbose: print('Failed to find matching panoseti frames. Skipping...')
                 continue
 
             # Generate all features
@@ -251,7 +250,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 vmin=30,#-3.5,
                 vmax=282,#3.5,
                 cmap='mako',
-                verbose=verbose
+                verbose=self.verbose
             )
             figs['fft'] = self.make_fft_fig(
                 pano_frame_seek_info['file_idx'],
@@ -260,7 +259,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 vmin=3,
                 vmax=10,
                 cmap='icefire',
-                verbose=verbose
+                verbose=self.verbose
             )
             figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
                 pano_frame_seek_info['file_idx'],
@@ -272,7 +271,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 vmin=[-3, -1],
                 vmax=[3, 6],
                 cmap=["icefire", "icefire"],
-                verbose=verbose
+                verbose=self.verbose
             )
 
             # Check if all figs are valid
@@ -283,13 +282,13 @@ class PanoBatchBuilder(ObservingRunInterface):
                     msg = f'The following frame resulted in a None "{img_type}" figure: {pano_frame_seek_info}.'
                     if not allow_skip:
                         raise ValueError(msg)
-                    if verbose: print(msg)
+                    if self.verbose: print(msg)
 
             # Skip this image if not all figs are valid
             if not all_figs_valid:
                 for fig in figs.values():
                     plt.close(fig)
-                if verbose: print('Failed to create figures')
+                if self.verbose: print('Failed to create figures')
                 self.pano_dataset_builder.clear_current_entry()
                 continue
 
@@ -298,7 +297,7 @@ class PanoBatchBuilder(ObservingRunInterface):
             frame_offset = pano_frame_seek_info['frame_offset']
             pano_uid = get_pano_uid(pano_fname, frame_offset)
             for img_type, fig in figs.items():
-                if verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
+                if self.verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
                 fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
                 plt.close(fig)
 
@@ -324,4 +323,20 @@ class PanoBatchBuilder(ObservingRunInterface):
             )
         return feature_df, pano_df
 
+    def build_pano_batch_data(self, feature_df, pano_df, skycam_dir):
+        try:
+            self.init_preprocessing_dirs()
+        except FileExistsError:
+            if not self.force_recreate:
+                print(f'Data in {self.pano_path} already processed')
+                return
+
+        print(f'Creating panoseti features for {self.run_dir}')
+        for module_id in self.obs_pff_files:
+            if len(self.obs_pff_files[module_id]) == 0:
+                continue
+            feature_df, pano_df = self.create_feature_images(
+                feature_df, pano_df, skycam_dir, module_id
+            )
+        return feature_df, pano_df
 

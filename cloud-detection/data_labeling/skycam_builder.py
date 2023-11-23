@@ -41,6 +41,7 @@ class SkycamBatchBuilder:
         for dir_name in img_subdirs.values():
             os.makedirs(dir_name, exist_ok=True)
 
+
     """State checking routines"""
 
     def is_not_initialized(self):
@@ -136,7 +137,28 @@ class SkycamBatchBuilder:
         if self.verbose: print("Filtering skycam images...")
         filter_images(self.skycam_path, first_t, last_t)
 
-    """Skycam image feature generation"""
+    """Skycam feature generation"""
+
+    def add_skycam_data_to_skycam_df(self, skycam_df):
+        """Add entries for each skycam image to skycam_df """
+        original_img_dir = self.img_subdirs['original']
+        for original_skycam_fname in os.listdir(original_img_dir):
+            if original_skycam_fname.endswith('.jpg'):
+                # Collect image features
+                t = get_skycam_img_time(original_skycam_fname)
+                timestamp = get_unix_from_datetime(t)
+                skycam_uid = get_skycam_uid(original_skycam_fname)
+                # Add entries to skycam_df
+                skycam_df = add_skycam_img(
+                    skycam_df,
+                    skycam_uid,
+                    original_skycam_fname,
+                    self.meta['skycam_type'],
+                    timestamp,
+                    self.batch_id,
+                    self.skycam_dir,
+                    verbose=self.verbose)
+        return skycam_df
 
     def create_skycam_image_features(self):
         """Run all preprocessing routines on the skycam data"""
@@ -163,9 +185,9 @@ class SkycamBatchBuilder:
         if self.verbose: print(f'Creating skycam features for {self.skycam_dir}')
         self.get_skycam_imgs(first_t, last_t, do_manual_skycam_download)
         self.create_skycam_image_features()
-        skycam_df = add_skycam_data_to_skycam_df(
-            skycam_df, self.batch_id, self.skycam_root_path, self.skycam_dir, verbose=self.verbose
-        )
+        skycam_df = self.add_skycam_data_to_skycam_df(skycam_df)
         return skycam_df
+
+
 
 

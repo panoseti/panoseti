@@ -269,7 +269,7 @@ class LabelSession:
                          f"To exit and save: '\x1b[34me\x1b[0m'. To undo last label: '\x1b[34mu\x1b[0m'." \
                          "\nYour label: "
             else:
-                prompt = f"\nYour label: "
+                prompt = f"Your label: "
             label = input(prompt)
             if label.isnumeric() and str(int(label) - 1) in self.labels:
                 valid_label = True

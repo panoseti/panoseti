@@ -52,20 +52,6 @@ def make_skycam_paths_json(batch_path):
     return skycam_paths
 
 
-def add_skycam_data_to_skycam_df(skycam_df, batch_id, skycam_imgs_root_path, skycam_dir, verbose):
-    """Add entries for each skycam image to skycam_df """
-    original_img_dir = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')['original']
-    for original_skycam_fname in os.listdir(original_img_dir):
-        if original_skycam_fname.endswith('.jpg'):
-            # Collect image features
-            skycam_type = original_skycam_fname.split('_')[0]
-            t = get_skycam_img_time(original_skycam_fname)
-            timestamp = get_unix_from_datetime(t)
-            skycam_uid = get_skycam_uid(original_skycam_fname)
-            # Add entries to skycam_df
-            skycam_df = add_skycam_img(skycam_df, skycam_uid, original_skycam_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=verbose)
-    return skycam_df
-
 
 #make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch_0')
 if __name__ == '__main__':
