@@ -13,9 +13,6 @@ import cv2
 import os
 import traceback
 
-from fetch_skycam_imgs import download_skycam_data,  get_skycam_link
-from skycam_utils import get_skycam_dir, get_skycam_subdirs, get_skycam_img_path, get_skycam_root_path
-
 pixel_data_file = 'skycam_pixels.json'
 
 

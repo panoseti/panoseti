@@ -19,7 +19,7 @@ def get_dataframe_formats():
         },
         'skycam': {
             # batch_data_subdir is defined as the dir relative to the data batch with id 'batch_id' containing the img file.
-            'columns': ['skycam_uid', 'batch_id', 'skycam_dir', 'fname', 'unix_t', 'skycam_type'],
+            'columns': ['skycam_uid', 'batch_id', 'skycam_dir', 'fname', 'unix_t', 'skycam_type', 'year', 'month', 'day'],
         },
         'pano': {
             'columns': ['pano_uid', 'batch_id', 'run_dir', 'fname', 'frame_offset', 'module_id', 'frame_unix_t']
@@ -136,7 +136,7 @@ def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
     raise ValueError(f'An entry for "{batch_id}" already exists')
 
 
-def add_skycam_img(skycam_df, skycam_uid, original_fname, skycam_type, timestamp, batch_id, skycam_dir, verbose=False):
+def add_skycam_img(skycam_df, skycam_uid, batch_id, skycam_dir, original_fname, unix_t, skycam_type, year, month, day, verbose=False):
     """Add a skycamera img to skycam_df."""
     if not skycam_df.loc[:, 'skycam_uid'].str.contains(skycam_uid).any():
         data = {
@@ -144,8 +144,11 @@ def add_skycam_img(skycam_df, skycam_uid, original_fname, skycam_type, timestamp
             'batch_id': [batch_id],
             'skycam_dir': [skycam_dir],
             'fname': [original_fname],
-            'unix_t': [timestamp],
+            'unix_t': [unix_t],
             'skycam_type': [skycam_type],
+            'year': [year],
+            'month': [month],
+            'day': [day]
         }
         return extend_df(skycam_df, 'skycam', data)
         #img_df.loc[len(img_df)] = [skycam_uid, fname, timestamp, skycam_type]
@@ -164,8 +167,8 @@ def add_pano_img(pano_df, pano_uid, run_dir, fname, frame_offset, module_id, uni
             'frame_unix_t': [unix_t]
         }
         return extend_df(pano_df, 'pano', data)
-    return pano_df
-    # raise ValueError(f'An entry for "{fname}" already exists')
+    # return pano_df
+    raise ValueError(f'An entry for "{fname}" already exists')
 
 def add_feature_entry(feature_df, skycam_uid, pano_uid, batch_id, verbose=False):
     feature_uid = get_feature_uid(skycam_uid, pano_uid, batch_id)

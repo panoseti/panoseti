@@ -6,7 +6,6 @@ Routines for building data batch skycam features.
 import os
 import json
 
-from dataframe_utils import add_skycam_img
 from batch_building_utils import *
 
 
@@ -43,6 +42,8 @@ def make_skycam_paths_json(batch_path):
             skycam_paths[skycam_path]["img_subdirs"] = skycam_subdirs
             num_imgs_per_subdir = []
             for subdir in skycam_subdirs.values():
+                if subdir.endswith('original'):
+                    continue
                 num_imgs_per_subdir.append(len(os.listdir(subdir)))
             if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
                 raise Warning(f"Unequal number of images in {skycam_path}")
@@ -55,4 +56,5 @@ def make_skycam_paths_json(batch_path):
 
 #make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch_0')
 if __name__ == '__main__':
-    make_skycam_paths_json('/Users/nico/panoseti/panoseti-software/cloud-detection/data_labeling/batch_data/task_cloud-detection.batch-id_0')
+    make_skycam_paths_json(
+        '/panoseti-software/cloud-detection/data_labeling/batch_data1/task_cloud-detection.batch-id_0')

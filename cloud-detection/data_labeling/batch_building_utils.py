@@ -55,9 +55,9 @@ def get_skycam_subdirs(skycam_path):
         img_subdirs[img_type] = f'{skycam_path}/{img_type}'
     return img_subdirs
 
-def get_skycam_img_path(original_fname, img_type, skycam_dir):
+def get_skycam_img_path(original_fname, img_type, skycam_path):
     assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
-    skycam_subdirs = get_skycam_subdirs(skycam_dir)
+    skycam_subdirs = get_skycam_subdirs(skycam_path)
     if original_fname[-4:] != '.jpg':
         return None
     if img_type == 'original':
@@ -78,6 +78,11 @@ def get_skycam_dir(skycam_type, year, month, day):
 def get_skycam_root_path(batch_path):
     skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
     return skycam_imgs_root_path
+
+def get_skycam_path(batch_path, skycam_dir):
+    skycam_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
+    skycam_path = f'{skycam_root_path}/{skycam_dir}'
+    return skycam_path
 
 
 

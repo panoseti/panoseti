@@ -1,9 +1,12 @@
 
 import os
 from skycam_utils import *
+from dataframe_utils import add_skycam_img
 from preprocess_skycam import *
 from fetch_skycam_imgs import *
 from batch_building_utils import *
+
+
 
 class SkycamFileInterface:
     # TODO
@@ -19,36 +22,37 @@ class SkycamBatchBuilder:
         self.skycam_root_path = get_skycam_root_path(batch_path)
         self.skycam_dir = get_skycam_dir(skycam_type, year, month, day)
         self.skycam_path = f'{self.skycam_root_path}/{self.skycam_dir}'
-        self.img_subdirs = get_skycam_subdirs(self.skycam_path)
+        self.skycam_subdirs = get_skycam_subdirs(self.skycam_path)
 
         self.verbose = verbose
         self.force_recreate = force_recreate
 
-        self.meta = {
+        self.skycam_meta = {
             'skycam_type': skycam_type,
             'year': year,
             'month': month,
             'day': day
         }
 
-        self.init_skycam_dirs()
+        self.init_skycam_subdirs()
 
-    def init_skycam_dirs(self):
+    def init_skycam_subdirs(self):
         """Initialize pre-processing directories."""
         # if self.force_recreate:
         #     shutil.rmtree(self.skycam_path)
-        img_subdirs = get_skycam_subdirs(self.skycam_path)
-        for dir_name in img_subdirs.values():
+        for dir_name in self.skycam_subdirs.values():
             os.makedirs(dir_name, exist_ok=True)
+        # if not self.force_recreate:
+        #     self.is_uninitialized()
 
 
     """State checking routines"""
 
-    def is_not_initialized(self):
+    def is_uninitialized(self):
         if os.path.exists(self.skycam_path) and len(os.listdir()) > 0:
             is_initialized = False
             for path in os.listdir():
-                if path in self.img_subdirs:
+                if path in self.skycam_subdirs:
                     is_initialized |= len(os.listdir()) > 0
                 if os.path.isfile(path):
                     is_initialized = False
@@ -59,19 +63,17 @@ class SkycamBatchBuilder:
 
     def skycam_data_downloaded(self):
         """Returns True iff data is already downloaded."""
-        if os.path.exists(self.img_subdirs['original']) and len(os.listdir(self.img_subdirs['original'])) > 0:
+        if os.path.exists(self.skycam_subdirs['original']) and len(os.listdir(self.skycam_subdirs['original'])) > 0:
             return True
         return False
-            # raise FileExistsError(f"Data already downloaded at {self.img_subdirs['original']}")
 
     def skycam_features_created(self):
         """Returns True iff skycam features are already created."""
-        img_subdirs = get_skycam_subdirs(self.skycam_path)
         ret = False
         if os.path.exists(f'{self.batch_path}/{skycam_path_index_fname}'):
             ret = True
-        for img_subdir in img_subdirs.values():
-            ret &= os.path.exists(img_subdir) and len(os.listdir(img_subdir)) > 0
+        for skycam_subdir in self.skycam_subdirs.values():
+            ret &= os.path.exists(skycam_subdir) and len(os.listdir(skycam_subdir)) > 0
         return ret
 
     def skycam_zipfile_downloaded(self):
@@ -85,7 +87,7 @@ class SkycamBatchBuilder:
     """Skycam original image download"""
 
     def get_manual_download_instructions(self):
-        skycam_link = get_skycam_link(**self.meta)
+        skycam_link = get_skycam_link(**self.skycam_meta)
         msg = (f'To manually download the data, please do the following:\n'
                f'\t0. Set manual_skycam_download=True in your call to the build_batch function\n'
                f'\t1. Visit {skycam_link}\n'
@@ -107,7 +109,7 @@ class SkycamBatchBuilder:
 
     def automatic_skycam_download(self):
         try:
-            download_skycam_data(**self.meta, verbose=self.verbose, root=self.skycam_root_path)
+            download_skycam_data(**self.skycam_meta, verbose=self.verbose, skycam_path=self.skycam_path)
             if not self.skycam_zipfile_downloaded():
                 raise FileNotFoundError(
                     f"Failed to retrieve skycam images! Skycam zipfile missing from {os.path.abspath(self.skycam_path)}.")
@@ -121,42 +123,42 @@ class SkycamBatchBuilder:
             msg += self.get_manual_download_instructions()
             raise Exception(msg)
 
-    def get_skycam_imgs(self, first_t, last_t, manual_skycam_download):
+    def get_skycam_imgs(self, do_manual_skycam_download):
         """Downloads and unpacks original skycam data from https://mthamilton.ucolick.org/data/.
         Raises FileNotFoundError if valid skycam img zipfile could not be found."""
         if self.skycam_data_downloaded():
-            return f"Data already downloaded at {self.img_subdirs['original']}"
+            return f"Data already downloaded at {self.skycam_subdirs['original']}"
 
-        if manual_skycam_download:
+        if do_manual_skycam_download:
             self.manual_skycam_download()
         else:
             self.automatic_skycam_download()
 
         if self.verbose: print("Unzipping skycam files...")
         unzip_images(self.skycam_path)
-        if self.verbose: print("Filtering skycam images...")
-        filter_images(self.skycam_path, first_t, last_t)
+        # if self.verbose: print("Filtering skycam images...")
+        # filter_images(self.skycam_path, first_t, last_t)
 
     """Skycam feature generation"""
 
     def add_skycam_data_to_skycam_df(self, skycam_df):
         """Add entries for each skycam image to skycam_df """
-        original_img_dir = self.img_subdirs['original']
+        original_img_dir = self.skycam_subdirs['original']
         for original_skycam_fname in os.listdir(original_img_dir):
             if original_skycam_fname.endswith('.jpg'):
                 # Collect image features
                 t = get_skycam_img_time(original_skycam_fname)
-                timestamp = get_unix_from_datetime(t)
+                unix_t = get_unix_from_datetime(t)
                 skycam_uid = get_skycam_uid(original_skycam_fname)
                 # Add entries to skycam_df
                 skycam_df = add_skycam_img(
                     skycam_df,
                     skycam_uid,
-                    original_skycam_fname,
-                    self.meta['skycam_type'],
-                    timestamp,
                     self.batch_id,
                     self.skycam_dir,
+                    original_skycam_fname,
+                    unix_t,
+                    **self.skycam_meta,
                     verbose=self.verbose)
         return skycam_df
 
@@ -166,10 +168,9 @@ class SkycamBatchBuilder:
         if self.skycam_features_created():
             return f"Data in {self.skycam_path} already processed"
 
-        corners_4x1x2 = get_corners(self.meta['skycam_type'])
-        img_subdirs = get_skycam_subdirs(self.skycam_path)
+        corners_4x1x2 = get_corners(self.skycam_meta['skycam_type'])
 
-        for original_fname in os.listdir(img_subdirs['original']):
+        for original_fname in os.listdir(self.skycam_subdirs['original']):
             if original_fname[-4:] != '.jpg':
                 continue
 
@@ -180,13 +181,15 @@ class SkycamBatchBuilder:
             crop_img(original_img, corners_4x1x2, cropped_fpath)
             plot_pfov(original_img, corners_4x1x2, pfov_fpath)
 
-    def build_skycam_batch_data(self, skycam_df, first_t, last_t, do_manual_skycam_download=False):
+    def build_skycam_batch_data(self, skycam_df, do_manual_skycam_download=False):
         """Dispatch for building skycam features"""
-        if self.verbose: print(f'Creating skycam features for {self.skycam_dir}')
-        self.get_skycam_imgs(first_t, last_t, do_manual_skycam_download)
+        if self.verbose: print(f'Creating skycam features for {self.skycam_meta}')
+        self.get_skycam_imgs(do_manual_skycam_download)
         self.create_skycam_image_features()
         skycam_df = self.add_skycam_data_to_skycam_df(skycam_df)
         return skycam_df
+
+
 
 
 

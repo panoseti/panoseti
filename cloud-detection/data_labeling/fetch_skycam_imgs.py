@@ -15,7 +15,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 
-from skycam_utils import get_skycam_dir, get_skycam_subdirs, get_skycam_img_time
+from skycam_utils import get_skycam_root_path, get_skycam_subdirs, get_skycam_img_time
 
 
 def get_skycam_link(skycam_type, year, month, day):
@@ -78,7 +78,7 @@ def download_wait(directory, timeout, nfiles=None, verbose=False):
     return seconds
 
 
-def download_skycam_data(skycam_type, year, month, day, verbose, root):
+def download_skycam_data(skycam_type, year, month, day, verbose, skycam_path):
     """
     Downloads all the skycam images collected on year-month-day from 12pm up to 12pm the next day (in PDT).
 
@@ -93,7 +93,8 @@ def download_skycam_data(skycam_type, year, month, day, verbose, root):
 
 
     # Create skycam directory
-    skycam_path = f'{root}/{get_skycam_dir(skycam_type, year, month, day)}'
+    # skycam_path = f'{root}/{get_skycam_dir(skycam_type, year, month, day)}'
+    # skycam_path = skycam_root_path
     os.makedirs(skycam_path, exist_ok=True)
 
     # Set Chrome driver options
@@ -160,9 +161,9 @@ def unzip_images(skycam_path):
                 os.rename(f'{skycam_path}/{path}', img_subdirs['original'])
 
 
-def filter_images(skycam_dir: str, first_t: datetime, last_t: datetime):
+def filter_images(skycam_path: str, first_t: datetime, last_t: datetime):
     """Remove skycam images between t_start and t_end."""
-    path_to_orig_skycam_imgs = get_skycam_subdirs(skycam_dir)['original']
+    path_to_orig_skycam_imgs = get_skycam_subdirs(skycam_path)['original']
     for fname in sorted(os.listdir(path_to_orig_skycam_imgs)):
         if fname.endswith('.mp4') or fname.endswith('.mpg'):
             os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))

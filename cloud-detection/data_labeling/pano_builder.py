@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from batch_building_utils import *
 from panoseti_file_interfaces import ObservingRunInterface
-from skycam_utils import get_skycam_img_time, get_skycam_root_path, get_skycam_subdirs
+from skycam_utils import get_skycam_img_time
 from pano_utils import *
 from dataframe_utils import *
 from dataset_utils import PanoDatasetBuilder
@@ -30,18 +30,19 @@ class PanoBatchBuilder(ObservingRunInterface):
         self.force_recreate = force_recreate
         self.verbose = verbose
         self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
-        os.makedirs(self.pano_path, exist_ok=True)
 
-    def init_preprocessing_dirs(self):
+        self.init_pano_subdirs()
+
+    def init_pano_subdirs(self):
         """Initialize pre-processing directories."""
-        try:
-            for dir_name in self.pano_subdirs.values():
-                os.makedirs(dir_name, exist_ok=True)
-            self.is_data_preprocessed()
-        except FileExistsError as ferr:
-            raise ferr
+        for dir_name in self.pano_subdirs.values():
+            os.makedirs(dir_name, exist_ok=True)
+        # if V
+        # self.is_uninitialized()
 
-    def is_initialized(self):
+    """State checks"""
+
+    def is_uninitialized(self):
         """Are pano subdirs initialized?"""
         if os.path.exists(self.pano_path) and len(os.listdir()) > 0:
             is_initialized = False
@@ -55,33 +56,16 @@ class PanoBatchBuilder(ObservingRunInterface):
                     f"Expected directory {self.pano_path} to be uninitialized, but found the following files:\n\t"
                     f"{os.walk(self.pano_path)}")
 
-    def is_data_preprocessed(self):
-        """Checks if data is already processed."""
+    def pano_features_created(self):
+        """Returns True iff skycam features are already created."""
+        ret = False
         if os.path.exists(f'{self.batch_path}/{pano_path_index_fname}'):
-            raise FileExistsError(f"Data in {self.pano_path} already processed")
-        self.is_initialized()
+            ret = True
+        for pano_subdir in self.pano_subdirs.values():
+            ret &= os.path.exists(pano_subdir) and len(os.listdir(pano_subdir)) > 0
+        return ret
 
-    def iterate_module_files(self, module_id, step_size, verbose=False):
-        """On a sample of the frames in the file represented by file_info, add the total
-        image brightness to the data array beginning at data_offset."""
-        module_pff_files = self.obs_pff_files[module_id]
-        frame_offset = 0  # For roughly even frame step size across file boundaries
-        for i in range(len(module_pff_files)):
-            file_info = module_pff_files[i]
-            fpath = f"{self.run_path}/{file_info['fname']}"
-            if verbose: print(f"Processing {file_info['fname']}")
-            with open(fpath, 'rb') as fp:
-                # Start file pointer with an offset based on the previous file -> ensures even frame sampling
-                fp.seek(
-                    frame_offset * self.frame_size,
-                    os.SEEK_CUR
-                )
-                new_nframes = file_info['nframes'] - frame_offset
-                for _ in range(new_nframes // step_size):
-                    j, img = self.read_frame(fp, step_size)
-                    # TODO: do something here
-                frame_offset = file_info['nframes'] - (new_nframes // step_size) * step_size
-
+    """Feature creation"""
 
     def img_transform(self, img):
         img = np.reshape(img, (32, 32))
@@ -89,7 +73,7 @@ class PanoBatchBuilder(ObservingRunInterface):
         img = np.rot90(img, 2)
         return img
 
-    def make_original_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap, verbose=False):
+    def make_original_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap):
         module_pff_files = self.obs_pff_files[module_id]
         file_info = module_pff_files[start_file_idx]
         fpath = f"{self.run_path}/{file_info['fname']}"
@@ -98,8 +82,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 start_frame_offset * self.frame_size,
                 os.SEEK_CUR
             )
-            j, img = self.read_frame(fp, self.img_bpp)
-            img = np.reshape(img, (32, 32))
+            j, img = self.read_image_frame(fp, self.img_bpp)
             self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
             img = self.img_transform(img)
             #img = (img - np.median(img)) / np.std(img)
@@ -107,7 +90,7 @@ class PanoBatchBuilder(ObservingRunInterface):
             #plt.pause(0.5)
             return fig
 
-    def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap, verbose=False):
+    def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap):
         module_pff_files = self.obs_pff_files[module_id]
         file_info = module_pff_files[start_file_idx]
         fpath = f"{self.run_path}/{file_info['fname']}"
@@ -116,7 +99,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                 start_frame_offset * self.frame_size,
                 os.SEEK_CUR
             )
-            j, img = self.read_frame(fp, self.img_bpp)
+            j, img = self.read_image_frame(fp, self.img_bpp)
             self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
             img = self.img_transform(img)
             fig = plot_image_fft(img, vmin=vmin, vmax=vmax, cmap=cmap)
@@ -131,8 +114,7 @@ class PanoBatchBuilder(ObservingRunInterface):
                                   ncols,
                                   vmin,
                                   vmax,
-                                  cmap,
-                                  verbose=False):
+                                  cmap):
         """Compute time derivative feature relative to the frame specified by start_file_idx and start_frame_offset.
         Returns None if time derivative calc is not possible.
 
@@ -153,7 +135,7 @@ class PanoBatchBuilder(ObservingRunInterface):
         # Check if it is possible to construct a time-derivative with the given parameters and data
         with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
             f.seek(start_frame_offset * self.frame_size)
-            j, img = self.read_frame(f, self.img_bpp)
+            j, img = self.read_image_frame(f, self.img_bpp)
             curr_unix_t = pff.img_header_time(j)
             s = curr_unix_t
             if (curr_unix_t - max_delta_t) < module_pff_files[0]['first_unix_t']:
@@ -167,9 +149,9 @@ class PanoBatchBuilder(ObservingRunInterface):
                 break
             file_info = module_pff_files[i]
             fpath = f"{self.run_path}/{file_info['fname']}"
-            if verbose: print(f"Processing {file_info['fname']}")
+            if self.verbose: print(f"Processing {file_info['fname']}")
             with open(fpath, 'rb') as fp:
-                if verbose: print("newfile")
+                if self.verbose: print("newfile")
                 # Start file pointer with an offset based on the previous file -> ensures even frame sampling
                 fp.seek(
                     frame_offset * self.frame_size,
@@ -212,31 +194,33 @@ class PanoBatchBuilder(ObservingRunInterface):
                     frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
         return None, None
 
+    def correlate_skycam_to_pano_img(self, skycam_unix_t, module_id):
+        # Correlate skycam img to panoseti image, if possible
+        # t = get_skycam_img_time(original_skycam_fname)
+        # t = skycam_unix_t - timedelta(seconds=60)  # Offset skycam timestamp by typical integration time
+        # skycam_unix_t = get_unix_from_datetime(t)
+        skycam_integration_offset = -60
+        return self.module_file_time_seek(module_id, skycam_unix_t + skycam_integration_offset)
 
-
-    def create_feature_images(self, feature_df, pano_df, skycam_dir, module_id, allow_skip=True):
+    def create_feature_images(self, feature_df, pano_df, module_id, skycam_df, skycam_dir, allow_skip=True):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
             3. Generate a corresponding set of panoseti image features relative to that frame.
         Note: must download skycam data before calling this routine.
         """
+
+        if self.pano_features_created() and not self.force_recreate:
+            raise FileExistsError(f"Data in {self.run_dir} already processed")
+
         module_pff_files = self.obs_pff_files[module_id]
 
-        skycam_imgs_root_path = get_skycam_root_path(self.batch_path)
-        skycam_subdirs = get_skycam_subdirs(f'{skycam_imgs_root_path}/{skycam_dir}')
         print(f'Generating features for module {module_id}')
-        for original_skycam_fname in sorted(os.listdir(skycam_subdirs['original'])):
-            if not original_skycam_fname.endswith('.jpg'):
-                continue
-            if self.verbose: print(f'\nGenerating pano features for {original_skycam_fname}...')
-
-            # Correlate skycam img to panoseti image, if possible
-            t = get_skycam_img_time(original_skycam_fname)
-            t = t - timedelta(seconds=60)  # Offset skycam timestamp by typical integration time
-            skycam_unix_t = get_unix_from_datetime(t)
-            skycam_uid = get_skycam_uid(original_skycam_fname)
-            pano_frame_seek_info = self.module_file_time_seek(module_id, skycam_unix_t)
+        skycam_info = skycam_df.loc[skycam_df.skycam_dir == skycam_dir, ['skycam_uid', 'unix_t']]
+        for index, skycam_row in skycam_info.sort_values(by='unix_t').iterrows():
+            skycam_uid, skycam_unix_t = skycam_row
+            if self.verbose: print(f'\nGenerating pano features for skycam_uid {skycam_uid}...')
+            pano_frame_seek_info = self.correlate_skycam_to_pano_img(skycam_unix_t, module_id)
             if pano_frame_seek_info is None:
                 if self.verbose: print('Failed to find matching panoseti frames. Skipping...')
                 continue
@@ -250,7 +234,6 @@ class PanoBatchBuilder(ObservingRunInterface):
                 vmin=30,#-3.5,
                 vmax=282,#3.5,
                 cmap='mako',
-                verbose=self.verbose
             )
             figs['fft'] = self.make_fft_fig(
                 pano_frame_seek_info['file_idx'],
@@ -259,7 +242,6 @@ class PanoBatchBuilder(ObservingRunInterface):
                 vmin=3,
                 vmax=10,
                 cmap='icefire',
-                verbose=self.verbose
             )
             figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
                 pano_frame_seek_info['file_idx'],
@@ -271,7 +253,6 @@ class PanoBatchBuilder(ObservingRunInterface):
                 vmin=[-3, -1],
                 vmax=[3, 6],
                 cmap=["icefire", "icefire"],
-                verbose=self.verbose
             )
 
             # Check if all figs are valid
@@ -323,20 +304,13 @@ class PanoBatchBuilder(ObservingRunInterface):
             )
         return feature_df, pano_df
 
-    def build_pano_batch_data(self, feature_df, pano_df, skycam_dir):
-        try:
-            self.init_preprocessing_dirs()
-        except FileExistsError:
-            if not self.force_recreate:
-                print(f'Data in {self.pano_path} already processed')
-                return
-
+    def build_pano_batch_data(self, feature_df, pano_df, skycam_df, skycam_dir):
         print(f'Creating panoseti features for {self.run_dir}')
         for module_id in self.obs_pff_files:
             if len(self.obs_pff_files[module_id]) == 0:
                 continue
             feature_df, pano_df = self.create_feature_images(
-                feature_df, pano_df, skycam_dir, module_id
+                feature_df, pano_df, module_id, skycam_df, skycam_dir
             )
         return feature_df, pano_df
 
