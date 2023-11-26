@@ -187,10 +187,10 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
 
     def create_skycam_image_features(self):
         """Run all preprocessing routines on the skycam data"""
-        print('Running pre-processing routines.')
         if self.skycam_features_created():
-            return f"Data in {self.skycam_path} already processed"
+            return print(f"Data in {self.skycam_path} already processed")
 
+        print('Running pre-processing routines.')
         corners_4x1x2 = get_corners(self.skycam_meta['skycam_type'])
 
         for original_fname in os.listdir(self.skycam_subdirs['original']):
@@ -207,7 +207,7 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
 
     def build_skycam_batch_data(self, skycam_df, do_manual_skycam_download=False):
         """Dispatch for building skycam features"""
-        if self.verbose: print(f'Creating skycam features for {self.skycam_meta}')
+        print(f'\nCreating skycam features for {self.skycam_meta}')
         self.get_skycam_imgs(do_manual_skycam_download)
         self.create_skycam_image_features()
         skycam_df = self.add_skycam_data_to_skycam_df(skycam_df)

@@ -10,6 +10,7 @@ batch_data_array_dir = 'batch_data_arrays'
 pano_features_path = ''
 
 
+
 def get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type):
     assert img_type in valid_pano_img_types, f"{img_type} is not supported"
     pano_subdirs = get_pano_subdirs(pano_dataset_path)
@@ -62,42 +63,3 @@ class PanoDatasetBuilder:
                 data = np.reshape(data, shape)
             np.save(fpath, data)
         self.clear_current_entry()
-
-#
-# class PanoImgArrayBuilder:
-#     supported_img_types = ['original', 'fft', 'derivative-60s']
-#     def __init__(self, task, batch_id, run_dir):
-#         self.save_path = f'{get_root_dataset_dir(task)}/{batch_data_array_dir}/{get_batch_dir(task, batch_id)}/{run_dir}'
-#         os.makedirs(self.save_path, exist_ok=True)
-#         self.task = task
-#         self.batch_id = batch_id
-#         self.pano_run_dir = run_dir
-#         self.current_entry = dict()
-#         self.data_arrays = {
-#             img_type: [] for img_type in supported_img_types
-#         }
-#
-#     def clear_current_entry(self):
-#         self.current_entry = dict()
-#
-#     def commit_current_entry(self):
-#         entry = []
-#         for img_type in supported_img_types:
-#             assert img_type in self.current_entry, f'Missing {img_type} from the data array entry.'
-#             entry.append(self.current_entry[img_type])
-#             self.data_arrays[img_type].append(entry)
-#         self.clear_current_entry()
-#
-#     def add_img_to_entry(self, data, img_type):
-#         assert img_type in supported_img_types, f'img_type "{img_type}" not supported!'
-#         assert img_type not in self.current_entry, f'img_type "{img_type}" already added!'
-#         self.current_entry[img_type] = data
-#
-#     def write_array(self, overwrite_ok=True):
-#         fpath = f'{self.save_path}/{get_batch_img_array_save_name(self.task, self.batch_id)}'
-#         if os.path.exists(fpath) and not overwrite_ok:
-#             raise FileExistsError(f'overwrite_ok=False and {fpath} exists.')
-#         data = np.array(self.data_arrays)
-#         np.save(fpath, data)
-#
-

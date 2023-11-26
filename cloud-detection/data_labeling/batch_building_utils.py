@@ -17,9 +17,18 @@ batch_data_zipfiles_dir = 'batch_data_zipfiles'
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
 
+"""Valid feature types"""
+valid_skycam_img_types = ['original', 'cropped', 'pfov']
+valid_pano_img_types = [
+    'raw-original', 'original',
+    'raw-fft', 'fft',
+    'raw-derivative', 'derivative',
+    'fft-derivative',
+]
 
 """
 Bata batch has the following file tree structure:
+
 batch_data/
 ├─ task_cloud-detection.batch-id_0/
 .
@@ -36,6 +45,7 @@ batch_data/
 │  │  .
 │  ├─ pano_imgs/
 │  │  ├─ obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd/
+│  │  │  ├─ raw/
 │  │  │  ├─ original/
 │  │  │  ├─ fft/
 │  │  │  ├─ derivative/
@@ -58,19 +68,33 @@ class CloudDetectionBatchDataFileTree:
     skycam_path_index_fname = 'skycam_path_index.json'
 
     def __init__(self, batch_id, task='cloud-detection'):
+        """
+        task_cloud-detection.batch-id_N/
+        ├─ skycam_imgs/
+        ├─ pano_imgs/
+        ├─ skycam_path_index.json
+        ├─ pano_path_index.json
+        ├─ task_cloud-detection.batch-id_N.type_feature.csv
+        ├─ task_cloud-detection.batch-id_N.type_pano.csv
+        ├─ task_cloud-detection.batch-id_N.type_skycam.csv
+        """
         self.task = task
         self.batch_id = batch_id
-        self.batch_path = get_batch_path(task, batch_id)
         self.batch_dir = get_batch_dir(task, batch_id)
+        self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
 
-        self.skycam_root_path = get_skycam_root_path(self.batch_path)
-        self.pano_root_path = get_pano_root_path(self.batch_path)
-
-
+        self.skycam_root_path = f'{self.batch_path}/{skycam_imgs_root_dir}'
+        self.pano_root_path = f'{self.batch_path}/{pano_imgs_root_dir}'
 
 
 class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
     def __init__(self, batch_id, **kwargs):
+        """
+        [skycam_dir]/
+        ├─ original/
+        ├─ cropped/
+        ├─ pfov/
+        """
         super().__init__(batch_id)
 
         if 'skycam_dir' in kwargs:
@@ -79,6 +103,7 @@ class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
             self.skycam_dir = self._get_skycam_dir(**kwargs)
         else:
             raise ValueError('Must provide skycam_dir or the info to create it.')
+
         self.skycam_path = f'{self.skycam_root_path}/{self.skycam_dir}'
         self.skycam_subdirs = self.get_skycam_subdirs()
 
@@ -112,14 +137,22 @@ class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
 
 class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
     def __init__(self, batch_id, run_dir):
+        """
+        [pano_run_dir]/
+        ├─ raw/
+        ├─ original/
+        ├─ fft/
+        ├─ derivative/
+        """
         super().__init__(batch_id)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path)
 
-
     def get_pano_img_path(self, pano_uid, img_type):
         assert img_type in valid_pano_img_types, f"{img_type} is not supported"
+        if 'raw' in img_type:
+            return f"{self.pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.npy"
         return f"{self.pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
 
 
@@ -148,38 +181,14 @@ def get_batch_def_json_fname(task, batch_id):
 
 """Skycam feature directory"""
 
-valid_skycam_img_types = ['original', 'cropped', 'pfov']
 
 def get_skycam_root_path(batch_path):
     skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
     return skycam_imgs_root_path
 
-# def get_skycam_img_path(original_fname, img_type, skycam_path):
-#     assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
-#     skycam_subdirs = get_skycam_subdirs(skycam_path)
-#     if original_fname[-4:] != '.jpg':
-#         return None
-#     if img_type == 'original':
-#         return f"{skycam_subdirs['original']}/{original_fname}"
-#     elif img_type == 'cropped':
-#         return f"{skycam_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
-#     elif img_type == 'pfov':
-#         return f"{skycam_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
-#     else:
-#         return None
-#
-
-# def get_skycam_path(batch_path, skycam_dir):
-#     skycam_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
-#     skycam_path = f'{skycam_root_path}/{skycam_dir}'
-#     return skycam_path
-#
-
-
 """Pano feature directory"""
 
 
-valid_pano_img_types = ['original', 'derivative', 'fft-derivative', 'fft']
 
 def get_pano_subdirs(pano_path):
     pano_subdirs = {}
@@ -191,11 +200,13 @@ def get_pano_root_path(batch_path):
     return f'{batch_path}/{pano_imgs_root_dir}'
 
 
-def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
-    assert img_type in valid_pano_img_types, f"{img_type} is not supported"
-    pano_subdirs = get_pano_subdirs(pano_imgs_path)
+# def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
+#     assert img_type in valid_pano_img_types, f"{img_type} is not supported"
+#     pano_subdirs = get_pano_subdirs(pano_imgs_path)
+    if 'raw' in img_type:
+        return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.npy"
     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
-
+#
 
 """UID definitions"""
 

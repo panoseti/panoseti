@@ -22,11 +22,12 @@ class CloudDetectionDatasetManager:
     def __init__(self, root='.', task='cloud-detection'):
         self.task = task
         self.dataset_dir = get_root_dataset_dir(task)
+        self.root = root
         self.dataset_path = f'{root}/{self.dataset_dir}'
         self.label_log_path = f'{self.dataset_path}/{label_log_fname}'
         self.user_labeled_path = f'{self.dataset_path}/{user_labeled_dir}'
-        self.batch_data_array_path = f'{self.dataset_path}/{batch_data_array_dir}'
-        self.data_labels_path = f'{self.dataset_path}/{data_labels_fname}'
+        # self.batch_data_array_path = f'{self.dataset_path}/{batch_data_array_dir}'
+        self.data_labels_json_path = f'{self.dataset_path}/{data_labels_fname}'
 
         self.main_dfs = {   # Aggregated metadata datasets.
             'user': pd.DataFrame,
@@ -49,9 +50,9 @@ class CloudDetectionDatasetManager:
         # Make dataset_dir
         os.makedirs(self.dataset_path, exist_ok=True)
         os.makedirs(self.user_labeled_path, exist_ok=True)
-        os.makedirs(self.batch_data_array_path, exist_ok=True)
+        # os.makedirs(self.batch_data_array_path, exist_ok=True)
         if isinstance(self, CloudDetectionDatasetBuilder):
-            shutil.copy(data_labels_fname, self.data_labels_path)
+            shutil.copy(data_labels_fname, self.data_labels_json_path)
         self.init_main_dfs()
 
     def init_main_dfs(self):
@@ -106,7 +107,8 @@ class CloudDetectionDatasetManager:
                 raise ValueError(f"feature_uid='{feature_uid}' is not a recognized feature! "
                                  f"A batch of user-labeled data might disagree with "
                                  f"the corresponding data_batch_array entry")
-            for img_type in PanoDatasetBuilder.supported_img_types:
+            # for img_type in PanoDatasetBuilder.supported_img_types:
+            for img_type in [t for t in valid_pano_img_types if 'raw' in t]:
                 pano_feature_path = self.get_pano_feature_fpath(feature_uid, img_type)
                 all_valid &= os.path.exists(pano_feature_path)
                 all_valid &= os.path.getsize(pano_feature_path) > 0
@@ -117,12 +119,14 @@ class CloudDetectionDatasetManager:
         pano_df = self.main_dfs['pano']
         pano_uid = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]
         run_dir, batch_id = pano_df.loc[pano_df['pano_uid'] == pano_uid, ['run_dir', 'batch_id']].iloc[0]
-        pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir, self.dataset_path)
-        pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
-        return pano_feature_path
+        ptree = PanoBatchDataFileTree(batch_id, run_dir)
+        return f'{self.root}/{ptree.get_pano_img_path(pano_uid, img_type)}'
+        # pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir, self.dataset_path)
+        # pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
+        # return pano_feature_path
 
     def get_one_hot_encoding(self):
-        with open(self.data_labels_path, 'r') as f:
+        with open(self.data_labels_json_path, 'r') as f:
             num_to_label = json.load(f)
             label_to_num = {label: int(num) for num, label in num_to_label.items()}
         return label_to_num
@@ -264,6 +268,6 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
 
 
 if __name__ == '__main__':
-    test = CloudDetectionDatasetManager()
-    test.update_dataset()
+    test = CloudDetectionDatasetBuilder()
+    test.generate_dataset()
 

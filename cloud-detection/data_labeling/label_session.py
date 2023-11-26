@@ -289,7 +289,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         self.unlabeled_df.loc[(self.unlabeled_df['feature_uid'] == last_feature_uid), 'is_labeled'] = False
         self.labeled_df.drop(index=len(self.labeled_df) - 1, inplace=True)
 
-    def start(self):
+    def start(self, debug=False):
         """Labeling interface that displays an image and prompts user for its class."""
         data_to_label = self.unlabeled_df.loc[self.unlabeled_df.is_labeled == False]
 
@@ -302,6 +302,12 @@ class LabelSession(CloudDetectionBatchDataFileTree):
             while i < len(self.unlabeled_df):
                 # Clear display then show next image to label
                 feature_uid = self.unlabeled_df.iloc[i]['feature_uid']
+                if debug:
+                    label_str = np.random.choice(list(self.labels.values()))
+                    self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, feature_uid, self.user_uid, label_str)
+                    i += 1
+                    continue
+
                 self.plot_img(feature_uid)
 
                 display.clear_output(wait=True)
@@ -394,5 +400,6 @@ class LabelSession(CloudDetectionBatchDataFileTree):
 
 
 if __name__ == '__main__':
-    session = LabelSession('Nico', 6)
-    session.start()
+    session = LabelSession("YOUR NsAMEs", 6)
+    session.start(debug=True)
+    session.create_export_zipfile()

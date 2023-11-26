@@ -19,13 +19,20 @@ import pff
 
 class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
+    raw_data_shapes = {
+        'raw-original': (32, 32),
+        'raw-fft': (32, 32),
+        'raw-derivative': (3, 32, 32)
+    }
+
     def __init__(self, task, batch_id, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
         ObservingRunInterface.__init__(self, panoseti_data_dir, panoseti_run_dir)
         PanoBatchDataFileTree.__init__(self, batch_id, panoseti_run_dir)
         self.force_recreate = force_recreate
         self.verbose = verbose
-        self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
+        # self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
 
+        self.data_arrays = dict()
         self.init_pano_subdirs()
 
     def init_pano_subdirs(self):
@@ -60,6 +67,33 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             ret &= os.path.exists(pano_subdir) and len(os.listdir(pano_subdir)) > 0
         return ret
 
+    """Data array interface"""
+
+    def clear_current_entry(self):
+        self.data_arrays = dict()
+
+    def add_img_to_entry(self, data, img_type):
+        assert img_type in valid_pano_img_types, f'img_type "{img_type}" not supported!'
+        assert img_type not in self.data_arrays, f'img_type "{img_type}" already added!'
+
+        self.data_arrays[img_type] = data
+
+    def write_arrays(self, pano_uid, overwrite_ok=True):
+        for img_type in self.data_arrays:
+            fpath = self.get_pano_img_path(pano_uid, img_type)
+            if os.path.exists(fpath) and not overwrite_ok:
+                raise FileExistsError(f'overwrite_ok=False and {fpath} exists.')
+            data = self.data_arrays[img_type]
+            if data is None:
+                raise ValueError(f'Data for "{img_type}" is None!')
+            data = np.array(data)
+            shape = self.raw_data_shapes[img_type]
+            if data.shape != shape:
+                data = np.reshape(data, shape)
+            np.save(fpath, data)
+        self.clear_current_entry()
+
+
     """Feature creation"""
 
     def img_transform(self, img):
@@ -78,7 +112,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 os.SEEK_CUR
             )
             j, img = self.read_image_frame(fp, self.img_bpp)
-            self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
+            # self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
+            self.add_img_to_entry(img, 'raw-original')
             img = self.img_transform(img)
             #img = (img - np.median(img)) / np.std(img)
             fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
@@ -95,9 +130,10 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 os.SEEK_CUR
             )
             j, img = self.read_image_frame(fp, self.img_bpp)
-            self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
+            # self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
+            self.add_img_to_entry(apply_fft(img), 'raw-fft')
             img = self.img_transform(img)
-            fig = plot_image_fft(img, vmin=vmin, vmax=vmax, cmap=cmap)
+            fig = plot_image_fft(apply_fft(img), vmin=vmin, vmax=vmax, cmap=cmap)
             return fig
 
     def make_time_derivative_figs(self,
@@ -160,24 +196,28 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                         hist.insert(0, img)
                         # if verbose: print(int(pff.img_header_time(j) - s))
                         continue
-                    imgs = list()
+                    deriv_imgs = list()
+                    raw_data = []
                     delta_ts = []
                     for k in [int(i * hist_size / ncols) for i in range(ncols, 0, -1)]:
                         delta_t = -step_delta_t * k
                         delta_ts.append(str(delta_t))
-                        diff = (img - hist[k - 1])
+                        diff = img - hist[k - 1]
                         # if delta_t == -60:
                         #     self.img_array_builder.add_img_to_entry(diff, 'derivative-60s')
-                        data = diff / np.std(hist)
-                        data = self.img_transform(data)
-                        imgs.append(data)
+                        raw_data.append(diff)
+                        deriv_data = diff / np.std(hist)
+                        deriv_data = self.img_transform(deriv_data)
+                        deriv_imgs.append(deriv_data)
                     # print(delta_ts)
 
+                    self.add_img_to_entry(np.array(raw_data), 'raw-derivative')
+
                     fig_time_derivative = plot_time_derivative(
-                        imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
+                        deriv_imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
                     )
                     fig_fft_time_derivative = plot_fft_time_derivative(
-                        imgs, delta_ts, ncols, vmin[1], vmax[1], cmap=cmap[1]
+                        deriv_imgs, delta_ts, ncols, vmin[1], vmax[1], cmap=cmap[1]
                     )
 
                     # plt.pause(0.5)
@@ -265,7 +305,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 for fig in figs.values():
                     plt.close(fig)
                 if self.verbose: print('Failed to create figures')
-                self.pano_dataset_builder.clear_current_entry()
+                # self.pano_dataset_builder.clear_current_entry()
+                self.clear_current_entry()
                 continue
 
             # Write figures to data dirs
@@ -273,12 +314,13 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             frame_offset = pano_frame_seek_info['frame_offset']
             pano_uid = get_pano_uid(pano_fname, frame_offset)
             for img_type, fig in figs.items():
-                if self.verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
-                # fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
+                if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
+                fig.savefig(self.get_pano_img_path(pano_uid, img_type))
                 plt.close(fig)
 
             # Commit entry to data_array for this run_dir
-            self.pano_dataset_builder.write_arrays(pano_uid)
+            # self.pano_dataset_builder.write_arrays(pano_uid)
+            self.write_arrays(pano_uid)
 
             # Update dataframes
             pano_df = add_pano_img(
@@ -300,12 +342,16 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         return feature_df, pano_df
 
     def build_pano_batch_data(self, feature_df, pano_df, skycam_df, skycam_dir):
-        print(f'Creating panoseti features for {self.run_dir}')
+        print(f'\nCreating panoseti features for {self.run_dir}')
+
         for module_id in self.obs_pff_files:
             if len(self.obs_pff_files[module_id]) == 0:
                 continue
-            feature_df, pano_df = self.create_feature_images(
-                feature_df, pano_df, module_id, skycam_df, skycam_dir
-            )
+            try:
+                feature_df, pano_df = self.create_feature_images(
+                    feature_df, pano_df, module_id, skycam_df, skycam_dir
+                )
+            except FileExistsError:
+                continue
         return feature_df, pano_df
 

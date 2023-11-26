@@ -4,7 +4,7 @@ Builds batches of unlabeled data for human labeling, referred to as "data batche
 
 The labeling architecture assumes that these data batches of data are the smallest
 unit of data that is distributed to users. The lifecycle of a data batch is the following:
-    - Data batches are produced by this script, running on a server with access to all requisite source data (i.e. panoseti data).
+    - Data batches are produced by this script (NOTE: must be run on a server with access to all relevant panoseti data.)
     - These batches are uploaded to the cloud for distribution to users.
     - Users download data batches and label them using the PANOSETI Data Labeling Interface.
     - Users upload data batch labels to the cloud.
@@ -19,12 +19,9 @@ dealing with faulty batches.
 Run build_batch to automatically generate a zipped batch.
 
 """
-
 import os
 import json
-import random
 import shutil
-from datetime import datetime, timedelta
 
 from batch_building_utils import CloudDetectionBatchDataFileTree, SkycamBatchDataFileTree, PanoBatchDataFileTree, get_batch_def_json_fname, batch_data_zipfiles_dir, valid_skycam_img_types
 from dataframe_utils import get_dataframe, save_df
@@ -33,7 +30,7 @@ from pano_builder import PanoBatchBuilder
 
 
 class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, batch_def, verbose, do_zip, force_recreate, manual_skycam_download):
+    def __init__(self, batch_id, batch_def, verbose=False, do_zip=True, force_recreate=True, manual_skycam_download=False):
         super().__init__(batch_id)
         self.batch_def = batch_def
         self.verbose = verbose
@@ -57,22 +54,19 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         """Create file for indexing sky-camera image paths."""
         assert os.path.exists(self.batch_path), f"Could not find the batch directory {self.batch_path}"
         pano_paths = {}
-        # pano_root_path = get_pano_root_path(self.batch_path)
         for pano_run_dir_name in os.listdir(self.pano_root_path):
             ptree = PanoBatchDataFileTree(self.batch_id, pano_run_dir_name)
-            # pano_path = f'{self.pano_root_path}/{path}'
             if os.path.isdir(ptree.pano_path) and 'pffd' in pano_run_dir_name:
                 pano_paths[ptree.pano_path] = {
                     "img_subdirs": {},
                     "imgs_per_subdir": -1,
                 }
-                # pano_subdirs = get_pano_subdirs(ptree.pano_path)
                 pano_paths[ptree.pano_path]["img_subdirs"] = ptree.pano_subdirs
                 num_imgs_per_subdir = []
                 for subdir in ptree.pano_subdirs.values():
                     num_imgs_per_subdir.append(len(os.listdir(subdir)))
                 if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
-                    raise Warning(f"Unequal number of images in {ptree.pano_path}")
+                    raise Warning(f"Unequal number of image in {ptree.pano_path}. Some pano img types are missing data.")
                 pano_paths[ptree.pano_path]["imgs_per_subdir"] = num_imgs_per_subdir[0]
         with open(f"{self.batch_path}/{self.pano_path_index_fname}", 'w') as f:
             f.write(json.dumps(pano_paths, indent=4))
@@ -84,7 +78,6 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         skycam_paths = {}
         for skycam_dir in os.listdir(self.skycam_root_path):
             sctree = SkycamBatchDataFileTree(self.batch_id, skycam_dir=skycam_dir)
-            # skycam_path = f'{self.skycam_root_path}/{skycam_dir}'
             if os.path.isdir(sctree.skycam_path) and 'SC' in skycam_dir and 'imgs' in skycam_dir:
                 skycam_paths[sctree.skycam_path] = {
                     "img_subdirs": {},
@@ -106,12 +99,14 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
     def zip_batch(self):
         os.makedirs(batch_data_zipfiles_dir, exist_ok=True)
         batch_zip_name = f'{batch_data_zipfiles_dir}/{self.batch_dir}'
-        if self.force_recreate or not os.path.exists(batch_zip_name + '.tar.gz'):
-            if self.force_recreate and os.path.exists(batch_zip_name + '.tar.gz'):
-                os.remove(batch_zip_name + '.tar.gz', )
-            print(f"\nZipping {self.batch_dir}")
-            shutil.make_archive(batch_zip_name, 'gztar', self.batch_path)
-            print("Done")
+        batch_zip_path = batch_zip_name + '.tar.gz'
+        if self.force_recreate and os.path.exists(batch_zip_name + '.tar.gz'):
+            os.remove(batch_zip_path)
+        print(f"\nZipping {self.batch_dir}")
+        shutil.make_archive(batch_zip_name, 'gztar', self.batch_path)
+        print(f'\tAbs path: {os.path.abspath(batch_zip_path)}\n'
+              f'\tSize: {round(os.path.getsize(batch_zip_path) / 2**20, 2)} MB')
+        print("Done")
 
     def prune_skycam_imgs(self):
         skycam_uids_in_feature_df = self.feature_df.loc[:, 'skycam_uid']
@@ -128,7 +123,18 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
 
     def build_batch(self):
         for sample_dict in self.batch_def:
-            print(f'\nBuilding features for {sample_dict}')
+            skycam_builder = SkycamBatchBuilder(
+                self.batch_id,
+                **sample_dict['skycam'],
+                verbose=self.verbose,
+                force_recreate=False
+            )
+            self.skycam_df = skycam_builder.build_skycam_batch_data(
+                self.skycam_df,
+                do_manual_skycam_download=self.manual_skycam_download
+            )
+
+        for sample_dict in self.batch_def:
             pano_builder = PanoBatchBuilder(
                 'cloud-detection',
                 self.batch_id,
@@ -137,27 +143,10 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 verbose=self.verbose,
                 force_recreate=self.force_recreate,
             )
-
-            skycam_builder = SkycamBatchBuilder(
-                self.batch_id,
-                sample_dict['skycam']['skycam_type'],
-                sample_dict['skycam']['year'],
-                sample_dict['skycam']['month'],
-                sample_dict['skycam']['day'],
-                verbose=self.verbose,
-                force_recreate=False
-            )
-
-            self.skycam_df = skycam_builder.build_skycam_batch_data(
-                self.skycam_df,
-                do_manual_skycam_download=self.manual_skycam_download
-            )
-
+            sctree = SkycamBatchDataFileTree(self.batch_id, **sample_dict['skycam'])
             self.feature_df, self.pano_df = pano_builder.build_pano_batch_data(
-                self.feature_df, self.pano_df, self.skycam_df, skycam_builder.skycam_dir
+                self.feature_df, self.pano_df, self.skycam_df, sctree.skycam_dir
             )
-
-        # self.prune_skycam_imgs()
 
         try:
             save_df(
@@ -165,11 +154,12 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 self.task, False, self.batch_path, overwrite_ok=self.force_recreate
             )
             save_df(
-                self.skycam_df, 'skycam', None, self.batch_id,
+                self.pano_df, 'pano', None, self.batch_id,
                 self.task, False, self.batch_path, overwrite_ok=self.force_recreate
             )
+            self.prune_skycam_imgs()
             save_df(
-                self.pano_df, 'pano', None, self.batch_id,
+                self.skycam_df, 'skycam', None, self.batch_id,
                 self.task, False, self.batch_path, overwrite_ok=self.force_recreate
             )
         except FileExistsError as fee:
@@ -181,60 +171,3 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
 
         if self.do_zip:
             self.zip_batch()
-
-
-
-if __name__ == '__main__':
-    DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
-
-    batch_def_3 = [
-        {
-            'pano': {
-                'data_dir': DATA_DIR,
-                'run_dir': 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd',
-            },
-            'skycam': {
-                'skycam_type': 'SC2',
-                'year': 2023,
-                'month': 7,
-                'day': 31
-            }
-        },
-        # {
-        #     'pano': {
-        #         'data_dir': DATA_DIR,
-        #         'run_dir': 'obs_Lick.start_2023-08-24T04:37:00Z.runtype_sci-obs.pffd',
-        #     },
-        #     'skycam': {
-        #         'skycam_type': 'SC2',
-        #         'year': 2023,
-        #         'month': 8,
-        #         'day': 23
-        #     }
-        # },
-        {
-            'pano': {
-                'data_dir': DATA_DIR,
-                'run_dir': 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd',
-            },
-            'skycam': {
-                'skycam_type': 'SC2',
-                'year': 2023,
-                'month': 8,
-                'day': 28
-            }
-        },
-    ]
-    batch_id = 6
-
-    data_batch_builder = CloudDetectionBatchBuilder(
-        batch_id,
-        batch_def_3,
-        verbose=True,
-        do_zip=True,
-        force_recreate=True,
-        manual_skycam_download=False
-    )
-    data_batch_builder.build_batch()
-
-    #zip_batch('cloud-detection', 4, force_recreate=True)
