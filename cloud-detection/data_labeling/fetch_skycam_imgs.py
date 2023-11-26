@@ -6,7 +6,6 @@ This occurs in two stages:
     2. Delete skycam images according to a filter rule
 """
 import time
-from datetime import datetime, timedelta, tzinfo
 import os
 import tarfile
 import shutil
@@ -14,8 +13,7 @@ import shutil
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
-
-from skycam_utils import get_skycam_root_path, get_skycam_subdirs, get_skycam_img_time
+from batch_building_utils import get_skycam_subdirs
 
 
 def get_skycam_link(skycam_type, year, month, day):
@@ -161,12 +159,3 @@ def unzip_images(skycam_path):
                 os.rename(f'{skycam_path}/{path}', img_subdirs['original'])
 
 
-def filter_images(skycam_path: str, first_t: datetime, last_t: datetime):
-    """Remove skycam images between t_start and t_end."""
-    path_to_orig_skycam_imgs = get_skycam_subdirs(skycam_path)['original']
-    for fname in sorted(os.listdir(path_to_orig_skycam_imgs)):
-        if fname.endswith('.mp4') or fname.endswith('.mpg'):
-            os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))
-        skycam_t = get_skycam_img_time(fname)
-        if not (first_t <= skycam_t <= last_t):
-            os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))

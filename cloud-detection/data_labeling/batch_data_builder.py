@@ -18,66 +18,28 @@ dealing with faulty batches.
 
 Run build_batch to automatically generate a zipped batch.
 
-Each data batch has the following file tree format:
-------------
-
-batch_data/
-├─ task_cloud-detection.batch-id_0/
-├─ task_cloud-detection.batch-id_1/
-.
-.
-.
-├─ task_cloud-detection.batch-id_N/
-│  ├─ skycam_imgs/
-│  │  ├─ original/
-│  │  ├─ cropped/
-│  │  ├─ pfov/
-│  ├─ pano_imgs/
-│  │  ├─ original/
-│  │  ├─ fft/
-│  │  ├─ derivative/
-│  │  ├─ fft-derivative/
-│  ├─ skycam_path_index.json
-│  ├─ pano_path_index.json
-│  ├─ task_cloud-detection.batch-id_N.type_feature.csv
-│  ├─ task_cloud-detection.batch-id_N.type_pano.csv
-│  ├─ task_cloud-detection.batch-id_N.type_skycam.csv
-.
-.
-.
-------------
 """
 
 import os
+import json
 import random
 import shutil
 from datetime import datetime, timedelta
 
-from skycam_utils import make_skycam_paths_json
-from batch_building_utils import *
-from dataframe_utils import get_dataframe, save_df, load_df
-
+from batch_building_utils import CloudDetectionBatchDataFileTree, SkycamBatchDataFileTree, PanoBatchDataFileTree, get_batch_def_json_fname, get_skycam_img_path, batch_data_zipfiles_dir, valid_skycam_img_types
+from dataframe_utils import get_dataframe, save_df
 from skycam_builder import SkycamBatchBuilder
-
-from pano_utils import make_pano_paths_json
 from pano_builder import PanoBatchBuilder
 
-from dataset_manager import CloudDetectionDatasetManager
-from base_classes import GenericDataBatchBuilder
 
-
-class CloudDetectionBatchBuilder:
+class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
     def __init__(self, task, batch_id, batch_def, verbose, do_zip, force_recreate, manual_skycam_download):
-        self.task = task
-        self.batch_id = batch_id
+        super().__init__(task, batch_id)
         self.batch_def = batch_def
         self.verbose = verbose
         self.do_zip = do_zip
         self.force_recreate = force_recreate
         self.manual_skycam_download = manual_skycam_download
-
-        self.batch_path = get_batch_path(task, batch_id)
-        self.batch_dir = get_batch_dir(task, batch_id)
 
         self.feature_df = get_dataframe('feature')
         self.pano_df = get_dataframe('pano')
@@ -91,6 +53,55 @@ class CloudDetectionBatchBuilder:
         with open(f"{self.batch_path}/{batch_def_fname}", 'w') as f:
             f.write(json.dumps(self.batch_def, indent=4))
 
+    def make_pano_paths_json(self):
+        """Create file for indexing sky-camera image paths."""
+        assert os.path.exists(self.batch_path), f"Could not find the batch directory {self.batch_path}"
+        pano_paths = {}
+        # pano_root_path = get_pano_root_path(self.batch_path)
+        for path in os.listdir(self.pano_root_path):
+            ptree = PanoBatchDataFileTree(self.task, self.batch_id, path)
+            # pano_path = f'{self.pano_root_path}/{path}'
+            if os.path.isdir(ptree.pano_path) and 'pffd' in path:
+                pano_paths[ptree.pano_path] = {
+                    "img_subdirs": {},
+                    "imgs_per_subdir": -1,
+                }
+                # pano_subdirs = get_pano_subdirs(ptree.pano_path)
+                pano_paths[ptree.pano_path]["img_subdirs"] = ptree.pano_subdirs
+                num_imgs_per_subdir = []
+                for subdir in ptree.pano_subdirs.values():
+                    num_imgs_per_subdir.append(len(os.listdir(subdir)))
+                if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
+                    raise Warning(f"Unequal number of images in {ptree.pano_path}")
+                pano_paths[ptree.pano_path]["imgs_per_subdir"] = num_imgs_per_subdir[0]
+        with open(f"{self.batch_path}/{self.pano_path_index_fname}", 'w') as f:
+            f.write(json.dumps(pano_paths, indent=4))
+        return pano_paths
+
+    def make_skycam_paths_json(self):
+        """Create file for indexing sky-camera image paths."""
+        assert os.path.exists(self.batch_path), f"Could not find the batch directory {self.batch_path}"
+        skycam_paths = {}
+        for skycam_dir in os.listdir(self.skycam_root_path):
+            sctree = SkycamBatchDataFileTree(self.task, self.batch_id, skycam_dir)
+            # skycam_path = f'{self.skycam_root_path}/{skycam_dir}'
+            if os.path.isdir(sctree.skycam_path) and 'SC' in skycam_dir and 'imgs' in skycam_dir:
+                skycam_paths[sctree.skycam_path] = {
+                    "img_subdirs": {},
+                    "imgs_per_subdir": -1,
+                }
+                skycam_paths[sctree.skycam_path]["img_subdirs"] = sctree.skycam_subdirs
+                num_imgs_per_subdir = []
+                for subdir in sctree.skycam_subdirs.values():
+                    if subdir.endswith('original'):
+                        continue
+                    num_imgs_per_subdir.append(len(os.listdir(subdir)))
+                if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
+                    raise Warning(f"Unequal number of images in {sctree.skycam_path}")
+                skycam_paths[sctree.skycam_path]["imgs_per_subdir"] = num_imgs_per_subdir[0]
+        with open(f"{self.batch_path}/{self.skycam_path_index_fname}", 'w') as f:
+            f.write(json.dumps(skycam_paths, indent=4))
+        return skycam_paths
 
     def zip_batch(self):
         os.makedirs(batch_data_zipfiles_dir, exist_ok=True)
@@ -106,11 +117,12 @@ class CloudDetectionBatchBuilder:
         skycam_uids_in_feature_df = self.feature_df.loc[:, 'skycam_uid']
         skycam_not_in_feature_df = self.skycam_df.loc[~self.skycam_df['skycam_uid'].isin(skycam_uids_in_feature_df)]
         for skycam_dir in skycam_not_in_feature_df['skycam_dir'].unique():
+            sctree = SkycamBatchDataFileTree(self.task, self.batch_id, skycam_dir)
             unused_skycam_fnames = skycam_not_in_feature_df.loc[skycam_not_in_feature_df['skycam_dir'] == skycam_dir, 'fname']
-            skycam_path = get_skycam_path(self.batch_path, skycam_dir)
+            # skycam_path = get_skycam_path(self.batch_path, skycam_dir)
             for fname in unused_skycam_fnames:
                 for skycam_type in valid_skycam_img_types:
-                    fpath = get_skycam_img_path(fname, skycam_type, skycam_path)
+                    fpath = get_skycam_img_path(fname, skycam_type, sctree.skycam_path)
                     os.remove(fpath)
         self.skycam_df.drop(skycam_not_in_feature_df.index, inplace=True)
         self.skycam_df.reset_index(drop=True, inplace=True)
@@ -119,10 +131,10 @@ class CloudDetectionBatchBuilder:
         for sample_dict in self.batch_def:
             print(f'\nBuilding features for {sample_dict}')
             pano_builder = PanoBatchBuilder(
-                sample_dict['pano']['data_dir'],
-                sample_dict['pano']['run_dir'],
                 'cloud-detection',
                 self.batch_id,
+                sample_dict['pano']['data_dir'],
+                sample_dict['pano']['run_dir'],
                 verbose=self.verbose,
                 force_recreate=self.force_recreate,
             )
@@ -130,7 +142,6 @@ class CloudDetectionBatchBuilder:
             skycam_builder = SkycamBatchBuilder(
                 self.task,
                 self.batch_id,
-                self.batch_path,
                 sample_dict['skycam']['skycam_type'],
                 sample_dict['skycam']['year'],
                 sample_dict['skycam']['month'],
@@ -166,8 +177,8 @@ class CloudDetectionBatchBuilder:
         except FileExistsError as fee:
             print('Dataframes already created.')
 
-        make_skycam_paths_json(self.batch_path)
-        make_pano_paths_json(self.batch_path)
+        self.make_skycam_paths_json()
+        self.make_pano_paths_json()
         self.make_batch_def_json()
 
         if self.do_zip:
@@ -216,7 +227,7 @@ if __name__ == '__main__':
             }
         },
     ]
-    batch_id = 6
+    batch_id = 8
 
     data_batch_builder = CloudDetectionBatchBuilder(
         'cloud-detection',

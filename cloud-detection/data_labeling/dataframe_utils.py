@@ -2,13 +2,10 @@
 Utility functions for manipulating panoseti ML dataframes.
 Use these methods to interact with dataframes to ensure database integrity.
 """
-
 import pandas as pd
-import numpy as np
 import os
-import shutil
 
-from batch_building_utils import *
+from batch_building_utils import get_feature_uid
 
 # Database formats / Core routines
 

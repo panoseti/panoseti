@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+# TODO: figure out common interfaces for batch and datasources. Don't use these yet.
+
 class GenericDataBatchBuilder(ABC):
     def __init__(self, task, batch_id):
         raise NotImplementedError()

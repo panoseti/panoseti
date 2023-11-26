@@ -19,30 +19,6 @@ from batch_building_utils import *
 
 
 # File structure abstraction
-def make_pano_paths_json(batch_path):
-    """Create file for indexing sky-camera image paths."""
-    assert os.path.exists(batch_path), f"Could not find the batch directory {batch_path}"
-    pano_paths = {}
-    pano_imgs_root_path = get_pano_root_path(batch_path)
-    for path in os.listdir(pano_imgs_root_path):
-        pano_path = f'{pano_imgs_root_path}/{path}'
-        if os.path.isdir(pano_path) and 'pffd' in path:
-            pano_paths[pano_path] = {
-                "img_subdirs": {},
-                "imgs_per_subdir": -1,
-            }
-            pano_subdirs = get_pano_subdirs(pano_path)
-            pano_paths[pano_path]["img_subdirs"] = pano_subdirs
-            num_imgs_per_subdir = []
-            for subdir in pano_subdirs.values():
-                num_imgs_per_subdir.append(len(os.listdir(subdir)))
-            if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
-                raise Warning(f"Unequal number of images in {pano_path}")
-            pano_paths[pano_path]["imgs_per_subdir"] = num_imgs_per_subdir[0]
-    with open(f"{batch_path}/{pano_path_index_fname}", 'w') as f:
-        f.write(json.dumps(pano_paths, indent=4))
-    return pano_paths
-
 
 
 def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, verbose):

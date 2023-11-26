@@ -6,9 +6,8 @@ import numpy as np
 import sys
 from datetime import timedelta
 
-from batch_building_utils import *
+from batch_building_utils import PanoBatchDataFileTree
 from panoseti_file_interfaces import ObservingRunInterface
-from skycam_utils import get_skycam_img_time
 from pano_utils import *
 from dataframe_utils import *
 from dataset_utils import PanoDatasetBuilder
@@ -17,16 +16,12 @@ from dataset_utils import PanoDatasetBuilder
 sys.path.append("../../util")
 import pff
 
-class PanoBatchBuilder(ObservingRunInterface):
 
-    def __init__(self, data_dir, run_dir, task, batch_id, force_recreate=False, verbose=False):
-        super().__init__(data_dir, run_dir)
-        self.task = task
-        self.batch_id = batch_id
-        self.batch_dir = get_batch_dir(task, batch_id)
-        self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
-        self.pano_path = f'{self.batch_path}/{pano_imgs_root_dir}/{run_dir}'
-        self.pano_subdirs = get_pano_subdirs(self.pano_path)
+class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
+
+    def __init__(self, task, batch_id, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
+        ObservingRunInterface.__init__(self, panoseti_data_dir, panoseti_run_dir)
+        PanoBatchDataFileTree.__init__(self, task, batch_id, panoseti_run_dir)
         self.force_recreate = force_recreate
         self.verbose = verbose
         self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
@@ -59,7 +54,7 @@ class PanoBatchBuilder(ObservingRunInterface):
     def pano_features_created(self):
         """Returns True iff skycam features are already created."""
         ret = False
-        if os.path.exists(f'{self.batch_path}/{pano_path_index_fname}'):
+        if os.path.exists(f'{self.batch_path}/{self.pano_path_index_fname}'):
             ret = True
         for pano_subdir in self.pano_subdirs.values():
             ret &= os.path.exists(pano_subdir) and len(os.listdir(pano_subdir)) > 0

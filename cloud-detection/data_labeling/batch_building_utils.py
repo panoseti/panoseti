@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
 
 """Directory name definitions"""
 skycam_imgs_root_dir = 'skycam_imgs'
@@ -14,9 +15,73 @@ batch_data_zipfiles_dir = 'batch_data_zipfiles'
 """Json file name definitions"""
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
-pano_path_index_fname = 'pano_path_index.json'
-skycam_path_index_fname = 'skycam_path_index.json'
 
+
+"""
+Bata batch has the following file tree structure:
+batch_data/
+├─ task_cloud-detection.batch-id_0/
+.
+.
+.
+├─ task_cloud-detection.batch-id_N/
+│  ├─ skycam_imgs/
+│  │  ├─ SC2_imgs_2023-07-31/
+│  │  │  ├─ original/
+│  │  │  ├─ cropped/
+│  │  │  ├─ pfov/
+│  │  .
+│  │  .
+│  │  .
+│  ├─ pano_imgs/
+│  │  ├─ obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd/
+│  │  │  ├─ original/
+│  │  │  ├─ fft/
+│  │  │  ├─ derivative/
+│  │  .
+│  │  .
+│  │  .
+│  ├─ skycam_path_index.json
+│  ├─ pano_path_index.json
+│  ├─ task_cloud-detection.batch-id_N.type_feature.csv
+│  ├─ task_cloud-detection.batch-id_N.type_pano.csv
+│  ├─ task_cloud-detection.batch-id_N.type_skycam.csv
+.
+.
+.
+"""
+
+
+class CloudDetectionBatchDataFileTree:
+    pano_path_index_fname = 'pano_path_index.json'
+    skycam_path_index_fname = 'skycam_path_index.json'
+
+    def __init__(self, task, batch_id):
+        self.task = task
+        self.batch_id = batch_id
+        self.batch_path = get_batch_path(task, batch_id)
+        self.batch_dir = get_batch_dir(task, batch_id)
+
+        self.skycam_root_path = get_skycam_root_path(self.batch_path)
+        self.pano_root_path = get_pano_root_path(self.batch_path)
+
+
+
+
+class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
+    def __init__(self, task, batch_id, skycam_dir):
+        super().__init__(task, batch_id)
+
+        self.skycam_dir = skycam_dir
+        self.skycam_path = f'{self.skycam_root_path}/{self.skycam_dir}'
+        self.skycam_subdirs = get_skycam_subdirs(self.skycam_path)
+
+class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
+    def __init__(self, task, batch_id, run_dir):
+        super().__init__(task, batch_id)
+
+        self.pano_path = f'{self.pano_root_path}/{run_dir}'
+        self.pano_subdirs = get_pano_subdirs(self.pano_path)
 
 
 """Batch data directory"""
@@ -42,6 +107,7 @@ def get_batch_def_json_fname(task, batch_id):
 
 
 """Skycam feature directory"""
+
 
 
 
