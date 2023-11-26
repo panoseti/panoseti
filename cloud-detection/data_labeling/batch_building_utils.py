@@ -10,6 +10,7 @@ from dataclasses import dataclass
 skycam_imgs_root_dir = 'skycam_imgs'
 pano_imgs_root_dir = 'pano_imgs'
 batch_data_root_dir = 'batch_data'
+batch_labels_root_dir = 'batch_labels'
 batch_data_zipfiles_dir = 'batch_data_zipfiles'
 
 """Json file name definitions"""
@@ -56,7 +57,7 @@ class CloudDetectionBatchDataFileTree:
     pano_path_index_fname = 'pano_path_index.json'
     skycam_path_index_fname = 'skycam_path_index.json'
 
-    def __init__(self, task, batch_id):
+    def __init__(self, batch_id, task='cloud-detection'):
         self.task = task
         self.batch_id = batch_id
         self.batch_path = get_batch_path(task, batch_id)
@@ -69,19 +70,58 @@ class CloudDetectionBatchDataFileTree:
 
 
 class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, task, batch_id, skycam_dir):
-        super().__init__(task, batch_id)
+    def __init__(self, batch_id, **kwargs):
+        super().__init__(batch_id)
 
-        self.skycam_dir = skycam_dir
+        if 'skycam_dir' in kwargs:
+            self.skycam_dir = kwargs['skycam_dir']
+        elif all([key in kwargs for key in ['skycam_type', 'year', 'month', 'day']]):
+            self.skycam_dir = self._get_skycam_dir(**kwargs)
+        else:
+            raise ValueError('Must provide skycam_dir or the info to create it.')
         self.skycam_path = f'{self.skycam_root_path}/{self.skycam_dir}'
-        self.skycam_subdirs = get_skycam_subdirs(self.skycam_path)
+        self.skycam_subdirs = self.get_skycam_subdirs()
+
+    @staticmethod
+    def _get_skycam_dir(skycam_type, year, month, day):
+        if skycam_type == 'SC':
+            return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
+        elif skycam_type == 'SC2':
+            return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
+
+    def get_skycam_subdirs(self):
+        """Return dict of skycam image directories."""
+        img_subdirs = {}
+        for img_type in valid_skycam_img_types:
+            img_subdirs[img_type] = f'{self.skycam_path}/{img_type}'
+        return img_subdirs
+
+    def get_skycam_img_path(self, original_fname, img_type):
+        assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
+        if original_fname[-4:] != '.jpg':
+            return None
+        if img_type == 'original':
+            return f"{self.skycam_subdirs['original']}/{original_fname}"
+        elif img_type == 'cropped':
+            return f"{self.skycam_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
+        elif img_type == 'pfov':
+            return f"{self.skycam_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
+        else:
+            return None
+
 
 class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, task, batch_id, run_dir):
-        super().__init__(task, batch_id)
+    def __init__(self, batch_id, run_dir):
+        super().__init__(batch_id)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path)
+
+
+    def get_pano_img_path(self, pano_uid, img_type):
+        assert img_type in valid_pano_img_types, f"{img_type} is not supported"
+        return f"{self.pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
+
 
 
 """Batch data directory"""
@@ -108,48 +148,32 @@ def get_batch_def_json_fname(task, batch_id):
 
 """Skycam feature directory"""
 
-
-
-
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
-
-
-def get_skycam_subdirs(skycam_path):
-    """Return dict of skycam image directories."""
-    img_subdirs = {}
-    for img_type in valid_skycam_img_types:
-        img_subdirs[img_type] = f'{skycam_path}/{img_type}'
-    return img_subdirs
-
-def get_skycam_img_path(original_fname, img_type, skycam_path):
-    assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
-    skycam_subdirs = get_skycam_subdirs(skycam_path)
-    if original_fname[-4:] != '.jpg':
-        return None
-    if img_type == 'original':
-        return f"{skycam_subdirs['original']}/{original_fname}"
-    elif img_type == 'cropped':
-        return f"{skycam_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
-    elif img_type == 'pfov':
-        return f"{skycam_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
-    else:
-        return None
-
-def get_skycam_dir(skycam_type, year, month, day):
-    if skycam_type == 'SC':
-        return f'SC_imgs_{year}-{month:0>2}-{day:0>2}'
-    elif skycam_type == 'SC2':
-        return f'SC2_imgs_{year}-{month:0>2}-{day:0>2}'
 
 def get_skycam_root_path(batch_path):
     skycam_imgs_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
     return skycam_imgs_root_path
 
-def get_skycam_path(batch_path, skycam_dir):
-    skycam_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
-    skycam_path = f'{skycam_root_path}/{skycam_dir}'
-    return skycam_path
+# def get_skycam_img_path(original_fname, img_type, skycam_path):
+#     assert img_type in valid_skycam_img_types, f"{img_type} is not supported"
+#     skycam_subdirs = get_skycam_subdirs(skycam_path)
+#     if original_fname[-4:] != '.jpg':
+#         return None
+#     if img_type == 'original':
+#         return f"{skycam_subdirs['original']}/{original_fname}"
+#     elif img_type == 'cropped':
+#         return f"{skycam_subdirs['cropped']}/{original_fname[:-4]}_cropped.jpg"
+#     elif img_type == 'pfov':
+#         return f"{skycam_subdirs['pfov']}/{original_fname[:-4]}_pfov.jpg"
+#     else:
+#         return None
+#
 
+# def get_skycam_path(batch_path, skycam_dir):
+#     skycam_root_path = f'{batch_path}/{skycam_imgs_root_dir}'
+#     skycam_path = f'{skycam_root_path}/{skycam_dir}'
+#     return skycam_path
+#
 
 
 """Pano feature directory"""
@@ -166,11 +190,11 @@ def get_pano_subdirs(pano_path):
 def get_pano_root_path(batch_path):
     return f'{batch_path}/{pano_imgs_root_dir}'
 
+
 def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
     assert img_type in valid_pano_img_types, f"{img_type} is not supported"
     pano_subdirs = get_pano_subdirs(pano_imgs_path)
     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
-
 
 
 """UID definitions"""

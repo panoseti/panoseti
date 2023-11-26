@@ -11,7 +11,7 @@ from batch_building_utils import *
 
 
 class SkycamBatchBuilder(SkycamBatchDataFileTree):
-    def __init__(self, task, batch_id, skycam_type, year, month, day, verbose=True, force_recreate=False):
+    def __init__(self, batch_id, skycam_type, year, month, day, verbose=True, force_recreate=False):
 
         # self.task = task
         # self.batch_id = batch_id
@@ -27,7 +27,7 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
             'month': month,
             'day': day
         }
-        super().__init__(task, batch_id, get_skycam_dir(**self.skycam_meta))
+        super().__init__(batch_id, **self.skycam_meta)
 
         self.verbose = verbose
         self.force_recreate = force_recreate
@@ -139,13 +139,12 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
 
     def filter_images(self, first_t: datetime, last_t: datetime):
         """Remove skycam images between t_start and t_end."""
-        path_to_orig_skycam_imgs = get_skycam_subdirs(self.skycam_path)['original']
-        for fname in sorted(os.listdir(path_to_orig_skycam_imgs)):
+        for fname in sorted(os.listdir(self.skycam_subdirs['original'])):
             if fname.endswith('.mp4') or fname.endswith('.mpg'):
-                os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))
+                os.remove("{0}/{1}".format(self.skycam_subdirs['original'], fname))
             skycam_t = self.get_skycam_img_time(fname)
             if not (first_t <= skycam_t <= last_t):
-                os.remove("{0}/{1}".format(path_to_orig_skycam_imgs, fname))
+                os.remove("{0}/{1}".format(self.skycam_subdirs['original'], fname))
 
     def get_skycam_imgs(self, do_manual_skycam_download):
         """Downloads and unpacks original skycam data from https://mthamilton.ucolick.org/data/.
@@ -159,7 +158,7 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
             self.automatic_skycam_download()
 
         if self.verbose: print("Unzipping skycam files...")
-        unzip_images(self.skycam_path)
+        unzip_images(self.skycam_subdirs, self.skycam_path)
         # if self.verbose: print("Filtering skycam images...")
         # filter_images(self.skycam_path, first_t, last_t)
 
@@ -198,10 +197,11 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
             if original_fname[-4:] != '.jpg':
                 continue
 
-            original_img = cv2.imread(get_skycam_img_path(original_fname, 'original', self.skycam_path))
-            cropped_fpath = get_skycam_img_path(original_fname, 'cropped', self.skycam_path)
-            pfov_fpath = get_skycam_img_path(original_fname, 'pfov', self.skycam_path)
+            original_fpath = self.get_skycam_img_path(original_fname, 'original')
+            cropped_fpath = self.get_skycam_img_path(original_fname, 'cropped')
+            pfov_fpath = self.get_skycam_img_path(original_fname, 'pfov')
 
+            original_img = cv2.imread(original_fpath)
             crop_img(original_img, corners_4x1x2, cropped_fpath)
             plot_pfov(original_img, corners_4x1x2, pfov_fpath)
 

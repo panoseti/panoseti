@@ -21,7 +21,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
     def __init__(self, task, batch_id, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
         ObservingRunInterface.__init__(self, panoseti_data_dir, panoseti_run_dir)
-        PanoBatchDataFileTree.__init__(self, task, batch_id, panoseti_run_dir)
+        PanoBatchDataFileTree.__init__(self, batch_id, panoseti_run_dir)
         self.force_recreate = force_recreate
         self.verbose = verbose
         self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
@@ -274,7 +274,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             pano_uid = get_pano_uid(pano_fname, frame_offset)
             for img_type, fig in figs.items():
                 if self.verbose: print(f"Creating {get_pano_img_path(self.pano_path, pano_uid, img_type)}")
-                fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
+                # fig.savefig(get_pano_img_path(self.pano_path, pano_uid, img_type))
                 plt.close(fig)
 
             # Commit entry to data_array for this run_dir

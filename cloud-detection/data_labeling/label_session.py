@@ -22,35 +22,36 @@ from IPython import display
 from batch_building_utils import *
 from dataframe_utils import *
 
-class LabelSession:
+
+class LabelSession(CloudDetectionBatchDataFileTree):
     data_labels_path = f'../{data_labels_fname}'
-    root_batch_labels_dir = 'batch_labels'
 
     def __init__(self, name, batch_id, task='cloud-detection'):
+        super().__init__(batch_id)
         self.name = name
         if name == "YOUR NAME":
             raise ValueError(f"Please enter your full name")
         self.user_uid = get_uid(name)
-        self.batch_id = batch_id
-        self.task = task
-
-        self.batch_dir_name = get_batch_dir(task, batch_id)
-        self.batch_data_path = f'{batch_data_root_dir}/{self.batch_dir_name}'
-        self.batch_labels_path = f'{self.root_batch_labels_dir}/{self.batch_dir_name}'
-        self.skycam_imgs_path = get_skycam_root_path(self.batch_data_path)
-        self.pano_imgs_path = get_pano_root_path(self.batch_data_path)
+        # self.batch_id = batch_id
+        # self.task = task
+        #
+        # self.batch_dir = get_batch_dir(task, batch_id)
+        # self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
+        self.batch_labels_path = f'{batch_labels_root_dir}/{self.batch_dir}'
+        # self.skycam_root_path = get_skycam_root_path(self.batch_path)
+        # self.pano_root_path = get_pano_root_path(self.batch_path)
 
         # Unzip batched data, if it exists
         os.makedirs(batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
             unpack_batch_data(batch_data_root_dir)
-            with open(f'{self.batch_data_path}/{skycam_path_index_fname}', 'r') as f:
+            with open(f'{self.batch_path}/{self.skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
-            with open(f'{self.batch_data_path}/{pano_path_index_fname}', 'r') as f:
+            with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
                 self.pano_paths = json.load(f)
         except FileNotFoundError:
-            raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir_name}\x1b[0m\n"
+            raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
                                     f"Try adding the zipped data batch file to the following directory:\n"
                                     f"\x1b[31m{os.path.abspath(batch_data_root_dir)}\x1b[0m")
         try:
@@ -73,7 +74,7 @@ class LabelSession:
             # These dataframes are initialized by make_batch.py and should exist within the downloaded batch data.
             df = load_df(
                 None, self.batch_id, df_type, self.task, is_temp=False,
-                save_dir=self.batch_data_path
+                save_dir=self.batch_path
             )
             if df is None:
                 raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
@@ -104,7 +105,8 @@ class LabelSession:
         original_fname, skycam_dir = self.skycam_df.loc[
             (self.skycam_df.skycam_uid == skycam_uid), ['fname', 'skycam_dir']
         ].iloc[0]
-        fpath = get_skycam_img_path(original_fname, img_type, f'{self.skycam_imgs_path}/{skycam_dir}')
+        sctree = SkycamBatchDataFileTree(self.batch_id, skycam_dir=skycam_dir)
+        fpath = sctree.get_skycam_img_path(original_fname, img_type)
         img = np.asarray(Image.open(fpath))
         return img
 
@@ -112,7 +114,8 @@ class LabelSession:
         run_dir = self.pano_df.loc[
             (self.pano_df.pano_uid == pano_uid), 'run_dir'
         ].iloc[0]
-        fpath = get_pano_img_path(f'{self.pano_imgs_path}/{run_dir}', pano_uid, img_type)
+        ptree = PanoBatchDataFileTree(self.batch_id, run_dir)
+        fpath = ptree.get_pano_img_path(pano_uid, img_type)
         img = np.asarray(Image.open(fpath))
         return img
 

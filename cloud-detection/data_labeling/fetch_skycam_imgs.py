@@ -13,8 +13,6 @@ import shutil
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
-from batch_building_utils import get_skycam_subdirs
-
 
 def get_skycam_link(skycam_type, year, month, day):
     """
@@ -140,9 +138,8 @@ def download_skycam_data(skycam_type, year, month, day, verbose, skycam_path):
     return skycam_path
 
 
-def unzip_images(skycam_path):
+def unzip_images(skycam_subdirs, skycam_path):
     """Unpack image files from tarball."""
-    img_subdirs = get_skycam_subdirs(skycam_path)
     downloaded_fname = ''
 
     for fname in os.listdir(skycam_path):
@@ -156,6 +153,6 @@ def unzip_images(skycam_path):
 
         for path in os.listdir(skycam_path):
             if os.path.isdir(f'{skycam_path}/{path}') and path.startswith('data'):
-                os.rename(f'{skycam_path}/{path}', img_subdirs['original'])
+                os.rename(f'{skycam_path}/{path}', skycam_subdirs['original'])
 
 

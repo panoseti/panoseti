@@ -26,15 +26,15 @@ import random
 import shutil
 from datetime import datetime, timedelta
 
-from batch_building_utils import CloudDetectionBatchDataFileTree, SkycamBatchDataFileTree, PanoBatchDataFileTree, get_batch_def_json_fname, get_skycam_img_path, batch_data_zipfiles_dir, valid_skycam_img_types
+from batch_building_utils import CloudDetectionBatchDataFileTree, SkycamBatchDataFileTree, PanoBatchDataFileTree, get_batch_def_json_fname, batch_data_zipfiles_dir, valid_skycam_img_types
 from dataframe_utils import get_dataframe, save_df
 from skycam_builder import SkycamBatchBuilder
 from pano_builder import PanoBatchBuilder
 
 
 class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
-    def __init__(self, task, batch_id, batch_def, verbose, do_zip, force_recreate, manual_skycam_download):
-        super().__init__(task, batch_id)
+    def __init__(self, batch_id, batch_def, verbose, do_zip, force_recreate, manual_skycam_download):
+        super().__init__(batch_id)
         self.batch_def = batch_def
         self.verbose = verbose
         self.do_zip = do_zip
@@ -58,10 +58,10 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         assert os.path.exists(self.batch_path), f"Could not find the batch directory {self.batch_path}"
         pano_paths = {}
         # pano_root_path = get_pano_root_path(self.batch_path)
-        for path in os.listdir(self.pano_root_path):
-            ptree = PanoBatchDataFileTree(self.task, self.batch_id, path)
+        for pano_run_dir_name in os.listdir(self.pano_root_path):
+            ptree = PanoBatchDataFileTree(self.batch_id, pano_run_dir_name)
             # pano_path = f'{self.pano_root_path}/{path}'
-            if os.path.isdir(ptree.pano_path) and 'pffd' in path:
+            if os.path.isdir(ptree.pano_path) and 'pffd' in pano_run_dir_name:
                 pano_paths[ptree.pano_path] = {
                     "img_subdirs": {},
                     "imgs_per_subdir": -1,
@@ -83,7 +83,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         assert os.path.exists(self.batch_path), f"Could not find the batch directory {self.batch_path}"
         skycam_paths = {}
         for skycam_dir in os.listdir(self.skycam_root_path):
-            sctree = SkycamBatchDataFileTree(self.task, self.batch_id, skycam_dir)
+            sctree = SkycamBatchDataFileTree(self.batch_id, skycam_dir=skycam_dir)
             # skycam_path = f'{self.skycam_root_path}/{skycam_dir}'
             if os.path.isdir(sctree.skycam_path) and 'SC' in skycam_dir and 'imgs' in skycam_dir:
                 skycam_paths[sctree.skycam_path] = {
@@ -117,12 +117,11 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         skycam_uids_in_feature_df = self.feature_df.loc[:, 'skycam_uid']
         skycam_not_in_feature_df = self.skycam_df.loc[~self.skycam_df['skycam_uid'].isin(skycam_uids_in_feature_df)]
         for skycam_dir in skycam_not_in_feature_df['skycam_dir'].unique():
-            sctree = SkycamBatchDataFileTree(self.task, self.batch_id, skycam_dir)
+            sctree = SkycamBatchDataFileTree(self.batch_id, skycam_dir=skycam_dir)
             unused_skycam_fnames = skycam_not_in_feature_df.loc[skycam_not_in_feature_df['skycam_dir'] == skycam_dir, 'fname']
-            # skycam_path = get_skycam_path(self.batch_path, skycam_dir)
             for fname in unused_skycam_fnames:
                 for skycam_type in valid_skycam_img_types:
-                    fpath = get_skycam_img_path(fname, skycam_type, sctree.skycam_path)
+                    fpath = sctree.get_skycam_img_path(fname, skycam_type)
                     os.remove(fpath)
         self.skycam_df.drop(skycam_not_in_feature_df.index, inplace=True)
         self.skycam_df.reset_index(drop=True, inplace=True)
@@ -140,7 +139,6 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
             )
 
             skycam_builder = SkycamBatchBuilder(
-                self.task,
                 self.batch_id,
                 sample_dict['skycam']['skycam_type'],
                 sample_dict['skycam']['year'],
@@ -159,7 +157,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 self.feature_df, self.pano_df, self.skycam_df, skycam_builder.skycam_dir
             )
 
-        self.prune_skycam_imgs()
+        # self.prune_skycam_imgs()
 
         try:
             save_df(
@@ -227,10 +225,9 @@ if __name__ == '__main__':
             }
         },
     ]
-    batch_id = 8
+    batch_id = 6
 
     data_batch_builder = CloudDetectionBatchBuilder(
-        'cloud-detection',
         batch_id,
         batch_def_3,
         verbose=True,
