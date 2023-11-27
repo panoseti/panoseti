@@ -129,9 +129,3 @@ def plot_image_fft(fft_data, cmap, **kwargs):
         **kwargs
     )
     return ax.get_figure()
-
-
-
-
-if __name__ == '__main__':
-    make_pano_paths_json('/panoseti-software/cloud-detection/data_labeling/batch_data1/task_cloud-detection.batch-id_0')

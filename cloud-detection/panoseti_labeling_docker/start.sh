@@ -29,8 +29,8 @@ if [ ! -d "/home/jovyan/work/panoseti" ]; then
     git clone --branch cloud-detection-USER https://github.com/panoseti/panoseti.git
 
     # Create batch dirs
-    mkdir $WORK_DIR/panoseti/cloud-detection/data_labeling/user_labeling/batch_data
-    mkdir $WORK_DIR/panoseti/cloud-detection/data_labeling/user_labeling/batch_labels
+    mkdir $WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling/batch_data
+    mkdir $WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling/batch_labels
     echo "Done setting up labeling software."
 else
     echo "Updating labeling software..."
@@ -44,7 +44,7 @@ trap 'kill ${!}; term_handler' SIGTERM
 # Run labeling notebook
 # NOTE: for simplicity we've disabled security for the notebook, so only run this on your local machine...
 jupyter nbclassic \
-  --notebook-dir=$WORK_DIR/panoseti/cloud-detection/data_labeling/user_labeling \
+  --root-dir=$WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling \
   --port=16113 \
   --no-browser \
   --NotebookApp.password='' \
