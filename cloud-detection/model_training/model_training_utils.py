@@ -4,7 +4,7 @@ from PIL import Image
 import torchvision
 import numpy as np
 
-sys.path.append('../data_labeling')
+sys.path.append('../dataset_construction')
 # from ..data_labeling.dataset_manager import CloudDetectionDatasetManager
 from dataset_builder import CloudDetectionDatasetManager
 from dataset_utils import PanoDatasetBuilder
