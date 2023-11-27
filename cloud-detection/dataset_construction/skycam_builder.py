@@ -146,6 +146,15 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
             if not (first_t <= skycam_t <= last_t):
                 os.remove("{0}/{1}".format(self.skycam_subdirs['original'], fname))
 
+    def remove_day_images(self):
+        """Remove skycam images taken during the day."""
+        PST_offset = timedelta(hours=-7)
+        for fname in sorted(os.listdir(self.skycam_subdirs['original'])):
+            pst_time = self.get_skycam_img_time(fname) + PST_offset
+            # Delete day images taken between 7am and 5pm, inclusive
+            if 7 <= pst_time.hour <= 12 + 5:
+                os.remove("{0}/{1}".format(self.skycam_subdirs['original'], fname))
+
     def get_skycam_imgs(self, do_manual_skycam_download):
         """Downloads and unpacks original skycam data from https://mthamilton.ucolick.org/data/.
         Raises FileNotFoundError if valid skycam img zipfile could not be found."""
@@ -160,6 +169,7 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
         if self.verbose: print("Unzipping skycam files...")
         unzip_images(self.skycam_subdirs, self.skycam_path)
         # if self.verbose: print("Filtering skycam images...")
+        self.remove_day_images()
         # filter_images(self.skycam_path, first_t, last_t)
 
     """Skycam feature generation"""

@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 import json
 from batch_builder import CloudDetectionBatchBuilder
+from batch_building_utils import batch_defs_fname
 
 DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
 
@@ -19,14 +20,16 @@ def load_batch_def(batch_id):
                          f'{batch_def}')
     else:
         return batch_def[0]
-batch_def_0 = load_batch_def(0)
-batch_id = 6
-print(batch_def_0)
-#
-# data_batch_builder = CloudDetectionBatchBuilder(
-#     batch_id,
-#     batch_def_3,
-#     force_recreate=True
-# )
-# data_batch_builder.build_batch()
-#
+
+
+batch_id = 1
+batch_def = load_batch_def(batch_id)['batch-def']
+print(batch_def)
+
+data_batch_builder = CloudDetectionBatchBuilder(
+    batch_id,
+    batch_def,
+    force_recreate=True
+)
+data_batch_builder.build_batch()
+
