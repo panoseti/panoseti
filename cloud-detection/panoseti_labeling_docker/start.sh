@@ -44,7 +44,7 @@ trap 'kill ${!}; term_handler' SIGTERM
 # Run labeling notebook
 # NOTE: for simplicity we've disabled security for the notebook, so only run this on your local machine...
 jupyter nbclassic \
-  --root-dir=$WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling \
+  --notebook-dir=$WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling \
   --port=16113 \
   --no-browser \
   --NotebookApp.password='' \
