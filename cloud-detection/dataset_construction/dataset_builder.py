@@ -115,6 +115,7 @@ class CloudDetectionDatasetManager:
         return all_valid
 
     def get_pano_feature_fpath(self, feature_uid, img_type):
+        assert img_type in valid_pano_img_types, f"Image type '{img_type}' is not supported!"
         ftr_df = self.main_dfs['feature']
         pano_df = self.main_dfs['pano']
         pano_uid = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]

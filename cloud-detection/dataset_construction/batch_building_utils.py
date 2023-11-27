@@ -23,7 +23,8 @@ valid_skycam_img_types = ['original', 'cropped', 'pfov']
 valid_pano_img_types = [
     'raw-original', 'original',
     'raw-fft', 'fft',
-    'raw-derivative', 'derivative',
+    'raw-derivative.-60',
+    'derivative',
     'fft-derivative',
 ]
 

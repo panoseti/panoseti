@@ -22,7 +22,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
     raw_data_shapes = {
         'raw-original': (32, 32),
         'raw-fft': (32, 32),
-        'raw-derivative': (3, 32, 32)
+        'raw-derivative': (3, 32, 32),
+        'raw-derivative.-60': (32, 32),
     }
 
     def __init__(self, task, batch_id, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
@@ -197,21 +198,23 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                         # if verbose: print(int(pff.img_header_time(j) - s))
                         continue
                     deriv_imgs = list()
-                    raw_data = []
+                    raw_diff_data = []
                     delta_ts = []
                     for k in [int(i * hist_size / ncols) for i in range(ncols, 0, -1)]:
                         delta_t = -step_delta_t * k
                         delta_ts.append(str(delta_t))
                         diff = img - hist[k - 1]
-                        # if delta_t == -60:
-                        #     self.img_array_builder.add_img_to_entry(diff, 'derivative-60s')
-                        raw_data.append(diff)
+                        raw_diff_data.append(diff)
                         deriv_data = diff / np.std(hist)
                         deriv_data = self.img_transform(deriv_data)
                         deriv_imgs.append(deriv_data)
                     # print(delta_ts)
-
-                    self.add_img_to_entry(np.array(raw_data), 'raw-derivative')
+                    for k in range(len(delta_ts)):
+                        delta_t = delta_ts[k]
+                        derivative_type = f'raw-derivative.{delta_t}'
+                        data = raw_diff_data[k]
+                        if derivative_type in valid_pano_img_types:
+                            self.add_img_to_entry(np.array(data), derivative_type)
 
                     fig_time_derivative = plot_time_derivative(
                         deriv_imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
