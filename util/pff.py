@@ -145,6 +145,13 @@ def img_info(f, bytes_per_image):
     file_size = f.seek(0, os.SEEK_END)
     nframes = int(file_size/frame_size)
     first_t = img_header_time(h)
+    i = 1
+    while first_t == 0:
+        if i >= nframes:
+            raise ValueError("All image frames are zero!")
+        f.seek(i * frame_size)
+        h = json.loads(read_json(f))
+        first_t = img_header_time(h)
     f.seek((nframes-1)*frame_size, os.SEEK_SET)
     h = json.loads(read_json(f))
     last_t = img_header_time(h)
@@ -165,7 +172,13 @@ def img_frame_time(f, frame, frame_size):
 # so the frame at the expected position may be after t.
 #
 def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
-    (frame_size, nframes, first_t, last_t) = img_info(f, bytes_per_image)
+    first_t = 0
+    nframes = float('inf')
+    i = 0
+    while first_t == 0 and i < nframes:
+        (frame_size, nframes, first_t, last_t) = img_info(f, bytes_per_image)
+        i += 1
+        f.seek(i * frame_size)
 
     if t < first_t+frame_time:
         f.seek(0)
