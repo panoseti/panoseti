@@ -152,6 +152,7 @@ def img_info(f, bytes_per_image):
         f.seek(i * frame_size)
         h = json.loads(read_json(f))
         first_t = img_header_time(h)
+        i += 1
     f.seek((nframes-1)*frame_size, os.SEEK_SET)
     h = json.loads(read_json(f))
     last_t = img_header_time(h)

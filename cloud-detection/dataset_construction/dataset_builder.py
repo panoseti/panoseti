@@ -255,7 +255,8 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             print("Insufficient valid user-labeled data")
             return
         print("Aggregating feature metadata")
-        for batch_id in batch_ids.iloc[0]:
+        for batch_id in batch_ids:
+            batch_id = batch_id[0]
             self.aggregate_batch_data_features(batch_id)
         print("Verifying pano data paths")
         if not self.verify_pano_feature_data():

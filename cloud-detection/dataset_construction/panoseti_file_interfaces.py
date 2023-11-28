@@ -78,6 +78,11 @@ class ObservingRunInterface:
         img = np.reshape(img, (32, 32))
         return j, img
 
+    def compute_module_median_image(self, module_id):
+        module_pff_files = self.obs_pff_files[module_id]
+
+
+
     def module_file_time_seek(self, module_id, target_time):
         """Search module data to find the frame with timestamp closest to target_time.
         target_time should be a unix timestamp."""

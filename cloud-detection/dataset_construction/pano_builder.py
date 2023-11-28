@@ -240,7 +240,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         skycam_integration_offset = -60
         return self.module_file_time_seek(module_id, skycam_unix_t + skycam_integration_offset)
 
-    def create_feature_images(self, feature_df, pano_df, module_id, skycam_df, skycam_dir, allow_skip=True):
+    def create_feature_images(self, feature_df, pano_df, module_id, skycam_df, skycam_dir, sample_stride, allow_skip=True):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
@@ -255,7 +255,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
         print(f'Generating features for module {module_id}')
         skycam_info = skycam_df.loc[skycam_df.skycam_dir == skycam_dir, ['skycam_uid', 'unix_t']]
-        for index, skycam_row in skycam_info.sort_values(by='unix_t').iterrows():
+        for index, skycam_row in skycam_info.sort_values(by='unix_t').iloc[::sample_stride, :].iterrows():
             skycam_uid, skycam_unix_t = skycam_row
             if self.verbose: print(f'\nGenerating pano features for skycam_uid {skycam_uid}...')
             pano_frame_seek_info = self.correlate_skycam_to_pano_img(skycam_unix_t, module_id)
@@ -344,7 +344,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             )
         return feature_df, pano_df
 
-    def build_pano_batch_data(self, feature_df, pano_df, skycam_df, skycam_dir):
+    def build_pano_batch_data(self, feature_df, pano_df, skycam_df, skycam_dir, sample_stride=1):
         print(f'\nCreating panoseti features for {self.run_dir}')
 
         for module_id in self.obs_pff_files:
@@ -352,7 +352,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 continue
             try:
                 feature_df, pano_df = self.create_feature_images(
-                    feature_df, pano_df, module_id, skycam_df, skycam_dir
+                    feature_df, pano_df, module_id, skycam_df, skycam_dir, sample_stride
                 )
             except FileExistsError:
                 continue
