@@ -203,7 +203,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             self.add_user(path, user_uid)
 
             batches_labeled_by_user = ubl_df.loc[ubl_df['user_uid'] == user_uid, 'batch_id']
-            if batch_id in batches_labeled_by_user:
+            if batch_id in batches_labeled_by_user.values:
                 continue
             # Check if data batch has a complete set of labels
             user_unlabeled_df = load_df(
