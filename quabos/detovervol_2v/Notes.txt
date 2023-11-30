@@ -1,0 +1,4 @@
+dual mode and PH-only mode
+2V
+halfbp
+gainmap5pe 
