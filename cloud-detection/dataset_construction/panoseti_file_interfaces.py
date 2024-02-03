@@ -79,21 +79,21 @@ class ObservingRunInterface:
         img = np.reshape(img, (32, 32))
         return j, img
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, nframes=30, delta_t=10, agg='mean'):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, nframes=50, max_delta_t=10, agg='mean'):
         """
         Evenly samples image frames between now and now-delta_t, then aggregates
         the frames according to the given aggregation method.
         @param f: file pointer to a PFF imaging file
         @param nframes: number of frames to stack
-        @param delta_t: seconds between current and oldest frame to be sampled
+        @param max_delta_t: seconds between current and oldest frame to be sampled
         @param agg: aggregation method
         @return: Stacked image frame
         """
         module_pff_files = self.obs_pff_files[module_id]
-        time_step = delta_t / nframes
+        time_step = max_delta_t / nframes   # time step between sampled frames
         frame_step_size = int(time_step / (self.intgrn_usec * 1E-6))
         assert frame_step_size > 0
-        assert delta_t >= 0, 'stack_frames is a causal function.'
+        assert max_delta_t >= 0, 'stack_frames is a causal function.'
         # Iterate backwards through PFF files for module_id
         frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
@@ -110,6 +110,11 @@ class ObservingRunInterface:
                 for j, img in fitr:
                     frame_buffer[n] = img
                     n += 1
+                # Get info for next file if we need more frames.
+                if i > 0:
+                    next_file_size = module_pff_files[i - 1]['nframes'] * self.frame_size
+                    curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
+                    frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
         if len(frame_buffer) < nframes:
             raise ValueError(f'Insufficient frames for frame stacking: '
                              f'retrieved {len(frame_buffer)} / {nframes} frames')
