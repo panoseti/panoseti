@@ -217,40 +217,40 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
         # plt.pause(0.5)
         return fig_time_derivative, fig_fft_time_derivative
-
-        # Check if it is possible to construct a time-derivative with the given parameters and data
-        with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
-            f.seek(start_frame_offset * self.frame_size)
-            j, img = self.read_image_frame(f, self.img_bpp)
-            curr_unix_t = pff.img_header_time(j)
-            s = curr_unix_t
-            if (curr_unix_t - max_delta_t) < module_pff_files[0]['first_unix_t']:
-                return None, None
-
-        frame_offset = start_frame_offset
-        hist = list()
-        # Iterate backwards through the files until hist_size frames have been accumulated
-        for i in range(start_file_idx, -1, -1):
-            if len(hist) == hist_size:
-                break
-            file_info = module_pff_files[i]
-            if self.verbose: print("newfile")
-            # Iterate backwards through the file
-            for j, img in self.frame_iterator(fp, (-1 * frame_step_size) + 1):
-                if j is None or img is None:
-                    break
-                if len(hist) < hist_size:
-                    hist.insert(0, img)
-                    # if verbose: print(int(pff.img_header_time(j) - s))
-                    continue
-                deriv_imgs = list()
-                # Compute the frame offset for the next pff file
-            if i > 0:
-                next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
-                curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
-                frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
-        return None, None
-
+        #
+        # # Check if it is possible to construct a time-derivative with the given parameters and data
+        # with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
+        #     f.seek(start_frame_offset * self.frame_size)
+        #     j, img = self.read_image_frame(f, self.img_bpp)
+        #     curr_unix_t = pff.img_header_time(j)
+        #     s = curr_unix_t
+        #     if (curr_unix_t - max_delta_t) < module_pff_files[0]['first_unix_t']:
+        #         return None, None
+        #
+        # frame_offset = start_frame_offset
+        # hist = list()
+        # # Iterate backwards through the files until hist_size frames have been accumulated
+        # for i in range(start_file_idx, -1, -1):
+        #     if len(hist) == hist_size:
+        #         break
+        #     file_info = module_pff_files[i]
+        #     if self.verbose: print("newfile")
+        #     # Iterate backwards through the file
+        #     for j, img in self.frame_iterator(fp, (-1 * frame_step_size) + 1):
+        #         if j is None or img is None:
+        #             break
+        #         if len(hist) < hist_size:
+        #             hist.insert(0, img)
+        #             # if verbose: print(int(pff.img_header_time(j) - s))
+        #             continue
+        #         deriv_imgs = list()
+        #         # Compute the frame offset for the next pff file
+        #     if i > 0:
+        #         next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
+        #         curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
+        #         frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
+        # return None, None
+        #
         # frame_step_size = int(step_delta_t / (self.intgrn_usec * 1e-6))
         # assert frame_step_size > 0
         # hist_size = int(max_delta_t / step_delta_t)

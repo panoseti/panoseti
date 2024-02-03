@@ -76,7 +76,7 @@ class ObservingRunInterface:
             j = json.loads(json_str)
             img = pff.read_image(f, 32, bytes_per_pixel)
             img = np.array(img)
-        img = np.reshape(img, (32, 32))
+            img = np.reshape(img, (32, 32))
         return j, img
 
     def stack_frames(self, start_file_idx, start_frame_offset, module_id, nframes=50, max_delta_t=10, agg='mean'):
