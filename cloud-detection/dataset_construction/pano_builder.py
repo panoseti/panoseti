@@ -33,7 +33,9 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         self.verbose = verbose
         # self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
 
-        self.data_arrays = dict()
+        # Buffer for collecting raw images for features associated with the current pano_uid
+        self.raw_data_arrays = dict()
+
         self.init_pano_subdirs()
 
     def init_pano_subdirs(self):
@@ -68,23 +70,25 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             ret &= os.path.exists(pano_subdir) and len(os.listdir(pano_subdir)) > 0
         return ret
 
-    """Data array interface"""
+    """Raw data array interface"""
 
     def clear_current_entry(self):
-        self.data_arrays = dict()
+        self.raw_data_arrays = dict()
 
     def add_img_to_entry(self, data, img_type):
+        """Add image data for img_type to the self.data_arrays buffer."""
         assert img_type in valid_pano_img_types, f'img_type "{img_type}" not supported!'
-        assert img_type not in self.data_arrays, f'img_type "{img_type}" already added!'
+        assert img_type not in self.raw_data_arrays, f'img_type "{img_type}" already added!'
 
-        self.data_arrays[img_type] = data
+        self.raw_data_arrays[img_type] = data
 
     def write_arrays(self, pano_uid, overwrite_ok=True):
-        for img_type in self.data_arrays:
+        """Write raw data features to file."""
+        for img_type in self.raw_data_arrays:
             fpath = self.get_pano_img_path(pano_uid, img_type)
             if os.path.exists(fpath) and not overwrite_ok:
                 raise FileExistsError(f'overwrite_ok=False and {fpath} exists.')
-            data = self.data_arrays[img_type]
+            data = self.raw_data_arrays[img_type]
             if data is None:
                 raise ValueError(f'Data for "{img_type}" is None!')
             data = np.array(data)
@@ -122,6 +126,10 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             return fig
 
     def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap):
+        stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id)
+        fig = self.plot_image(stacked_img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
+        plt.show(fig)
+
         module_pff_files = self.obs_pff_files[module_id]
         file_info = module_pff_files[start_file_idx]
         fpath = f"{self.run_path}/{file_info['fname']}"
