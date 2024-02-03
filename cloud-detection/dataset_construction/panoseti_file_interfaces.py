@@ -95,24 +95,26 @@ class ObservingRunInterface:
         assert frame_step_size > 0
         assert delta_t >= 0, 'stack_frames is a causal function.'
         # Iterate backwards through PFF files for module_id
-        frame_buffer = []
+        frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
+        n = 0
         for i in range(start_file_idx, -1, -1):
-            if len(frame_buffer) == nframes: break
+            if n == nframes: break
             file_info = module_pff_files[i]
             fpath = f"{self.run_path}/{file_info['fname']}"
             with open(fpath, 'rb') as fp:
                 # Start file pointer with an offset based on the previous file -> ensures even frame sampling
                 fp.seek(frame_offset * self.frame_size, os.SEEK_CUR)
                 # Create FrameIterator iterator
-                fitr = self.frame_iterator(f, frame_step_size, nframes - len(frame_buffer))
+                fitr = self.frame_iterator(fp, frame_step_size, nframes - n)
                 for j, img in fitr:
-                    frame_buffer.append(img)
+                    frame_buffer[n] = img
+                    n += 1
         if len(frame_buffer) < nframes:
             raise ValueError(f'Insufficient frames for frame stacking: '
                              f'retrieved {len(frame_buffer)} / {nframes} frames')
         if agg == 'mean':
-            return np.mean(frame_buffer)
+            return np.mean(frame_buffer, axis=0)
 
 
 
