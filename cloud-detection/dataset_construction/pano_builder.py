@@ -108,42 +108,54 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         return img
 
     def make_original_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap):
-        module_pff_files = self.obs_pff_files[module_id]
-        file_info = module_pff_files[start_file_idx]
-        fpath = f"{self.run_path}/{file_info['fname']}"
-        with open(fpath, 'rb') as fp:
-            fp.seek(
-                start_frame_offset * self.frame_size,
-                os.SEEK_CUR
-            )
-            j, img = self.read_image_frame(fp, self.img_bpp)
-            # self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
-            self.add_img_to_entry(img, 'raw-original')
-            img = self.img_transform(img)
-            #img = (img - np.median(img)) / np.std(img)
-            fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
-            #plt.pause(0.5)
-            return fig
+        stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id, nframes=50)
+        self.add_img_to_entry(stacked_img, 'raw-original')
+        img = self.img_transform(stacked_img)
+        #img = (img - np.median(img)) / np.std(img)
+        fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
+        #plt.pause(0.5)
+        return fig
+        # module_pff_files = self.obs_pff_files[module_id]
+        # file_info = module_pff_files[start_file_idx]
+        # fpath = f"{self.run_path}/{file_info['fname']}"
+        # with open(fpath, 'rb') as fp:
+        #     fp.seek(
+        #         start_frame_offset * self.frame_size,
+        #         os.SEEK_CUR
+        #     )
+        #     j, img = self.read_image_frame(fp, self.img_bpp)
+        #     # self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
+        #     self.add_img_to_entry(img, 'raw-original')
+        #     img = self.img_transform(img)
+        #     #img = (img - np.median(img)) / np.std(img)
+        #     fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
+        #     #plt.pause(0.5)
+        #     return fig
 
     def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, vmin, vmax, cmap):
-        stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id)
-        fig = self.plot_image(stacked_img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
-        plt.show(fig)
+        stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id, nframes=50)
+        self.add_img_to_entry(apply_fft(stacked_img), 'raw-fft')
+        img = self.img_transform(stacked_img)
+        fig = plot_image_fft(apply_fft(img), vmin=vmin, vmax=vmax, cmap=cmap)
+        return fig
+        # # Testing
+        # fig = self.plot_image(stacked_img, bins=40, cmap=cmap, perc=(0.5, 99.5))
+        # plt.show()
 
-        module_pff_files = self.obs_pff_files[module_id]
-        file_info = module_pff_files[start_file_idx]
-        fpath = f"{self.run_path}/{file_info['fname']}"
-        with open(fpath, 'rb') as fp:
-            fp.seek(
-                start_frame_offset * self.frame_size,
-                os.SEEK_CUR
-            )
-            j, img = self.read_image_frame(fp, self.img_bpp)
-            # self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
-            self.add_img_to_entry(apply_fft(img), 'raw-fft')
-            img = self.img_transform(img)
-            fig = plot_image_fft(apply_fft(img), vmin=vmin, vmax=vmax, cmap=cmap)
-            return fig
+        # module_pff_files = self.obs_pff_files[module_id]
+        # file_info = module_pff_files[start_file_idx]
+        # fpath = f"{self.run_path}/{file_info['fname']}"
+        # with open(fpath, 'rb') as fp:
+        #     fp.seek(
+        #         start_frame_offset * self.frame_size,
+        #         os.SEEK_CUR
+        #     )
+        #     j, img = self.read_image_frame(fp, self.img_bpp)
+        #     # self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
+        #     self.add_img_to_entry(apply_fft(img), 'raw-fft')
+        #     img = self.img_transform(img)
+        #     fig = plot_image_fft(apply_fft(img), vmin=vmin, vmax=vmax, cmap=cmap)
+        #     return fig
 
     def make_time_derivative_figs(self,
                                   start_file_idx,
