@@ -1,10 +1,30 @@
 {
     "batches": [
         {
-            "batch-id": 0,
+            "batch-id": 11,
             "batch-def": [
                 {
-                    "sample_stride": 2,
+                    "sample_stride": 1,
+                    "comments": ["Clear conditions, Moon illumination: 90%"],
+                    "pano": {
+                        "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",
+                        "data_dir_Lick": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 8,
+                        "day": 28
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 10,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
                     "comments": "Mostly cloudy data, Moon illumination: 100%",
                     "pano": {
                         "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",
@@ -26,7 +46,8 @@
                     "sample_stride": 1,
                     "comments": "Likely partially cloudy, Moon illumination: 0%",
                     "pano": {
-                        "data_dir": "/mnt/data10/data",
+                        "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",
+                        "data_dir_Lick": "/mnt/data10/data",
                         "run_dir": "obs_Lick.start_2023-08-15T07:15:50Z.runtype_sci-obs.pffd"
                     },
                     "skycam": {
@@ -40,7 +61,8 @@
                     "sample_stride": 1,
                     "comments": ["Clear conditions, Moon illumination: 90%"],
                     "pano": {
-                        "data_dir": "/mnt/data10/data",
+                        "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",
+                        "data_dir_Lick": "/mnt/data10/data",
                         "run_dir": "obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd"
                     },
                     "skycam": {

@@ -17,6 +17,7 @@ batch_data_zipfiles_dir = 'batch_data_zipfiles'
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
 batch_defs_fname = 'batch_data_definitions.json'
+# batch_defs_fname = 'batch_data_definitions_debug.json'
 
 """Valid feature types"""
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
