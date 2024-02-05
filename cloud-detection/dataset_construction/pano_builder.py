@@ -163,7 +163,6 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                                   frame_unix_t,
                                   module_id,
                                   delta_ts,
-                                  ncols,
                                   vmin,
                                   vmax,
                                   cmap):
@@ -175,7 +174,6 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         @param start_frame_offset: number of frames to the reference frame
         @param module_id: module id number, as computed from its ip address
         @param delta_ts
-        @param ncols: number of evenly spaced time-derivatives
         """
         module_pff_files = self.obs_pff_files[module_id]
         assert max(delta_ts) < 0, 'Must specify delta_ts that are strictly in the past.'
@@ -198,7 +196,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             diff = curr_stacked_img - prev_stacked
             raw_diff_data.append(diff)
             # Transform and format images for user-facing figures for data labeling.
-            deriv_data = self.img_transform(diff / 150)     # TODO: replace 150 with a real standard deviation
+            deriv_data = self.img_transform(diff)     # TODO: replace 150 with a real standard deviation
             deriv_imgs.append(deriv_data)
 
         for i in range(len(sorted_delta_ts)):
@@ -212,106 +210,9 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             deriv_imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
         )
         fig_fft_time_derivative = plot_fft_time_derivative(
-            deriv_imgs, delta_ts, ncols, vmin[1], vmax[1], cmap=cmap[1]
+            deriv_imgs, delta_ts, vmin[1], vmax[1], cmap=cmap[1]
         )
-
-        # plt.pause(0.5)
         return fig_time_derivative, fig_fft_time_derivative
-        #
-        # # Check if it is possible to construct a time-derivative with the given parameters and data
-        # with open(f"{self.run_path}/{module_pff_files[start_file_idx]['fname']}", 'rb') as f:
-        #     f.seek(start_frame_offset * self.frame_size)
-        #     j, img = self.read_image_frame(f, self.img_bpp)
-        #     curr_unix_t = pff.img_header_time(j)
-        #     s = curr_unix_t
-        #     if (curr_unix_t - max_delta_t) < module_pff_files[0]['first_unix_t']:
-        #         return None, None
-        #
-        # frame_offset = start_frame_offset
-        # hist = list()
-        # # Iterate backwards through the files until hist_size frames have been accumulated
-        # for i in range(start_file_idx, -1, -1):
-        #     if len(hist) == hist_size:
-        #         break
-        #     file_info = module_pff_files[i]
-        #     if self.verbose: print("newfile")
-        #     # Iterate backwards through the file
-        #     for j, img in self.frame_iterator(fp, (-1 * frame_step_size) + 1):
-        #         if j is None or img is None:
-        #             break
-        #         if len(hist) < hist_size:
-        #             hist.insert(0, img)
-        #             # if verbose: print(int(pff.img_header_time(j) - s))
-        #             continue
-        #         deriv_imgs = list()
-        #         # Compute the frame offset for the next pff file
-        #     if i > 0:
-        #         next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
-        #         curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
-        #         frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
-        # return None, None
-        #
-        # frame_step_size = int(step_delta_t / (self.intgrn_usec * 1e-6))
-        # assert frame_step_size > 0
-        # hist_size = int(max_delta_t / step_delta_t)
-        # frame_offset = start_frame_offset
-        # hist = list()
-        # # Iterate backwards through the files until hist_size frames have been accumulated
-        # for i in range(start_file_idx, -1, -1):
-        #     if len(hist) == hist_size:
-        #         break
-        #     file_info = module_pff_files[i]
-        #     fpath = f"{self.run_path}/{file_info['fname']}"
-        #     if self.verbose: print(f"Processing {file_info['fname']}")
-        #     with open(fpath, 'rb') as fp:
-        #         if self.verbose: print("newfile")
-        #         # Start file pointer with an offset based on the previous file -> ensures even frame sampling
-        #         fp.seek(
-        #             frame_offset * self.frame_size,
-        #             os.SEEK_CUR
-        #         )
-        #         # Iterate backwards through the file
-        #         for j, img in self.frame_iterator(fp, (-1 * frame_step_size) + 1):
-        #             if j is None or img is None:
-        #                 break
-        #             if len(hist) < hist_size:
-        #                 hist.insert(0, img)
-        #                 # if verbose: print(int(pff.img_header_time(j) - s))
-        #                 continue
-        #             deriv_imgs = list()
-        #             raw_diff_data = []
-        #             delta_ts = []
-        #             for k in [int(i * hist_size / ncols) for i in range(ncols, 0, -1)]:
-        #                 delta_t = -step_delta_t * k
-        #                 delta_ts.append(str(delta_t))
-        #                 diff = img - hist[k - 1]
-        #                 raw_diff_data.append(diff)
-        #                 deriv_data = diff / np.std(hist)
-        #                 deriv_data = self.img_transform(deriv_data)
-        #                 deriv_imgs.append(deriv_data)
-        #             # print(delta_ts)
-        #             for k in range(len(delta_ts)):
-        #                 delta_t = delta_ts[k]
-        #                 derivative_type = f'raw-derivative.{delta_t}'
-        #                 data = raw_diff_data[k]
-        #                 if derivative_type in valid_pano_img_types:
-        #                     self.add_img_to_entry(np.array(data), derivative_type)
-        #
-        #             fig_time_derivative = plot_time_derivative(
-        #                 deriv_imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
-        #             )
-        #             fig_fft_time_derivative = plot_fft_time_derivative(
-        #                 deriv_imgs, delta_ts, ncols, vmin[1], vmax[1], cmap=cmap[1]
-        #             )
-        #
-        #             # plt.pause(0.5)
-        #             return fig_time_derivative, fig_fft_time_derivative
-        #         # Compute the frame offset for the next pff file
-        #         if i > 0:
-        #             next_file_size = module_pff_files[i-1]['nframes'] * self.frame_size
-        #             curr_byte_offset = frame_step_size * self.frame_size - fp.tell()
-        #             frame_offset = int((next_file_size - curr_byte_offset) / self.frame_size)
-        # return None, None
 
     def correlate_skycam_to_pano_img(self, skycam_unix_t, module_id):
         # Correlate skycam img to panoseti image, if possible
@@ -328,7 +229,6 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             3. Generate a corresponding set of panoseti image features relative to that frame.
         Note: must download skycam data before calling this routine.
         """
-
         if self.pano_features_created() and not self.force_recreate:
             raise FileExistsError(f"Data in {self.run_dir} already processed")
 
@@ -351,7 +251,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_frame_seek_info['frame_offset'],
                 module_id,
                 vmin=30,#-3.5,
-                vmax=282,#3.5,
+                vmax=300,#3.5,
                 cmap='mako',
             )
             figs['fft'] = self.make_fft_fig(
@@ -368,9 +268,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_frame_seek_info['frame_unix_t'],
                 module_id,
                 delta_ts=[-60, -40, -20],
-                ncols=3,
-                vmin=[-1, -1],
-                vmax=[1, 6],
+                vmin=[-200, -1],
+                vmax=[200, 6],
                 cmap=["icefire", "icefire"],
             )
 

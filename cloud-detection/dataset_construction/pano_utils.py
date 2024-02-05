@@ -34,7 +34,7 @@ def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, v
 
 
 # Plotting
-def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
+def plot_fft_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
     for i in range(len(imgs)):
         if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
             print('no image')
@@ -45,7 +45,7 @@ def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
     fig = plt.figure(figsize=(10., 3.))
 
     grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                     nrows_ncols=(1, nc),  # creates nr x 1 grid of axes
+                     nrows_ncols=(1, len(delta_ts)),  # creates nr x 1 grid of axes
                      axes_pad=0.1,  # pad between axes in inch.
                      share_all=True
                      )
@@ -62,7 +62,7 @@ def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
     for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
         #im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
         # im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
-        im = plot_image_fft(img, ax=ax, cmap=cmap)
+        im = plot_image_fft(apply_fft(img), ax=ax, cmap=cmap)
         ax.set_title(title, x=0.5, y=-0.2)
         #im.set_norm(norm)
         ims.append(im)
