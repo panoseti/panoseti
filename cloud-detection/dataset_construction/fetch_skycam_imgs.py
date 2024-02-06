@@ -101,6 +101,7 @@ def download_skycam_data(skycam_type, year, month, day, verbose, skycam_path):
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_experimental_option('prefs', prefs)
     chrome_options.add_argument("--headless")   # Don't open a browser window
+    chrome_options.binary_location = '/usr/local/bin/google-chrome'
     # Open Chrome driver
     if verbose: print('Initializing Chrome webdriver...')
     driver = webdriver.Chrome(options=chrome_options)
