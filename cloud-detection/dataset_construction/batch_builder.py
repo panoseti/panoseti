@@ -122,7 +122,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         self.skycam_df.drop(skycam_not_in_feature_df.index, inplace=True)
         self.skycam_df.reset_index(drop=True, inplace=True)
 
-    def build_batch(self):
+    def build_training_batch(self):
         for sample_dict in self.batch_def:
             skycam_builder = SkycamBatchBuilder(
                 self.batch_id,
@@ -147,7 +147,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 force_recreate=self.force_recreate,
             )
             sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, **sample_dict['skycam'])
-            self.feature_df, self.pano_df = pano_builder.build_pano_batch_data(
+            self.feature_df, self.pano_df = pano_builder.build_pano_training_batch_data(
                 self.feature_df, self.pano_df, self.skycam_df, sctree.skycam_dir, sample_dict['sample_stride']
             )
 
@@ -170,6 +170,46 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
             print('Dataframes already created.')
 
         self.make_skycam_paths_json()
+        self.make_pano_paths_json()
+        self.make_batch_def_json()
+
+        if self.do_zip:
+            self.zip_batch()
+
+    def build_inference_batch(self):
+        for sample_dict in self.batch_def:
+            pano_builder = PanoBatchBuilder(
+                'cloud-detection',
+                self.batch_id,
+                self.batch_type,
+                sample_dict['pano']['data_dir'],
+                sample_dict['pano']['run_dir'],
+                verbose=self.verbose,
+                force_recreate=self.force_recreate,
+            )
+            self.feature_df, self.pano_df = pano_builder.build_pano_inference_batch_data(
+                self.feature_df, self.pano_df
+            )
+
+        try:
+            save_df(
+                self.feature_df, 'feature', None, self.batch_id,
+                self.task, False, self.batch_path, overwrite_ok=self.force_recreate
+            )
+            save_df(
+                self.pano_df, 'pano', None, self.batch_id,
+                self.task, False, self.batch_path, overwrite_ok=self.force_recreate
+            )
+            # if self.prune_skycam:
+            #     self.prune_skycam_imgs()
+            # save_df(
+            #     self.skycam_df, 'skycam', None, self.batch_id,
+            #     self.task, False, self.batch_path, overwrite_ok=self.force_recreate
+            # )
+        except FileExistsError as fee:
+            print('Dataframes already created.')
+
+        # self.make_skycam_paths_json()
         self.make_pano_paths_json()
         self.make_batch_def_json()
 

@@ -16,6 +16,6 @@ data_batch_builder = CloudDetectionBatchBuilder(
     batch_type='training',
     force_recreate=True
 )
-data_batch_builder.build_batch()
+data_batch_builder.build_training_batch()
 
 print('done')

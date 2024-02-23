@@ -14,4 +14,4 @@ data_batch_builder = CloudDetectionBatchBuilder(
     batch_type='inference',
     force_recreate=True
 )
-data_batch_builder.build_batch()
+data_batch_builder.build_inference_batch()

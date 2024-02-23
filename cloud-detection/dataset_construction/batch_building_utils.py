@@ -10,6 +10,7 @@ from dataclasses import dataclass
 skycam_imgs_root_dir = 'skycam_imgs'
 pano_imgs_root_dir = 'pano_imgs'
 batch_data_root_dir = 'batch_data'
+inference_batch_data_root_dir = 'inference_batch_data'
 batch_labels_root_dir = 'batch_labels'
 batch_data_zipfiles_dir = 'batch_data_zipfiles'
 
@@ -87,7 +88,11 @@ class CloudDetectionBatchDataFileTree:
         self.batch_id = batch_id
         self.batch_type = batch_type
         self.batch_dir = get_batch_dir(task, batch_id)
-        self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
+
+        if batch_type == 'inference':
+            self.batch_path = f'{inference_batch_data_root_dir}/{self.batch_dir}'
+        elif batch_type == 'training':
+            self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
 
         self.skycam_root_path = f'{self.batch_path}/{skycam_imgs_root_dir}'
         self.pano_root_path = f'{self.batch_path}/{pano_imgs_root_dir}'
@@ -153,7 +158,14 @@ class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
         super().__init__(batch_id, batch_type)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
-        self.pano_subdirs = get_pano_subdirs(self.pano_path)
+        if self.batch_type == 'training':
+            self.pano_subdirs = get_pano_subdirs(self.pano_path)
+        elif self.batch_type == 'inference':
+            self.pano_subdirs = dict()
+            subdirs = get_pano_subdirs(self.pano_path)
+            for key in subdirs.keys():
+                if 'raw' in key:
+                    self.pano_subdirs[key] = subdirs[key]
 
     def get_pano_img_path(self, pano_uid, img_type):
         assert img_type in valid_pano_img_types, f"{img_type} is not supported"
