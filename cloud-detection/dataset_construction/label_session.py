@@ -105,7 +105,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         original_fname, skycam_dir = self.skycam_df.loc[
             (self.skycam_df.skycam_uid == skycam_uid), ['fname', 'skycam_dir']
         ].iloc[0]
-        sctree = SkycamBatchDataFileTree(self.batch_id, skycam_dir=skycam_dir)
+        sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, skycam_dir=skycam_dir)
         fpath = sctree.get_skycam_img_path(original_fname, img_type)
         img = np.asarray(Image.open(fpath))
         return img
@@ -114,7 +114,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         run_dir = self.pano_df.loc[
             (self.pano_df.pano_uid == pano_uid), 'run_dir'
         ].iloc[0]
-        ptree = PanoBatchDataFileTree(self.batch_id, run_dir)
+        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir)
         fpath = ptree.get_pano_img_path(pano_uid, img_type)
         img = np.asarray(Image.open(fpath))
         return img

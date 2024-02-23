@@ -19,8 +19,9 @@ from dataset_utils import *
 
 class CloudDetectionDatasetManager:
 
-    def __init__(self, root='.', task='cloud-detection'):
+    def __init__(self, batch_type, root='.', task='cloud-detection'):
         self.task = task
+        self.batch_type = batch_type
         self.dataset_dir = get_root_dataset_dir(task)
         self.root = root
         self.dataset_path = f'{root}/{self.dataset_dir}'
@@ -120,7 +121,7 @@ class CloudDetectionDatasetManager:
         pano_df = self.main_dfs['pano']
         pano_uid = ftr_df.loc[ftr_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]
         run_dir, batch_id = pano_df.loc[pano_df['pano_uid'] == pano_uid, ['run_dir', 'batch_id']].iloc[0]
-        ptree = PanoBatchDataFileTree(batch_id, run_dir)
+        ptree = PanoBatchDataFileTree(batch_id, self.batch_type, run_dir)
         return f'{self.root}/{ptree.get_pano_img_path(pano_uid, img_type)}'
         # pano_dataset_path = get_pano_dataset_path(self.task, batch_id, run_dir, self.dataset_path)
         # pano_feature_path = get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type)
@@ -136,7 +137,7 @@ class CloudDetectionDatasetManager:
 class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
     def __init__(self):
         self.task = 'cloud-detection'
-        super().__init__(task=self.task)
+        super().__init__(batch_type='training', task=self.task)
         # Proportion of labelers that must agree on label for each example to be included in dataset:
         # self.
         self.agreement_threshold = 0.5

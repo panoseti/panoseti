@@ -26,9 +26,9 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         'raw-derivative.-60': (32, 32),
     }
 
-    def __init__(self, task, batch_id, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
+    def __init__(self, task, batch_id, batch_type, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
         ObservingRunInterface.__init__(self, panoseti_data_dir, panoseti_run_dir)
-        PanoBatchDataFileTree.__init__(self, batch_id, panoseti_run_dir)
+        PanoBatchDataFileTree.__init__(self, batch_id, batch_type, panoseti_run_dir)
         self.force_recreate = force_recreate
         self.verbose = verbose
         # self.pano_dataset_builder = PanoDatasetBuilder(task, batch_id, self.run_dir)
@@ -268,8 +268,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_frame_seek_info['frame_unix_t'],
                 module_id,
                 delta_ts=[-60, -40, -20],
-                vmin=[-200, -1],
-                vmax=[200, 6],
+                vmin=[-150, -1],
+                vmax=[150, 6],
                 cmap=["icefire", "icefire"],
             )
 

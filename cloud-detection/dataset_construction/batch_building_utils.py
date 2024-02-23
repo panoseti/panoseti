@@ -16,8 +16,10 @@ batch_data_zipfiles_dir = 'batch_data_zipfiles'
 """Json file name definitions"""
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
-batch_defs_fname = 'batch_data_definitions.json'
-# batch_defs_fname = 'batch_data_definitions_debug.json'
+# batch_defs_fname = 'batch_data_definitions.json'
+batch_defs_fname = 'batch_data_definitions_debug.json'
+prediction_defs_fname = 'prediction_batch_definitions_TEST.json'
+# prediction_defs_fname = 'prediction_batch_definitions.json'
 
 """Valid feature types"""
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
@@ -70,7 +72,7 @@ class CloudDetectionBatchDataFileTree:
     pano_path_index_fname = 'pano_path_index.json'
     skycam_path_index_fname = 'skycam_path_index.json'
 
-    def __init__(self, batch_id, task='cloud-detection'):
+    def __init__(self, batch_id, batch_type, task='cloud-detection'):
         """
         task_cloud-detection.batch-id_N/
         ├─ skycam_imgs/
@@ -83,6 +85,7 @@ class CloudDetectionBatchDataFileTree:
         """
         self.task = task
         self.batch_id = batch_id
+        self.batch_type = batch_type
         self.batch_dir = get_batch_dir(task, batch_id)
         self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
 
@@ -91,14 +94,14 @@ class CloudDetectionBatchDataFileTree:
 
 
 class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, **kwargs):
+    def __init__(self, batch_id, batch_type, **kwargs):
         """
         [skycam_dir]/
         ├─ original/
         ├─ cropped/
         ├─ pfov/
         """
-        super().__init__(batch_id)
+        super().__init__(batch_id, batch_type)
 
         if 'skycam_dir' in kwargs:
             self.skycam_dir = kwargs['skycam_dir']
@@ -139,7 +142,7 @@ class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
 
 
 class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, run_dir):
+    def __init__(self, batch_id, batch_type, run_dir):
         """
         [pano_run_dir]/
         ├─ raw/
@@ -147,7 +150,7 @@ class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
         ├─ fft/
         ├─ derivative/
         """
-        super().__init__(batch_id)
+        super().__init__(batch_id, batch_type)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path)
@@ -180,6 +183,33 @@ def get_user_label_export_dir(task, batch_id, user_uid, root):
 def get_batch_def_json_fname(task, batch_id):
     return f'name_batch-definition.task_{task}.batch-id_{batch_id}.json'
 
+
+def load_json_batch_defs(batch_type: str):
+    """
+    @param batch_type: ['training', 'prediction']
+    @return: JSON file containing path info for observing data.
+    """
+    fname = None
+    if batch_type == 'training':
+        fname = batch_defs_fname
+    elif batch_type == 'prediction':
+        fname = prediction_defs_fname
+    else:
+        raise ValueError(f'"{batch_type}" is not a valid batch_type')
+    with open(fname, 'r') as f:
+        return json.load(f)
+
+
+def load_batch_def(batch_id, batch_type):
+    batch_defs = load_json_batch_defs(batch_type)
+    batch_def = [batch for batch in batch_defs['batches'] if batch['batch-id'] == batch_id]
+    if len(batch_def) == 0:
+        raise ValueError(f'No batch definitions exist for batch_id={batch_id}.')
+    elif len(batch_def) > 1:
+        raise ValueError(f'Found multiple batch definitions with batch_id={batch_id}:\n'
+                         f'{batch_def}')
+    else:
+        return batch_def[0]
 
 
 """Skycam feature directory"""

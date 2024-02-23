@@ -79,21 +79,31 @@ class ObservingRunInterface:
             img = np.reshape(img, (32, 32))
         return j, img
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, nframes=50, max_delta_t=10, agg='mean'):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='mean'):
         """
         Evenly samples image frames between now and now-delta_t, then aggregates
         the frames according to the given aggregation method.
+
+        By default, stack until a total of 6ms of observational data is accumulated. e.g.:
+        - if you have 100us panoseti image data, add 60 images together, roughly evenly spaced over 1 second.
+        - if you have 2ms panoseti image data, add 3 images together, roughly evenly spaced over 1 second.
+        - if you have 1ms panoseti image data, add 6 images together, roughly evenly spaced over 1 second.
+
         @param f: file pointer to a PFF imaging file
         @param nframes: number of frames to stack
-        @param max_delta_t: seconds between current and oldest frame to be sampled
+        @param delta_t: seconds between current and oldest frame to be sampled
         @param agg: aggregation method
         @return: Stacked image frame
         """
+
+        STACKED_INTEGRATION_MS = 6  # Stack 6ms of image frame data by default. e.g.:
+
+        nframes = int((STACKED_INTEGRATION_MS * 1E-3) / (self.intgrn_usec * 1E-6))
         module_pff_files = self.obs_pff_files[module_id]
-        time_step = max_delta_t / nframes   # time step between sampled frames
+        time_step = delta_t / nframes   # time step between sampled frames
         frame_step_size = int(time_step / (self.intgrn_usec * 1E-6))
         assert frame_step_size > 0
-        assert max_delta_t >= 0, 'stack_frames is a causal function.'
+        assert delta_t >= 0, 'stack_frames is a causal function.'
         # Iterate backwards through PFF files for module_id
         frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
