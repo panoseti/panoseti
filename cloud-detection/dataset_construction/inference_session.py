@@ -36,9 +36,9 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
                 self.pano_paths = json.load(f)
         except FileNotFoundError as e:
             raise e
-            raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
-                                    f"Try adding the zipped data batch file to the following directory:\n"
-                                    f"\x1b[31m{os.path.abspath(training_batch_data_root_dir)}\x1b[0m")
+            # raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
+            #                         f"Try adding the zipped data batch file to the following directory:\n"
+            #                         f"\x1b[31m{os.path.abspath(training_batch_data_root_dir)}\x1b[0m")
         try:
             with open(self.data_labels_path, 'r') as f:
                 labels = json.load(f)
@@ -69,20 +69,20 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
 
             self.loaded_dfs_from_file[df_type] = True
         elif df_type in ['unlabeled', 'labeled']:
-            df = load_df(
-                self.user_uid, self.batch_id, df_type, self.task, is_temp=True,
-                save_dir=self.dataset_root + '/' + self.batch_labels_path
-            )
-            if df is not None:
-                self.loaded_dfs_from_file[df_type] = True
-            else:
-                self.loaded_dfs_from_file[df_type] = False
-                df = get_dataframe(df_type)
-                if df_type == 'unlabeled':
-                    # Note: must initialize feature_df before attempting to initialize unlabeled_df
-                    for feature_uid in self.feature_df['feature_uid']:
-                        # Add entries to unlabeled_df
-                        df = add_unlabeled_data(df, feature_uid)
+            # df = load_df(
+            #     self.user_uid, self.batch_id, df_type, self.task, is_temp=True,
+            #     save_dir=self.dataset_root + '/' + self.batch_labels_path
+            # )
+            # if df is not None:
+            #     self.loaded_dfs_from_file[df_type] = True
+            # else:
+            self.loaded_dfs_from_file[df_type] = False
+            df = get_dataframe(df_type)
+            if df_type == 'unlabeled':
+                # Note: must initialize feature_df before attempting to initialize unlabeled_df
+                for feature_uid in self.feature_df['feature_uid']:
+                    # Add entries to unlabeled_df
+                    df = add_unlabeled_data(df, feature_uid)
         else:
             raise ValueError(f'Unsupported df_type: "{df_type}"')
         return df

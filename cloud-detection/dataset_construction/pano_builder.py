@@ -335,12 +335,13 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             )
         return feature_df, pano_df
 
-    def create_inference_features(self, feature_df, pano_df, module_id, allow_skip=True, make_figs=False):
+    def create_inference_features(self, feature_df, pano_df, module_id, time_step, allow_skip=True, make_figs=False):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
             3. Generate a corresponding set of panoseti image features relative to that frame.
         Note: must download skycam data before calling this routine.
+        @param time_step: Generate inference features for each time_step interval during the observing run.
         """
         if self.pano_features_created() and not self.force_recreate:
             raise FileExistsError(f"Data in {self.run_dir} already processed")
@@ -348,7 +349,6 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         module_pff_files = self.obs_pff_files[module_id]
         first_unix_t = module_pff_files[0]['first_unix_t']
         last_unix_t = module_pff_files[-1]['last_unix_t']
-        time_step = 60     # Generate inference features for each time_step interval during the observing run.
         inference_unix_ts = np.arange(first_unix_t, last_unix_t, time_step)
 
         print(f'Generating features for module {module_id}')
@@ -456,7 +456,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 continue
         return feature_df, pano_df
 
-    def build_pano_inference_batch_data(self, feature_df, pano_df, sample_stride=1):
+    def build_pano_inference_batch_data(self, feature_df, pano_df, time_step):
         print(f'\nCreating panoseti features for {self.run_dir}')
         assert self.batch_type == 'inference'
         for module_id in self.obs_pff_files:
@@ -464,7 +464,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 continue
             try:
                 feature_df, pano_df = self.create_inference_features(
-                    feature_df, pano_df, module_id
+                    feature_df, pano_df, module_id, time_step
                 )
             except FileExistsError:
                 continue

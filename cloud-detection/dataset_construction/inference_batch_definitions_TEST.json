@@ -4,7 +4,7 @@
             "batch-id": 11,
             "batch-def": [
                 {
-                    "sample_stride": 1,
+                    "time_step": 1,
                     "comments": ["Clear conditions, Moon illumination: 90%"],
                     "pano": {
                         "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",
@@ -24,7 +24,7 @@
             "batch-id": 10,
             "batch-def": [
                 {
-                    "sample_stride": 1,
+                    "time_step": 5,
                     "comments": "Mostly cloudy data, Moon illumination: 100%",
                     "pano": {
                         "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",

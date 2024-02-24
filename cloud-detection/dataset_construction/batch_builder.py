@@ -193,8 +193,10 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 verbose=self.verbose,
                 force_recreate=self.force_recreate,
             )
+            if 'time_step' not in sample_dict:
+                sample_dict['time_step'] = 60
             self.feature_df, self.pano_df = pano_builder.build_pano_inference_batch_data(
-                self.feature_df, self.pano_df
+                self.feature_df, self.pano_df, float(sample_dict['time_step'])
             )
 
         try:
