@@ -9,18 +9,21 @@ from dataclasses import dataclass
 """Directory name definitions"""
 skycam_imgs_root_dir = 'skycam_imgs'
 pano_imgs_root_dir = 'pano_imgs'
-batch_data_root_dir = 'batch_data'
+
+training_batch_data_root_dir = 'training_batch_data'
+training_batch_labels_root_dir = 'training_batch_labels'
+training_batch_data_zipfiles_dir = 'training_batch_data_zipfiles'
+
 inference_batch_data_root_dir = 'inference_batch_data'
-batch_labels_root_dir = 'batch_labels'
-batch_data_zipfiles_dir = 'batch_data_zipfiles'
+inference_batch_labels_root_dir = 'inference_batch_labels'
+inference_batch_data_zipfiles_dir = 'inference_batch_data_zipfiles'
 
 """Json file name definitions"""
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
-# batch_defs_fname = 'batch_data_definitions.json'
-batch_defs_fname = 'batch_data_definitions_debug.json'
-prediction_defs_fname = 'prediction_batch_definitions_TEST.json'
-# prediction_defs_fname = 'prediction_batch_definitions.json'
+# training_batch_defs_fname = 'training_batch_data_definitions.json'
+training_batch_defs_fname = 'training_batch_data_definitions_debug.json'
+inference_defs_fname = 'inference_batch_definitions_TEST.json'
 
 """Valid feature types"""
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
@@ -87,12 +90,12 @@ class CloudDetectionBatchDataFileTree:
         self.task = task
         self.batch_id = batch_id
         self.batch_type = batch_type
-        self.batch_dir = get_batch_dir(task, batch_id)
+        self.batch_dir = get_batch_dir(task, batch_id, batch_type)
 
         if batch_type == 'inference':
             self.batch_path = f'{inference_batch_data_root_dir}/{self.batch_dir}'
         elif batch_type == 'training':
-            self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'{training_batch_data_root_dir}/{self.batch_dir}'
 
         self.skycam_root_path = f'{self.batch_path}/{skycam_imgs_root_dir}'
         self.pano_root_path = f'{self.batch_path}/{pano_imgs_root_dir}'
@@ -177,18 +180,18 @@ class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
 
 """Batch data directory"""
 
-def get_batch_dir(task, batch_id):
-    return "task_{0}.batch-id_{1}".format(task, batch_id)
+def get_batch_dir(task, batch_id, batch_type):
+    return "task_{0}.type_{1}.batch-id_{2}".format(task, batch_type, batch_id)
 
-def get_batch_path(task, batch_id):
-    batch_path = batch_data_root_dir + '/' + get_batch_dir(task, batch_id)
+def get_batch_path(task, batch_id, batch_type):
+    batch_path = training_batch_data_root_dir + '/' + get_batch_dir(task, batch_id, batch_type)
     return batch_path
 
 def get_root_dataset_dir(task):
     return f'dataset_{task}'
 
-def get_user_label_export_dir(task, batch_id, user_uid, root):
-    dir_name = "task_{0}.batch-id_{1}.user-uid_{2}".format(task, batch_id, user_uid)
+def get_user_label_export_dir(task, batch_id, batch_type, user_uid, root):
+    dir_name = "task_{0}.type_{1}.batch-id_{2}.user-uid_{3}".format(task, batch_type, batch_id, user_uid)
     dir_path = f'{root}/{dir_name}'
     return dir_path
 
@@ -203,9 +206,9 @@ def load_json_batch_defs(batch_type: str):
     """
     fname = None
     if batch_type == 'training':
-        fname = batch_defs_fname
+        fname = training_batch_defs_fname
     elif batch_type == 'prediction':
-        fname = prediction_defs_fname
+        fname = inference_defs_fname
     else:
         raise ValueError(f'"{batch_type}" is not a valid batch_type')
     with open(fname, 'r') as f:

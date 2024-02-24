@@ -68,18 +68,24 @@ class ObservingRunInterface:
             self.stop_utc = datetime.fromisoformat(iso_str).astimezone(timezone.utc)
 
     @staticmethod
-    def read_image_frame(f, bytes_per_pixel):
+    def read_image_frame(f, bytes_per_pixel, allow_partial_images=False):
         """Returns the next image frame and json header from f. If at EOF, returns (None, None)."""
         j, img = None, None
         json_str = pff.read_json(f)
         if json_str is not None:
             j = json.loads(json_str)
+            # Screen for partial quabo images
+            if not allow_partial_images:
+                for quabo in j:
+                    # TODO: verify that this actually works.
+                    if j[quabo]['tv_sec'] == 0:   # tv_sec is 0 iff the DAQ node received no data for a quabo.
+                        return None, None
             img = pff.read_image(f, 32, bytes_per_pixel)
             img = np.array(img)
             img = np.reshape(img, (32, 32))
         return j, img
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='mean'):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='mean', allow_partial_image=False):
         """
         Evenly samples image frames between now and now-delta_t, then aggregates
         the frames according to the given aggregation method.

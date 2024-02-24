@@ -23,7 +23,9 @@ import os
 import json
 import shutil
 
-from batch_building_utils import CloudDetectionBatchDataFileTree, SkycamBatchDataFileTree, PanoBatchDataFileTree, get_batch_def_json_fname, batch_data_zipfiles_dir, valid_skycam_img_types
+from batch_building_utils import (CloudDetectionBatchDataFileTree, SkycamBatchDataFileTree, PanoBatchDataFileTree,
+                                  get_batch_def_json_fname, training_batch_data_zipfiles_dir,
+                                  inference_batch_data_zipfiles_dir, valid_skycam_img_types)
 from dataframe_utils import get_dataframe, save_df
 from skycam_builder import SkycamBatchBuilder
 from pano_builder import PanoBatchBuilder
@@ -98,8 +100,12 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         return skycam_paths
 
     def zip_batch(self):
-        os.makedirs(batch_data_zipfiles_dir, exist_ok=True)
-        batch_zip_name = f'{batch_data_zipfiles_dir}/{self.batch_dir}'
+        """Create a zipfile for the current data batch."""
+        os.makedirs(training_batch_data_zipfiles_dir, exist_ok=True)
+        if self.batch_type == 'training':
+            batch_zip_name = f'{training_batch_data_zipfiles_dir}/{self.batch_dir}'
+        elif self.batch_type == 'inference':
+            batch_zip_name = f'{inference_batch_data_zipfiles_dir}/{self.batch_dir}'
         batch_zip_path = batch_zip_name + '.tar.gz'
         if self.force_recreate and os.path.exists(batch_zip_name + '.tar.gz'):
             os.remove(batch_zip_path)

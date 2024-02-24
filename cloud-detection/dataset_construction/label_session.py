@@ -26,8 +26,8 @@ from dataframe_utils import *
 class LabelSession(CloudDetectionBatchDataFileTree):
     data_labels_path = f'../{data_labels_fname}'
 
-    def __init__(self, name, batch_id, task='cloud-detection'):
-        super().__init__(batch_id)
+    def __init__(self, name, batch_id, task='cloud-detection', batch_type='training'):
+        super().__init__(batch_id, batch_type)
         self.name = name
         if name == "YOUR NAME":
             raise ValueError(f"Please enter your full name")
@@ -37,15 +37,15 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         #
         # self.batch_dir = get_batch_dir(task, batch_id)
         # self.batch_path = f'{batch_data_root_dir}/{self.batch_dir}'
-        self.batch_labels_path = f'{batch_labels_root_dir}/{self.batch_dir}'
+        self.batch_labels_path = f'{training_batch_labels_root_dir}/{self.batch_dir}'
         # self.skycam_root_path = get_skycam_root_path(self.batch_path)
         # self.pano_root_path = get_pano_root_path(self.batch_path)
 
         # Unzip batched data, if it exists
-        os.makedirs(batch_data_root_dir, exist_ok=True)
+        os.makedirs(training_batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            unpack_batch_data(batch_data_root_dir)
+            unpack_batch_data(training_batch_data_root_dir)
             with open(f'{self.batch_path}/{self.skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
             with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
@@ -53,7 +53,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
                                     f"Try adding the zipped data batch file to the following directory:\n"
-                                    f"\x1b[31m{os.path.abspath(batch_data_root_dir)}\x1b[0m")
+                                    f"\x1b[31m{os.path.abspath(training_batch_data_root_dir)}\x1b[0m")
         try:
             with open(self.data_labels_path, 'r') as f:
                 self.labels = json.load(f)
@@ -364,7 +364,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
             print(f'Please label all data in the batch before exporting.')
             return
         print('Zipping batch labels...')
-        user_label_export_dir = get_user_label_export_dir(self.task, self.batch_id, self.user_uid, root='.')
+        user_label_export_dir = get_user_label_export_dir(self.task, self.batch_id, self.batch_type, self.user_uid, root='.')
         os.makedirs(user_label_export_dir, exist_ok=True)
 
         save_df(self.labeled_df,

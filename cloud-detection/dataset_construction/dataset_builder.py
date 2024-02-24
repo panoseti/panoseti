@@ -92,6 +92,28 @@ class CloudDetectionDatasetManager:
         with open(df_path, 'w'):
             df.to_csv(df_path)
 
+    def unpack_user_labeled_batches(self):
+        for batch_name in os.listdir(self.user_labeled_path):
+            if batch_name.endswith('.zip'):
+                batch_zipfile_path = f'{self.user_labeled_path}/{batch_name}'
+                shutil.unpack_archive(batch_zipfile_path, batch_zipfile_path[:-4], format='zip')
+                os.remove(batch_zipfile_path)
+
+    def get_labeled_batches(self):
+        """Return list of available user-labeled data batches."""
+        labeled_batches = []
+        if os.path.exists(self.user_labeled_path):
+            self.unpack_user_labeled_batches()
+            for batch_name in os.listdir(self.user_labeled_path):
+                if not batch_name.startswith('task_'):
+                    continue
+                parsed = parse_name(batch_name)
+                if parsed['task'] != self.task:
+                    raise ValueError(f"Found data with a task={parsed['task']}, "
+                                     f"which does not match the task of this dataset: {self.task}")
+                labeled_batches.append(batch_name)
+        return labeled_batches
+
     def verify_pano_feature_data(self):
         """Returns True iff all data files for labeled pano_features exist and are not empty."""
         dsl_df = self.main_dfs['dataset-labels']
@@ -144,27 +166,6 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
         self.labeled_batches = self.get_labeled_batches()
 
     """Manage user-produced data"""
-    def unpack_user_labeled_batches(self):
-        for batch_name in os.listdir(self.user_labeled_path):
-            if batch_name.endswith('.zip'):
-                batch_zipfile_path = f'{self.user_labeled_path}/{batch_name}'
-                shutil.unpack_archive(batch_zipfile_path, batch_zipfile_path[:-4], format='zip')
-                os.remove(batch_zipfile_path)
-
-    def get_labeled_batches(self):
-        """Return list of available user-labeled data batches."""
-        labeled_batches = []
-        if os.path.exists(self.user_labeled_path):
-            self.unpack_user_labeled_batches()
-            for batch_name in os.listdir(self.user_labeled_path):
-                if not batch_name.startswith('task_'):
-                    continue
-                parsed = parse_name(batch_name)
-                if parsed['task'] != self.task:
-                    raise ValueError(f"Found data with a task={parsed['task']}, "
-                                     f"which does not match the task of this dataset: {self.task}")
-                labeled_batches.append(batch_name)
-        return labeled_batches
 
     def label_by_majority_vote(self, x: pd.Series):
         """Aggregate label"""
@@ -209,7 +210,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             # Check if data batch has a complete set of labels
             user_unlabeled_df = load_df(
                 user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
-                save_dir=get_user_label_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+                save_dir=get_user_label_export_dir(self.task, batch_id, self.batch_type, user_uid, self.user_labeled_path)
             )
             if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
                 raise ValueError(f'The following data in "{path}" are missing labels\n\n'
@@ -217,7 +218,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)
             user_labeled_df = load_df(
                 user_uid, batch_id, 'labeled', task=self.task, is_temp=False,
-                save_dir=get_user_label_export_dir(self.task, batch_id, user_uid, self.user_labeled_path)
+                save_dir=get_user_label_export_dir(self.task, batch_id, self.batch_type, user_uid, self.user_labeled_path)
             )
             # Concat new labeled data to existing labeled data
             lbd_df = pd.concat([lbd_df, user_labeled_df], ignore_index=True, verify_integrity=True)
@@ -234,7 +235,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
     """Aggregate batch metadata"""
 
     def aggregate_batch_data_features(self, batch_id):
-        batch_data_path = f'{batch_data_root_dir}/{get_batch_dir(self.task, batch_id)}'
+        batch_data_path = f'{training_batch_data_root_dir}/{get_batch_dir(self.task, batch_id, self.batch_type)}'
         for df_type in ['pano', 'skycam', 'feature']:
             df = load_df(
                 None, batch_id, df_type, self.task,
@@ -267,6 +268,17 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
     def export_dataset(self):
         # TODO
         pass
+
+
+class CloudDetectionDatasetInterface(CloudDetectionDatasetManager):
+    def __init__(self):
+        self.task = 'cloud-detection'
+        super().__init__(batch_type='training', task=self.task)
+        # Proportion of labelers that must agree on label for each example to be included in dataset:
+        # self.
+        self.agreement_threshold = 0.5
+        self.labeled_batches = self.get_labeled_batches()
+
 
 
 

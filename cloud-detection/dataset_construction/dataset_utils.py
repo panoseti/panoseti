@@ -18,11 +18,12 @@ def get_pano_dataset_feature_path(pano_dataset_path, pano_uid, img_type):
     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.npy"
 
 
-def get_pano_dataset_path(task, batch_id, run_dir, dataset_path):
-    return f'{dataset_path}/{batch_data_array_dir}/{get_batch_dir(task, batch_id)}/{run_dir}'
+def get_pano_dataset_path(task, batch_type, batch_id, run_dir, dataset_path):
+    return f'{dataset_path}/{batch_data_array_dir}/{get_batch_dir(task, batch_id, batch_type)}/{run_dir}'
 
 
 class PanoDatasetBuilder:
+    """DEPRECATED"""
     supported_img_types = ['original', 'fft']#, 'derivatives']
     data_shapes = {
         'original': (32, 32),
@@ -30,10 +31,11 @@ class PanoDatasetBuilder:
         'derivatives': (3, 32, 32)
     }
 
-    def __init__(self, task, batch_id, run_dir, root='.'):
+    def __init__(self, task, batch_type, batch_id, run_dir, root='.'):
         self.dataset_dir = get_root_dataset_dir(task)
         self.dataset_path = f'{root}/{self.dataset_dir}'
-        self.pano_dataset_path = get_pano_dataset_path(task, batch_id, run_dir, self.dataset_path)
+        self.batch_type = batch_type
+        self.pano_dataset_path = get_pano_dataset_path(task, batch_type, batch_id, run_dir, self.dataset_path)
         os.makedirs(self.pano_dataset_path, exist_ok=True)
         self.task = task
         self.batch_id = batch_id

@@ -106,7 +106,10 @@ def apply_fft(data):
     data = data * window(window_type, shape)
     data = np.abs(fftn(data))
     data = fftshift(data)
-    data = np.log(data)
+    try:
+        data = np.log(data)
+    except ZeroDivisionError:
+        pass
     return data
 
 

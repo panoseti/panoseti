@@ -10,7 +10,6 @@ from batch_building_utils import PanoBatchDataFileTree
 from panoseti_file_interfaces import ObservingRunInterface
 from pano_utils import *
 from dataframe_utils import *
-from dataset_utils import PanoDatasetBuilder
 
 
 sys.path.append("../../util")
@@ -336,7 +335,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             )
         return feature_df, pano_df
 
-    def create_inference_features(self, feature_df, pano_df, module_id, allow_skip=True):
+    def create_inference_features(self, feature_df, pano_df, module_id, allow_skip=True, make_figs=False):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
@@ -349,8 +348,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         module_pff_files = self.obs_pff_files[module_id]
         first_unix_t = module_pff_files[0]['first_unix_t']
         last_unix_t = module_pff_files[-1]['last_unix_t']
-        time_step = 120     # Generate inference features for each time_step interval during the observing run.
-        inference_unix_ts = np.linspace(first_unix_t, last_unix_t, time_step)
+        time_step = 60     # Generate inference features for each time_step interval during the observing run.
+        inference_unix_ts = np.arange(first_unix_t, last_unix_t, time_step)
 
         print(f'Generating features for module {module_id}')
         for target_unix_t in inference_unix_ts:
@@ -365,13 +364,19 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_frame_seek_info['file_idx'],
                 pano_frame_seek_info['frame_offset'],
                 module_id,
-                make_fig=False
+                make_fig=make_figs,
+                vmin=30,
+                vmax=300,
+                cmap='mako',
             )
             figs['fft'] = self.make_fft_fig(
                 pano_frame_seek_info['file_idx'],
                 pano_frame_seek_info['frame_offset'],
                 module_id,
-                make_fig=False
+                make_fig=make_figs,
+                vmin=3,
+                vmax=10,
+                cmap='icefire',
             )
             figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
                 pano_frame_seek_info['file_idx'],
@@ -379,7 +384,10 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_frame_seek_info['frame_unix_t'],
                 module_id,
                 delta_ts=[-60, -40, -20],
-                make_fig=False
+                make_fig=make_figs,
+                vmin=[-150, -1],
+                vmax=[150, 6],
+                cmap=["icefire", "icefire"],
             )
 
             # Check if all figs are valid
@@ -405,10 +413,11 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
             frame_offset = pano_frame_seek_info['frame_offset']
             pano_uid = get_pano_uid(pano_fname, frame_offset)
-            # for img_type, fig in figs.items():
-            #     if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
-            #     fig.savefig(self.get_pano_img_path(pano_uid, img_type))
-            #     plt.close(fig)
+            if make_figs:
+                for img_type, fig in figs.items():
+                    if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
+                    fig.savefig(self.get_pano_img_path(pano_uid, img_type))
+                    plt.close(fig)
 
             # Commit entry to data_array for this run_dir
             # self.pano_dataset_builder.write_arrays(pano_uid)
