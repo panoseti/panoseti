@@ -96,6 +96,8 @@ class CloudDetectionBatchDataFileTree:
             self.batch_path = f'{inference_batch_data_root_dir}/{self.batch_dir}'
         elif batch_type == 'training':
             self.batch_path = f'{training_batch_data_root_dir}/{self.batch_dir}'
+        else:
+            raise ValueError('batch_type must be either "inference" or "training"')
 
         self.skycam_root_path = f'{self.batch_path}/{skycam_imgs_root_dir}'
         self.pano_root_path = f'{self.batch_path}/{pano_imgs_root_dir}'
@@ -161,14 +163,14 @@ class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
         super().__init__(batch_id, batch_type)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
-        if self.batch_type == 'training':
-            self.pano_subdirs = get_pano_subdirs(self.pano_path)
-        elif self.batch_type == 'inference':
-            self.pano_subdirs = dict()
-            subdirs = get_pano_subdirs(self.pano_path)
-            for key in subdirs.keys():
-                if 'raw' in key:
-                    self.pano_subdirs[key] = subdirs[key]
+        self.pano_subdirs = get_pano_subdirs(self.pano_path, batch_type)
+        # if self.batch_type == 'training':
+        # elif self.batch_type == 'inference':
+        #     self.pano_subdirs = dict()
+        #     subdirs = get_pano_subdirs(self.pano_path, batch_type)
+        #     for key in subdirs.keys():
+        #         if 'raw' in key:
+        #             self.pano_subdirs[key] = subdirs[key]
 
     def get_pano_img_path(self, pano_uid, img_type):
         assert img_type in valid_pano_img_types, f"{img_type} is not supported"
@@ -238,9 +240,11 @@ def get_skycam_root_path(batch_path):
 
 
 
-def get_pano_subdirs(pano_path):
+def get_pano_subdirs(pano_path, batch_type):
     pano_subdirs = {}
     for img_type in valid_pano_img_types:
+        if batch_type == 'inference' and 'raw' not in img_type:
+            continue
         pano_subdirs[img_type] = f'{pano_path}/{img_type}'
     return pano_subdirs
 
@@ -251,11 +255,11 @@ def get_pano_root_path(batch_path):
 # def get_pano_img_path(pano_imgs_path, pano_uid, img_type):
 #     assert img_type in valid_pano_img_types, f"{img_type} is not supported"
 #     pano_subdirs = get_pano_subdirs(pano_imgs_path)
-    if 'raw' in img_type:
-        return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.npy"
-    return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
+#     if 'raw' in img_type:
+#         return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.npy"
+#     return f"{pano_subdirs[img_type]}/pano-uid_{pano_uid}.feature-type_{img_type}.png"
+# #
 #
-
 """UID definitions"""
 
 

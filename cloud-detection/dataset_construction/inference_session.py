@@ -22,16 +22,16 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
     # TODO: continue refactoring code.
 
     def __init__(self, batch_id, task='cloud-detection'):
+        os.chdir('../dataset_construction')
         super().__init__(batch_id, batch_type='inference')
         self.name = 'INFERENCE'
         self.user_uid = get_uid(self.name)
-        self.batch_labels_path = f'{training_batch_labels_root_dir}/{self.batch_dir}'
+        self.batch_labels_path = f'./{inference_batch_labels_root_dir}/{self.batch_dir}'
 
         # Unzip batched data, if it exists
-        os.makedirs(training_batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            unpack_batch_data(training_batch_data_root_dir)
+            unpack_batch_data(inference_batch_data_root_dir)
             with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
                 self.pano_paths = json.load(f)
         except FileNotFoundError:
@@ -40,7 +40,10 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
                                     f"\x1b[31m{os.path.abspath(training_batch_data_root_dir)}\x1b[0m")
         try:
             with open(self.data_labels_path, 'r') as f:
-                self.labels = json.load(f)
+                labels = json.load(f)
+                self.labels = dict()
+                for key in labels:
+                    self.labels[int(key)] = labels[key]
         except:
             raise FileNotFoundError(f"Could not find the file {self.data_labels_path}\n"
                                     f"Try pulling the file from the panoseti github.")
@@ -50,6 +53,7 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
         self.pano_df = self.init_dataframe('pano')
         self.unlabeled_df = self.init_dataframe('unlabeled')
         self.labeled_df = self.init_dataframe('labeled')
+
 
     def init_dataframe(self, df_type):
         """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
@@ -64,8 +68,6 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
 
             self.loaded_dfs_from_file[df_type] = True
         elif df_type in ['unlabeled', 'labeled']:
-            # These dataframes must be initialized here because, for simplicity, we
-            # don't collect the user-uid until the user supplies them in the Jupyter notebook.
             df = load_df(
                 self.user_uid, self.batch_id, df_type, self.task, is_temp=True,
                 save_dir=self.batch_labels_path
@@ -84,6 +86,13 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
             raise ValueError(f'Unsupported df_type: "{df_type}"')
         return df
 
+    def get_pano_feature_fpath(self, feature_uid, img_type):
+        assert img_type in valid_pano_img_types, f"Image type '{img_type}' is not supported!"
+        pano_uid = self.feature_df.loc[self.feature_df['feature_uid'] == feature_uid, 'pano_uid'].iloc[0]
+        run_dir, batch_id = self.pano_df.loc[self.pano_df['pano_uid'] == pano_uid, ['run_dir', 'batch_id']].iloc[0]
+        ptree = PanoBatchDataFileTree(batch_id, self.batch_type, run_dir)
+        return ptree.get_pano_img_path(pano_uid, img_type)
+
     def pano_uid_to_data(self, pano_uid, img_type):
         run_dir = self.pano_df.loc[
             (self.pano_df.pano_uid == pano_uid), 'run_dir'
@@ -93,35 +102,13 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
         img = np.asarray(Image.open(fpath))
         return img
 
-    def start(self, debug=False):
-        """Labeling interface that displays an image and prompts user for its class."""
-        data_to_label = self.unlabeled_df.loc[self.unlabeled_df.is_labeled == False]
+    def add_labels(self, inferences):
+        assert len(inferences) == len(self.unlabeled_df)
+        self.labeled_df['feature_uid'] = self.unlabeled_df['feature_uid']
+        self.labeled_df['label'] = pd.Series(inferences).map(self.labels)
+        self.labeled_df['user_uid'] = 'INFERENCE'
+        self.unlabeled_df['is_labeled'] = True
 
-        if len(data_to_label) == 0:
-            emojis = ['🌈', '💯', '✨', '🎉', '🎃', '🔭', '🌌']
-            print(f"All data are labeled! {np.random.choice(emojis)}")
-            return
-        try:
-            i = data_to_label.index[0]
-            while i < len(self.unlabeled_df):
-                # Clear display then show next image to label
-                feature_uid = self.unlabeled_df.iloc[i]['feature_uid']
-                if debug:
-                    label_str = np.random.choice(list(self.labels.values()))
-                    self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, feature_uid, self.user_uid, label_str)
-                    i += 1
-                    continue
-
-                # Get image label from model
-
-                # TODO
-                label_val = ...
-                label_str = self.labels[str(label_val)]
-                self.labeled_df = add_labeled_data(self.labeled_df, self.unlabeled_df, feature_uid, self.user_uid, label_str)
-                i += 1
-        finally:
-            self.save_progress()
-            print('Success!')
 
     """State IO"""
 
@@ -184,3 +171,6 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
         shutil.make_archive(user_label_export_dir, 'zip', user_label_export_dir)
         shutil.rmtree(user_label_export_dir)
         print('Done!')
+
+if __name__ == '__main__':
+    InferenceSession(10)

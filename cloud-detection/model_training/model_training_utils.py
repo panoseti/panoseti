@@ -13,10 +13,9 @@ from matplotlib import pyplot as plt
 import tqdm.notebook as tqdm
 
 sys.path.append('../dataset_construction')
-# from ..data_labeling.dataset_manager import CloudDetectionDatasetManager
 from dataset_builder import CloudDetectionDatasetManager
-from dataset_utils import PanoDatasetBuilder
 from batch_building_utils import valid_pano_img_types
+from inference_session import InferenceSession
 
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
@@ -41,7 +40,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         }
         for img_type in img_data:
             pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False)
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.double) / 2**5
             if self.transform is not None:
                 data = self.transform(data)
             img_data[img_type] = data
@@ -51,35 +50,30 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         return len(self.dsl_df)
 
 
-class CloudDetectionPredict(torchvision.datasets.VisionDataset):
+class CloudDetectionInference(torchvision.datasets.VisionDataset):
     # TODO: replace labeled dataset with dataset with no labels
     pass
 
-    def __init__(self, transform=None, target_transform=None):
+    def __init__(self, batch_id, transform=None, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
-        self.dataset_manager = CloudDetectionDatasetManager(batch_type='prediction', root='../dataset_construction')
-        assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
-        self.dsl_df = self.dataset_manager.main_dfs['dataset-labels']
-        self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
+        self.inference_session = InferenceSession(batch_id)
 
     def __getitem__(self, index: int):
-        feature_uid, label = self.dsl_df.loc[:, ['feature_uid', 'label']].iloc[index]
-        y = self.one_hot_encoding[label]
-
+        feature_uid = self.inference_session.unlabeled_df.loc[:, 'feature_uid'].iloc[index]
         img_data = {
             'raw-original': None,
             'raw-fft': None,
             'raw-derivative.-60': None
         }
         for img_type in img_data:
-            pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False)
+            pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.double) / 2**5
             if self.transform is not None:
                 data = self.transform(data)
             img_data[img_type] = data
-        return img_data, y
+        return img_data
 
     def __len__(self) -> int:
-        return len(self.dsl_df)
+        return len(self.inference_session.unlabeled_df)
 
 

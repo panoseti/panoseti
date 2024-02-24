@@ -21,17 +21,17 @@ from batch_building_utils import *
 # File structure abstraction
 
 
-def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, verbose):
-    """Add entries for each skycam image to skycam_df """
-    original_img_dir = get_pano_subdirs(f'{pano_imgs_root_path}/{pano_dir}')['original']
-    for original_fname in os.listdir(original_img_dir):
-        if original_fname[-4:] == '.jpg':
-            # Collect image features
-
-            # Add entries to skycam_df
-            pano_df = add_pano_img(pano_df, ...)
-    return pano_df
-
+# def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, verbose):
+#     """Add entries for each skycam image to skycam_df """
+#     original_img_dir = get_pano_subdirs(f'{pano_imgs_root_path}/{pano_dir}')['original']
+#     for original_fname in os.listdir(original_img_dir):
+#         if original_fname[-4:] == '.jpg':
+#             # Collect image features
+#
+#             # Add entries to skycam_df
+#             pano_df = add_pano_img(pano_df, ...)
+#     return pano_df
+#
 
 # Plotting
 def plot_fft_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
