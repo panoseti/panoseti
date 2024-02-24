@@ -18,23 +18,24 @@ from batch_building_utils import *
 from dataframe_utils import *
 
 class InferenceSession(CloudDetectionBatchDataFileTree):
-    data_labels_path = f'./{data_labels_fname}'
+    dataset_root = '../dataset_construction'
+    data_labels_path = f'{dataset_root}/{data_labels_fname}'
     # TODO: continue refactoring code.
 
     def __init__(self, batch_id, task='cloud-detection'):
-        os.chdir('../dataset_construction')
         super().__init__(batch_id, batch_type='inference')
         self.name = 'INFERENCE'
         self.user_uid = get_uid(self.name)
-        self.batch_labels_path = f'./{inference_batch_labels_root_dir}/{self.batch_dir}'
+        self.batch_labels_path = f'{self.dataset_root}/{inference_batch_labels_root_dir}/{self.batch_dir}'
 
         # Unzip batched data, if it exists
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            unpack_batch_data(inference_batch_data_root_dir)
-            with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
+            unpack_batch_data(f'{self.dataset_root}/{inference_batch_data_root_dir}')
+            with open(f'{self.dataset_root}/{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
                 self.pano_paths = json.load(f)
-        except FileNotFoundError:
+        except FileNotFoundError as e:
+            raise e
             raise FileNotFoundError(f"Could not find \x1b[31m{self.batch_dir}\x1b[0m\n"
                                     f"Try adding the zipped data batch file to the following directory:\n"
                                     f"\x1b[31m{os.path.abspath(training_batch_data_root_dir)}\x1b[0m")
@@ -61,7 +62,7 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
             # These dataframes are initialized by make_batch.py and should exist within the downloaded batch data.
             df = load_df(
                 None, self.batch_id, df_type, self.task, is_temp=False,
-                save_dir=self.batch_path
+                save_dir=self.dataset_root + '/' + self.batch_path
             )
             if df is None:
                 raise ValueError(f"Dataframe for '{df_type}' missing in batch directory!")
@@ -70,7 +71,7 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
         elif df_type in ['unlabeled', 'labeled']:
             df = load_df(
                 self.user_uid, self.batch_id, df_type, self.task, is_temp=True,
-                save_dir=self.batch_labels_path
+                save_dir=self.dataset_root + '/' + self.batch_labels_path
             )
             if df is not None:
                 self.loaded_dfs_from_file[df_type] = True

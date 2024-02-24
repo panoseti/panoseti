@@ -93,9 +93,9 @@ class CloudDetectionBatchDataFileTree:
         self.batch_dir = get_batch_dir(task, batch_id, batch_type)
 
         if batch_type == 'inference':
-            self.batch_path = f'{inference_batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'../dataset_construction/{inference_batch_data_root_dir}/{self.batch_dir}'
         elif batch_type == 'training':
-            self.batch_path = f'{training_batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'../dataset_construction/{training_batch_data_root_dir}/{self.batch_dir}'
         else:
             raise ValueError('batch_type must be either "inference" or "training"')
 
@@ -308,8 +308,8 @@ def unpack_batch_data(batch_data_root_dir):
             downloaded_fname = fname
             batch_dir = fname.rstrip('.tar.gz')
     if downloaded_fname:
-        downloaded_fpath = f'{batch_data_root_dir}/{downloaded_fname}'
-        batch_dir_path = f'{batch_data_root_dir}/{batch_dir}'
+        downloaded_fpath = f'../dataset_construction/{batch_data_root_dir}/{downloaded_fname}'
+        batch_dir_path = f'../dataset_construction/{batch_data_root_dir}/{batch_dir}'
         print(f'Unzipping {downloaded_fpath}. This may take a minute...')
         shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
         os.remove(downloaded_fpath)

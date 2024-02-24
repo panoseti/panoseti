@@ -16,4 +16,13 @@ data_batch_builder = CloudDetectionBatchBuilder(
 )
 data_batch_builder.build_inference_batch()
 
+# inference_data = CloudDetectionInference(
+#     batch_id = 10,
+#     transform = transform
+# )
+# inference_loader = torch.utils.data.DataLoader(
+#   dataset=inference_data,
+#   batch_size=batch_size
+# )
+#
 
