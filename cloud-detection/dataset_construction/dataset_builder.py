@@ -212,7 +212,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
                 user_uid, batch_id, 'unlabeled', task=self.task, is_temp=False,
                 save_dir=get_user_label_export_dir(self.task, batch_id, self.batch_type, user_uid, self.user_labeled_path)
             )
-            if len(user_unlabeled_df[user_unlabeled_df.is_labeled == False]) > 0:
+            if len(user_unlabeled_df[user_unlabeled_df['is_labeled'] == False]) > 0:
                 raise ValueError(f'The following data in "{path}" are missing labels\n\n'
                       f'{user_unlabeled_df.loc[user_unlabeled_df["is_labeled"] == False]}')
             ubl_df = add_user_batch_log(ubl_df, user_uid, batch_id)
