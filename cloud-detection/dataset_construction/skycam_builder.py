@@ -11,7 +11,7 @@ from batch_building_utils import *
 
 
 class SkycamBatchBuilder(SkycamBatchDataFileTree):
-    def __init__(self, batch_id, skycam_type, year, month, day, verbose=True, force_recreate=False):
+    def __init__(self, batch_id, batch_type, skycam_type, year, month, day, verbose=True, force_recreate=False):
 
         # self.task = task
         # self.batch_id = batch_id
@@ -27,7 +27,7 @@ class SkycamBatchBuilder(SkycamBatchDataFileTree):
             'month': month,
             'day': day
         }
-        super().__init__(batch_id, **self.skycam_meta)
+        super().__init__(batch_id, batch_type, **self.skycam_meta)
 
         self.verbose = verbose
         self.force_recreate = force_recreate

@@ -21,20 +21,20 @@ from batch_building_utils import *
 # File structure abstraction
 
 
-def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, verbose):
-    """Add entries for each skycam image to skycam_df """
-    original_img_dir = get_pano_subdirs(f'{pano_imgs_root_path}/{pano_dir}')['original']
-    for original_fname in os.listdir(original_img_dir):
-        if original_fname[-4:] == '.jpg':
-            # Collect image features
-
-            # Add entries to skycam_df
-            pano_df = add_pano_img(pano_df, ...)
-    return pano_df
-
+# def add_pano_data_to_pano_df(pano_df, batch_id, pano_imgs_root_path, pano_dir, verbose):
+#     """Add entries for each skycam image to skycam_df """
+#     original_img_dir = get_pano_subdirs(f'{pano_imgs_root_path}/{pano_dir}')['original']
+#     for original_fname in os.listdir(original_img_dir):
+#         if original_fname[-4:] == '.jpg':
+#             # Collect image features
+#
+#             # Add entries to skycam_df
+#             pano_df = add_pano_img(pano_df, ...)
+#     return pano_df
+#
 
 # Plotting
-def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
+def plot_fft_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
     for i in range(len(imgs)):
         if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
             print('no image')
@@ -45,7 +45,7 @@ def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
     fig = plt.figure(figsize=(10., 3.))
 
     grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                     nrows_ncols=(1, nc),  # creates nr x 1 grid of axes
+                     nrows_ncols=(1, len(delta_ts)),  # creates nr x 1 grid of axes
                      axes_pad=0.1,  # pad between axes in inch.
                      share_all=True
                      )
@@ -62,7 +62,7 @@ def plot_fft_time_derivative(imgs, delta_ts, nc, vmin, vmax, cmap):
     for i, (ax, img, title) in enumerate(zip(grid, imgs, titles)):
         #im = ax.imshow(img, aspect='equal', cmap='viridis', vmin=vmin, vmax=vmax)
         # im = isns.fftplot(img, aspect='equal', cmap=cmap, vmin=vmin, vmax=vmax, ax=ax)
-        im = plot_image_fft(img, ax=ax, cmap=cmap)
+        im = plot_image_fft(apply_fft(img), ax=ax, cmap=cmap)
         ax.set_title(title, x=0.5, y=-0.2)
         #im.set_norm(norm)
         ims.append(im)
@@ -106,7 +106,10 @@ def apply_fft(data):
     data = data * window(window_type, shape)
     data = np.abs(fftn(data))
     data = fftshift(data)
-    data = np.log(data)
+    try:
+        data = np.log(data)
+    except ZeroDivisionError:
+        pass
     return data
 
 
@@ -129,9 +132,3 @@ def plot_image_fft(fft_data, cmap, **kwargs):
         **kwargs
     )
     return ax.get_figure()
-
-
-
-
-if __name__ == '__main__':
-    make_pano_paths_json('/panoseti-software/cloud-detection/data_labeling/batch_data1/task_cloud-detection.batch-id_0')

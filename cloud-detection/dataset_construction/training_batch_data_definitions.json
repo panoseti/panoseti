@@ -1,0 +1,137 @@
+{
+    "batches": [
+        {
+            "batch-id": 0,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
+                    "comments": "Mostly cloudy data, Moon illumination: 100%",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 7,
+                        "day": 31
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 1,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
+                    "comments": "Likely partially cloudy, Moon illumination: 0%",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-15T07:15:50Z.runtype_sci-obs.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 8,
+                        "day": 14
+                    }
+                },
+                {
+                    "sample_stride": 1,
+                    "comments": "Clear conditions, Moon illumination: 90%",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 8,
+                        "day": 28
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 2,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
+                    "comments": "Likely clear conditions, Moon illumination: 0%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-09-13T04:25:24Z.runtype_sci-obs.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 9,
+                        "day": 12
+                    }
+                },
+                {
+                    "sample_stride": 1,
+                    "comments": "Likely clear conditions, Moon illumination: 30%, Likely some bright stars in view",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-09-09T04:02:30Z.runtype_sci-obs.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 9,
+                        "day": 8
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 3,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
+                    "comments": "Likely clear conditions, Moon illumination: 11%, Bright stars in view",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-10-12T04:28:34Z.runtype_eng-test.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 10,
+                        "day": 11
+                    }
+                },
+                {
+                    "sample_stride": 1,
+                    "comments": "Likely clear conditions, Moon illumination: 70%, Bright stars in view",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-10-05T04:31:49Z.runtype_eng-test.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 10,
+                        "day": 4
+                    }
+                },
+                {
+                    "sample_stride": 1,
+                    "comments": "Likely clear conditions, Moon illumination: 95%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-09-28T06:01:09Z.runtype_eng-test.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2023,
+                        "month": 9,
+                        "day": 27
+                    }
+                }
+
+            ]
+        }
+    ]
+}
