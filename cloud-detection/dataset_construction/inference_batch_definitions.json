@@ -1,0 +1,148 @@
+{
+    "batches": [
+        {
+            "batch-id": 0,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely clear conditions, Moon illumination: 0%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-09-13T04:25:24Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 1,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely clear conditions, Moon illumination: 11%, Bright stars in view",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-10-12T04:28:34Z.runtype_eng-test.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 2,
+            "batch-def": [
+                {
+                    "time_step":
+                    "comments": "Likely clear conditions, Moon illumination: 30%, Likely some bright stars in view",
+0,
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-09-09T04:02:30Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 3,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely clear conditions, Moon illumination: 70%, Bright stars in view",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-10-05T04:31:49Z.runtype_eng-test.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 4,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely clear conditions, Moon illumination: 95%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2023-09-28T06:01:09Z.runtype_eng-test.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 5,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely partially cloudy, Moon illumination: 0%",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-15T07:15:50Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 6,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Mostly cloudy data, Moon illumination: 100%",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 7,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely partially cloudy, Moon illumination: 61%. Not in training set.",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-26T04:11:25Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 8,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely clear, Moon illumination: 39%. Not in training set.",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-24T04:37:00Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 9,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely clear, Moon illumination: 55%. Not in training set.",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-09T04:43:59Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 10,
+            "batch-def": [
+                {
+                    "time_step": 10,
+                    "comments": "Likely partially cloudy, Moon illumination: 14%. Not in training set.",
+                    "pano": {
+                        "data_dir": "/mnt/data10/data",
+                        "run_dir": "obs_Lick.start_2023-08-12T05:35:08Z.runtype_sci-obs.pffd"
+                    }
+                }
+            ]
+        }
+    ]
+}

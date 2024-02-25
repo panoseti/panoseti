@@ -23,7 +23,8 @@ data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
 # training_batch_defs_fname = 'training_batch_data_definitions.json'
 training_batch_defs_fname = 'training_batch_data_definitions_debug.json'
-inference_defs_fname = 'inference_batch_definitions_TEST.json'
+# inference_defs_fname = 'inference_batch_definitions_TEST.json'
+inference_defs_fname = 'inference_batch_definitions.json'
 
 """Valid feature types"""
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
@@ -203,13 +204,13 @@ def get_batch_def_json_fname(task, batch_id):
 
 def load_json_batch_defs(batch_type: str):
     """
-    @param batch_type: ['training', 'prediction']
+    @param batch_type: ['training', 'inference']
     @return: JSON file containing path info for observing data.
     """
     fname = None
     if batch_type == 'training':
         fname = training_batch_defs_fname
-    elif batch_type == 'prediction':
+    elif batch_type == 'inference':
         fname = inference_defs_fname
     else:
         raise ValueError(f'"{batch_type}" is not a valid batch_type')
