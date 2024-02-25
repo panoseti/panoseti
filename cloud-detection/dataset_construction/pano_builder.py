@@ -460,7 +460,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         print(f'\nCreating panoseti features for {self.run_dir}')
         assert self.batch_type == 'inference'
         for module_id in self.obs_pff_files:
-            if len(self.obs_pff_files[module_id]) == 0 or module_id == 3:
+            if len(self.obs_pff_files[module_id]) == 0:
                 continue
             try:
                 feature_df, pano_df = self.create_inference_features(
