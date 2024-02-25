@@ -4,7 +4,7 @@
             "batch-id": 0,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely clear conditions, Moon illumination: 0%",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -17,7 +17,7 @@
             "batch-id": 1,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely clear conditions, Moon illumination: 11%, Bright stars in view",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -30,9 +30,8 @@
             "batch-id": 2,
             "batch-def": [
                 {
-                    "time_step":
+                    "time_step": 30,
                     "comments": "Likely clear conditions, Moon illumination: 30%, Likely some bright stars in view",
-0,
                     "pano": {
                         "data_dir": "/mnt/data11/data",
                         "run_dir": "obs_Lick.start_2023-09-09T04:02:30Z.runtype_sci-obs.pffd"
@@ -44,7 +43,7 @@
             "batch-id": 3,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely clear conditions, Moon illumination: 70%, Bright stars in view",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -57,7 +56,7 @@
             "batch-id": 4,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely clear conditions, Moon illumination: 95%",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -70,7 +69,7 @@
             "batch-id": 5,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely partially cloudy, Moon illumination: 0%",
                     "pano": {
                         "data_dir": "/mnt/data10/data",
@@ -83,7 +82,7 @@
             "batch-id": 6,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Mostly cloudy data, Moon illumination: 100%",
                     "pano": {
                         "data_dir": "/mnt/data10/data",
@@ -96,7 +95,7 @@
             "batch-id": 7,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely partially cloudy, Moon illumination: 61%. Not in training set.",
                     "pano": {
                         "data_dir": "/mnt/data10/data",
@@ -109,7 +108,7 @@
             "batch-id": 8,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely clear, Moon illumination: 39%. Not in training set.",
                     "pano": {
                         "data_dir": "/mnt/data10/data",
@@ -122,7 +121,7 @@
             "batch-id": 9,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely clear, Moon illumination: 55%. Not in training set.",
                     "pano": {
                         "data_dir": "/mnt/data10/data",
@@ -135,7 +134,7 @@
             "batch-id": 10,
             "batch-def": [
                 {
-                    "time_step": 10,
+                    "time_step": 30,
                     "comments": "Likely partially cloudy, Moon illumination: 14%. Not in training set.",
                     "pano": {
                         "data_dir": "/mnt/data10/data",

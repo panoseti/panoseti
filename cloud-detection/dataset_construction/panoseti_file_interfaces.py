@@ -171,6 +171,8 @@ class ObservingRunInterface:
             pff.time_seek(fp, frame_time, self.img_size, target_time)
             frame_offset = int(fp.tell() / self.frame_size)
             j, img = self.read_image_frame(fp, self.img_bpp)
+            if j is None or img is None:
+                return None
             frame_unix_t = pff.img_header_time(j)
             ret = {
                 'file_idx': m,
