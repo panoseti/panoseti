@@ -31,7 +31,7 @@ def get_dataframe_formats():
             'columns': ['feature_uid', 'user_uid', 'label'],
         },
         'user-batch-log': {
-            'columns': ['user_uid', 'batch_id'],
+            'columns': ['user_uid', 'batch_id', 'batch_type'],
         },
         'dataset-labels': {
             'columns': ['feature_uid', 'label']
@@ -121,12 +121,13 @@ def add_user(user_df, user_uid, name, verbose=False):
     return user_df
     raise ValueError(f'An entry for "{name}" already exists')
 
-def add_user_batch_log(ubl_df, user_uid, batch_id, verbose=False):
+def add_user_batch_log(ubl_df, user_uid, batch_id, batch_type, verbose=False):
     """Adds new (user-uid, batch-id) entry to user_df."""
     if not (ubl_df.loc[ubl_df['user_uid'] == user_uid, 'batch_id'] == batch_id).any():
         data = {
             'user_uid': [user_uid],
-            'batch_id': [batch_id]
+            'batch_id': [batch_id],
+            'batch_type': [batch_type]
         }
         return extend_df(ubl_df, 'user-batch-log', data)
         #ubl_df.loc[len(ubl_df)] = [user_uid, batch_id]

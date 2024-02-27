@@ -16,7 +16,7 @@ default_transform = v2.Compose([
     # v2.RandomResizedCrop(size=(224, 224), antialias=True),
     # v2.RandomHorizontalFlip(p=0.5),
     v2.ToTensor(),
-    v2.ToDtype(torch.float64, scale=False)
+    v2.ToDtype(torch.float32, scale=True)
     # v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
@@ -24,7 +24,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
     def __init__(self, transform=default_transform, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
-        self.dataset_manager = CloudDetectionDatasetManager(batch_type='training', root='../dataset_construction')
+        self.dataset_manager = CloudDetectionDatasetManager(batch_type='inference', root='../dataset_construction')
         assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
         self.dsl_df = self.dataset_manager.main_dfs['dataset-labels']
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
@@ -43,7 +43,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         }
         for img_type in img_data:
             pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.double) / 2**10
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)# / 2**10
             if self.transform is not None:
                 data = self.transform(data)
             img_data[img_type] = data
@@ -54,9 +54,9 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
 
 class CloudDetectionInference(torchvision.datasets.VisionDataset):
-    def __init__(self, batch_id, transform=default_transform, target_transform=None):
+    def __init__(self, batch_id, batch_type='inference', transform=default_transform, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
-        self.inference_session = InferenceSession(batch_id)
+        self.inference_session = InferenceSession(batch_id, batch_type)
 
     def __getitem__(self, index: int):
         feature_uid = self.inference_session.unlabeled_df.loc[:, 'feature_uid'].iloc[index]
@@ -67,7 +67,7 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         }
         for img_type in img_data:
             pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.double) / 2**10
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)# / 2**10
             if self.transform is not None:
                 data = self.transform(data)
             img_data[img_type] = data
