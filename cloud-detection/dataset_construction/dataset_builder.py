@@ -262,7 +262,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
             print("Insufficient valid user-labeled data")
             return
         print("Aggregating feature metadata")
-        for batch_type in ['training', 'inference']:
+        for batch_type in ['training']:#, 'inference']:
             self.batch_type = batch_type
             for batch_id in ubl_df[ubl_df['batch_type'] == batch_type]['batch_id']:
                 # batch_id = batch_id[0]

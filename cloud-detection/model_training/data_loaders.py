@@ -24,7 +24,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
     def __init__(self, transform=default_transform, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
-        self.dataset_manager = CloudDetectionDatasetManager(batch_type='inference', root='../dataset_construction')
+        self.dataset_manager = CloudDetectionDatasetManager(batch_type='training', root='../dataset_construction')
         # assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
         self.dsl_df = self.dataset_manager.main_dfs['dataset-labels']
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
@@ -43,7 +43,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         }
         for img_type in img_data:
             pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)# / 2**10
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
             if self.transform is not None:
                 data = self.transform(data)
             img_data[img_type] = data
@@ -67,7 +67,7 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         }
         for img_type in img_data:
             pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)# / 2**10
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
             if self.transform is not None:
                 data = self.transform(data)
             img_data[img_type] = data

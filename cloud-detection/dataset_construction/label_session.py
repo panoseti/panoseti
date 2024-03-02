@@ -147,7 +147,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         elif fig_type == 'original':
             # Original stacked pano image
             im_orig = ax.imshow(
-                data, vmin=30, vmax=275, cmap='plasma'  # cmap='crest_r'
+                data, vmin=40, vmax=255, cmap='plasma'  # cmap='crest_r'
             )
             fig.colorbar(
                 im_orig, label='Counts', fraction=0.04, location='bottom', ax=ax
@@ -165,7 +165,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         elif fig_type == '-60 derivative':
             # -60 second time derivative
             im_deriv = ax.imshow(
-                data, vmin=-125, vmax=125, cmap='icefire'
+                data, vmin=-75, vmax=75, cmap='icefire'
             )
             fig.colorbar(
                 im_deriv, label=r'$\Delta$ Counts', fraction=0.04, location='bottom', ax=ax
@@ -273,7 +273,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         ]
         imgs = []
         for pano_uid in pano_uids_with_given_label:
-            imgs.append(self.pano_uid_to_data(pano_uid, 'original'))
+            imgs.append(self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60'))
         if len(imgs) == 0:
             print(f'No images labeled as "{label}"')
             return
@@ -295,7 +295,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
                     img = imgs[img_idx]
                     feature_uid = feature_uids_with_given_label.iloc[img_idx]
                     ax.set_title(f'{23}{feature_uid[:6]}')  # Label each plot with first 6 chars of feature_uid
-                    ax.imshow(img)
+                    ax.imshow(img, vmin=-100, vmax=100, cmap='icefire')
             plt.show()
             plt.close()
 
