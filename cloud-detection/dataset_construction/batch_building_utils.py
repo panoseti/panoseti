@@ -310,7 +310,7 @@ def unpack_batch_data(batch_data_root_dir, root='../dataset_construction'):
             batch_dir = fname.rstrip('.tar.gz')
     if downloaded_fname:
         downloaded_fpath = f'{root}/{batch_data_root_dir}/{downloaded_fname}'
-        batch_dir_path = f'{root}/dataset_construction/{batch_data_root_dir}/{batch_dir}'
+        batch_dir_path = f'{root}/{batch_data_root_dir}/{batch_dir}'
         print(f'Unzipping {downloaded_fpath}. This may take a minute...')
         shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
         os.remove(downloaded_fpath)
