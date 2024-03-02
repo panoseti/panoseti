@@ -299,7 +299,7 @@ def get_unix_from_datetime(t):
     return (t - datetime(1970, 1, 1, tzinfo=timezone.utc)) / timedelta(seconds=1)
 
 
-def unpack_batch_data(batch_data_root_dir):
+def unpack_batch_data(batch_data_root_dir, root='../dataset_construction'):
     """Unpack image files from batch data gztar file."""
     downloaded_fname = ''
     batch_dir = ''
@@ -309,8 +309,8 @@ def unpack_batch_data(batch_data_root_dir):
             downloaded_fname = fname
             batch_dir = fname.rstrip('.tar.gz')
     if downloaded_fname:
-        downloaded_fpath = f'../dataset_construction/{batch_data_root_dir}/{downloaded_fname}'
-        batch_dir_path = f'../dataset_construction/{batch_data_root_dir}/{batch_dir}'
+        downloaded_fpath = f'{root}/{batch_data_root_dir}/{downloaded_fname}'
+        batch_dir_path = f'{root}/{batch_data_root_dir}/{batch_dir}'
         print(f'Unzipping {downloaded_fpath}. This may take a minute...')
         shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
         os.remove(downloaded_fpath)
