@@ -21,8 +21,8 @@ inference_batch_data_zipfiles_dir = 'inference_batch_data_zipfiles'
 """Json file name definitions"""
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
-# training_batch_defs_fname = 'training_batch_data_definitions.json'
-training_batch_defs_fname = 'training_batch_data_definitions_debug.json'
+training_batch_defs_fname = 'training_batch_data_definitions.json'
+# training_batch_defs_fname = 'training_batch_data_definitions_debug.json'
 # inference_defs_fname = 'inference_batch_definitions_TEST.json'
 inference_defs_fname = 'inference_batch_definitions.json'
 

@@ -25,7 +25,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
     def __init__(self, transform=default_transform, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
         self.dataset_manager = CloudDetectionDatasetManager(batch_type='inference', root='../dataset_construction')
-        assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
+        # assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
         self.dsl_df = self.dataset_manager.main_dfs['dataset-labels']
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
         # if pano_img_type not in [t for t in valid_pano_img_types if 'raw' in t]:

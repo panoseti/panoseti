@@ -6,16 +6,22 @@ from batch_building_utils import load_batch_def
 # DATA_DIR = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
 
 # Build features for a training dataset
-batch_id = 10
-batch_def = load_batch_def(batch_id, 'training')['batch-def']
-print(batch_def)
+batch_ids_to_build = [10]
+# batch_id = 10
+for batch_id in batch_ids_to_build:
+    batch_def = load_batch_def(batch_id, 'training')['batch-def']
+    print("Building: ", batch_def)
 
-data_batch_builder = CloudDetectionBatchBuilder(
-    batch_id,
-    batch_def,
-    batch_type='training',
-    force_recreate=True
-)
-data_batch_builder.build_training_batch()
+    data_batch_builder = CloudDetectionBatchBuilder(
+        batch_id,
+        batch_def,
+        batch_type='training',
+        force_recreate=True
+    )
+    data_batch_builder.build_training_batch()
 
-print('done')
+    print('Done')
+    print('-' * 10, '\n')
+
+print(f"Building successful.")
+

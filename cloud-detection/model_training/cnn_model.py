@@ -111,7 +111,7 @@ class CloudDetection(nn.Module):
             nn.ReLU(),
             nn.BatchNorm1d(256),
 
-            nn.LazyLinear(4),
+            nn.LazyLinear(2),
         )
 
         # self.cnns = torch.nn.ModuleList([torch.nn.Sequential(self.conv1(), self.conv2(), self.conv3(), self.flatten()) for _ in range(3)])

@@ -67,9 +67,9 @@ Layer (type:depth-idx)                   Param #
 |    └─Linear: 2-58                      131,328
 |    └─ReLU: 2-59                        --
 |    └─BatchNorm1d: 2-60                 512
-|    └─Linear: 2-61                      1,028
+|    └─Linear: 2-61                      514
 =================================================================
-Total params: 12,461,640
-Trainable params: 12,461,640
+Total params: 12,461,126
+Trainable params: 12,461,126
 Non-trainable params: 0
 =================================================================

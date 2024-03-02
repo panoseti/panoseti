@@ -26,6 +26,7 @@
                 {
                     "sample_stride": 1,
                     "comments": "Mostly cloudy data, Moon illumination: 100%",
+                    "upsample_pano_frames": 1,
                     "pano": {
                         "data_dir": "/Users/nico/Downloads/panoseti_test_data/obs_data/data",
                         "run_dir": "obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd"

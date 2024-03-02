@@ -20,7 +20,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
     raw_data_shapes = {
         'raw-original': (32, 32),
-        'raw-fft': (32, 32),
+        'raw-fft': (64, 64),
         'raw-derivative': (3, 32, 32),
         'raw-derivative.-60': (32, 32),
     }
@@ -233,7 +233,15 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         skycam_integration_offset = -60
         return self.module_file_time_seek(module_id, skycam_unix_t + skycam_integration_offset)
 
-    def create_training_features(self, feature_df, pano_df, module_id, skycam_df, skycam_dir, sample_stride, allow_skip=True):
+    def create_training_features(self, feature_df,
+                                 pano_df,
+                                 module_id,
+                                 skycam_df,
+                                 skycam_dir,
+                                 sample_stride,
+                                 upsample_pano_frames,
+                                 allow_skip=True,
+                                 ):
         """For each original skycam image:
             1. Get its unix timestamp.
             2. Find the corresponding panoseti image frame, if it exists.
@@ -250,89 +258,95 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         for index, skycam_row in skycam_info.sort_values(by='unix_t').iloc[::sample_stride, :].iterrows():
             skycam_uid, skycam_unix_t = skycam_row
             if self.verbose: print(f'\nGenerating pano features for skycam_uid {skycam_uid}...')
-            pano_frame_seek_info = self.correlate_skycam_to_pano_img(skycam_unix_t, module_id)
-            if pano_frame_seek_info is None:
-                if self.verbose: print('Failed to find matching panoseti frames. Skipping...')
-                continue
+            # Upsample panoset files to gain more features
+            if upsample_pano_frames:
+                target_times = np.linspace(skycam_unix_t - 20, skycam_unix_t + 20, 5)
+            else:
+                target_times = [skycam_unix_t]
+            for pano_target_unix_t in target_times:
+                pano_frame_seek_info = self.correlate_skycam_to_pano_img(pano_target_unix_t, module_id)
+                if pano_frame_seek_info is None:
+                    # if self.verbose: print('Failed to find matching panoseti frames. Skipping...')
+                    continue
 
-            # Generate all features
-            figs = dict()
-            figs['original'] = self.make_original_fig(
-                pano_frame_seek_info['file_idx'],
-                pano_frame_seek_info['frame_offset'],
-                module_id,
-                vmin=30,#-3.5,
-                vmax=300,#3.5,
-                cmap='mako',
-            )
-            figs['fft'] = self.make_fft_fig(
-                pano_frame_seek_info['file_idx'],
-                pano_frame_seek_info['frame_offset'],
-                module_id,
-                vmin=3,
-                vmax=10,
-                cmap='icefire',
-            )
-            figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
-                pano_frame_seek_info['file_idx'],
-                pano_frame_seek_info['frame_offset'],
-                pano_frame_seek_info['frame_unix_t'],
-                module_id,
-                delta_ts=[-60, -40, -20],
-                vmin=[-150, -1],
-                vmax=[150, 6],
-                cmap=["icefire", "icefire"],
-            )
+                # Generate all features
+                figs = dict()
+                figs['original'] = self.make_original_fig(
+                    pano_frame_seek_info['file_idx'],
+                    pano_frame_seek_info['frame_offset'],
+                    module_id,
+                    vmin=30,#-3.5,
+                    vmax=300,#3.5,
+                    cmap='mako',
+                )
+                figs['fft'] = self.make_fft_fig(
+                    pano_frame_seek_info['file_idx'],
+                    pano_frame_seek_info['frame_offset'],
+                    module_id,
+                    vmin=3,
+                    vmax=10,
+                    cmap='icefire',
+                )
+                figs['derivative'], figs['fft-derivative'] = self.make_time_derivative_figs(
+                    pano_frame_seek_info['file_idx'],
+                    pano_frame_seek_info['frame_offset'],
+                    pano_frame_seek_info['frame_unix_t'],
+                    module_id,
+                    delta_ts=[-60, -40, -20],
+                    vmin=[-150, -1],
+                    vmax=[150, 6],
+                    cmap=["icefire", "icefire"],
+                )
 
-            # Check if all figs are valid
-            all_figs_valid = True
-            for img_type, fig in figs.items():
-                if fig is None:
-                    all_figs_valid = False
-                    msg = f'The following frame resulted in a None "{img_type}" figure: {pano_frame_seek_info}.'
-                    if not allow_skip:
-                        raise ValueError(msg)
-                    if self.verbose: print(msg)
+                # Check if all figs are valid
+                all_figs_valid = True
+                for img_type, fig in figs.items():
+                    if fig is None:
+                        all_figs_valid = False
+                        msg = f'The following frame resulted in a None "{img_type}" figure: {pano_frame_seek_info}.'
+                        if not allow_skip:
+                            raise ValueError(msg)
+                        if self.verbose: print(msg)
 
-            # Skip this image if not all figs are valid
-            if not all_figs_valid:
-                for fig in figs.values():
+                # Skip this image if not all figs are valid
+                if not all_figs_valid:
+                    for fig in figs.values():
+                        plt.close(fig)
+                    if self.verbose: print('Failed to create figures')
+                    # self.pano_dataset_builder.clear_current_entry()
+                    self.clear_current_entry()
+                    continue
+
+                # Write figures to data dirs
+                pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
+                frame_offset = pano_frame_seek_info['frame_offset']
+                pano_uid = get_pano_uid(pano_fname, frame_offset)
+                for img_type, fig in figs.items():
+                    if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
+                    fig.savefig(self.get_pano_img_path(pano_uid, img_type))
                     plt.close(fig)
-                if self.verbose: print('Failed to create figures')
-                # self.pano_dataset_builder.clear_current_entry()
-                self.clear_current_entry()
-                continue
 
-            # Write figures to data dirs
-            pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
-            frame_offset = pano_frame_seek_info['frame_offset']
-            pano_uid = get_pano_uid(pano_fname, frame_offset)
-            for img_type, fig in figs.items():
-                if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
-                fig.savefig(self.get_pano_img_path(pano_uid, img_type))
-                plt.close(fig)
+                # Commit entry to data_array for this run_dir
+                # self.pano_dataset_builder.write_arrays(pano_uid)
+                self.write_arrays(pano_uid)
 
-            # Commit entry to data_array for this run_dir
-            # self.pano_dataset_builder.write_arrays(pano_uid)
-            self.write_arrays(pano_uid)
-
-            # Update dataframes
-            pano_df = add_pano_img(
-                pano_df,
-                pano_uid,
-                self.run_dir,
-                pano_fname,
-                frame_offset,
-                module_id,
-                pano_frame_seek_info['frame_unix_t'],
-                self.batch_id
-            )
-            feature_df = add_feature_entry(
-                feature_df,
-                skycam_uid,
-                pano_uid,
-                self.batch_id
-            )
+                # Update dataframes
+                pano_df = add_pano_img(
+                    pano_df,
+                    pano_uid,
+                    self.run_dir,
+                    pano_fname,
+                    frame_offset,
+                    module_id,
+                    pano_frame_seek_info['frame_unix_t'],
+                    self.batch_id
+                )
+                feature_df = add_feature_entry(
+                    feature_df,
+                    skycam_uid,
+                    pano_uid,
+                    self.batch_id
+                )
         return feature_df, pano_df
 
     def create_inference_features(self, feature_df, pano_df, module_id, time_step, allow_skip=True, make_figs=False):
@@ -442,15 +456,16 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             )
         return feature_df, pano_df
 
-    def build_pano_training_batch_data(self, feature_df, pano_df, skycam_df, skycam_dir, sample_stride=1):
+    def build_pano_training_batch_data(self, feature_df, pano_df, skycam_df, skycam_dir, sample_stride=1, upsample_pano_frames=False):
         print(f'\nCreating panoseti features for {self.run_dir}')
         assert self.batch_type == 'training'
         for module_id in self.obs_pff_files:
-            if len(self.obs_pff_files[module_id]) == 0 or module_id == 3:
+            if len(self.obs_pff_files[module_id]) == 0 or module_id == 3 or module_id == 254:
                 continue
             try:
                 feature_df, pano_df = self.create_training_features(
-                    feature_df, pano_df, module_id, skycam_df, skycam_dir, sample_stride
+                    feature_df, pano_df, module_id, skycam_df, skycam_dir,
+                    sample_stride, upsample_pano_frames
                 )
             except FileExistsError:
                 continue

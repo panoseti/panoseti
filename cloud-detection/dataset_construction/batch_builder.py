@@ -154,7 +154,8 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
             )
             sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, **sample_dict['skycam'])
             self.feature_df, self.pano_df = pano_builder.build_pano_training_batch_data(
-                self.feature_df, self.pano_df, self.skycam_df, sctree.skycam_dir, sample_dict['sample_stride']
+                self.feature_df, self.pano_df, self.skycam_df, sctree.skycam_dir, sample_dict['sample_stride'],
+                upsample_pano_frames=int(sample_dict["upsample_pano_frames"])
             )
 
         try:
