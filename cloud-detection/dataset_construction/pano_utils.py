@@ -99,10 +99,10 @@ def apply_fft(data):
     if data is None or not isinstance(data, np.ndarray):
         print('no image')
         return None
-    if data.shape != (32, 32):
+    if data.shape != (32, 32) and data.shape != (64, 64):
         data = np.reshape(data, (32, 32))
     shape = data.shape
-    window_type = "cosine"
+    window_type = "hann"
     data = data * window(window_type, shape)
     data = np.abs(fftn(data, (64, 64)))
     data = fftshift(data)

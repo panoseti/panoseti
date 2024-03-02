@@ -21,7 +21,9 @@ from IPython import display
 
 from batch_building_utils import *
 from dataframe_utils import *
-
+from pano_utils import plot_time_derivative
+plt.rcParams["figure.facecolor"] = 'grey'
+plt.rcParams["font.size"] = 14
 
 class LabelSession(CloudDetectionBatchDataFileTree):
     label_session_root = '../user_labeling'
@@ -68,6 +70,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         self.pano_df = self.init_dataframe('pano')
         self.unlabeled_df = self.init_dataframe('unlabeled')
         self.labeled_df = self.init_dataframe('labeled')
+        self.pano_df['date'] = pd.to_datetime(self.pano_df['frame_unix_t'], unit='s')
 
     def init_dataframe(self, df_type):
         """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
@@ -120,43 +123,87 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         img = np.asarray(Image.open(fpath))
         return img
 
+    def pano_uid_to_raw_data(self, pano_uid, img_type):
+        run_dir = self.pano_df.loc[
+            (self.pano_df.pano_uid == pano_uid), 'run_dir'
+        ].iloc[0]
+        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir, root=self.label_session_root)
+        fpath = ptree.get_pano_img_path(pano_uid, img_type)
+        img = np.load(fpath)
+        return img
+
     """Plotting"""
 
-    def add_subplot(self, ax, img, title, aspect=None):
-        ax.imshow(img, aspect=aspect)
-        ax.get_yaxis().set_ticks([])
-        ax.get_xaxis().set_ticks([])
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+    def add_subplot(self, fig, ax, data, title, fig_type):
         ax.set_title(title)
+        if fig_type in ['skycam', 'derivative']:
+            ax.imshow(data)
+            ax.get_yaxis().set_ticks([])
+            ax.get_xaxis().set_ticks([])
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+        elif fig_type == 'original':
+            # Original stacked pano image
+            im_orig = ax.imshow(
+                data, vmin=30, vmax=275, cmap='plasma'  # cmap='crest_r'
+            )
+            fig.colorbar(
+                im_orig, label='Counts', fraction=0.04, location='bottom', ax=ax
+            )
+            ax.axis('off')
+        elif fig_type == 'fft':
+            # FFT of original stacked original
+            im_fft = ax.imshow(
+                data, vmin=3.5, vmax=8, cmap='mako'
+            )
+            fig.colorbar(
+                im_fft, label='$\log|X[k, \ell]|$', fraction=0.04, location='bottom', ax=ax
+            )
+            ax.axis('off')
+        elif fig_type == '-60 derivative':
+            # -60 second time derivative
+            im_deriv = ax.imshow(
+                data, vmin=-125, vmax=125, cmap='icefire'
+            )
+            fig.colorbar(
+                im_deriv, label=r'$\Delta$ Counts', fraction=0.04, location='bottom', ax=ax
+            )
+            ax.axis('off')
+
 
     def plot_img(self, feature_uid):
         skycam_uid, pano_uid = self.feature_df.loc[
             self.feature_df.feature_uid == feature_uid, ['skycam_uid', 'pano_uid']
         ].iloc[0]
+        module_id, date = self.pano_df[self.pano_df['pano_uid'] == pano_uid][['module_id', 'date']].iloc[0]
 
         # creating grid for subplots
         fig = plt.figure()
-        fig.set_figheight(8)
-        fig.set_figwidth(18)
+        fig.suptitle(f'[module: {module_id}] '
+                     f'[feature_uid: {feature_uid[:9]}] '
+                     f'[UTC: {date}]')
+        fig.set_figheight(6)
+        fig.set_figwidth(16)
 
-        shape = (8, 17)
+        shape = (5, 8 + 8 + 4)
         ax0 = plt.subplot2grid(shape=shape, loc=(0, 0), colspan=8, rowspan=8)
 
         # ax1 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=2, rowspan=2)
-        ax2 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=5, rowspan=4)
-        ax3 = plt.subplot2grid(shape=shape, loc=(1, 13), colspan=3, rowspan=3)
+        ax4 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=4, rowspan=4)
+        ax2 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=4, rowspan=4)
 
-        ax4 = plt.subplot2grid(shape=shape, loc=(4, 8), colspan=8, rowspan=4)
+        ax3 = plt.subplot2grid(shape=shape, loc=(0, 16), colspan=4, rowspan=4)
         # ax5 = plt.subplot2grid(shape=shape, loc=(4, 15), colspan=7, rowspan=4)
 
         # plotting subplots
         self.add_subplot(
+            fig,
             ax0,
             self.skycam_uid_to_data(skycam_uid, 'pfov'),
-            f'{skycam_uid[:8]}: skycam w/ panofov'
+            f'{skycam_uid[:8]}: All-Sky with Module FoV',
+            fig_type='skycam'
         )
         # self.add_subplot(
         #     ax1,
@@ -164,19 +211,32 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         #     f'{skycam_uid[:8]}: skycam pfov'
         # )
         self.add_subplot(
+            fig,
             ax2,
-            self.pano_uid_to_data(pano_uid, 'original'),
-            f'{pano_uid[:8]}: pano original'
+            self.pano_uid_to_raw_data(pano_uid, 'raw-original'),
+            f'Orig(t) @ 6ms intgr.',
+            fig_type='original'
         )
         self.add_subplot(
+            fig,
             ax3,
-            self.pano_uid_to_data(pano_uid, 'fft'),
-            f'{pano_uid[:8]}: pano fft'
+            self.pano_uid_to_raw_data(pano_uid, 'raw-fft'),
+            'FFT{Orig(t)}',
+            fig_type='fft'
         )
+        # self.add_subplot(
+        #     fig,
+        #     ax4,
+        #     self.pano_uid_to_data(pano_uid, 'derivative'),
+        #     f'{pano_uid[:8]}: time derivatives',
+        #     fig_type='derivative'
+        # )
         self.add_subplot(
+            fig,
             ax4,
-            self.pano_uid_to_data(pano_uid, 'derivative'),
-            f'{pano_uid[:8]}: time derivatives'
+            self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60'),
+            f'Orig(t) – Orig(t - 60)',
+            fig_type='-60 derivative'
         )
         #         self.add_subplot(
         #             ax5,
@@ -401,6 +461,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
 
 
 if __name__ == '__main__':
-    session = LabelSession("YOUR NsAMEs", 6)
-    session.start(debug=True)
+    os.chdir('user_labeling')
+    session = LabelSession("YOUR NsAMEs", 10)
+    session.start(debug=False)
     session.create_export_zipfile()
