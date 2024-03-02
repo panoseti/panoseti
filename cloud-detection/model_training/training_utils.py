@@ -116,6 +116,60 @@ def weights_init(m):
     elif isinstance(m, nn.BatchNorm2d):
         nn.init.xavier_uniform_(m.weight.data, gain=nn.init.calculate_gain('relu'))
 
+class Tester:
+    def __init__(self,
+                 model,
+                 loss_fn,
+                 test_loader,
+                 img_type='raw-derivative.-60'):
+        self.model = model
+        self.test_loader = test_loader
+        self.img_type = img_type
+        self.device = get_device()
+        self.loss_fn = loss_fn
+
+    def eval(self):
+        ncorrect = 0
+        nsamples = 0
+        loss_total = 0
+        ncloudy_wrong = 0
+        nclear_wrong = 0
+        preds = torch.tensor([])
+        targets = torch.tensor([], dtype=int)
+
+        self.model.eval()
+        with torch.no_grad():
+            for img_data, y in tqdm.tqdm(self.test_loader, unit="batches"):
+                x = img_data[self.img_type]
+                x = x.to(device=self.device, dtype=torch.float)
+                y = y.to(device=self.device)  # , dtype=torch.long)
+                scores = self.model(x)
+                loss = self.loss_fn(scores, y)
+                loss_total += loss.item()
+
+                predictions = torch.argmax(scores, dim=1)
+                ncorrect += (predictions == y).sum()
+                # print(type(scores), type(y))
+                preds = torch.concatenate((preds, torch.amax(scores, dim=1).cpu()))
+                targets = torch.concatenate((targets, y.cpu()))
+
+                ncloudy_wrong += ((predictions == 1) & (predictions != y)).cpu().sum()
+                nclear_wrong += ((predictions == 0) & (predictions != y)).cpu().sum()
+                nsamples += predictions.size(0)
+            avg_loss = loss_total / len(self.test_loader)
+            acc = float(ncorrect) / nsamples
+
+            report = "{0}: \tloss = {1:.4f},  acc = {2}/{3} ({4:.2f}%)".format(
+                'Test', avg_loss, ncorrect, nsamples, acc * 100)
+
+            display = PrecisionRecallDisplay.from_predictions(
+                targets.numpy(), preds.numpy(), name="Precision-recall for class 1 (cloudy)", pos_label=1, plot_chance_level=True,
+            )
+            _ = display.ax_.set_title("2-class Precision-Recall curve")
+            plt.show()
+            plt.close()
+            print(report)
+
 
 class Trainer:
 
@@ -241,12 +295,10 @@ class Trainer:
             report = "{0}: \tloss = {1:.4f},  acc = {2}/{3} ({4:.2f}%)".format(
                 dataset_type.capitalize().rjust(10), avg_loss, ncorrect, nsamples, acc * 100)
             if dataset_type == 'val':
-                # print(preds, targets)
-                # self.bprc.update(preds, targets)
-                # self.bprc.plot(score=True)
-                # metrics.precision_recall_fscore_support(targets.numpy(), preds.numpy())
+                # print(f"preds={preds}", f"targets={targets}")
                 display = PrecisionRecallDisplay.from_predictions(
-                    targets, preds, name="CNN", plot_chance_level=True
+                    targets.numpy(), preds.numpy(), name="Precision-recall for class 1 (cloudy)", pos_label=1,
+                    plot_chance_level=True,
                 )
                 _ = display.ax_.set_title("2-class Precision-Recall curve")
                 plt.show()
