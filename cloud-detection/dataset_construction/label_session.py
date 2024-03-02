@@ -45,7 +45,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         os.makedirs(training_batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            unpack_batch_data(training_batch_data_root_dir)
+            unpack_batch_data(training_batch_data_root_dir, root='../user_labeling')
             with open(f'{self.batch_path}/{self.skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
             with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
