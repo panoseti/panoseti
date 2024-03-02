@@ -77,7 +77,7 @@ class CloudDetectionBatchDataFileTree:
     pano_path_index_fname = 'pano_path_index.json'
     skycam_path_index_fname = 'skycam_path_index.json'
 
-    def __init__(self, batch_id, batch_type, task='cloud-detection'):
+    def __init__(self, batch_id, batch_type, task='cloud-detection', root='../dataset_construction'):
         """
         task_cloud-detection.batch-id_N/
         ├─ skycam_imgs/
@@ -94,9 +94,9 @@ class CloudDetectionBatchDataFileTree:
         self.batch_dir = get_batch_dir(task, batch_id, batch_type)
 
         if batch_type == 'inference':
-            self.batch_path = f'../dataset_construction/{inference_batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'{root}/{inference_batch_data_root_dir}/{self.batch_dir}'
         elif batch_type == 'training':
-            self.batch_path = f'../dataset_construction/{training_batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'{root}/{training_batch_data_root_dir}/{self.batch_dir}'
         else:
             raise ValueError('batch_type must be either "inference" or "training"')
 

@@ -27,7 +27,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
     data_labels_path = f'../{data_labels_fname}'
 
     def __init__(self, name, batch_id, task='cloud-detection', batch_type='training'):
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root='../user_labeling')
         self.name = name
         if name == "YOUR NAME":
             raise ValueError(f"Please enter your full name")
