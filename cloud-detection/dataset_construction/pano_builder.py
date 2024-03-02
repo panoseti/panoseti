@@ -241,6 +241,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                                  sample_stride,
                                  upsample_pano_frames,
                                  allow_skip=True,
+                                 make_figs=False    # Increase efficiency by not creating figures.
                                  ):
         """For each original skycam image:
             1. Get its unix timestamp.
@@ -268,13 +269,13 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 if pano_frame_seek_info is None:
                     # if self.verbose: print('Failed to find matching panoseti frames. Skipping...')
                     continue
-
                 # Generate all features
                 figs = dict()
                 figs['original'] = self.make_original_fig(
                     pano_frame_seek_info['file_idx'],
                     pano_frame_seek_info['frame_offset'],
                     module_id,
+                    make_fig=make_figs,
                     vmin=30,#-3.5,
                     vmax=300,#3.5,
                     cmap='mako',
@@ -283,6 +284,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                     pano_frame_seek_info['file_idx'],
                     pano_frame_seek_info['frame_offset'],
                     module_id,
+                    make_fig=make_figs,
                     vmin=3,
                     vmax=10,
                     cmap='icefire',
@@ -292,7 +294,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                     pano_frame_seek_info['frame_offset'],
                     pano_frame_seek_info['frame_unix_t'],
                     module_id,
-                    delta_ts=[-60, -40, -20],
+                    delta_ts=[-60],#, -40, -20],
+                    make_fig=make_figs,
                     vmin=[-150, -1],
                     vmax=[150, 6],
                     cmap=["icefire", "icefire"],
@@ -321,10 +324,11 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
                 frame_offset = pano_frame_seek_info['frame_offset']
                 pano_uid = get_pano_uid(pano_fname, frame_offset)
-                for img_type, fig in figs.items():
-                    if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
-                    fig.savefig(self.get_pano_img_path(pano_uid, img_type))
-                    plt.close(fig)
+                if make_figs:
+                    for img_type, fig in figs.items():
+                        if self.verbose: print(f"Creating {self.get_pano_img_path(pano_uid, img_type)}")
+                        fig.savefig(self.get_pano_img_path(pano_uid, img_type))
+                        plt.close(fig)
 
                 # Commit entry to data_array for this run_dir
                 # self.pano_dataset_builder.write_arrays(pano_uid)

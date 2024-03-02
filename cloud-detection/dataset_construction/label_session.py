@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
@@ -21,7 +22,6 @@ from IPython import display
 
 from batch_building_utils import *
 from dataframe_utils import *
-from pano_utils import plot_time_derivative
 plt.rcParams["figure.facecolor"] = 'grey'
 plt.rcParams["font.size"] = 14
 

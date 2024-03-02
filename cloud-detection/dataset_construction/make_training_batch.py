@@ -16,7 +16,8 @@ for batch_id in batch_ids_to_build:
         batch_id,
         batch_def,
         batch_type='training',
-        force_recreate=True
+        force_recreate=True,
+        prune_skycam=True
     )
     data_batch_builder.build_training_batch()
 
