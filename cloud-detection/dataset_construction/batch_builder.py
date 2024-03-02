@@ -32,7 +32,7 @@ from pano_builder import PanoBatchBuilder
 
 
 class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, batch_def, batch_type, verbose=False, do_zip=True, prune_skycam=False, force_recreate=True, manual_skycam_download=False):
+    def __init__(self, batch_id, batch_def, batch_type, verbose=False, do_zip=True, prune_skycam=False, force_recreate=False, manual_skycam_download=False):
         super().__init__(batch_id, batch_type, root='../dataset_construction')
         self.batch_def = batch_def
         self.verbose = verbose
@@ -44,6 +44,16 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
         self.feature_df = get_dataframe('feature')
         self.pano_df = get_dataframe('pano')
         self.skycam_df = get_dataframe('skycam')
+
+        if force_recreate and os.path.exists(self.batch_path):
+                # response = input(f'Force recreating will remove {os.path.abspath(self.batch_path)}.\n'
+                #                  f'Enter [y] to proceed.')
+                response = 'y'
+                if response == 'y':
+                    print(f'Removing {os.path.abspath(self.batch_path)}')
+                    shutil.rmtree(self.batch_path)
+                else:
+                    print('Cancelling force recreate and building as normal')
 
     def init_data_batch_dir(self):
         os.makedirs(self.batch_path, exist_ok=True)
@@ -66,7 +76,9 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 }
                 pano_paths[ptree.pano_path]["img_subdirs"] = ptree.pano_subdirs
                 num_imgs_per_subdir = []
-                for subdir in ptree.pano_subdirs.values():
+                for img_type, subdir in ptree.pano_subdirs.items():
+                    if img_type in ['original', 'derivative', 'fft', 'fft-derivative']:
+                        continue
                     num_imgs_per_subdir.append(len(os.listdir(subdir)))
                 if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
                     raise Warning(f"Unequal number of image in {ptree.pano_path}. Some pano img types are missing data.")
