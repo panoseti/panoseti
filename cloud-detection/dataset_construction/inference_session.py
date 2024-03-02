@@ -23,7 +23,7 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
     # TODO: continue refactoring code.
 
     def __init__(self, batch_id, task='cloud-detection'):
-        super().__init__(batch_id, batch_type='inference')
+        super().__init__(batch_id, batch_type='inference', root=self.dataset_root)
         self.name = 'INFERENCE'
         self.user_uid = 'INFERENCE'
         self.batch_labels_path = f'{self.dataset_root}/{inference_batch_labels_root_dir}'

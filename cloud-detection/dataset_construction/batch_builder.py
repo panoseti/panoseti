@@ -33,7 +33,7 @@ from pano_builder import PanoBatchBuilder
 
 class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
     def __init__(self, batch_id, batch_def, batch_type, verbose=False, do_zip=True, prune_skycam=False, force_recreate=True, manual_skycam_download=False):
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root='../dataset_construction')
         self.batch_def = batch_def
         self.verbose = verbose
         self.do_zip = do_zip

@@ -24,10 +24,11 @@ from dataframe_utils import *
 
 
 class LabelSession(CloudDetectionBatchDataFileTree):
+    label_session_root = '../user_labeling'
     data_labels_path = f'../{data_labels_fname}'
 
     def __init__(self, name, batch_id, task='cloud-detection', batch_type='training'):
-        super().__init__(batch_id, batch_type, root='../user_labeling')
+        super().__init__(batch_id, batch_type, root=self.label_session_root)
         self.name = name
         if name == "YOUR NAME":
             raise ValueError(f"Please enter your full name")
@@ -45,7 +46,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         os.makedirs(training_batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            unpack_batch_data(training_batch_data_root_dir, root='../user_labeling')
+            unpack_batch_data(training_batch_data_root_dir, root=self.label_session_root)
             with open(f'{self.batch_path}/{self.skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
             with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
@@ -105,7 +106,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         original_fname, skycam_dir = self.skycam_df.loc[
             (self.skycam_df.skycam_uid == skycam_uid), ['fname', 'skycam_dir']
         ].iloc[0]
-        sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, skycam_dir=skycam_dir)
+        sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, root=self.label_session_root, skycam_dir=skycam_dir)
         fpath = sctree.get_skycam_img_path(original_fname, img_type)
         img = np.asarray(Image.open(fpath))
         return img
@@ -114,7 +115,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         run_dir = self.pano_df.loc[
             (self.pano_df.pano_uid == pano_uid), 'run_dir'
         ].iloc[0]
-        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir)
+        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir, root=self.label_session_root)
         fpath = ptree.get_pano_img_path(pano_uid, img_type)
         img = np.asarray(Image.open(fpath))
         return img

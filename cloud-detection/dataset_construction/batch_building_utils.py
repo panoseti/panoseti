@@ -77,7 +77,7 @@ class CloudDetectionBatchDataFileTree:
     pano_path_index_fname = 'pano_path_index.json'
     skycam_path_index_fname = 'skycam_path_index.json'
 
-    def __init__(self, batch_id, batch_type, task='cloud-detection', root='../dataset_construction'):
+    def __init__(self, batch_id, batch_type, root, task='cloud-detection'):
         """
         task_cloud-detection.batch-id_N/
         ├─ skycam_imgs/
@@ -105,14 +105,14 @@ class CloudDetectionBatchDataFileTree:
 
 
 class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, batch_type, **kwargs):
+    def __init__(self, batch_id, batch_type, root='../dataset_construction', **kwargs):
         """
         [skycam_dir]/
         ├─ original/
         ├─ cropped/
         ├─ pfov/
         """
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root)
 
         if 'skycam_dir' in kwargs:
             self.skycam_dir = kwargs['skycam_dir']
@@ -153,7 +153,7 @@ class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
 
 
 class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, batch_type, run_dir):
+    def __init__(self, batch_id, batch_type, run_dir, root='../dataset_construction'):
         """
         [pano_run_dir]/
         ├─ raw/
@@ -161,7 +161,7 @@ class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
         ├─ fft/
         ├─ derivative/
         """
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path, batch_type)
