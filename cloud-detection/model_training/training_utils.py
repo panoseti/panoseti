@@ -5,7 +5,7 @@ import sys
 import torch
 # import torchvision
 # from torchvision.transforms import v2
-from sklearn.metrics import PrecisionRecallDisplay
+from sklearn.metrics import PrecisionRecallDisplay, precision_score, recall_score
 from torch import nn
 from torchsummary import summary
 
@@ -25,11 +25,12 @@ from torchvision.transforms import v2
 
 
 # ---- Plotting ----
-plt.figure(figsize=(15, 10))
+plt.figure(figsize=(5, 5))
 
 def plot_loss(log, save=True):
     train_loss = log['train']['loss']
     val_loss = log['val']['loss']
+    x = np.arange(1, len(val_loss) + 1)
 
     plt.plot(train_loss, label="training loss")
     plt.plot(val_loss, label="validation loss")
@@ -38,59 +39,82 @@ def plot_loss(log, save=True):
     plt.xlabel("epoch")
     plt.ylabel("loss")
 
+    plt.grid()
     plt.title("Cloud-Detection Training and Validation Loss vs Epoch")
     if save:
         plt.savefig("Loss")
+        plt.show()
         plt.close()
 
 def plot_accuracy(log, save=True):
     train_acc = log['train']['acc']
     val_acc = log['val']['acc']
+    x = np.arange(1, len(val_acc) + 1)
 
-    plt.plot(train_acc, label="training accuracy")
-    plt.plot(val_acc, label="validation accuracy")
+    plt.plot(x, train_acc, label="training accuracy")
+    plt.plot(x, val_acc, label="validation accuracy")
     plt.legend()
     plt.xlabel("epoch")
     plt.ylabel("accuracy")
 
     plt.title("Cloud-Detection Training and Validation Accuracy vs Epoch")
+    plt.grid()
     if save:
         plt.savefig(f"Accuracy")
+        plt.show()
         plt.close()
 
 
-def plot_cloudy_mistakes(log, save=True):
-    train_acc = log['train']['cloudy_wrong']
-    val_acc = log['val']['cloudy_wrong']
-
-    plt.plot(train_acc, label="training cloudy_wrong")
-    plt.plot(val_acc, label="validation cloudy_wrong")
+def plot_precision_recall(log, save=True):
+    val_precision = log['val']['precision']
+    val_recall = log['val']['recall']
+    x = np.arange(1, len(val_precision) + 1)
+    plt.plot(x, val_precision, label="precision (pos label=1)", )
+    plt.plot(x, val_recall, label="recall (pos label=1)")
     plt.legend()
+    plt.grid()
     plt.xlabel("epoch")
-    plt.ylabel("accuracy")
+    plt.ylabel("score")
 
-    plt.title("Cloud-Detection Training and percent cloudy misclassifications vs Epoch")
+    plt.title("Validation Precision & Recall vs Epoch")
     if save:
-        plt.savefig(f"cloudy_wrong")
+        plt.savefig(f"precision_recall_per_epoch")
+        plt.show()
         plt.close()
 
 
-def plot_clear_mistakes(log, save=True):
-    train_acc = log['train']['clear_wrong']
-    val_acc = log['val']['clear_wrong']
-
-    plt.plot(train_acc, label="training clear_wrong")
-    plt.plot(val_acc, label="validation clear_wrong")
-    plt.legend()
-    plt.xlabel("epoch")
-    plt.ylabel("accuracy")
-
-    plt.title("Cloud-Detection Training and percent clear misclassifications vs Epoch")
-    if save:
-        plt.savefig(f"clear_wrong")
-        plt.close()
-
-
+# def plot_cloudy_mistakes(log, save=True):
+#     train_acc = log['train']['cloudy_wrong']
+#     val_acc = log['val']['cloudy_wrong']
+#
+#     plt.plot(train_acc, label="training cloudy_wrong")
+#     plt.plot(val_acc, label="validation cloudy_wrong")
+#     plt.legend()
+#     plt.xlabel("epoch")
+#     plt.ylabel("accuracy")
+#
+#     plt.title("Cloud-Detection Training and percent cloudy misclassifications vs Epoch")
+#     if save:
+#         plt.savefig(f"cloudy_wrong")
+#         plt.close()
+#
+#
+# def plot_clear_mistakes(log, save=True):
+#     train_acc = log['train']['clear_wrong']
+#     val_acc = log['val']['clear_wrong']
+#
+#     plt.plot(train_acc, label="training clear_wrong")
+#     plt.plot(val_acc, label="validation clear_wrong")
+#     plt.legend()
+#     plt.xlabel("epoch")
+#     plt.ylabel("accuracy")
+#
+#     plt.title("Cloud-Detection Training and percent clear misclassifications vs Epoch")
+#     if save:
+#         plt.savefig(f"clear_wrong")
+#         plt.close()
+#
+#
 # Utils
 
 def get_device(verbose=False):
@@ -140,9 +164,11 @@ class Tester:
         self.model.eval()
         with torch.no_grad():
             for img_data, y in tqdm.tqdm(self.test_loader, unit="batches"):
-                x = img_data[self.img_type]
+                # x = img_data[self.img_type]
+                # x = np.stack((img_data[self.img_type], img_data))
+                x = img_data
                 x = x.to(device=self.device, dtype=torch.float)
-                y = y.to(device=self.device)  # , dtype=torch.long)
+                y = y.to(device=self.device, dtype=torch.long)
                 scores = self.model(x)
                 loss = self.loss_fn(scores, y)
                 loss_total += loss.item()
@@ -165,7 +191,7 @@ class Tester:
             display = PrecisionRecallDisplay.from_predictions(
                 targets.numpy(), preds.numpy(), name="Precision-recall for class 1 (cloudy)", pos_label=1, plot_chance_level=True,
             )
-            _ = display.ax_.set_title("2-class Precision-Recall curve")
+            _ = display.ax_.set_title("2-class Precision-Recall Curve on Test Dataset")
             plt.show()
             plt.close()
             print(report)
@@ -214,6 +240,8 @@ class Trainer:
             'val': {
                 'loss': [],
                 'acc': [],
+                'precision': [],
+                'recall': [],
                 'cloudy_wrong': [],
                 'clear_wrong': []
             }
@@ -226,7 +254,10 @@ class Trainer:
         self.model.eval()
         with torch.no_grad():
             img_data, y = next(iter(self.train_loader))
-            x = img_data[self.img_type]
+            # x = img_data[self.img_type]
+            # x = np.stack((img_data['raw-derivative.-60'], img_data['raw-original']))
+            # print(img_data.shape)
+            x = img_data
             x = x.to(device=self.device, dtype=torch.float)
             self.model(x)
         s = None
@@ -254,32 +285,26 @@ class Trainer:
         self.model.eval()
         with torch.no_grad():
             for img_data, y in data_loader:
-                x = img_data[self.img_type]
+                # x = img_data[self.img_type]
+                # x = np.stack((img_data['raw-derivative.-60'], img_data['raw-original']))
+                x = img_data
                 x = x.to(device=self.device, dtype=torch.float)
-                y = y.to(device=self.device)#, dtype=torch.long)
+                y = y.to(device=self.device, dtype=torch.long)
                 scores = self.model(x)
                 loss = self.loss_fn(scores, y)
                 loss_total += loss.item()
 
                 predictions = torch.argmax(scores, dim=1)
-                ncorrect += (predictions == y).sum()
-                # print(type(scores), type(y))
-                preds = torch.concatenate((preds, torch.amax(scores, dim=1).cpu()))
+                preds = torch.concatenate((preds, predictions.cpu()))
                 targets = torch.concatenate((targets, y.cpu()))
 
-                # if ((predictions == 1) & (predictions != y)).cpu().any():
-                #     for im, pred in zip(x, predictions):
-                #         cloudy_wrong_data.append(im.cpu())
-                # elif ((predictions == 0) & (predictions != y)).cpu().any():
-                #     for i in range(len(predictions)):
-                #         if predictions[i] == 0 and predictions[i] != y[i]:
-                #             clear_wrong_data.append(x[i].cpu())
                 for i in range(len(predictions)):
                     if predictions[i] == 1 and predictions[i] != y[i]:
                         self.cloudy_wrong_data.append(x[i].cpu())
                     elif predictions[i] == 0 and predictions[i] != y[i]:
                         self.clear_wrong_data.append(x[i].cpu())
 
+                ncorrect += (predictions == y).sum()
                 ncloudy_wrong += ((predictions == 1) & (predictions != y)).cpu().sum()
                 nclear_wrong += ((predictions == 0) & (predictions != y)).cpu().sum()
                 nsamples += predictions.size(0)
@@ -295,14 +320,19 @@ class Trainer:
             report = "{0}: \tloss = {1:.4f},  acc = {2}/{3} ({4:.2f}%)".format(
                 dataset_type.capitalize().rjust(10), avg_loss, ncorrect, nsamples, acc * 100)
             if dataset_type == 'val':
-                # print(f"preds={preds}", f"targets={targets}")
-                display = PrecisionRecallDisplay.from_predictions(
-                    targets.numpy(), preds.numpy(), name="Precision-recall for class 1 (cloudy)", pos_label=1,
-                    plot_chance_level=True,
+                self.training_log[dataset_type]['precision'].append(
+                    precision_score(y_true=targets.numpy(), y_pred=preds.numpy(), average='binary', pos_label=1)
                 )
-                _ = display.ax_.set_title("2-class Precision-Recall curve")
-                plt.show()
-                plt.close()
+                self.training_log[dataset_type]['recall'].append(
+                    recall_score(y_true=targets.numpy(), y_pred=preds.numpy(), average='binary', pos_label=1)
+                )
+                # display = PrecisionRecallDisplay.from_predictions(
+                #     y_true=targets.numpy(), y_pred=preds.numpy(), name="Precision-recall for class 1 (cloudy)", pos_label=1,
+                #     plot_chance_level=True,
+                # )
+                # _ = display.ax_.set_title("2-class Precision-Recall Curve on Validation Dataset")
+                # plt.show()
+                # plt.close()
             return report
 
     def train(self):
@@ -322,6 +352,7 @@ class Trainer:
         # Init LR schedulers
         scheduler_exp = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=self.gamma)
         scheduler_plat = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer)
+        # scheduler_step = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.5)
         try:
             for e in range(1, self.epochs + 1):
                 print(f"\n\nEpoch {e}")
@@ -329,7 +360,8 @@ class Trainer:
                     # Remove the gradients from the previous step
                     self.optimizer.zero_grad()
                     model.train()
-                    x = img_data[self.img_type]
+                    # x = img_data[self.img_type]
+                    x = img_data
                     x = x.to(device=self.device, dtype=torch.float)
                     y = y.to(device=self.device, dtype=torch.long)
 
@@ -345,6 +377,7 @@ class Trainer:
                 train_report = self.record_acc_and_loss('train')
                 valid_report = self.record_acc_and_loss('val')
                 print(valid_report, '\n', train_report)
+                # print(valid_report, '\n')
 
                 # Save model parameters with the best validation accuracy
                 val_accs = self.training_log['val']['acc']
@@ -354,6 +387,7 @@ class Trainer:
                 # Update optimizer
                 scheduler_exp.step()
                 scheduler_plat.step(self.training_log['val']['loss'][-1])
+                # scheduler_step.step()
             print('Done training')
             self.make_training_plots(do_save=True)
         except KeyboardInterrupt:
@@ -367,12 +401,15 @@ class Trainer:
         plot_loss(self.training_log, save=do_save)
         plt.show()
         plt.close()
-        plot_cloudy_mistakes(self.training_log, save=do_save)
+        plot_precision_recall(self.training_log, save=do_save)
         plt.show()
         plt.close()
-        plot_clear_mistakes(self.training_log, save=do_save)
-        plt.show()
-        plt.close()
+        # plot_cloudy_mistakes(self.training_log, save=do_save)
+        # plt.show()
+        # plt.close()
+        # plot_clear_mistakes(self.training_log, save=do_save)
+        # plt.show()
+        # plt.close()
 
 # if __name__ == '__main__':
 #     from cnn_model import CloudDetection
