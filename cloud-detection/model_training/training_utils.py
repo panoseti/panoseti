@@ -25,14 +25,15 @@ from torchvision.transforms import v2
 
 
 # ---- Plotting ----
-plt.figure(figsize=(5, 5))
+plt.figure(figsize=(5, 5));
 
 def plot_loss(log, save=True):
     train_loss = log['train']['loss']
     val_loss = log['val']['loss']
     x = np.arange(1, len(val_loss) + 1)
 
-    plt.plot(train_loss, label="training loss")
+    if len(train_acc) > 0:
+        plt.plot(train_loss, label="training loss")
     plt.plot(val_loss, label="validation loss")
 
     plt.legend()
@@ -51,7 +52,8 @@ def plot_accuracy(log, save=True):
     val_acc = log['val']['acc']
     x = np.arange(1, len(val_acc) + 1)
 
-    plt.plot(x, train_acc, label="training accuracy")
+    if len(train_acc) > 0:
+        plt.plot(x, train_acc, label="training accuracy")
     plt.plot(x, val_acc, label="validation accuracy")
     plt.legend()
     plt.xlabel("epoch")
@@ -262,7 +264,7 @@ class Trainer:
             self.model(x)
         s = None
         try:
-            s = summary(self.model)
+            s = summary(self.model, self.model.input_shape)
             with open('../model_training/model_summary.txt', 'w') as f:
                 f.write(str(s))
         except ValueError as verr:
@@ -335,7 +337,7 @@ class Trainer:
                 # plt.close()
             return report
 
-    def train(self):
+    def train(self, ):
         """
         Train the given model and report accuracy and loss during training.
 
@@ -374,10 +376,10 @@ class Trainer:
                     self.optimizer.step()
 
                 # Update log of train and validation accuracy and loss. Print progress.
-                train_report = self.record_acc_and_loss('train')
+                # train_report = self.record_acc_and_loss('train')
                 valid_report = self.record_acc_and_loss('val')
-                print(valid_report, '\n', train_report)
-                # print(valid_report, '\n')
+                # print(valid_report, '\n', train_report)
+                print(valid_report, '\n')
 
                 # Save model parameters with the best validation accuracy
                 val_accs = self.training_log['val']['acc']

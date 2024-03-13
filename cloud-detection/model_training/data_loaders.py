@@ -30,12 +30,14 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         #     'raw-original': None,
         #     'raw-fft': None,
         # }
-        img_types = ['raw-derivative.-60', 'raw-original']
-        stacked_data = np.zeros((32, 32, 2))
+        img_types = ['raw-derivative.-60']#, 'raw-original']
+        stacked_data = np.zeros((32, 32, 1))
         for i in range(len(img_types)):
             img_type = img_types[i]
             pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
+            # stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
             stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+
 
         transformed_data = None
         if self.transform is not None:
