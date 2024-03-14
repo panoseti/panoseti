@@ -32,7 +32,7 @@ def plot_loss(log, save=True):
     val_loss = log['val']['loss']
     x = np.arange(1, len(val_loss) + 1)
 
-    if len(train_acc) > 0:
+    if len(train_loss) > 0:
         plt.plot(train_loss, label="training loss")
     plt.plot(val_loss, label="validation loss")
 
@@ -85,38 +85,38 @@ def plot_precision_recall(log, save=True):
         plt.close()
 
 
-# def plot_cloudy_mistakes(log, save=True):
-#     train_acc = log['train']['cloudy_wrong']
-#     val_acc = log['val']['cloudy_wrong']
-#
-#     plt.plot(train_acc, label="training cloudy_wrong")
-#     plt.plot(val_acc, label="validation cloudy_wrong")
-#     plt.legend()
-#     plt.xlabel("epoch")
-#     plt.ylabel("accuracy")
-#
-#     plt.title("Cloud-Detection Training and percent cloudy misclassifications vs Epoch")
-#     if save:
-#         plt.savefig(f"cloudy_wrong")
-#         plt.close()
-#
-#
-# def plot_clear_mistakes(log, save=True):
-#     train_acc = log['train']['clear_wrong']
-#     val_acc = log['val']['clear_wrong']
-#
-#     plt.plot(train_acc, label="training clear_wrong")
-#     plt.plot(val_acc, label="validation clear_wrong")
-#     plt.legend()
-#     plt.xlabel("epoch")
-#     plt.ylabel("accuracy")
-#
-#     plt.title("Cloud-Detection Training and percent clear misclassifications vs Epoch")
-#     if save:
-#         plt.savefig(f"clear_wrong")
-#         plt.close()
-#
-#
+def plot_cloudy_mistakes(log, save=True):
+    train_acc = log['train']['cloudy_wrong']
+    val_acc = log['val']['cloudy_wrong']
+
+    plt.plot(train_acc, label="training cloudy_wrong")
+    plt.plot(val_acc, label="validation cloudy_wrong")
+    plt.legend()
+    plt.xlabel("epoch")
+    plt.ylabel("accuracy")
+
+    plt.title("Cloud-Detection Training and percent cloudy misclassifications vs Epoch")
+    if save:
+        plt.savefig(f"cloudy_wrong")
+        plt.close()
+
+
+def plot_clear_mistakes(log, save=True):
+    train_acc = log['train']['clear_wrong']
+    val_acc = log['val']['clear_wrong']
+
+    plt.plot(train_acc, label="training clear_wrong")
+    plt.plot(val_acc, label="validation clear_wrong")
+    plt.legend()
+    plt.xlabel("epoch")
+    plt.ylabel("accuracy")
+
+    plt.title("Cloud-Detection Training and percent clear misclassifications vs Epoch")
+    if save:
+        plt.savefig(f"clear_wrong")
+        plt.close()
+
+
 # Utils
 
 def get_device(verbose=False):
@@ -376,10 +376,10 @@ class Trainer:
                     self.optimizer.step()
 
                 # Update log of train and validation accuracy and loss. Print progress.
-                # train_report = self.record_acc_and_loss('train')
+                train_report = self.record_acc_and_loss('train')
                 valid_report = self.record_acc_and_loss('val')
-                # print(valid_report, '\n', train_report)
-                print(valid_report, '\n')
+                print(valid_report, '\n', train_report)
+                # print(valid_report, '\n')
 
                 # Save model parameters with the best validation accuracy
                 val_accs = self.training_log['val']['acc']
@@ -406,88 +406,11 @@ class Trainer:
         plot_precision_recall(self.training_log, save=do_save)
         plt.show()
         plt.close()
-        # plot_cloudy_mistakes(self.training_log, save=do_save)
-        # plt.show()
-        # plt.close()
-        # plot_clear_mistakes(self.training_log, save=do_save)
-        # plt.show()
-        # plt.close()
+        plot_cloudy_mistakes(self.training_log, save=do_save)
+        plt.show()
+        plt.close()
+        plot_clear_mistakes(self.training_log, save=do_save)
+        plt.show()
+        plt.close()
 
-# if __name__ == '__main__':
-#     from cnn_model import CloudDetection
-#     from data_loaders import CloudDetectionTrain
-#
-#     transform = v2.Compose([
-#         v2.ToTensor(),
-#         v2.RandomHorizontalFlip(),
-#         v2.RandomVerticalFlip(),
-#         v2.Normalize(mean=[0], std=[67]),
-#         v2.ToDtype(torch.float, scale=True),
-#         # v2.ColorJitter(0.5, None, None, None),
-#         v2.GaussianBlur(kernel_size=(5, 5), sigma=(0.2, 0.5))
-#     ])
-#
-#     # torchvision.transforms.ToTensor()
-#
-#     test_prop = 0.0
-#     val_prop = 0.3
-#
-#     labeled_data = CloudDetectionTrain(
-#         transform=transform
-#     )
-#     dataset_size = len(labeled_data)
-#     dataset_indices = np.arange(dataset_size)
-#
-#     np.random.shuffle(dataset_indices)
-#
-#     # Test / Train split
-#     test_split_index = int(np.floor(test_prop * dataset_size))
-#     trainset_indices, test_idx = dataset_indices[test_split_index:], dataset_indices[:test_split_index]
-#
-#     # Train / Val split
-#     trainset_size = len(trainset_indices)
-#     val_split_index = int(np.floor(val_prop * trainset_size))
-#     train_idx, val_idx = trainset_indices[val_split_index:], trainset_indices[:val_split_index]
-#
-#     batch_size = 64
-#
-#     # NUM_TRAIN = int(len(labeled_data) * proportion_train)
-#     # NUM_TRAIN = NUM_TRAIN - NUM_TRAIN % batch_size
-#
-#     # val_split_index = int(np.floor(proportion_val * dataset_size))
-#     # train_idx, val_idx = dataset_indices[val_split_index:], dataset_indices[:val_split_index]
-#     test_loader = torch.utils.data.DataLoader(
-#         dataset=labeled_data,
-#         batch_size=batch_size,
-#         sampler=torch.utils.data.SubsetRandomSampler(test_idx)
-#     )
-#
-#     train_loader = torch.utils.data.DataLoader(
-#         dataset=labeled_data,
-#         batch_size=batch_size,
-#         sampler=torch.utils.data.SubsetRandomSampler(train_idx)
-#     )
-#
-#     val_loader = torch.utils.data.DataLoader(
-#         dataset=labeled_data,
-#         batch_size=batch_size,
-#         sampler=torch.utils.data.sampler.SubsetRandomSampler(val_idx)
-#     )
-#
-#     img_type = 'raw-derivative.-60'
-#
-#     learning_rate = 0.001
-#     # momentum=0.9
-#
-#     model = CloudDetection()
-#
-#     # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, weight_decay=1e-6)#, momentum=momentum)
-#     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
-#     loss_fn = nn.CrossEntropyLoss()
-#
-#     trainer = Trainer(
-#         model, optimizer, loss_fn, train_loader, val_loader,
-#         epochs=30, gamma=0.9, do_summary=False,
-#         img_type=img_type
-#     );
-#     trainer.train()
+
