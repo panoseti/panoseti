@@ -19,6 +19,12 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         self.dataset_manager = CloudDetectionDatasetManager(batch_type='training', root='../dataset_construction')
         # assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
         self.dsl_df = self.dataset_manager.main_dfs['dataset-labels']
+        
+        pano_df = self.dataset_manager.main_dfs['pano']
+        feature_df = self.dataset_manager.main_dfs['feature']
+        feature_merged_df = feature_df.reset_index().merge(pano_df, on = 'pano_uid').set_index('index')
+        self.dsl_df = feature_merged_df.merge(self.dsl_df, on = 'feature_uid').reset_index()
+        
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
 
     def __getitem__(self, index: int):
@@ -35,7 +41,6 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         for i in range(len(img_types)):
             img_type = img_types[i]
             pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            # stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
             stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
 
 
@@ -68,8 +73,14 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
 
     def __getitem__(self, index: int):
         feature_uid = self.inference_session.unlabeled_df.loc[:, 'feature_uid'].iloc[index]
-        img_types = ['raw-derivative.-60', 'raw-original']
-        stacked_data = np.zeros((32, 32, 2))
+        # img_types = ['raw-derivative.-60', 'raw-original']
+        # stacked_data = np.zeros((32, 32, 2))
+        # for i in range(len(img_types)):
+        #     img_type = img_types[i]
+        #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
+        #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+        img_types = ['raw-derivative.-60']#, 'raw-original']
+        stacked_data = np.zeros((32, 32, 1))
         for i in range(len(img_types)):
             img_type = img_types[i]
             pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)

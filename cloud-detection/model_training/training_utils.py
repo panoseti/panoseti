@@ -25,60 +25,60 @@ from torchvision.transforms import v2
 
 
 # ---- Plotting ----
-plt.figure(figsize=(5, 5));
+# plt.figure(figsize=(15, 15));
 
-def plot_loss(log, save=True):
+def plot_loss(log, ax, save=True):
     train_loss = log['train']['loss']
     val_loss = log['val']['loss']
     x = np.arange(1, len(val_loss) + 1)
 
     if len(train_loss) > 0:
-        plt.plot(train_loss, label="training loss")
-    plt.plot(val_loss, label="validation loss")
+        ax.plot(train_loss, label="training loss")
+    ax.plot(val_loss, label="validation loss")
 
-    plt.legend()
-    plt.xlabel("epoch")
-    plt.ylabel("loss")
+    ax.legend()
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("loss")
 
-    plt.grid()
-    plt.title("Cloud-Detection Training and Validation Loss vs Epoch")
+    ax.grid()
+    ax.set_title("Loss vs Epoch")
     if save:
         plt.savefig("Loss")
         plt.show()
         plt.close()
 
-def plot_accuracy(log, save=True):
+def plot_accuracy(log, ax, save=True):
     train_acc = log['train']['acc']
     val_acc = log['val']['acc']
     x = np.arange(1, len(val_acc) + 1)
 
     if len(train_acc) > 0:
-        plt.plot(x, train_acc, label="training accuracy")
-    plt.plot(x, val_acc, label="validation accuracy")
-    plt.legend()
-    plt.xlabel("epoch")
-    plt.ylabel("accuracy")
+        ax.plot(x, train_acc, label="training accuracy")
+    ax.plot(x, val_acc, label="validation accuracy")
+    ax.legend()
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("accuracy")
 
-    plt.title("Cloud-Detection Training and Validation Accuracy vs Epoch")
-    plt.grid()
+    ax.set_title("Accuracy vs Epoch")
+    ax.grid()
     if save:
         plt.savefig(f"Accuracy")
         plt.show()
         plt.close()
 
 
-def plot_precision_recall(log, save=True):
+def plot_precision_recall(log, ax, save=True):
     val_precision = log['val']['precision']
     val_recall = log['val']['recall']
     x = np.arange(1, len(val_precision) + 1)
-    plt.plot(x, val_precision, label="precision (pos label=1)", )
-    plt.plot(x, val_recall, label="recall (pos label=1)")
-    plt.legend()
-    plt.grid()
-    plt.xlabel("epoch")
-    plt.ylabel("score")
+    ax.plot(x, val_precision, label="precision (pos label=1)")
+    ax.plot(x, val_recall, label="recall (pos label=1)")
+    ax.legend()
+    ax.grid()
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("score")
 
-    plt.title("Validation Precision & Recall vs Epoch")
+    ax.set_title("Validation Precision & Recall vs Epoch")
     if save:
         plt.savefig(f"precision_recall_per_epoch")
         plt.show()
@@ -335,9 +335,10 @@ class Trainer:
                 # _ = display.ax_.set_title("2-class Precision-Recall Curve on Validation Dataset")
                 # plt.show()
                 # plt.close()
+                
             return report
 
-    def train(self, ):
+    def train(self, make_train_logs=False, write_plots=False):
         """
         Train the given model and report accuracy and loss during training.
 
@@ -376,10 +377,12 @@ class Trainer:
                     self.optimizer.step()
 
                 # Update log of train and validation accuracy and loss. Print progress.
-                train_report = self.record_acc_and_loss('train')
                 valid_report = self.record_acc_and_loss('val')
-                print(valid_report, '\n', train_report)
-                # print(valid_report, '\n')
+                if make_train_logs:
+                    train_report = self.record_acc_and_loss('train')
+                    print(valid_report, '\n', train_report)
+                else:
+                    print(valid_report, '\n')
 
                 # Save model parameters with the best validation accuracy
                 val_accs = self.training_log['val']['acc']
@@ -391,26 +394,31 @@ class Trainer:
                 scheduler_plat.step(self.training_log['val']['loss'][-1])
                 # scheduler_step.step()
             print('Done training')
-            self.make_training_plots(do_save=True)
+            if write_plots:
+                self.make_training_plots(do_save=True)
+            else:
+                self.make_training_plots(do_save=False)
         except KeyboardInterrupt:
             print('Keyboard Interrupt: Stopping training')
             # self.make_training_plots(do_save=False)
 
     def make_training_plots(self, do_save):
-        plot_accuracy(self.training_log, save=do_save)
+        fig, axs = plt.subplots(1,3, figsize=(15, 5))
+        fig.tight_layout()
+        plot_accuracy(self.training_log, axs[0], save=do_save)
+        # plt.show()
+        # plt.close()
+        plot_loss(self.training_log, axs[1], save=do_save)
+        # plt.show()
+        # plt.close()
+        plot_precision_recall(self.training_log, axs[2], save=do_save)
         plt.show()
         plt.close()
-        plot_loss(self.training_log, save=do_save)
-        plt.show()
-        plt.close()
-        plot_precision_recall(self.training_log, save=do_save)
-        plt.show()
-        plt.close()
-        plot_cloudy_mistakes(self.training_log, save=do_save)
-        plt.show()
-        plt.close()
-        plot_clear_mistakes(self.training_log, save=do_save)
-        plt.show()
-        plt.close()
+        # plot_cloudy_mistakes(self.training_log, save=do_save)
+        # plt.show()
+        # plt.close()
+        # plot_clear_mistakes(self.training_log, save=do_save)
+        # plt.show()
+        # plt.close()
 
 
