@@ -15,7 +15,7 @@ class CloudDetection(nn.Module):
         super().__init__()
         
         conv1_groups = 1
-        conv1_nker = 24
+        conv1_nker = 64
         self.conv1 = nn.Sequential(
             nn.Conv2d(1, conv1_nker, 3, stride=1, padding='same', groups=conv1_groups),
             nn.ReLU(),
@@ -35,7 +35,7 @@ class CloudDetection(nn.Module):
         )
         
         conv2_groups = 1
-        conv2_nker = 24
+        conv2_nker = 28
         self.conv2 = nn.Sequential(
             nn.Conv2d(conv1_nker, conv2_nker, 3, stride=1, padding='same', groups=conv2_groups),
             nn.ReLU(),
@@ -52,14 +52,14 @@ class CloudDetection(nn.Module):
         self.flatten = nn.Flatten()
 
         self.linear_stack = nn.Sequential(
+            nn.LazyLinear(128),
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Dropout1d(p=0.5),
+
             nn.LazyLinear(84),
             nn.ReLU(),
             nn.BatchNorm1d(84),
-            nn.Dropout1d(p=0.5),
-
-            nn.LazyLinear(64),
-            nn.ReLU(),
-            nn.BatchNorm1d(64),
             nn.Dropout1d(p=0.5),
 
             

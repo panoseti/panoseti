@@ -155,6 +155,7 @@ class Tester:
         self.loss_fn = loss_fn
 
     def eval(self):
+        model = self.model.to(device=self.device)
         ncorrect = 0
         nsamples = 0
         loss_total = 0
