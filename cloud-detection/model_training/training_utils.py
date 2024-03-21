@@ -58,6 +58,7 @@ def plot_accuracy(log, ax, save=True):
     ax.legend()
     ax.set_xlabel("epoch")
     ax.set_ylabel("accuracy")
+    ax.set_ylim([0, 1.025])
 
     ax.set_title("Accuracy vs Epoch")
     ax.grid()
@@ -77,6 +78,7 @@ def plot_precision_recall(log, ax, save=True):
     ax.grid()
     ax.set_xlabel("epoch")
     ax.set_ylabel("score")
+    ax.set_ylim([0, 1.025])
 
     ax.set_title("Validation Precision & Recall vs Epoch")
     if save:
