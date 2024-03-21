@@ -341,7 +341,7 @@ class Trainer:
                 
             return report
 
-    def train(self, make_train_logs=False, write_plots=False):
+    def train(self, make_train_logs=False, write_plots=False, axs=None, fold_idx=None):
         """
         Train the given model and report accuracy and loss during training.
 
@@ -398,25 +398,33 @@ class Trainer:
                 # scheduler_step.step()
             print('Done training')
             if write_plots:
-                self.make_training_plots(do_save=True)
+                self.make_training_plots(do_save=True, axs=axs, fold_idx=fold_idx)
             else:
-                self.make_training_plots(do_save=False)
+                self.make_training_plots(do_save=False, axs=axs, fold_idx=fold_idx)
         except KeyboardInterrupt:
             print('Keyboard Interrupt: Stopping training')
             # self.make_training_plots(do_save=False)
 
-    def make_training_plots(self, do_save):
-        fig, axs = plt.subplots(1,3, figsize=(15, 5))
-        fig.tight_layout()
-        plot_accuracy(self.training_log, axs[0], save=do_save)
-        # plt.show()
-        # plt.close()
-        plot_loss(self.training_log, axs[1], save=do_save)
-        # plt.show()
-        # plt.close()
-        plot_precision_recall(self.training_log, axs[2], save=do_save)
-        plt.show()
-        plt.close()
+    def make_training_plots(self, do_save, axs, fold_idx):
+        if axs is None:
+            fig, axs = plt.subplots(1,3, figsize=(15, 5))
+            # fig.tight_layout()
+            if fold_idx is not None:
+                print(fold_idx)
+                fig.suptitle(f'Fold {fold_idx}')
+            plot_accuracy(self.training_log, axs[0], save=do_save)
+            # plt.show()
+            # plt.close()
+            plot_loss(self.training_log, axs[1], save=do_save)
+            # plt.show()
+            # plt.close()
+            plot_precision_recall(self.training_log, axs[2], save=do_save)
+            plt.show()
+            plt.close()
+        else:
+            plot_accuracy(self.training_log, axs[0], save=do_save)
+            plot_loss(self.training_log, axs[1], save=do_save)
+            plot_precision_recall(self.training_log, axs[2], save=do_save)
         # plot_cloudy_mistakes(self.training_log, save=do_save)
         # plt.show()
         # plt.close()
