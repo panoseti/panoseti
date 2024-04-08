@@ -1,30 +1,29 @@
 {
     "name": "Lick",
-    "comment": "Configuration at Lick using only Astrograph",
-    "wps": {
-        "url": "http://admin:epowerpanoseti@192.168.0.100",
-        "quabo_socket": 5
+    "comment": "Lick config with just the 1 Crocker modules",
+    "wps_crocker": {
+        "url": "http://admin:epowerpanoseti@crocker-power",
+        "quabo_socket": 1
     },
-    "wr_ip_addr": "192.168.1.254",
+    "wr_ip_addr": "wrs",
     "gps_port": "/dev/ttyUSB0",
     "detector_overvoltage": 3,
     "domes": [
         {
-            "name": "astrograph",
+            "name": "crocker",
             "obslat": 37.3425,
             "obslon": -121.63777,
             "obsalt": 1283,
             "modules": [
                 {
                     "name": "East",
-                    "mobo_serialno": "M12",
+                    "mobo_serialno": "M11",
                     "quabo_version": "qfp",
-                    "comment": "not bga",
-                    "ip_addr": "192.168.0.4",
-                    "wps": "wps",
+                    "ip_addr": "192.168.3.248",
+                    "wps": "wps_crocker",
                     "azimuth": 182.8320,
                     "elevation": 78.3467,
-                    "position_angle": -1.7899
+                    "position_angle": -1.7899 
                 }
             ]
         }
