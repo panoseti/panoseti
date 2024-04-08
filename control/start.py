@@ -24,6 +24,7 @@ import os, sys, traceback, shutil, time
 from glob import glob
 import util, file_xfer, quabo_driver, stop, session_stop
 from sw_info import get_sw_info
+import socket
 
 sys.path.insert(0, '../util')
 
@@ -246,7 +247,9 @@ def start_run(
     obs_config, daq_config, quabo_uids, data_config, no_hv, no_redis, no_data
 ):
     my_ip = util.local_ip()
-    if my_ip != daq_config['head_node_ip_addr']:
+    # convert head node name to IP address
+    head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
+    if my_ip != head_node_ip:
         print('This node (%s) is not the head node specified in daq_config.json (%s)'%(my_ip, daq_config['head_node_ip_addr']))
         return False
 
