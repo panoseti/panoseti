@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-import sys
+import sys, os
 
 import power, util
 
@@ -24,6 +24,10 @@ def session_stop(obs_config):
               "Try running 'sudo ./config.py --stop_redis_daemons'.")
 
 if __name__ == "__main__":
+    try:
+        os.remove('obs_comments.txt')
+    except:
+        pass
     obs_config = config_file.get_obs_config()
     session_stop(obs_config)
     skymap_helper.stop_skymap_info_gen()
