@@ -29,5 +29,14 @@ if __name__ == "__main__":
     except:
         pass
     obs_config = config_file.get_obs_config()
-    session_stop(obs_config)
+    daq_config = config_file.get_daq_config()
+    # gen skymap_info.json first, then stop the session
     skymap_helper.stop_skymap_info_gen()
+    # get run name, and copy the skymap_info.json to the run dir
+    run_name = util.read_run_name()
+    run_dir = daq_config['head_node_data_dir'] + '/' + run_name
+    if run_name:
+        skymap_helper.copy_skymap_info_to_run_dir(run_dir)
+    session_stop(obs_config)
+    
+
