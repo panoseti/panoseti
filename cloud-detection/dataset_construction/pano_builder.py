@@ -20,9 +20,12 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
     raw_data_shapes = {
         'raw-original': (32, 32),
-        'raw-fft': (64, 64),
-        'raw-derivative': (3, 32, 32),
+        'raw-fft': (32, 32),
+        # 'raw-derivative': (3, 32, 32),
         'raw-derivative.-60': (32, 32),
+        'raw-derivative-fft.-60': (32, 32),
+        'raw-derivative.-120': (32, 32),
+        'raw-derivative-fft.-120': (32, 32),
     }
 
     def __init__(self, task, batch_id, batch_type, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
@@ -118,22 +121,6 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             return fig
         else:
             return 'ok'
-        # module_pff_files = self.obs_pff_files[module_id]
-        # file_info = module_pff_files[start_file_idx]
-        # fpath = f"{self.run_path}/{file_info['fname']}"
-        # with open(fpath, 'rb') as fp:
-        #     fp.seek(
-        #         start_frame_offset * self.frame_size,
-        #         os.SEEK_CUR
-        #     )
-        #     j, img = self.read_image_frame(fp, self.img_bpp)
-        #     # self.pano_dataset_builder.add_img_to_entry(img, 'original', self.img_bpp)
-        #     self.add_img_to_entry(img, 'raw-original')
-        #     img = self.img_transform(img)
-        #     #img = (img - np.median(img)) / np.std(img)
-        #     fig = self.plot_image(img, vmin=vmin, vmax=vmax, bins=40, cmap=cmap, perc=(0.5, 99.5))
-        #     #plt.pause(0.5)
-        #     return fig
 
     def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, make_fig=True, vmin=None, vmax=None, cmap=None):
         """Create a 2D FFT feature from a single stacked panoseti image."""
@@ -148,21 +135,6 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         # # Testing
         # fig = self.plot_image(stacked_img, bins=40, cmap=cmap, perc=(0.5, 99.5))
         # plt.show()
-
-        # module_pff_files = self.obs_pff_files[module_id]
-        # file_info = module_pff_files[start_file_idx]
-        # fpath = f"{self.run_path}/{file_info['fname']}"
-        # with open(fpath, 'rb') as fp:
-        #     fp.seek(
-        #         start_frame_offset * self.frame_size,
-        #         os.SEEK_CUR
-        #     )
-        #     j, img = self.read_image_frame(fp, self.img_bpp)
-        #     # self.pano_dataset_builder.add_img_to_entry(apply_fft(img), 'fft', self.img_bpp)
-        #     self.add_img_to_entry(apply_fft(img), 'raw-fft')
-        #     img = self.img_transform(img)
-        #     fig = plot_image_fft(apply_fft(img), vmin=vmin, vmax=vmax, cmap=cmap)
-        #     return fig
 
     def make_time_derivative_figs(self,
                                   start_file_idx,
@@ -210,10 +182,16 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
         for i in range(len(sorted_delta_ts)):
             delta_t = sorted_delta_ts[i]
+            # Make derivative features
             derivative_type = f'raw-derivative.{delta_t}'
             data = raw_diff_data[i]
             if derivative_type in valid_pano_img_types:
                 self.add_img_to_entry(np.array(data), derivative_type)
+            # Make derivative-fft features
+            derivative_fft_type = f'raw-derivative-fft.{delta_t}'
+            data = apply_fft(raw_diff_data[i])
+            if derivative_fft_type in valid_pano_img_types:
+                self.add_img_to_entry(np.array(data), derivative_fft_type)
         if make_fig:
             fig_time_derivative = plot_time_derivative(
                 deriv_imgs, delta_ts, vmin=vmin[0], vmax=vmax[0], cmap=cmap[0]
@@ -294,7 +272,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                     pano_frame_seek_info['frame_offset'],
                     pano_frame_seek_info['frame_unix_t'],
                     module_id,
-                    delta_ts=[-60],#, -40, -20],
+                    delta_ts=[-60, -120],#, -40, -20],
                     make_fig=make_figs,
                     vmin=[-150, -1],
                     vmax=[150, 6],
@@ -464,7 +442,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         print(f'\nCreating panoseti features for {self.run_dir}')
         assert self.batch_type == 'training'
         for module_id in self.obs_pff_files:
-            if len(self.obs_pff_files[module_id]) == 0 or module_id == 3 or module_id == 254:
+            if len(self.obs_pff_files[module_id]) == 0:# or module_id == 3 or module_id == 254:
                 continue
             try:
                 feature_df, pano_df = self.create_training_features(
