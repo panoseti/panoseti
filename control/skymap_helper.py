@@ -124,3 +124,6 @@ def stop_skymap_info_gen(skymap_info_file='skymap_info.json'):
     with open(skymap_info_file,'w') as f:
         f.write(json_object)
     write_complete_entry(skymap_t)
+
+def copy_skymap_info_to_run_dir(run_dir):
+    os.system('cp skymap_info.json %s'%run_dir)
