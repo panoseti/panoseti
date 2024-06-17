@@ -195,7 +195,15 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 detovervol = obs_config['detector_overvoltage']
             except:
                 detovervol = 3
-            quabo_calib = config_file.get_quabo_calib(serialno, detovervol)
+            
+            # We have different calibration files for different modes: image alone and image/ph together
+            # so we have to specifiy the mode here.
+            # TODO: If it's PH alone, what calibration file should we use?
+            if do_img and not do_ph:
+                op_mode = 'img'
+            else:
+                op_mode = 'ph'
+            quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
 
             # compute DAC1[] and possibly DAC2 based on calibration data
