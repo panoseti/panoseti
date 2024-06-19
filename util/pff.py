@@ -236,3 +236,35 @@ def wr_to_unix(pkt_tai, pkt_nsec, tv_sec):
     else:
         return 0
         #raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
+
+from decimal import *
+def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
+    pkt_tai = Decimal(str(pkt_tai))
+    pkt_nsec = Decimal(str(pkt_nsec))
+    tv_sec = Decimal(str(tv_sec))
+    d = (tv_sec - pkt_tai + 37)%1024
+    if d == 0:
+        print('hello')
+        return tv_sec + pkt_nsec/Decimal(str(1e9))
+    elif d == 1:
+        return tv_sec - 1 + pkt_nsec/Decimal(str(1e9))
+    elif d == 1023:
+        return tv_sec + 1 + pkt_nsec/Decimal(str(1e9))
+    else:
+        return 0
+
+
+import numpy as np
+def wr_to_unix_numpy(pkt_tai, pkt_nsec, tv_sec):
+    pkt_tai = np.longdouble(pkt_tai)
+    pkt_nsec = np.longdouble(pkt_nsec)
+    tv_sec = np.longdouble(tv_sec)
+    d = (tv_sec - pkt_tai + 37)%1024
+    if d == 0:
+        return tv_sec + pkt_nsec / np.longdouble(1e9)
+    elif d == 1:
+        return tv_sec - 1 + pkt_nsec / np.longdouble(1e9)
+    elif d == 1023:
+        return tv_sec + 1 + pkt_nsec / np.longdouble(1e9)
+    else:
+        return 0
