@@ -43,8 +43,9 @@ class ObservingRunInterface:
             self.frame_size = None  # Bytes per frame, including JSON header, imaging data, and delimiters
         self.has_pulse_height = False
         if "pulse_height" in self.data_config:
+            # start_2023-08-29T04_50_46Z.dp_ph256.bpp_2.module_254.seqno_0
             self.has_pulse_height = True
-            # TODO
+
 
         # Create a dict of all valid imaging pff files available for analysis, indexed by module.
         self.obs_config = config_file.get_obs_config(self.run_path)
