@@ -118,7 +118,7 @@ def pff_file_type(name):
 # return time from parsed JSON header
 #
 def pkt_header_time(h):
-    return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+    return wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
 
 def img_header_time(h):
     try:
@@ -242,14 +242,15 @@ def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
     pkt_tai = Decimal(str(pkt_tai))
     pkt_nsec = Decimal(str(pkt_nsec))
     tv_sec = Decimal(str(tv_sec))
+    nanosec_factor = Decimal(str(1e9))
+
     d = (tv_sec - pkt_tai + 37)%1024
     if d == 0:
-        print('hello')
-        return tv_sec + pkt_nsec/Decimal(str(1e9))
+        return tv_sec + pkt_nsec / nanosec_factor
     elif d == 1:
-        return tv_sec - 1 + pkt_nsec/Decimal(str(1e9))
+        return tv_sec - 1 + pkt_nsec / nanosec_factor
     elif d == 1023:
-        return tv_sec + 1 + pkt_nsec/Decimal(str(1e9))
+        return tv_sec + 1 + pkt_nsec / nanosec_factor
     else:
         return 0
 
