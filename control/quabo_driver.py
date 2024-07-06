@@ -41,13 +41,18 @@ class DAQ_PARAMS:
         self.do_any_trigger = do_any_trigger
         self.do_group_ph_frames = do_group_ph_frames
         self.do_flash = False
+        self.do_stim = False
 
     def set_flash_params(self, rate, level, width):
         self.do_flash = True
         self.flash_rate = rate
         self.flash_level = level
         self.flash_width = width
-
+    
+    def set_stim_params(self, rate, level):
+        self.do_stim = True
+        self.stim_rate = rate
+        self.stim_level = level
 # currently each QUABO object has its own sockets,
 # which means you can only have one at a time.
 # will probably need to change this at some point
@@ -92,6 +97,10 @@ class QUABO:
             cmd[22] = params.flash_rate
             cmd[24] = params.flash_level
             cmd[26] = params.flash_width
+        if params.do_stim:
+            cmd[14] = 1
+            cmd[16] = params.stim_level
+            cmd[18] = params.stim_rate
         #util.print_binary(cmd)
         self.send(cmd)
 

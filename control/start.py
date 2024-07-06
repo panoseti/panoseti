@@ -100,6 +100,9 @@ def get_daq_params(data_config):
     if 'flash_params' in data_config:
         fp = data_config['flash_params']
         daq_params.set_flash_params(fp['rate'], fp['level'], fp['width'])
+    if 'stim_params' in data_config:
+        sp = data_config['stim_params']
+        daq_params.set_stim_params(sp['rate'], sp['level'])
     return daq_params
 
 # Start data flow from the quabos.
