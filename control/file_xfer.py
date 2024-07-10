@@ -45,6 +45,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
 
     if not os.path.isdir(run_dir_path):
         return 'copy_dir_from_node(): no run dir %s'%run_dir_path
+        
     # copy stdout from remote node to this node
     cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
         node['username'], node['ip_addr'],
@@ -57,6 +58,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         ret = os.system(cmd)
     except:
         return 'copy_dir_from_node(): %s returned %d'%(cmd, ret)
+    
     # copy process snapshot from remote node to this node
     cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
         node['username'], node['ip_addr'],

@@ -2,18 +2,18 @@
     "name": "Lick",
     "comment": "Default Lick config: both domes, 3 modules",
     "wps_astrograph": {
-        "url": "http://admin:epowerpanoseti@192.168.0.100",
-        "quabo_socket": 5
-    },
-    "wps_barnard_24V": {
-        "url": "http://admin:epowerpanoseti@192.168.0.101",
+        "url": "http://admin:epowerpanoseti@astrograph-power",
         "quabo_socket": 1
     },
-    "wps_barnard_70V": {
-        "url": "http://admin:epowerpanoseti@192.168.0.101",
-        "quabo_socket": 2
+    "wps_barnard": {
+        "url": "http://admin:epowerpanoseti@barnard-power",
+        "quabo_socket": 1
     },
-    "wr_ip_addr": "192.168.1.254",
+    "wps_crocker": {
+        "url": "http://admin:epowerpanoseti@crocker-power",
+        "quabo_socket": 1
+    },
+    "wr_ip_addr": "wrs",
     "gps_port": "/dev/ttyUSB0",
     "detector_overvoltage": 3,
     "domes": [
@@ -23,16 +23,6 @@
             "obslon": -121.63777,
             "obsalt": 1283,
             "modules": [
-                {
-                    "name": "East",
-                    "mobo_serialno": "M11",
-                    "quabo_version": "qfp",
-                    "ip_addr": "192.168.3.248",
-                    "wps": "wps",
-                    "azimuth": 182.8320,
-                    "elevation": 78.3467,
-                    "position_angle": -1.7899
-                },
                 {
                     "name": "West",
                     "mobo_serialno": "M12",
@@ -60,6 +50,24 @@
                     "elevation": 78.8126,
                     "position_angle": -5.3558
 		        }
+            ]
+        },
+        {
+            "name": "crocker",
+            "obslat": 0.00,
+            "obslon": 0.00,
+            "obsalt": 0.00,
+            "modules": [
+                {
+                    "name": "East",
+                    "mobo_serialno": "M11",
+                    "quabo_version": "qfp",
+                    "ip_addr": "192.168.3.248",
+                    "wps": "wps_crocker",
+                    "azimuth": 0.00,
+                    "elevation": 0.00,
+                    "position_angle": 0.00
+                }
             ]
         }
     ]

@@ -169,7 +169,7 @@ def do_hv_off(modules, quabo_uids):
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, verbose=False):
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, verbose=False):
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -195,7 +195,15 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, ve
                 detovervol = obs_config['detector_overvoltage']
             except:
                 detovervol = 3
-            quabo_calib = config_file.get_quabo_calib(serialno, detovervol)
+            
+            # We have different calibration files for different modes: image alone and image/ph together
+            # so we have to specifiy the mode here.
+            # TODO: If it's PH alone, what calibration file should we use?
+            if do_img and not do_ph:
+                op_mode = 'img'
+            else:
+                op_mode = 'ph'
+            quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
 
             # compute DAC1[] and possibly DAC2 based on calibration data
@@ -275,7 +283,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, ve
                 daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
                 # This IP is not important, so I put a static IP here.
                 # It's just for generating a ph packet
-                daq_node_ip_addr = '192.168.1.100'
+                daq_node_ip_addr = daq_config['head_node_ip_addr']
                 quabo.data_packet_destination(daq_node_ip_addr)
                 quabo.send_daq_params(daq_start)
                 time.sleep(1)
@@ -573,7 +581,7 @@ if __name__ == "__main__":
         elif op == 'hv_off':
             do_hv_off(modules, quabo_uids)
         elif op == 'maroc_config':
-            do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, True)
+            do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, True)
         elif op == 'mask_config':
             do_mask_config(modules, data_config, True)
         elif op == 'calibrate_ph':

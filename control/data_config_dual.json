@@ -1,0 +1,15 @@
+{
+    "run_type": "eng-test",
+    "gain": 60,
+    "pulse_height": {
+	    "pe_threshold": 12.5,
+		"two_pixel_trigger": 0,
+		"three_pixel_trigger": 0
+    },
+    "image": {
+    	"integration_time_usec": 5000,
+        "pe_threshold": 2,
+        "quabo_sample_size": 16
+    },
+    "max_file_size_mb": 2000
+}

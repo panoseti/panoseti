@@ -116,7 +116,9 @@ def stop_run(
     daq_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False,
     run = None
 ):
-    if local_ip() != daq_config['head_node_ip_addr']:
+    # convert head node name to IP address
+    head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
+    if local_ip() != head_node_ip:
         raise Exception(
             'This computer (%s) is not the head node specified in daq_config.json (%s)'%(
                 local_ip(), daq_config['head_node_ip_addr']

@@ -331,6 +331,8 @@ class QUABO:
     # set destination IP addr for both PH and image packets
     #
     def data_packet_destination(self, ip_addr_str):
+        # get the IP address from hostname
+        ip_addr_str = socket.gethostbyname(ip_addr_str)
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
         cmd = self.make_cmd(0x0a)
         for i in range(4):
@@ -348,6 +350,8 @@ class QUABO:
         #print('Mac addr for image packets: %s'%(util.mac_addr_str(bytes[6:12])))
 
     def hk_packet_destination(self, ip_addr_str):
+        # get the IP address from hostname
+        ip_addr_str = socket.gethostbyname(ip_addr_str)
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
         cmd = self.make_cmd(0x0b)
         for i in range(4):

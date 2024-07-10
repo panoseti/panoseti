@@ -7,6 +7,7 @@ control/data_config.json
 control/sw_info.json
 control/quabo_ph_baseline.json
 control/quabo_config*.json
+control/skymap_info_dir
 util/__pycache__/*
 
 
