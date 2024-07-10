@@ -2,13 +2,11 @@
 PanosetiBatchBuilder creates all panoseti features for a single observing run.
 """
 import sys
+sys.path.append("../../util")
 
 from panoseti_file_interfaces import ObservingRunInterface
 from pano_utils import *
 from dataframe_utils import *
-
-
-sys.path.append("../../util")
 
 
 class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
@@ -151,7 +149,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         @param module_id: module id number, as computed from its ip address
         @param delta_ts
         """
-        module_pff_files = self.obs_pff_files[module_id]
+        module_image_pff_files = self.obs_pff_files[module_id]["img"]
         assert max(delta_ts) < 0, 'Must specify delta_ts that are strictly in the past.'
         sorted_delta_ts = sorted(delta_ts)
 
@@ -225,7 +223,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         if self.pano_features_created() and not self.force_recreate:
             raise FileExistsError(f"Data in {self.run_dir} already processed")
 
-        module_pff_files = self.obs_pff_files[module_id]
+        module_image_pff_files = self.obs_pff_files[module_id]["img"]
 
         print(f'Generating features for module {module_id}')
         skycam_info = skycam_df.loc[skycam_df.skycam_dir == skycam_dir, ['skycam_uid', 'unix_t']]
@@ -294,7 +292,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                     continue
 
                 # Write figures to data dirs
-                pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
+                pano_fname = module_image_pff_files[pano_frame_seek_info['file_idx']]['fname']
                 frame_offset = pano_frame_seek_info['frame_offset']
                 pano_uid = get_pano_uid(pano_fname, frame_offset)
                 if make_figs:
@@ -337,9 +335,9 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         if self.pano_features_created() and not self.force_recreate:
             raise FileExistsError(f"Data in {self.run_dir} already processed")
 
-        module_pff_files = self.obs_pff_files[module_id]
-        first_unix_t = module_pff_files[0]['first_unix_t']
-        last_unix_t = module_pff_files[-1]['last_unix_t']
+        module_image_pff_files = self.obs_pff_files[module_id]["img"]
+        first_unix_t = module_image_pff_files[0]['first_unix_t']
+        last_unix_t = module_image_pff_files[-1]['last_unix_t']
         inference_unix_ts = np.arange(first_unix_t, last_unix_t, time_step)
 
         print(f'Generating features for module {module_id}')
@@ -401,7 +399,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 continue
 
             # Write figures to data dirs
-            pano_fname = module_pff_files[pano_frame_seek_info['file_idx']]['fname']
+            pano_fname = module_image_pff_files[pano_frame_seek_info['file_idx']]['fname']
             frame_offset = pano_frame_seek_info['frame_offset']
             pano_uid = get_pano_uid(pano_fname, frame_offset)
             if make_figs:
@@ -437,7 +435,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         print(f'\nCreating panoseti features for {self.run_dir}')
         assert self.batch_type == 'training'
         for module_id in self.obs_pff_files:
-            if len(self.obs_pff_files[module_id]) == 0:# or module_id == 3 or module_id == 254:
+            if len(self.obs_pff_files[module_id]["img"]) == 0:# or module_id == 3 or module_id == 254:
                 continue
             try:
                 feature_df, pano_df = self.create_training_features(
@@ -452,7 +450,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         print(f'\nCreating panoseti features for {self.run_dir}')
         assert self.batch_type == 'inference'
         for module_id in self.obs_pff_files:
-            if len(self.obs_pff_files[module_id]) == 0:
+            if len(self.obs_pff_files[module_id]["img"]) == 0:
                 continue
             try:
                 feature_df, pano_df = self.create_inference_features(

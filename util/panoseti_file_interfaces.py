@@ -247,7 +247,7 @@ class ObservingRunInterface:
         return dt.strftime("%m/%d/%Y, %H:%M:%S")
 
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='mean', allow_partial_image=False):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='sum', allow_partial_image=False):
         """
         Evenly samples image frames between now and now-delta_t, then aggregates
         the frames according to the given aggregation method.
@@ -298,6 +298,8 @@ class ObservingRunInterface:
                              f'retrieved {len(frame_buffer)} / {nframes} frames')
         if agg == 'mean':
             return np.mean(frame_buffer, axis=0)
+        elif agg == 'sum':
+            return np.sum(frame_buffer, axis=0)
 
 
     def compute_module_median_image(self, module_id):
