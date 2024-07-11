@@ -14,11 +14,8 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
     raw_data_shapes = {
         'raw-original': (32, 32),
         'raw-fft': (32, 32),
-        # 'raw-derivative': (3, 32, 32),
         'raw-derivative.-60': (32, 32),
         'raw-derivative-fft.-60': (32, 32),
-        'raw-derivative.-120': (32, 32),
-        'raw-derivative-fft.-120': (32, 32),
     }
 
     def __init__(self, task, batch_id, batch_type, panoseti_data_dir, panoseti_run_dir, force_recreate=False, verbose=False):
@@ -265,7 +262,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                     pano_frame_seek_info['frame_offset'],
                     pano_frame_seek_info['frame_unix_t'],
                     module_id,
-                    delta_ts=[-60, -120],#, -40, -20],
+                    delta_ts=[-60],#, -40, -20],
                     make_fig=make_figs,
                     vmin=[-150, -1],
                     vmax=[150, 6],
@@ -372,7 +369,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
                 pano_frame_seek_info['frame_offset'],
                 pano_frame_seek_info['frame_unix_t'],
                 module_id,
-                delta_ts=[-60, -40, -20],
+                delta_ts=[-60],
                 make_fig=make_figs,
                 vmin=[-150, -1],
                 vmax=[150, 6],

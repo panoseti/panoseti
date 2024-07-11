@@ -301,9 +301,50 @@ class ObservingRunInterface:
         elif agg == 'sum':
             return np.sum(frame_buffer, axis=0)
 
+    def compute_spatial_median(self, img_stack):
+        """
+        Given an image stack (n, 32,32) of n module images, returns a single (32,32) array containing
+        the 16 median 8x8 pixel region of the n images.
+        """
+        if not isinstance(img_stack, np.ndarray):
+            raise ValueError(f'module image must be an np.ndarray, got {type(img_stack)}')
+        spatial_median = np.zeros((32, 32))
+        for i in range(0, 32, 8):
+            for j in range(0, 32, 8):
+                spatial_median[i:i + 8, j:j + 8] = np.median(img_stack[:, i:i + 8, j:j + 8], axis=0)
+        return spatial_median
 
-    def compute_module_median_image(self, module_id):
+
+    def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=60 *10**6, max_samples_per_window=250):
         module_image_files = self.obs_pff_files[module_id]["img"]
+        buffer = []
+        # First pass: Sample the night of data and remove spatial medians at 1s intervals.
+        available_images_per_window = spatial_median_window_usec / self.intgrn_usec
+        frames_per_window = int(min(available_images_per_window, max_samples_per_window))
+        frame_step = int(max(1, available_images_per_window / frames_per_window))
+        for img_file in module_image_files:
+            fname = img_file["fname"]
+            fpath = f'{self.run_path}/{fname}'
+            with open(fpath, 'rb') as fp:
+                frame_iterator = self.image_frame_iterator(fp, step_size=frame_step, frame_limit=None)
+                for j, img in frame_iterator:
+                    buffer.append(img)
+        nwindows = len(buffer) // frames_per_window
+        trimmed_len = nwindows * frames_per_window
+        buffer = np.array(buffer[0:trimmed_len])
+        # buffer = buffer.reshape((frames_per_window, nwindows, 32, 32))
+        spatial_medians = np.zeros((nwindows, 32, 32))
+        for i in range(0, nwindows):
+            l = i * frames_per_window
+            r = (i + 1) * frames_per_window
+            spatial_medians[i] = self.compute_spatial_median(buffer[l:r])
+            buffer[l:r] = buffer[l:r] - spatial_medians[i]
+        return buffer
+        # return spatial_medians
+        # Second pass: Compute medians for each pixel across the entire night.
+        expanded_spatial_medians = np.tile(spatial_medians, (frames_per_window, 1, 1))
+        return np.median(buffer - expanded_spatial_medians, axis=0)
+
 
 
     def module_file_time_seek(self, module_id, target_time):
@@ -395,7 +436,7 @@ class PFFFrameIterator:
     def __next__(self):
         if (self.frame_limit is not None) and (self.iter_num >= self.frame_limit):
             raise StopIteration
-        elif not self.iter_num:
+        elif self.iter_num >= 1:
             seek_dist = (self.step_size - 1) * self.bytes_per_frame
             if seek_dist < 0 and (self.fp.tell() + seek_dist < 0):
                 raise StopIteration
@@ -406,54 +447,13 @@ class PFFFrameIterator:
             raise StopIteration
         return j, img
 
-
-# class ModuleImageInterface(ObservingRunInterface):
-#
-#     def __init__(self, data_dir, run_dir, module_id, require_data=False):
-#         """Interface for doing analysis work with images produced by the specified module
-#         during the given observing run."""
-#         super().__init__(data_dir, run_dir)
-#         self.module_id = module_id
-#         if module_id not in self.obs_pff_files:
-#             raise ValueError(f"Module {module_id} did not exist for the run '{run_dir}'.")
-#         self.module_pff_files = self.obs_pff_files[module_id]
-#
-#         # Check if there are any images for this module.
-#         if len(self.module_pff_files) == 0:
-#             msg = f"No valid panoseti imaging data for module {module_id} in '{self.run_dir}'."
-#             if require_data:
-#                 raise FileNotFoundError(msg)
-#             else:
-#                 print(msg)
-#                 self.start_unix_t = None
-#         else:
-#             self.start_unix_t = self.module_pff_files[0]['first_unix_t']
-#
-
-
-# class ModuleImageIterator:
-#     def __init__(self, module_image_interface, step_size, frame_size, bytes_per_pixel):
-#         """Returns all available data from the """
-#         assert isinstance(module_image_interface, ModuleImageInterface)
-#         self.module_image_interface = module_image_interface
-#         self.step_size = step_size
-#         self.frame_size = frame_size
-#         self.bytes_per_pixel = bytes_per_pixel
-#
-#
-#     def __iter__(self):
-#
-#         return self
-#
-#     def __next__(self):
-#         m = self.module_image_interface
-#         j, img = m.get_next_frame(m.fp, self.step_size, m.frame_size, m.img_bpp)
-#         if img is None:
-#             raise StopIteration
-#         return j, img
-#
-
 if __name__ == '__main__':
+    # data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
+    # run_dir = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
+
     data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
-    run_dir = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
+    run_dir = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
+
     ori = ObservingRunInterface(data_dir, run_dir)
+
+    ori.compute_module_supermedian_image(3)

@@ -118,7 +118,8 @@ def pff_file_type(name):
 # return time from parsed JSON header
 #
 def pkt_header_time(h):
-    return wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+    return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+    # return wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
 
 def img_header_time(h):
     try:
