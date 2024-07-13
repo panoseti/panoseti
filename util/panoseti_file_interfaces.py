@@ -311,11 +311,15 @@ class ObservingRunInterface:
         spatial_median = np.zeros((32, 32))
         for i in range(0, 32, 8):
             for j in range(0, 32, 8):
-                spatial_median[i:i + 8, j:j + 8] = np.median(img_stack[:, i:i + 8, j:j + 8], axis=0)
+                raw_med = np.median(img_stack[:, i:i + 8, j:j + 8], axis=0)
+                std = np.std(raw_med)
+                mu = np.median(raw_med)
+                # spatial_median[i:i + 8, j:j + 8] = np.clip(raw_med, mu - std, mu + std)
+                spatial_median[i:i + 8, j:j + 8] = np.median(img_stack[:, i:i + 8, j:j + 8])
         return spatial_median
 
 
-    def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=60 *10**6, max_samples_per_window=250):
+    def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=30 *10**6, max_samples_per_window=500):
         module_image_files = self.obs_pff_files[module_id]["img"]
         buffer = []
         # First pass: Sample the night of data and remove spatial medians at 1s intervals.
@@ -332,18 +336,21 @@ class ObservingRunInterface:
         nwindows = len(buffer) // frames_per_window
         trimmed_len = nwindows * frames_per_window
         buffer = np.array(buffer[0:trimmed_len])
+        buffer_no_spatial_medians = np.zeros((buffer.shape))
         # buffer = buffer.reshape((frames_per_window, nwindows, 32, 32))
         spatial_medians = np.zeros((nwindows, 32, 32))
         for i in range(0, nwindows):
             l = i * frames_per_window
             r = (i + 1) * frames_per_window
             spatial_medians[i] = self.compute_spatial_median(buffer[l:r])
-            buffer[l:r] = buffer[l:r] - spatial_medians[i]
-        return buffer
+            buffer_no_spatial_medians[l:r] = buffer[l:r] - spatial_medians[i]
+        expanded_spatial_medians = np.tile(spatial_medians, (frames_per_window, 1, 1))
+        supermedian = np.median(buffer_no_spatial_medians, axis=0)
+        flat = buffer - expanded_spatial_medians - supermedian
+        return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat
         # return spatial_medians
         # Second pass: Compute medians for each pixel across the entire night.
-        expanded_spatial_medians = np.tile(spatial_medians, (frames_per_window, 1, 1))
-        return np.median(buffer - expanded_spatial_medians, axis=0)
+        return
 
 
 
