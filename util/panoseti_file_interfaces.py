@@ -308,7 +308,7 @@ class ObservingRunInterface:
         """
         if not isinstance(img_stack, np.ndarray):
             raise ValueError(f'module image must be an np.ndarray, got {type(img_stack)}')
-        spatial_median = np.zeros((32, 32))
+        spatial_median = np.zeros((32, 32))        # spatial_median = np.median(img_stack[..., ::4, ::4], axis=0) #
         for i in range(0, 32, 8):
             for j in range(0, 32, 8):
                 raw_med = np.median(img_stack[:, i:i + 8, j:j + 8], axis=0)
@@ -320,21 +320,41 @@ class ObservingRunInterface:
 
 
     def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=30 *10**6, max_samples_per_window=500):
+        """
+        Compute the
+        @param module_id:
+        @param spatial_median_window_usec:
+        @param max_samples_per_window:
+        @return:
+        """
         module_image_files = self.obs_pff_files[module_id]["img"]
         buffer = []
         # First pass: Sample the night of data and remove spatial medians at 1s intervals.
         available_images_per_window = spatial_median_window_usec / self.intgrn_usec
         frames_per_window = int(min(available_images_per_window, max_samples_per_window))
-        frame_step = int(max(1, available_images_per_window / frames_per_window))
-        for img_file in module_image_files:
-            fname = img_file["fname"]
+        # Evenly sample all imaging frames.
+        spatial_median_df = pd.DataFrame(columns=['window_left_unix_t', 'window_right_unix_t']) # TODO: implement dataframe logging to aid indexing into spatial data frames.
+        frame_step_size = int(max(1, available_images_per_window / frames_per_window))
+        frame_offset = 0
+        for i in range(0, len(module_image_files), 1):
+            file_info = module_image_files[i]
+            fname = file_info["fname"]
             fpath = f'{self.run_path}/{fname}'
+            print(fpath)
+            print(frame_offset)
             with open(fpath, 'rb') as fp:
-                frame_iterator = self.image_frame_iterator(fp, step_size=frame_step, frame_limit=None)
+                fp.seek(frame_offset * self.bytes_per_header_and_image_frame, os.SEEK_CUR)
+                frame_iterator = self.image_frame_iterator(fp, step_size=frame_step_size, frame_limit=None)
                 for j, img in frame_iterator:
                     buffer.append(img)
+                # Get info for next file if we need more frames.
+                if i < len(module_image_files) - 1:
+                    curr_frame_offset = fp.tell() // self.bytes_per_header_and_image_frame
+                    frame_offset = max(curr_frame_offset - file_info['nframes'], 0)
         nwindows = len(buffer) // frames_per_window
         trimmed_len = nwindows * frames_per_window
+        print(nwindows)
+        print(frames_per_window)
         buffer = np.array(buffer[0:trimmed_len])
         buffer_no_spatial_medians = np.zeros((buffer.shape))
         # buffer = buffer.reshape((frames_per_window, nwindows, 32, 32))
@@ -344,14 +364,10 @@ class ObservingRunInterface:
             r = (i + 1) * frames_per_window
             spatial_medians[i] = self.compute_spatial_median(buffer[l:r])
             buffer_no_spatial_medians[l:r] = buffer[l:r] - spatial_medians[i]
-        expanded_spatial_medians = np.tile(spatial_medians, (frames_per_window, 1, 1))
-        supermedian = np.median(buffer_no_spatial_medians, axis=0)
-        flat = buffer - expanded_spatial_medians - supermedian
-        return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat
-        # return spatial_medians
         # Second pass: Compute medians for each pixel across the entire night.
-        return
-
+        supermedian = np.median(buffer_no_spatial_medians, axis=0)
+        flat = buffer_no_spatial_medians - supermedian
+        return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat
 
 
     def module_file_time_seek(self, module_id, target_time):
