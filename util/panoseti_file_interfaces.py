@@ -247,35 +247,39 @@ class ObservingRunInterface:
         return dt.strftime("%m/%d/%Y, %H:%M:%S")
 
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='sum', allow_partial_image=False):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, stacked_integration_usec=12000, agg='mean', allow_partial_image=False):
         """
-        Evenly samples image frames between now and now-delta_t, then aggregates
-        the frames according to the given aggregation method.
+        Stacks consecutive imaging frames until the cumulative imaging time equals stacked_integration_usec.
+            1) Evenly samples image frames between the start frame, specified by start_file_idx and start_frame_offset, and
+            the frame with timestamp now - stacked_integration_ussec.
+            2) Then aggregates the frames according to the agg procedure ['sum', 'mean'].
 
         By default, stack until a total of 6ms of observational data is accumulated. e.g.:
-        - if you have 100us panoseti image data, add 60 images together, roughly evenly spaced over 1 second.
-        - if you have 2ms panoseti image data, add 3 images together, roughly evenly spaced over 1 second.
-        - if you have 1ms panoseti image data, add 6 images together, roughly evenly spaced over 1 second.
+        - For a 100us integration time, add 60 images together.
+        - For a 2000us integration time, add 3 images together.
 
-        @param f: file pointer to a PFF imaging file
-        @param nframes: number of frames to stack
-        @param delta_t: seconds between current and oldest frame to be sampled
+        @param start_file_idx: sequence number of PFF imaging file in which frame sampling should begin.
+        @param start_frame_offset: frame offset within the specified file, relative to the earliest frame in this file.
+        @param stacked_integration_usec: total duration of staked image frame data.
         @param agg: aggregation method
-        @return: Stacked image frame
+        @return: Stacked image frame.
         """
 
-        STACKED_INTEGRATION_MS = 6  # Stack 6ms of image frame data by default. e.g.:
-
-        nframes = int((STACKED_INTEGRATION_MS * 1E-3) / (self.intgrn_usec * 1E-6))
+        nframes = int((stacked_integration_usec) / (self.intgrn_usec))
+        assert nframes >= 1, f'The desired stacked integration ({stacked_integration_usec} usec) must be at least as long as the imaging integration time for this run: {self.intgrn_usec} usec.'
         module_image_pff_files = self.obs_pff_files[module_id]["img"]
-        time_step = delta_t / nframes   # time step between sampled frames
-        frame_step_size = int(time_step / (self.intgrn_usec * 1E-6))
+        frame_step_size = 1 # Sample consecutive frames
         assert frame_step_size > 0
-        assert delta_t >= 0, 'stack_frames is a causal function.'
-        # Iterate backwards through PFF files for module_id
         frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
         n = 0
+        # Iterate through PFF files for module_id
+        stacked_meta = {
+            'start_frame_unix_t': -1,
+            'end_frame_unix_t': -1,
+            'nframes': nframes,
+            'stacked_integration_usec': stacked_integration_usec,
+        }
         for i in range(start_file_idx, -1, -1):
             if n == nframes: break
             file_info = module_image_pff_files[i]
@@ -284,8 +288,8 @@ class ObservingRunInterface:
                 # Start file pointer with an offset based on the previous file -> ensures even frame sampling
                 fp.seek(frame_offset * self.bytes_per_header_and_image_frame, os.SEEK_CUR)
                 # Create FrameIterator iterator
-                fitr = self.image_frame_iterator(fp, frame_step_size, nframes - n)
-                for j, img in fitr:
+                frame_iterator = self.image_frame_iterator(fp, frame_step_size, nframes - n)
+                for j, img in frame_iterator:
                     frame_buffer[n] = img
                     n += 1
                 # Get info for next file if we need more frames.
@@ -319,7 +323,7 @@ class ObservingRunInterface:
         return spatial_median
 
 
-    def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=30 *10**6, max_samples_per_window=500):
+    def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=1*10**6, max_samples_per_window=10):
         """
         Compute the
         @param module_id:
@@ -333,37 +337,37 @@ class ObservingRunInterface:
         available_images_per_window = spatial_median_window_usec / self.intgrn_usec
         frames_per_window = int(min(available_images_per_window, max_samples_per_window))
         # Evenly sample all imaging frames.
-        spatial_median_df = pd.DataFrame(columns=['window_left_unix_t', 'window_right_unix_t']) # TODO: implement dataframe logging to aid indexing into spatial data frames.
+        spatial_median_df = pd.DataFrame(columns=['window_left_unix_t', 'window_right_unix_t', 'spatial_median_img', 'spatial_median+supermedian']) # TODO: implement dataframe logging to aid indexing into spatial data frames.
         frame_step_size = int(max(1, available_images_per_window / frames_per_window))
-        frame_offset = 0
-        for i in range(0, len(module_image_files), 1):
-            file_info = module_image_files[i]
-            fname = file_info["fname"]
-            fpath = f'{self.run_path}/{fname}'
-            print(fpath)
-            print(frame_offset)
-            with open(fpath, 'rb') as fp:
-                fp.seek(frame_offset * self.bytes_per_header_and_image_frame, os.SEEK_CUR)
-                frame_iterator = self.image_frame_iterator(fp, step_size=frame_step_size, frame_limit=None)
-                for j, img in frame_iterator:
-                    buffer.append(img)
-                # Get info for next file if we need more frames.
-                if i < len(module_image_files) - 1:
-                    curr_frame_offset = fp.tell() // self.bytes_per_header_and_image_frame
-                    frame_offset = max(curr_frame_offset - file_info['nframes'], 0)
+        # frame_stack_integration_usec = 6e3
+        frame_offset = 0 # int(frame_stack_integration_usec / self.intgrn_usec)
+        for file_idx in range(0, len(module_image_files), 1):
+            file_info = module_image_files[file_idx]
+            while frame_offset < file_info['nframes']:
+                stacked_img = self.stack_frames(
+                    file_idx,
+                    frame_offset,
+                    module_id,
+                    stacked_integration_usec=12000
+                )
+                buffer.append(stacked_img)
+                frame_offset += frame_step_size
+            # Get starting offset for next file if we need more frames.
+            if file_idx < len(module_image_files) - 1:
+                frame_offset = max(frame_offset - file_info['nframes'], 0)
         nwindows = len(buffer) // frames_per_window
         trimmed_len = nwindows * frames_per_window
-        print(nwindows)
-        print(frames_per_window)
+        # print(nwindows)
+        # print(frames_per_window)
         buffer = np.array(buffer[0:trimmed_len])
         buffer_no_spatial_medians = np.zeros((buffer.shape))
         # buffer = buffer.reshape((frames_per_window, nwindows, 32, 32))
         spatial_medians = np.zeros((nwindows, 32, 32))
-        for i in range(0, nwindows):
-            l = i * frames_per_window
-            r = (i + 1) * frames_per_window
-            spatial_medians[i] = self.compute_spatial_median(buffer[l:r])
-            buffer_no_spatial_medians[l:r] = buffer[l:r] - spatial_medians[i]
+        for frame_idx in range(0, nwindows):
+            l = frame_idx * frames_per_window
+            r = (frame_idx + 1) * frames_per_window
+            spatial_medians[frame_idx] = self.compute_spatial_median(buffer[l:r])
+            buffer_no_spatial_medians[l:r] = buffer[l:r] - spatial_medians[frame_idx]
         # Second pass: Compute medians for each pixel across the entire night.
         supermedian = np.median(buffer_no_spatial_medians, axis=0)
         flat = buffer_no_spatial_medians - supermedian
