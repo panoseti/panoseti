@@ -262,21 +262,21 @@ class ObservingRunInterface:
         @param start_frame_offset: frame offset within the specified file, relative to the earliest frame in this file.
         @param stacked_integration_usec: total duration of staked image frame data.
         @param agg: aggregation method
-        @return: Stacked image frame.
+        @return: tuple of (Stacked 32x32 image frame, stacked metadata dict)
         """
 
         nframes = int((stacked_integration_usec) / (self.intgrn_usec))
         assert nframes >= 1, f'The desired stacked integration ({stacked_integration_usec} usec) must be at least as long as the imaging integration time for this run: {self.intgrn_usec} usec.'
         module_image_pff_files = self.obs_pff_files[module_id]["img"]
-        frame_step_size = 1 # Sample consecutive frames
-        assert frame_step_size > 0
+        frame_step_size = 1  # Sample consecutive frames so that start frame is the latest
+        assert abs(frame_step_size) > 0
         frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
         n = 0
         # Iterate through PFF files for module_id
         stacked_meta = {
-            'start_frame_unix_t': -1,
-            'end_frame_unix_t': -1,
+            'start_unix_t': -1,
+            'end_unix_t': -1,
             'nframes': nframes,
             'stacked_integration_usec': stacked_integration_usec,
         }
@@ -290,6 +290,12 @@ class ObservingRunInterface:
                 # Create FrameIterator iterator
                 frame_iterator = self.image_frame_iterator(fp, frame_step_size, nframes - n)
                 for j, img in frame_iterator:
+                    j = j['quabo_0']
+                    timestamp = pff.wr_to_unix_decimal(j['pkt_tai'], j['pkt_nsec'], j['tv_sec'])
+                    if n == 0:
+                        stacked_meta['start_unix_t'] = timestamp
+                    else:
+                        stacked_meta['end_unix_t'] = timestamp
                     frame_buffer[n] = img
                     n += 1
                 # Get info for next file if we need more frames.
@@ -301,9 +307,9 @@ class ObservingRunInterface:
             raise ValueError(f'Insufficient frames for frame stacking: '
                              f'retrieved {len(frame_buffer)} / {nframes} frames')
         if agg == 'mean':
-            return np.mean(frame_buffer, axis=0)
+            return np.mean(frame_buffer, axis=0), stacked_meta
         elif agg == 'sum':
-            return np.sum(frame_buffer, axis=0)
+            return np.sum(frame_buffer, axis=0), stacked_meta
 
     def compute_spatial_median(self, img_stack):
         """
@@ -333,6 +339,7 @@ class ObservingRunInterface:
         """
         module_image_files = self.obs_pff_files[module_id]["img"]
         buffer = []
+        metadata_buffer = []
         # First pass: Sample the night of data and remove spatial medians at 1s intervals.
         available_images_per_window = spatial_median_window_usec / self.intgrn_usec
         frames_per_window = int(min(available_images_per_window, max_samples_per_window))
@@ -344,34 +351,43 @@ class ObservingRunInterface:
         for file_idx in range(0, len(module_image_files), 1):
             file_info = module_image_files[file_idx]
             while frame_offset < file_info['nframes']:
-                stacked_img = self.stack_frames(
+                stacked_img, stacked_meta = self.stack_frames(
                     file_idx,
                     frame_offset,
                     module_id,
                     stacked_integration_usec=12000
                 )
                 buffer.append(stacked_img)
+                metadata_buffer.append(stacked_meta)
                 frame_offset += frame_step_size
             # Get starting offset for next file if we need more frames.
             if file_idx < len(module_image_files) - 1:
                 frame_offset = max(frame_offset - file_info['nframes'], 0)
         nwindows = len(buffer) // frames_per_window
         trimmed_len = nwindows * frames_per_window
-        # print(nwindows)
-        # print(frames_per_window)
         buffer = np.array(buffer[0:trimmed_len])
         buffer_no_spatial_medians = np.zeros((buffer.shape))
-        # buffer = buffer.reshape((frames_per_window, nwindows, 32, 32))
         spatial_medians = np.zeros((nwindows, 32, 32))
+
         for frame_idx in range(0, nwindows):
             l = frame_idx * frames_per_window
             r = (frame_idx + 1) * frames_per_window
-            spatial_medians[frame_idx] = self.compute_spatial_median(buffer[l:r])
+            spatial_median = self.compute_spatial_median(buffer[l:r])
+            spatial_medians[frame_idx] = spatial_median
             buffer_no_spatial_medians[l:r] = buffer[l:r] - spatial_medians[frame_idx]
+
+            left_stacked_meta = metadata_buffer[l]
+            right_stacked_meta = metadata_buffer[r - 1]
+            new_spatial_median_record = {
+                'window_left_unix_t': min(left_stacked_meta['start_unix_t'], left_stacked_meta['end_unix_t']),
+                'window_right_unix_t': max(right_stacked_meta['start_unix_t'], right_stacked_meta['end_unix_t']),
+                'spatial_median_img': spatial_median,
+            }
+            spatial_median_df.loc[len(spatial_median_df)] = new_spatial_median_record
         # Second pass: Compute medians for each pixel across the entire night.
         supermedian = np.median(buffer_no_spatial_medians, axis=0)
         flat = buffer_no_spatial_medians - supermedian
-        return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat
+        return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat, spatial_median_df
 
 
     def module_file_time_seek(self, module_id, target_time):
