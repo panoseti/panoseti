@@ -101,7 +101,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
     def make_original_fig(self, start_file_idx, start_frame_offset, module_id, make_fig=True, vmin=None, vmax=None, cmap=None):
         """Create a feature based on a single stacked panoseti image."""
-        stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id)
+        stacked_img, stacked_meta = self.stack_frames(start_file_idx, start_frame_offset, module_id)
         self.add_img_to_entry(stacked_img, 'raw-original')
         img = self.img_transform(stacked_img)
         #img = (img - np.median(img)) / np.std(img)
@@ -114,7 +114,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
 
     def make_fft_fig(self, start_file_idx, start_frame_offset, module_id, make_fig=True, vmin=None, vmax=None, cmap=None):
         """Create a 2D FFT feature from a single stacked panoseti image."""
-        stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id)
+        stacked_img, stacked_meta = self.stack_frames(start_file_idx, start_frame_offset, module_id)
         self.add_img_to_entry(apply_fft(stacked_img), 'raw-fft')
         img = self.img_transform(stacked_img)
         if make_fig:
@@ -150,7 +150,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
         assert max(delta_ts) < 0, 'Must specify delta_ts that are strictly in the past.'
         sorted_delta_ts = sorted(delta_ts)
 
-        curr_stacked_img = self.stack_frames(start_file_idx, start_frame_offset, module_id)
+        curr_stacked_img, curr_stacked_meta = self.stack_frames(start_file_idx, start_frame_offset, module_id)
         prev_stacked_imgs = {}
         deriv_imgs = []
         raw_diff_data = []
@@ -159,7 +159,7 @@ class PanoBatchBuilder(ObservingRunInterface, PanoBatchDataFileTree):
             frame_seek_info = self.module_file_time_seek(module_id, frame_unix_t + delta_t)
             if frame_seek_info is None:
                 return None, None
-            prev_stacked = self.stack_frames(
+            prev_stacked, prev_stacked_meta = self.stack_frames(
                 frame_seek_info['file_idx'], frame_seek_info['frame_offset'], module_id
             )
             # Compute difference between the current image and each of the delta_t images.

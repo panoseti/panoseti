@@ -22,7 +22,7 @@ import image_quantiles
 
 class ObservingRunInterface:
 
-    def __init__(self, data_dir, run_dir, do_baseline_subtraction=False):
+    def __init__(self, data_dir, run_dir, do_baseline_subtraction=False, verbose=False):
         """File manager interface for a single observing run."""
         # Check data paths
         self.data_dir = data_dir
@@ -86,19 +86,20 @@ class ObservingRunInterface:
                 self.obs_pff_files[module_id] = {
                     "img": [],
                     "ph": [],
-                    "img_supermedian": None,
-                    "img_spatial_median_df": None
+                    "baseline_df": None
                 }
 
         if self.has_imaging_data:
             self.check_image_pff_files()
             self.index_image_pff_files()
             if do_baseline_subtraction:
+                if verbose: print('computing imaging baselines...', end='')
                 for module_id in self.obs_pff_files:
-                    spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat, spatial_median_df = (
-                        self.compute_imaging_baselines(module_id))
-                    self.obs_pff_files[module_id]["img_supermedian"] = supermedian
-                    self.obs_pff_files[module_id]["img_spatial_medians"] = spatial_median_df
+                    baseline_df = self.compute_baseline_imgs(module_id)
+                    if len(baseline_df) == 0:
+                        raise ValueError('Baseline subtraction failed for module {}: Bad imaging data'.format(module_id))
+                    self.obs_pff_files[module_id]["baseline_df"] = baseline_df
+                if verbose: print('done')
 
         if self.has_pulse_height:
             self.check_pulse_height_pff_files()
@@ -274,7 +275,6 @@ class ObservingRunInterface:
         @param agg: aggregation method
         @return: tuple of (Stacked 32x32 image frame, stacked metadata dict)
         """
-
         nframes = int((stacked_integration_usec) / (self.intgrn_usec))
         assert nframes >= 1, f'The desired stacked integration ({stacked_integration_usec} usec) must be at least as long as the imaging integration time for this run: {self.intgrn_usec} usec.'
         module_image_pff_files = self.obs_pff_files[module_id]["img"]
@@ -289,6 +289,7 @@ class ObservingRunInterface:
             'end_unix_t': -1,
             'nframes': nframes,
             'stacked_integration_usec': stacked_integration_usec,
+            'do_baseline_subtraction': self.do_baseline_subtraction
         }
         for i in range(start_file_idx, -1, -1):
             if n == nframes: break
@@ -316,10 +317,22 @@ class ObservingRunInterface:
         if len(frame_buffer) < nframes:
             raise ValueError(f'Insufficient frames for frame stacking: '
                              f'retrieved {len(frame_buffer)} / {nframes} frames')
+
+        # Retrieve the baseline for this image
+        baseline_df = self.obs_pff_files[module_id]['baseline_df']
+        if self.do_baseline_subtraction and baseline_df is not None and len(baseline_df) > 0:
+            baseline_window_idx = baseline_df['window_left_unix_t'].searchsorted(
+                stacked_meta['start_unix_t'], side='right'
+            )
+            baseline_window_idx = max(0, baseline_window_idx - 1) # Ensure the index is non-negative
+            baseline_img = baseline_df['baseline_img'][baseline_window_idx]
+        else:
+            baseline_img = np.zeros((32, 32))
+
         if agg == 'mean':
-            return np.mean(frame_buffer, axis=0), stacked_meta
+            return np.mean(frame_buffer, axis=0) - baseline_img, stacked_meta
         elif agg == 'sum':
-            return np.sum(frame_buffer, axis=0), stacked_meta
+            return np.sum(frame_buffer, axis=0) - baseline_img, stacked_meta
 
     def compute_spatial_median(self, img_stack):
         """
@@ -339,7 +352,7 @@ class ObservingRunInterface:
         return spatial_median
 
 
-    def compute_imaging_baselines(self, module_id, spatial_median_window_usec=1 * 10 ** 6, max_samples_per_window=10, stacked_integration_usec=12000):
+    def compute_baseline_imgs(self, module_id, spatial_median_window_usec=10*10 ** 6, max_samples_per_window=10, stacked_integration_usec=12000):
         """
         Compute the
         @param module_id:
@@ -347,20 +360,23 @@ class ObservingRunInterface:
         @param max_samples_per_window:
         @return:
         """
+        # Only compute baselines during the initialization of an ObservingRunInterface object.
+        if self.do_baseline_subtraction and self.obs_pff_files[module_id]['baseline_df'] is not None:
+            raise RuntimeError(f'Baselines for {module_id} already computed.')
+        elif not self.do_baseline_subtraction:
+            raise ValueError('Must specify do_baseline_subtraction=True when initializing the ObservingRunInterface to use this method.')
         module_image_files = self.obs_pff_files[module_id]["img"]
-        buffer = []
+        frame_buffer = []
         metadata_buffer = []
         # First pass: Sample the night of data and remove spatial medians at 1s intervals.
         available_images_per_window = spatial_median_window_usec / self.intgrn_usec
         frames_per_window = int(min(available_images_per_window, max_samples_per_window))
         # Evenly sample all imaging frames.
-        spatial_median_df = pd.DataFrame(columns=[
-            'window_left_unix_t', 'window_right_unix_t', 'spatial_median_img'
+        baseline_df = pd.DataFrame(columns=[
+            'window_left_unix_t', 'window_right_unix_t', 'baseline_img'
         ])
-        # TODO: implement dataframe logging to aid indexing into spatial data frames.
         frame_step_size = int(max(1, available_images_per_window / frames_per_window))
-        # frame_stack_integration_usec = 6e3
-        frame_offset = 0 # int(frame_stack_integration_usec / self.intgrn_usec)
+        frame_offset = 0
         for file_idx in range(0, len(module_image_files), 1):
             file_info = module_image_files[file_idx]
             while frame_offset < file_info['nframes']:
@@ -370,42 +386,38 @@ class ObservingRunInterface:
                     module_id,
                     stacked_integration_usec=stacked_integration_usec
                 )
-                buffer.append(stacked_img)
+                frame_buffer.append(stacked_img)
                 metadata_buffer.append(stacked_meta)
                 frame_offset += frame_step_size
             # Get starting offset for next file if we need more frames.
             if file_idx < len(module_image_files) - 1:
                 frame_offset = max(frame_offset - file_info['nframes'], 0)
-        nwindows = len(buffer) // frames_per_window
+        # Compute spatial medians for each window
+        nwindows = len(frame_buffer) // frames_per_window
         trimmed_len = nwindows * frames_per_window
-        buffer = np.array(buffer[0:trimmed_len])
-        buffer_no_spatial_medians = np.zeros((buffer.shape))
-        spatial_medians = np.zeros((nwindows, 32, 32))
-
+        frame_buffer = np.array(frame_buffer[0:trimmed_len])
+        frame_buffer_no_spatial_medians = np.zeros((frame_buffer.shape))
         for frame_idx in range(0, nwindows):
             l = frame_idx * frames_per_window
             r = (frame_idx + 1) * frames_per_window
-            spatial_median = self.compute_spatial_median(buffer[l:r])
-            spatial_medians[frame_idx] = spatial_median
-            buffer_no_spatial_medians[l:r] = buffer[l:r] - spatial_medians[frame_idx]
-
+            spatial_median = self.compute_spatial_median(frame_buffer[l:r])
+            frame_buffer_no_spatial_medians[l:r] = frame_buffer[l:r] - spatial_median
+            # Record metadata about the spatial median
             left_stacked_meta = metadata_buffer[l]
             right_stacked_meta = metadata_buffer[r - 1]
-            new_spatial_median_record = {
+            new_baseline_record = {
                 'window_left_unix_t': min(left_stacked_meta['start_unix_t'], left_stacked_meta['end_unix_t']),
                 'window_right_unix_t': max(right_stacked_meta['start_unix_t'], right_stacked_meta['end_unix_t']),
-                'spatial_median_img': spatial_median,
-                # 'spatial_median+supermedian': spatial_median,
+                'baseline_img': spatial_median,
             }
-            spatial_median_df.loc[len(spatial_median_df)] = new_spatial_median_record
+            baseline_df.loc[len(baseline_df)] = new_baseline_record
         # Second pass: Compute medians for each pixel across the entire night.
-        spatial_median_df.sort_values(by='window_left_unix_t', inplace=True)
-        supermedian = np.median(buffer_no_spatial_medians, axis=0)
-        spatial_median_df['spatial_median_img'] = spatial_median_df['spatial_median_img'].apply(
+        supermedian = np.median(frame_buffer_no_spatial_medians, axis=0)
+        baseline_df.sort_values(by='window_left_unix_t', inplace=True)
+        baseline_df['baseline_img'] = baseline_df['baseline_img'].apply(
             lambda img: img + supermedian
         )
-        flat = buffer_no_spatial_medians - supermedian
-        return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat, spatial_median_df
+        return baseline_df
 
     def module_file_time_seek(self, module_id, target_time):
         """Search module data to find the image frame with timestamp closest to target_time.
@@ -509,11 +521,11 @@ class PFFFrameIterator:
 
 if __name__ == '__main__':
     # data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
-    # run_dir = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
+    run_dir = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
 
     data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
-    run_dir = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
+    # run_dir = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
 
-    ori = ObservingRunInterface(data_dir, run_dir)
+    ori = ObservingRunInterface(data_dir, run_dir, do_baseline_subtraction=True)
 
-    ori.compute_imaging_baselines(3)
+    # ori.compute_baseline_imgs(3)
