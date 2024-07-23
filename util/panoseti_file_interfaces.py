@@ -22,12 +22,13 @@ import image_quantiles
 
 class ObservingRunInterface:
 
-    def __init__(self, data_dir, run_dir):
+    def __init__(self, data_dir, run_dir, do_baseline_subtraction=False):
         """File manager interface for a single observing run."""
         # Check data paths
         self.data_dir = data_dir
         self.run_dir = run_dir
         self.run_path = f'{self.data_dir}/{self.run_dir}'
+        self.do_baseline_subtraction = do_baseline_subtraction
         self.check_paths()
 
         # Get start and stop times
@@ -84,11 +85,20 @@ class ObservingRunInterface:
                 module_id = config_file.ip_addr_to_module_id(module["ip_addr"])
                 self.obs_pff_files[module_id] = {
                     "img": [],
-                    "ph": []
+                    "ph": [],
+                    "img_supermedian": None,
+                    "img_spatial_median_df": None
                 }
+
         if self.has_imaging_data:
             self.check_image_pff_files()
             self.index_image_pff_files()
+            if do_baseline_subtraction:
+                for module_id in self.obs_pff_files:
+                    spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat, spatial_median_df = (
+                        self.compute_imaging_baselines(module_id))
+                    self.obs_pff_files[module_id]["img_supermedian"] = supermedian
+                    self.obs_pff_files[module_id]["img_spatial_medians"] = spatial_median_df
 
         if self.has_pulse_height:
             self.check_pulse_height_pff_files()
@@ -329,7 +339,7 @@ class ObservingRunInterface:
         return spatial_median
 
 
-    def compute_module_supermedian_image(self, module_id, spatial_median_window_usec=1*10**6, max_samples_per_window=10):
+    def compute_imaging_baselines(self, module_id, spatial_median_window_usec=1 * 10 ** 6, max_samples_per_window=10, stacked_integration_usec=12000):
         """
         Compute the
         @param module_id:
@@ -344,7 +354,10 @@ class ObservingRunInterface:
         available_images_per_window = spatial_median_window_usec / self.intgrn_usec
         frames_per_window = int(min(available_images_per_window, max_samples_per_window))
         # Evenly sample all imaging frames.
-        spatial_median_df = pd.DataFrame(columns=['window_left_unix_t', 'window_right_unix_t', 'spatial_median_img', 'spatial_median+supermedian']) # TODO: implement dataframe logging to aid indexing into spatial data frames.
+        spatial_median_df = pd.DataFrame(columns=[
+            'window_left_unix_t', 'window_right_unix_t', 'spatial_median_img'
+        ])
+        # TODO: implement dataframe logging to aid indexing into spatial data frames.
         frame_step_size = int(max(1, available_images_per_window / frames_per_window))
         # frame_stack_integration_usec = 6e3
         frame_offset = 0 # int(frame_stack_integration_usec / self.intgrn_usec)
@@ -355,7 +368,7 @@ class ObservingRunInterface:
                     file_idx,
                     frame_offset,
                     module_id,
-                    stacked_integration_usec=12000
+                    stacked_integration_usec=stacked_integration_usec
                 )
                 buffer.append(stacked_img)
                 metadata_buffer.append(stacked_meta)
@@ -382,13 +395,17 @@ class ObservingRunInterface:
                 'window_left_unix_t': min(left_stacked_meta['start_unix_t'], left_stacked_meta['end_unix_t']),
                 'window_right_unix_t': max(right_stacked_meta['start_unix_t'], right_stacked_meta['end_unix_t']),
                 'spatial_median_img': spatial_median,
+                # 'spatial_median+supermedian': spatial_median,
             }
             spatial_median_df.loc[len(spatial_median_df)] = new_spatial_median_record
         # Second pass: Compute medians for each pixel across the entire night.
+        spatial_median_df.sort_values(by='window_left_unix_t', inplace=True)
         supermedian = np.median(buffer_no_spatial_medians, axis=0)
+        spatial_median_df['spatial_median_img'] = spatial_median_df['spatial_median_img'].apply(
+            lambda img: img + supermedian
+        )
         flat = buffer_no_spatial_medians - supermedian
         return spatial_medians, buffer, buffer_no_spatial_medians, supermedian, flat, spatial_median_df
-
 
     def module_file_time_seek(self, module_id, target_time):
         """Search module data to find the image frame with timestamp closest to target_time.
@@ -499,4 +516,4 @@ if __name__ == '__main__':
 
     ori = ObservingRunInterface(data_dir, run_dir)
 
-    ori.compute_module_supermedian_image(3)
+    ori.compute_imaging_baselines(3)
