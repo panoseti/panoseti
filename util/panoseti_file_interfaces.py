@@ -22,6 +22,13 @@ import image_quantiles
 
 class ObservingRunInterface:
 
+    # Frame stacking parameters
+    stacked_integration_usec = 12000  # total duration of stacked image frame data.
+    stacked_aggregation_method = 'sum'  # How to combine stacked images ['sum' or 'mean']
+    # Baseline subtraction parameters
+    spatial_median_window_usec = 10 * 10 ** 6
+    max_samples_per_window = 10
+
     def __init__(self, data_dir, run_dir, do_baseline_subtraction=False, verbose=False):
         """File manager interface for a single observing run."""
         # Check data paths
@@ -29,6 +36,7 @@ class ObservingRunInterface:
         self.run_dir = run_dir
         self.run_path = f'{self.data_dir}/{self.run_dir}'
         self.do_baseline_subtraction = do_baseline_subtraction
+        self.verbose = verbose
         self.check_paths()
 
         # Get start and stop times
@@ -93,13 +101,16 @@ class ObservingRunInterface:
             self.check_image_pff_files()
             self.index_image_pff_files()
             if do_baseline_subtraction:
-                if verbose: print('computing imaging baselines...', end='')
+                if verbose:
+                    print('computing imaging baselines...')
                 for module_id in self.obs_pff_files:
+                    print(f'\tprocessing module {module_id}')
                     baseline_df = self.compute_baseline_imgs(module_id)
                     if len(baseline_df) == 0:
                         raise ValueError('Baseline subtraction failed for module {}: Bad imaging data'.format(module_id))
                     self.obs_pff_files[module_id]["baseline_df"] = baseline_df
-                if verbose: print('done')
+                if verbose:
+                    print('all baselines computed')
 
         if self.has_pulse_height:
             self.check_pulse_height_pff_files()
@@ -258,12 +269,12 @@ class ObservingRunInterface:
         return dt.strftime("%m/%d/%Y, %H:%M:%S")
 
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, stacked_integration_usec=12000, agg='mean', allow_partial_image=False):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, subtract_baseline=False):
         """
         Stacks consecutive imaging frames until the cumulative imaging time equals stacked_integration_usec.
             1) Evenly samples image frames between the start frame, specified by start_file_idx and start_frame_offset, and
             the frame with timestamp now - stacked_integration_ussec.
-            2) Then aggregates the frames according to the agg procedure ['sum', 'mean'].
+            2) Then aggregates the frames according to the aggregation procedure ['sum', 'mean'], specified as a class variable.
 
         By default, stack until a total of 6ms of observational data is accumulated. e.g.:
         - For a 100us integration time, add 60 images together.
@@ -271,14 +282,12 @@ class ObservingRunInterface:
 
         @param start_file_idx: sequence number of PFF imaging file in which frame sampling should begin.
         @param start_frame_offset: frame offset within the specified file, relative to the earliest frame in this file.
-        @param stacked_integration_usec: total duration of staked image frame data.
-        @param agg: aggregation method
         @return: tuple of (Stacked 32x32 image frame, stacked metadata dict)
         """
-        nframes = int((stacked_integration_usec) / (self.intgrn_usec))
-        assert nframes >= 1, f'The desired stacked integration ({stacked_integration_usec} usec) must be at least as long as the imaging integration time for this run: {self.intgrn_usec} usec.'
+        nframes = int((self.stacked_integration_usec) / (self.intgrn_usec))
+        assert nframes >= 1, f'The desired stacked integration ({self.stacked_integration_usec} usec) must be at least as long as the imaging integration time for this run: {self.intgrn_usec} usec.'
         module_image_pff_files = self.obs_pff_files[module_id]["img"]
-        frame_step_size = 1  # Sample consecutive frames so that start frame is the latest
+        frame_step_size = 1  # Sample consecutive frames so that start frame is the earliest
         assert abs(frame_step_size) > 0
         frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
@@ -288,10 +297,11 @@ class ObservingRunInterface:
             'start_unix_t': -1,
             'end_unix_t': -1,
             'nframes': nframes,
-            'stacked_integration_usec': stacked_integration_usec,
+            'agg_method': self.stacked_aggregation_method,
+            'stacked_integration_usec': self.stacked_integration_usec,
             'do_baseline_subtraction': self.do_baseline_subtraction
         }
-        for i in range(start_file_idx, -1, -1):
+        for i in range(start_file_idx, len(module_image_pff_files)):
             if n == nframes: break
             file_info = module_image_pff_files[i]
             fpath = f"{self.run_path}/{file_info['fname']}"
@@ -320,18 +330,18 @@ class ObservingRunInterface:
 
         # Retrieve the baseline for this image
         baseline_df = self.obs_pff_files[module_id]['baseline_df']
-        if self.do_baseline_subtraction and baseline_df is not None and len(baseline_df) > 0:
+        if subtract_baseline and self.do_baseline_subtraction and (baseline_df is not None) and (len(baseline_df) > 0):
             baseline_window_idx = baseline_df['window_left_unix_t'].searchsorted(
                 stacked_meta['start_unix_t'], side='right'
             )
-            baseline_window_idx = max(0, baseline_window_idx - 1) # Ensure the index is non-negative
+            baseline_window_idx = max(0, baseline_window_idx - 1)  # Ensure the index is non-negative
             baseline_img = baseline_df['baseline_img'][baseline_window_idx]
         else:
             baseline_img = np.zeros((32, 32))
 
-        if agg == 'mean':
+        if self.stacked_aggregation_method == 'mean':
             return np.mean(frame_buffer, axis=0) - baseline_img, stacked_meta
-        elif agg == 'sum':
+        elif self.stacked_aggregation_method == 'sum':
             return np.sum(frame_buffer, axis=0) - baseline_img, stacked_meta
 
     def compute_spatial_median(self, img_stack):
@@ -352,13 +362,11 @@ class ObservingRunInterface:
         return spatial_median
 
 
-    def compute_baseline_imgs(self, module_id, spatial_median_window_usec=10*10 ** 6, max_samples_per_window=10, stacked_integration_usec=12000):
+    def compute_baseline_imgs(self, module_id):
         """
-        Compute the
-        @param module_id:
-        @param spatial_median_window_usec:
-        @param max_samples_per_window:
-        @return:
+        Compute imaging mode baselines for module_id
+        @param module_id: the module id.
+        @return: baseline_df containing baseline-subtraction data.
         """
         # Only compute baselines during the initialization of an ObservingRunInterface object.
         if self.do_baseline_subtraction and self.obs_pff_files[module_id]['baseline_df'] is not None:
@@ -369,8 +377,8 @@ class ObservingRunInterface:
         frame_buffer = []
         metadata_buffer = []
         # First pass: Sample the night of data and remove spatial medians at 1s intervals.
-        available_images_per_window = spatial_median_window_usec / self.intgrn_usec
-        frames_per_window = int(min(available_images_per_window, max_samples_per_window))
+        available_images_per_window = self.spatial_median_window_usec / self.intgrn_usec
+        frames_per_window = int(min(available_images_per_window, self.max_samples_per_window))
         # Evenly sample all imaging frames.
         baseline_df = pd.DataFrame(columns=[
             'window_left_unix_t', 'window_right_unix_t', 'baseline_img'
@@ -383,8 +391,7 @@ class ObservingRunInterface:
                 stacked_img, stacked_meta = self.stack_frames(
                     file_idx,
                     frame_offset,
-                    module_id,
-                    stacked_integration_usec=stacked_integration_usec
+                    module_id
                 )
                 frame_buffer.append(stacked_img)
                 metadata_buffer.append(stacked_meta)
