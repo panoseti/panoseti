@@ -32,7 +32,6 @@ valid_pano_img_types = [
     'raw-original',# 'original',
     'raw-fft', #'fft',
     'raw-derivative.-60', 'raw-derivative-fft.-60',
-    # 'raw-derivative.-120', 'raw-derivative-fft.-120',
     # 'derivative',
     'fft-derivative',
 ]

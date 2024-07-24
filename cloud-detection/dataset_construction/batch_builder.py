@@ -78,6 +78,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 num_imgs_per_subdir = []
                 for img_type, subdir in ptree.pano_subdirs.items():
                     if img_type in ['original', 'derivative', 'fft', 'fft-derivative']:
+                        print(json.dumps(pano_paths, indent=4))
                         continue
                     num_imgs_per_subdir.append(len(os.listdir(subdir)))
                 if not all([e == num_imgs_per_subdir[0] for e in num_imgs_per_subdir]):
@@ -203,6 +204,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 self.batch_type,
                 sample_dict['pano']['data_dir'],
                 sample_dict['pano']['run_dir'],
+                do_baseline_subtraction=True,
                 verbose=self.verbose,
                 force_recreate=self.force_recreate,
             )
