@@ -7,7 +7,7 @@ from batch_building_utils import load_batch_def
 
 # Build features for a training dataset
 # batch_ids_to_build = [10]
-batch_ids_to_build = list(range(8))
+batch_ids_to_build = list(range(10))
 # batch_id = 10
 for batch_id in batch_ids_to_build:
     batch_def = load_batch_def(batch_id, 'training')['batch-def']

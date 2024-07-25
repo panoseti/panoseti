@@ -147,6 +147,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 self.batch_id,
                 self.batch_type,
                 **sample_dict['skycam'],
+                do_baseline_subtraction=True,
                 verbose=self.verbose,
                 force_recreate=False
             )

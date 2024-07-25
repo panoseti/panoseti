@@ -12,6 +12,9 @@ sys.path.append('../dataset_construction')
 from dataset_builder import CloudDetectionDatasetManager
 from inference_session import InferenceSession
 
+np.seterr(divide='ignore', invalid='ignore')
+
+
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
     def __init__(self, transform=None, target_transform=None):
@@ -36,13 +39,26 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         #     'raw-original': None,
         #     'raw-fft': None,
         # }
-        img_types = ['raw-derivative.-60']#, 'raw-original']
-        stacked_data = np.zeros((32, 32, 1))
+        # img_types = ['raw-derivative.-60']#, 'raw-original']
+        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
+        stacked_data = np.zeros((32, 32, 3))
+
+        def scale_data(data):
+            try:
+                div = 1 / (np.abs(data)) ** 0.5
+                div = np.nan_to_num(div, nan=1)
+                scaled_data = data * div
+            except ZeroDivisionError:
+                pass
+            return scaled_data
+
         for i in range(len(img_types)):
             img_type = img_types[i]
             pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
-
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+            if img_type in ['raw-original', 'raw-derivative.-60']:
+                data = scale_data(data)
+            stacked_data[..., i] = data
 
         transformed_data = None
         if self.transform is not None:
@@ -79,12 +95,32 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         #     img_type = img_types[i]
         #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
         #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
-        img_types = ['raw-derivative.-60']#, 'raw-original']
-        stacked_data = np.zeros((32, 32, 1))
+        # img_types = ['raw-derivative.-60']#, 'raw-original']
+        # stacked_data = np.zeros((32, 32, 1))
+        # for i in range(len(img_types)):
+        #     img_type = img_types[i]
+        #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
+        #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+
+        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
+        stacked_data = np.zeros((32, 32, 3))
+
+        def scale_data(data):
+            try:
+                div = 1 / (np.abs(data)) ** 0.5
+                div = np.nan_to_num(div, nan=1)
+                scaled_data = data * div
+            except ZeroDivisionError:
+                pass
+            return scaled_data
+
         for i in range(len(img_types)):
             img_type = img_types[i]
             pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
-            stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+            if img_type in ['raw-original', 'raw-derivative.-60']:
+                data = scale_data(data)
+            stacked_data[..., i] = data
 
         transformed_data = None
         if self.transform is not None:

@@ -380,7 +380,10 @@ class Trainer:
                     self.optimizer.step()
 
                 # Update log of train and validation accuracy and loss. Print progress.
-                valid_report = self.record_acc_and_loss('val')
+                if len(self.val_loader) > 0:
+                    valid_report = self.record_acc_and_loss('val')
+                else:
+                    valid_report = '---'
                 if make_train_logs:
                     train_report = self.record_acc_and_loss('train')
                     print(valid_report, '\n', train_report)
