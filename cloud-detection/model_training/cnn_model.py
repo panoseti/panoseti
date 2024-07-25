@@ -15,7 +15,7 @@ class CloudDetection(nn.Module):
         super().__init__()
         
         conv1_groups = 3
-        conv1_nker = 48
+        conv1_nker = 27
         conv1_kernel_size = 3
         self.conv1 = nn.Sequential(
             nn.Conv2d(3, conv1_nker, conv1_kernel_size, stride=1, padding='same', groups=conv1_groups),
@@ -36,7 +36,7 @@ class CloudDetection(nn.Module):
         )
 
         conv2_groups = 1
-        conv2_nker = 21
+        conv2_nker = 27
         conv2_kernel_size = 5
         self.conv2 = nn.Sequential(
             nn.Conv2d(conv1_nker, conv2_nker, conv2_kernel_size, stride=1, padding='same', groups=conv2_groups),
@@ -49,13 +49,6 @@ class CloudDetection(nn.Module):
             nn.BatchNorm2d(conv2_nker),
             nn.MaxPool2d(kernel_size=3),
             nn.Dropout2d(p=0.5),
-
-            nn.Conv2d(conv2_nker, conv2_nker, conv2_kernel_size, stride=1, padding='same', groups=conv2_groups),
-            nn.ReLU(),
-            nn.BatchNorm2d(conv2_nker),
-            nn.MaxPool2d(kernel_size=3),
-            nn.Dropout2d(p=0.5),
-
         )
         
         # conv3_groups = 1
@@ -83,11 +76,10 @@ class CloudDetection(nn.Module):
             nn.BatchNorm1d(128),
             nn.Dropout1d(p=0.5),
 
-            nn.LazyLinear(128),
+            nn.LazyLinear(84),
             nn.ReLU(),
-            nn.BatchNorm1d(128),
+            nn.BatchNorm1d(84),
             nn.Dropout1d(p=0.5),
-
             
             nn.LazyLinear(2),
         )

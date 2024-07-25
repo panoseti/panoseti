@@ -29,6 +29,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         self.dsl_df = feature_merged_df.merge(self.dsl_df, on = 'feature_uid').reset_index()
         
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
+        self.cache = {}
 
     def __getitem__(self, index: int):
         feature_uid, label = self.dsl_df.loc[:, ['feature_uid', 'label']].iloc[index]
@@ -40,25 +41,29 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         #     'raw-fft': None,
         # }
         # img_types = ['raw-derivative.-60']#, 'raw-original']
-        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
-        stacked_data = np.zeros((32, 32, 3))
+        if feature_uid in self.cache:
+            stacked_data = self.cache[feature_uid]
+        else:
+            img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
+            stacked_data = np.zeros((32, 32, 3))
 
-        def scale_data(data):
-            try:
-                div = 1 / (np.abs(data)) ** 0.5
-                div = np.nan_to_num(div, nan=1)
-                scaled_data = data * div
-            except ZeroDivisionError:
-                pass
-            return scaled_data
+            def scale_data(data):
+                try:
+                    div = 1 / (np.abs(data)) ** 0.5
+                    div = np.nan_to_num(div, nan=1)
+                    scaled_data = data * div
+                except ZeroDivisionError:
+                    pass
+                return scaled_data
 
-        for i in range(len(img_types)):
-            img_type = img_types[i]
-            pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
-            if img_type in ['raw-original', 'raw-derivative.-60']:
-                data = scale_data(data)
-            stacked_data[..., i] = data
+            for i in range(len(img_types)):
+                img_type = img_types[i]
+                pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
+                data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+                if img_type in ['raw-original', 'raw-derivative.-60']:
+                    data = scale_data(data)
+                stacked_data[..., i] = data
+            self.cache[feature_uid] = stacked_data
 
         transformed_data = None
         if self.transform is not None:
