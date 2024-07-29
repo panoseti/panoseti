@@ -29,9 +29,9 @@
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.0.4",
                     "wps": "wps_astrograph",
-                    "azimuth": 182.9870,
-                    "elevation": 79.4016,
-                    "position_angle": -1.4321
+                    "azimuth": 187.01,
+                    "elevation": 62.912,
+                    "position_angle": -89.105 
 		        }
             ]
         },
@@ -46,9 +46,9 @@
                     "quabo_version": ["qfp", "bga", "qfp", "bga"],
                     "ip_addr": "192.168.0.12",
                     "wps": "wps_barnard",
-                    "azimuth": 185.0020,
-                    "elevation": 78.8126,
-                    "position_angle": -5.3558
+                    "azimuth": 186.23,
+                    "elevation": 63.377,
+                    "position_angle": 12.533
 		        }
             ]
         },

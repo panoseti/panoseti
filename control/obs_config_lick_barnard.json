@@ -20,9 +20,9 @@
                     "quabo_version": ["qfp", "qfp", "qfp", "qfp"],
                     "ip_addr": "192.168.0.12",
                     "wps": "wps_barnard",
-                    "azimuth": 185.0020,
-                    "elevation": 78.8126,
-                    "position_angle": -5.3558
+                    "azimuth": 186.23,
+                    "elevation": 63.377,
+                    "position_angle": 12.533
 		        }
             ]
         }
