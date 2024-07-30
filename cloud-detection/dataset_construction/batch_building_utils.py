@@ -29,10 +29,10 @@ inference_defs_fname = 'inference_batch_definitions.json'
 """Valid feature types"""
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
 valid_pano_img_types = [
-    'raw-original', 'original',
-    'raw-fft', 'fft',
-    'raw-derivative.-60',
-    'derivative',
+    'raw-original',# 'original',
+    'raw-fft', #'fft',
+    'raw-derivative.-60', 'raw-derivative-fft.-60',
+    # 'derivative',
     'fft-derivative',
 ]
 

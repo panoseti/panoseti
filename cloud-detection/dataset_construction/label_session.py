@@ -147,31 +147,31 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         elif fig_type == 'original':
             # Original stacked pano image
             im_orig = ax.imshow(
-                data, vmin=30, vmax=275, cmap='plasma'  # cmap='crest_r'
+                data, vmin=50 * 60, vmax=225 * 60, cmap='plasma'  # cmap='crest_r'
+
             )
             fig.colorbar(
                 im_orig, label='Counts', fraction=0.04, location='bottom', ax=ax
             )
             ax.axis('off')
-        elif fig_type == 'fft':
+        elif 'fft' in fig_type:
             # FFT of original stacked original
             im_fft = ax.imshow(
-                data, vmin=3.5, vmax=8, cmap='mako'
+                data, vmin=4.5, vmax=11, cmap='mako'
             )
             fig.colorbar(
                 im_fft, label='$\log|X[k, \ell]|$', fraction=0.04, location='bottom', ax=ax
             )
             ax.axis('off')
-        elif fig_type == '-60 derivative':
+        elif fig_type in ['-60 derivative', '-120 derivative']:
             # -60 second time derivative
             im_deriv = ax.imshow(
-                data, vmin=-125, vmax=125, cmap='icefire'
+                data, vmin=-250 * 8, vmax=250 * 8, cmap='icefire'
             )
             fig.colorbar(
                 im_deriv, label=r'$\Delta$ Counts', fraction=0.04, location='bottom', ax=ax
             )
             ax.axis('off')
-
 
     def plot_img(self, feature_uid):
         skycam_uid, pano_uid = self.feature_df.loc[
@@ -191,7 +191,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         ax0 = plt.subplot2grid(shape=shape, loc=(0, 0), colspan=8, rowspan=8)
 
         # ax1 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=2, rowspan=2)
-        ax4 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=4, rowspan=4)
+        ax1 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=4, rowspan=4)
         ax2 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=4, rowspan=4)
 
         ax3 = plt.subplot2grid(shape=shape, loc=(0, 16), colspan=4, rowspan=4)
@@ -212,31 +212,39 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         # )
         self.add_subplot(
             fig,
-            ax2,
+            ax3,
             self.pano_uid_to_raw_data(pano_uid, 'raw-original'),
             f'Orig(t) @ 6ms intgr.',
             fig_type='original'
         )
-        self.add_subplot(
-            fig,
-            ax3,
-            self.pano_uid_to_raw_data(pano_uid, 'raw-fft'),
-            'FFT{Orig(t)}',
-            fig_type='fft'
-        )
         # self.add_subplot(
         #     fig,
-        #     ax4,
-        #     self.pano_uid_to_data(pano_uid, 'derivative'),
-        #     f'{pano_uid[:8]}: time derivatives',
-        #     fig_type='derivative'
+        #     ax3,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-fft'),
+        #     'FFT{Orig(t)}',
+        #     fig_type='fft'
         # )
+        # self.add_subplot(
+        #     fig,
+        #     ax3,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-derivative-fft.-60'),
+        #     'FFT{-60s Diff}',
+        #     fig_type='fft'
+        # )
+
         self.add_subplot(
             fig,
-            ax4,
+            ax2,
             self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60'),
             f'Orig(t) – Orig(t - 60)',
             fig_type='-60 derivative'
+        )
+        self.add_subplot(
+            fig,
+            ax1,
+            self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-120'),
+            f'Orig(t) – Orig(t - 120)',
+            fig_type='-120 derivative'
         )
         #         self.add_subplot(
         #             ax5,
@@ -273,7 +281,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         ]
         imgs = []
         for pano_uid in pano_uids_with_given_label:
-            imgs.append(self.pano_uid_to_data(pano_uid, 'original'))
+            imgs.append(self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60'))
         if len(imgs) == 0:
             print(f'No images labeled as "{label}"')
             return
@@ -295,7 +303,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
                     img = imgs[img_idx]
                     feature_uid = feature_uids_with_given_label.iloc[img_idx]
                     ax.set_title(f'{23}{feature_uid[:6]}')  # Label each plot with first 6 chars of feature_uid
-                    ax.imshow(img)
+                    ax.imshow(img, vmin=-100, vmax=100, cmap='icefire')
             plt.show()
             plt.close()
 

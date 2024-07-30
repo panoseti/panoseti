@@ -119,6 +119,7 @@ def pff_file_type(name):
 #
 def pkt_header_time(h):
     return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+    # return wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
 
 def img_header_time(h):
     try:
@@ -149,9 +150,12 @@ def img_info(f, bytes_per_image):
     while first_t == 0:
         if i >= nframes:
             raise ValueError("All image frames are zero!")
+        print('Detected zero frame')
         f.seek(i * frame_size)
         h = json.loads(read_json(f))
+        # print(h)
         first_t = img_header_time(h)
+        # print(first_t)
         i += 1
     f.seek((nframes-1)*frame_size, os.SEEK_SET)
     h = json.loads(read_json(f))
@@ -225,7 +229,7 @@ def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
 # and a Unix time that's within a few ms,
 # return the complete WR time (in Unix time, not TAI)
 #
-def wr_to_unix(pkt_tai, pkt_nsec, tv_sec):
+def wr_to_unix(pkt_tai, pkt_nsec, tv_sec, ignore_clock_desync=False):
     d = (tv_sec - pkt_tai + 37)%1024
     if d == 0:
         return tv_sec + pkt_nsec/1e9
@@ -234,5 +238,46 @@ def wr_to_unix(pkt_tai, pkt_nsec, tv_sec):
     elif d == 1023:
         return tv_sec + 1 + pkt_nsec/1e9
     else:
+        # The WR and DAQ clocks differ by > 1s => out of sync
+        # Return 0 if ignore_clock_desync is False. Otherwise, return an approximation to the time.
+        if ignore_clock_desync:
+            approx_t = tv_sec + pkt_nsec / 1e9
+            return approx_t
+        else:
+            raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
+            return 0
         return 0
         #raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
+
+from decimal import *
+def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
+    pkt_tai = Decimal(str(pkt_tai))
+    pkt_nsec = Decimal(str(pkt_nsec))
+    tv_sec = Decimal(str(tv_sec))
+    nanosec_factor = Decimal(str(1e9))
+
+    d = (tv_sec - pkt_tai + 37)%1024
+    if d == 0:
+        return tv_sec + pkt_nsec / nanosec_factor
+    elif d == 1:
+        return tv_sec - 1 + pkt_nsec / nanosec_factor
+    elif d == 1023:
+        return tv_sec + 1 + pkt_nsec / nanosec_factor
+    else:
+        return 0
+
+
+import numpy as np
+def wr_to_unix_numpy(pkt_tai, pkt_nsec, tv_sec):
+    pkt_tai = np.longdouble(pkt_tai)
+    pkt_nsec = np.longdouble(pkt_nsec)
+    tv_sec = np.longdouble(tv_sec)
+    d = (tv_sec - pkt_tai + 37)%1024
+    if d == 0:
+        return tv_sec + pkt_nsec / np.longdouble(1e9)
+    elif d == 1:
+        return tv_sec - 1 + pkt_nsec / np.longdouble(1e9)
+    elif d == 1023:
+        return tv_sec + 1 + pkt_nsec / np.longdouble(1e9)
+    else:
+        return 0

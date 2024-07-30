@@ -231,6 +231,8 @@ def write_run_name(daq_config, run_name):
         os.unlink(run_symlink)
     run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
     os.symlink(run_dir, run_symlink, True)
+    # record the run name in skymap_info_dir, which will be used by skymap_helper
+    os.system('cp %s %s'%(run_name_file, 'skymap_info_dir'))
 
 def read_run_name():
     if not os.path.exists(run_name_file):

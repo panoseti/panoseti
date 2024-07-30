@@ -1,12 +1,13 @@
 {
-    "head_node_data_dir": "/home/panoseti/data",
-    "head_node_ip_addr": "10.0.1.22",
+    "head_node_data_dir": "/data/panoseti/data",
+    "head_node_ip_addr": "192.168.1.100",
     "daq_nodes": [
         {
-            "username": "panosetigraph",
-            "data_dir": "/home/panosetigraph/data",
-            "ip_addr": "10.0.1.22",
-            "module_ids": "0-255"
+            "username": "panoseti",
+            "data_dir": "/data/panoseti/data",
+            "ip_addr": "192.168.1.100",
+            "module_ids": "0-255",
+            "bindhost": "enp3s0"
         }
     ]
 }

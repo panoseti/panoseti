@@ -16,7 +16,8 @@ def build_features(batch_id):
     )
     data_batch_builder.build_inference_batch()
 
-batch_ids = list(range(0, 11))
+batch_ids = list(range(1000, 1011))
+#batch_ids = [1011]#list(range(0, 11))
 for batch_id in batch_ids:
     build_features(batch_id)
 

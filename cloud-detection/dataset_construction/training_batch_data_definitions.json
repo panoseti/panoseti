@@ -159,6 +159,46 @@
                     }
                 }
             ]
+        },
+        {
+            "batch-id": 8,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
+                    "upsample_pano_frames": 1,
+                    "comments": "Partially cloudy conditions, Moon illumination: 54%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2024-04-17T07:15:05Z.runtype_eng.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2024,
+                        "month": 4,
+                        "day": 16
+                    }
+                }
+            ]
+        },
+        {
+            "batch-id": 9,
+            "batch-def": [
+                {
+                    "sample_stride": 1,
+                    "upsample_pano_frames": 1,
+                    "comments": "Mostly cloudy conditions, Moon illumination: 83%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2024-04-19T05:39:33Z.runtype_eng-test.pffd"
+                    },
+                    "skycam": {
+                        "skycam_type": "SC2",
+                        "year": 2024,
+                        "month": 4,
+                        "day": 18
+                    }
+                }
+            ]
         }
     ]
 }

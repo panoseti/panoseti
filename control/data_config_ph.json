@@ -1,0 +1,9 @@
+{
+    "run_type": "eng-test",
+    "gain": 60,
+    "pulse_height": {
+	    "pe_threshold": 7.5,
+		"two_pixel_trigger": 0,
+		"three_pixel_trigger": 0
+    }
+}

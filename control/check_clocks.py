@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/env python
 
 # 'check_clocks' is a class for checking time synchronization in PANOSETI system.
 # There are several functions in this class for getting time from GPS receiver, quabo and WRS.
@@ -209,8 +209,10 @@ class check_clocks(object):
 if __name__ == '__main__':
     # get uart_port, wrs_ip from config file
     obs_config = config_file.get_obs_config()
+    daq_config = config_file.get_daq_config()
     gps_port = obs_config['gps_port']
-    wrs_ip = obs_config['wr_ip_addr']
+    wrs_ip = socket.gethostbyname(obs_config['wr_ip_addr'])
+    host_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
 
     print('===============================================================')
     print('Please make sure:')
@@ -220,7 +222,7 @@ if __name__ == '__main__':
     print('===============================================================')
     print('Time Checking Result(UTC TIME):')
     
-    cts = check_clocks(gps_port, wrs_ip)
+    cts = check_clocks(gps_port, wrs_ip, host_ip)
     
     # get gps time from gps reciever
     t_gps,t_host = cts.get_gps_time()

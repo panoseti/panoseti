@@ -8,7 +8,12 @@
         "nsum": 64
     },
     "pulse_height": {
-        "pe_threshold": 3
+        "pe_threshold": 12.5,
+		"two_pixel_trigger": 0,
+		"three_pixel_trigger": 0,
+        "any_trigger": {
+            "group_ph_frames": 0
+        }
     },
     "long_pulse": {
         "octaves": 16,

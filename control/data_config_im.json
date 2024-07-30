@@ -1,0 +1,9 @@
+{
+    "run_type": "eng-test",
+    "gain": 60,
+    "image": {
+    	"integration_time_usec": 5000,
+        "pe_threshold": 2,
+        "quabo_sample_size": 16
+    }
+}

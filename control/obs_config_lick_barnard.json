@@ -1,11 +1,11 @@
 {
     "name": "Lick",
     "comment": "Configuration at Lick using only Barnard",
-    "wps_barnard_24V": {
-        "url": "http://admin:epowerpanoseti@192.168.0.101",
+    "wps_barnard": {
+        "url": "http://admin:epowerpanoseti@barnard-power",
         "quabo_socket": 1
     },
-    "wr_ip_addr": "192.168.1.254",
+    "wr_ip_addr": "wrs",
     "gps_port": "/dev/ttyUSB0",
     "detector_overvoltage": 3,
     "domes": [

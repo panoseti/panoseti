@@ -10,7 +10,7 @@ data_config_filename = 'data_config.json'
 quabo_uids_filename = 'quabo_uids.json'
 quabo_info_filename = '../quabos/quabo_info.json'
 detector_info_filename = '../quabos/detector_info.json'
-quabo_calib_filename = '../quabos/detovervol_%dv/quabo_calib_%s.json'
+quabo_calib_filename = '../quabos/detovervol_%dv/%s/quabo_calib_%s.json'
 pointing_filename = 'pointing.json'
 quabo_ph_baseline_filename = 'quabo_ph_baseline.json'
 sw_info_filename = 'sw_info.json'
@@ -177,9 +177,9 @@ def get_quabo_ph_baselines():
 
 # get quabo calibration info
 #
-def get_quabo_calib(serialno, detovervol):
+def get_quabo_calib(serialno, detovervol, mode):
     #print('reading calib file %s'%serialno)
-    path = quabo_calib_filename%(detovervol, serialno)
+    path = quabo_calib_filename%(detovervol, mode, serialno)
     with open(path) as f:
         s = f.read()
     return json.loads(s)

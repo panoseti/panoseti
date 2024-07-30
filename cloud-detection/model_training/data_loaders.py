@@ -12,66 +12,139 @@ sys.path.append('../dataset_construction')
 from dataset_builder import CloudDetectionDatasetManager
 from inference_session import InferenceSession
 
-default_transform = v2.Compose([
-    # v2.RandomResizedCrop(size=(224, 224), antialias=True),
-    # v2.RandomHorizontalFlip(p=0.5),
-    v2.ToTensor(),
-    v2.ToDtype(torch.float32, scale=True)
-    # v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
+np.seterr(divide='ignore', invalid='ignore')
+
 
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
-    def __init__(self, transform=default_transform, target_transform=None):
+    def __init__(self, transform=None, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
-        self.dataset_manager = CloudDetectionDatasetManager(batch_type='inference', root='../dataset_construction')
+        self.dataset_manager = CloudDetectionDatasetManager(batch_type='training', root='../dataset_construction')
         # assert self.dataset_manager.verify_pano_feature_data(), "Not all pano feature data are valid."
         self.dsl_df = self.dataset_manager.main_dfs['dataset-labels']
+        
+        pano_df = self.dataset_manager.main_dfs['pano']
+        feature_df = self.dataset_manager.main_dfs['feature']
+        feature_merged_df = feature_df.reset_index().merge(pano_df, on = 'pano_uid').set_index('index')
+        self.dsl_df = feature_merged_df.merge(self.dsl_df, on = 'feature_uid').reset_index()
+        
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
-        # if pano_img_type not in [t for t in valid_pano_img_types if 'raw' in t]:
-        #     raise ValueError(f'"{pano_img_type} is not a supported feature type')
-        # self.pano_img_type = pano_img_type
+        self.cache = {}
 
     def __getitem__(self, index: int):
         feature_uid, label = self.dsl_df.loc[:, ['feature_uid', 'label']].iloc[index]
         y = self.one_hot_encoding[label]
 
-        img_data = {
-            'raw-original': None,
-            'raw-fft': None,
-            'raw-derivative.-60': None
-        }
-        for img_type in img_data:
-            pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)# / 2**10
-            if self.transform is not None:
-                data = self.transform(data)
-            img_data[img_type] = data
-        return img_data, y
+        # img_data = {
+        #     'raw-derivative.-60': None,
+        #     'raw-original': None,
+        #     'raw-fft': None,
+        # }
+        # img_types = ['raw-derivative.-60']#, 'raw-original']
+        if feature_uid in self.cache:
+            stacked_data = self.cache[feature_uid]
+        else:
+            img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
+            stacked_data = np.zeros((32, 32, 3))
+
+            def scale_data(data):
+                try:
+                    div = 1 / (np.abs(data)) ** 0.5
+                    div = np.nan_to_num(div, nan=1)
+                    scaled_data = data * div
+                except ZeroDivisionError:
+                    pass
+                return scaled_data
+
+            for i in range(len(img_types)):
+                img_type = img_types[i]
+                pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
+                data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+                if img_type in ['raw-original', 'raw-derivative.-60']:
+                    data = scale_data(data)
+                stacked_data[..., i] = data
+            self.cache[feature_uid] = stacked_data
+
+        transformed_data = None
+        if self.transform is not None:
+            transformed_data = self.transform(stacked_data)
+        if self.target_transform is not None:
+            transformed_data = self.target_transform(stacked_data)
+        return transformed_data, y
+
+    # for img_type in img_data:
+        #     pano_feature_fpath = self.dataset_manager.get_pano_feature_fpath(feature_uid, img_type)
+        #     data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+        #
+        #     if self.transform is not None:
+        #         data = self.transform(data)
+        #     if self.target_transform is not None:
+        #         data = self.target_transform(data)
+        #     img_data[img_type] = data
+        # return img_data, y
 
     def __len__(self) -> int:
         return len(self.dsl_df)
 
 
 class CloudDetectionInference(torchvision.datasets.VisionDataset):
-    def __init__(self, batch_id, batch_type='inference', transform=default_transform, target_transform=None):
+    def __init__(self, batch_id, batch_type='inference', transform=None, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
         self.inference_session = InferenceSession(batch_id, batch_type)
 
     def __getitem__(self, index: int):
         feature_uid = self.inference_session.unlabeled_df.loc[:, 'feature_uid'].iloc[index]
-        img_data = {
-            'raw-original': None,
-            'raw-fft': None,
-            'raw-derivative.-60': None
-        }
-        for img_type in img_data:
+        # img_types = ['raw-derivative.-60', 'raw-original']
+        # stacked_data = np.zeros((32, 32, 2))
+        # for i in range(len(img_types)):
+        #     img_type = img_types[i]
+        #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
+        #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+        # img_types = ['raw-derivative.-60']#, 'raw-original']
+        # stacked_data = np.zeros((32, 32, 1))
+        # for i in range(len(img_types)):
+        #     img_type = img_types[i]
+        #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
+        #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+
+        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
+        stacked_data = np.zeros((32, 32, 3))
+
+        def scale_data(data):
+            try:
+                div = 1 / (np.abs(data)) ** 0.5
+                div = np.nan_to_num(div, nan=1)
+                scaled_data = data * div
+            except ZeroDivisionError:
+                pass
+            return scaled_data
+
+        for i in range(len(img_types)):
+            img_type = img_types[i]
             pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
-            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)# / 2**10
-            if self.transform is not None:
-                data = self.transform(data)
-            img_data[img_type] = data
-        return img_data
+            data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+            if img_type in ['raw-original', 'raw-derivative.-60']:
+                data = scale_data(data)
+            stacked_data[..., i] = data
+
+        transformed_data = None
+        if self.transform is not None:
+            transformed_data = self.transform(stacked_data)
+        if self.target_transform is not None:
+            transformed_data = self.target_transform(stacked_data)
+        return transformed_data
+        # img_data = {
+        #     'raw-original': None,
+        #     'raw-fft': None,
+        #     'raw-derivative.-60': None
+        # }
+        # for img_type in img_data:
+        #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
+        #     data = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
+        #     if self.transform is not None:
+        #         data = self.transform(data)
+        #     img_data[img_type] = data
+        # return img_data
 
     def __len__(self) -> int:
         return len(self.inference_session.unlabeled_df)

@@ -142,6 +142,19 @@
                     }
                 }
             ]
+        },
+        {
+            "batch-id": 1011,
+            "batch-def": [
+                {
+                    "time_step": 30,
+                    "comments": "Mostly cloudy conditions, Moon illumination: 83%",
+                    "pano": {
+                        "data_dir": "/mnt/data11/data",
+                        "run_dir": "obs_Lick.start_2024-04-19T05:39:33Z.runtype_eng-test.pffd"
+                    }
+                }
+            ]
         }
     ]
 }
