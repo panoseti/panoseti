@@ -23,7 +23,7 @@ import image_quantiles
 class ObservingRunInterface:
 
     # Frame stacking parameters
-    stacked_integration_usec = 12000  # total duration of stacked image frame data.
+    stacked_integration_usec = 1000  # total duration of stacked image frame data.
     stacked_aggregation_method = 'sum'  # How to combine stacked images ['sum' or 'mean']
     # Baseline subtraction parameters
     spatial_median_window_usec = 10 * 10 ** 6
