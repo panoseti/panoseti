@@ -45,7 +45,7 @@
             "batch-def": [
                 {
                     "sample_stride": 1,
-                    "upsample_pano_frames": 0,
+                    "upsample_pano_frames": 1,
                     "comments": "Likely clear conditions, Moon illumination: 0%",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -65,7 +65,7 @@
             "batch-def": [
                 {
                     "sample_stride": 1,
-                    "upsample_pano_frames": 0,
+                    "upsample_pano_frames": 1,
                     "comments": "Likely clear conditions, Moon illumination: 11%, Bright stars in view",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -85,7 +85,7 @@
             "batch-def": [
                 {
                     "sample_stride": 1,
-                    "upsample_pano_frames": 0,
+                    "upsample_pano_frames": 1,
                     "comments": "Likely clear conditions, Moon illumination: 30%, Likely some bright stars in view",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
@@ -125,7 +125,7 @@
             "batch-def": [
                 {
                     "sample_stride": 1,
-                    "upsample_pano_frames": 0,
+                    "upsample_pano_frames": 1,
                     "comments": "Clear conditions, Moon illumination: 90%",
                     "pano": {
                         "data_dir": "/mnt/data10/data",
@@ -226,7 +226,7 @@
                 {
                     "sample_stride": 1,
                     "upsample_pano_frames": 1,
-                    "comments": "Likely clear conditions, Moon illumination: 98%",
+                    "comments": "Cloud: wispy clouds, Moon illumination: 98%",
                     "pano": {
                         "data_dir": "/mnt/data11/data",
                         "run_dir": "obs_Lick.start_2024-05-24T04:37:30Z.runtype_sci-data.pffd"

@@ -14,6 +14,7 @@ from inference_session import InferenceSession
 
 
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
+    cache = {}
 
     def __init__(self, transform=None, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
@@ -25,9 +26,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         feature_df = self.dataset_manager.main_dfs['feature']
         feature_merged_df = feature_df.reset_index().merge(pano_df, on = 'pano_uid').set_index('index')
         self.dsl_df = feature_merged_df.merge(self.dsl_df, on = 'feature_uid').reset_index()
-        
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
-        self.cache = {}
 
     def __getitem__(self, index: int):
         feature_uid, label = self.dsl_df.loc[:, ['feature_uid', 'label']].iloc[index]

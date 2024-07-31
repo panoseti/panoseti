@@ -147,7 +147,6 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 self.batch_id,
                 self.batch_type,
                 **sample_dict['skycam'],
-                do_baseline_subtraction=True,
                 verbose=self.verbose,
                 force_recreate=False
             )
@@ -165,6 +164,7 @@ class CloudDetectionBatchBuilder(CloudDetectionBatchDataFileTree):
                 sample_dict['pano']['run_dir'],
                 verbose=self.verbose,
                 force_recreate=self.force_recreate,
+                do_baseline_subtraction=True,
             )
             sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, **sample_dict['skycam'])
             self.feature_df, self.pano_df = pano_builder.build_pano_training_batch_data(
