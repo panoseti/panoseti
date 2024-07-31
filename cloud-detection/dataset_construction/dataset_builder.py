@@ -171,7 +171,7 @@ class CloudDetectionDatasetBuilder(CloudDetectionDatasetManager):
         """Aggregate label"""
         y = x.value_counts(normalize=True)
         majority_label = y.index[0]
-        prop_of_votes_for_maj_label = y[0]
+        prop_of_votes_for_maj_label = y.iloc[0]
         if prop_of_votes_for_maj_label >= self.agreement_threshold and majority_label != 'unsure':
             return majority_label
         return None

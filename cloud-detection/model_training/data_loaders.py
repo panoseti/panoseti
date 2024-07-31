@@ -12,8 +12,6 @@ sys.path.append('../dataset_construction')
 from dataset_builder import CloudDetectionDatasetManager
 from inference_session import InferenceSession
 
-np.seterr(divide='ignore', invalid='ignore')
-
 
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
 
@@ -48,12 +46,10 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
             stacked_data = np.zeros((32, 32, 3))
 
             def scale_data(data):
-                try:
+                with np.errstate(divide='ignore'):
                     div = 1 / (np.abs(data)) ** 0.5
                     div = np.nan_to_num(div, nan=1)
                     scaled_data = data * div
-                except ZeroDivisionError:
-                    pass
                 return scaled_data
 
             for i in range(len(img_types)):
@@ -111,12 +107,10 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         stacked_data = np.zeros((32, 32, 3))
 
         def scale_data(data):
-            try:
+            with np.errstate(divide='ignore'):
                 div = 1 / (np.abs(data)) ** 0.5
                 div = np.nan_to_num(div, nan=1)
                 scaled_data = data * div
-            except ZeroDivisionError:
-                pass
             return scaled_data
 
         for i in range(len(img_types)):

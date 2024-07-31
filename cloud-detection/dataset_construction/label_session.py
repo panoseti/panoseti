@@ -134,6 +134,13 @@ class LabelSession(CloudDetectionBatchDataFileTree):
 
     """Plotting"""
 
+    def scale_data(self, data):
+        with np.errstate(divide='ignore'):
+            div = 1 / (np.abs(data)) ** 0.5
+            div = np.nan_to_num(div, nan=1)
+        scaled_data = data * div
+        return scaled_data
+
     def add_subplot(self, fig, ax, data, title, fig_type):
         ax.set_title(title)
         if fig_type in ['skycam', 'derivative']:
@@ -146,31 +153,20 @@ class LabelSession(CloudDetectionBatchDataFileTree):
             ax.spines['left'].set_visible(False)
         elif fig_type == 'original':
             # Original stacked pano image
-            im_orig = ax.imshow(
-                data, vmin=50 * 60, vmax=225 * 60, cmap='plasma'  # cmap='crest_r'
-
-            )
-            fig.colorbar(
-                im_orig, label='Counts', fraction=0.04, location='bottom', ax=ax
-            )
+            scaled_data = self.scale_data(data)
+            im_orig = ax.imshow(scaled_data, vmin=-100, vmax=100, cmap='icefire')  # cmap='crest_r'
+            cbar_orig = fig.colorbar(im_orig, label=r'$\sqrt{\text{Counts}}$', fraction=0.04, location='bottom', ax=ax)
             ax.axis('off')
         elif 'fft' in fig_type:
             # FFT of original stacked original
-            im_fft = ax.imshow(
-                data, vmin=4.5, vmax=11, cmap='mako'
-            )
-            fig.colorbar(
-                im_fft, label='$\log|X[k, \ell]|$', fraction=0.04, location='bottom', ax=ax
-            )
+            im_fft = ax.imshow(data, vmin=3.5, vmax=12, cmap='mako')
+            fig.colorbar(im_fft, label='$\log|X[k, \ell]|$', fraction=0.04, location='bottom', ax=ax)
             ax.axis('off')
         elif fig_type in ['-60 derivative', '-120 derivative']:
             # -60 second time derivative
-            im_deriv = ax.imshow(
-                data, vmin=-250 * 8, vmax=250 * 8, cmap='icefire'
-            )
-            fig.colorbar(
-                im_deriv, label=r'$\Delta$ Counts', fraction=0.04, location='bottom', ax=ax
-            )
+            scaled_data = self.scale_data(data)
+            im_deriv = ax.imshow(scaled_data, vmin=-100, vmax=100, cmap='icefire')
+            fig.colorbar(im_deriv, label=r'$\sqrt{\Delta \text{Counts}}$', fraction=0.04, location='bottom', ax=ax)
             ax.axis('off')
 
     def plot_img(self, feature_uid):
@@ -210,11 +206,12 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         #     self.skycam_uid_to_data(skycam_uid, 'cropped'),
         #     f'{skycam_uid[:8]}: skycam pfov'
         # )
+        # axs[orig_idx].set_title('Original [3ms integr.]')
         self.add_subplot(
             fig,
             ax3,
             self.pano_uid_to_raw_data(pano_uid, 'raw-original'),
-            f'Orig(t) @ 6ms intgr.',
+            f'Orig(t) @ 3ms intgr.',
             fig_type='original'
         )
         # self.add_subplot(
@@ -239,18 +236,27 @@ class LabelSession(CloudDetectionBatchDataFileTree):
             f'Orig(t) – Orig(t - 60)',
             fig_type='-60 derivative'
         )
+        # self.add_subplot(
+        #     fig,
+        #     ax1,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-120'),
+        #     f'Orig(t) – Orig(t - 120)',
+        #     fig_type='-120 derivative'
+        # )
+        # self.add_subplot(
+        #     fig,
+        #     ax1,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-120'),
+        #     f'Orig(t) – Orig(t - 120)',
+        #     fig_type='-120 derivative'
+        # )
         self.add_subplot(
             fig,
             ax1,
-            self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-120'),
-            f'Orig(t) – Orig(t - 120)',
-            fig_type='-120 derivative'
+            self.pano_uid_to_raw_data(pano_uid, 'raw-derivative-fft.-60'),
+            'FFT of Derivative',
+            fig_type ='fft'
         )
-        #         self.add_subplot(
-        #             ax5,
-        #             self.pano_uid_to_data(pano_uid, 'fft-derivative'),
-        #             f'{pano_uid[:8]}: time derivative ffts'
-        #         )
 
         # automatically adjust padding horizontally
         # as well as vertically.
@@ -281,7 +287,9 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         ]
         imgs = []
         for pano_uid in pano_uids_with_given_label:
-            imgs.append(self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60'))
+            data = self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60')
+            scaled_data = self.scale_data(data)
+            imgs.append(scaled_data)
         if len(imgs) == 0:
             print(f'No images labeled as "{label}"')
             return
