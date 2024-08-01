@@ -12,10 +12,9 @@ sys.path.append('../dataset_construction')
 from dataset_builder import CloudDetectionDatasetManager
 from inference_session import InferenceSession
 
-np.seterr(divide='ignore', invalid='ignore')
-
 
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
+    cache = {}
 
     def __init__(self, transform=None, target_transform=None):
         super().__init__(None, transform=transform, target_transform=target_transform)
@@ -27,9 +26,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         feature_df = self.dataset_manager.main_dfs['feature']
         feature_merged_df = feature_df.reset_index().merge(pano_df, on = 'pano_uid').set_index('index')
         self.dsl_df = feature_merged_df.merge(self.dsl_df, on = 'feature_uid').reset_index()
-        
         self.one_hot_encoding = self.dataset_manager.get_one_hot_encoding()
-        self.cache = {}
 
     def __getitem__(self, index: int):
         feature_uid, label = self.dsl_df.loc[:, ['feature_uid', 'label']].iloc[index]
@@ -44,16 +41,15 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         if feature_uid in self.cache:
             stacked_data = self.cache[feature_uid]
         else:
-            img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
-            stacked_data = np.zeros((32, 32, 3))
+            # img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
+            img_types = ['raw-derivative-fft.-60', 'raw-fft']
+            stacked_data = np.zeros((32, 32, len(img_types)))
 
             def scale_data(data):
-                try:
+                with np.errstate(divide='ignore'):
                     div = 1 / (np.abs(data)) ** 0.5
                     div = np.nan_to_num(div, nan=1)
                     scaled_data = data * div
-                except ZeroDivisionError:
-                    pass
                 return scaled_data
 
             for i in range(len(img_types)):
@@ -107,16 +103,15 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
         #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
 
-        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
-        stacked_data = np.zeros((32, 32, 3))
+        # img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
+        img_types = ['raw-derivative-fft.-60', 'raw-fft']
+        stacked_data = np.zeros((32, 32, len(img_types)))
 
         def scale_data(data):
-            try:
+            with np.errstate(divide='ignore'):
                 div = 1 / (np.abs(data)) ** 0.5
                 div = np.nan_to_num(div, nan=1)
                 scaled_data = data * div
-            except ZeroDivisionError:
-                pass
             return scaled_data
 
         for i in range(len(img_types)):
