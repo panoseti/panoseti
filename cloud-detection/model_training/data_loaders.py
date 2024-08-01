@@ -41,8 +41,9 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
         if feature_uid in self.cache:
             stacked_data = self.cache[feature_uid]
         else:
-            img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
-            stacked_data = np.zeros((32, 32, 3))
+            # img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
+            img_types = ['raw-derivative-fft.-60', 'raw-fft']
+            stacked_data = np.zeros((32, 32, len(img_types)))
 
             def scale_data(data):
                 with np.errstate(divide='ignore'):
@@ -102,8 +103,8 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
         #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
 
-        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60']
-        stacked_data = np.zeros((32, 32, 3))
+        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
+        stacked_data = np.zeros((32, 32, len(img_types)))
 
         def scale_data(data):
             with np.errstate(divide='ignore'):
