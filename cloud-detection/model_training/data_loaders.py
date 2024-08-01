@@ -103,7 +103,8 @@ class CloudDetectionInference(torchvision.datasets.VisionDataset):
         #     pano_feature_fpath = self.inference_session.get_pano_feature_fpath(feature_uid, img_type)
         #     stacked_data[..., i] = np.load(pano_feature_fpath, allow_pickle=False).astype(np.float32)
 
-        img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
+        # img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
+        img_types = ['raw-derivative-fft.-60', 'raw-fft']
         stacked_data = np.zeros((32, 32, len(img_types)))
 
         def scale_data(data):
