@@ -38,7 +38,8 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
             stacked_data = self.cache[feature_uid]
         else:
             # img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
-            img_types = ['raw-derivative-fft.-60']
+            # img_types = ['raw-derivative-fft.-60']
+            img_types = ['raw-derivative.-60']
             stacked_data = np.zeros((32, 32, len(img_types)))
 
             def scale_data(data):
