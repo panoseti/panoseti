@@ -1,17 +1,13 @@
 import os
 import sys
-
 import torch
 from torchvision.transforms import v2
-
 import torchvision
-
 import numpy as np
 
 sys.path.append('../dataset_construction')
 from dataset_builder import CloudDetectionDatasetManager
 from inference_session import InferenceSession
-
 
 class CloudDetectionTrain(torchvision.datasets.VisionDataset):
     cache = {}
@@ -42,7 +38,7 @@ class CloudDetectionTrain(torchvision.datasets.VisionDataset):
             stacked_data = self.cache[feature_uid]
         else:
             # img_types = ['raw-derivative-fft.-60', 'raw-original', 'raw-derivative.-60', 'raw-fft']
-            img_types = ['raw-derivative-fft.-60', 'raw-fft']
+            img_types = ['raw-derivative-fft.-60']
             stacked_data = np.zeros((32, 32, len(img_types)))
 
             def scale_data(data):
