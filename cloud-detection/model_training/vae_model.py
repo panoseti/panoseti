@@ -5,13 +5,14 @@ import torch.nn.functional as F
 
 # Define the VAE model
 class VaeModel(nn.Module):
-    def __init__(self, latent_dim=16):
+    def __init__(self, in_channels: int, latent_dim=16):
         super().__init__()
         self.latent_dim = latent_dim
+        self.in_channels = in_channels
         
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=4, stride=2, padding=1),  # (32, 16, 16)
+            nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),  # (32, 16, 16)
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1), # (64, 8, 8)
             nn.ReLU(),
@@ -29,7 +30,7 @@ class VaeModel(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1), # (32, 16, 16)
             nn.ReLU(),
-            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1), # (1, 32, 32)
+            nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1), # (C, 32, 32)
             nn.Sigmoid()  # Output in range [0, 1]
         )
     
