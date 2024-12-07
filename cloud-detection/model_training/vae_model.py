@@ -13,11 +13,14 @@ class VaeModel(nn.Module):
         # Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=4, stride=2, padding=1),  # (32, 16, 16)
-            nn.ReLU(),
+            nn.BatchNorm2d(32),
+            nn.GELU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1), # (64, 8, 8)
-            nn.ReLU(),
+            nn.BatchNorm2d(64),
+            nn.GELU(),
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1), # (128, 4, 4)
-            nn.ReLU()
+            nn.BatchNorm2d(128),
+            nn.GELU()
         )
         
         self.fc_mu = nn.Linear(128 * 4 * 4, latent_dim)  # Mean of latent space
@@ -27,11 +30,13 @@ class VaeModel(nn.Module):
         self.fc_dec = nn.Linear(latent_dim, 128 * 4 * 4)
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1), # (64, 8, 8)
-            nn.ReLU(),
+            nn.BatchNorm2d(64),
+            nn.GELU(),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1), # (32, 16, 16)
-            nn.ReLU(),
+            nn.BatchNorm2d(32),
+            nn.GELU(),
             nn.ConvTranspose2d(32, in_channels, kernel_size=4, stride=2, padding=1), # (C, 32, 32)
-            nn.Sigmoid()  # Output in range [0, 1]
+            # nn.Sigmoid()  # Output in range [0, 1]
         )
     
     def encode(self, x):
