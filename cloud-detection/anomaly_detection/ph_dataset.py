@@ -17,8 +17,8 @@ from vae_model import *
 
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
-    MAX_PH_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    OUTLIER_CUTOFF = MAX_PH_VAL - 1000  # Value defining pixel outlier status
+    MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
+    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 1000  # Value defining pixel outlier status
 
     def __init__(self, config: typing.Dict, transform=None, target_transform=None, log_level=logging.ERROR):
         super().__init__()
@@ -50,10 +50,10 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             for j in self.__ph_generators[module_id]:
                 ph_img = j['img_data']
                 del j['img_data']
-                ph_img_clean, max_pixel_val = self.clean_ph_img(ph_img)
+                ph_img_clean = self.clean_ph_img(ph_img)
                 if ph_img_clean is None:
                     continue
-                yield {'meta': j, 'img': ph_img_clean, 'max_pixel_val': max_pixel_val}
+                yield {'meta': j, 'img': ph_img_clean}
     
     def load_ph_data_lazy(self, module_id: int):
         """Sequentially yields PH frames from module_id."""
@@ -80,9 +80,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             outlier_strategy: how to deal with outliers
                 'zero' => set outliers to 0
                 'clip' => clip outlier values to a max pixel value given by clip_z_score and inlier mean and standard deviations.
-        Returns: 2-element tuple:
-            idx 0: pulse-height frame after applying the specified outlier_strategy with pixels normalized to 0-1 
-            idx 1: maximum max_pixel_val, represented by the pixel value 1.0
+        Returns: pulse-height frame after applying the specified outlier_strategy with pixels log normalized to [-1, 1] 
         """
         # Remove outliers
         assert outlier_strategy in ['zero', 'clip']
@@ -95,14 +93,15 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             clip_max_pixel_val = inlier_mean + clip_z_score * inlier_std
             ph_img_clean = ph_img.copy()
             ph_img_clean = np.clip(ph_img_clean, 0, clip_max_pixel_val)
-    
+        
         # PH image should not be all zeros
-        max_pixel_val = np.max(ph_img_clean)
-        if max_pixel_val == 0:
+        if np.max(ph_img_clean) == 0:
             self.logger.warning('All PH pixels are zero')
-            return None, 0
-        ph_img_clean = ph_img_clean / max_pixel_val
-        return ph_img_clean, max_pixel_val
+            return None
+        log_ph_image = np.log(ph_img_clean + 1)
+        log_pixel_max = np.log(self.MAX_PH_PIXEL_VAL + 1)
+        normalized_log_ph_image = 2 * (log_ph_image / log_pixel_max) - 1
+        return normalized_log_ph_image
 
     def get_ph_data(self, index: int):
       if self.iter_num < self.length:
@@ -116,7 +115,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         self.iter_num = 0
         self.ph_gen = self.ph_generator()
         return next(self.ph_gen)
-            
+    
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
         return self.transform(self.get_ph_data(index)['img'])
@@ -131,21 +130,19 @@ class PulseHeightDataset(torch.utils.data.Dataset):
 
 
 # PH data EDA: visualize PH image and the distribution of pixel values.
-def plot_ph_pixel_dist(img, max_pixel_val, meta, ax=None):
+def plot_ph_pixel_dist(log_normalized_ph_img, meta, ax=None):
     """Plot pulse height pixel distribution (for EDA outlier rejection)."""
-    sns.histplot(img.ravel() * max_pixel_val, stat='density', ax=ax)
+    ph_img = np.exp((log_normalized_ph_img + 1) * (np.log(PulseHeightDataset.MAX_PH_PIXEL_VAL) / 2)) - 1
+    sns.histplot(ph_img.ravel(), stat='density', ax=ax)
     if ax:
         ax.set_title(f"Distribution of PH pixels from Q{meta['quabo_num']} at \n{meta['unix_timestamp']}")
 
-def plot_ph_img(img, max_pixel_val, meta, ax=None):
+def plot_ph_img(log_normalized_ph_img, meta, ax=None):
     if ax is None:
         f = plt.figure()
         ax = plt.gca()
-    mu = np.mean(img)
-    std = np.std(img)
-    sigma = 0
-    low = (mu + std * sigma) * max_pixel_val
-    img_plt = ax.imshow(img * max_pixel_val, cmap='rocket')
+    ph_img = np.exp((log_normalized_ph_img + 1) * (np.log(PulseHeightDataset.MAX_PH_PIXEL_VAL) / 2)) - 1
+    img_plt = ax.imshow(ph_img, cmap='rocket')
     plt.colorbar(img_plt, fraction=0.045)
 
 
