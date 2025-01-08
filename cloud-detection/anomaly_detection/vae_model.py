@@ -357,7 +357,7 @@ class BetaVAE(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(hidden_dim, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # (1, 16, 16)
             # nn.BatchNorm2d(1),
-            # nn.Sigmoid()
+            nn.Sigmoid()
         )
     
     def encode(self, x):

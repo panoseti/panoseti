@@ -19,6 +19,20 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
     OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 1000  # Value defining pixel outlier status
+  
+    @classmethod
+    def log_norm(cls, ph_img):
+      """Log-normalize a given PH image with uint16 pixels into the range [0, 1]."""
+      log_norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)
+      assert 0.0 <= np.min(log_norm_ph_img) and np.max(log_norm_ph_img) <= 1.0
+      return log_norm_ph_img
+  
+    @classmethod
+    def inv_log_norm(cls, log_norm_ph_img):
+      """Invert the log-normalization performed by log_norm."""
+      ph_img = np.exp(log_norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
+      assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= cls.MAX_PH_PIXEL_VAL
+      return ph_img
 
     def __init__(self, config: typing.Dict, transform=None, target_transform=None, log_level=logging.ERROR):
         super().__init__()
@@ -42,6 +56,20 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         self.logger.setLevel(log_level)
         self.iter_num = 0
         self.length = len(self)
+    
+    def __getitem__(self, index: int) -> torch.Tensor:
+        """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
+        return self.transform(self.get_ph_data(index)['img'])
+
+    def __len__(self) -> int:
+        total_ph_frames = 0
+        for module_id in self.dataset_module_ids:
+            for ph_file in self.ori.obs_pff_files[module_id]['ph']:
+                total_ph_frames += ph_file['nframes']
+        return total_ph_frames // 100
+
+    def reset_ph_generator(self):
+      self.ph_gen = self.ph_generator()
 
     def ph_generator(self):
         """Returns a generator that yields PH frames."""
@@ -98,13 +126,10 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         if np.max(ph_img_clean) == 0:
             self.logger.warning('All PH pixels are zero')
             return None
-        log_ph_image = np.log(ph_img_clean + 1)
-        log_pixel_max = np.log(self.MAX_PH_PIXEL_VAL + 1)
-        normalized_log_ph_image = 2 * (log_ph_image / log_pixel_max) - 1
-        return normalized_log_ph_image
+        return self.log_norm(ph_img_clean)
 
     def get_ph_data(self, index: int):
-      if self.iter_num < self.length:
+      if self.iter_num < self.length: # TODO: change when updating index to support random access
         self.iter_num += 1
         try:
             return next(self.ph_gen)
@@ -112,36 +137,24 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             self.ph_gen = self.ph_generator()
             return next(self.ph_gen)
       else:
-        self.iter_num = 0
+        self.iter_num = 0 # TODO: remove later
         self.ph_gen = self.ph_generator()
         return next(self.ph_gen)
-    
-    def __getitem__(self, index: int) -> torch.Tensor:
-        """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
-        return self.transform(self.get_ph_data(index)['img'])
-
-    def __len__(self) -> int:
-        total_ph_frames = 0
-        for module_id in self.dataset_module_ids:
-            for ph_file in self.ori.obs_pff_files[module_id]['ph']:
-                total_ph_frames += ph_file['nframes']
-        return total_ph_frames // 100
-
 
 
 # PH data EDA: visualize PH image and the distribution of pixel values.
-def plot_ph_pixel_dist(log_normalized_ph_img, meta, ax=None):
+def plot_ph_pixel_dist(log_norm_ph_img, meta, ax=None):
     """Plot pulse height pixel distribution (for EDA outlier rejection)."""
-    ph_img = np.exp((log_normalized_ph_img + 1) * (np.log(PulseHeightDataset.MAX_PH_PIXEL_VAL) / 2)) - 1
+    ph_img = PulseHeightDataset.inv_log_norm(log_norm_ph_img)
     sns.histplot(ph_img.ravel(), stat='density', ax=ax)
     if ax:
         ax.set_title(f"Distribution of PH pixels from Q{meta['quabo_num']} at \n{meta['unix_timestamp']}")
 
-def plot_ph_img(log_normalized_ph_img, meta, ax=None):
+def plot_ph_img(log_norm_ph_img, meta, ax=None):
     if ax is None:
         f = plt.figure()
         ax = plt.gca()
-    ph_img = np.exp((log_normalized_ph_img + 1) * (np.log(PulseHeightDataset.MAX_PH_PIXEL_VAL) / 2)) - 1
+    ph_img = PulseHeightDataset.inv_log_norm(log_norm_ph_img)
     img_plt = ax.imshow(ph_img, cmap='rocket')
     plt.colorbar(img_plt, fraction=0.045)
 
