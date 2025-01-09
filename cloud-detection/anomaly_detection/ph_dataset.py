@@ -75,7 +75,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         for module_id in self.dataset_module_ids:
             for ph_file in self.ori.obs_pff_files[module_id]['ph']:
                 total_ph_frames += ph_file['nframes']
-        return total_ph_frames // 10
+        return total_ph_frames
 
     def reset_ph_generator(self):
       self.ph_gen = self.ph_generator()
