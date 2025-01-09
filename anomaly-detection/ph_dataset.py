@@ -78,7 +78,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       # Initialize ph frame generators for this observing run
       ph_frame_generators = {}
       for module_id in dataset_module_ids:
-        ph_frame_generators[module_id] = PulseHeightDataset.obs_run_ph_frame_generator(ori, module_id)
+        ph_frame_generators[module_id] = None #PulseHeightDataset.obs_run_ph_frame_generator(ori, module_id)
       
       obs_run = {
         'ori': ori,
@@ -133,8 +133,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         """
         for obs_run in self.obs_runs:
           obs_run['frame_gen_counter'] = 0
+          for module_id in obs_run['dataset_module_ids']:
+            obs_run['ph_generators'][module_id] = PulseHeightDataset.obs_run_ph_frame_generator(obs_run['ori'], module_id)
         for i in range(self.dataset_length):
-          print(i)
           obs_run = self.obs_runs[i % len(self.obs_runs)]
           module_id = obs_run['dataset_module_ids'][obs_run['frame_gen_counter'] % len(obs_run['dataset_module_ids'])]
           obs_run['frame_gen_counter'] += 1
@@ -150,11 +151,10 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           yield {'meta': j, 'img': ph_img_clean}
     
     def get_ph_data(self, index: int):
-        # print(self.obs_runs)
         try:
             return next(self.ph_gen)
         except StopIteration:
-            self.ph_gen = self.dataset_ph_frame_generator()
+            self.reset_ph_generator()
             return next(self.ph_gen)
 
     def reset_ph_generator(self):
