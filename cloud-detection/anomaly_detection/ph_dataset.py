@@ -19,19 +19,30 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
     OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 1000  # Value defining pixel outlier status
+    # OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL  # Value defining pixel outlier status
+    
+
   
     @classmethod
     def log_norm(cls, ph_img):
-      """Log-normalize a given PH image with uint16 pixels into the range [0, 1]."""
-      log_norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)
-      assert 0.0 <= np.min(log_norm_ph_img) and np.max(log_norm_ph_img) <= 1.0
+      """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
+      # log_norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)) - 1
+      # log_norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)
+      log_norm_ph_img = 2 * (ph_img / cls.MAX_PH_PIXEL_VAL) - 1
+      # log_norm_ph_img = (ph_img / cls.MAX_PH_PIXEL_VAL)
+      assert -1 <= np.min(log_norm_ph_img) and np.max(log_norm_ph_img) <= 1.0, "np.min(log_norm_ph_img)={0}, np.max(log_norm_ph_img)={1}".format(np.min(log_norm_ph_img), np.max(log_norm_ph_img))
       return log_norm_ph_img
   
     @classmethod
     def inv_log_norm(cls, log_norm_ph_img):
       """Invert the log-normalization performed by log_norm."""
-      ph_img = np.exp(log_norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
-      assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= cls.MAX_PH_PIXEL_VAL
+      # ph_img = np.exp((log_norm_ph_img + 1) * np.log(cls.MAX_PH_PIXEL_VAL) / 2) - 1
+      # ph_img = np.exp(log_norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
+      ph_img = (log_norm_ph_img + 1) * cls.MAX_PH_PIXEL_VAL / 2
+      # ph_img = log_norm_ph_img * cls.MAX_PH_PIXEL_VAL
+      ph_img = np.clip(ph_img, 0, cls.MAX_PH_PIXEL_VAL)
+
+      assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= cls.MAX_PH_PIXEL_VAL, "np.min(ph_img)={0}, np.max(ph_img)={1}".format(np.min(ph_img), np.max(ph_img))
       return ph_img
 
     def __init__(self, config: typing.Dict, transform=None, target_transform=None, log_level=logging.ERROR):
@@ -47,7 +58,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         
         # Initialize PH frame generator
         if config['module_ids'] == 'all':
-            self.dataset_module_ids = self.ori.obs_pff_files.keys()
+            self.dataset_module_ids = list(self.ori.obs_pff_files.keys())
         else:
             self.dataset_module_ids = config['module_ids']
         self.ph_gen = self.ph_generator()
@@ -66,7 +77,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         for module_id in self.dataset_module_ids:
             for ph_file in self.ori.obs_pff_files[module_id]['ph']:
                 total_ph_frames += ph_file['nframes']
-        return total_ph_frames // 100
+        return total_ph_frames // 20
 
     def reset_ph_generator(self):
       self.ph_gen = self.ph_generator()
@@ -74,14 +85,21 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     def ph_generator(self):
         """Returns a generator that yields PH frames."""
         self.__ph_generators = {module_id: self.load_ph_data_lazy(module_id) for module_id in self.dataset_module_ids}
-        for module_id in self.dataset_module_ids:
-            for j in self.__ph_generators[module_id]:
-                ph_img = j['img_data']
-                del j['img_data']
-                ph_img_clean = self.clean_ph_img(ph_img)
-                if ph_img_clean is None:
-                    continue
-                yield {'meta': j, 'img': ph_img_clean}
+        for i in range(self.length):
+          module_id = self.dataset_module_ids[i % len(self.dataset_module_ids)]
+          try:
+            # print(module_id)
+            j = next(self.__ph_generators[module_id])
+            ph_img = j['img_data']
+            del j['img_data']
+            ph_img_clean = self.clean_ph_img(ph_img)
+            if ph_img_clean is None:
+                continue
+            yield {'meta': j, 'img': ph_img_clean}
+          except StopIteration:
+            self.__ph_generators[module_id] = self.load_ph_data_lazy(module_id)
+            continue
+                
     
     def load_ph_data_lazy(self, module_id: int):
         """Sequentially yields PH frames from module_id."""
@@ -129,17 +147,11 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         return self.log_norm(ph_img_clean)
 
     def get_ph_data(self, index: int):
-      if self.iter_num < self.length: # TODO: change when updating index to support random access
-        self.iter_num += 1
         try:
             return next(self.ph_gen)
         except StopIteration:
             self.ph_gen = self.ph_generator()
             return next(self.ph_gen)
-      else:
-        self.iter_num = 0 # TODO: remove later
-        self.ph_gen = self.ph_generator()
-        return next(self.ph_gen)
 
 
 # PH data EDA: visualize PH image and the distribution of pixel values.

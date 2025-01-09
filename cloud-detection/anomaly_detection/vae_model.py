@@ -339,12 +339,15 @@ class BetaVAE(nn.Module):
 
         # Encoder
         self.encoder = nn.Sequential(
-            nn.Conv2d(1, hidden_dim, kernel_size=3, stride=2, padding=1),  # (hidden_dim, 8, 8)
-            # nn.BatchNorm2d(hidden_dim),
-            nn.ReLU(),
+            nn.Conv2d(1, hidden_dim, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=2, padding=1),  # (hidden_dim, 8, 8)
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
             nn.Conv2d(hidden_dim, hidden_dim * 2, kernel_size=3, stride=2, padding=1),  # (hidden_dim*2, 4, 4)
-            # nn.BatchNorm2d(hidden_dim * 2),
-            nn.ReLU()
+            nn.BatchNorm2d(hidden_dim * 2),
+            nn.GELU()
         )
         self.fc_mu = nn.Linear(hidden_dim * 2 * 4 * 4, latent_dim)
         self.fc_logvar = nn.Linear(hidden_dim * 2 * 4 * 4, latent_dim)
@@ -353,11 +356,15 @@ class BetaVAE(nn.Module):
         self.fc_decode = nn.Linear(latent_dim, hidden_dim * 2 * 4 * 4)
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(hidden_dim * 2, hidden_dim, kernel_size=3, stride=2, padding=1, output_padding=1),  # (hidden_dim, 8, 8)
-            # nn.BatchNorm2d(hidden_dim),
-            nn.ReLU(),
-            nn.ConvTranspose2d(hidden_dim, 1, kernel_size=3, stride=2, padding=1, output_padding=1),  # (1, 16, 16)
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size=3, stride=2, padding=1, output_padding=1),  # (1, 16, 16)
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
+            nn.Conv2d(hidden_dim, 1, kernel_size=3, stride=1, padding=1),
             # nn.BatchNorm2d(1),
-            nn.Sigmoid()
+            # nn.Tanh(),
+            # nn.Sigmoid(),
         )
     
     def encode(self, x):
@@ -401,7 +408,9 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0
         torch.Tensor: Total loss (scalar).
     """
     # Reconstruction loss (binary cross-entropy for grayscale images)
-    recon_loss = F.binary_cross_entropy(recon_x, x, reduction='sum')
+    recon_loss = F.mse_loss(recon_x, x, reduction='mean')
+    # bce_loss = F.binary_cross_entropy(recon_x, x, reduction='mean')
+
     
     # KL divergence
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
@@ -411,7 +420,7 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0
     
     # Total loss
     if verbose:
-      print("recon_loss={0:0.4}, kl_div={1:0.4}, sparsity_loss={2:0.4}, sum(|mu|)ii={3:0.4}".format(recon_loss, kl_div, sparsity_loss, torch.sum(torch.abs(mu))))
+      print("recon_loss={0:0.6}, kl_div={1:0.4}, sparsity_loss={2:0.4}, sum(|mu|)={3:0.4}".format(recon_loss,  kl_div, sparsity_loss, torch.sum(torch.abs(mu))))
     total_loss = recon_loss + beta * kl_div + sparsity_loss
     return total_loss
 
