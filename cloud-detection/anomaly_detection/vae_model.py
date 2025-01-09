@@ -363,7 +363,7 @@ class BetaVAE(nn.Module):
             nn.GELU(),
             nn.Conv2d(hidden_dim, 1, kernel_size=3, stride=1, padding=1),
             # nn.BatchNorm2d(1),
-            # nn.Tanh(),
+            nn.Tanh(),
             # nn.Sigmoid(),
         )
     
@@ -392,7 +392,7 @@ class BetaVAE(nn.Module):
         return recon_x, mu, logvar
 
 
-def beta_vae_loss_function(recon_x, x, mu, logvar, alpha=0.3, beta=1.0, sparsity_weight=0.0, verbose=False):
+def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0, verbose=False):
     """
     Compute the loss for Beta-VAE with optional sparsity regularization.
     
@@ -407,21 +407,18 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, alpha=0.3, beta=1.0, sparsity
     Returns:
         torch.Tensor: Total loss (scalar).
     """
-    # Reconstruction loss (binary cross-entropy for grayscale images)
-    mse_loss = F.mse_loss(recon_x, x, reduction='sum')
-    bce_loss = F.binary_cross_entropy(recon_x, x, reduction='sum')
-    recon_loss = bce_loss * alpha + (1 - alpha) * mse_loss
+    # reconstruction loss via mse objective 
+    recon_loss = F.mse_loss(recon_x, x, reduction='mean')
 
-    
     # KL divergence
-    kl_div = 0#-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     
-    # Sparsity regularization (L1 norm of mean)
+    # l1 sparsity regularization 
     sparsity_loss = sparsity_weight * torch.sum(torch.abs(mu))
     
     # Total loss
     if verbose:
-      print("recon_loss={0:0.6}, kl_div={1:0.4}, sparsity_loss={2:0.4}, sum(|mu|)={3:0.4}".format(recon_loss,  kl_div, sparsity_loss, torch.sum(torch.abs(mu))))
+      print("recon_loss={0:0.6}, kl_div={1:0.4}, kv_div_loss_term: {2:0.4}, sparsity_loss={3:0.4}, sum(|mu|)={4:0.4}".format(recon_loss,  kl_div, beta * kl_div, sparsity_loss, torch.sum(torch.abs(mu))))
     total_loss = recon_loss + beta * kl_div + sparsity_loss
     return total_loss
 

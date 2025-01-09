@@ -18,23 +18,24 @@ from vae_model import *
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 1000  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
+    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 5000  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
+    img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
     def norm(cls, ph_img):
-      """Log-normalize a given PH image with uint16 pixels into the range [0, 1]."""
-      # norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)) - 1 # [-1, 1]
-      norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1) # [0, 1]
+      """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
+      norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)) - 1 # [-1, 1]
+      # norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1) # [0, 1]
       # norm_ph_img = 2 * (ph_img / cls.MAX_PH_PIXEL_VAL) - 1
       # norm_ph_img = (ph_img / cls.MAX_PH_PIXEL_VAL)
-      assert 0.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
+      assert -1.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
       return norm_ph_img
   
     @classmethod
     def inv_norm(cls, norm_ph_img):
       """Invert the log-normalization performed by norm."""
-      # ph_img = np.exp((norm_ph_img + 1) * np.log(cls.MAX_PH_PIXEL_VAL) / 2) - 1
-      ph_img = np.exp(norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
+      ph_img = np.exp((norm_ph_img + 1) * np.log(cls.MAX_PH_PIXEL_VAL) / 2) - 1
+      # ph_img = np.exp(norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
       # ph_img = (norm_ph_img + 1) * cls.MAX_PH_PIXEL_VAL / 2
       # ph_img = norm_ph_img * cls.MAX_PH_PIXEL_VAL
       ph_img = np.clip(ph_img, 0, cls.MAX_PH_PIXEL_VAL)
@@ -74,7 +75,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         for module_id in self.dataset_module_ids:
             for ph_file in self.ori.obs_pff_files[module_id]['ph']:
                 total_ph_frames += ph_file['nframes']
-        return total_ph_frames // 20
+        return total_ph_frames // 10
 
     def reset_ph_generator(self):
       self.ph_gen = self.ph_generator()
