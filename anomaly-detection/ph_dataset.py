@@ -18,7 +18,7 @@ from vae_model import *
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 5000  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
+    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 10000  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
