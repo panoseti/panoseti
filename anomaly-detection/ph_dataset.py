@@ -22,6 +22,18 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
+    def init_logger(cls, log_level):
+      """Initialize a logger instance"""
+      logger = logging.getLogger("PulseHeightDataset_Logger")
+      logger.setLevel(log_level)
+      console_handler = logging.StreamHandler()
+      console_handler.setLevel(logging.INFO)
+      formatter = logging.Formatter('[%(levelname)s][%(asctime)s] %(message)s')
+      console_handler.setFormatter(formatter)
+      logger.addHandler(console_handler)
+      return logger
+
+    @classmethod
     def norm(cls, ph_img):
       """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
       norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)) - 1 # [-1, 1]
@@ -43,22 +55,6 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       return ph_img
 
     @classmethod
-    def obs_run_ph_frame_generator(cls, ori: pfi.ObservingRunInterface, module_id: int):
-        """Sequentially yields PH frames from the module with given module_id from the obs_run ori."""
-        if module_id not in ori.obs_pff_files:
-            print(f'No module with ID "{module_id}"\n'
-                  f'Available module_ids:\n\t{list(ori.obs_pff_files.keys())}')
-            return None
-        for ph_file in ori.obs_pff_files[module_id]["ph"]:
-            fpath = "{0}/{1}/{2}".format(ori.data_dir, ori.run_dir, ph_file["fname"])
-            with open(fpath, 'rb') as fp:
-                frame_iterator = ori.pulse_height_frame_iterator(fp, 1)
-                for j, img in frame_iterator:
-                    j['wr_timestamp (s)'] = pff.wr_to_unix_decimal(j['pkt_tai'], j['pkt_nsec'], j['tv_sec'])
-                    j['unix_timestamp'] = pd.to_datetime(float(j['wr_timestamp (s)']), unit = 's', utc=True)
-                    yield j, img
-
-    @classmethod
     def init_obs_run(cls, obs_run_config: typing.Dict):
       """Parses obs_run_config and returns a dict containing an ObservingRunInterface instance and module_ids to use from this run."""
       assert {'data_dir', 'run_dir', 'module_ids'}.issubset(set(obs_run_config))
@@ -78,7 +74,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       # Initialize ph frame generators for this observing run
       ph_frame_generators = {}
       for module_id in dataset_module_ids:
-        ph_frame_generators[module_id] = None #PulseHeightDataset.obs_run_ph_frame_generator(ori, module_id)
+        ph_frame_generators[module_id] = None
       
       obs_run = {
         'ori': ori,
@@ -88,11 +84,13 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       }
       return obs_run
 
-    def __init__(self, ph_dataset_config: typing.Dict, transform=None, target_transform=None, log_level=logging.ERROR):
+    def __init__(self, ph_dataset_config: typing.Dict, transform=None, target_transform=None, log_level=logging.INFO):
         assert 'observing_runs' in ph_dataset_config, "Could not find 'observing_runs' in ph_dataset_config."
         super().__init__()
         self.transform = transform
         self.obs_runs = []
+        
+        self.logger = PulseHeightDataset.init_logger(log_level)
         
         # Parse dataset configs and initialize observing file interfaces.
         for obs_run_config in ph_dataset_config['observing_runs']:
@@ -101,10 +99,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         
         # Initialize PH frame generator
         self.ph_gen = self.dataset_ph_frame_generator()
-        
-        # Initialize logger
-        self.logger = logging.getLogger("PulseHeightDataset")
-        self.logger.setLevel(log_level)
+
         
         # Compute available PH frames
         self.total_ph_frames = 0
@@ -126,15 +121,34 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.dataset_length
 
+    def obs_run_ph_frame_generator(self, ori: pfi.ObservingRunInterface, module_id: int):
+        """Sequentially yields PH frames from the module with given module_id from the obs_run ori."""
+        if module_id not in ori.obs_pff_files:
+            raise ValueError(
+                f'No module with ID "{module_id}"\n'
+                f'Available module_ids:\n\t{list(ori.obs_pff_files.keys())}')
+        elif len(ori.obs_pff_files[module_id]["ph"]) == 0:
+            raise FileNotFoundError(f'Missing PH files for module "{module_id}" in {ori.run_dir}!')
+        self.logger.info(f'Detected the following PH files for module_id: {module_id}: {ori.obs_pff_files[module_id]["ph"]}')
+        for ph_file in ori.obs_pff_files[module_id]["ph"]:
+            fpath = "{0}/{1}/{2}".format(ori.data_dir, ori.run_dir, ph_file["fname"])
+            with open(fpath, 'rb') as fp:
+                frame_iterator = ori.pulse_height_frame_iterator(fp, 1)
+                for j, img in frame_iterator:
+                    j['wr_timestamp (s)'] = pff.wr_to_unix_decimal(j['pkt_tai'], j['pkt_nsec'], j['tv_sec'])
+                    j['unix_timestamp'] = pd.to_datetime(float(j['wr_timestamp (s)']), unit = 's', utc=True)
+                    yield j, img
+
     def dataset_ph_frame_generator(self):
         """
         Returns a generator that lazily and sequentially yields PH frames in a round-robin fashion from all available ph files for this object.
         TODO: create indexing function to group ph frames.
         """
+        self.logger.info('Resetting dataset-global PH frame generator') 
         for obs_run in self.obs_runs:
           obs_run['frame_gen_counter'] = 0
           for module_id in obs_run['dataset_module_ids']:
-            obs_run['ph_generators'][module_id] = PulseHeightDataset.obs_run_ph_frame_generator(obs_run['ori'], module_id)
+            obs_run['ph_generators'][module_id] = self.obs_run_ph_frame_generator(obs_run['ori'], module_id)
         for i in range(self.dataset_length):
           obs_run = self.obs_runs[i % len(self.obs_runs)]
           module_id = obs_run['dataset_module_ids'][obs_run['frame_gen_counter'] % len(obs_run['dataset_module_ids'])]
@@ -143,8 +157,13 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             j, ph_img = next(obs_run['ph_generators'][module_id])
           except StopIteration:
             # Reset ph_generator to beginning of file
-            obs_run['ph_generators'][module_id] = PulseHeightDataset.obs_run_ph_frame_generator(obs_run['ori'], module_id)
-            j, ph_img = next(obs_run['ph_generators'][module_id]) # should succeed
+            self.logger.info(f"resetting ph_generator for moddule {module_id} in in {obs_run['ori'].run_dir}")
+            obs_run['ph_generators'][module_id] = self.obs_run_ph_frame_generator(obs_run['ori'], module_id)
+            try:
+              j, ph_img = next(obs_run['ph_generators'][module_id]) # should succeed
+            except StopIteration: # only has StopIteration error if ph file is all zero data
+              self.logger.error(f"Unexpected StopIteration error when accessing ph frames from module {module_id} in {obs_run['ori'].run_dir}")
+              continue
           ph_img_clean = self.clean_ph_img(ph_img)
           if ph_img_clean is None: # skip bad ph frames (all zeros).
               continue
