@@ -342,6 +342,9 @@ class BetaVAE(nn.Module):
             nn.Conv2d(1, hidden_dim, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.GELU(),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
             nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=2, padding=1),  # (hidden_dim, 8, 8)
             nn.BatchNorm2d(hidden_dim),
             nn.GELU(),
@@ -358,7 +361,10 @@ class BetaVAE(nn.Module):
             nn.ConvTranspose2d(hidden_dim * 2, hidden_dim, kernel_size=3, stride=2, padding=1, output_padding=1),  # (hidden_dim, 8, 8)
             nn.BatchNorm2d(hidden_dim),
             nn.GELU(),
-            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size=3, stride=2, padding=1, output_padding=1),  # (1, 16, 16)
+            nn.ConvTranspose2d(hidden_dim, hidden_dim, kernel_size=3, stride=2, padding=1, output_padding=1),  # (hidden_dim, 16, 16)
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(hidden_dim),
             nn.GELU(),
             nn.Conv2d(hidden_dim, 1, kernel_size=3, stride=1, padding=1),

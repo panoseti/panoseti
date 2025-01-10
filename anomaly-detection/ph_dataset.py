@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 import torch
 
@@ -12,6 +13,7 @@ sys.path.append('../util')
 import panoseti_file_interfaces as pfi
 import pff
 from vae_model import *
+from functools import cache
 
 
 
@@ -96,11 +98,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         for obs_run_config in ph_dataset_config['observing_runs']:
           obs_run = PulseHeightDataset.init_obs_run(obs_run_config)
           self.obs_runs.append(obs_run)
-        
-        # Initialize PH frame generator
-        self.ph_gen = self.dataset_ph_frame_generator()
 
-        
         # Compute available PH frames
         self.total_ph_frames = 0
         for obs_run in self.obs_runs:
@@ -112,14 +110,34 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           self.dataset_length = min(ph_dataset_config['max_ph_frames'], self.total_ph_frames)
         else:
           self.dataset_length = self.total_ph_frames
-    
+
+        # Initialize PH frame generator
+        self.ph_gen = self.dataset_ph_frame_generator()
+        self.compute_ph_mean()
+        self.reset_ph_generator()
+
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
         ph_img = self.get_ph_data(index)['img']
+        ph_img = np.clip(ph_img - self.ph_mean, -1, 1)
         return self.transform(ph_img)
 
     def __len__(self) -> int:
         return self.dataset_length
+
+    def compute_ph_mean(self):
+      img_sum = np.zeros((16, 16))
+      n_imgs = 0
+      print('Computing average PH image')
+      for i in tqdm(range(self.dataset_length), unit="ph_frames"):
+        ph_img = self.get_ph_data(i)['img']
+        n_imgs += 1
+        img_sum += ph_img
+      self.ph_mean = img_sum / n_imgs
+      img_plt = plt.imshow(self.ph_mean, cmap='rocket')
+      plt.colorbar(img_plt)
+      plt.show()
+        
 
     def obs_run_ph_frame_generator(self, ori: pfi.ObservingRunInterface, module_id: int):
         """Sequentially yields PH frames from the module with given module_id from the obs_run ori."""
@@ -169,6 +187,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
               continue
           yield {'meta': j, 'img': ph_img_clean}
     
+    @cache
     def get_ph_data(self, index: int):
         try:
             return next(self.ph_gen)
@@ -207,20 +226,20 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         return self.norm(ph_img_clean)
 
 
-# PH data EDA: visualize PH image and the distribution of pixel values.
-def plot_ph_pixel_dist(norm_ph_img, meta, ax=None):
-    """Plot pulse height pixel distribution (for EDA outlier rejection)."""
-    ph_img = PulseHeightDataset.inv_norm(norm_ph_img)
-    sns.histplot(ph_img.ravel(), stat='density', ax=ax)
-    if ax:
-        ax.set_title(f"Distribution of PH pixels from Q{meta['quabo_num']} at \n{meta['unix_timestamp']}")
-
-def plot_ph_img(norm_ph_img, meta, ax=None):
-    if ax is None:
-        f = plt.figure()
-        ax = plt.gca()
-    ph_img = PulseHeightDataset.inv_norm(norm_ph_img)
-    img_plt = ax.imshow(ph_img, cmap='rocket')
-    plt.colorbar(img_plt, fraction=0.045)
+    # PH data EDA: visualize PH image and the distribution of pixel values.
+    def plot_ph_pixel_dist(self, norm_ph_img, meta, ax=None):
+        """Plot pulse height pixel distribution (for EDA outlier rejection)."""
+        ph_img = self.inv_norm(norm_ph_img + self.ph_mean) 
+        sns.histplot(ph_img.ravel(), stat='density', ax=ax)
+        if ax:
+            ax.set_title(f"Distribution of PH pixels from Q{meta['quabo_num']} at \n{meta['unix_timestamp']}")
+    
+    def plot_ph_img(self, norm_ph_img, meta, ax=None):
+        if ax is None:
+            f = plt.figure()
+            ax = plt.gca()
+        ph_img = self.inv_norm(norm_ph_img + self.ph_mean)
+        img_plt = ax.imshow(ph_img, cmap='rocket')
+        plt.colorbar(img_plt, fraction=0.045)
 
 
