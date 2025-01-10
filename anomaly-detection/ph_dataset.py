@@ -20,7 +20,7 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 10000  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
+    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 0  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
@@ -34,27 +34,6 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       console_handler.setFormatter(formatter)
       logger.addHandler(console_handler)
       return logger
-
-    @classmethod
-    def norm(cls, ph_img):
-      """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
-      norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1)) - 1 # [-1, 1]
-      # norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1) # [0, 1]
-      # norm_ph_img = 2 * (ph_img / cls.MAX_PH_PIXEL_VAL) - 1
-      # norm_ph_img = (ph_img / cls.MAX_PH_PIXEL_VAL)
-      assert -1.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
-      return norm_ph_img
-  
-    @classmethod
-    def inv_norm(cls, norm_ph_img):
-      """Invert the log-normalization performed by norm."""
-      ph_img = np.exp((norm_ph_img + 1) * np.log(cls.MAX_PH_PIXEL_VAL) / 2) - 1 # [-1, 1]
-      # ph_img = np.exp(norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
-      # ph_img = (norm_ph_img + 1) * cls.MAX_PH_PIXEL_VAL / 2
-      # ph_img = norm_ph_img * cls.MAX_PH_PIXEL_VAL
-      ph_img = np.clip(ph_img, 0, cls.MAX_PH_PIXEL_VAL)
-      assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= cls.MAX_PH_PIXEL_VAL, "np.min(ph_img)={0}, np.max(ph_img)={1}".format(np.min(ph_img), np.max(ph_img))
-      return ph_img
 
     @classmethod
     def init_obs_run(cls, obs_run_config: typing.Dict):
@@ -113,30 +92,54 @@ class PulseHeightDataset(torch.utils.data.Dataset):
 
         # Initialize PH frame generator
         self.ph_gen = self.dataset_ph_frame_generator()
-        self.compute_ph_mean()
-        self.reset_ph_generator()
+        # self.compute_ph_mean()
+        # self.reset_ph_generator()
 
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
         ph_img = self.get_ph_data(index)['img']
-        ph_img = np.clip(ph_img - self.ph_mean, -1, 1)
-        return self.transform(ph_img)
+        ph_img_norm = self.norm(ph_img)
+        return self.transform(ph_img_norm)
 
     def __len__(self) -> int:
         return self.dataset_length
 
     def compute_ph_mean(self):
-      img_sum = np.zeros((16, 16))
+      img_sum = torch.zeros((1, 16, 16))
       n_imgs = 0
       print('Computing average PH image')
       for i in tqdm(range(self.dataset_length), unit="ph_frames"):
         ph_img = self.get_ph_data(i)['img']
         n_imgs += 1
-        img_sum += ph_img
-      self.ph_mean = img_sum / n_imgs
+        img_sum += self.transform(ph_img)
+      self.ph_mean = (img_sum / n_imgs).squeeze(0).numpy()
+      # print(self.ph_mean)
       img_plt = plt.imshow(self.ph_mean, cmap='rocket')
       plt.colorbar(img_plt)
       plt.show()
+
+    def norm(self, ph_img):
+      """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
+      # norm_ph_img = np.clip(ph_img - self.ph_mean, 0, self.MAX_PH_PIXEL_VAL)
+      norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(self.MAX_PH_PIXEL_VAL + 1)) - 1 # [-1, 1]
+      # norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1) # [0, 1]
+      # norm_ph_img = 2 * (ph_img / cls.MAX_PH_PIXEL_VAL) - 1
+      # norm_ph_img = (ph_img - self.ph_mean) / self.MAX_PH_PIXEL_VAL
+      # norm_ph_img = np.clip(norm_ph_img, 0, self.MAX_PH_PIXEL_VAL)
+      assert -1.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
+      return norm_ph_img
+  
+    def inv_norm(self, norm_ph_img):
+      """Invert the log-normalization performed by norm."""
+      ph_img = np.exp((norm_ph_img + 1) * np.log(self.MAX_PH_PIXEL_VAL) / 2) - 1 # [-1, 1]
+      # ph_img = np.exp(norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
+      # ph_img = (norm_ph_img + 1) * cls.MAX_PH_PIXEL_VAL / 2
+      # ph_img = (norm_ph_img * self.MAX_PH_PIXEL_VAL) + self.ph_mean
+      # ph_img += self.ph_mean
+      ph_img = np.clip(ph_img, 0, self.MAX_PH_PIXEL_VAL)
+      ph_img[ph_img >= self.OUTLIER_CUTOFF] = 0
+      assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= self.MAX_PH_PIXEL_VAL, "np.min(ph_img)={0}, np.max(ph_img)={1}".format(np.min(ph_img), np.max(ph_img))
+      return ph_img
         
 
     def obs_run_ph_frame_generator(self, ori: pfi.ObservingRunInterface, module_id: int):
@@ -184,6 +187,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
               continue
           ph_img_clean = self.clean_ph_img(ph_img)
           if ph_img_clean is None: # skip bad ph frames (all zeros).
+              self.logger.warn(f"run: {obs_run['ori'].run_dir:<58} module {module_id:<4} has a frame with all zeros.")
               continue
           yield {'meta': j, 'img': ph_img_clean}
     
@@ -220,25 +224,23 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             ph_img_clean = np.clip(ph_img_clean, 0, clip_max_pixel_val)
         
         # PH image should not be all zeros
-        if np.max(ph_img_clean) == 0:
-            self.logger.warning('All PH pixels are zero')
+        if np.max(ph_img_clean) == 0:# or np.sum(ph_img_clean == 0) / ph_img_clean.size > 0.98:
+            # self.logger.warning(f'{np.sum(ph_img_clean == 0)} PH pixels are zero')
             return None
-        return self.norm(ph_img_clean)
+        return ph_img_clean
 
 
     # PH data EDA: visualize PH image and the distribution of pixel values.
-    def plot_ph_pixel_dist(self, norm_ph_img, meta, ax=None):
+    def plot_ph_pixel_dist(self, ph_img, meta, ax=None):
         """Plot pulse height pixel distribution (for EDA outlier rejection)."""
-        ph_img = self.inv_norm(norm_ph_img + self.ph_mean) 
         sns.histplot(ph_img.ravel(), stat='density', ax=ax)
-        if ax:
+        if ax is not None:
             ax.set_title(f"Distribution of PH pixels from Q{meta['quabo_num']} at \n{meta['unix_timestamp']}")
     
-    def plot_ph_img(self, norm_ph_img, meta, ax=None):
+    def plot_ph_img(self, ph_img, meta, ax=None):
         if ax is None:
             f = plt.figure()
             ax = plt.gca()
-        ph_img = self.inv_norm(norm_ph_img + self.ph_mean)
         img_plt = ax.imshow(ph_img, cmap='rocket')
         plt.colorbar(img_plt, fraction=0.045)
 
