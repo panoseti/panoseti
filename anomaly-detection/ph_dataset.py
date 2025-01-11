@@ -20,7 +20,7 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 0  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
+    OUTLIER_CUTOFF = MAX_PH_PIXEL_VAL - 500  # Value defining pixel outlier status: TODO: do some stats to find better cutoff.
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
@@ -92,7 +92,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
 
         # Initialize PH frame generator
         self.ph_gen = self.dataset_ph_frame_generator()
-        # self.compute_ph_mean()
+        # self.compute_ph_stats()
         # self.reset_ph_generator()
 
     def __getitem__(self, index: int) -> torch.Tensor:
@@ -104,20 +104,26 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.dataset_length
 
-    def compute_ph_mean(self):
-      img_sum = torch.zeros((1, 16, 16))
-      n_imgs = 0
-      print('Computing average PH image')
+    def compute_ph_stats(self, n_samples=5_000):
+      print('Computing PH image statistics')
+      sample_idxs = np.random.choice(np.arange(self.dataset_length), size=min(n_samples, self.dataset_length), replace=False)
+      sampled_ph_imgs = torch.zeros((len(sample_idxs), 1, 16, 16))
+      img_idx = 0
       for i in tqdm(range(self.dataset_length), unit="ph_frames"):
         ph_img = self.get_ph_data(i)['img']
-        n_imgs += 1
-        img_sum += self.transform(ph_img)
-      self.ph_mean = (img_sum / n_imgs).squeeze(0).numpy()
-      # print(self.ph_mean)
-      img_plt = plt.imshow(self.ph_mean, cmap='rocket')
-      plt.colorbar(img_plt)
-      plt.show()
-
+        if i in sample_idxs:
+          sampled_ph_imgs[img_idx] = self.transform(ph_img)
+          img_idx += 1
+      self.stats = {
+        'mean': torch.mean(sampled_ph_imgs),
+        'median': torch.median(sampled_ph_imgs),
+        'std': torch.std(sampled_ph_imgs),
+        'max': torch.max(sampled_ph_imgs),
+        'q9995':torch.quantile(sampled_ph_imgs, 0.9995),
+      }
+      print(self.stats)
+      self.reset_ph_generator()
+      
     def norm(self, ph_img):
       """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
       # norm_ph_img = np.clip(ph_img - self.ph_mean, 0, self.MAX_PH_PIXEL_VAL)
