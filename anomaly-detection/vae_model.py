@@ -177,13 +177,15 @@ class BetaVAE(nn.Module):
             ConvBlock(in_channels, hidden_dim),     # ouput shape: (hidden_dim, 16, 16)
             DownBlock(hidden_dim, hidden_dim),     # output shape: (hidden_dim, 8, 8)
             DownBlock(hidden_dim, hidden_dim * 2), # output shape: (hidden_dim * 2, 4, 4)
+            DownBlock(hidden_dim * 2, hidden_dim * 4), # output shape: (hidden_dim * 4, 2, 2)
         )
-        self.fc_mu = nn.Linear(hidden_dim * 2 * 4 * 4, latent_dim) # Notice that latent_dim controls the  information bottleneck
-        self.fc_logvar = nn.Linear(hidden_dim * 2 * 4 * 4, latent_dim)
+        self.fc_mu = nn.Linear(hidden_dim * 4 * 2 * 2, latent_dim) # Notice that latent_dim controls the  information bottleneck
+        self.fc_logvar = nn.Linear(hidden_dim * 4 * 2 * 2, latent_dim)
         
         # Decoder
-        self.fc_decode = nn.Linear(latent_dim, hidden_dim * 2 * 4 * 4)
+        self.fc_decode = nn.Linear(latent_dim, hidden_dim * 4 * 2 * 2)
         self.decoder = nn.Sequential(
+            UpBlock(hidden_dim * 4, hidden_dim * 2), # output shape: (hidden_dim * 2, 4, 4)
             UpBlock(hidden_dim * 2, hidden_dim), # output shape: (hidden_dim, 8, 8)
             UpBlock(hidden_dim, hidden_dim),     # output shape: (hidden_dim, 16, 16)
             ConvBlock(hidden_dim, hidden_dim),   # output shape: (hidden_dim, 16, 16)
@@ -206,7 +208,7 @@ class BetaVAE(nn.Module):
     
     def decode(self, z):
         x = self.fc_decode(z)
-        x = x.view(x.size(0), -1, 4, 4)  # Reshape to image
+        x = x.view(x.size(0), -1, 2, 2)  # Reshape to image
         x = self.decoder(x)
         return x
     
