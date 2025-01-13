@@ -22,7 +22,8 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    BASELINE_PERCENTILE = 0.01 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+    BASELINE_PERCENTILE = 0.03 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+  
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
@@ -148,7 +149,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         # self.compute_ph_stats()
         # self.reset_ph_generator()
 
-    @cache
+    # @cache
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
         ph_img = self.get_ph_data(index)['img']
@@ -219,7 +220,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         # Value defining pixel outlier status:
         if len(pixels_to_correct) > 0:
           ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=self.BASELINE_PERCENTILE)))
-          ph_outlier_cutoff = int(np.round(np.min(pixels_to_correct)))
+          # ph_outlier_cutoff = int(np.round(np.min(pixels_to_correct)))
         else:
           ph_outlier_cutoff = self.MAX_PH_PIXEL_VAL
         
@@ -263,7 +264,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
               continue
           yield {'meta': j, 'img': ph_img_clean}
     
-    # @cache
+    @cache
     def get_ph_data(self, index: int):
         try:
             return next(self.ph_gen)
