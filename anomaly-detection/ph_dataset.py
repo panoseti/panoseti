@@ -296,14 +296,20 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         if ax is not None:
             ax.set_title(title)
     
-    def plot_ph_img(self, ph_img, meta, ax=None):
+    def plot_ph_img(self, ph_img, meta, ax=None, log_cbar=False):
         if ax is None:
             f = plt.figure()
             ax = plt.gca()
-        img_plt = ax.imshow(self.norm(ph_img), cmap='magma', vmin=-1)
-        cbar = plt.colorbar(img_plt, fraction=0.045)
-        # cbar.ax.locator_params(nbins=10)
-        cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
+        if log_cbar:
+          img_plt = ax.imshow(self.norm(ph_img), cmap='magma', vmin=-1)
+          cbar = plt.colorbar(img_plt, fraction=0.045)
+          # cbar.ax.locator_params(nbins=10)
+          cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
+        else:
+          img_plt = ax.imshow(ph_img, cmap='magma', vmin=-1)
+          cbar = plt.colorbar(img_plt, fraction=0.045)
+          # cbar.ax.locator_params(nbins=10)
+          # cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
 
     def colorbar_formatter(self, value, tick_position):
         val_in_original_units = self.inv_norm(np.array([value]))[0]
