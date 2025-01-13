@@ -22,7 +22,7 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    # BASELINE_SHIFT = 50 # Value defining amount to roll all pixel values by. Used to account for baseline subtraction. TODO: do per-observing run stats for more accurate value
+    BASELINE_PERCENTILE = 0.01 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
@@ -57,7 +57,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
                   yield j, img.astype(np.uint16)
 
     @classmethod
-    def init_obs_run(cls, obs_run_config: typing.Dict, max_stats_sample_size=5_000):
+    def init_obs_run(cls, obs_run_config: typing.Dict, compute_ph_baselines=False, max_stats_sample_size=500):
       """Parses obs_run_config and returns a dict containing an ObservingRunInterface instance and module_ids to use from this run."""
       assert {'data_dir', 'run_dir', 'module_ids'}.issubset(set(obs_run_config))
       ori = pfi.ObservingRunInterface(obs_run_config['data_dir'], obs_run_config['run_dir'])
@@ -80,33 +80,34 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         module_meta[module_id]['ph_frame_generator'] = None
 
       # Compute PH Baseline
-      print(f'Computing PH baselines for {ori.run_dir}')
-      
-      for module_id in dataset_module_ids:
-        nframes = 0
-        for ph_file in ori.obs_pff_files[module_id]['ph']:
-            nframes += ph_file['nframes']
-        # Subsample all ph frames (could be millions)
-        nsamples = min(max_stats_sample_size, nframes)
-        # sample_idxs = np.random.choice(np.arange(nframes), size=nsamples, replace=False) CORRECT
-        sample_idxs = np.arange(nsamples) # INCORRECT, but faster
-        sampled_imgs = np.zeros((nsamples, 16, 16), dtype=np.uint16)
+      if compute_ph_baselines:
+        print(f'Computing PH baselines for {ori.run_dir}')
         
-        frame_gen = cls.obs_run_ph_frame_generator(ori, module_id)
-        img_idx = 0
-        for i, (j, img) in tqdm(enumerate(frame_gen), unit="frames", total=nsamples - 1):
-          if i in sample_idxs:
-            sampled_imgs[img_idx] = img
-            img_idx += 1
-          if img_idx == nsamples:
-            break
-        pixels_to_correct = sampled_imgs[sampled_imgs > max(cls.MAX_PH_PIXEL_VAL - 2000, 0)]
-        # Value defining pixel outlier status:
-        q = min(0.1, 10 / (max_stats_sample_size * 256))
-        module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - np.quantile(pixels_to_correct, q=q) 
-        module_meta[module_id]['ph_outlier_cutoff'] = min(cls.MAX_PH_PIXEL_VAL - module_meta[module_id]['ph_baseline'], cls.MAX_PH_PIXEL_VAL - 2000)
-        print(q)
-        # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
+        for module_id in dataset_module_ids:
+          nframes = 0
+          for ph_file in ori.obs_pff_files[module_id]['ph']:
+              nframes += ph_file['nframes']
+          # Subsample all ph frames (could be millions)
+          nsamples = min(max_stats_sample_size, nframes)
+          # sample_idxs = np.random.choice(np.arange(nframes), size=nsamples, replace=False) CORRECT
+          sample_idxs = np.arange(nsamples) # INCORRECT, but faster
+          sampled_imgs = np.zeros((nsamples, 16, 16), dtype=np.uint16)
+          
+          frame_gen = cls.obs_run_ph_frame_generator(ori, module_id)
+          img_idx = 0
+          for i, (j, img) in tqdm(enumerate(frame_gen), unit="frames", total=nsamples - 1):
+            if i in sample_idxs:
+              sampled_imgs[img_idx] = img
+              img_idx += 1
+            if img_idx == nsamples:
+              break
+          pixels_to_correct = sampled_imgs[sampled_imgs > max(cls.MAX_PH_PIXEL_VAL - 1000, 0)]
+          if len(pixels_to_correct) > 0:
+            ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=cls.BASELINE_PERCENTILE))) # Value defining pixel outlier status:
+          else:
+            ph_outlier_cutoff = 0
+          module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
+          module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
         
 
       obs_run = {
@@ -147,6 +148,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         # self.compute_ph_stats()
         # self.reset_ph_generator()
 
+    @cache
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
         ph_img = self.get_ph_data(index)['img']
@@ -206,22 +208,27 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             module_meta: metadata for module that recorded this image
         Returns: pulse-height frame after applying the specified outlier_strategy with pixels log normalized to [-1, 1] 
         """
-        assert ph_img.dtype == np.uint16
         # image should not be all zeros
         if np.max(ph_img) == 0:# or np.sum(ph_img_clean == 0) / ph_img_clean.size > 0.98:
             # self.logger.warning(f'{np.sum(ph_img_clean == 0)} PH pixels are zero')
             return None
-        im = plt.imshow(ph_img)
-        plt.colorbar(im)
-        plt.show()
-        ph_img_clean = ph_img + module_meta['ph_baseline'] # Undo baseline subtraction
-        im = plt.imshow(ph_img_clean)
-        plt.colorbar(im)
-        plt.show()
-        ph_img_clean[ph_img_clean >= module_meta['ph_outlier_cutoff']] = 0 # Zero any remaining outliers
-        im = plt.imshow(ph_img_clean)
-        plt.colorbar(im)
-        plt.show()
+        # ph_baseline = module_meta['ph_baseline']
+        # ph_outlier_cutoff = module_meta['ph_outlier_cutoff']
+        
+        pixels_to_correct = ph_img[ph_img > max(self.MAX_PH_PIXEL_VAL - 1000, 0)]
+        # Value defining pixel outlier status:
+        if len(pixels_to_correct) > 0:
+          ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=self.BASELINE_PERCENTILE)))
+          ph_outlier_cutoff = int(np.round(np.min(pixels_to_correct)))
+        else:
+          ph_outlier_cutoff = self.MAX_PH_PIXEL_VAL
+        
+        ph_baseline = self.MAX_PH_PIXEL_VAL - ph_outlier_cutoff
+        ph_outlier_cutoff = min(ph_outlier_cutoff, self.MAX_PH_PIXEL_VAL - 1000)
+
+        ph_img_clean = ph_img + ph_baseline # Undo baseline subtraction
+        ph_img_clean[ph_img_clean >= ph_outlier_cutoff] = 0 # Zero any remaining outliers
+        assert ph_img.dtype == np.uint16
         return ph_img_clean
 
     def dataset_ph_frame_generator(self):
@@ -256,7 +263,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
               continue
           yield {'meta': j, 'img': ph_img_clean}
     
-    @cache
+    # @cache
     def get_ph_data(self, index: int):
         try:
             return next(self.ph_gen)
@@ -296,7 +303,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         img_plt = ax.imshow(self.norm(ph_img), cmap='magma', vmin=-1)
         cbar = plt.colorbar(img_plt, fraction=0.045)
         # cbar.ax.locator_params(nbins=10)
-        # cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
+        cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
 
     def colorbar_formatter(self, value, tick_position):
         val_in_original_units = self.inv_norm(np.array([value]))[0]
