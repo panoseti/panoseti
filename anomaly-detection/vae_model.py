@@ -235,7 +235,7 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0
         torch.Tensor: Total loss (scalar).
     """
     # reconstruction loss via mse objective 
-    recon_loss = F.mse_loss(recon_x, x, reduction='sum')
+    recon_loss = F.mse_loss(recon_x, x, reduction='mean')
 
     # KL divergence
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
@@ -248,10 +248,6 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0
       print("recon_loss={0:0.6}, kl_div={1:0.4}, kv_div_loss_term: {2:0.4}, sparsity_loss={3:0.4}, sum(|mu|)={4:0.4}".format(recon_loss,  kl_div, beta * kl_div, sparsity_loss, torch.sum(torch.abs(mu))))
     total_loss = recon_loss + beta * kl_div + sparsity_loss
     return total_loss
-
-
-
-
 
 
 class Unflatten32x32(nn.Module):
