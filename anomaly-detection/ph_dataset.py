@@ -73,7 +73,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
                   yield j, img.astype(np.uint16)
 
     @classmethod
-    def init_obs_run(cls, obs_run_config: typing.Dict, compute_ph_stats=True, max_stats_sample_size=10_000):
+    def init_obs_run(cls, obs_run_config: typing.Dict, compute_ph_stats=True, max_stats_sample_size=5_000):
       """Parses obs_run_config and returns a dict containing an ObservingRunInterface instance and module_ids to use from this run."""
       assert {'data_dir', 'run_dir', 'module_ids'}.issubset(set(obs_run_config))
       ori = pfi.ObservingRunInterface(obs_run_config['data_dir'], obs_run_config['run_dir'])
@@ -125,7 +125,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
           module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
           shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
-          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs)
+          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs, axis=0)
           module_meta[module_id]['ph_std'] = np.std(shifted_sampled_imgs)
           # im_plt = plt.imshow(module_meta[module_id]['ph_median_img'])
           # plt.colorbar(im_plt)
