@@ -23,102 +23,6 @@ from torchvision.transforms import v2
 # from model_training_utils import *
 
 
-
-# ---- Plotting ----
-# plt.figure(figsize=(15, 15));
-
-def plot_loss(log, ax, save=True):
-    train_loss = log['train']['loss']
-    val_loss = log['val']['loss']
-    x = np.arange(1, len(val_loss) + 1)
-
-    if len(train_loss) > 0:
-        ax.plot(train_loss, label="training loss")
-    ax.plot(val_loss, label="validation loss")
-
-    ax.legend()
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("loss")
-
-    ax.grid()
-    ax.set_title("Loss vs Epoch")
-    if save:
-        plt.savefig("Loss")
-        plt.show()
-        plt.close()
-
-def plot_accuracy(log, ax, save=True):
-    train_acc = log['train']['acc']
-    val_acc = log['val']['acc']
-    x = np.arange(1, len(val_acc) + 1)
-
-    if len(train_acc) > 0:
-        ax.plot(x, train_acc, label="training accuracy")
-    ax.plot(x, val_acc, label="validation accuracy")
-    ax.legend()
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("accuracy")
-    ax.set_ylim([0, 1.025])
-
-    ax.set_title("Accuracy vs Epoch")
-    ax.grid()
-    if save:
-        plt.savefig(f"Accuracy")
-        plt.show()
-        plt.close()
-
-
-def plot_precision_recall(log, ax, save=True):
-    val_precision = log['val']['precision']
-    val_recall = log['val']['recall']
-    x = np.arange(1, len(val_precision) + 1)
-    ax.plot(x, val_precision, label="precision (pos label=1)")
-    ax.plot(x, val_recall, label="recall (pos label=1)")
-    ax.legend()
-    ax.grid()
-    ax.set_xlabel("epoch")
-    ax.set_ylabel("score")
-    ax.set_ylim([0, 1.025])
-
-    ax.set_title("Validation Precision & Recall vs Epoch")
-    if save:
-        plt.savefig(f"precision_recall_per_epoch")
-        plt.show()
-        plt.close()
-
-
-def plot_cloudy_mistakes(log, save=True):
-    train_acc = log['train']['cloudy_wrong']
-    val_acc = log['val']['cloudy_wrong']
-
-    plt.plot(train_acc, label="training cloudy_wrong")
-    plt.plot(val_acc, label="validation cloudy_wrong")
-    plt.legend()
-    plt.xlabel("epoch")
-    plt.ylabel("accuracy")
-
-    plt.title("Cloud-Detection Training and percent cloudy misclassifications vs Epoch")
-    if save:
-        plt.savefig(f"cloudy_wrong")
-        plt.close()
-
-
-def plot_clear_mistakes(log, save=True):
-    train_acc = log['train']['clear_wrong']
-    val_acc = log['val']['clear_wrong']
-
-    plt.plot(train_acc, label="training clear_wrong")
-    plt.plot(val_acc, label="validation clear_wrong")
-    plt.legend()
-    plt.xlabel("epoch")
-    plt.ylabel("accuracy")
-
-    plt.title("Cloud-Detection Training and percent clear misclassifications vs Epoch")
-    if save:
-        plt.savefig(f"clear_wrong")
-        plt.close()
-
-
 # Utils
 
 def get_device(verbose=False):
@@ -435,4 +339,99 @@ class Trainer:
         # plt.show()
         # plt.close()
 
+
+
+# ---- Plotting ----
+# plt.figure(figsize=(15, 15));
+
+def plot_loss(log, ax, save=True):
+    train_loss = log['train']['loss']
+    val_loss = log['val']['loss']
+    x = np.arange(1, len(val_loss) + 1)
+
+    if len(train_loss) > 0:
+        ax.plot(train_loss, label="training loss")
+    ax.plot(val_loss, label="validation loss")
+
+    ax.legend()
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("loss")
+
+    ax.grid()
+    ax.set_title("Loss vs Epoch")
+    if save:
+        plt.savefig("Loss")
+        plt.show()
+        plt.close()
+
+def plot_accuracy(log, ax, save=True):
+    train_acc = log['train']['acc']
+    val_acc = log['val']['acc']
+    x = np.arange(1, len(val_acc) + 1)
+
+    if len(train_acc) > 0:
+        ax.plot(x, train_acc, label="training accuracy")
+    ax.plot(x, val_acc, label="validation accuracy")
+    ax.legend()
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("accuracy")
+    ax.set_ylim([0, 1.025])
+
+    ax.set_title("Accuracy vs Epoch")
+    ax.grid()
+    if save:
+        plt.savefig(f"Accuracy")
+        plt.show()
+        plt.close()
+
+
+def plot_precision_recall(log, ax, save=True):
+    val_precision = log['val']['precision']
+    val_recall = log['val']['recall']
+    x = np.arange(1, len(val_precision) + 1)
+    ax.plot(x, val_precision, label="precision (pos label=1)")
+    ax.plot(x, val_recall, label="recall (pos label=1)")
+    ax.legend()
+    ax.grid()
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("score")
+    ax.set_ylim([0, 1.025])
+
+    ax.set_title("Validation Precision & Recall vs Epoch")
+    if save:
+        plt.savefig(f"precision_recall_per_epoch")
+        plt.show()
+        plt.close()
+
+
+def plot_cloudy_mistakes(log, save=True):
+    train_acc = log['train']['cloudy_wrong']
+    val_acc = log['val']['cloudy_wrong']
+
+    plt.plot(train_acc, label="training cloudy_wrong")
+    plt.plot(val_acc, label="validation cloudy_wrong")
+    plt.legend()
+    plt.xlabel("epoch")
+    plt.ylabel("accuracy")
+
+    plt.title("Cloud-Detection Training and percent cloudy misclassifications vs Epoch")
+    if save:
+        plt.savefig(f"cloudy_wrong")
+        plt.close()
+
+
+def plot_clear_mistakes(log, save=True):
+    train_acc = log['train']['clear_wrong']
+    val_acc = log['val']['clear_wrong']
+
+    plt.plot(train_acc, label="training clear_wrong")
+    plt.plot(val_acc, label="validation clear_wrong")
+    plt.legend()
+    plt.xlabel("epoch")
+    plt.ylabel("accuracy")
+
+    plt.title("Cloud-Detection Training and percent clear misclassifications vs Epoch")
+    if save:
+        plt.savefig(f"clear_wrong")
+        plt.close()
 
