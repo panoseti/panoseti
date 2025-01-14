@@ -174,9 +174,9 @@ class BetaVAE(nn.Module):
 
         # Encoder
         self.encoder = nn.Sequential(
-            ConvBlock(in_channels, hidden_dim),     # ouput shape: (hidden_dim, 16, 16)
-            DownBlock(hidden_dim, hidden_dim),     # output shape: (hidden_dim, 8, 8)
-            DownBlock(hidden_dim, hidden_dim * 2), # output shape: (hidden_dim * 2, 4, 4)
+            ConvBlock(in_channels, hidden_dim * 2),     # ouput shape: (hidden_dim, 16, 16)
+            DownBlock(hidden_dim * 2, hidden_dim * 2),     # output shape: (hidden_dim, 8, 8)
+            DownBlock(hidden_dim * 2, hidden_dim * 2), # output shape: (hidden_dim * 2, 4, 4)
             DownBlock(hidden_dim * 2, hidden_dim * 4), # output shape: (hidden_dim * 4, 2, 2)
         )
         self.fc_mu = nn.Linear(hidden_dim * 4 * 2 * 2, latent_dim) # Notice that latent_dim controls the  information bottleneck
@@ -186,11 +186,11 @@ class BetaVAE(nn.Module):
         self.fc_decode = nn.Linear(latent_dim, hidden_dim * 4 * 2 * 2)
         self.decoder = nn.Sequential(
             UpBlock(hidden_dim * 4, hidden_dim * 2), # output shape: (hidden_dim * 2, 4, 4)
-            UpBlock(hidden_dim * 2, hidden_dim), # output shape: (hidden_dim, 8, 8)
-            UpBlock(hidden_dim, hidden_dim),     # output shape: (hidden_dim, 16, 16)
-            ConvBlock(hidden_dim, hidden_dim),   # output shape: (hidden_dim, 16, 16)
+            UpBlock(hidden_dim * 2, hidden_dim * 2), # output shape: (hidden_dim, 8, 8)
+            UpBlock(hidden_dim * 2, hidden_dim * 2),     # output shape: (hidden_dim, 16, 16)
+            ConvBlock(hidden_dim * 2, hidden_dim),   # output shape: (hidden_dim, 16, 16)
             nn.Conv2d(hidden_dim, 1, kernel_size=3, stride=1, padding=1), # output shape: (1, 16, 16)
-            nn.Tanh(),
+            # nn.Tanh(),
             # nn.Sigmoid(),
         )
     

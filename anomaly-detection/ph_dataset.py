@@ -125,8 +125,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
           module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
           shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
-          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs, axis=0)
-          module_meta[module_id]['ph_std'] = np.std(shifted_sampled_imgs, axis=0)
+          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs)
+          module_meta[module_id]['ph_std'] = np.std(shifted_sampled_imgs)
           # im_plt = plt.imshow(module_meta[module_id]['ph_median_img'])
           # plt.colorbar(im_plt)
           # plt.show()
