@@ -1,0 +1,35 @@
+{
+	"name": "Lick",
+	"comment": "Default Lick config: just crocker dome",
+	"control_nodes": [
+		{
+			"name": "headnode",
+			"ip_addr": "192.168.3.99",
+			"update_interval_seconds": 30
+		}
+	],
+	"device_nodes": [
+		{
+			"group_id": "crocker",
+			"name": "rpi_ours",
+			"ip_addr": "192.168.3.12",
+			"control_node_name": "headnode",
+			"device_type": "MOUNT_CONTROLLER",
+			"device_port": "TODO",
+			"device_driver": "crocker_mount_controller",
+			"allow_commands": "false",
+			"comment": "Each device node must be connected to exactly one physical device."
+		},
+		{
+			"group_id": "crocker",
+			"name": "rpi_jeff",
+			"ip_addr": "128.114.176.148",
+			"control_node_name": "headnode",
+			"device_type": "DOME_CONTROLLER",
+			"device_port": "/dev/ttyUSB_DOME",
+			"device_driver": "crocker_dome_controller",
+			"allow_commands": "true",
+			"comment": "Each device node must be connected to exactly one physical device."
+		}
+	]
+}

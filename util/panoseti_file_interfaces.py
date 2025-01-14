@@ -22,12 +22,21 @@ import image_quantiles
 
 class ObservingRunInterface:
 
-    def __init__(self, data_dir, run_dir):
+    # Frame stacking parameters
+    stacked_integration_usec = 1000  # total duration of stacked image frame data.
+    stacked_aggregation_method = 'sum'  # How to combine stacked images ['sum' or 'mean']
+    # Baseline subtraction parameters
+    spatial_median_window_usec = 10 * 10 ** 6
+    max_samples_per_window = 10
+
+    def __init__(self, data_dir, run_dir, do_baseline_subtraction=False, verbose=False):
         """File manager interface for a single observing run."""
         # Check data paths
         self.data_dir = data_dir
         self.run_dir = run_dir
         self.run_path = f'{self.data_dir}/{self.run_dir}'
+        self.do_baseline_subtraction = do_baseline_subtraction
+        self.verbose = verbose
         self.check_paths()
 
         # Get start and stop times
@@ -84,11 +93,24 @@ class ObservingRunInterface:
                 module_id = config_file.ip_addr_to_module_id(module["ip_addr"])
                 self.obs_pff_files[module_id] = {
                     "img": [],
-                    "ph": []
+                    "ph": [],
+                    "baseline_df": None
                 }
+
         if self.has_imaging_data:
             self.check_image_pff_files()
             self.index_image_pff_files()
+            if do_baseline_subtraction:
+                if verbose:
+                    print('computing imaging baselines...')
+                for module_id in self.obs_pff_files:
+                    print(f'\tprocessing module {module_id}')
+                    baseline_df = self.compute_baseline_imgs(module_id)
+                    if len(baseline_df) == 0:
+                        raise ValueError('Baseline subtraction failed for module {}: Bad imaging data'.format(module_id))
+                    self.obs_pff_files[module_id]["baseline_df"] = baseline_df
+                if verbose:
+                    print('all baselines computed')
 
         if self.has_pulse_height:
             self.check_pulse_height_pff_files()
@@ -247,36 +269,39 @@ class ObservingRunInterface:
         return dt.strftime("%m/%d/%Y, %H:%M:%S")
 
 
-    def stack_frames(self, start_file_idx, start_frame_offset, module_id, delta_t=1, agg='mean', allow_partial_image=False):
+    def stack_frames(self, start_file_idx, start_frame_offset, module_id, subtract_baseline=False):
         """
-        Evenly samples image frames between now and now-delta_t, then aggregates
-        the frames according to the given aggregation method.
+        Stacks consecutive imaging frames until the cumulative imaging time equals stacked_integration_usec.
+            1) Evenly samples image frames between the start frame, specified by start_file_idx and start_frame_offset, and
+            the frame with timestamp now - stacked_integration_ussec.
+            2) Then aggregates the frames according to the aggregation procedure ['sum', 'mean'], specified as a class variable.
 
         By default, stack until a total of 6ms of observational data is accumulated. e.g.:
-        - if you have 100us panoseti image data, add 60 images together, roughly evenly spaced over 1 second.
-        - if you have 2ms panoseti image data, add 3 images together, roughly evenly spaced over 1 second.
-        - if you have 1ms panoseti image data, add 6 images together, roughly evenly spaced over 1 second.
+        - For a 100us integration time, add 60 images together.
+        - For a 2000us integration time, add 3 images together.
 
-        @param f: file pointer to a PFF imaging file
-        @param nframes: number of frames to stack
-        @param delta_t: seconds between current and oldest frame to be sampled
-        @param agg: aggregation method
-        @return: Stacked image frame
+        @param start_file_idx: sequence number of PFF imaging file in which frame sampling should begin.
+        @param start_frame_offset: frame offset within the specified file, relative to the earliest frame in this file.
+        @return: tuple of (Stacked 32x32 image frame, stacked metadata dict)
         """
-
-        STACKED_INTEGRATION_MS = 6  # Stack 6ms of image frame data by default. e.g.:
-
-        nframes = int((STACKED_INTEGRATION_MS * 1E-3) / (self.intgrn_usec * 1E-6))
+        nframes = int((self.stacked_integration_usec) / (self.intgrn_usec))
+        assert nframes >= 1, f'The desired stacked integration ({self.stacked_integration_usec} usec) must be at least as long as the imaging integration time for this run: {self.intgrn_usec} usec.'
         module_image_pff_files = self.obs_pff_files[module_id]["img"]
-        time_step = delta_t / nframes   # time step between sampled frames
-        frame_step_size = int(time_step / (self.intgrn_usec * 1E-6))
-        assert frame_step_size > 0
-        assert delta_t >= 0, 'stack_frames is a causal function.'
-        # Iterate backwards through PFF files for module_id
+        frame_step_size = 1  # Sample consecutive frames so that start frame is the earliest
+        assert abs(frame_step_size) > 0
         frame_buffer = np.zeros((nframes, 32, 32))
         frame_offset = start_frame_offset
         n = 0
-        for i in range(start_file_idx, -1, -1):
+        # Iterate through PFF files for module_id
+        stacked_meta = {
+            'start_unix_t': -1,
+            'end_unix_t': -1,
+            'nframes': nframes,
+            'agg_method': self.stacked_aggregation_method,
+            'stacked_integration_usec': self.stacked_integration_usec,
+            'do_baseline_subtraction': self.do_baseline_subtraction
+        }
+        for i in range(start_file_idx, len(module_image_pff_files)):
             if n == nframes: break
             file_info = module_image_pff_files[i]
             fpath = f"{self.run_path}/{file_info['fname']}"
@@ -284,8 +309,14 @@ class ObservingRunInterface:
                 # Start file pointer with an offset based on the previous file -> ensures even frame sampling
                 fp.seek(frame_offset * self.bytes_per_header_and_image_frame, os.SEEK_CUR)
                 # Create FrameIterator iterator
-                fitr = self.image_frame_iterator(fp, frame_step_size, nframes - n)
-                for j, img in fitr:
+                frame_iterator = self.image_frame_iterator(fp, frame_step_size, nframes - n)
+                for j, img in frame_iterator:
+                    j = j['quabo_0']
+                    timestamp = pff.wr_to_unix_decimal(j['pkt_tai'], j['pkt_nsec'], j['tv_sec'])
+                    if n == 0:
+                        stacked_meta['start_unix_t'] = timestamp
+                    else:
+                        stacked_meta['end_unix_t'] = timestamp
                     frame_buffer[n] = img
                     n += 1
                 # Get info for next file if we need more frames.
@@ -296,13 +327,104 @@ class ObservingRunInterface:
         if len(frame_buffer) < nframes:
             raise ValueError(f'Insufficient frames for frame stacking: '
                              f'retrieved {len(frame_buffer)} / {nframes} frames')
-        if agg == 'mean':
-            return np.mean(frame_buffer, axis=0)
+
+        # Retrieve the baseline for this image
+        baseline_df = self.obs_pff_files[module_id]['baseline_df']
+        if subtract_baseline and self.do_baseline_subtraction and (baseline_df is not None) and (len(baseline_df) > 0):
+            baseline_window_idx = baseline_df['window_left_unix_t'].searchsorted(
+                stacked_meta['start_unix_t'], side='right'
+            )
+            baseline_window_idx = max(0, baseline_window_idx - 1)  # Ensure the index is non-negative
+            baseline_img = baseline_df['baseline_img'][baseline_window_idx]
+        else:
+            baseline_img = np.zeros((32, 32))
+
+        if self.stacked_aggregation_method == 'mean':
+            return np.mean(frame_buffer, axis=0) - baseline_img, stacked_meta
+        elif self.stacked_aggregation_method == 'sum':
+            return np.sum(frame_buffer, axis=0) - baseline_img, stacked_meta
+
+    def compute_spatial_median(self, img_stack):
+        """
+        Given an image stack (n, 32,32) of n module images, returns a single (32,32) array containing
+        the 16 median 8x8 pixel region of the n images.
+        """
+        if not isinstance(img_stack, np.ndarray):
+            raise ValueError(f'module image must be an np.ndarray, got {type(img_stack)}')
+        spatial_median = np.zeros((32, 32))        # spatial_median = np.median(img_stack[..., ::4, ::4], axis=0) #
+        for i in range(0, 32, 8):
+            for j in range(0, 32, 8):
+                raw_med = np.median(img_stack[:, i:i + 8, j:j + 8], axis=0)
+                std = np.std(raw_med)
+                mu = np.median(raw_med)
+                # spatial_median[i:i + 8, j:j + 8] = np.clip(raw_med, mu - std, mu + std)
+                spatial_median[i:i + 8, j:j + 8] = np.median(img_stack[:, i:i + 8, j:j + 8])
+        return spatial_median
 
 
-    def compute_module_median_image(self, module_id):
+    def compute_baseline_imgs(self, module_id):
+        """
+        Compute imaging mode baselines for module_id
+        @param module_id: the module id.
+        @return: baseline_df containing baseline-subtraction data.
+        """
+        # Only compute baselines during the initialization of an ObservingRunInterface object.
+        if self.do_baseline_subtraction and self.obs_pff_files[module_id]['baseline_df'] is not None:
+            raise RuntimeError(f'Baselines for {module_id} already computed.')
+        elif not self.do_baseline_subtraction:
+            raise ValueError('Must specify do_baseline_subtraction=True when initializing the ObservingRunInterface to use this method.')
         module_image_files = self.obs_pff_files[module_id]["img"]
-
+        frame_buffer = []
+        metadata_buffer = []
+        # First pass: Sample the night of data and remove spatial medians at 1s intervals.
+        available_images_per_window = self.spatial_median_window_usec / self.intgrn_usec
+        frames_per_window = int(min(available_images_per_window, self.max_samples_per_window))
+        # Evenly sample all imaging frames.
+        baseline_df = pd.DataFrame(columns=[
+            'window_left_unix_t', 'window_right_unix_t', 'baseline_img'
+        ])
+        frame_step_size = int(max(1, available_images_per_window / frames_per_window))
+        frame_offset = 0
+        for file_idx in range(0, len(module_image_files), 1):
+            file_info = module_image_files[file_idx]
+            while frame_offset < file_info['nframes']:
+                stacked_img, stacked_meta = self.stack_frames(
+                    file_idx,
+                    frame_offset,
+                    module_id
+                )
+                frame_buffer.append(stacked_img)
+                metadata_buffer.append(stacked_meta)
+                frame_offset += frame_step_size
+            # Get starting offset for next file if we need more frames.
+            if file_idx < len(module_image_files) - 1:
+                frame_offset = max(frame_offset - file_info['nframes'], 0)
+        # Compute spatial medians for each window
+        nwindows = len(frame_buffer) // frames_per_window
+        trimmed_len = nwindows * frames_per_window
+        frame_buffer = np.array(frame_buffer[0:trimmed_len])
+        frame_buffer_no_spatial_medians = np.zeros((frame_buffer.shape))
+        for frame_idx in range(0, nwindows):
+            l = frame_idx * frames_per_window
+            r = (frame_idx + 1) * frames_per_window
+            spatial_median = self.compute_spatial_median(frame_buffer[l:r])
+            frame_buffer_no_spatial_medians[l:r] = frame_buffer[l:r] - spatial_median
+            # Record metadata about the spatial median
+            left_stacked_meta = metadata_buffer[l]
+            right_stacked_meta = metadata_buffer[r - 1]
+            new_baseline_record = {
+                'window_left_unix_t': min(left_stacked_meta['start_unix_t'], left_stacked_meta['end_unix_t']),
+                'window_right_unix_t': max(right_stacked_meta['start_unix_t'], right_stacked_meta['end_unix_t']),
+                'baseline_img': spatial_median,
+            }
+            baseline_df.loc[len(baseline_df)] = new_baseline_record
+        # Second pass: Compute medians for each pixel across the entire night.
+        supermedian = np.median(frame_buffer_no_spatial_medians, axis=0)
+        baseline_df.sort_values(by='window_left_unix_t', inplace=True)
+        baseline_df['baseline_img'] = baseline_df['baseline_img'].apply(
+            lambda img: img + supermedian
+        )
+        return baseline_df
 
     def module_file_time_seek(self, module_id, target_time):
         """Search module data to find the image frame with timestamp closest to target_time.
@@ -331,6 +453,8 @@ class ObservingRunInterface:
             pff.time_seek(fp, frame_time, self.bytes_per_image_frame, target_time)
             frame_offset = int(fp.tell() / self.bytes_per_header_and_image_frame)
             j, img = self.read_frame(fp, self.img_bpp)
+            if j is None or img is None:
+                return None
             frame_unix_t = pff.img_header_time(j)
             ret = {
                 'file_idx': m,
@@ -391,7 +515,7 @@ class PFFFrameIterator:
     def __next__(self):
         if (self.frame_limit is not None) and (self.iter_num >= self.frame_limit):
             raise StopIteration
-        elif not self.iter_num:
+        elif self.iter_num >= 1:
             seek_dist = (self.step_size - 1) * self.bytes_per_frame
             if seek_dist < 0 and (self.fp.tell() + seek_dist < 0):
                 raise StopIteration
@@ -402,54 +526,13 @@ class PFFFrameIterator:
             raise StopIteration
         return j, img
 
-
-# class ModuleImageInterface(ObservingRunInterface):
-#
-#     def __init__(self, data_dir, run_dir, module_id, require_data=False):
-#         """Interface for doing analysis work with images produced by the specified module
-#         during the given observing run."""
-#         super().__init__(data_dir, run_dir)
-#         self.module_id = module_id
-#         if module_id not in self.obs_pff_files:
-#             raise ValueError(f"Module {module_id} did not exist for the run '{run_dir}'.")
-#         self.module_pff_files = self.obs_pff_files[module_id]
-#
-#         # Check if there are any images for this module.
-#         if len(self.module_pff_files) == 0:
-#             msg = f"No valid panoseti imaging data for module {module_id} in '{self.run_dir}'."
-#             if require_data:
-#                 raise FileNotFoundError(msg)
-#             else:
-#                 print(msg)
-#                 self.start_unix_t = None
-#         else:
-#             self.start_unix_t = self.module_pff_files[0]['first_unix_t']
-#
-
-
-# class ModuleImageIterator:
-#     def __init__(self, module_image_interface, step_size, frame_size, bytes_per_pixel):
-#         """Returns all available data from the """
-#         assert isinstance(module_image_interface, ModuleImageInterface)
-#         self.module_image_interface = module_image_interface
-#         self.step_size = step_size
-#         self.frame_size = frame_size
-#         self.bytes_per_pixel = bytes_per_pixel
-#
-#
-#     def __iter__(self):
-#
-#         return self
-#
-#     def __next__(self):
-#         m = self.module_image_interface
-#         j, img = m.get_next_frame(m.fp, self.step_size, m.frame_size, m.img_bpp)
-#         if img is None:
-#             raise StopIteration
-#         return j, img
-#
-
 if __name__ == '__main__':
-    data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
+    # data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
     run_dir = 'obs_Lick.start_2023-08-29T04:49:58Z.runtype_sci-obs.pffd'
-    ori = ObservingRunInterface(data_dir, run_dir)
+
+    data_dir = '/Users/nico/Downloads/panoseti_test_data/obs_data/data'
+    # run_dir = 'obs_Lick.start_2023-08-01T05:14:21Z.runtype_sci-obs.pffd'
+
+    ori = ObservingRunInterface(data_dir, run_dir, do_baseline_subtraction=True)
+
+    # ori.compute_baseline_imgs(3)

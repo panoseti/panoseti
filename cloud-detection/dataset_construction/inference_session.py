@@ -23,10 +23,10 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
     # TODO: continue refactoring code.
 
     def __init__(self, batch_id, task='cloud-detection'):
-        super().__init__(batch_id, batch_type='inference')
+        super().__init__(batch_id, batch_type='inference', root=self.dataset_root)
         self.name = 'INFERENCE'
-        self.user_uid = get_uid(self.name)
-        self.batch_labels_path = f'{self.dataset_root}/{inference_batch_labels_root_dir}/{self.batch_dir}'
+        self.user_uid = 'INFERENCE'
+        self.batch_labels_path = f'{self.dataset_root}/{inference_batch_labels_root_dir}'
 
         # Unzip batched data, if it exists
         os.makedirs(self.batch_labels_path, exist_ok=True)
@@ -113,14 +113,35 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
 
     """State IO"""
 
-    def save_progress(self):
+    def write_labels(self, save_to_training_data=False, allow_partial_batch=False):
+        """Create an export zipfile for the data only if all data has been labeled."""
+        data_to_label = self.unlabeled_df[self.unlabeled_df.is_labeled == False]
+        user_info = {
+            'name': self.name,
+            'user-uid': self.user_uid
+        }
+        if not allow_partial_batch and len(data_to_label) > 0:
+            print(f'Please label all data in the batch before exporting.')
+            return
+        if save_to_training_data:
+            write_path = get_user_label_export_dir(
+                self.task, self.batch_id, 'training', self.user_uid,
+                root='../dataset_construction/dataset_cloud-detection/user_labeled_batches')
+        else:
+            # write_path = self.batch_labels_path
+            write_path = get_user_label_export_dir(
+                self.task, self.batch_id, self.batch_type, self.user_uid,
+                root=self.batch_labels_path)
+
+        print(write_path)
+        os.makedirs(write_path, exist_ok=True)
         save_df(self.labeled_df,
                 'labeled',
                 self.user_uid,
                 self.batch_id,
                 self.task,
-                True,
-                self.batch_labels_path
+                False,
+                write_path
                 )
 
         save_df(self.unlabeled_df,
@@ -128,9 +149,13 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
                 self.user_uid,
                 self.batch_id,
                 self.task,
-                True,
-                self.batch_labels_path
+                False,
+                write_path
                 )
+        user_info_path = write_path + '/' + 'user_info.json'
+        with open(user_info_path, 'w') as f:
+            f.write(json.dumps(user_info))
+
 
     def create_export_zipfile(self, allow_partial_batch=False):
         """Create an export zipfile for the data only if all data has been labeled."""
@@ -139,7 +164,10 @@ class InferenceSession(CloudDetectionBatchDataFileTree):
             print(f'Please label all data in the batch before exporting.')
             return
         print('Zipping batch labels...')
-        user_label_export_dir = get_user_label_export_dir(self.task, self.batch_id, self.batch_type, self.user_uid, root='.')
+        user_label_export_dir = get_user_label_export_dir(
+            self.task, self.batch_id, self.batch_type, self.user_uid,
+            root='dataset_construction/dataset_cloud-detection/user_labeled_batches'
+        )
         os.makedirs(user_label_export_dir, exist_ok=True)
 
         save_df(self.labeled_df,

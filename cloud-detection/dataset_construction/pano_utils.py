@@ -35,12 +35,13 @@ from batch_building_utils import *
 
 # Plotting
 def plot_fft_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
-    for i in range(len(imgs)):
-        if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
-            print('no image')
-            return None
-        if imgs[i].shape != (32, 32):
-            imgs[i] = np.reshape(imgs[i], (32, 32))
+    # for i in range(len(imgs)):
+    #     if imgs[i] is None or not isinstance(imgs[i], np.ndarray):
+    #         print('no image')
+    #         return None
+    #     if imgs[i].shape != (32, 32):
+    #         imgs[i] = np.reshape(imgs[i], (32, 32))
+
     # plt.rcParams.update({'axes.titlesize': 'small'})
     fig = plt.figure(figsize=(10., 3.))
 
@@ -94,17 +95,16 @@ def plot_time_derivative(imgs, delta_ts, vmin, vmax, cmap):
     # fig.suptitle(f': derivative', ha='center')
     return fig
 
-def apply_fft(data):
+def apply_fft(data, shape=(32,32)):
     if data is None or not isinstance(data, np.ndarray):
         print('no image')
         return None
-    if data.shape != (32, 32):
-        data = np.reshape(data, (32, 32))
-
+    if data.shape != shape:
+        data = np.reshape(data, shape)
     shape = data.shape
-    window_type = "cosine"
+    window_type = "hann"
     data = data * window(window_type, shape)
-    data = np.abs(fftn(data))
+    data = np.abs(fftn(data, shape))
     data = fftshift(data)
     try:
         data = np.log(data)

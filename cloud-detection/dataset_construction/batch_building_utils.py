@@ -21,17 +21,18 @@ inference_batch_data_zipfiles_dir = 'inference_batch_data_zipfiles'
 """Json file name definitions"""
 data_labels_fname = 'label_encoding.json'
 feature_metadata_fname = 'feature_meta.json'
-# training_batch_defs_fname = 'training_batch_data_definitions.json'
-training_batch_defs_fname = 'training_batch_data_definitions_debug.json'
-inference_defs_fname = 'inference_batch_definitions_TEST.json'
+training_batch_defs_fname = 'training_batch_data_definitions.json'
+# training_batch_defs_fname = 'training_batch_data_definitions_debug.json'
+# inference_defs_fname = 'inference_batch_definitions_TEST.json'
+inference_defs_fname = 'inference_batch_definitions.json'
 
 """Valid feature types"""
 valid_skycam_img_types = ['original', 'cropped', 'pfov']
 valid_pano_img_types = [
-    'raw-original', 'original',
-    'raw-fft', 'fft',
-    'raw-derivative.-60',
-    'derivative',
+    'raw-original',# 'original',
+    'raw-fft', #'fft',
+    'raw-derivative.-60', 'raw-derivative-fft.-60',
+    # 'derivative',
     'fft-derivative',
 ]
 
@@ -76,7 +77,7 @@ class CloudDetectionBatchDataFileTree:
     pano_path_index_fname = 'pano_path_index.json'
     skycam_path_index_fname = 'skycam_path_index.json'
 
-    def __init__(self, batch_id, batch_type, task='cloud-detection'):
+    def __init__(self, batch_id, batch_type, root, task='cloud-detection'):
         """
         task_cloud-detection.batch-id_N/
         ├─ skycam_imgs/
@@ -93,9 +94,9 @@ class CloudDetectionBatchDataFileTree:
         self.batch_dir = get_batch_dir(task, batch_id, batch_type)
 
         if batch_type == 'inference':
-            self.batch_path = f'../dataset_construction/{inference_batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'{root}/{inference_batch_data_root_dir}/{self.batch_dir}'
         elif batch_type == 'training':
-            self.batch_path = f'../dataset_construction/{training_batch_data_root_dir}/{self.batch_dir}'
+            self.batch_path = f'{root}/{training_batch_data_root_dir}/{self.batch_dir}'
         else:
             raise ValueError('batch_type must be either "inference" or "training"')
 
@@ -104,14 +105,14 @@ class CloudDetectionBatchDataFileTree:
 
 
 class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, batch_type, **kwargs):
+    def __init__(self, batch_id, batch_type, root='../dataset_construction', **kwargs):
         """
         [skycam_dir]/
         ├─ original/
         ├─ cropped/
         ├─ pfov/
         """
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root)
 
         if 'skycam_dir' in kwargs:
             self.skycam_dir = kwargs['skycam_dir']
@@ -152,7 +153,7 @@ class SkycamBatchDataFileTree(CloudDetectionBatchDataFileTree):
 
 
 class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
-    def __init__(self, batch_id, batch_type, run_dir):
+    def __init__(self, batch_id, batch_type, run_dir, root='../dataset_construction'):
         """
         [pano_run_dir]/
         ├─ raw/
@@ -160,7 +161,7 @@ class PanoBatchDataFileTree(CloudDetectionBatchDataFileTree):
         ├─ fft/
         ├─ derivative/
         """
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root)
 
         self.pano_path = f'{self.pano_root_path}/{run_dir}'
         self.pano_subdirs = get_pano_subdirs(self.pano_path, batch_type)
@@ -203,13 +204,13 @@ def get_batch_def_json_fname(task, batch_id):
 
 def load_json_batch_defs(batch_type: str):
     """
-    @param batch_type: ['training', 'prediction']
+    @param batch_type: ['training', 'inference']
     @return: JSON file containing path info for observing data.
     """
     fname = None
     if batch_type == 'training':
         fname = training_batch_defs_fname
-    elif batch_type == 'prediction':
+    elif batch_type == 'inference':
         fname = inference_defs_fname
     else:
         raise ValueError(f'"{batch_type}" is not a valid batch_type')
@@ -298,7 +299,7 @@ def get_unix_from_datetime(t):
     return (t - datetime(1970, 1, 1, tzinfo=timezone.utc)) / timedelta(seconds=1)
 
 
-def unpack_batch_data(batch_data_root_dir):
+def unpack_batch_data(batch_data_root_dir, root='../dataset_construction'):
     """Unpack image files from batch data gztar file."""
     downloaded_fname = ''
     batch_dir = ''
@@ -308,8 +309,8 @@ def unpack_batch_data(batch_data_root_dir):
             downloaded_fname = fname
             batch_dir = fname.rstrip('.tar.gz')
     if downloaded_fname:
-        downloaded_fpath = f'../dataset_construction/{batch_data_root_dir}/{downloaded_fname}'
-        batch_dir_path = f'../dataset_construction/{batch_data_root_dir}/{batch_dir}'
+        downloaded_fpath = f'{root}/{batch_data_root_dir}/{downloaded_fname}'
+        batch_dir_path = f'{root}/{batch_data_root_dir}/{batch_dir}'
         print(f'Unzipping {downloaded_fpath}. This may take a minute...')
         shutil.unpack_archive(downloaded_fpath, batch_dir_path, 'gztar')
         os.remove(downloaded_fpath)

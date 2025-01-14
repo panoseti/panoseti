@@ -29,8 +29,8 @@ if [ ! -d "/home/jovyan/work/panoseti" ]; then
     git clone --branch cloud-detection-USER https://github.com/panoseti/panoseti.git
 
     # Create batch dirs
-    mkdir $WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling/batch_data
-    mkdir $WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling/batch_labels
+    mkdir $WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling/training_batch_data
+    mkdir $WORK_DIR/panoseti/cloud-detection/dataset_construction/user_labeling/training_batch_labels
     echo "Done setting up labeling software."
 else
     echo "Updating labeling software..."

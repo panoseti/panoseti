@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1.axes_grid import ImageGrid
 from PIL import Image
@@ -21,13 +22,15 @@ from IPython import display
 
 from batch_building_utils import *
 from dataframe_utils import *
-
+plt.rcParams["figure.facecolor"] = 'grey'
+plt.rcParams["font.size"] = 14
 
 class LabelSession(CloudDetectionBatchDataFileTree):
+    label_session_root = '../user_labeling'
     data_labels_path = f'../{data_labels_fname}'
 
     def __init__(self, name, batch_id, task='cloud-detection', batch_type='training'):
-        super().__init__(batch_id, batch_type)
+        super().__init__(batch_id, batch_type, root=self.label_session_root)
         self.name = name
         if name == "YOUR NAME":
             raise ValueError(f"Please enter your full name")
@@ -45,7 +48,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         os.makedirs(training_batch_data_root_dir, exist_ok=True)
         os.makedirs(self.batch_labels_path, exist_ok=True)
         try:
-            unpack_batch_data(training_batch_data_root_dir)
+            unpack_batch_data(training_batch_data_root_dir, root=self.label_session_root)
             with open(f'{self.batch_path}/{self.skycam_path_index_fname}', 'r') as f:
                 self.skycam_paths = json.load(f)
             with open(f'{self.batch_path}/{self.pano_path_index_fname}', 'r') as f:
@@ -67,6 +70,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         self.pano_df = self.init_dataframe('pano')
         self.unlabeled_df = self.init_dataframe('unlabeled')
         self.labeled_df = self.init_dataframe('labeled')
+        self.pano_df['date'] = pd.to_datetime(self.pano_df['frame_unix_t'], unit='s')
 
     def init_dataframe(self, df_type):
         """Attempt to load the given dataframe from file, if it exists. Otherwise, create a new dataframe."""
@@ -105,7 +109,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         original_fname, skycam_dir = self.skycam_df.loc[
             (self.skycam_df.skycam_uid == skycam_uid), ['fname', 'skycam_dir']
         ].iloc[0]
-        sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, skycam_dir=skycam_dir)
+        sctree = SkycamBatchDataFileTree(self.batch_id, self.batch_type, root=self.label_session_root, skycam_dir=skycam_dir)
         fpath = sctree.get_skycam_img_path(original_fname, img_type)
         img = np.asarray(Image.open(fpath))
         return img
@@ -114,74 +118,145 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         run_dir = self.pano_df.loc[
             (self.pano_df.pano_uid == pano_uid), 'run_dir'
         ].iloc[0]
-        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir)
+        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir, root=self.label_session_root)
         fpath = ptree.get_pano_img_path(pano_uid, img_type)
         img = np.asarray(Image.open(fpath))
         return img
 
+    def pano_uid_to_raw_data(self, pano_uid, img_type):
+        run_dir = self.pano_df.loc[
+            (self.pano_df.pano_uid == pano_uid), 'run_dir'
+        ].iloc[0]
+        ptree = PanoBatchDataFileTree(self.batch_id, self.batch_type, run_dir, root=self.label_session_root)
+        fpath = ptree.get_pano_img_path(pano_uid, img_type)
+        img = np.load(fpath)
+        return img
+
     """Plotting"""
 
-    def add_subplot(self, ax, img, title, aspect=None):
-        ax.imshow(img, aspect=aspect)
-        ax.get_yaxis().set_ticks([])
-        ax.get_xaxis().set_ticks([])
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
+    def scale_data(self, data):
+        with np.errstate(divide='ignore'):
+            div = 1 / (np.abs(data)) ** 0.5
+            div = np.nan_to_num(div, nan=1)
+        scaled_data = data * div
+        return scaled_data
+
+    def add_subplot(self, fig, ax, data, title, fig_type):
         ax.set_title(title)
+        if fig_type in ['skycam', 'derivative']:
+            ax.imshow(data)
+            ax.get_yaxis().set_ticks([])
+            ax.get_xaxis().set_ticks([])
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+        elif fig_type == 'original':
+            # Original stacked pano image
+            scaled_data = self.scale_data(data)
+            im_orig = ax.imshow(scaled_data, vmin=-100, vmax=100, cmap='icefire')  # cmap='crest_r'
+            cbar_orig = fig.colorbar(im_orig, label=r'$\sqrt{\text{Counts}}$', fraction=0.04, location='bottom', ax=ax)
+            ax.axis('off')
+        elif 'fft' in fig_type:
+            # FFT of original stacked original
+            im_fft = ax.imshow(data, vmin=3.5, vmax=12, cmap='mako')
+            fig.colorbar(im_fft, label='$\log|X[k, \ell]|$', fraction=0.04, location='bottom', ax=ax)
+            ax.axis('off')
+        elif fig_type in ['-60 derivative', '-120 derivative']:
+            # -60 second time derivative
+            scaled_data = self.scale_data(data)
+            im_deriv = ax.imshow(scaled_data, vmin=-100, vmax=100, cmap='icefire')
+            fig.colorbar(im_deriv, label=r'$\sqrt{\Delta \text{Counts}}$', fraction=0.04, location='bottom', ax=ax)
+            ax.axis('off')
 
     def plot_img(self, feature_uid):
         skycam_uid, pano_uid = self.feature_df.loc[
             self.feature_df.feature_uid == feature_uid, ['skycam_uid', 'pano_uid']
         ].iloc[0]
+        module_id, date = self.pano_df[self.pano_df['pano_uid'] == pano_uid][['module_id', 'date']].iloc[0]
 
         # creating grid for subplots
         fig = plt.figure()
-        fig.set_figheight(8)
-        fig.set_figwidth(18)
+        fig.suptitle(f'[module: {module_id}] '
+                     f'[feature_uid: {feature_uid[:9]}] '
+                     f'[UTC: {date}]')
+        fig.set_figheight(6)
+        fig.set_figwidth(16)
 
-        shape = (8, 17)
+        shape = (5, 8 + 8 + 4)
         ax0 = plt.subplot2grid(shape=shape, loc=(0, 0), colspan=8, rowspan=8)
 
         # ax1 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=2, rowspan=2)
-        ax2 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=5, rowspan=4)
-        ax3 = plt.subplot2grid(shape=shape, loc=(1, 13), colspan=3, rowspan=3)
+        ax1 = plt.subplot2grid(shape=shape, loc=(0, 8), colspan=4, rowspan=4)
+        ax2 = plt.subplot2grid(shape=shape, loc=(0, 12), colspan=4, rowspan=4)
 
-        ax4 = plt.subplot2grid(shape=shape, loc=(4, 8), colspan=8, rowspan=4)
+        ax3 = plt.subplot2grid(shape=shape, loc=(0, 16), colspan=4, rowspan=4)
         # ax5 = plt.subplot2grid(shape=shape, loc=(4, 15), colspan=7, rowspan=4)
 
         # plotting subplots
         self.add_subplot(
+            fig,
             ax0,
             self.skycam_uid_to_data(skycam_uid, 'pfov'),
-            f'{skycam_uid[:8]}: skycam w/ panofov'
+            f'{skycam_uid[:8]}: All-Sky with Module FoV',
+            fig_type='skycam'
         )
         # self.add_subplot(
         #     ax1,
         #     self.skycam_uid_to_data(skycam_uid, 'cropped'),
         #     f'{skycam_uid[:8]}: skycam pfov'
         # )
+        # axs[orig_idx].set_title('Original [3ms integr.]')
         self.add_subplot(
-            ax2,
-            self.pano_uid_to_data(pano_uid, 'original'),
-            f'{pano_uid[:8]}: pano original'
-        )
-        self.add_subplot(
+            fig,
             ax3,
-            self.pano_uid_to_data(pano_uid, 'fft'),
-            f'{pano_uid[:8]}: pano fft'
+            self.pano_uid_to_raw_data(pano_uid, 'raw-original'),
+            f'Orig(t) @ 3ms intgr.',
+            fig_type='original'
         )
+        # self.add_subplot(
+        #     fig,
+        #     ax3,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-fft'),
+        #     'FFT{Orig(t)}',
+        #     fig_type='fft'
+        # )
+        # self.add_subplot(
+        #     fig,
+        #     ax3,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-derivative-fft.-60'),
+        #     'FFT{-60s Diff}',
+        #     fig_type='fft'
+        # )
+
         self.add_subplot(
-            ax4,
-            self.pano_uid_to_data(pano_uid, 'derivative'),
-            f'{pano_uid[:8]}: time derivatives'
+            fig,
+            ax2,
+            self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60'),
+            f'Orig(t) – Orig(t - 60)',
+            fig_type='-60 derivative'
         )
-        #         self.add_subplot(
-        #             ax5,
-        #             self.pano_uid_to_data(pano_uid, 'fft-derivative'),
-        #             f'{pano_uid[:8]}: time derivative ffts'
-        #         )
+        # self.add_subplot(
+        #     fig,
+        #     ax1,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-120'),
+        #     f'Orig(t) – Orig(t - 120)',
+        #     fig_type='-120 derivative'
+        # )
+        # self.add_subplot(
+        #     fig,
+        #     ax1,
+        #     self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-120'),
+        #     f'Orig(t) – Orig(t - 120)',
+        #     fig_type='-120 derivative'
+        # )
+        self.add_subplot(
+            fig,
+            ax1,
+            self.pano_uid_to_raw_data(pano_uid, 'raw-derivative-fft.-60'),
+            'FFT of Derivative',
+            fig_type ='fft'
+        )
 
         # automatically adjust padding horizontally
         # as well as vertically.
@@ -212,7 +287,9 @@ class LabelSession(CloudDetectionBatchDataFileTree):
         ]
         imgs = []
         for pano_uid in pano_uids_with_given_label:
-            imgs.append(self.pano_uid_to_data(pano_uid, 'original'))
+            data = self.pano_uid_to_raw_data(pano_uid, 'raw-derivative.-60')
+            scaled_data = self.scale_data(data)
+            imgs.append(scaled_data)
         if len(imgs) == 0:
             print(f'No images labeled as "{label}"')
             return
@@ -234,7 +311,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
                     img = imgs[img_idx]
                     feature_uid = feature_uids_with_given_label.iloc[img_idx]
                     ax.set_title(f'{23}{feature_uid[:6]}')  # Label each plot with first 6 chars of feature_uid
-                    ax.imshow(img)
+                    ax.imshow(img, vmin=-100, vmax=100, cmap='icefire')
             plt.show()
             plt.close()
 
@@ -400,6 +477,7 @@ class LabelSession(CloudDetectionBatchDataFileTree):
 
 
 if __name__ == '__main__':
-    session = LabelSession("YOUR NsAMEs", 6)
-    session.start(debug=True)
+    os.chdir('user_labeling')
+    session = LabelSession("YOUR NsAMEs", 10)
+    session.start(debug=False)
     session.create_export_zipfile()
