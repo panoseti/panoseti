@@ -235,7 +235,7 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0
         torch.Tensor: Total loss (scalar).
     """
     # reconstruction loss via mse objective 
-    recon_loss = F.mse_loss(recon_x, x, reduction='mean')
+    recon_loss = F.mse_loss(recon_x, x, reduction='sum')
 
     # KL divergence
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
