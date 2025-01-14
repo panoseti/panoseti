@@ -125,8 +125,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
           module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
           shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
-          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs)
-          module_meta[module_id]['ph_std'] = np.std(shifted_sampled_imgs)
+          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs, axis=0)
+          module_meta[module_id]['ph_std'] = np.std(shifted_sampled_imgs, axis=0)
           # im_plt = plt.imshow(module_meta[module_id]['ph_median_img'])
           # plt.colorbar(im_plt)
           # plt.show()
@@ -156,6 +156,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         super().__init__()
         self.transform = transform
         self.obs_runs = []
+        self.EFFECTIVE_MAX_VAL = self.MAX_PH_PIXEL_VAL / 16 # most ph images are less than 4k intensity.
+        self.NORM_CONST = np.log(self.EFFECTIVE_MAX_VAL)
         
         self.logger = PulseHeightDataset.init_logger(log_level)
         
@@ -207,7 +209,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         'std': torch.std(sampled_ph_imgs).numpy(),
         'min': torch.min(sampled_ph_imgs).numpy(),
         'max': torch.max(sampled_ph_imgs).numpy(),
-        # 'q9995':torch.quantile(sampled_ph_imgs, 0.9995),
+        'q9995':torch.quantile(sampled_ph_imgs, 0.9995),
       }
       print(self.stats)
       self.reset_ph_generator()
@@ -221,10 +223,11 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       # norm_ph_img = 2 * (np.log(ph_img / self.MAX_PH_PIXEL_VAL + 2) / np.log(3)) - 1 # [-1, 1]
       # norm_ph_img = 2 * ph_img / self.MAX_PH_PIXEL_VAL
       # norm_ph_img = np.clip(norm_ph_img, 0, self.MAX_PH_PIXEL_VAL)
-      norm_ph_img = ph_img /  self.stats['max']
+      norm_ph_img = ph_img - self.stats['min']
+      norm_ph_img = np.clip(norm_ph_img, 0, self.EFFECTIVE_MAX_VAL)
+      norm_ph_img = np.log(norm_ph_img + 1) / self.NORM_CONST # [0, ~1]
+      norm_ph_img = 2 * (norm_ph_img - 0.25) # [-1, ~1]
       # print(np.min(norm_ph_img), np.max(norm_ph_img))
-      # norm_ph_img = 2 * norm_ph_img - 1
-      # norm_ph_img = np.clip(norm_ph_img, -1.0, 1.0)
       # assert -1.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
       return norm_ph_img
   
@@ -240,7 +243,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       # ph_img[ph_img >= self.OUTLIER_CUTOFF] = 0
       # assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= self.MAX_PH_PIXEL_VAL, "np.min(ph_img)={0}, np.max(ph_img)={1}".format(np.min(ph_img), np.max(ph_img))
       # norm_ph_img = (norm_ph_img + 1) / 2
-      ph_img = self.stats['max'] * norm_ph_img
+      ph_img = norm_ph_img / 2 + 0.25
+      ph_img = np.exp(ph_img * self.NORM_CONST) - 1
+      ph_img = ph_img + self.stats['min']
       return ph_img
 
     def clean_ph_img(self, ph_img: np.ndarray, module_meta: typing.Dict) -> np.ndarray:
@@ -331,12 +336,12 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             f = plt.figure()
             ax = plt.gca()
         if log_cbar:
-          img_plt = ax.imshow(self.norm(ph_img), cmap='magma')
+          img_plt = ax.imshow(self.norm(ph_img), cmap='icefire')
           cbar = plt.colorbar(img_plt, fraction=0.045)
           # cbar.ax.locator_params(nbins=10)
           cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
         else:
-          img_plt = ax.imshow(self.norm(ph_img), cmap='magma')
+          img_plt = ax.imshow(self.norm(ph_img), cmap='icefire')
           cbar = plt.colorbar(img_plt, fraction=0.045)
           # cbar.ax.locator_params(nbins=10)
           # cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))

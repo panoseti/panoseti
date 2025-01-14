@@ -190,7 +190,7 @@ class BetaVAE(nn.Module):
             UpBlock(hidden_dim, hidden_dim),     # output shape: (hidden_dim, 16, 16)
             ConvBlock(hidden_dim, hidden_dim),   # output shape: (hidden_dim, 16, 16)
             nn.Conv2d(hidden_dim, 1, kernel_size=3, stride=1, padding=1), # output shape: (1, 16, 16)
-            # nn.Tanh(),
+            nn.Tanh(),
             # nn.Sigmoid(),
         )
     
@@ -235,7 +235,7 @@ def beta_vae_loss_function(recon_x, x, mu, logvar, beta=1.0, sparsity_weight=0.0
         torch.Tensor: Total loss (scalar).
     """
     # reconstruction loss via mse objective 
-    recon_loss = F.mse_loss(recon_x, x, reduction='sum')
+    recon_loss = F.mse_loss(recon_x, x, reduction='mean')
 
     # KL divergence
     kl_div = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
