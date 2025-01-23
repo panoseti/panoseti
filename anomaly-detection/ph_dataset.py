@@ -22,8 +22,8 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    BASELINE_PERCENTILE = 0.05 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
-  
+    BASELINE_PERCENTILE = 0.75 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+    
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
     @classmethod
@@ -41,6 +41,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       # Value defining pixel outlier status:
       if len(pixels_to_correct) > 0:
         ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=cls.BASELINE_PERCENTILE)))
+        # print(ph_outlier_cutoff)
         # ph_outlier_cutoff = int(np.round(np.min(pixels_to_correct)))
       else:
         ph_outlier_cutoff = cls.MAX_PH_PIXEL_VAL
@@ -124,9 +125,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             ph_outlier_cutoff = 0
           module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
           module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
-          shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
-          module_meta[module_id]['ph_median'] = np.median(shifted_sampled_imgs, axis=0)
-          module_meta[module_id]['ph_std'] = np.std(shifted_sampled_imgs)
+          baseline_shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
+          module_meta[module_id]['ph_median'] = np.median(baseline_shifted_sampled_imgs, axis=0)
+          module_meta[module_id]['ph_std'] = np.std(baseline_shifted_sampled_imgs)
           # im_plt = plt.imshow(module_meta[module_id]['ph_median_img'])
           # plt.colorbar(im_plt)
           # plt.show()
@@ -156,8 +157,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         super().__init__()
         self.transform = transform
         self.obs_runs = []
-        self.EFFECTIVE_MAX_VAL = self.MAX_PH_PIXEL_VAL / 16 # most ph images are less than 4k intensity.
-        self.NORM_CONST = np.log(self.EFFECTIVE_MAX_VAL)
+        self.EFFECTIVE_MAX_VAL = self.MAX_PH_PIXEL_VAL / 4 # most ph images are less than 4k intensity.
+        self.MIN_MAX_PIXEL = 6   # Smallest max imag value to be included in the dataset
+        
         
         self.logger = PulseHeightDataset.init_logger(log_level)
         
@@ -180,8 +182,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
 
         # Initialize PH frame generator
         self.ph_gen = self.dataset_ph_frame_generator()
-        self.compute_ph_stats()
-        self.reset_ph_generator()
+        # self.compute_ph_stats()
+        # self.reset_ph_generator()
 
     # @cache
     def __getitem__(self, index: int) -> torch.Tensor:
@@ -214,38 +216,16 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       print(self.stats)
       self.reset_ph_generator()
       
-    def norm(self, ph_img):
+    def norm(self, ph_img, b=10_000):
       """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
-      # norm_ph_img = np.clip(ph_img - self.ph_mean, 0, self.MAX_PH_PIXEL_VAL)
-      # norm_ph_img = 2 * (np.log(ph_img + 1) / np.log(self.MAX_PH_PIXEL_VAL + 1)) - 1 # [-1, 1]
-      # norm_ph_img = np.log(ph_img + 1) / np.log(cls.MAX_PH_PIXEL_VAL + 1) # [0, 1]
-      # norm_ph_img = 2 * (ph_img / cls.MAX_PH_PIXEL_VAL) - 1
-      # norm_ph_img = 2 * (np.log(ph_img / self.MAX_PH_PIXEL_VAL + 2) / np.log(3)) - 1 # [-1, 1]
-      # norm_ph_img = 2 * ph_img / self.MAX_PH_PIXEL_VAL
-      # norm_ph_img = np.clip(norm_ph_img, 0, self.MAX_PH_PIXEL_VAL)
-      norm_ph_img = ph_img - self.stats['min']
-      norm_ph_img = np.clip(norm_ph_img, 0, self.EFFECTIVE_MAX_VAL)
-      norm_ph_img = np.log(norm_ph_img + 1) / self.NORM_CONST # [0, ~1]
-      norm_ph_img = 2 * (norm_ph_img - 0.25) # [-1, ~1]
-      # print(np.min(norm_ph_img), np.max(norm_ph_img))
+      norm_ph_img = np.tanh(np.arcsinh(b * ph_img / self.MAX_PH_PIXEL_VAL))
       # assert -1.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
+      # print('norming')
       return norm_ph_img
   
-    def inv_norm(self, norm_ph_img):
+    def inv_norm(self, norm_ph_img, b=10_000):
       """Invert the log-normalization performed by norm."""
-      
-      # ph_img = np.exp(norm_ph_img * np.log(cls.MAX_PH_PIXEL_VAL)) - 1
-      # ph_img = (norm_ph_img + 1) * cls.MAX_PH_PIXEL_VAL / 2
-      # ph_img = (norm_ph_img * self.MAX_PH_PIXEL_VAL) + self.ph_mean
-      # ph_img = (np.exp((norm_ph_img + 1) * np.log(3) / 2) - 2) * self.MAX_PH_PIXEL_VAL # [-1, 1]
-      # ph_img = self.MAX_PH_PIXEL_VAL * norm_ph_img / 2
-      # ph_img = np.clip(ph_img, 0, self.MAX_PH_PIXEL_VAL)
-      # ph_img[ph_img >= self.OUTLIER_CUTOFF] = 0
-      # assert 0.0 <= np.min(ph_img) and np.max(ph_img) <= self.MAX_PH_PIXEL_VAL, "np.min(ph_img)={0}, np.max(ph_img)={1}".format(np.min(ph_img), np.max(ph_img))
-      # norm_ph_img = (norm_ph_img + 1) / 2
-      ph_img = norm_ph_img / 2 + 0.25
-      ph_img = np.exp(ph_img * self.NORM_CONST) - 1
-      ph_img = ph_img + self.stats['min']
+      ph_img = np.sinh(np.arctanh(norm_ph_img)) * self.MAX_PH_PIXEL_VAL / b
       return ph_img
 
     def clean_ph_img(self, ph_img: np.ndarray, module_meta: typing.Dict) -> np.ndarray:
@@ -264,6 +244,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           return None
       ph_img_clean = self.baseline_shift(ph_img, module_meta)
       ph_img_clean = (ph_img_clean - module_meta['ph_median']) / module_meta['ph_std']
+      if np.max(ph_img_clean) < self.MIN_MAX_PIXEL:
+        return None
       return ph_img_clean
 
     def dataset_ph_frame_generator(self):
@@ -293,8 +275,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
               self.logger.error(f"Unexpected StopIteration error when accessing ph frames from module {module_id} in {obs_run['ori'].run_dir}")
               continue
           ph_img_clean = self.clean_ph_img(ph_img, module_meta)
-          if ph_img_clean is None: # skip bad ph frames (all zeros).
-              self.logger.warn(f"run: {obs_run['ori'].run_dir:<58} module {module_id:<4} has a frame with all zeros.")
+          if ph_img_clean is None: # skip ph frame
+              # self.logger.warn(f"run: {obs_run['ori'].run_dir:<58} module {module_id:<4} has a frame with all zeros.")
               continue
           yield {'meta': j, 'img': ph_img_clean}
     
