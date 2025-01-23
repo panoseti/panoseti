@@ -22,7 +22,12 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    BASELINE_PERCENTILE = 0.75 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+    BASELINE_PERCENTILE = 0.5 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+    B_VALUE = 5_000  # B parameter value in the normalization routine. Controls the linear region of the normalization function.
+    default_values = {
+      'max_obs_baseline_sample_size': 10_000,
+      'min_max_pixel_z_score': 5,
+    }
     
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
 
@@ -39,7 +44,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       
       pixels_to_correct = ph_img[ph_img > max(cls.MAX_PH_PIXEL_VAL - 1000, 0)]
       # Value defining pixel outlier status:
-      if len(pixels_to_correct) > 0:
+      if len(pixels_to_correct) > 25:
         ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=cls.BASELINE_PERCENTILE)))
         # print(ph_outlier_cutoff)
         # ph_outlier_cutoff = int(np.round(np.min(pixels_to_correct)))
@@ -74,7 +79,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
                   yield j, img.astype(np.uint16)
 
     @classmethod
-    def init_obs_run(cls, obs_run_config: typing.Dict, compute_ph_stats=True, max_stats_sample_size=5_000):
+    def init_obs_run(cls, obs_run_config: typing.Dict, max_obs_baseline_sample_size, compute_ph_stats=True):
       """Parses obs_run_config and returns a dict containing an ObservingRunInterface instance and module_ids to use from this run."""
       assert {'data_dir', 'run_dir', 'module_ids'}.issubset(set(obs_run_config))
       ori = pfi.ObservingRunInterface(obs_run_config['data_dir'], obs_run_config['run_dir'])
@@ -105,7 +110,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           for ph_file in ori.obs_pff_files[module_id]['ph']:
               nframes += ph_file['nframes']
           # Subsample all ph frames (could be millions)
-          nsamples = min(max_stats_sample_size, nframes)
+          nsamples = min(max_obs_baseline_sample_size, nframes)
           # sample_idxs = np.random.choice(np.arange(nframes), size=nsamples, replace=False) CORRECT
           sample_idxs = np.arange(nsamples) # INCORRECT, but faster
           sampled_imgs = np.zeros((nsamples, 16, 16), dtype=np.uint16)
@@ -128,9 +133,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           baseline_shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
           module_meta[module_id]['ph_median'] = np.median(baseline_shifted_sampled_imgs, axis=0)
           module_meta[module_id]['ph_std'] = np.std(baseline_shifted_sampled_imgs)
-          # im_plt = plt.imshow(module_meta[module_id]['ph_median_img'])
-          # plt.colorbar(im_plt)
-          # plt.show()
+
 
       obs_run = {
         'ori': ori,
@@ -147,7 +150,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       logger.setLevel(log_level)
       console_handler = logging.StreamHandler()
       console_handler.setLevel(logging.INFO)
-      formatter = logging.Formatter('[%(levelname)s][%(asctime)s] %(message)s')
+      # formatter = logging.Formatter('[%(levelname)s][%(asctime)s] %(message)s')
+      formatter = logging.Formatter('[%(levelname)s][%(asctime)s,%(msecs)03d][%(filename)s:%(lineno)d] %(message)s',
+    datefmt='%Y-%m-%d:%H:%M:%S')
       console_handler.setFormatter(formatter)
       logger.addHandler(console_handler)
       return logger
@@ -157,39 +162,48 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         super().__init__()
         self.transform = transform
         self.obs_runs = []
-        self.EFFECTIVE_MAX_VAL = self.MAX_PH_PIXEL_VAL / 4 # most ph images are less than 4k intensity.
-        self.MIN_MAX_PIXEL = 6   # Smallest max imag value to be included in the dataset
-        
-        
+        self.init_complete = False
+        self.valid_ph_frames = 0
+           
         self.logger = PulseHeightDataset.init_logger(log_level)
         
         # Parse dataset configs and initialize observing file interfaces.
+        if 'max_obs_baseline_sample_size' in ph_dataset_config:
+          max_obs_baseline_sample_size = ph_dataset_config['max_obs_baseline_sample_size']
+        else:
+          max_obs_baseline_sample_size = self.default_values['max_obs_baseline_sample_size']
         for obs_run_config in ph_dataset_config['observing_runs']:
-          obs_run = PulseHeightDataset.init_obs_run(obs_run_config)
+          obs_run = PulseHeightDataset.init_obs_run(obs_run_config, max_obs_baseline_sample_size)
           self.obs_runs.append(obs_run)
 
-        # Compute available PH frames
+        # Compute available PH frames & Set dataset length
         self.total_ph_frames = 0
         for obs_run in self.obs_runs:
           for module_id in obs_run['dataset_module_ids']:
               for ph_file in obs_run['ori'].obs_pff_files[module_id]['ph']:
                   self.total_ph_frames += ph_file['nframes']
-        # Set dataset length
         if 'max_ph_frames' in ph_dataset_config:
           self.dataset_length = min(ph_dataset_config['max_ph_frames'], self.total_ph_frames)
         else:
           self.dataset_length = self.total_ph_frames
+        self.logger.info(f"Init: dataset_length = {self.dataset_length}")
+
+        # Set smallest max imag value to be included in the dataset
+        if 'min_max_pixel_z_score' in ph_dataset_config:
+          self.min_max_pixel_z_score = ph_dataset_config['min_max_pixel_z_score']
+        else:
+          self.min_max_pixel_z_score = self.default_values['min_max_pixel_z_score']
+        self.logger.info(f"Init: min_max_pixel_z_score = {self.min_max_pixel_z_score}")
 
         # Initialize PH frame generator
         self.ph_gen = self.dataset_ph_frame_generator()
-        # self.compute_ph_stats()
-        # self.reset_ph_generator()
+        self.compute_ph_stats()
+        self.init_complete = True
 
     # @cache
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
-        ph_img = self.get_ph_data(index)['img']
-        ph_img_norm = self.norm(ph_img)
+        ph_img_norm = self.get_ph_data(index)['img']
         return self.transform(ph_img_norm)
 
     def __len__(self) -> int:
@@ -216,16 +230,14 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       print(self.stats)
       self.reset_ph_generator()
       
-    def norm(self, ph_img, b=10_000):
-      """Log-normalize a given PH image with uint16 pixels into the range [-1, 1]."""
-      norm_ph_img = np.tanh(np.arcsinh(b * ph_img / self.MAX_PH_PIXEL_VAL))
-      # assert -1.0 <= np.min(norm_ph_img) and np.max(norm_ph_img) <= 1.0, "np.min(norm_ph_img)={0}, np.max(norm_ph_img)={1}".format(np.min(norm_ph_img), np.max(norm_ph_img))
-      # print('norming')
+    def norm(self, ph_img):
+      """Normalize a given PH image with uint16 pixels into the range [-1, 1]."""
+      norm_ph_img = np.tanh(np.arcsinh(ph_img * self.B_VALUE / self.MAX_PH_PIXEL_VAL))
       return norm_ph_img
   
-    def inv_norm(self, norm_ph_img, b=10_000):
+    def inv_norm(self, norm_ph_img):
       """Invert the log-normalization performed by norm."""
-      ph_img = np.sinh(np.arctanh(norm_ph_img)) * self.MAX_PH_PIXEL_VAL / b
+      ph_img = np.arctanh(np.sinh(norm_ph_img)) * self.MAX_PH_PIXEL_VAL / self.B_VALUE
       return ph_img
 
     def clean_ph_img(self, ph_img: np.ndarray, module_meta: typing.Dict) -> np.ndarray:
@@ -244,7 +256,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           return None
       ph_img_clean = self.baseline_shift(ph_img, module_meta)
       ph_img_clean = (ph_img_clean - module_meta['ph_median']) / module_meta['ph_std']
-      if np.max(ph_img_clean) < self.MIN_MAX_PIXEL:
+      if np.max(ph_img_clean) < self.min_max_pixel_z_score:
         return None
       return ph_img_clean
 
@@ -253,42 +265,56 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         Returns a generator that lazily and sequentially yields PH frames in a round-robin fashion from all available ph files for this object.
         TODO: create indexing function to group ph frames.
         """
-        self.logger.info('Resetting dataset-global PH frame generator') 
+        # Reset all ph frame generators
         for obs_run in self.obs_runs:
           obs_run['frame_gen_counter'] = 0
           for module_id in obs_run['dataset_module_ids']:
             obs_run['module_meta'][module_id]['ph_generator'] = self.obs_run_ph_frame_generator(obs_run['ori'], module_id)
-        for i in range(self.dataset_length):
-          obs_run = self.obs_runs[i % len(self.obs_runs)]
-          module_id = obs_run['dataset_module_ids'][obs_run['frame_gen_counter'] % len(obs_run['dataset_module_ids'])]
-          module_meta = obs_run['module_meta'][module_id]
-          obs_run['frame_gen_counter'] += 1
-          try:
-            j, ph_img = next(module_meta['ph_generator'])
-          except StopIteration:
-            # Reset ph_generator to beginning of file
-            self.logger.info(f"resetting ph_generator for moddule {module_id} in in {obs_run['ori'].run_dir}")
-            module_meta['ph_generator'] = self.obs_run_ph_frame_generator(obs_run['ori'], module_id)
+        
+        img_idx = 0
+        loop_idx = 0
+        while img_idx < self.dataset_length and loop_idx < self.total_ph_frames:
+            obs_run = self.obs_runs[loop_idx % len(self.obs_runs)]  # Round-robin over available observing runs
+            module_id = obs_run['dataset_module_ids'][obs_run['frame_gen_counter'] % len(obs_run['dataset_module_ids'])]
+            module_meta = obs_run['module_meta'][module_id]
+            obs_run['frame_gen_counter'] += 1
+            loop_idx += 1
             try:
-              j, ph_img = next(module_meta['ph_generator']) # should succeed
-            except StopIteration: # only has StopIteration error if ph file is all zero data
-              self.logger.error(f"Unexpected StopIteration error when accessing ph frames from module {module_id} in {obs_run['ori'].run_dir}")
-              continue
-          ph_img_clean = self.clean_ph_img(ph_img, module_meta)
-          if ph_img_clean is None: # skip ph frame
-              # self.logger.warn(f"run: {obs_run['ori'].run_dir:<58} module {module_id:<4} has a frame with all zeros.")
-              continue
-          yield {'meta': j, 'img': ph_img_clean}
+              j, ph_img = next(module_meta['ph_generator'])
+            except StopIteration:
+              if not self.init_complete:
+                self.logger.info(f"NOT resetting ph_generator for moddule {module_id} in{obs_run['ori'].run_dir}")
+                continue
+              else:
+                # Reset ph_generator to beginning of file
+                self.logger.info(f"resetting ph_generator for module {module_id} in in {obs_run['ori'].run_dir}")
+                module_meta['ph_generator'] = self.obs_run_ph_frame_generator(obs_run['ori'], module_id)
+                try:
+                  j, ph_img = next(module_meta['ph_generator']) # should succeed
+                except StopIteration: # only has StopIteration error if ph file is all zero data
+                  self.logger.error(f"Unexpected StopIteration error when accessing ph frames from module {module_id} in {obs_run['ori'].run_dir}")
+                  continue
+            ph_img_clean = self.clean_ph_img(ph_img, module_meta)
+            if ph_img_clean is None: # skip ph frame
+                # self.logger.warn(f"run: {obs_run['ori'].run_dir:<58} module {module_id:<4} has a frame with all zeros.")
+                continue
+            img_idx += 1
+            yield {'meta': j, 'img': self.norm(ph_img_clean)}
     
     @cache
     def get_ph_data(self, index: int):
+        self.valid_ph_frames += 1
         try:
             return next(self.ph_gen)
         except StopIteration:
+            if not self.init_complete:
+              raise ValueError(f"Insufficient PH frames after filtering! Found: {self.valid_ph_frames}. Requested: {self.dataset_length}")
+
             self.reset_ph_generator()
             return next(self.ph_gen)
 
     def reset_ph_generator(self):
+      self.logger.info('Resetting dataset-global PH frame generator') 
       self.ph_gen = self.dataset_ph_frame_generator()
 
 
@@ -296,7 +322,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     def plot_ph_pixel_dist(self, ph_img, meta, ax=None, upper=None, limit=10_000):
         """Plot pulse height pixel distribution (for EDA outlier rejection)."""
         # plt.xscale('log')
-        pixels = self.norm(ph_img).ravel()
+        pixels = ph_img.ravel()
         title = ""
         if upper == True:
           pixels = pixels[pixels > limit]
@@ -318,12 +344,12 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             f = plt.figure()
             ax = plt.gca()
         if log_cbar:
-          img_plt = ax.imshow(self.norm(ph_img), cmap='icefire')
+          img_plt = ax.imshow(self.norm(ph_img), cmap='rocket')
           cbar = plt.colorbar(img_plt, fraction=0.045)
           # cbar.ax.locator_params(nbins=10)
           cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
         else:
-          img_plt = ax.imshow(self.norm(ph_img), cmap='icefire')
+          img_plt = ax.imshow(ph_img, cmap='rocket')
           cbar = plt.colorbar(img_plt, fraction=0.045)
           # cbar.ax.locator_params(nbins=10)
           # cbar.ax.yaxis.set_major_formatter(FuncFormatter(lambda v, t: self.colorbar_formatter(v, t)))
