@@ -22,11 +22,12 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    BASELINE_PERCENTILE = 0.5 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
-    B_VALUE = 5_000  # B parameter value in the normalization routine. Controls the linear region of the normalization function.
+    BASELINE_PERCENTILE = 0.95 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+    B_VALUE = 1  # B parameter value in the normalization routine. Controls the linear region of the normalization function.
     default_values = {
       'max_obs_baseline_sample_size': 10_000,
-      'min_max_pixel_z_score': 5,
+      'min_thresh_z_score': 5,
+      'min_above_thresh': 1
     }
     
     img_cwh = (1, 16, 16) # ph256 image dimensions: 1 channel, 16x16 image.
@@ -42,9 +43,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       # ph_baseline = module_meta['ph_baseline']
       # ph_outlier_cutoff = module_meta['ph_outlier_cutoff']
       
-      pixels_to_correct = ph_img[ph_img > max(cls.MAX_PH_PIXEL_VAL - 1000, 0)]
+      pixels_to_correct = ph_img[ph_img > max(cls.MAX_PH_PIXEL_VAL - 2000, 0)]
       # Value defining pixel outlier status:
-      if len(pixels_to_correct) > 25:
+      if len(pixels_to_correct) > 0:
         ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=cls.BASELINE_PERCENTILE)))
         # print(ph_outlier_cutoff)
         # ph_outlier_cutoff = int(np.round(np.min(pixels_to_correct)))
@@ -52,7 +53,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         ph_outlier_cutoff = cls.MAX_PH_PIXEL_VAL
       
       ph_baseline = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff
-      ph_outlier_cutoff = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
+      ph_outlier_cutoff = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 2000)
 
       ph_img_clean = ph_img + ph_baseline # Undo baseline subtraction
       ph_img_clean[ph_img_clean >= ph_outlier_cutoff] = 0 # Zero any remaining outliers
@@ -123,17 +124,17 @@ class PulseHeightDataset(torch.utils.data.Dataset):
               img_idx += 1
             if img_idx == nsamples:
               break
-          pixels_to_correct = sampled_imgs[sampled_imgs > max(cls.MAX_PH_PIXEL_VAL - 1000, 0)]
+          pixels_to_correct = sampled_imgs[sampled_imgs > max(cls.MAX_PH_PIXEL_VAL - 2000, 0)]
           if len(pixels_to_correct) > 0:
             ph_outlier_cutoff = int(np.round(np.quantile(pixels_to_correct, q=cls.BASELINE_PERCENTILE))) # Value defining pixel outlier status:
           else:
             ph_outlier_cutoff = 0
           module_meta[module_id]['ph_baseline'] = cls.MAX_PH_PIXEL_VAL - ph_outlier_cutoff # Value defining amount to increase all pixel values by to account for baseline subtraction during data acquisition:
-          module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 1000)
+          module_meta[module_id]['ph_outlier_cutoff'] = min(ph_outlier_cutoff, cls.MAX_PH_PIXEL_VAL - 2000)
           baseline_shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
           module_meta[module_id]['ph_median'] = np.median(baseline_shifted_sampled_imgs, axis=0)
           module_meta[module_id]['ph_std'] = np.std(baseline_shifted_sampled_imgs)
-
+          # module_meta[module_id]['ph_norm_const'] = np.mean(np.max(baseline_shifted_sampled_imgs - module_meta[module_id]['ph_median']
 
       obs_run = {
         'ori': ori,
@@ -189,11 +190,18 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         self.logger.info(f"Init: dataset_length = {self.dataset_length}")
 
         # Set smallest max imag value to be included in the dataset
-        if 'min_max_pixel_z_score' in ph_dataset_config:
-          self.min_max_pixel_z_score = ph_dataset_config['min_max_pixel_z_score']
+        if 'min_thresh_z_score' in ph_dataset_config:
+          self.min_thresh_z_score = ph_dataset_config['min_thresh_z_score']
         else:
-          self.min_max_pixel_z_score = self.default_values['min_max_pixel_z_score']
-        self.logger.info(f"Init: min_max_pixel_z_score = {self.min_max_pixel_z_score}")
+          self.min_thresh_z_score = self.default_values['min_thresh_z_score']
+        self.logger.info(f"Init: min_thresh_z_score= {self.min_thresh_z_score}")
+
+        # Set smallest max imag value to be included in the dataset
+        if 'min_above_thresh' in ph_dataset_config:
+          self.min_above_thresh = ph_dataset_config['min_above_thresh']
+        else:
+          self.min_above_thresh = self.default_values['min_above_thresh']
+        self.logger.info(f"Init: min_above_thresh= {self.min_above_thresh}")
 
         # Initialize PH frame generator
         self.ph_gen = self.dataset_ph_frame_generator()
@@ -203,8 +211,8 @@ class PulseHeightDataset(torch.utils.data.Dataset):
     # @cache
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
-        ph_img_norm = self.get_ph_data(index)['img']
-        return self.transform(ph_img_norm)
+        ph_img = self.get_ph_data(index, norm=True)['img']
+        return self.transform(ph_img)
 
     def __len__(self) -> int:
         return self.dataset_length
@@ -215,29 +223,32 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       sampled_ph_imgs = torch.zeros((len(sample_idxs), 1, 16, 16))
       img_idx = 0
       for i in tqdm(range(self.dataset_length), unit="ph_frames"):
-        ph_img = self.get_ph_data(i)['img']
+        ph_img = self.get_ph_data(i, norm=False)['img']
         if i in sample_idxs:
           sampled_ph_imgs[img_idx] = self.transform(ph_img)
           img_idx += 1
+      # print(f"{torch.max(sampled_ph_imgs, dim=0, keepdim=True, out=None)=}")
+      
       self.stats = {
-        'mean': torch.mean(sampled_ph_imgs).numpy(),
-        'median': torch.median(sampled_ph_imgs).numpy(),
-        'std': torch.std(sampled_ph_imgs).numpy(),
-        'min': torch.min(sampled_ph_imgs).numpy(),
-        'max': torch.max(sampled_ph_imgs).numpy(),
-        'q9995':torch.quantile(sampled_ph_imgs, 0.9995),
+        'mean': sampled_ph_imgs.mean().numpy(),
+        'median': sampled_ph_imgs.median().numpy(),
+        'std': sampled_ph_imgs.std().numpy(),
+        'min': sampled_ph_imgs.min().numpy(),
+        'max': sampled_ph_imgs.max().numpy(),
+        'norm_channel_max': sampled_ph_imgs.amax(dim=(1, 2, 3)).mean().numpy(),
+        'q9995': sampled_ph_imgs.quantile(0.9995),
       }
       print(self.stats)
       self.reset_ph_generator()
       
     def norm(self, ph_img):
       """Normalize a given PH image with uint16 pixels into the range [-1, 1]."""
-      norm_ph_img = np.tanh(np.arcsinh(ph_img * self.B_VALUE / self.MAX_PH_PIXEL_VAL))
+      norm_ph_img = np.tanh(np.arcsinh(ph_img * self.B_VALUE / self.stats['norm_channel_max']))
       return norm_ph_img
   
     def inv_norm(self, norm_ph_img):
       """Invert the log-normalization performed by norm."""
-      ph_img = np.arctanh(np.sinh(norm_ph_img)) * self.MAX_PH_PIXEL_VAL / self.B_VALUE
+      ph_img = np.arctanh(np.sinh(norm_ph_img)) * self.stats['norm_channel_max'] / self.B_VALUE
       return ph_img
 
     def clean_ph_img(self, ph_img: np.ndarray, module_meta: typing.Dict) -> np.ndarray:
@@ -255,8 +266,9 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           # self.logger.info(f'{np.sum(ph_img_clean == 0)} PH pixels are zero')
           return None
       ph_img_clean = self.baseline_shift(ph_img, module_meta)
-      ph_img_clean = (ph_img_clean - module_meta['ph_median']) / module_meta['ph_std']
-      if np.max(ph_img_clean) < self.min_max_pixel_z_score:
+      ph_img_clean = (ph_img_clean - module_meta['ph_median']) #/ module_meta['ph_std']
+      # ph_img_clean = ph_img_clean / module_meta['ph_std']
+      if np.sort(ph_img_clean.ravel())[ph_img_clean.size - self.min_above_thresh - 1] < self.min_thresh_z_score:
         return None
       return ph_img_clean
 
@@ -299,19 +311,21 @@ class PulseHeightDataset(torch.utils.data.Dataset):
                 # self.logger.warn(f"run: {obs_run['ori'].run_dir:<58} module {module_id:<4} has a frame with all zeros.")
                 continue
             img_idx += 1
-            yield {'meta': j, 'img': self.norm(ph_img_clean)}
+            yield {'meta': j, 'img': ph_img_clean}
     
     @cache
-    def get_ph_data(self, index: int):
+    def get_ph_data(self, index: int, norm=True):
         self.valid_ph_frames += 1
         try:
-            return next(self.ph_gen)
+            ph_data = next(self.ph_gen)
         except StopIteration:
             if not self.init_complete:
               raise ValueError(f"Insufficient PH frames after filtering! Found: {self.valid_ph_frames}. Requested: {self.dataset_length}")
-
             self.reset_ph_generator()
-            return next(self.ph_gen)
+            ph_data =  next(self.ph_gen)
+        if norm:
+          ph_data['img'] = self.norm(ph_data['img'])
+        return ph_data
 
     def reset_ph_generator(self):
       self.logger.info('Resetting dataset-global PH frame generator') 
