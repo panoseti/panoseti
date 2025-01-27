@@ -22,7 +22,7 @@ from functools import cache
 class PulseHeightDataset(torch.utils.data.Dataset):
     """Interface for retrieving pulse-height images from a specific observing run."""
     MAX_PH_PIXEL_VAL = 2**16 - 1  # Max PH pixel value. PH pixels are typically represented as uint16 values.
-    BASELINE_PERCENTILE = 0.95 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
+    BASELINE_PERCENTILE = 0.75 # percentile of extreme values (~MAX_PH_PIXEL_VAL) used to compute the ph_baseline
     B_VALUE = 1  # B parameter value in the normalization routine. Controls the linear region of the normalization function.
     default_values = {
       'max_obs_baseline_sample_size': 10_000,
@@ -100,7 +100,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
       module_meta = {}
       for module_id in dataset_module_ids:
         module_meta[module_id] = {}
-        module_meta[module_id]['ph_frame_generator'] = None
+        module_meta[module_id]['ph_generator'] = None
 
       # Compute PH Baseline
       if compute_ph_stats:
@@ -134,6 +134,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           baseline_shifted_sampled_imgs = cls.baseline_shift(sampled_imgs, module_meta)
           module_meta[module_id]['ph_median'] = np.median(baseline_shifted_sampled_imgs, axis=0)
           module_meta[module_id]['ph_std'] = np.std(baseline_shifted_sampled_imgs)
+          module_meta[module_id]['run'] = ori.run_dir
           # module_meta[module_id]['ph_norm_const'] = np.mean(np.max(baseline_shifted_sampled_imgs - module_meta[module_id]['ph_median']
 
       obs_run = {
@@ -165,6 +166,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         self.obs_runs = []
         self.init_complete = False
         self.valid_ph_frames = 0
+        self.bad_ph_frames = []
            
         self.logger = PulseHeightDataset.init_logger(log_level)
         
@@ -208,7 +210,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
         self.compute_ph_stats()
         self.init_complete = True
 
-    # @cache
+    @cache
     def __getitem__(self, index: int) -> torch.Tensor:
         """Get PH frame at index. Note: currently index has no effect (TODO). index is required by the PyTorch abstract Dataset class."""
         ph_img = self.get_ph_data(index, norm=True)['img']
@@ -266,9 +268,16 @@ class PulseHeightDataset(torch.utils.data.Dataset):
           # self.logger.info(f'{np.sum(ph_img_clean == 0)} PH pixels are zero')
           return None
       ph_img_clean = self.baseline_shift(ph_img, module_meta)
-      ph_img_clean = (ph_img_clean - module_meta['ph_median']) #/ module_meta['ph_std']
+      ph_img_clean = (ph_img_clean - module_meta['ph_median']) / module_meta['ph_std']
       # ph_img_clean = ph_img_clean / module_meta['ph_std']
-      if np.sort(ph_img_clean.ravel())[ph_img_clean.size - self.min_above_thresh - 1] < self.min_thresh_z_score:
+      n_above_thresh = np.sum(np.sort(ph_img_clean.ravel()) > self.min_thresh_z_score)
+      if n_above_thresh < self.min_above_thresh:
+        return None
+      elif np.min(ph_img_clean) >= self.min_thresh_z_score:
+        # im = plt.imshow(ph_img, cmap='rocket')
+        # plt.colorbar(im)
+        # plt.show()
+        self.bad_ph_frames.append(f"bad frame {self.bad_ph_frames=} from {module_meta['run']}")
         return None
       return ph_img_clean
 
@@ -290,9 +299,10 @@ class PulseHeightDataset(torch.utils.data.Dataset):
             module_id = obs_run['dataset_module_ids'][obs_run['frame_gen_counter'] % len(obs_run['dataset_module_ids'])]
             module_meta = obs_run['module_meta'][module_id]
             obs_run['frame_gen_counter'] += 1
-            loop_idx += 1
+            
             try:
               j, ph_img = next(module_meta['ph_generator'])
+              loop_idx += 1
             except StopIteration:
               if not self.init_complete:
                 self.logger.info(f"NOT resetting ph_generator for moddule {module_id} in{obs_run['ori'].run_dir}")
@@ -303,6 +313,7 @@ class PulseHeightDataset(torch.utils.data.Dataset):
                 module_meta['ph_generator'] = self.obs_run_ph_frame_generator(obs_run['ori'], module_id)
                 try:
                   j, ph_img = next(module_meta['ph_generator']) # should succeed
+                  loop_idx += 1
                 except StopIteration: # only has StopIteration error if ph file is all zero data
                   self.logger.error(f"Unexpected StopIteration error when accessing ph frames from module {module_id} in {obs_run['ori'].run_dir}")
                   continue
