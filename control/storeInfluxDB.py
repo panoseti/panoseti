@@ -24,7 +24,8 @@ DATATYPE_FORMAT = {
     'housekeeping': re.compile("QUABO_\\d*"),
     'GPS': re.compile("GPS.*"),
     'whiterabbit': re.compile("WRSWITCH.*"),
-    'outlet': re.compile("WPS.*")
+    'outlet': re.compile("WPS.*"),
+    'ublox_f9t': re.compile("UBLOX_ZED-F9T_.*"),
 }
 # List of keys with the time stamp values
 key_timestamps = {}
