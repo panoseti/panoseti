@@ -14,17 +14,25 @@ import "google/protobuf/timestamp.proto"; // standard type for JSON data structu
 service DaqData {
   // Stream science data from a module.
   rpc CaptureScience(CaptureScienceRequest) returns (stream CaptureScienceResponse) {}
+  // Configure hp_io thread. TODO: figure out the rpc interface and implement it
+  rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}
 }
 
 // Image represents a panoseti movie-mode or pulse-height image and associated header metadata
-message Image {
+message PanoImage {
+  enum Type {
+    UNDEFINED = 0;
+    PULSE_HEIGHT = 1;
+    MOVIE = 2;
+  }
+  Type type = 1;
   // image metadata struct
-  google.protobuf.Struct header = 1;
+  google.protobuf.Struct header = 2;
   // array of 1-byte or 2-byte data.
-  repeated int32 image_array = 2 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
-  int32 bytes_per_pixel = 3;
-  // image arrays can be [16, 16, 1] or [32, 32, 1]
+  repeated int32 image_array = 3 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
+  // image shape. Expect this field to be a list of two ints like [16, 16] or [32, 32]
   repeated int32 image_shape = 4;
+  int32 bytes_per_pixel = 5;
 }
 
 // science data packet
@@ -32,8 +40,7 @@ message CaptureScienceResponse {
   enum Type {
     UNDEFINED = 0;
     ERROR = 1;
-    DATA_PH = 2; // pulse-height image
-    DATA_MM = 3; // movie-mode image
+    DATA = 2;
   }
   Type type = 1;
   string name = 2;
@@ -41,15 +48,18 @@ message CaptureScienceResponse {
   google.protobuf.Timestamp timestamp = 3;
   // optional message for errors and other details
   string message = 4;
-
-  oneof data {
-    Image movie_mode = 5;
-    Image pulse_height = 6;
-  }
+  // a panoseti image + self-describing metadata
+  PanoImage pano_image = 5;
 }
 
-// A CaptureScience specifies which messages to stream with the  RPC.
+// A CaptureScienceRequest specifies which image types to stream.
 message CaptureScienceRequest {
-  google.protobuf.Struct config = 1;
+  bool stream_movie_data = 1;
+  bool stream_pulse_height_data = 2;
+  google.protobuf.Struct config = 3;
 }
+
+
+message InitHpIoRequest {}
+message InitHpIoResponse {}
 

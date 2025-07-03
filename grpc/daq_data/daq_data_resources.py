@@ -21,13 +21,11 @@ from daq_data_pb2 import TestCase, CaptureScienceResponse, CaptureScienceRequest
 
 """ Config globals"""
 cfg_dir = Path('config')
-daq_data_config_file = 'daq_data_config.json'
+daq_data_server_config_file = 'daq_data_config.json'
 
-# Configuration for hashpipe_io thread
-default_hashpipe_io_thread_cfg = "default_hashpipe_io_thread_config.json"
-
-with open(cfg_dir/default_hashpipe_io_thread_cfg) as f:
-    default_hashpipe_io_cfg = json.load(f)
+# Configuration
+with open(cfg_dir/daq_data_server_config_file) as f:
+    default_daq_data_server_cfg = json.load(f)
 
 
 def make_rich_logger(name, level=logging.DEBUG):

@@ -40,6 +40,11 @@ class DaqDataStub(object):
                 request_serializer=daq__data__pb2.CaptureScienceRequest.SerializeToString,
                 response_deserializer=daq__data__pb2.CaptureScienceResponse.FromString,
                 _registered_method=True)
+        self.InitHpIo = channel.unary_unary(
+                '/daqdata.DaqData/InitHpIo',
+                request_serializer=daq__data__pb2.InitHpIoRequest.SerializeToString,
+                response_deserializer=daq__data__pb2.InitHpIoResponse.FromString,
+                _registered_method=True)
 
 
 class DaqDataServicer(object):
@@ -53,6 +58,13 @@ class DaqDataServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def InitHpIo(self, request, context):
+        """Configure hp_io thread. TODO: figure out the rpc interface and implement it
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DaqDataServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -60,6 +72,11 @@ def add_DaqDataServicer_to_server(servicer, server):
                     servicer.CaptureScience,
                     request_deserializer=daq__data__pb2.CaptureScienceRequest.FromString,
                     response_serializer=daq__data__pb2.CaptureScienceResponse.SerializeToString,
+            ),
+            'InitHpIo': grpc.unary_unary_rpc_method_handler(
+                    servicer.InitHpIo,
+                    request_deserializer=daq__data__pb2.InitHpIoRequest.FromString,
+                    response_serializer=daq__data__pb2.InitHpIoResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -90,6 +107,33 @@ class DaqData(object):
             '/daqdata.DaqData/CaptureScience',
             daq__data__pb2.CaptureScienceRequest.SerializeToString,
             daq__data__pb2.CaptureScienceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InitHpIo(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/daqdata.DaqData/InitHpIo',
+            daq__data__pb2.InitHpIoRequest.SerializeToString,
+            daq__data__pb2.InitHpIoResponse.FromString,
             options,
             channel_credentials,
             insecure,

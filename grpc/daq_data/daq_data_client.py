@@ -99,7 +99,7 @@ def init_f9t(stub, f9t_cfg, timeout=10) -> dict:
 
 
 def capture_ublox(stub, patterns, f9t_cfg, timeout=10):
-    # valid_capture_command_aliases = ['start', 'stop']
+    # valid_capture_command_aliases = ['start', 'stop_io']
 
     def make_capture_ublox_request(pats):
         if pats is None:
@@ -123,7 +123,7 @@ def capture_ublox(stub, patterns, f9t_cfg, timeout=10):
         r.hset(rkey, 'Computer_UTC', timestamp_float)
 
     # start packet stream
-    capture_ublox_response_future = stub.CaptureUblox(
+    capture_ublox_response_future = stub.CaptureScience(
         make_capture_ublox_request(patterns)
     )
     # use active_calls to gracefully handle ^C cancellation
