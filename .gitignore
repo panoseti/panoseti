@@ -10,4 +10,18 @@ control/quabo_config*.json
 control/skymap_info_dir
 util/__pycache__/*
 
+# Ignore Python bytecode cache directories
+__pycache__/
+**/__pycache__/
 
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Ignore macOS .DS_Store files
+.DS_Store
+**/.DS_Store
+
+# Ignore redis dumps 
+.rdb
+**/.rdb

@@ -26,7 +26,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x64\x61q_data.proto\x12\x07\x64\x61qdata\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x01\n\tPanoImage\x12%\n\x04type\x18\x01 \x01(\x0e\x32\x17.daqdata.PanoImage.Type\x12\'\n\x06header\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x17\n\x0bimage_array\x18\x03 \x03(\x05\x42\x02\x10\x01\x12\x13\n\x0bimage_shape\x18\x04 \x03(\x05\x12\x17\n\x0f\x62ytes_per_pixel\x18\x05 \x01(\x05\"2\n\x04Type\x12\r\n\tUNDEFINED\x10\x00\x12\x10\n\x0cPULSE_HEIGHT\x10\x01\x12\t\n\x05MOVIE\x10\x02\"\xee\x01\n\x16\x43\x61ptureScienceResponse\x12\x32\n\x04type\x18\x01 \x01(\x0e\x32$.daqdata.CaptureScienceResponse.Type\x12\x0c\n\x04name\x18\x02 \x01(\t\x12-\n\ttimestamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07message\x18\x04 \x01(\t\x12&\n\npano_image\x18\x05 \x01(\x0b\x32\x12.daqdata.PanoImage\"*\n\x04Type\x12\r\n\tUNDEFINED\x10\x00\x12\t\n\x05\x45RROR\x10\x01\x12\x08\n\x04\x44\x41TA\x10\x02\"}\n\x15\x43\x61ptureScienceRequest\x12\x19\n\x11stream_movie_data\x18\x01 \x01(\x08\x12 \n\x18stream_pulse_height_data\x18\x02 \x01(\x08\x12\'\n\x06\x63onfig\x18\x03 \x01(\x0b\x32\x17.google.protobuf.Struct\"\x11\n\x0fInitHpIoRequest\"\x12\n\x10InitHpIoResponse2\xa3\x01\n\x07\x44\x61qData\x12U\n\x0e\x43\x61ptureScience\x12\x1e.daqdata.CaptureScienceRequest\x1a\x1f.daqdata.CaptureScienceResponse\"\x00\x30\x01\x12\x41\n\x08InitHpIo\x12\x18.daqdata.InitHpIoRequest\x1a\x19.daqdata.InitHpIoResponse\"\x00\x42)\n\x10io.grpc.daq_dataB\x0c\x44\x61qDataProtoP\x01\xa2\x02\x04\x44\x41QDb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x64\x61q_data.proto\x12\x07\x64\x61qdata\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x01\n\tPanoImage\x12%\n\x04type\x18\x01 \x01(\x0e\x32\x17.daqdata.PanoImage.Type\x12\'\n\x06header\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x17\n\x0bimage_array\x18\x03 \x03(\x05\x42\x02\x10\x01\x12\x13\n\x0bimage_shape\x18\x04 \x03(\x05\x12\x17\n\x0f\x62ytes_per_pixel\x18\x05 \x01(\x05\"2\n\x04Type\x12\r\n\tUNDEFINED\x10\x00\x12\x10\n\x0cPULSE_HEIGHT\x10\x01\x12\t\n\x05MOVIE\x10\x02\"\xee\x01\n\x16\x43\x61ptureScienceResponse\x12\x32\n\x04type\x18\x01 \x01(\x0e\x32$.daqdata.CaptureScienceResponse.Type\x12\x0c\n\x04name\x18\x02 \x01(\t\x12-\n\ttimestamp\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07message\x18\x04 \x01(\t\x12&\n\npano_image\x18\x05 \x01(\x0b\x32\x12.daqdata.PanoImage\"*\n\x04Type\x12\r\n\tUNDEFINED\x10\x00\x12\t\n\x05\x45RROR\x10\x01\x12\x08\n\x04\x44\x41TA\x10\x02\"}\n\x15\x43\x61ptureScienceRequest\x12\x19\n\x11stream_movie_data\x18\x01 \x01(\x08\x12 \n\x18stream_pulse_height_data\x18\x02 \x01(\x08\x12\'\n\x06\x63onfig\x18\x03 \x01(\x0b\x32\x17.google.protobuf.Struct\"\x88\x01\n\x08TestCase\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\x06result\x18\x02 \x01(\x0e\x32\x1c.daqdata.TestCase.TestResult\x12\x0f\n\x07message\x18\x03 \x01(\t\"/\n\nTestResult\x12\r\n\tUNDEFINED\x10\x00\x12\x08\n\x04PASS\x10\x01\x12\x08\n\x04\x46\x41IL\x10\x02\"\x11\n\x0fInitHpIoRequest\"\x12\n\x10InitHpIoResponse2\xa3\x01\n\x07\x44\x61qData\x12U\n\x0e\x43\x61ptureScience\x12\x1e.daqdata.CaptureScienceRequest\x1a\x1f.daqdata.CaptureScienceResponse\"\x00\x30\x01\x12\x41\n\x08InitHpIo\x12\x18.daqdata.InitHpIoRequest\x1a\x19.daqdata.InitHpIoResponse\"\x00\x42)\n\x10io.grpc.daq_dataB\x0c\x44\x61qDataProtoP\x01\xa2\x02\x04\x44\x41QDb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -46,10 +46,14 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_CAPTURESCIENCERESPONSE_TYPE']._serialized_end=546
   _globals['_CAPTURESCIENCEREQUEST']._serialized_start=548
   _globals['_CAPTURESCIENCEREQUEST']._serialized_end=673
-  _globals['_INITHPIOREQUEST']._serialized_start=675
-  _globals['_INITHPIOREQUEST']._serialized_end=692
-  _globals['_INITHPIORESPONSE']._serialized_start=694
-  _globals['_INITHPIORESPONSE']._serialized_end=712
-  _globals['_DAQDATA']._serialized_start=715
-  _globals['_DAQDATA']._serialized_end=878
+  _globals['_TESTCASE']._serialized_start=676
+  _globals['_TESTCASE']._serialized_end=812
+  _globals['_TESTCASE_TESTRESULT']._serialized_start=765
+  _globals['_TESTCASE_TESTRESULT']._serialized_end=812
+  _globals['_INITHPIOREQUEST']._serialized_start=814
+  _globals['_INITHPIOREQUEST']._serialized_end=831
+  _globals['_INITHPIORESPONSE']._serialized_start=833
+  _globals['_INITHPIORESPONSE']._serialized_end=851
+  _globals['_DAQDATA']._serialized_start=854
+  _globals['_DAQDATA']._serialized_end=1017
 # @@protoc_insertion_point(module_scope)

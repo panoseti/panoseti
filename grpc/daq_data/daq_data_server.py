@@ -67,7 +67,7 @@ def hp_io_data_DEBUG(
             time.sleep(1)
             # TODO: don't hardcode and get values from hashpipe in someway..
             header = {"test0": 0, "test1": 1}
-            image_array = np.random.normal(size=[32,32])
+            image_array = np.random.randint(low=0, high=2**16, size=[32,32])
 
             parsed_data = {
                 "header": header,
@@ -120,7 +120,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self.logger = make_rich_logger(__name__, level=logging.DEBUG)
 
         # Load default hahspipe_io configuration
-        with open(cfg_dir/self._server_cfg["default_hp_io_cfg_file"], "r") as f:
+        with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
             self._hp_io_cfg = json.load(f)
 
         ## State for single producer, multiple consumer hp_io access
@@ -306,7 +306,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._stop_hp_io_thread()  # no effect if a hp_io thread is not alive
 
         # Create new hp_io_thread using the client's configuration
-        self._stop_hp_io_thread.clear()
+        self._stop_io.clear()
         self._hp_io_thread = Thread(
             target=hp_io_data_DEBUG,
             args=(
@@ -314,7 +314,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 hp_io_cfg["timeout"],
                 self._read_queues,
                 self._read_queues_freemap,
-                self._stop_hp_io_thread,
+                self._stop_io,
                 self._hp_io_valid,
                 self.logger,
             ),

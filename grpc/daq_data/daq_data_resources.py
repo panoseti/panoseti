@@ -5,7 +5,7 @@ import os
 import json
 import logging
 import datetime
-from typing import List, Callable, Tuple, Any
+from typing import List, Callable, Tuple, Any, Dict
 from contextlib import contextmanager
 from pathlib import Path
 import redis
@@ -21,11 +21,11 @@ from daq_data_pb2 import TestCase, CaptureScienceResponse, CaptureScienceRequest
 
 """ Config globals"""
 cfg_dir = Path('config')
-daq_data_server_config_file = 'daq_data_config.json'
+default_hp_io_thread_config_file = 'default_hp_io_config.json'
 
 # Configuration
-with open(cfg_dir/daq_data_server_config_file) as f:
-    default_daq_data_server_cfg = json.load(f)
+with open(cfg_dir/default_hp_io_thread_config_file) as f:
+    default_hp_io_thread_config = json.load(f)
 
 
 def make_rich_logger(name, level=logging.DEBUG):

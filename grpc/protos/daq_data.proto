@@ -59,6 +59,22 @@ message CaptureScienceRequest {
   google.protobuf.Struct config = 3;
 }
 
+message TestCase {
+  enum TestResult {
+    // default state
+    UNDEFINED = 0;
+    // the test passed
+    PASS = 1;
+    // the test failed
+    FAIL = 2;
+  }
+  // test name
+  string name = 1;
+  // test result
+  TestResult result = 2;
+  // error message
+  string message = 3;
+}
 
 message InitHpIoRequest {}
 message InitHpIoResponse {}
