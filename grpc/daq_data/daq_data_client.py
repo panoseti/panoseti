@@ -55,7 +55,7 @@ def cancel_requests(unused_signum, unused_frame):
 signal.signal(signal.SIGINT, cancel_requests)
 
 
-def get_services(channel):
+def reflect_services(channel):
     """Prints all available RPCs for the DaqData service represented by [channel]."""
     def format_rpc_service(method):
         name = method.name
@@ -74,39 +74,41 @@ def get_services(channel):
     for method in service_desc.methods:
         print(f"\tfound: {format_rpc_service(method)}")
 
+def make_capture_science_request(stream_movie_data, stream_pulse_height_data):
+    return CaptureScienceRequest(
+        stream_movie_data=stream_movie_data,
+        stream_pulse_height_data=stream_pulse_height_data,
+    )
+
+def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
+    if pano_image is None:
+        return None, None
+    image_shape = pano_image.image_shape
+    bytes_per_pixel = pano_image.bytes_per_pixel
+    image_array = np.array(pano_image.image_array).reshape(image_shape)
+    if bytes_per_pixel == 1:
+        image_array = image_array.astype(np.uint8)
+    elif bytes_per_pixel == 2:
+        image_array = image_array.astype(np.uint16)
+    else:
+        raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
+    header = MessageToDict(pano_image.header)
+    return header, image_array
+
+def format_capture_science_response(capture_science_response):
+    resp_type = CaptureScienceResponse.Type.Name(capture_science_response.type)
+    header, image_array = unpack_pano_image(capture_science_response.pano_image)
+    name = capture_science_response.name
+    message = capture_science_response.message
+    timestamp = capture_science_response.timestamp.ToDatetime().isoformat()
+    return f"CaptureScienceResponse: {name=}, {message=}, {timestamp=}, {resp_type=}, {header=}"
+
 
 def capture_science(stub, stream_movie_data, stream_pulse_height_data, timeout=10):
-    def make_capture_science_request():
-        return CaptureScienceRequest(
-            stream_movie_data=stream_movie_data,
-            stream_pulse_height_data=stream_pulse_height_data,
-        )
-
-    def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
-        if pano_image is None:
-            return None, None
-        image_shape = pano_image.image_shape
-        bytes_per_pixel = pano_image.bytes_per_pixel
-        image_array = np.array(pano_image.image_array).reshape(image_shape)
-        if bytes_per_pixel == 1:
-            image_array = image_array.astype(np.uint8)
-        elif bytes_per_pixel == 2:
-            image_array = image_array.astype(np.uint16)
-        else:
-            raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
-        header = MessageToDict(pano_image.header)
-        return header, image_array
-
-    def format_response(capture_science_response):
-        resp_type = CaptureScienceResponse.Type.Name(capture_science_response.type)
-        header, image_array = unpack_pano_image(capture_science_response.pano_image)
-        name = capture_science_response.name
-        message = capture_science_response.message
-        timestamp = capture_science_response.timestamp.ToDatetime().isoformat()
-        return f"CaptureScienceResponse: {name=}, {message=}, {timestamp=}, {resp_type=}, {header=}"
+    logger = make_rich_logger(__name__, level=logging.INFO)
 
     # start packet stream
-    capture_science_request = make_capture_science_request()
+    capture_science_request = make_capture_science_request(stream_movie_data, stream_pulse_height_data)
     capture_science_responses = stub.CaptureScience(capture_science_request)
     active_calls.append(capture_science_responses)  # gracefully handle ^C cancellation
 
@@ -116,7 +118,7 @@ def capture_science(stub, stream_movie_data, stream_pulse_height_data, timeout=1
 
     for capture_science_response in capture_science_responses:
         # display a log message
-        formatted_capture_science_response = format_response(capture_science_response)
+        formatted_capture_science_response = format_capture_science_response(capture_science_response)
         if capture_science_response.type == CaptureScienceResponse.Type.DATA:
             logger.info(formatted_capture_science_response)
         elif capture_science_response.type == CaptureScienceResponse.Type.ERROR:
@@ -142,22 +144,21 @@ def run(host, port=50051):
     connection_target = f"{host}:{port}"
     try:
         with grpc.insecure_channel(connection_target) as channel:
+            print("-------------- ServerReflection --------------")
+            reflect_services(channel)
+
             stub = daq_data_pb2_grpc.DaqDataStub(channel)
 
-            print("-------------- ServerReflection --------------")
-            get_services(channel)
-
-
-            #for i in range(1):
-            print("-------------- Init --------------")
-            client_hashpipe_io_cfg = default_hp_io_thread_config
-            # TODO;
-            curr_f9t_cfg = client_hashpipe_io_cfg
+            # TODO: add InitHpIo
+            # print("-------------- Init --------------")
+            # client_hashpipe_io_cfg = default_hp_io_thread_config
+            # curr_f9t_cfg = client_hashpipe_io_cfg
 
             print("-------------- CaptureScience --------------")
             capture_science(stub, True, True, 5)
+
     except KeyboardInterrupt:
-        logger.info(f"'^C' received, closing connection to UbloxControl server at {repr(connection_target)}")
+        logger.info(f"'^C' received, closing connection to the DaqData server at {repr(connection_target)}")
     except grpc.RpcError as rpc_error:
         logger.error(f"{type(rpc_error)}\n{repr(rpc_error)}")
 
@@ -178,7 +179,7 @@ if __name__ == "__main__":
     )
     assert all_pass, "at least one client-side test failed"
     # test_redis_connection("localhost", logger=logger)
-    # run(host="10.0.0.60")
-    run(host="localhost")
+    run(host="10.0.0.60")
+    # run(host="localhost")
 
 

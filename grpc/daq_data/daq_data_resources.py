@@ -28,7 +28,7 @@ with open(cfg_dir/default_hp_io_thread_config_file) as f:
     default_hp_io_thread_config = json.load(f)
 
 
-def make_rich_logger(name, level=logging.DEBUG):
+def make_rich_logger(name, level=logging.INFO):
     LOG_FORMAT = (
         "[tid=%(thread)d] [%(funcName)s()] %(message)s "
     )

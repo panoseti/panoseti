@@ -21,3 +21,4 @@ redis>=3.5.3
 seaborn>=0.13.2
 matplotlib>=3.8.4
 pandas>=2.3.0
+numpy>=1.26.4

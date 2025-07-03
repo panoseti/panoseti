@@ -31,7 +31,6 @@ from grpc_reflection.v1alpha import reflection
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
-from tifffile.tifffile import imagej_shape
 
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
