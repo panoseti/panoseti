@@ -7,14 +7,17 @@ wheel>=0.29
 grpcio>=1.73.0
 grpcio_reflection>=1.73.0
 grpcio_tools>=1.73.0
-rich>=14.0.0
 
-# ublox control requirements
+# observability
+rich>=14.0.0
+redis>=3.5.3
+
+# ublox control
 pyserial>=3.5
 pyubx2>=1.2.43
 redis>=3.5.3
 
-# data analysis requirements
+# data analysis
 seaborn>=0.13.2
 matplotlib>=3.8.4
 pandas>=2.3.0

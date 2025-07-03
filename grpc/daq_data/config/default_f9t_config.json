@@ -1,0 +1,12 @@
+{
+  "is_valid": true,
+  "chip_name": "ZED-F9T",
+  "chip_uid": "DEADBEEFED",
+  "device": "/dev/...",
+  "timeout": 1,
+  "comments": "",
+  "cfg_key_settings": {
+    "CFG_MSGOUT_UBX_TIM_TP_USB": 1,
+    "CFG_MSGOUT_UBX_NAV_TIMEUTC_USB": 1
+  }
+}

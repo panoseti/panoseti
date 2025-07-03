@@ -1,18 +1,18 @@
 syntax = "proto3";
 
 option java_multiple_files = true;
-option java_package = "io.grpc.daq_utils";
-option java_outer_classname = "DaqUtilsProto";
-option objc_class_prefix = "DQU";
+option java_package = "io.grpc.daq_data";
+option java_outer_classname = "DaqDataProto";
+option objc_class_prefix = "DAQD";
 
-package daqutils;
+package daqdata;
 
 import "google/protobuf/struct.proto"; // standard type for JSON data structures
 import "google/protobuf/timestamp.proto"; // standard type for JSON data structures
 
-// Interface exported by the server connected to the ublox chip
-service DaqUtils {
-  // Stream science packets from the server.
+// The DaqData service definition.
+service DaqData {
+  // Stream science data from a module.
   rpc CaptureScience(CaptureScienceRequest) returns (stream CaptureScienceResponse) {}
 }
 

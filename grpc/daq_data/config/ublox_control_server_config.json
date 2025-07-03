@@ -1,0 +1,12 @@
+{
+    "max_workers": 5,
+    "max_read_queue_size": 200,
+    "shutdown_grace_period": 0.1,
+    "InitF9t": {
+        "default_f9t_cfg_file": "default_f9t_config.json",
+        "allow_init_from_default": true
+    },
+    "CaptureUblox": {
+        "message_patterns": ["NAV\\-TIMEUTC", "TIM\\-TP"]
+    }
+}

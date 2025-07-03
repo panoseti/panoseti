@@ -22,22 +22,9 @@ licenses(["notice"])
 
 package(default_visibility = ["//visibility:public"])
 
-grpc_proto_library(
-    name = "auth_sample",
-    srcs = ["auth_sample.proto"],
-)
-
-grpc_proto_library(
-    name = "hellostreamingworld",
-    srcs = ["hellostreamingworld.proto"],
-)
 
 # The following three rules demonstrate the usage of the cc_grpc_library rule in
 # in a mode compatible with the native proto_library and cc_proto_library rules.
-proto_library(
-    name = "helloworld_proto",
-    srcs = ["helloworld.proto"],
-)
 
 cc_proto_library(
     name = "helloworld_cc_proto",
@@ -51,6 +38,54 @@ cc_grpc_library(
     deps = [":helloworld_cc_proto"],
 )
 
+py_proto_library(
+    name = "helloworld_py_pb2",
+    deps = [":helloworld_proto"],
+)
+
+py_proto_library(
+    name = "daq_data_py_pb2",
+    deps = [":daq_data_proto"],
+)
+
+py_proto_library(
+    name = "ublox_control_py_pb2",
+    deps = [":ublox_control_proto"],
+)
+
+py_grpc_library(
+    name = "helloworld_py_pb2_grpc",
+    srcs = [":helloworld_proto"],
+    deps = [":helloworld_py_pb2"],
+)
+
+py_grpc_library(
+    name = "daq_data_py_pb2_grpc",
+    srcs = [":daq_data_proto"],
+    deps = [":daq_data_py_pb2"],
+)
+
+py_grpc_library(
+    name = "ublox_control_py_pb2_grpc",
+    srcs = [":ublox_control_proto"],
+    deps = [":ublox_control_py_pb2"],
+)
+
+grpc_proto_library(
+    name = "auth_sample",
+    srcs = ["auth_sample.proto"],
+)
+
+grpc_proto_library(
+    name = "hellostreamingworld",
+    srcs = ["hellostreamingworld.proto"],
+)
+
+grpc_proto_library(
+    name = "keyvaluestore",
+    srcs = ["keyvaluestore.proto"],
+)
+
 grpc_proto_library(
     name = "route_guide",
     srcs = ["route_guide.proto"],
@@ -61,25 +96,19 @@ grpc_proto_library(
     srcs = ["ublox_control.proto"],
 )
 
+grpc_proto_library(
+    name = "daq_data",
+    srcs = ["daq_data.proto"],
+)
+
+proto_library(
+    name = "helloworld_proto",
+    srcs = ["helloworld.proto"],
+)
+
 proto_library(
     name = "keyvaluestore_proto",
     srcs = ["keyvaluestore.proto"],
-)
-
-grpc_proto_library(
-    name = "keyvaluestore",
-    srcs = ["keyvaluestore.proto"],
-)
-
-py_proto_library(
-    name = "helloworld_py_pb2",
-    deps = [":helloworld_proto"],
-)
-
-py_grpc_library(
-    name = "helloworld_py_pb2_grpc",
-    srcs = [":helloworld_proto"],
-    deps = [":helloworld_py_pb2"],
 )
 
 proto_library(
@@ -90,4 +119,9 @@ proto_library(
 proto_library(
     name = "ublox_control_proto",
     srcs = [":ublox_control.proto"],
+)
+
+proto_library(
+    name = "daq_data_proto",
+    srcs = [":daq_data.proto"],
 )
