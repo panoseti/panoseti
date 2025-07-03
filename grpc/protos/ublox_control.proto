@@ -2,7 +2,7 @@ syntax = "proto3";
 
 
 option java_multiple_files = true;
-option java_package = "io.gnss-pdft.ublox_control";
+option java_package = "io.grpc.ublox_control";
 option java_outer_classname = "UbloxControlProto";
 option objc_class_prefix = "UBXCTL";
 
@@ -54,26 +54,23 @@ message PollResponse {
   repeated CaptureUbloxResponse gnss_packet = 1;
 }
 
-// A CaptureCommand specifies which messages to stream with the CapturePackets RPC.
+// A CaptureUbloxRequest specifies which messages to stream with the CaptureUblox RPC.
 //
-// By default all packets received from the u-blox chip
-// are forwarded to the headnode.
-//
+// By default all packets received from the u-blox chip are sent.
 // If at least one regex pattern is given, only message names that
-// match at least of the given patterns will be streamed to the headnode.
+// match at least of the given patterns will be streamed.
 message CaptureUbloxRequest {
   // optional: list of regex patterns for names to stream to the headnode
   repeated string patterns = 1;
 }
 
-// A F9tConfig is sent by the InitF9t RPC.
+// An InitF9tRequest is sent by the InitF9t RPC.
 //
 // It contains a JSON object specifying F9t configuration.
 message InitF9tRequest {
   // JSON-formatted configuration for an F9T
   google.protobuf.Struct f9t_cfg = 1;
 }
-
 
 message TestCase {
   enum TestResult {
@@ -84,18 +81,15 @@ message TestCase {
     // the test failed
     FAIL = 2;
   }
-
   // test name
   string name = 1;
-
   // test result
   TestResult result = 2;
-
   // error message
   string message = 3;
 }
 
-// A InitSummary is returned by the InitF9t RPC.
+// A InitF9tResponse is returned by the InitF9t RPC.
 //
 // It returns information regarding the validity of the provided config file
 // and which validation checks passed.
@@ -111,13 +105,10 @@ message InitF9tResponse {
     FAILURE = 3;
   }
   InitStatus init_status = 1;
-
   // any message regarding the initialization operation
   string message = 2;
-
   // return the current active f9t config
   google.protobuf.Struct f9t_cfg = 3;
-
   // test results
   repeated TestCase test_results = 4;
 }

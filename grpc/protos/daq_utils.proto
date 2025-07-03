@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.daq_utils";
+option java_outer_classname = "DaqUtilsProto";
+option objc_class_prefix = "DQU";
+
+package daqutils;
+
+import "google/protobuf/struct.proto"; // standard type for JSON data structures
+import "google/protobuf/timestamp.proto"; // standard type for JSON data structures
+
+// Interface exported by the server connected to the ublox chip
+service DaqUtils {
+  // Stream science packets from the server.
+  rpc CaptureScience(CaptureScienceRequest) returns (stream CaptureScienceResponse) {}
+}
+
+// Image represents a panoseti movie-mode or pulse-height image and associated header metadata
+message Image {
+  // image metadata struct
+  google.protobuf.Struct header = 1;
+  // array of 1-byte or 2-byte data.
+  repeated int32 image_array = 2 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
+  int32 bytes_per_pixel = 3;
+  // image arrays can be [16, 16, 1] or [32, 32, 1]
+  repeated int32 image_shape = 4;
+}
+
+// science data packet
+message CaptureScienceResponse {
+  enum Type {
+    UNDEFINED = 0;
+    ERROR = 1;
+    DATA_PH = 2; // pulse-height image
+    DATA_MM = 3; // movie-mode image
+  }
+  Type type = 1;
+  string name = 2;
+  // UTC timestamp when this message was sent from the DAQ node
+  google.protobuf.Timestamp timestamp = 3;
+  // optional message for errors and other details
+  string message = 4;
+
+  oneof data {
+    Image movie_mode = 5;
+    Image pulse_height = 6;
+  }
+}
+
+// A CaptureScience specifies which messages to stream with the  RPC.
+message CaptureScienceRequest {
+  google.protobuf.Struct config = 1;
+}
+

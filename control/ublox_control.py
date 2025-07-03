@@ -1,5 +1,9 @@
 #! /usr/bin/env python3
 
+# DEPRECATED
+# out of date with ublox_control gRPC implementation.
+# TODO:
+
 # ublox_control.py [rpi] [cmd]
 #
 # rpi (or other name): use the "rpi" from obs_config.json

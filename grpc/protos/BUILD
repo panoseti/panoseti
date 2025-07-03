@@ -56,6 +56,11 @@ grpc_proto_library(
     srcs = ["route_guide.proto"],
 )
 
+grpc_proto_library(
+    name = "ublox_control",
+    srcs = ["ublox_control.proto"],
+)
+
 proto_library(
     name = "keyvaluestore_proto",
     srcs = ["keyvaluestore.proto"],
@@ -80,4 +85,9 @@ py_grpc_library(
 proto_library(
     name = "route_guide_proto",
     srcs = [":route_guide.proto"],
+)
+
+proto_library(
+    name = "ublox_control_proto",
+    srcs = [":ublox_control.proto"],
 )
