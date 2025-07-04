@@ -393,7 +393,7 @@ int create_data_files_from_config()
 {
     FILE *configFile = fopen(config_location, "r");
     char fbuf[STR_BUFFER_SIZE];
-    char cbuf;
+    signed char cbuf;
     unsigned int modNum;
 
     if (configFile == NULL)
@@ -404,7 +404,7 @@ int create_data_files_from_config()
 
     cbuf = getc(configFile);
 
-    while (cbuf != 255)
+    while (cbuf != EOF)
     {
         ungetc(cbuf, configFile);
         if (cbuf != '#')

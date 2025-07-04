@@ -549,7 +549,7 @@ static int init(hashpipe_thread_args_t *args)
     }
 
     char fbuf[100];
-    char cbuf;
+    signed char cbuf;
     unsigned int modName;
 
     if (modConfig_file == NULL)
@@ -562,7 +562,7 @@ static int init(hashpipe_thread_args_t *args)
     // Parse the Module Config file for the modules to expect data from
     // Creates structures for holding that data in the module array
     //
-    while (cbuf != 255)
+    while (cbuf != EOF)
     {
         ungetc(cbuf, modConfig_file);
         if (cbuf != '#')
