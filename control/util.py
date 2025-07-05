@@ -390,3 +390,29 @@ def get_gps_port(obs_config):
         return obs_config['gps_port']
     else:
         return '/dev/ttyUSB0'
+
+# We may use port forwarding, so we need to get the real IP and ports.
+# this is based on the network_config.
+#
+DEFAULT_CMD_PORT=60000
+DEFAULT_REBOOT_PORT=69
+def get_quabo_ip_port(ip_addr, i, network_config):
+    ip_ports = {}
+    # these are the default config
+    ip_ports['ip_addr'] = ip_addr,
+    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT,
+    ip_ports['cmd_port'] = DEFAULT_CMD_PORT
+    # if we can't find the setting for the Quabo in the network_config
+    # we will use the default config
+    for m in network_config['modules']:
+        if ip_addr == m['ip_addr']:
+            p = m['port_forwarding']
+            if p['status'] == True:
+                ip_ports['ip_addr'] = p['gw_ip']
+                ip_ports['reboot_port'] = p['reboot_port'][i]
+                ip_ports['cmd_port'] = p['cmd_port'][i]
+            break
+    return ip_ports
+        
+def get_daq_ip_port(daq_config, network_config):
+    pass

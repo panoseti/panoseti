@@ -689,7 +689,7 @@ class QUABO:
         self.set_bits(1, lsb_pos, field_width, vals[1])
         self.set_bits(2, lsb_pos, field_width, vals[2])
         self.set_bits(3, lsb_pos, field_width, vals[3])
-
+    
 # END OF CLASS QUABO
 
 # read a file of the form

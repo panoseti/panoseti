@@ -40,8 +40,7 @@ def usage():
 ''')
     sys.exit()
 
-DEFAULT_CMD_PORT=60000
-DEFAULT_REBOOT_PORT=69
+
 # print summary of obs and daq config files
 #
 def show_config(obs_config, quabo_uids):
@@ -59,29 +58,7 @@ def show_config(obs_config, quabo_uids):
     print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
-# We may use port forwarding, so we need to get the real IP and ports.
-# this is based on the network_config.
-#
-def get_quabo_ip_port(ip_addr, i, network_config):
-    ip_ports = {}
-    # these are the default config
-    ip_ports['ip_addr'] = ip_addr,
-    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT,
-    ip_ports['cmd_port'] = DEFAULT_CMD_PORT
-    # if we can't find the setting for the Quabo in the network_config
-    # we will use the default config
-    for m in network_config['modules']:
-        if ip_addr == m['ip_addr']:
-            p = m['port_forwarding']
-            if p['status'] == True:
-                ip_ports['ip_addr'] = p['gw_ip']
-                ip_ports['reboot_port'] = p['reboot_port'][i]
-                ip_ports['cmd_port'] = p['cmd_port'][i]
-            break
-    return ip_ports
-        
-def get_daq_ip_port(daq_config, network_config):
-    pass
+
 
 def do_reboot(modules, quabo_uids, network_config):
     # need to reboot quabos in order 0..3
@@ -97,7 +74,7 @@ def do_reboot(modules, quabo_uids, network_config):
                 continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('rebooting quabo at %s'%ip_addr)
-            ip_ports = get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
             reboot_port = ip_ports['reboot_port']
@@ -169,7 +146,7 @@ def do_hk_dest(modules, quabo_uids, daq_config, network_config):
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            ip_ports = get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
             reboot_port = ip_ports['reboot_port']
