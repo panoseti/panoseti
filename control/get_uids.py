@@ -34,7 +34,7 @@ def get_uids(obs_config, network_config, exclude=[]):
             module['ip_addr'] = m['ip_addr']
             module['quabos'] = []
             for i in range(4):
-                uid = ''
+                quabo = {}
                 if i not in exclude:
                     ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
                     ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
@@ -44,9 +44,11 @@ def get_uids(obs_config, network_config, exclude=[]):
                     # TODO: we need to ping the board before get_uid
                     uid = get_uid(real_ip, port)
                     print("%s has UID %s"%(ip_addr, uid))
-                    quabo = {}
                     quabo['uid'] = uid
-                    module['quabos'].append(quabo)
+                else:
+                    quabo['uid'] = ''
+                module['quabos'].append(quabo)
+
             dome['modules'].append(module)
         quabo_uids['domes'].append(dome)
     with open(config_file.quabo_uids_filename, "w", encoding="utf-8") as f:

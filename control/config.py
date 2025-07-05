@@ -503,7 +503,9 @@ def do_shutter(action):
 
 
 def main():
-    logger = logging.getLogger('PANOSETIConfig')
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    logger = logging.getLogger('PANOSETI.config')
     logger.setLevel(logging.DEBUG)
     handler = logging.FileHandler('logs/config.log', mode='w')
     logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
@@ -511,17 +513,6 @@ def main():
     if logger.handlers:
         logger.handlers.clear()
     logger.addHandler(handler)
-
-    log_tags = ["tftpy.TftpStates", "tftpy.TftpContext"]
-    for tag in log_tags:
-        logger = logging.getLogger(tag)
-        logger.setLevel(logging.DEBUG)
-        handler = logging.FileHandler('logs/tftpy.log', mode='w')
-        logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(message)s')
-        handler.setFormatter(logformat)
-        if logger.handlers:
-            logger.handlers.clear()
-        logger.addHandler(handler)
 
     argv = sys.argv
     nops = 0
