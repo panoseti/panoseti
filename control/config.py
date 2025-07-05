@@ -58,8 +58,6 @@ def show_config(obs_config, quabo_uids):
     print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
-
-
 def do_reboot(modules, quabo_uids, network_config):
     # need to reboot quabos in order 0..3
     # to parallelize:
@@ -588,6 +586,7 @@ def main():
     daq_config = config_file.get_daq_config()
     quabo_info = config_file.get_quabo_info()
     network_config = config_file.get_network_config()
+    util.attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
     data_config = config_file.get_data_config()
     # do the tasks

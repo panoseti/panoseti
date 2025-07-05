@@ -16,6 +16,7 @@ import config_file
 # copy a file to a DAQ node
 #
 def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
+    # TODO: daq_config is not used
     dest_path = node['data_dir']
     if run_dir:
         dest_path += '/%s'%(run_dir)
@@ -23,9 +24,15 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
         dest_path += '/'
     files = glob(file)
     for f in files:
-        cmd = 'scp -q %s %s@%s:%s'%(
-            f, node['username'], node['ip_addr'], dest_path
-        )
+        if 'port_forwarding' in node:
+            cmd = 'scp -q -P %d %s %s@%s:%s'%(
+            node['port_forwarding']['port'], f, node['username'], node['port_forwarding']['gw_ip'], dest_path
+            )
+        else:
+            cmd = 'scp -q %s %s@%s:%s'%(
+                f, node['username'], node['ip_addr'], dest_path
+            )
+        print(cmd)
         if verbose:
             print(cmd)
         ret = os.system(cmd)
