@@ -93,6 +93,7 @@ def ping(ip_addr, cmd_port):
     #return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
     # TODO: implement the qping cmd in the firmware
     # For now, we just use the data_packet_destination to see if we can talk to Quabo
+    time.sleep(40)
     quabo = quabo_driver.QUABO(ip_addr, cmd_port)
     return quabo.data_packet_destination('192.168.1.1')
 
