@@ -39,6 +39,8 @@ def usage():
 ''')
     sys.exit()
 
+DEFAULT_CMD_PORT=60000
+DEFAULT_REBOOT_PORT=69
 # print summary of obs and daq config files
 #
 def show_config(obs_config, quabo_uids):
@@ -56,7 +58,30 @@ def show_config(obs_config, quabo_uids):
     print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
-def do_reboot(modules, quabo_uids):
+# We may use port forwarding, so we need to get the real IP and ports.
+# this is based on the network_config.
+#
+def get_quabo_ip_port(ip_addr, i, network_config):
+    ip_ports = {}
+    # these are the default config
+    ip_ports['ip_addr'] = ip_addr,
+    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT,
+    ip_ports['cmd_port'] = DEFAULT_CMD_PORT
+    # if we can't find the setting for the Quabo in the network_config
+    # we will use the default config
+    for m in network_config['modules']:
+        if ip_addr == m['ip_addr']:
+            if m['port_forwarding']['status'] == True:
+                ip_ports['ip_addr'] = m['gw_ip'],
+                ip_ports['reboot_port'] = m['reboot_port'][i],
+                ip_ports['cmd_port'] = m['cmd_port'][i]
+            break
+    return ip_ports
+        
+def get_daq_ip_port(daq_config, network_config):
+    pass
+
+def do_reboot(modules, quabo_uids, network_config):
     # need to reboot quabos in order 0..3
     # to parallelize:
     # start reboot of quabo 0 in all modules
@@ -69,7 +94,8 @@ def do_reboot(modules, quabo_uids):
                 continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('rebooting quabo at %s'%ip_addr)
-            x = tftpw(ip_addr)
+            ip_ports = get_quabo_ip_port(ip_addr, i, network_config)
+            x = tftpw(ip_ports['ip_addr'], ip_ports['reboot_port'])
             x.reboot()
 
         # wait for pings
@@ -555,10 +581,11 @@ if __name__ == "__main__":
         quabo_uids = config_file.get_quabo_uids()
         daq_config = config_file.get_daq_config()
         quabo_info = config_file.get_quabo_info()
+        network_config = config_file.get_network_config()
         config_file.associate(daq_config, quabo_uids)
         data_config = config_file.get_data_config()
         if op == 'reboot':
-            do_reboot(modules, quabo_uids)
+            do_reboot(modules, quabo_uids, network_config)
             do_hk_dest(modules, quabo_uids, daq_config)
         elif op == 'loads':
             do_loads(modules, quabo_uids, quabo_info)

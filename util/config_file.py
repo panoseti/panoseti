@@ -15,11 +15,12 @@ pointing_filename = 'pointing.json'
 quabo_ph_baseline_filename = 'quabo_ph_baseline.json'
 sw_info_filename = 'sw_info.json'
 quabo_config_filename = 'quabo_config_*.json'
+network_config_filename = 'network_config.json'
 # list of config files copied to data dir
 config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename,
     quabo_uids_filename, quabo_ph_baseline_filename, sw_info_filename,
-    quabo_config_filename
+    quabo_config_filename, network_config_filename
 ]
 
 # compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
@@ -126,6 +127,20 @@ def get_data_config(dir='.'):
             raise Exception('flash level > 31 in %s'%data_config_filename)
         if fp['width'] > 15:
             raise Exception('flash width > 15 in %s'%data_config_filename)
+    return conf
+
+def get_network_config(dir='.'):
+    path = '%s/%s'%(dir, data_config_filename)
+    # as the network config file is not designed to the users,
+    # we check it manually, instead of using check_config_file.
+    try:
+        with open(path) as f:
+            c = f.read()
+        conf = json.loads(c)
+    except:
+        print("***********Warning: No network config file! **************")
+        print("******All the devices should be in the same subnet *******")
+        conf = {}
     return conf
 
 def get_quabo_uids():
