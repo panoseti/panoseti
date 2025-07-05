@@ -130,7 +130,7 @@ def get_data_config(dir='.'):
     return conf
 
 def get_network_config(dir='.'):
-    path = '%s/%s'%(dir, data_config_filename)
+    path = '%s/%s'%(dir, network_config_filename)
     # as the network config file is not designed to the users,
     # we check it manually, instead of using check_config_file.
     try:

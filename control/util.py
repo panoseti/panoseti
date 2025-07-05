@@ -3,7 +3,7 @@
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
-
+import quabo_driver
 #-------------- DEFAULTS ---------------
 
 default_max_file_size_mb = 0        # no limit
@@ -44,8 +44,9 @@ hp_stdout_prefix = 'hp_stdout_'
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 redis_daemons = [
-    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'capture_power.py', 'storeInfluxDB.py'
+    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'storeInfluxDB.py'
 ]
+#capture_power.py
 
 #-------------- TIME ---------------
 
@@ -88,8 +89,12 @@ def ip_addr_str_to_bytes(ip_addr_str):
 
 # return true if can ping IP addr
 #
-def ping(ip_addr):
-    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+def ping(ip_addr, cmd_port):
+    #return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+    # TODO: implement the qping cmd in the firmware
+    # For now, we just use the data_packet_destination to see if we can talk to Quabo
+    quabo = quabo_driver.QUABO(ip_addr, cmd_port)
+    return quabo.data_packet_destination('192.168.1.1')
 
 def mac_addr_str(bytes):
     s = ['']*6

@@ -9,6 +9,7 @@ firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess, time, datetime, json, statistics
+import logging
 import util, file_xfer, quabo_driver
 from panoseti_tftp import tftpw
 
@@ -71,10 +72,11 @@ def get_quabo_ip_port(ip_addr, i, network_config):
     # we will use the default config
     for m in network_config['modules']:
         if ip_addr == m['ip_addr']:
-            if m['port_forwarding']['status'] == True:
-                ip_ports['ip_addr'] = m['gw_ip'],
-                ip_ports['reboot_port'] = m['reboot_port'][i],
-                ip_ports['cmd_port'] = m['cmd_port'][i]
+            p = m['port_forwarding']
+            if p['status'] == True:
+                ip_ports['ip_addr'] = p['gw_ip']
+                ip_ports['reboot_port'] = p['reboot_port'][i]
+                ip_ports['cmd_port'] = p['cmd_port'][i]
             break
     return ip_ports
         
@@ -88,14 +90,22 @@ def do_reboot(modules, quabo_uids, network_config):
     # wait for ping of quabo 0 in all modules (means reboot is done)
     # ... same for quabo 1 etc.
     #
+    logger = logging.getLogger('PANOSETIConfig.do_reboot')
     for i in range(4):
         for module in modules:
             if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('rebooting quabo at %s'%ip_addr)
-            ip_ports = get_quabo_ip_port(ip_addr, i, network_config)
-            x = tftpw(ip_ports['ip_addr'], ip_ports['reboot_port'])
+            ip_ports = get_quabo_ip_port(module['ip_addr'], i, network_config)
+            real_ip = ip_ports['ip_addr']
+            cmd_port = ip_ports['cmd_port']
+            reboot_port = ip_ports['reboot_port']
+            logger.info('Quabo IP: %s'%ip_addr)
+            logger.info('Real IP: %s'%real_ip)
+            logger.info('Real cmd port: %d'%cmd_port)
+            logger.info('Real reboot port: %d'%reboot_port)
+            x = tftpw(real_ip, reboot_port)
             x.reboot()
 
         # wait for pings
@@ -106,7 +116,7 @@ def do_reboot(modules, quabo_uids, network_config):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('waiting for ping of %s'%ip_addr)
             while True:
-                if util.ping(ip_addr):
+                if util.ping(real_ip, cmd_port):
                     break
                 time.sleep(1)
             print('pinged %s; reboot done'%ip_addr)
@@ -150,14 +160,20 @@ def do_ping(modules, verbose=False):
             print("can't ping %s" % ip)
     return ping_record
 
-def do_hk_dest(modules, quabo_uids, daq_config):
+def do_hk_dest(modules, quabo_uids, daq_config, network_config):
+    logger = logging.getLogger('PANOSETIConfig.do_hk_dest')
     headnode_ip_addr = daq_config['head_node_ip_addr']
+    logger.info('head node IP: %s'%headnode_ip_addr)
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            quabo = quabo_driver.QUABO(ip_addr)
+            ip_ports = get_quabo_ip_port(module['ip_addr'], i, network_config)
+            real_ip = ip_ports['ip_addr']
+            cmd_port = ip_ports['cmd_port']
+            reboot_port = ip_ports['reboot_port']
+            quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hk_packet_destination(headnode_ip_addr)
             quabo.close()
 
@@ -508,118 +524,142 @@ def do_shutter(action):
         os.system("./shutter.py --close")
 
 
+
+def main():
+    logger = logging.getLogger('PANOSETIConfig')
+    logger.setLevel(logging.DEBUG)
+    handler = logging.FileHandler('logs/config.log', mode='w')
+    logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
+    handler.setFormatter(logformat)
+    if logger.handlers:
+        logger.handlers.clear()
+    logger.addHandler(handler)
+
+    log_tags = ["tftpy.TftpStates", "tftpy.TftpContext"]
+    for tag in log_tags:
+        logger = logging.getLogger(tag)
+        logger.setLevel(logging.DEBUG)
+        handler = logging.FileHandler('logs/tftpy.log', mode='w')
+        logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(message)s')
+        handler.setFormatter(logformat)
+        if logger.handlers:
+            logger.handlers.clear()
+        logger.addHandler(handler)
+
+    argv = sys.argv
+    nops = 0
+    i = 1
+    # TODO: I think using argparser is a better way to do it
+    while i < len(argv):
+        if argv[i] == '--show':
+            nops += 1
+            op = 'show'
+        elif argv[i] == '--reboot':
+            nops += 1
+            op = 'reboot'
+        elif argv[i] == '--loads':
+            nops += 1
+            op = 'loads'
+        elif argv[i] == '--ping':
+            nops += 1
+            op = 'ping'
+        elif argv[i] == '--init_daq_nodes':
+            nops += 1
+            op = 'init_daq_nodes'
+        elif argv[i] == '--hk_dest':
+            nops += 1
+            op = 'hk_dest'
+        elif argv[i] == '--redis_daemons':
+            nops += 1
+            op = 'redis_daemons'
+        elif argv[i] == '--stop_redis_daemons':
+            nops += 1
+            op = 'stop_redis_daemons'
+        elif argv[i] == '--hv_on':
+            nops += 1
+            op = 'hv_on'
+        elif argv[i] == '--hv_off':
+            nops += 1
+            op = 'hv_off'
+        elif argv[i] == '--maroc_config':
+            nops += 1
+            op = 'maroc_config'
+        elif argv[i] == '--mask_config':
+            nops += 1
+            op = 'mask_config'
+        elif argv[i] == '--calibrate_ph':
+            nops += 1
+            op = 'calibrate_ph'
+        elif argv[i] == '--show_ph_baselines':
+            nops += 1
+            op = 'show_ph_baselines'
+        elif argv[i] == '--disk_space':
+            nops += 1
+            op = 'disk_space'
+        elif argv[i] == '--shutter_open':
+            nops += 1
+            op = 'shutter_open'
+        elif argv[i] == '--shutter_close':
+            nops += 1
+            op = 'shutter_close'
+        else:
+            print('bad arg: %s'%argv[i])
+            usage()
+        i += 1
+
+    if nops == 0:
+        usage()
+    if nops > 1:
+        print('must specify a single op')
+        usage()
+
+    # load config files
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    daq_config = config_file.get_daq_config()
+    quabo_info = config_file.get_quabo_info()
+    network_config = config_file.get_network_config()
+    config_file.associate(daq_config, quabo_uids)
+    data_config = config_file.get_data_config()
+    # do the tasks
+    if op == 'reboot':
+        do_reboot(modules, quabo_uids, network_config)
+        do_hk_dest(modules, quabo_uids, daq_config, network_config)
+    elif op == 'loads':
+        do_loads(modules, quabo_uids, quabo_info)
+    elif op == 'ping':
+        do_ping(modules, verbose=True)
+    elif op == 'init_daq_nodes':
+        file_xfer.copy_daq_files(daq_config)
+    elif op == 'hk_dest':
+        do_hk_dest(modules, quabo_uids, daq_config, network_config)
+    elif op == 'redis_daemons':
+        util.start_redis_daemons()
+    elif op == 'stop_redis_daemons':
+        util.stop_redis_daemons()
+    elif op == 'show':
+        show_config(obs_config, quabo_uids)
+        util.show_redis_daemons()
+    elif op == 'hv_on':
+        detector_info = config_file.get_detector_info()
+        do_hv_on(modules, quabo_uids, quabo_info, detector_info, True)
+    elif op == 'hv_off':
+        do_hv_off(modules, quabo_uids)
+    elif op == 'maroc_config':
+        do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, True)
+    elif op == 'mask_config':
+        do_mask_config(modules, data_config, True)
+    elif op == 'calibrate_ph':
+        do_calibrate_ph(modules, quabo_uids)
+    elif op == 'disk_space':
+        do_disk_space(data_config, daq_config, True)
+    elif op == 'shutter_open':
+        do_shutter("open")
+    elif op == 'shutter_close':
+        do_shutter("close")
+    elif op == 'show_ph_baselines':
+        do_show_ph_baselines(quabo_uids)
+
 if __name__ == "__main__":
-    def main():
-        argv = sys.argv
-        nops = 0
-        i = 1
-        while i < len(argv):
-            if argv[i] == '--show':
-                nops += 1
-                op = 'show'
-            elif argv[i] == '--reboot':
-                nops += 1
-                op = 'reboot'
-            elif argv[i] == '--loads':
-                nops += 1
-                op = 'loads'
-            elif argv[i] == '--ping':
-                nops += 1
-                op = 'ping'
-            elif argv[i] == '--init_daq_nodes':
-                nops += 1
-                op = 'init_daq_nodes'
-            elif argv[i] == '--hk_dest':
-                nops += 1
-                op = 'hk_dest'
-            elif argv[i] == '--redis_daemons':
-                nops += 1
-                op = 'redis_daemons'
-            elif argv[i] == '--stop_redis_daemons':
-                nops += 1
-                op = 'stop_redis_daemons'
-            elif argv[i] == '--hv_on':
-                nops += 1
-                op = 'hv_on'
-            elif argv[i] == '--hv_off':
-                nops += 1
-                op = 'hv_off'
-            elif argv[i] == '--maroc_config':
-                nops += 1
-                op = 'maroc_config'
-            elif argv[i] == '--mask_config':
-                nops += 1
-                op = 'mask_config'
-            elif argv[i] == '--calibrate_ph':
-                nops += 1
-                op = 'calibrate_ph'
-            elif argv[i] == '--show_ph_baselines':
-                nops += 1
-                op = 'show_ph_baselines'
-            elif argv[i] == '--disk_space':
-                nops += 1
-                op = 'disk_space'
-            elif argv[i] == '--shutter_open':
-                nops += 1
-                op = 'shutter_open'
-            elif argv[i] == '--shutter_close':
-                nops += 1
-                op = 'shutter_close'
-            else:
-                print('bad arg: %s'%argv[i])
-                usage()
-            i += 1
-
-        if nops == 0:
-            usage()
-        if nops > 1:
-            print('must specify a single op')
-            usage()
-
-        obs_config = config_file.get_obs_config()
-        modules = config_file.get_modules(obs_config)
-        quabo_uids = config_file.get_quabo_uids()
-        daq_config = config_file.get_daq_config()
-        quabo_info = config_file.get_quabo_info()
-        network_config = config_file.get_network_config()
-        config_file.associate(daq_config, quabo_uids)
-        data_config = config_file.get_data_config()
-        if op == 'reboot':
-            do_reboot(modules, quabo_uids, network_config)
-            do_hk_dest(modules, quabo_uids, daq_config)
-        elif op == 'loads':
-            do_loads(modules, quabo_uids, quabo_info)
-        elif op == 'ping':
-            do_ping(modules, verbose=True)
-        elif op == 'init_daq_nodes':
-            file_xfer.copy_daq_files(daq_config)
-        elif op == 'hk_dest':
-            do_hk_dest(modules, quabo_uids, daq_config)
-        elif op == 'redis_daemons':
-            util.start_redis_daemons()
-        elif op == 'stop_redis_daemons':
-            util.stop_redis_daemons()
-        elif op == 'show':
-            show_config(obs_config, quabo_uids)
-            util.show_redis_daemons()
-        elif op == 'hv_on':
-            detector_info = config_file.get_detector_info()
-            do_hv_on(modules, quabo_uids, quabo_info, detector_info, True)
-        elif op == 'hv_off':
-            do_hv_off(modules, quabo_uids)
-        elif op == 'maroc_config':
-            do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, True)
-        elif op == 'mask_config':
-            do_mask_config(modules, data_config, True)
-        elif op == 'calibrate_ph':
-            do_calibrate_ph(modules, quabo_uids)
-        elif op == 'disk_space':
-            do_disk_space(data_config, daq_config, True)
-        elif op == 'shutter_open':
-            do_shutter("open")
-        elif op == 'shutter_close':
-            do_shutter("close")
-        elif op == 'show_ph_baselines':
-            do_show_ph_baselines(quabo_uids)
-
     main()
