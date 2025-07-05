@@ -25,20 +25,14 @@ from glob import glob
 import util, file_xfer, quabo_driver, stop, session_stop
 from sw_info import get_sw_info
 import socket
+import logging
+from argparse import ArgumentParser
 
 sys.path.insert(0, '../util')
 
 import pff, config_file
 
 verbose = False
-
-def help():
-    print("--no_hv: don't run hv_updater.py")
-    print("--no_redis: OK if redis daemons not running")
-    print("--no_data: set up to record, but don't start data flow or record")
-    print("--nsecs N: record for N seconds, then stop run")
-    print("--stop_session: stop session at end of run (with --nsecs)")
-    print("--verbose: print commands")
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
@@ -306,35 +300,27 @@ def start_run(
     return True
 
 if __name__ == "__main__":
-    argv = sys.argv
-    no_hv = False
-    no_redis = False
-    no_data = False
-    nsecs = 0
-    stop_session = False
-    i = 1
-    while i < len(argv):
-        if argv[i] == '--no_hv':
-            no_hv = True
-        elif argv[i] == '--no_redis':
-            no_redis = True
-        elif argv[i] == '--no_data':
-            no_data = True
-        elif argv[i] == '--verbose':
-            verbose = True
-        elif argv[i] == '--nsecs':
-            i += 1
-            nsecs = int(argv[i])
-        elif argv[i] == '--stop_session':
-            stop_session = True
-        elif argv[i] == '--help':
-            help()
-            quit()
-        else:
-            help()
-            raise Exception('bad arg %s'%argv[i])
-        i += 1
-
+    parser = ArgumentParser(prog=os.path.basename(__file__))
+    parser.add_argument('--no_hv', dest='no_hv', action='store_true', default=False,
+                        help='Take data without high voltage.')
+    parser.add_argument('--no_redis', dest='no_redis', action='store_true', default=False,
+                        help='OK if redis daemons not running.')
+    parser.add_argument('--no_data', dest='no_data', action='store_true', default=False,
+                        help='Set up to record, but don\'t start data flow or record.')
+    parser.add_argument('--nsecs', dest='nsecs', type=int, default=0,
+                        help='Record for N seconds, then stop run.')
+    parser.add_argument('--stop_session', dest='stop_session', action='store_true', default=False,
+                        help='Stop session at end of run (with --nsecs).')
+    parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
+                        help='print commands.')
+    args = parser.parse_args()
+    no_hv = args.no_hv
+    no_redis = args.no_redis
+    no_data = args.no_data
+    nsecs = args.nsecs
+    stop_session = args.stop_session
+    verbose = args.verbose
+    # load config files
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()

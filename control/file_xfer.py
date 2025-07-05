@@ -32,7 +32,6 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
             cmd = 'scp -q %s %s@%s:%s'%(
                 f, node['username'], node['ip_addr'], dest_path
             )
-        print(cmd)
         if verbose:
             print(cmd)
         ret = os.system(cmd)

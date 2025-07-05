@@ -4,6 +4,7 @@ import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
 import quabo_driver
+import logging
 #-------------- DEFAULTS ---------------
 
 default_max_file_size_mb = 0        # no limit
@@ -62,6 +63,18 @@ def now_str():
 #
 default_hk_dest = '192.168.1.100'
 
+# create logger
+#
+def create_logger(logfile, tag, mode='w'):
+    logger = logging.getLogger(tag)
+    logger.setLevel(logging.DEBUG)
+    handler = logging.FileHandler(logfile, mode=mode)
+    logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
+    handler.setFormatter(logformat)
+    if logger.handlers:
+        logger.handlers.clear()
+    logger.addHandler(handler)
+
 # our IP address on local network (192.x.x.x)
 # see https://pypi.org/project/netifaces/
 #
@@ -74,7 +87,7 @@ def local_ip():
                 if (z.startswith('192.')):
                     return z
     raise Exception("can't get local IP")
-
+    
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
@@ -356,6 +369,7 @@ def daq_bytes_per_sec_per_module(data_config):
     return x
 
 def get_daq_node_status(node):
+    # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
         '%s@%s'%(node['username'], node['ip_addr']),
         'cd %s; ./status_daq.py'%(node['data_dir']),
