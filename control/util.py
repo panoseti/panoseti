@@ -79,14 +79,19 @@ def create_logger(logfile, tag, mode='w'):
 # see https://pypi.org/project/netifaces/
 #
 def local_ip():
+    ips = []
     for ifname in netifaces.interfaces():
         addrs = netifaces.ifaddresses(ifname)
         for a, b in addrs.items():
             for c in b:
                 z = c['addr']
                 if (z.startswith('192.')):
-                    return z
-    raise Exception("can't get local IP")
+                    ips.append(z)
+    print(ips)
+    if not ips:
+        raise Exception("can't get local IP")
+    else:
+        return ips
     
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')

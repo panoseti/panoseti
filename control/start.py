@@ -163,7 +163,7 @@ def make_run_dirs(run_name, daq_config):
         if not node['modules']:
             continue
         ip_addr = node['ip_addr']
-        if ip_addr == my_ip:
+        if ip_addr in my_ip:
             for module in node['modules']:
                 cmd = 'mkdir -p %s/module_%d/%s'%(
                     daq_config['head_node_data_dir'],
@@ -246,7 +246,7 @@ def start_run(
     my_ip = util.local_ip()
     # convert head node name to IP address
     head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
-    if my_ip != head_node_ip:
+    if  head_node_ip not in my_ip:
         print('This node (%s) is not the head node specified in daq_config.json (%s)'%(my_ip, daq_config['head_node_ip_addr']))
         return False
 

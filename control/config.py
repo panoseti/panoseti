@@ -34,7 +34,7 @@ def show_config(obs_config, quabo_uids):
                 quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
                 print('      quabo %d'%i)
                 print('         IP addr: %s'%quabo_ip)
-    print("This node's IP addr: %s"%util.local_ip())
+    #print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
 def do_reboot(modules, quabo_uids, network_config):

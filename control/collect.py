@@ -21,7 +21,7 @@ def collect_data(daq_config, run_dir, verbose=False):
     for node in daq_config['daq_nodes']:
         for module in node['modules']:
             module_id = module['id']
-            if node['ip_addr'] == my_ip:
+            if node['ip_addr'] in my_ip:
                 # head node is also a DAQ node.
                 # Move files locally; if different volume, this will copy
                 cmd = 'mv %s/module_%d/%s/* %s/%s'%(
@@ -51,7 +51,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
     my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config['daq_nodes']:
-        if node['ip_addr'] == my_ip:
+        if node['ip_addr'] in my_ip:
             cmd = 'rm -rf %s/module_*/%s'%(
                 node['data_dir'], run_dir
             )
