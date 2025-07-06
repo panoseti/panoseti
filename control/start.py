@@ -216,13 +216,13 @@ def make_run_dirs(run_name, daq_config):
 #       copy config files to run directory
 #       start hashpipe program
 #
-def start_recording(data_config, daq_config, run_name, no_hv):
+def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
     logger = logging.getLogger('PANOSETI.Start.start_recording')
     my_ip = util.local_ip()
 
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
-
+    obs = obs_config['name']
     if not no_hv:
         # start high-voltage updater
         util.start_hv_updater()
@@ -242,8 +242,8 @@ def start_recording(data_config, daq_config, run_name, no_hv):
             continue
         username = node['username']
         data_dir = node['data_dir']
-        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d --group_ph_frames %d'%(
-            node['ip_addr'], run_name, max_file_size_mb, daq_params.do_group_ph_frames
+        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d --group_ph_frames %d --obs %s'%(
+            node['ip_addr'], run_name, max_file_size_mb, daq_params.do_group_ph_frames, obs
         )
         if 'bindhost' in node.keys():
             remote_cmd += ' --bindhost %s'%node['bindhost']
@@ -316,7 +316,7 @@ def start_run(
             print('starting data flow from quabos')
             start_data_flow(quabo_uids, data_config, daq_config, network_config)
             print('starting recording')
-            start_recording(data_config, daq_config, run_name, no_hv)
+            start_recording(obs_config, data_config, daq_config, run_name, no_hv)
     except:
         print(traceback.format_exc())
         print("Couldn't start run.  Run stop.py, then try again.")

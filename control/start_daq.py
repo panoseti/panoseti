@@ -33,6 +33,7 @@ def main():
     daq_ip_addr = None
     module_ids = []
     bindhost = "0.0.0.0"
+    obs = 'LICK'
     while i<len(argv):
         if argv[i] == '--run_dir':
             i += 1
@@ -52,6 +53,9 @@ def main():
         elif argv[i] == '--bindhost':
             i += 1
             bindhost = argv[i]
+        elif argv[i] == '--obs':
+            i += 1
+            obs = argv[i]
         i += 1
     if not run_dir:
         raise Exception('no run dir specified')
@@ -83,7 +87,7 @@ def main():
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o GROUPPHFRAMES=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="LICK" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, group_ph_frames, run_dir, run_dir, util.hp_stdout_prefix, daq_ip_addr))
+    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o GROUPPHFRAMES=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="%s" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, group_ph_frames, run_dir, obs, run_dir, util.hp_stdout_prefix, daq_ip_addr))
     f.close()
 
     # run the script
