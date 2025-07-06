@@ -3,7 +3,11 @@
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
-import quabo_driver
+# TODO: we need to find a better way to deal with this...
+try:
+    import quabo_driver
+except:
+    pass
 import logging
 #-------------- DEFAULTS ---------------
 
@@ -87,7 +91,6 @@ def local_ip():
                 z = c['addr']
                 if (z.startswith('192.')):
                     ips.append(z)
-    print(ips)
     if not ips:
         raise Exception("can't get local IP")
     else:

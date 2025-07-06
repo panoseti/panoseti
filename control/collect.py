@@ -65,9 +65,14 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                 node['data_dir'], run_dir,
                 node['data_dir'], run_dir
             )
-            cmd = 'ssh %s@%s "%s"'%(
-                node['username'], node['ip_addr'], rcmd
-            )
+            if 'port_forwarding' in node:
+                cmd = 'ssh -p %d %s@%s "%s"'%(
+                    node['port_forwarding']['port'], node['username'], node['port_forwarding']['gw_ip'], rcmd
+                )
+            else:
+                cmd = 'ssh %s@%s "%s"'%(
+                    node['username'], node['ip_addr'], rcmd
+                )
             if verbose:
                 print(cmd)
             ret = os.system(cmd)

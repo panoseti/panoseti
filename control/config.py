@@ -372,7 +372,7 @@ def do_mask_config(modules, data_config, network_config, verbose=False):
 
 # compute PH baselines on quabos and write to file
 #
-def do_calibrate_ph(modules, quabo_uids):
+def do_calibrate_ph(modules, quabo_uids, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_calibrate_ph')
     quabos = []
     for module in modules:
@@ -538,7 +538,7 @@ def main():
     util.create_logger(logfile, 'PANOSETI.Config', 'a')
     logger = logging.getLogger('PANOSETI.Config')
     logger.info('************************************')
-    parser = ArgumentParser(prog=os.path.basename(__file__))
+    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
     parser.add_argument('--show', dest='show', action='store_true', default=False,
                         help='Show list of domes/modules/quabos.')
     parser.add_argument('--ping', dest='ping', action='store_true', default=False,
@@ -588,6 +588,7 @@ def main():
     util.attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
     data_config = config_file.get_data_config()
+
     # do the tasks
     if args.reboot:
         do_reboot(modules, quabo_uids, network_config)
@@ -597,6 +598,8 @@ def main():
     elif args.ping:
         do_ping(modules, network_config, verbose=True)
     elif args.init_daq_nodes:
+        logger = logging.getLogger('PANOSETI.Config.init_daq_nodes')
+        logger.info('Init daq nodes.')
         file_xfer.copy_daq_files(daq_config)
     elif args.hk_dest:
         do_hk_dest(modules, quabo_uids, daq_config, network_config)
