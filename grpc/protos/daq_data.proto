@@ -12,10 +12,18 @@ import "google/protobuf/timestamp.proto"; // standard type for JSON data structu
 
 // The DaqData service definition.
 service DaqData {
-  // Stream science data from a module.
+  // Stream science data [movie images | pulse-height images] from a module.
+  // [reader: acquires server_state lock in shared state]
   rpc CaptureScience(CaptureScienceRequest) returns (stream CaptureScienceResponse) {}
-  // Configure hp_io thread. TODO: figure out the rpc interface and implement it
-  rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}
+
+  // Set the server's configuration attributes.
+  // Enables re-configuration without service restart.
+  // [writer: acquires server_state lock in exclusive state]
+  rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
+
+  rpc UploadHashpipeImages(UploadHashpipeImagesRequest) returns (stream UploadHashpipeImagesResponse) {}
+
+  rpc UploadHashpipeStatus(stream UploadHashpipeStatusRequest) returns (stream UploadHashpipeStatusResponse) {}
 }
 
 // Image represents a panoseti movie-mode or pulse-height image and associated header metadata
@@ -54,9 +62,16 @@ message CaptureScienceResponse {
 
 // A CaptureScienceRequest specifies which image types to stream.
 message CaptureScienceRequest {
+  // Stream movie-mode panoseti images iff True
   bool stream_movie_data = 1;
+  // Stream pulse-height panoseti images iff True
   bool stream_pulse_height_data = 2;
-  google.protobuf.Struct config = 3;
+  // Time in seconds between CaptureScienceResponse packets.
+  // Defaults to 1 second.
+  // Notes:
+  //  - For efficiency, update_interval_seconds is rounded up to the nearest integer multiple of the
+  //    update_interval of the hashpipe gRPC client thread.
+  double update_interval_seconds = 3;
 }
 
 message TestCase {
@@ -76,6 +91,32 @@ message TestCase {
   string message = 3;
 }
 
-message InitHpIoRequest {}
-message InitHpIoResponse {}
+// Image
+message UploadHashpipeImagesRequest {
+  enum Type {
+    UNDEFINED = 0;
+    DATA = 1;
+  }
+  Type type = 1;
+  PanoImage movie_data = 2;
+  PanoImage pulse_height_data = 3;
+}
+
+message UploadHashpipeImagesResponse {
+  // Stream movie-mode panoseti images iff True
+  bool stream_movie_data = 1;
+  // Stream pulse-height panoseti images iff True
+  bool stream_pulse_height_data = 2;
+  // Time in seconds between hashpipe gRPC packets.
+  // Defaults to 1 second.
+  double update_interval_seconds = 3;
+}
+
+message UploadHashpipeStatusRequest {}
+message UploadHashpipeStatusResponse {}
+
+
+// TODO: implement these messages.
+message SetConfigurationRequest {}
+message SetConfigurationResponse {}
 

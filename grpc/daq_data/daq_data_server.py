@@ -35,7 +35,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, TestCase, CaptureScienceResponse, CaptureScienceRequest
+from daq_data_pb2 import PanoImage, TestCase, CaptureScienceResponse, CaptureScienceRequest, UploadHashpipeImagesRequest
 
 from daq_data_resources import *
 from daq_data_testing import *
@@ -309,7 +309,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_thread = Thread(
             target=hp_io_data_DEBUG,
             args=(
-                hp_io_cfg["named_pipe_path"],
+                hp_io_cfg["movie_fifo_path"],
                 hp_io_cfg["timeout"],
                 self._read_queues,
                 self._read_queues_freemap,
@@ -415,6 +415,15 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                             message="testing",
                             pano_image=pano_image
                         )
+
+                        # capture_science_response = CaptureScienceResponse(
+                        #     type=CaptureScienceResponse.Type.DATA,
+                        #     name="test_movie_data",
+                        #     timestamp=send_timestamp,
+                        #     message="testing",
+                        #     pano_image=parsed_data["movie_data"]
+                        # )
+                        #
                         yield capture_science_response
                     except queue.Empty:
                         self.logger.warning("hp_io thread may have stopped sending data")
@@ -433,6 +442,21 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 emsg = "Uninitialized hp_io thread. Run InitHpIo with a valid hp_io configuration to initialize it."
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
             # END critical section for hp_io [read] access
+    def UploadHashpipeImages(self, request_iterator, context):
+
+        for upload_hashpipe_images_request in request_iterator:
+            if upload_hashpipe_images_request.type == UploadHashpipeImagesRequest.Type.DATA:
+
+                parsed_data = {
+                    "movie_data": upload_hashpipe_images_request.movie_data,
+                    "pulse_height_data": upload_hashpipe_images_request.pulse_height_data,
+                }
+
+                for read_queue, is_allocated in zip(self._read_queues, self._read_queues_freemap):
+                    if is_allocated:  # only populate read_queues that are actively being used
+                        read_queue.put(parsed_data)
+        return
+
 
 def serve(server_cfg):
     """Create the gRPC server threadpool and start providing the UbloxControl service."""
