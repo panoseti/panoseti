@@ -194,6 +194,7 @@ def do_hv_off(modules, quabo_uids, network_config):
 #
 def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False):
     logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
+    no_cali = False
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -211,7 +212,12 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
             is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
-            qi = quabo_info[uid]
+            try:
+                qi = quabo_info[uid]
+            except:
+                qi = quabo_info['default']
+                is_qfp = False
+                no_cali = True
             serialno = qi['serialno'][3:]
             # try to find the detector overvoltage in obs_config.abs
             # if we can't find it, we will use 3v by default.
@@ -320,6 +326,11 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 quabo.send_daq_params(daq_stop)
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
+            print('**************************************************************************')
+            print('Warning: No calibration data for the board with UID: %s'%uid)
+            print('         Using default calibration data.')
+            print('**************************************************************************')
+            logger.warning('No calibration data: UID -%s'%uid)
             quabo.send_maroc_params(qc_dict)
             quabo.close()
 
