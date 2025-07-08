@@ -74,12 +74,6 @@ def reflect_services(channel):
     for method in service_desc.methods:
         print(f"\tfound: {format_rpc_service(method)}")
 
-def make_stream_images_request(stream_movie_data, stream_pulse_height_data, update_interval_seconds: float):
-    return StreamImagesRequest(
-        stream_movie_data=stream_movie_data,
-        stream_pulse_height_data=stream_pulse_height_data,
-        update_interval_seconds=update_interval_seconds,
-    )
 
 def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
     if pano_image is None:
@@ -108,8 +102,12 @@ def stream_images(stub, stream_movie_data: bool, stream_pulse_height_data: bool,
     logger = make_rich_logger(__name__, level=logging.INFO)
 
     # start packet stream
-    stream_images_request = make_stream_images_request(stream_movie_data, stream_pulse_height_data, update_interval_seconds)
-    stream_images_responses = stub.StreamImages(stream_images_request)
+    stream_images_request = StreamImagesRequest(
+        stream_movie_data=stream_movie_data,
+        stream_pulse_height_data=stream_pulse_height_data,
+        update_interval_seconds=update_interval_seconds,
+    )
+    stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=True)
     active_calls.append(stream_images_responses)  # gracefully handle ^C cancellation
 
     import matplotlib.pyplot as plt

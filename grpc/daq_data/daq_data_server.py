@@ -46,16 +46,22 @@ sys.path.append("../../util")
 import pff, config_file
 
 PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
+IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff"
 SIM_DIR = Path("test_env/sim_data")
 OBS_DATA_DIR = Path("test_env/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
 
+# TEST_DST = SIM_DIR / PH_PFF
+# TEST_SRC = OBS_DATA_DIR / PH_PFF
+
+TEST_DST = SIM_DIR / IMG_PFF
+TEST_SRC = OBS_DATA_DIR / IMG_PFF
 
 def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
-
-    src_path = OBS_DATA_DIR / PH_PFF
-    real_fname = os.path.basename(src_path)
+    # TEST_DST = OBS_DATA_DIR / PH_PFF
+    # TEST_SRC = OBS_DATA_DIR / PH_PFF
+    real_fname = os.path.basename(TEST_SRC)
     name_dict = pff.parse_name(real_fname)
     if not name_dict:
         raise Exception('bad PFF filename %s' % real_fname)
@@ -70,8 +76,8 @@ def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
     else:
         raise Exception("bad data product %s" % dp)
 
-    # copy frames from fsrc to fdest to simulate data acquisition software
-    with open(SIM_DIR / PH_PFF, "wb") as fdest, open(src_path, "rb") as fsrc:
+    # copy frames from fsrc to fdst to simulate data acquisition software
+    with open(TEST_DST, "wb") as fdst, open(TEST_SRC, "rb") as fsrc:
         # get file info, e.g. frame size
         (frame_size, nframes, first_t, last_t) = pff.img_info(fsrc, bytes_per_image)
         fsrc.seek(0, os.SEEK_SET)
@@ -79,11 +85,11 @@ def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
         i = 0
         while not stop_io.is_set() and i < nframes:
             src_data = fsrc.read(frame_size)
-            nbytes_written = fdest.write(src_data)
-            fdest.flush()
+            nbytes_written = fdst.write(src_data)
+            fdst.flush()
             # logger.info(f"nbytes_written={nbytes_written}")
             i += 1
-            time.sleep(0.5)
+            time.sleep(0.1)
     logger.info("hp_sim thread exited")
 
 
@@ -98,8 +104,8 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
         early_exit_counter = 30
     try:
         # load test file
-        src_path = SIM_DIR / PH_PFF
-        real_fname = os.path.basename(src_path)
+        # TEST_DST = SIM_DIR / PH_PFF
+        real_fname = os.path.basename(TEST_DST)
         name_dict = pff.parse_name(real_fname)
         if not name_dict:
             raise Exception('bad PFF filename %s' % real_fname)
@@ -122,6 +128,11 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
             is_ph = True
         else:
             raise Exception("bad data product %s" % dp)
+
+        if is_ph:
+            parsed_type = PanoImage.Type.PULSE_HEIGHT
+        else:
+            parsed_type = PanoImage.Type.MOVIE
 
         files = glob('%s/*%s*.pff' % (SIM_DIR, dp))
         nfiles = len(files)
@@ -171,7 +182,7 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
                 parsed_data = {
                     "header": json.loads(j),
                     "image_array": img,
-                    "type": PanoImage.Type.PULSE_HEIGHT,
+                    "type": parsed_type,
                     "image_shape": [image_size, image_size],
                     "bytes_per_pixel": bytes_per_pixel,
                     "filepath": filepath,
