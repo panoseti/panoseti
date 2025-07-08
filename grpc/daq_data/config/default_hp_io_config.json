@@ -1,8 +1,5 @@
 {
-  "is_valid": true,
-  "movie_fifo_path": "hp_movie_pipe",
-  "ready_fifo_path": "hp_ready_pipe",
-  "valid_fifo_path": "hp_valid_pipe",
+  "valid_config": true,
   "timeout": 1,
   "comments": ""
 }

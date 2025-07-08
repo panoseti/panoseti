@@ -10,18 +10,18 @@ Requires following to function correctly:
 """
 import logging
 import queue
-import random
 import sys
 from concurrent import futures
 import threading
 from threading import Event, Thread
 from queue import Queue
-from serial import Serial
 import time
-import re
 import urllib.parse
+from glob import glob
+
 import numpy as np
 
+## --- gRPC imports ---
 import grpc
 
 # gRPC reflection service: allows clients to discover available RPCs
@@ -37,26 +37,53 @@ import daq_data_pb2
 import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, TestCase, StreamImagesResponse, StreamImagesRequest
 
+## --- daq_data utils ---
 from daq_data_resources import *
 from daq_data_testing import *
 
-# import panoseti utils
+## --- panoseti utils ---
 sys.path.append("../../util")
 import pff, config_file
 
-def hp_sim_thread_fn(fpath="./tmp/hp_sim.txt", stop_io: Event = None, logger: logging.Logger = None):
-    """ Simulate hashpipe data stream. """
+PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
+SIM_DIR = Path("test_env/sim_data")
+OBS_DATA_DIR = Path("test_env/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
+
+
+def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
+    """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
-    with open(fpath, "w") as f:
-        while not stop_io.is_set():
-            f.write("test\n")
-            image_array = np.random.randint(low=0, high=2**16, size=[32,32])
-            time.sleep(1)
+
+    src_path = OBS_DATA_DIR / PH_PFF
+    real_fname = os.path.basename(src_path)
+    name_dict = pff.parse_name(real_fname)
+    if not name_dict:
+        raise Exception('bad PFF filename %s' % real_fname)
+    dp = name_dict['dp']
+
+    if dp == 'img8':
+        bytes_per_image = 1024
+    elif dp == 'img16' or dp == 'ph1024':
+        bytes_per_image = 2048
+    elif dp == 'ph256':
+        bytes_per_image = 512
+    else:
+        raise Exception("bad data product %s" % dp)
+
+    # copy frames from fsrc to fdest to simulate data acquisition software
+    with open(SIM_DIR / PH_PFF, "wb") as fdest, open(src_path, "rb") as fsrc:
+        # get file info, e.g. frame size
+        (frame_size, nframes, first_t, last_t) = pff.img_info(fsrc, bytes_per_image)
+        i = 0
+        while not stop_io.is_set() and i < nframes:
+            fdest.write(fsrc.read(frame_size))
+            i += 1
+            time.sleep(0.5)
     logger.info("hp_sim thread exited")
 
 
 def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, logger: logging.Logger, **kwargs):
-    """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all activeread queues. """
+    """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues. """
     logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
     # parse any kwargs
@@ -65,28 +92,85 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
     else:
         early_exit_counter = 30
     try:
-        valid.set()
-        while not stop_io.is_set():
-            time.sleep(1)
-            # TODO: don't hardcode and get values from hashpipe in someway..
-            header = {"test0": 0, "test1": 1}
-            image_array = np.random.randint(low=0, high=2**16, size=[32,32])
+        # load test file
+        src_path = SIM_DIR / PH_PFF
+        real_fname = os.path.basename(src_path)
+        name_dict = pff.parse_name(real_fname)
+        if not name_dict:
+            raise Exception('bad PFF filename %s' % real_fname)
+        dp = name_dict['dp']
 
-            parsed_data = {
-                "header": header,
-                "image_array": image_array,
-                "type": PanoImage.Type.MOVIE,
-            }
-            if parsed_data:
-                for rs in reader_states:
+        if dp == 'img16' or dp == 'ph1024':
+            bytes_per_image = 2048
+            image_size = 32
+            bytes_per_pixel = 2
+            is_ph = False
+        elif dp == 'img8':
+            bytes_per_image = 1024
+            image_size = 32
+            bytes_per_pixel = 1
+            is_ph = False
+        elif dp == 'ph256':
+            bytes_per_image = 512
+            image_size = 16
+            bytes_per_pixel = 2
+            is_ph = True
+        else:
+            raise Exception("bad data product %s" % dp)
+
+        files = glob('%s/*%s*.pff' % (SIM_DIR, dp))
+        nfiles = len(files)
+
+        # wait for file to be nonempty
+        while not stop_io.is_set():
+            if os.path.getsize(src_path):
+                break
+            time.sleep(1)
+
+        f = open(src_path, 'rb')
+        (frame_size, nframes, first_t, last_t) = pff.img_info(f, bytes_per_image)
+        valid.set()
+        last_frame = -1
+        while not stop_io.is_set():
+            # check if we have a new file
+            files = glob('%s/*%s*.pff' % (SIM_DIR, dp))
+            if len(files) > nfiles:
+                nfiles = len(files)
+                f.close()
+                file = sorted(files)[-1]
+                filepath = file
+                f = open(filepath, 'rb')
+                last_frame = -1
+            fsize = f.seek(0, os.SEEK_END)
+            nframes = int(fsize / frame_size)
+            # read last frame
+            if nframes > last_frame + 1:
+                last_frame = nframes - 1
+                f.seek(last_frame * frame_size, os.SEEK_SET)
+
+                # parse image frame
+                j = pff.read_json(f)
+                if not j:
+                    logger.info('reached EOF')
+                    break
+                img = pff.read_image(f, image_size, bytes_per_pixel)
+                parsed_data = {
+                    "header": j,
+                    "image_array": img,
+                    "type": PanoImage.Type.PULSE_HEIGHT,
+                }
+
+                # broadcast image data to all waiting clients
+                for rs in [rs for rs in reader_states if rs['is_allocated']]:
                     rq = rs['queue']
-                    if rs['is_allocated']:  # only populate read_queues that are actively being used
-                        print(rs)
+                    if rs['flags']['movie']:
                         rq.put(parsed_data)
+
             if "early_exit" in kwargs and kwargs["early_exit"]:
                 early_exit_counter -= 1
                 if early_exit_counter == 0:
                     raise TimeoutError("test hp_io thread unexpected termination")
+            time.sleep(1.5)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! {err}")
         raise err
@@ -150,16 +234,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_valid = Event()  # Set only if the hp_io thread is active and collecting data
 
         # Start the hp_io thread if server_cfg points to a valid hp_io_cfg
-        if self._server_cfg["allow_init_from_default"] and self._hp_io_cfg["is_valid"]:
+        if self._server_cfg["allow_init_from_default"] and self._hp_io_cfg["valid_config"]:
             self.logger.info(f"Creating the initial hp_io thread from config: "
                              f"{self._server_cfg["allow_init_from_default"]=} and "
-                             f"{self._hp_io_cfg["is_valid"]=}.")
+                             f"{self._hp_io_cfg["valid_config"]=}.")
             self._server_cfg['hp_io_init'] = True
             self._start_hp_io_thread(self._hp_io_cfg)
         else:
             self.logger.warning(f"An InitHpIo call is required to start the hp_io thread: "
                                 f"{self._server_cfg["allow_init_from_default"]=} and "
-                                f"{self._hp_io_cfg["is_valid"]=}.")
+                                f"{self._hp_io_cfg["valid_config"]=}.")
 
             self._server_cfg['hp_io_init'] = False
 
@@ -170,7 +254,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         """
         self._server_cfg['hp_io_init'] = False
         all_ok = True
-        all_ok &= self._stop_hp_io_thread(1)
+        all_ok &= self._stop_hp_io_thread(2)
 
         # check if state was updated properly
         for thread_state, num_threads in self._rw_lock_state.items():
@@ -195,7 +279,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # so we should cancel any writer RPCs immediately
                 if self._rw_lock_state['ar'] > 0:
                     active_clients = str(list(self._active_clients.values()))
-                    # print(active_clients)
                     emsg = (f"Cannot modify F9t state because there are {self._rw_lock_state['ar']} active "
                             f"StreamImages clients. Stop these client processes then try again: {active_clients=}.")
                     context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
@@ -331,7 +414,15 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             },
             daemon=False,
         )
+        hp_sim_thread = Thread(
+            target=hp_sim_thread_fn,
+            args=(
+                self._stop_io,
+                self.logger
+            )
+        )
         self._hp_io_thread.start()
+        hp_sim_thread.start()
 
         # check if thread could be properly initialized
         self._hp_io_valid.wait(1)
@@ -386,7 +477,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         """Forward sample panoseti movie and pulse-height images to the client. [reader]"""
         # unpack the requested message pattern filters
         self.logger.info(f"new StreamImages rpc from {urllib.parse.unquote(context.peer())}")
-        # TODO: check if the patterns are valid
         with self._rw_lock_reader(context) as reader_state:  # rid = allocated reader id for indexing into shared reader resources
             # BEGIN critical section for F9t [read] access
             # Clear old data from the read_queue
