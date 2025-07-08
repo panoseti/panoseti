@@ -76,7 +76,7 @@ def get_daq_params(data_config):
         elif image['quabo_sample_size'] != 16:
             raise Exception('quabo_sample_size must be 8 or 16')
         image_usec = image['integration_time_usec']
-        check_img_params(image_8bit, image_usec)
+        #check_img_params(image_8bit, image_usec)
     if 'pulse_height' in data_config:
         do_ph = True
         if 'any_trigger' in data_config['pulse_height']:

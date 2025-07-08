@@ -111,12 +111,16 @@ def ip_addr_str_to_bytes(ip_addr_str):
 # return true if can ping IP addr
 #
 def ping(ip_addr, cmd_port):
+    logger = logging.getLogger('PANOSETI.Config.util.ping')
     #return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
     # TODO: implement the qping cmd in the firmware
     # For now, we just use the data_packet_destination to see if we can talk to Quabo
-    time.sleep(40)
-    quabo = quabo_driver.QUABO(ip_addr, cmd_port)
-    return quabo.data_packet_destination('192.168.1.1')
+    s = os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+    if not s:
+        return True
+    else:
+        quabo = quabo_driver.QUABO(ip_addr, cmd_port)
+        return quabo.data_packet_destination('192.168.1.1')
 
 def mac_addr_str(bytes):
     s = ['']*6
@@ -421,9 +425,12 @@ DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
 def get_quabo_ip_port(ip_addr, i, network_config):
     ip_ports = {}
+    x = ip_addr.split('.')
+    x[3] = str(int(x[3])+i)
+    quabo_ip =  '.'.join(x)
     # these are the default config
-    ip_ports['ip_addr'] = ip_addr,
-    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT,
+    ip_ports['ip_addr'] = quabo_ip
+    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT
     ip_ports['cmd_port'] = DEFAULT_CMD_PORT
     # if we can't find the setting for the Quabo in the network_config
     # we will use the default config

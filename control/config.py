@@ -69,6 +69,9 @@ def do_reboot(modules, quabo_uids, network_config):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             print('waiting for ping of %s'%ip_addr)
             while True:
+                logger.info('ping quabo %s:%d...'%(ip_addr, cmd_port))
+                # wait for the reboot
+                time.sleep(40)
                 if util.ping(real_ip, cmd_port):
                     break
                 time.sleep(1)
