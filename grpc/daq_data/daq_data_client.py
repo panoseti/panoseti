@@ -74,10 +74,11 @@ def reflect_services(channel):
     for method in service_desc.methods:
         print(f"\tfound: {format_rpc_service(method)}")
 
-def make_stream_images_request(stream_movie_data, stream_pulse_height_data):
+def make_stream_images_request(stream_movie_data, stream_pulse_height_data, update_interval_seconds: float):
     return StreamImagesRequest(
         stream_movie_data=stream_movie_data,
         stream_pulse_height_data=stream_pulse_height_data,
+        update_interval_seconds=update_interval_seconds,
     )
 
 def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
@@ -103,11 +104,11 @@ def format_stream_images_response(stream_images_response):
     return f"StreamImagesResponse: {name=}, {message=}, {timestamp=}, {header=}"
 
 
-def stream_images(stub, stream_movie_data, stream_pulse_height_data, timeout=10):
+def stream_images(stub, stream_movie_data: bool, stream_pulse_height_data: bool, update_interval_seconds: float, timeout=10):
     logger = make_rich_logger(__name__, level=logging.INFO)
 
     # start packet stream
-    stream_images_request = make_stream_images_request(stream_movie_data, stream_pulse_height_data)
+    stream_images_request = make_stream_images_request(stream_movie_data, stream_pulse_height_data, update_interval_seconds)
     stream_images_responses = stub.StreamImages(stream_images_request)
     active_calls.append(stream_images_responses)  # gracefully handle ^C cancellation
 
@@ -151,7 +152,7 @@ def run(host, port=50051):
             # curr_f9t_cfg = client_hashpipe_io_cfg
 
             print("-------------- StreamImages --------------")
-            stream_images(stub, True, True, 5)
+            stream_images(stub, True, True, 1,  5)
 
     except KeyboardInterrupt:
         logger.info(f"'^C' received, closing connection to the DaqData server at {repr(connection_target)}")
