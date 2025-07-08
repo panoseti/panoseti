@@ -39,7 +39,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import TestCase, CaptureScienceResponse, CaptureScienceRequest
+from daq_data_pb2 import TestCase, StreamImagesResponse, StreamImagesRequest
 
 ## our code
 from daq_data_resources import *
@@ -74,8 +74,8 @@ def reflect_services(channel):
     for method in service_desc.methods:
         print(f"\tfound: {format_rpc_service(method)}")
 
-def make_capture_science_request(stream_movie_data, stream_pulse_height_data):
-    return CaptureScienceRequest(
+def make_stream_images_request(stream_movie_data, stream_pulse_height_data):
+    return StreamImagesRequest(
         stream_movie_data=stream_movie_data,
         stream_pulse_height_data=stream_pulse_height_data,
     )
@@ -95,37 +95,33 @@ def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
     header = MessageToDict(pano_image.header)
     return header, image_array
 
-def format_capture_science_response(capture_science_response):
-    resp_type = CaptureScienceResponse.Type.Name(capture_science_response.type)
-    header, image_array = unpack_pano_image(capture_science_response.pano_image)
-    name = capture_science_response.name
-    message = capture_science_response.message
-    timestamp = capture_science_response.timestamp.ToDatetime().isoformat()
-    return f"CaptureScienceResponse: {name=}, {message=}, {timestamp=}, {resp_type=}, {header=}"
+def format_stream_images_response(stream_images_response):
+    header, image_array = unpack_pano_image(stream_images_response.pano_image)
+    name = stream_images_response.name
+    message = stream_images_response.message
+    timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
+    return f"StreamImagesResponse: {name=}, {message=}, {timestamp=}, {header=}"
 
 
-def capture_science(stub, stream_movie_data, stream_pulse_height_data, timeout=10):
+def stream_images(stub, stream_movie_data, stream_pulse_height_data, timeout=10):
     logger = make_rich_logger(__name__, level=logging.INFO)
 
     # start packet stream
-    capture_science_request = make_capture_science_request(stream_movie_data, stream_pulse_height_data)
-    capture_science_responses = stub.CaptureScience(capture_science_request)
-    active_calls.append(capture_science_responses)  # gracefully handle ^C cancellation
+    stream_images_request = make_stream_images_request(stream_movie_data, stream_pulse_height_data)
+    stream_images_responses = stub.StreamImages(stream_images_request)
+    active_calls.append(stream_images_responses)  # gracefully handle ^C cancellation
 
     import matplotlib.pyplot as plt
     plt.ion()  # Turn on interactive mode
     fig, ax = plt.subplots()
 
-    for capture_science_response in capture_science_responses:
+    for stream_images_response in stream_images_responses:
         # display a log message
-        formatted_capture_science_response = format_capture_science_response(capture_science_response)
-        if capture_science_response.type == CaptureScienceResponse.Type.DATA:
-            logger.info(formatted_capture_science_response)
-        elif capture_science_response.type == CaptureScienceResponse.Type.ERROR:
-            logger.error(formatted_capture_science_response)
+        formatted_stream_images_response = format_stream_images_response(stream_images_response)
+        logger.info(formatted_stream_images_response)
 
         # simple image display
-        header, img = unpack_pano_image(capture_science_response.pano_image)
+        header, img = unpack_pano_image(stream_images_response.pano_image)
 
         ax.imshow(img)
         plt.draw()
@@ -154,8 +150,8 @@ def run(host, port=50051):
             # client_hashpipe_io_cfg = default_hp_io_thread_config
             # curr_f9t_cfg = client_hashpipe_io_cfg
 
-            print("-------------- CaptureScience --------------")
-            capture_science(stub, True, True, 5)
+            print("-------------- StreamImages --------------")
+            stream_images(stub, True, True, 5)
 
     except KeyboardInterrupt:
         logger.info(f"'^C' received, closing connection to the DaqData server at {repr(connection_target)}")
@@ -171,10 +167,8 @@ if __name__ == "__main__":
     print("-------------- Client-side Tests --------------")
     all_pass, _ = run_all_tests(
         test_fn_list=[
-            test_redis_connection,
         ],
         args_list=[
-            ["localhost", 6379, 1, logger]
         ]
     )
     assert all_pass, "at least one client-side test failed"

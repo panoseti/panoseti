@@ -35,32 +35,36 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, TestCase, CaptureScienceResponse, CaptureScienceRequest, UploadHashpipeImagesRequest
+from daq_data_pb2 import PanoImage, TestCase, StreamImagesResponse, StreamImagesRequest
 
 from daq_data_resources import *
 from daq_data_testing import *
 
+# import panoseti utils
+sys.path.append("../../util")
+import pff, config_file
 
-def hp_io_data_DEBUG(
-        named_pipe_path: Path,
-        timeout: float,
-        read_queues: List[Queue],
-        read_queue_freemap: List[bool],
-        # send_queue: Queue,
-        stop_io: Event,
-        valid: Event,
-        logger: logging.Logger,
-        **kwargs
-):
+def hp_sim_thread_fn(fpath="./tmp/hp_sim.txt", stop_io: Event = None, logger: logging.Logger = None):
+    """ Simulate hashpipe data stream. """
+    logger.info("hp_sim thread started")
+    with open(fpath, "w") as f:
+        while not stop_io.is_set():
+            f.write("test\n")
+            image_array = np.random.randint(low=0, high=2**16, size=[32,32])
+            time.sleep(1)
+    logger.info("hp_sim thread exited")
+
+
+def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, logger: logging.Logger, **kwargs):
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all activeread queues. """
-    logger.info(f"Created a new DEBUG hp_io thread with the following options: {kwargs=}")
+    logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
+    # parse any kwargs
+    if "early_exit_delay_seconds" in kwargs:
+        early_exit_counter = kwargs["early_exit_delay_seconds"]
+    else:
+        early_exit_counter = 30
     try:
-        if "early_exit_delay_seconds" in kwargs:
-            early_exit_counter = kwargs["early_exit_delay_seconds"]
-        else:
-            early_exit_counter = 30
-        """TODO: implement this io with named pipes"""
         valid.set()
         while not stop_io.is_set():
             time.sleep(1)
@@ -74,10 +78,11 @@ def hp_io_data_DEBUG(
                 "type": PanoImage.Type.MOVIE,
             }
             if parsed_data:
-                for read_queue, is_allocated in zip(read_queues, read_queue_freemap):
-                    if is_allocated:  # only populate read_queues that are actively being used
-                        read_queue.put(parsed_data)
-
+                for rs in reader_states:
+                    rq = rs['queue']
+                    if rs['is_allocated']:  # only populate read_queues that are actively being used
+                        print(rs)
+                        rq.put(parsed_data)
             if "early_exit" in kwargs and kwargs["early_exit"]:
                 early_exit_counter -= 1
                 if early_exit_counter == 0:
@@ -89,10 +94,9 @@ def hp_io_data_DEBUG(
         valid.clear()
         logger.info("hp_io thread exited")
 
-
 """gRPC server implementing DaqData RPCs"""
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
-    """Provides methods that implement functionality of an u-blox control server."""
+    """Provides implementations for DaqData RPCs."""
 
     def __init__(self, server_cfg):
         # verify the server is running on a POSIX-compliant system
@@ -122,19 +126,26 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
             self._hp_io_cfg = json.load(f)
 
-        ## State for single producer, multiple consumer hp_io access
+        # State for single producer, multiple consumer hp_io access
         # A single IO thread manages the dataflow between multiple concurrent RPC threads and the hp_io thread:
         #   [single RPC writer -> hp_io thread] send messages to the hp_io thread
         #   [hp_io thread -> many RPC readers] broadcast image data to active read_queues
         self._hp_io_thread: Thread = None
 
-        # Create an array of read_queues and freemap locks to support up to max_worker concurrent reader RPCs
-        self._read_queues = []  # Duplicate queues to implement single producer, multiple independent consumer model
-        self._read_queues_freemap = []  # True iff corresponding queue is allocated to a reader
+        # Initialize an array of reader_state dicts to support up to max_worker concurrent reader RPCs
+        self._reader_states: List[Dict[str, Any]] = []
+        # _reader_states is a list of reader gRPC state dictionaries
+        #   - "is_allocated": True iff corresponding queue is allocated to a reader
+        #   - "queue": Queue implementing single producer (hp_io), multiple independent consumer model
+        #   - "flags": Options specifying which data types should be put into each read queue.
         for _ in range(server_cfg['max_workers']):
-            self._read_queues.append(Queue(maxsize=server_cfg['max_read_queue_size']))
-            self._read_queues_freemap.append(False)
-        # self._send_queue = Queue()  # Used
+            default_flags = { "movie": True, "pulse_height": True, "hashpipe_status": False, }
+            default_reader_state = {
+                "is_allocated": False,
+                "queue": Queue(maxsize=server_cfg['max_read_queue_size']),
+                "flags": default_flags,
+            }
+            self._reader_states.append(default_reader_state)
         self._stop_io = Event()  # Signals hp_io thread to exit
         self._hp_io_valid = Event()  # Set only if the hp_io thread is active and collecting data
 
@@ -159,7 +170,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         """
         self._server_cfg['hp_io_init'] = False
         all_ok = True
-        all_ok &= self._stop_hp_io_thread()
+        all_ok &= self._stop_hp_io_thread(1)
 
         # check if state was updated properly
         for thread_state, num_threads in self._rw_lock_state.items():
@@ -186,7 +197,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     active_clients = str(list(self._active_clients.values()))
                     # print(active_clients)
                     emsg = (f"Cannot modify F9t state because there are {self._rw_lock_state['ar']} active "
-                            f"CaptureScience clients. Stop these client processes then try again: {active_clients=}.")
+                            f"StreamImages clients. Stop these client processes then try again: {active_clients=}.")
                     context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
                 # Wait until no active readers or active writers
                 self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
@@ -233,14 +244,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     @contextmanager
     def _rw_lock_reader(self, context):
-        read_fmap_idx = -1  # remember which read_queue freemap entry corresponds to this thread
+        reader_idx = -1  # remember which reader_states dict corresponds to this thread
         tid = threading.get_ident()
         active = False
         try:
             with self._hp_io_lock:
                 # BEGIN check-in critical section
                 self.logger.debug(f"(reader) check-in (start):\t{self._rw_lock_state=}"
-                                  f"\n{self._read_queues_freemap=}")
+                                  f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # Wait until no active writers or waiting writers
                 while context.is_active() and (self._rw_lock_state['aw'] + self._rw_lock_state['ww']) > 0:
                     self._rw_lock_state['wr'] += 1
@@ -253,15 +264,15 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     context.cancel()
 
                 # allocate a read queue for this thread
-                for idx, is_allocated in enumerate(self._read_queues_freemap):
-                    if not is_allocated:
-                        read_fmap_idx = idx
-                        self._read_queues_freemap[idx] = True
+                for idx, rs in enumerate(self._reader_states):
+                    if not rs['is_allocated']:
+                        reader_idx = idx
+                        self._reader_states[idx]['is_allocated'] = True
                         break
 
                 # check if the allocation succeeded
-                if read_fmap_idx < 0:
-                    emsg = "_read_queues_freemap allocation failed during reader check-in! [SHOULD NEVER HAPPEN]"
+                if reader_idx < 0:
+                    emsg = "reader_states allocation failed during reader check-in! [SHOULD NEVER HAPPEN]"
                     self.logger.critical(emsg)
                     context.abort(grpc.StatusCode.INTERNAL, emsg)
 
@@ -277,10 +288,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self._rw_lock_state['ar'] += 1
                 active = True
                 self._active_clients[tid] = urllib.parse.unquote(context.peer())
-                self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={read_fmap_idx}"
-                                  f"\n{self._read_queues_freemap=}")
+                self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
+                                  f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # END check-in critical section
-            yield read_fmap_idx
+            yield self._reader_states[reader_idx]
         finally:
             with self._hp_io_lock:
                 # BEGIN check-out critical section
@@ -288,7 +299,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 if active:
                     self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
                     del self._active_clients[tid]
-                    self._read_queues_freemap[read_fmap_idx] = False  # release the read queue
+                    self._reader_states[idx]['is_allocated'] = False # release reader resources
                 # Wake up waiting readers or a waiting writer (prioritize waiting writers).
                 if self._rw_lock_state['ar'] == 0 and self._rw_lock_state['ww'] > 0:
                     self._write_ok_condvar.notify()
@@ -302,17 +313,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         @return: True iff the hp_io thread was created and established a valid connection to the target F9t chip
         """
         # Terminate any currently alive hp_io thread
-        self._stop_hp_io_thread()  # no effect if a hp_io thread is not alive
+        self._stop_hp_io_thread(5)  # no effect if a hp_io thread is not alive
 
         # Create new hp_io_thread using the client's configuration
         self._stop_io.clear()
         self._hp_io_thread = Thread(
-            target=hp_io_data_DEBUG,
+            target=hp_io_thread_fn,
             args=(
-                hp_io_cfg["movie_fifo_path"],
-                hp_io_cfg["timeout"],
-                self._read_queues,
-                self._read_queues_freemap,
+                self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
                 self.logger,
@@ -331,7 +339,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.info("hp_io thread alive and valid")
             return True
         else:
-            self._stop_hp_io_thread()
+            self._stop_hp_io_thread(5)
             return False
 
     def _is_hp_io_valid(self):
@@ -352,13 +360,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             raise RuntimeError(emsg)  # SHOULD NEVER REACH HERE
         return False
 
-    def _stop_hp_io_thread(self):
+    def _stop_hp_io_thread(self, timeout:float=5.0):
         """Stops the hp_io thread. Idempotent behavior.
-        @return: True iff the hp_io thread is not alive."""
-        self._stop_io.set()  # signal hp_io thread to exit gracefully
+        @return: True iff the hp_io thread is not alive.
+        :param timeout: seconds to wait for hp_io thread to exit gracefully"""
         if self._hp_io_thread is not None and self._hp_io_thread.is_alive():
             try:
-                self._hp_io_thread.join(5)  # wait until hp_io exits
+                self._stop_io.set()  # signal hp_io thread to exit gracefully
+                self._hp_io_thread.join(timeout)  # wait until hp_io exits
             except RuntimeError as rerr:
                 self.logger.critical(f"encountered runtime error while stopping hp_io thread: {rerr}")
                 # raise rerr
@@ -373,15 +382,15 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.debug("no hp_io thread to stop_io (doing nothing)")
             return True
 
-    def CaptureScience(self, request, context):
-        """Forward u-blox packets to the client. [reader]"""
+    def StreamImages(self, request, context):
+        """Forward sample panoseti movie and pulse-height images to the client. [reader]"""
         # unpack the requested message pattern filters
-        self.logger.info(f"new CaptureScience rpc from {urllib.parse.unquote(context.peer())}")
+        self.logger.info(f"new StreamImages rpc from {urllib.parse.unquote(context.peer())}")
         # TODO: check if the patterns are valid
-        with (self._rw_lock_reader(context) as rid):  # rid = allocated reader id
+        with self._rw_lock_reader(context) as reader_state:  # rid = allocated reader id for indexing into shared reader resources
             # BEGIN critical section for F9t [read] access
-            # Clear the read_queue of old data
-            rq = self._read_queues[rid]
+            # Clear old data from the read_queue
+            rq = reader_state['queue']
             while not rq.empty():
                 rq.get()
             if self._server_cfg['hp_io_init'] and self._is_hp_io_valid():
@@ -390,7 +399,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     # self.logger.debug("waiting for input")
                     try:
                         # wait for next packet from the hp_io thread
-                        # add a timeout of to avoid starvation in case the hp_io thread unexpectedly exits while this thread is blocking on the read_queue
+                        # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
                         parsed_data = rq.get(timeout=10)
 
                         send_timestamp = timestamp_pb2.Timestamp()
@@ -408,30 +417,29 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                             bytes_per_pixel=bytes_per_pixel
                         )
 
-                        capture_science_response = CaptureScienceResponse(
-                            type=CaptureScienceResponse.Type.DATA,
+                        stream_images_response = StreamImagesResponse(
                             name="test_movie_data",
                             timestamp=send_timestamp,
                             message="testing",
                             pano_image=pano_image
                         )
 
-                        # capture_science_response = CaptureScienceResponse(
-                        #     type=CaptureScienceResponse.Type.DATA,
+                        # stream_images_response = StreamImagesResponse(
+                        #     type=StreamImagesResponse.Type.DATA,
                         #     name="test_movie_data",
                         #     timestamp=send_timestamp,
                         #     message="testing",
                         #     pano_image=parsed_data["movie_data"]
                         # )
                         #
-                        yield capture_science_response
+                        yield stream_images_response
                     except queue.Empty:
                         self.logger.warning("hp_io thread may have stopped sending data")
                         continue
 
                 # log reason why streaming stopped
                 if not context.is_active():
-                    self.logger.info(f"CaptureScience client disconnected")
+                    self.logger.info(f"StreamImages client disconnected")
                 else:
                     emsg = (f"The hp_io thread data stream unexpectedly became invalid! "
                             f"Check the server logs to debug this issue")
@@ -442,20 +450,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 emsg = "Uninitialized hp_io thread. Run InitHpIo with a valid hp_io configuration to initialize it."
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
             # END critical section for hp_io [read] access
-    def UploadHashpipeImages(self, request_iterator, context):
-
-        for upload_hashpipe_images_request in request_iterator:
-            if upload_hashpipe_images_request.type == UploadHashpipeImagesRequest.Type.DATA:
-
-                parsed_data = {
-                    "movie_data": upload_hashpipe_images_request.movie_data,
-                    "pulse_height_data": upload_hashpipe_images_request.pulse_height_data,
-                }
-
-                for read_queue, is_allocated in zip(self._read_queues, self._read_queues_freemap):
-                    if is_allocated:  # only populate read_queues that are actively being used
-                        read_queue.put(parsed_data)
-        return
 
 
 def serve(server_cfg):

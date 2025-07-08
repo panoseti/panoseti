@@ -16,7 +16,7 @@ from rich.pretty import pprint
 
 # from unittest import TestResult
 import daq_data_pb2
-from daq_data_pb2 import TestCase, CaptureScienceResponse, CaptureScienceRequest
+from daq_data_pb2 import TestCase, StreamImagesResponse, StreamImagesRequest
 
 
 """ Config globals"""

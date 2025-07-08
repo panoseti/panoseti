@@ -18,7 +18,7 @@ from typing import List, Callable, Tuple, Any
 from rich import print
 
 from daq_data_resources import *
-from daq_data_pb2 import TestCase, CaptureScienceResponse, CaptureScienceRequest
+from daq_data_pb2 import TestCase, StreamImagesResponse, StreamImagesRequest
 
 """ Testing utils """
 

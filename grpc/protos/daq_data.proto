@@ -12,18 +12,18 @@ import "google/protobuf/timestamp.proto"; // standard type for JSON data structu
 
 // The DaqData service definition.
 service DaqData {
-  // Stream science data [movie images | pulse-height images] from a module.
+  // Stream science data [movie images | pulse-height images] from hashpipe.
   // [reader: acquires server_state lock in shared state]
-  rpc CaptureScience(CaptureScienceRequest) returns (stream CaptureScienceResponse) {}
+  rpc StreamImages(StreamImagesRequest) returns (stream StreamImagesResponse) {}
+
+  // Stream  data [movie images | pulse-height images] from a module.
+  // [reader: acquires server_state lock in shared state]
+  rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
 
   // Set the server's configuration attributes.
   // Enables re-configuration without service restart.
   // [writer: acquires server_state lock in exclusive state]
   rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
-
-  rpc UploadHashpipeImages(UploadHashpipeImagesRequest) returns (stream UploadHashpipeImagesResponse) {}
-
-  rpc UploadHashpipeStatus(stream UploadHashpipeStatusRequest) returns (stream UploadHashpipeStatusResponse) {}
 }
 
 // Image represents a panoseti movie-mode or pulse-height image and associated header metadata
@@ -43,30 +43,24 @@ message PanoImage {
   int32 bytes_per_pixel = 5;
 }
 
-// science data packet
-message CaptureScienceResponse {
-  enum Type {
-    UNDEFINED = 0;
-    ERROR = 1;
-    DATA = 2;
-  }
-  Type type = 1;
-  string name = 2;
+// StreamImagesResponse contains one PanoImage which may be movie or pulse-height
+message StreamImagesResponse {
+  string name = 1;
   // UTC timestamp when this message was sent from the DAQ node
-  google.protobuf.Timestamp timestamp = 3;
+  google.protobuf.Timestamp timestamp = 2;
   // optional message for errors and other details
-  string message = 4;
+  string message = 3;
   // a panoseti image + self-describing metadata
-  PanoImage pano_image = 5;
+  PanoImage pano_image = 4;
 }
 
-// A CaptureScienceRequest specifies which image types to stream.
-message CaptureScienceRequest {
+// A StreamImagesRequest specifies which image types to stream.
+message StreamImagesRequest {
   // Stream movie-mode panoseti images iff True
   bool stream_movie_data = 1;
   // Stream pulse-height panoseti images iff True
   bool stream_pulse_height_data = 2;
-  // Time in seconds between CaptureScienceResponse packets.
+  // Time in seconds between StreamImagesResponse packets.
   // Defaults to 1 second.
   // Notes:
   //  - For efficiency, update_interval_seconds is rounded up to the nearest integer multiple of the
@@ -91,30 +85,12 @@ message TestCase {
   string message = 3;
 }
 
-// Image
-message UploadHashpipeImagesRequest {
-  enum Type {
-    UNDEFINED = 0;
-    DATA = 1;
-  }
-  Type type = 1;
-  PanoImage movie_data = 2;
-  PanoImage pulse_height_data = 3;
+
+message StreamHashpipeStatusRequest {
+
 }
 
-message UploadHashpipeImagesResponse {
-  // Stream movie-mode panoseti images iff True
-  bool stream_movie_data = 1;
-  // Stream pulse-height panoseti images iff True
-  bool stream_pulse_height_data = 2;
-  // Time in seconds between hashpipe gRPC packets.
-  // Defaults to 1 second.
-  double update_interval_seconds = 3;
-}
-
-message UploadHashpipeStatusRequest {}
-message UploadHashpipeStatusResponse {}
-
+message StreamHashpipeStatusResponse {}
 
 // TODO: implement these messages.
 message SetConfigurationRequest {}
