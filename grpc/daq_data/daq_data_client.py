@@ -39,7 +39,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import TestCase, StreamImagesResponse, StreamImagesRequest
+from daq_data_pb2 import TestCase, PanoImage, StreamImagesResponse, StreamImagesRequest
 
 ## our code
 from daq_data_resources import *
@@ -77,7 +77,7 @@ def reflect_services(channel):
 
 def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
     if pano_image is None:
-        return None, None
+        return None, None, None
     image_shape = pano_image.image_shape
     bytes_per_pixel = pano_image.bytes_per_pixel
     image_array = np.array(pano_image.image_array).reshape(image_shape)
@@ -88,14 +88,15 @@ def unpack_pano_image(pano_image) -> Tuple[Dict, np.ndarray]:
     else:
         raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
     header = MessageToDict(pano_image.header)
-    return header, image_array
+    pano_type = PanoImage.Type.Name(pano_image.type)
+    return pano_type, header, image_array
 
 def format_stream_images_response(stream_images_response):
-    header, image_array = unpack_pano_image(stream_images_response.pano_image)
+    pano_type, header, image_array = unpack_pano_image(stream_images_response.pano_image)
     name = stream_images_response.name
     message = stream_images_response.message
     timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
-    return f"StreamImagesResponse: {name=}, {message=}, {timestamp=}, {header=}"
+    return f"StreamImagesResponse: {name=}, {message=}, {timestamp=}, {header=}, {pano_type=}"
 
 
 def stream_images(stub, stream_movie_data: bool, stream_pulse_height_data: bool, update_interval_seconds: float, timeout=10):
@@ -120,9 +121,10 @@ def stream_images(stub, stream_movie_data: bool, stream_pulse_height_data: bool,
         logger.info(formatted_stream_images_response)
 
         # simple image display
-        header, img = unpack_pano_image(stream_images_response.pano_image)
+        pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
 
-        ax.imshow(img)
+        ax.imshow(img, vmin=0, vmax=500)
+        plt.title(f"{pano_type}")
         plt.draw()
         plt.pause(0.5)  # Pause to simulate "live" streaming
         ax.clear()

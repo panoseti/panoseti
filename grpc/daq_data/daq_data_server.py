@@ -47,51 +47,63 @@ import pff, config_file
 sys.path.append("../../control")
 import util
 
-SIM_DATA_DIR = Path("test_env")
-REAL_RUN_DIR = Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
-SIM_RUN_DIR = Path("sim_data")
+""" hp_io test macros """
 PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
 IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff"
+MOVIE_TYPE = 'img16'
+PH_TYPE = 'ph256'
 
-# TEST_DST = SIM_RUN_DIR / PH_PFF
-# TEST_SRC = REAL_RUN_DIR / PH_PFF
+SIM_DATA_DIR = Path("test_env")
 
-TEST_DST = SIM_DATA_DIR / SIM_RUN_DIR / IMG_PFF
-TEST_SRC = SIM_DATA_DIR / REAL_RUN_DIR / IMG_PFF
+SIM_RUN_DIR = SIM_DATA_DIR / Path("module_1/obs_SIMULATE")
+DAQ_ACTIVE_FILE = SIM_RUN_DIR / "daq_active"
+MOVIE_DST   = SIM_RUN_DIR / IMG_PFF
+PH_DST      = SIM_RUN_DIR / PH_PFF
 
-def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
+REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
+MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF
+PH_SRC      = REAL_RUN_DIR / PH_PFF
+
+def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
-    real_fname = os.path.basename(TEST_SRC)
-    name_dict = pff.parse_name(real_fname)
-    if not name_dict:
-        raise Exception('bad PFF filename %s' % real_fname)
-    dp = name_dict['dp']
+    with open(DAQ_ACTIVE_FILE, "w") as daq_active:
+        daq_active.write("1")
+    try:
+        with open(MOVIE_DST, "wb") as movie_dst, \
+        open(MOVIE_SRC, "rb") as movie_src, \
+        open(PH_DST, "wb") as ph_dst, \
+        open(PH_SRC, "rb") as ph_src:
+            while not stop_io.is_set():
+                # get file info, e.g. frame size from the ph and img source files
+                (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[MOVIE_TYPE]['bytes_per_image'])
+                movie_src.seek(0, os.SEEK_SET)
+                logger.info(f"movie src: {movie_frame_size=}, {movie_nframes=}")
 
-    if dp == 'img8':
-        bytes_per_image = 1024
-    elif dp == 'img16' or dp == 'ph1024':
-        bytes_per_image = 2048
-    elif dp == 'ph256':
-        bytes_per_image = 512
-    else:
-        raise Exception("bad data product %s" % dp)
+                (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[PH_TYPE]['bytes_per_image'])
+                logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}, {first_t=}, {last_t=}")
+                ph_src.seek(0, os.SEEK_SET)
 
-    # copy frames from fsrc to fdst to simulate data acquisition software
-    with open(TEST_DST, "wb") as fdst, open(TEST_SRC, "rb") as fsrc:
-        # get file info, e.g. frame size
-        (frame_size, nframes, first_t, last_t) = pff.img_info(fsrc, bytes_per_image)
-        fsrc.seek(0, os.SEEK_SET)
-        logger.info(f"{frame_size=}, {nframes=}, {first_t=}, {last_t=}")
-        i = 0
-        while not stop_io.is_set() and i < nframes:
-            src_data = fsrc.read(frame_size)
-            nbytes_written = fdst.write(src_data)
-            fdst.flush()
-            # logger.info(f"nbytes_written={nbytes_written}")
-            i += 1
-            time.sleep(0.1)
-    logger.info("hp_sim thread exited")
+                # copy frames from fsrc to fdst to simulate data acquisition software
+                ph_i = movie_i = 0
+                while not stop_io.is_set() and ph_i < ph_nframes and movie_i < movie_nframes:
+                    ph_data = ph_src.read(ph_frame_size)
+                    ph_nbytes_written = ph_dst.write(ph_data)
+
+                    movie_data = movie_src.read(movie_frame_size)
+                    movie_nbytes_written = movie_dst.write(movie_data)
+
+                    ph_dst.flush()
+                    movie_dst.flush()
+
+                    ph_i += 1
+                    movie_i += 1
+
+                    # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
+                    time.sleep(0.1)
+    finally:
+        os.unlink(DAQ_ACTIVE_FILE)
+        logger.info("hp_sim thread exited")
 
 
 def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Event, logger: logging.Logger, **kwargs):
@@ -109,15 +121,17 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
 
         # wait until there is an in-progress run
         while not stop_io.is_set():
-            run_pattern = f"{data_dir}/module_{module_id}/start_*"
+            run_pattern = f"{data_dir}/module_{module_id}/obs_*"
             runs = glob(run_pattern)
             nruns = len(runs)
             if nruns == 0:
                 raise FileNotFoundError(f'no run of module {module_id} in {run_pattern}')
-            else:
-                run_path = sorted(runs)[-1]
+            run_path = sorted(runs)[-1]
+            # TODO: check if this run is in progress (with production code)
+            if os.path.exists(DAQ_ACTIVE_FILE):
                 break
-            # TODO: check if this run is in progress
+            logger.info("Waiting for in-progress run to start")
+            time.sleep(1)
             # run = util.daq_get_run_name()
             # if not run:
             #     logger.error('no run')
@@ -134,29 +148,32 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     raise FileNotFoundError(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
                 else:
                     file = sorted(files)[-1]
-                    dp_cfg[dp]['nfiles'] = nfiles
 
-                # wait for the most recent pff file of type [dp] to be non-empty
                 filepath = file
                 while not stop_io.is_set():
-                    if os.path.getsize(filepath):
+                    if os.path.getsize(filepath) >= dp_cfg[dp]['bytes_per_image']:
                         break
-                    time.sleep(1)
+                    time.sleep(0.5)
 
                 # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
-                with open(filepath, 'rb') as f:
-                    (frame_size, nframes, first_t, last_t) = pff.img_info(f, dp_cfg[dp]['bytes_per_image'])
-                    f.seek(0, os.SEEK_SET)
-                    dp_cfg[dp]['frame_size'] = frame_size
-                    dp_cfg[dp]['last_frame'] = -1
-                    dp_cfg[dp]['filepath'] = filepath
+                f = open(filepath, 'rb')
+                logger.debug(f"{dp=}: {filepath=}: {dp_cfg[dp]['bytes_per_image']=}")
+                (frame_size, nframes, first_t, last_t) = pff.img_info(f, dp_cfg[dp]['bytes_per_image'])
+                dp_cfg[dp]['frame_size'] = frame_size
+
+                f.seek(0, os.SEEK_SET)
+                dp_cfg[dp]['f'] = f
+                dp_cfg[dp]['nfiles'] = nfiles
+                dp_cfg[dp]['filepath'] = filepath
+                dp_cfg[dp]['last_frame'] = -1
 
         def dp_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] | Tuple[None, None]:
             """
-            Check if we have a new pff data of type [dp].
+            Check if there is new pff data of type [dp].
             If new data is present:
                 1. update dp_cfg[dp] accordingly.
                 2. return a tuple of (pff header, pff image).
+            Otherwise, return (None, None)
             """
             f = d['f']
             nfiles = d['nfiles']
@@ -173,15 +190,18 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     last_frame = -1
                 fsize = f.seek(0, os.SEEK_END)
                 nframes = int(fsize / d['frame_size'])
-                # read last frame
+                # check if any new frames have been written to this file
                 if nframes > last_frame + 1:
+                    # seek to the latest frame in the file
                     last_frame = nframes - 1
                     f.seek(last_frame * d['frame_size'], os.SEEK_SET)
 
-                    # parse image frame
+                    # parse pff header and image
                     j = pff.read_json(f)
                     header = json.loads(j)
                     img = pff.read_image(f, d['image_shape'][0], d['bytes_per_pixel'])
+                    # the check below is necessary to handle the rare case where a pff file has
+                    # reached the max size specified in data_config.json resulting in no data for the last frame.
                     if header and img:
                         return header, img
                 return None, None
@@ -199,8 +219,9 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
         while not stop_io.is_set():
             for dp in dp_cfg:
                 d = dp_cfg[dp]
-                header, img = dp_main(dp)
+                header, img = dp_main(d)
                 if header and img:
+                    # broadcast frame to any waiting reader clients
                     pano_image = PanoImage(
                         type=d['pano_image_type'],
                         header= ParseDict(header, Struct()),
@@ -548,13 +569,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._stop_hp_io_thread(5)  # no effect if a hp_io thread is not alive
 
         dps = ["img16", "ph256"]
+        dp_cfg = self.get_dp_cfg(dps)
 
         # Create a new hp_io_thread using the client's configuration
         self._stop_io.clear()
         self._hp_io_thread = Thread(
             target=hp_io_thread_fn,
             args=(
-                self.get_dp_cfg(dps),
+                dp_cfg.copy(),
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
@@ -569,6 +591,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         hp_sim_thread = Thread(
             target=hp_sim_thread_fn,
             args=(
+                dp_cfg.copy(),
                 self._stop_io,
                 self.logger
             )
