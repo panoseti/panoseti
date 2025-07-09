@@ -23,8 +23,8 @@ from daq_data_pb2 import StreamImagesResponse, StreamImagesRequest
 """ Testing utils """
 
 def run_all_tests(
-        test_fn_list: List[Callable[..., Tuple[bool, str]]],
-        args_list: List[List[...]],
+        test_fn_list: List[Callable[[Any], Tuple[bool, str]]],
+        args_list: List[List[Any]],
 ) -> tuple[bool, list[Any]]:
     """
     Runs each test function in [test_functions].

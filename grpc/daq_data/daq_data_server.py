@@ -57,6 +57,7 @@ PH_TYPE = 'ph256'
 SIM_DATA_DIR = Path("test_env")
 
 SIM_RUN_DIR = SIM_DATA_DIR / Path("module_1/obs_SIMULATE")
+os.makedirs(SIM_RUN_DIR, exist_ok=True)
 DAQ_ACTIVE_FILE = SIM_RUN_DIR / "daq_active"
 MOVIE_DST   = SIM_RUN_DIR / IMG_PFF
 PH_DST      = SIM_RUN_DIR / PH_PFF
@@ -73,7 +74,6 @@ def hp_sim_thread_fn(
 ) -> None:
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
-    os.makedirs(SIM_RUN_DIR, exist_ok=True)
     # prevent multiple server instances from running this thread
     if os.path.exists(DAQ_ACTIVE_FILE):
         logger.critical("hp_sim thread exited: another server instance is already running!")

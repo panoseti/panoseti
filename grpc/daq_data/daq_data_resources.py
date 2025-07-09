@@ -89,7 +89,7 @@ def parse_pano_timestamps(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
 
 def unpack_pano_image(
         pano_image: daq_data_pb2.PanoImage
-) -> Tuple[str, Dict[str, Any], np.ndarray] | Tuple[None, None, None]:
+) -> Tuple[str, Dict[str, Any], np.ndarray] or Tuple[None, None, None]:
     """Unpacks a PanoImage message into its components."""
     if pano_image is None:
         return None, None, None
@@ -113,8 +113,8 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
     pano_type, header, image_array = unpack_pano_image(stream_images_response.pano_image)
     name = stream_images_response.name
     message = stream_images_response.message
-    file = stream_images_response.pano_image.file
-    frame_number = stream_images_response.pano_image.frame_number
+    file = stream_images_response.file
+    frame_number = stream_images_response.frame_number
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
     return f"{name=}: {file}:f#{frame_number}, {message=}, {server_timestamp=}, {header=}, {pano_type=}"
 

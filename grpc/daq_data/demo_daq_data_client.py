@@ -46,7 +46,8 @@ def show_stream_images(
         # Randomness for demo
         cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'flare_r'])
         ph_baseline = np.random.randint(700, 900)
-        max_ph = 7_000
+        # max_ph = 7_000
+        movie_imgs = []
 
         # Process responses
         for stream_images_response in stream_images_responses:
@@ -61,7 +62,7 @@ def show_stream_images(
             ax_title = f"{pano_type}\nt={header['pandas_unix_timestamp'].time()}"
             if pano_type == 'PULSE_HEIGHT':
                 img += ph_baseline
-                img[img > max_ph] = max_ph
+                # img[img > max_ph] = max_ph
                 high = np.quantile(img, 1.0)
                 # low = np.quantile(, 0.05)
                 axs[0].cla()
@@ -73,6 +74,7 @@ def show_stream_images(
                 axs[1].cla()
                 axs[1].imshow(img, vmin=low, vmax=high, cmap=cmap)
                 axs[1].set_title(ax_title)
+                movie_imgs
             plt.draw()
             plt.pause(0.2)
     finally:
@@ -94,8 +96,8 @@ def run(host, port=50051):
             # TODO: add InitHpIo
 
             print("-------------- StreamImages --------------")
-            stream_movie_data = np.random.uniform() > 0.75
-            stream_pulse_height_data = np.random.uniform() > 0.75
+            stream_movie_data = np.random.uniform() > 0.9
+            stream_pulse_height_data = np.random.uniform() > 0.9
             if not stream_movie_data and not stream_pulse_height_data:
                 stream_movie_data = True
                 stream_pulse_height_data = True
@@ -126,5 +128,5 @@ if __name__ == "__main__":
         ]
     )
     assert all_pass, "at least one client-side test failed"
-    # run(host="10.0.0.60")
-    run(host="localhost")
+    run(host="10.0.0.60")
+    # run(host="localhost")
