@@ -16,7 +16,7 @@ service DaqData {
   // [reader: acquires server_state lock in shared state]
   rpc StreamImages(StreamImagesRequest) returns (stream StreamImagesResponse) {}
 
-  // Stream  data [movie images | pulse-height images] from a module.
+  // Stream hashpipe status buffer information from hashpipe. TODO: implement this
   // [reader: acquires server_state lock in shared state]
   rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
 
@@ -39,7 +39,7 @@ message PanoImage {
   // array of 1-byte or 2-byte data.
   repeated int32 image_array = 3 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
   // image shape. Expect this field to be a list of two ints like [16, 16] or [32, 32]
-  repeated int32 image_shape = 4;
+  repeated int32 shape = 4;
   int32 bytes_per_pixel = 5;
 }
 

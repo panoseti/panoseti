@@ -65,7 +65,7 @@ class DaqDataServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def StreamHashpipeStatus(self, request, context):
-        """Stream  data [movie images | pulse-height images] from a module.
+        """Stream hashpipe status buffer information from hashpipe. TODO: implement this
         [reader: acquires server_state lock in shared state]
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)

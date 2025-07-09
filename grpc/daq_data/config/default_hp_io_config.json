@@ -1,5 +1,6 @@
 {
   "valid_config": true,
   "timeout": 1,
+  "update_interval_seconds": 0.5,
   "comments": ""
 }

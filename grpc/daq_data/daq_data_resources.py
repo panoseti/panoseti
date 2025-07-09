@@ -5,6 +5,9 @@ import sys, signal
 import logging
 from typing import List, Callable, Tuple, Any, Dict
 import numpy as np
+from pandas import to_datetime, Timestamp
+import datetime
+import decimal
 
 # rich formatting
 from rich import print
@@ -29,6 +32,10 @@ from google.protobuf import timestamp_pb2
 import daq_data_pb2
 import daq_data_pb2_grpc
 from daq_data_pb2 import TestCase, PanoImage, StreamImagesResponse, StreamImagesRequest
+
+# panoseti utils
+sys.path.append('../../util')
+import pff
 
 
 def make_rich_logger(name, level=logging.INFO):
@@ -66,6 +73,20 @@ def reflect_services(channel: grpc.Channel) -> None:
     for method in service_desc.methods:
         print(f"\tfound: {format_rpc_service(method)}")
 
+def parse_pano_timestamps(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
+    """Parse PanoImage header to get nanosecond-precision timestamps."""
+    h = MessageToDict(pano_image.header)
+    td = {}
+    # Add nanosecond-precision Pandas Timestamp from panoseti packet timing
+    if pano_image.shape == [16, 16]:
+        td['wr_unix_timestamp'] = pff.wr_to_unix_decimal(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+    elif pano_image.shape == [32, 32]:
+        h_q0 = h['quabo_0']
+        td['wr_unix_timestamp'] = pff.wr_to_unix_decimal(h_q0['pkt_tai'], h_q0['pkt_nsec'], h_q0['tv_sec'])
+    nanoseconds_since_epoch = int(td['wr_unix_timestamp'] * decimal.Decimal('1e9'))
+    td['pandas_unix_timestamp'] = to_datetime(nanoseconds_since_epoch, unit='ns')
+    return td
+
 def unpack_pano_image(
         pano_image: daq_data_pb2.PanoImage
 ) -> Tuple[str, Dict[str, Any], np.ndarray] | Tuple[None, None, None]:
@@ -73,8 +94,12 @@ def unpack_pano_image(
     if pano_image is None:
         return None, None, None
     pano_type = PanoImage.Type.Name(pano_image.type)
-    header = MessageToDict(pano_image.header)
-    image_array = np.array(pano_image.image_array).reshape(pano_image.image_shape)
+    # Parse header
+    h = MessageToDict(pano_image.header)
+    pano_timestamps = parse_pano_timestamps(pano_image)
+    h.update(pano_timestamps)
+
+    image_array = np.array(pano_image.image_array).reshape(pano_image.shape)
     bytes_per_pixel = pano_image.bytes_per_pixel
     if bytes_per_pixel == 1:
         image_array = image_array.astype(np.uint8)
@@ -82,14 +107,14 @@ def unpack_pano_image(
         image_array = image_array.astype(np.uint16)
     else:
         raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
-    return pano_type, header, image_array
+    return pano_type, h, image_array
 
 def format_stream_images_response(stream_images_response: StreamImagesResponse) -> str:
     pano_type, header, image_array = unpack_pano_image(stream_images_response.pano_image)
     name = stream_images_response.name
     message = stream_images_response.message
-    timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
-    return f"StreamImagesResponse: {name=}, {message=}, {timestamp=}, {header=}, {pano_type=}"
+    server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
+    return f"StreamImagesResponse: {name=}, {message=}, {server_timestamp=}, {header=}, {pano_type=}"
 
 # Gracefully cancel active RPCs before exiting
 # active_calls = []

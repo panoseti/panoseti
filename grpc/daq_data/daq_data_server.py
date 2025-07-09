@@ -65,7 +65,12 @@ REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_
 MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF
 PH_SRC      = REAL_RUN_DIR / PH_PFF
 
-def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
+def hp_sim_thread_fn(
+    dp_cfg: Dict[str, Any],
+    update_interval: float,
+    stop_io: Event,
+    logger: logging.Logger
+) -> None:
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
     # prevent multiple server instances from running this thread
@@ -106,7 +111,7 @@ def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
                     movie_i += 1
 
                     # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
-                    time.sleep(0.1)
+                    time.sleep(update_interval)
     finally:
         os.unlink(DAQ_ACTIVE_FILE)
         os.unlink(MOVIE_DST)
@@ -114,7 +119,15 @@ def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
         logger.info("hp_sim thread exited")
 
 
-def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Event, logger: logging.Logger, **kwargs):
+def hp_io_thread_fn(
+        dp_cfg: Dict[str, Any],
+        update_interval: float,
+        reader_states: List[Dict],
+        stop_io: Event,
+        valid: Event,
+        logger: logging.Logger,
+        **kwargs
+) -> None:
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues. """
     logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
@@ -209,13 +222,17 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     f.seek(last_frame * d['frame_size'], os.SEEK_SET)
 
                     # parse pff header and image
-                    j = pff.read_json(f)
-                    header = json.loads(j)
-                    img = pff.read_image(f, d['image_shape'][0], d['bytes_per_pixel'])
-                    # the check below is necessary to handle the rare case where a pff file has
-                    # reached the max size specified in data_config.json resulting in no data for the last frame.
-                    if header and img:
-                        return header, img
+                    try:
+                        header_str = pff.read_json(f)
+                        img = pff.read_image(f, d['image_shape'][0], d['bytes_per_pixel'])
+                        # the check below is necessary to handle the rare case where a pff file has
+                        # reached the max size specified in data_config.json resulting in no data for the last frame.
+                        if header_str and img:
+                            header = json.loads(header_str)
+                            return header, img
+                    except Exception as e:
+                        logger.error(f"Failed to read pff header and image from file {filepath} with error: {e}")
+                        return None, None
                 return None, None
             finally:
                 # always update dp_cfg upon exit.
@@ -238,7 +255,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                         type=d['pano_image_type'],
                         header= ParseDict(header, Struct()),
                         image_array=img,
-                        image_shape=d['image_shape'],
+                        shape=d['image_shape'],
                         bytes_per_pixel=d['bytes_per_pixel']
                     )
                     # create object to pass to each waiting writer
@@ -260,7 +277,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     early_exit_counter -= 1
                     if early_exit_counter == 0:
                         raise TimeoutError("test hp_io thread unexpected termination")
-                time.sleep(1)
+                time.sleep(update_interval)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! {err}")
         raise err
@@ -586,6 +603,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             target=hp_io_thread_fn,
             args=(
                 dp_cfg.copy(),
+                max(self._hp_io_cfg['update_interval_seconds'], 0.25),
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
@@ -601,6 +619,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             target=hp_sim_thread_fn,
             args=(
                 dp_cfg.copy(),
+                max(self._hp_io_cfg['update_interval_seconds'] / 2, 0.1),
                 self._stop_io,
                 self.logger
             )

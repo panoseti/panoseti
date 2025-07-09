@@ -33,11 +33,20 @@ def show_stream_images(
     try:
         # Create plot
         fig, axs = plt.subplots(1, 2)
+        for i, ax in enumerate(axs):
+            ax.imshow(np.zeros((32, 32)))
+            if i == 0 and stream_pulse_height_data is False:
+                ax.set_title(f'{stream_pulse_height_data=}')
+            elif i == 1 and stream_movie_data is False:
+                ax.set_title(f'{stream_movie_data=}')
+            ax.axis('off')
         plt.ion()  # Turn on interactive mode
         plt.show()
+
         # Randomness for demo
         cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'flare_r'])
-        ph_baseline = np.random.randint(100, 500)
+        ph_baseline = np.random.randint(700, 900)
+        max_ph = 7_000
 
         # Process responses
         for stream_images_response in stream_images_responses:
@@ -47,21 +56,25 @@ def show_stream_images(
 
             # Get pano images from response
             pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
+            plt_title = f"demo obs data from {header['pandas_unix_timestamp'].date()}"
+            fig.suptitle(plt_title)
+            ax_title = f"{pano_type}\nt={header['pandas_unix_timestamp'].time()}"
             if pano_type == 'PULSE_HEIGHT':
                 img += ph_baseline
+                img[img > max_ph] = max_ph
                 high = np.quantile(img, 1.0)
-                low = np.quantile(img, 0.05)
+                # low = np.quantile(, 0.05)
                 axs[0].cla()
-                axs[0].imshow(img, vmin=low, vmax=high, cmap=cmap)
-                axs[0].set_title(f"{pano_type}\npkt_num={header['pkt_num']}")
+                axs[0].imshow(img, vmin=ph_baseline * 3/4, vmax=high, cmap=cmap)
+                axs[0].set_title(ax_title)
             elif pano_type == 'MOVIE':
                 high = np.quantile(img, 0.95)
                 low = np.quantile(img, 0.05)
                 axs[1].cla()
                 axs[1].imshow(img, vmin=low, vmax=high, cmap=cmap)
-                axs[1].set_title(f"{pano_type}\npkt_num={header['quabo_0']['pkt_num']}")
+                axs[1].set_title(ax_title)
             plt.draw()
-            plt.pause(0.1)
+            plt.pause(0.2)
     finally:
         # Gracefully cancel RPC before exiting
         logger.info(f"'^C' received, closing connection to the DaqData server")
@@ -90,7 +103,7 @@ def run(host, port=50051):
                 stub,
                 stream_movie_data,
                 stream_pulse_height_data,
-                update_interval_seconds=1,
+                update_interval_seconds=0.5,
                 wait_for_ready=True
             )
     except KeyboardInterrupt:

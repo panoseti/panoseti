@@ -26,7 +26,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x64\x61q_data.proto\x12\x07\x64\x61qdata\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd6\x01\n\tPanoImage\x12%\n\x04type\x18\x01 \x01(\x0e\x32\x17.daqdata.PanoImage.Type\x12\'\n\x06header\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x17\n\x0bimage_array\x18\x03 \x03(\x05\x42\x02\x10\x01\x12\x13\n\x0bimage_shape\x18\x04 \x03(\x05\x12\x17\n\x0f\x62ytes_per_pixel\x18\x05 \x01(\x05\"2\n\x04Type\x12\r\n\tUNDEFINED\x10\x00\x12\x10\n\x0cPULSE_HEIGHT\x10\x01\x12\t\n\x05MOVIE\x10\x02\"\x8c\x01\n\x14StreamImagesResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07message\x18\x03 \x01(\t\x12&\n\npano_image\x18\x04 \x01(\x0b\x32\x12.daqdata.PanoImage\"s\n\x13StreamImagesRequest\x12\x19\n\x11stream_movie_data\x18\x01 \x01(\x08\x12 \n\x18stream_pulse_height_data\x18\x02 \x01(\x08\x12\x1f\n\x17update_interval_seconds\x18\x03 \x01(\x01\"\x88\x01\n\x08TestCase\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\x06result\x18\x02 \x01(\x0e\x32\x1c.daqdata.TestCase.TestResult\x12\x0f\n\x07message\x18\x03 \x01(\t\"/\n\nTestResult\x12\r\n\tUNDEFINED\x10\x00\x12\x08\n\x04PASS\x10\x01\x12\x08\n\x04\x46\x41IL\x10\x02\"\x1d\n\x1bStreamHashpipeStatusRequest\"\x1e\n\x1cStreamHashpipeStatusResponse\"\x19\n\x17SetConfigurationRequest\"\x1a\n\x18SetConfigurationResponse2\x9e\x02\n\x07\x44\x61qData\x12O\n\x0cStreamImages\x12\x1c.daqdata.StreamImagesRequest\x1a\x1d.daqdata.StreamImagesResponse\"\x00\x30\x01\x12g\n\x14StreamHashpipeStatus\x12$.daqdata.StreamHashpipeStatusRequest\x1a%.daqdata.StreamHashpipeStatusResponse\"\x00\x30\x01\x12Y\n\x10SetConfiguration\x12 .daqdata.SetConfigurationRequest\x1a!.daqdata.SetConfigurationResponse\"\x00\x42)\n\x10io.grpc.daq_dataB\x0c\x44\x61qDataProtoP\x01\xa2\x02\x04\x44\x41QDb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0e\x64\x61q_data.proto\x12\x07\x64\x61qdata\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd0\x01\n\tPanoImage\x12%\n\x04type\x18\x01 \x01(\x0e\x32\x17.daqdata.PanoImage.Type\x12\'\n\x06header\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x17\n\x0bimage_array\x18\x03 \x03(\x05\x42\x02\x10\x01\x12\r\n\x05shape\x18\x04 \x03(\x05\x12\x17\n\x0f\x62ytes_per_pixel\x18\x05 \x01(\x05\"2\n\x04Type\x12\r\n\tUNDEFINED\x10\x00\x12\x10\n\x0cPULSE_HEIGHT\x10\x01\x12\t\n\x05MOVIE\x10\x02\"\x8c\x01\n\x14StreamImagesResponse\x12\x0c\n\x04name\x18\x01 \x01(\t\x12-\n\ttimestamp\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0f\n\x07message\x18\x03 \x01(\t\x12&\n\npano_image\x18\x04 \x01(\x0b\x32\x12.daqdata.PanoImage\"s\n\x13StreamImagesRequest\x12\x19\n\x11stream_movie_data\x18\x01 \x01(\x08\x12 \n\x18stream_pulse_height_data\x18\x02 \x01(\x08\x12\x1f\n\x17update_interval_seconds\x18\x03 \x01(\x01\"\x88\x01\n\x08TestCase\x12\x0c\n\x04name\x18\x01 \x01(\t\x12,\n\x06result\x18\x02 \x01(\x0e\x32\x1c.daqdata.TestCase.TestResult\x12\x0f\n\x07message\x18\x03 \x01(\t\"/\n\nTestResult\x12\r\n\tUNDEFINED\x10\x00\x12\x08\n\x04PASS\x10\x01\x12\x08\n\x04\x46\x41IL\x10\x02\"\x1d\n\x1bStreamHashpipeStatusRequest\"\x1e\n\x1cStreamHashpipeStatusResponse\"\x19\n\x17SetConfigurationRequest\"\x1a\n\x18SetConfigurationResponse2\x9e\x02\n\x07\x44\x61qData\x12O\n\x0cStreamImages\x12\x1c.daqdata.StreamImagesRequest\x1a\x1d.daqdata.StreamImagesResponse\"\x00\x30\x01\x12g\n\x14StreamHashpipeStatus\x12$.daqdata.StreamHashpipeStatusRequest\x1a%.daqdata.StreamHashpipeStatusResponse\"\x00\x30\x01\x12Y\n\x10SetConfiguration\x12 .daqdata.SetConfigurationRequest\x1a!.daqdata.SetConfigurationResponse\"\x00\x42)\n\x10io.grpc.daq_dataB\x0c\x44\x61qDataProtoP\x01\xa2\x02\x04\x44\x41QDb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -37,25 +37,25 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PANOIMAGE'].fields_by_name['image_array']._loaded_options = None
   _globals['_PANOIMAGE'].fields_by_name['image_array']._serialized_options = b'\020\001'
   _globals['_PANOIMAGE']._serialized_start=91
-  _globals['_PANOIMAGE']._serialized_end=305
-  _globals['_PANOIMAGE_TYPE']._serialized_start=255
-  _globals['_PANOIMAGE_TYPE']._serialized_end=305
-  _globals['_STREAMIMAGESRESPONSE']._serialized_start=308
-  _globals['_STREAMIMAGESRESPONSE']._serialized_end=448
-  _globals['_STREAMIMAGESREQUEST']._serialized_start=450
-  _globals['_STREAMIMAGESREQUEST']._serialized_end=565
-  _globals['_TESTCASE']._serialized_start=568
-  _globals['_TESTCASE']._serialized_end=704
-  _globals['_TESTCASE_TESTRESULT']._serialized_start=657
-  _globals['_TESTCASE_TESTRESULT']._serialized_end=704
-  _globals['_STREAMHASHPIPESTATUSREQUEST']._serialized_start=706
-  _globals['_STREAMHASHPIPESTATUSREQUEST']._serialized_end=735
-  _globals['_STREAMHASHPIPESTATUSRESPONSE']._serialized_start=737
-  _globals['_STREAMHASHPIPESTATUSRESPONSE']._serialized_end=767
-  _globals['_SETCONFIGURATIONREQUEST']._serialized_start=769
-  _globals['_SETCONFIGURATIONREQUEST']._serialized_end=794
-  _globals['_SETCONFIGURATIONRESPONSE']._serialized_start=796
-  _globals['_SETCONFIGURATIONRESPONSE']._serialized_end=822
-  _globals['_DAQDATA']._serialized_start=825
-  _globals['_DAQDATA']._serialized_end=1111
+  _globals['_PANOIMAGE']._serialized_end=299
+  _globals['_PANOIMAGE_TYPE']._serialized_start=249
+  _globals['_PANOIMAGE_TYPE']._serialized_end=299
+  _globals['_STREAMIMAGESRESPONSE']._serialized_start=302
+  _globals['_STREAMIMAGESRESPONSE']._serialized_end=442
+  _globals['_STREAMIMAGESREQUEST']._serialized_start=444
+  _globals['_STREAMIMAGESREQUEST']._serialized_end=559
+  _globals['_TESTCASE']._serialized_start=562
+  _globals['_TESTCASE']._serialized_end=698
+  _globals['_TESTCASE_TESTRESULT']._serialized_start=651
+  _globals['_TESTCASE_TESTRESULT']._serialized_end=698
+  _globals['_STREAMHASHPIPESTATUSREQUEST']._serialized_start=700
+  _globals['_STREAMHASHPIPESTATUSREQUEST']._serialized_end=729
+  _globals['_STREAMHASHPIPESTATUSRESPONSE']._serialized_start=731
+  _globals['_STREAMHASHPIPESTATUSRESPONSE']._serialized_end=761
+  _globals['_SETCONFIGURATIONREQUEST']._serialized_start=763
+  _globals['_SETCONFIGURATIONREQUEST']._serialized_end=788
+  _globals['_SETCONFIGURATIONRESPONSE']._serialized_start=790
+  _globals['_SETCONFIGURATIONRESPONSE']._serialized_end=816
+  _globals['_DAQDATA']._serialized_start=819
+  _globals['_DAQDATA']._serialized_end=1105
 # @@protoc_insertion_point(module_scope)
