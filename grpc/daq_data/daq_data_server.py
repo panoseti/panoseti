@@ -354,14 +354,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # Start the hp_io thread if server_cfg points to a valid hp_io_cfg
         if self._server_cfg["allow_init_from_default"] and self._hp_io_cfg["valid_config"]:
             self.logger.info(f"Creating the initial hp_io thread from config: "
-                             f"{self._server_cfg["allow_init_from_default"]=} and "
-                             f"{self._hp_io_cfg["valid_config"]=}.")
+                             f"{self._server_cfg['allow_init_from_default']=} and "
+                             f"{self._hp_io_cfg['valid_config']=}.")
             self._server_cfg['hp_io_init'] = True
             self._start_hp_io_thread(self._hp_io_cfg)
         else:
             self.logger.warning(f"An InitHpIo call is required to start the hp_io thread: "
-                                f"{self._server_cfg["allow_init_from_default"]=} and "
-                                f"{self._hp_io_cfg["valid_config"]=}.")
+                                f"{self._server_cfg['allow_init_from_default']=} and "
+                                f"{self._hp_io_cfg['valid_config']=}.")
 
             self._server_cfg['hp_io_init'] = False
 
