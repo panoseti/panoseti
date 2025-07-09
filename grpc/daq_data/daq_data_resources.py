@@ -113,8 +113,10 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
     pano_type, header, image_array = unpack_pano_image(stream_images_response.pano_image)
     name = stream_images_response.name
     message = stream_images_response.message
+    file = stream_images_response.pano_image.file
+    frame_number = stream_images_response.pano_image.frame_number
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
-    return f"StreamImagesResponse: {name=}, {message=}, {server_timestamp=}, {header=}, {pano_type=}"
+    return f"{name=}: {file}:f#{frame_number}, {message=}, {server_timestamp=}, {header=}, {pano_type=}"
 
 # Gracefully cancel active RPCs before exiting
 # active_calls = []

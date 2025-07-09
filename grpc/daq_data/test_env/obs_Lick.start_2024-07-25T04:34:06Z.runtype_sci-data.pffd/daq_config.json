@@ -1,0 +1,21 @@
+{
+  "comment": "gateway as head node, both nodes as DAQ nodes",
+  "head_node_data_dir": "/mnt/data11/data",
+  "head_node_ip_addr": "headnode",
+  "daq_nodes": [
+    {
+      "username": "panoseti",
+      "data_dir": "/mnt/data10",
+      "ip_addr": "daq1",
+      "module_ids": "0-127",
+      "bindhost": "enp133s0d1"
+    },
+    {
+      "username": "panoseti",
+      "data_dir": "/mnt/data10",
+      "ip_addr": "daq2",
+      "module_ids": "128-255",
+      "bindhost": "enp133s0d1"
+    }
+  ]
+}

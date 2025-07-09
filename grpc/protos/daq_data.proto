@@ -37,10 +37,12 @@ message PanoImage {
   // image metadata struct
   google.protobuf.Struct header = 2;
   // array of 1-byte or 2-byte data.
-  repeated int32 image_array = 3 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
+  repeated uint32 image_array = 3 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
   // image shape. Expect this field to be a list of two ints like [16, 16] or [32, 32]
-  repeated int32 shape = 4;
+  repeated uint32 shape = 4 [packed=true];
   int32 bytes_per_pixel = 5;
+  string file = 6;
+  uint32 frame_number = 7;
 }
 
 // StreamImagesResponse contains one PanoImage which may be movie or pulse-height

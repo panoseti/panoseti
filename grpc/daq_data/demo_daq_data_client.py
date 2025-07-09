@@ -94,8 +94,8 @@ def run(host, port=50051):
             # TODO: add InitHpIo
 
             print("-------------- StreamImages --------------")
-            stream_movie_data = np.random.uniform() > 0.5
-            stream_pulse_height_data = np.random.uniform() > 0.5
+            stream_movie_data = np.random.uniform() > 0.75
+            stream_pulse_height_data = np.random.uniform() > 0.75
             if not stream_movie_data and not stream_pulse_height_data:
                 stream_movie_data = True
                 stream_pulse_height_data = True

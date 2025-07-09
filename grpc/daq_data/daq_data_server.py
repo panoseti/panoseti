@@ -49,8 +49,8 @@ import util
 
 
 """ hp_io test macros """
-PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
-IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff"
+PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff"
+IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff"
 MOVIE_TYPE = 'img16'
 PH_TYPE = 'ph256'
 
@@ -256,12 +256,12 @@ def hp_io_thread_fn(
                         header= ParseDict(header, Struct()),
                         image_array=img,
                         shape=d['image_shape'],
-                        bytes_per_pixel=d['bytes_per_pixel']
+                        bytes_per_pixel=d['bytes_per_pixel'],
+                        file=os.path.basename(d['filepath']),
+                        frame_number=d['last_frame'],
                     )
                     # create object to pass to each waiting writer
                     parsed_data = {
-                        "pff_file": os.path.basename(d['filepath']),
-                        "frame_number": d['last_frame'],
                         "pano_image": pano_image,
                     }
 
@@ -722,14 +722,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     send_timestamp.GetCurrentTime()
 
                     # TODO: get these values from data_config.json
-                    pff_file = parsed_data['pff_file']
-                    frame_number = parsed_data['frame_number']
                     pano_image = parsed_data['pano_image']
+                    pano_type = PanoImage.Type.Name(pano_image.type)
 
                     stream_images_response = StreamImagesResponse(
-                        name="StreamImageResponse [Data]",
+                        name=f"StreamImageResponse [Data]",
                         timestamp=send_timestamp,
-                        message=f"StreamImage: {pff_file=}, frame={frame_number}",
+                        message=f"",
                         pano_image=pano_image
                     )
 
