@@ -17,6 +17,7 @@ import redis
 import re
 import datetime
 import numpy as np
+import seaborn as sns
 
 # rich formatting
 from rich import print
@@ -112,9 +113,12 @@ def stream_images(stub, stream_movie_data: bool, stream_pulse_height_data: bool,
     active_calls.append(stream_images_responses)  # gracefully handle ^C cancellation
 
     import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(1, 2)
     plt.ion()  # Turn on interactive mode
-    fig, ax = plt.subplots()
 
+
+    cmap = np.random.choice(['magma', 'viridis', 'rocket'])
+    qhigh = np.random.uniform(0.95, 1.0)
     for stream_images_response in stream_images_responses:
         # display a log message
         formatted_stream_images_response = format_stream_images_response(stream_images_response)
@@ -123,14 +127,24 @@ def stream_images(stub, stream_movie_data: bool, stream_pulse_height_data: bool,
         # simple image display
         pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
 
-        ax.imshow(img, vmin=0, vmax=500)
-        plt.title(f"{pano_type}")
+        img.astype(np.uint16)
+        if pano_type == "PULSE_HEIGHT":
+            img += 200
+            high = np.quantile(img, qhigh)
+            low = np.quantile(img, 0.05)
+            axs[0].cla()
+            axs[0].imshow(img, vmin=low, vmax=high, cmap=cmap)
+            axs[0].set_title(f"{pano_type}\npkt_num={header['pkt_num']}")
+        elif pano_type == "MOVIE":
+            high = np.quantile(img, qhigh)
+            low = np.quantile(img, 0.05)
+            axs[1].cla()
+            axs[1].imshow(img, vmin=low, vmax=high, cmap=cmap)
+            axs[1].set_title(f"{pano_type}\npkt_num={header['quabo_0']['pkt_num']}")
         plt.draw()
-        plt.pause(0.5)  # Pause to simulate "live" streaming
-        ax.clear()
-
-        # plt.ioff()
+        plt.pause(0.1)
         plt.show()
+        # fig.clear()
 
 
 def run(host, port=50051):
@@ -152,7 +166,13 @@ def run(host, port=50051):
             # curr_f9t_cfg = client_hashpipe_io_cfg
 
             print("-------------- StreamImages --------------")
-            stream_images(stub, True, True, 1,  5)
+            stream_choice = np.random.choice([0, 1, 2])
+            if stream_choice == 0:
+                stream_images(stub, True, True, 1,  5)
+            elif stream_choice == 1:
+                stream_images(stub, True, False, 1,  5)
+            elif stream_choice == 2:
+                stream_images(stub, False, True, 1,  5)
 
     except KeyboardInterrupt:
         logger.info(f"'^C' received, closing connection to the DaqData server at {repr(connection_target)}")

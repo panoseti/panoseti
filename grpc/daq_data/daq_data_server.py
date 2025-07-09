@@ -67,6 +67,11 @@ PH_SRC      = REAL_RUN_DIR / PH_PFF
 def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
+    # prevent multiple server instances from running this thread
+    if os.path.exists(DAQ_ACTIVE_FILE):
+        logger.critical("hp_sim thread exited: another server instance is already running!")
+        sys.exit(1)
+
     with open(DAQ_ACTIVE_FILE, "w") as daq_active:
         daq_active.write("1")
     try:
@@ -103,6 +108,8 @@ def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
                     time.sleep(0.1)
     finally:
         os.unlink(DAQ_ACTIVE_FILE)
+        os.unlink(MOVIE_DST)
+        os.unlink(PH_DST)
         logger.info("hp_sim thread exited")
 
 
@@ -142,12 +149,14 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
             for dp in dp_cfg:
                 # Get the current number of pff files with type [dp]
                 dp_cfg[dp]['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
-                files = glob(dp_cfg[dp]['glob_pat'])
-                nfiles = len(files)
-                if nfiles == 0:
-                    raise FileNotFoundError(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
-                else:
-                    file = sorted(files)[-1]
+                # wait until hashpipe starts writing files
+                nfiles = 0
+                while not stop_io.is_set() and nfiles == 0:
+                    files = glob(dp_cfg[dp]['glob_pat'])
+                    nfiles = len(files)
+                    logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
+                    time.sleep(0.5)
+                file = sorted(files)[-1]
 
                 filepath = file
                 while not stop_io.is_set():
@@ -248,7 +257,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     early_exit_counter -= 1
                     if early_exit_counter == 0:
                         raise TimeoutError("test hp_io thread unexpected termination")
-                time.sleep(1)
+            time.sleep(1)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! {err}")
         raise err

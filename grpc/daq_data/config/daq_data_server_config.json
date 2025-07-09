@@ -1,5 +1,5 @@
 {
-    "max_workers": 5,
+    "max_workers": 10,
     "max_read_queue_size": 200,
     "min_client_update_interval_seconds": 0.5,
     "max_client_update_interval_seconds": 60,
