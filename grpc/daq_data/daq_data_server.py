@@ -192,7 +192,7 @@ def hp_io_thread_fn(
                 dp_cfg[dp]['filepath'] = filepath
                 dp_cfg[dp]['last_frame'] = -1
 
-        def dp_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] | Tuple[None, None]:
+        def dp_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
             """
             Check if there is new pff data of type [dp].
             If new data is present:

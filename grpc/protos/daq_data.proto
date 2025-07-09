@@ -7,8 +7,8 @@ option objc_class_prefix = "DAQD";
 
 package daqdata;
 
-import "google/protobuf/struct.proto"; // standard type for JSON data structures
-import "google/protobuf/timestamp.proto"; // standard type for JSON data structures
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
 
 // The DaqData service definition.
 service DaqData {

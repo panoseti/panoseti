@@ -110,11 +110,12 @@ def unpack_pano_image(
     return pano_type, h, image_array
 
 def format_stream_images_response(stream_images_response: StreamImagesResponse) -> str:
-    pano_type, header, image_array = unpack_pano_image(stream_images_response.pano_image)
+    pano_image = stream_images_response.pano_image
+    pano_type, header, image_array = unpack_pano_image(pano_image)
     name = stream_images_response.name
     message = stream_images_response.message
-    file = stream_images_response.file
-    frame_number = stream_images_response.frame_number
+    file = pano_image.file
+    frame_number = pano_image.frame_number
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
     return f"{name=}: {file}:f#{frame_number}, {message=}, {server_timestamp=}, {header=}, {pano_type=}"
 
