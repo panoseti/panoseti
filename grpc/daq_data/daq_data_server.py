@@ -8,18 +8,18 @@ Requires following to function correctly:
     2. All Python packages specified in requirements.txt.
     3. A connection to a panoseti module.
 """
-import logging
-import queue
-import sys
 from concurrent import futures
-import threading
 from threading import Event, Thread
 from queue import Queue
+from glob import glob
+from contextlib import contextmanager
+import logging
+import queue
+import json
+import sys
+import threading
 import time
 import urllib.parse
-from glob import glob
-
-import numpy as np
 
 ## --- gRPC imports ---
 import grpc
@@ -38,7 +38,7 @@ import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, TestCase, StreamImagesResponse, StreamImagesRequest
 
 ## --- daq_data utils ---
-from daq_data_resources import *
+from daq_data_resources import make_rich_logger
 from daq_data_testing import *
 
 ## --- panoseti utils ---
@@ -46,6 +46,7 @@ sys.path.append("../../util")
 import pff, config_file
 sys.path.append("../../control")
 import util
+
 
 """ hp_io test macros """
 PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
@@ -70,7 +71,7 @@ def hp_sim_thread_fn(dp_cfg, stop_io: Event, logger: logging.Logger):
     # prevent multiple server instances from running this thread
     if os.path.exists(DAQ_ACTIVE_FILE):
         logger.critical("hp_sim thread exited: another server instance is already running!")
-        sys.exit(1)
+        sys.exit()
 
     with open(DAQ_ACTIVE_FILE, "w") as daq_active:
         daq_active.write("1")
@@ -158,6 +159,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     time.sleep(0.5)
                 file = sorted(files)[-1]
 
+                # wait until the filesize is large enough to read one image of type [dp]
                 filepath = file
                 while not stop_io.is_set():
                     if os.path.getsize(filepath) >= dp_cfg[dp]['bytes_per_image']:
@@ -180,9 +182,10 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
             """
             Check if there is new pff data of type [dp].
             If new data is present:
-                1. update dp_cfg[dp] accordingly.
+                1. Update dp_cfg[dp] accordingly.
                 2. return a tuple of (pff header, pff image).
             Otherwise, return (None, None)
+            Note: this function mutates dp_cfg.
             """
             f = d['f']
             nfiles = d['nfiles']
@@ -230,7 +233,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                 d = dp_cfg[dp]
                 header, img = dp_main(d)
                 if header and img:
-                    # broadcast frame to any waiting reader clients
+                    # create PanoImage message from the latest image
                     pano_image = PanoImage(
                         type=d['pano_image_type'],
                         header= ParseDict(header, Struct()),
@@ -238,7 +241,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                         image_shape=d['image_shape'],
                         bytes_per_pixel=d['bytes_per_pixel']
                     )
-
+                    # create object to pass to each waiting writer
                     parsed_data = {
                         "pff_file": os.path.basename(d['filepath']),
                         "frame_number": d['last_frame'],
@@ -257,7 +260,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                     early_exit_counter -= 1
                     if early_exit_counter == 0:
                         raise TimeoutError("test hp_io thread unexpected termination")
-            time.sleep(1)
+                time.sleep(1)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! {err}")
         raise err
@@ -268,6 +271,7 @@ def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Ev
                 dp_cfg[dp]['f'].close()
         valid.clear()
         logger.info("hp_io thread exited")
+
 
 """gRPC server implementing DaqData RPCs"""
 class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
@@ -389,12 +393,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             with self._hp_io_lock:
                 # BEGIN check-in critical section
                 # All reader RPCs are long-lived server streaming operations.
-                # The server's synchronization logic will prevent writes to F9t state while any reader RPCs are active,
+                # The server's synchronization logic will prevent updates to _server_cfg while any reader RPCs are active,
                 # so we should cancel any writer RPCs immediately
 
                 if self._rw_lock_state['ar'] > 0:
                     active_clients = str([c["client_ip"] for c in self._active_clients.values()])
-                    emsg = (f"Cannot modify F9t state because there are {self._rw_lock_state['ar']} active "
+                    emsg = (f"Cannot modify server state because there are {self._rw_lock_state['ar']} active "
                             f"StreamImages clients. Stop these client processes then try again: {active_clients=}.")
                     context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
                 self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
@@ -539,15 +543,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         dp_cfg = {}
         for dp in dps:
             if dp == 'img16' or dp == 'ph1024':
-                # image_size = 32
                 image_shape = [32, 32]
                 bytes_per_pixel = 2
             elif dp == 'img8':
-                # image_size = 32
                 image_shape = [32, 32]
                 bytes_per_pixel = 1
             elif dp == 'ph256':
-                # image_size = 16
                 image_shape = [16, 16]
                 bytes_per_pixel = 2
             else:
@@ -567,12 +568,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "is_ph": is_ph,
                 "pano_image_type": pano_image_type,
             }
-
         return dp_cfg
 
     def _start_hp_io_thread(self, hp_io_cfg):
-        """Creates a new hp_io thread with the given f9t_cfg.
-        @return: True iff the hp_io thread was created and established a valid connection to the target F9t chip
+        """Creates a new hp_io thread with the given hp_io_cfg.
+        @return: True iff the hp_io thread was created and attached to a valid active observing run.
         """
         # Terminate any currently alive hp_io thread
         self._stop_hp_io_thread(5)  # no effect if a hp_io thread is not alive
@@ -662,7 +662,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # unpack the requested message pattern filters
         self.logger.info(f"new StreamImages rpc from {urllib.parse.unquote(context.peer())}")
         with self._rw_lock_reader(context) as reader_state:  # rid = allocated reader id for indexing into shared reader resources
-            # BEGIN critical section for F9t [read] access
+            # BEGIN reader critical section
             # Clear old data from the read_queue
             rq = reader_state['queue']
             while not rq.empty():
@@ -694,7 +694,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 try:
                     # wait for next packet from the hp_io thread
                     # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
-                    parsed_data = rq.get(timeout=self._server_cfg["max_client_update_interval_seconds"])
+                    parsed_data = rq.get(timeout=request.update_interval_seconds)
                     if self._shutdown_event.is_set():
                         emsg = "server shutdown initiated"
                         context.abort(grpc.StatusCode.CANCELLED, emsg)
@@ -727,7 +727,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                         f"Check the server logs to debug this issue")
                 self.logger.critical(emsg)
                 context.abort(grpc.StatusCode.INTERNAL, emsg)
-            # END critical section for hp_io [read] access
+            # END reader critical section
 
 
 def serve(server_cfg):
@@ -762,6 +762,13 @@ def serve(server_cfg):
 
 if __name__ == "__main__":
     # Load server configuration
+    cfg_dir = Path('config')
+    default_hp_io_thread_config_file = 'default_hp_io_config.json'
+
+    # Configuration
+    with open(cfg_dir / default_hp_io_thread_config_file) as f:
+        default_hp_io_thread_config = json.load(f)
+
     server_cfg_file = "daq_data_server_config.json"
     with open(cfg_dir / server_cfg_file, "r") as f:
         server_cfg = json.load(f)

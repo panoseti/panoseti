@@ -1,45 +1,20 @@
 #!/usr/bin/env python3
-
-"""
-The Python implementation of a gRPC DaqUtils client.
-Requires the following to work:
-    1. All Python packages specified in requirements.txt.
-Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
-"""
 import logging
-import sys
-import signal
-import numpy as np
-
-# rich formatting
-from rich import print
-from rich.pretty import pprint, Pretty
-from rich.console import Console
-
-## gRPC imports
 import grpc
-
-# gRPC reflection service: allows clients to discover available RPCs
-from google.protobuf.descriptor_pool import DescriptorPool
-from grpc_reflection.v1alpha.proto_reflection_descriptor_database import (
-    ProtoReflectionDescriptorDatabase,
-)
-# Standard gRPC protobuf types
-from google.protobuf.struct_pb2 import Struct
-from google.protobuf.json_format import MessageToDict, ParseDict
-from google.protobuf import timestamp_pb2
-
-# protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
-## daq_data utils
-from daq_data_resources import format_stream_images_response, make_rich_logger, unpack_pano_image, reflect_services
+from daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response
+from daq_data_resources import make_rich_logger
 from daq_data_testing import run_all_tests, is_os_posix
 
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-def stream_images(
+
+def show_stream_images(
         stub: daq_data_pb2_grpc.DaqDataStub,
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
@@ -56,6 +31,14 @@ def stream_images(
     # Make the RPC call
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     try:
+        # Create plot
+        fig, axs = plt.subplots(1, 2)
+        plt.ion()  # Turn on interactive mode
+        plt.show()
+        # Randomness for demo
+        cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'flare_r'])
+        ph_baseline = np.random.randint(100, 500)
+
         # Process responses
         for stream_images_response in stream_images_responses:
             # optional: log response metadata
@@ -65,15 +48,20 @@ def stream_images(
             # Get pano images from response
             pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
             if pano_type == 'PULSE_HEIGHT':
-                #
-                # Your pulse-height visualizations here
-                #
-                ...
+                img += ph_baseline
+                high = np.quantile(img, 1.0)
+                low = np.quantile(img, 0.05)
+                axs[0].cla()
+                axs[0].imshow(img, vmin=low, vmax=high, cmap=cmap)
+                axs[0].set_title(f"{pano_type}\npkt_num={header['pkt_num']}")
             elif pano_type == 'MOVIE':
-                #
-                # Your movie-mode visualizations here
-                #
-                ...
+                high = np.quantile(img, 0.95)
+                low = np.quantile(img, 0.05)
+                axs[1].cla()
+                axs[1].imshow(img, vmin=low, vmax=high, cmap=cmap)
+                axs[1].set_title(f"{pano_type}\npkt_num={header['quabo_0']['pkt_num']}")
+            plt.draw()
+            plt.pause(0.1)
     finally:
         # Gracefully cancel RPC before exiting
         logger.info(f"'^C' received, closing connection to the DaqData server")
@@ -82,9 +70,6 @@ def stream_images(
 
 
 def run(host, port=50051):
-    # NOTE(gRPC Python Team): .close() is possible on a channel and should be
-    # used in circumstances in which the with statement does not fit the needs
-    # of the code.
     connection_target = f"{host}:{port}"
     try:
         with grpc.insecure_channel(connection_target) as channel:
@@ -96,10 +81,15 @@ def run(host, port=50051):
             # TODO: add InitHpIo
 
             print("-------------- StreamImages --------------")
-            stream_images(
+            stream_movie_data = np.random.uniform() > 0.5
+            stream_pulse_height_data = np.random.uniform() > 0.5
+            if not stream_movie_data and not stream_pulse_height_data:
+                stream_movie_data = True
+                stream_pulse_height_data = True
+            show_stream_images(
                 stub,
-                stream_movie_data=True,
-                stream_pulse_height_data=True,
+                stream_movie_data,
+                stream_pulse_height_data,
                 update_interval_seconds=1,
                 wait_for_ready=True
             )
@@ -123,6 +113,5 @@ if __name__ == "__main__":
         ]
     )
     assert all_pass, "at least one client-side test failed"
-    logger.info(f"all_pass={all_pass}")
     # run(host="10.0.0.60")
     run(host="localhost")

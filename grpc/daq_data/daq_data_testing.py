@@ -13,38 +13,39 @@ import os
 import datetime
 import redis
 from pathlib import Path
-from typing import List, Callable, Tuple, Any
+from typing import List, Callable, Tuple, Any, Dict
 
 from rich import print
 
-from daq_data_resources import *
-from daq_data_pb2 import TestCase, StreamImagesResponse, StreamImagesRequest
+from daq_data_resources import make_rich_logger
+from daq_data_pb2 import StreamImagesResponse, StreamImagesRequest
 
 """ Testing utils """
 
 def run_all_tests(
         test_fn_list: List[Callable[..., Tuple[bool, str]]],
         args_list: List[List[...]],
-) -> Tuple[bool, type(TestCase)]:
+) -> tuple[bool, list[Any]]:
     """
     Runs each test function in [test_functions].
     To ensure correct behavior new test functions have type Callable[..., Tuple[bool, str]] to ensure correct behavior.
     Returns enum init_status and a list of test_results.
     """
     assert len(test_fn_list) == len(args_list), "test_fn_list must have the same length as args_list"
-    def get_test_name(test_fn):
-        return f"%s.%s" % (test_fn.__module__, test_fn.__name__)
+    def get_test_name(test_fn) -> str:
+        return f"{test_fn.__module__}.{test_fn.__name__}"
 
     all_pass = True
     test_results = []
     for test_fn, args in zip(test_fn_list, args_list):
         test_result, message = test_fn(*args)
-        all_pass &= test_result
-        test_result = TestCase(
-            name=get_test_name(test_fn),
-            result=TestCase.TestResult.PASS if test_result else TestCase.TestResult.FAIL,
-            message=message
-        )
+        if not test_result:
+            all_pass &= False
+        test_result = {
+            "name": get_test_name(test_fn),
+            "result": test_result,
+            "message": message
+        }
         test_results.append(test_result)
     return all_pass, test_results
 
