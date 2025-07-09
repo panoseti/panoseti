@@ -73,6 +73,7 @@ def hp_sim_thread_fn(
 ) -> None:
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
+    os.makedirs(SIM_RUN_DIR, exist_ok=True)
     # prevent multiple server instances from running this thread
     if os.path.exists(DAQ_ACTIVE_FILE):
         logger.critical("hp_sim thread exited: another server instance is already running!")
