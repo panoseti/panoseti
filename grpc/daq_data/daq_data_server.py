@@ -45,22 +45,23 @@ from daq_data_testing import *
 sys.path.append("../../util")
 import pff, config_file
 
+SIM_DATA_DIR = Path("test_env")
+REAL_RUN_DIR = Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
 PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
 IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff"
-SIM_DIR = Path("test_env/sim_data")
-OBS_DATA_DIR = Path("test_env/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
+SIM_RUN_DIR = Path("sim_data")
 
-# TEST_DST = SIM_DIR / PH_PFF
-# TEST_SRC = OBS_DATA_DIR / PH_PFF
+# TEST_DST = SIM_RUN_DIR / PH_PFF
+# TEST_SRC = REAL_RUN_DIR / PH_PFF
 
-TEST_DST = SIM_DIR / IMG_PFF
-TEST_SRC = OBS_DATA_DIR / IMG_PFF
+TEST_DST = SIM_DATA_DIR / SIM_RUN_DIR / IMG_PFF
+TEST_SRC = SIM_DATA_DIR / REAL_RUN_DIR / IMG_PFF
 
 def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
-    # TEST_DST = OBS_DATA_DIR / PH_PFF
-    # TEST_SRC = OBS_DATA_DIR / PH_PFF
+    # TEST_DST = REAL_RUN_DIR / PH_PFF
+    # TEST_SRC = REAL_RUN_DIR / PH_PFF
     real_fname = os.path.basename(TEST_SRC)
     name_dict = pff.parse_name(real_fname)
     if not name_dict:
@@ -103,8 +104,9 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
     else:
         early_exit_counter = 30
     try:
+        # TODO start: get this info from config files
         # load test file
-        # TEST_DST = SIM_DIR / PH_PFF
+        # TEST_DST = SIM_RUN_DIR / PH_PFF
         real_fname = os.path.basename(TEST_DST)
         name_dict = pff.parse_name(real_fname)
         if not name_dict:
@@ -112,29 +114,32 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
         dp = name_dict['dp']
 
         if dp == 'img16' or dp == 'ph1024':
-            bytes_per_image = 2048
-            image_size = 32
+            # image_size = 32
+            image_shape = [32, 32]
             bytes_per_pixel = 2
             is_ph = False
         elif dp == 'img8':
-            bytes_per_image = 1024
-            image_size = 32
+            # image_size = 32
+            image_shape = [32, 32]
             bytes_per_pixel = 1
             is_ph = False
         elif dp == 'ph256':
-            bytes_per_image = 512
-            image_size = 16
+            # image_size = 16
+            image_shape = [16, 16]
             bytes_per_pixel = 2
             is_ph = True
         else:
             raise Exception("bad data product %s" % dp)
+        bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
+
+        # TODO end
 
         if is_ph:
-            parsed_type = PanoImage.Type.PULSE_HEIGHT
+            pano_image_type = PanoImage.Type.PULSE_HEIGHT
         else:
-            parsed_type = PanoImage.Type.MOVIE
+            pano_image_type = PanoImage.Type.MOVIE
 
-        files = glob('%s/*%s*.pff' % (SIM_DIR, dp))
+        files = glob('%s/*%s*.pff' % (SIM_RUN_DIR, dp))
         nfiles = len(files)
 
         if nfiles == 0:
@@ -158,7 +163,7 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
         last_frame = -1
         while not stop_io.is_set():
             # check if we have a new file
-            files = glob('%s/*%s*.pff' % (SIM_DIR, dp))
+            files = glob('%s/*%s*.pff' % (SIM_RUN_DIR, dp))
             if len(files) > nfiles:
                 nfiles = len(files)
                 f.close()
@@ -178,14 +183,21 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
                 if not j:
                     logger.info('reached EOF')
                     break
-                img = pff.read_image(f, image_size, bytes_per_pixel)
+                img = pff.read_image(f, image_shape[0], bytes_per_pixel)
+
+                header = json.loads(j)
+                pano_image = PanoImage(
+                    type=pano_image_type,
+                    header=ParseDict(header, Struct()),
+                    image_array=img,
+                    image_shape=image_shape,
+                    bytes_per_pixel=bytes_per_pixel
+                )
+
                 parsed_data = {
-                    "header": json.loads(j),
-                    "image_array": img,
-                    "type": parsed_type,
-                    "image_shape": [image_size, image_size],
-                    "bytes_per_pixel": bytes_per_pixel,
-                    "filepath": filepath,
+                    "pff_file": os.path.basename(filepath),
+                    "frame_number": last_frame,
+                    "pano_image": pano_image,
                 }
 
                 # broadcast image data to all waiting clients
@@ -227,7 +239,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_lock = threading.Lock()
         self._read_ok_condvar = threading.Condition(self._hp_io_lock)
         self._write_ok_condvar = threading.Condition(self._hp_io_lock)
-        self._active_clients = {}  # dict of tid : context.peer() for debugging
+        self._active_clients = {}  # dict of tid : {"client_ip":context.peer(), "thread": Thread} for debugging
 
         self._server_cfg = server_cfg
 
@@ -265,6 +277,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._reader_states.append(default_reader_state)
         self._stop_io = Event()  # Signals hp_io thread to exit
         self._hp_io_valid = Event()  # Set only if the hp_io thread is active and collecting data
+        self._shutdown_event = Event()  # Set only at shutdown
 
         # Start the hp_io thread if server_cfg points to a valid hp_io_cfg
         if self._server_cfg["allow_init_from_default"] and self._hp_io_cfg["valid_config"]:
@@ -281,21 +294,40 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._server_cfg['hp_io_init'] = False
 
     def shutdown(self):
+        shutdown_record = {}
         self._server_cfg['hp_io_init'] = False
-        self._stop_io.set()  # signal hp_io thread to exit gracefully
-        all_ok = True
-        all_ok &= self._stop_hp_io_thread(2)
-        # time.sleep(1)
+        # signal hp_io thread to exit gracefully
+        self._stop_io.set()
+        # signal any blocking readers to wake up and exit
+        self._shutdown_event.set()
+        with self._hp_io_lock:
+            self._read_ok_condvar.notify_all()
+            for rs in [rs for rs in self._reader_states if rs['is_allocated']]:
+                try:
+                    rs['queue'].put_nowait("shutdown")
+                except queue.Full:
+                    pass
+        # wait for the hp_io thread to exit
+        shutdown_record['stop_hp_io'] = self._stop_hp_io_thread(2)
+        # wait for active server threads to exit
+        for ac in self._active_clients.values():
+            ac['thread'].join()
+        active_clients = [ac["client_ip"] for ac in self._active_clients.values()]
+        if len(active_clients) > 0:
+            self.logger.warning(f"active clients at shutdown: {active_clients=}")
+        shutdown_record['stop_active_clients'] = len(active_clients) == 0
+
         # check if state was updated properly
-        # for thread_state, num_threads in self._rw_lock_state.items():
-        #     if num_threads != 0:
-        #         self.logger.critical(f"[rw lock] unexpected threads in state {thread_state} at termination!\n"
-        #                              f"{self._rw_lock_state=}")
-        #         all_ok &= False
-        if all_ok:
+        lock_status_ok = True
+        for thread_state, num_threads in self._rw_lock_state.items():
+            if num_threads != 0:
+                self.logger.critical(f"[rw lock] unexpected threads in state {thread_state} at termination!\n"
+                                     f"{self._rw_lock_state=}")
+        shutdown_record['lock_status_ok'] = lock_status_ok
+        if all(shutdown_record.values()):
             self.logger.info("Successfully released all resources")
         else:
-            self.logger.critical("Some server resources were not released")
+            self.logger.critical(f"Some server resources were not released: {shutdown_record=}")
 
 
     @contextmanager
@@ -308,34 +340,50 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # All reader RPCs are long-lived server streaming operations.
                 # The server's synchronization logic will prevent writes to F9t state while any reader RPCs are active,
                 # so we should cancel any writer RPCs immediately
+
                 if self._rw_lock_state['ar'] > 0:
-                    active_clients = str(list(self._active_clients.values()))
+                    active_clients = str([c["client_ip"] for c in self._active_clients.values()])
                     emsg = (f"Cannot modify F9t state because there are {self._rw_lock_state['ar']} active "
                             f"StreamImages clients. Stop these client processes then try again: {active_clients=}.")
                     context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-                # Wait until no active readers or active writers
                 self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
-                while context.is_active() and (self._rw_lock_state['aw'] + self._rw_lock_state['ar']) > 0:
+
+                # Wait until no active readers or active writers
+                while (not self._shutdown_event.is_set() and
+                       context.is_active() and
+                       (self._rw_lock_state['aw'] + self._rw_lock_state['ar']) > 0):
                     self._rw_lock_state['ww'] += 1
                     self._write_ok_condvar.wait(timeout=5)
                     self._rw_lock_state['ww'] -= 1
 
-                # check if environment is still valid
+                # check if the server is still active
+                if self._shutdown_event.is_set():
+                    emsg = "server shutdown initiated during writer lock acquisition [skipping to check-out]"
+                    self.logger.error(emsg)
+                    context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                # check if the client is still active
                 if not context.is_active():
                     emsg = "client cancelled rpc during writer lock acquisition (skipping to check-out)"
                     self.logger.warning(emsg)
                     context.abort(grpc.StatusCode.CANCELLED, emsg)
 
-                if context.is_active() and self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
+                # check if the hp_io thread is valid
+                if self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
                     emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
                             f" (skipping to check-out)")
                     self.logger.critical(emsg)
                     self._server_cfg['hp_io_init'] = False
                     context.abort(grpc.StatusCode.INTERNAL, emsg)
+
                 # activate the writer
                 self._rw_lock_state['aw'] += 1
                 active = True
-                self._active_clients[tid] = urllib.parse.unquote(context.peer())
+                self._active_clients[tid] = {
+                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "thread": threading.current_thread(),
+                    "type": "writer",
+                }
                 self.logger.debug(f"(writer) check-in (end):\t\t{self._rw_lock_state=}")
                 # END check-in critical section
             yield None
@@ -367,17 +415,34 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.debug(f"(reader) check-in (start):\t{self._rw_lock_state=}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # Wait until no active writers or waiting writers
-                while context.is_active() and (self._rw_lock_state['aw'] + self._rw_lock_state['ww']) > 0:
+                while (not self._shutdown_event.is_set() and
+                       context.is_active() and
+                       (self._rw_lock_state['aw'] + self._rw_lock_state['ww']) > 0):
                     self._rw_lock_state['wr'] += 1
                     self._read_ok_condvar.wait()
                     self._rw_lock_state['wr'] -= 1
 
+                # check if the server is still active
+                if self._shutdown_event.is_set():
+                    emsg = "server shutdown initiated during reader lock acquisition [skipping to check-out]"
+                    self.logger.error(emsg)
+                    context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                # check if the client is still active
                 if not context.is_active():
                     emsg = "client context terminated during reader lock acquisition [skipping to check-out]"
                     self.logger.error(emsg)
                     context.cancel()
 
-                # allocate a read queue for this thread
+                # check if the hp_io thread is valid
+                if self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
+                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
+                            f" (skipping to check-out)")
+                    self.logger.critical(emsg)
+                    self._server_cfg['hp_io_init'] = False
+                    context.abort(grpc.StatusCode.INTERNAL, emsg)
+
+                # allocate reader resources
                 for idx, rs in enumerate(self._reader_states):
                     if not rs['is_allocated']:
                         reader_idx = idx
@@ -390,18 +455,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     self.logger.critical(emsg)
                     context.abort(grpc.StatusCode.INTERNAL, emsg)
 
-                # check if hp_io is valid
-                if context.is_active() and self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"the hp_io thread data stream is unexpectedly invalid!"
-                            f" (skipping to check-out)")
-                    self.logger.critical(emsg)
-                    self._server_cfg['hp_io_init'] = False
-                    context.abort(grpc.StatusCode.INTERNAL, emsg)
-
                 # activate the reader
                 self._rw_lock_state['ar'] += 1
                 active = True
-                self._active_clients[tid] = urllib.parse.unquote(context.peer())
+                self._active_clients[tid] = {
+                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "thread": threading.current_thread(),
+                    "type": "reader",
+                }
                 self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # END check-in critical section
@@ -519,8 +580,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
             reader_state['config']['update_interval_seconds'] = request.update_interval_seconds
             # Validate client request
-            if request.update_interval_seconds < self._server_cfg['min_update_interval_seconds']:
-                emsg = (f"update_interval_seconds must be at least {self._server_cfg['min_update_interval_seconds']} "
+            if not (self._server_cfg["min_client_update_interval_seconds"]
+                    <= request.update_interval_seconds
+                    <= self._server_cfg['max_client_update_interval_seconds']):
+                emsg = (f"update_interval_seconds must be in the interval "
+                        f"[{self._server_cfg['min_client_update_interval_seconds']}, "
+                        f"{self._server_cfg['max_client_update_interval_seconds']}"
                         f"seconds. Got {request.update_interval_seconds}")
                 self.logger.critical(emsg)
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
@@ -528,56 +593,48 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 emsg = "At least one of the stream flags must be set to True"
                 self.logger.info(emsg)
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-            elif self._server_cfg['hp_io_init'] and self._is_hp_io_valid():
-                # self.logger.info("Streaming messages")
-                while context.is_active() and self._is_hp_io_valid():
-                    # self.logger.debug("waiting for input")
-                    try:
-                        # wait for next packet from the hp_io thread
-                        # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
-                        parsed_data = rq.get(timeout=1)
-
-                        send_timestamp = timestamp_pb2.Timestamp()
-                        send_timestamp.GetCurrentTime()
-
-                        # TODO: get these values from data_config.json
-                        image_shape = parsed_data['image_shape']
-                        bytes_per_pixel = parsed_data['bytes_per_pixel']
-                        filepath = parsed_data['filepath']
-                        # self.logger.debug(f"{parsed_data=}")
-
-                        pano_image = PanoImage(
-                            type=parsed_data["type"],
-                            header=ParseDict(parsed_data["header"], Struct()),
-                            image_array=parsed_data["image_array"],
-                            image_shape=image_shape,
-                            bytes_per_pixel=bytes_per_pixel
-                        )
-
-                        stream_images_response = StreamImagesResponse(
-                            name=f"StreamImage from {filepath}",
-                            timestamp=send_timestamp,
-                            message="testing",
-                            pano_image=pano_image
-                        )
-
-                        yield stream_images_response
-                    except queue.Empty:
-                        # self.logger.debug("hp_io thread may have stopped sending data")
-                        continue
-
-                # log reason why streaming stopped
-                if not context.is_active():
-                    self.logger.info(f"StreamImages client disconnected")
-                elif not self._stop_io.is_set():
-                    emsg = (f"The hp_io thread data stream unexpectedly became invalid! "
-                            f"Check the server logs to debug this issue")
-                    self.logger.critical(emsg)
-                    context.abort(grpc.StatusCode.INTERNAL, emsg)
-            else:
+            elif not self._server_cfg['hp_io_init']:
                 # TODO: implement InitHpIO
                 emsg = "Uninitialized hp_io thread. Run InitHpIo with a valid hp_io configuration to initialize it."
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+            # Valid server state -> start streaming!
+            while context.is_active() and self._is_hp_io_valid() and not self._shutdown_event.is_set():
+                try:
+                    # wait for next packet from the hp_io thread
+                    # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
+                    parsed_data = rq.get(timeout=self._server_cfg["max_client_update_interval_seconds"])
+                    if self._shutdown_event.is_set():
+                        emsg = "server shutdown initiated"
+                        context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                    send_timestamp = timestamp_pb2.Timestamp()
+                    send_timestamp.GetCurrentTime()
+
+                    # TODO: get these values from data_config.json
+                    pff_file = parsed_data['pff_file']
+                    frame_number = parsed_data['frame_number']
+                    pano_image = parsed_data['pano_image']
+
+                    stream_images_response = StreamImagesResponse(
+                        name="StreamImageResponse [Data]",
+                        timestamp=send_timestamp,
+                        message=f"StreamImage: {pff_file=}, frame={frame_number}",
+                        pano_image=pano_image
+                    )
+
+                    yield stream_images_response
+                except queue.Empty:
+                    # self.logger.debug("hp_io thread may have stopped sending data")
+                    continue
+
+            # log reason why streaming stopped
+            if not context.is_active():
+                self.logger.info(f"StreamImages client disconnected")
+            elif not self._stop_io.is_set():
+                emsg = (f"The hp_io thread data stream unexpectedly became invalid! "
+                        f"Check the server logs to debug this issue")
+                self.logger.critical(emsg)
+                context.abort(grpc.StatusCode.INTERNAL, emsg)
             # END critical section for hp_io [read] access
 
 

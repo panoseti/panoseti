@@ -1,7 +1,8 @@
 {
     "max_workers": 5,
     "max_read_queue_size": 200,
-    "min_update_interval_seconds": 0.5,
+    "min_client_update_interval_seconds": 0.5,
+    "max_client_update_interval_seconds": 60,
     "shutdown_grace_period": 0.1,
     "default_hp_io_config_file": "default_hp_io_config.json",
     "allow_init_from_default": true,
