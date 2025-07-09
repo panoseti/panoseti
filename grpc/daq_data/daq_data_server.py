@@ -44,12 +44,14 @@ from daq_data_testing import *
 ## --- panoseti utils ---
 sys.path.append("../../util")
 import pff, config_file
+sys.path.append("../../control")
+import util
 
 SIM_DATA_DIR = Path("test_env")
 REAL_RUN_DIR = Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
+SIM_RUN_DIR = Path("sim_data")
 PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.pff"
 IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.pff"
-SIM_RUN_DIR = Path("sim_data")
 
 # TEST_DST = SIM_RUN_DIR / PH_PFF
 # TEST_SRC = REAL_RUN_DIR / PH_PFF
@@ -60,8 +62,6 @@ TEST_SRC = SIM_DATA_DIR / REAL_RUN_DIR / IMG_PFF
 def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
-    # TEST_DST = REAL_RUN_DIR / PH_PFF
-    # TEST_SRC = REAL_RUN_DIR / PH_PFF
     real_fname = os.path.basename(TEST_SRC)
     name_dict = pff.parse_name(real_fname)
     if not name_dict:
@@ -94,7 +94,7 @@ def hp_sim_thread_fn(stop_io: Event, logger: logging.Logger):
     logger.info("hp_sim thread exited")
 
 
-def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, logger: logging.Logger, **kwargs):
+def hp_io_thread_fn(dp_cfg, reader_states: List[Dict], stop_io: Event, valid: Event, logger: logging.Logger, **kwargs):
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues. """
     logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
@@ -104,117 +104,138 @@ def hp_io_thread_fn(reader_states: List[Dict], stop_io: Event, valid: Event, log
     else:
         early_exit_counter = 30
     try:
-        # TODO start: get this info from config files
-        # load test file
-        # TEST_DST = SIM_RUN_DIR / PH_PFF
-        real_fname = os.path.basename(TEST_DST)
-        name_dict = pff.parse_name(real_fname)
-        if not name_dict:
-            raise Exception('bad PFF filename %s' % real_fname)
-        dp = name_dict['dp']
+        data_dir = SIM_DATA_DIR
+        module_id = 1
 
-        if dp == 'img16' or dp == 'ph1024':
-            # image_size = 32
-            image_shape = [32, 32]
-            bytes_per_pixel = 2
-            is_ph = False
-        elif dp == 'img8':
-            # image_size = 32
-            image_shape = [32, 32]
-            bytes_per_pixel = 1
-            is_ph = False
-        elif dp == 'ph256':
-            # image_size = 16
-            image_shape = [16, 16]
-            bytes_per_pixel = 2
-            is_ph = True
-        else:
-            raise Exception("bad data product %s" % dp)
-        bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
-
-        # TODO end
-
-        if is_ph:
-            pano_image_type = PanoImage.Type.PULSE_HEIGHT
-        else:
-            pano_image_type = PanoImage.Type.MOVIE
-
-        files = glob('%s/*%s*.pff' % (SIM_RUN_DIR, dp))
-        nfiles = len(files)
-
-        if nfiles == 0:
-            logger.error('no file of type %s' % dp)
-            return
-        else:
-            file = sorted(files)[-1]
-
-        filepath = file
-
-        # wait for file to be nonempty
+        # wait until there is an in-progress run
         while not stop_io.is_set():
-            if os.path.getsize(filepath):
+            run_pattern = f"{data_dir}/module_{module_id}/start_*"
+            runs = glob(run_pattern)
+            nruns = len(runs)
+            if nruns == 0:
+                raise FileNotFoundError(f'no run of module {module_id} in {run_pattern}')
+            else:
+                run_path = sorted(runs)[-1]
                 break
-            time.sleep(1)
+            # TODO: check if this run is in progress
+            # run = util.daq_get_run_name()
+            # if not run:
+            #     logger.error('no run')
+            #     return
 
-        f = open(filepath, 'rb')
-        (frame_size, nframes, first_t, last_t) = pff.img_info(f, bytes_per_image)
-        f.seek(0, os.SEEK_SET)
-        valid.set()
-        last_frame = -1
-        while not stop_io.is_set():
-            # check if we have a new file
-            files = glob('%s/*%s*.pff' % (SIM_RUN_DIR, dp))
-            if len(files) > nfiles:
+        def init_dp_cfg():
+            """initialize dp_cfg with run-specific information and wait until hashpipe starts"""
+            for dp in dp_cfg:
+                # Get the current number of pff files with type [dp]
+                dp_cfg[dp]['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
+                files = glob(dp_cfg[dp]['glob_pat'])
                 nfiles = len(files)
-                f.close()
-                file = sorted(files)[-1]
+                if nfiles == 0:
+                    raise FileNotFoundError(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
+                else:
+                    file = sorted(files)[-1]
+                    dp_cfg[dp]['nfiles'] = nfiles
+
+                # wait for the most recent pff file of type [dp] to be non-empty
                 filepath = file
-                f = open(filepath, 'rb')
-                last_frame = -1
-            fsize = f.seek(0, os.SEEK_END)
-            nframes = int(fsize / frame_size)
-            # read last frame
-            if nframes > last_frame + 1:
-                last_frame = nframes - 1
-                f.seek(last_frame * frame_size, os.SEEK_SET)
+                while not stop_io.is_set():
+                    if os.path.getsize(filepath):
+                        break
+                    time.sleep(1)
 
-                # parse image frame
-                j = pff.read_json(f)
-                if not j:
-                    logger.info('reached EOF')
-                    break
-                img = pff.read_image(f, image_shape[0], bytes_per_pixel)
+                # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
+                with open(filepath, 'rb') as f:
+                    (frame_size, nframes, first_t, last_t) = pff.img_info(f, dp_cfg[dp]['bytes_per_image'])
+                    f.seek(0, os.SEEK_SET)
+                    dp_cfg[dp]['frame_size'] = frame_size
+                    dp_cfg[dp]['last_frame'] = -1
+                    dp_cfg[dp]['filepath'] = filepath
 
-                header = json.loads(j)
-                pano_image = PanoImage(
-                    type=pano_image_type,
-                    header=ParseDict(header, Struct()),
-                    image_array=img,
-                    image_shape=image_shape,
-                    bytes_per_pixel=bytes_per_pixel
-                )
+        def dp_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] | Tuple[None, None]:
+            """
+            Check if we have a new pff data of type [dp].
+            If new data is present:
+                1. update dp_cfg[dp] accordingly.
+                2. return a tuple of (pff header, pff image).
+            """
+            f = d['f']
+            nfiles = d['nfiles']
+            filepath = d['filepath']
+            last_frame = d['last_frame']
+            try:
+                files = glob(d['glob_pat'])
+                if len(files) > nfiles:
+                    nfiles = len(files)
+                    f.close()
+                    file = sorted(files)[-1]
+                    filepath = file
+                    f = open(filepath, 'rb')
+                    last_frame = -1
+                fsize = f.seek(0, os.SEEK_END)
+                nframes = int(fsize / d['frame_size'])
+                # read last frame
+                if nframes > last_frame + 1:
+                    last_frame = nframes - 1
+                    f.seek(last_frame * d['frame_size'], os.SEEK_SET)
 
-                parsed_data = {
-                    "pff_file": os.path.basename(filepath),
-                    "frame_number": last_frame,
-                    "pano_image": pano_image,
-                }
+                    # parse image frame
+                    j = pff.read_json(f)
+                    header = json.loads(j)
+                    img = pff.read_image(f, d['image_shape'][0], d['bytes_per_pixel'])
+                    if header and img:
+                        return header, img
+                return None, None
+            finally:
+                # always update dp_cfg upon exit.
+                # important for ensuring we always close any newly opened file pointers
+                d['f'] = f
+                d['nfiles'] = nfiles
+                d['filepath'] = filepath
+                d['last_frame'] = last_frame
 
-                # broadcast image data to all waiting clients
-                for rs in [rs for rs in reader_states if rs['is_allocated']]:
-                    rq = rs['queue']
-                    if rs['config']['stream_pulse_height_data']:
-                        rq.put(parsed_data)
+        # signal the hp_io thread is ready to service client requests for data preview
+        init_dp_cfg()
+        valid.set()
+        while not stop_io.is_set():
+            for dp in dp_cfg:
+                d = dp_cfg[dp]
+                header, img = dp_main(dp)
+                if header and img:
+                    pano_image = PanoImage(
+                        type=d['pano_image_type'],
+                        header= ParseDict(header, Struct()),
+                        image_array=img,
+                        image_shape=d['image_shape'],
+                        bytes_per_pixel=d['bytes_per_pixel']
+                    )
 
-            if "early_exit" in kwargs and kwargs["early_exit"]:
-                early_exit_counter -= 1
-                if early_exit_counter == 0:
-                    raise TimeoutError("test hp_io thread unexpected termination")
-            time.sleep(1)
+                    parsed_data = {
+                        "pff_file": os.path.basename(d['filepath']),
+                        "frame_number": d['last_frame'],
+                        "pano_image": pano_image,
+                    }
+
+                    # broadcast image data to all waiting clients
+                    for rs in [rs for rs in reader_states if rs['is_allocated']]:
+                        rq = rs['queue']
+                        if d['is_ph'] and rs['config']['stream_pulse_height_data']:
+                            rq.put(parsed_data)
+                        elif not d['is_ph'] and rs['config']['stream_movie_data']:
+                            rq.put(parsed_data)
+
+                if "early_exit" in kwargs and kwargs["early_exit"]:
+                    early_exit_counter -= 1
+                    if early_exit_counter == 0:
+                        raise TimeoutError("test hp_io thread unexpected termination")
+                time.sleep(1)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! {err}")
         raise err
     finally:
+        # close any open file pointers
+        for dp in dp_cfg:
+            if 'f' in dp_cfg[dp]:
+                dp_cfg[dp]['f'].close()
         valid.clear()
         logger.info("hp_io thread exited")
 
@@ -483,6 +504,42 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.debug(f"(reader) check-out (end):\t\t{self._rw_lock_state=}")
                 # END check-out critical section
 
+    def get_dp_cfg(self, dps):
+        """Returns a dictionary of static properties for the given data products."""
+        dp_cfg = {}
+        for dp in dps:
+            if dp == 'img16' or dp == 'ph1024':
+                # image_size = 32
+                image_shape = [32, 32]
+                bytes_per_pixel = 2
+            elif dp == 'img8':
+                # image_size = 32
+                image_shape = [32, 32]
+                bytes_per_pixel = 1
+            elif dp == 'ph256':
+                # image_size = 16
+                image_shape = [16, 16]
+                bytes_per_pixel = 2
+            else:
+                raise Exception("bad data product %s" % dp)
+            bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
+            is_ph = 'ph' in dp
+            # Get type enum for PanoImage message
+            if is_ph:
+                pano_image_type = PanoImage.Type.PULSE_HEIGHT
+            else:
+                pano_image_type = PanoImage.Type.MOVIE
+
+            dp_cfg[dp] = {
+                "image_shape": image_shape,
+                "bytes_per_pixel": bytes_per_pixel,
+                "bytes_per_image": bytes_per_image,
+                "is_ph": is_ph,
+                "pano_image_type": pano_image_type,
+            }
+
+        return dp_cfg
+
     def _start_hp_io_thread(self, hp_io_cfg):
         """Creates a new hp_io thread with the given f9t_cfg.
         @return: True iff the hp_io thread was created and established a valid connection to the target F9t chip
@@ -490,11 +547,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # Terminate any currently alive hp_io thread
         self._stop_hp_io_thread(5)  # no effect if a hp_io thread is not alive
 
-        # Create new hp_io_thread using the client's configuration
+        dps = ["img16", "ph256"]
+
+        # Create a new hp_io_thread using the client's configuration
         self._stop_io.clear()
         self._hp_io_thread = Thread(
             target=hp_io_thread_fn,
             args=(
+                self.get_dp_cfg(dps),
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
