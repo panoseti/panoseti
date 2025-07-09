@@ -124,5 +124,5 @@ if __name__ == "__main__":
     )
     assert all_pass, "at least one client-side test failed"
     logger.info(f"all_pass={all_pass}")
-    run(host="10.0.0.60")
-    # run(host="localhost")
+    # run(host="10.0.0.60")
+    run(host="localhost")

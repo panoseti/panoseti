@@ -86,33 +86,32 @@ def hp_sim_thread_fn(
         open(MOVIE_SRC, "rb") as movie_src, \
         open(PH_DST, "wb") as ph_dst, \
         open(PH_SRC, "rb") as ph_src:
-            while not stop_io.is_set():
-                # get file info, e.g. frame size from the ph and img source files
-                (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[MOVIE_TYPE]['bytes_per_image'])
-                movie_src.seek(0, os.SEEK_SET)
-                logger.info(f"movie src: {movie_frame_size=}, {movie_nframes=}")
+            # get file info, e.g. frame size from the ph and img source files
+            (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[MOVIE_TYPE]['bytes_per_image'])
+            movie_src.seek(0, os.SEEK_SET)
+            logger.info(f"movie src: {movie_frame_size=}, {movie_nframes=}")
 
-                (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[PH_TYPE]['bytes_per_image'])
-                logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}, {first_t=}, {last_t=}")
-                ph_src.seek(0, os.SEEK_SET)
+            (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[PH_TYPE]['bytes_per_image'])
+            logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}, {first_t=}, {last_t=}")
+            ph_src.seek(0, os.SEEK_SET)
 
-                # copy frames from fsrc to fdst to simulate data acquisition software
-                ph_i = movie_i = 0
-                while not stop_io.is_set() and ph_i < ph_nframes and movie_i < movie_nframes:
-                    ph_data = ph_src.read(ph_frame_size)
-                    ph_nbytes_written = ph_dst.write(ph_data)
+            # copy frames from fsrc to fdst to simulate data acquisition software
+            ph_i = movie_i = 0
+            while not stop_io.is_set() and ph_i < ph_nframes and movie_i < movie_nframes:
+                ph_data = ph_src.read(ph_frame_size)
+                ph_nbytes_written = ph_dst.write(ph_data)
 
-                    movie_data = movie_src.read(movie_frame_size)
-                    movie_nbytes_written = movie_dst.write(movie_data)
+                movie_data = movie_src.read(movie_frame_size)
+                movie_nbytes_written = movie_dst.write(movie_data)
 
-                    ph_dst.flush()
-                    movie_dst.flush()
+                ph_dst.flush()
+                movie_dst.flush()
 
-                    ph_i += 1
-                    movie_i += 1
+                ph_i += 1
+                movie_i += 1
 
-                    # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
-                    time.sleep(update_interval)
+                # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
+                time.sleep(update_interval)
     finally:
         os.unlink(DAQ_ACTIVE_FILE)
         os.unlink(MOVIE_DST)
