@@ -45,12 +45,13 @@ def show_stream_images(
         plt.show()
 
         # Randomness for demo
-        cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'flare_r'])
+        cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'mako', 'icefire', 'flare_r'])
         ph_baseline = np.random.randint(700, 900)
-        text_width = 40
+        text_width = 35
         font_size = 9
         # max_ph = 7_000
         movie_imgs = []
+        ph_imgs = []
 
         # Process responses
         for stream_images_response in stream_images_responses:
@@ -70,14 +71,19 @@ def show_stream_images(
                         f"frame_no = {pano_image.frame_number}\n")
             ax_title += textwrap.fill(f"file = {pano_image.file}", width=text_width)
             if pano_type == 'PULSE_HEIGHT':
+                if len(ph_imgs) < 100:
+                    ph_imgs.append(img)
                 img += ph_baseline
                 # img[img > max_ph] = max_ph
-                high = np.quantile(img, 1.0)
+                high = np.quantile(ph_imgs, 0.99)
                 # low = np.quantile(, 0.05)
                 axs[0].cla()
-                axs[0].imshow(img, vmin=ph_baseline * 3/4, vmax=high, cmap=cmap)
+                axs[0].imshow(img, vmin=ph_baseline, vmax=high, cmap=cmap)
                 axs[0].set_title(ax_title, fontsize=font_size)
             elif pano_type == 'MOVIE':
+                if len(movie_imgs) < 100:
+                    movie_imgs.append(img)
+                # img = img - np.median(movie_imgs, axis=0).astype(np.int32)
                 high = np.quantile(img, 0.95)
                 low = np.quantile(img, 0.05)
                 axs[1].cla()
@@ -114,7 +120,7 @@ def run(host, port=50051):
                 stub,
                 stream_movie_data,
                 stream_pulse_height_data,
-                update_interval_seconds=0.5,
+                update_interval_seconds=0.75,
                 wait_for_ready=True
             )
     except KeyboardInterrupt:
@@ -137,5 +143,5 @@ if __name__ == "__main__":
         ]
     )
     assert all_pass, "at least one client-side test failed"
-    #run(host="10.0.0.60")
+    # run(host="10.0.0.60")
     run(host="localhost")

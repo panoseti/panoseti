@@ -113,16 +113,16 @@ def hp_sim_thread_fn(
                             break
                         ph_data = ph_src.read(ph_frame_size)
                         ph_nbytes_written = ph_dst.write(ph_data)
+                        ph_dst.flush()
+                        time.sleep(update_interval)
 
                         movie_data = movie_src.read(movie_frame_size)
                         movie_nbytes_written = movie_dst.write(movie_data)
 
-                        ph_dst.flush()
                         movie_dst.flush()
 
                         fnum += 1
                         # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
-                        time.sleep(update_interval)
             if fnum >= min(ph_nframes, movie_nframes):
                 logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
     finally:
@@ -133,6 +133,8 @@ def hp_sim_thread_fn(
 
 
 def hp_io_thread_fn(
+        data_dir: Path,
+        module_id: int,
         dp_cfg: Dict[str, Any],
         update_interval: float,
         reader_states: List[Dict],
@@ -150,8 +152,6 @@ def hp_io_thread_fn(
     else:
         early_exit_counter = 30
     try:
-        data_dir = SIM_DATA_DIR
-        module_id = 1
 
         # wait until there is an in-progress run
         while not stop_io.is_set():
@@ -616,8 +616,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_thread = Thread(
             target=hp_io_thread_fn,
             args=(
+                SIM_DATA_DIR,
+                1,
                 dp_cfg.copy(),
-                max(self._hp_io_cfg['update_interval_seconds'], 0.25),
+                max(self._hp_io_cfg['update_interval_seconds'], 0.5),
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
@@ -633,7 +635,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             target=hp_sim_thread_fn,
             args=(
                 dp_cfg.copy(),
-                max(self._hp_io_cfg['update_interval_seconds'] / 2, 0.1),
+                max(self._hp_io_cfg['update_interval_seconds'] * (2**0.5) / 1.5, 0.1),
                 self._stop_io,
                 self.logger
             )
