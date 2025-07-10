@@ -49,8 +49,8 @@ import util
 
 
 """ hp_io test macros """
-PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff"
-IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff"
+PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
+IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
 MOVIE_TYPE = 'img16'
 PH_TYPE = 'ph256'
 
@@ -59,18 +59,21 @@ SIM_DATA_DIR = Path("test_env")
 SIM_RUN_DIR = SIM_DATA_DIR / Path("module_1/obs_SIMULATE")
 os.makedirs(SIM_RUN_DIR, exist_ok=True)
 DAQ_ACTIVE_FILE = SIM_RUN_DIR / "daq_active"
-MOVIE_DST   = SIM_RUN_DIR / IMG_PFF
-PH_DST      = SIM_RUN_DIR / PH_PFF
+def get_sim_movie_dest(seqno):
+    return SIM_RUN_DIR / IMG_PFF.format(seqno=seqno)
+def get_sim_ph_dest(seqno):
+    return SIM_RUN_DIR / PH_PFF.format(seqno=seqno)
 
 REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
-MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF
-PH_SRC      = REAL_RUN_DIR / PH_PFF
+MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF.format(seqno=0)
+PH_SRC      = REAL_RUN_DIR / PH_PFF.format(seqno=0)
 
 def hp_sim_thread_fn(
     dp_cfg: Dict[str, Any],
     update_interval: float,
     stop_io: Event,
-    logger: logging.Logger
+    logger: logging.Logger,
+    frames_per_pff = 20,
 ) -> None:
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
     logger.info("hp_sim thread started")
@@ -81,11 +84,9 @@ def hp_sim_thread_fn(
 
     with open(DAQ_ACTIVE_FILE, "w") as daq_active:
         daq_active.write("1")
+    simulated_data_files = []
     try:
-        with open(MOVIE_DST, "wb") as movie_dst, \
-        open(MOVIE_SRC, "rb") as movie_src, \
-        open(PH_DST, "wb") as ph_dst, \
-        open(PH_SRC, "rb") as ph_src:
+        with open(MOVIE_SRC, "rb") as movie_src, open(PH_SRC, "rb") as ph_src:
             # get file info, e.g. frame size from the ph and img source files
             (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[MOVIE_TYPE]['bytes_per_image'])
             movie_src.seek(0, os.SEEK_SET)
@@ -94,28 +95,40 @@ def hp_sim_thread_fn(
             (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[PH_TYPE]['bytes_per_image'])
             logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}, {first_t=}, {last_t=}")
             ph_src.seek(0, os.SEEK_SET)
+            # copy frames from [dp]_src to dp_dst to simulate data acquisition software
+            fnum = 0
+            seqno = 0
+            while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
+                # Every [frames_per_pff] frames, create a new file of each type.
+                # This simulates the multi-file creation behavior of the daq software due to the max file size parameter
+                movie_dest_file = get_sim_movie_dest(seqno)
+                ph_dest_file = get_sim_ph_dest(seqno)
+                simulated_data_files.extend([movie_dest_file, ph_dest_file])
+                logger.info( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
+                with open(movie_dest_file, "wb") as movie_dst, open(ph_dest_file, "wb") as ph_dst:
+                    while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
+                        # check if a new simulated file should be created
+                        if int(fnum / frames_per_pff) > seqno:
+                            seqno += 1
+                            break
+                        ph_data = ph_src.read(ph_frame_size)
+                        ph_nbytes_written = ph_dst.write(ph_data)
 
-            # copy frames from fsrc to fdst to simulate data acquisition software
-            ph_i = movie_i = 0
-            while not stop_io.is_set() and ph_i < ph_nframes and movie_i < movie_nframes:
-                ph_data = ph_src.read(ph_frame_size)
-                ph_nbytes_written = ph_dst.write(ph_data)
+                        movie_data = movie_src.read(movie_frame_size)
+                        movie_nbytes_written = movie_dst.write(movie_data)
 
-                movie_data = movie_src.read(movie_frame_size)
-                movie_nbytes_written = movie_dst.write(movie_data)
+                        ph_dst.flush()
+                        movie_dst.flush()
 
-                ph_dst.flush()
-                movie_dst.flush()
-
-                ph_i += 1
-                movie_i += 1
-
-                # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
-                time.sleep(update_interval)
+                        fnum += 1
+                        # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
+                        time.sleep(update_interval)
+            if fnum >= min(ph_nframes, movie_nframes):
+                logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
     finally:
         os.unlink(DAQ_ACTIVE_FILE)
-        os.unlink(MOVIE_DST)
-        os.unlink(PH_DST)
+        for file in simulated_data_files:
+            os.unlink(file)
         logger.info("hp_sim thread exited")
 
 
@@ -205,11 +218,12 @@ def hp_io_thread_fn(
             filepath = d['filepath']
             last_frame = d['last_frame']
             try:
+                # check if a newer file for this data product has been created
                 files = glob(d['glob_pat'])
                 if len(files) > nfiles:
                     nfiles = len(files)
                     f.close()
-                    file = sorted(files)[-1]
+                    file = sorted(files, key=os.path.getmtime)[-1]
                     filepath = file
                     f = open(filepath, 'rb')
                     last_frame = -1

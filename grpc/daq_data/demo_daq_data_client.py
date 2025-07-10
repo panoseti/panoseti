@@ -12,6 +12,7 @@ from daq_data_testing import run_all_tests, is_os_posix
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+import textwrap
 
 
 def show_stream_images(
@@ -46,6 +47,8 @@ def show_stream_images(
         # Randomness for demo
         cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'flare_r'])
         ph_baseline = np.random.randint(700, 900)
+        text_width = 40
+        font_size = 9
         # max_ph = 7_000
         movie_imgs = []
 
@@ -56,10 +59,16 @@ def show_stream_images(
             logger.info(formatted_stream_images_response)
 
             # Get pano images from response
-            pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
+            pano_image = stream_images_response.pano_image
+            pano_type, header, img = unpack_pano_image(pano_image)
+
+            # Update plots
             plt_title = f"demo obs data from {header['pandas_unix_timestamp'].date()}"
             fig.suptitle(plt_title)
-            ax_title = f"{pano_type}\nt={header['pandas_unix_timestamp'].time()}"
+            ax_title = (f"{pano_type}\n"
+                        f"unix_t = {header['pandas_unix_timestamp'].time()}\n"
+                        f"frame_no = {pano_image.frame_number}\n")
+            ax_title += textwrap.fill(f"file = {pano_image.file}", width=text_width)
             if pano_type == 'PULSE_HEIGHT':
                 img += ph_baseline
                 # img[img > max_ph] = max_ph
@@ -67,18 +76,18 @@ def show_stream_images(
                 # low = np.quantile(, 0.05)
                 axs[0].cla()
                 axs[0].imshow(img, vmin=ph_baseline * 3/4, vmax=high, cmap=cmap)
-                axs[0].set_title(ax_title)
+                axs[0].set_title(ax_title, fontsize=font_size)
             elif pano_type == 'MOVIE':
                 high = np.quantile(img, 0.95)
                 low = np.quantile(img, 0.05)
                 axs[1].cla()
                 axs[1].imshow(img, vmin=low, vmax=high, cmap=cmap)
-                axs[1].set_title(ax_title)
-                movie_imgs
+                axs[1].set_title(ax_title, fontsize=font_size)
             plt.draw()
             plt.pause(0.2)
     finally:
         # Gracefully cancel RPC before exiting
+        plt.close()
         logger.info(f"'^C' received, closing connection to the DaqData server")
         if stream_images_responses is not None:
             stream_images_responses.cancel()
@@ -128,5 +137,5 @@ if __name__ == "__main__":
         ]
     )
     assert all_pass, "at least one client-side test failed"
-    run(host="10.0.0.60")
-    # run(host="localhost")
+    #run(host="10.0.0.60")
+    run(host="localhost")
