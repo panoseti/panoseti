@@ -68,7 +68,7 @@ REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_
 MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF.format(seqno=0)
 PH_SRC      = REAL_RUN_DIR / PH_PFF.format(seqno=0)
 
-def hp_sim_thread_fn(
+def daq_sim_thread_fn(
     dp_cfg: Dict[str, Any],
     update_interval: float,
     stop_io: Event,
@@ -79,13 +79,15 @@ def hp_sim_thread_fn(
     logger.info("hp_sim thread started")
     # prevent multiple server instances from running this thread
     if os.path.exists(DAQ_ACTIVE_FILE):
-        logger.critical("hp_sim thread exited: another server instance is already running!")
-        sys.exit()
+        emsg = "hp_sim thread is already running on another server instance!"
+        logger.critical(emsg)
+        raise RuntimeError(emsg)
 
-    with open(DAQ_ACTIVE_FILE, "w") as daq_active:
-        daq_active.write("1")
     simulated_data_files = []
     try:
+        with open(DAQ_ACTIVE_FILE, "w") as daq_active:
+            daq_active.write("1")
+
         with open(MOVIE_SRC, "rb") as movie_src, open(PH_SRC, "rb") as ph_src:
             # get file info, e.g. frame size from the ph and img source files
             (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[MOVIE_TYPE]['bytes_per_image'])
@@ -93,7 +95,7 @@ def hp_sim_thread_fn(
             logger.info(f"movie src: {movie_frame_size=}, {movie_nframes=}")
 
             (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[PH_TYPE]['bytes_per_image'])
-            logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}, {first_t=}, {last_t=}")
+            logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}")
             ph_src.seek(0, os.SEEK_SET)
             # copy frames from [dp]_src to dp_dst to simulate data acquisition software
             fnum = 0
@@ -104,7 +106,7 @@ def hp_sim_thread_fn(
                 movie_dest_file = get_sim_movie_dest(seqno)
                 ph_dest_file = get_sim_ph_dest(seqno)
                 simulated_data_files.extend([movie_dest_file, ph_dest_file])
-                logger.info( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
+                # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
                 with open(movie_dest_file, "wb") as movie_dst, open(ph_dest_file, "wb") as ph_dst:
                     while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
                         # check if a new simulated file should be created
@@ -178,19 +180,27 @@ def hp_io_thread_fn(
                 dp_cfg[dp]['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
                 # wait until hashpipe starts writing files
                 nfiles = 0
+                files = []
                 while not stop_io.is_set() and nfiles == 0:
                     files = glob(dp_cfg[dp]['glob_pat'])
                     nfiles = len(files)
                     logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
                     time.sleep(0.5)
+
                 file = sorted(files)[-1]
+                filepath = file
+
+                if stop_io.is_set():
+                    raise EnvironmentError("stop_io event is set")
 
                 # wait until the filesize is large enough to read one image of type [dp]
-                filepath = file
                 while not stop_io.is_set():
                     if os.path.getsize(filepath) >= dp_cfg[dp]['bytes_per_image']:
                         break
                     time.sleep(0.5)
+
+                if stop_io.is_set():
+                    raise EnvironmentError("stop_io event is set")
 
                 # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
                 f = open(filepath, 'rb')
@@ -322,7 +332,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             "ar": 0,  # active readers
             "aw": 0,  # active writers
         }
-        self._hp_io_lock = threading.Lock()
+        self._hp_io_lock = threading.RLock()
         self._read_ok_condvar = threading.Condition(self._hp_io_lock)
         self._write_ok_condvar = threading.Condition(self._hp_io_lock)
         self._active_clients = {}  # dict of tid : {"client_ip":context.peer(), "thread": Thread} for debugging
@@ -330,7 +340,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._server_cfg = server_cfg
 
         # Create the server's logger
-        self.logger = make_rich_logger(__name__, level=logging.DEBUG)
+        self.logger = make_rich_logger(__name__, level=logging.INFO)
 
         # Load default hahspipe_io configuration
         with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
@@ -341,6 +351,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         #   [single RPC writer -> hp_io thread] send messages to the hp_io thread
         #   [hp_io thread -> many RPC readers] broadcast image data to active read_queues
         self._hp_io_thread: Thread = None
+        self._daq_sim_thread: Thread = None
 
         # Initialize an array of reader_state dicts to support up to max_worker concurrent reader RPCs
         self._reader_states: List[Dict[str, Any]] = []
@@ -400,7 +411,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         shutdown_record['stop_hp_io'] = self._stop_hp_io_thread(2)
         # wait for active server threads to exit
         for ac in self._active_clients.values():
-            ac['thread'].join()
+            ac['thread'].join(timeout=1)
         active_clients = [ac["client_ip"] for ac in self._active_clients.values()]
         if len(active_clients) > 0:
             self.logger.warning(f"active clients at shutdown: {active_clients=}")
@@ -420,169 +431,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.critical(f"Some server resources were not released: {shutdown_record=}")
 
 
-    @contextmanager
-    def _rw_lock_writer(self, context, force=False):
-        tid = threading.get_ident()
-        active = False
-        try:
-            with self._hp_io_lock:
-                # BEGIN check-in critical section
-                # All reader RPCs are long-lived server streaming operations.
-                # The server's synchronization logic will prevent updates to _server_cfg while any reader RPCs are active,
-                # so we should cancel any writer RPCs immediately
-
-                if (not force) and self._rw_lock_state['ar'] > 0:
-                    active_clients = str([c["client_ip"] for c in self._active_clients.values()])
-                    emsg = (f"Cannot modify server state because there are {self._rw_lock_state['ar']} active "
-                            f"streaming clients. Stop these client processes then try again: {active_clients=}.")
-                    context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-                elif force and self._rw_lock_state['ar'] > 0:
-                    self.logger.warning(f"Forcing server state modification despite active reader RPCs. ")
-                    self._cancel_all_readers()
-
-                self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
-
-                # Wait until no active readers or active writers
-                while (not self._shutdown_event.is_set() and
-                       context.is_active() and
-                       (self._rw_lock_state['aw'] + self._rw_lock_state['ar']) > 0):
-                    self._rw_lock_state['ww'] += 1
-                    self._write_ok_condvar.wait(timeout=5)
-                    self._rw_lock_state['ww'] -= 1
-
-                # check if the server is still active
-                if self._shutdown_event.is_set():
-                    emsg = "server shutdown initiated during writer lock acquisition [skipping to check-out]"
-                    self.logger.error(emsg)
-                    context.abort(grpc.StatusCode.CANCELLED, emsg)
-
-                # check if the client is still active
-                if not context.is_active():
-                    emsg = "client cancelled rpc during writer lock acquisition (skipping to check-out)"
-                    self.logger.warning(emsg)
-                    context.abort(grpc.StatusCode.CANCELLED, emsg)
-
-                # check if the hp_io thread is valid
-                if self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
-                            f" (skipping to check-out)")
-                    self.logger.critical(emsg)
-                    self._server_cfg['hp_io_init'] = False
-                    context.abort(grpc.StatusCode.INTERNAL, emsg)
-
-                # activate the writer
-                self._rw_lock_state['aw'] += 1
-                active = True
-                self._active_clients[tid] = {
-                    "client_ip": urllib.parse.unquote(context.peer()),
-                    "thread": threading.current_thread(),
-                    "type": "writer",
-                }
-                self.logger.debug(f"(writer) check-in (end):\t\t{self._rw_lock_state=}")
-                # END check-in critical section
-            yield None
-        except RuntimeError as err:
-            pass
-        finally:
-            with self._hp_io_lock:
-                # BEGIN check-out critical section
-                self.logger.debug(f"(writer) check-out (start):\t{self._rw_lock_state=}")
-                if active:  # handle edge cases where thread is interrupted or has an error during lock acquire
-                    self._rw_lock_state['aw'] = self._rw_lock_state['aw'] - 1  # no longer active
-                    del self._active_clients[tid]
-                # Wake up waiting readers or a waiting writer (prioritize waiting writers).
-                if self._rw_lock_state['ww'] > 0:  # Give lock priority to waiting writers
-                    self._write_ok_condvar.notify()
-                elif self._rw_lock_state['wr'] > 0:
-                    self._read_ok_condvar.notify_all()
-                self.logger.debug(f"(writer) check-out (end):\t{self._rw_lock_state=}")
-                # END check-out critical section
-
-    @contextmanager
-    def _rw_lock_reader(self, context):
-        reader_idx = -1  # remember which reader_states dict corresponds to this thread
-        tid = threading.get_ident()
-        active = False
-        try:
-            with self._hp_io_lock:
-                # BEGIN check-in critical section
-                self.logger.debug(f"(reader) check-in (start):\t{self._rw_lock_state=}"
-                                  f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
-                # Wait until no active writers or waiting writers
-                while (not self._shutdown_event.is_set() and
-                       not self._cancel_readers_event.is_set() and
-                       context.is_active() and
-                       (self._rw_lock_state['aw'] + self._rw_lock_state['ww']) > 0):
-                    self._rw_lock_state['wr'] += 1
-                    self._read_ok_condvar.wait()
-                    self._rw_lock_state['wr'] -= 1
-
-                # check if the server is still active
-                if self._shutdown_event.is_set():
-                    emsg = "server shutdown initiated during reader lock acquisition [skipping to check-out]"
-                    self.logger.error(emsg)
-                    context.abort(grpc.StatusCode.CANCELLED, emsg)
-
-                # check if reader RPCs are cancelled
-                elif self._cancel_readers_event.is_set():
-                    emsg = "canel_readers_event set during reader lock acquisition [skipping to check-out]"
-                    self.logger.error(emsg)
-                    context.abort(grpc.StatusCode.CANCELLED, emsg)
-
-                # check if the client is still active
-                elif not context.is_active():
-                    emsg = "client context terminated during reader lock acquisition [skipping to check-out]"
-                    self.logger.error(emsg)
-                    context.cancel()
-
-                # check if the hp_io thread is valid
-                elif self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
-                            f" (skipping to check-out)")
-                    self.logger.critical(emsg)
-                    self._server_cfg['hp_io_init'] = False
-                    context.abort(grpc.StatusCode.INTERNAL, emsg)
-
-                # allocate reader resources
-                for idx, rs in enumerate(self._reader_states):
-                    if not rs['is_allocated']:
-                        reader_idx = idx
-                        self._reader_states[idx]['is_allocated'] = True
-                        break
-
-                # check if the allocation succeeded
-                if reader_idx < 0:
-                    emsg = "reader_states allocation failed during reader check-in! [SHOULD NEVER HAPPEN]"
-                    self.logger.critical(emsg)
-                    context.abort(grpc.StatusCode.INTERNAL, emsg)
-
-                # activate the reader
-                self._rw_lock_state['ar'] += 1
-                active = True
-                self._active_clients[tid] = {
-                    "client_ip": urllib.parse.unquote(context.peer()),
-                    "thread": threading.current_thread(),
-                    "type": "reader",
-                }
-                self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
-                                  f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
-                # END check-in critical section
-            yield self._reader_states[reader_idx]
-        finally:
-            with self._hp_io_lock:
-                # BEGIN check-out critical section
-                self.logger.debug(f"(reader) check-out (start):\t{self._rw_lock_state=}")
-                if active:
-                    self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
-                    del self._active_clients[tid]
-                    self._reader_states[idx]['is_allocated'] = False # release reader resources
-                # Wake up waiting readers or a waiting writer (prioritize waiting writers).
-                if self._rw_lock_state['ar'] == 0 and self._rw_lock_state['ww'] > 0:
-                    self._write_ok_condvar.notify()
-                elif self._rw_lock_state['wr'] > 0:
-                    self._read_ok_condvar.notify_all()
-                self.logger.debug(f"(reader) check-out (end):\t\t{self._rw_lock_state=}")
-                # END check-out critical section
 
     def get_dp_cfg(self, dps):
         """Returns a dictionary of static properties for the given data products."""
@@ -632,8 +480,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # Toggle simulation thread creation
         if hp_io_cfg['simulate_daq']:
             data_dir = SIM_DATA_DIR
-            hp_sim_thread = Thread(
-                target=hp_sim_thread_fn,
+            self._daq_sim_thread = Thread(
+                target=daq_sim_thread_fn,
                 args=(
                     dp_cfg.copy(),
                     max(hp_io_cfg['update_interval_seconds'] * (2**0.5) / 1.5, self._server_cfg['min_hp_io_update_interval_seconds']),
@@ -641,7 +489,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     self.logger
                 )
             )
-            hp_sim_thread.start()
+            self._daq_sim_thread.start()
 
         # Create a new hp_io_thread using the client's configuration
         self._hp_io_thread = Thread(
@@ -700,6 +548,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         if self._hp_io_thread is not None and self._hp_io_thread.is_alive():
             try:
                 self._hp_io_thread.join(timeout)  # wait until hp_io exits
+                if self._daq_sim_thread is not None:
+                    self._daq_sim_thread.join(timeout)
             except RuntimeError as rerr:
                 self.logger.critical(f"encountered runtime error while stopping hp_io thread: {rerr}")
                 return False
@@ -710,6 +560,172 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         else:
             self.logger.debug("no hp_io thread to stop_io (doing nothing)")
             return True
+
+    @contextmanager
+    def _rw_lock_writer(self, context, force=False):
+        tid = threading.get_ident()
+        active = False
+        try:
+            with self._hp_io_lock:
+                # BEGIN check-in critical section
+                # All reader RPCs are long-lived server streaming operations.
+                # The server's synchronization logic will prevent updates to _server_cfg while any reader RPCs are active,
+                # so we should cancel any writer RPCs immediately
+
+                if (not force) and self._rw_lock_state['ar'] > 0:
+                    active_clients = str([c["client_ip"] for c in self._active_clients.values()])
+                    emsg = (f"Cannot modify server state because there are {self._rw_lock_state['ar']} active "
+                            f"streaming clients. Set force=True or stop the following clients and try again: {active_clients=}.")
+                    context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+                elif force and self._rw_lock_state['ar'] > 0:
+                    self.logger.warning(f"Forcing server state modification despite active reader RPCs. ")
+                    self._cancel_all_readers()
+
+                self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
+
+                # Wait until no active readers or active writers
+                while (not self._shutdown_event.is_set() and
+                       context.is_active() and
+                       (self._rw_lock_state['aw'] + self._rw_lock_state['ar']) > 0):
+                    self._rw_lock_state['ww'] += 1
+                    self._write_ok_condvar.wait(timeout=5)
+                    self._rw_lock_state['ww'] -= 1
+
+                # check if the server is still active
+                if self._shutdown_event.is_set():
+                    emsg = "server shutdown initiated during writer lock acquisition [skipping to check-out]"
+                    self.logger.error(emsg)
+                    context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                # check if the client is still active
+                if not context.is_active():
+                    emsg = "client cancelled rpc during writer lock acquisition (skipping to check-out)"
+                    self.logger.warning(emsg)
+                    context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                # check if the hp_io thread is valid
+                if self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
+                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
+                            f" (skipping to check-out)")
+                    self.logger.critical(emsg)
+                    self._server_cfg['hp_io_init'] = False
+                    context.abort(grpc.StatusCode.INTERNAL, emsg)
+
+                # activate the writer
+                self._rw_lock_state['aw'] += 1
+                active = True
+                self._active_clients[tid] = {
+                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "thread": threading.current_thread(),
+                    "type": "writer",
+                }
+                self.logger.debug(f"(writer) check-in (end):\t\t{self._rw_lock_state=}")
+                # END check-in critical section
+            yield None
+        except RuntimeError as err:
+            pass
+        finally:
+            with self._hp_io_lock:
+                # BEGIN check-out critical section
+                self.logger.debug(f"(writer) check-out (start):\t{self._rw_lock_state=}")
+                if active:  # handle edge cases where thread is interrupted or has an error during lock acquire
+                    self._rw_lock_state['aw'] = self._rw_lock_state['aw'] - 1  # no longer active
+                    del self._active_clients[tid]
+                # allow new readers to start waiting
+                self._cancel_readers_event.clear()
+                # Wake up waiting readers or a waiting writer (prioritize waiting writers).
+                if self._rw_lock_state['ww'] > 0:  # Give lock priority to waiting writers
+                    self._write_ok_condvar.notify()
+                elif self._rw_lock_state['wr'] > 0:
+                    self._read_ok_condvar.notify_all()
+                self.logger.debug(f"(writer) check-out (end):\t{self._rw_lock_state=}")
+                # END check-out critical section
+
+    @contextmanager
+    def _rw_lock_reader(self, context):
+        reader_idx = -1  # remember which reader_states dict corresponds to this thread
+        tid = threading.get_ident()
+        active = False
+        try:
+            with self._hp_io_lock:
+                # BEGIN check-in critical section
+                self.logger.debug(f"(reader) check-in (start):\t{self._rw_lock_state=}"
+                                  f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
+                # Wait until no active writers or waiting writers
+                while (not self._shutdown_event.is_set() and
+                       not self._cancel_readers_event.is_set() and
+                       context.is_active() and
+                       (self._rw_lock_state['aw'] + self._rw_lock_state['ww']) > 0):
+                    self._rw_lock_state['wr'] += 1
+                    self._read_ok_condvar.wait()
+                    self._rw_lock_state['wr'] -= 1
+
+                # check if the server is still active
+                if self._shutdown_event.is_set():
+                    emsg = "server shutdown initiated during reader lock acquisition [skipping to check-out]"
+                    self.logger.error(emsg)
+                    context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                # check if reader RPCs are cancelled
+                elif self._cancel_readers_event.is_set():
+                    emsg = "cancel_all_readers called during reader lock acquisition [skipping to check-out]"
+                    self.logger.warning(emsg)
+                    context.abort(grpc.StatusCode.CANCELLED, emsg)
+
+                # check if the client is still active
+                elif not context.is_active():
+                    emsg = "client context terminated during reader lock acquisition [skipping to check-out]"
+                    self.logger.error(emsg)
+                    context.cancel()
+
+                # check if the hp_io thread is valid
+                elif self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
+                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
+                            f" (skipping to check-out)")
+                    self.logger.critical(emsg)
+                    self._server_cfg['hp_io_init'] = False
+                    context.abort(grpc.StatusCode.INTERNAL, emsg)
+
+                # allocate reader resources
+                for idx, rs in enumerate(self._reader_states):
+                    if not rs['is_allocated']:
+                        reader_idx = idx
+                        self._reader_states[idx]['is_allocated'] = True
+                        break
+
+                # check if the allocation succeeded
+                if reader_idx < 0:
+                    emsg = "reader_states allocation failed during reader check-in! [SHOULD NEVER HAPPEN]"
+                    self.logger.critical(emsg)
+                    context.abort(grpc.StatusCode.INTERNAL, emsg)
+
+                # activate the reader
+                self._rw_lock_state['ar'] += 1
+                active = True
+                self._active_clients[tid] = {
+                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "thread": threading.current_thread(),
+                    "type": "reader",
+                }
+                self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
+                                  f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
+                # END check-in critical section
+            yield self._reader_states[reader_idx]
+        finally:
+            with self._hp_io_lock:
+                # BEGIN check-out critical section
+                self.logger.debug(f"(reader) check-out (start):\t{self._rw_lock_state=}")
+                if active:
+                    self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
+                    del self._active_clients[tid]
+                    self._reader_states[idx]['is_allocated'] = False # release reader resources
+                # Wake up waiting readers or a waiting writer (prioritize waiting writers).
+                if self._rw_lock_state['ar'] == 0 and self._rw_lock_state['ww'] > 0:
+                    self._write_ok_condvar.notify()
+                elif self._rw_lock_state['wr'] > 0:
+                    self._read_ok_condvar.notify_all()
+                self.logger.debug(f"(reader) check-out (end):\t\t{self._rw_lock_state=}")
+                # END check-out critical section
 
     def StreamImages(self, request, context):
         """Forward sample panoseti movie and pulse-height images to the client. [reader]"""
@@ -752,13 +768,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     # wait for next packet from the hp_io thread
                     # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
                     parsed_data = rq.get(timeout=request.update_interval_seconds)
-                    if self._shutdown_event.is_set():
-                        emsg = "server shutdown initiated"
-                        context.abort(grpc.StatusCode.CANCELLED, emsg)
-                    elif self._cancel_readers_event.is_set():
-                        emsg = "canel_readers_event set"
-                        context.abort(grpc.StatusCode.CANCELLED, emsg)
-
+                    if not isinstance(parsed_data, dict):
+                        break
                     send_timestamp = timestamp_pb2.Timestamp()
                     send_timestamp.GetCurrentTime()
 
@@ -779,13 +790,21 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     continue
 
             # log reason why streaming stopped
-            if not context.is_active():
+            if self._shutdown_event.is_set():
+                emsg = "server shutdown initiated"
+                context.abort(grpc.StatusCode.CANCELLED, emsg)
+            elif self._cancel_readers_event.is_set():
+                emsg = "cancel_all_readers: another client has likely forced a write to server state"
+                context.abort(grpc.StatusCode.CANCELLED, emsg)
+            elif not context.is_active():
                 self.logger.info(f"StreamImages client disconnected")
             elif not self._stop_io.is_set():
                 emsg = (f"The hp_io thread data stream unexpectedly became invalid! "
                         f"Check the server logs to debug this issue")
                 self.logger.critical(emsg)
                 context.abort(grpc.StatusCode.INTERNAL, emsg)
+            else:
+                context.abort(grpc.StatusCode.INTERNAL, "Unexpected error!")
             # END reader critical section
 
     def InitHpIo(self, request, context):
@@ -794,7 +813,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         # Validate request fields that don't require reading server state
         if (not request.simulate_daq) and (not os.path.exists(request.data_dir)):
-            emsg = f"data_dir {request.data_dir} does not exist"
+            emsg = f"data_dir={request.data_dir} does not exist"
             self.logger.warning(emsg)
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
@@ -807,15 +826,17 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.warning(emsg)
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
+        self.logger.debug(f"(InitHpIo) passed validation checks")
+
         # attempt to change server state: modify hp_io thread
         with self._rw_lock_writer(context, force=request.force):
             self._server_cfg['hp_io_init'] = False
-            self._cancel_readers_event.clear()
             stop_success = self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1)
             if not stop_success:
-                emsg = "failed to stop hp_io thread"
+                emsg = "failed to stop hp_io thread!"
                 self.logger.critical(emsg)
                 context.abort(grpc.StatusCode.INTERNAL, emsg)
+            self.logger.info("stopped existing hp_io thread")
             hp_io_cfg = {
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,

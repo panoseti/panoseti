@@ -113,7 +113,7 @@ def run(host, port=50051):
             init_hp_io(
                 stub,
                 data_dir="/data/daq_data",
-                update_interval_seconds=1,
+                update_interval_seconds=0.4,
                 simulate_daq=True,
                 force=True,
                 timeout=10.0

@@ -6,5 +6,6 @@
     "min_hp_io_update_interval_seconds": 0.1,
     "min_client_update_interval_seconds": 0.5,
     "max_client_update_interval_seconds": 60,
-    "shutdown_grace_period": 0.1
+    "shutdown_grace_period": 0.1,
+    "always_reset_sim": true
 }
