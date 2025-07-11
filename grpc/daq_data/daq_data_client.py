@@ -32,7 +32,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
+from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## daq_data utils
 from daq_data_resources import format_stream_images_response, make_rich_logger, unpack_pano_image, reflect_services
@@ -80,6 +80,23 @@ def stream_images(
         if stream_images_responses is not None:
             stream_images_responses.cancel()
 
+def init_hp_io(
+        stub: daq_data_pb2_grpc.DaqDataStub,
+        data_dir: str,
+        update_interval_seconds: float,
+        simulate_daq: bool,
+        force: bool,
+        timeout:float=5.0
+) -> None:
+    init_hp_io_request = InitHpIoRequest(
+        data_dir=data_dir,
+        update_interval_seconds=update_interval_seconds,
+        simulate_daq=simulate_daq,
+        force=force
+    )
+    init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
+    logger.info(f"init_hp_io_response={repr(init_hp_io_response)}")
+
 
 def run(host, port=50051):
     # NOTE(gRPC Python Team): .close() is possible on a channel and should be
@@ -92,8 +109,15 @@ def run(host, port=50051):
             print("-------------- ServerReflection --------------")
             reflect_services(channel)
 
-            # print("-------------- Init --------------")
-            # TODO: add InitHpIo
+            print("-------------- InitHpIo --------------")
+            init_hp_io(
+                stub,
+                data_dir="/data/daq_data",
+                update_interval_seconds=1,
+                simulate_daq=True,
+                force=True,
+                timeout=10.0
+            )
 
             print("-------------- StreamImages --------------")
             stream_images(
