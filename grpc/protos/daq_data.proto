@@ -9,6 +9,7 @@ package daqdata;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+//import "google/protobuf/empty.proto";
 
 // The DaqData service definition.
 service DaqData {
@@ -23,7 +24,12 @@ service DaqData {
   // Set the server's configuration attributes.
   // Enables re-configuration without service restart.
   // [writer: acquires server_state lock in exclusive state]
+  // TODO: implement
   rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
+
+  // Initialize (or re-initialize) the hp_io thread.
+  rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}
+
 }
 
 // Image represents a panoseti movie-mode or pulse-height image and associated header metadata
@@ -97,4 +103,25 @@ message StreamHashpipeStatusResponse {}
 // TODO: implement these messages.
 message SetConfigurationRequest {}
 message SetConfigurationResponse {}
+
+
+message InitHpIoRequest {
+  // path to directory containing an active observing run
+  string data_dir = 1;
+
+  // duration in seconds between hp_io snapshots
+  double update_interval_seconds = 2;
+
+  // iff True: force the recreation of the hp_io thread, if it exists, and cancel any active streaming clients.
+  // use this to guarantee the initialization success
+  bool force = 3;
+
+  // iff True: ignore data_dir and set hp_io to monitor a simulated daq directory.
+  // for debug only
+  bool simulate_daq = 4;
+}
+
+message InitHpIoResponse {
+  bool success = 1;
+}
 

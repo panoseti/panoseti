@@ -1,11 +1,10 @@
 {
+    "init_from_default": false,
+    "default_hp_io_config_file": "default_hp_io_config.json",
     "max_workers": 10,
     "max_read_queue_size": 200,
+    "min_hp_io_update_interval_seconds": 0.1,
     "min_client_update_interval_seconds": 0.5,
     "max_client_update_interval_seconds": 60,
-    "shutdown_grace_period": 0.1,
-    "default_hp_io_config_file": "default_hp_io_config.json",
-    "allow_init_from_default": true,
-    "CaptureScience": {
-    }
+    "shutdown_grace_period": 0.1
 }

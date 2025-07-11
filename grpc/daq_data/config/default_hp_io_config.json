@@ -1,6 +1,7 @@
 {
-  "valid_config": true,
-  "timeout": 1,
+  "data_dir": "test_env",
   "update_interval_seconds": 0.5,
-  "comments": ""
+  "force": false,
+  "simulate_daq": true,
+  "comments": "DEBUG"
 }
