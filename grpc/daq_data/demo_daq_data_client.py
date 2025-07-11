@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+
+import argparse
 import logging
 import grpc
 import daq_data_pb2
@@ -101,6 +103,7 @@ def show_stream_images(
 
 def run(host, port=50051):
     connection_target = f"{host}:{port}"
+    logger.info(f"connection_target={repr(connection_target)}")
     try:
         with grpc.insecure_channel(connection_target) as channel:
             stub = daq_data_pb2_grpc.DaqDataStub(channel)
@@ -130,18 +133,13 @@ def run(host, port=50051):
 
 
 if __name__ == "__main__":
-    logger = make_rich_logger(__name__, level=logging.INFO)
-
-    # optional: run some client-side tests (e.g. check redis connection, check paths, etc)
-    print("-------------- Client-side Tests --------------")
-    all_pass, test_results = run_all_tests(
-        test_fn_list=[
-            is_os_posix
-        ],
-        args_list=[
-            []
-        ]
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--host",
+        help="daq_data server hostname or IP address. Default: 'localhost'",
+        default="localhost"
     )
-    assert all_pass, "at least one client-side test failed"
+    logger = make_rich_logger(__name__, level=logging.INFO)
     # run(host="10.0.0.60")
-    run(host="localhost")
+    args = parser.parse_args()
+    run(host=args.host)
