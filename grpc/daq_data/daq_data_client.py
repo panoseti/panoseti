@@ -6,6 +6,7 @@ Requires the following to work:
     1. All Python packages specified in requirements.txt.
 Run this on the headnode to configure the u-blox GNSS receivers in remote domes.
 """
+import argparse
 import logging
 import sys
 import signal
@@ -148,5 +149,13 @@ if __name__ == "__main__":
     )
     assert all_pass, "at least one client-side test failed"
     logger.info(f"all_pass={all_pass}")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--host",
+        help="daq_data server hostname or IP address. Default: 'localhost'",
+        default="localhost"
+    )
+    args = parser.parse_args()
+    run(host=args.host)
     # run(host="10.0.0.60")
-    run(host="localhost")

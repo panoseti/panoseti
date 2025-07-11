@@ -668,7 +668,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
                 # check if reader RPCs are cancelled
                 elif self._cancel_readers_event.is_set():
-                    emsg = "cancel_all_readers called during reader lock acquisition [skipping to check-out]"
+                    emsg = ("cancel_all_readers called during reader lock acquisition. "
+                            "another client is likely configuring the server right now. "
+                            "try again soon [skipping to check-out]")
                     self.logger.warning(emsg)
                     context.abort(grpc.StatusCode.CANCELLED, emsg)
 
