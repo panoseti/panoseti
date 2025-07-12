@@ -16,6 +16,7 @@ import config_file
 # copy a file to a DAQ node
 #
 def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
+    # TODO: daq_config is not used
     dest_path = node['data_dir']
     if run_dir:
         dest_path += '/%s'%(run_dir)
@@ -23,9 +24,14 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
         dest_path += '/'
     files = glob(file)
     for f in files:
-        cmd = 'scp -q %s %s@%s:%s'%(
-            f, node['username'], node['ip_addr'], dest_path
-        )
+        if 'port_forwarding' in node:
+            cmd = 'scp -q -P %d %s %s@%s:%s'%(
+            node['port_forwarding']['port'], f, node['username'], node['port_forwarding']['gw_ip'], dest_path
+            )
+        else:
+            cmd = 'scp -q %s %s@%s:%s'%(
+                f, node['username'], node['ip_addr'], dest_path
+            )
         if verbose:
             print(cmd)
         ret = os.system(cmd)
@@ -47,11 +53,18 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         return 'copy_dir_from_node(): no run dir %s'%run_dir_path
         
     # copy stdout from remote node to this node
-    cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
-        node['username'], node['ip_addr'],
-        node['data_dir'], run_name, util.hp_stdout_prefix,
-        run_dir_path
-    )
+    if 'port_forwarding' in node:
+        cmd = 'rsync -P -e \"ssh -p %d\" %s@%s:%s/%s/%s* %s'%(
+            node['port_forwarding']['port'] ,node['username'], node['port_forwarding']['gw_ip'],
+            node['data_dir'], run_name, util.hp_stdout_prefix,
+            run_dir_path
+        )
+    else:
+        cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
+            node['username'], node['ip_addr'],
+            node['data_dir'], run_name, util.hp_stdout_prefix,
+            run_dir_path
+        )
     if verbose:
         print(cmd)
     try:
@@ -60,11 +73,18 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         return 'copy_dir_from_node(): %s returned %d'%(cmd, ret)
     
     # copy process snapshot from remote node to this node
-    cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
-        node['username'], node['ip_addr'],
-        node['data_dir'], run_name, util.pss_prefix,
-        run_dir_path
-    )
+    if 'port_forwarding' in node:
+        cmd = 'rsync -P -e \"ssh -p %d\" %s@%s:%s/%s/%s* %s'%(
+            node['port_forwarding']['port'] ,node['username'], node['port_forwarding']['gw_ip'],
+            node['data_dir'], run_name, util.pss_prefix,
+            run_dir_path
+        )
+    else:
+        cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
+            node['username'], node['ip_addr'],
+            node['data_dir'], run_name, util.pss_prefix,
+            run_dir_path
+        )
     if verbose:
         print(cmd)
     try:
@@ -72,11 +92,18 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
     except:
         return 'copy_dir_from_node(): %s returned %d'%(cmd, ret)
     # copy PFF files from remote node to this node
-    cmd = 'rsync -P %s@%s:%s/module_%d/%s/* %s'%(
-        node['username'], node['ip_addr'],
-        node['data_dir'], module_id, run_name,
-        run_dir_path
-    )
+    if 'port_forwarding' in node:
+        cmd = 'rsync -P -e \"ssh -p %d\" %s@%s:%s/module_%d/%s/* %s'%(
+            node['port_forwarding']['port'], node['username'], node['port_forwarding']['gw_ip'],
+            node['data_dir'], module_id, run_name,
+            run_dir_path
+        )
+    else:
+        cmd = 'rsync -P %s@%s:%s/module_%d/%s/* %s'%(
+            node['username'], node['ip_addr'],
+            node['data_dir'], module_id, run_name,
+            run_dir_path
+        )
     if verbose:
         print(cmd)
     try:

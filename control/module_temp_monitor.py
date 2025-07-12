@@ -49,13 +49,13 @@ def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
     except redis.RedisError as err:
         msg = "module_temp_monitor: A Redis error occurred. "
         msg += "Error msg: {0}"
-        write_log(msg.format(err))
+        #write_log(msg.format(err))
         raise
     except TypeError as terr:
         msg = "module_temp_monitor: Failed to update '{0}'. "
         msg += "Temperature HK data may be missing. "
         msg += "Error msg: {1}"
-        write_log(msg.format(rkey, terr))
+        #write_log(msg.format(rkey, terr))
         raise
 
 
@@ -66,7 +66,7 @@ def log_powered_off_modules(wps_name, wps_to_modules):
     for module_ip_addr in wps_to_modules[wps_name]:
         for quabo_index in range(4):
             quabos_off.append(f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}')
-    write_log(msg.format(wps_name, quabos_off))
+    #write_log(msg.format(wps_name, quabos_off))
 
 
 def update_power(obs_config, wps_to_modules, wps_to_turn_off):
@@ -74,7 +74,7 @@ def update_power(obs_config, wps_to_modules, wps_to_turn_off):
     modules and quabos are no longer powered, then stop this script."""
     if wps_to_turn_off:
         # Stop any active runs.
-        write_log(f'Running ./stop.py...')
+        #write_log(f'Running ./stop.py...')
         os.system('./stop.py')
         for wps_name in wps_to_turn_off:
             wps_dict = obs_config[wps_name]
@@ -84,7 +84,7 @@ def update_power(obs_config, wps_to_modules, wps_to_turn_off):
             except Exception as err:
                 msg = "Failed to turn off the wps: {0}! "
                 msg += "Error msg: {1}"
-                write_log(msg.format(wps_name, err))
+                #write_log(msg.format(wps_name, err))
                 continue
         sys.exit()
 
@@ -112,12 +112,12 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
                 except Warning as werr:
                     msg = "module_temp_monitor: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
                     msg += "\tError msg: {3}"
-                    write_log(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
+                    #write_log(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
                     continue
                 except redis.RedisError as rerr:
                     msg = "module_temp_monitor: {0}\n\tA Redis error occurred. "
                     msg += "\tError msg: {1}"
-                    write_log(msg.format(datetime.datetime.now(), rerr))
+                    #write_log(msg.format(datetime.datetime.now(), rerr))
                     raise
                 else:
                     # Checks whether the Quabo temperatures are acceptable.
@@ -128,14 +128,18 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
                         msg = ''
                         if not detector_temp_ok:
                             msg += "The DETECTOR temp of Quabo {0} is {1} C, which exceeds the operating temperature range: {2} C to {3} C. "
-                            write_log(msg.format(
+                            '''
+                            #write_log(msg.format(
                                 config_file.get_boardloc(module_ip_addr, quabo_index), temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP)
                             )
+                            '''
                         if not fpga_temp_ok:
                             msg += "The FPGA temp of Quabo {0} is {1} C, which exceeds the operating temperature of {2} C. "
-                            write_log(msg.format(
+                            '''
+                            #write_log(msg.format(
                                 config_file.get_boardloc(module_ip_addr, quabo_index), temps[1], MAX_FPGA_TEMP)
                             )
+                            '''
                         msg += f'Attempting to turn off the wps: {module_wps_key}'
                         wps_to_turn_off.add(module_wps_key)
     return wps_to_turn_off
@@ -161,7 +165,7 @@ def main():
     wps_to_modules = get_wps_to_modules(obs_config)
     r = redis_utils.redis_init()
     if not are_redis_daemons_running():
-        write_log('Please start redis daemons')
+        #write_log('Please start redis daemons')
         return
     print("module_temp_monitor: Running...")
     startup = True
@@ -176,5 +180,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         msg = "module_temp_monitor: {0} \n\tFailed and exited with the error message: {1}"
-        write_log(msg.format(datetime.datetime.now(), e))
+        #write_log(msg.format(datetime.datetime.now(), e))
         raise

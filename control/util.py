@@ -3,7 +3,12 @@
 import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
-
+# TODO: we need to find a better way to deal with this...
+try:
+    import quabo_driver
+except:
+    pass
+import logging
 #-------------- DEFAULTS ---------------
 
 default_max_file_size_mb = 0        # no limit
@@ -44,8 +49,9 @@ hp_stdout_prefix = 'hp_stdout_'
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 redis_daemons = [
-    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'capture_power.py', 'storeInfluxDB.py'
+    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'storeInfluxDB.py'
 ]
+#capture_power.py
 
 #-------------- TIME ---------------
 
@@ -61,19 +67,35 @@ def now_str():
 #
 default_hk_dest = '192.168.1.100'
 
+# create logger
+#
+def create_logger(logfile, tag, mode='w'):
+    logger = logging.getLogger(tag)
+    logger.setLevel(logging.DEBUG)
+    handler = logging.FileHandler(logfile, mode=mode)
+    logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
+    handler.setFormatter(logformat)
+    if logger.handlers:
+        logger.handlers.clear()
+    logger.addHandler(handler)
+
 # our IP address on local network (192.x.x.x)
 # see https://pypi.org/project/netifaces/
 #
 def local_ip():
+    ips = []
     for ifname in netifaces.interfaces():
         addrs = netifaces.ifaddresses(ifname)
         for a, b in addrs.items():
             for c in b:
                 z = c['addr']
                 if (z.startswith('192.')):
-                    return z
-    raise Exception("can't get local IP")
-
+                    ips.append(z)
+    if not ips:
+        raise Exception("can't get local IP")
+    else:
+        return ips
+    
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
@@ -88,8 +110,17 @@ def ip_addr_str_to_bytes(ip_addr_str):
 
 # return true if can ping IP addr
 #
-def ping(ip_addr):
-    return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+def ping(ip_addr, cmd_port):
+    logger = logging.getLogger('PANOSETI.Config.util.ping')
+    #return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+    # TODO: implement the qping cmd in the firmware
+    # For now, we just use the data_packet_destination to see if we can talk to Quabo
+    s = os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+    if not s:
+        return True
+    else:
+        quabo = quabo_driver.QUABO(ip_addr, cmd_port)
+        return quabo.data_packet_destination('192.168.1.1')
 
 def mac_addr_str(bytes):
     s = ['']*6
@@ -350,6 +381,7 @@ def daq_bytes_per_sec_per_module(data_config):
     return x
 
 def get_daq_node_status(node):
+    # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
         '%s@%s'%(node['username'], node['ip_addr']),
         'cd %s; ./status_daq.py'%(node['data_dir']),
@@ -385,3 +417,37 @@ def get_gps_port(obs_config):
         return obs_config['gps_port']
     else:
         return '/dev/ttyUSB0'
+
+# We may use port forwarding, so we need to get the real IP and ports.
+# this is based on the network_config.
+#
+DEFAULT_CMD_PORT=60000
+DEFAULT_REBOOT_PORT=69
+def get_quabo_ip_port(ip_addr, i, network_config):
+    ip_ports = {}
+    x = ip_addr.split('.')
+    x[3] = str(int(x[3])+i)
+    quabo_ip =  '.'.join(x)
+    # these are the default config
+    ip_ports['ip_addr'] = quabo_ip
+    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT
+    ip_ports['cmd_port'] = DEFAULT_CMD_PORT
+    # if we can't find the setting for the Quabo in the network_config
+    # we will use the default config
+    for m in network_config['modules']:
+        if ip_addr == m['ip_addr']:
+            p = m['port_forwarding']
+            if p['status'] == True:
+                ip_ports['ip_addr'] = p['gw_ip']
+                ip_ports['reboot_port'] = p['reboot_port'][i]
+                ip_ports['cmd_port'] = p['cmd_port'][i]
+            break
+    return ip_ports
+
+# attach port forwarding info to daq config based on network_config        
+def attach_daq_config(daq_config, network_config):
+    for i in range(len(daq_config['daq_nodes'])):
+        daq = daq_config['daq_nodes'][i]
+        for pdaq in network_config['daq_nodes']:
+             if daq['ip_addr'] == pdaq['ip_addr'] and pdaq['port_forwarding']['status'] == True:
+                 daq_config['daq_nodes'][i]['port_forwarding'] = pdaq['port_forwarding']

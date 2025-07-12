@@ -25,20 +25,14 @@ from glob import glob
 import util, file_xfer, quabo_driver, stop, session_stop
 from sw_info import get_sw_info
 import socket
+import logging
+from argparse import ArgumentParser
 
 sys.path.insert(0, '../util')
 
 import pff, config_file
 
 verbose = False
-
-def help():
-    print("--no_hv: don't run hv_updater.py")
-    print("--no_redis: OK if redis daemons not running")
-    print("--no_data: set up to record, but don't start data flow or record")
-    print("--nsecs N: record for N seconds, then stop run")
-    print("--stop_session: stop session at end of run (with --nsecs)")
-    print("--verbose: print commands")
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
@@ -82,7 +76,7 @@ def get_daq_params(data_config):
         elif image['quabo_sample_size'] != 16:
             raise Exception('quabo_sample_size must be 8 or 16')
         image_usec = image['integration_time_usec']
-        check_img_params(image_8bit, image_usec)
+        #check_img_params(image_8bit, image_usec)
     if 'pulse_height' in data_config:
         do_ph = True
         if 'any_trigger' in data_config['pulse_height']:
@@ -111,7 +105,8 @@ def get_daq_params(data_config):
 # - tell it where to send data packets
 # - set its DAQ mode
 #
-def start_data_flow(quabo_uids, data_config, daq_config):
+def start_data_flow(quabo_uids, data_config, daq_config, network_config):
+    logger = logging.getLogger('PANOSETI.Start.start_data_flow')
     daq_params = get_daq_params(data_config)        
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
@@ -127,7 +122,13 @@ def start_data_flow(quabo_uids, data_config, daq_config):
                 if quabo['uid'] == '':
                     continue
                 ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
-                quabo = quabo_driver.QUABO(ip_addr)
+                ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
+                real_ip = ip_ports['ip_addr']
+                cmd_port = ip_ports['cmd_port']
+                logger.info('Quabo IP: %s'%ip_addr)
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Cmd Port: %d'%cmd_port)
+                quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 if verbose:
                     print('setting HK packet dest to %s on quabo %s'%(
                         head_node_ip_addr, ip_addr
@@ -151,6 +152,7 @@ def start_data_flow(quabo_uids, data_config, daq_config):
 #         run/     .pff files go here
 #
 def make_run_dirs(run_name, daq_config):
+    logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
     run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
     os.mkdir(run_dir)
@@ -169,7 +171,7 @@ def make_run_dirs(run_name, daq_config):
         if not node['modules']:
             continue
         ip_addr = node['ip_addr']
-        if ip_addr == my_ip:
+        if ip_addr in my_ip:
             for module in node['modules']:
                 cmd = 'mkdir -p %s/module_%d/%s'%(
                     daq_config['head_node_data_dir'],
@@ -190,7 +192,16 @@ def make_run_dirs(run_name, daq_config):
             # create process snapshot
             rcmds.append('cd %s/%s; ps -ux > pss_%s.log'%(data_dir,run_name, ip_addr))
             rcmd = ';'.join(rcmds)
-            cmd = 'ssh %s@%s "%s"'%(username, ip_addr, rcmd)
+            logger.info('DAQ IP: %s'%ip_addr)
+            if 'port_forwarding' in node:
+                real_ip = node['port_forwarding']['gw_ip']
+                port = node['port_forwarding']['port']
+                logger.info('Use port forwarding')
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Port: %d'%port)
+                cmd = 'ssh -p %d %s@%s "%s"'%(port, username, real_ip, rcmd)
+            else:
+                cmd = 'ssh %s@%s "%s"'%(username, ip_addr, rcmd)
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
@@ -205,12 +216,13 @@ def make_run_dirs(run_name, daq_config):
 #       copy config files to run directory
 #       start hashpipe program
 #
-def start_recording(data_config, daq_config, run_name, no_hv):
+def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
+    logger = logging.getLogger('PANOSETI.Start.start_recording')
     my_ip = util.local_ip()
 
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
-
+    obs = obs_config['name']
     if not no_hv:
         # start high-voltage updater
         util.start_hv_updater()
@@ -230,17 +242,27 @@ def start_recording(data_config, daq_config, run_name, no_hv):
             continue
         username = node['username']
         data_dir = node['data_dir']
-        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d --group_ph_frames %d'%(
-            node['ip_addr'], run_name, max_file_size_mb, daq_params.do_group_ph_frames
+        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d --group_ph_frames %d --obs %s'%(
+            node['ip_addr'], run_name, max_file_size_mb, daq_params.do_group_ph_frames, obs
         )
         if 'bindhost' in node.keys():
             remote_cmd += ' --bindhost %s'%node['bindhost']
         for m in node['modules']:
             module_id = config_file.ip_addr_to_module_id(m['ip_addr'])
             remote_cmd += ' --module_id %d'%module_id
-        cmd = 'ssh %s@%s "cd %s; %s"'%(
+        if 'port_forwarding' in node:
+            real_ip = node['port_forwarding']['gw_ip']
+            port = node['port_forwarding']['port']
+            logger.info('Use port forwarding')
+            logger.info('Real IP: %s'%real_ip)
+            logger.info('Port: %d'%port)
+            cmd = 'ssh -p %d %s@%s "cd %s; %s"'%(
+                port, username, real_ip, data_dir, remote_cmd
+            )
+        else:
+            cmd = 'ssh %s@%s "cd %s; %s"'%(
             username, node['ip_addr'], data_dir, remote_cmd
-        )
+            )
         if verbose:
             print(cmd)
         ret = os.system(cmd)
@@ -252,7 +274,7 @@ def start_run(
     my_ip = util.local_ip()
     # convert head node name to IP address
     head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
-    if my_ip != head_node_ip:
+    if  head_node_ip not in my_ip:
         print('This node (%s) is not the head node specified in daq_config.json (%s)'%(my_ip, daq_config['head_node_ip_addr']))
         return False
 
@@ -292,9 +314,9 @@ def start_run(
         make_run_dirs(run_name, daq_config)
         if not no_data:
             print('starting data flow from quabos')
-            start_data_flow(quabo_uids, data_config, daq_config)
+            start_data_flow(quabo_uids, data_config, daq_config, network_config)
             print('starting recording')
-            start_recording(data_config, daq_config, run_name, no_hv)
+            start_recording(obs_config, data_config, daq_config, run_name, no_hv)
     except:
         print(traceback.format_exc())
         print("Couldn't start run.  Run stop.py, then try again.")
@@ -306,39 +328,39 @@ def start_run(
     return True
 
 if __name__ == "__main__":
-    argv = sys.argv
-    no_hv = False
-    no_redis = False
-    no_data = False
-    nsecs = 0
-    stop_session = False
-    i = 1
-    while i < len(argv):
-        if argv[i] == '--no_hv':
-            no_hv = True
-        elif argv[i] == '--no_redis':
-            no_redis = True
-        elif argv[i] == '--no_data':
-            no_data = True
-        elif argv[i] == '--verbose':
-            verbose = True
-        elif argv[i] == '--nsecs':
-            i += 1
-            nsecs = int(argv[i])
-        elif argv[i] == '--stop_session':
-            stop_session = True
-        elif argv[i] == '--help':
-            help()
-            quit()
-        else:
-            help()
-            raise Exception('bad arg %s'%argv[i])
-        i += 1
-
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    logfile = 'logs/start.log'
+    util.create_logger(logfile, 'PANOSETI.Start', 'a')
+    logger = logging.getLogger('PANOSETI.Start')
+    logger.info('************************************')
+    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
+    parser.add_argument('--no_hv', dest='no_hv', action='store_true', default=False,
+                        help='Take data without high voltage.')
+    parser.add_argument('--no_redis', dest='no_redis', action='store_true', default=False,
+                        help='OK if redis daemons not running.')
+    parser.add_argument('--no_data', dest='no_data', action='store_true', default=False,
+                        help='Set up to record, but don\'t start data flow or record.')
+    parser.add_argument('--nsecs', dest='nsecs', type=int, default=0,
+                        help='Record for N seconds, then stop run.')
+    parser.add_argument('--stop_session', dest='stop_session', action='store_true', default=False,
+                        help='Stop session at end of run (with --nsecs).')
+    parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
+                        help='print commands.')
+    args = parser.parse_args()
+    no_hv = args.no_hv
+    no_redis = args.no_redis
+    no_data = args.no_data
+    nsecs = args.nsecs
+    stop_session = args.stop_session
+    verbose = args.verbose
+    # load config files
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+    util.attach_daq_config(daq_config, network_config)
     start_run(
         obs_config, daq_config, quabo_uids, data_config,
         no_hv, no_redis, no_data

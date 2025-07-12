@@ -75,7 +75,6 @@ def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list,
             else:
                 msg = f"storeInfluxDB.py: No data in ({rkey}, {key.decode('utf-8')}): {repr(val)}!"
                 msg += "\n Aborting influx write..."
-                util.write_log(msg)
                 continue
         write_influx(client, rkey, data_fields, get_datatype(rkey))
         key_timestamps[rkey] = data_fields['Computer_UTC']

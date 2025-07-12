@@ -776,6 +776,20 @@ while True:
         cmd_payload[7] = im_ip[2]
         cmd_payload[8] = im_ip[3]
         sendit(cmd_payload)
+        try:
+            reply = sock.recvfrom(1024)
+            if len(reply[0]) == 12:
+                all_bytes = struct.unpack('12B', reply[0])
+                mac1_bytes = all_bytes[:6]
+                mac2_bytes = all_bytes[6:]
+                mac1 = ':'.join(f'{b:02X}' for b in mac1_bytes)
+                mac2 = ':'.join(f'{b:02X}' for b in mac2_bytes)
+                print('PH MAC: ', mac1)
+                print('IM MAC: ', mac2)
+            else:
+                print('data length is incorrect: expect 12 bytes, but got %d'%len(reply[0]))
+        except:
+            print('No data received.')
     elif inp == 'HK-IP':
         cmd_payload = bytearray(64)
         for i in range(64): cmd_payload[i]=0

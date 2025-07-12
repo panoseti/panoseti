@@ -58,8 +58,9 @@ class DAQ_PARAMS:
 # will probably need to change this at some point
 
 class QUABO:
-    def __init__(self, ip_addr, config_file_path='quabo_config.txt'):
+    def __init__(self, ip_addr, port=UDP_CMD_PORT, config_file_path='quabo_config.txt'):
         self.ip_addr = ip_addr
+        self.port=port
         self.config_file_path = config_file_path
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
@@ -349,14 +350,16 @@ class QUABO:
             cmd[i+5] = ip_addr_bytes[i]
         self.flush_rx_buf()
         self.send(cmd)
-        reply = self.sock.recvfrom(12)
-        bytes = reply[0]
-        count = len(bytes)
-        #print('got %d bytes in reply'%count)
+        try:
+            reply = self.sock.recvfrom(12)
+            bytes = reply[0]
+            count = len(bytes)
+        except:
+            count = 0
         if count != 12:
-            return
-        #print('Mac addr for PH packets: %s'%(util.mac_addr_str(bytes[0:6])))
-        #print('Mac addr for image packets: %s'%(util.mac_addr_str(bytes[6:12])))
+            return False
+        else:
+            return True
 
     def hk_packet_destination(self, ip_addr_str):
         # get the IP address from hostname
@@ -371,7 +374,7 @@ class QUABO:
 
     def send(self, cmd):
         #print('sending %d bytes'%(len(cmd)))
-        self.sock.sendto(bytes(cmd), (self.ip_addr, UDP_CMD_PORT))
+        self.sock.sendto(bytes(cmd), (self.ip_addr, self.port))
 
     def make_cmd(self, cmd):
         x = bytearray(64)
@@ -686,7 +689,7 @@ class QUABO:
         self.set_bits(1, lsb_pos, field_width, vals[1])
         self.set_bits(2, lsb_pos, field_width, vals[2])
         self.set_bits(3, lsb_pos, field_width, vals[3])
-
+    
 # END OF CLASS QUABO
 
 # read a file of the form

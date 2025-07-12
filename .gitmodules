@@ -1,0 +1,3 @@
+[submodule "daq"]
+	path = daq
+	url = https://github.com/panoseti/panoseti_daq.git

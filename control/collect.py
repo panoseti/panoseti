@@ -21,7 +21,7 @@ def collect_data(daq_config, run_dir, verbose=False):
     for node in daq_config['daq_nodes']:
         for module in node['modules']:
             module_id = module['id']
-            if node['ip_addr'] == my_ip:
+            if node['ip_addr'] in my_ip:
                 # head node is also a DAQ node.
                 # Move files locally; if different volume, this will copy
                 cmd = 'mv %s/module_%d/%s/* %s/%s'%(
@@ -51,7 +51,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
     my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config['daq_nodes']:
-        if node['ip_addr'] == my_ip:
+        if node['ip_addr'] in my_ip:
             cmd = 'rm -rf %s/module_*/%s'%(
                 node['data_dir'], run_dir
             )
@@ -65,9 +65,14 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                 node['data_dir'], run_dir,
                 node['data_dir'], run_dir
             )
-            cmd = 'ssh %s@%s "%s"'%(
-                node['username'], node['ip_addr'], rcmd
-            )
+            if 'port_forwarding' in node:
+                cmd = 'ssh -p %d %s@%s "%s"'%(
+                    node['port_forwarding']['port'], node['username'], node['port_forwarding']['gw_ip'], rcmd
+                )
+            else:
+                cmd = 'ssh %s@%s "%s"'%(
+                    node['username'], node['ip_addr'], rcmd
+                )
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
