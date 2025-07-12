@@ -162,12 +162,13 @@ def hp_io_thread_fn(
             nruns = len(runs)
             if nruns == 0:
                 raise FileNotFoundError(f'no run of module {module_id} in {run_pattern}')
-            run_path = sorted(runs)[-1]
+            run_path = sorted(runs, key=os.path.getmtime)[-1]
             # TODO: check if this run is in progress (with production code)
-            if os.path.exists(DAQ_ACTIVE_FILE):
-                break
+            # if os.path.exists(DAQ_ACTIVE_FILE):
+            #     break
             logger.info("Waiting for in-progress run to start")
             time.sleep(1)
+            break
             # run = util.daq_get_run_name()
             # if not run:
             #     logger.error('no run')
@@ -187,7 +188,7 @@ def hp_io_thread_fn(
                     logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
                     time.sleep(0.5)
 
-                file = sorted(files)[-1]
+                file = sorted(files, key=os.path.getmtime)[-1]
                 filepath = file
 
                 if stop_io.is_set():
@@ -205,7 +206,7 @@ def hp_io_thread_fn(
                 # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
                 f = open(filepath, 'rb')
                 logger.debug(f"{dp=}: {filepath=}: {dp_cfg[dp]['bytes_per_image']=}")
-                (frame_size, nframes, first_t, last_t) = pff.img_info(f, dp_cfg[dp]['bytes_per_image'])
+                frame_size = pff.img_frame_size(f, dp_cfg[dp]['bytes_per_image'])
                 dp_cfg[dp]['frame_size'] = frame_size
 
                 f.seek(0, os.SEEK_SET)
@@ -473,12 +474,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
         self._stop_io.clear()
 
-        dps = ["img16", "ph256"]
+        dps = ["img16"]
         dp_cfg = self.get_dp_cfg(dps)
         data_dir = hp_io_cfg['data_dir']
 
         # Toggle simulation thread creation
         if hp_io_cfg['simulate_daq']:
+            dps = ["img16", "ph256"]
             data_dir = SIM_DATA_DIR
             self._daq_sim_thread = Thread(
                 target=daq_sim_thread_fn,

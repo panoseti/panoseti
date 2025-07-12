@@ -130,6 +130,12 @@ def img_header_time(h):
         t = pkt_header_time(h)
     return t
 
+def img_frame_size(f, bytes_per_image):
+    h = json.loads(read_json(f))
+    header_size = f.tell()
+    frame_size = header_size + bytes_per_image + 1
+    return frame_size
+
 # return info about an image file
 #   f points to start of file
 #   bytes_per_image: e.g. 1024*2

@@ -113,7 +113,7 @@ def run(host, port=50051):
             print("-------------- InitHpIo --------------")
             init_hp_io(
                 stub,
-                data_dir="/data/daq_data",
+                data_dir="/mnt/data10",
                 update_interval_seconds=0.4,
                 simulate_daq=True,
                 force=True,
