@@ -68,6 +68,19 @@ REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_
 MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF.format(seqno=0)
 PH_SRC      = REAL_RUN_DIR / PH_PFF.format(seqno=0)
 
+
+def is_daq_active(simulate_daq=False):
+    """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
+    daq_active = False
+    if simulate_daq:
+        daq_active = os.path.exists(DAQ_ACTIVE_FILE)
+    else:
+        daq_active = util.is_hashpipe_running()
+    return daq_active
+
+
+
+
 def daq_sim_thread_fn(
     dp_cfg: Dict[str, Any],
     update_interval: float,
@@ -135,6 +148,8 @@ def daq_sim_thread_fn(
                                 raise TimeoutError("test hp_io thread unexpected termination")
             if fnum >= min(ph_nframes, movie_nframes):
                 logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
+    except TimeoutError:
+        pass
     finally:
         os.unlink(DAQ_ACTIVE_FILE)
         for file in simulated_data_files:
@@ -270,6 +285,8 @@ def hp_io_thread_fn(
         init_dp_cfg()
         valid.set()
         while not stop_io.is_set():
+            if not is_daq_active(simulate_daq):
+                raise EnvironmentError("DAQ data flow stopped.")
             for dp in dp_cfg:
                 d = dp_cfg[dp]
                 header, img = dp_main(d)
@@ -304,8 +321,8 @@ def hp_io_thread_fn(
                         raise TimeoutError("test hp_io thread unexpected termination")
                 time.sleep(update_interval)
     except Exception as err:
-        logger.critical(f"hp_io thread encountered a fatal exception! {err}")
-        raise err
+        logger.critical(f"hp_io thread encountered a fatal exception! '{repr(err)}'")
+        # raise err
     finally:
         # close any open file pointers
         for dp in dp_cfg:
@@ -492,7 +509,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     self.logger
                 ),
                 kwargs={
-                    "early_exit": False,  # causes the hp_io thread have a fatal exception after the given delay
+                    "early_exit": True,  # causes the hp_io thread have a fatal exception after the given delay
                     "early_exit_delay_seconds": 25
                 },
             )
@@ -749,7 +766,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             # BEGIN reader critical section
             # Validate request fields that require reading protected server state
             if not self._server_cfg['hp_io_init']:
-                # TODO: implement InitHpIO
                 emsg = "Uninitialized hp_io thread. Run InitHpIo with a valid hp_io configuration to initialize it."
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
             elif not (self._server_cfg["min_client_update_interval_seconds"]
@@ -827,8 +843,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.warning(emsg)
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
-        # check if daq is active and real daq is being used
-        if (not request.simulate_daq) and (not util.is_hashpipe_running()):
+        # check if daq is active and real daq is being used. Note: simulated daq data flow always properly initialized
+        if (not request.simulate_daq) and (not is_daq_active()):
             emsg = 'DAQ software is not active. Re-try hp_io thread creation once the daq software has been started.'
             self.logger.warning(emsg)
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)

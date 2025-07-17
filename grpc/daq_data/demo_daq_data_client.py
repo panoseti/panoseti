@@ -7,7 +7,7 @@ import daq_data_pb2
 import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
-from daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response
+from daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response, init_hp_io
 from daq_data_resources import make_rich_logger
 from daq_data_testing import run_all_tests, is_os_posix
 
@@ -22,6 +22,7 @@ def show_stream_images(
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
+        logger: logging.Logger,
         wait_for_ready: bool = False,
 ):
     """Streams PanoImages from an active observing run."""
@@ -101,7 +102,8 @@ def show_stream_images(
             stream_images_responses.cancel()
 
 
-def run(host, port=50051):
+def run(host, port=50051, init=False, simulate_daq=False):
+    logger = make_rich_logger(__name__, level=logging.INFO)
     connection_target = f"{host}:{port}"
     logger.info(f"connection_target={repr(connection_target)}")
     try:
@@ -111,7 +113,16 @@ def run(host, port=50051):
             reflect_services(channel)
 
             # print("-------------- Init --------------")
-            # TODO: add InitHpIo
+            if init:
+                init_hp_io(
+                    stub,
+                    data_dir="/mnt/data10",
+                    update_interval_seconds=0.4,
+                    simulate_daq=simulate_daq,
+                    force=True,
+                    timeout=10.0,
+                    logger=logger
+                )
 
             print("-------------- StreamImages --------------")
             stream_movie_data = np.random.uniform() > 0.9
@@ -124,7 +135,8 @@ def run(host, port=50051):
                 stream_movie_data,
                 stream_pulse_height_data,
                 update_interval_seconds=0.75,
-                wait_for_ready=True
+                wait_for_ready=True,
+                logger=logger
             )
     except KeyboardInterrupt:
         logger.info(f"'^C' received, closing connection to the DaqData server at {repr(connection_target)}")
@@ -139,7 +151,16 @@ if __name__ == "__main__":
         help="daq_data server hostname or IP address. Default: 'localhost'",
         default="localhost"
     )
-    logger = make_rich_logger(__name__, level=logging.INFO)
+    parser.add_argument(
+        "--init",
+        help="initialize an hp_io thread to track an active run directory",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--sim",
+        help="use a simulated datastream",
+        action="store_true"
+    )
     # run(host="10.0.0.60")
     args = parser.parse_args()
-    run(host=args.host)
+    run(host=args.host, init=args.init, simulate_daq=args.sim)

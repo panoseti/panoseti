@@ -75,6 +75,9 @@ message StreamImagesRequest {
   //  - For efficiency, update_interval_seconds is rounded up to the nearest integer multiple of the
   //    update_interval of the hashpipe gRPC client thread.
   double update_interval_seconds = 3;
+  // If empty, data from all modules is streamed.
+  // If at least one module_id is specified, only data from the specified module_ids are streamed.
+  repeated uint32 module_ids = 4 [packed=true];
 }
 
 message TestCase {
