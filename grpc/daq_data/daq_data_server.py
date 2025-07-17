@@ -49,124 +49,190 @@ import util
 
 
 """ hp_io test macros """
-PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
-IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
-MOVIE_TYPE = 'img16'
-PH_TYPE = 'ph256'
+# PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
+# IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
+# MOVIE_TYPE = 'img16'
+# PH_TYPE = 'ph256'
 
-SIM_DATA_DIR = Path("test_env")
-
-SIM_RUN_DIR = SIM_DATA_DIR / Path("module_1/obs_SIMULATE")
-os.makedirs(SIM_RUN_DIR, exist_ok=True)
-DAQ_ACTIVE_FILE = SIM_RUN_DIR / "daq_active"
-def get_sim_movie_dest(seqno):
-    return SIM_RUN_DIR / IMG_PFF.format(seqno=seqno)
-def get_sim_ph_dest(seqno):
-    return SIM_RUN_DIR / PH_PFF.format(seqno=seqno)
-
-REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
-MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF.format(seqno=0)
-PH_SRC      = REAL_RUN_DIR / PH_PFF.format(seqno=0)
+# SIM_DATA_DIR = Path("simulated_data_dir")
 
 
-def is_daq_active(simulate_daq=False):
+# SIM_RUN_DIR = SIM_DATA_DIR / Path("module_1/obs_SIMULATE")
+def get_daq_active_file(sim_cfg, module_id):
+    sim_data_dir = sim_cfg['files']['data_dir']
+    sim_run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
+    os.makedirs(f"{sim_data_dir}/{sim_run_dir}", exist_ok=True)
+    daq_active_file = sim_cfg['files']['daq_active_file'].format(module_id=module_id)
+    return f"{sim_data_dir}/{sim_run_dir}/{daq_active_file}"
+
+# DAQ_ACTIVE_FILE = SIM_RUN_DIR / "daq_active"
+def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
+    """
+    Utility function to get the path of the pff files in the simulated daq directory.
+    """
+    sim_data_dir = sim_cfg['files']['data_dir']
+    if is_simulated:
+        run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
+        os.makedirs(f"{sim_data_dir}/{run_dir}", exist_ok=True)
+    else:
+        run_dir = sim_cfg['files']['real_run_dir']
+
+    if is_ph:
+        ph_pff = sim_cfg['files']['ph_pff_template'].format(module_id=module_id, seqno=seqno)
+        return f"{sim_data_dir}/{run_dir}/{ph_pff}"
+    else:
+        movie_pff = sim_cfg['files']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
+        return f"{sim_data_dir}/{run_dir}/{movie_pff}"
+
+
+# REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
+# MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF.format(seqno=0)
+# PH_SRC      = REAL_RUN_DIR / PH_PFF.format(seqno=0)
+
+
+def is_daq_active(simulate_daq, sim_cfg=None):
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
-    daq_active = False
     if simulate_daq:
-        daq_active = os.path.exists(DAQ_ACTIVE_FILE)
+        if sim_cfg is None:
+            raise ValueError("sim_cfg must be provided when simulate_daq is True")
+        daq_active_files = [get_daq_active_file(sim_cfg, mid) for mid in sim_cfg['sim_module_ids']]
+        daq_active = any([os.path.exists(file) for file in daq_active_files])
     else:
         daq_active = util.is_hashpipe_running()
     return daq_active
 
 
-
-
 def daq_sim_thread_fn(
-    dp_cfg: Dict[str, Any],
+    sim_cfg: Dict[str, Any],
     update_interval: float,
     stop_io: Event,
     logger: logging.Logger,
-    frames_per_pff = 20,
-    **kwargs,
 ) -> None:
-    """Simulate hashpipe data stream: Read a real file and write to a fake file. """
-    if "early_exit_delay_seconds" in kwargs:
-        early_exit_counter = kwargs["early_exit_delay_seconds"]
-    else:
-        early_exit_counter = 30
+    """Simulate hashpipe data stream: Read a real file and write to a fake file into the following file structure:
+    Simulated directory structure:
+        simulated_data_dir/
+            ├── real_run_dir/
+            │   ├── real_movie_pff [seqno 0]
+            │   └── real_pulse_height_pffs [seqno 0]
+            │
+            ├── module_1/
+            │   ├── simulated_movie_pff [seqno 0]
+            │   │   ...
+            │   ├── simulated_movie_pff [seqno M1]
+            │   ├── simulated_pulse_height_pff [seqno 0]
+            │   │   ...
+            │   └── simulated_pulse_height_pffs [seqno P1]
+            │
+            ├── module_2/
+            │   ...
+            │
+            └── module_N/
+                ...
+
+    To simulate the multi-file creation behavior of the daq software due to the max file size parameter,
+    every [frames_per_pff] frames, create a new file of each type.
+    """
     logger.info("hp_sim thread started")
-    # prevent multiple server instances from running this thread
-    if os.path.exists(DAQ_ACTIVE_FILE):
-        emsg = "hp_sim thread is already running on another server instance!"
-        logger.critical(emsg)
-        raise RuntimeError(emsg)
+
+    # unpack source file info from sim_cfg
+    movie_type = sim_cfg['movie_type']
+    ph_type = sim_cfg['ph_type']
+    data_products = [movie_type, ph_type]
+    dp_cfg = DaqDataServicer.get_dp_cfg(data_products)
 
     simulated_data_files = []
+    active_pff_files = dict()
     try:
-        with open(DAQ_ACTIVE_FILE, "w") as daq_active:
-            daq_active.write("1")
+        # prevent multiple server instances from running this thread
+        daq_active_files = [get_daq_active_file(sim_cfg, module_id=mid) for mid in sim_cfg['sim_module_ids']]
+        daq_active = is_daq_active(simulate_daq=True, sim_cfg=sim_cfg)
 
-        with open(MOVIE_SRC, "rb") as movie_src, open(PH_SRC, "rb") as ph_src:
+        if daq_active:
+            emsg = "hp_sim thread is already running on another server instance!"
+            logger.critical(emsg)
+            raise RuntimeError(emsg)
+
+        # create files to signal daq is in progress
+        for daq_active_file in daq_active_files:
+            with open(daq_active_file, "w") as f:
+                f.write("1")
+
+        # open real pff files for reading
+        movie_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=False, is_simulated=False)
+        ph_src_path = get_sim_pff_path(sim_cfg, module_id=sim_cfg['real_module_id'], seqno=0, is_ph=True, is_simulated=False)
+        with open(movie_src_path, "rb") as movie_src, open(ph_src_path, "rb") as ph_src:
             # get file info, e.g. frame size from the ph and img source files
-            (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[MOVIE_TYPE]['bytes_per_image'])
+            (movie_frame_size, movie_nframes, first_t, last_t) = pff.img_info(movie_src, dp_cfg[movie_type]['bytes_per_image'])
             movie_src.seek(0, os.SEEK_SET)
             logger.info(f"movie src: {movie_frame_size=}, {movie_nframes=}")
 
-            (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[PH_TYPE]['bytes_per_image'])
+            (ph_frame_size, ph_nframes, first_t, last_t) = pff.img_info(ph_src, dp_cfg[ph_type]['bytes_per_image'])
             logger.info(f"ph src: {ph_frame_size=}, {ph_nframes=}")
             ph_src.seek(0, os.SEEK_SET)
+
             # copy frames from [dp]_src to dp_dst to simulate data acquisition software
             fnum = 0
-            seqno = 0
+            seqno = -1
+            frames_per_pff = sim_cfg['frames_per_pff']
             while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
-                # Every [frames_per_pff] frames, create a new file of each type.
-                # This simulates the multi-file creation behavior of the daq software due to the max file size parameter
-                movie_dest_file = get_sim_movie_dest(seqno)
-                ph_dest_file = get_sim_ph_dest(seqno)
-                simulated_data_files.extend([movie_dest_file, ph_dest_file])
-                # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
-                with open(movie_dest_file, "wb") as movie_dst, open(ph_dest_file, "wb") as ph_dst:
-                    while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
-                        # check if a new simulated file should be created
-                        if int(fnum / frames_per_pff) > seqno:
-                            seqno += 1
-                            break
-                        ph_data = ph_src.read(ph_frame_size)
+                # check if new simulated files should be created
+                if int(fnum / frames_per_pff) > seqno:
+                    seqno += 1
+                    logger.info(f"new seqno={seqno}")
+                    for module_id in sim_cfg['sim_module_ids']:
+                        movie_dest_path = get_sim_pff_path(sim_cfg, module_id, seqno=seqno, is_ph=False, is_simulated=True)
+                        ph_dest_path = get_sim_pff_path(sim_cfg, module_id, seqno=seqno, is_ph=True, is_simulated=True)
+                        active_pff_files[module_id] = {'movie': movie_dest_path, 'ph': ph_dest_path}
+                        simulated_data_files.extend([movie_dest_path, ph_dest_path])
+                        logger.info(f"{movie_dest_path=}, {ph_dest_path=}")
+                # read data from real pff files
+                ph_data = ph_src.read(ph_frame_size)
+                movie_data = movie_src.read(movie_frame_size)
+                fnum += 1
+                # broadcast to all simulated run directories
+                for module_id in sim_cfg['sim_module_ids']:
+                    movie_dest_path = active_pff_files[module_id]['movie']
+                    ph_dest_path = active_pff_files[module_id]['ph']
+                    # logger.debug( f"Creating new simulated data files: {movie_dest_file=}, {ph_dest_file=}, {seqno=}, {fnum=}" )
+                    with open(movie_dest_path, "ab") as movie_dst, open(ph_dest_path, "ab") as ph_dst:
                         ph_nbytes_written = ph_dst.write(ph_data)
-                        ph_dst.flush()
-
-                        movie_data = movie_src.read(movie_frame_size)
                         movie_nbytes_written = movie_dst.write(movie_data)
-
+                        ph_dst.flush()
                         movie_dst.flush()
-
-                        fnum += 1
-                        time.sleep(update_interval)
-                        if "early_exit" in kwargs and kwargs["early_exit"]:
-                            early_exit_counter -= 1
-                            if early_exit_counter == 0:
-                                raise TimeoutError("test hp_io thread unexpected termination")
+                # simulation rate limiting
+                time.sleep(update_interval)
+                if 'early_exit' in sim_cfg:
+                    if sim_cfg['early_exit']['do_exit']:
+                        sim_cfg['early_exit']['nframes_before_exit'] -= 1
+                        if sim_cfg['early_exit']['nframes_before_exit'] <= 0:
+                            raise TimeoutError("test hp_io thread unexpected termination")
             if fnum >= min(ph_nframes, movie_nframes):
                 logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
     except TimeoutError:
         pass
+    except RuntimeError:
+        pass
     finally:
-        os.unlink(DAQ_ACTIVE_FILE)
-        for file in simulated_data_files:
-            os.unlink(file)
+        logger.critical(f"{active_pff_files=}")
+        logger.critical(f"{daq_active_files=}")
+        # for daq_active_file in daq_active_files:
+        #     os.unlink(daq_active_file)
+        # for file in simulated_data_files:
+        #     os.unlink(file)
         logger.info("hp_sim thread exited")
 
 
 def hp_io_thread_fn(
         data_dir: Path,
         module_id: int,
-        dp_cfg: Dict[str, Any],
+        data_products: List[str],
         update_interval: float,
         reader_states: List[Dict],
         stop_io: Event,
         valid: Event,
         logger: logging.Logger,
         simulate_daq: bool,
+        sim_cfg: Dict[str, Any],
         **kwargs
 ) -> None:
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues.
@@ -174,6 +240,7 @@ def hp_io_thread_fn(
     """
     logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
+    dp_cfg = DaqDataServicer.get_dp_cfg(data_products)
     # parse any kwargs
     if "early_exit_delay_seconds" in kwargs:
         early_exit_counter = kwargs["early_exit_delay_seconds"]
@@ -285,7 +352,7 @@ def hp_io_thread_fn(
         init_dp_cfg()
         valid.set()
         while not stop_io.is_set():
-            if not is_daq_active(simulate_daq):
+            if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
                 raise EnvironmentError("DAQ data flow stopped.")
             for dp in dp_cfg:
                 d = dp_cfg[dp]
@@ -358,7 +425,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._server_cfg = server_cfg
 
         # Create the server's logger
-        self.logger = make_rich_logger(__name__, level=logging.INFO)
+        self.logger = make_rich_logger(__name__, level=logging.DEBUG)
 
         # Load default hahspipe_io configuration
         with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
@@ -383,6 +450,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "stream_pulse_height_data": True,
                 "stream_hashpipe_status": False,
                 "update_interval_seconds": 1,
+                "module_ids": (),
             }
             default_reader_state = {
                 "is_allocated": False,
@@ -406,6 +474,39 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                                 f"{self._server_cfg['init_from_default']=}")
 
             self._server_cfg['hp_io_init'] = False
+
+    @classmethod
+    def get_dp_cfg(cls, dps):
+        """Returns a dictionary of static properties for the given data products."""
+        dp_cfg = {}
+        for dp in dps:
+            if dp == 'img16' or dp == 'ph1024':
+                image_shape = [32, 32]
+                bytes_per_pixel = 2
+            elif dp == 'img8':
+                image_shape = [32, 32]
+                bytes_per_pixel = 1
+            elif dp == 'ph256':
+                image_shape = [16, 16]
+                bytes_per_pixel = 2
+            else:
+                raise Exception("bad data product %s" % dp)
+            bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
+            is_ph = 'ph' in dp
+            # Get type enum for PanoImage message
+            if is_ph:
+                pano_image_type = PanoImage.Type.PULSE_HEIGHT
+            else:
+                pano_image_type = PanoImage.Type.MOVIE
+
+            dp_cfg[dp] = {
+                "image_shape": image_shape,
+                "bytes_per_pixel": bytes_per_pixel,
+                "bytes_per_image": bytes_per_image,
+                "is_ph": is_ph,
+                "pano_image_type": pano_image_type,
+            }
+        return dp_cfg
 
     def _cancel_all_readers(self):
         """Cancel all active and waiting reader RPCs."""
@@ -450,92 +551,68 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
 
 
-    def get_dp_cfg(self, dps):
-        """Returns a dictionary of static properties for the given data products."""
-        dp_cfg = {}
-        for dp in dps:
-            if dp == 'img16' or dp == 'ph1024':
-                image_shape = [32, 32]
-                bytes_per_pixel = 2
-            elif dp == 'img8':
-                image_shape = [32, 32]
-                bytes_per_pixel = 1
-            elif dp == 'ph256':
-                image_shape = [16, 16]
-                bytes_per_pixel = 2
-            else:
-                raise Exception("bad data product %s" % dp)
-            bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
-            is_ph = 'ph' in dp
-            # Get type enum for PanoImage message
-            if is_ph:
-                pano_image_type = PanoImage.Type.PULSE_HEIGHT
-            else:
-                pano_image_type = PanoImage.Type.MOVIE
-
-            dp_cfg[dp] = {
-                "image_shape": image_shape,
-                "bytes_per_pixel": bytes_per_pixel,
-                "bytes_per_image": bytes_per_image,
-                "is_ph": is_ph,
-                "pano_image_type": pano_image_type,
-            }
-        return dp_cfg
-
     def _start_hp_io_thread(self, hp_io_cfg):
         """Creates a new hp_io thread with the given hp_io_cfg.
         @return: True iff the hp_io thread was created and attached to a valid active observing run.
         """
-        # Terminate any currently alive hp_io thread
-        if not self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1):
-            raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
-        self._stop_io.clear()
+        with self._hp_io_lock:
+            hp_io_update_interval = max(
+                hp_io_cfg['update_interval_seconds'],
+                self._server_cfg['min_hp_io_update_interval_seconds']
+            )
+            simulate_daq_cfg = self._server_cfg['simulate_daq_cfg']
 
-        dps = ["img16"]
-        dp_cfg = self.get_dp_cfg(dps)
-        data_dir = hp_io_cfg['data_dir']
+            # Toggle simulation thread creation
+            if not hp_io_cfg['simulate_daq']:
+                dps = ["img16"]
+                data_dir = hp_io_cfg['data_dir']
+                if not os.path.exists(data_dir):
+                    return False
+                self._daq_sim_thread = None
+            else:
+                dps = simulate_daq_cfg['data_products']
+                data_dir = simulate_daq_cfg['files']['data_dir']
+                self._daq_sim_thread = Thread(
+                    target=daq_sim_thread_fn,
+                    args=(
+                        simulate_daq_cfg.copy(),
+                        hp_io_update_interval,
+                        self._stop_io,
+                        self.logger
+                    )
+                )
 
-        # Toggle simulation thread creation
-        if hp_io_cfg['simulate_daq']:
-            dps = ["img16", "ph256"]
-            dp_cfg = self.get_dp_cfg(dps)
-            data_dir = SIM_DATA_DIR
-            self._daq_sim_thread = Thread(
-                target=daq_sim_thread_fn,
+            # Create a new hp_io_thread using the client's configuration
+            self._hp_io_thread = Thread(
+                target=hp_io_thread_fn,
                 args=(
-                    dp_cfg.copy(),
-                    max(hp_io_cfg['update_interval_seconds'] * (2**0.5) / 1.5, self._server_cfg['min_hp_io_update_interval_seconds']),
+                    data_dir,
+                    1,
+                    dps,
+                    hp_io_update_interval,
+                    self._reader_states,
                     self._stop_io,
-                    self.logger
+                    self._hp_io_valid,
+                    self.logger,
+                    hp_io_cfg['simulate_daq'],
+                    simulate_daq_cfg
                 ),
                 kwargs={
-                    "early_exit": True,  # causes the hp_io thread have a fatal exception after the given delay
+                    "early_exit": False,  # causes the hp_io thread to have a fatal exception after the given delay
                     "early_exit_delay_seconds": 25
                 },
+                daemon=False,
             )
-            self._daq_sim_thread.start()
 
-        # Create a new hp_io_thread using the client's configuration
-        self._hp_io_thread = Thread(
-            target=hp_io_thread_fn,
-            args=(
-                data_dir,
-                1,
-                dp_cfg.copy(),
-                max(hp_io_cfg['update_interval_seconds'], self._server_cfg['min_hp_io_update_interval_seconds']),
-                self._reader_states,
-                self._stop_io,
-                self._hp_io_valid,
-                self.logger,
-                hp_io_cfg['simulate_daq'],
-            ),
-            kwargs={
-                "early_exit": False,  # causes the hp_io thread have a fatal exception after the given delay
-                "early_exit_delay_seconds": 25
-            },
-            daemon=False,
-        )
-        self._hp_io_thread.start()
+            # Terminate any currently alive hp_io thread
+            if not self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1):
+                raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
+            self._stop_io.clear()
+
+            # Start threads
+            if self._daq_sim_thread is not None:
+                self._daq_sim_thread.start()
+            self._hp_io_thread.start()
 
 
         # check if thread could be properly initialized
@@ -823,7 +900,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 emsg = "cancel_all_readers: another client has likely forced a write to server state"
                 context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif not context.is_active():
-                self.logger.info(f"StreamImages client disconnected")
+                emsg = "client context terminated"
+                self.logger.info(emsg)
+                context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif not self._stop_io.is_set():
                 emsg = (f"The hp_io thread data stream unexpectedly became invalid! "
                         f"Check the server logs to debug this issue")
@@ -844,7 +923,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
         # check if daq is active and real daq is being used. Note: simulated daq data flow always properly initialized
-        if (not request.simulate_daq) and (not is_daq_active()):
+        if (not request.simulate_daq) and (not is_daq_active(simulate_daq=False)):
             emsg = 'DAQ software is not active. Re-try hp_io thread creation once the daq software has been started.'
             self.logger.warning(emsg)
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
