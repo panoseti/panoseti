@@ -143,6 +143,7 @@ def hp_io_thread_fn(
         stop_io: Event,
         valid: Event,
         logger: logging.Logger,
+        simulate_daq: bool,
         **kwargs
 ) -> None:
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues. """
@@ -166,13 +167,13 @@ def hp_io_thread_fn(
             # TODO: check if this run is in progress (with production code)
             # if os.path.exists(DAQ_ACTIVE_FILE):
             #     break
-            logger.info("Waiting for in-progress run to start")
-            time.sleep(1)
+
             break
             # run = util.daq_get_run_name()
             # if not run:
             #     logger.error('no run')
             #     return
+        logger.info(f"{run_path=}")
 
         def init_dp_cfg():
             """initialize dp_cfg with run-specific information and wait until hashpipe starts"""
@@ -187,12 +188,11 @@ def hp_io_thread_fn(
                     nfiles = len(files)
                     logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
                     time.sleep(0.5)
+                if stop_io.is_set():
+                    raise EnvironmentError("stop_io event is set")
 
                 file = sorted(files, key=os.path.getmtime)[-1]
                 filepath = file
-
-                if stop_io.is_set():
-                    raise EnvironmentError("stop_io event is set")
 
                 # wait until the filesize is large enough to read one image of type [dp]
                 while not stop_io.is_set():
@@ -481,6 +481,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # Toggle simulation thread creation
         if hp_io_cfg['simulate_daq']:
             dps = ["img16", "ph256"]
+            dp_cfg = self.get_dp_cfg(dps)
             data_dir = SIM_DATA_DIR
             self._daq_sim_thread = Thread(
                 target=daq_sim_thread_fn,
@@ -505,6 +506,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self._stop_io,
                 self._hp_io_valid,
                 self.logger,
+                hp_io_cfg['simulate_daq'],
             ),
             kwargs={
                 "early_exit": False,  # causes the hp_io thread have a fatal exception after the given delay
