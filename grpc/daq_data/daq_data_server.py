@@ -74,8 +74,13 @@ def daq_sim_thread_fn(
     stop_io: Event,
     logger: logging.Logger,
     frames_per_pff = 20,
+    **kwargs,
 ) -> None:
     """Simulate hashpipe data stream: Read a real file and write to a fake file. """
+    if "early_exit_delay_seconds" in kwargs:
+        early_exit_counter = kwargs["early_exit_delay_seconds"]
+    else:
+        early_exit_counter = 30
     logger.info("hp_sim thread started")
     # prevent multiple server instances from running this thread
     if os.path.exists(DAQ_ACTIVE_FILE):
@@ -116,7 +121,6 @@ def daq_sim_thread_fn(
                         ph_data = ph_src.read(ph_frame_size)
                         ph_nbytes_written = ph_dst.write(ph_data)
                         ph_dst.flush()
-                        time.sleep(update_interval)
 
                         movie_data = movie_src.read(movie_frame_size)
                         movie_nbytes_written = movie_dst.write(movie_data)
@@ -124,7 +128,11 @@ def daq_sim_thread_fn(
                         movie_dst.flush()
 
                         fnum += 1
-                        # logger.info(f"{ph_nbytes_written=}, {movie_nbytes_written=}")
+                        time.sleep(update_interval)
+                        if "early_exit" in kwargs and kwargs["early_exit"]:
+                            early_exit_counter -= 1
+                            if early_exit_counter == 0:
+                                raise TimeoutError("test hp_io thread unexpected termination")
             if fnum >= min(ph_nframes, movie_nframes):
                 logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
     finally:
@@ -146,7 +154,9 @@ def hp_io_thread_fn(
         simulate_daq: bool,
         **kwargs
 ) -> None:
-    """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues. """
+    """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues.
+    Requires DAQ software to be active to properly initalize.
+    """
     logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
     # parse any kwargs
@@ -155,28 +165,17 @@ def hp_io_thread_fn(
     else:
         early_exit_counter = 30
     try:
-
-        # wait until there is an in-progress run
-        while not stop_io.is_set():
+        def init_dp_cfg():
+            """initialize dp_cfg with run-specific information and wait until hashpipe starts"""
+            # check if a directory for [module_id] exists
             run_pattern = f"{data_dir}/module_{module_id}/obs_*"
             runs = glob(run_pattern)
             nruns = len(runs)
             if nruns == 0:
                 raise FileNotFoundError(f'no run of module {module_id} in {run_pattern}')
             run_path = sorted(runs, key=os.path.getmtime)[-1]
-            # TODO: check if this run is in progress (with production code)
-            # if os.path.exists(DAQ_ACTIVE_FILE):
-            #     break
 
-            break
-            # run = util.daq_get_run_name()
-            # if not run:
-            #     logger.error('no run')
-            #     return
-        logger.info(f"{run_path=}")
-
-        def init_dp_cfg():
-            """initialize dp_cfg with run-specific information and wait until hashpipe starts"""
+            logger.info(f"{run_path=}")
             for dp in dp_cfg:
                 # Get the current number of pff files with type [dp]
                 dp_cfg[dp]['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
@@ -284,6 +283,7 @@ def hp_io_thread_fn(
                         bytes_per_pixel=d['bytes_per_pixel'],
                         file=os.path.basename(d['filepath']),
                         frame_number=d['last_frame'],
+                        module_id=module_id,
                     )
                     # create object to pass to each waiting writer
                     parsed_data = {
@@ -490,7 +490,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     max(hp_io_cfg['update_interval_seconds'] * (2**0.5) / 1.5, self._server_cfg['min_hp_io_update_interval_seconds']),
                     self._stop_io,
                     self.logger
-                )
+                ),
+                kwargs={
+                    "early_exit": False,  # causes the hp_io thread have a fatal exception after the given delay
+                    "early_exit_delay_seconds": 25
+                },
             )
             self._daq_sim_thread.start()
 
@@ -823,6 +827,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.warning(emsg)
             context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
+        # check if daq is active and real daq is being used
+        if (not request.simulate_daq) and (not util.is_hashpipe_running()):
+            emsg = 'DAQ software is not active. Re-try hp_io thread creation once the daq software has been started.'
+            self.logger.warning(emsg)
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+
         # Step 1: read server state to validate init request
         with self._rw_lock_reader(context) as reader_state:
             # check if the requested update interval is not too short
@@ -837,6 +847,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         # attempt to change server state: modify hp_io thread
         with self._rw_lock_writer(context, force=request.force):
             self._server_cfg['hp_io_init'] = False
+            last_hp_io_valid = self._is_hp_io_valid()
             stop_success = self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1)
             if not stop_success:
                 emsg = "failed to stop hp_io thread!"
@@ -850,13 +861,20 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             }
             start_success = self._start_hp_io_thread(hp_io_cfg)
             if start_success:
+                # commit client changes
                 self.logger.info("InitHpIo transaction succeeded: new hp_io thread initialized")
                 self._hp_io_cfg = hp_io_cfg
                 self._server_cfg['hp_io_init'] = True
             else:
-                self._server_cfg['hp_io_init'] = self._start_hp_io_thread(self._hp_io_cfg)
-                emsg = "failed to start hp_io thread. Restarting hp_io with the previous configuration"
+                # attempt to restart previously valid hp_io thread
+                emsg = "failed to start hp_io thread."
+                if last_hp_io_valid:
+                    emsg += "Restarting hp_io with the previous configuration"
+                    self._server_cfg['hp_io_init'] = self._start_hp_io_thread(self._hp_io_cfg)
+                else:
+                    emsg += "No previously valid hp_io thread to restart."
                 self.logger.warning(emsg)
+
             return InitHpIoResponse(success=start_success)
 
 def serve(server_cfg):
