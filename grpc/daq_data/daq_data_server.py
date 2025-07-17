@@ -49,15 +49,6 @@ import util
 
 
 """ hp_io test macros """
-# PH_PFF = "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
-# IMG_PFF = "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_{seqno}.debug_TRUNCATED.pff"
-# MOVIE_TYPE = 'img16'
-# PH_TYPE = 'ph256'
-
-# SIM_DATA_DIR = Path("simulated_data_dir")
-
-
-# SIM_RUN_DIR = SIM_DATA_DIR / Path("module_1/obs_SIMULATE")
 def get_daq_active_file(sim_cfg, module_id):
     sim_data_dir = sim_cfg['files']['data_dir']
     sim_run_dir = sim_cfg['files']['sim_run_dir_template'].format(module_id=module_id)
@@ -65,10 +56,9 @@ def get_daq_active_file(sim_cfg, module_id):
     daq_active_file = sim_cfg['files']['daq_active_file'].format(module_id=module_id)
     return f"{sim_data_dir}/{sim_run_dir}/{daq_active_file}"
 
-# DAQ_ACTIVE_FILE = SIM_RUN_DIR / "daq_active"
 def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
     """
-    Utility function to get the path of the pff files in the simulated daq directory.
+    Returns the path of the pff files in the simulated daq directory.
     """
     sim_data_dir = sim_cfg['files']['data_dir']
     if is_simulated:
@@ -83,12 +73,6 @@ def get_sim_pff_path(sim_cfg, module_id, seqno, is_ph, is_simulated):
     else:
         movie_pff = sim_cfg['files']['movie_pff_template'].format(module_id=module_id, seqno=seqno)
         return f"{sim_data_dir}/{run_dir}/{movie_pff}"
-
-
-# REAL_RUN_DIR = SIM_DATA_DIR / Path("obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd")
-# MOVIE_SRC   = REAL_RUN_DIR / IMG_PFF.format(seqno=0)
-# PH_SRC      = REAL_RUN_DIR / PH_PFF.format(seqno=0)
-
 
 def is_daq_active(simulate_daq, sim_cfg=None):
     """Returns True iff the data stream from hashpipe or simulated hashpipe is active."""
@@ -106,6 +90,7 @@ def daq_sim_thread_fn(
     sim_cfg: Dict[str, Any],
     update_interval: float,
     stop_io: Event,
+    sim_valid: Event,
     logger: logging.Logger,
 ) -> None:
     """Simulate hashpipe data stream: Read a real file and write to a fake file into the following file structure:
@@ -135,6 +120,7 @@ def daq_sim_thread_fn(
     logger.info("hp_sim thread started")
 
     # unpack source file info from sim_cfg
+    frames_per_pff = sim_cfg['frames_per_pff']
     movie_type = sim_cfg['movie_type']
     ph_type = sim_cfg['ph_type']
     data_products = [movie_type, ph_type]
@@ -173,7 +159,7 @@ def daq_sim_thread_fn(
             # copy frames from [dp]_src to dp_dst to simulate data acquisition software
             fnum = 0
             seqno = -1
-            frames_per_pff = sim_cfg['frames_per_pff']
+            sim_valid.set()
             while not stop_io.is_set() and fnum < min(ph_nframes, movie_nframes):
                 # check if new simulated files should be created
                 if int(fnum / frames_per_pff) > seqno:
@@ -213,12 +199,13 @@ def daq_sim_thread_fn(
     except RuntimeError:
         pass
     finally:
-        logger.critical(f"{active_pff_files=}")
-        logger.critical(f"{daq_active_files=}")
-        # for daq_active_file in daq_active_files:
-        #     os.unlink(daq_active_file)
-        # for file in simulated_data_files:
-        #     os.unlink(file)
+        sim_valid.clear()
+        logger.debug(f"{simulated_data_files=}")
+        logger.debug(f"{daq_active_files=}")
+        for daq_active_file in daq_active_files:
+            os.unlink(daq_active_file)
+        for file in simulated_data_files:
+            os.unlink(file)
         logger.info("hp_sim thread exited")
 
 
@@ -425,7 +412,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._server_cfg = server_cfg
 
         # Create the server's logger
-        self.logger = make_rich_logger(__name__, level=logging.DEBUG)
+        self.logger = make_rich_logger(__name__, level=logging.INFO)
 
         # Load default hahspipe_io configuration
         with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
@@ -462,6 +449,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_valid = Event()  # Set only if the hp_io thread is active and collecting data
         self._shutdown_event = Event()  # Set only at shutdown
         self._cancel_readers_event = Event()  # Causes all waiting and active reader RPCs to abort
+        self._daq_sim_thread_valid = Event()  # wait for daq simulation thread to be valid
 
         # Start the hp_io thread if server_cfg points to a valid hp_io_cfg
         if self._server_cfg["init_from_default"]:
@@ -578,6 +566,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                         simulate_daq_cfg.copy(),
                         hp_io_update_interval,
                         self._stop_io,
+                        self._daq_sim_thread_valid,
                         self.logger
                     )
                 )
@@ -612,6 +601,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             # Start threads
             if self._daq_sim_thread is not None:
                 self._daq_sim_thread.start()
+                self._daq_sim_thread_valid.wait(2)
+                if not self._daq_sim_thread.is_alive():
+                    self.logger.error("DAQ simulation thread failed to start")
+                    self._stop_hp_io_thread(1)
+                    self._hp_io_thread = None
+                    self._daq_sim_thread = None
+                    return False
             self._hp_io_thread.start()
 
 
@@ -622,6 +618,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             return True
         else:
             self._stop_hp_io_thread(1)
+            self._hp_io_thread = None
+            self._daq_sim_thread = None
             return False
 
     def _is_hp_io_valid(self):
