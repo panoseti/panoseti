@@ -237,14 +237,14 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
                     stub,
                     stream_movie_data=True,
                     stream_pulse_height_data=True,
-                    update_interval_seconds=1.0,
+                    update_interval_seconds=0.5,
                     wait_for_ready=True,
                     logger=logger
                 )
             elif plot == 'phdist':
                 run_max_pixel_distribution_ph(
                     stub,
-                    plot_update_interval=1.0,
+                    plot_update_interval=0.5,
                     durations_seconds= (10, 60, 60 * 10),
                     logger=logger
                 )

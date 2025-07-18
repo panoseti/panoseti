@@ -9,6 +9,7 @@ Requires following to function correctly:
     3. A connection to a panoseti module.
 """
 import asyncio
+from asyncio import CancelledError
 from concurrent import futures
 from threading import Event, Thread
 from queue import Queue
@@ -201,12 +202,12 @@ def daq_sim_thread_fn(
         sim_valid.clear()
         logger.debug(f"{simulated_data_files=}")
         logger.debug(f"{daq_active_files=}")
+        logger.info("hp_sim thread exited")
         for daq_active_file in daq_active_files:
             if os.path.exists(daq_active_file):
                 os.unlink(daq_active_file)
         for file in simulated_data_files:
             os.unlink(file)
-        logger.info("hp_sim thread exited")
 
 
 async def hp_io_thread_fn(
@@ -310,15 +311,13 @@ async def hp_io_thread_fn(
             if os.path.isdir(m):
                 mid = int(os.path.basename(m).split('_')[1])
                 module_ids.append(mid)
-        module_ids = [1]
+        # module_ids = [1]
         init_module_tasks = []
         for mid in module_ids:
             hp_io_state[mid] = dict()
             hp_io_state[mid]['dp_cfg'] = DaqDataServicer.get_dp_cfg(data_products)
             init_module_tasks.append(init_module_state(hp_io_state[mid], mid))
-        logger.critical("WAITING FOR INIT_MODULE_TASKS")
         results = await asyncio.gather(*init_module_tasks)
-        logger.critical("DONE with INIT_MODULE_TASKS")
         for result, mid in zip(results, module_ids):
             if not result:
                 del hp_io_state[mid]
@@ -416,7 +415,7 @@ async def hp_io_thread_fn(
     hp_io_state: Dict[int, Dict[str, Any]] = None
     try:
         hp_io_state = await init_hp_io_state()
-        logger.info(f"{hp_io_state=}")
+        logger.debug(f"{hp_io_state=}")
         # signal the hp_io thread is ready to service client requests for data preview
         valid.set()
         while not stop_io.is_set():
@@ -431,8 +430,10 @@ async def hp_io_thread_fn(
             await asyncio.sleep(update_interval_seconds)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! '{repr(err)}'")
+        pass
     finally:
         valid.clear()
+        logger.info("hp_io thread exited")
         # close any open file pointers
         if hp_io_state is not None:
             for module_id, module_state in hp_io_state.items():
@@ -441,7 +442,6 @@ async def hp_io_thread_fn(
                     for dp in dp_cfg:
                         if 'f' in dp_cfg[dp]:
                             dp_cfg[dp]['f'].close()
-        logger.info("hp_io thread exited")
 
 
 """gRPC server implementing DaqData RPCs"""
@@ -465,12 +465,12 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_lock = asyncio.Lock() # threading.RLock()
         self._read_ok_condvar = asyncio.Condition(self._hp_io_lock) # threading.Condition(self._hp_io_lock)
         self._write_ok_condvar = asyncio.Condition(self._hp_io_lock) #threading.Condition(self._hp_io_lock)
-        self._active_clients = {}  # dict of tid : {"client_ip":context.peer(), "thread": Thread} for debugging
+        # self._active_clients = {}  # dict of tid : {"client_ip":context.peer(), "thread": Thread} for debugging
 
         self._server_cfg = server_cfg
 
         # Create the server's logger
-        self.logger = make_rich_logger(__name__, level=logging.DEBUG)
+        self.logger = make_rich_logger(__name__, level=logging.INFO)
 
         # Load default hahspipe_io configuration
         with open(cfg_dir/self._server_cfg["default_hp_io_config_file"], "r") as f:
@@ -483,13 +483,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_task: asyncio.Task = None
         self._daq_sim_thread: Thread = None
 
-        # Initialize an array of reader_state dicts to support up to max_worker concurrent reader RPCs
+        # Initialize an array of reader_state dicts to support up to max_client concurrent reader RPCs
         self._reader_states: List[Dict[str, Any]] = []
         # _reader_states is a list of reader gRPC state dictionaries
         #   - "is_allocated": True iff corresponding queue is allocated to a reader
         #   - "queue": Queue implementing single producer (hp_io), multiple independent consumer model
         #   - "config": Keyword configuration options
-        for _ in range(server_cfg['max_workers']):
+        #   - "last_update_t": strictly monotonic timestamp for rate limiting
+        for _ in range(server_cfg['max_reader_clients']):
             default_config = {
                 "stream_movie_data": True,
                 "stream_pulse_height_data": True,
@@ -568,20 +569,18 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     async def shutdown(self):
         self._shutdown_event.set()
         self._stop_io.set() # signal hp_io thread to exit gracefully
-        self.logger.setLevel(logging.CRITICAL)
         async with self._hp_io_lock:
             await self._cancel_all_readers()
         shutdown_record = dict()
         self._server_cfg['hp_io_init'] = False
         # wait for the hp_io thread to exit
         shutdown_record['stop_hp_io'] = await self._stop_hp_io_thread()
-        # wait for active server threads to exit
-        # for ac in self._active_clients.values():
-        #     ac['thread'].join(timeout=1)
-        # active_clients = [ac["client_ip"] for ac in self._active_clients.values()]
-        # if len(active_clients) > 0:
-        #     self.logger.warning(f"active clients at shutdown: {active_clients=}")
-        # shutdown_record['stop_active_clients'] = len(active_clients) == 0
+
+        async def wait_for_all_exit():
+            while self._rw_lock_state['ar'] + self._rw_lock_state['aw'] > 0:
+                await asyncio.sleep(0.1)
+
+        await asyncio.create_task(wait_for_all_exit())
 
         # check if state was updated properly
         lock_status_ok = True
@@ -595,6 +594,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.info("Successfully released all resources")
         else:
             self.logger.critical(f"Some server resources were not released: {shutdown_record=}")
+        # for handler in self.logger.handlers:
+        #     handler.flush()
+        #     self.logger.removeHandler(handler)
 
     async def _start_hp_io_thread(self, hp_io_cfg):
         """Creates a new hp_io thread with the given hp_io_cfg.
@@ -708,9 +710,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # so we should cancel any writer RPCs immediately
 
                 if (not force) and self._rw_lock_state['ar'] > 0:
-                    active_clients = str([c["client_ip"] for c in self._active_clients.values()])
+                    # active_clients = str([c["client_ip"] for c in self._active_clients.values()])
                     emsg = (f"Cannot modify server state because there are {self._rw_lock_state['ar']} active "
-                            f"streaming clients. Set force=True or stop the following clients and try again: {active_clients=}.")
+                            f"streaming clients. Set force=True or stop the active clients and try again.")
                     await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
                 elif force and self._rw_lock_state['ar'] > 0:
                     self.logger.warning(f"Forcing server state modification despite active reader RPCs. ")
@@ -749,11 +751,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # activate the writer
                 self._rw_lock_state['aw'] += 1
                 active = True
-                self._active_clients[tid] = {
-                    "client_ip": urllib.parse.unquote(context.peer()),
-                    "thread": threading.current_thread(),
-                    "type": "writer",
-                }
+                # self._active_clients[tid] = {
+                #     "client_ip": urllib.parse.unquote(context.peer()),
+                #     "thread": threading.current_thread(),
+                #     "type": "writer",
+                # }
                 self.logger.debug(f"(writer) check-in (end):\t\t{self._rw_lock_state=}")
                 # END check-in critical section
             yield None
@@ -765,7 +767,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.debug(f"(writer) check-out (start):\t{self._rw_lock_state=}")
                 if active:  # handle edge cases where thread is interrupted or has an error during lock acquire
                     self._rw_lock_state['aw'] = self._rw_lock_state['aw'] - 1  # no longer active
-                    del self._active_clients[tid]
+                    # del self._active_clients[tid]
                 # allow new readers to start waiting
                 self._cancel_readers_event.clear()
                 # Wake up waiting readers or a waiting writer (prioritize waiting writers).
@@ -839,11 +841,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # activate the reader
                 self._rw_lock_state['ar'] += 1
                 active = True
-                self._active_clients[tid] = {
-                    "client_ip": urllib.parse.unquote(context.peer()),
-                    "thread": threading.current_thread(),
-                    "type": "reader",
-                }
+                # self._active_clients[tid] = {
+                #     "client_ip": urllib.parse.unquote(context.peer()),
+                #     "thread": threading.current_thread(),
+                #     "type": "reader",
+                # }
                 self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # END check-in critical section
@@ -854,7 +856,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.debug(f"(reader) check-out (start):\t{self._rw_lock_state=}")
                 if active:
                     self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
-                    del self._active_clients[tid]
+                    # del self._active_clients[tid]
                     self._reader_states[idx]['is_allocated'] = False # release reader resources
                 # Wake up waiting readers or a waiting writer (prioritize waiting writers).
                 if self._rw_lock_state['ar'] == 0 and self._rw_lock_state['ww'] > 0:
@@ -924,7 +926,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     continue
 
             # log reason why streaming stopped
-            print("akKJHDBFKUSDFUYDSFUYSDF")
             if self._shutdown_event.is_set():
                 emsg = "server shutdown initiated"
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
@@ -1021,17 +1022,18 @@ async def serve(server_cfg):
 
     # Start gRPC and configure to listen on port 50051
     listen_addr = "[::]:50051"
-    server.add_insecure_port("[::]:50051")
-    await server.start()
+    server.add_insecure_port(listen_addr)
     print(f"The gRPC services {SERVICE_NAMES} are running.\nEnter CTRL+C to stop_io them.")
     try:
+        await server.start()
         await server.wait_for_termination()
+    except KeyboardInterrupt:
+        pass
     finally:
         grace = server_cfg["shutdown_grace_period"]
         print(f"'^C' received, shutting down the server in {grace} seconds.")
         await daq_data_servicer.shutdown()
-        await server.stop(grace=1)
-
+        await server.stop(grace=5)
 
 if __name__ == "__main__":
     # Load server configuration
@@ -1046,18 +1048,10 @@ if __name__ == "__main__":
     with open(cfg_dir / server_cfg_file, "r") as f:
         server_cfg = json.load(f)
 
-    asyncio.run(serve(server_cfg))
-    # # Start the event loop
-    # loop = asyncio.get_event_loop()
-    # server_task = loop.create_task(serve(server_cfg))
-    #
-    # # for sig in (signal.SIGINT, signal.SIGTERM):
-    # #     msg = f"Received {sig.name} signal. Shutting down the server."
-    # #     loop.add_signal_handler(sig, lambda: server_task.cancel(msg))
-    # #
-    # try:
-    #     loop.run_until_complete(server_task)
-    # except asyncio.CancelledError:
-    #     pass
-    # finally:
-    #     loop.close()
+    try:
+        asyncio.run(serve(server_cfg))
+    except KeyboardInterrupt as e:
+        pass
+    finally:
+        print("Exiting the server.")
+        # time.sleep(0.1)

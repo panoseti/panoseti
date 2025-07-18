@@ -1,10 +1,9 @@
 {
     "init_from_default": false,
     "default_hp_io_config_file": "default_hp_io_config.json",
-    "max_workers": 10,
+    "max_reader_clients": 25,
     "max_read_queue_size": 200,
-    "min_hp_io_update_interval_seconds": 0.001,
-    "min_client_update_interval_seconds": 0.5,
+    "min_hp_io_update_interval_seconds": 0.01,
     "max_client_update_interval_seconds": 60,
     "shutdown_grace_period": 0.1,
     "hp_io_stop_timeout": 5.0,
