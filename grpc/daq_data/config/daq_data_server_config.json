@@ -12,7 +12,7 @@
         "data_products": ["img16", "ph256"],
         "movie_type": "img16",
         "ph_type": "ph256",
-        "frames_per_pff": 20,
+        "frames_per_pff": 200,
         "sim_module_ids": [1, 2],
         "real_module_id": 1,
         "files": {

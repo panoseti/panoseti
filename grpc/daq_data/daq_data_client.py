@@ -62,35 +62,6 @@ def stream_images(
         for stream_images_response in stream_images_responses:
 
             pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
-
-
-            # horiz: pulse-height value, ADC units label
-            # vert: counts [0-4095]
-            # Q: how many bars?
-            # some param: # bars in dist
-            # vals = [0, 5, 8, 18, 250, 580]
-            # nbins = 16
-            # min = 0
-            # max = 4095
-            max_pix = max(img)
-            update_dist1(max_pix)  # increment bins
-            update_dist2(max_pix)
-
-
-            zero_dist1(current_time)  # zero if the time is greater than
-            zero_dist2(current_time)
-
-
-            display_dist1
-            display_dist2
-
-            # 3 separate plots (simpler): 10s,
-
-
-
-
-
-
             # optional: log response metadata
             formatted_stream_images_response = format_stream_images_response(stream_images_response)
             logger.info(formatted_stream_images_response)
@@ -98,7 +69,6 @@ def stream_images(
             # Get pano images from response
             pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
             if pano_type == 'PULSE_HEIGHT':
-                make_ph_dist(img)
                 #
                 # Your pulse-height visualizations here
                 #

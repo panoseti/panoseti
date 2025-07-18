@@ -376,14 +376,14 @@ def hp_io_thread_fn(
                 parsed_data = {
                     "pano_image": pano_image,
                 }
-
                 # broadcast image data to all waiting clients
                 for rs in [rs for rs in reader_states if rs['is_allocated']]:
                     rq = rs['queue']
-                    if d['is_ph'] and rs['config']['stream_pulse_height_data']:
-                        rq.put(parsed_data)
-                    elif not d['is_ph'] and rs['config']['stream_movie_data']:
-                        rq.put(parsed_data)
+                    if not rq.full():
+                        if d['is_ph'] and rs['config']['stream_pulse_height_data']:
+                            rq.put_nowait(parsed_data)
+                        elif not d['is_ph'] and rs['config']['stream_movie_data']:
+                            rq.put_nowait(parsed_data)
 
     module_ids: List[int] = []
     hp_io_state: Dict[int, Dict[str, Any]] = None
@@ -403,6 +403,7 @@ def hp_io_thread_fn(
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! '{repr(err)}'")
     finally:
+        valid.clear()
         # close any open file pointers
         if hp_io_state is not None:
             for module_id, module_state in hp_io_state.items():
@@ -411,7 +412,6 @@ def hp_io_thread_fn(
                     for dp in dp_cfg:
                         if 'f' in dp_cfg[dp]:
                             dp_cfg[dp]['f'].close()
-        valid.clear()
         logger.info("hp_io thread exited")
 
 
@@ -489,7 +489,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         else:
             self.logger.warning(f"An InitHpIo call is required to start the hp_io thread: "
                                 f"{self._server_cfg['init_from_default']=}")
-
             self._server_cfg['hp_io_init'] = False
 
     @classmethod
@@ -572,71 +571,70 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         """Creates a new hp_io thread with the given hp_io_cfg.
         @return: True iff the hp_io thread was created and attached to a valid active observing run.
         """
-        with self._hp_io_lock:
-            hp_io_update_interval = max(
-                hp_io_cfg['update_interval_seconds'],
-                self._server_cfg['min_hp_io_update_interval_seconds']
-            )
-            simulate_daq_cfg = self._server_cfg['simulate_daq_cfg']
+        hp_io_update_interval = max(
+            hp_io_cfg['update_interval_seconds'],
+            self._server_cfg['min_hp_io_update_interval_seconds']
+        )
+        simulate_daq_cfg = self._server_cfg['simulate_daq_cfg']
 
-            # Toggle simulation thread creation
-            if not hp_io_cfg['simulate_daq']:
-                dps = ["img16"]
-                data_dir = hp_io_cfg['data_dir']
-                if not os.path.exists(data_dir):
-                    return False
-                self._daq_sim_thread = None
-            else:
-                dps = simulate_daq_cfg['data_products']
-                data_dir = simulate_daq_cfg['files']['data_dir']
-                self._daq_sim_thread = Thread(
-                    target=daq_sim_thread_fn,
-                    args=(
-                        simulate_daq_cfg.copy(),
-                        hp_io_update_interval,
-                        self._stop_io,
-                        self._daq_sim_thread_valid,
-                        self.logger
-                    )
-                )
-
-            # Create a new hp_io_thread using the client's configuration
-            self._hp_io_thread = Thread(
-                target=hp_io_thread_fn,
+        # Toggle simulation thread creation
+        if not hp_io_cfg['simulate_daq']:
+            dps = ["img16"]
+            data_dir = hp_io_cfg['data_dir']
+            if not os.path.exists(data_dir):
+                return False
+            self._daq_sim_thread = None
+        else:
+            dps = simulate_daq_cfg['data_products']
+            data_dir = simulate_daq_cfg['files']['data_dir']
+            self._daq_sim_thread = Thread(
+                target=daq_sim_thread_fn,
                 args=(
-                    data_dir,
-                    dps,
+                    simulate_daq_cfg.copy(),
                     hp_io_update_interval,
-                    self._reader_states,
                     self._stop_io,
-                    self._hp_io_valid,
-                    self.logger,
-                    hp_io_cfg['simulate_daq'],
-                    simulate_daq_cfg
-                ),
-                kwargs={
-                    "early_exit": False,  # causes the hp_io thread to have a fatal exception after the given delay
-                    "early_exit_delay_seconds": 25
-                },
-                daemon=False,
+                    self._daq_sim_thread_valid,
+                    self.logger
+                )
             )
 
-            # Terminate any currently alive hp_io thread
-            if not self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1):
-                raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
-            self._stop_io.clear()
+        # Create a new hp_io_thread using the client's configuration
+        self._hp_io_thread = Thread(
+            target=hp_io_thread_fn,
+            args=(
+                data_dir,
+                dps,
+                hp_io_update_interval,
+                self._reader_states,
+                self._stop_io,
+                self._hp_io_valid,
+                self.logger,
+                hp_io_cfg['simulate_daq'],
+                simulate_daq_cfg
+            ),
+            kwargs={
+                "early_exit": False,  # causes the hp_io thread to have a fatal exception after the given delay
+                "early_exit_delay_seconds": 25
+            },
+            daemon=False,
+        )
 
-            # Start threads
-            if self._daq_sim_thread is not None:
-                self._daq_sim_thread.start()
-                self._daq_sim_thread_valid.wait(2)
-                if not self._daq_sim_thread.is_alive():
-                    self.logger.error("DAQ simulation thread failed to start")
-                    self._stop_hp_io_thread(1)
-                    self._hp_io_thread = None
-                    self._daq_sim_thread = None
-                    return False
-            self._hp_io_thread.start()
+        # Terminate any currently alive hp_io thread
+        if not self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1):
+            raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
+        self._stop_io.clear()
+
+        # Start threads
+        if self._daq_sim_thread is not None:
+            self._daq_sim_thread.start()
+            self._daq_sim_thread_valid.wait(2)
+            if not self._daq_sim_thread.is_alive():
+                self.logger.error("DAQ simulation thread failed to start")
+                self._stop_hp_io_thread(1)
+                self._hp_io_thread = None
+                self._daq_sim_thread = None
+                return False
+        self._hp_io_thread.start()
 
 
         # check if thread could be properly initialized
@@ -871,20 +869,20 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             if not self._server_cfg['hp_io_init']:
                 emsg = "Uninitialized hp_io thread. Run InitHpIo with a valid hp_io configuration to initialize it."
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-            elif not (self._server_cfg["min_client_update_interval_seconds"]
-                    <= request.update_interval_seconds
-                    <= self._server_cfg['max_client_update_interval_seconds']):
-                emsg = (f"update_interval_seconds must be in the interval "
-                        f"[{self._server_cfg['min_client_update_interval_seconds']}, "
-                        f"{self._server_cfg['max_client_update_interval_seconds']}"
-                        f"seconds. Got {request.update_interval_seconds}")
-                self.logger.critical(emsg)
-                context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # Set stream filter options
             reader_state['config']['stream_movie_data'] = request.stream_movie_data
             reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
-            reader_state['config']['update_interval_seconds'] = request.update_interval_seconds
+            if request.update_interval_seconds > self._server_cfg['max_client_update_interval_seconds']:
+                emsg = (f"update_interval_seconds must be at most "
+                        f"{self._server_cfg['max_client_update_interval_seconds']}"
+                        f"seconds. Got {request.update_interval_seconds}")
+                self.logger.critical(emsg)
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+            elif request.update_interval_seconds < self._hp_io_cfg['update_interval_seconds']:
+                reader_state['config']['update_interval_seconds'] = self._hp_io_cfg['update_interval_seconds']
+            else:
+                reader_state['config']['update_interval_seconds'] = request.update_interval_seconds
 
             # Clear old data from the read_queue
             rq = reader_state['queue']
@@ -896,7 +894,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 try:
                     # wait for next packet from the hp_io thread
                     # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
-                    parsed_data = rq.get(timeout=request.update_interval_seconds)
+                    parsed_data = rq.get(timeout=reader_state['config']['update_interval_seconds'])
                     if not isinstance(parsed_data, dict):
                         break
                     send_timestamp = timestamp_pb2.Timestamp()
@@ -969,7 +967,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         with self._rw_lock_writer(context, force=request.force):
             self._server_cfg['hp_io_init'] = False
             last_hp_io_valid = self._is_hp_io_valid()
-            stop_success = self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1)
+            stop_success = self._stop_hp_io_thread(timeout=5)
             if not stop_success:
                 emsg = "failed to stop hp_io thread!"
                 self.logger.critical(emsg)
