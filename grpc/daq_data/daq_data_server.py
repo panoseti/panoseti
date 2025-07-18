@@ -195,7 +195,7 @@ def daq_sim_thread_fn(
                     if sim_cfg['early_exit']['do_exit']:
                         sim_cfg['early_exit']['nframes_before_exit'] -= 1
                         if sim_cfg['early_exit']['nframes_before_exit'] <= 0:
-                            raise TimeoutError("test hp_io thread unexpected termination")
+                            raise TimeoutError("test hp_io task unexpected termination")
             if fnum >= min(ph_nframes, movie_nframes):
                 logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
     finally:
@@ -210,7 +210,7 @@ def daq_sim_thread_fn(
             os.unlink(file)
 
 
-async def hp_io_thread_fn(
+async def hp_io_task_fn(
         data_dir: Path,
         data_products: List[str],
         update_interval_seconds: float,
@@ -223,9 +223,9 @@ async def hp_io_thread_fn(
         **kwargs
 ) -> None:
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues.
-    Requires DAQ software to be active to properly initalize.
+    Requires DAQ software to be active to properly initialize.
     """
-    logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
+    logger.info(f"Created a new hp_io task with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
 
     async def init_module_state(module_state, module_id, timeout=5.0):
@@ -325,7 +325,7 @@ async def hp_io_thread_fn(
             raise EnvironmentError("No active modules found.")
         return hp_io_state
 
-    def dp_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
+    def fetch_data_product_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
         """
         Check if there is new pff data of type [dp].
         If new data is present:
@@ -377,12 +377,34 @@ async def hp_io_thread_fn(
             d['filepath'] = filepath
             d['last_frame'] = last_frame
 
-    def module_main(module_state):
+    def get_ready_readers(curr_t: float) -> Tuple[List[Dict[str, Any]], int, int]:
+        """Returns reader state dicts of all active readers that are ready to receive data from the hp_io task.
+        curr_t must be a float returned by time.monotonic().
+        """
+        ready_list = []
+        ph_clients = movie_clients = 0
+        allocated_reader_states = [rs for rs in reader_states if rs['is_allocated']]
+        for rs in allocated_reader_states:
+            if (curr_t - rs['last_update_t']) >= rs['config']['update_interval_seconds']:
+                ph_clients += rs['config']['stream_pulse_height_data']
+                movie_clients += rs['config']['stream_movie_data']
+                ready_list.append(rs)
+        return ready_list, ph_clients, movie_clients
+
+
+    def broadcast_latest_module_data(module_state: Dict, ready_readers: List[Dict], ready_ph_clients: int, ready_movie_clients: int) -> None:
         dp_cfg = module_state['dp_cfg']
+        ph_data_to_broadcast = []
+        movie_data_to_broadcast = []
         # logger.info(f"{module_id=}: {dp_cfg=}")
         for dp in dp_cfg:
             d = dp_cfg[dp]
-            header, img = dp_main(d)
+            # check if we have to compute the latest for this datatype right now
+            if d['is_ph'] and ready_ph_clients == 0:
+                continue
+            elif not d['is_ph'] and ready_movie_clients == 0:
+                continue
+            header, img = fetch_data_product_main(d)
             if header and img:
                 # create PanoImage message from the latest image
                 pano_image = PanoImage(
@@ -399,41 +421,50 @@ async def hp_io_thread_fn(
                 parsed_data = {
                     "pano_image": pano_image,
                 }
-                # broadcast image data to all waiting clients
-                for rs in [rs for rs in reader_states if rs['is_allocated']]:
-                    curr_t = time.monotonic()
-                    if (curr_t - rs['last_update_t']) < rs['config']['update_interval_seconds']:
-                        continue
+                if d['is_ph']:
+                    ph_data_to_broadcast.append(parsed_data)
+                else:
+                    movie_data_to_broadcast.append(parsed_data)
 
-                    rq = rs['queue']
-                    if not rq.full():
-                        if d['is_ph'] and rs['config']['stream_pulse_height_data']:
-                            rq.put(parsed_data)
-                        elif not d['is_ph'] and rs['config']['stream_movie_data']:
-                            rq.put(parsed_data)
+        # broadcast image data to all ready clients
+        for rs in ready_readers:
+            rq = rs['queue']
+            if rs['config']['stream_pulse_height_data']:
+                for ph_data in ph_data_to_broadcast:
+                    if rq.full():
+                        break
+                    rq.put(ph_data)
+            if rs['config']['stream_movie_data']:
+                for movie_data in movie_data_to_broadcast:
+                    if rq.full():
+                        break
+                    rq.put(movie_data)
+            # to prevent starvation of updates from other modules, we don't update last_update_t here.
 
     hp_io_state: Dict[int, Dict[str, Any]] = None
     try:
         hp_io_state = await init_hp_io_state()
         logger.debug(f"{hp_io_state=}")
-        # signal the hp_io thread is ready to service client requests for data preview
+        # signal the hp_io task is ready to service client requests for data preview
         valid.set()
         while not stop_io.is_set():
             if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
                 raise EnvironmentError("DAQ data flow stopped.")
-            for module_id in hp_io_state:
-                module_main(hp_io_state[module_id])
-            for rs in [rs for rs in reader_states if rs['is_allocated']]:
-                curr_t = time.monotonic()
-                if (curr_t - rs['last_update_t']) >= rs['config']['update_interval_seconds']:
+            # check if any active readers are ready to receive data
+            curr_t = time.monotonic()
+            ready_readers, nph, nmovie = get_ready_readers(curr_t)
+            if len(ready_readers) > 0:
+                for module_id in hp_io_state:
+                    broadcast_latest_module_data(hp_io_state[module_id], ready_readers, nph, nmovie)
+                for rs in ready_readers:
                     rs['last_update_t'] = curr_t
             await asyncio.sleep(update_interval_seconds)
     except Exception as err:
-        logger.critical(f"hp_io thread encountered a fatal exception! '{repr(err)}'")
+        logger.critical(f"hp_io task encountered a fatal exception! '{repr(err)}'")
         pass
     finally:
         valid.clear()
-        logger.info("hp_io thread exited")
+        logger.info("hp_io task exited")
         # close any open file pointers
         if hp_io_state is not None:
             for module_id, module_state in hp_io_state.items():
@@ -453,9 +484,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         test_result, msg = is_os_posix()
         assert test_result, msg
 
-        # Initialize mesa monitor for synchronizing access to the hp_io thread
-        #   "Writers" = threads changing server state
-        #   "Readers" = all other threads
+        # Initialize mesa monitor for synchronizing access to the hp_io task
+        #   "Writers" = tasks changing server state
+        #   "Readers" = all other tasks
         self._rw_lock_state = {
             "wr": 0,  # waiting readers
             "ww": 0,  # waiting writers
@@ -477,9 +508,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._hp_io_cfg = json.load(f)
 
         # State for single producer, multiple consumer hp_io access
-        # A single IO thread manages the dataflow between multiple concurrent RPC threads and the hp_io thread:
-        #   [single RPC writer -> hp_io thread] send messages to the hp_io thread
-        #   [hp_io thread -> many RPC readers] broadcast image data to active read_queues
+        # A single IO task manages the dataflow between multiple concurrent RPC tasks and the hp_io task:
+        #   [single RPC writer -> hp_io task] send messages to the hp_io task
+        #   [hp_io task -> many RPC readers] broadcast image data to active read_queues
         self._hp_io_task: asyncio.Task = None
         self._daq_sim_thread: Thread = None
 
@@ -505,20 +536,20 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "last_update_t": time.monotonic()
             }
             self._reader_states.append(default_reader_state)
-        self._stop_io = Event()  # Signals hp_io thread to exit
-        self._hp_io_valid = asyncio.Event()  # Set only if the hp_io thread is active and collecting data
+        self._stop_io = Event()  # Signals hp_io task to exit
+        self._hp_io_valid = asyncio.Event()  # Set only if the hp_io task is active and collecting data
         self._shutdown_event = asyncio.Event()  # Set only at shutdown
         self._cancel_readers_event = asyncio.Event()  # Causes all waiting and active reader RPCs to abort
         self._daq_sim_thread_valid = Event()  # wait for daq simulation thread to be valid
 
-        # Start the hp_io thread if server_cfg points to a valid hp_io_cfg
+        # Start the hp_io task if server_cfg points to a valid hp_io_cfg
         if self._server_cfg["init_from_default"]:
-            self.logger.info(f"Creating the initial hp_io thread from config: "
+            self.logger.info(f"Creating the initial hp_io task from config: "
                              f"{self._server_cfg['init_from_default']=}")
             self._server_cfg['hp_io_init'] = True
-            self._start_hp_io_thread(self._hp_io_cfg)
+            self._start_hp_io_task(self._hp_io_cfg)
         else:
-            self.logger.warning(f"An InitHpIo call is required to start the hp_io thread: "
+            self.logger.warning(f"An InitHpIo call is required to start the hp_io task: "
                                 f"{self._server_cfg['init_from_default']=}")
             self._server_cfg['hp_io_init'] = False
 
@@ -568,13 +599,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     async def shutdown(self):
         self._shutdown_event.set()
-        self._stop_io.set() # signal hp_io thread to exit gracefully
+        self._stop_io.set() # signal hp_io task to exit gracefully
+        shutdown_record = dict()
         async with self._hp_io_lock:
             await self._cancel_all_readers()
-        shutdown_record = dict()
-        self._server_cfg['hp_io_init'] = False
-        # wait for the hp_io thread to exit
-        shutdown_record['stop_hp_io'] = await self._stop_hp_io_thread()
+            self._server_cfg['hp_io_init'] = False
+            # wait for the hp_io task to exit
+            shutdown_record['stop_hp_io'] = await self._stop_hp_io_task()
 
         async def wait_for_all_exit():
             while self._rw_lock_state['ar'] + self._rw_lock_state['aw'] > 0:
@@ -584,9 +615,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         # check if state was updated properly
         lock_status_ok = True
-        for thread_state, num_threads in self._rw_lock_state.items():
-            if num_threads != 0:
-                self.logger.critical(f"[rw lock] unexpected threads in state {thread_state} at termination!\n"
+        for task_state, num_tasks in self._rw_lock_state.items():
+            if num_tasks != 0:
+                self.logger.critical(f"[rw lock] unexpected tasks in state {task_state} at termination!\n"
                                      f"{self._rw_lock_state=}")
                 lock_status_ok = False
         shutdown_record['lock_status_ok'] = lock_status_ok
@@ -598,9 +629,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         #     handler.flush()
         #     self.logger.removeHandler(handler)
 
-    async def _start_hp_io_thread(self, hp_io_cfg):
-        """Creates a new hp_io thread with the given hp_io_cfg.
-        @return: True iff the hp_io thread was created and attached to a valid active observing run.
+    async def _start_hp_io_task(self, hp_io_cfg):
+        """Creates a new hp_io task with the given hp_io_cfg.
+        Requires: _hp_io_lock acquired in [writer] mode
+        @return: True iff the hp_io task was created and attached to a valid active observing run.
         """
         hp_io_update_interval = max(
             hp_io_cfg['update_interval_seconds'],
@@ -608,12 +640,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         )
         simulate_daq_cfg = self._server_cfg['simulate_daq_cfg']
 
-        # Terminate any currently alive hp_io thread
-        if not await self._stop_hp_io_thread():
-            raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
+        # Terminate any currently alive hp_io task
+        if not await self._stop_hp_io_task():
+            raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io task")
         self._stop_io.clear()
+        self._server_cfg['hp_io_init'] = False
 
-        # Toggle simulation thread creation
+        # Toggle simulation task creation
         if not hp_io_cfg['simulate_daq']:
             dps = ["img16"]
             data_dir = hp_io_cfg['data_dir']
@@ -636,9 +669,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._daq_sim_thread.start()
             await asyncio.to_thread(self._daq_sim_thread_valid.wait)
 
-        # Create a new hp_io_thread using the client's configuration
+        # Create a new hp_io_task using the client's configuration
         self._hp_io_task = asyncio.create_task(
-            hp_io_thread_fn(
+            hp_io_task_fn(
                 data_dir,
                 dps,
                 hp_io_update_interval,
@@ -653,22 +686,23 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         await self._hp_io_valid.wait()
 
         if not self._is_hp_io_valid():
-            await self._stop_hp_io_thread()
+            await self._stop_hp_io_task()
             self._hp_io_task = None
             self._daq_sim_thread = None
             return False
-        self.logger.info("hp_io thread alive and valid")
+        self.logger.info("hp_io task alive and valid")
+        self._server_cfg['hp_io_init'] = True
         return True
 
     def _is_hp_io_valid(self):
         if self._hp_io_task is not None and not self._hp_io_task.done() and self._hp_io_valid.is_set():
             return True
         elif self._hp_io_task is None:
-            self.logger.warning("hp_io thread is uninitialized")
+            self.logger.warning("hp_io task is uninitialized")
         elif self._hp_io_task.done():
-            self.logger.critical("hp_io thread is not alive")
+            self.logger.warning("hp_io task is not alive")
         elif not self._hp_io_valid.is_set():
-            self.logger.warning("hp_io thread is alive but not valid")
+            self.logger.warning("hp_io task is alive but not valid")
         else:
             emsg = (f"unhandled is_hp_io_valid case: "
                     f"{self._hp_io_task=}, "
@@ -678,24 +712,26 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             raise RuntimeError(emsg)  # SHOULD NEVER REACH HERE
         return False
 
-    async def _stop_hp_io_thread(self):
-        """Stops the hp_io thread. Idempotent behavior.
-        @return: True iff the hp_io thread is not alive.
-        :param timeout: seconds to wait for hp_io thread to exit gracefully"""
-        self._stop_io.set()  # signal hp_io thread to exit gracefully
+    async def _stop_hp_io_task(self):
+        """Stops the hp_io task. Idempotent behavior.
+        Requires: _hp_io_lock acquired in [writer] mode
+        @return: True iff the hp_io task is not alive.
+        :param timeout: seconds to wait for hp_io task to exit gracefully"""
+        self._stop_io.set()  # signal hp_io task to exit gracefully
         if self._hp_io_task is not None and not self._hp_io_task.done():
             try:
                 await self._hp_io_task
                 await asyncio.to_thread(self._daq_sim_thread.join)
             except RuntimeError as rerr:
-                self.logger.critical(f"encountered runtime error while stopping hp_io thread: {rerr}")
+                self.logger.critical(f"encountered runtime error while stopping hp_io task: {rerr}")
+                self._server_cfg['hp_io_init'] = False
                 return False
             finally:
                 if self._hp_io_task.done():  # check if join succeeded or timeout happened while waiting
-                    self.logger.info(f"Successfully terminated hp_io thread")
+                    self.logger.info(f"Successfully terminated hp_io task")
                     return True
         else:
-            self.logger.debug("no hp_io thread to stop_io (doing nothing)")
+            self.logger.debug("no hp_io task to stop_io (doing nothing)")
             return True
 
     @asynccontextmanager
@@ -740,11 +776,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     self.logger.warning(emsg)
                     await context.abort(grpc.StatusCode.CANCELLED, emsg)
 
-                # check if the hp_io thread is valid
+                # check if the hp_io task is valid
                 if self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
+                    emsg = (f"The hp_io task data stream became invalid while waiting for the writer lock. "
                             f" (skipping to check-out)")
-                    self.logger.critical(emsg)
+                    self.logger.warning(emsg)
                     self._server_cfg['hp_io_init'] = False
                     await context.abort(grpc.StatusCode.INTERNAL, emsg)
 
@@ -765,7 +801,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             async with self._hp_io_lock:
                 # BEGIN check-out critical section
                 self.logger.debug(f"(writer) check-out (start):\t{self._rw_lock_state=}")
-                if active:  # handle edge cases where thread is interrupted or has an error during lock acquire
+                if not self._hp_io_valid:
+                    self._server_cfg['hp_io_init'] = False
+                if active:  # handle edge cases where task is interrupted or has an error during lock acquire
                     self._rw_lock_state['aw'] = self._rw_lock_state['aw'] - 1  # no longer active
                     # del self._active_clients[tid]
                 # allow new readers to start waiting
@@ -780,7 +818,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     @asynccontextmanager
     async def _rw_lock_reader(self, context):
-        reader_idx = -1  # remember which reader_states dict corresponds to this thread
+        reader_idx = -1  # remember which reader_states dict corresponds to this task
         tid = threading.get_ident()
         active = False
         try:
@@ -817,11 +855,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                     self.logger.error(emsg)
                     await context.cancel()
 
-                # check if the hp_io thread is valid
+                # check if the hp_io task is valid
                 elif self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"The hp_io thread data stream is unexpectedly invalid!"
+                    emsg = (f"The hp_io task data stream became invalid while waiting for the reader lock. "
                             f" (skipping to check-out)")
-                    self.logger.critical(emsg)
+                    self.logger.warning(emsg)
                     self._server_cfg['hp_io_init'] = False
                     await context.abort(grpc.StatusCode.INTERNAL, emsg)
 
@@ -854,6 +892,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             async with self._hp_io_lock:
                 # BEGIN check-out critical section
                 self.logger.debug(f"(reader) check-out (start):\t{self._rw_lock_state=}")
+                if not self._hp_io_valid:
+                    self._server_cfg['hp_io_init'] = False
                 if active:
                     self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
                     # del self._active_clients[tid]
@@ -878,7 +918,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             # BEGIN reader critical section
             # Validate request fields that require reading protected server state
             if not self._server_cfg['hp_io_init']:
-                emsg = "Uninitialized hp_io thread. Run InitHpIo with a valid hp_io configuration to initialize it."
+                emsg = "Uninitialized hp_io task. Run InitHpIo with a valid hp_io configuration to initialize it."
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # Set stream filter options
@@ -904,8 +944,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             # Valid server state -> start streaming!
             while not context.cancelled() and self._is_hp_io_valid() and not self._shutdown_event.is_set() and not self._cancel_readers_event.is_set():
                 try:
-                    # wait for next packet from the hp_io thread
-                    # add a timeout to avoid starvation if hp_io thread unexpectedly exits while this thread is blocking on the read_queue
+                    # wait for next packet from the hp_io task
+                    # add a timeout to avoid starvation if hp_io task unexpectedly exits while this task is blocking on the read_queue
                     parsed_data = await asyncio.to_thread(rq.get, timeout=reader_state['config']['update_interval_seconds'])
                     if not isinstance(parsed_data, dict):
                         break
@@ -922,7 +962,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
                     yield stream_images_response
                 except queue.Empty:
-                    # self.logger.debug("hp_io thread may have stopped sending data")
+                    # self.logger.debug("hp_io task may have stopped sending data")
                     continue
 
             # log reason why streaming stopped
@@ -937,16 +977,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.info(emsg)
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif not self._stop_io.is_set():
-                emsg = (f"The hp_io thread data stream unexpectedly became invalid! "
+                emsg = (f"The hp_io task data stream became invalid! "
                         f"Check the server logs to debug this issue")
-                self.logger.critical(emsg)
+                self.logger.warning(emsg)
                 await context.abort(grpc.StatusCode.INTERNAL, emsg)
             else:
                 await context.abort(grpc.StatusCode.INTERNAL, "Unexpected error!")
             # END reader critical section
 
     async def InitHpIo(self, request, context):
-        """Initialize the hp_io thread with the given configuration. [writer]"""
+        """Initialize the hp_io task with the given configuration. [writer]"""
         self.logger.info(f"new InitHpIo rpc from {urllib.parse.unquote(context.peer())}")
 
         # Validate request fields that don't require reading server state
@@ -957,7 +997,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         # check if daq is active and real daq is being used. Note: simulated daq data flow always properly initialized
         if (not request.simulate_daq) and (not is_daq_active(simulate_daq=False)):
-            emsg = 'DAQ software is not active. Re-try hp_io thread creation once the daq software has been started.'
+            emsg = 'DAQ software is not active. Re-try hp_io task creation once the daq software has been started.'
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
@@ -972,41 +1012,41 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         self.logger.debug(f"(InitHpIo) passed validation checks")
 
-        # attempt to change server state: modify hp_io thread
+        # attempt to change server state: modify hp_io task
         async with self._rw_lock_writer(context, force=request.force):
             self._server_cfg['hp_io_init'] = False
             last_hp_io_valid = self._is_hp_io_valid()
-            stop_success = await self._stop_hp_io_thread()
+            stop_success = await self._stop_hp_io_task()
             if not stop_success:
-                emsg = "failed to stop hp_io thread!"
+                emsg = "failed to stop hp_io task!"
                 self.logger.critical(emsg)
                 await context.abort(grpc.StatusCode.INTERNAL, emsg)
-            self.logger.info("stopped existing hp_io thread")
+            self.logger.info("stopped existing hp_io task")
             hp_io_cfg = {
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
                 "update_interval_seconds": request.update_interval_seconds,
             }
-            start_success = await self._start_hp_io_thread(hp_io_cfg)
+            start_success = await self._start_hp_io_task(hp_io_cfg)
             if start_success:
                 # commit client changes
-                self.logger.info("InitHpIo transaction succeeded: new hp_io thread initialized")
+                self.logger.info("InitHpIo transaction succeeded: new hp_io task initialized")
                 self._hp_io_cfg = hp_io_cfg
                 self._server_cfg['hp_io_init'] = True
             else:
-                # attempt to restart previously valid hp_io thread
-                emsg = "failed to start hp_io thread."
+                # attempt to restart previously valid hp_io task
+                emsg = "failed to start hp_io task."
                 if last_hp_io_valid:
                     emsg += "Restarting hp_io with the previous configuration"
-                    self._server_cfg['hp_io_init'] = await self._start_hp_io_thread(self._hp_io_cfg)
+                    self._server_cfg['hp_io_init'] = await self._start_hp_io_task(self._hp_io_cfg)
                 else:
-                    emsg += "No previously valid hp_io thread to restart."
+                    emsg += "No previously valid hp_io task to restart."
                 self.logger.warning(emsg)
 
             return InitHpIoResponse(success=start_success)
 
 async def serve(server_cfg):
-    """Create the gRPC server threadpool and start providing the UbloxControl service."""
+    """Create the gRPC server and start providing the UbloxControl service."""
     server = grpc.aio.server()
     daq_data_servicer = DaqDataServicer(server_cfg)
     daq_data_pb2_grpc.add_DaqDataServicer_to_server(
@@ -1035,14 +1075,16 @@ async def serve(server_cfg):
         await daq_data_servicer.shutdown()
         await server.stop(grace=5)
 
+
+
 if __name__ == "__main__":
     # Load server configuration
     cfg_dir = Path('config')
-    default_hp_io_thread_config_file = 'default_hp_io_config.json'
+    default_hp_io_config_file = 'default_hp_io_config.json'
 
     # Configuration
-    with open(cfg_dir / default_hp_io_thread_config_file) as f:
-        default_hp_io_thread_config = json.load(f)
+    with open(cfg_dir / default_hp_io_config_file) as f:
+        default_hp_io_config = json.load(f)
 
     server_cfg_file = "daq_data_server_config.json"
     with open(cfg_dir / server_cfg_file, "r") as f:

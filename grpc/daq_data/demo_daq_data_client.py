@@ -21,13 +21,16 @@ import matplotlib.pyplot as plt
 import textwrap
 
 class PulseHeightDistribution:
+    VMIN = 0
+    VMAX = 2**12 - 1  # 4095
     def __init__(self, durations_seconds):
         self.durations = durations_seconds
-        self.start_times = [time.time() for _ in durations_seconds]
-        self.hist_data = [deque() for _ in durations_seconds]
-
+        n = len(durations_seconds)  # num of plots to make
+        self.start_times = [time.time() for _ in range(n)]
+        self.hist_data = [deque() for _ in range(n)]
+        self.vmins = [self.VMAX for _ in range(n)]
+        self.vmaxs = [self.VMIN for _ in range(n)]
         # Set reasonable size: width=6in, height=3in per subplot
-        n = len(durations_seconds)
         height = max(3 * n, 6)  # Ensure minimum height
         plt.ion()
         self.fig, self.axes = plt.subplots(n, 1, figsize=(6, height))
@@ -41,7 +44,11 @@ class PulseHeightDistribution:
             if now - self.start_times[i] > duration:
                 self.hist_data[i].clear()
                 self.start_times[i] = now
+                self.vmins[i] = self.VMAX
+                self.vmaxs[i] = self.VMIN
             self.hist_data[i].append(max_pixel)
+            self.vmins[i] = min(self.vmins[i], max_pixel)
+            self.vmaxs[i] = max(self.vmaxs[i], max_pixel)
 
     def plot(self):
         palette = sns.color_palette('husl', len(self.durations))
@@ -59,6 +66,7 @@ class PulseHeightDistribution:
                     color=palette[i],
                     ax=ax,
                 )
+            ax.set_xlim(min(self.vmins) - 10, max(self.vmaxs) + 10)
             ax.set_title(f"Pulse-Height Distribution: {duration}s")
             ax.set_xlabel("ADC Value")
             ax.set_ylabel("Density")
@@ -89,7 +97,7 @@ class PanoImagePreviewer:
 
         # Randomly choose a color map from a set of options
         self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'icefire', 'flare_r'])
-        self.ph_baseline = 700
+        self.ph_baseline = 750
         self.text_width = 35
         self.font_size = 9
 
@@ -111,7 +119,7 @@ class PanoImagePreviewer:
         self.fig.suptitle(plt_title)
 
         # Compose axis title with metadata like time, frame number, and source file information
-        ax_title = (f"{pano_type}\n"
+        ax_title = (f"{pano_type}" + ("\n" if 'quabo_num' not in header else f": Q{int(header['quabo_num'])}\n") +
                     f"unix_t = {header['pandas_unix_timestamp'].time()}\n"
                     f"frame_no = {pano_image.frame_number}\n")
         ax_title += textwrap.fill(f"file = {pano_image.file}", width=self.text_width)
@@ -121,11 +129,11 @@ class PanoImagePreviewer:
             if len(self.ph_imgs) < 100:
                 self.ph_imgs.append(img)
             img += self.ph_baseline
-            img = np.clip(img, self.ph_baseline, float('inf'))
-            img -= self.ph_baseline
+            # img = np.clip(img, self.ph_baseline, float('inf'))
+            # img -= self.ph_baseline
             high = np.quantile(self.ph_imgs, 0.99)
             self.axs[0].cla()
-            self.axs[0].imshow(img, vmin=0, vmax=high, cmap=self.cmap)
+            self.axs[0].imshow(img, vmin=self.ph_baseline, vmax=high, cmap=self.cmap)
             self.axs[0].set_title(ax_title, fontsize=self.font_size)
 
         # Update movie image subplot
@@ -169,12 +177,12 @@ def run_max_pixel_distribution_ph(
         # unpack pano image
         pano_image = response.pano_image
         pano_type, header, img = unpack_pano_image(pano_image)
-        ph_baseline = 700
+        ph_baseline = 750
 
         if pano_type == 'PULSE_HEIGHT':
             img += ph_baseline
-            img = np.clip(img, ph_baseline, float('inf'))
-            img -= ph_baseline
+            # img = np.clip(img, ph_baseline, float('inf'))
+            # img -= ph_baseline
             mpd.update(img)
             curr_time = time.time()
             if curr_time - last_plot_update_time > max(plot_update_interval, 0.5):
@@ -237,15 +245,15 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
                     stub,
                     stream_movie_data=True,
                     stream_pulse_height_data=True,
-                    update_interval_seconds=0.5,
+                    update_interval_seconds=1.0,
                     wait_for_ready=True,
                     logger=logger
                 )
             elif plot == 'phdist':
                 run_max_pixel_distribution_ph(
                     stub,
-                    plot_update_interval=0.5,
-                    durations_seconds= (10, 60, 60 * 10),
+                    plot_update_interval=1.0,
+                    durations_seconds= (10, 60, 60 * 2),
                     logger=logger
                 )
     except KeyboardInterrupt:
@@ -259,6 +267,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--host",
         help="daq_data server hostname or IP address. Default: 'localhost'",
+        # default="10.0.0.60"
         default="localhost"
     )
     parser.add_argument(

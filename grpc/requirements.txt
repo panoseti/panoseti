@@ -11,6 +11,7 @@ grpcio_tools>=1.73.0
 # observability
 rich>=14.0.0
 redis>=3.5.3
+snakeviz>=2.2.2
 
 # ublox control
 pyserial>=3.5
