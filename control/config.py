@@ -329,11 +329,12 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 quabo.send_daq_params(daq_stop)
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
-            print('**************************************************************************')
-            print('Warning: No calibration data for the board with UID: %s'%uid)
-            print('         Using default calibration data.')
-            print('**************************************************************************')
-            logger.warning('No calibration data: UID -%s'%uid)
+            if no_cali:
+                print('**************************************************************************')
+                print('Warning: No calibration data for the board with UID: %s'%uid)
+                print('         Using default calibration data.')
+                print('**************************************************************************')
+                logger.warning('No calibration data: UID -%s'%uid)
             quabo.send_maroc_params(qc_dict)
             quabo.close()
 
