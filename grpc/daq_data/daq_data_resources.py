@@ -43,12 +43,23 @@ def make_rich_logger(name, level=logging.INFO):
         "[tid=%(thread)d] [%(funcName)s()] %(message)s "
     )
 
+    rich_handler = RichHandler(
+        level=logging.DEBUG,  # Set handler specific level
+        show_time=True,
+        show_level=True,
+        show_path=True,
+        enable_link_path=True,
+        rich_tracebacks=True,  # Enable rich tracebacks for exceptions
+        tracebacks_theme="monokai",  # Optional: Choose a traceback theme
+    )
+
+
     logging.basicConfig(
         level=level,
         format=LOG_FORMAT,
         datefmt="%H:%M:%S",
         # datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[RichHandler(rich_tracebacks=True)]
+        handlers=[rich_handler]
     )
     return logging.getLogger(name)
 

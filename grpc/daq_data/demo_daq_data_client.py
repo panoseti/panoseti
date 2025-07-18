@@ -227,7 +227,7 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
                     update_interval_seconds=0.1,
                     simulate_daq=simulate_daq,
                     force=True,
-                    timeout=10.0,
+                    timeout=15.0,
                     logger=logger
                 )
 
