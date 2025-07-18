@@ -26,11 +26,11 @@ class PulseHeightDistribution:
         self.start_times = [time.time() for _ in durations_seconds]
         self.hist_data = [deque() for _ in durations_seconds]
 
-        # Set reasonable size: width=10in, height=3.5in per subplot
+        # Set reasonable size: width=6in, height=3in per subplot
         n = len(durations_seconds)
-        height = max(2 * n, 6)  # Ensure minimum height
+        height = max(3 * n, 6)  # Ensure minimum height
         plt.ion()
-        self.fig, self.axes = plt.subplots(n, 1, figsize=(10, height))
+        self.fig, self.axes = plt.subplots(n, 1, figsize=(6, height))
         if n == 1:
             self.axes = [self.axes]
 
@@ -121,9 +121,11 @@ class PanoImagePreviewer:
             if len(self.ph_imgs) < 100:
                 self.ph_imgs.append(img)
             img += self.ph_baseline
+            img = np.clip(img, self.ph_baseline, float('inf'))
+            img -= self.ph_baseline
             high = np.quantile(self.ph_imgs, 0.99)
             self.axs[0].cla()
-            self.axs[0].imshow(img, vmin=self.ph_baseline, vmax=high, cmap=self.cmap)
+            self.axs[0].imshow(img, vmin=0, vmax=high, cmap=self.cmap)
             self.axs[0].set_title(ax_title, fontsize=self.font_size)
 
         # Update movie image subplot
@@ -143,7 +145,7 @@ class PanoImagePreviewer:
 
 def run_max_pixel_distribution_ph(
     stub,
-    update_interval_seconds: float,
+    plot_update_interval: float,
     durations_seconds=(5, 10, 30),
     logger: logging.Logger = None,
 ):
@@ -157,6 +159,7 @@ def run_max_pixel_distribution_ph(
     stream_images_responses = stub.StreamImages(request)
 
     mpd = PulseHeightDistribution(durations_seconds)
+    last_plot_update_time = time.time()
     for response in stream_images_responses:
         # log response metadata
         if logger:
@@ -170,8 +173,13 @@ def run_max_pixel_distribution_ph(
 
         if pano_type == 'PULSE_HEIGHT':
             img += ph_baseline
+            img = np.clip(img, ph_baseline, float('inf'))
+            img -= ph_baseline
             mpd.update(img)
-            mpd.plot()
+            curr_time = time.time()
+            if curr_time - last_plot_update_time > max(plot_update_interval, 0.5):
+                mpd.plot()
+                last_plot_update_time = curr_time
 
 
 def preview_data_demo(
@@ -229,14 +237,14 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
                     stub,
                     stream_movie_data=True,
                     stream_pulse_height_data=True,
-                    update_interval_seconds=1,
+                    update_interval_seconds=1.0,
                     wait_for_ready=True,
                     logger=logger
                 )
             elif plot == 'phdist':
                 run_max_pixel_distribution_ph(
                     stub,
-                    update_interval_seconds=0.1,
+                    plot_update_interval=1.0,
                     durations_seconds= (10, 60, 60 * 10),
                     logger=logger
                 )

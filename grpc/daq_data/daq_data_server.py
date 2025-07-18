@@ -127,6 +127,7 @@ def daq_sim_thread_fn(
     dp_cfg = DaqDataServicer.get_dp_cfg(data_products)
 
     simulated_data_files = []
+    daq_active_files = []
     active_pff_files = dict()
     try:
         # prevent multiple server instances from running this thread
@@ -194,16 +195,15 @@ def daq_sim_thread_fn(
                             raise TimeoutError("test hp_io thread unexpected termination")
             if fnum >= min(ph_nframes, movie_nframes):
                 logger.warning(f"simulated data acquisition reached EOF: {fnum=} >= {min(ph_nframes, movie_nframes)=}")
-    except TimeoutError:
-        pass
-    except RuntimeError:
-        pass
+    # except Exception:
+    #     pass
     finally:
         sim_valid.clear()
         logger.debug(f"{simulated_data_files=}")
         logger.debug(f"{daq_active_files=}")
         for daq_active_file in daq_active_files:
-            os.unlink(daq_active_file)
+            if os.path.exists(daq_active_file):
+                os.unlink(daq_active_file)
         for file in simulated_data_files:
             os.unlink(file)
         logger.info("hp_sim thread exited")
@@ -212,7 +212,7 @@ def daq_sim_thread_fn(
 def hp_io_thread_fn(
         data_dir: Path,
         data_products: List[str],
-        update_interval: float,
+        update_interval_seconds: float,
         reader_states: List[Dict],
         stop_io: Event,
         valid: Event,
@@ -227,22 +227,11 @@ def hp_io_thread_fn(
     logger.info(f"Created a new hp_io thread with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
 
-    def get_module_ids():
-        module_pattern = f"{data_dir}/module_*"
-        modules = glob(module_pattern)
-        module_ids = []
-        for m in modules:
-            if os.path.isdir(m):
-                module_id = int(os.path.basename(m).split('_')[1])
-                module_ids.append(module_id)
-        return module_ids
-
-    def init_module_state(module_state, module_id):
-        """initialize hp_io state for a specific module"""
+    def init_module_state(module_state, module_id, timeout=5.0):
+        """initialize hp_io state for a specific module.
+        Returns True iff successfully initialized."""
+        curr_t = time.monotonic()
         dp_cfg = module_state['dp_cfg']
-        # check if daq software is active
-        if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
-            raise EnvironmentError("DAQ data flow not active.")
 
         # check if a directory for [module_id] exists
         run_pattern = f"{data_dir}/module_{module_id}/obs_*"
@@ -259,25 +248,35 @@ def hp_io_thread_fn(
             # wait until hashpipe starts writing files
             nfiles = 0
             files = []
-            while not stop_io.is_set() and nfiles == 0:
+            while not stop_io.is_set() and nfiles == 0 and (time.monotonic() - curr_t < timeout):
                 files = glob(dp_cfg[dp]['glob_pat'])
                 nfiles = len(files)
+                if nfiles > 0:
+                    break
                 logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
-                time.sleep(0.5)
+                time.sleep(0.1)
+
+            # check if environment is valid
             if stop_io.is_set():
                 raise EnvironmentError("stop_io event is set")
+            elif time.monotonic() - curr_t >= timeout:
+                return False
 
             file = sorted(files, key=os.path.getmtime)[-1]
             filepath = file
 
             # wait until the filesize is large enough to read one image of type [dp]
-            while not stop_io.is_set():
+            while not stop_io.is_set() and (time.monotonic() - curr_t < timeout):
                 if os.path.getsize(filepath) >= dp_cfg[dp]['bytes_per_image']:
                     break
-                time.sleep(0.5)
+                logger.debug(f"waiting for a file to be large enough to read one image of type {dp}")
+                time.sleep(0.1)
 
+            # check if the environment is valid
             if stop_io.is_set():
                 raise EnvironmentError("stop_io event is set")
+            elif time.monotonic() - curr_t >= timeout:
+                return False
 
             # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
             f = open(filepath, 'rb')
@@ -290,17 +289,30 @@ def hp_io_thread_fn(
             dp_cfg[dp]['nfiles'] = nfiles
             dp_cfg[dp]['filepath'] = filepath
             dp_cfg[dp]['last_frame'] = -1
+        return True
 
-    def init_hp_io_state(module_ids):
+    def init_hp_io_state():
         hp_io_state = dict()
         # check if daq software is active
         if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
             raise EnvironmentError("DAQ data flow not active.")
-
+        # Get all active modules
+        module_pattern = f"{data_dir}/module_*"
+        modules = glob(module_pattern)
+        module_ids = []
+        for m in modules:
+            if os.path.isdir(m):
+                mid = int(os.path.basename(m).split('_')[1])
+                module_ids.append(mid)
+        module_ids = [1]
         for module_id in module_ids:
             hp_io_state[module_id] = dict()
             hp_io_state[module_id]['dp_cfg'] = DaqDataServicer.get_dp_cfg(data_products)
-            init_module_state(hp_io_state[module_id], module_id)
+            success = init_module_state(hp_io_state[module_id], module_id)
+            if not success:
+                del hp_io_state[module_id]
+        if len(hp_io_state) == 0:
+            raise EnvironmentError("No active modules found.")
         return hp_io_state
 
     def dp_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
@@ -357,9 +369,13 @@ def hp_io_thread_fn(
 
     def module_main(module_state):
         dp_cfg = module_state['dp_cfg']
+        # logger.info(f"{module_id=}: {dp_cfg=}")
         for dp in dp_cfg:
             d = dp_cfg[dp]
+            # logger.info(f"{d=}")
+            # print(d['is_ph'])
             header, img = dp_main(d)
+            # print(d['is_ph'])
             if header and img:
                 # create PanoImage message from the latest image
                 pano_image = PanoImage(
@@ -378,19 +394,20 @@ def hp_io_thread_fn(
                 }
                 # broadcast image data to all waiting clients
                 for rs in [rs for rs in reader_states if rs['is_allocated']]:
+                    curr_t = time.monotonic()
+                    if (curr_t - rs['last_update_t']) < rs['config']['update_interval_seconds']:
+                        continue
+
                     rq = rs['queue']
                     if not rq.full():
                         if d['is_ph'] and rs['config']['stream_pulse_height_data']:
-                            rq.put_nowait(parsed_data)
+                            rq.put(parsed_data)
                         elif not d['is_ph'] and rs['config']['stream_movie_data']:
-                            rq.put_nowait(parsed_data)
+                            rq.put(parsed_data)
 
-    module_ids: List[int] = []
     hp_io_state: Dict[int, Dict[str, Any]] = None
     try:
-        module_ids = get_module_ids()
-        hp_io_state = init_hp_io_state(module_ids)
-        logger.info(f"{module_ids=}")
+        hp_io_state = init_hp_io_state()
         logger.info(f"{hp_io_state=}")
         # signal the hp_io thread is ready to service client requests for data preview
         valid.set()
@@ -399,7 +416,11 @@ def hp_io_thread_fn(
                 raise EnvironmentError("DAQ data flow stopped.")
             for module_id in hp_io_state:
                 module_main(hp_io_state[module_id])
-                time.sleep(update_interval)
+            for rs in [rs for rs in reader_states if rs['is_allocated']]:
+                curr_t = time.monotonic()
+                if (curr_t - rs['last_update_t']) >= rs['config']['update_interval_seconds']:
+                    rs['last_update_t'] = curr_t
+            time.sleep(update_interval_seconds)
     except Exception as err:
         logger.critical(f"hp_io thread encountered a fatal exception! '{repr(err)}'")
     finally:
@@ -472,6 +493,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "is_allocated": False,
                 "queue": Queue(maxsize=server_cfg['max_read_queue_size']),
                 "config": default_config,
+                "last_update_t": time.monotonic()
             }
             self._reader_states.append(default_reader_state)
         self._stop_io = Event()  # Signals hp_io thread to exit
@@ -543,7 +565,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         shutdown_record = dict()
         self._server_cfg['hp_io_init'] = False
         # wait for the hp_io thread to exit
-        shutdown_record['stop_hp_io'] = self._stop_hp_io_thread(2)
+        shutdown_record['stop_hp_io'] = self._stop_hp_io_thread()
         # wait for active server threads to exit
         for ac in self._active_clients.values():
             ac['thread'].join(timeout=1)
@@ -620,7 +642,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         )
 
         # Terminate any currently alive hp_io thread
-        if not self._stop_hp_io_thread(timeout=self._hp_io_cfg['update_interval_seconds'] + 1):
+        if not self._stop_hp_io_thread():
             raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io thread")
         self._stop_io.clear()
 
@@ -630,7 +652,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._daq_sim_thread_valid.wait(2)
             if not self._daq_sim_thread.is_alive():
                 self.logger.error("DAQ simulation thread failed to start")
-                self._stop_hp_io_thread(1)
+                self._stop_hp_io_thread()
                 self._hp_io_thread = None
                 self._daq_sim_thread = None
                 return False
@@ -643,7 +665,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.info("hp_io thread alive and valid")
             return True
         else:
-            self._stop_hp_io_thread(1)
+            self._stop_hp_io_thread()
             self._hp_io_thread = None
             self._daq_sim_thread = None
             return False
@@ -666,16 +688,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             raise RuntimeError(emsg)  # SHOULD NEVER REACH HERE
         return False
 
-    def _stop_hp_io_thread(self, timeout:float=5.0):
+    def _stop_hp_io_thread(self):
         """Stops the hp_io thread. Idempotent behavior.
         @return: True iff the hp_io thread is not alive.
         :param timeout: seconds to wait for hp_io thread to exit gracefully"""
         self._stop_io.set()  # signal hp_io thread to exit gracefully
         if self._hp_io_thread is not None and self._hp_io_thread.is_alive():
             try:
-                self._hp_io_thread.join(timeout)  # wait until hp_io exits
-                if self._daq_sim_thread is not None:
-                    self._daq_sim_thread.join(timeout)
+                self._hp_io_thread.join(self._server_cfg['hp_io_stop_timeout'])  # wait until hp_io exits
+                if self._daq_sim_thread is not None and self._daq_sim_thread.is_alive():
+                    self._daq_sim_thread.join(self._server_cfg['hp_io_stop_timeout'])
             except RuntimeError as rerr:
                 self.logger.critical(f"encountered runtime error while stopping hp_io thread: {rerr}")
                 return False
@@ -871,8 +893,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # Set stream filter options
-            reader_state['config']['stream_movie_data'] = request.stream_movie_data
-            reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
             if request.update_interval_seconds > self._server_cfg['max_client_update_interval_seconds']:
                 emsg = (f"update_interval_seconds must be at most "
                         f"{self._server_cfg['max_client_update_interval_seconds']}"
@@ -883,6 +903,9 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 reader_state['config']['update_interval_seconds'] = self._hp_io_cfg['update_interval_seconds']
             else:
                 reader_state['config']['update_interval_seconds'] = request.update_interval_seconds
+            reader_state['config']['stream_movie_data'] = request.stream_movie_data
+            reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
+            self.logger.debug(f"{reader_state=}")
 
             # Clear old data from the read_queue
             rq = reader_state['queue']
@@ -902,7 +925,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
                     # TODO: get these values from data_config.json
                     pano_image = parsed_data['pano_image']
-                    pano_type = PanoImage.Type.Name(pano_image.type)
 
                     stream_images_response = StreamImagesResponse(
                         name=f"StreamImageResponse [Data]",
@@ -967,7 +989,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         with self._rw_lock_writer(context, force=request.force):
             self._server_cfg['hp_io_init'] = False
             last_hp_io_valid = self._is_hp_io_valid()
-            stop_success = self._stop_hp_io_thread(timeout=5)
+            stop_success = self._stop_hp_io_thread()
             if not stop_success:
                 emsg = "failed to stop hp_io thread!"
                 self.logger.critical(emsg)

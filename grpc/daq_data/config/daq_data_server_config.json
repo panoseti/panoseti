@@ -7,6 +7,7 @@
     "min_client_update_interval_seconds": 0.5,
     "max_client_update_interval_seconds": 60,
     "shutdown_grace_period": 0.1,
+    "hp_io_stop_timeout": 5.0,
 
     "simulate_daq_cfg": {
         "data_products": ["img16", "ph256"],
