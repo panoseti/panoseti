@@ -3,7 +3,7 @@ Common functions for the DaqData clients and servers
 """
 import sys, signal
 import logging
-from typing import List, Callable, Tuple, Any, Dict
+from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
 import numpy as np
 from pandas import to_datetime, Timestamp
 import datetime

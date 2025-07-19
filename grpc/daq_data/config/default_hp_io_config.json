@@ -3,5 +3,6 @@
   "update_interval_seconds": 0.5,
   "force": false,
   "simulate_daq": true,
+  "data_products": ["img16", "ph256"],
   "comments": "DEBUG"
 }

@@ -231,6 +231,7 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
                     update_interval_seconds=0.1,
                     simulate_daq=simulate_daq,
                     force=True,
+                    data_products=["img16", "ph256"],
                     timeout=15.0,
                     logger=logger
                 )

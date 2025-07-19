@@ -11,14 +11,12 @@ Requires following to function correctly:
 import asyncio
 import uuid
 from threading import Event, Thread
-from queue import Queue
 from glob import glob
-from contextlib import contextmanager, asynccontextmanager
+from contextlib import asynccontextmanager
+from typing import List, Callable, Tuple, Any, Dict, AsyncIterator
 import logging
-import queue
 import json
 import sys
-import threading
 import time
 import urllib.parse
 
@@ -36,7 +34,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, TestCase, StreamImagesResponse, StreamImagesRequest, InitHpIoResponse
+from daq_data_pb2 import PanoImage, TestCase, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## --- daq_data utils ---
 from daq_data_resources import make_rich_logger
@@ -390,11 +388,15 @@ async def hp_io_task_fn(
         return ready_list, ph_clients, movie_clients
 
 
-    def broadcast_latest_module_data(module_state: Dict, ready_readers: List[Dict], ready_ph_clients: int, ready_movie_clients: int) -> None:
-        dp_cfg = module_state['dp_cfg']
-        ph_data_to_broadcast = []
-        movie_data_to_broadcast = []
+    def fetch_latest_module_data(
+            module_state: Dict[str, Any],
+            ready_ph_clients: int,
+            ready_movie_clients: int
+    ) -> Tuple[List[PanoImage], List[PanoImage]]:
+        latest_ph_data: List[PanoImage] = []
+        latest_movie_data: List[PanoImage] = []
         # logger.info(f"{module_id=}: {dp_cfg=}")
+        dp_cfg = module_state['dp_cfg']
         for dp in dp_cfg:
             d = dp_cfg[dp]
             # check if we have to compute the latest for this datatype right now
@@ -415,29 +417,11 @@ async def hp_io_task_fn(
                     frame_number=d['last_frame'],
                     module_id=module_id,
                 )
-                # create object to pass to each waiting writer
-                parsed_data = {
-                    "pano_image": pano_image,
-                }
                 if d['is_ph']:
-                    ph_data_to_broadcast.append(parsed_data)
+                    latest_ph_data.append(pano_image)
                 else:
-                    movie_data_to_broadcast.append(parsed_data)
-
-        # broadcast image data to all ready clients
-        for rs in ready_readers:
-            rq = rs['queue']
-            if rs['config']['stream_pulse_height_data']:
-                for ph_data in ph_data_to_broadcast:
-                    if rq.full():
-                        break
-                    rq.put(ph_data)
-            if rs['config']['stream_movie_data']:
-                for movie_data in movie_data_to_broadcast:
-                    if rq.full():
-                        break
-                    rq.put(movie_data)
-            # to prevent starvation of updates from other modules, we don't update last_update_t here.
+                    latest_movie_data.append(pano_image)
+        return latest_ph_data, latest_movie_data
 
     hp_io_state: Dict[int, Dict[str, Any]] = None
     try:
@@ -451,9 +435,24 @@ async def hp_io_task_fn(
             curr_t = time.monotonic()
             ready_readers, nph, nmovie = get_ready_readers(curr_t)
             if len(ready_readers) > 0:
+                ph_data_to_broadcast = []
+                movie_data_to_broadcast = []
                 for module_id in hp_io_state:
-                    broadcast_latest_module_data(hp_io_state[module_id], ready_readers, nph, nmovie)
+                    latest_module_ph_data, latest_module_movie_data = fetch_latest_module_data(hp_io_state[module_id], nph, nmovie)
+                    ph_data_to_broadcast.extend(latest_module_ph_data)
+                    movie_data_to_broadcast.extend(latest_module_movie_data)
+                # broadcast image data to all ready clients
                 for rs in ready_readers:
+                    rq: asyncio.Queue = rs['queue']
+                    try:
+                        if rs['config']['stream_pulse_height_data']:
+                            for ph_data in ph_data_to_broadcast:
+                                rq.put_nowait(ph_data)
+                        if rs['config']['stream_movie_data']:
+                            for movie_data in movie_data_to_broadcast:
+                                rq.put_nowait(movie_data)
+                    except asyncio.QueueFull:
+                        logger.warning(f"hp_io task is unable to broadcast image data to reader {rs['client_ip']}")
                     rs['last_update_t'] = curr_t
             # Every 10 seconds, check if the DAQ software stopped
             if curr_t - last_daq_active_check_t >= 10:
@@ -534,7 +533,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             }
             default_reader_state = {
                 "is_allocated": False,
-                "queue": Queue(maxsize=server_cfg['max_read_queue_size']),
+                "queue": asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
                 "config": default_config,
                 "last_update_t": time.monotonic()
             }
@@ -651,13 +650,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         # Toggle simulation task creation
         if not hp_io_cfg['simulate_daq']:
-            dps = ["img16"]
+            data_products = hp_io_cfg['data_products']
             data_dir = hp_io_cfg['data_dir']
             if not os.path.exists(data_dir):
                 return False
             self._daq_sim_thread = None
         else:
-            dps = simulate_daq_cfg['data_products']
+            data_products = simulate_daq_cfg['data_products']
             data_dir = simulate_daq_cfg['files']['data_dir']
             self._daq_sim_thread = Thread(
                 target=daq_sim_thread_fn,
@@ -676,7 +675,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_task = asyncio.create_task(
             hp_io_task_fn(
                 data_dir,
-                dps,
+                data_products,
                 hp_io_update_interval,
                 self._reader_states,
                 self._stop_io,
@@ -698,7 +697,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         return True
 
     def _is_hp_io_valid(self, verbose=True):
-        msg = ""
         if self._hp_io_task is not None and not self._hp_io_task.done() and self._hp_io_valid.is_set():
             return True
         elif self._hp_io_task is None:
@@ -904,7 +902,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 if active:
                     self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
                     del self._active_clients[uid]
-                    self._reader_states[idx]['is_allocated'] = False # release reader resources
+                    self._reader_states[reader_idx]['is_allocated'] = False # release reader resources
                 # Wake up waiting readers or a waiting writer (prioritize waiting writers).
                 if self._rw_lock_state['ar'] == 0 and self._rw_lock_state['ww'] > 0:
                     self._write_ok_condvar.notify()
@@ -913,15 +911,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self.logger.debug(f"(reader) check-out (end):\t\t{self._rw_lock_state=}")
                 # END check-out critical section
 
-    async def StreamImages(self, request, context):
+    async def StreamImages(self, request: StreamImagesRequest, context) -> AsyncIterator[StreamImagesResponse]:
         """Forward sample panoseti movie and pulse-height images to the client. [reader]"""
-        self.logger.info(f"new StreamImages rpc from {urllib.parse.unquote(context.peer())}")
+        self.logger.info(f"new StreamImages rpc from {urllib.parse.unquote(context.peer())}: "
+                         f"{MessageToDict(request, preserving_proto_field_name=True)}")
         # Validate request fields that don't require reading server state
         if not request.stream_movie_data and not request.stream_pulse_height_data:
             emsg = "At least one of the stream flags must be set to True"
             self.logger.info(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-        async with self._rw_lock_reader(context) as reader_state:  # rid = allocated reader id for indexing into shared reader resources
+        async with self._rw_lock_reader(context) as reader_state:  # reader_state = allocated reader resources
             # BEGIN reader critical section
             # Validate request fields that require reading protected server state
             if not self._server_cfg['hp_io_init']:
@@ -944,33 +943,25 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.debug(f"{reader_state=}")
 
             # Clear old data from the read_queue
-            rq = reader_state['queue']
-            while not rq.empty():
-                rq.get()
+            reader_queue: asyncio.Queue = reader_state['queue']
+            while not reader_queue.empty():
+                await reader_queue.get()
 
             # Valid server state -> start streaming!
             while not context.cancelled() and self._is_hp_io_valid() and not self._shutdown_event.is_set() and not self._cancel_readers_event.is_set():
-                try:
-                    # wait for next packet from the hp_io task
-                    # add a timeout to avoid starvation if hp_io task unexpectedly exits while this task is blocking on the read_queue
-                    parsed_data = await asyncio.to_thread(rq.get, timeout=reader_state['config']['update_interval_seconds'])
-                    if not isinstance(parsed_data, dict):
-                        break
-                    send_timestamp = timestamp_pb2.Timestamp()
-                    send_timestamp.GetCurrentTime()
+                # await the next PanoImage to broadcast from the hp_io task
+                pano_image = await reader_queue.get()
+                if not isinstance(pano_image, PanoImage):
+                    break
+                send_timestamp = timestamp_pb2.Timestamp()
+                send_timestamp.GetCurrentTime()
 
-                    pano_image = parsed_data['pano_image']
-                    stream_images_response = StreamImagesResponse(
-                        name=f"StreamImageResponse [Data]",
-                        timestamp=send_timestamp,
-                        message=f"",
-                        pano_image=pano_image
-                    )
-
-                    yield stream_images_response
-                except queue.Empty:
-                    # self.logger.debug("hp_io task may have stopped sending data")
-                    continue
+                stream_images_response = StreamImagesResponse(
+                    name=f"StreamImageResponse [Data]",
+                    timestamp=send_timestamp,
+                    pano_image=pano_image
+                )
+                yield stream_images_response
 
             # log reason why streaming stopped
             if self._shutdown_event.is_set():
@@ -992,32 +983,47 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 await context.abort(grpc.StatusCode.INTERNAL, "Unexpected error!")
             # END reader critical section
 
-    async def InitHpIo(self, request, context):
+    async def InitHpIo(self, request: InitHpIoRequest, context) -> InitHpIoResponse:
         """Initialize the hp_io task with the given configuration. [writer]"""
-        self.logger.info(f"new InitHpIo rpc from {urllib.parse.unquote(context.peer())}")
-
-        # Validate request fields that don't require reading server state
+        self.logger.info(f"new InitHpIo rpc from {urllib.parse.unquote(context.peer())}: "
+                         f"{MessageToDict(request, preserving_proto_field_name=True)}")
+        # Validate request fields that don't require reading server state:
+        # if the daq target is a live observing run, check if the specified data_dir exists
         if (not request.simulate_daq) and (not os.path.exists(request.data_dir)):
             emsg = f"data_dir={request.data_dir} does not exist"
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
         # check if daq is active and real daq is being used. Note: simulated daq data flow always properly initialized
-        if (not request.simulate_daq) and (not is_daq_active(simulate_daq=False)):
+        elif (not request.simulate_daq) and (not is_daq_active(simulate_daq=False)):
             emsg = 'DAQ software is not active. Re-try hp_io task creation once the daq software has been started.'
             self.logger.warning(emsg)
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
-        # Step 1: read server state to validate init request
+        # verify data products were provided
+        elif not request.data_products:
+            emsg = "at least one data_product must be specified"
+            self.logger.warning(emsg)
+            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+
+        # read server configuration to validate parameters in init request
         async with self._rw_lock_reader(context) as reader_state:
+            # check if given data products are valid
+            valid_data_products = set(self._server_cfg['valid_data_products'])
+            request_data_products = set(request.data_products)
+            if not request_data_products.issubset(valid_data_products):
+                emsg = (f"Invalid data_products specified: {request_data_products - valid_data_products}. "
+                        f"Valid data products are: {valid_data_products}")
+                self.logger.warning(emsg)
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+
             # check if the requested update interval is not too short
-            if request.update_interval_seconds < self._server_cfg['min_hp_io_update_interval_seconds']:
+            elif request.update_interval_seconds < self._server_cfg['min_hp_io_update_interval_seconds']:
                 emsg = (f"update_interval_seconds must be at least "
                         f"{self._server_cfg['min_hp_io_update_interval_seconds']} seconds. Got {request.update_interval_seconds}")
                 self.logger.warning(emsg)
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-
-        self.logger.debug(f"(InitHpIo) passed validation checks")
+            self.logger.info(f"Request passed validation checks")
 
         # attempt to change server state: modify hp_io task
         async with self._rw_lock_writer(context, force=request.force):
@@ -1033,6 +1039,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
                 "update_interval_seconds": request.update_interval_seconds,
+                "data_products": request.data_products
             }
             start_success = await self._start_hp_io_task(hp_io_cfg)
             if start_success:
@@ -1080,8 +1087,7 @@ async def serve(server_cfg):
         grace = server_cfg["shutdown_grace_period"]
         print(f"'^C' received, shutting down the server in {grace} seconds.")
         await daq_data_servicer.shutdown()
-        await server.stop(grace=5)
-
+        await server.stop(grace=grace)
 
 
 if __name__ == "__main__":

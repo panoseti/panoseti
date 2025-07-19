@@ -90,6 +90,7 @@ def init_hp_io(
         update_interval_seconds: float,
         simulate_daq: bool,
         force: bool,
+        data_products: list[str],
         logger: logging.Logger,
         timeout:float=5.0,
 ) -> None:
@@ -97,7 +98,8 @@ def init_hp_io(
         data_dir=data_dir,
         update_interval_seconds=update_interval_seconds,
         simulate_daq=simulate_daq,
-        force=force
+        force=force,
+        data_products=data_products,
     )
     init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
     logger.info(f"init_hp_io_response={repr(init_hp_io_response)}")
