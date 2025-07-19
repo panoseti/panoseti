@@ -5,7 +5,7 @@
     "max_read_queue_size": 50,
     "min_hp_io_update_interval_seconds": 0.001,
     "max_client_update_interval_seconds": 60,
-    "shutdown_grace_period": 0.1,
+    "shutdown_grace_period": 5,
     "hp_io_stop_timeout": 5.0,
     "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
 
@@ -14,7 +14,7 @@
         "movie_type": "img16",
         "ph_type": "ph256",
         "frames_per_pff": 300,
-        "sim_module_ids": [64],
+        "sim_module_ids": [24, 44, 64],
         "real_module_id": 1,
         "files": {
             "data_dir": "simulated_data_dir",

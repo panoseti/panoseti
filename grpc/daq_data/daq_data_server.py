@@ -1099,7 +1099,7 @@ async def serve(server_cfg):
         pass
     finally:
         grace = server_cfg["shutdown_grace_period"]
-        print(f"'^C' received, shutting down the server in {grace} seconds.")
+        print(f"'^C' received, shutting down the server with {grace=} seconds.")
         await daq_data_servicer.shutdown()
         await server.stop(grace=grace)
 
@@ -1111,9 +1111,6 @@ if __name__ == "__main__":
     default_hp_io_config_file = 'default_hp_io_config.json'
 
     # Configuration
-    with open(cfg_dir / default_hp_io_config_file) as f:
-        default_hp_io_config = json.load(f)
-
     server_cfg_file = "daq_data_server_config.json"
     with open(cfg_dir / server_cfg_file, "r") as f:
         server_cfg = json.load(f)

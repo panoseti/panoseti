@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import signal
 import argparse
 import json
 import logging
@@ -80,81 +81,111 @@ class PulseHeightDistribution:
 
 
 class PanoImagePreviewer:
-    def __init__(self, stream_movie_data: bool, stream_pulse_height_data: bool, update_interval_seconds: float, logger: logging.Logger):
+    def __init__(
+            self,
+            stream_movie_data: bool,
+            stream_pulse_height_data: bool,
+            update_interval_seconds: float,
+            logger: logging.Logger,
+            text_width=25,
+            font_size=7,
+            ph_baseline = 750,
+            col_width=4,
+            row_height=2.8,
+    ) -> None:
         self.stream_movie_data = stream_movie_data
         self.stream_pulse_height_data = stream_pulse_height_data
         self.update_interval_seconds = update_interval_seconds
         self.logger = logger
 
-        # initialize plotting with two subplots side-by-side
-        self.fig, self.axs = plt.subplots(1, 2)
-        for i, ax in enumerate(self.axs):
-            ax.imshow(np.zeros((32, 32)))
-            if i == 0 and not stream_pulse_height_data:
-                ax.set_title(f'stream_pulse_height_data={stream_pulse_height_data}')
-            elif i == 1 and not stream_movie_data:
-                ax.set_title(f'stream_movie_data={stream_movie_data}')
-            ax.axis('off')
+        self.seen_modules = set()
+        self.axes_map = {}
+
+        self.fig = None
+        self.text_width = text_width
+        self.font_size = font_size
+        self.ph_baseline = ph_baseline
+        self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'icefire', 'flare_r'])
+        self.col_width = col_width
+        self.row_height = row_height
+
+    def safe_imshow(self, ax, img, vmin, vmax, cmap):
+        """Ensure vmin < vmax for Matplotlib imshow."""
+        if vmin >= vmax:
+            vmax = vmin + 1e-6
+        ax.imshow(img, vmin=vmin, vmax=vmax, cmap=cmap)
+
+    def setup_layout(self, modules):
+        """Sets up subplot layout: one row per module, two columns (PH left, Movie right)."""
+        if self.fig is not None:
+            plt.close(self.fig)
+        modules = sorted(modules)
+        n_modules = len(modules)
+        self.fig, axs = plt.subplots(n_modules, 2, figsize=(self.col_width, self.row_height * n_modules))
+        if n_modules == 1:
+            axs = np.array([axs])  # one row per module
+
+        self.axes_map.clear()
+        for row, mod_id in enumerate(modules):
+            self.axes_map[(mod_id, 'PULSE_HEIGHT')] = axs[row, 0]
+            self.axes_map[(mod_id, 'MOVIE')] = axs[row, 1]
+            axs[row, 0].imshow(np.zeros((32, 32)))
+            axs[row, 1].imshow(np.zeros((32, 32)))
+            axs[row, 0].set_title(f'Module {mod_id} - Pulse-Height', fontsize=self.font_size)
+            axs[row, 1].set_title(f'Module {mod_id} - Movie-Mode', fontsize=self.font_size)
+            axs[row, 0].axis('off')
+            axs[row, 1].axis('off')
+        self.fig.tight_layout()
         plt.ion()
         plt.show()
 
-        # Randomly choose a color map from a set of options
-        self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'icefire', 'flare_r'])
-        self.ph_baseline = 750
-        self.text_width = 30
-        self.font_size = 9
-
-        # Buffers to store images for quantile computations (max size 100)
-        self.movie_imgs = []
-        self.ph_imgs = []
-
     def update(self, pano_image_response):
-        # Log response metadata for diagnostics
         formatted_response = format_stream_images_response(pano_image_response)
         self.logger.info(formatted_response)
 
-        # Extract pano image data
         pano_image = pano_image_response.pano_image
         pano_type, header, img = unpack_pano_image(pano_image)
+        module_id = pano_image.module_id
 
-        # Update figure title with the image acquisition date
-        plt_title = f"demo obs data from {header['pandas_unix_timestamp'].date()}"
-        self.fig.suptitle(plt_title)
+        if module_id not in self.seen_modules:
+            self.seen_modules.add(module_id)
+            self.setup_layout(self.seen_modules)
 
-        # Compose axis title with metadata like time, frame number, and source file information
-        ax_title = (f"{pano_type}" + ("\n" if 'quabo_num' not in header else f": Q{int(header['quabo_num'])}\n") +
-                    f"unix_t = {header['pandas_unix_timestamp'].time()}\n"
-                    f"frame_no = {pano_image.frame_number}\n")
+        ax = self.axes_map.get((module_id, pano_type))
+        if ax is None:
+            return
+
+        # Prepare axis title with details
+        ax_title = (f"{pano_type}"
+                    + ("\n" if 'quabo_num' not in header else f": Q{int(header['quabo_num'])}\n")
+                    + f"unix_t = {header['pandas_unix_timestamp'].time()}\n"
+                    + f"frame_no = {pano_image.frame_number}\n")
         ax_title += textwrap.fill(f"file = {pano_image.file}", width=self.text_width)
 
-        # Update pulse height image subplot
+        # Image display without using buffers
         if pano_type == 'PULSE_HEIGHT':
-            if len(self.ph_imgs) < 100:
-                self.ph_imgs.append(img)
-            img += self.ph_baseline
-            # img = np.clip(img, self.ph_baseline, float('inf'))
-            # img -= self.ph_baseline
-            high = np.quantile(self.ph_imgs, 0.99)
-            self.axs[0].cla()
-            self.axs[0].imshow(img, vmin=self.ph_baseline, vmax=high, cmap=self.cmap)
-            self.axs[0].set_title(ax_title, fontsize=self.font_size)
-
-        # Update movie image subplot
+            img_mod = img + self.ph_baseline
+            vmin = self.ph_baseline
+            vmax = np.quantile(img_mod, 0.99)
+            ax.cla()
+            self.safe_imshow(ax, img_mod, vmin, vmax, self.cmap)
         elif pano_type == 'MOVIE':
-            if len(self.movie_imgs) < 100:
-                self.movie_imgs.append(img)
-            high = np.quantile(img, 0.95)
-            low = np.quantile(img, 0.05)
-            self.axs[1].cla()
-            self.axs[1].imshow(img, vmin=low, vmax=high, cmap=self.cmap)
-            self.axs[1].set_title(ax_title, fontsize=self.font_size)
+            vmin = np.quantile(img, 0.05)
+            vmax = np.quantile(img, 0.95)
+            ax.cla()
+            self.safe_imshow(ax, img, vmin, vmax, self.cmap)
 
+        ax.set_title(ax_title, fontsize=self.font_size)
+        ax.axis('off')
+
+        plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}"
+        self.fig.suptitle(plt_title)
         self.fig.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
 
-def run_max_pixel_distribution_ph(
+def run_pulse_height_distribution(
     stub,
     plot_update_interval: float,
     durations_seconds=(5, 10, 30),
@@ -192,7 +223,7 @@ def run_max_pixel_distribution_ph(
                 last_plot_update_time = curr_time
 
 
-def preview_data_demo(
+def run_pano_image_preview(
         stub: daq_data_pb2_grpc.DaqDataStub,
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
@@ -210,7 +241,10 @@ def preview_data_demo(
     # Make the RPC call
     logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
-    previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, update_interval_seconds, logger)
+    previewer = PanoImagePreviewer(
+        stream_movie_data, stream_pulse_height_data, update_interval_seconds, logger,
+        col_width=4.5, row_height=2.8,
+    )
 
     # Process responses
     for stream_images_response in stream_images_responses:
@@ -246,7 +280,7 @@ def run(host, port=50051, do_init=False, init_cfg=None, plot='view'):
             if plot:
                 print("-------------- StreamImages --------------")
                 if plot == 'view':
-                    preview_data_demo(
+                    run_pano_image_preview(
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
@@ -256,7 +290,7 @@ def run(host, port=50051, do_init=False, init_cfg=None, plot='view'):
                     )
 
                 elif plot == 'phdist':
-                    run_max_pixel_distribution_ph(
+                    run_pulse_height_distribution(
                         stub,
                         plot_update_interval=0.25,
                         durations_seconds= (10, 30, 60),
@@ -270,7 +304,16 @@ def run(host, port=50051, do_init=False, init_cfg=None, plot='view'):
         logger.error(f"{type(rpc_error)}\n{repr(rpc_error)}")
 
 
+def signal_handler(signum, frame):
+    print(f"Signal {signum} received, exiting...")
+    sys.exit(0)
+
+
+
 if __name__ == "__main__":
+    for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:
+        signal.signal(sig, signal_handler)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--host",
