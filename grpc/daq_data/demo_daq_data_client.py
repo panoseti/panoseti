@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import sys
 import argparse
 import logging
 from collections import deque
@@ -13,7 +12,6 @@ from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
 from daq_data_client import reflect_services, unpack_pano_image, format_stream_images_response, init_hp_io
 from daq_data_resources import make_rich_logger
-from daq_data_testing import run_all_tests, is_os_posix
 
 import numpy as np
 import seaborn as sns
@@ -30,8 +28,8 @@ class PulseHeightDistribution:
         self.hist_data = [deque() for _ in range(n)]
         self.vmins = [self.VMAX for _ in range(n)]
         self.vmaxs = [self.VMIN for _ in range(n)]
-        # Set reasonable size: width=6in, height=3in per subplot
-        height = max(3 * n, 6)  # Ensure minimum height
+        # size: width=6in, height=3in per subplot
+        height = max(3 * n, 6)  # ensure a minimum height
         plt.ion()
         self.fig, self.axes = plt.subplots(n, 1, figsize=(6, height))
         if n == 1:
@@ -83,7 +81,7 @@ class PanoImagePreviewer:
         self.update_interval_seconds = update_interval_seconds
         self.logger = logger
 
-        # Initialize plotting - two subplots side-by-side
+        # initialize plotting with two subplots side-by-side
         self.fig, self.axs = plt.subplots(1, 2)
         for i, ax in enumerate(self.axs):
             ax.imshow(np.zeros((32, 32)))
@@ -92,13 +90,13 @@ class PanoImagePreviewer:
             elif i == 1 and not stream_movie_data:
                 ax.set_title(f'stream_movie_data={stream_movie_data}')
             ax.axis('off')
-        plt.ion()  # Enable interactive mode
+        plt.ion()
         plt.show()
 
         # Randomly choose a color map from a set of options
         self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'icefire', 'flare_r'])
         self.ph_baseline = 750
-        self.text_width = 35
+        self.text_width = 30
         self.font_size = 9
 
         # Buffers to store images for quantile computations (max size 100)
@@ -181,8 +179,6 @@ def run_max_pixel_distribution_ph(
 
         if pano_type == 'PULSE_HEIGHT':
             img += ph_baseline
-            # img = np.clip(img, ph_baseline, float('inf'))
-            # img -= ph_baseline
             mpd.update(img)
             curr_time = time.time()
             if curr_time - last_plot_update_time > max(plot_update_interval, 0.5):
@@ -227,7 +223,7 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
             print("-------------- ServerReflection --------------")
             reflect_services(channel)
 
-            # print("-------------- Init --------------")
+            print("-------------- InitHpIo --------------")
             if init:
                 init_hp_io(
                     stub,
@@ -249,11 +245,12 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
                     wait_for_ready=True,
                     logger=logger
                 )
+
             elif plot == 'phdist':
                 run_max_pixel_distribution_ph(
                     stub,
-                    plot_update_interval=1.0,
-                    durations_seconds= (10, 60, 60 * 2),
+                    plot_update_interval=0.25,
+                    durations_seconds= (10, 30, 60),
                     logger=logger
                 )
     except KeyboardInterrupt:
@@ -283,10 +280,20 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--plot",
-        help="use a simulated datastream",
+        help="plot type",
         choices=['prev', 'phdist'],
         default='prev'
     )
     # run(host="10.0.0.60")
     args = parser.parse_args()
     run(host=args.host, init=args.init, simulate_daq=args.sim, plot=args.plot)
+
+    # threads = []
+    # for i in range(max(1, args.nconnect)):
+    #     t = threading.Thread(target=run, args=(args.host,), kwargs={'init': args.init, 'simulate_daq': args.sim, 'plot': args.plot}, daemon=True)
+    #     threads.append(t)
+    #     t.start()
+    # # Wait for all threads to finish
+    # for t in threads:
+    #     t.join()
+    # run(host=args.host, init=args.init, simulate_daq=args.sim, plot=args.plot)

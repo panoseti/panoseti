@@ -9,8 +9,7 @@ Requires following to function correctly:
     3. A connection to a panoseti module.
 """
 import asyncio
-from asyncio import CancelledError
-from concurrent import futures
+import uuid
 from threading import Event, Thread
 from queue import Queue
 from glob import glob
@@ -22,7 +21,6 @@ import sys
 import threading
 import time
 import urllib.parse
-import signal
 
 ## --- gRPC imports ---
 import grpc
@@ -447,9 +445,8 @@ async def hp_io_task_fn(
         logger.debug(f"{hp_io_state=}")
         # signal the hp_io task is ready to service client requests for data preview
         valid.set()
+        last_daq_active_check_t = time.monotonic()
         while not stop_io.is_set():
-            if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
-                raise EnvironmentError("DAQ data flow stopped.")
             # check if any active readers are ready to receive data
             curr_t = time.monotonic()
             ready_readers, nph, nmovie = get_ready_readers(curr_t)
@@ -458,9 +455,15 @@ async def hp_io_task_fn(
                     broadcast_latest_module_data(hp_io_state[module_id], ready_readers, nph, nmovie)
                 for rs in ready_readers:
                     rs['last_update_t'] = curr_t
+            # Every 10 seconds, check if the DAQ software stopped
+            if curr_t - last_daq_active_check_t >= 10:
+                last_daq_active_check_t = curr_t
+                if not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
+                    logger.warning("DAQ data flow stopped.")
+                    return
             await asyncio.sleep(update_interval_seconds)
     except Exception as err:
-        logger.critical(f"hp_io task encountered a fatal exception! '{repr(err)}'")
+        logger.error(f"hp_io task encountered a fatal exception! '{repr(err)}'")
         pass
     finally:
         valid.clear()
@@ -496,7 +499,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._hp_io_lock = asyncio.Lock() # threading.RLock()
         self._read_ok_condvar = asyncio.Condition(self._hp_io_lock) # threading.Condition(self._hp_io_lock)
         self._write_ok_condvar = asyncio.Condition(self._hp_io_lock) #threading.Condition(self._hp_io_lock)
-        # self._active_clients = {}  # dict of tid : {"client_ip":context.peer(), "thread": Thread} for debugging
+        self._active_clients = dict()  # dict of uid : {"client_ip":context.peer()} for debugging
 
         self._server_cfg = server_cfg
 
@@ -549,7 +552,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._server_cfg['hp_io_init'] = True
             self._start_hp_io_task(self._hp_io_cfg)
         else:
-            self.logger.warning(f"An InitHpIo call is required to start the hp_io task: "
+            self.logger.info(f"An InitHpIo call is required to start the hp_io task: "
                                 f"{self._server_cfg['init_from_default']=}")
             self._server_cfg['hp_io_init'] = False
 
@@ -694,21 +697,22 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._server_cfg['hp_io_init'] = True
         return True
 
-    def _is_hp_io_valid(self):
+    def _is_hp_io_valid(self, verbose=True):
+        msg = ""
         if self._hp_io_task is not None and not self._hp_io_task.done() and self._hp_io_valid.is_set():
             return True
         elif self._hp_io_task is None:
-            self.logger.warning("hp_io task is uninitialized")
+            if verbose: self.logger.warning("hp_io task is uninitialized")
         elif self._hp_io_task.done():
-            self.logger.warning("hp_io task is not alive")
+            if verbose: self.logger.warning("hp_io task is not alive")
         elif not self._hp_io_valid.is_set():
-            self.logger.warning("hp_io task is alive but not valid")
+            if verbose: self.logger.warning("hp_io task is alive but not valid")
         else:
             emsg = (f"unhandled is_hp_io_valid case: "
                     f"{self._hp_io_task=}, "
                     f"{self._hp_io_task.done()=},"
                     f"{self._hp_io_valid=}")
-            self.logger.critical(emsg)
+            if verbose: self.logger.critical(emsg)
             raise RuntimeError(emsg)  # SHOULD NEVER REACH HERE
         return False
 
@@ -736,7 +740,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
     @asynccontextmanager
     async def _rw_lock_writer(self, context, force=False):
-        tid = threading.get_ident()
+        uid = uuid.uuid4()
         active = False
         try:
             async with self._hp_io_lock:
@@ -746,16 +750,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # so we should cancel any writer RPCs immediately
 
                 if (not force) and self._rw_lock_state['ar'] > 0:
-                    # active_clients = str([c["client_ip"] for c in self._active_clients.values()])
+                    active_clients = str([c["client_ip"] for c in self._active_clients.values()])
                     emsg = (f"Cannot modify server state because there are {self._rw_lock_state['ar']} active "
-                            f"streaming clients. Set force=True or stop the active clients and try again.")
+                            f"streaming clients. Set force=True or stop the following active clients and try again: {active_clients}.")
                     await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
                 elif force and self._rw_lock_state['ar'] > 0:
                     self.logger.warning(f"Forcing server state modification despite active reader RPCs. ")
                     await self._cancel_all_readers()
 
-                self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
 
+                self.logger.debug(f"(writer) check-in (start):\t{self._rw_lock_state=}")
                 # Wait until no active readers or active writers
                 while (not self._shutdown_event.is_set() and
                        not context.cancelled() and
@@ -778,7 +782,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
                 # check if the hp_io task is valid
                 if self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"The hp_io task data stream became invalid while waiting for the writer lock. "
+                    emsg = (f"The hp_io task data stream is invalid. "
                             f" (skipping to check-out)")
                     self.logger.warning(emsg)
                     self._server_cfg['hp_io_init'] = False
@@ -787,11 +791,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # activate the writer
                 self._rw_lock_state['aw'] += 1
                 active = True
-                # self._active_clients[tid] = {
-                #     "client_ip": urllib.parse.unquote(context.peer()),
-                #     "thread": threading.current_thread(),
-                #     "type": "writer",
-                # }
+                self._active_clients[uid] = {
+                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "type": "writer",
+                }
                 self.logger.debug(f"(writer) check-in (end):\t\t{self._rw_lock_state=}")
                 # END check-in critical section
             yield None
@@ -801,11 +804,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             async with self._hp_io_lock:
                 # BEGIN check-out critical section
                 self.logger.debug(f"(writer) check-out (start):\t{self._rw_lock_state=}")
-                if not self._hp_io_valid:
+                if not self._is_hp_io_valid(verbose=False):
                     self._server_cfg['hp_io_init'] = False
                 if active:  # handle edge cases where task is interrupted or has an error during lock acquire
                     self._rw_lock_state['aw'] = self._rw_lock_state['aw'] - 1  # no longer active
-                    # del self._active_clients[tid]
+                    del self._active_clients[uid]
                 # allow new readers to start waiting
                 self._cancel_readers_event.clear()
                 # Wake up waiting readers or a waiting writer (prioritize waiting writers).
@@ -819,11 +822,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     @asynccontextmanager
     async def _rw_lock_reader(self, context):
         reader_idx = -1  # remember which reader_states dict corresponds to this task
-        tid = threading.get_ident()
+        uid = uuid.uuid4()
         active = False
         try:
             async with self._hp_io_lock:
                 # BEGIN check-in critical section
+                if (self._rw_lock_state['ar'] + self._rw_lock_state['wr']) >= self._server_cfg['max_reader_clients']:
+                    emsg = (f"Cannot start a new reader RPC because the maximum number of active reader RPCs "
+                            f"({self._server_cfg['max_reader_clients']}) has been reached. To change the max number of "
+                            f" reader RPCs, increase the server configuration parameter for 'max_reader_clients'.")
+                    await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
                 self.logger.debug(f"(reader) check-in (start):\t{self._rw_lock_state=}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # Wait until no active writers or waiting writers
@@ -857,7 +865,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
                 # check if the hp_io task is valid
                 elif self._server_cfg['hp_io_init'] and not self._is_hp_io_valid():
-                    emsg = (f"The hp_io task data stream became invalid while waiting for the reader lock. "
+                    emsg = (f"The hp_io task data stream is invalid. "
                             f" (skipping to check-out)")
                     self.logger.warning(emsg)
                     self._server_cfg['hp_io_init'] = False
@@ -879,11 +887,10 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 # activate the reader
                 self._rw_lock_state['ar'] += 1
                 active = True
-                # self._active_clients[tid] = {
-                #     "client_ip": urllib.parse.unquote(context.peer()),
-                #     "thread": threading.current_thread(),
-                #     "type": "reader",
-                # }
+                self._active_clients[uid] = {
+                    "client_ip": urllib.parse.unquote(context.peer()),
+                    "type": "reader",
+                }
                 self.logger.debug(f"(reader) check-in (end):\t\t{self._rw_lock_state=}, fmap_idx={reader_idx}"
                                   f"\n{[rs['is_allocated'] for rs in self._reader_states]=}")
                 # END check-in critical section
@@ -892,11 +899,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             async with self._hp_io_lock:
                 # BEGIN check-out critical section
                 self.logger.debug(f"(reader) check-out (start):\t{self._rw_lock_state=}")
-                if not self._hp_io_valid:
+                if not self._is_hp_io_valid(verbose=False):
                     self._server_cfg['hp_io_init'] = False
                 if active:
                     self._rw_lock_state['ar'] = self._rw_lock_state['ar'] - 1  # no longer active
-                    # del self._active_clients[tid]
+                    del self._active_clients[uid]
                     self._reader_states[idx]['is_allocated'] = False # release reader resources
                 # Wake up waiting readers or a waiting writer (prioritize waiting writers).
                 if self._rw_lock_state['ar'] == 0 and self._rw_lock_state['ww'] > 0:
@@ -1078,6 +1085,7 @@ async def serve(server_cfg):
 
 
 if __name__ == "__main__":
+
     # Load server configuration
     cfg_dir = Path('config')
     default_hp_io_config_file = 'default_hp_io_config.json'
