@@ -649,14 +649,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._server_cfg['hp_io_init'] = False
 
         # Toggle simulation task creation
+        data_products = hp_io_cfg['data_products']
+        data_dir = hp_io_cfg['data_dir']
         if not hp_io_cfg['simulate_daq']:
-            data_products = hp_io_cfg['data_products']
-            data_dir = hp_io_cfg['data_dir']
             if not os.path.exists(data_dir):
                 return False
             self._daq_sim_thread = None
         else:
-            data_products = simulate_daq_cfg['data_products']
+            data_products = set(simulate_daq_cfg['data_products']).intersection(data_products)
             data_dir = simulate_daq_cfg['files']['data_dir']
             self._daq_sim_thread = Thread(
                 target=daq_sim_thread_fn,
@@ -914,18 +914,32 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     async def StreamImages(self, request: StreamImagesRequest, context) -> AsyncIterator[StreamImagesResponse]:
         """Forward sample panoseti movie and pulse-height images to the client. [reader]"""
         self.logger.info(f"new StreamImages rpc from {urllib.parse.unquote(context.peer())}: "
-                         f"{MessageToDict(request, preserving_proto_field_name=True)}")
+                         f"{MessageToDict(request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
         # Validate request fields that don't require reading server state
+        # check movie and pulse-height option params
         if not request.stream_movie_data and not request.stream_pulse_height_data:
             emsg = "At least one of the stream flags must be set to True"
-            self.logger.info(emsg)
+            self.logger.warning(f"Rejecting request: '{emsg}'")
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
         async with self._rw_lock_reader(context) as reader_state:  # reader_state = allocated reader resources
             # BEGIN reader critical section
             # Validate request fields that require reading protected server state
             if not self._server_cfg['hp_io_init']:
                 emsg = "Uninitialized hp_io task. Run InitHpIo with a valid hp_io configuration to initialize it."
+                self.logger.warning(f"Rejecting request: '{emsg}'")
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+
+            # check if hp_io is currently streaming data of the requested type
+            if request.stream_movie_data and not {'img8', 'img16'}.intersection(self._hp_io_cfg['data_products']):
+                emsg = ("hp_io task is not streaming movie data. Set stream_movie_data=False to avoid this error or "
+                        "restart the hp_io task to enable streaming movie data.")
+                self.logger.warning(f"Rejecting request: '{emsg}'")
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
+            elif request.stream_pulse_height_data and not {'ph256', 'ph1024'}.intersection(self._hp_io_cfg['data_products']):
+                emsg = ("hp_io task is not streaming pulse-height data. Set stream_pulse_height_data=False to avoid this error or "
+                        "restart the hp_io task to enable streaming pulse-height data.")
+                self.logger.warning(f"Rejecting request: '{emsg}'")
+                await context.abort(grpc.StatusCode.INTERNAL, emsg)
 
             # Set stream filter options
             if request.update_interval_seconds > self._server_cfg['max_client_update_interval_seconds']:
@@ -986,24 +1000,24 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
     async def InitHpIo(self, request: InitHpIoRequest, context) -> InitHpIoResponse:
         """Initialize the hp_io task with the given configuration. [writer]"""
         self.logger.info(f"new InitHpIo rpc from {urllib.parse.unquote(context.peer())}: "
-                         f"{MessageToDict(request, preserving_proto_field_name=True)}")
+                         f"{MessageToDict(request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
         # Validate request fields that don't require reading server state:
         # if the daq target is a live observing run, check if the specified data_dir exists
         if (not request.simulate_daq) and (not os.path.exists(request.data_dir)):
             emsg = f"data_dir={request.data_dir} does not exist"
-            self.logger.warning(emsg)
+            self.logger.warning(f"Rejecting request: '{emsg}'")
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
         # check if daq is active and real daq is being used. Note: simulated daq data flow always properly initialized
         elif (not request.simulate_daq) and (not is_daq_active(simulate_daq=False)):
             emsg = 'DAQ software is not active. Re-try hp_io task creation once the daq software has been started.'
-            self.logger.warning(emsg)
+            self.logger.warning(f"Rejecting request: '{emsg}'")
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
         # verify data products were provided
         elif not request.data_products:
             emsg = "at least one data_product must be specified"
-            self.logger.warning(emsg)
+            self.logger.warning(f"Rejecting request: '{emsg}'")
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
         # read server configuration to validate parameters in init request
@@ -1014,14 +1028,14 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             if not request_data_products.issubset(valid_data_products):
                 emsg = (f"Invalid data_products specified: {request_data_products - valid_data_products}. "
                         f"Valid data products are: {valid_data_products}")
-                self.logger.warning(emsg)
+                self.logger.warning(f"Rejecting request: '{emsg}'")
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # check if the requested update interval is not too short
             elif request.update_interval_seconds < self._server_cfg['min_hp_io_update_interval_seconds']:
                 emsg = (f"update_interval_seconds must be at least "
                         f"{self._server_cfg['min_hp_io_update_interval_seconds']} seconds. Got {request.update_interval_seconds}")
-                self.logger.warning(emsg)
+                self.logger.warning(f"Rejecting request: '{emsg}'")
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
             self.logger.info(f"Request passed validation checks")
 
