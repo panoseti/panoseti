@@ -101,8 +101,10 @@ def init_hp_io(
         force=force,
         data_products=data_products,
     )
+    logger.info(f"Initializing HP Io with "
+                f"{MessageToDict(init_hp_io_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     init_hp_io_response = stub.InitHpIo(init_hp_io_request, timeout=timeout)
-    logger.info(f"init_hp_io_response={repr(init_hp_io_response)}")
+    logger.info(f"init_hp_io_response={MessageToDict(init_hp_io_response, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
 
 
 def run(host, port=50051):

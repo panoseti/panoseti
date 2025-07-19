@@ -933,13 +933,13 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             if request.stream_movie_data and not {'img8', 'img16'}.intersection(self._hp_io_cfg['data_products']):
                 emsg = ("hp_io task is not streaming movie data. Set stream_movie_data=False to avoid this error or "
                         "restart the hp_io task to enable streaming movie data.")
-                self.logger.warning(f"Rejecting request: '{emsg}'")
+                self.logger.warning(f"'{emsg}'")
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-            elif request.stream_pulse_height_data and not {'ph256', 'ph1024'}.intersection(self._hp_io_cfg['data_products']):
+            if request.stream_pulse_height_data and not {'ph256', 'ph1024'}.intersection(self._hp_io_cfg['data_products']):
                 emsg = ("hp_io task is not streaming pulse-height data. Set stream_pulse_height_data=False to avoid this error or "
                         "restart the hp_io task to enable streaming pulse-height data.")
-                self.logger.warning(f"Rejecting request: '{emsg}'")
-                await context.abort(grpc.StatusCode.INTERNAL, emsg)
+                self.logger.warning(f"'{emsg}'")
+                # await context.abort(grpc.StatusCode.INTERNAL, emsg)
 
             # Set stream filter options
             if request.update_interval_seconds > self._server_cfg['max_client_update_interval_seconds']:

@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import logging
+import os.path
 from collections import deque
 import time
+import sys
 
 import grpc
+from google.protobuf.json_format import MessageToDict
+
 import daq_data_pb2
 import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
@@ -157,12 +162,13 @@ def run_max_pixel_distribution_ph(
 ):
     """Streams pulse-height images and updates max pixel distribution histograms."""
     # Build the request for pulse-height image streaming only
-    request = StreamImagesRequest(
+    stream_images_request = StreamImagesRequest(
         stream_movie_data=False,
         stream_pulse_height_data=True,
         update_interval_seconds=-1
     )
-    stream_images_responses = stub.StreamImages(request)
+    logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
+    stream_images_responses = stub.StreamImages(stream_images_request)
 
     mpd = PulseHeightDistribution(durations_seconds)
     last_plot_update_time = time.time()
@@ -202,6 +208,7 @@ def preview_data_demo(
         update_interval_seconds=update_interval_seconds,
     )
     # Make the RPC call
+    logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     previewer = PanoImagePreviewer(stream_movie_data, stream_pulse_height_data, update_interval_seconds, logger)
 
@@ -213,7 +220,7 @@ def preview_data_demo(
         previewer.update(stream_images_response)
 
 
-def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
+def run(host, port=50051, do_init=False, init_cfg=None, plot='view'):
     logger = make_rich_logger(__name__, level=logging.INFO)
     connection_target = f"{host}:{port}"
     logger.info(f"connection_target={repr(connection_target)}")
@@ -223,37 +230,40 @@ def run(host, port=50051, init=False, simulate_daq=False, plot='prev'):
             print("-------------- ServerReflection --------------")
             reflect_services(channel)
 
-            print("-------------- InitHpIo --------------")
-            if init:
+            if do_init:
+                print("-------------- InitHpIo --------------")
                 init_hp_io(
                     stub,
-                    data_dir="/mnt/data10",
-                    update_interval_seconds=0.1,
-                    simulate_daq=simulate_daq,
-                    force=True,
-                    data_products=["img16", "ph256"],
+                    data_dir=init_cfg['data_dir'],
+                    update_interval_seconds=init_cfg['update_interval_seconds'],
+                    simulate_daq=init_cfg['simulate_daq'],
+                    force=init_cfg['force'],
+                    data_products=init_cfg['data_products'],
                     timeout=15.0,
                     logger=logger
                 )
 
-            print("-------------- StreamImages --------------")
-            if plot == 'prev':
-                preview_data_demo(
-                    stub,
-                    stream_movie_data=True,
-                    stream_pulse_height_data=True,
-                    update_interval_seconds=1.0,
-                    wait_for_ready=True,
-                    logger=logger
-                )
+            if plot:
+                print("-------------- StreamImages --------------")
+                if plot == 'view':
+                    preview_data_demo(
+                        stub,
+                        stream_movie_data=True,
+                        stream_pulse_height_data=True,
+                        update_interval_seconds=np.random.uniform(0.5, 1.5),
+                        wait_for_ready=True,
+                        logger=logger
+                    )
 
-            elif plot == 'phdist':
-                run_max_pixel_distribution_ph(
-                    stub,
-                    plot_update_interval=0.25,
-                    durations_seconds= (10, 30, 60),
-                    logger=logger
-                )
+                elif plot == 'phdist':
+                    run_max_pixel_distribution_ph(
+                        stub,
+                        plot_update_interval=0.25,
+                        durations_seconds= (10, 30, 60),
+                        logger=logger
+                    )
+                else:
+                    raise ValueError("Invalid plot")
     except KeyboardInterrupt:
         logger.info(f"'^C' received, closing connection to the DaqData server at {repr(connection_target)}")
     except grpc.RpcError as rpc_error:
@@ -270,31 +280,42 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--init",
-        help="initialize an hp_io thread to track an active run directory",
-        action="store_true"
+        help="Send an InitHpIO request to configure the hp_io thread from the file [CFG] in config/ to track an in-progress run directory",
+        type=str,
+        dest="cfg_file"
     )
     parser.add_argument(
-        "--sim",
-        help="use a simulated datastream",
-        action="store_true"
+        "--init-sim",
+        help="Send an InitHpIo request to configure the hp_io thread to track a simulated run directory",
+        action="store_true",
     )
 
     parser.add_argument(
         "--plot",
-        help="plot type",
-        choices=['prev', 'phdist'],
-        default='prev'
+        help="Make a pulse-height distribution plot [phdist] or a live data previewer",
+        choices=['phdist', 'view'],
     )
     # run(host="10.0.0.60")
     args = parser.parse_args()
-    run(host=args.host, init=args.init, simulate_daq=args.sim, plot=args.plot)
 
-    # threads = []
-    # for i in range(max(1, args.nconnect)):
-    #     t = threading.Thread(target=run, args=(args.host,), kwargs={'init': args.init, 'simulate_daq': args.sim, 'plot': args.plot}, daemon=True)
-    #     threads.append(t)
-    #     t.start()
-    # # Wait for all threads to finish
-    # for t in threads:
-    #     t.join()
-    # run(host=args.host, init=args.init, simulate_daq=args.sim, plot=args.plot)
+    init_cfg = None
+    do_init = False
+    if args.init_sim or args.cfg_file is not None:
+        do_init = True
+        if args.init_sim:
+            init_cfg_path = 'config/hp_io_config_simulate_daq.json'
+        elif args.cfg_file:
+            init_cfg_path = f'config/{args.cfg_file}'
+        else:
+            init_cfg_path = None
+
+        # try to open the config file
+        if init_cfg_path is not None and not os.path.exists(init_cfg_path):
+            logging.error(f"Config file not found: '{os.path.abspath(init_cfg_path)}'")
+            sys.exit(1)
+        else:
+            with open(init_cfg_path, "r") as f:
+                init_cfg = json.load(f)
+
+
+    run(host=args.host, do_init=do_init, init_cfg=init_cfg, plot=args.plot)
