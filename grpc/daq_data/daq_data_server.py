@@ -210,14 +210,16 @@ async def hp_io_task_fn(
         data_dir: Path,
         data_products: List[str],
         update_interval_seconds: float,
+        module_id_whitelist: List[int],
+        simulate_daq: bool,
         reader_states: List[Dict],
         stop_io: Event,
         valid: Event,
         logger: logging.Logger,
-        simulate_daq: bool,
         sim_cfg: Dict[str, Any],
         **kwargs
 ) -> None:
+
     """ Receive pulse-height and movie-mode data from hashpipe and broadcast it to all active reader queues.
     Requires DAQ software to be active to properly initialize.
     """
@@ -237,11 +239,13 @@ async def hp_io_task_fn(
         if nruns == 0:
             raise FileNotFoundError(f'no run of module {module_id} in {run_pattern}')
         run_path = sorted(runs, key=os.path.getmtime)[-1]
+        module_state['run_path'] = run_path
 
-        logger.info(f"{run_path=}")
+        logger.info(f"checking {run_path=}")
         for dp in dp_cfg:
             # Get the current number of pff files with type [dp]
             dp_cfg[dp]['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
+
             # wait until hashpipe starts writing files
             nfiles = 0
             files = []
@@ -259,11 +263,14 @@ async def hp_io_task_fn(
             elif time.monotonic() - curr_t >= timeout:
                 return False
 
-            file = sorted(files, key=os.path.getmtime)[-1]
-            filepath = file
-
             # wait until the filesize is large enough to read one image of type [dp]
             while not stop_io.is_set() and (time.monotonic() - curr_t < timeout):
+                # Get the most recently modified file
+                # if hashpipe is actively collecting data, the most recent file should contain data
+                files = glob(dp_cfg[dp]['glob_pat'])
+                nfiles = len(files)
+                file = sorted(files, key=os.path.getmtime)[-1]
+                filepath = file
                 if os.path.getsize(filepath) >= dp_cfg[dp]['bytes_per_image']:
                     break
                 logger.debug(f"waiting for a file to be large enough to read one image of type {dp}")
@@ -299,7 +306,7 @@ async def hp_io_task_fn(
             await asyncio.sleep(0.5)
         if not daq_valid:
             raise EnvironmentError("DAQ data flow not active.")
-        # Get all active modules
+        # Automatically detect all existing module directories
         module_pattern = f"{data_dir}/module_*"
         modules = glob(module_pattern)
         module_ids = []
@@ -307,18 +314,34 @@ async def hp_io_task_fn(
             if os.path.isdir(m):
                 mid = int(os.path.basename(m).split('_')[1])
                 module_ids.append(mid)
-        # module_ids = [1]
+        # if client has specified any module_ids, only attempt to track those module directories.
+        if len(module_id_whitelist) > 0:
+            abs_data_dir = os.path.abspath(data_dir)
+            if set(module_id_whitelist).issubset(set(module_ids)):
+                logger.info(f"all whitelisted module_ids {module_id_whitelist} have directories in "
+                            f"data_dir='{abs_data_dir=}'")
+            else:
+                logger.warning(f"all module_ids {module_id_whitelist} do not have directories in {abs_data_dir=}. "
+                               f"the following whitelisted module_ids do not have directories: "
+                               f"{set(module_id_whitelist) - set(module_ids)}")
+            module_ids = set(module_ids).intersection(module_id_whitelist)
+        # initialize dictionaries to track data snapshots for each module directory
         init_module_tasks = []
         for mid in module_ids:
             hp_io_state[mid] = dict()
             hp_io_state[mid]['dp_cfg'] = DaqDataServicer.get_dp_cfg(data_products)
             init_module_tasks.append(init_module_state(hp_io_state[mid], mid))
         results = await asyncio.gather(*init_module_tasks)
+        # remove modules that fail to initialize
         for result, mid in zip(results, module_ids):
             if not result:
+                logger.warning(f"module {mid} failed to initialize")
                 del hp_io_state[mid]
         if len(hp_io_state) == 0:
             raise EnvironmentError("No active modules found.")
+        for mid in hp_io_state:
+            run_path = hp_io_state[mid]['run_path']
+            logger.info(f"hp_io tracking {run_path=}")
         return hp_io_state
 
     def fetch_data_product_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
@@ -682,15 +705,19 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 data_dir,
                 data_products,
                 hp_io_update_interval,
+                hp_io_cfg['module_ids'],
+                hp_io_cfg['simulate_daq'],
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
                 self.logger,
-                hp_io_cfg['simulate_daq'],
                 simulate_daq_cfg
             )
         )
-        await self._hp_io_valid.wait()
+        try:
+            await asyncio.wait_for(self._hp_io_valid.wait(), 10)
+        except asyncio.TimeoutError:
+            logging.error(f"Timeout waiting for hp_io task: {self._hp_io_task=}")
 
         if not self._is_hp_io_valid():
             await self._stop_hp_io_task()
@@ -1059,7 +1086,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
                 "update_interval_seconds": request.update_interval_seconds,
-                "data_products": request.data_products
+                "data_products": request.data_products,
+                "module_ids": request.module_ids,
             }
             start_success = await self._start_hp_io_task(hp_io_cfg)
             if start_success:
@@ -1069,7 +1097,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 self._server_cfg['hp_io_init'] = True
             else:
                 # attempt to restart previously valid hp_io task
-                emsg = "failed to start hp_io task."
+                emsg = "failed to start hp_io task. "
                 if last_hp_io_valid:
                     emsg += "Restarting hp_io with the previous configuration"
                     self._server_cfg['hp_io_init'] = await self._start_hp_io_task(self._hp_io_cfg)

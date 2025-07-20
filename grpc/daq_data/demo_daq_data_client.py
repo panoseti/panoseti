@@ -109,7 +109,7 @@ class PanoImagePreviewer:
         self.text_width = text_width
         self.font_size = font_size
         self.ph_baseline = ph_baseline
-        self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako', 'icefire', 'flare_r'])
+        self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako'])
         self.col_width = col_width
         self.row_height = row_height
 
@@ -173,8 +173,9 @@ class PanoImagePreviewer:
             self.safe_imshow(ax, img, vmin, vmax, self.cmap)
 
         ax.set_title(ax_title, fontsize=self.font_size)
-        # ax.axis('off')
+        ax.tick_params(axis='both', which='major', labelsize=8, length=4, width=1)
 
+        # ax.axis('off')
         plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids={set(self.module_ids)}"
         self.fig.suptitle(plt_title)
         self.fig.tight_layout()
@@ -244,7 +245,7 @@ def run_pano_image_preview(
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     previewer = PanoImagePreviewer(
         stream_movie_data, stream_pulse_height_data, update_interval_seconds,
-        module_ids, logger, col_width=4.5, row_height=2.8,
+        module_ids, logger, col_width=5, row_height=3,
     )
 
     # Process responses
@@ -260,28 +261,29 @@ def run_pano_image_preview(
 
 
 def run(args):
-
-    init_cfg = None
-    do_init = False
+    logger = make_rich_logger(__name__, level=logging.INFO)
+    hp_io_cfg = None
+    do_init_hp_io = False
     if args.init_sim or args.cfg_file is not None:
-        do_init = True
+        do_init_hp_io = True
         if args.init_sim:
-            init_cfg_path = 'config/hp_io_config_simulate_daq.json'
+            hp_io_cfg_path = 'config/hp_io_config_simulate_daq.json'
         elif args.cfg_file:
-            init_cfg_path = f'config/{args.cfg_file}'
+            hp_io_cfg_path = f'config/{args.cfg_file}'
         else:
-            init_cfg_path = None
+            hp_io_cfg_path = None
 
         # try to open the config file
-        if init_cfg_path is not None and not os.path.exists(init_cfg_path):
-            logging.error(f"Config file not found: '{os.path.abspath(init_cfg_path)}'")
+        if hp_io_cfg_path is not None and not os.path.exists(hp_io_cfg_path):
+            logging.error(f"Config file not found: '{os.path.abspath(hp_io_cfg_path)}'")
             sys.exit(1)
         else:
-            with open(init_cfg_path, "r") as f:
-                init_cfg = json.load(f)
+            with open(hp_io_cfg_path, "r") as f:
+                hp_io_cfg = json.load(f)
 
     do_plot = args.plot_view or args.plot_phdist
     module_ids = args.module_ids
+    logger.info(f"{module_ids=}")
     if args.plot_phdist:
         if len(module_ids) == 0:
             logging.warning("no module_ids specified, using data from all modules to make ph distribution")
@@ -289,7 +291,6 @@ def run(args):
             logging.warning("more than one module_id specified to make ph distribution")
 
     port = 50051
-    logger = make_rich_logger(__name__, level=logging.INFO)
     connection_target = f"{args.host}:{port}"
     logger.info(f"connection_target={repr(connection_target)}")
     try:
@@ -298,15 +299,20 @@ def run(args):
             print("-------------- ServerReflection --------------")
             reflect_services(channel)
 
-            if do_init:
+            if do_init_hp_io:
                 print("-------------- InitHpIo --------------")
+                if 'module_ids' in hp_io_cfg:
+                    module_id_whitelist = hp_io_cfg['module_ids']
+                else:
+                    module_id_whitelist = []
                 init_hp_io(
                     stub,
-                    data_dir=init_cfg['data_dir'],
-                    update_interval_seconds=init_cfg['update_interval_seconds'],
-                    simulate_daq=init_cfg['simulate_daq'],
-                    force=init_cfg['force'],
-                    data_products=init_cfg['data_products'],
+                    data_dir=hp_io_cfg['data_dir'],
+                    update_interval_seconds=hp_io_cfg['update_interval_seconds'],
+                    simulate_daq=hp_io_cfg['simulate_daq'],
+                    force=hp_io_cfg['force'],
+                    data_products=hp_io_cfg['data_products'],
+                    module_ids=module_id_whitelist,
                     timeout=15.0,
                     logger=logger
                 )
@@ -353,39 +359,40 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--host",
-        help="daq_data server hostname or IP address. Default: 'localhost'",
+        help="DaqData server hostname or IP address. Default: 'localhost'",
         # default="10.0.0.60"
         default="localhost"
     )
     parser.add_argument(
         "--init",
-        help="Send an InitHpIO request to configure the hp_io thread from the file [CFG] in config/ to track an in-progress run directory",
+        help="initialize the hp_io thread from the file [CFG] in config/ to track an in-progress run directory",
         type=str,
         dest="cfg_file"
     )
     parser.add_argument(
         "--init-sim",
-        help="Send an InitHpIo request to configure the hp_io thread to track a simulated run directory",
+        help="initialize the hp_io thread to track a simulated run directory",
         action="store_true",
     )
 
     parser.add_argument(
         "--plot-view",
-        help="Make a live data previewer",
+        help="whether to create a live data previewer",
         action="store_true",
     )
 
     parser.add_argument(
         "--plot-phdist",
-        help="Make a live pulse-height distribution for the specified module id",
+        help="whether to create a live pulse-height distribution for the specified module id",
         action="store_true",
     )
 
     parser.add_argument(
         "--module-ids",
-        help="If empty, data from all modules is returned. If non-empty, only data from the specified modules are returned",
+        help="whitelist for the module ids to stream data from. If empty, data from all available modules are returned.",
         nargs="*",
-        type=int
+        type=int,
+        default=[],
     )
 
     # run(host="10.0.0.60")
