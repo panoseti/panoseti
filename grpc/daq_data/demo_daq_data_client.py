@@ -88,6 +88,7 @@ class PanoImagePreviewer:
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
+            module_ids: list[int],
             logger: logging.Logger,
             text_width=25,
             font_size=7,
@@ -98,6 +99,7 @@ class PanoImagePreviewer:
         self.stream_movie_data = stream_movie_data
         self.stream_pulse_height_data = stream_pulse_height_data
         self.update_interval_seconds = update_interval_seconds
+        self.module_ids = module_ids
         self.logger = logger
 
         self.seen_modules = set()
@@ -173,7 +175,7 @@ class PanoImagePreviewer:
         ax.set_title(ax_title, fontsize=self.font_size)
         # ax.axis('off')
 
-        plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}"
+        plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids={set(self.module_ids)}"
         self.fig.suptitle(plt_title)
         self.fig.tight_layout()
         self.fig.canvas.draw()
@@ -241,7 +243,8 @@ def run_pano_image_preview(
     logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     previewer = PanoImagePreviewer(
-        stream_movie_data, stream_pulse_height_data, update_interval_seconds, logger, col_width=4.5, row_height=2.8,
+        stream_movie_data, stream_pulse_height_data, update_interval_seconds,
+        module_ids, logger, col_width=4.5, row_height=2.8,
     )
 
     # Process responses
