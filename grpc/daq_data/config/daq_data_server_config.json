@@ -14,7 +14,7 @@
         "movie_type": "img16",
         "ph_type": "ph256",
         "frames_per_pff": 300,
-        "sim_module_ids": [24, 44, 64],
+        "sim_module_ids": [24, 64],
         "real_module_id": 1,
         "files": {
             "data_dir": "simulated_data_dir",

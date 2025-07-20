@@ -80,24 +80,6 @@ message StreamImagesRequest {
   repeated uint32 module_ids = 4 [packed=true];
 }
 
-message TestCase {
-  enum TestResult {
-    // default state
-    UNDEFINED = 0;
-    // the test passed
-    PASS = 1;
-    // the test failed
-    FAIL = 2;
-  }
-  // test name
-  string name = 1;
-  // test result
-  TestResult result = 2;
-  // error message
-  string message = 3;
-}
-
-
 // TODO: implement these messages.
 message StreamHashpipeStatusRequest {}
 message StreamHashpipeStatusResponse {}

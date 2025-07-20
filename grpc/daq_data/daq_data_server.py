@@ -34,7 +34,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import PanoImage, TestCase, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
+from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## --- daq_data utils ---
 from daq_data_resources import make_rich_logger
@@ -435,22 +435,27 @@ async def hp_io_task_fn(
             curr_t = time.monotonic()
             ready_readers, nph, nmovie = get_ready_readers(curr_t)
             if len(ready_readers) > 0:
-                ph_data_to_broadcast = []
-                movie_data_to_broadcast = []
+                data_to_broadcast = {}
                 for module_id in hp_io_state:
+                    data_to_broadcast[module_id] = {'ph': None, 'movie': None}
                     latest_module_ph_data, latest_module_movie_data = fetch_latest_module_data(hp_io_state[module_id], nph, nmovie)
-                    ph_data_to_broadcast.extend(latest_module_ph_data)
-                    movie_data_to_broadcast.extend(latest_module_movie_data)
+                    data_to_broadcast[module_id]['ph'] = latest_module_ph_data
+                    data_to_broadcast[module_id]['movie'] = latest_module_movie_data
                 # broadcast image data to all ready clients
                 for rs in ready_readers:
                     rq: asyncio.Queue = rs['queue']
                     try:
-                        if rs['config']['stream_pulse_height_data']:
-                            for ph_data in ph_data_to_broadcast:
-                                rq.put_nowait(ph_data)
-                        if rs['config']['stream_movie_data']:
-                            for movie_data in movie_data_to_broadcast:
-                                rq.put_nowait(movie_data)
+                        for module_id in data_to_broadcast:
+                            # If no module_ids are specified by the client, send data from all modules
+                            # Otherwise, only broadcast data from modules specified by the user.
+                            if len(rs['config']['module_ids']) > 0 and module_id not in rs['config']['module_ids']:
+                                continue
+                            if rs['config']['stream_pulse_height_data']:
+                                for ph_data in data_to_broadcast[module_id]['ph']:
+                                    rq.put_nowait(ph_data)
+                            if rs['config']['stream_movie_data']:
+                                for movie_data in data_to_broadcast[module_id]['movie']:
+                                    rq.put_nowait(movie_data)
                     except asyncio.QueueFull:
                         logger.warning(f"hp_io task is unable to broadcast image data to reader {rs['client_ip']}")
                     rs['last_update_t'] = curr_t
@@ -529,7 +534,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "stream_pulse_height_data": True,
                 "stream_hashpipe_status": False,
                 "update_interval_seconds": 1,
-                "module_ids": (),
+                "module_ids": [],
             }
             default_reader_state = {
                 "is_allocated": False,
@@ -954,6 +959,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 reader_state['config']['update_interval_seconds'] = request.update_interval_seconds
             reader_state['config']['stream_movie_data'] = request.stream_movie_data
             reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
+            reader_state['config']['module_ids'] = request.module_ids
             self.logger.debug(f"{reader_state=}")
 
             # Clear old data from the read_queue

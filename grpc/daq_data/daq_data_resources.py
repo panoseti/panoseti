@@ -31,7 +31,7 @@ from google.protobuf import timestamp_pb2
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
 import daq_data_pb2_grpc
-from daq_data_pb2 import TestCase, PanoImage, StreamImagesResponse, StreamImagesRequest
+from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest
 
 # panoseti utils
 sys.path.append('../../util')

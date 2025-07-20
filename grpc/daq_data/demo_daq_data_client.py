@@ -27,17 +27,19 @@ import textwrap
 class PulseHeightDistribution:
     VMIN = 0
     VMAX = 2**12 - 1  # 4095
-    def __init__(self, durations_seconds):
+    def __init__(self, durations_seconds, module_ids):
         self.durations = durations_seconds
+        self.module_ids = module_ids
         n = len(durations_seconds)  # num of plots to make
         self.start_times = [time.time() for _ in range(n)]
         self.hist_data = [deque() for _ in range(n)]
         self.vmins = [self.VMAX for _ in range(n)]
         self.vmaxs = [self.VMIN for _ in range(n)]
         # size: width=6in, height=3in per subplot
-        height = max(3 * n, 6)  # ensure a minimum height
+        height = max(2.9 * n, 6)  # ensure a minimum height
         plt.ion()
         self.fig, self.axes = plt.subplots(n, 1, figsize=(6, height))
+        self.fig.suptitle(f'Pulse Height Distributions for {module_ids=}')
         if n == 1:
             self.axes = [self.axes]
 
@@ -139,13 +141,7 @@ class PanoImagePreviewer:
         plt.ion()
         plt.show()
 
-    def update(self, pano_image_response):
-        formatted_response = format_stream_images_response(pano_image_response)
-        self.logger.info(formatted_response)
-
-        pano_image = pano_image_response.pano_image
-        pano_type, header, img = unpack_pano_image(pano_image)
-        module_id = pano_image.module_id
+    def update(self, pano_image, pano_type, header, img, module_id):
 
         if module_id not in self.seen_modules:
             self.seen_modules.add(module_id)
@@ -162,7 +158,6 @@ class PanoImagePreviewer:
                     + f"frame_no = {pano_image.frame_number}\n")
         ax_title += textwrap.fill(f"file = {pano_image.file}", width=self.text_width)
 
-        # Image display without using buffers
         if pano_type == 'PULSE_HEIGHT':
             img_mod = img + self.ph_baseline
             vmin = self.ph_baseline
@@ -176,7 +171,7 @@ class PanoImagePreviewer:
             self.safe_imshow(ax, img, vmin, vmax, self.cmap)
 
         ax.set_title(ax_title, fontsize=self.font_size)
-        ax.axis('off')
+        # ax.axis('off')
 
         plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}"
         self.fig.suptitle(plt_title)
@@ -188,6 +183,7 @@ class PanoImagePreviewer:
 def run_pulse_height_distribution(
     stub,
     plot_update_interval: float,
+    module_ids: int,
     durations_seconds=(5, 10, 30),
     logger: logging.Logger = None,
 ):
@@ -196,12 +192,13 @@ def run_pulse_height_distribution(
     stream_images_request = StreamImagesRequest(
         stream_movie_data=False,
         stream_pulse_height_data=True,
-        update_interval_seconds=-1
+        update_interval_seconds=-1,
+        module_ids=module_ids,
     )
     logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request)
 
-    mpd = PulseHeightDistribution(durations_seconds)
+    mpd = PulseHeightDistribution(durations_seconds, module_ids)
     last_plot_update_time = time.time()
     for response in stream_images_responses:
         # log response metadata
@@ -228,6 +225,7 @@ def run_pano_image_preview(
         stream_movie_data: bool,
         stream_pulse_height_data: bool,
         update_interval_seconds: float,
+        module_ids: list[int],
         logger: logging.Logger,
         wait_for_ready: bool = False,
 ):
@@ -237,26 +235,59 @@ def run_pano_image_preview(
         stream_movie_data=stream_movie_data,
         stream_pulse_height_data=stream_pulse_height_data,
         update_interval_seconds=update_interval_seconds,
+        module_ids=module_ids,
     )
     # Make the RPC call
     logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     previewer = PanoImagePreviewer(
-        stream_movie_data, stream_pulse_height_data, update_interval_seconds, logger,
-        col_width=4.5, row_height=2.8,
+        stream_movie_data, stream_pulse_height_data, update_interval_seconds, logger, col_width=4.5, row_height=2.8,
     )
 
     # Process responses
     for stream_images_response in stream_images_responses:
         # log response metadata
-        formatted_stream_images_response = format_stream_images_response(stream_images_response)
-        logger.info(formatted_stream_images_response)
-        previewer.update(stream_images_response)
+        formatted_response = format_stream_images_response(stream_images_response)
+        logger.info(formatted_response)
+
+        pano_image = stream_images_response.pano_image
+        pano_type, header, img = unpack_pano_image(pano_image)
+        module_id = pano_image.module_id
+        previewer.update(pano_image, pano_type, header, img, module_id)
 
 
-def run(host, port=50051, do_init=False, init_cfg=None, plot='view'):
+def run(args):
+
+    init_cfg = None
+    do_init = False
+    if args.init_sim or args.cfg_file is not None:
+        do_init = True
+        if args.init_sim:
+            init_cfg_path = 'config/hp_io_config_simulate_daq.json'
+        elif args.cfg_file:
+            init_cfg_path = f'config/{args.cfg_file}'
+        else:
+            init_cfg_path = None
+
+        # try to open the config file
+        if init_cfg_path is not None and not os.path.exists(init_cfg_path):
+            logging.error(f"Config file not found: '{os.path.abspath(init_cfg_path)}'")
+            sys.exit(1)
+        else:
+            with open(init_cfg_path, "r") as f:
+                init_cfg = json.load(f)
+
+    do_plot = args.plot_view or args.plot_phdist
+    module_ids = args.module_ids
+    if args.plot_phdist:
+        if len(module_ids) == 0:
+            logging.warning("no module_ids specified, using data from all modules to make ph distribution")
+        elif len(module_ids) > 1:
+            logging.warning("more than one module_id specified to make ph distribution")
+
+    port = 50051
     logger = make_rich_logger(__name__, level=logging.INFO)
-    connection_target = f"{host}:{port}"
+    connection_target = f"{args.host}:{port}"
     logger.info(f"connection_target={repr(connection_target)}")
     try:
         with grpc.insecure_channel(connection_target) as channel:
@@ -277,23 +308,25 @@ def run(host, port=50051, do_init=False, init_cfg=None, plot='view'):
                     logger=logger
                 )
 
-            if plot:
+            if do_plot:
                 print("-------------- StreamImages --------------")
-                if plot == 'view':
+                if args.plot_view:
                     run_pano_image_preview(
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
                         update_interval_seconds=np.random.uniform(0.5, 1.5),
+                        module_ids=module_ids,
                         wait_for_ready=True,
                         logger=logger
                     )
 
-                elif plot == 'phdist':
+                elif args.plot_phdist:
                     run_pulse_height_distribution(
                         stub,
                         plot_update_interval=0.25,
                         durations_seconds= (10, 30, 60),
+                        module_ids=module_ids,
                         logger=logger
                     )
                 else:
@@ -334,31 +367,24 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--plot",
-        help="Make a pulse-height distribution plot [phdist] or a live data previewer",
-        choices=['phdist', 'view'],
+        "--plot-view",
+        help="Make a live data previewer",
+        action="store_true",
     )
+
+    parser.add_argument(
+        "--plot-phdist",
+        help="Make a live pulse-height distribution for the specified module id",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--module-ids",
+        help="If empty, data from all modules is returned. If non-empty, only data from the specified modules are returned",
+        nargs="*",
+        type=int
+    )
+
     # run(host="10.0.0.60")
     args = parser.parse_args()
-
-    init_cfg = None
-    do_init = False
-    if args.init_sim or args.cfg_file is not None:
-        do_init = True
-        if args.init_sim:
-            init_cfg_path = 'config/hp_io_config_simulate_daq.json'
-        elif args.cfg_file:
-            init_cfg_path = f'config/{args.cfg_file}'
-        else:
-            init_cfg_path = None
-
-        # try to open the config file
-        if init_cfg_path is not None and not os.path.exists(init_cfg_path):
-            logging.error(f"Config file not found: '{os.path.abspath(init_cfg_path)}'")
-            sys.exit(1)
-        else:
-            with open(init_cfg_path, "r") as f:
-                init_cfg = json.load(f)
-
-
-    run(host=args.host, do_init=do_init, init_cfg=init_cfg, plot=args.plot)
+    run(args)
