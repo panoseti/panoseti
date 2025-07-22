@@ -60,14 +60,12 @@ def stream_images(
     try:
         # Process responses
         for stream_images_response in stream_images_responses:
-
-            pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
             # optional: log response metadata
             formatted_stream_images_response = format_stream_images_response(stream_images_response)
             logger.info(formatted_stream_images_response)
 
             # Get pano images from response
-            pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
+            module_id, pano_type, header, image_array = unpack_pano_image(stream_images_response.pano_image)
             if pano_type == 'PULSE_HEIGHT':
                 #
                 # Your pulse-height visualizations here

@@ -100,10 +100,12 @@ def parse_pano_timestamps(pano_image: daq_data_pb2.PanoImage) -> Dict[str, Any]:
 
 def unpack_pano_image(
         pano_image: daq_data_pb2.PanoImage
-) -> Tuple[str, Dict[str, Any], np.ndarray] or Tuple[None, None, None]:
-    """Unpacks a PanoImage message into its components."""
+) -> Tuple[int, str, Dict[str, Any], np.ndarray] or Tuple[None, None, None, None]:
+    """Unpacks a PanoImage message into its components:
+    module_id, pano_type, header, image_array
+    """
     if pano_image is None:
-        return None, None, None
+        return None, None, None, None
     pano_type = PanoImage.Type.Name(pano_image.type)
     # Parse header
     h = MessageToDict(pano_image.header)
@@ -115,14 +117,19 @@ def unpack_pano_image(
     if bytes_per_pixel == 1:
         image_array = image_array.astype(np.uint8)
     elif bytes_per_pixel == 2:
-        image_array = image_array.astype(np.uint16)
+        if pano_type == 'MOVIE':
+            image_array = image_array.astype(np.uint16)
+        elif pano_type == 'PULSE_HEIGHT':
+            image_array = image_array.astype(np.int16)
     else:
         raise ValueError(f"unsupported bytes_per_pixel: {bytes_per_pixel}")
-    return pano_type, h, image_array
+
+    module_id = pano_image.module_id
+    return module_id, pano_type, h, image_array
 
 def format_stream_images_response(stream_images_response: StreamImagesResponse) -> str:
     pano_image = stream_images_response.pano_image
-    pano_type, header, image_array = unpack_pano_image(pano_image)
+    module_id, pano_type, header, image_array = unpack_pano_image(pano_image)
     name = stream_images_response.name
     message = stream_images_response.message
     file = pano_image.file

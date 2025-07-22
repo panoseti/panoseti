@@ -22,61 +22,90 @@ from daq_data_resources import make_rich_logger
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import MaxNLocator
 import textwrap
 
+
 class PulseHeightDistribution:
-    VMIN = 0
-    VMAX = 2**12 - 1  # 4095
     def __init__(self, durations_seconds, module_ids):
         self.durations = durations_seconds
-        self.module_ids = module_ids
-        n = len(durations_seconds)  # num of plots to make
-        self.start_times = [time.time() for _ in range(n)]
-        self.hist_data = [deque() for _ in range(n)]
-        self.vmins = [self.VMAX for _ in range(n)]
-        self.vmaxs = [self.VMIN for _ in range(n)]
-        # size: width=6in, height=3in per subplot
-        height = max(2.9 * n, 6)  # ensure a minimum height
+        self.module_ids = list(module_ids)
+        self.n_durations = len(self.durations)
+
+        # For each module: list of deques per duration window
+        self.start_times = {mod: [time.time() for _ in range(self.n_durations)]
+                            for mod in self.module_ids}
+        self.hist_data = {mod: [deque() for _ in range(self.n_durations)]
+                          for mod in self.module_ids}
+        self.vmins = {mod: [float('inf')] * self.n_durations for mod in self.module_ids}
+        self.vmaxs = {mod: [float('-inf')] * self.n_durations for mod in self.module_ids}
+
+        # Preallocate colors for distinct modules
+        palette = sns.color_palette('husl', n_colors=len(self.module_ids))
+        self.module_colors = {mod: palette[i] for i, mod in enumerate(self.module_ids)}
+
+        # Figure/axes: one axis per duration window
+        height = max(2.9 * self.n_durations, 6)
         plt.ion()
-        self.fig, self.axes = plt.subplots(n, 1, figsize=(6, height))
-        self.fig.suptitle(f'Pulse Height Distributions for {module_ids=}')
-        if n == 1:
+        self.fig, self.axes = plt.subplots(self.n_durations, 1, figsize=(6, height))
+        if self.n_durations == 1:
             self.axes = [self.axes]
 
-    def update(self, image):
+    def update(self, image, module_id):
+        if module_id not in self.hist_data:
+            # Dynamically add support for new modules if needed
+            self.module_ids.append(module_id)
+            self.start_times[module_id] = [time.time()] * self.n_durations
+            self.hist_data[module_id] = [deque() for _ in range(self.n_durations)]
+            self.vmins[module_id] = [float('inf')] * self.n_durations
+            self.vmaxs[module_id] = [float('-inf')] * self.n_durations
+            # Assign a color (expand palette if many modules)
+            palette = sns.color_palette('husl', n_colors=len(self.module_ids))
+            self.module_colors[module_id] = palette[len(self.module_ids)-1]
+
         max_pixel = int(np.max(image))
         now = time.time()
         for i, duration in enumerate(self.durations):
-            if now - self.start_times[i] > duration:
-                self.hist_data[i].clear()
-                self.start_times[i] = now
-                self.vmins[i] = self.VMAX
-                self.vmaxs[i] = self.VMIN
-            self.hist_data[i].append(max_pixel)
-            self.vmins[i] = min(self.vmins[i], max_pixel)
-            self.vmaxs[i] = max(self.vmaxs[i], max_pixel)
+            if now - self.start_times[module_id][i] > duration:
+                self.hist_data[module_id][i].clear()
+                self.start_times[module_id][i] = now
+                self.vmins[module_id][i] = float('inf')
+                self.vmaxs[module_id][i] = float('-inf')
+            self.hist_data[module_id][i].append(max_pixel)
+            self.vmins[module_id][i] = min(self.vmins[module_id][i], max_pixel)
+            self.vmaxs[module_id][i] = max(self.vmaxs[module_id][i], max_pixel)
 
     def plot(self):
-        palette = sns.color_palette('husl', len(self.durations))
-        for i, (duration, values) in enumerate(zip(self.durations, self.hist_data)):
+        # Plot loop: for each duration, overlay all modules
+        for i, duration in enumerate(self.durations):
             ax = self.axes[i]
             ax.clear()
-            if values:
-                sns.histplot(
-                    list(values),
-                    bins=100,
-                    kde=False,
-                    stat='density',
-                    element='step',
-                    label=f'{duration}s',
-                    color=palette[i],
-                    ax=ax,
-                )
-            ax.set_xlim(min(self.vmins) - 10, max(self.vmaxs) + 10)
-            ax.set_title(f"Pulse-Height Distribution: {duration}s")
+
+            # Establish axis limits based on all module data in this duration
+            mins = [self.vmins[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
+            maxs = [self.vmaxs[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
+            vmin = min(mins) if mins else 0
+            vmax = max(maxs) if maxs else 1
+
+            for mod in self.module_ids:
+                values = self.hist_data[mod][i]
+                if values:
+                    sns.histplot(
+                        list(values),
+                        bins=100,
+                        kde=False,
+                        stat='density',
+                        element='step',
+                        label=f'Module {mod}',
+                        color=self.module_colors[mod],
+                        ax=ax,
+                    )
+            ax.set_xlim(vmin - 10, vmax + 10)
+            ax.set_title(f"Pulse-Height Distribution: {duration}s", fontsize=12)
             ax.set_xlabel("ADC Value")
-            ax.set_ylabel("Density")
-            ax.legend(title="Duration")
+            ax.set_ylabel("Count")
+            ax.legend(title="Module", fontsize=9, title_fontsize=10)
         self.fig.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -88,36 +117,34 @@ class PanoImagePreviewer:
             stream_movie_data: bool,
             stream_pulse_height_data: bool,
             update_interval_seconds: float,
-            module_ids: list[int],
+            module_id_whitelist: list[int],
             logger: logging.Logger,
             text_width=25,
             font_size=7,
-            ph_baseline = 750,
-            col_width=4,
             row_height=2.8,
+            window_size=100,
     ) -> None:
         self.stream_movie_data = stream_movie_data
         self.stream_pulse_height_data = stream_pulse_height_data
         self.update_interval_seconds = update_interval_seconds
-        self.module_ids = module_ids
+        self.module_id_whitelist = module_id_whitelist
         self.logger = logger
 
         self.seen_modules = set()
         self.axes_map = {}
+        self.cbar_map = {}
+        self.im_map = {}
+        self.window_size = window_size
+        self.max_pix_map = {'PULSE_HEIGHT': deque(maxlen=self.window_size), 'MOVIE': deque(maxlen=self.window_size)}
+        self.min_pix_map = {'PULSE_HEIGHT': deque(maxlen=self.window_size), 'MOVIE': deque(maxlen=self.window_size)}
 
         self.fig = None
         self.text_width = text_width
         self.font_size = font_size
-        self.ph_baseline = ph_baseline
-        self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako'])
-        self.col_width = col_width
+        # self.cmap = np.random.choice(['magma', 'viridis', 'rocket', 'mako'])
+        self.cmap = 'plasma'
         self.row_height = row_height
-
-    def safe_imshow(self, ax, img, vmin, vmax, cmap):
-        """Ensure vmin < vmax for Matplotlib imshow."""
-        if vmin >= vmax:
-            vmax = vmin + 1e-6
-        ax.imshow(img, vmin=vmin, vmax=vmax, cmap=cmap)
+        self.num_rescale = 0
 
     def setup_layout(self, modules):
         """Sets up subplot layout: one row per module, two columns (PH left, Movie right)."""
@@ -125,31 +152,47 @@ class PanoImagePreviewer:
             plt.close(self.fig)
         modules = sorted(modules)
         n_modules = len(modules)
-        self.fig, axs = plt.subplots(n_modules, 2, figsize=(self.col_width, self.row_height * n_modules))
+        self.fig, axs = plt.subplots(n_modules, 2, figsize=(self.row_height * 2.2, self.row_height * n_modules))
         if n_modules == 1:
             axs = np.array([axs])  # one row per module
 
+        self.num_rescale = 0
         self.axes_map.clear()
-        for row, mod_id in enumerate(modules):
-            self.axes_map[(mod_id, 'PULSE_HEIGHT')] = axs[row, 0]
-            self.axes_map[(mod_id, 'MOVIE')] = axs[row, 1]
-            axs[row, 0].imshow(np.zeros((32, 32)))
-            axs[row, 1].imshow(np.zeros((32, 32)))
-            axs[row, 0].set_title(f'Module {mod_id} - Pulse-Height', fontsize=self.font_size)
-            axs[row, 1].set_title(f'Module {mod_id} - Movie-Mode', fontsize=self.font_size)
-            axs[row, 0].axis('off')
-            axs[row, 1].axis('off')
+        self.cbar_map.clear()
+        self.im_map.clear()
+        for row, module_id in enumerate(modules):
+            self.axes_map[(module_id, 'PULSE_HEIGHT')] = axs[row, 0]
+            self.axes_map[(module_id, 'MOVIE')] = axs[row, 1]
+
+            im_ph = axs[row, 0].imshow(np.zeros((32, 32)), cmap=self.cmap)
+            self.im_map[(module_id, 'PULSE_HEIGHT')] = im_ph
+            im_mov = axs[row, 1].imshow(np.zeros((32, 32)), cmap=self.cmap)
+            self.im_map[(module_id, 'MOVIE')] = im_mov
+
+            # Create a divider for each axis for inline colorbar
+            divider_ph = make_axes_locatable(axs[row, 0])
+            cax_ph = divider_ph.append_axes('right', size='5%', pad=0.05)
+            cbar_ph = self.fig.colorbar(im_ph, cax=cax_ph)
+            self.cbar_map[(module_id, 'PULSE_HEIGHT')] = cbar_ph
+
+            divider_mov = make_axes_locatable(axs[row, 1])
+            cax_mov = divider_mov.append_axes('right', size='5%', pad=0.05)
+            cbar_mov = self.fig.colorbar(im_mov, cax=cax_mov)
+            self.cbar_map[(module_id, 'MOVIE')] = cbar_mov
+
+            axs[row, 0].set_title(f'Module {module_id} - Pulse-Height', fontsize=self.font_size)
+            axs[row, 1].set_title(f'Module {module_id} - Movie-Mode', fontsize=self.font_size)
         self.fig.tight_layout()
         plt.ion()
         plt.show()
 
-    def update(self, pano_image, pano_type, header, img, module_id):
-
+    def update(self, frame_number, file, pano_type, header, img, module_id):
         if module_id not in self.seen_modules:
             self.seen_modules.add(module_id)
             self.setup_layout(self.seen_modules)
 
         ax = self.axes_map.get((module_id, pano_type))
+        cbar = self.cbar_map.get((module_id, pano_type))
         if ax is None:
             return
 
@@ -157,28 +200,32 @@ class PanoImagePreviewer:
         ax_title = (f"{pano_type}"
                     + ("\n" if 'quabo_num' not in header else f": Q{int(header['quabo_num'])}\n")
                     + f"unix_t = {header['pandas_unix_timestamp'].time()}\n"
-                    + f"frame_no = {pano_image.frame_number}\n")
-        ax_title += textwrap.fill(f"file = {pano_image.file}", width=self.text_width)
+                    + f"frame_no = {frame_number}\n")
+        ax_title += textwrap.fill(f"file = {file}", width=self.text_width)
 
-        if pano_type == 'PULSE_HEIGHT':
-            img_mod = img + self.ph_baseline
-            vmin = self.ph_baseline
-            vmax = np.quantile(img_mod, 0.99)
-            ax.cla()
-            self.safe_imshow(ax, img_mod, vmin, vmax, self.cmap)
-        elif pano_type == 'MOVIE':
-            vmin = np.quantile(img, 0.05)
-            vmax = np.quantile(img, 0.95)
-            ax.cla()
-            self.safe_imshow(ax, img, vmin, vmax, self.cmap)
+
+        self.max_pix_map[pano_type].append(np.max(img))
+        self.min_pix_map[pano_type].append(np.min(img))
+        vmax = np.quantile(self.max_pix_map[pano_type], 0.95)
+        vmin = np.quantile(self.min_pix_map[pano_type], 0.05)
+        im = self.im_map[(module_id, pano_type)]
+        im.set_data(img)
+        im.set_clim(vmin, vmax)
 
         ax.set_title(ax_title, fontsize=self.font_size)
         ax.tick_params(axis='both', which='major', labelsize=8, length=4, width=1)
+        cbar.ax.tick_params(labelsize=8)
+        cbar.locator = MaxNLocator(nbins=6)
+        cbar.update_ticks()
 
-        # ax.axis('off')
-        plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids={set(self.module_ids)}"
+        if len(self.module_id_whitelist) > 0:
+            plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids={set(self.module_id_whitelist)}"
+        else:
+            plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids=all"
+        if self.num_rescale < len(self.seen_modules) * 3:
+            self.fig.tight_layout()
+            self.num_rescale += 1
         self.fig.suptitle(plt_title)
-        self.fig.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
@@ -201,7 +248,7 @@ def run_pulse_height_distribution(
     logger.info(f"stream_images_request={MessageToDict(stream_images_request, preserving_proto_field_name=True, always_print_fields_with_no_presence=True)}")
     stream_images_responses = stub.StreamImages(stream_images_request)
 
-    mpd = PulseHeightDistribution(durations_seconds, module_ids)
+    ph_dist = PulseHeightDistribution(durations_seconds, module_ids)
     last_plot_update_time = time.time()
     for response in stream_images_responses:
         # log response metadata
@@ -211,15 +258,13 @@ def run_pulse_height_distribution(
 
         # unpack pano image
         pano_image = response.pano_image
-        pano_type, header, img = unpack_pano_image(pano_image)
-        ph_baseline = 750
+        module_id, pano_type, header, img = unpack_pano_image(pano_image)
 
         if pano_type == 'PULSE_HEIGHT':
-            img += ph_baseline
-            mpd.update(img)
+            ph_dist.update(img, module_id)
             curr_time = time.time()
-            if curr_time - last_plot_update_time > max(plot_update_interval, 0.5):
-                mpd.plot()
+            if curr_time - last_plot_update_time > plot_update_interval:
+                ph_dist.plot()
                 last_plot_update_time = curr_time
 
 
@@ -245,7 +290,7 @@ def run_pano_image_preview(
     stream_images_responses = stub.StreamImages(stream_images_request, wait_for_ready=wait_for_ready)
     previewer = PanoImagePreviewer(
         stream_movie_data, stream_pulse_height_data, update_interval_seconds,
-        module_ids, logger, col_width=5, row_height=3,
+        module_ids, logger, row_height=3, font_size=6, text_width=30, window_size=1000
     )
 
     # Process responses
@@ -255,9 +300,8 @@ def run_pano_image_preview(
         logger.info(formatted_response)
 
         pano_image = stream_images_response.pano_image
-        pano_type, header, img = unpack_pano_image(pano_image)
-        module_id = pano_image.module_id
-        previewer.update(pano_image, pano_type, header, img, module_id)
+        module_id, pano_type, header, img = unpack_pano_image(stream_images_response.pano_image)
+        previewer.update(pano_image.frame_number, pano_image.file, pano_type, header, img, module_id)
 
 
 def run(args):
@@ -324,7 +368,7 @@ def run(args):
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=np.random.uniform(0.5, 1.5),
+                        update_interval_seconds=np.random.uniform(1.0, 1.0),
                         module_ids=module_ids,
                         wait_for_ready=True,
                         logger=logger
@@ -334,7 +378,7 @@ def run(args):
                     run_pulse_height_distribution(
                         stub,
                         plot_update_interval=0.25,
-                        durations_seconds= (10, 30, 60),
+                        durations_seconds= (10, 60, 600),
                         module_ids=module_ids,
                         logger=logger
                     )
@@ -345,12 +389,9 @@ def run(args):
     except grpc.RpcError as rpc_error:
         logger.error(f"{type(rpc_error)}\n{repr(rpc_error)}")
 
-
 def signal_handler(signum, frame):
     print(f"Signal {signum} received, exiting...")
     sys.exit(0)
-
-
 
 if __name__ == "__main__":
     for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGQUIT]:

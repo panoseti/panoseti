@@ -256,6 +256,8 @@ async def hp_io_task_fn(
                     break
                 logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
                 await asyncio.sleep(0.5)
+            logger.debug(f"{dp=}: {nfiles=}")
+            logger.debug(f"waiting for a file of type {dp} to be large enough to start writing")
 
             # check if environment is valid
             if stop_io.is_set():
