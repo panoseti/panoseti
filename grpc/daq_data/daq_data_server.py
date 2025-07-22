@@ -735,7 +735,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self._hp_io_task = None
             self._daq_sim_thread = None
             return False
-        self.logger.info("hp_io task alive and valid with active_data_products={self.active_data_products}")
+        self.logger.info(f"hp_io task alive and valid with active_data_products={self.active_data_products}")
         self._server_cfg['hp_io_init'] = True
         return True
 

@@ -26,6 +26,8 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.ticker import MaxNLocator
 import textwrap
+sys.path.append("../../util")
+import pff
 
 
 class PulseHeightDistribution:
@@ -232,10 +234,11 @@ class PanoImagePreviewer:
         cbar.locator = MaxNLocator(nbins=6)
         cbar.update_ticks()
 
+        start = pff.parse_name(file)['start']
         if len(self.module_id_whitelist) > 0:
-            plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids={set(self.module_id_whitelist)}"
+            plt_title = f"Obs data from {start}, module_ids={set(self.module_id_whitelist)}"
         else:
-            plt_title = f"Obs data from {header['pandas_unix_timestamp'].date()}, module_ids=all"
+            plt_title = f"Obs data from {start}, module_ids=all"
         if self.num_rescale < len(self.seen_modules) * 3:
             self.fig.tight_layout()
             self.num_rescale += 1
@@ -342,7 +345,6 @@ def run(args):
 
     do_plot = args.plot_view or args.plot_phdist
     module_ids = args.module_ids
-    logger.info(f"{module_ids=}")
     if args.plot_phdist:
         if len(module_ids) == 0:
             logging.warning("no module_ids specified, using data from all modules to make ph distribution")
@@ -351,11 +353,11 @@ def run(args):
 
     port = 50051
     connection_target = f"{args.host}:{port}"
-    logger.info(f"connection_target={repr(connection_target)}")
     try:
         with grpc.insecure_channel(connection_target) as channel:
             stub = daq_data_pb2_grpc.DaqDataStub(channel)
             print("-------------- ServerReflection --------------")
+            logger.info(f"connection_target={repr(connection_target)}")
             reflect_services(channel)
 
             if do_init_hp_io:

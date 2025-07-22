@@ -86,7 +86,6 @@ def make_rich_logger(name, level=logging.INFO):
         tracebacks_theme="monokai",  # Optional: Choose a traceback theme
     )
 
-
     logging.basicConfig(
         level=level,
         format=LOG_FORMAT,
@@ -168,14 +167,4 @@ def format_stream_images_response(stream_images_response: StreamImagesResponse) 
     file = pano_image.file
     frame_number = pano_image.frame_number
     server_timestamp = stream_images_response.timestamp.ToDatetime().isoformat()
-    return f"{name=} {pano_type=}: {file}:f#{frame_number}, {server_timestamp=}"
-
-# Gracefully cancel active RPCs before exiting
-# active_calls = []
-# def cancel_requests(unused_signum, unused_frame):
-#     """Signal handler to cancel all in-flight gRPCs."""
-#     for future in active_calls:
-#         future.cancel()
-#     sys.exit(0)
-# signal.signal(signal.SIGINT, cancel_requests)
-
+    return f"{name=} {server_timestamp=} {file} (f#{frame_number}) {pano_type=} "
