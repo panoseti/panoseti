@@ -195,20 +195,30 @@ class PanoImagePreviewer:
             cax_mov = divider_mov.append_axes('right', size='5%', pad=0.05)
             cbar_mov = self.fig.colorbar(im_mov, cax=cax_mov)
             self.cbar_map[(module_id, 'MOVIE')] = cbar_mov
-
-            axs[row, 0].set_title(f'Module {module_id} - Pulse-Height', fontsize=self.font_size)
-            axs[row, 1].set_title(f'Module {module_id} - Movie-Mode', fontsize=self.font_size)
         self.fig.tight_layout()
         plt.ion()
         plt.show()
 
     def update(self, frame_number, file, pano_type, header, img, module_id):
+        # check if this module is new
         if module_id not in self.seen_modules:
             self.seen_modules.add(module_id)
             self.setup_layout(self.seen_modules)
 
-        ax = self.axes_map.get((module_id, pano_type))
+        # update dynamic min and max data dequeues
+        self.max_pix_map[pano_type].append(np.max(img))
+        self.min_pix_map[pano_type].append(np.min(img))
+        vmax = np.quantile(self.max_pix_map[pano_type], 0.95)
+        vmin = np.quantile(self.min_pix_map[pano_type], 0.05)
+        im = self.im_map[(module_id, pano_type)]
+        im.set_data(img)
+        im.set_clim(vmin, vmax)
+
         cbar = self.cbar_map.get((module_id, pano_type))
+        cbar.ax.tick_params(labelsize=8)
+        cbar.locator = MaxNLocator(nbins=6)
+        cbar.update_ticks()
+        ax = self.axes_map.get((module_id, pano_type))
         if ax is None:
             return
 
@@ -219,26 +229,14 @@ class PanoImagePreviewer:
                     + f"frame_no = {frame_number}\n")
         ax_title += textwrap.fill(f"file = {file}", width=self.text_width)
 
-
-        self.max_pix_map[pano_type].append(np.max(img))
-        self.min_pix_map[pano_type].append(np.min(img))
-        vmax = np.quantile(self.max_pix_map[pano_type], 0.95)
-        vmin = np.quantile(self.min_pix_map[pano_type], 0.05)
-        im = self.im_map[(module_id, pano_type)]
-        im.set_data(img)
-        im.set_clim(vmin, vmax)
-
         ax.set_title(ax_title, fontsize=self.font_size)
         ax.tick_params(axis='both', which='major', labelsize=8, length=4, width=1)
-        cbar.ax.tick_params(labelsize=8)
-        cbar.locator = MaxNLocator(nbins=6)
-        cbar.update_ticks()
 
         start = pff.parse_name(file)['start']
         if len(self.module_id_whitelist) > 0:
-            plt_title = f"Obs data from {start}, module_ids={set(self.module_id_whitelist)}"
+            plt_title = f"Obs data from {start}, module_ids={set(self.module_id_whitelist)} [filtered]"
         else:
-            plt_title = f"Obs data from {start}, module_ids=all"
+            plt_title = f"Obs data from {start}, module_ids={self.seen_modules} [all]"
         if self.num_rescale < len(self.seen_modules) * 3:
             self.fig.tight_layout()
             self.num_rescale += 1
@@ -383,7 +381,7 @@ def run(args):
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=1.0, #np.random.uniform(1.0, 1.0),
+                        update_interval_seconds=2.0, #np.random.uniform(1.0, 1.0),
                         module_ids=module_ids,
                         wait_for_ready=True,
                         logger=logger
@@ -392,7 +390,7 @@ def run(args):
                 elif args.plot_phdist:
                     run_pulse_height_distribution(
                         stub,
-                        plot_update_interval=0.25,
+                        plot_update_interval=1.0,
                         durations_seconds= (10, 60, 600),
                         module_ids=module_ids,
                         logger=logger
