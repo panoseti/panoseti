@@ -88,7 +88,6 @@ def init_hp_io(
         update_interval_seconds: float,
         simulate_daq: bool,
         force: bool,
-        data_products: list[str],
         module_ids: list[int],
         logger: logging.Logger,
         timeout:float=5.0,
@@ -98,7 +97,6 @@ def init_hp_io(
         update_interval_seconds=update_interval_seconds,
         simulate_daq=simulate_daq,
         force=force,
-        data_products=data_products,
         module_ids=module_ids,
     )
     logger.info(f"Initializing the hp_io thread with "

@@ -38,6 +38,39 @@ sys.path.append('../../util')
 import pff
 
 
+def get_dp_cfg(dps):
+    """Returns a dictionary of static properties for the given data products."""
+    dp_cfg = {}
+    for dp in dps:
+        if dp == 'img16' or dp == 'ph1024':
+            image_shape = [32, 32]
+            bytes_per_pixel = 2
+        elif dp == 'img8':
+            image_shape = [32, 32]
+            bytes_per_pixel = 1
+        elif dp == 'ph256':
+            image_shape = [16, 16]
+            bytes_per_pixel = 2
+        else:
+            raise Exception("bad data product %s" % dp)
+        bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
+        is_ph = 'ph' in dp
+        # Get type enum for PanoImage message
+        if is_ph:
+            pano_image_type = PanoImage.Type.PULSE_HEIGHT
+        else:
+            pano_image_type = PanoImage.Type.MOVIE
+
+        dp_cfg[dp] = {
+            "image_shape": image_shape,
+            "bytes_per_pixel": bytes_per_pixel,
+            "bytes_per_image": bytes_per_image,
+            "is_ph": is_ph,
+            "pano_image_type": pano_image_type,
+        }
+    return dp_cfg
+
+
 def make_rich_logger(name, level=logging.INFO):
     LOG_FORMAT = (
         "[tid=%(thread)d] [%(funcName)s()] %(message)s "

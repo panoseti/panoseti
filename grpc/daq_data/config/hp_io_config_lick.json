@@ -3,7 +3,6 @@
   "update_interval_seconds": 0.1,
   "force": true,
   "simulate_daq": false,
-  "data_products": ["img16", "ph256"],
   "module_ids": [],
   "comments": "Default Lick observatory config for daq1"
 }

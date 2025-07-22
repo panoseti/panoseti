@@ -7,6 +7,7 @@ import logging
 import os.path
 from collections import deque
 import time
+from datetime import datetime
 import sys
 
 import grpc
@@ -77,12 +78,21 @@ class PulseHeightDistribution:
             self.vmaxs[module_id][i] = max(self.vmaxs[module_id][i], max_pixel)
 
     def plot(self):
-        # Plot loop: for each duration, overlay all modules
         for i, duration in enumerate(self.durations):
             ax = self.axes[i]
             ax.clear()
 
-            # Establish axis limits based on all module data in this duration
+            # Compute last refresh (latest start_time) for this duration window
+            all_refresh = [
+                self.start_times[mod][i] for mod in self.module_ids if self.hist_data[mod][i]
+            ]
+            if all_refresh:
+                last_refresh_unix = max(all_refresh)
+                last_refresh = datetime.fromtimestamp(last_refresh_unix).strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                last_refresh = "Never"
+
+            # Axis limits
             mins = [self.vmins[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
             maxs = [self.vmaxs[mod][i] for mod in self.module_ids if self.hist_data[mod][i]]
             vmin = min(mins) if mins else 0
@@ -102,10 +112,14 @@ class PulseHeightDistribution:
                         ax=ax,
                     )
             ax.set_xlim(vmin - 10, vmax + 10)
-            ax.set_title(f"Pulse-Height Distribution: {duration}s", fontsize=12)
+            ax.set_title(
+                f"Refresh interval = {duration}s | Last refresh = {last_refresh}",
+                fontsize=12,
+            )
             ax.set_xlabel("ADC Value")
-            ax.set_ylabel("Count")
+            ax.set_ylabel("Density")
             ax.legend(title="Module", fontsize=9, title_fontsize=10)
+        self.fig.suptitle( f"Distribution of Max Pulse-Heights")
         self.fig.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
@@ -261,6 +275,7 @@ def run_pulse_height_distribution(
         module_id, pano_type, header, img = unpack_pano_image(pano_image)
 
         if pano_type == 'PULSE_HEIGHT':
+            img += np.random.poisson(lam=50, size=img.shape)
             ph_dist.update(img, module_id)
             curr_time = time.time()
             if curr_time - last_plot_update_time > plot_update_interval:
@@ -308,12 +323,12 @@ def run(args):
     logger = make_rich_logger(__name__, level=logging.INFO)
     hp_io_cfg = None
     do_init_hp_io = False
-    if args.init_sim or args.cfg_file is not None:
+    if args.init_sim or args.cfg_path is not None:
         do_init_hp_io = True
         if args.init_sim:
             hp_io_cfg_path = 'config/hp_io_config_simulate_daq.json'
         elif args.cfg_file:
-            hp_io_cfg_path = f'config/{args.cfg_file}'
+            hp_io_cfg_path = f'{args.cfg_file}'
         else:
             hp_io_cfg_path = None
 
@@ -345,17 +360,15 @@ def run(args):
 
             if do_init_hp_io:
                 print("-------------- InitHpIo --------------")
+                module_id_whitelist = []
                 if 'module_ids' in hp_io_cfg:
                     module_id_whitelist = hp_io_cfg['module_ids']
-                else:
-                    module_id_whitelist = []
                 init_hp_io(
                     stub,
                     data_dir=hp_io_cfg['data_dir'],
                     update_interval_seconds=hp_io_cfg['update_interval_seconds'],
                     simulate_daq=hp_io_cfg['simulate_daq'],
                     force=hp_io_cfg['force'],
-                    data_products=hp_io_cfg['data_products'],
                     module_ids=module_id_whitelist,
                     timeout=15.0,
                     logger=logger
@@ -408,7 +421,7 @@ if __name__ == "__main__":
         "--init",
         help="initialize the hp_io thread from the file [CFG] in config/ to track an in-progress run directory",
         type=str,
-        dest="cfg_file"
+        dest="cfg_path"
     )
     parser.add_argument(
         "--init-sim",

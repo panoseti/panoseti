@@ -3,7 +3,6 @@
   "update_interval_seconds": 0.1,
   "force": true,
   "simulate_daq": true,
-  "data_products": ["img16", "ph256"],
-  "module_ids": [24, 64],
+  "module_ids": [24, 64, 54],
   "comments": "Configure the hp_io thread to track a simulated run directory"
 }

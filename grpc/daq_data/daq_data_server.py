@@ -8,6 +8,9 @@ Requires following to function correctly:
     2. All Python packages specified in requirements.txt.
     3. A connection to a panoseti module.
 """
+from curses.ascii import isdigit
+from pathlib import Path
+import os
 import asyncio
 import uuid
 from threading import Event, Thread
@@ -30,6 +33,7 @@ from grpc_reflection.v1alpha import reflection
 from google.protobuf.struct_pb2 import Struct
 from google.protobuf.json_format import MessageToDict, ParseDict
 from google.protobuf import timestamp_pb2
+from pandas.core.computation.ops import isnumeric
 
 # protoc-generated marshalling / demarshalling code
 import daq_data_pb2
@@ -37,8 +41,8 @@ import daq_data_pb2_grpc
 from daq_data_pb2 import PanoImage, StreamImagesResponse, StreamImagesRequest, InitHpIoRequest, InitHpIoResponse
 
 ## --- daq_data utils ---
-from daq_data_resources import make_rich_logger
-from daq_data_testing import *
+from daq_data_resources import make_rich_logger, get_dp_cfg
+from daq_data_testing import is_os_posix
 
 ## --- panoseti utils ---
 sys.path.append("../../util")
@@ -123,7 +127,7 @@ def daq_sim_thread_fn(
     movie_type = sim_cfg['movie_type']
     ph_type = sim_cfg['ph_type']
     data_products = [movie_type, ph_type]
-    dp_cfg = DaqDataServicer.get_dp_cfg(data_products)
+    dp_cfg = get_dp_cfg(data_products)
 
     simulated_data_files = []
     daq_active_files = []
@@ -215,6 +219,7 @@ async def hp_io_task_fn(
         reader_states: List[Dict],
         stop_io: Event,
         valid: Event,
+        dp_queue: asyncio.Queue,
         logger: logging.Logger,
         sim_cfg: Dict[str, Any],
         **kwargs
@@ -226,7 +231,64 @@ async def hp_io_task_fn(
     logger.info(f"Created a new hp_io task with the following options: {kwargs=}")
     valid.clear()  # indicate hashpipe io channel is currently invalid
 
-    async def init_module_state(module_state, module_id, timeout=5.0):
+    async def init_dp_state(d: Dict[str, Any], dp: str, run_path, curr_t, timeout):
+        """initialize hp_io state for a specific combination of module and data product."""
+        # Get the current number of pff files with type [dp]
+        d['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
+
+        # wait until hashpipe starts writing files
+        nfiles = 0
+        files = []
+        while not stop_io.is_set() and nfiles == 0 and (time.monotonic() - curr_t < timeout):
+            files = glob(d['glob_pat'])
+            nfiles = len(files)
+            if nfiles > 0:
+                break
+            await asyncio.sleep(0.5)
+
+        # check if the environment is valid
+        if stop_io.is_set():
+            # raise EnvironmentError("stop_io event is set")
+            return False
+        elif time.monotonic() - curr_t >= timeout:
+            logger.debug(f'no file of type {dp} in {d["glob_pat"]}')
+            return False
+
+        # wait until the filesize is large enough to read one image of type [dp]
+        while not stop_io.is_set() and (time.monotonic() - curr_t < timeout):
+            # Get the most recently modified file
+            # if hashpipe is actively collecting data, the most recent file should contain data
+            files = glob(d['glob_pat'])
+            nfiles = len(files)
+            file = sorted(files, key=os.path.getmtime)[-1]
+            filepath = file
+            if os.path.getsize(filepath) >= d['bytes_per_image']:
+                break
+            await asyncio.sleep(0.5)
+
+        # check if the environment is valid
+        if stop_io.is_set():
+            return False
+        elif time.monotonic() - curr_t >= timeout:
+            logger.info(
+                f"no file of type {dp} in {d['glob_pat']} is large enough to read one image of type {dp}")
+            return False
+
+        # this data product is actively being produced
+        # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
+        f = open(filepath, 'rb')
+        logger.debug(f"{dp=}: {filepath=}: {d['bytes_per_image']=}")
+        frame_size = pff.img_frame_size(f, d['bytes_per_image'])
+        d['frame_size'] = frame_size
+
+        f.seek(0, os.SEEK_SET)
+        d['f'] = f
+        d['nfiles'] = nfiles
+        d['filepath'] = filepath
+        d['last_frame'] = -1
+        return True
+
+    async def init_module_state(module_state, module_id, timeout=2.0):
         """initialize hp_io state for a specific module.
         Returns True iff successfully initialized."""
         curr_t = time.monotonic()
@@ -242,60 +304,17 @@ async def hp_io_task_fn(
         module_state['run_path'] = run_path
 
         logger.info(f"checking {run_path=}")
+        # automatically detect the subset of [data_products] that are actively being produced
+        init_dp_tasks = []
         for dp in dp_cfg:
-            # Get the current number of pff files with type [dp]
-            dp_cfg[dp]['glob_pat'] = '%s/*%s*.pff' % (run_path, dp)
-
-            # wait until hashpipe starts writing files
-            nfiles = 0
-            files = []
-            while not stop_io.is_set() and nfiles == 0 and (time.monotonic() - curr_t < timeout):
-                files = glob(dp_cfg[dp]['glob_pat'])
-                nfiles = len(files)
-                if nfiles > 0:
-                    break
-                logger.debug(f'no file of type {dp} in {dp_cfg[dp]["glob_pat"]}')
-                await asyncio.sleep(0.5)
-            logger.debug(f"{dp=}: {nfiles=}")
-            logger.debug(f"waiting for a file of type {dp} to be large enough to start writing")
-
-            # check if environment is valid
-            if stop_io.is_set():
-                raise EnvironmentError("stop_io event is set")
-            elif time.monotonic() - curr_t >= timeout:
-                return False
-
-            # wait until the filesize is large enough to read one image of type [dp]
-            while not stop_io.is_set() and (time.monotonic() - curr_t < timeout):
-                # Get the most recently modified file
-                # if hashpipe is actively collecting data, the most recent file should contain data
-                files = glob(dp_cfg[dp]['glob_pat'])
-                nfiles = len(files)
-                file = sorted(files, key=os.path.getmtime)[-1]
-                filepath = file
-                if os.path.getsize(filepath) >= dp_cfg[dp]['bytes_per_image']:
-                    break
-                logger.debug(f"waiting for a file to be large enough to read one image of type {dp}")
-                await asyncio.sleep(0.5)
-
-            # check if the environment is valid
-            if stop_io.is_set():
-                raise EnvironmentError("stop_io event is set")
-            elif time.monotonic() - curr_t >= timeout:
-                return False
-
-            # read the first frame of the file to determine the frame_size (this size is constant for the entire run)
-            f = open(filepath, 'rb')
-            logger.debug(f"{dp=}: {filepath=}: {dp_cfg[dp]['bytes_per_image']=}")
-            frame_size = pff.img_frame_size(f, dp_cfg[dp]['bytes_per_image'])
-            dp_cfg[dp]['frame_size'] = frame_size
-
-            f.seek(0, os.SEEK_SET)
-            dp_cfg[dp]['f'] = f
-            dp_cfg[dp]['nfiles'] = nfiles
-            dp_cfg[dp]['filepath'] = filepath
-            dp_cfg[dp]['last_frame'] = -1
-        return True
+            init_dp_tasks.append(init_dp_state(dp_cfg[dp], dp, run_path, curr_t, timeout))
+        results = await asyncio.gather(*init_dp_tasks)
+        # remove modules that fail to initialize
+        for result, dp in zip(results, data_products):
+            if not result:
+                logger.warning(f"module_{module_id}: no active files for {dp=}")
+                del dp_cfg[dp]
+        return len(dp_cfg) > 0
 
     async def init_hp_io_state():
         hp_io_state = dict()
@@ -309,12 +328,17 @@ async def hp_io_task_fn(
         if not daq_valid:
             raise EnvironmentError("DAQ data flow not active.")
         # Automatically detect all existing module directories
-        module_pattern = f"{data_dir}/module_*"
-        modules = glob(module_pattern)
+        module_dir_pattern = f"{data_dir}/module_*"
+        module_dirs = glob(module_dir_pattern)
         module_ids = []
-        for m in modules:
+        for m in module_dirs:
             if os.path.isdir(m):
-                mid = int(os.path.basename(m).split('_')[1])
+                mid = os.path.basename(m).split('_')[1]
+                try:
+                    mid = int(mid)
+                except ValueError:
+                    raise ValueError(f"module_id {mid} from {os.path.abspath(m)} is not a valid integer. Please check if the module_id is ")
+                mid = int(mid)
                 module_ids.append(mid)
         # if client has specified any module_ids, only attempt to track those module directories.
         if len(module_id_whitelist) > 0:
@@ -331,19 +355,29 @@ async def hp_io_task_fn(
         init_module_tasks = []
         for mid in module_ids:
             hp_io_state[mid] = dict()
-            hp_io_state[mid]['dp_cfg'] = DaqDataServicer.get_dp_cfg(data_products)
+            hp_io_state[mid]['dp_cfg'] = get_dp_cfg(data_products)
             init_module_tasks.append(init_module_state(hp_io_state[mid], mid))
         results = await asyncio.gather(*init_module_tasks)
         # remove modules that fail to initialize
+        active_dps = set()
         for result, mid in zip(results, module_ids):
             if not result:
                 logger.warning(f"module {mid} failed to initialize")
                 del hp_io_state[mid]
+            else:
+                # report which module_dirs are active
+                dps = list(hp_io_state[mid]['dp_cfg'].keys())
+                active_dps.update(dps)
+                logger.info(f"tracking dps={dps} in run_dir='{hp_io_state[mid]['run_path']}'")
+        # check environment
         if len(hp_io_state) == 0:
             raise EnvironmentError("No active modules found.")
-        for mid in hp_io_state:
-            run_path = hp_io_state[mid]['run_path']
-            logger.info(f"hp_io tracking {run_path=}")
+        elif stop_io.is_set():
+            raise EnvironmentError("stop_io event is set")
+        elif not is_daq_active(simulate_daq, sim_cfg=sim_cfg):
+            raise EnvironmentError("DAQ data flow stopped.")
+        # report to _start_hp_io_task which data products are being tracked
+        await dp_queue.put(active_dps)
         return hp_io_state
 
     def fetch_data_product_main(d: Dict[str, Any]) -> Tuple[Dict[str, Any], Tuple[int, ...]] or Tuple[None, None]:
@@ -531,6 +565,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         self._active_clients = dict()  # dict of uid : {"client_ip":context.peer()} for debugging
 
         self._server_cfg = server_cfg
+        self.active_data_products = set()
 
         # Create the server's logger
         self.logger = make_rich_logger(__name__, level=logging.INFO)
@@ -553,6 +588,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
         #   - "queue": Queue implementing single producer (hp_io), multiple independent consumer model
         #   - "config": Keyword configuration options
         #   - "last_update_t": strictly monotonic timestamp for rate limiting
+        #   - "timeouts": number of consecutive timeouts from queue.get()
         for _ in range(server_cfg['max_reader_clients']):
             default_config = {
                 "stream_movie_data": True,
@@ -565,7 +601,8 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "is_allocated": False,
                 "queue": asyncio.Queue(maxsize=server_cfg['max_read_queue_size']),
                 "config": default_config,
-                "last_update_t": time.monotonic()
+                "last_update_t": time.monotonic(),
+                "timeouts": 0,
             }
             self._reader_states.append(default_reader_state)
         self._stop_io = Event()  # Signals hp_io task to exit
@@ -584,39 +621,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.info(f"An InitHpIo call is required to start the hp_io task: "
                                 f"{self._server_cfg['init_from_default']=}")
             self._server_cfg['hp_io_init'] = False
-
-    @classmethod
-    def get_dp_cfg(cls, dps):
-        """Returns a dictionary of static properties for the given data products."""
-        dp_cfg = {}
-        for dp in dps:
-            if dp == 'img16' or dp == 'ph1024':
-                image_shape = [32, 32]
-                bytes_per_pixel = 2
-            elif dp == 'img8':
-                image_shape = [32, 32]
-                bytes_per_pixel = 1
-            elif dp == 'ph256':
-                image_shape = [16, 16]
-                bytes_per_pixel = 2
-            else:
-                raise Exception("bad data product %s" % dp)
-            bytes_per_image = bytes_per_pixel * image_shape[0] * image_shape[1]
-            is_ph = 'ph' in dp
-            # Get type enum for PanoImage message
-            if is_ph:
-                pano_image_type = PanoImage.Type.PULSE_HEIGHT
-            else:
-                pano_image_type = PanoImage.Type.MOVIE
-
-            dp_cfg[dp] = {
-                "image_shape": image_shape,
-                "bytes_per_pixel": bytes_per_pixel,
-                "bytes_per_image": bytes_per_image,
-                "is_ph": is_ph,
-                "pano_image_type": pano_image_type,
-            }
-        return dp_cfg
 
     async def _cancel_all_readers(self):
         """Cancel all active and waiting reader RPCs."""
@@ -674,20 +678,22 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
 
         # Terminate any currently alive hp_io task
         if not await self._stop_hp_io_task():
-            raise grpc.RpcError(grpc.StatusCode.INTERNAL, "Failed to terminate existing hp_io task")
+            emsg = f"Failed to stop hp_io task."
+            self.logger.critical(emsg)
+            raise grpc.RpcError(grpc.StatusCode.INTERNAL, emsg)
         self._stop_io.clear()
         self._server_cfg['hp_io_init'] = False
 
         # Toggle simulation task creation
-        data_products = hp_io_cfg['data_products']
         data_dir = hp_io_cfg['data_dir']
         if not hp_io_cfg['simulate_daq']:
             if not os.path.exists(data_dir):
                 return False
             self._daq_sim_thread = None
         else:
-            data_products = set(simulate_daq_cfg['data_products']).intersection(data_products)
             data_dir = simulate_daq_cfg['files']['data_dir']
+            abs_data_dir = os.path.abspath(data_dir)
+            self.logger.info(f"Starting simulated DAQ flow to {abs_data_dir=}")
             self._daq_sim_thread = Thread(
                 target=daq_sim_thread_fn,
                 args=(
@@ -702,31 +708,34 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             await asyncio.to_thread(self._daq_sim_thread_valid.wait)
 
         # Create a new hp_io_task using the client's configuration
+        active_data_products_queue = asyncio.Queue()
         self._hp_io_task = asyncio.create_task(
             hp_io_task_fn(
                 data_dir,
-                data_products,
+                self._server_cfg['valid_data_products'],
                 hp_io_update_interval,
                 hp_io_cfg['module_ids'],
                 hp_io_cfg['simulate_daq'],
                 self._reader_states,
                 self._stop_io,
                 self._hp_io_valid,
+                active_data_products_queue,
                 self.logger,
                 simulate_daq_cfg
             )
         )
         try:
-            await asyncio.wait_for(self._hp_io_valid.wait(), 10)
+            init_tasks = [self._hp_io_valid.wait(), active_data_products_queue.get()]
+            _, self.active_data_products  = await asyncio.wait_for(asyncio.gather(*init_tasks), timeout=10)
         except asyncio.TimeoutError:
             logging.error(f"Timeout waiting for hp_io task: {self._hp_io_task=}")
 
-        if not self._is_hp_io_valid():
+        if not self._is_hp_io_valid() or not self.active_data_products:
             await self._stop_hp_io_task()
             self._hp_io_task = None
             self._daq_sim_thread = None
             return False
-        self.logger.info("hp_io task alive and valid")
+        self.logger.info("hp_io task alive and valid with active_data_products={self.active_data_products}")
         self._server_cfg['hp_io_init'] = True
         return True
 
@@ -964,16 +973,16 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # check if hp_io is currently streaming data of the requested type
-            if request.stream_movie_data and not {'img8', 'img16'}.intersection(self._hp_io_cfg['data_products']):
+            if request.stream_movie_data and not {'img8', 'img16'}.intersection(self.active_data_products):
                 emsg = ("hp_io task is not streaming movie data. Set stream_movie_data=False to avoid this error or "
                         "restart the hp_io task to enable streaming movie data.")
                 self.logger.warning(f"'{emsg}'")
                 await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-            if request.stream_pulse_height_data and not {'ph256', 'ph1024'}.intersection(self._hp_io_cfg['data_products']):
+            if request.stream_pulse_height_data and not {'ph256', 'ph1024'}.intersection(self.active_data_products):
                 emsg = ("hp_io task is not streaming pulse-height data. Set stream_pulse_height_data=False to avoid this error or "
                         "restart the hp_io task to enable streaming pulse-height data.")
                 self.logger.warning(f"'{emsg}'")
-                # await context.abort(grpc.StatusCode.INTERNAL, emsg)
+                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
             # Set stream filter options
             if request.update_interval_seconds > self._server_cfg['max_client_update_interval_seconds']:
@@ -989,6 +998,7 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             reader_state['config']['stream_movie_data'] = request.stream_movie_data
             reader_state['config']['stream_pulse_height_data'] = request.stream_pulse_height_data
             reader_state['config']['module_ids'] = request.module_ids
+            reader_state['timeouts'] = 0
             self.logger.debug(f"{reader_state=}")
 
             # Clear old data from the read_queue
@@ -996,10 +1006,23 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             while not reader_queue.empty():
                 await reader_queue.get()
 
+            def continue_streaming():
+                res = not context.cancelled()
+                res &= self._is_hp_io_valid()
+                res &= not self._shutdown_event.is_set()
+                res &= not self._cancel_readers_event.is_set()
+                res &= reader_state['timeouts'] < self._server_cfg['max_reader_timeouts']
+                return res
+
             # Valid server state -> start streaming!
-            while not context.cancelled() and self._is_hp_io_valid() and not self._shutdown_event.is_set() and not self._cancel_readers_event.is_set():
+            while continue_streaming():
                 # await the next PanoImage to broadcast from the hp_io task
-                pano_image = await reader_queue.get()
+                try:
+                    pano_image = await asyncio.wait_for(reader_queue.get(), timeout=self._server_cfg['reader_timeout'])
+                    reader_state['timeouts'] = 0
+                except asyncio.TimeoutError:
+                    reader_state['timeouts'] += 1
+                    continue
                 if not isinstance(pano_image, PanoImage):
                     break
                 send_timestamp = timestamp_pb2.Timestamp()
@@ -1023,13 +1046,19 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 emsg = "client context terminated"
                 self.logger.info(emsg)
                 await context.abort(grpc.StatusCode.CANCELLED, emsg)
+            elif reader_state['timeouts'] >= self._server_cfg['max_reader_timeouts']:
+                emsg = f"reader reached max number of consecutive read timeouts: ({self._server_cfg['max_reader_timeouts']})."
+                await context.abort(grpc.StatusCode.CANCELLED, emsg)
             elif not self._stop_io.is_set():
                 emsg = (f"The hp_io task data stream became invalid! "
-                        f"Check the server logs to debug this issue")
+                        f"This is expected when hashpipe stops running. "
+                        f"Otherwise, check the server logs to debug this issue")
                 self.logger.warning(emsg)
                 await context.abort(grpc.StatusCode.INTERNAL, emsg)
             else:
-                await context.abort(grpc.StatusCode.INTERNAL, "Unexpected error!")
+                emsg = "Unexpected termination case"
+                self.logger.critical(emsg)
+                await context.abort(grpc.StatusCode.INTERNAL, emsg)
             # END reader critical section
 
     async def InitHpIo(self, request: InitHpIoRequest, context) -> InitHpIoResponse:
@@ -1049,25 +1078,11 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
             self.logger.warning(f"Rejecting request: '{emsg}'")
             await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
 
-        # verify data products were provided
-        elif not request.data_products:
-            emsg = "at least one data_product must be specified"
-            self.logger.warning(f"Rejecting request: '{emsg}'")
-            await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-
         # read server configuration to validate parameters in init request
         async with self._rw_lock_reader(context) as reader_state:
             # check if given data products are valid
-            valid_data_products = set(self._server_cfg['valid_data_products'])
-            request_data_products = set(request.data_products)
-            if not request_data_products.issubset(valid_data_products):
-                emsg = (f"Invalid data_products specified: {request_data_products - valid_data_products}. "
-                        f"Valid data products are: {valid_data_products}")
-                self.logger.warning(f"Rejecting request: '{emsg}'")
-                await context.abort(grpc.StatusCode.FAILED_PRECONDITION, emsg)
-
             # check if the requested update interval is not too short
-            elif request.update_interval_seconds < self._server_cfg['min_hp_io_update_interval_seconds']:
+            if request.update_interval_seconds < self._server_cfg['min_hp_io_update_interval_seconds']:
                 emsg = (f"update_interval_seconds must be at least "
                         f"{self._server_cfg['min_hp_io_update_interval_seconds']} seconds. Got {request.update_interval_seconds}")
                 self.logger.warning(f"Rejecting request: '{emsg}'")
@@ -1088,7 +1103,6 @@ class DaqDataServicer(daq_data_pb2_grpc.DaqDataServicer):
                 "data_dir": request.data_dir,
                 "simulate_daq": request.simulate_daq,
                 "update_interval_seconds": request.update_interval_seconds,
-                "data_products": request.data_products,
                 "module_ids": request.module_ids,
             }
             start_success = await self._start_hp_io_task(hp_io_cfg)
