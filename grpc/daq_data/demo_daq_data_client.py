@@ -275,7 +275,7 @@ def run_pulse_height_distribution(
         module_id, pano_type, header, img = unpack_pano_image(pano_image)
 
         if pano_type == 'PULSE_HEIGHT':
-            img += np.random.poisson(lam=50, size=img.shape)
+            # img += np.random.poisson(lam=50, size=img.shape)
             ph_dist.update(img, module_id)
             curr_time = time.time()
             if curr_time - last_plot_update_time > plot_update_interval:
@@ -381,7 +381,7 @@ def run(args):
                         stub,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
-                        update_interval_seconds=np.random.uniform(1.0, 1.0),
+                        update_interval_seconds=1.0, #np.random.uniform(1.0, 1.0),
                         module_ids=module_ids,
                         wait_for_ready=True,
                         logger=logger
