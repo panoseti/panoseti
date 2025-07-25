@@ -1,0 +1,8 @@
+{
+  "data_dir": "/mnt/data10",
+  "update_interval_seconds": 0.1,
+  "force": true,
+  "simulate_daq": false,
+  "module_ids": [],
+  "comments": "Default Lick observatory config for daq1"
+}

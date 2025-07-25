@@ -1,0 +1,8 @@
+{
+  "data_dir": "simulated_data_dir",
+  "update_interval_seconds": 0.1,
+  "force": true,
+  "simulate_daq": true,
+  "module_ids": [24, 64],
+  "comments": "Configure the hp_io thread to track a simulated run directory"
+}

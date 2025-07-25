@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.grpc.daq_data";
+option java_outer_classname = "DaqDataProto";
+option objc_class_prefix = "DAQD";
+
+package daqdata;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+//import "google/protobuf/empty.proto";
+
+// The DaqData service definition.
+service DaqData {
+  // Stream science data [movie images | pulse-height images] from hashpipe.
+  // [reader: acquires server_state lock in shared state]
+  rpc StreamImages(StreamImagesRequest) returns (stream StreamImagesResponse) {}
+
+  // Stream hashpipe status buffer information from hashpipe. TODO: implement this
+  // [reader: acquires server_state lock in shared state]
+  rpc StreamHashpipeStatus(StreamHashpipeStatusRequest) returns (stream StreamHashpipeStatusResponse) {}
+
+  // Set the server's configuration attributes.
+  // Enables re-configuration without service restart.
+  // [writer: acquires server_state lock in exclusive state]
+  // TODO: implement
+  rpc SetConfiguration(SetConfigurationRequest) returns (SetConfigurationResponse) {}
+
+  // Initialize (or re-initialize) the hp_io thread.
+  rpc InitHpIo(InitHpIoRequest) returns (InitHpIoResponse) {}
+
+}
+
+// Image represents a panoseti movie-mode or pulse-height image and associated header metadata
+message PanoImage {
+  enum Type {
+    UNDEFINED = 0;
+    PULSE_HEIGHT = 1;
+    MOVIE = 2;
+  }
+  Type type = 1;
+  // image metadata struct
+  google.protobuf.Struct header = 2;
+  // array of 1-byte or 2-byte data.
+  repeated uint32 image_array = 3 [packed=true]; // protobufs have variable sized ints, so we can use int32 for both cases.
+  // image shape. Expect this field to be a list of two ints like [16, 16] or [32, 32]
+  repeated uint32 shape = 4 [packed=true];
+  int32 bytes_per_pixel = 5;
+  string file = 6;
+  uint32 frame_number = 7;
+  uint32 module_id = 8;
+}
+
+// StreamImagesResponse contains one PanoImage which may be movie or pulse-height
+message StreamImagesResponse {
+  string name = 1;
+  // UTC timestamp when this message was sent from the DAQ node
+  google.protobuf.Timestamp timestamp = 2;
+  // optional message for errors and other details
+  string message = 3;
+  // a panoseti image + self-describing metadata
+  PanoImage pano_image = 4;
+}
+
+// A StreamImagesRequest specifies which image types to stream.
+message StreamImagesRequest {
+  // Stream movie-mode panoseti images iff True
+  bool stream_movie_data = 1;
+  // Stream pulse-height panoseti images iff True
+  bool stream_pulse_height_data = 2;
+  // Time in seconds between StreamImagesResponse packets.
+  // Defaults to 1 second.
+  // Notes:
+  //  - For efficiency, update_interval_seconds is rounded up to the nearest integer multiple of the
+  //    update_interval of the hashpipe gRPC client thread.
+  double update_interval_seconds = 3;
+  // If empty, data from all modules is streamed.
+  // If at least one module_id is specified, only data from the specified module_ids are streamed.
+  repeated uint32 module_ids = 4 [packed=true];
+}
+
+// TODO: implement these messages.
+message StreamHashpipeStatusRequest {}
+message StreamHashpipeStatusResponse {}
+
+// TODO: implement these messages.
+message SetConfigurationRequest {}
+message SetConfigurationResponse {}
+
+
+message InitHpIoRequest {
+  reserved 5;
+  // path to directory containing an active observing run
+  string data_dir = 1;
+
+  // duration in seconds between hp_io snapshots
+  double update_interval_seconds = 2;
+
+  // iff True: force the recreation of the hp_io thread, if it exists, and cancel any active streaming clients.
+  // use this to guarantee the initialization success
+  bool force = 3;
+
+  // iff True: ignore data_dir and set hp_io to monitor a simulated daq directory.
+  // for debug only
+  bool simulate_daq = 4;
+
+  // data_products is now [DEPRECATED]
+  // data products the hp_io thread should broadcast
+  // movie-mode options:
+  //    - "img8": 8-bit pixel 32x32 movie-mode images
+  //    - "img16: 16-bit pixel 32x32 movie-mode images
+  // pulse-height options: "ph256", "ph1024"
+  //    - "ph256": 16-bit pixel 16x16 pulse-height images
+  //    - "ph1024: 16-bit pixel 32x32 pulse-height images
+//  repeated string data_products = 5 [deprecated=true];
+
+  // whitelist of module_ids to track
+  // If empty, data from all detected active modules are streamed [experimental]
+  // If at least one module_id is specified, only data from the specified module_ids in the given data_dir are tracked.
+  repeated uint32 module_ids = 6;
+}
+
+message InitHpIoResponse {
+  bool success = 1;
+}
+

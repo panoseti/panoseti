@@ -1,0 +1,29 @@
+# GRPC Python setup requirements
+coverage>=4.0
+cython >=3.1.1
+protobuf>=6.30.0,<7.0.0
+wheel>=0.29
+
+grpcio>=1.73.0
+grpcio_reflection>=1.73.0
+grpcio_tools>=1.73.0
+
+# observability
+rich>=14.0.0
+redis>=3.5.3
+snakeviz>=2.2.2
+
+# ublox control
+pyserial>=3.5
+pyubx2>=1.2.43
+redis>=3.5.3
+
+# data analysis
+seaborn>=0.13.2
+matplotlib>=3.8.4
+pandas>=2.3.0
+numpy>=1.26.4
+
+# panoseti utils
+netifaces >= 0.11.0
+psutil >= 7.0.0

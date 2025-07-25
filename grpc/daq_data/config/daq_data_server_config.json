@@ -1,0 +1,34 @@
+{
+    "init_from_default": false,
+    "default_hp_io_config_file": "hp_io_config_simulate_daq.json",
+    "max_reader_clients": 50,
+    "max_read_queue_size": 50,
+    "min_hp_io_update_interval_seconds": 0.01,
+    "max_client_update_interval_seconds": 60,
+    "max_reader_timeouts": 5,
+    "reader_timeout": 1,
+    "shutdown_grace_period": 5,
+    "hp_io_stop_timeout": 5.0,
+    "valid_data_products": ["img8", "img16", "ph256", "ph1024"],
+
+    "simulate_daq_cfg": {
+        "data_products": ["img16", "ph256"],
+        "movie_type": "img16",
+        "ph_type": "ph256",
+        "frames_per_pff": 300,
+        "sim_module_ids": [24, 64],
+        "real_module_id": 1,
+        "files": {
+            "data_dir": "simulated_data_dir",
+            "real_run_dir": "obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd",
+            "sim_run_dir_template": "module_{module_id}/obs_SIMULATE",
+            "movie_pff_template": "start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
+            "ph_pff_template": "start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_{module_id}.seqno_{seqno}.debug_TRUNCATED.pff",
+            "daq_active_file": "module_{module_id}.daq-active"
+        },
+        "early_exit": {
+            "do_exit": false,
+            "nframes_before_exit": 125
+        }
+    }
+}

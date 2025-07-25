@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+
+option java_multiple_files = true;
+option java_package = "io.grpc.ublox_control";
+option java_outer_classname = "UbloxControlProto";
+option objc_class_prefix = "UBXCTL";
+
+package ubloxcontrol;
+
+import "google/protobuf/struct.proto"; // standard type for JSON data structures
+import "google/protobuf/timestamp.proto"; // standard type for JSON data structures
+
+// Interface exported by the server connected to the ublox chip
+service UbloxControl {
+  // Configures a ZED-F9T chip and verifies all desired packets are being received.
+  rpc InitF9t(InitF9tRequest) returns (InitF9tResponse) {}
+
+  // Poll all messages defined in pyubx2/ubxtypes_poll.py matching a specified regex pattern
+  rpc PollMessage(PollRequest) returns (PollResponse) {}
+
+  // Start a stream of GNSS metadata packets from the server to the headnode.
+  // Requires that the F9t chip has previously been SET to stream the desired messages.
+  rpc CaptureUblox(CaptureUbloxRequest) returns (stream CaptureUbloxResponse) {}
+
+}
+
+// data returned by GET and POLL requests from the F9t chip
+message CaptureUbloxResponse {
+  enum Type {
+    UNDEFINED = 0;
+    DATA = 1;
+    ERROR = 2;
+  }
+  Type type = 1;
+  // message name for the ublox packet. pyubx2/ubxtypes_poll.py for supported names
+  string name = 2;
+  // dictionary of parsed data in the specified packet
+  google.protobuf.Struct parsed_data = 3;
+  // UTC timestamp when this message was received by the DAQ node
+  google.protobuf.Timestamp timestamp = 4;
+  // optional message for errors and other details
+  string message = 5;
+}
+
+
+message PollRequest {
+  // regex patterns specifying which messages to poll
+  repeated string patterns = 1;
+}
+
+message PollResponse {
+  // list of messages for each message matching the patterns sent in PollRequest
+  repeated CaptureUbloxResponse gnss_packet = 1;
+}
+
+// A CaptureUbloxRequest specifies which messages to stream with the CaptureUblox RPC.
+//
+// By default all packets received from the u-blox chip are sent.
+// If at least one regex pattern is given, only message names that
+// match at least of the given patterns will be streamed.
+message CaptureUbloxRequest {
+  // optional: list of regex patterns for names to stream to the headnode
+  repeated string patterns = 1;
+}
+
+// An InitF9tRequest is sent by the InitF9t RPC.
+//
+// It contains a JSON object specifying F9t configuration.
+message InitF9tRequest {
+  // JSON-formatted configuration for an F9T
+  google.protobuf.Struct f9t_cfg = 1;
+}
+
+message TestCase {
+  enum TestResult {
+    // default state
+    UNDEFINED = 0;
+    // the test passed
+    PASS = 1;
+    // the test failed
+    FAIL = 2;
+  }
+  // test name
+  string name = 1;
+  // test result
+  TestResult result = 2;
+  // error message
+  string message = 3;
+}
+
+// A InitF9tResponse is returned by the InitF9t RPC.
+//
+// It returns information regarding the validity of the provided config file
+// and which validation checks passed.
+message InitF9tResponse {
+  enum InitStatus {
+    // default state
+    UNDEFINED = 0;
+    // the provided F9tConfig was invalid (see the message field for more)
+    INVALID_CONFIG = 1;
+    // the device was successfully configured and passed all validation checks
+    SUCCESS = 2;
+    // at least one verification test failed
+    FAILURE = 3;
+  }
+  InitStatus init_status = 1;
+  // any message regarding the initialization operation
+  string message = 2;
+  // return the current active f9t config
+  google.protobuf.Struct f9t_cfg = 3;
+  // test results
+  repeated TestCase test_results = 4;
+}
