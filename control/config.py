@@ -322,8 +322,8 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
                 # This IP is not important, so I put a static IP here.
                 # It's just for generating a ph packet
-                daq_node_ip_addr = daq_config['head_node_ip_addr']
-                quabo.data_packet_destination(daq_node_ip_addr)
+                #daq_node_ip_addr = daq_config['head_node_ip_addr']
+                #quabo.data_packet_destination(daq_node_ip_addr)
                 quabo.send_daq_params(daq_start)
                 time.sleep(1)
                 quabo.send_daq_params(daq_stop)
