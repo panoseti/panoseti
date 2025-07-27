@@ -10,7 +10,7 @@ class tftpw(object):
             os.makedirs('logs')
         self.logger = logging.getLogger('PANOSETI.TFTPW')
         self.logger.setLevel(logging.DEBUG)
-        handler = logging.FileHandler('logs/tftpy.log', mode='w')
+        handler = logging.FileHandler('logs/quabo_tftp.log', mode='w')
         logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(message)s')
         handler.setFormatter(logformat)
         self.logger.addHandler(handler)
@@ -39,6 +39,7 @@ class tftpw(object):
     
     #get flash_id
     def get_flashuid(self,filename='flashuid'):
+        self.logger.info('get_flashuid: filename - %s'%filename)
         self.client.download('/flashuid',filename)
         print('Get flash Device ID successfully!')
     
@@ -46,6 +47,7 @@ class tftpw(object):
     #space     : 0x00E00000--0x00F0FFFF
     #size    : 1MB + 64K BYTES = 1114112 BYTES
     def get_wrpc_filesys(self, filename='wrpc_filesys',addr=0x00e00000):
+        self.logger.info('get_wrpc_filesys: filename - %s, addr - 0x%08x'%(filename, addr))
         fp_w = open(filename,'wb')
         #we can get 65535 bytes each time, so we need to repeat the download operation for 16 times
         #for convenience, we read 32768 bytes each time
@@ -73,6 +75,7 @@ class tftpw(object):
     #space    : 0x00F10000--0x0100FFFF
     #size    : 1MB = 1048576 BYTES
     def get_mb_file(self, filename='mb_file',addr=0x00F10000):
+        self.logger.info('get_mb_file: filename - %s, addr - 0x%08x'%(filename, addr))
         fp_w = open(filename,'wb')
         #we can get 65535 bytes each time, so we need to repeat the download operation for 16 times
         #for convenience, we read 32768 bytes each time
@@ -97,6 +100,7 @@ class tftpw(object):
         
     #put wprc_filesys, starting from 0x00E00000
     def put_wrpc_filesys(self,filename='wrpc_filesys', addr=0x00E00000):
+        self.logger.info('put_wrpc_filesys: filename - %s, addr - 0x%08x'%(filename, addr))
         offset = str(hex(addr))
         remote_filename = '/flash.' + offset[2:]
         #print('remote_filename  ',remote_filename)
@@ -110,6 +114,7 @@ class tftpw(object):
         
     #put mb file, starting from 0x00F10000
     def put_mb_file(self,filename='mb_file', addr=0x00F10000):
+        self.logger.info('put_mb_file: filename - %s, addr - 0x%08x'%(filename, addr))
         offset = str(hex(addr))
         remote_filename = '/flash.' + offset[2:]
         #print('remote_filename  ',remote_filename)
@@ -123,6 +128,7 @@ class tftpw(object):
         
     #put bin file,starting from 0x01010000
     def put_bin_file(self,filename,addr=0x01010000):
+        self.logger.info('put_bin_file: filename - %s, addr - 0x%08x'%(filename, addr))
         offset = str(hex(addr))
         remote_filename = '/flash.' + offset[2:]
         #print('remote_filename :',remote_filename)
@@ -130,6 +136,7 @@ class tftpw(object):
         print('Upload %s to panoseti bin file space successfully!' %filename)
         
     def reboot(self,addr=0x00010100):
+        self.logger.info('reboot: addr - 0x%08x'%addr)
         remote_filename = '/progdev'
         filename = 'tmp.prog'
         fp = open(filename,'wb')
