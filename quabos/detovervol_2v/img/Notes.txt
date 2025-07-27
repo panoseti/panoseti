@@ -1,4 +1,0 @@
-Image mode only
-2V
-bp
-gainmap2pe 
