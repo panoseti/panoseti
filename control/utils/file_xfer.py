@@ -134,13 +134,19 @@ def copy_config_files(daq_config, run_dir, verbose=False):
 #
 def copy_daq_files(daq_config):
     for node in daq_config['daq_nodes']:
-        copy_file_to_node('../daq/hashpipe.so', daq_config, node)
-        copy_file_to_node('start_daq.py', daq_config, node)
-        copy_file_to_node('stop_daq.py', daq_config, node)
-        copy_file_to_node('status_daq.py', daq_config, node)
-        copy_file_to_node('util.py', daq_config, node)
-        copy_file_to_node('../util/pff.py', daq_config, node)
-        copy_file_to_node('video_daq.py', daq_config, node)
+        try:
+            copy_file_to_node('../daq/hashpipe.so', daq_config, node)
+        except:
+            print('**************************************************************************')
+            print('No ../daq/hashpipe.so')
+            print('You may want to compile it on the daq node.')
+            print('**************************************************************************')
+        copy_file_to_node('daq_scripts/start_daq.py', daq_config, node)
+        copy_file_to_node('daq_scripts/stop_daq.py', daq_config, node)
+        copy_file_to_node('daq_scripts/status_daq.py', daq_config, node)
+        copy_file_to_node('utils/util.py', daq_config, node)
+        copy_file_to_node('utils/pff.py', daq_config, node)
+        copy_file_to_node('daq_scripts/video_daq.py', daq_config, node)
 
 if __name__ == "__main__":
 
