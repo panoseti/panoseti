@@ -1,0 +1,33 @@
+{
+    "modules": [
+        {
+            "ip_addr": "192.168.3.248",
+            "port_forwarding": {
+                "status": false,
+                "gw_ip": "192.168.88.152",
+                "reboot_port": [
+                    69,
+                    60004,
+                    60005,
+                    60006
+                ],
+                "cmd_port": [
+                    60000,
+                    60001,
+                    60002,
+                    60003
+                ]
+            }
+        }
+    ],
+    "daq_nodes": [
+        {
+            "ip_addr": "192.168.3.83",
+            "port_forwarding": {
+                "status": false,
+                "gw_ip": "192.168.88.152",
+                "port": 22
+            }
+        }
+    ]
+}

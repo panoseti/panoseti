@@ -15,8 +15,7 @@
 # This can be used as a module or a script.
 
 import sys, os
-sys.path.insert(0, '../util')
-import config_file
+from utils import config_file
 
 # turn power on or off
 #
