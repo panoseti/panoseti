@@ -15,12 +15,11 @@
 #
 # The IP addr of the RPI and the socket # come from a config file
 # This can be used as a module or a script.
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import config_file
 
-import sys
-import os
 import argparse
-sys.path.insert(0, '../util')
-import config_file
 
 # TODO: add this config to obs_config instead of hardcoding it here.
 rpis = {

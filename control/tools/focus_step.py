@@ -9,8 +9,11 @@
 # end       ending value
 # step      step size
 # dt        sec per step
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import sys, time, quabo_driver
+import time
+from driver import quabo_driver
 
 def main(ip_addr, start, end, step, dt):
     q = quabo_driver.QUABO(ip_addr)

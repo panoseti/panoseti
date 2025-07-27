@@ -8,15 +8,15 @@
 #
 # It does this by creating a process on the DAQ node that
 # monitors the relevant PFF file and returns frames from the end
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import sys, subprocess, pty
+import subprocess, pty
 import numpy as np
 
-import show_pff, util
+from tools import show_pff
 
-sys.path.insert(0, '../util')
-
-import config_file, pff
+from utils import config_file, pff, util
 
 def main(quabo_uids, module_id, dp):
     if module_id < 0:

@@ -10,14 +10,14 @@ this code resolves.
 See the Hamamatsu datasheet for its MPPC arrays: S13361-3050 series
 for more info about the detector constants used in this script.
 """
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import time, sys, os
+import time
 import redis
-import redis_utils
-import quabo_driver
-import util
-sys.path.insert(0, '../util')
-import config_file
+from driver import quabo_driver 
+
+from utils import config_file, util, redis_utils
 import logging
 #-------------- CONSTANTS ---------------#
 # HV offset

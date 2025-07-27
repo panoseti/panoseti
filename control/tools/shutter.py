@@ -4,14 +4,13 @@
 # if the ip is not specified, we will open the shutter on all of the used modules.
 
 import sys, os, subprocess, time, datetime, json
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils import util, file_xfer
+from driver.quabo_tftp import tftpw
+from driver import quabo_driver
+from utils import config_file, pixel_coords
 from argparse import ArgumentParser
-import util, file_xfer, quabo_driver
-from panoseti_tftp import tftpw
-
-sys.path.insert(0, '../util')
-import pixel_coords
-import config_file
-
 # check the ip address
 # shutter controller is connected to quabo1
 # 

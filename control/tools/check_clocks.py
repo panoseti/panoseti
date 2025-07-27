@@ -3,14 +3,17 @@
 # 'check_clocks' is a class for checking time synchronization in PANOSETI system.
 # There are several functions in this class for getting time from GPS receiver, quabo and WRS.
 # 
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import time
 import serial
 from datetime import datetime, timezone
 import socket
 import paramiko
 import struct
-import qstart
-import qstart, config_file
+from check_clocks import qstart
+from utils import config_file
 
 # this is the offset time between tai and utc
 LEAP_SEC = 37
