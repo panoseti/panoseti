@@ -3,19 +3,25 @@
 # functions to read and parse config files
 
 import os,sys,json
-
-obs_config_filename = 'obs_config.json'
-daq_config_filename = 'daq_config.json'
-data_config_filename = 'data_config.json'
-quabo_uids_filename = 'quabo_uids.json'
-quabo_info_filename = '../quabos/quabo_info.json'
-detector_info_filename = '../quabos/detector_info.json'
-quabo_calib_filename = '../quabos/detovervol_%dv/%s/quabo_calib_%s.json'
-pointing_filename = 'pointing.json'
+# TODO: we need to improve the file path
+# configs file
+obs_config_filename = 'configs/obs_config.json'
+daq_config_filename = 'configs/daq_config.json'
+data_config_filename = 'configs/data_config.json'
+network_config_filename = 'configs/network_config.json'
+daemons_config_filename = 'configs/daemons.json'
+firmware_config_filename = 'configs/firmware.json'
+# quabo realted files
+quabo_info_filename = 'quabos/quabo_info.json'
+detector_info_filename = 'quabos/detector_info.json'
+quabo_calib_filename = 'quabos/detovervol_%dv/%s/quabo_calib_%s.json'
+# These files are creatd during the run,
+# and will be copied to the final data dir
+quabo_uids_filename = 'tmp/quabo_uids.json'
 quabo_ph_baseline_filename = 'tmp/quabo_ph_baseline.json'
-sw_info_filename = 'sw_info.json'
-quabo_config_filename = 'quabo_config_*.json'
-network_config_filename = 'network_config.json'
+sw_info_filename = 'tmp/sw_info.json'
+quabo_config_filename = 'tmp/quabo_config_*.json'
+
 # list of config files copied to data dir
 config_file_names = [
     obs_config_filename, daq_config_filename, data_config_filename,
@@ -105,7 +111,7 @@ def get_obs_config(dir='.'):
     assign_numbers(c)
     return c
 
-def get_daq_config():
+def get_daq_config(dir='.'):
     check_config_file(daq_config_filename)
     with open(daq_config_filename) as f:
         s = f.read()
@@ -130,6 +136,7 @@ def get_data_config(dir='.'):
     return conf
 
 def get_network_config(dir='.'):
+    check_config_file(network_config_filename, dir)
     path = '%s/%s'%(dir, network_config_filename)
     # as the network config file is not designed to the users,
     # we check it manually, instead of using check_config_file.
@@ -141,6 +148,22 @@ def get_network_config(dir='.'):
         print("***********Warning: No network config file! **************")
         print("******All the devices should be in the same subnet *******")
         conf = {}
+    return conf
+
+def get_firmware_config(dir='.'):
+    check_config_file(firmware_config_filename, dir)
+    path = '%s/%s'%(dir, firmware_config_filename)
+    with open(path) as f:
+        c = f.read()
+    conf = json.loads(c)
+    return conf
+
+def get_daemons_config(dir='.'):
+    check_config_file(daemons_config_filename, dir)
+    path = '%s/%s'%(dir, daemons_config_filename)
+    with open(path) as f:
+        c = f.read()
+    conf = json.loads(c)
     return conf
 
 def get_quabo_uids():

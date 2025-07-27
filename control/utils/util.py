@@ -1,13 +1,13 @@
 # control script utilities
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import os, sys, subprocess, signal, socket, datetime, time, psutil, shutil
+import subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
-# TODO: we need to find a better way to deal with this...
-try:
-    import quabo_driver
-except:
-    pass
+from driver import quabo_driver
+from utils import config_file
+
 import logging
 #-------------- DEFAULTS ---------------
 
@@ -15,7 +15,7 @@ default_max_file_size_mb = 0        # no limit
 
 #-------------- FILE NAMES ---------------
 
-run_name_file = 'current_run'
+run_name_file = 'tmp/current_run'
     # stores the name of the current run
 run_symlink = 'run'
     # name of symlink to current run
@@ -28,15 +28,15 @@ hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
 # files written by stop.py
-recording_ended_filename = 'recording_ended'
-collect_complete_filename = 'collect_complete'
-run_complete_filename = 'run_complete'
+recording_ended_filename = 'tmp/recording_ended'
+collect_complete_filename = 'tmp/collect_complete'
+run_complete_filename = 'tmp/run_complete'
 
-hk_recorder_name = './store_redis_data.py'
+hk_recorder_name = 'tools/store_redis_data.py'
 
-hv_updater_name = './hv_updater.py'
+hv_updater_name = 'tools/hv_updater.py'
 
-module_temp_monitor_name = './module_temp_monitor.py'
+module_temp_monitor_name = 'tools/module_temp_monitor.py'
 
 hashpipe_name = 'hashpipe'
 
@@ -49,7 +49,7 @@ hp_stdout_prefix = 'hp_stdout_'
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 redis_daemons = [
-    'capture_gps.py', 'capture_hk.py', 'capture_wr.py', 'storeInfluxDB.py'
+    'storeInfluxDB.py'
 ]
 #capture_power.py
 
@@ -89,8 +89,9 @@ def local_ip():
         for a, b in addrs.items():
             for c in b:
                 z = c['addr']
-                if (z.startswith('192.')):
-                    ips.append(z)
+                # TODO: Do we have to filter the IPs??
+                #if (z.startswith('192.')):
+                ips.append(z)
     if not ips:
         raise Exception("can't get local IP")
     else:
@@ -196,6 +197,12 @@ def start_daemon(prog):
 # start daemons that write HK/GPS/WR data to Redis
 #
 def start_redis_daemons():
+    # get daemons from daemons.json
+    daemons_config = config_file.get_daemons_config()
+    daemons = daemons_config['daemons']
+    for k,v in daemons.items():
+        if v:
+            redis_daemons.append('capture_%s.py'%k)
     for daemon in redis_daemons:
         start_daemon(daemon)
 
@@ -209,6 +216,12 @@ def stop_redis_daemons():
                 print('stopped %s'%d)
 
 def show_redis_daemons():
+    # TODO: create a method for the following code
+    daemons_config = config_file.get_daemons_config()
+    daemons = daemons_config['daemons']
+    for k,v in daemons.items():
+        if v:
+            redis_daemons.append('capture_%s.py'%k)
     for daemon in redis_daemons:
         if is_script_running(daemon):
             print('%s is running'%daemon)
@@ -216,6 +229,11 @@ def show_redis_daemons():
             print('%s is not running'%daemon)
 
 def are_redis_daemons_running():
+    daemons_config = config_file.get_daemons_config()
+    daemons = daemons_config['daemons']
+    for k,v in daemons.items():
+        if v:
+            redis_daemons.append('capture_%s.py'%k)
     for daemon in redis_daemons:
         if not is_script_running(daemon):
             return False
