@@ -550,9 +550,9 @@ def do_disk_space(data_config, daq_config, verbose=False):
 
 def do_shutter(action):
     if action == "open":
-        os.system("./shutter.py --open")
+        os.system("tools/shutter.py --open")
     elif action == "close":
-        os.system("./shutter.py --close")
+        os.system("tools/shutter.py --close")
 
 
 
