@@ -1,0 +1,74 @@
+{
+    "name": "Lick",
+    "comment": "Default Lick config: both domes, 3 modules",
+    "wps_astrograph": {
+        "url": "http://admin:epowerpanoseti@astrograph-power",
+        "quabo_socket": 1
+    },
+    "wps_barnard": {
+        "url": "http://admin:epowerpanoseti@barnard-power",
+        "quabo_socket": 1
+    },
+    "wps_crocker": {
+        "url": "http://admin:epowerpanoseti@crocker-power",
+        "quabo_socket": 1
+    },
+    "wr_ip_addr": "wrs",
+    "gps_port": "/dev/ttyUSB0",
+    "detector_overvoltage": 3,
+    "domes": [
+        {
+            "name": "astrograph",
+            "obslat": 37.3425,
+            "obslon": -121.63777,
+            "obsalt": 1283,
+            "modules": [
+                {
+                    "name": "West",
+                    "mobo_serialno": "M12",
+                    "quabo_version": "qfp",
+                    "ip_addr": "192.168.0.4",
+                    "wps": "wps_astrograph",
+                    "azimuth": 182.9870,
+                    "elevation": 79.4016,
+                    "position_angle": -1.4321
+		        }
+            ]
+        },
+        {
+            "name": "barnard",
+            "obslat": 37.339166,
+            "obslon": -121.64416,
+            "obsalt": 1239,
+            "modules": [
+                {
+                    "mobo_serialno": "M13",
+                    "quabo_version": ["qfp", "bga", "qfp", "bga"],
+                    "ip_addr": "192.168.0.12",
+                    "wps": "wps_barnard",
+                    "azimuth": 185.0020,
+                    "elevation": 78.8126,
+                    "position_angle": -5.3558
+		        }
+            ]
+        },
+        {
+            "name": "crocker",
+            "obslat": 0.00,
+            "obslon": 0.00,
+            "obsalt": 0.00,
+            "modules": [
+                {
+                    "name": "East",
+                    "mobo_serialno": "M11",
+                    "quabo_version": "qfp",
+                    "ip_addr": "192.168.3.248",
+                    "wps": "wps_crocker",
+                    "azimuth": 0.00,
+                    "elevation": 0.00,
+                    "position_angle": 0.00
+                }
+            ]
+        }
+    ]
+}

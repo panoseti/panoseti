@@ -10,13 +10,13 @@ firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess, time, datetime, json, statistics
 import logging
-import util, file_xfer, quabo_driver
-from panoseti_tftp import tftpw
-from argparse import ArgumentParser
+from utils import util, file_xfer
+from driver.quabo_tftp import tftpw
+from driver import quabo_driver
+from utils import pixel_coords
+from utils import config_file
 
-sys.path.insert(0, '../util')
-import pixel_coords
-import config_file
+from argparse import ArgumentParser
 
 # print summary of obs and daq config files
 #
