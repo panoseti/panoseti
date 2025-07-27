@@ -229,10 +229,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 is_qfp = False
                 no_cali = True
             serialno = qi['serialno'][3:]
-            # try to find the detector overvoltage in obs_config.abs
+            # try to find the detector overvoltage in data_config.json
             # if we can't find it, we will use 3v by default.
             try:
-                detovervol = obs_config['detector_overvoltage']
+                detovervol = data_config['detector_overvoltage']
             except:
                 detovervol = 3
             
