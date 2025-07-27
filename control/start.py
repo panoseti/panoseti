@@ -22,15 +22,15 @@
 
 import os, sys, traceback, shutil, time
 from glob import glob
-import util, file_xfer, quabo_driver, stop, session_stop
-from sw_info import get_sw_info
+from utils import util, file_xfer
+from driver import quabo_driver
+import stop, session_stop
+from tools.sw_info import get_sw_info
 import socket
+from utils import pff, config_file
+
 import logging
 from argparse import ArgumentParser
-
-sys.path.insert(0, '../util')
-
-import pff, config_file
 
 verbose = False
 
@@ -163,7 +163,6 @@ def make_run_dirs(run_name, daq_config):
         files = glob(f)
         for file in files:
             shutil.copyfile(file, '%s/%s'%(run_dir, file))
-    
      
     # make module and run directories on DAQ nodes
     #

@@ -6,10 +6,9 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import util , sys, struct
-from panoseti_tftp import tftpw
-sys.path.insert(0, '../util')
-import config_file
+import sys, struct
+from driver.quabo_tftp import tftpw
+from utils import config_file, util
 import json
 import argparse
 from argparse import ArgumentParser

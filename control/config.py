@@ -82,8 +82,7 @@ def do_reboot(modules, quabo_uids, network_config):
 def do_loads(modules, quabo_uids, quabo_info, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_loads')
     # TODO The hard-coded path may not be good
-    with open('firmware/firmware.json','r') as f:
-        firmware = json.load(f)
+    firmware = config_file.get_firmware_config()
     firmware_silver_qfp = 'firmware/' + firmware['qfp']
     firmware_silver_bga = 'firmware/' + firmware['bga']
     for module in modules:

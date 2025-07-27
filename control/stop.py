@@ -15,10 +15,11 @@
 #   --run X             clean up run X (default: read from current_run)
 
 import os, sys
-import collect, quabo_driver
-from util import *
-sys.path.insert(0, '../util')
-import pff, config_file
+from utils import collect
+from driver import quabo_driver
+from utils.util import *
+from utils import pff, config_file
+
 from argparse import ArgumentParser
 import logging
 # write message to error log
