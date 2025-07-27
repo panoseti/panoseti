@@ -419,7 +419,10 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
     d = datetime.datetime.utcnow()
     x['date'] = d.isoformat()
     x['quabos'] = quabos;
-    with open(config_file.quabo_ph_baseline_filename, "w") as f:
+    # create a tmp directory
+    baseline_file = config_file.quabo_ph_baseline_filename
+    os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
+    with open(baseline_file, "w") as f:
         f.write(json.dumps(x, indent=4))
 
 
@@ -521,7 +524,7 @@ def do_disk_space(data_config, daq_config, verbose=False):
             else:
                 if verbose:
                     print('      space: %.2fTB'%(free/1e12))
-
+    # TODO: this is hard-coded??
     head_node_vols = json.loads(open("/home/panosetigraph/web/head_node_volumes.json").read())
     hnd = daq_config['head_node_data_dir']
     hnd = os.path.realpath(hnd)
