@@ -1,0 +1,8 @@
+{
+    "daemons": {
+        "hk": true,
+        "gps": true,
+        "power": true,
+        "wr": true
+    }
+}
