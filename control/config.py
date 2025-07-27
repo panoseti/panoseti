@@ -81,6 +81,11 @@ def do_reboot(modules, quabo_uids, network_config):
 
 def do_loads(modules, quabo_uids, quabo_info, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_loads')
+    # TODO The hard-coded path may not be good
+    with open('firmware/firmware.json','r') as f:
+        firmware = json.load(f)
+    firmware_silver_qfp = 'firmware/' + firmware['qfp']
+    firmware_silver_bga = 'firmware/' + firmware['bga']
     for module in modules:
         for i in range(4):
             if not util.is_quabo_alive(module, quabo_uids, i):
@@ -93,8 +98,10 @@ def do_loads(modules, quabo_uids, quabo_info, network_config):
             logger.info('Reboot Port: %d', port)
             if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
                 fw = firmware_silver_qfp
+                logger.info('Loading firmware: %s'%firmware_silver_qfp)
             else:
                 fw = firmware_silver_bga
+                logger.info('Loading firmware: %s'%firmware_silver_bga)
             x = tftpw(real_ip, port)
             print('loading %s into %s'%(fw, ip_addr))
             x.put_bin_file(fw)
