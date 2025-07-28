@@ -5,8 +5,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
-from driver import quabo_driver
-from utils import config_file
+
+# this sccipt will be copied to daq nodes, 
+# but the quabo_driver and config_file won't be copied to daq nodes
+# TODO: we may need to improve this 
+try:
+    from driver import quabo_driver
+    from utils import config_file
+except:
+    pass
 
 import logging
 #-------------- DEFAULTS ---------------
