@@ -35,9 +35,9 @@ hk_file_name = 'hk.pff'
     # housekeeping file in run dir
 
 # files written by stop.py
-recording_ended_filename = 'tmp/recording_ended'
-collect_complete_filename = 'tmp/collect_complete'
-run_complete_filename = 'tmp/run_complete'
+recording_ended_filename = 'recording_ended'
+collect_complete_filename = 'collect_complete'
+run_complete_filename = 'run_complete'
 
 hk_recorder_name = 'tools/store_redis_data.py'
 

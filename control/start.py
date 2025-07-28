@@ -162,7 +162,8 @@ def make_run_dirs(run_name, daq_config):
     for f in config_file.config_file_names:
         files = glob(f)
         for file in files:
-            shutil.copyfile(file, '%s/%s'%(run_dir, file))
+            fparts = file.split('/')
+            shutil.copyfile(file, '%s/%s'%(run_dir, fparts[-1]))
      
     # make module and run directories on DAQ nodes
     #
