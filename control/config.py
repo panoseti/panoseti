@@ -348,7 +348,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
 #
 def do_mask_config(modules, data_config, network_config, verbose=False):
     logger = logging.getLogger('PANOSETI.Config.do_mask_config')
-    qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
+    qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
     do_ph = 'pulse_height' in data_config.keys()
     qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
@@ -388,7 +388,9 @@ def do_mask_config(modules, data_config, network_config, verbose=False):
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict)
+            quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',quabo.ip_addr))
             quabo.send_goe_mask(qc_dict)
+            quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',quabo.ip_addr))
             quabo.close()
 
 # compute PH baselines on quabos and write to file
