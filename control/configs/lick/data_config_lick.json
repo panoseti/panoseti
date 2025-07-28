@@ -1,5 +1,6 @@
 {
     "run_type": "eng",
+    "detector_overvoltage": 3,
     "gain": 60,
     "image": {
         "integration_time_usec": 1000,
@@ -13,6 +14,5 @@
         "rate": 7,
         "level": 0,
         "width": 15
-
     }
 }

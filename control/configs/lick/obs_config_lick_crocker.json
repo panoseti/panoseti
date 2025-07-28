@@ -7,7 +7,6 @@
     },
     "wr_ip_addr": "wrs",
     "gps_port": "/dev/ttyUSB0",
-    "detector_overvoltage": 3,
     "domes": [
         {
             "name": "crocker",
@@ -23,7 +22,7 @@
                     "wps": "wps_crocker",
                     "azimuth": 182.8320,
                     "elevation": 78.3467,
-                    "position_angle": -1.7899 
+                    "position_angle": -1.7899
                 }
             ]
         }

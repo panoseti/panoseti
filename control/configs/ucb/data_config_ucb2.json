@@ -1,5 +1,6 @@
 {
     "run_type": "eng",
+    "detector_overvoltage": 3,
     "gain": 60,
     "max_file_size_mb": 0,
     "pulse_height": {

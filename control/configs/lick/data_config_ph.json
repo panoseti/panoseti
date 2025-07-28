@@ -1,9 +1,10 @@
 {
     "run_type": "eng-test",
+    "detector_overvoltage": 3,
     "gain": 60,
     "pulse_height": {
-	    "pe_threshold": 7.5,
-		"two_pixel_trigger": 0,
-		"three_pixel_trigger": 0
+        "pe_threshold": 7.5,
+        "two_pixel_trigger": 0,
+        "three_pixel_trigger": 0
     }
 }

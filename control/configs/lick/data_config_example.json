@@ -1,5 +1,6 @@
 {
     "run_type": "eng",
+    "detector_overvoltage": 3,
     "gain": 60,
     "image": {
         "integration_time_usec": 20,
@@ -9,8 +10,8 @@
     },
     "pulse_height": {
         "pe_threshold": 12.5,
-		"two_pixel_trigger": 0,
-		"three_pixel_trigger": 0,
+        "two_pixel_trigger": 0,
+        "three_pixel_trigger": 0,
         "any_trigger": {
             "group_ph_frames": 0
         }
@@ -18,11 +19,32 @@
     "long_pulse": {
         "octaves": 16,
         "threshold_sigma": [
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0,
+            3.0
         ]
+    },
+    "flash_params": {
+        "rate": 3,
+        "level": 12,
+        "width": 5
+    },
+    "stim_params": {
+        "rate": 2,
+        "level": 255
     },
     "max_file_size_mb": 1000
 }

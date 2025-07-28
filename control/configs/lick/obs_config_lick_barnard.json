@@ -7,7 +7,6 @@
     },
     "wr_ip_addr": "wrs",
     "gps_port": "/dev/ttyUSB0",
-    "detector_overvoltage": 3,
     "domes": [
         {
             "name": "barnard",
@@ -17,13 +16,18 @@
             "modules": [
                 {
                     "mobo_serialno": "M13",
-                    "quabo_version": ["qfp", "qfp", "qfp", "qfp"],
+                    "quabo_version": [
+                        "qfp",
+                        "qfp",
+                        "qfp",
+                        "qfp"
+                    ],
                     "ip_addr": "192.168.0.12",
                     "wps": "wps_barnard",
                     "azimuth": 186.23,
                     "elevation": 63.377,
                     "position_angle": 12.533
-		        }
+                }
             ]
         }
     ]

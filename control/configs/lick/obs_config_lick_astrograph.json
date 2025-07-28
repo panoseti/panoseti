@@ -7,7 +7,6 @@
     },
     "wr_ip_addr": "wrs",
     "gps_port": "/dev/ttyUSB0",
-    "detector_overvoltage": 3,
     "domes": [
         {
             "name": "astrograph",
@@ -24,7 +23,7 @@
                     "azimuth": 187.01,
                     "elevation": 62.912,
                     "position_angle": -89.105
-		        }
+                }
             ]
         }
     ]

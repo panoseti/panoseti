@@ -1,16 +1,10 @@
 {
-    "run_type": "engineering",
+    "run_type": "eng-test",
+    "detector_overvoltage": 3,
+    "gain": 60,
     "image": {
-        "integration_time_usec": 1000
-    },
-    "max_file_size_mb": 1000,
-    "software_pulse": {
-        "octaves": 16,
-        "threshold_sigma": [
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0,
-             3.0, 3.0, 3.0, 3.0
-        ]
+        "integration_time_usec": 5000,
+        "pe_threshold": 2,
+        "quabo_sample_size": 16
     }
 }
