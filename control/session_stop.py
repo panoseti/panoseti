@@ -2,12 +2,9 @@
 
 import sys, os
 
-import power, util
-
-import skymap_helper
-
-sys.path.insert(0, '../util')
-import config_file
+import power
+from tools import skymap_helper
+from utils import config_file, util
 
 def close_domes(obs_config):
     print('Close the shutters of these domes:')
@@ -33,7 +30,7 @@ if __name__ == "__main__":
     # gen skymap_info.json first, then stop the session
     skymap_helper.stop_skymap_info_gen()
     # get run name, and copy the skymap_info.json to the run dir
-    with open('skymap_info_dir') as f:
+    with open('tmp/skymap_info_dir') as f:
         skymap_info_dir = f.read().strip()
     run_dir = daq_config['head_node_data_dir'] + '/' + skymap_info_dir
     print(run_dir)

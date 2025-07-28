@@ -3,6 +3,7 @@
 # functions to read and parse config files
 
 import os,sys,json
+import logging
 # TODO: we need to improve the file path
 # configs file
 obs_config_filename = 'configs/obs_config.json'
@@ -194,7 +195,15 @@ def get_detector_info():
         try:
             d[str(det['serialno'])] = float(det['operating_voltage'])
         except:
-            d[str(det['serialno'])] = float(det['breakdown_voltage']) + data_config['detector_overvoltage']
+            try:
+                d[str(det['serialno'])] = float(det['breakdown_voltage']) + data_config['detector_overvoltage']
+            except:
+                d[str(det['serialno'])] = float(det['breakdown_voltage']) + 3
+    if 'detector_overvoltage' not in data_config:
+        print('**************************************************************************')
+        print('detector_overvoltage is not set in data_config.json')
+        print('Use the default overvoltage: 3V')
+        print('**************************************************************************')
     return d;
 
 # get quabo info as an array indexed by uid

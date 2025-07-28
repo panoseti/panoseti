@@ -36,7 +36,7 @@ MAX_TEMP = 60.0
 quabo_info = config_file.get_quabo_info()
 detector_info = config_file.get_detector_info()
 quabo_uids = config_file.get_quabo_uids()
-
+data_config = config_file.get_data_config()
 # Set of quabos whose detectors have been turned off by this script.
 quabos_off = set()
 
@@ -205,6 +205,11 @@ if __name__ == "__main__":
     util.create_logger(logfile, 'PANOSETI.HVUpdater', 'a')
     logger = logging.getLogger('PANOSETI.HVUpdater')
     logger.info('************************************')
+    if 'detector_overvoltage' not in data_config:
+        logger.warning('detector_overvoltage is not set in data_config.json')
+        logger.warning('Use the default overvoltage: 3V.')
+    else:
+        logger.info('Use the overvoltage: %d'%data_config['detector_overvoltage'])
     try:
         main()
     except Exception as e:

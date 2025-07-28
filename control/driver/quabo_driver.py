@@ -181,7 +181,7 @@ class QUABO:
     # set high voltage for all 4 channels
     #
     def hv_set(self, values):
-        self.logger.info('hv_set: val - %d'%values)
+        self.logger.info('hv_set: val - %d %d %d %d'%(values[0], values[1], values[2], values[3]))
         cmd = self.make_cmd(0x02)
         for i in range(4):
             cmd[2*i+2] = values[i] & 0xff
