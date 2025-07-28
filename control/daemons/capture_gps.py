@@ -7,7 +7,10 @@
 # computer and added to each set of values with a variable 
 # labeled as 'Computer_UTC'.
 ##############################################################
-import time, sys
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import time
 import serial
 import struct
 import redis
@@ -15,10 +18,8 @@ from influxdb import InfluxDBClient
 from signal import signal, SIGINT
 from datetime import datetime
 from datetime import timezone
-from redis_utils import *
-import util
-sys.path.insert(0, '../util')
-import config_file
+from utils.redis_utils import *
+from utils import util, config_file
 
 
 BYTEORDER = 'big'

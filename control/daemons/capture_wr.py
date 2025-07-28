@@ -8,18 +8,20 @@
 # 'Computer_UTC'.
 ##############################################################
 import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from pathlib import Path
+
 import netsnmp
 import redis
 import time
 from signal import signal, SIGINT
 import time
 from datetime import datetime
-from redis_utils import *
-import util
-sys.path.insert(0, '../util')
-import config_file
+from utils.redis_utils import *
+from utils import util, config_file
 
-from panoseti_snmp import wrs_snmp
+from utils.panoseti_snmp import wrs_snmp
 
 # wrs status
 LINK_DOWN   =   '1'
@@ -119,6 +121,8 @@ def initialize():
     return wrs, r
 
 def main():
+    script_dir = Path(__file__).resolve().parent
+    os.environ['MIBDIRS']= '+%s/capture_wr'%str(script_dir)
     wrs, r = initialize()
     # check the current status one time, including sfpPN, link status and softpll status,
     # and print the info out

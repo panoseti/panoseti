@@ -4,7 +4,7 @@ import os
 import sys
 import netsnmp
 
-os.environ['MIBDIRS']='+./'
+#os.environ['MIBDIRS']='+./'
 
 wrsSnmpObjs={'sfppn'         : 'WR-SWITCH-MIB::wrsPortStatusSfpPN' , \
              'linkstatus'    : 'WR-SWITCH-MIB::wrsPortStatusLink'  , \

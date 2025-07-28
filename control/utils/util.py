@@ -49,7 +49,7 @@ hp_stdout_prefix = 'hp_stdout_'
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 redis_daemons = [
-    'storeInfluxDB.py'
+    'daemons/storeInfluxDB.py'
 ]
 #capture_power.py
 
@@ -194,19 +194,23 @@ def start_daemon(prog):
         return
     print('started %s'%prog)
 
-# start daemons that write HK/GPS/WR data to Redis
-#
-def start_redis_daemons():
+def get_daemons():
     # get daemons from daemons.json
     daemons_config = config_file.get_daemons_config()
     daemons = daemons_config['daemons']
     for k,v in daemons.items():
         if v:
-            redis_daemons.append('capture_%s.py'%k)
+            redis_daemons.append('daemons/capture_%s.py'%k)
+    return redis_daemons
+# start daemons that write HK/GPS/WR data to Redis
+#
+def start_redis_daemons():
+    redis_daemons = get_daemons()
     for daemon in redis_daemons:
         start_daemon(daemon)
 
 def stop_redis_daemons():
+    redis_daemons = get_daemons()
     for d in redis_daemons:
         prog = './%s'%d
         for p in psutil.process_iter():
@@ -216,12 +220,7 @@ def stop_redis_daemons():
                 print('stopped %s'%d)
 
 def show_redis_daemons():
-    # TODO: create a method for the following code
-    daemons_config = config_file.get_daemons_config()
-    daemons = daemons_config['daemons']
-    for k,v in daemons.items():
-        if v:
-            redis_daemons.append('capture_%s.py'%k)
+    redis_daemons = get_daemons()
     for daemon in redis_daemons:
         if is_script_running(daemon):
             print('%s is running'%daemon)
@@ -229,11 +228,7 @@ def show_redis_daemons():
             print('%s is not running'%daemon)
 
 def are_redis_daemons_running():
-    daemons_config = config_file.get_daemons_config()
-    daemons = daemons_config['daemons']
-    for k,v in daemons.items():
-        if v:
-            redis_daemons.append('capture_%s.py'%k)
+    redis_daemons = get_daemons()
     for daemon in redis_daemons:
         if not is_script_running(daemon):
             return False

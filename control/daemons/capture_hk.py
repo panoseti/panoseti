@@ -7,16 +7,19 @@
 # and added to each set of values with a variable labeled as
 # 'Computer_UTC'.
 ##############################################################
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import socket
 import redis
 from signal import signal, SIGINT
 from sys import exit
 import time
 from datetime import datetime
-from redis_utils import *
+from utils.redis_utils import *
 
-from panosetiSIconvert import HKconvert
-import metadata_status_monitor_utils as md_utils
+from capture_hk.panosetiSIconvert import HKconvert
+from capture_hk import metadata_status_monitor_utils as md_utils
 HKconv = HKconvert()
 HKconv.changeUnits('V')
 HKconv.changeUnits('A')

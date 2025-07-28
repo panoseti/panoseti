@@ -2,8 +2,10 @@
 """Methods for generating aggregate instrument health logs for observatory operators.
  Log messages are added to the appropriate metadata field and are displayed on the Grafana webpage."""
 import json
+from pathlib import Path
+script_dir = Path(__file__).resolve().parent
 
-with open("metadata_status_monitor_config.json", "r") as f:
+with open(script_dir / "metadata_status_monitor_config.json", "r") as f:
     status_states = json.load(f)
 
 status_map = {

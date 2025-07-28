@@ -7,17 +7,17 @@
 # database 'metadata' in the measurement associated with each 
 # redis set.
 ##############################################################
-import sys
+import os, sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from os import write
 from influxdb import InfluxDBClient
 import redis
 import time
 from datetime import datetime
 import re
-import util
-from redis_utils import *
-sys.path.insert(0, '../util')
-import config_file
+from utils import util, config_file
+from utils.redis_utils import *
 
 OBSERVATORY = config_file.get_obs_config()["name"]
 DATATYPE_FORMAT = {
