@@ -131,14 +131,19 @@ def copy_config_files(daq_config, run_dir, verbose=False):
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
 def copy_daq_files(daq_config):
+    # hashpipe.so may not exist, as we may cross compile it on the daq node
+    hashpipe_so = '../daq/hashpipe.so'
+    if os.path.exists(hashpipe_so):
+        hashpipe_so_exist = True
+    else:
+        hashpipe_so_exist = False
+        print('**************************************************************************')
+        print('%s does not exist!'%'hashpipe.so')
+        print('clone the submodule and compile it, or compile it on the daq node.')
+        print('**************************************************************************')
     for node in daq_config['daq_nodes']:
-        try:
-            copy_file_to_node('../daq/hashpipe.so', daq_config, node)
-        except:
-            print('**************************************************************************')
-            print('No ../daq/hashpipe.so')
-            print('You may want to compile it on the daq node.')
-            print('**************************************************************************')
+        if hashpipe_so_exist:
+            copy_file_to_node(hashpipe_so, daq_config, node)
         copy_file_to_node('daq_scripts/start_daq.py', daq_config, node)
         copy_file_to_node('daq_scripts/stop_daq.py', daq_config, node)
         copy_file_to_node('daq_scripts/status_daq.py', daq_config, node)
