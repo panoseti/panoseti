@@ -134,10 +134,9 @@ class QUABO:
         self.send(cmd)
 
     def send_maroc_params(self, config):
-        self.logger.inf('send_maroc_params')
+        self.logger.info('send_maroc_params')
         cmd = bytearray(492)
         self.make_maroc_cmd(config, cmd)
-        self.write_maroc_config(config, '%s_%s.json'%(QUABO_CONFIG,self.ip_addr))
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 

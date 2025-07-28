@@ -215,7 +215,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
     if not do_img and not do_ph:
         raise Exception('data_config.json specifies no data products')
 
-    qc_dict = quabo_driver.parse_quabo_config_file('quabo_config.txt')
+    qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
@@ -234,7 +234,6 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 detovervol = data_config['detector_overvoltage']
             except:
                 detovervol = 3
-            
             # We have different calibration files for different modes: image alone and image/ph together
             # so we have to specifiy the mode here.
             # TODO: If it's PH alone, what calibration file should we use?
@@ -342,6 +341,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 print('**************************************************************************')
                 logger.warning('No calibration data: UID -%s'%uid)
             quabo.send_maroc_params(qc_dict)
+            quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',quabo.ip_addr))
             quabo.close()
 
 # set CHANMASK and GOEMASK for modules
