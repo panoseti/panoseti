@@ -6,7 +6,7 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import sys, struct
+import sys, os, struct
 from driver.quabo_tftp import tftpw
 from utils import config_file, util
 import json
@@ -70,3 +70,5 @@ if __name__ == "__main__":
     else:
         exclude = args.exclude
     get_uids(obs_config, network_config, exclude)
+    if os.path.exists('flashuid'):
+        os.remove('flashuid')
