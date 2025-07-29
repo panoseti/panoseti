@@ -341,7 +341,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 print('**************************************************************************')
                 logger.warning('No calibration data: UID -%s'%uid)
             quabo.send_maroc_params(qc_dict)
-            quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',quabo.ip_addr))
+            quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # set CHANMASK and GOEMASK for modules
@@ -388,9 +388,9 @@ def do_mask_config(modules, data_config, network_config, verbose=False):
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict)
-            quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',quabo.ip_addr))
+            quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.send_goe_mask(qc_dict)
-            quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',quabo.ip_addr))
+            quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # compute PH baselines on quabos and write to file
