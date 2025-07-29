@@ -30,6 +30,7 @@ MIN_DETECTOR_TEMP = -20.0
 MAX_DETECTOR_TEMP = 60.0
 MAX_FPGA_TEMP = 85.0
 
+logger = logging.getLogger('PANOSETI.TempMonitor')
 
 def is_acceptable_temperature(temps: (float, float)):
     """
