@@ -144,6 +144,22 @@ class QUABO:
     #
     def calibrate_ph_baseline(self):
         self.logger.info('calibrate_ph_baseline')
+        # make the quabos send out some ph packets
+        daq_start = DAQ_PARAMS(
+                do_image=False,
+                image_us=4999,
+                image_8bit=False,
+                do_ph=True,
+                bl_subtract=True
+            )
+        daq_stop = DAQ_PARAMS(False, 0, False, False, True)
+        # This IP is not important, so I put a static IP here.
+        # It's just for generating a ph packet
+        ip_addr = '192.168.1.1'
+        self.data_packet_destination(ip_addr)
+        self.send_daq_params(daq_start)
+        #time.sleep(1)
+        self.send_daq_params(daq_stop)
         cmd = self.make_cmd(0x07)
         self.flush_rx_buf()
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))

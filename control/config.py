@@ -317,21 +317,23 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(tmp[0],tmp[1],tmp[2],tmp[3])
                 quabo.send_maroc_params(qc_dict)
                 # make the quabos send out some ph packets
+                """
                 daq_start = quabo_driver.DAQ_PARAMS(
                         do_image=False,
                         image_us=4999,
                         image_8bit=False,
                         do_ph=True,
-                        bl_subtract=True
+                        bl_subtract=False
                     )
                 daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
                 # This IP is not important, so I put a static IP here.
                 # It's just for generating a ph packet
-                #daq_node_ip_addr = daq_config['head_node_ip_addr']
-                #quabo.data_packet_destination(daq_node_ip_addr)
+                daq_node_ip_addr = daq_config['daq_nodes'][0]['ip_addr']
+                quabo.data_packet_destination(daq_node_ip_addr)
                 quabo.send_daq_params(daq_start)
-                time.sleep(1)
+                time.sleep(2)
                 quabo.send_daq_params(daq_stop)
+                """
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
             if no_cali:
