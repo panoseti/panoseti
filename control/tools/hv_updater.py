@@ -134,6 +134,7 @@ def update_all_quabos(r: redis.Redis):
                         temp = get_redis_temp(r, rkey)
                     # Get quabo object
                     q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
+                    logger.info('Quabo Temp: %s - %.02f'%(q_ip_addr, temp))
                     logger.info('Quabo IP: %s'%q_ip_addr)
                     ip_port = util.get_quabo_ip_port(module_ip_addr, quabo_index, network_config)
                     real_ip = ip_port['ip_addr']
