@@ -134,13 +134,13 @@ def update_all_quabos(r: redis.Redis):
                         temp = get_redis_temp(r, rkey)
                     # Get quabo object
                     q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
-                    logger.info('Quabo Temp: %s - %.02f'%(q_ip_addr, temp))
-                    logger.info('Quabo IP: %s'%q_ip_addr)
+                    logger.debug('Quabo IP: %s'%q_ip_addr)
+                    logger.debug('Temp: %.02f'%temp)
                     ip_port = util.get_quabo_ip_port(module_ip_addr, quabo_index, network_config)
                     real_ip = ip_port['ip_addr']
                     port = ip_port['cmd_port']
-                    logger.info('Real IP: %s'%real_ip)
-                    logger.info('CMD port: %d'%port)
+                    logger.debug('Real IP: %s'%real_ip)
+                    logger.debug('CMD port: %d'%port)
                     quabo_obj = quabo_driver.QUABO(real_ip, port)
                     # Get the list of detector serial numbers for this quabo.
                     try:
