@@ -37,6 +37,7 @@ quabo_info = config_file.get_quabo_info()
 detector_info = config_file.get_detector_info()
 quabo_uids = config_file.get_quabo_uids()
 data_config = config_file.get_data_config()
+network_config = config_file.get_network_config()
 # Set of quabos whose detectors have been turned off by this script.
 quabos_off = set()
 
@@ -133,7 +134,13 @@ def update_all_quabos(r: redis.Redis):
                         temp = get_redis_temp(r, rkey)
                     # Get quabo object
                     q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
-                    quabo_obj = quabo_driver.QUABO(q_ip_addr)
+                    logger.info('Quabo IP: %s'%q_ip_addr)
+                    ip_port = util.get_quabo_ip_port(module_ip_addr, quabo_index, network_config)
+                    real_ip = ip_port['ip_addr']
+                    port = ip_port['cmd_port']
+                    logger.info('Real IP: %s'%real_ip)
+                    logger.info('CMD port: %d'%port)
+                    quabo_obj = quabo_driver.QUABO(real_ip, port)
                     # Get the list of detector serial numbers for this quabo.
                     try:
                         q_info = quabo_info[uid]
