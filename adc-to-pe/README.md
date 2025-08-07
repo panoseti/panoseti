@@ -27,7 +27,7 @@ Quabo firmware applies the $\sigma_q^{-1}$ mapping and Hashpipe performs image r
 ([pixel indexing docs](https://github.com/panoseti/panoseti/wiki/Pixel-indexing#module-coordinates), [Hashpipe docs](https://github.com/panoseti/panoseti/wiki/Data-recorder:-compute-thread#compute-thread-description), [firmware v11.7 docs](https://github.com/panoseti/quabo_firmware/blob/85d1051460be607d8c5c33db4085a42ade44782c/quabo_master/ReadMe.txt#L44)).
 
 #### Pixel-level ADC to P.E. Transformation
-Given a pixel $p_{ij}^{(q)}$ at hardware index $(i,j)$ in a raw `ph256` frame $I_q$ from Quabo $q$ with scalar pulse-height baseline $b_{ij}^{(q)}$, gain $g_{ij}^{(q)}$, and ADC conversion coefficients $n_{ij}^{(q)}$ and $m_{ij}^{(q)}$, 
+Given a pixel $p_{ij}^{(q)}$ at index $(i,j)$ in a `ph256` frame $I_q$ from Quabo $q$ with scalar pulse-height baseline $b_{ij}^{(q)}$, gain $g_{ij}^{(q)}$, and ADC conversion coefficients $n_{ij}^{(q)}$ and $m_{ij}^{(q)}$, 
 the [Quabo Calibration](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson) documentation states that the relationship between the ADC-unit value $p_{ij}^{(q)} + b_{ij}^{(q)}$ 
 and p.e.-unit value $f\left(p_{ij}^{(q)}\right)$ is given by:`n, m: ADC = m * gain * PE_threshold + n`, 
 or
@@ -43,7 +43,7 @@ Define the following symbols for a Quabo $q$, where each matrix has dimension $1
 - $N_q$ = `n` coefficient block matrix for each detector region from `quabo_calib_UID.json` ([docs](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson)).
 - $M_q$ = `m` coefficient block matrix for each detector region from `quabo_calib_UID.json`([docs](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson)).
 
-Then, the ADC to p.e. transformation for each `ph256` PFF image $I$ from Quabo $q$ is given by:
+Then, the ADC to p.e. transformation for each `ph256` PFF image $I_q$ from Quabo $q$ is given by:
 
 $$
 \begin{align} 
