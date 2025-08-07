@@ -28,6 +28,7 @@ Define the following symbols for a given quabo `q`, where the matrices and image
 - $M$ = `m` coefficient block matrix for each detector region from `quabo_calib_X.json`.
 
 Then the ADC to p.e. transformation for a `ph256` PFF image $I$ is given by:
+
 $$
 \begin{align} 
 f(I) &= \left((\sigma_q(I) + B) - N \right) \oslash M \\
