@@ -32,12 +32,11 @@ Then the ADC to p.e. transformation for a `ph256` PFF image $I$ is given by:
 $$
 \begin{align} 
 f(I) &= \left((\sigma_q(I) + B) - N \right) \oslash M \\
-     &= (\sigma_q(I)\oslash M) + \left(B - N \right) \oslash M \\
-     &= (\sigma_q(I)\oslash M) + C
+ &= \left(\sigma_q(I) + B - N \right) \oslash M
 \end{align}
 $$
 
-where $\oslash$ denotes element-wise division and $C = \left(B - N \right) \oslash M$.
+where $\oslash$ denotes element-wise division.
 
 The main challenges in performing transformation are:
 1. Constructing $\sigma_q$, $B$, $N$, and $M$ from the various configuration files, both local to the run and externally version-controlled in the panoseti software repo.
