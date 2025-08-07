@@ -18,23 +18,29 @@ Apply the following steps to convert pulse-height frame data from raw ADC units 
 For an observing run, transformations 0-3 are deterministic for every `ph256` PFF frame a given quabo `q` produces.
 
 ### Formalizing the ADC to P.E. Transformation with Vectorizable Operations
-Letting:
-- $\sigma_q: I \rightarrow I^\prime$ be the pixel permutation mapping hardware-encoded images to spatial images.
-- $B$ = pixel-level baselines, after any $\sigma_q$ transformations and rotations. 
-- $N$ = block matrix array of `n` coefficients for each detector region from `quabo_calib_X.json`
-- $M$ = block matrix array of `m` coefficients for each detector region from `quabo_calib_X.json`
+For an ADC-valued pixel $p$ with baseline $b$, and adc conversion coefficients $n$ and $m$ from `quabo_calib_X.json`, the ADC to p.e. transformation $f$ is given by
+$$f(p) = ((p + b) - n) / m.$$
 
-The ADC to p.e. transformation for a `ph256` PFF image $I$ is given by:
+Define the following symbols for a given quabo `q`, where the matrices and images are $16\times16$ 
+- $\sigma_q: I \rightarrow I^\prime$ is the pixel permutation mapping hardware images to "spatial images" where (0, 0) is the pixel in the top left corner and (15, 15) is the pixel in the bottom right corner.
+- $B$ = pixel baseline matrix, after any $\sigma_q$ transformations and rotations. 
+- $N$ = `n` coefficient block matrix for each detector region from `quabo_calib_X.json`.
+- $M$ = `m` coefficient block matrix for each detector region from `quabo_calib_X.json`.
 
+Then the ADC to p.e. transformation for a `ph256` PFF image $I$ is given by:
 $$
 \begin{align} 
-f(I) &= (\sigma_q(I) + B) \odot N + M \\
-     &= (\sigma_q(I)\odot N) + (B \odot N + M)
-\end{align}$$
+f(I) &= \left((\sigma_q(I) + B) - N \right) \oslash M \\
+     &= (\sigma_q(I)\oslash M) + \left(B - N \right) \oslash M \\
+     &= (\sigma_q(I)\oslash M) + C
+\end{align}
+$$
 
-where $\odot$ denotes element-wise multiplication.
+where $\oslash$ denotes element-wise division and $C = \left(B - N \right) \oslash M$.
 
-The main challenge in this transformation is constructing $\sigma_q$, `B`, `N`, and `M` from the various configuration files, both local to the run and externally version-controlled in the panoseti software repo.
+The main challenges in performing transformation are:
+1. Constructing $\sigma_q$, $B$, $N$, and $M$ from the various configuration files, both local to the run and externally version-controlled in the panoseti software repo.
+2. Writing code to harness the pixel-level parallelism (write a cuda kernel?).
 
 
 ## Dataframe Schemas
