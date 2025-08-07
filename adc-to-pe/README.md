@@ -38,8 +38,8 @@ $$f\left(p_{ij}^{(q)}\right) = \left((p_{ij}^{(q)} + b_{ij}^{(q)}) - n_{ij}^{(q)
 
 #### Image-level ADC to P.E. Transformation
 Define the following symbols for a Quabo $q$, where each matrix has dimension $16\times16$ with calibration values organized according to "conventional" image coordinates.
-- $B_q$ = pixel baseline matrix, after any $\sigma_q^{-1}$ transformations and rotations (docs: N/A). 
-- $G_q$ = `pixel_gain_delta` matrix, after any $\sigma_q^{-1}$ transformations and rotations ([docs](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson)).
+- $B_q$ = pixel baseline matrix, after any $\sigma_q^{-1}$ transformations and rotations applied to values from `quabo_ph_baselines.json` (docs: N/A). 
+- $G_q$ = `pixel_gain_delta` matrix, from `quabo_calib_UID.json` ([docs](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson)).
 - $N_q$ = `n` coefficient block matrix for each detector region from `quabo_calib_UID.json` ([docs](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson)).
 - $M_q$ = `m` coefficient block matrix for each detector region from `quabo_calib_UID.json`([docs](https://github.com/panoseti/panoseti/wiki/Configuration-files#quabo-calibration-quabo_calib_uidjson)).
 
@@ -51,7 +51,7 @@ f(I_q) &= \left(I_q + B_q - N_q \right) \oslash (M_q \odot G_q) \\
 \end{align}
 $$
 
-where $\oslash$ denotes element-wise division.
+where $\oslash$ denotes element-wise division and $\odot$ denotes element-wise multiplication.
 
 #### Development notes
 Some challenges in implementing this transformation at scale include the following:
