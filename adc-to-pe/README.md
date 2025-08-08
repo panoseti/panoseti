@@ -91,7 +91,7 @@ Columns:
 - `quabo_uid`= UID of the Quabo board.
 - `board_version` = board version, one of two values `{"qfp", "bga"}`.
 - `quabo_serialno_str` = string used in `quabo_info.json` file. e.g. "SN019".
-- `quabo_serialno` = serial number from`serialno_str` captured from regex r"SN_0*(\d)+".
+- `quabo_serialno` = serial number from`serialno_str` captured from regex r"SN0*(\d)+".
 <!-- - `detector_serialno_i` = detector serial number in position i on the Quabo, for i in 0..3 -->
 - `detector_serialno` = detector serial number.
 - `detector_quadrant` = detector quadrant computed as the index position of this detector in the quabo_info.json detector array. (See [hardware-encoded images](https://github.com/panoseti/panoseti/wiki/Pixel-indexing).)
