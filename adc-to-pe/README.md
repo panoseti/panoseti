@@ -51,7 +51,7 @@ f(I_q) &= \left(I_q + B_q - N_q \right) \oslash (M_q \odot G_q) \\
 \end{align}
 $$
 
-where $\oslash$ denotes element-wise division and $\odot$ denotes element-wise multiplication.
+where $\oslash$ denotes **element-wise division** and $\odot$ denotes **element-wise multiplication**.
 
 #### Development notes
 Some challenges in implementing this transformation at scale include the following:
@@ -60,7 +60,7 @@ Some challenges in implementing this transformation at scale include the followi
 3. Writing code to harness the pixel-level parallelism (write a cuda kernel?).
 
 
-## Dataframe Schemas (WIP)
+## Dataframe Schemas
 
 The following documentation describes the `pandas` dataframe schemas that are used to organize the disparate configuration file information 
 and construct the $\sigma_q^{-1}$, $B_q$, $G_q$, $N_q$, and $M_q$ targets. 
@@ -76,32 +76,84 @@ Columns:
 - `quabo_num` = spatial position of the Quabo in its module.
 - `detector_overvoltage` = overvoltage setting used in observing run.
 
-Primary keys: (`quabo_uid`)
+Primary key: (`quabo_uid`) uniquely identifies an installed Quabo.
 
 Dependencies:
 - `obs_config.json`
 - `quabo_uids.json`
 
 
-### `quabo_info_df` schema
-Each record represents a unique Quabo board known to the panoseti software.
+### `detector_install_df` schema
+<!-- Each record represents a unique Quabo board known to the panoseti software. -->
+Each record represents a unique 16x16 detector array known to the panoseti software.
 
 Columns:
-- `quabo_uid`= UID of the Quabo hardware.
+- `quabo_uid`= UID of the Quabo board.
 - `board_version` = board version, one of two values `{"qfp", "bga"}`.
-- `serialno_str` = string used in `quabo_info.json` file. e.g. "SN019".
-- `serialno` = parsed serial number from `serialno_str`.
-- `detector_serialno_i` = serial number of the ith detector array, for `i = 0, 1, 2, 3`.
+- `quabo_serialno_str` = string used in `quabo_info.json` file. e.g. "SN019".
+- `quabo_serialno` = serial number from`serialno_str` captured from regex r"SN_0*(\d)+".
+<!-- - `detector_serialno_i` = detector serial number in position i on the Quabo, for i in 0..3 -->
+- `detector_serialno` = detector serial number.
+- `detector_quadrant` = detector quadrant computed as the index position of this detector in the quabo_info.json detector array. (See [hardware-encoded images](https://github.com/panoseti/panoseti/wiki/Pixel-indexing).)
 
-Primary keys: (`quabo_uid`)
+Primary key: (`detector_serialno`) uniquely identify an installed detector array.
 
 Dependencies:
 - `control/quabos/quabo_info.json`
 
-### detector_calibration_df schema
-Each record represents a detector-level calibration 
+### `pixel_ph_baseline_df` schema
+Each record represents a SiPM pixel pulse-height baseline calibration for a specific observing run.
 
-(TODO)
+Columns:
+- `quabo_uid`= UID of the Quabo board to which this pixel belongs.
+- `coefs_idx` = index of the pixel in the `coefs` array in `quabo_ph_baseline.json`
+- `detector_quadrant` = detector quadrant computed from how `quabo_ph_baseline.json` indexes pixels. (See [hardware-encoded images](https://github.com/panoseti/panoseti/wiki/Pixel-indexing).)
+
+Primary key: (`quabo_uid`, `idx`) uniquely identifies a pixel.
 
 Dependencies:
 - `quabo_ph_baseline.json`
+
+
+### `detector_ph_calibration_df` schema
+Each record represents the pulse-height calibration for a 16x16 detector array installed on a quabo at a specific detector overvoltage.
+
+Columns:
+- `quabo_uid`= UID of the Quabo board to which this pixel belongs.
+- `detovervol` = `detector over voltage value for this record.
+- `detector_serialno` = detector serial number.
+- `detector_quadrant` = detector quadrant determined by the key value in the `quadrants` dictionary.
+- `m` = the `m` ADC coefficient.
+- `n` = the `n` ADC coefficient.
+- `a` = the `a` ADC coefficient.
+- `b` = the `b` ADC coefficient.
+- `ah` = the `ah` ADC coefficient.
+- `bh` = the `bh` ADC coefficient.
+
+Primary key: (`detector_serialno`)
+
+Dependencies:
+- `quabo_info_df:quabo_serialno` -> `quabo_calib_[quabo_serialno].json`
+
+### `pixel_ph_gain_delta_df` schema
+Each record represents a SiPM pixel pulse-height gain delta calibration at a specific detector overvoltage.
+
+Columns:
+- `quabo_uid`= UID of the Quabo board to which this pixel belongs.
+- `detovervol` = `detector over voltage value for this record.
+- `pixel_gain_key` = value of this pixel's  `pixel_gain` key.
+- `pixel_gain_idx` = index of this pixel in the 16 element `pixel_gain` array.
+- `gain_delta` = pixel gain delta value.
+
+Primary key: (`quabo_serialno`, `pixel_gain_key`, `pixel_gain_idx`) uniquely identifies a pixel gain delta calibration.
+
+Dependencies:
+- `quabo_info_df:quabo_serialno` -> `quabo_calib_[quabo_serialno].json`
+
+
+
+
+
+
+
+
