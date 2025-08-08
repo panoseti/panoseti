@@ -300,6 +300,12 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
+    def swpps(self):
+        self.logger.info('set software 1PPS.')
+        cmd = self.make_cmd(0x0f)
+        self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
+        self.send(cmd)
+
     def write_maroc_config(self, config, config_file='quabo_config.json'):
         self.logger.info('write_maroc_config')
         try:

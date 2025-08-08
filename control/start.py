@@ -143,6 +143,14 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
                     print('setting DAQ mode on quabo %s'%ip_addr)
                 quabo.send_daq_params(daq_params)
                 quabo.close()
+            # send software 1PPS
+            logger.info('Send software 1PPS to %s'%(base_ip_addr))
+            ip_ports = util.get_quabo_ip_port(base_ip_addr, 0, network_config)
+            real_ip = ip_ports['ip_addr']
+            cmd_port = ip_ports['cmd_port']
+            quabo = quabo_driver.QUABO(real_ip, cmd_port)
+            quabo.swpps()
+            quabo.close()
 
 # make run directories; copy config files to them
 # on each DAQ node:
