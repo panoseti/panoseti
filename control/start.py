@@ -144,6 +144,7 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
                 quabo.send_daq_params(daq_params)
                 quabo.close()
             # send software 1PPS
+            time.sleep(0.5)
             logger.info('Send software 1PPS to %s'%(base_ip_addr))
             ip_ports = util.get_quabo_ip_port(base_ip_addr, 0, network_config)
             real_ip = ip_ports['ip_addr']

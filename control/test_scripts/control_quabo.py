@@ -35,6 +35,7 @@
 #       (1) read ph data triggered by SW;
 #       (2) write BL data to FPGA memory from a host computer.
 #V11.3: add a new command for setting GOE mask
+#V11.4: add SW_1PPS command for resetting nanosec counter
 
 import time
 import string
@@ -547,6 +548,7 @@ while True:
     "HK-IP" to set IP address for HK packets
     "R-PH" to read ph data triggered by SW(firmware ver >=20.3)
     "W-BL" to write BL data through the host computer(firmware ver >=20.3)
+    "SW_1PPS" to send "1PPS" to reset nanosec counter(firmware ver >=20.8)
     or "q" to quit
     ''')
     if inp == 'q':
@@ -836,4 +838,9 @@ while True:
             cmd_payload[n] = tmp[0]
             cmd_payload[n+1] = tmp[1]
             n = n+2
+        sendit(cmd_payload)
+    elif inp == 'SW_1PPS':
+        cmd_payload = bytearray(64)
+        for i in range(64): cmd_payload[i]=0
+        cmd_payload[0] = 0x0f
         sendit(cmd_payload)
