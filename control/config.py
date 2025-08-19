@@ -9,6 +9,7 @@ firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 import sys, os, subprocess, time, datetime, json, statistics
+import copy
 import logging
 from utils import util, file_xfer
 from driver.quabo_tftp import tftpw
@@ -164,7 +165,8 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, ver
             for j in range(4):
                 det_ser = qi['detector_serialno'][j]
                 op_voltage = detector_info[str(det_ser)]
-                v[j] = int(op_voltage/.00114)
+                # DAC LSB is 0.0011324717, instead of 0.00114
+                v[j] = int(op_voltage/0.0011324717)
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
@@ -215,9 +217,16 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
     if not do_img and not do_ph:
         raise Exception('data_config.json specifies no data products')
 
-    qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+    stim_mask_quaboi = [1, 1, 1, 1]
+    if "stim_params" in data_config:
+        if "mask" in data_config["stim_params"]:
+            stim_mask_quaboi = data_config["stim_params"]["mask"]
+        
+
+    qc_dict_src = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
     for module in modules:
         for i in range(4):
+            qc_dict = copy.deepcopy(qc_dict_src)
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
             is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
@@ -342,6 +351,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 print('         Using default calibration data.')
                 print('**************************************************************************')
                 logger.warning('No calibration data: UID -%s'%uid)
+            # If the stim_mask is 0 for this quabo, set all CTEST values to 0
+            #print(stim_mask_quaboi[i], type(stim_mask_quaboi[i]))
+            if stim_mask_quaboi[i] == 0:
+                for k in range(64):
+                    #print(qc_dict[f'CTEST_{k}'])
+                    ctest_key = f'CTEST_{k}'
+                    assert ctest_key in qc_dict, f"{ctest_key=} not in qc_dict"
+                    qc_dict[ctest_key] = "0,0,0,0"
             quabo.send_maroc_params(qc_dict)
             quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
