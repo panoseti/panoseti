@@ -26,6 +26,7 @@ DATATYPE_FORMAT = {
     'whiterabbit': re.compile("WRSWITCH.*"),
     'outlet': re.compile("WPS.*"),
     'ublox_f9t': re.compile("UBLOX_ZED-F9T_.*"),
+    'mount': re.compile("MOUNT_.*"),
 }
 # List of keys with the time stamp values
 key_timestamps = {}

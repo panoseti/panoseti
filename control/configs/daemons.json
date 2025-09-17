@@ -3,6 +3,7 @@
         "hk": true,
         "gps": false,
         "power": true,
-        "wr": true
+        "wr": true,
+        "mount": false
     }
 }
