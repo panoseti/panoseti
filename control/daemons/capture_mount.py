@@ -39,7 +39,7 @@ def get_mount_rkey(mount_key):
 
 GATTINI_MOUNT_KEY = 'mount_gattini'
 HOST = '0.0.0.0'
-MOUNT_METADATA_PORT = 60005 # TBD???
+MOUNT_METADATA_PORT = 60010 # TBD???
 PACKET_SIZE = 1024
 
 

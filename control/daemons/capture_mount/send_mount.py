@@ -4,8 +4,8 @@ import time
 
 # --- Client Configuration ---
 # IMPORTANT: Replace with the server's actual IP address
-SERVER_HOST = 'SERVER_IP_ADDRESS'
-SERVER_PORT = 65432
+SERVER_HOST = '10.146.200.1'
+SERVER_PORT = 60010
 PACKET_SIZE = 1024  # Must be <= server's BUFFER_SIZE
 
 # Data to send
