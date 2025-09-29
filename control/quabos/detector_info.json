@@ -81,5 +81,13 @@
 {"serialno":1280,"breakdown_voltage":"51.263"},
 {"serialno":1281,"breakdown_voltage":"51.265"},
 {"serialno":1282,"breakdown_voltage":"51.252"},
-{"serialno":1283,"breakdown_voltage":"51.250"}
+{"serialno":1283,"breakdown_voltage":"51.250"},
+{"serialno":1770,"breakdown_voltage":"51.009"},
+{"serialno":1771,"breakdown_voltage":"50.996"},
+{"serialno":1772,"breakdown_voltage":"51.018"},
+{"serialno":1773,"breakdown_voltage":"50.994"},
+{"serialno":1774,"breakdown_voltage":"51.008"},
+{"serialno":1775,"breakdown_voltage":"51.007"},
+{"serialno":1776,"breakdown_voltage":"51.004"},
+{"serialno":1777,"breakdown_voltage":"51.010"}
 ]
