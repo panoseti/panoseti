@@ -205,7 +205,6 @@ def do_hv_off(modules, quabo_uids, network_config):
 #
 def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False):
     logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
-    no_cali = False
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -226,6 +225,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
     qc_dict_src = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
     for module in modules:
         for i in range(4):
+            no_cali = False
             qc_dict = copy.deepcopy(qc_dict_src)
             uid = util.quabo_uid(module, quabo_uids, i)
             if uid == '': continue
