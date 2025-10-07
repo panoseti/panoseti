@@ -38,6 +38,31 @@ def show_config(obs_config, quabo_uids):
     #print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
+def set_timing_mode(modules, quabo_uids, network_config, timing_mode):
+    # set timing mode to wr or gnss
+    logger = logging.getLogger('PANOSETI.Config.set_timing_mode')
+    for module in modules:
+        if not util.is_quabo_alive(module, quabo_uids, 0):
+            continue
+        ip_addr = config_file.quabo_ip_addr(module['ip_addr'], 0)
+        print('Setting Timing Mode (%s) at Quabo %s'%(timing_mode, ip_addr))
+        ip_ports = util.get_quabo_ip_port(module['ip_addr'], 0, network_config)
+        real_ip = ip_ports['ip_addr']
+        cmd_port = ip_ports['cmd_port']
+        reboot_port = ip_ports['reboot_port']
+        logger.info('Quabo IP: %s'%ip_addr)
+        logger.info('Real IP: %s'%real_ip)
+        logger.info('Reboot port: %d'%reboot_port)
+        x = tftpw(real_ip, reboot_port)
+        if timing_mode == 'wr':
+            x.put_wrpc_filesys('wr/wrpc_filesys')
+            logger.info('Timing Mode (WR) is set up.')
+        elif timing_mode == 'gnss':
+            x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
+            logger.info('Timing Mode (GNSS) is set up.')
+        else:
+            logger.error('Timing Mode (%s) not supported'%timing_mode)
+    
 def do_reboot(modules, quabo_uids, network_config):
     # need to reboot quabos in order 0..3
     # to parallelize:
@@ -588,6 +613,9 @@ def main():
                         help='Show list of domes/modules/quabos.')
     parser.add_argument('--ping', dest='ping', action='store_true', default=False,
                         help='Ping quabos.')
+    parser.add_argument('--timing_mode', dest='timing_mode', type=str, default=None,
+                        choices=['wr','gnss'],
+                        help='Set the timing mode: wr or gnss.')
     parser.add_argument('--reboot', dest='reboot', action='store_true', default=False,
                         help='Reboot quabos.')
     parser.add_argument('--loads', dest='loads', action='store_true', default=False,
@@ -635,6 +663,8 @@ def main():
     data_config = config_file.get_data_config()
 
     # do the tasks
+    if args.timing_mode:
+        set_timing_mode(modules, quabo_uids, network_config, args.timing_mode)
     if args.reboot:
         do_reboot(modules, quabo_uids, network_config)
         do_hk_dest(modules, quabo_uids, daq_config, network_config)
