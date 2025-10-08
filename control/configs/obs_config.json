@@ -20,6 +20,7 @@
                     "quabo_version": "qfp",
                     "ip_addr": "192.168.3.248",
                     "wps": "wps",
+                    "timing_mode": "gnss",
                     "azimuth": 77,
                     "elevation": 77,
                     "position_angle": 77

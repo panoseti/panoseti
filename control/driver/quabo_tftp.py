@@ -110,7 +110,7 @@ class tftpw(object):
             print('The size of wrpc_filesys is incorrect, please check it!')
             return
         self.client.upload(remote_filename,filename)    
-        print('Upload %s to panoseti wrpc_filesys space successfully!' %filename)
+        # print('Upload %s to panoseti wrpc_filesys space successfully!' %filename)
         
     #put mb file, starting from 0x00F10000
     def put_mb_file(self,filename='mb_file', addr=0x00F10000):
