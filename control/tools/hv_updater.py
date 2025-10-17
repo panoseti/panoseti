@@ -77,7 +77,8 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             det_serial_num = det_serial_nums[detector_index]
             adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
             # Save int encoding
-            adjusted_hv_values[detector_index] = int((adjusted_hv + HV_OFFSET) / 0.0011453)
+            #adjusted_hv_values[detector_index] = int((adjusted_hv + HV_OFFSET) / 0.0011453)
+            adjusted_hv_values[detector_index] = int((adjusted_hv) / 0.0011324717)
     except KeyError as kerr:
         msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
         msg += "Error message: {1}"
