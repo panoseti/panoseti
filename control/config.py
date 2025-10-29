@@ -37,7 +37,7 @@ def show_config(obs_config, quabo_uids):
                 print('         IP addr: %s'%quabo_ip)
     #print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
-
+    
 def do_reboot(modules, quabo_uids, network_config):
     # need to reboot quabos in order 0..3
     # to parallelize:
@@ -60,6 +60,28 @@ def do_reboot(modules, quabo_uids, network_config):
             logger.info('Real IP: %s'%real_ip)
             logger.info('Reboot port: %d'%reboot_port)
             x = tftpw(real_ip, reboot_port)
+            # check timing mode, and only use it on Quabo0
+            if i == 0:
+                if 'timing_mode' not in module:
+                    print('*******************************************************')
+                    print('Timing Mode: WR')
+                    print('*******************************************************')
+                    x.put_wrpc_filesys('wr/wrpc_filesys')
+                    logger.info('Set Timing Mode to WR on Quabo %s'%ip_addr)
+                elif module['timing_mode'] == 'gnss':
+                    print('*******************************************************')
+                    print('Timing Mode: GNSS')
+                    print('*******************************************************')
+                    x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
+                    logger.info('Set Timing Mode to GNSS on Quabo %s'%ip_addr)
+                elif module['timing_mode'] == 'wr':
+                    print('*******************************************************')
+                    print('Timing Mode: WR')
+                    print('*******************************************************')
+                    x.put_wrpc_filesys('wr/wrpc_filesys')
+                    logger.info('Set Timing Mode to WR on Quabo %s'%ip_addr)
+                else:
+                    raise Exception('Timing Mode %s in obs_config not supported.'% module['timing_mode'])
             x.reboot()
 
         # wait for pings
