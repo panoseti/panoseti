@@ -78,13 +78,21 @@ default_hk_dest = '192.168.1.100'
 #
 def create_logger(logfile, tag, mode='w'):
     logger = logging.getLogger(tag)
-    logger.setLevel(logging.DEBUG)
-    handler = logging.FileHandler(logfile, mode=mode)
     logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
-    handler.setFormatter(logformat)
+    # write log to log file
+    fhandler = logging.FileHandler(logfile, mode=mode)
+    fhandler.setFormatter(logformat)
+    fhandler.setLevel(logging.DEBUG)
+    # write log to terminal (Warning and Error messages only)
+    shandler = logging.StreamHandler()
+    shandler.setFormatter(logformat)
+    shandler.setLevel(logging.WARNING)
     if logger.handlers:
         logger.handlers.clear()
-    logger.addHandler(handler)
+    # add handlers
+    logger.addHandler(fhandler)
+    logger.addHandler(shandler)
+
 
 # our IP address on local network (192.x.x.x)
 # see https://pypi.org/project/netifaces/
