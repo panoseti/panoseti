@@ -35,4 +35,7 @@ control/configs/*
 !control/configs/ucb
 !control/configs/ucb/**
 
+# Ignore log files under control/driver/logs
+control/driver/logs/**
+
 

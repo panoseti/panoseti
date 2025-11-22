@@ -1,4 +1,0 @@
-INFO - 2025-10-07 11:14:34,986 - reboot: addr - 0x00010100
-INFO - 2025-10-07 11:15:54,809 - reboot: addr - 0x00010100
-INFO - 2025-10-07 11:19:17,363 - get_wrpc_filesys: filename - wrpc_sys_gnss, addr - 0x00e00000
-INFO - 2025-10-07 11:19:32,819 - reboot: addr - 0x00010100
