@@ -229,5 +229,27 @@
             1071,
             1074
         ]
+    },
+    {
+        "uid": "6b448240140d02e",
+        "serialno": "SN041",
+        "board_version": "bga",
+        "detector_serialno": [
+            1774,
+            1775,
+            1776,
+            1777
+        ]
+    },
+    {
+        "uid": "6b448240160642b",
+        "serialno": "SN040",
+        "board_version": "bga",
+        "detector_serialno": [
+            1770,
+            1771,
+            1772,
+            1773
+        ]
     }
 ]
