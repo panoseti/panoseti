@@ -163,6 +163,9 @@ def stop_run(
     print("stopping HK recording")
     kill_hk_recorder()
 
+    print("stopping Temperature monitor")
+    kill_module_temp_monitor()
+
     print("stopping data generation")
     stop_data_flow(quabo_uids, network_config)
 
