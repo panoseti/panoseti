@@ -78,6 +78,7 @@ default_hk_dest = '192.168.1.100'
 #
 def create_logger(logfile, tag, mode='w'):
     logger = logging.getLogger(tag)
+    logger.setLevel(logging.DEBUG)
     logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
     # write log to log file
     fhandler = logging.FileHandler(logfile, mode=mode)
