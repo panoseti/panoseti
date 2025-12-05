@@ -26,3 +26,16 @@ __pycache__/
 .rdb
 **/.rdb
 
+# Ignore the config files in configs
+control/configs/*
+!control/configs/lick
+!control/configs/lick/**
+!control/configs/palomar
+!control/configs/palomar/**
+!control/configs/ucb
+!control/configs/ucb/**
+
+# Ignore log files under control/driver/logs
+control/driver/logs/**
+
+
