@@ -19,6 +19,16 @@ from utils import config_file
 
 from argparse import ArgumentParser
 
+def ask_use_default_calibration(ip_addr):
+    while True:
+        choice = input(f"Use default calibration file for {ip_addr}? (Y/N): ").strip().upper()
+        if choice == "Y":
+            return True
+        elif choice == "N":
+            return False
+        else:
+            print("Invalid input. Please enter Y or N.")
+
 # print summary of obs and daq config files
 #
 def show_config(obs_config, quabo_uids):
@@ -243,21 +253,25 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
         if "mask" in data_config["stim_params"]:
             stim_mask_quaboi = data_config["stim_params"]["mask"]
         
-
     qc_dict_src = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
     for module in modules:
         for i in range(4):
             no_cali = False
             qc_dict = copy.deepcopy(qc_dict_src)
             uid = util.quabo_uid(module, quabo_uids, i)
+            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             if uid == '': continue
             is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
             try:
                 qi = quabo_info[uid]
             except:
-                qi = quabo_info['default']
-                is_qfp = False
-                no_cali = True
+                use_default_calib = ask_use_default_calibration(ip_addr)
+                if use_default_calib:
+                    qi = quabo_info['default']
+                    is_qfp = False
+                    no_cali = True
+                else:
+                    raise Exception(f'No calibration file is found for {ip_addr}')
             serialno = qi['serialno'][3:]
             # try to find the detector overvoltage in data_config.json
             # if we can't find it, we will use 3v by default.
@@ -273,7 +287,6 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             else:
                 op_mode = 'ph'
             quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
 
             # compute DAC1[] and possibly DAC2 based on calibration data
             dac1 = [0]*4
@@ -368,10 +381,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
             if no_cali:
-                print('**************************************************************************')
-                print('Warning: No calibration data for the board with UID: %s'%uid)
-                print('         Using default calibration data.')
-                print('**************************************************************************')
+                # print('**************************************************************************')
+                # print('Warning: No calibration data for the board with UID: %s'%uid)
+                # print('         Using default calibration data.')
+                # print('**************************************************************************')
                 logger.warning('No calibration data: UID -%s'%uid)
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             #print(stim_mask_quaboi[i], type(stim_mask_quaboi[i]))
