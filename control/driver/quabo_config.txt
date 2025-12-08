@@ -170,7 +170,7 @@ CTEST_4=0,0,0,0
 CTEST_3=0,0,0,0
 CTEST_2=0,0,0,0
 CTEST_1=0,0,0,0
-CTEST_0=0,0,0,0
+CTEST_0=1,1,1,1
 
 *IRRELEVANT MAROC PARAMS, for our purposes
 *Either completely irrelevant, or must stay as they are

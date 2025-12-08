@@ -27,6 +27,7 @@ DATATYPE_FORMAT = {
     'outlet': re.compile("WPS.*"),
     'ublox_f9t': re.compile("UBLOX_ZED-F9T_.*"),
     'mount': re.compile("MOUNT_.*"),
+    'power': re.compile("POWER_.*"),
     'weather': re.compile("WEATHER.*"),
 }
 # List of keys with the time stamp values
@@ -68,6 +69,7 @@ def write_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str)
 
 
 def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list, key_timestamps:dict):
+    print("Updating keys:", redis_keys)
     for rkey in redis_keys:
         data_fields = dict()
         for key in r.hkeys(rkey):
