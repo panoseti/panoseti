@@ -38,4 +38,19 @@ control/configs/*
 # Ignore log files under control/driver/logs
 control/driver/logs/**
 
+# ignore test files
+*.jpg
+*.py~
+*.tmp
+observing_logs.db
+palomar_weather_tmp/
+control/Gattini-webcam-current.jpg
+control/daemons/.#capture_guider2.py
+control/daemons/attic/
+control/palomar_weather_tmp/
+control/quabos/detovervol_2v/img/attic/
+control/quabos/detovervol_2v/ph/attic/
+test/
+
+
 
