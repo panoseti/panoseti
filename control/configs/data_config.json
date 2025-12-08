@@ -1,0 +1,21 @@
+{
+    "run_type": "eng-test",
+    "detector_overvoltage": 2,
+    "gain": 60,
+    "pulse_height": {
+            "pe_threshold": 20,
+            "two_pixel_trigger": 0,
+            "three_pixel_trigger": 0
+    },
+    "image": {
+        "integration_time_usec": 10000,
+        "pe_threshold": 15,
+        "quabo_sample_size": 8
+    },
+    "stim_params":{
+        "rate": 2,
+        "level": 255,
+	"mask": [1, 1, 1, 1]
+    },
+    "max_file_size_mb": 10
+}
