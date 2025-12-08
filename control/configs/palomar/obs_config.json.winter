@@ -1,0 +1,31 @@
+{
+    "name": "Palomar",
+    "comment": "Palomar Observatory",
+    "wps": {
+        "url": "http://admin:epowerpanoseti@panoseti-winter",
+        "quabo_socket": 1
+    },
+    "wr_ip_addr": "10.0.1.36",
+    "gps_port": "/dev/ttyUSB0",
+    "detector_overvoltage": 2,
+    "domes": [
+        {
+            "obslat": 33.356945,
+            "obslon": -116.866202,
+            "obsalt": 1697.1,
+            "name": "Winter",
+            "modules": [
+                {
+                    "mobo_serialno": "M11",
+                    "quabo_version": "bga",
+                    "ip_addr": "192.168.3.244",
+                    "wps": "wps",
+                    "timing_mode": "gnss",
+                    "azimuth": 77,
+                    "elevation": 77,
+                    "position_angle": 77
+                }
+            ]
+        }
+    ]
+}
