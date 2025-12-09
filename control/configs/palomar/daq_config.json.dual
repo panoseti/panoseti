@@ -6,14 +6,14 @@
             "username": "panoseti",
             "data_dir": "/mnt/panoseti",
             "ip_addr": "192.168.0.6",
-            "module_ids": "0-255",
+            "module_ids": "253",
             "bindhost": "enp172s0"
         },
 	{
             "username": "panoseti",
             "data_dir": "/mnt/panoseti",
             "ip_addr": "192.168.0.4",
-            "module_ids": "0-255",
+            "module_ids": "254",
             "bindhost": "enp171s0"
         }
     ]
