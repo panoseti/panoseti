@@ -251,5 +251,49 @@
             1772,
             1773
         ]
+    },
+    {
+        "uid": "6b448240140cc0d",
+        "serialno": "SN042",
+        "board_version": "bga",
+        "detector_serialno": [
+            1779,
+            1780,
+            1781,
+            1782
+        ]
+    },
+    {
+        "uid": "6b4482401408c0a",
+        "serialno": "SN043",
+        "board_version": "bga",
+        "detector_serialno": [
+            1783,
+            1784,
+            1785,
+            1786
+        ]
+    },
+    {
+        "uid": "6b448240160ec27",
+        "serialno": "SN044",
+        "board_version": "bga",
+        "detector_serialno": [
+            1787,
+            1788,
+            1789,
+            1790
+        ]
+    },
+    {
+        "uid": "6b448240160b827",
+        "serialno": "SN045",
+        "board_version": "bga",
+        "detector_serialno": [
+            1791,
+            1792,
+            1793,
+            1794
+        ]
     }
 ]
