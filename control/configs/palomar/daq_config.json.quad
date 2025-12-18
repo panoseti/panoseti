@@ -1,0 +1,34 @@
+{
+    "head_node_data_dir": "/mnt/data10/data",
+    "head_node_ip_addr": "10.200.146.1",
+    "daq_nodes": [
+        {
+            "username": "panoseti",
+            "data_dir": "/mnt/panoseti",
+            "ip_addr": "192.168.0.6",
+            "module_ids": "253",
+            "bindhost": "enp172s0"
+        },
+	{
+            "username": "panoseti",
+            "data_dir": "/mnt/panoseti",
+            "ip_addr": "192.168.0.4",
+            "module_ids": "254",
+            "bindhost": "enp171s0"
+        },
+	{
+            "username": "panoseti",
+            "data_dir": "/mnt/panoseti",
+            "ip_addr": "192.168.0.9",
+            "module_ids": "252",
+            "bindhost": "enp172s0"
+        },
+	{
+            "username": "panoseti",
+            "data_dir": "/mnt/panoseti",
+            "ip_addr": "192.168.0.8",
+            "module_ids": "250",
+            "bindhost": "enp172s0"
+        }
+    ]
+}
