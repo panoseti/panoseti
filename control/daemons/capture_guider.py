@@ -10,7 +10,7 @@ import paramiko
 
 # ---------------- CONFIG ----------------
 CONFIG_FILE = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_guider/sites.conf"
-REMOTE_DIR = "/home/stellarmate/Pictures"
+REMOTE_DIR = "/home/panoseti/Pictures"
 TRAIN_NAME = "Primary"
 WAIT_SECONDS = 10
 LOOP_INTERVAL_MIN = 1
