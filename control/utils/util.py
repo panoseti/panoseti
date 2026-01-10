@@ -480,3 +480,27 @@ def attach_daq_config(daq_config, network_config):
         for pdaq in network_config['daq_nodes']:
              if daq['ip_addr'] == pdaq['ip_addr'] and pdaq['port_forwarding']['status'] == True:
                  daq_config['daq_nodes'][i]['port_forwarding'] = pdaq['port_forwarding']
+                
+# get the valid IPs
+def get_valid_ip(obs_config):
+    logger = logging.getLogger('PANOSETI.Config.util.get_valid_ip')
+    ips = []
+    for dome in obs_config['domes']:
+        for m in dome['modules']:
+            ip = m['ip_addr']
+            ip_str = ip.split('.')
+            for i in range(4):
+                val = int(ip_str[3]) + i
+                quabo_ip = f"{ip_str[0]}.{ip_str[1]}.{ip_str[2]}.{val}"
+                logger.info(f'add {quabo_ip} to IP list')
+                ips.append(quabo_ip)
+    return ips
+
+# convert IP format to 192.168.xx.xxx
+# 
+def convert_ip(ip):
+    try:
+        qid = int(ip)
+        return f"192.168.{qid>>8}.{qid&0xff}"
+    except:
+        return ip

@@ -13,7 +13,7 @@ import copy
 import logging
 from utils import util, file_xfer
 from driver.quabo_tftp import tftpw
-from driver import quabo_driver
+from driver import quabo_driver, quabo_tftp
 from utils import pixel_coords
 from utils import config_file
 
@@ -609,6 +609,34 @@ def do_shutter(action):
     elif action == "close":
         os.system("tools/shutter.py --close")
 
+# compute available recording time, given data config and free disk space.
+# If verbose, show details
+#
+def do_reboot_single_quabo(ip, obs_config, network_config):
+    logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
+    logger.info(f"The Quabo IP address/ID is {ip}.")
+    ips = util.get_valid_ip(obs_config)
+    valid_ip = util.convert_ip(ip)
+    if valid_ip not in ips:
+        logger.error(f"{ip} is not a valid IP address or Quabo ID.")
+        return
+    else:
+        ip_ports = util.get_quabo_ip_port(valid_ip, 0, network_config)
+        real_ip = ip_ports['ip_addr']
+        cmd_port = ip_ports['cmd_port']
+        reboot_port = ip_ports['reboot_port']
+        logger.info('Quabo IP: %s'%valid_ip)
+        logger.info('Real IP: %s'%real_ip)
+        logger.info('Reboot port: %d'%reboot_port)
+        x = tftpw(real_ip, reboot_port)
+        x.reboot()
+        # wait for the board to reboot
+        time.sleep(30)
+        while True:
+            if util.ping(real_ip, cmd_port):
+                break
+            time.sleep(5)
+        logger.info('Quabo ({valid_ip}) is rebooted successfully.')
 
 
 def main():
@@ -625,6 +653,8 @@ def main():
                         help='Ping quabos.')
     parser.add_argument('--reboot', dest='reboot', action='store_true', default=False,
                         help='Reboot quabos.')
+    parser.add_argument('--reboot_single', dest='reboot_single', type=str, default=None,
+                        help='Reboot a single quabo.')
     parser.add_argument('--loads', dest='loads', action='store_true', default=False,
                         help='Load silver firmware in quabos.')
     parser.add_argument('--init_daq_nodes', dest='init_daq_nodes', action='store_true', default=False,
@@ -713,6 +743,8 @@ def main():
         do_shutter("close")
     elif args.show_ph_baselines:
         do_show_ph_baselines(quabo_uids)
+    elif args.reboot_single is not None:
+        do_reboot_single_quabo(args.reboot_single, obs_config, network_config)
 
 if __name__ == "__main__":
     main()
