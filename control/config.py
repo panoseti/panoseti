@@ -98,12 +98,15 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
         # check if the quabo is back online
         while timeout_remaining > 0:
             if util.ping(real_ip, cmd_port):
-                reboot_status.append({f"ip_addr" : True})
+                reboot_status.append({f"{ip_addr}" : True})
+                print(f'pinged {ip_addr}; reboot done')
                 break
             else:
                 time.sleep(5)
                 timeout_remaining -= 5
-        reboot_status.append({f"ip_addr" : False})
+        if timeout_remaining <=0:
+            reboot_status.append({f"{ip_addr}" : False})
+            print(f'reboot {ip_addr} failed; timeout')
     return reboot_status
 
 def do_reboot(modules, quabo_uids, network_config):
@@ -124,14 +127,17 @@ def do_reboot(modules, quabo_uids, network_config):
     logger.info('Checking the reboot status...')
     for f in as_completed(futures):
         status = f.result()
+        print('*******************************************************')
+        print("Reboot Status Summary:")
+        print('*******************************************************')
         for s in status:
             for k, v in s.items():
                 if v:
-                    print('pinged %s; reboot done'%k)
+                    print(f'Reboot {k} successfully.')
                 else:
                     print(f'Reboot {k} failed.')
                 logger.info(f"Rebooting {k} status is {v}.")
-    print('All quabos rebooted')
+        print('*******************************************************')
 
 def do_loads(modules, quabo_uids, quabo_info, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_loads')
