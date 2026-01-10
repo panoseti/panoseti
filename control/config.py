@@ -631,12 +631,13 @@ def do_reboot_single_quabo(ip, obs_config, network_config):
         x = tftpw(real_ip, reboot_port)
         x.reboot()
         # wait for the board to reboot
+        print(f'Rebooting {valid_ip}...')
         time.sleep(30)
         while True:
             if util.ping(real_ip, cmd_port):
                 break
             time.sleep(5)
-        print('pinged %s; reboot done'%valid_ip)
+        print(f'pinged {valid_ip}; reboot done')
         logger.info('Quabo ({valid_ip}) is rebooted successfully.')
 
 
