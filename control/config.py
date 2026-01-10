@@ -49,6 +49,43 @@ def show_config(obs_config, quabo_uids):
     #print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
+# compute available recording time, given data config and free disk space.
+# If verbose, show details
+#
+def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
+    logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
+    logger.info(f"The Quabo IP address/ID is {ip}.")
+    ips = util.get_valid_ip(obs_config)
+    valid_ip = util.convert_ip(ip)
+    if valid_ip not in ips:
+        logger.error(f"{ip} is not a valid IP address or Quabo ID.")
+        return
+    else:
+        print(f'Rebooting {valid_ip}...')
+        ip_ports = util.get_quabo_ip_port(valid_ip, 0, network_config)
+        real_ip = ip_ports['ip_addr']
+        cmd_port = ip_ports['cmd_port']
+        reboot_port = ip_ports['reboot_port']
+        logger.info('Quabo IP: %s'%valid_ip)
+        logger.info('Real IP: %s'%real_ip)
+        logger.info('Reboot port: %d'%reboot_port)
+        x = tftpw(real_ip, reboot_port)
+        x.reboot()
+        # wait for the board to reboot
+        timeout_remaining = timeout
+        time.sleep(30)
+        timeout_remaining -= 30
+        while timeout_remaining > 0:
+            if util.ping(real_ip, cmd_port):
+                print(f'pinged {valid_ip}; reboot done')
+                logger.info('Quabo ({valid_ip}) is rebooted successfully.')
+                break
+            time.sleep(5)
+            timeout_remaining -= 5
+        if timeout_remaining <= 0:
+            print(f'reboot {valid_ip} failed; timeout ({timeout}s)')
+            logger.error(f'Quabo ({valid_ip}) is failed to rebooted.')
+
 # Reboot one module
 #
 def reboot_module(module, quabo_uids, network_config, timeout=60):
@@ -92,21 +129,23 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
                 raise Exception(f"Timing Mode { module['timing_mode']} in obs_config not supported.")
         x.reboot()
         # wait for a while to let the quabo get rebooted successfully
-        time.sleep(20)
+        time.sleep(30)
         timeout_remaining = timeout
-        timeout_remaining -= 20
+        timeout_remaining -= 30
         # check if the quabo is back online
         while timeout_remaining > 0:
             if util.ping(real_ip, cmd_port):
                 reboot_status.append({f"{ip_addr}" : True})
                 print(f'pinged {ip_addr}; reboot done')
+                logger.info('Quabo ({ip_addr}) is rebooted successfully.')
                 break
             else:
                 time.sleep(5)
                 timeout_remaining -= 5
         if timeout_remaining <=0:
             reboot_status.append({f"{ip_addr}" : False})
-            print(f'reboot {ip_addr} failed; timeout')
+            print(f'reboot {ip_addr} failed; timeout ({timeout}s)')
+            logger.error(f'Quabo ({ip_addr}) is failed to rebooted.')
     return reboot_status
 
 def do_reboot(modules, quabo_uids, network_config):
@@ -635,38 +674,6 @@ def do_shutter(action):
         os.system("tools/shutter.py --open")
     elif action == "close":
         os.system("tools/shutter.py --close")
-
-# compute available recording time, given data config and free disk space.
-# If verbose, show details
-#
-def do_reboot_single_quabo(ip, obs_config, network_config):
-    logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
-    logger.info(f"The Quabo IP address/ID is {ip}.")
-    ips = util.get_valid_ip(obs_config)
-    valid_ip = util.convert_ip(ip)
-    if valid_ip not in ips:
-        logger.error(f"{ip} is not a valid IP address or Quabo ID.")
-        return
-    else:
-        ip_ports = util.get_quabo_ip_port(valid_ip, 0, network_config)
-        real_ip = ip_ports['ip_addr']
-        cmd_port = ip_ports['cmd_port']
-        reboot_port = ip_ports['reboot_port']
-        logger.info('Quabo IP: %s'%valid_ip)
-        logger.info('Real IP: %s'%real_ip)
-        logger.info('Reboot port: %d'%reboot_port)
-        x = tftpw(real_ip, reboot_port)
-        x.reboot()
-        # wait for the board to reboot
-        print(f'Rebooting {valid_ip}...')
-        time.sleep(30)
-        while True:
-            if util.ping(real_ip, cmd_port):
-                break
-            time.sleep(5)
-        print(f'pinged {valid_ip}; reboot done')
-        logger.info('Quabo ({valid_ip}) is rebooted successfully.')
-
 
 def main():
     if not os.path.exists('logs'):
