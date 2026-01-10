@@ -16,6 +16,7 @@ from driver.quabo_tftp import tftpw
 from driver import quabo_driver, quabo_tftp
 from utils import pixel_coords
 from utils import config_file
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from argparse import ArgumentParser
 
@@ -47,7 +48,64 @@ def show_config(obs_config, quabo_uids):
                 print('         IP addr: %s'%quabo_ip)
     #print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
-    
+
+# Reboot one module
+#
+def reboot_module(module, quabo_uids, network_config, timeout=60):
+    # Reboot the four quabos one by one
+    logger = logging.getLogger('PANOSETI.Config.reboot_module')
+    reboot_status = []
+    for i in range(4):
+        if not util.is_quabo_alive(module, quabo_uids, i):
+            continue
+        ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+        print(f'rebooting quabo at {ip_addr}')
+        ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+        real_ip = ip_ports['ip_addr']
+        cmd_port = ip_ports['cmd_port']
+        reboot_port = ip_ports['reboot_port']
+        logger.info('Quabo IP: %s'%ip_addr)
+        logger.info('Real IP: %s'%real_ip)
+        logger.info('Reboot port: %d'%reboot_port)
+        x = tftpw(real_ip, reboot_port)
+        # check timing mode, and only use it on Quabo0
+        if i == 0:
+            if 'timing_mode' not in module:
+                print('*******************************************************')
+                print('Timing Mode: WR')
+                print('*******************************************************')
+                x.put_wrpc_filesys('wr/wrpc_filesys')
+                logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
+            elif module['timing_mode'] == 'gnss':
+                print('*******************************************************')
+                print('Timing Mode: GNSS')
+                print('*******************************************************')
+                x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
+                logger.info(f'Set Timing Mode to GNSS on Quabo {ip_addr}')
+            elif module['timing_mode'] == 'wr':
+                print('*******************************************************')
+                print('Timing Mode: WR')
+                print('*******************************************************')
+                x.put_wrpc_filesys('wr/wrpc_filesys')
+                logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
+            else:
+                raise Exception(f"Timing Mode { module['timing_mode']} in obs_config not supported.")
+        x.reboot()
+        # wait for a while to let the quabo get rebooted successfully
+        time.sleep(20)
+        timeout_remaining = timeout
+        timeout_remaining -= 20
+        # check if the quabo is back online
+        while timeout_remaining > 0:
+            if util.ping(real_ip, cmd_port):
+                reboot_status.append({f"ip_addr" : True})
+                break
+            else:
+                time.sleep(5)
+                timeout_remaining -= 5
+        reboot_status.append({f"ip_addr" : False})
+    return reboot_status
+
 def do_reboot(modules, quabo_uids, network_config):
     # need to reboot quabos in order 0..3
     # to parallelize:
@@ -56,60 +114,23 @@ def do_reboot(modules, quabo_uids, network_config):
     # ... same for quabo 1 etc.
     #
     logger = logging.getLogger('PANOSETI.Config.do_reboot')
-    for i in range(4):
-        for module in modules:
-            if not util.is_quabo_alive(module, quabo_uids, i):
-                continue
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            print('rebooting quabo at %s'%ip_addr)
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
-            reboot_port = ip_ports['reboot_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Reboot port: %d'%reboot_port)
-            x = tftpw(real_ip, reboot_port)
-            # check timing mode, and only use it on Quabo0
-            if i == 0:
-                if 'timing_mode' not in module:
-                    print('*******************************************************')
-                    print('Timing Mode: WR')
-                    print('*******************************************************')
-                    x.put_wrpc_filesys('wr/wrpc_filesys')
-                    logger.info('Set Timing Mode to WR on Quabo %s'%ip_addr)
-                elif module['timing_mode'] == 'gnss':
-                    print('*******************************************************')
-                    print('Timing Mode: GNSS')
-                    print('*******************************************************')
-                    x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
-                    logger.info('Set Timing Mode to GNSS on Quabo %s'%ip_addr)
-                elif module['timing_mode'] == 'wr':
-                    print('*******************************************************')
-                    print('Timing Mode: WR')
-                    print('*******************************************************')
-                    x.put_wrpc_filesys('wr/wrpc_filesys')
-                    logger.info('Set Timing Mode to WR on Quabo %s'%ip_addr)
+    logger.info(f"Rebooting all of the modules in parallel...")
+    nmodules = len(nmodules)
+    with ThreadPoolExecutor(max_workers=nmodules) as pool:
+        futures = {
+            pool.submit(reboot_module, module, quabo_uids, network_config): module
+            for module in modules
+        }
+    logger.info('Checking the reboot status...')
+    for f in as_completed(futures):
+        status = f.result()
+        for s in status:
+            for k, v in s.items():
+                if v:
+                    print('pinged %s; reboot done'%k)
                 else:
-                    raise Exception('Timing Mode %s in obs_config not supported.'% module['timing_mode'])
-            x.reboot()
-
-        # wait for pings
-        #
-        for module in modules:
-            if not util.is_quabo_alive(module, quabo_uids, i):
-                continue
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            print('waiting for ping of %s'%ip_addr)
-            while True:
-                logger.info('ping quabo %s:%d...'%(ip_addr, cmd_port))
-                # wait for the reboot
-                time.sleep(40)
-                if util.ping(real_ip, cmd_port):
-                    break
-                time.sleep(1)
-            print('pinged %s; reboot done'%ip_addr)
-
+                    print(f'Reboot {k} failed.')
+                logger.info(f"Rebooting {k} status is {v}.")
     print('All quabos rebooted')
 
 def do_loads(modules, quabo_uids, quabo_info, network_config):
