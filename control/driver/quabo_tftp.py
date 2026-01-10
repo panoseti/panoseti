@@ -5,6 +5,7 @@ import logging
 
 class tftpw(object):
     def __init__(self,ip,port=69):
+        self.ip = ip
         self.client = tftpy.TftpClient(ip,port)
         if not os.path.exists('logs'):
             os.makedirs('logs')
@@ -138,7 +139,7 @@ class tftpw(object):
     def reboot(self,addr=0x00010100):
         self.logger.info('reboot: addr - 0x%08x'%addr)
         remote_filename = '/progdev'
-        filename = 'tmp.prog'
+        filename = f'tmp.prog.{self.ip}'
         fp = open(filename,'wb')
         for i in range(1,5):
             s = struct.pack('B', addr>>(8*(4-i))&0xFF)

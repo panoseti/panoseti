@@ -115,7 +115,7 @@ def do_reboot(modules, quabo_uids, network_config):
     #
     logger = logging.getLogger('PANOSETI.Config.do_reboot')
     logger.info(f"Rebooting all of the modules in parallel...")
-    nmodules = len(nmodules)
+    nmodules = len(modules)
     with ThreadPoolExecutor(max_workers=nmodules) as pool:
         futures = {
             pool.submit(reboot_module, module, quabo_uids, network_config): module
