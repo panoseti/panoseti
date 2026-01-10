@@ -145,10 +145,10 @@ class tftpw(object):
             s = struct.pack('B', addr>>(8*(4-i))&0xFF)
             fp.write(s)
         fp.close()
-        print('*******************************************************')
-        print('FPGA is rebooting, just ignore the timeout information')
-        print('Wait for 30s, and then check housekeeping data!')
-        print('*******************************************************')
+        # print('*******************************************************')
+        # print('FPGA is rebooting, just ignore the timeout information')
+        # print('Wait for 30s, and then check housekeeping data!')
+        # print('*******************************************************')
         try:
             self.client.upload(remote_filename,filename)
         except:
