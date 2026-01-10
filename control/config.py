@@ -636,6 +636,7 @@ def do_reboot_single_quabo(ip, obs_config, network_config):
             if util.ping(real_ip, cmd_port):
                 break
             time.sleep(5)
+        print('pinged %s; reboot done'%valid_ip)
         logger.info('Quabo ({valid_ip}) is rebooted successfully.')
 
 
