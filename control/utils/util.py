@@ -501,6 +501,10 @@ def get_valid_ip(obs_config):
 def convert_ip(ip):
     try:
         qid = int(ip)
-        return f"192.168.{qid>>8}.{qid&0xff}"
+        return f"192.168.{qid>>8}.{qid&0xfc}", qid&0x3
     except:
-        return ip
+        ipstr = ip.split('.')
+        last = int(ipstr[3])
+        blast = 4*(last//4)
+        index = last - blast
+        return f"{ipstr[0]}.{ipstr[1]}.{ipstr[2]}.{str(blast)}", index

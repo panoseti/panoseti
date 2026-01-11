@@ -56,17 +56,18 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
     logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
     logger.info(f"The Quabo IP address/ID is {ip}.")
     ips = util.get_valid_ip(obs_config)
-    valid_ip = util.convert_ip(ip)
-    if valid_ip not in ips:
+    ip_base, index = util.convert_ip(ip)
+    ip_addr = config_file.quabo_ip_addr(ip_base, index)
+    if ip_addr not in ips:
         logger.error(f"{ip} is not a valid IP address or Quabo ID.")
         return
     else:
-        print(f'Rebooting {valid_ip}...')
-        ip_ports = util.get_quabo_ip_port(valid_ip, 0, network_config)
+        print(f'Rebooting {ip_addr}...')
+        ip_ports = util.get_quabo_ip_port(ip_base, index, network_config)
         real_ip = ip_ports['ip_addr']
         cmd_port = ip_ports['cmd_port']
         reboot_port = ip_ports['reboot_port']
-        logger.info('Quabo IP: %s'%valid_ip)
+        logger.info('Quabo IP: %s'%ip_addr)
         logger.info('Real IP: %s'%real_ip)
         logger.info('Reboot port: %d'%reboot_port)
         x = tftpw(real_ip, reboot_port)
@@ -77,14 +78,14 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
         timeout_remaining -= 30
         while timeout_remaining > 0:
             if util.ping(real_ip, cmd_port):
-                print(f'pinged {valid_ip}; reboot done')
-                logger.info('Quabo ({valid_ip}) is rebooted successfully.')
+                print(f'pinged {ip_addr}; reboot done')
+                logger.info('Quabo ({ip_addr}) is rebooted successfully.')
                 break
             time.sleep(5)
             timeout_remaining -= 5
         if timeout_remaining <= 0:
-            print(f'reboot {valid_ip} failed; timeout ({timeout}s)')
-            logger.error(f'Quabo ({valid_ip}) is failed to rebooted.')
+            print(f'reboot {ip_addr} failed; timeout ({timeout}s)')
+            logger.error(f'Quabo ({ip_addr}) is failed to rebooted.')
 
 # Reboot one module
 #
