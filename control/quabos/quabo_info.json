@@ -295,5 +295,93 @@
             1793,
             1794
         ]
+    },
+    {
+        "uid": "6b448240140dc18",
+        "serialno": "SN050",
+        "board_version": "bga",
+        "detector_serialno": [
+            2169,
+            2170,
+            2171,
+            2172
+        ]
+    },
+    {
+        "uid": "682310200d0302e",
+        "serialno": "SN053",
+        "board_version": "bga",
+        "detector_serialno": [
+            2173,
+            2175,
+            2176,
+            2177
+        ]
+    },
+    {
+        "uid": "682310200d0b830",
+        "serialno": "SN054",
+        "board_version": "bga",
+        "detector_serialno": [
+            2178,
+            2181,
+            2182,
+	    2183
+        ]
+    },
+    {
+        "uid": "6b448240140640a",
+        "serialno": "SN055",
+        "board_version": "bga",
+        "detector_serialno": [
+            2184,
+            2185,
+            2188,
+	    2189
+        ]
+    },
+    {
+        "uid": "6b4482401609c2a",
+        "serialno": "SN046",
+        "board_version": "bga",
+        "detector_serialno": [
+            1795,
+            1796,
+            1797,
+	    1798
+        ]
+    },
+    {
+        "uid": "6b4482401609c27",
+        "serialno": "SN047",
+        "board_version": "bga",
+        "detector_serialno": [
+            1799,
+            1801,
+            1803,
+            1804
+        ]
+    },
+    {
+        "uid": "6b448240140bc0b",
+        "serialno": "SN048",
+        "board_version": "bga",
+        "detector_serialno": [
+            2161,
+            2162,
+            2163,
+            2164
+        ]
+    },
+    {
+        "uid": "6b4482401402808",
+        "serialno": "SN049",
+        "board_version": "bga",
+        "detector_serialno": [
+            2165,
+            2166,
+            2167,
+            2168
+        ]
     }
 ]
