@@ -80,7 +80,7 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
             logger.info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
             if util.ping(real_ip, cmd_port):
                 print(f'pinged {ip_addr}; reboot done')
-                logger.info('Quabo ({ip_addr}) is rebooted successfully.')
+                logger.info(f'Quabo ({ip_addr}) is rebooted successfully.')
                 break
             time.sleep(5)
             timeout_remaining -= 5
@@ -146,7 +146,7 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
             if util.ping(real_ip, cmd_port):
                 reboot_status.append({f"{ip_addr}" : True})
                 print(f'pinged {ip_addr}; reboot done')
-                logger.info('Quabo ({ip_addr}) is rebooted successfully.')
+                logger.info(f'Quabo ({ip_addr}) is rebooted successfully.')
                 break
             else:
                 time.sleep(5)
