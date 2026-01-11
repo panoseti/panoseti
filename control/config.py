@@ -17,7 +17,6 @@ from driver import quabo_driver, quabo_tftp
 from utils import pixel_coords
 from utils import config_file
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 
 from argparse import ArgumentParser
 
@@ -168,7 +167,7 @@ def do_reboot(modules, quabo_uids, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_reboot')
     logger.info(f"Rebooting all of the modules in parallel...")
     start_time = time.time()
-    start_dt = datetime.fromtimestamp(start_time)
+    start_dt = datetime.datetime.fromtimestamp(start_time)
     nmodules = len(modules)
     with ThreadPoolExecutor(max_workers=nmodules) as pool:
         futures = {
@@ -190,7 +189,7 @@ def do_reboot(modules, quabo_uids, network_config):
                 logger.info(f"Rebooting {k} status is {v}.")
     print('*******************************************************')
     end_time = time.time()
-    end_dt = datetime.fromtimestamp(end_time)
+    end_dt = datetime.datetime.fromtimestamp(end_time)
     elapsed = int(end_time - start_time)
     minutes = elapsed // 60
     seconds = elapsed % 60
