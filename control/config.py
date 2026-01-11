@@ -77,6 +77,7 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
         time.sleep(30)
         timeout_remaining -= 30
         while timeout_remaining > 0:
+            logger.info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
             if util.ping(real_ip, cmd_port):
                 print(f'pinged {ip_addr}; reboot done')
                 logger.info('Quabo ({ip_addr}) is rebooted successfully.')
@@ -97,6 +98,21 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
         if not util.is_quabo_alive(module, quabo_uids, i):
             continue
         ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+        if i == 0:
+            if 'timing_mode' not in module:
+                print('*******************************************************')
+                print(f'Timing Mode for Quabo ({ip_addr}): WR')
+                print('*******************************************************')
+            elif module['timing_mode'] == 'gnss':
+                print('*******************************************************')
+                print(f'Timing Mode for Quabo ({ip_addr}): GNSS')
+                print('*******************************************************')
+            elif module['timing_mode'] == 'wr':
+                print('*******************************************************')
+                print(f'Timing Mode for Quabo ({ip_addr}): WR')
+                print('*******************************************************')
+            else:
+                raise Exception(f"Timing Mode { module['timing_mode']} in obs_config not supported.")
         print(f'rebooting quabo at {ip_addr}')
         ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
         real_ip = ip_ports['ip_addr']
@@ -109,32 +125,24 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
         # check timing mode, and only use it on Quabo0
         if i == 0:
             if 'timing_mode' not in module:
-                print('*******************************************************')
-                print('Timing Mode: WR')
-                print('*******************************************************')
                 x.put_wrpc_filesys('wr/wrpc_filesys')
                 logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
             elif module['timing_mode'] == 'gnss':
-                print('*******************************************************')
-                print('Timing Mode: GNSS')
-                print('*******************************************************')
                 x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
                 logger.info(f'Set Timing Mode to GNSS on Quabo {ip_addr}')
             elif module['timing_mode'] == 'wr':
-                print('*******************************************************')
-                print('Timing Mode: WR')
-                print('*******************************************************')
                 x.put_wrpc_filesys('wr/wrpc_filesys')
                 logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
             else:
                 raise Exception(f"Timing Mode { module['timing_mode']} in obs_config not supported.")
         x.reboot()
         # wait for a while to let the quabo get rebooted successfully
-        time.sleep(30)
         timeout_remaining = timeout
+        time.sleep(30)
         timeout_remaining -= 30
         # check if the quabo is back online
         while timeout_remaining > 0:
+            logger.info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
             if util.ping(real_ip, cmd_port):
                 reboot_status.append({f"{ip_addr}" : True})
                 print(f'pinged {ip_addr}; reboot done')
@@ -165,11 +173,11 @@ def do_reboot(modules, quabo_uids, network_config):
             for module in modules
         }
     logger.info('Checking the reboot status...')
+    print('*******************************************************')
+    print("Reboot Status Summary:")
+    print('*******************************************************')
     for f in as_completed(futures):
         status = f.result()
-        print('*******************************************************')
-        print("Reboot Status Summary:")
-        print('*******************************************************')
         for s in status:
             for k, v in s.items():
                 if v:
@@ -177,7 +185,7 @@ def do_reboot(modules, quabo_uids, network_config):
                 else:
                     print(f'Reboot {k} failed.')
                 logger.info(f"Rebooting {k} status is {v}.")
-        print('*******************************************************')
+    print('*******************************************************')
 
 def do_loads(modules, quabo_uids, quabo_info, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_loads')
