@@ -513,7 +513,8 @@ sock.settimeout(0.5)
 
 try:
     #sock.bind((UDP_DEST_IP, UDP_CMD_PORT))    
-    sock.bind(("", UDP_CMD_PORT))
+    #sock.bind(("", UDP_CMD_PORT))
+    pass
 except socket.error as msg:
     print ('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
     sys.exit()

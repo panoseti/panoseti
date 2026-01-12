@@ -65,7 +65,7 @@ class QUABO:
         self.config_file_path = config_file_path
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
-        self.sock.bind(("", UDP_CMD_PORT))
+        #self.sock.bind(("", UDP_CMD_PORT))
         self.have_hk_sock = False
 
         self.shutter_open = 0
