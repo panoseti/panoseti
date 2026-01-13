@@ -30,6 +30,8 @@ def fetch_outlets(site):
     """Return list of outlet dicts in normalized format."""
     url = f"http://{site['ip']}/restapi/relay/outlets/"
     r = requests.get(url, auth=(site['user'], site['pwd']), timeout=4, verify=False)
+    print(f"user: {site['user']}")
+    print(f"pwd: {site['pwd']}")
     r.raise_for_status()
     data = r.json()
 
