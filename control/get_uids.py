@@ -17,10 +17,13 @@ from argparse import ArgumentParser
 #
 def get_uid(ip_addr, port):
     x = tftpw(ip_addr, port)
-    x.get_flashuid()
-    with open('flashuid', 'rb') as f:
-        i = struct.unpack('q', f.read(8))
-        return "%x"%(i[0])
+    try:
+        x.get_flashuid()
+        with open('flashuid', 'rb') as f:
+            i = struct.unpack('q', f.read(8))
+            return "%x"%(i[0])
+    except:
+        return ""
 
 def get_uids(obs_config, network_config, exclude=[]):
     quabo_uids = {}
@@ -42,7 +45,10 @@ def get_uids(obs_config, network_config, exclude=[]):
                     print("get uid", ip_addr)
                     # TODO: we need to ping the board before get_uid
                     uid = get_uid(real_ip, port)
-                    print("%s has UID %s"%(ip_addr, uid))
+                    if len(uid):
+                        print("%s has UID %s"%(ip_addr, uid))
+                    else:
+                        print("%s is offline"%ip_addr)
                     quabo['uid'] = uid
                 else:
                     quabo['uid'] = ''
