@@ -150,7 +150,7 @@ class QUABO:
                 image_us=4999,
                 image_8bit=False,
                 do_ph=True,
-                bl_subtract=True
+                bl_subtract=False
             )
         daq_stop = DAQ_PARAMS(False, 0, False, False, True)
         # This IP is not important, so I put a static IP here.
