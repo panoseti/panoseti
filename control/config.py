@@ -486,7 +486,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
 
 # set CHANMASK and GOEMASK for modules
 #
-def do_mask_config(modules, data_config, network_config, verbose=False):
+def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False):
     logger = logging.getLogger('PANOSETI.Config.do_mask_config')
     qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
     do_ph = 'pulse_height' in data_config.keys()
@@ -515,6 +515,8 @@ def do_mask_config(modules, data_config, network_config, verbose=False):
 
     for module in modules:
         for i in range(4):
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             for tag in ['CHANMASK_8', 'GOEMASK']:
                 if verbose:
@@ -788,7 +790,7 @@ def main():
     elif args.maroc_config:
         do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
     elif args.mask_config:
-        do_mask_config(modules, data_config, network_config, True)
+        do_mask_config(modules, data_config, network_config, quabo_uids, True)
     elif args.calibrate_ph:
         do_calibrate_ph(modules, quabo_uids, network_config)
     elif args.disk_space:
