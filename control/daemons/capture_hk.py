@@ -89,7 +89,11 @@ def storeInRedis(packet, r:redis.Redis):
     #       (array[(n - 2) // 2] & 0xFF00) >> 8, if n is odd.
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
-        
+
+
+    # See the following docs for the packet format in the housekeeping packet:
+    # https://github.com/panoseti/panoseti/wiki/Quabo-packet-interface#housekeeping-packet-64-bytes
+
     boardName = "QUABO_" + str(array[0])
     
     redis_set = {
@@ -126,6 +130,8 @@ def storeInRedis(packet, r:redis.Redis):
 
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
+        'EXT_10MHz_STATUS': (array[25]&0x04) >> 2,      # 52[3]	EXT_10MHz_STATUS
+        'EXT_1PPS_STATUS': (array[25]&0x08) >> 3,       # 52[4]	EXT_1PPS_STATUS
 
         # PCBrev_n represents the quabo version. If 0, the quabo is BGA version; if 1, the qubao is QFP version
         # Bit 0 in the byte with offset 53.
