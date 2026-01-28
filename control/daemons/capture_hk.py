@@ -89,7 +89,11 @@ def storeInRedis(packet, r:redis.Redis):
     #       (array[(n - 2) // 2] & 0xFF00) >> 8, if n is odd.
     for i, sign in zip(range(2,len(packet), 2), signed):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
-        
+
+
+    # See the following docs for the packet format in the housekeeping packet:
+    # https://github.com/panoseti/panoseti/wiki/Quabo-packet-interface#housekeeping-packet-64-bytes
+
     boardName = "QUABO_" + str(array[0])
     
     redis_set = {
@@ -138,6 +142,13 @@ def storeInRedis(packet, r:redis.Redis):
         'AGG_STATUS_MSG': "",
         'AGG_STATUS_LEVEL': 0
     }
+
+    # Extract 10MHz and 1PPS
+    ext_10mhz_status = (array[25] & 0x08) >> 3  # 52[3] EXT_10MHz_STATUS
+    ext_1pps_status = (array[25] & 0x010) >> 4  # 52[4] EXT_1PPS_STATUS
+    redis_set['EXT_10MHz_STATUS'] = ext_10mhz_status
+    redis_set['EXT_1PPS_STATUS'] = ext_1pps_status & ext_10mhz_status  # 1PPs is valid only if 10 MHz is valid
+
     md_utils.write_status("housekeeping", boardName, redis_set)
 
     for x in range(4):
