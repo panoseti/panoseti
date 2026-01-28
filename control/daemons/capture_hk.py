@@ -130,8 +130,6 @@ def storeInRedis(packet, r:redis.Redis):
 
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
-        'EXT_10MHz_STATUS': (array[25]&0x04) >> 2,      # 52[3]	EXT_10MHz_STATUS
-        'EXT_1PPS_STATUS': (array[25]&0x08) >> 3,       # 52[4]	EXT_1PPS_STATUS
 
         # PCBrev_n represents the quabo version. If 0, the quabo is BGA version; if 1, the qubao is QFP version
         # Bit 0 in the byte with offset 53.
@@ -144,6 +142,13 @@ def storeInRedis(packet, r:redis.Redis):
         'AGG_STATUS_MSG': "",
         'AGG_STATUS_LEVEL': 0
     }
+
+    # Extract 10MHz and 1PPS
+    ext_10mhz_status = (array[25] & 0x08) >> 3  # 52[3] EXT_10MHz_STATUS
+    ext_1pps_status = (array[25] & 0x010) >> 4  # 52[4] EXT_1PPS_STATUS
+    redis_set['EXT_10MHz_STATUS'] = ext_10mhz_status
+    redis_set['EXT_1PPS_STATUS'] = ext_1pps_status & ext_10mhz_status  # 1PPs is valid only if 10 MHz is valid
+
     md_utils.write_status("housekeeping", boardName, redis_set)
 
     for x in range(4):
