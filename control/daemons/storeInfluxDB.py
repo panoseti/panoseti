@@ -238,7 +238,7 @@ def main():
                 # print(f"Skipping {rkey}: {e}")
                 pass
 
-            time.sleep(UPDATE_INTERVAL_SECONDS)
+        time.sleep(UPDATE_INTERVAL_SECONDS)
 
 if __name__ == "__main__":
     main()
