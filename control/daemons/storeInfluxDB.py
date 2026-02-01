@@ -257,7 +257,7 @@ def process_redis_keys(
 ):
     """
     Main processing logic: Scans keys, routes them, extracts data, and prepares batch writes.
-    OPTIMIZATION: Uses r.scan_iter() for non-blocking iteration and writes in batches.
+    Opt: Uses r.scan_iter() for non-blocking iteration and writes in batches.
 
     Args:
         r (redis.Redis): Redis client.
@@ -269,7 +269,7 @@ def process_redis_keys(
     batch_dev = []
 
     try:
-        # OPTIMIZATION: Use scan_iter instead of keys('*') to prevent blocking Redis
+        # Opt: Use scan_iter instead of keys('*') to prevent blocking Redis
         # as the key space grows. This is O(1) per call vs O(N).
         # We scan for ALL keys and let determine_routing filter them.
         for rkey_b in r.scan_iter(match='*'):
@@ -293,7 +293,7 @@ def process_redis_keys(
                     else:
                         batch_dev.append(point)
 
-        # D. Bulk Write Batches (OPTIMIZATION: Reduces Network I/O)
+        # D. Bulk Write Batches (This is an optimization that reduces InfluxDB operations)
         if batch_prod:
             client_prod.write_points(batch_prod)
             # logger.debug(f"Wrote {len(batch_prod)} points to PRODUCTION")
