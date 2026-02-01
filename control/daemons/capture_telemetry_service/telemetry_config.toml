@@ -1,0 +1,45 @@
+# ==========================================
+# PANOSETI Telemetry Configuration
+# ==========================================
+
+# --- 1. PRODUCTION DEVICES ---
+# Data is permanent (TTL=0) and strictly validated.
+# "redis_prefix" should be specific to the hardware/location.
+
+[devices.gnss]
+mode = "production"
+redis_prefix = "UBLOX_ZED-F9T_"
+description = "Main GNSS Timing modules"
+
+[devices.dew]
+mode = "production"
+redis_prefix = "DOME-DEW_"
+description = "Dew point sensors"
+
+[devices.test]
+mode = "production"
+redis_prefix = "TEST-STRICT_"
+description = "CI/CD: Test strictly-typed messages"
+
+# --- 2. EXPERIMENTAL DEVICES (The "Wild West") ---
+# Data auto-deletes after 24h (86400s). Schema validation is OFF.
+# Prefix MUST start with "DEV_" to be valid.
+
+[devices.example]
+mode = "experimental"
+redis_prefix = "DEV_EXAMPLE_"
+ttl_seconds = 86400  # 1 Day TTL
+description = "Flexible logging for R&D"
+
+[devices.test_flex]
+mode = "experimental"
+redis_prefix = "DEV_TEST-FLEX_"
+ttl_seconds = 3600   # 1 Hour TTL
+description = "CI/CD: Test flexible JSON-like messages"
+
+# Example of a new prototype
+[devices.new_lidar]
+mode = "experimental"
+redis_prefix = "DEV_LIDAR_V1_"
+ttl_seconds = 86400
+description = "Testing new lidar sensor integration"
