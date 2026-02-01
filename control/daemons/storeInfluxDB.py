@@ -87,19 +87,19 @@ def init_influx_clients():
     return client_prod, client_dev
 
 
-def influx_init():
-    r = redis_init()
-    client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-    client.create_database('metadata')
+# def influx_init():
+#     r = redis_init()
+#     client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
+#     client.create_database('metadata')
+#
+#     return r, client
 
-    return r, client
 
-
-def get_datatype(redis_key):
-    for key in DATATYPE_FORMAT.keys():
-        if DATATYPE_FORMAT[key].match(redis_key) is not None:
-            return key
-    return "None"
+# def get_datatype(redis_key):
+#     for key in DATATYPE_FORMAT.keys():
+#         if DATATYPE_FORMAT[key].match(redis_key) is not None:
+#             return key
+#     return "None"
 
 
 # Create the json body and write the data to influxDB
@@ -128,20 +128,20 @@ def write_to_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:s
         print(f"Error writing to Influx ({key}): {e}")
 
 
-def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list, key_timestamps:dict):
-    print("Updating keys:", redis_keys)
-    for rkey in redis_keys:
-        data_fields = dict()
-        for key in r.hkeys(rkey):
-            val = get_casted_redis_value(r, rkey, key)
-            if (val is not None) and (val != ""):
-                data_fields[key.decode('utf-8')] = val
-            else:
-                msg = f"storeInfluxDB.py: No data in ({rkey}, {key.decode('utf-8')}): {repr(val)}!"
-                msg += "\n Aborting influx write..."
-                continue
-        write_influx(client, rkey, data_fields, get_datatype(rkey))
-        key_timestamps[rkey] = data_fields['Computer_UTC']
+# def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list, key_timestamps:dict):
+#     print("Updating keys:", redis_keys)
+#     for rkey in redis_keys:
+#         data_fields = dict()
+#         for key in r.hkeys(rkey):
+#             val = get_casted_redis_value(r, rkey, key)
+#             if (val is not None) and (val != ""):
+#                 data_fields[key.decode('utf-8')] = val
+#             else:
+#                 msg = f"storeInfluxDB.py: No data in ({rkey}, {key.decode('utf-8')}): {repr(val)}!"
+#                 msg += "\n Aborting influx write..."
+#                 continue
+#         write_influx(client, rkey, data_fields, get_datatype(rkey))
+#         key_timestamps[rkey] = data_fields['Computer_UTC']
 
 
 def main():
@@ -239,10 +239,6 @@ def main():
                 pass
 
             time.sleep(UPDATE_INTERVAL_SECONDS)
-
-        if __name__ == "__main__":
-            main()
-
 
 if __name__ == "__main__":
     main()
