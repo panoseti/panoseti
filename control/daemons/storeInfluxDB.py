@@ -14,6 +14,8 @@ import re
 import redis
 from datetime import datetime
 from influxdb import InfluxDBClient
+from typing import Dict, Optional, Tuple, Any, List
+from requests.exceptions import ConnectionError
 
 # --- PATH SETUP ---
 # Add control root to path
@@ -37,7 +39,7 @@ DB_DEV_NAME  = 'dev_metadata'
 
 # Retention Policies
 RP_PROD_DEFAULT = 'autogen'   # Infinite (InfluxDB default)
-RP_DEV_DEFAULT  = 'autogen'   # We set the DB default to 7 days, so 'autogen' is 7 days
+RP_DEV_NAME  = 'autogen_7d'   # We set the DB default to 7 days, so 'autogen' is 7 days
 DEV_RETENTION_DURATION = '7d'
 
 # Seconds between consecutive snapshots of Redis
@@ -63,53 +65,134 @@ DATATYPE_FORMAT = {
 key_timestamps = {}
 
 
-def init_influx_clients():
+def init_influx_clients() -> Tuple[InfluxDBClient, InfluxDBClient]:
     """
-    Initialize two separate clients to enforce isolation.
+    Robustly connects to InfluxDB (Prod and Dev) with retry logic.
+    Blocks until connection succeeds.
     """
-    # 1. Production Client
-    client_prod = InfluxDBClient('localhost', 8086, 'root', 'root', DB_PROD_NAME)
-    client_prod.create_database(DB_PROD_NAME)
+    print("Connecting to InfluxDB...")
+    while True:
+        try:
+            # 1. Production Client
+            client_prod = InfluxDBClient('localhost', 8086, 'root', 'root', DB_PROD_NAME)
+            client_prod.create_database(DB_PROD_NAME)
 
-    # 2. Development Client
-    client_dev = InfluxDBClient('localhost', 8086, 'root', 'root', DB_DEV_NAME)
-    client_dev.create_database(DB_DEV_NAME)
+            # 2. Development Client
+            client_dev = InfluxDBClient('localhost', 8086, 'root', 'root', DB_DEV_NAME)
+            client_dev.create_database(DB_DEV_NAME)
 
-    # Enforce Retention on Dev DB
-    # We alter the 'autogen' policy of the dev DB to be 7 days.
-    # This ensures that even if users forget to specify RP, it defaults to deletion.
+            # Enforce Retention on Dev DB
+            try:
+                client_dev.create_retention_policy(RP_DEV_NAME, DEV_RETENTION, "1", default=True)
+            except Exception:
+                pass
+
+            print("✅ Connected to InfluxDB.")
+            return client_prod, client_dev
+
+        except (ConnectionError, Exception) as e:
+            print(f"⚠️ InfluxDB not ready: {e}. Retrying in 5s...")
+            time.sleep(5)
+
+
+def resolve_destination(rkey, telemetry_mgr, client_prod, client_dev):
+    """
+    Decides WHERE a Redis Key should go (Prod DB vs Dev DB).
+    Returns: (target_client, datatype_tag) or (None, None)
+    """
+    # Path A: Legacy Regex (Highest Priority)
+    for dtype, regex in DATATYPE_FORMAT.items():
+        if regex.match(rkey):
+            return client_prod, dtype
+
+    # Path B: Dynamic Telemetry Config
+    if telemetry_mgr:
+        dtype, mode = telemetry_mgr.match_key(rkey)
+        if dtype:
+            if mode == 'production':
+                return client_prod, dtype
+            else:
+                return client_dev, dtype
+
+    return None, None
+
+
+def determine_routing(
+        rkey: str,
+        client_prod: InfluxDBClient,
+        client_dev: InfluxDBClient,
+        telemetry_mgr: Optional[Any]
+) -> Tuple[Optional[InfluxDBClient], Optional[str]]:
+    """
+    Decides where a Redis Key should go based on Legacy Regex or Dynamic Config.
+
+    Returns:
+        (TargetClient, DatatypeTag) or (None, None) if no match found.
+    """
+    # 1. Legacy Regex Check (Priority 1: Backward Compatibility)
+    for dtype, regex in DATATYPE_FORMAT.items():
+        if regex.match(rkey):
+            return client_prod, dtype
+
+    # 2. Dynamic Telemetry Check (Priority 2: New Service)
+    if telemetry_mgr:
+        dtype, mode = telemetry_mgr.match_key(rkey)
+        if dtype:
+            target = client_prod if mode == 'production' else client_dev
+            return target, dtype
+
+    return None, None
+
+
+def extract_redis_payload(r: redis.Redis, rkey: str) -> Optional[Dict[str, Any]]:
+    """
+    Fetches hash from Redis, performs type casting, and deduplicates based on timestamp.
+
+    Returns:
+        Dict of data fields if new data exists, else None.
+    """
     try:
-        client_dev.create_retention_policy('autogen_7d', DEV_RETENTION_DURATION, "1", default=True)
-    except Exception:
-        # Policy might already exist, safe to ignore
-        pass
+        # Optimistic Timestamp Check
+        comp_utc_raw = r.hget(rkey, 'Computer_UTC')
+        if not comp_utc_raw:
+            return None
 
-    return client_prod, client_dev
+        comp_utc = comp_utc_raw.decode('utf-8')
+
+        # Deduplication: Has this timestamp been processed?
+        if key_timestamps.get(rkey) == comp_utc:
+            return None
+
+        # Fetch Full Hash
+        raw_hash = r.hgetall(rkey)
+        data_fields = {}
+
+        for field_b, val_b in raw_hash.items():
+            field = field_b.decode('utf-8')
+            # Utilize existing utility for robust type casting (str -> int/float)
+            val = get_casted_redis_value(r, rkey, field)
+            if val is not None and val != "":
+                data_fields[field] = val
+
+        if not data_fields:
+            return None
+
+        # Update cache after successful extraction
+        # Note: We return the payload, caller handles the side-effect update or we do it here.
+        # Doing it here assumes success, which is optimistic but efficient.
+        key_timestamps[rkey] = comp_utc
+        return data_fields
+
+    except Exception as e:
+        # print(f"Extraction error for {rkey}: {e}")
+        return None
 
 
-# def influx_init():
-#     r = redis_init()
-#     client = InfluxDBClient('localhost', 8086, 'root', 'root', 'metadata')
-#     client.create_database('metadata')
-#
-#     return r, client
-
-
-# def get_datatype(redis_key):
-#     for key in DATATYPE_FORMAT.keys():
-#         if DATATYPE_FORMAT[key].match(redis_key) is not None:
-#             return key
-#     return "None"
-
-
-# Create the json body and write the data to influxDB
-def write_to_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:str):
+def write_to_influx(client: InfluxDBClient, key: str, data_fields: Dict[str, Any], datatype: str):
     """
-    Creates the json body and write the data to influxDB.
-        - Generic write function for either client (prod or dev).
+    Formats the payload and writes a single point to the specified InfluxDB client.
     """
     try:
-        # Robust timestamp extraction
         ts_val = data_fields.get('Computer_UTC', time.time())
         t = datetime.utcfromtimestamp(float(ts_val)).isoformat()
 
@@ -124,121 +207,73 @@ def write_to_influx(client:InfluxDBClient, key:str, data_fields:dict, datatype:s
         }]
 
         client.write_points(json_body)
+        # Uncomment for high-verbosity debugging:
+        # print(f"DEBUG: Wrote {key} to {client._database}")
+
     except Exception as e:
         print(f"Error writing to Influx ({key}): {e}")
 
 
-# def write_redis_to_influx(client:InfluxDBClient, r:redis.Redis, redis_keys:list, key_timestamps:dict):
-#     print("Updating keys:", redis_keys)
-#     for rkey in redis_keys:
-#         data_fields = dict()
-#         for key in r.hkeys(rkey):
-#             val = get_casted_redis_value(r, rkey, key)
-#             if (val is not None) and (val != ""):
-#                 data_fields[key.decode('utf-8')] = val
-#             else:
-#                 msg = f"storeInfluxDB.py: No data in ({rkey}, {key.decode('utf-8')}): {repr(val)}!"
-#                 msg += "\n Aborting influx write..."
-#                 continue
-#         write_influx(client, rkey, data_fields, get_datatype(rkey))
-#         key_timestamps[rkey] = data_fields['Computer_UTC']
+def process_redis_keys(
+        r: redis.Redis,
+        client_prod: InfluxDBClient,
+        client_dev: InfluxDBClient,
+        telemetry_mgr: Optional[Any]
+):
+    """
+    Main processing logic: Scans keys, routes them, extracts data, and writes to DB.
+    Refactored from the old 'write_redis_to_influx' concept.
+    """
+    try:
+        # Get all keys (Safe decode)
+        all_keys = [k.decode('utf-8') for k in r.keys('*')]
+    except redis.RedisError:
+        print("Redis connection lost during scan.")
+        return
+
+    for rkey in all_keys:
+        # A. ROUTING
+        target_client, datatype = determine_routing(rkey, client_prod, client_dev, telemetry_mgr)
+
+        if not target_client:
+            continue
+
+        # B. EXTRACTION
+        data_fields = extract_redis_payload(r, rkey)
+
+        # C. INGESTION
+        if data_fields:
+            write_to_influx(target_client, rkey, data_fields, datatype)
 
 
 def main():
-    # r, client = influx_init()
-    # key_timestamps = {}
-    # while True:
-    #     write_redis_to_influx(client, r, get_updated_redis_keys(r, key_timestamps), key_timestamps)
-    #     time.sleep(1)
+    print("storeInfluxDB: Starting Dual-Database Archiver (Refactored)...")
 
-    print("Starting storeInfluxDB")
+    # 1. Initialize
+    try:
+        r = redis_init()
+        client_prod, client_dev = init_influx_clients()
+    except Exception as e:
+        print(f"CRITICAL: Initialization failed: {e}")
+        return
 
-    r = redis_init()
-    client_prod, client_dev = init_influx_clients()
+    telemetry_mgr = TelemetryConfigManager() if TelemetryConfigManager else None
+    print(f"Telemetery Manager Active: {telemetry_mgr is not None}")
 
-    # Initialize the specific Telemetry Service utility
-    if TelemetryConfigManager:
-        telemetry_mgr = TelemetryConfigManager()
-    else:
-        telemetry_mgr = None
-
+    # 2. Loop
     while True:
-        # Reload telemetry service config if changed
+        # Hot-reload Config
         if telemetry_mgr:
             telemetry_mgr.reload()
 
-        # Safe key iteration
+        # Process Batch
         try:
-            # Using keys() is standard for this script, though scan_iter is safer for massive DBs
-            all_keys = [k.decode('utf-8') for k in r.keys('*')]
-        except redis.RedisError:
-            time.sleep(UPDATE_INTERVAL_SECONDS)
-            continue
-
-        # Process all Redis Keys
-        for rkey in all_keys:
-            target_client = None
-            datatype_tag = None
-
-            # --- ROUTING LOGIC ---
-
-            # 1. Priority: Legacy Regex (Existing Daemons)
-            # This guarantees backward compatibility
-            for dtype, regex in DATATYPE_FORMAT.items():
-                if regex.match(rkey):
-                    datatype_tag = dtype
-                    target_client = client_prod
-                    break
-
-            # 2. Priority: Dynamic Telemetry Service
-            if not target_client and telemetry_mgr:
-                dtype, mode = telemetry_mgr.match_key(rkey)
-                if dtype:
-                    datatype_tag = dtype
-                    if mode == 'production':
-                        target_client = client_prod
-                    else:
-                        target_client = client_dev  # Experimental -> Dev DB
-
-            # If no route found, skip this key
-            if not target_client:
-                continue
-
-            # --- DATA EXTRACTION & WRITE ---
-            try:
-                # Optimistic check: Has the timestamp changed?
-                # This saves us from pulling the whole hash if nothing happened.
-                comp_utc_raw = r.hget(rkey, 'Computer_UTC')
-                if not comp_utc_raw:
-                    continue
-
-                comp_utc = comp_utc_raw.decode('utf-8')
-
-                # Deduplication check
-                if key_timestamps.get(rkey) == comp_utc:
-                    continue
-
-                # Fetch Payload
-                raw_hash = r.hgetall(rkey)
-                data_fields = {}
-
-                for field_b, val_b in raw_hash.items():
-                    field = field_b.decode('utf-8')
-                    # Use central utility to cast strings back to numbers
-                    val = get_casted_redis_value(r, rkey, field)
-                    if val is not None and val != "":
-                        data_fields[field] = val
-
-                if data_fields:
-                    write_to_influx(target_client, rkey, data_fields, datatype_tag)
-                    key_timestamps[rkey] = comp_utc
-
-            except Exception as e:
-                # Log but keep looping
-                # print(f"Skipping {rkey}: {e}")
-                pass
+            process_redis_keys(r, client_prod, client_dev, telemetry_mgr)
+        except Exception as e:
+            print(f"Unexpected error in main loop: {e}")
 
         time.sleep(UPDATE_INTERVAL_SECONDS)
+
 
 if __name__ == "__main__":
     main()
