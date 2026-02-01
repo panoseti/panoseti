@@ -2,15 +2,16 @@
     "daemons": {
         "hk": true,
         "gps": false,
-	"mount_ssh": true,
-	"palomar_webcam":true,
-	"weather2":true,
-	"webcam":true,
-	"guider":false,
+        "mount_ssh": true,
+        "palomar_webcam":true,
+        "weather2":true,
+        "webcam":true,
+        "guider":false,
         "power": false,
-	"power_switches": true,
-	"dome": true,
-	"alerts_forecast": true,
-        "wr": false
+        "power_switches": true,
+        "dome": true,
+        "alerts_forecast": true,
+        "wr": false,
+        "telemetry_service": true
     }
 }
