@@ -49,8 +49,8 @@ class TelemetryConfigManager:
 
                 # Rebuild prefix cache for O(1) lookup in the tight loop
                 self.active_prefixes = {}
-                for dev_cfg in self.config.devices.values():
-                    self.active_prefixes[dev_cfg.redis_prefix] = (dev_cfg.type, dev_cfg.mode)
+                for device_type, dev_cfg in self.config.devices.items():
+                    self.active_prefixes[dev_cfg.redis_prefix] = (device_type, dev_cfg.mode)
 
                 print(f"[TelemeteryService] Active Devices: {len(self.active_prefixes)}")
         except Exception as e:

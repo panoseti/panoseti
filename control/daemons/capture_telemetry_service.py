@@ -16,7 +16,7 @@ except ImportError:
 
 # --- 1. LOCATE CONFIG ---
 # Look for telemetry_config.toml in the SAME directory as this script
-LOCAL_CONFIG = Path(__file__).parent / "telemetry_config.toml"
+LOCAL_CONFIG = Path(__file__).parent / "capture_telemetry_service/telemetry_config.toml"
 
 logger = make_rich_logger("telemetry_daemon")
 
