@@ -14,8 +14,8 @@
 
 import sys, time, os
 
-import config, power, get_uids, util
-from utils import config_file
+import config, power, get_uids
+from utils import config_file, util
 
 from argparse import ArgumentParser
 
@@ -24,7 +24,7 @@ def session_start(obs_config, quabo_info, data_config, daq_config, network_confi
     modules = config_file.get_modules(obs_config)
     # power on the telescopes
     if stage == 'poweron':
-        stage = 'get)uids'
+        stage = 'get_uids'
         power.do_all(obs_config, 'on')
         print('waiting 60 secs for quabos to boot up')
         time.sleep(60)
@@ -32,35 +32,41 @@ def session_start(obs_config, quabo_info, data_config, daq_config, network_confi
     if stage == 'get_uids':
         stage = 'reboot'
         print('getting quabo UIDs')
-        get_uids.get_uids(obs_config)
-        quabo_uids = config_file.get_quabo_uids()
+        get_uids.get_uids(obs_config, network_config)
 
     if stage == 'reboot':
         stage = 'hk_dest'
         modules = config_file.get_modules(obs_config)
         print('rebooting quabos')
+        quabo_uids = config_file.get_quabo_uids()
         status = config.do_reboot(modules, quabo_uids, network_config)
         if status == False:
+            print('Reboot Failed.')
             return
+        else:
+            print('Reboot Successfully.')
 
     if stage == 'hk_dest':
         stage = 'start_redis'
         print('setting hk dest to this computer')
-        config.do_hk_dest(modules, quabo_uids, network_config)
+        quabo_uids = config_file.get_quabo_uids()
+        config.do_hk_dest(modules, quabo_uids, daq_config, network_config)
 
     if stage == 'start_redis':
-        stage = 'hv_on'
+        stage = 'maroc_config'
         print('starting Redis daemons')
         util.start_redis_daemons()
     
     if stage == 'maroc_config':
-        stage = 'calibrate_ph'
+        stage = 'mask_config'
         print('configuring Marocs')
+        quabo_uids = config_file.get_quabo_uids()
         config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
 
     if stage == 'mask_config':
-        stage = 'maroc_config'
+        stage = 'calibrate_ph'
         print('configuring Masks')
+        quabo_uids = config_file.get_quabo_uids()
         config.do_mask_config(modules, data_config, network_config, quabo_uids, True)
     
     if stage == 'calibrate_ph':
