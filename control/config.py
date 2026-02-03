@@ -197,6 +197,10 @@ def do_reboot(modules, quabo_uids, network_config):
     print("Reboot Stop  Time :", end_dt.strftime("%Y-%m-%d %H:%M:%S"))
     print(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
     print('*******************************************************')
+    if False in status:
+        return False
+    else:
+        return True
 
 def do_loads(modules, quabo_uids, quabo_info, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_loads')
