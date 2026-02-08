@@ -150,15 +150,15 @@ if __name__ == "__main__":
     # Get a product (e.g. ph1024 - which is actually 32x32, usually handled as 4 quabos)
     # Let's assume we are processing a Quabo stream (16x16)
     # If using Module data (32x32), change shape in processor init
-    seq = run.get_product("dp_ph256.bpp_2.module_253")
+    seq = run.get_product("dp_ph1024.bpp_2.module_250")
 
     # 2. Setup JAX Processor
-    # Using 16x16 for ph256
-    processor = JAXFrameProcessor(shape=(16, 16))
+    # Using 32x32 for ph1024
+    processor = JAXFrameProcessor(shape=(32, 32))
 
     # Mock Calibration (In real usage, load using CalibrationManager from previous turn)
-    dummy_baseline = np.full((16, 16), 280.0)
-    dummy_gain = np.full((16, 16), 60.0)
+    dummy_baseline = np.full((32, 32), 700.0)
+    dummy_gain = np.full((32, 32), 60.0)
     processor.set_calibration(dummy_baseline, dummy_gain)
 
     # 3. Filter Parameters
