@@ -1,0 +1,15 @@
+{
+  "run_type": "sci-data",
+  "gain": 60,
+  "pulse_height": {
+    "pe_threshold": 11.5,
+    "two_pixel_trigger": 0,
+    "three_pixel_trigger": 0
+  },
+  "image": {
+    "integration_time_usec": 1000,
+    "pe_threshold": 2,
+    "quabo_sample_size": 16
+  },
+  "max_file_size_mb": 4000
+}

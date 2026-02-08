@@ -1,0 +1,57 @@
+{
+  "name": "Lick",
+  "comment": "Default Lick config: both domes, 3 modules",
+  "wps_astrograph": {
+    "url": "http://admin:epowerpanoseti@astrograph-power",
+    "quabo_socket": 1
+  },
+  "wps_barnard": {
+    "url": "http://admin:epowerpanoseti@barnard-power",
+    "quabo_socket": 1
+  },
+  "wr_ip_addr": "wrs",
+  "gps_port": "/dev/ttyUSB0",
+  "detector_overvoltage": 2,
+  "domes": [
+    {
+      "name": "astrograph",
+      "obslat": 37.3425,
+      "obslon": -121.63777,
+      "obsalt": 1283,
+      "modules": [
+        {
+          "name": "West",
+          "mobo_serialno": "M12",
+          "quabo_version": "qfp",
+          "ip_addr": "192.168.0.4",
+          "wps": "wps_astrograph",
+          "azimuth": 182.987,
+          "elevation": 79.4016,
+          "position_angle": -1.4321
+        }
+      ]
+    },
+    {
+      "name": "barnard",
+      "obslat": 37.339166,
+      "obslon": -121.64416,
+      "obsalt": 1239,
+      "modules": [
+        {
+          "mobo_serialno": "M13",
+          "quabo_version": [
+            "qfp",
+            "bga",
+            "qfp",
+            "bga"
+          ],
+          "ip_addr": "192.168.0.12",
+          "wps": "wps_barnard",
+          "azimuth": 185.002,
+          "elevation": 78.8126,
+          "position_angle": -5.3558
+        }
+      ]
+    }
+  ]
+}
