@@ -102,7 +102,7 @@ class PFFSequence:
         """Robustly determines frame structure from the first non-empty file."""
         sample_file = next((p for p in self.file_paths if p.stat().st_size > 0), None)
         if not sample_file:
-            logger.warning(f"All files in {self.name} are empty.")
+            logger.debug(f"All files in {self.name} are empty.")
             return
 
         with open(sample_file, 'rb') as f:
