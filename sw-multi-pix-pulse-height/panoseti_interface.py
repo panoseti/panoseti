@@ -1,421 +1,375 @@
-"""
-PANOSETI File Interface
-=======================
-
-An optimized, object-oriented interface for reading PANOSETI observing runs.
-Abstracts multi-file datasets into continuous data streams using memory mapping.
-
-Dependencies:
-    - numpy
-    - pff (provided in the existing codebase)
-"""
-
 import os
 import json
 import mmap
-import glob
 import re
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Any, Union, Generator
+import shutil
+import struct
 from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional, Generator, Union, Callable, Sequence
+import warnings
+
 import numpy as np
+import matplotlib.pyplot as plt
+from rich.logging import RichHandler
+from rich.progress import Progress
+import logging
 
-# Assuming pff is available as a module, or we can inline the necessary util
-import pff  # type: ignore
+# 1. Setup Rich Logging
+logging.basicConfig(
+    level="INFO",
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(rich_tracebacks=True)]
+)
+logger = logging.getLogger("PanosetiInterface")
 
-
-# -----------------------------------------------------------------------------
-# Data Structures
-# -----------------------------------------------------------------------------
 
 @dataclass
-class FrameLayout:
-    """Stores the structural layout of a PFF frame."""
-    header_size: int  # Bytes in the JSON header (including padding/newlines)
-    image_offset: int  # Offset from start of frame to start of image data
-    image_size: int  # Bytes in the binary image data
-    frame_size: int  # Total bytes per frame
-    bpp: int  # Bytes per pixel
-    pixels: int  # Number of pixels (e.g., 1024)
-    format: str  # numpy format string (e.g., 'H', 'B')
+class FrameConfig:
+    """Holds structural information about a PFF file format."""
+    header_size: int  # Bytes in the JSON header including newlines
+    payload_size: int  # Bytes in the image data
+    frame_size: int  # Total bytes per frame (header + marker + payload)
+    image_shape: Tuple[int, int]
+    dtype: np.dtype
+    bytes_per_pixel: int
+    format_name: str
 
 
-# -----------------------------------------------------------------------------
-# Core Stream Class
-# -----------------------------------------------------------------------------
-
-class DataProductStream:
+class PFFSequence:
     """
-    Represents a continuous stream of data for a specific Data Product (DP)
-    and Module, spanning multiple physical files.
-
-    Behaves like a read-only list/array of frames.
+    Represents a sequence of PFF files (a single data product run) as a continuous data stream.
+    Handles split files (seqno_0, seqno_1...) and empty files robustly.
     """
 
-    def __init__(self, file_paths: List[Union[str, Path]], dp_type: str, bpp: int):
-        """
-        Initialize the stream.
+    def __init__(self, file_paths: Sequence[Union[str, Path]]):
+        self.file_paths = sorted([Path(p) for p in file_paths], key=lambda x: str(x))
+        if not self.file_paths:
+            raise ValueError("No file paths provided to PFFSequence.")
 
-        Args:
-            file_paths: List of sorted file paths making up this stream.
-            dp_type: Data product type (e.g., 'img16', 'ph256').
-            bpp: Bytes per pixel.
-        """
-        self.files = [Path(p) for p in file_paths]
-        self.dp_type = dp_type
-        self.bpp = bpp
-        self._layout: Optional[FrameLayout] = None
+        self.name = self.file_paths[0].name.split('.seqno')[0]
+
+        # Initialize metadata
+        self.frame_config: Optional[FrameConfig] = None
         self._file_frame_counts: List[int] = []
-        self._cumulative_frames: np.ndarray = np.array([])
-        self._total_frames = 0
+        self._cumulative_frames: List[int] = []
+        self._total_frames: int = 0
 
-        # Resource management
-        self._open_files_cache: Dict[int, Any] = {}
-        self._mmaps_cache: Dict[int, mmap.mmap] = {}
-        self._max_open_files = 8  # Keep a small buffer of open files
+        # 2. Robust Structure Analysis (Handles empty first files)
+        self._analyze_structure_robust()
+        self._index_files()
 
-        if not self.files:
-            raise ValueError("No files provided for DataProductStream.")
-
-        self._analyze_structure()
-
-    def _analyze_structure(self) -> None:
+    def _analyze_structure_robust(self) -> None:
         """
-        Determines frame size from the first file and indexes all files.
+        Determines frame structure by inspecting the first non-empty file.
         """
-        # 1. Determine Frame Layout from the first frame of the first file
-        first_file = self.files[0]
+        sample_file = None
+
+        # Find first non-empty file
+        for p in self.file_paths:
+            if p.stat().st_size > 0:
+                sample_file = p
+                break
+
+        if sample_file is None:
+            logger.warning(f"All files in sequence {self.name} are empty (0 bytes).")
+            return
+
         try:
-            with open(first_file, 'rb') as f:
-                # Robustly determine the size of the header and image
-                # We assume the standard PFF format: JSON header + '*' + Binary Data
+            with open(sample_file, 'rb') as f:
+                # Read a chunk large enough to contain the header
+                # ph1024 headers are larger (~500 bytes), ph256 (~130 bytes).
+                # Reading 4KB is safe.
+                sample_chunk = f.read(4096)
 
-                # Mark start
-                start_pos = f.tell()
+                # Locate end of JSON header: ends with '}\n\n' followed by '*'
+                # Note: The delimiter is strictly '\n\n' for the JSON block end in PFF specs
+                header_end_match = re.search(b'}\n\n\\*', sample_chunk)
 
-                # Use pff.read_json logic but track bytes
-                # PFF headers end with '\n\n'.
-                # We read until we find the start of the image delimiter '*'
-                # Note: This relies on the guarantee that headers are fixed size.
+                if not header_end_match:
+                    # Fallback for some older formats or malformed headers
+                    header_end_match = re.search(b'\n\n\\*', sample_chunk)
 
-                header_str = pff.read_json(f)  # Consumes the JSON part
-                if header_str is None:
-                    raise ValueError(f"Empty or invalid first file: {first_file}")
+                if not header_end_match:
+                    raise ValueError(f"Could not find valid frame delimiter (}}\\n\\n*) in {sample_file}")
 
-                # After read_json, we should be at the '*' delimiter or close to it
-                # pff.read_json might consume the newlines.
-                # Let's verify position.
-                current_pos = f.tell()
-                header_bytes = current_pos - start_pos
+                # The '*' is at the end of the match
+                marker_idx = header_end_match.end() - 1
+                # The header is everything before the '*'
+                header_bytes = sample_chunk[:marker_idx]
 
-                # Read delimiter
-                delimiter = f.read(1)
-                if delimiter != b'*':
-                    raise ValueError(f"Expected '*' delimiter after JSON, found {delimiter}")
+                try:
+                    json_header = json.loads(header_bytes.decode('utf-8'))
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON header: {e}")
+                    raise
 
-                # Determine image dimensions based on DP type
-                # This logic mirrors pff.read_image but calculates size only
-                pixels = 0
-                dtype_char = ''
+                self.header_size = len(header_bytes)
 
-                if 'img' in self.dp_type:
-                    # img16 = 32x32 = 1024 pixels
-                    # img8 = 32x32 = 1024 pixels (usually)
-                    pixels = 1024
-                elif 'ph' in self.dp_type:
-                    # ph256 = 16x16 = 256 pixels
-                    # ph1024 = 32x32 = 1024 pixels
-                    if '256' in self.dp_type:
-                        pixels = 256
-                    else:
-                        pixels = 1024
+                # Determine Image Properties
+                fname = sample_file.name
 
-                image_data_size = pixels * self.bpp
+                # Parse BPP from filename or default to 2
+                bpp = 2
+                if 'bpp_' in fname:
+                    bpp = int(fname.split('bpp_')[1].split('.')[0])
 
-                # Verify we can read that many bytes
-                f.seek(image_data_size, 1)  # Seek relative
-
-                total_frame_size = header_bytes + 1 + image_data_size  # +1 for '*'
-
-                # Set format for numpy
-                if self.bpp == 1:
-                    dtype_char = 'B'  # uint8
-                elif self.bpp == 2:
-                    dtype_char = 'H'  # uint16
+                # Parse format from filename
+                fmt_name = 'unknown'
+                if 'ph1024' in fname:
+                    shape = (32, 32)
+                    fmt_name = 'ph1024'
+                elif 'ph256' in fname:
+                    shape = (16, 16)
+                    fmt_name = 'ph256'
+                elif 'img16' in fname or 'img8' in fname:
+                    shape = (32, 32)
+                    fmt_name = 'img'
                 else:
-                    dtype_char = 'B'  # Default fallback
+                    # Fallback assumption
+                    shape = (32, 32)
+                    logger.warning(f"Could not determine shape from filename {fname}, assuming 32x32.")
 
-                self._layout = FrameLayout(
-                    header_size=header_bytes,
-                    image_offset=header_bytes + 1,
-                    image_size=image_data_size,
-                    frame_size=total_frame_size,
-                    bpp=self.bpp,
-                    pixels=pixels,
-                    format=dtype_char
+                pixels = shape[0] * shape[1]
+                payload_size = pixels * bpp
+                frame_size = self.header_size + 1 + payload_size  # +1 for '*' marker
+
+                dtype = np.int16 if bpp == 2 else np.uint8
+
+                self.frame_config = FrameConfig(
+                    header_size=self.header_size,
+                    payload_size=payload_size,
+                    frame_size=frame_size,
+                    image_shape=shape,
+                    dtype=np.dtype(dtype),
+                    bytes_per_pixel=bpp,
+                    format_name=fmt_name
                 )
 
+                logger.info(
+                    f"[green]Analyzed {fmt_name}[/green]: Frame Size={frame_size}b (Header={self.header_size}b, Payload={payload_size}b)")
+
         except Exception as e:
-            raise ValueError(f"Failed to analyze frame structure in {first_file}: {e}")
+            logger.error(f"Failed to analyze structure for {sample_file}: {e}")
+            raise
 
-        # 2. Index all files
-        # We assume all frames are the same size.
-        counts = []
-        for p in self.files:
+    def _index_files(self) -> None:
+        """Calculates frame counts for all files, handling empty ones."""
+        if not self.frame_config:
+            # If config is missing (e.g. all empty files), we have 0 frames
+            self._total_frames = 0
+            self._file_frame_counts = [0] * len(self.file_paths)
+            self._cumulative_frames = [0] * len(self.file_paths)
+            return
+
+        total = 0
+        for p in self.file_paths:
             size = p.stat().st_size
-            n_frames = size // self._layout.frame_size
-            if size % self._layout.frame_size != 0:
-                # Warning: File might be truncated or corrupt
-                print(
-                    f"Warning: File {p.name} size ({size}) is not a multiple of frame size ({self._layout.frame_size}). Truncating extra bytes.")
-            counts.append(n_frames)
+            if size == 0:
+                n_frames = 0
+            else:
+                n_frames = size // self.frame_config.frame_size
+                remainder = size % self.frame_config.frame_size
+                if remainder != 0:
+                    logger.warning(f"File {p.name} has trailing bytes ({remainder}b). Truncated?")
 
-        self._file_frame_counts = counts
-        self._cumulative_frames = np.cumsum([0] + counts)
-        self._total_frames = self._cumulative_frames[-1]
+            self._file_frame_counts.append(n_frames)
+            self._cumulative_frames.append(total + n_frames)
+            total += n_frames
 
-    def _get_file_handle(self, file_idx: int) -> mmap.mmap:
-        """
-        Returns an mmap object for the specified file index, managing a simple LRU cache.
-        """
-        if file_idx in self._mmaps_cache:
-            # Move to end (most recently used)
-            val = self._mmaps_cache.pop(file_idx)
-            self._mmaps_cache[file_idx] = val
-            return val
-
-        # Evict if full
-        if len(self._mmaps_cache) >= self._max_open_files:
-            oldest_idx = next(iter(self._mmaps_cache))
-            self._mmaps_cache.pop(oldest_idx).close()
-            self._open_files_cache.pop(oldest_idx).close()
-
-        # Open new
-        f = open(self.files[file_idx], 'rb')
-        mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-
-        self._open_files_cache[file_idx] = f
-        self._mmaps_cache[file_idx] = mm
-        return mm
-
-    def _locate_frame(self, global_idx: int) -> Tuple[int, int]:
-        """Maps a global frame index to (file_index, local_frame_index)."""
-        if global_idx < 0:
-            global_idx += self._total_frames
-
-        if global_idx < 0 or global_idx >= self._total_frames:
-            raise IndexError("Frame index out of range")
-
-        # Binary search to find the file index
-        # searchsorted returns the index where global_idx should be inserted to maintain order.
-        # right side: side='right'. indices: [0, 100, 200]. val: 50 -> returns 1. File is 1-1=0.
-        file_idx = np.searchsorted(self._cumulative_frames, global_idx, side='right') - 1
-        local_idx = global_idx - self._cumulative_frames[file_idx]
-        return file_idx, local_idx
+        self._total_frames = total
+        logger.info(f"Indexed sequence: {self._total_frames} frames across {len(self.file_paths)} files.")
 
     def __len__(self) -> int:
         return self._total_frames
 
-    def __getitem__(self, idx: Union[int, slice]) -> Union[Tuple[Dict, np.ndarray], List[Tuple[Dict, np.ndarray]]]:
+    def _get_file_mapping(self, global_idx: int) -> Tuple[int, int]:
+        """Maps global frame index -> (file_index, local_offset_index)."""
+        if global_idx < 0: global_idx += self._total_frames
+        if global_idx >= self._total_frames or global_idx < 0:
+            raise IndexError(f"Index {global_idx} out of range (Total: {self._total_frames})")
+
+        # Bisect is cleaner, but linear scan is fast enough for file lists < 1000 items
+        for i, cutoff in enumerate(self._cumulative_frames):
+            if global_idx < cutoff:
+                prev_cutoff = self._cumulative_frames[i - 1] if i > 0 else 0
+                return i, global_idx - prev_cutoff
+
+        raise IndexError("Index out of range (Logic Error)")
+
+    def iter_frames(self, start: int = 0, count: Optional[int] = None) -> Generator[
+        Tuple[Dict, np.ndarray], None, None]:
         """
-        Get frame(s) by index.
-        Returns: (header_dict, image_array) or list of them.
+        Generator for iterating over frames efficiently.
         """
-        if isinstance(idx, slice):
-            start, stop, step = idx.indices(self._total_frames)
-            return [self.get_frame(i) for i in range(start, stop, step)]
+        if self._total_frames == 0:
+            return
 
-        return self.get_frame(idx)
+        end = self._total_frames if count is None else min(start + count, self._total_frames)
+        current_idx = start
 
-    def get_frame(self, idx: int) -> Tuple[Dict, np.ndarray]:
-        """Retrieve a specific frame (Header + Image)."""
-        file_idx, local_idx = self._locate_frame(idx)
-        mm = self._get_file_handle(file_idx)
+        while current_idx < end:
+            file_idx, local_idx = self._get_file_mapping(current_idx)
+            filepath = self.file_paths[file_idx]
+            frames_in_file = self._file_frame_counts[file_idx]
 
-        start_byte = local_idx * self._layout.frame_size
+            # Determine how many frames we can read from this file
+            frames_to_read = min(end - current_idx, frames_in_file - local_idx)
 
-        # Read Header
-        # We know exact header size
-        json_bytes = mm[start_byte: start_byte + self._layout.header_size]
-        try:
-            header = json.loads(json_bytes.decode('utf-8'))
-        except json.JSONDecodeError:
-            # Fallback for potentially malformed padding
-            header = json.loads(json_bytes.decode('utf-8').rstrip('\x00'))
-
-        # Read Image
-        img_start = start_byte + self._layout.image_offset
-        img_end = img_start + self._layout.image_size
-        raw_bytes = mm[img_start: img_end]
-
-        # Convert to numpy
-        # Note: frombuffer is zero-copy (shares memory with mmap)
-        # We usually want a copy if we are closing mmaps frequently,
-        # but here the LRU keeps it alive. To be safe for the user, we copy.
-        img_arr = np.frombuffer(raw_bytes, dtype=self._layout.format).copy()
-
-        # Reshape
-        dim = int(np.sqrt(self._layout.pixels))
-        img_arr = img_arr.reshape((dim, dim))
-
-        return header, img_arr
-
-    def get_image(self, idx: int) -> np.ndarray:
-        """Optimized fetch for just the image data (skips JSON parsing)."""
-        file_idx, local_idx = self._locate_frame(idx)
-        mm = self._get_file_handle(file_idx)
-
-        offset = (local_idx * self._layout.frame_size) + self._layout.image_offset
-        raw_bytes = mm[offset: offset + self._layout.image_size]
-
-        dim = int(np.sqrt(self._layout.pixels))
-        return np.frombuffer(raw_bytes, dtype=self._layout.format).copy().reshape((dim, dim))
-
-    def close(self):
-        """Clean up file handles."""
-        for mm in self._mmaps_cache.values():
-            mm.close()
-        for f in self._open_files_cache.values():
-            f.close()
-        self._mmaps_cache.clear()
-        self._open_files_cache.clear()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-
-
-# -----------------------------------------------------------------------------
-# Observing Run Interface
-# -----------------------------------------------------------------------------
-
-class ObservingRun:
-    """
-    Main interface to a PANOSETI Observing Run directory.
-    Automatically organizes files by module and data product.
-    """
-
-    def __init__(self, run_dir: str):
-        self.run_dir = Path(run_dir)
-        if not self.run_dir.exists():
-            raise FileNotFoundError(f"Run directory not found: {run_dir}")
-
-        self.config_files: Dict[str, Any] = {}
-        self.modules: List[int] = []
-        self.data_products: Dict[str, Dict[int, DataProductStream]] = {}
-        # Structure: { 'img16': { module_id: DataStream, ... }, ... }
-
-        self._scan_directory()
-        self._load_configs()
-
-    def _load_configs(self):
-        """Loads static JSON config files found in the directory."""
-        for json_file in self.run_dir.glob("*.json"):
-            try:
-                with open(json_file, 'r') as f:
-                    self.config_files[json_file.stem] = json.load(f)
-            except Exception as e:
-                print(f"Warning: Could not load config {json_file}: {e}")
-
-    def _scan_directory(self):
-        """Scans PFF files and groups them."""
-        # Regex to parse filenames like:
-        # start_2022-02-01T07:30:08Z.dp_img16.bpp_2.dome_0.module_14.seqno_5.pff
-        # Note: Adapting regex based on provided parse_name examples
-
-        files_by_key = {}  # Key: (dp, module, bpp), Value: list of (seqno, filepath)
-
-        for fpath in self.run_dir.glob("*.pff"):
-            fname = fpath.name
-            if fname == 'hk.pff':
-                continue  # Handle HK separately if needed
-
-            # Using pff.parse_name or custom logic
-            try:
-                # Custom parse to avoid dependency issues if pff.py changes
-                parts = fname.split('.')
-                meta = {}
-                for part in parts:
-                    if '_' in part:
-                        k, v = part.split('_', 1)
-                        meta[k] = v
-
-                if 'dp' in meta and 'module' in meta and 'seqno' in meta:
-                    dp = meta['dp']
-                    mod = int(meta['module'])
-                    seq = int(meta['seqno'])
-                    bpp = int(meta.get('bpp', 2))  # Default to 2 if missing?
-
-                    key = (dp, mod, bpp)
-                    if key not in files_by_key:
-                        files_by_key[key] = []
-                    files_by_key[key].append((seq, fpath))
-            except Exception:
+            if frames_to_read <= 0:
+                # Should not happen if logic is correct, but safe check
+                current_idx += 1
                 continue
 
-        # Create Streams
-        self.modules = sorted(list(set(k[1] for k in files_by_key.keys())))
+            with open(filepath, 'rb') as f:
+                with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as mm:
+                    base_offset = local_idx * self.frame_config.frame_size
 
-        for (dp, mod, bpp), file_list in files_by_key.items():
-            # Sort by sequence number
-            sorted_files = [x[1] for x in sorted(file_list, key=lambda x: x[0])]
+                    for _ in range(frames_to_read):
+                        # Read Header
+                        header_bytes = mm[base_offset: base_offset + self.frame_config.header_size]
+                        # Read Data (Skip marker +1)
+                        data_start = base_offset + self.frame_config.header_size + 1
+                        data_bytes = mm[data_start: data_start + self.frame_config.payload_size]
 
-            if dp not in self.data_products:
-                self.data_products[dp] = {}
+                        try:
+                            header = json.loads(header_bytes.decode('utf-8'))
+                            arr = np.frombuffer(data_bytes, dtype=self.frame_config.dtype).reshape(
+                                self.frame_config.image_shape)
 
-            print(f"Initializing stream: {dp} Module {mod} ({len(sorted_files)} files)...")
-            try:
-                stream = DataProductStream(sorted_files, dp, bpp)
-                self.data_products[dp][mod] = stream
-            except Exception as e:
-                print(f"Error initializing stream for {dp} Mod {mod}: {e}")
+                            yield header, arr
+                        except Exception as e:
+                            logger.error(f"Error reading frame {current_idx} in {filepath.name}: {e}")
 
-    def get_stream(self, data_product: str, module_id: int) -> Optional[DataProductStream]:
-        """
-        Get the data stream for a specific product and module.
-        Example: run.get_stream('img16', 14)
-        """
-        return self.data_products.get(data_product, {}).get(module_id)
+                        base_offset += self.frame_config.frame_size
+                        current_idx += 1
 
-    def close(self):
-        """Close all open streams."""
-        for dp_map in self.data_products.values():
-            for stream in dp_map.values():
-                stream.close()
+    def preview_frame(self, idx: int):
+        """Plot a specific frame using Matplotlib."""
+        if self._total_frames == 0:
+            logger.warning("No frames to plot.")
+            return
 
+        header, img = list(self.iter_frames(start=idx, count=1))[0]
 
-# -----------------------------------------------------------------------------
-# Usage Example (Augmenting io.py)
-# -----------------------------------------------------------------------------
-# You can append the following logic to your existing io.py or use it alongside.
-
-def example_usage():
-    run_path = "./obs_Lick.start_2023..."
-
-    # Initialize the run
-    run = ObservingRun(run_path)
-
-    # Access a stream (e.g., img16 from module 14)
-    stream = run.get_stream('img16', 14)
-
-    if stream:
-        print(f"Total Frames: {len(stream)}")
-
-        # Random access (fetches from correct file automatically)
-        header, img = stream[5000]
-        print(f"Frame 5000 Time: {header.get('pkt_tai')}")
-        print(f"Image Mean: {np.mean(img)}")
-
-        # Fast image-only access
-        img_only = stream.get_image(5001)
-
-        # Slicing
-        frames = stream[0:10]  # Returns first 10 frames
-
-    run.close()
+        fig, ax = plt.subplots(figsize=(5, 5))
+        im = ax.imshow(img, cmap='viridis')
+        plt.colorbar(im, ax=ax, label='ADC / Pulse Height')
+        ax.set_title(f"Frame {idx}\nModule: {header.get('quabo_num', '?')} Seq: {header.get('pkt_num', '?')}")
+        plt.show()
 
 
-if __name__ == "__main__":
-    pass
+# 4. Efficient Filter & Write Logic
+def filter_pff_sequence(
+        sequence: PFFSequence,
+        output_filename: str,
+        filter_func: Callable[[Dict, np.ndarray], bool]
+) -> int:
+    """
+    Reads a PFFSequence, applies a filter, and writes passing frames to a new single PFF file.
+
+    Args:
+        sequence: The source PFFSequence.
+        output_filename: Path to output .pff file.
+        filter_func: Function accepting (header, image), returns True to keep.
+
+    Returns:
+        int: Number of frames written.
+    """
+    if sequence.frame_config is None:
+        logger.warning("Source sequence has no valid configuration (empty?). Aborting filter.")
+        return 0
+
+    conf = sequence.frame_config
+    written_count = 0
+
+    # Pre-calculate separator bytes
+    separator = b'*'
+    newline_pad = b'\n\n'  # Header usually ends with this, but we ensure it
+
+    logger.info(f"Starting filter job. Output: {output_filename}")
+
+    with open(output_filename, 'wb') as f_out:
+        with Progress() as progress:
+            task = progress.add_task("[cyan]Filtering...", total=len(sequence))
+
+            for header, img in sequence.iter_frames():
+                if filter_func(header, img):
+                    # 1. Update Sequence Numbers in Header (Optional but recommended)
+                    # We might want to preserve original pkt_num for traceability,
+                    # but typically 'seqno' implies file sequence.
+                    # We leave the header content Mostly As-Is to preserve metadata.
+
+                    # 2. Serialize Header
+                    # We MUST ensure the header is exactly the same size as the original
+                    # to maintain PFF random-access property if we want the output to be a valid PFF
+                    # with the SAME config.
+
+                    # Method: Re-dump JSON. If shorter, pad with spaces. If longer, we have a problem.
+                    # PFF usually relies on fixed size headers.
+
+                    json_str = json.dumps(header)
+                    # The original header included the trailing \n\n.
+                    # Let's target the exact byte size of the original header.
+
+                    header_bytes = json_str.encode('utf-8')
+                    current_len = len(header_bytes)
+                    target_len = conf.header_size - 2  # -2 for the \n\n usually found at end
+
+                    if current_len > target_len:
+                        # This happens if we add keys or numbers get larger.
+                        # Critical: PFF requires constant frame size for seek().
+                        # If we can't fit it, we can't write a standard PFF without changing the spec.
+                        # For now, we assume it fits or we truncate/warn.
+                        logger.debug("Header grew larger than allocation. Truncating (risky).")
+                        header_bytes = header_bytes[:target_len]
+
+                    padding = b' ' * (target_len - len(header_bytes))
+
+                    # Write Header + \n\n
+                    f_out.write(header_bytes + padding + b'\n\n')
+
+                    # Write Marker
+                    f_out.write(separator)
+
+                    # Write Data
+                    f_out.write(img.tobytes())
+
+                    written_count += 1
+
+                progress.update(task, advance=1)
+
+    logger.info(f"[green]Done![/green] Wrote {written_count} frames to {output_filename}")
+    return written_count
+
+
+class PanosetiRun:
+    """Interface for a complete run directory."""
+
+    def __init__(self, run_dir: Union[str, Path]):
+        self.run_dir = Path(run_dir)
+        self.products: Dict[str, PFFSequence] = {}
+        self._scan()
+
+    def _scan(self):
+        # Group files by attributes, ignoring seqno and start time
+        files_map = {}
+        for f in self.run_dir.glob("*.pff"):
+            # Example: start_2026...dp_ph1024.bpp_2.module_253.seqno_0.pff
+            parts = f.name.split('.')
+            # Key: dp_ph1024.bpp_2.module_253
+            key_parts = [p for p in parts if not (p.startswith('start') or p.startswith('seqno') or p == 'pff')]
+            key = ".".join(key_parts)
+
+            if key not in files_map: files_map[key] = []
+            files_map[key].append(f)
+
+        for key, files in files_map.items():
+            self.products[key] = PFFSequence(files)
+
+    def get_product(self, product_name: str) -> PFFSequence:
+        return self.products[product_name]
+
+    def list_products(self):
+        return list(self.products.keys())
