@@ -43,3 +43,15 @@ mode = "experimental"
 redis_prefix = "DEV_LIDAR_V1_"
 ttl_seconds = 86400
 description = "Testing new lidar sensor integration"
+
+
+# --- 3. LOGGING CONFIGURATION ---
+[logging]
+# The Redis Key used as a Queue/List for incoming logs
+redis_queue_key = "logs:ingress"
+# How many logs to batch before sending to Loki (in storeLoki.py)
+loki_batch_size = 50
+# Max time to wait before flushing batch to Loki
+loki_flush_interval_seconds = 5
+# Loki URL
+loki_url = "http://localhost:3100/loki/api/v1/push"

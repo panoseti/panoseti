@@ -56,7 +56,8 @@ hp_stdout_prefix = 'hp_stdout_'
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 redis_daemons = [
-    'daemons/storeInfluxDB.py'
+    'daemons/storeInfluxDB.py',
+    'daemons/storeLoki.py'
 ]
 #capture_power.py
 
