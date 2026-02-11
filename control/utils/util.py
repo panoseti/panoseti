@@ -12,10 +12,14 @@ import netifaces, json
 try:
     from driver import quabo_driver
     from utils import config_file
-except:
+    from panoseti_grpc.telemetry.client import make_grpc_logger
+except ImportError as e:
+    print(f"Import error: {e}")
     pass
 
 import logging
+
+
 #-------------- DEFAULTS ---------------
 
 default_max_file_size_mb = 0        # no limit
@@ -94,6 +98,20 @@ def create_logger(logfile, tag, mode='w'):
     # add handlers
     logger.addHandler(fhandler)
     logger.addHandler(shandler)
+
+    # Check if we are the main process (to avoid double logging in multiprocessing)
+    # and if we haven't already set up the logger.
+    if not any(isinstance(h, logging.Handler) and getattr(h, 'service_name', '') for h in logging.getLogger().handlers):
+        print("Injecting gRPC logger into Process...")
+
+        # Attach gRPC handler to the ROOT logger
+        # This captures all 'logging.info()' calls from config.py, drivers, etc.
+        make_grpc_logger(
+            service_name="control_util_logger",
+            level=logging.DEBUG,
+            attach_to_root=True,
+            add_console_handler=False,
+        )
 
 
 # our IP address on local network (192.x.x.x)
