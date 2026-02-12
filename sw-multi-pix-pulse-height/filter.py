@@ -4,35 +4,36 @@ panoseti_filter.py
 
 Generic PFF Filter.
 Usage:
-    python panoseti_filter.py input_dir output_dir --kernel neighbor --params 'thresh=300,n_min=3' --type img --bpp 2
+    python panoseti_filter.py input_dir output_dir --kernel neighbor --save
 """
 
 import argparse
 import logging
 import time
-import json
+import psutil
 from pathlib import Path
-from typing import Dict, Any, Callable
+from typing import Dict, Any
 from functools import partial
 import numpy as np
 import jax
 import jax.numpy as jnp
+
+# Rich Imports
 from rich.logging import RichHandler
 from rich.console import Console
 from rich.table import Table
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import (
+    Progress, SpinnerColumn, TextColumn, BarColumn,
+    TaskProgressColumn, TimeRemainingColumn, FileSizeColumn
+)
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
 
-# Interfaces
-try:
-    from panoseti_interface import PFFSequence, PanosetiRun
-    from jax_filters import KERNELS
-except ImportError:
-    print("CRITICAL: Missing modules. Ensure panoseti_interface.py and jax_filters.py are present.")
-    exit(1)
 
 logging.getLogger("jax._src.xla_bridge").setLevel(logging.ERROR)
 
-# Setup Rich Console
+# Setup Console
 console = Console()
 logging.basicConfig(
     level="WARNING",
@@ -43,9 +44,18 @@ logging.basicConfig(
 logger = logging.getLogger("PanoFilter")
 logger.setLevel(logging.INFO)
 
+# Interfaces
+try:
+    from panoseti_interface import PFFSequence, PanosetiRun
+    from jax_filters import KERNELS
+except ImportError as e:
+    logger.exception("CRITICAL: Missing modules. Ensure panoseti_interface.py and jax_filters.py are present.")
+    exit(1)
+
+
 
 def parse_params(param_str: str) -> Dict[str, Any]:
-    """Parses 'k=v,k2=v2' string into dict, auto-converting ints/floats."""
+    """Parses 'k=v,k2=v2' string into dict."""
     params = {}
     if not param_str: return params
     for pair in param_str.split(','):
@@ -61,15 +71,21 @@ def parse_params(param_str: str) -> Dict[str, Any]:
     return params
 
 
+def get_system_metrics():
+    """Returns formatted string of CPU/RAM usage."""
+    mem = psutil.virtual_memory()
+    cpu = psutil.cpu_percent()
+    return f"CPU: {cpu:>4.1f}% | RAM: {mem.percent:>4.1f}% ({mem.used / 1e9:.1f} GB)"
+
+
 def run_filter_job(
         run_dir: Path,
         output_dir: Path,
         kernel_name: str,
         params: Dict[str, Any],
         product_filter: str = "all",
-        type_filter: str = "any",
-        bpp_filter: int = 0,
-        batch_size: int = 2000
+        save_output: bool = False,
+        batch_size: int = 5000
 ):
     # 1. Setup
     if not run_dir.exists():
@@ -78,7 +94,7 @@ def run_filter_job(
 
     kernel_func = KERNELS.get(kernel_name)
     if not kernel_func:
-        logger.error(f"Kernel '{kernel_name}' not found. Available: {list(KERNELS.keys())}")
+        logger.error(f"Kernel '{kernel_name}' not found.")
         return
 
     # JAX Setup
@@ -88,157 +104,172 @@ def run_filter_job(
 
     # 2. Scan Products
     run = PanosetiRun(run_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if save_output:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     all_prods = run.list_products()
+    targets = [p for p in all_prods if product_filter == "all" or product_filter in p]
 
-    # Filter Logic
-    targets = []
-    for pname in all_prods:
-        # String match filter
-        if product_filter != "all" and product_filter not in pname:
-            continue
+    # Pre-calculate totals
+    total_files = len(targets)
 
-        # Parse metadata from name for type/bpp checks
-        # Name format: dp_ph1024.bpp_2.module_253...
-        is_img = "img" in pname
-        is_ph = "ph" in pname
+    # 3. Layout Construction
+    layout = Layout()
+    layout.split(
+        Layout(name="header", size=3),
+        Layout(name="main"),
+        Layout(name="footer", size=3)
+    )
 
-        # Type Filter
-        if type_filter == "img" and not is_img: continue
-        if type_filter == "ph" and not is_ph: continue
-
-        # BPP Filter (Robust check via filename or sequence)
-        if bpp_filter > 0:
-            seq = run.get_product(pname)
-            if seq.frame_config.bytes_per_pixel != bpp_filter:
-                continue
-
-        targets.append(pname)
-
-    console.print(f"[bold green]Starting Filter Job[/]")
-    console.print(f"Kernel: [cyan]{kernel_name}[/] | Params: {params}")
-    console.print(f"Filters: Type={type_filter}, BPP={bpp_filter if bpp_filter else 'Any'}")
-    console.print(f"Found {len(targets)} products.\n")
-
-    if not targets:
-        console.print("[yellow]No matching products found.[/]")
-        return
-
-    # 3. Process Loop
-    stats_table = Table(title="Filter Statistics")
+    stats_table = Table(expand=True)
     stats_table.add_column("Product", style="cyan")
-    stats_table.add_column("Original", justify="right")
+    stats_table.add_column("Frames", justify="right")
     stats_table.add_column("Kept", justify="right", style="green")
     stats_table.add_column("Ratio", justify="right")
-    stats_table.add_column("Time", justify="right")
+    stats_table.add_column("Speed", justify="right")
 
-    with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            console=console,
-            transient=True
-    ) as progress:
+    job_info = f"[bold]Job:[/][cyan]{kernel_name}[/] {params} | [bold]Mode:[/]{'SAVE' if save_output else 'DRY RUN'}"
+    layout["header"].update(Panel(job_info, title="PANOSETI Filter Job"))
+    layout["main"].update(stats_table)
 
-        main_task = progress.add_task("[bold]Processing Products...", total=len(targets))
+    # 4. Processing Loop
+    with Live(layout, refresh_per_second=4, console=console) as live:
 
-        for prod_name in targets:
+        # Overall Progress
+        for i, prod_name in enumerate(targets):
             seq = run.get_product(prod_name)
+            layout["footer"].update(Panel(f"Processing {i + 1}/{total_files}: {prod_name} | {get_system_metrics()}"))
+
             try:
                 res = _process_sequence(
-                    seq, output_dir, batched_kernel_wrapper, params, batch_size, progress
+                    seq, output_dir, batched_kernel_wrapper, params, batch_size, save_output
                 )
+
+                speed_str = f"{res['fps']:,.0f} fps"
                 stats_table.add_row(
-                    seq.name, str(res['total']), str(res['kept']), f"{res['ratio']:.1f}%", f"{res['time']:.1f}s"
+                    seq.name,
+                    f"{res['total']:,}",
+                    f"{res['kept']:,}",
+                    f"{res['ratio']:.2f}%",
+                    speed_str
                 )
             except Exception as e:
-                logger.error(f"Failed {prod_name}: {e}")
+                logger.exception(f"Failed {prod_name}")
                 stats_table.add_row(seq.name, "ERROR", "-", "-", "-")
 
-            progress.advance(main_task)
-
-    console.print(stats_table)
-    console.print(f"[bold green]Job Complete.[/] Output in: {output_dir}")
+    console.print(f"[bold green]Job Complete.[/]")
 
 
-def _process_sequence(seq, out_dir, kernel_fn, params, batch_size, progress_ctx):
-    # Construct Filename
-    param_tag = ".".join([f"{k}_{v}" for k, v in params.items()])
-    src_stem = seq.file_paths[0].name.split('.seqno')[0]
-    out_name = f"{src_stem}.{param_tag}.seqno_0.pff"
-    out_path = out_dir / out_name
+def _process_sequence(seq, out_dir, kernel_fn, params, batch_size, save_output):
+    """
+    Process a single sequence.
+    """
+    # Setup Output
+    out_path = None
+    f_out = None
+    if save_output:
+        param_tag = ".".join([f"{k}_{v}" for k, v in params.items()])
+        src_stem = seq.file_paths[0].name.split('.seqno')[0]
+        out_name = f"{src_stem}.{param_tag}.seqno_0.pff"
+        out_path = out_dir / out_name
+        f_out = open(out_path, 'wb')
 
-    start_t = time.time()
+    start_t = time.perf_counter()
     total_kept = 0
+    total_frames = len(seq)
 
-    task_id = progress_ctx.add_task(f"Filtering {seq.name}...", total=len(seq))
-
-    with open(out_path, 'wb') as f_out:
-        for chunk_start in range(0, len(seq), batch_size):
+    try:
+        # Loop through data in batches
+        for chunk_start in range(0, total_frames, batch_size):
+            # Optimized fetch (mmap strided copy)
             img_batch = seq.get_image_array(chunk_start, batch_size)
             if len(img_batch) == 0: break
 
-            try:
-                # JAX Execution
-                batch_results = kernel_fn(jnp.array(img_batch), **params)
+            # JAX Execution (Compute)
+            # We assume img_batch fits in VRAM/RAM. 5000 * 2KB = ~10MB. Safe.
+            # Convert to JAX array (moves to GPU if available)
+            jax_batch = jnp.array(img_batch)
+            batch_results = kernel_fn(jax_batch, **params)
 
-                # Handle Return Types (Tuple vs Single Array)
-                if isinstance(batch_results, (tuple, list)):
-                    jax_keep = batch_results[-1]
-                else:
-                    jax_keep = batch_results
+            # Extract Keep Mask
+            # Result is tuple: (trigger_mask, supported_mask, ..., keep_bools)
+            # We defined last element as the boolean keep decision
+            if isinstance(batch_results, (tuple, list)):
+                keep_mask = np.array(batch_results[-1])
+            else:
+                keep_mask = np.array(batch_results)
 
-                keep_mask = np.array(jax_keep)
-            except Exception as e:
-                logger.error(f"JAX Error on chunk {chunk_start}: {e}")
-                raise e
-
-            # Write Kept Frames
             keep_indices = np.where(keep_mask)[0]
-            if len(keep_indices) > 0:
+            count_kept = len(keep_indices)
+            total_kept += count_kept
+
+            # Write I/O (Optional)
+            if save_output and count_kept > 0:
+                # We need to fetch raw bytes (Header + Img) for kept frames
+                # Optimized: We can read directly from mmap without parsing again
+                # But we need to handle the specific offsets.
+                # Since get_image_array logic is complex, let's just use the robust single fetch
+                # or a new bulk raw fetch. For safety, we iterate kept indices.
+
+                # NOTE: Optimization opportunity:
+                # If we kept a lot, raw file copying is faster than seeking.
+                # But typically we keep < 1% of data. Seeking is fine.
                 for local_idx in keep_indices:
                     global_idx = chunk_start + local_idx
-                    raw_bytes = _fetch_raw_bytes(seq, global_idx)
-                    f_out.write(raw_bytes)
-                total_kept += len(keep_indices)
 
-            progress_ctx.update(task_id, advance=len(img_batch))
+                    # Manual fetch to avoid overhead
+                    # Locate file
+                    # (This repeats logic, but is safe. Ideally move to interface)
+                    _head, _img = seq.get_frame(global_idx)
+                    # Note: We need RAW bytes (Header + Payload), not parsed.
+                    # Re-implement raw read here or add method to Interface.
+                    # For now, let's trust the Interface's file path logic
+                    # but implement a raw read here for speed.
 
-    progress_ctx.remove_task(task_id)
+                    # Find file logic simplified:
+                    # (Assuming seq stores logic to find file index)
+                    # We will use a helper we add below or just use standard read for correctness
 
-    duration = time.time() - start_t
-    ratio = (total_kept / len(seq)) * 100 if len(seq) > 0 else 0
+                    # *SLOW PATH*: seq.get_frame parses JSON. We want raw bytes.
+                    # Use internal private access for speed or add public method.
+                    # Let's use the file_paths directly based on logic
 
-    return {'total': len(seq), 'kept': total_kept, 'ratio': ratio, 'time': duration}
+                    # Calculate offsets
+                    f_idx = 0
+                    l_idx = global_idx
+                    for i, limit in enumerate(seq._cumulative_frames):
+                        if global_idx < limit:
+                            f_idx = i
+                            l_idx = global_idx - (seq._cumulative_frames[i - 1] if i > 0 else 0)
+                            break
 
+                    mm = seq._get_mmap(f_idx)
+                    off = l_idx * seq.frame_config.frame_size
+                    end = off + seq.frame_config.frame_size
+                    f_out.write(mm[off:end])
 
-def _fetch_raw_bytes(seq, global_idx):
-    file_idx = 0
-    local_idx = global_idx
-    for i, count in enumerate(seq._file_frame_counts):
-        if local_idx < count:
-            file_idx = i
-            break
-        local_idx -= count
+    finally:
+        if f_out: f_out.close()
 
-    path = seq.file_paths[file_idx]
-    offset = local_idx * seq.frame_config.frame_size
+    dt = time.perf_counter() - start_t
+    if dt == 0: dt = 0.001
 
-    with open(path, 'rb') as f:
-        f.seek(offset)
-        return f.read(seq.frame_config.frame_size)
+    return {
+        'total': total_frames,
+        'kept': total_kept,
+        'ratio': (total_kept / total_frames) * 100 if total_frames else 0,
+        'fps': total_frames / dt
+    }
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PANOSETI Generic Filter")
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("output_dir", type=Path)
-    parser.add_argument("--kernel", type=str, default="neighbor", help="Kernel name (neighbor, threshold)")
-    parser.add_argument("--params", type=str, default="thresh=150,n_min=3", help="k=v,k2=v2")
-    parser.add_argument("--product", type=str, default="all", help="Substring match for product name")
-    parser.add_argument("--type", type=str, default="any", choices=["any", "img", "ph"], help="Filter by product type")
-    parser.add_argument("--bpp", type=int, default=0, help="Filter by bytes-per-pixel (e.g. 2 for 16-bit)")
+    parser.add_argument("--kernel", type=str, default="neighbor")
+    parser.add_argument("--params", type=str, default="thresh=150,n_min=3")
+    parser.add_argument("--product", type=str, default="all")
+    parser.add_argument("--save", action="store_true", help="Enable writing output to disk (Default: Dry Run)")
 
     args = parser.parse_args()
 
@@ -248,6 +279,5 @@ if __name__ == "__main__":
         args.kernel,
         parse_params(args.params),
         args.product,
-        args.type,
-        args.bpp
+        args.save
     )

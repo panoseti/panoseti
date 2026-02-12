@@ -4,9 +4,8 @@ import re
 import logging
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Generator, Union, Sequence, Any
-from pydantic import BaseModel, Field, ValidationError, field_validator
-import matplotlib.pyplot as plt
+from typing import List, Dict, Tuple, Optional, Union, Sequence, Any
+from pydantic import BaseModel, ValidationError
 
 # Setup Rich Logging
 from rich.logging import RichHandler
@@ -36,19 +35,14 @@ class PFFHeader(BaseModel):
 
 
 class QuaboHeader(PFFHeader):
-    """Header for ph256/img data (single quabo/module context)."""
     quabo_num: int
 
 
 class ModuleHeader(BaseModel):
-    """Header for ph1024/img16 data (contains 4 quabos)."""
     quabo_0: PFFHeader
     quabo_1: PFFHeader
     quabo_2: PFFHeader
     quabo_3: PFFHeader
-
-    def get_quabo_header(self, idx: int) -> PFFHeader:
-        return getattr(self, f"quabo_{idx}")
 
 
 # --- Core Interface ---
@@ -58,9 +52,10 @@ class FrameConfig(BaseModel):
     payload_size: int
     frame_size: int
     image_shape: Tuple[int, int]
-    dtype_str: str  # Store as string for Pydantic serialization
+    dtype_str: str
     bytes_per_pixel: int
     format_name: str
+    padding_bytes: int = 1  # Separation bytes (e.g. '*')
 
     @property
     def dtype(self):
@@ -74,7 +69,6 @@ class PFFSequence:
             raise ValueError("No files provided.")
 
         self.name = self.file_paths[0].name.split('.seqno')[0]
-        # Parse metadata from filename
         self.meta = self._parse_filename(self.file_paths[0].name)
 
         self.frame_config: Optional[FrameConfig] = None
@@ -82,11 +76,21 @@ class PFFSequence:
         self._cumulative_frames: List[int] = []
         self._total_frames: int = 0
 
+        # Cache for mmaps to avoid opening/closing constantly
+        self._open_mmaps: Dict[int, mmap.mmap] = {}
+        self._open_files: Dict[int, Any] = {}
+
         self._analyze_structure()
         self._index_files()
 
+    def __del__(self):
+        """Cleanup open file handles."""
+        for mm in self._open_mmaps.values():
+            mm.close()
+        for f in self._open_files.values():
+            f.close()
+
     def _parse_filename(self, fname: str) -> Dict[str, Any]:
-        """Extracts metadata like module_id from filename."""
         meta = {}
         parts = fname.split('.')
         for part in parts:
@@ -107,15 +111,17 @@ class PFFSequence:
 
         with open(sample_file, 'rb') as f:
             chunk = f.read(4096)
-            # Find JSON end: }\n\n*
             match = re.search(b'}\n\n\\*', chunk)
             if not match:
-                match = re.search(b'\n\n\\*', chunk)  # Fallback
+                match = re.search(b'\n\n\\*', chunk)
 
             if not match:
                 raise ValueError(f"Invalid PFF format in {sample_file}")
 
+            # End of JSON part
             marker_idx = match.end() - 1
+            # The separator is usually `*` (1 byte)
+
             header_bytes = chunk[:marker_idx]
             self.header_size = len(header_bytes)
 
@@ -130,10 +136,11 @@ class PFFSequence:
                 shape = (16, 16)
                 dtype = np.int16
             else:
-                shape = (32, 32)  # Default
+                shape = (32, 32)
                 dtype = np.int16
 
             payload_size = shape[0] * shape[1] * bpp
+            # Frame size = Header + Separator(1) + Payload
             frame_size = self.header_size + 1 + payload_size
 
             self.frame_config = FrameConfig(
@@ -160,88 +167,151 @@ class PFFSequence:
     def __len__(self):
         return self._total_frames
 
+    def _get_mmap(self, file_idx: int) -> mmap.mmap:
+        """Returns a cached mmap for the given file index."""
+        if file_idx in self._open_mmaps:
+            return self._open_mmaps[file_idx]
+
+        filepath = self.file_paths[file_idx]
+        f = open(filepath, 'rb')
+        mm = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
+
+        self._open_files[file_idx] = f
+        self._open_mmaps[file_idx] = mm
+        return mm
+
     def get_frame(self, idx: int) -> Tuple[Union[QuaboHeader, ModuleHeader, Dict], np.ndarray]:
-        """Retrieves a single frame with Pydantic-parsed header."""
+        """Retrieves a single frame (header + image)."""
         if idx >= self._total_frames or idx < 0:
             raise IndexError("Frame index out of range")
 
-        # Find file
+        # Locate File
+        file_idx = 0
+        local_idx = idx
         for i, limit in enumerate(self._cumulative_frames):
             if idx < limit:
                 file_idx = i
                 local_idx = idx - (self._cumulative_frames[i - 1] if i > 0 else 0)
                 break
 
-        filepath = self.file_paths[file_idx]
         conf = self.frame_config
         offset = local_idx * conf.frame_size
 
-        with open(filepath, 'rb') as f:
-            f.seek(offset)
-            header_bytes = f.read(conf.header_size)
+        # Use MMAP for reading
+        mm = self._get_mmap(file_idx)
+
+        # Read Header
+        header_end = offset + conf.header_size
+        header_bytes = mm[offset:header_end]
+
+        # Parse Header
+        try:
             header_dict = json.loads(header_bytes.decode('utf-8'))
-
-            # Parse Header into Pydantic Model
-            try:
-                if 'quabo_0' in header_dict:
-                    header_obj = ModuleHeader(**header_dict)
-                elif 'quabo_num' in header_dict:
-                    header_obj = QuaboHeader(**header_dict)
-                else:
-                    header_obj = header_dict  # Fallback
-            except ValidationError:
+            if 'quabo_0' in header_dict:
+                header_obj = ModuleHeader(**header_dict)
+            elif 'quabo_num' in header_dict:
+                header_obj = QuaboHeader(**header_dict)
+            else:
                 header_obj = header_dict
+        except (ValidationError, json.JSONDecodeError):
+            header_obj = {}
 
-            f.seek(1, 1)  # Skip '*'
-            raw = f.read(conf.payload_size)
-            img = np.frombuffer(raw, dtype=conf.dtype).reshape(conf.image_shape)
+        # Read Image
+        img_start = header_end + 1  # Skip separator
+        img_end = img_start + conf.payload_size
 
-            return header_obj, img
+        img = np.frombuffer(mm[img_start:img_end], dtype=conf.dtype).reshape(conf.image_shape)
+        return header_obj, img.copy()  # Return copy to be safe
 
-    def get_image_array(self, start=0, count=None) -> np.ndarray:
-        """Fast mmap reader for image stacks."""
+    def get_image_array(self, start: int = 0, count: Optional[int] = None) -> np.ndarray:
+        """
+        Efficiently retrieves a stack of images using strided mmap views.
+        Skips headers without explicit read loops.
+        """
         if count is None: count = self._total_frames - start
         count = min(count, self._total_frames - start)
-        if count <= 0: return np.empty((0, *self.frame_config.image_shape))
+        if count <= 0:
+            return np.empty((0, *self.frame_config.image_shape), dtype=self.frame_config.dtype)
 
-        result = np.empty((count, *self.frame_config.image_shape), dtype=self.frame_config.dtype)
-
-        # Logic similar to previous generic iterator, omitted for brevity
-        # ... (Implementation of cross-file reading) ...
-        # For simplicity in this snippet, we assume fitting in one file or simple loop
-        # Re-using the robust iterator approach is best.
-
-        idx = 0
+        chunks = []
+        frames_collected = 0
         current_global = start
-        while idx < count:
-            # Find file
+
+        conf = self.frame_config
+        dtype = conf.dtype
+        itemsize = dtype.itemsize
+
+        # Pre-calculate strides for the numpy view
+        # We want to view the file as (N_frames, H, W)
+        # Stride 0 (Frame-to-Frame) = frame_size bytes
+        # Stride 1 (Row-to-Row)     = Width * BPP
+        # Stride 2 (Pixel-to-Pixel) = BPP
+
+        # Note: This only works if frame_size is a multiple of itemsize.
+        # e.g. if int16 (2 bytes), frame_size must be even.
+        can_use_strided = (conf.frame_size % itemsize == 0)
+
+        if can_use_strided:
+            shape_strided = (conf.image_shape[0], conf.image_shape[1])
+            strides_in_file = (
+                conf.frame_size,  # Step to next frame
+                shape_strided[1] * itemsize,  # Step to next row
+                itemsize  # Step to next pixel
+            )
+
+        while frames_collected < count:
+            # Locate file for current_global
+            file_idx = 0
             for i, limit in enumerate(self._cumulative_frames):
                 if current_global < limit:
                     file_idx = i
-                    local_idx = current_global - (self._cumulative_frames[i - 1] if i > 0 else 0)
                     break
 
-            path = self.file_paths[file_idx]
-            available = self._file_frame_counts[file_idx] - local_idx
-            to_read = min(count - idx, available)
+            # Calculate local range within this file
+            prev_limit = self._cumulative_frames[file_idx - 1] if file_idx > 0 else 0
+            local_start = current_global - prev_limit
+            file_total = self._file_frame_counts[file_idx]
 
-            with open(path, 'rb') as f:
-                with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as mm:
-                    base = local_idx * self.frame_config.frame_size
-                    stride = self.frame_config.frame_size
+            to_read = min(count - frames_collected, file_total - local_start)
 
-                    # Vectorized read if contiguous is hard due to headers
-                    # Loop is unavoidable unless we reshape the whole buffer (risky with alignment)
-                    for _ in range(to_read):
-                        d_start = base + self.frame_config.header_size + 1
-                        d_end = d_start + self.frame_config.payload_size
-                        result[idx] = np.frombuffer(mm[d_start:d_end], dtype=self.frame_config.dtype).reshape(
-                            self.frame_config.image_shape)
-                        base += stride
-                        idx += 1
-                        current_global += 1
-        return result
+            if to_read > 0:
+                mm = self._get_mmap(file_idx)
 
+                # Byte offset to the first pixel of the first requested frame
+                # Offset = FrameStart + HeaderSize + Separator
+                start_offset = (local_start * conf.frame_size) + conf.header_size + 1
+
+                if can_use_strided:
+                    # Create a strided view directly into the mmap
+                    # This is zero-copy until we concatenate
+                    chunk = np.ndarray(
+                        shape=(to_read, *conf.image_shape),
+                        dtype=dtype,
+                        buffer=mm,
+                        offset=start_offset,
+                        strides=strides_in_file
+                    )
+                    chunks.append(chunk)
+                else:
+                    # Fallback: Iterative read if alignment is bad
+                    # (Should rarely happen with standard PFF)
+                    fallback_arr = np.empty((to_read, *conf.image_shape), dtype=dtype)
+                    cursor = start_offset
+                    for i in range(to_read):
+                        end = cursor + conf.payload_size
+                        fallback_arr[i] = np.frombuffer(mm[cursor:end], dtype=dtype).reshape(conf.image_shape)
+                        cursor += conf.frame_size
+                    chunks.append(fallback_arr)
+
+            frames_collected += to_read
+            current_global += to_read
+
+        # Concatenate all chunks into a single contiguous array for the consumer
+        # This is the only major memory copy operation.
+        if len(chunks) == 1:
+            return np.array(chunks[0])  # Force copy to detach from mmap if desired, or return chunks[0] if view is ok
+
+        return np.concatenate(chunks, axis=0)
 
 class PanosetiRun:
     def __init__(self, run_dir: Union[str, Path]):
