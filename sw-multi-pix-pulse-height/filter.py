@@ -56,7 +56,7 @@ def run_filter_job(
         product_filter: str = "all",
         type_filter: str = "any",
         save_output: bool = False,
-        batch_size: int = 5000
+        batch_size: int = 2**13
 ):
     if not run_dir.exists():
         logger.error(f"Run dir not found: {run_dir}")
