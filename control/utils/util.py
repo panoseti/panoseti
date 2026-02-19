@@ -12,7 +12,7 @@ import netifaces, json
 try:
     from driver import quabo_driver
     from utils import config_file
-    from panoseti_grpc.telemetry.client import make_grpc_logger
+    from panoseti_grpc.telemetry.logger import get_logger
 except ImportError as e:
     print(f"Import error: {e}")
     pass
@@ -106,11 +106,11 @@ def create_logger(logfile, tag, mode='w'):
 
         # Attach gRPC handler to the ROOT logger
         # This captures all 'logging.info()' calls from config.py, drivers, etc.
-        make_grpc_logger(
-            service_name="control_util_logger",
+        get_logger(
+            service_name="control_logger",
             level=logging.DEBUG,
-            attach_to_root=True,
-            add_console_handler=False,
+            console=False,
+            grpc_enabled=True,
         )
 
 

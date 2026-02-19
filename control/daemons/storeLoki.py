@@ -165,8 +165,9 @@ class LokiPublisher:
                 "host": entry.get("host", "unknown"),
                 "service": entry.get("service_name", "unknown"),
                 "severity": str(entry.get("severity", 2)),
-                # Optional: Add trace_id if available
-                "git_commit": entry.get("git_commit", "unknown")
+                "function_name": entry.get("function_name", "unknown"),
+                "git_branch": entry.get("git_branch", "unknown"),
+                "git_commit": entry.get("git_commit", "unknown"),
             }
 
             stream_key = json.dumps(labels, sort_keys=True)
