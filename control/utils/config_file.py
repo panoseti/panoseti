@@ -3,6 +3,24 @@
 # functions to read and parse config files
 
 import os,sys,json
+import subprocess
+from pydantic import ValidationError
+from rich.console import Console
+from rich.pretty import pprint
+from rich.panel import Panel
+
+from .pydantic_config_models import (
+    DataConfigValidator, ObsConfigValidator, DaqConfigValidator,
+    NetworkConfigValidator, DaemonConfigValidator, FirmwareConfigValidator
+)
+
+# Globals to control console verbosity
+IS_CLI_VALIDATION = False
+DEBUG_VALIDATION = False
+RAISE_VALIDATION_ERRORS = False
+
+console = Console()
+
 import logging
 # TODO: we need to improve the file path
 # configs file
@@ -97,44 +115,179 @@ def module_id_to_daq_node(daq_config, module_id):
     raise Exception("no DAQ node is handling module %d"%module_id)
 
 def check_config_file(name, dir='.'):
-    if not os.path.exists('%s/%s'%(dir, name)):
+    path = os.path.join(dir, name)
+    if not os.path.isfile(path):
+    # if not os.path.exists('%s/%s'%(dir, name)):
         print("The config file '%s' doesn't exist."%name)
         print("Create a symbolic link from %s to a specific config file, e.g.:"%name)
         print("   ln -s %s_lick.json %s"%(name.split('.')[0], name))
 
         sys.exit()
 
+
+# --- Orchestrated Validation Methods ---
+
+def ping_host(ip_addr: str) -> bool:
+    cmd = ['ping', '-c', '1', '-W', '1', str(ip_addr)]
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def validate_all(check_network: bool = False, debug: bool = False) -> bool:
+    """
+    The orchestrator function. Sets global CLI flags so the loaders output
+    pretty formatted terminal text, loops over configs, and pings the network.
+    """
+    global IS_CLI_VALIDATION, DEBUG_VALIDATION, RAISE_VALIDATION_ERRORS
+    IS_CLI_VALIDATION = True
+    DEBUG_VALIDATION = debug
+    RAISE_VALIDATION_ERRORS = True
+
+    all_passed = True
+    ips_to_ping = set()
+
+    console.print(Panel.fit("[bold cyan]PANOSETI Configuration Validator[/bold cyan]"))
+
+    configs_to_check = [
+        ("Data Config", get_data_config),
+        ("Obs Config", get_obs_config),
+        ("DAQ Config", get_daq_config),
+        ("Network Config", get_network_config),
+        ("Daemons Config", get_daemons_config),
+        ("Firmware Config", get_firmware_config),
+    ]
+
+    for name, getter in configs_to_check:
+        try:
+            validated_dict = getter()
+
+            # Aggregate IP Addresses for ping testing
+            if check_network:
+                if name == "Obs Config":
+                    if validated_dict.get('wr_ip_addr'): ips_to_ping.add(str(validated_dict['wr_ip_addr']))
+                    if validated_dict.get('dome_controller_ip_addr'): ips_to_ping.add(
+                        str(validated_dict['dome_controller_ip_addr']))
+                    for dome in validated_dict.get('domes', []):
+                        for mod in dome.get('modules', []):
+                            if mod.get('ip_addr'): ips_to_ping.add(str(mod['ip_addr']))
+                elif name == "DAQ Config":
+                    if validated_dict.get('head_node_ip_addr'): ips_to_ping.add(
+                        str(validated_dict['head_node_ip_addr']))
+                    for node in validated_dict.get('daq_nodes', []):
+                        if node.get('ip_addr'): ips_to_ping.add(str(node['ip_addr']))
+        except FileNotFoundError:
+            all_passed = False
+        except Exception:
+            all_passed = False
+
+    if check_network and ips_to_ping:
+        console.print("\n" + "=" * 50)
+        console.print(Panel.fit("[bold cyan]Network Connectivity Check[/bold cyan]"))
+
+        for ip in sorted(list(ips_to_ping)):
+            console.print(f"Pinging [bold cyan]{ip}[/bold cyan]...", end=" ")
+            if ping_host(ip):
+                console.print("[bold green]ALIVE[/bold green]")
+            else:
+                console.print("[bold red]UNREACHABLE[/bold red]")
+                all_passed = False
+
+    console.print("\n" + "=" * 50)
+    if all_passed:
+        console.print("[bold green]SUCCESS: Validation Complete![/bold green]")
+    else:
+        console.print("[bold red]FAILURE: Validation found errors. See above.[/bold red]")
+
+    # Reset globals in case standard script execution continues
+    IS_CLI_VALIDATION = False
+    DEBUG_VALIDATION = False
+    RAISE_VALIDATION_ERRORS = False
+
+    return all_passed
+
+
+def load_and_validate(validator_class, filename, dir, config_name, preprocessor=None):
+    """
+    Unified loader: reads JSON, applies runtime preprocessing, validates against Pydantic models.
+    Only prints UI elements if the explicit CLI validator is running.
+    """
+    path = os.path.join(dir, filename)
+
+    if IS_CLI_VALIDATION:
+        console.print(f"\n[bold yellow]Target:[/bold yellow] {config_name}")
+
+    if not os.path.exists(path):
+        if IS_CLI_VALIDATION:
+            console.print(f"[bold red][FAIL][/bold red] {filename} not found.")
+        if RAISE_VALIDATION_ERRORS:
+            raise FileNotFoundError(f"{path} not found.")
+        else:
+            check_config_file(filename, dir)
+
+    # Symlink printing logic
+    if IS_CLI_VALIDATION:
+        if os.path.islink(path):
+            real_path = os.path.realpath(path)
+            console.print(f"[dim]Symlink detected:[/dim] {filename} -> {os.path.basename(real_path)}")
+        else:
+            console.print(f"[dim]File path:[/dim] {os.path.abspath(path)}")
+
+    # 1. Load Data
+    with open(path, 'r') as f:
+        raw_data = json.load(f)
+
+    # 2. Preprocess (e.g. assign_numbers, expand_ranges)
+    if preprocessor:
+        preprocessor(raw_data)
+
+    # 3. Validate
+    try:
+        validated = validator_class(**raw_data)
+
+        if IS_CLI_VALIDATION:
+            console.print("[bold green][OK][/bold green] Passed validation.")
+
+        if IS_CLI_VALIDATION and DEBUG_VALIDATION:
+            console.print("\n[dim]Validated Configuration Structure:[/dim]")
+            pprint(validated.model_dump(), expand_all=True)
+
+        return validated.model_dump()
+
+    except ValidationError as e:
+        console.print(f"\n[bold red][FAIL] Schema Validation Error in {config_name} ({filename}):[/bold red]")
+        for err in e.errors():
+            loc = " -> ".join([str(l) for l in err["loc"]])
+            msg = err["msg"]
+            console.print(f"  [bold red]Field:[/bold red] {loc}")
+            console.print(f"  [bold red]Error:[/bold red] {msg}\n")
+
+        if IS_CLI_VALIDATION and DEBUG_VALIDATION:
+            console.print("[dim]Raw Config Dictionary (for debugging):[/dim]")
+            pprint(raw_data, expand_all=True)
+
+        if RAISE_VALIDATION_ERRORS:
+            raise e
+        sys.exit(1)
+
+    except json.JSONDecodeError as e:
+        console.print(f"\n[bold red][FAIL] JSON Parsing Error in {config_name} ({filename}):[/bold red] {e}")
+        if RAISE_VALIDATION_ERRORS:
+            raise e
+        sys.exit(1)
+
 def get_obs_config(dir='.'):
-    check_config_file(obs_config_filename, dir)
-    with open('%s/%s'%(dir, obs_config_filename)) as f:
-        s = f.read()
-    c = json.loads(s)
-    assign_numbers(c)
-    return c
+    # pass assign_numbers so it injects `id` and `num` before validation
+    return load_and_validate(ObsConfigValidator, obs_config_filename, dir, "Obs Config", assign_numbers)
 
 def get_daq_config(dir='.'):
-    check_config_file(daq_config_filename)
-    with open(daq_config_filename) as f:
-        s = f.read()
-    c = json.loads(s)
-    expand_ranges(c)
-    return c
+    # pass expand_ranges so it parses module string ranges before validation
+    return load_and_validate(DaqConfigValidator, daq_config_filename, dir, "DAQ Config", expand_ranges)
 
 def get_data_config(dir='.'):
-    path = '%s/%s'%(dir, data_config_filename)
-    check_config_file(data_config_filename, dir)
-    with open(path) as f:
-        c = f.read()
-    conf = json.loads(c)
-    if 'flash_params' in conf:
-        fp = conf['flash_params']
-        if fp['rate'] > 7:
-            raise Exception('flash rate > 7 in %s'%data_config_filename)
-        if fp['level'] > 31:
-            raise Exception('flash level > 31 in %s'%data_config_filename)
-        if fp['width'] > 15:
-            raise Exception('flash width > 15 in %s'%data_config_filename)
-    return conf
+    return load_and_validate(DataConfigValidator, data_config_filename, dir, "Data Config")
 
 def get_network_config(dir='.'):
     check_config_file(network_config_filename, dir)
@@ -143,29 +296,22 @@ def get_network_config(dir='.'):
     # we check it manually, instead of using check_config_file.
     try:
         with open(path) as f:
-            c = f.read()
-        conf = json.loads(c)
+            s = f.read()
+        net_conf = json.loads(s)
     except:
         print("***********Warning: No network config file! **************")
         print("******All the devices should be in the same subnet *******")
-        conf = {}
-    return conf
+        net_conf = {}
+        return net_conf
+
+    return load_and_validate(NetworkConfigValidator, network_config_filename, dir, "Network Config")
+
 
 def get_firmware_config(dir='.'):
-    check_config_file(firmware_config_filename, dir)
-    path = '%s/%s'%(dir, firmware_config_filename)
-    with open(path) as f:
-        c = f.read()
-    conf = json.loads(c)
-    return conf
+    return load_and_validate(FirmwareConfigValidator, firmware_config_filename, dir, "Firmware Config")
 
 def get_daemons_config(dir='.'):
-    check_config_file(daemons_config_filename, dir)
-    path = '%s/%s'%(dir, daemons_config_filename)
-    with open(path) as f:
-        c = f.read()
-    conf = json.loads(c)
-    return conf
+    return load_and_validate(DaemonConfigValidator, daemons_config_filename, dir, "Daemons Config")
 
 def get_quabo_uids():
     if not os.path.exists(quabo_uids_filename):
@@ -173,9 +319,9 @@ def get_quabo_uids():
         sys.exit()
     with open(quabo_uids_filename) as f:
         s = f.read()
-    c = json.loads(s)
-    assign_numbers(c)
-    return c
+    quabo_uids_conf = json.loads(s)
+    assign_numbers(quabo_uids_conf)
+    return quabo_uids_conf
 
 # get detector info as an array indexed by serialno
 #

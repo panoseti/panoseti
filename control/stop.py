@@ -15,13 +15,42 @@
 #   --run X             clean up run X (default: read from current_run)
 
 import os, sys
+from argparse import ArgumentParser
+import signal
+import logging
+
 from utils import collect
 from driver import quabo_driver
 from utils.util import *
 from utils import pff, config_file
+from tools.interleave import PID_FILE
 
-from argparse import ArgumentParser
-import logging
+
+
+def stop_interleave(retry_limit=10):
+    """
+    Checks if the interleave process is running and cleanly shuts it down.
+    This prevents background mode switching after DAQ has been commanded to stop.
+    """
+    pid_file = PID_FILE
+    if os.path.exists(pid_file):
+        print("Active interleave process detected. Stopping it gracefully...")
+        try:
+            with open(pid_file, "r") as f:
+                pid = int(f.read().strip())
+            os.kill(pid, signal.SIGTERM)
+
+            # Wait briefly for it to clean up and restore defaults
+
+            for r in range(retry_limit):
+                if not os.path.exists(pid_file):
+                    break
+                logger.warning(f"Stopping interleave process: {pid}. Attempt [{r}/{retry_limit}]")
+                time.sleep(0.5)
+        except (OSError, ValueError):
+            os.remove(pid_file)
+
+
 # write message to error log
 #
 def log_error(msg, run_dir):
@@ -226,4 +255,13 @@ if __name__ == "__main__":
     network_config = config_file.get_network_config()
     attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
+
+    # Kill interleaving before stopping primary data flow
+    try:
+        stop_interleave(retry_limit=10)
+    except Exception as e:
+        logger.critical('Failed to stop interleave!')
+        logger.exception(e)
+
+    # Stop run
     stop_run(daq_config, network_config, quabo_uids, verbose, no_cleanup, no_collect, run)

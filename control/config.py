@@ -8,7 +8,7 @@ firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess, time, datetime, json, statistics
+import sys, os, subprocess, time, datetime, json, statistics, signal
 import copy
 import logging
 from utils import util, file_xfer
@@ -697,6 +697,66 @@ def do_shutter(action):
     elif action == "close":
         os.system("tools/shutter.py --close")
 
+def do_start_interleave():
+    """Starts the interleaver process in the background."""
+    if not os.path.exists("tmp/current_run"):
+        print("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
+        sys.exit(1)
+
+    print("Starting interleave controller in the background...")
+    # Start detached background process
+    subprocess.Popen(['python3', 'tools/interleave.py'],
+                     stdout=open('logs/interleave.log', 'a'),
+                     stderr=subprocess.STDOUT)
+    print("Interleave process started. Check logs/interleave.log for details.")
+
+def do_stop_interleave():
+    """Gracefully stops the background interleaver if it is running."""
+    pid_file = "tmp/interleave.pid"
+    if not os.path.exists(pid_file):
+        print("No active interleave process found (PID file missing).")
+        return # Return instead of sys.exit(0) so other scripts can call this safely
+
+    with open(pid_file, "r") as f:
+        try:
+            pid = int(f.read().strip())
+        except ValueError:
+            print("Stale PID file found. Cleaning up.")
+            os.remove(pid_file)
+            return
+
+    print(f"Sending shutdown signal to interleave process (PID {pid})...")
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print("Signal sent. Waiting for hardware default restoration to complete...")
+        # Simple wait loop to ensure process dies and deletes its pid file
+        for _ in range(20):
+            if not os.path.exists(pid_file):
+                break
+            time.sleep(0.5)
+        print("Interleave process successfully stopped.")
+    except OSError:
+        print("Process was already dead. Cleaning up stale PID file.")
+        os.remove(pid_file)
+
+
+def do_dry_run_interleave():
+    """Runs the interleaver in the foreground for 2 cycles without hardware commands."""
+    print("Starting interleave DRY RUN (2 cycles) in the foreground...")
+
+    # We use subprocess.run to block and stream output directly to the console for CI tools
+    result = subprocess.run(
+        ['python3', 'tools/interleave.py', '--dry-run', '--max-cycles', '2']
+    )
+
+    if result.returncode == 0:
+        print("\nDry run completed successfully.")
+    else:
+        print(f"\nDry run failed with return code {result.returncode}.")
+        sys.exit(result.returncode)
+
+
+
 def main():
     if not os.path.exists('logs'):
         os.makedirs('logs')
@@ -741,6 +801,12 @@ def main():
                         help='Close all module shutters')
     parser.add_argument('--disk_space', dest='disk_space', action='store_true', default=False,
                         help='Check the disk_space.')
+    parser.add_argument('--start-interleave', action='store_true', help='Start background interleaver')
+    parser.add_argument('--stop-interleave', action='store_true', help='Stop background interleaver')
+    parser.add_argument('--dry-run-interleave', action='store_true',
+                        help='Test the interleave schedule for 2 cycles without hardware commands.')
+    parser.add_argument('--validate', nargs='*', default=None,
+                        help='Validate configs. Modifiers: "debug" (print full structures), "network" (ping IPs). Example: --validate debug network')
     # we need one option at least
     if len(sys.argv) == 1:
         parser.print_help()
@@ -803,6 +869,21 @@ def main():
         do_show_ph_baselines(quabo_uids)
     elif args.reboot_single is not None:
         do_reboot_single_quabo(args.reboot_single, obs_config, network_config)
+    elif args.start_interleave:
+        do_start_interleave()
+    elif args.stop_interleave:
+        do_stop_interleave()
+    elif args.dry_run_interleave:
+        do_dry_run_interleave()
+    if args.validate is not None:
+        modifiers = args.validate
+        debug_mode = 'debug' in modifiers
+        network_mode = 'network' in modifiers
+
+        # Run the comprehensive check and exit gracefully!
+        success = config_file.validate_all(check_network=network_mode, debug=debug_mode)
+        sys.exit(0 if success else 1)
+
 
 if __name__ == "__main__":
     main()

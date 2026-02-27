@@ -1,45 +1,31 @@
-### 1. Extended `data_config.json` Example
+### Interleaved Mode Observation
+
+The PANOSETI system supports rapid, automated switching between different configuration states (e.g., alternating between a primary science trigger mode and a periodic movie-mode for astrometry) during an active run.
+
+**Defining Interleave States:**
+To define alternative modes in `data_config.json`, you must use keys that begin with the prefix `image_` or `pulse_height_`. The suffix can be any descriptive name (e.g., `pulse_height_DUAL`, `image_astrometry`).
+
+* **Note:** The root keys `image` and `pulse_height` are strictly reserved for the **default** operating state.
 
 ```json
 {
-    "run_type": "science",
-    "detector_overvoltage": 3,
-    "max_file_size_mb": 1000,
-    "pulse_height": {
-        "pe_threshold": 3,
-        "any_trigger": {
-            "group_ph_frames": 0
-        },
-        "two_pixel_trigger": 0,
-        "three_pixel_trigger": 0
-    },
-    "pulse_height_1": {
-        "pe_threshold": 3,
-        "any_trigger": {
-            "group_ph_frames": 0
-        },
-        "two_pixel_trigger": 1,
-        "three_pixel_trigger": 0
-    },
-    "image_1": {
-        "integration_time_usec": 20,
-        "pe_threshold": 3,
-        "quabo_sample_size": 8,
-        "nsum": 64
-    },
+    "pulse_height": { ... }, 
+    "image": { ... },
+    "pulse_height_gamma": { ... }, 
+    "image_astrometry": { ... },
     "interleave": {
         "enable": true,
         "states": [
             {
-                "state_name": "Trigger_Science_Mode",
+                "state_name": "Gamma_Science",
                 "duration_seconds": 58.0,
                 "movie_mode_config": null,
-                "pulse_height_mode_config": "pulse_height_1"
+                "pulse_height_mode_config": "pulse_height_gamma"
             },
             {
-                "state_name": "Astrometry_Movie_Mode",
+                "state_name": "Astrometry",
                 "duration_seconds": 2.0,
-                "movie_mode_config": "image_1",
+                "movie_mode_config": "image_astrometry",
                 "pulse_height_mode_config": "pulse_height"
             }
         ]
@@ -48,22 +34,13 @@
 
 ```
 
-#### Interleaving Observation config (Optional)
+**Usage Workflow:**
+Interleaving is an overlay on top of standard observing. You must start a standard run before interleaving can begin.
 
-To support rapid mode switching during a single observation (e.g., to capture intermittent movie-mode data for astrometry without sacrificing continuous multi-pixel trigger science data), `data_config.json` supports optional interleaved mode definitions and scheduling.
+1. **Validate Configs:** `python config.py --validate-configs` (Fails fast if your JSON is malformed or violates hardware rules).
+2. **Start Observation:** `python start.py` (Initializes the run using the default `image` and `pulse_height` keys).
+3. **Begin Interleaving:** `python config.py --start-interleave` (Runs the scheduler in the background).
+4. **Stop Interleaving:** `python config.py --stop-interleave` (Gracefully stops the scheduler and returns the Quabos to the default `image` and `pulse_height` state).
+5. **Stop Observation:** `python stop.py`
 
-Additional modes can be defined by appending an underscore and an ID to the standard mode keys (e.g., `image_1`, `pulse_height_2`). These are ignored by default unless explicitly scheduled in the `interleave` block.
-
-* **interleave**: Contains the schedule for mode switching. (Overrides the initial config during the interleaving loop).
-* **enable**: `true` or `false`. If `false` or missing, interleaving is completely ignored, and the system uses only the default `image` and `pulse_height` configs (implicit id=0).
-* **states**: A list of state definition objects indicating the switching order. The script will loop through this array infinitely.
-* **state_name**: A descriptive string for logging (e.g., "Astrometry_Movie_Mode").
-* **duration_seconds**: Time in seconds to stay in this mode before executing the next switch.
-* **movie_mode_config**: The string key of the image mode to use (e.g., `"image_1"` or `"image"`). Set to `null` to disable image mode for this state.
-* **pulse_height_mode_config**: The string key of the pulse height mode to use (e.g., `"pulse_height_1"` or `"pulse_height"`). Set to `null` to disable pulse height mode for this state.
-
-
-
-
-
-**Note:** A given interleaving state cannot have both `movie_mode_config` and `pulse_height_mode_config` set to `null`. Furthermore, due to hardware/firmware constraints, if a pulse height mode enables `two_pixel_trigger` or `three_pixel_trigger` (> 0), movie-mode imaging *cannot* be enabled in the same interval state.
+*(Note: Running `stop.py` while interleaving is active will automatically terminate the interleaver and stop data flow).*
