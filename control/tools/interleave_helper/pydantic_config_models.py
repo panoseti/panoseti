@@ -17,14 +17,14 @@ class AnyTriggerConfig(BaseModel):
     group_ph_frames: int = Field(0, description="If set to 1, hashpipe will group 4 packets from 4 quabos.")
 
 class PulseHeightMode(BaseModel):
-    pe_threshold: int = Field(..., description="Pulse height threshold in photoelectrons")
+    pe_threshold: float = Field(..., description="Pulse height threshold in photoelectrons")
     any_trigger: Optional[AnyTriggerConfig] = None
     two_pixel_trigger: int = Field(0, description="If set to 1, 2 pixel trigger mode will be enabled.")
     three_pixel_trigger: int = Field(0, description="If set to 1, 3 pixel trigger mode will be enabled.")
 
 class ImageMode(BaseModel):
     integration_time_usec: int = Field(..., description="Must divide 1000000")
-    pe_threshold: int = Field(..., description="Image mode threshold in photoelectrons")
+    pe_threshold: float = Field(..., description="Image mode threshold in photoelectrons")
     quabo_sample_size: int = Field(..., description="Size of the sample")
     # nsum: int = Field(..., description="Sum this many images per output frame")
     quabo_num: Optional[int] = Field(None, description="Omit for all 4 quabos")
