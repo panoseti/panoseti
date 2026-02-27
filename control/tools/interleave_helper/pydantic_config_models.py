@@ -26,7 +26,7 @@ class ImageMode(BaseModel):
     integration_time_usec: int = Field(..., description="Must divide 1000000")
     pe_threshold: int = Field(..., description="Image mode threshold in photoelectrons")
     quabo_sample_size: int = Field(..., description="Size of the sample")
-    nsum: int = Field(..., description="Sum this many images per output frame")
+    # nsum: int = Field(..., description="Sum this many images per output frame")
     quabo_num: Optional[int] = Field(None, description="Omit for all 4 quabos")
 
 class InterleaveState(BaseModel):

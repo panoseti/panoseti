@@ -28,15 +28,21 @@
         "states": [
             {
                 "state_name": "Trigger_Science_Mode",
-                "duration_seconds": 58.0,
+                "duration_seconds": 4.0,
                 "movie_mode_config": null,
                 "pulse_height_mode_config": "pulse_height_1"
+            },
+            {
+                "state_name": "Astrometry_Dual_Mode",
+                "duration_seconds": 3.0,
+                "movie_mode_config": "image_1",
+                "pulse_height_mode_config": "pulse_height"
             },
             {
                 "state_name": "Astrometry_Movie_Mode",
                 "duration_seconds": 2.0,
                 "movie_mode_config": "image_1",
-                "pulse_height_mode_config": "pulse_height"
+                "pulse_height_mode_config": null
             }
         ]
     }
