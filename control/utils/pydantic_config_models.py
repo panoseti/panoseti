@@ -77,7 +77,7 @@ class InterleaveConfig(BaseStrictModel):
 
 class DataConfigValidator(BaseModel):
     """Allows extra fields specifically for dynamic image_* and pulse_height_* keys."""
-    run_type: str = Field(max_length=MAX_RUN_TYPE_LENGTH)
+    run_type: str = Field(..., max_length=MAX_RUN_TYPE_LENGTH)
     detector_overvoltage: Literal[2, 3] = Field(
         description="over voltage used for the observation. "
                     "For now, we only have calibration data for 2V and 3V."
@@ -98,6 +98,7 @@ class DataConfigValidator(BaseModel):
     def validate_run_type(cls, v):
         if any(ch in INVALID_RUN_TYPE_CHARS for ch in v):
             raise ValueError(f"Invalid run_type: '{v}' contains at least one invalid character: {INVALID_RUN_TYPE_CHARS}")
+        return v
 
     @model_validator(mode='after')
     def validate_interleave_and_exclusions(self) -> 'DataConfigValidator':

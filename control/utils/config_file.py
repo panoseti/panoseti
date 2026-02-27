@@ -231,7 +231,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
     if IS_CLI_VALIDATION:
         if os.path.islink(path):
             real_path = os.path.realpath(path)
-            console.print(f"[dim]Symlink detected:[/dim] {filename} -> {os.path.basename(real_path)}")
+            console.print(f"[dim]Symlink detected:[/dim] {filename} -> {os.path.abspath(real_path)}")
         else:
             console.print(f"[dim]File path:[/dim] {os.path.abspath(path)}")
 
