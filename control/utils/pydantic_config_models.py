@@ -5,12 +5,21 @@ Centralized Pydantic models for validating PANOSETI configuration files.
 """
 
 import logging
-from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, Field, model_validator, ConfigDict, IPvAnyAddress
+from typing import List, Optional, Dict, Any, Union, Literal
+from pydantic import BaseModel, Field, model_validator, ConfigDict, IPvAnyAddress, field_validator
 from rich.console import Console
 from rich.pretty import pprint
 
 console = Console()
+
+# Global restrictions
+## Data config
+MAX_RUN_TYPE_LENGTH = 14
+INVALID_RUN_TYPE_CHARS = [".", "_", " ", ]
+
+MIN_PULSE_HEIGHT_PE_THRESHOLD = 2.0
+MIN_MOVIE_MODE_PE_THRESHOLD = 1.0
+
 
 # --- Shared & Base Models ---
 
@@ -24,15 +33,16 @@ class AnyTriggerConfig(BaseStrictModel):
     group_ph_frames: int = Field(0, description="If set to 1, hashpipe will group 4 packets from 4 quabos.")
 
 class PulseHeightMode(BaseStrictModel):
-    pe_threshold: float = Field(..., description="Pulse height threshold in photoelectrons")
+    pe_threshold: float = Field(..., ge=MIN_PULSE_HEIGHT_PE_THRESHOLD, description="Pulse height threshold in photoelectrons")
     any_trigger: Optional[AnyTriggerConfig] = None
     two_pixel_trigger: int = Field(0, description="If set to 1, 2 pixel trigger mode will be enabled.")
     three_pixel_trigger: int = Field(0, description="If set to 1, 3 pixel trigger mode will be enabled.")
 
+
 class ImageMode(BaseStrictModel):
-    integration_time_usec: int = Field(..., description="Must divide 1000000")
-    pe_threshold: float = Field(..., description="Image mode threshold in photoelectrons")
-    quabo_sample_size: int = Field(..., description="Size of the sample")
+    integration_time_usec: int = Field(..., ge=20, description="Integration time in microseconds")
+    pe_threshold: float = Field(..., ge=MIN_MOVIE_MODE_PE_THRESHOLD, description="Image mode threshold in photoelectrons")
+    quabo_sample_size: Literal[8, 16] = Field(..., description="Size of the sample")
     quabo_num: Optional[int] = Field(None, description="Omit for all 4 quabos")
 
 class LongPulseMode(BaseStrictModel):
@@ -67,8 +77,11 @@ class InterleaveConfig(BaseStrictModel):
 
 class DataConfigValidator(BaseModel):
     """Allows extra fields specifically for dynamic image_* and pulse_height_* keys."""
-    run_type: str = Field(..., pattern="^(science|engineering|calibration)$")
-    detector_overvoltage: int = Field(..., ge=0)
+    run_type: str = Field(max_length=MAX_RUN_TYPE_LENGTH)
+    detector_overvoltage: Literal[2, 3] = Field(
+        description="over voltage used for the observation. "
+                    "For now, we only have calibration data for 2V and 3V."
+    )
     max_file_size_mb: int = Field(..., gt=0)
     gain: Optional[float] = None
 
@@ -80,6 +93,11 @@ class DataConfigValidator(BaseModel):
     stim_params: Optional[StimParams] = None
 
     model_config = ConfigDict(extra='allow')
+
+    @field_validator("run_type")
+    def validate_run_type(cls, v):
+        if any(ch in INVALID_RUN_TYPE_CHARS for ch in v):
+            raise ValueError(f"Invalid run_type: '{v}' contains at least one invalid character: {INVALID_RUN_TYPE_CHARS}")
 
     @model_validator(mode='after')
     def validate_interleave_and_exclusions(self) -> 'DataConfigValidator':
