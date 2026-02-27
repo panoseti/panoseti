@@ -1,16 +1,20 @@
-
 import time
 import logging
+import sys
+import os
 from typing import List, Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from rich.logging import RichHandler
 
-# Mock imports based on the PANOSETI architecture described
-from ..driver import quabo_driver
-# import config as pano_config
+# Append the control root to python path dynamically based on your tree structure
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from interleave_helper.pydantic_config_models import load_and_validate_data_config
+from ..driver import quabo_driver
+from .. import config
+from ..utils import config_file, util
+
+from .interleave_helper.pydantic_config_models import load_and_validate_data_config
 
 # --- 1. SETUP LOGGING ---
 FORMAT = "%(message)s"
@@ -20,26 +24,43 @@ logging.basicConfig(
 logger = logging.getLogger("panoseti.interleave")
 
 
-# --- 3. EXECUTION ARCHITECTURE ---
+# --- 2. EXECUTION ARCHITECTURE ---
 
 class InterleaveController:
-    def __init__(self, quabo_ips: List[str], data_config: dict):
+    def __init__(self, data_config: dict, obs_config: dict, daq_config: dict,
+                 quabo_uids: dict, quabo_info: dict, network_config: dict):
         self.data_config = data_config
+        self.obs_config = obs_config
+        self.daq_config = daq_config
+        self.quabo_uids = quabo_uids
+        self.quabo_info = quabo_info
+        self.network_config = network_config
         self.interleave_cfg = data_config.get("interleave", {})
 
-        # Instantiate Quabo drivers (Mocked here, replace with actual quabo_driver.QUABO)
-        self.quabos = [quabo_driver.QUABO(ip) for ip in quabo_ips]
-        self.quabos = quabo_ips  # Mocking IPs as targets for now
+        # Extract modules
+        self.modules = []
+        for dome in obs_config.get('domes', []):
+            self.modules.extend(dome.get('modules', []))
 
-        self.executor = ThreadPoolExecutor(max_workers=len(quabo_ips) + 4)
+        # Instantiate Quabo drivers for direct DAQ control
+        self.quabos = []
+        for module in self.modules:
+            for i in range(4):
+                uid = util.quabo_uid(module, quabo_uids, i)
+                if not uid:
+                    continue
+                ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+                real_ip = ip_ports['ip_addr']
+                cmd_port = ip_ports['cmd_port']
+                self.quabos.append(quabo_driver.QUABO(real_ip, cmd_port))
 
-    def _broadcast_acq_mode(self, mode: int):
+        self.executor = ThreadPoolExecutor(max_workers=len(self.modules) + 4)
+
+    def _broadcast_acq_mode(self, daq_params: quabo_driver.DAQ_PARAMS):
         """Send ACQ mode in parallel to all Quabos"""
 
-        def send_acq(q_ip):
-            # MOCK: q.send_acq_paramaters()
-            # print(f"Sending ACQ={mode} to {q_ip}")
-            pass
+        def send_acq(q: quabo_driver.QUABO):
+            q.send_daq_params(daq_params)
 
         futures = [self.executor.submit(send_acq, q) for q in self.quabos]
         for f in as_completed(futures):
@@ -48,14 +69,19 @@ class InterleaveController:
     def _reconfigure_quabos(self, state_config_dict: dict):
         """
         Reconfigures all quabos based on a synthesized data_config dict for the current state.
-        This allows reuse of existing do_maroc_config logic.
+        This distributes do_maroc_config across modules concurrently for maximum performance.
         """
 
-        def reconfig(q_ip):
-            # MOCK: pano_config.do_maroc_config(..., state_config_dict, ...)
-            pass
+        def reconfig_module(module):
+            # By passing a [module] list of size 1, we achieve fully parallelized execution while
+            # preserving the complex logic inside config.py
+            config.do_maroc_config(
+                [module], self.quabo_uids, self.quabo_info,
+                state_config_dict, self.obs_config, self.daq_config,
+                self.network_config, verbose=False
+            )
 
-        futures = [self.executor.submit(reconfig, q) for q in self.quabos]
+        futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
         for f in as_completed(futures):
             f.result()
 
@@ -63,22 +89,51 @@ class InterleaveController:
         """
         Creates a mock data_config dictionary that replaces the root 'image'
         and 'pulse_height' keys with the ones requested by the state suffix.
-        This tricks the existing software into loading the right mode.
+        This tricks the existing config.py software into loading the right mode.
         """
         temp_dict = self.data_config.copy()
-
-        # Wipe base modes
         temp_dict.pop('image', None)
         temp_dict.pop('pulse_height', None)
 
-        # Inject target modes as the new base modes
         if state_def.get("movie_mode_config"):
             temp_dict['image'] = self.data_config[state_def["movie_mode_config"]]
-
         if state_def.get("pulse_height_mode_config"):
             temp_dict['pulse_height'] = self.data_config[state_def["pulse_height_mode_config"]]
 
         return temp_dict
+
+    def build_daq_params(self, state_dict: dict) -> quabo_driver.DAQ_PARAMS:
+        """Construct a quabo_driver.DAQ_PARAMS object based on the current state data config."""
+        do_img = 'image' in state_dict
+        do_ph = 'pulse_height' in state_dict
+
+        image_us = 0
+        image_8bit = False
+
+        if do_img:
+            image_us = state_dict['image'].get('integration_time_usec', 0)
+            if state_dict['image'].get('quabo_sample_size', 0) == 8:
+                image_8bit = True
+
+        bl_subtract = True
+        do_any_trigger = False
+        do_group_ph_frames = False
+
+        if do_ph:
+            ph_cfg = state_dict['pulse_height']
+            if 'any_trigger' in ph_cfg:
+                do_any_trigger = True
+                do_group_ph_frames = bool(ph_cfg['any_trigger'].get('group_ph_frames', 0))
+
+        return quabo_driver.DAQ_PARAMS(
+            do_image=do_img,
+            image_us=image_us,
+            image_8bit=image_8bit,
+            do_ph=do_ph,
+            bl_subtract=bl_subtract,
+            do_any_trigger=do_any_trigger,
+            do_group_ph_frames=do_group_ph_frames
+        )
 
     def run_loop(self):
         if not self.interleave_cfg.get("enable", False):
@@ -87,6 +142,9 @@ class InterleaveController:
 
         states = self.interleave_cfg.get("states", [])
         logger.info(f"Starting Interleave Observation Loop with {len(states)} states. Press Ctrl+C to abort.")
+
+        # Data Stop command matching the structure used in config.py's baseline logic
+        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, True)
 
         try:
             while True:
@@ -97,8 +155,8 @@ class InterleaveController:
                     logger.info(f"--- Entering State: [bold cyan]{name}[/bold cyan] ---", extra={"markup": True})
 
                     # 1. STOP DAQ FLOW
-                    logger.debug("Stopping DAQ packet flow (ACQ=0)")
-                    self._broadcast_acq_mode(0)
+                    logger.debug("Stopping DAQ packet flow")
+                    self._broadcast_acq_mode(stop_params)
 
                     # 2. RECONFIGURE
                     logger.debug(f"Reconfiguring MAROC and FPGA registers for {name}")
@@ -106,11 +164,9 @@ class InterleaveController:
                     self._reconfigure_quabos(state_dict)
 
                     # 3. START DAQ FLOW
-                    # ACQ mode determination based on active configs (simplified logic)
-                    # Real logic will rely on your ACQ mask building function
-                    target_acq_mode = 0x01 if state.get("pulse_height_mode_config") else 0x02
-                    logger.debug(f"Starting DAQ packet flow (ACQ={target_acq_mode})")
-                    self._broadcast_acq_mode(target_acq_mode)
+                    daq_params = self.build_daq_params(state_dict)
+                    logger.debug(f"Starting DAQ packet flow (PH={daq_params.do_ph}, IMG={daq_params.do_image})")
+                    self._broadcast_acq_mode(daq_params)
 
                     # 4. OBSERVE
                     logger.info(f"Observing for {duration} seconds...")
@@ -118,23 +174,35 @@ class InterleaveController:
 
         except KeyboardInterrupt:
             logger.warning("Interleaving aborted by user. Stopping data flow.")
-            self._broadcast_acq_mode(0)
+            self._broadcast_acq_mode(stop_params)
         finally:
             self.executor.shutdown(wait=False)
+            for q in self.quabos:
+                q.close()
 
 
 if __name__ == "__main__":
-    # Example usage
     try:
-        # Load and validate
-        valid_config = load_and_validate_data_config("data_config.json", logger)
+        # Load all observatory configurations utilizing existing mechanism
+        obs_config = config_file.get_obs_config()
+        daq_config = config_file.get_daq_config()
+        quabo_uids = config_file.get_quabo_uids()
+        quabo_info = config_file.get_quabo_info()
+        network_config = config_file.get_network_config()
 
-        # Mock Quabo IPs found via standard observatory_config parsing
-        active_quabo_ips = ["192.168.3.248", "192.168.3.249", "192.168.3.250"]
+        # Load and validate the Data Products configuration fail-fast
+        valid_data_config = load_and_validate_data_config("../configs/data_config.json", logger)
 
-        # Run
-        controller = InterleaveController(active_quabo_ips, valid_config)
+        # Initialize and run
+        controller = InterleaveController(
+            data_config=valid_data_config,
+            obs_config=obs_config,
+            daq_config=daq_config,
+            quabo_uids=quabo_uids,
+            quabo_info=quabo_info,
+            network_config=network_config
+        )
         controller.run_loop()
 
     except Exception as e:
-        logger.error(f"Initialization Failed: {e}")
+        logger.error(f"Initialization Failed: {e}", exc_info=True)
