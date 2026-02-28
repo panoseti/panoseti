@@ -135,7 +135,7 @@ class InterleaveController:
                 self.network_config, verbose=False
             )
             pano_config.do_mask_config(
-                [module], self.data_config, self.network_config,
+                [module], state_config_dict, self.network_config,
                 self.quabo_uids, verbose=False
             )
 
