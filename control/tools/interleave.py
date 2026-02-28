@@ -118,11 +118,11 @@ class InterleaveController:
 
     def _cache_state(self, name: str, state_dict: Dict[str, Any]) -> None:
         maroc_payloads = pano_config.compute_maroc_config(
-            self.modules, self.quabo_uids, self.quabo_info, self.data_config,
+            self.modules, self.quabo_uids, self.quabo_info, copy.deepcopy(self.original_data_config),
             self.obs_config, self.daq_config, self.network_config
         )
         mask_payloads = pano_config.compute_mask_config(
-            self.modules, self.data_config, self.network_config, self.quabo_uids
+            self.modules, copy.deepcopy(self.original_data_config), self.network_config, self.quabo_uids
         )
         self.state_cache[name] = {
             "maroc": maroc_payloads,
