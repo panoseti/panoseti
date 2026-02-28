@@ -118,11 +118,10 @@ class InterleaveController:
 
     def _cache_state(self, name: str, state_dict: Dict[str, Any]) -> None:
         maroc_payloads = pano_config.compute_maroc_config(
-            self.modules, self.quabo_uids, self.quabo_info,
-            state_dict, self.obs_config, self.network_config
+            self.modules, self.quabo_uids, self.quabo_info, state_dict, self.network_config,
         )
         mask_payloads = pano_config.compute_mask_config(
-            self.modules, state_dict, self.network_config, self.quabo_uids
+            self.modules, state_dict, self.network_config, self.quabo_uids,
         )
         self.state_cache[name] = {
             "maroc": maroc_payloads,
@@ -138,7 +137,6 @@ class InterleaveController:
         cache = self.state_cache[state_name]
 
         if self.dry_run:
-            logger.info(f"[DRY-RUN] Simulating fast-blast for state: {state_name}")
             return
 
         def blast_module(ordered_ips: List[Optional[str]]):
@@ -151,6 +149,8 @@ class InterleaveController:
 
                 try:
                     # 1. Send MAROC Configurations
+                    # In PH mode, m_dict contains the payload for the hardware bug workaround (low DAC2)
+                    # as the first payload, and the primary calibrated DAC2 as the second payload.
                     if ip in cache['maroc']:
                         for m_dict in cache['maroc'][ip]:
                             try:
@@ -158,34 +158,38 @@ class InterleaveController:
                                 time.sleep(0.01)  # <-- CRITICAL: Give FPGA time to clock MAROC chips
                             except socket.timeout:
                                 pass
-                            except Exception as e:
-                                logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
 
                     # 2. Send FPGA Trigger Masks
-                    # if ip in cache['mask']:
-                    #     try:
-                    #         q.send_trigger_mask(cache['mask'][ip])
-                    #         time.sleep(0.01)  # <-- CRITICAL: Pacing
-                    #         q.send_goe_mask(cache['mask'][ip])
-                    #         time.sleep(0.01)  # <-- CRITICAL: Pacing
-                    #     except socket.timeout:
-                    #         pass
+                    if ip in cache['mask']:
+                        try:
+                            q.send_trigger_mask(cache['mask'][ip])
+                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                            q.send_goe_mask(cache['mask'][ip])
+                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                        except socket.timeout:
+                            pass
 
                     # 3. Send DAQ Configuration (start data flow)
-                    try:
-                        q.send_daq_params(cache['daq'])
-                        time.sleep(0.01)  # <-- CRITICAL: Pacing
-                    except socket.timeout:
-                        pass
+                    if 'daq' in cache:
+                        try:
+                            q.send_daq_params(cache['daq'])
+                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                        except socket.timeout:
+                            pass
 
                 finally:
                     # Always safely restore the original timeout
                     q.sock.settimeout(original_timeout)
 
-        # Execute concurrently across modules
+        # Execute concurrently across modules, but sequentially inside each task wrapper
         futures = [self.executor.submit(blast_module, ips) for ips in self.module_ips]
+
+        # Ensures all execution waves complete before unlocking control
         for f in as_completed(futures):
-            f.result()
+            try:
+                f.result()
+            except Exception:
+                pass
 
     def _stop_data_flow(self) -> None:
         """Stops DAQ sequentially within modules for hardware safety."""
