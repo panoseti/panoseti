@@ -42,7 +42,7 @@ class InterleaveController:
 
         self._acquire_lock()
 
-        # 1. Enforce that an active run exists (mimicking status.py / stop.py)
+        # Enforce that an active run exists
         run_name = util.read_run_name()
         if not self.dry_run and not run_name:
             self._release_lock()
@@ -66,13 +66,12 @@ class InterleaveController:
             for i in range(4):
                 uid = util.quabo_uid(module, quabo_uids, i)
                 if not uid: continue
-                # Use util.get_quabo_ip_port to cleanly support port-forwarded routing
                 ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
                 self.quabos.append(quabo_driver.QUABO(ip_ports['ip_addr'], ip_ports['cmd_port']))
 
         self.executor = ThreadPoolExecutor(max_workers=len(self.modules) + 4)
 
-        # Register signal handlers for graceful shutdown (from config.py --stop-interleave)
+        # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         signal.signal(signal.SIGINT, self._handle_shutdown_signal)
 
@@ -86,13 +85,10 @@ class InterleaveController:
                 with open(PID_FILE, "r") as f:
                     old_pid = int(f.read().strip())
 
-                # Cross-verify with the OS that the old PID didn't crash silently
                 if psutil.pid_exists(old_pid):
                     logger.critical(
                         f"CRITICAL: Another interleave process (PID {old_pid}) is currently running.\n"
-                        "Only one instance may run at a time to prevent hardware command collisions.\n"
-                        "To resolve this, run `python config.py --stop-interleave`.\n"
-                        f"If the process is dead, manually remove `{PID_FILE}`."
+                        "To resolve this, run `python config.py --stop-interleave`."
                     )
                     sys.exit(1)
                 else:
@@ -101,7 +97,6 @@ class InterleaveController:
             except (ValueError, OSError):
                 os.remove(PID_FILE)
 
-        # Ensure directory exists before writing PID
         os.makedirs(os.path.dirname(PID_FILE), exist_ok=True)
         with open(PID_FILE, "w") as f:
             f.write(str(os.getpid()))
@@ -114,8 +109,9 @@ class InterleaveController:
                 pass
 
     def _handle_shutdown_signal(self, signum, frame):
-        logger.warning("Shutdown signal received. Preparing to restore default configuration...")
-        self.keep_running = False
+        if self.keep_running:
+            logger.warning("Shutdown signal received. Breaking cycle to restore defaults...")
+            self.keep_running = False
 
     def _broadcast_acq_mode(self, daq_params: quabo_driver.DAQ_PARAMS) -> None:
         if self.dry_run:
@@ -130,8 +126,6 @@ class InterleaveController:
 
     def _reconfigure_quabos(self, state_config_dict: Dict[str, Any]) -> None:
         if self.dry_run:
-            modes = [k for k in state_config_dict.keys() if k.startswith('image') or k.startswith('pulse_height')]
-            logger.info(f"[DRY-RUN] Simulating MAROC/FPGA reconfiguration. Active modes: {modes}")
             return
 
         def reconfig_module(module):
@@ -170,7 +164,6 @@ class InterleaveController:
         )
 
     def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
-        """High-precision hybrid sleep. Yields to OS, then spins for last few ms."""
         while self.keep_running:
             now = time.perf_counter()
             remaining = target_time - now
@@ -188,12 +181,8 @@ class InterleaveController:
         states = self.interleave_cfg.get("states", [])
         stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, True)
 
-        schedule_start_time = time.perf_counter()
-        next_state_time = schedule_start_time
-
         try:
             while self.keep_running:
-                # Check for cycle limits (useful for CI testing)
                 if self.max_cycles and self.stats["total_cycles"] >= self.max_cycles:
                     logger.info(f"Max cycles ({self.max_cycles}) reached. Ending run_loop.")
                     break
@@ -203,7 +192,6 @@ class InterleaveController:
 
                     name = state["state_name"]
                     duration = state["duration_seconds"]
-                    next_state_time += duration
 
                     logger.info(f"\n--- Entering State: {name} (Duration: {duration}s) ---")
                     t_overhead_start = time.perf_counter()
@@ -219,12 +207,10 @@ class InterleaveController:
                     overhead = time.perf_counter() - t_overhead_start
                     self.stats["total_switch_overhead_sec"] += overhead
 
-                    if time.perf_counter() > next_state_time:
-                        logger.warning("Switch overhead exceeded state duration. Resetting timeline.")
-                        next_state_time = time.perf_counter()
-                        continue
+                    logger.info(f"Hardware configured in {overhead:.2f}s. Actively observing for {duration}s...")
 
-                    self._sleep_until(next_state_time)
+                    # Relative Active Scheduling: Guarantee the full duration occurs AFTER configuration
+                    self._sleep_until(time.perf_counter() + duration)
 
                 self.stats["total_cycles"] += 1
 
@@ -242,6 +228,11 @@ class InterleaveController:
 
         logger.info("Teardown initiated. Restoring default hardware configuration...")
         try:
+            # FIX: Forcefully drop old tasks and spin up a fresh pool
+            # to guarantee teardown commands aren't stuck behind deadlocked threads.
+            self.executor.shutdown(wait=False)
+            self.executor = ThreadPoolExecutor(max_workers=len(self.modules) + 4)
+
             self._broadcast_acq_mode(stop_params)
             default_dict = self.generate_state_dict("image" if "image" in self.data_config else None,
                                                     "pulse_height" if "pulse_height" in self.data_config else None)
@@ -259,8 +250,7 @@ class InterleaveController:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PANOSETI Interleave Controller")
     parser.add_argument('--dry-run', action='store_true', help='Simulate execution without hardware commands')
-    parser.add_argument('--max-cycles', type=int, default=None,
-                        help='Limit the number of schedule loops (useful for CI)')
+    parser.add_argument('--max-cycles', type=int, default=None, help='Limit the number of schedule loops')
     args = parser.parse_args()
 
     controller = None
