@@ -756,6 +756,128 @@ def do_dry_run_interleave():
         sys.exit(result.returncode)
 
 
+# --- ADD THESE TO config.py (Pre-compute Helpers for Interleaving) ---
+
+def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, network_config):
+    """
+    Pre-computes MAROC config dictionaries for all Quabos based on data_config.
+    Returns: dict mapping 'real_ip' -> list of qc_dicts (list handles the PH firmware bug workaround)
+    """
+    gain = float(data_config.get('gain', 60))
+    do_img = 'image' in data_config.keys()
+    do_ph = 'pulse_height' in data_config.keys()
+
+    pe_thresh1 = float(data_config['image']['pe_threshold']) if do_img else 0
+    pe_thresh2 = float(data_config['pulse_height']['pe_threshold']) if do_ph else 0
+
+    stim_mask_quaboi = [1, 1, 1, 1]
+    if "stim_params" in data_config and "mask" in data_config["stim_params"]:
+        stim_mask_quaboi = data_config["stim_params"]["mask"]
+
+    qc_dict_src = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+
+    results = {}
+    for module in modules:
+        for i in range(4):
+            qc_dict = copy.deepcopy(qc_dict_src)
+            uid = util.quabo_uid(module, quabo_uids, i)
+            if uid == '': continue
+
+            is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
+            try:
+                qi = quabo_info[uid]
+            except:
+                qi = quabo_info.get('default', {'serialno': 'DEF000'})
+                is_qfp = False
+            serialno = qi['serialno'][3:]
+
+            detovervol = data_config.get('detector_overvoltage', 3)
+            op_mode = 'img' if (do_img and not do_ph) else 'ph'
+            quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
+
+            dac1, dac2 = [0] * 4, [0] * 4
+            for j in range(4):
+                quad = quabo_calib['quadrants'][j]
+                if do_img: dac1[j] = int(quad['a'] * gain * pe_thresh1 + quad['b'])
+                if do_ph:  dac2[j] = int(quad['ah'] * gain * pe_thresh2 + quad['bh'])
+
+            if do_img: qc_dict['DAC1'] = '%d,%d,%d,%d' % (dac1[0], dac1[1], dac1[2], dac1[3])
+            if do_ph:  qc_dict['DAC2'] = '%d,%d,%d,%d' % (dac2[0], dac2[1], dac2[2], dac2[3])
+
+            maroc_gain = [[0] * 4 for _ in range(64)]
+            for j in range(4):
+                for k in range(64):
+                    [x, y] = pixel_coords.detector_to_quabo(k, j, is_qfp)
+                    delta = quabo_calib['pixel_gain'][x][y]
+                    maroc_gain[k][j] = int(round(gain * (1 + delta)))
+
+            for k in range(64):
+                qc_dict[f'GAIN{k}'] = '%d,%d,%d,%d' % (maroc_gain[k][0], maroc_gain[k][1], maroc_gain[k][2],
+                                                       maroc_gain[k][3])
+
+            do_two = data_config.get('pulse_height', {}).get('two_pixel_trigger', 0)
+            do_three = data_config.get('pulse_height', {}).get('three_pixel_trigger', 0)
+            if do_two or do_three:
+                qc_dict['D1_D2'] = '1,1,1,1'
+
+            if stim_mask_quaboi[i] == 0:
+                for k in range(64):
+                    qc_dict[f'CTEST_{k}'] = "0,0,0,0"
+
+            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            real_ip = ip_ports['ip_addr']
+
+            # Replicate the double-send sequence for the PH firmware bug
+            payloads = []
+            if do_ph:
+                qc_dict_ph_bug = copy.deepcopy(qc_dict)
+                tmp = [0] * 4
+                for j in range(4):
+                    quad = quabo_calib['quadrants'][j]
+                    tmp[j] = int(quad['ah'] * gain * 5.5 + quad['bh'])
+                qc_dict_ph_bug['DAC2'] = '%d,%d,%d,%d' % (tmp[0], tmp[1], tmp[2], tmp[3])
+                payloads.append(qc_dict_ph_bug)
+
+            payloads.append(qc_dict)  # The final correct dict
+            results[real_ip] = payloads
+
+    return results
+
+
+def compute_mask_config(modules, data_config, network_config):
+    """
+    Pre-computes MASK config dictionaries for all Quabos based on data_config.
+    Returns: dict mapping 'real_ip' -> qc_dict
+    """
+    qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+    do_ph = 'pulse_height' in data_config.keys()
+
+    qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
+    for i in range(9):
+        qc_dict[f'CHANMASK_{i}'] = int(qc_dict[f'CHANMASK_{i}'], 16)
+
+    if do_ph:
+        if 'any_trigger' in data_config['pulse_height']:
+            qc_dict['CHANMASK_8'] &= 0x0ff
+        else:
+            qc_dict['CHANMASK_8'] |= 0x100
+
+        if data_config['pulse_height'].get('three_pixel_trigger'):
+            qc_dict['CHANMASK_8'] |= 0xff
+            qc_dict['GOEMASK'] &= 0x1
+        if data_config['pulse_height'].get('two_pixel_trigger'):
+            qc_dict['CHANMASK_8'] |= 0xff
+            qc_dict['GOEMASK'] &= 0x2
+
+    results = {}
+    for module in modules:
+        for i in range(4):
+            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            results[ip_ports['ip_addr']] = copy.deepcopy(qc_dict)
+
+    return results
+
+
 
 def main():
     if not os.path.exists('logs'):

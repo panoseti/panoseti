@@ -204,7 +204,7 @@ class DaqNodeValidator(BaseStrictModel):
     bindhost: Optional[str] = Field("0.0.0.0")
 
 class DaqConfigValidator(BaseStrictModel):
-    comment: Optional[str]
+    comment: Optional[str] = None
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
     head_node_container: bool = Field(False)
