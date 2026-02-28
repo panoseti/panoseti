@@ -765,13 +765,11 @@ def compute_mask_config(modules, data_config, network_config, quabo_uids):
         qc_dict['CHANMASK_' + str(i)] = int(qc_dict['CHANMASK_' + str(i)], 16)
 
     if do_ph:
-        # config CHANMASK_8 for any_trigger
         if 'any_trigger' in data_config['pulse_height']:
             qc_dict['CHANMASK_8'] &= 0x0ff
         else:
             qc_dict['CHANMASK_8'] |= 0x100
 
-        # config GOEMASK for 2/3 pixel_trigger
         if 'three_pixel_trigger' in data_config['pulse_height']:
             if data_config['pulse_height']['three_pixel_trigger']:
                 qc_dict['CHANMASK_8'] |= 0xff
@@ -795,13 +793,20 @@ def compute_mask_config(modules, data_config, network_config, quabo_uids):
     return results
 
 
-def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, network_config):
+def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config):
     gain = float(data_config['gain'])
+
+    # [BUG FIX]: Properly detect and parse the 8-bit image data product.
     do_img = 'image' in data_config.keys()
+    do_img8 = 'image_8bit' in data_config.keys()
+    do_any_img = do_img or do_img8
     do_ph = 'pulse_height' in data_config.keys()
 
     if do_img:
         pe_thresh1 = float(data_config['image']['pe_threshold'])
+    elif do_img8:
+        pe_thresh1 = float(data_config['image_8bit']['pe_threshold'])
+
     if do_ph:
         pe_thresh2 = float(data_config['pulse_height']['pe_threshold'])
 
@@ -827,19 +832,19 @@ def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, network_c
 
             serialno = qi['serialno'][3:]
             detovervol = data_config.get('detector_overvoltage', 3)
-            op_mode = 'img' if (do_img and not do_ph) else 'ph'
+            op_mode = 'img' if (do_any_img and not do_ph) else 'ph'
 
             quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
 
             dac1, dac2 = [0] * 4, [0] * 4
             for j in range(4):
                 quad = quabo_calib['quadrants'][j]
-                if do_img:
+                if do_any_img:
                     dac1[j] = int(quad['a'] * gain * pe_thresh1 + quad['b'])
                 if do_ph:
                     dac2[j] = int(quad['ah'] * gain * pe_thresh2 + quad['bh'])
 
-            if do_img:
+            if do_any_img:
                 qc_dict['DAC1'] = f"{dac1[0]},{dac1[1]},{dac1[2]},{dac1[3]}"
             if do_ph:
                 qc_dict['DAC2'] = f"{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}"
@@ -860,9 +865,7 @@ def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, network_c
 
             payloads = []
 
-            # Hardware bug workaround implementation:
-            # If pulse_height is enabled, we first configure DAC2 incredibly low (5.5pe)
-            # to let the chips settle, before restoring them to proper calibration values.
+            # [BUG FIX]: Properly sequence the commented out hardware hack from config.py
             if do_ph:
                 tmp = [0] * 4
                 for j in range(4):
@@ -870,7 +873,16 @@ def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, network_c
                     tmp[j] = int(quad['ah'] * gain * 5.5 + quad['bh'])
                 qc_dict_ph_bug = copy.deepcopy(qc_dict)
                 qc_dict_ph_bug['DAC2'] = f"{tmp[0]},{tmp[1]},{tmp[2]},{tmp[3]}"
-                payloads.append(qc_dict_ph_bug)
+
+                daq_start = quabo_driver.DAQ_PARAMS(
+                    do_image=False, image_us=4999, image_8bit=False, do_ph=True, bl_subtract=False
+                )
+                daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+                daq_node_ip = daq_config['daq_nodes'][0]['ip_addr']
+
+                # We map the operations logically so the blaster can execute the sleep timing correctly.
+                payloads.append({'type': 'maroc', 'data': qc_dict_ph_bug})
+                payloads.append({'type': 'daq_workaround', 'start': daq_start, 'stop': daq_stop, 'dest': daq_node_ip})
 
             if stim_mask_quaboi[i] == 0:
                 for k in range(64):
@@ -878,7 +890,7 @@ def compute_maroc_config(modules, quabo_uids, quabo_info, data_config, network_c
                     if ctest_key in qc_dict:
                         qc_dict[ctest_key] = "0,0,0,0"
 
-            payloads.append(qc_dict)
+            payloads.append({'type': 'maroc', 'data': qc_dict})
 
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             results[ip_ports['ip_addr']] = payloads

@@ -118,10 +118,11 @@ class InterleaveController:
 
     def _cache_state(self, name: str, state_dict: Dict[str, Any]) -> None:
         maroc_payloads = pano_config.compute_maroc_config(
-            self.modules, self.quabo_uids, self.quabo_info, state_dict, self.network_config,
+            self.modules, self.quabo_uids, self.quabo_info, self.data_config,
+            self.obs_config, self.daq_config, self.network_config
         )
         mask_payloads = pano_config.compute_mask_config(
-            self.modules, state_dict, self.network_config, self.quabo_uids,
+            self.modules, self.data_config, self.network_config, self.quabo_uids
         )
         self.state_cache[name] = {
             "maroc": maroc_payloads,
@@ -132,7 +133,7 @@ class InterleaveController:
     def _fast_blast_state(self, state_name: str) -> None:
         """
         Parallel across modules, but STRICTLY SEQUENTIAL (0, 1, 2, 3) within each module.
-        Paced to prevent UDP buffer overflows on the Quabo embedded processors.
+        Staged sending per operation: MAROC Phase, then MASK Phase, then DAQ Phase.
         """
         cache = self.state_cache[state_name]
 
@@ -140,51 +141,78 @@ class InterleaveController:
             return
 
         def blast_module(ordered_ips: List[Optional[str]]):
+
+            # -----------------------------------------------------------------
+            # STAGE 1: MAROC Configurations & Firmware Bug Workarounds
+            # -----------------------------------------------------------------
             for ip in ordered_ips:
                 if not ip: continue
                 q = self.quabos[ip]
-
                 original_timeout = q.sock.gettimeout()
                 q.sock.settimeout(0.01)
 
                 try:
-                    # 1. Send MAROC Configurations
-                    # In PH mode, m_dict contains the payload for the hardware bug workaround (low DAC2)
-                    # as the first payload, and the primary calibrated DAC2 as the second payload.
                     if ip in cache['maroc']:
-                        for m_dict in cache['maroc'][ip]:
+                        for action in cache['maroc'][ip]:
                             try:
-                                q.send_maroc_params(m_dict)
-                                time.sleep(0.01)  # <-- CRITICAL: Give FPGA time to clock MAROC chips
+                                if action['type'] == 'maroc':
+                                    q.send_maroc_params(action['data'])
+                                    time.sleep(0.01)
+                                elif action['type'] == 'daq_workaround':
+                                    # Execute the hardware bug DAQ flush
+                                    q.data_packet_destination(action['dest'])
+                                    q.send_daq_params(action['start'])
+                                    time.sleep(2.0)  # Emulate hardware settle time from config.py
+                                    q.send_daq_params(action['stop'])
+                                    time.sleep(0.01)
                             except socket.timeout:
                                 pass
+                finally:
+                    q.sock.settimeout(original_timeout)
 
-                    # 2. Send FPGA Trigger Masks
+            # -----------------------------------------------------------------
+            # STAGE 2: FPGA Trigger Masks
+            # -----------------------------------------------------------------
+            for ip in ordered_ips:
+                if not ip: continue
+                q = self.quabos[ip]
+                original_timeout = q.sock.gettimeout()
+                q.sock.settimeout(0.01)
+
+                try:
                     if ip in cache['mask']:
                         try:
                             q.send_trigger_mask(cache['mask'][ip])
-                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                            time.sleep(0.01)
                             q.send_goe_mask(cache['mask'][ip])
-                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                            time.sleep(0.01)
                         except socket.timeout:
                             pass
+                finally:
+                    q.sock.settimeout(original_timeout)
 
-                    # 3. Send DAQ Configuration (start data flow)
+            # -----------------------------------------------------------------
+            # STAGE 3: DAQ Configuration (Activate System)
+            # -----------------------------------------------------------------
+            for ip in ordered_ips:
+                if not ip: continue
+                q = self.quabos[ip]
+                original_timeout = q.sock.gettimeout()
+                q.sock.settimeout(0.01)
+
+                try:
                     if 'daq' in cache:
                         try:
                             q.send_daq_params(cache['daq'])
-                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                            time.sleep(0.01)
                         except socket.timeout:
                             pass
-
                 finally:
-                    # Always safely restore the original timeout
                     q.sock.settimeout(original_timeout)
 
-        # Execute concurrently across modules, but sequentially inside each task wrapper
+        # Execute modules in parallel while strictly gating internal stage pacing
         futures = [self.executor.submit(blast_module, ips) for ips in self.module_ips]
 
-        # Ensures all execution waves complete before unlocking control
         for f in as_completed(futures):
             try:
                 f.result()
