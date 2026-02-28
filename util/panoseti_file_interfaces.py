@@ -9,11 +9,13 @@ import json
 import sys
 from datetime import datetime, timezone, timedelta
 from itertools import chain
+import mmap
 
 import numpy as np
 import pandas as pd
-import seaborn_image as isns
+#import seaborn_image as isns
 import matplotlib.pyplot as plt
+import warnings
 
 import config_file
 import pff
@@ -58,6 +60,7 @@ class ObservingRunInterface:
 
         self.has_pulse_height = False
         if "pulse_height" in self.data_config:
+            # print(f'{self.data_config=}')
             self.has_pulse_height = True
             self.ph_bpp = 2 # Default value
             self.bytes_per_header_and_pulse_height_frame = None  # Bytes per frame, including JSON header, data, and delimiters
@@ -67,8 +70,8 @@ class ObservingRunInterface:
             self.ph_size = 16
             if "any_trigger" in self.data_config["pulse_height"]:
                 self.any_trigger = self.data_config["pulse_height"]["any_trigger"]
-                if "group_frames" in self.data_config["pulse_height"]["any_trigger"]:
-                    self.ph_group_frames = self.data_config["pulse_height"]["any_trigger"]["group_frames"]
+                if "group_ph_frames" in self.data_config["pulse_height"]["any_trigger"]:
+                    self.ph_group_frames = self.data_config["pulse_height"]["any_trigger"]["group_ph_frames"]
                     if self.ph_group_frames:
                         # If anytrigger is on and group_frames is specified, the 4 PH frames produced per event are
                         # grouped together into a single 1024-pixel image.
@@ -159,6 +162,7 @@ class ObservingRunInterface:
             attrs = dict()
             attrs["fname"] = fname
             attrs["seqno"] = int(parsed_name["seqno"])
+            # print(f'{attrs=} {self.bytes_per_header_and_pulse_height_frame=}, {self.bytes_per_ph_frame=}')
             with open(fpath, 'rb') as f:
                 self.bytes_per_header_and_pulse_height_frame, attrs["nframes"], attrs["first_unix_t"], \
                     attrs["last_unix_t"] = pff.img_info(f, self.bytes_per_ph_frame)
@@ -252,6 +256,13 @@ class ObservingRunInterface:
 
     @staticmethod
     def plot_image(img, **kwargs):
+        warnings.warn(
+            "plot_image is deprecated, ",
+            DeprecationWarning,
+            stacklevel=2  # Important for pointing to the caller's code
+        )
+        return -1
+
         if img is None or not isinstance(img, np.ndarray):
             print('no image')
             return None
