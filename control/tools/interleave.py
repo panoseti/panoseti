@@ -3,21 +3,16 @@
 interleave.py
 
 PANOSETI Interleaved Observation Controller.
-Utilizes a "Cache and Blast" architecture to pre-compute MAROC and FPGA
-configurations at startup, eliminating disk/math overhead to achieve
-millisecond-precision mode switching during active observations.
+Runs as a background daemon during an active observation to rapidly
+switch Quabo FPGA and MAROC registers between different observing modes.
 """
 
 import time
-import socket
 import logging
 import argparse
 import sys
 import os
-import signal
 import copy
-import csv
-from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -28,7 +23,6 @@ import config as pano_config
 from utils import config_file, util
 
 PID_FILE = "tmp/interleave.pid"
-EVENT_LOG_FILE = "logs/interleave_events.csv"
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
 logger = logging.getLogger("panoseti.interleave")
@@ -45,349 +39,188 @@ class InterleaveController:
         self.max_cycles = max_cycles
         self.stats = {"total_cycles": 0, "total_switch_overhead_sec": 0.0}
 
-        self._acquire_lock()
-
-        # Freeze original config to guarantee pristine teardown
-        self.original_data_config = copy.deepcopy(data_config)
-        self.interleave_cfg = self.original_data_config.get("interleave", {})
-
+        self.data_config = data_config
         self.obs_config = obs_config
         self.daq_config = daq_config
         self.quabo_uids = quabo_uids
         self.quabo_info = quabo_info
         self.network_config = network_config
 
-        self.modules = config_file.get_modules(obs_config)
+        # Extract modules from obs_config
+        self.modules = []
+        for dome in self.obs_config.get('domes', []):
+            for module in dome.get('modules', []):
+                self.modules.append(module)
 
-        self.quabos: Dict[str, quabo_driver.QUABO] = {}
-        self.module_ips: List[List[Optional[str]]] = []  # Tracks 0->3 order per module
+        self.interleave_config = self.data_config.get('interleave', {})
+        self.states = self.interleave_config.get('states', [])
 
+        # We will use ThreadPoolExecutor for broadcasting DAQ acq mode commands across nodes
+        self.executor = ThreadPoolExecutor(max_workers=len(self.modules) * 4 if self.modules else 1)
+
+        # Setup base quabo connections for broadcasting DAQ start/stop commands
+        self.quabos = []
         for module in self.modules:
-            ordered_ips_for_module = []
             for i in range(4):
-                uid = util.quabo_uid(module, quabo_uids, i)
-                if not uid:
-                    ordered_ips_for_module.append(None)
-                    continue
-                ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
-                real_ip = ip_ports['ip_addr']
-                self.quabos[real_ip] = quabo_driver.QUABO(real_ip, ip_ports['cmd_port'])
-                ordered_ips_for_module.append(real_ip)
+                ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, self.network_config)
+                self.quabos.append(quabo_driver.QUABO(ip_ports['ip_addr']))
 
-            self.module_ips.append(ordered_ips_for_module)
-
-        # Thread pool size can now be optimized to the number of modules
-        self.executor = ThreadPoolExecutor(max_workers=len(self.modules))
-
-        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
-        signal.signal(signal.SIGINT, self._handle_shutdown_signal)
-
-        self.csv_file, self.csv_writer = None, None
-        self._init_event_logger()
-
-        # --- PRE-COMPUTE PHASE ---
-        self.state_cache = {}
-        self._precompute_state_payloads()
-
+    def _broadcast_acq_mode(self, daq_params):
+        """Broadcasts DAQ parameters to all Quabos concurrently to start/stop data flow."""
         if self.dry_run:
-            logger.info("=== DRY RUN MODE ENABLED ===")
-
-    def _precompute_state_payloads(self) -> None:
-        """
-        Pre-computes and caches the MAROC dicts, MASK dicts, and DAQ params
-        for every interleave state, plus the DEFAULT state.
-        """
-        logger.info("Pre-computing hardware configurations. This may take a moment...")
-
-        # 1. Compute all schedule states
-        for state in self.interleave_cfg.get("states", []):
-            name = state["state_name"]
-            state_dict = self.generate_state_dict(
-                state.get("movie_mode_config"),
-                state.get("pulse_height_mode_config")
-            )
-            self._cache_state(name, state_dict)
-
-        # 2. Compute the pristine original state for teardown
-        default_dict = self.generate_state_dict(
-            "image" if "image" in self.original_data_config else None,
-            "pulse_height" if "pulse_height" in self.original_data_config else None
-        )
-        self._cache_state("DEFAULT_TEARDOWN", default_dict)
-        logger.info("Pre-computation complete. Ready to blast.")
-
-    def _cache_state(self, name: str, state_dict: Dict[str, Any]) -> None:
-        maroc_payloads = pano_config.compute_maroc_config(
-            self.modules, self.quabo_uids, self.quabo_info, copy.deepcopy(self.original_data_config),
-            self.obs_config, self.daq_config, self.network_config
-        )
-        mask_payloads = pano_config.compute_mask_config(
-            self.modules, copy.deepcopy(self.original_data_config), self.network_config, self.quabo_uids
-        )
-        self.state_cache[name] = {
-            "maroc": maroc_payloads,
-            "mask": mask_payloads,
-            "daq": self.build_daq_params(state_dict)
-        }
-
-    def _fast_blast_state(self, state_name: str) -> None:
-        """
-        Parallel across modules, but STRICTLY SEQUENTIAL (0, 1, 2, 3) within each module.
-        Staged sending per operation: MAROC Phase, then MASK Phase, then DAQ Phase.
-        """
-        cache = self.state_cache[state_name]
-
-        if self.dry_run:
+            logger.info(f"DRY RUN: Broadcasting DAQ params {daq_params.__dict__}")
             return
 
-        def blast_module(ordered_ips: List[Optional[str]]):
-
-            # -----------------------------------------------------------------
-            # STAGE 1: MAROC Configurations & Firmware Bug Workarounds
-            # -----------------------------------------------------------------
-            for ip in ordered_ips:
-                if not ip: continue
-                q = self.quabos[ip]
-                original_timeout = q.sock.gettimeout()
-                q.sock.settimeout(0.01)
-
-                try:
-                    if ip in cache['maroc']:
-                        for action in cache['maroc'][ip]:
-                            try:
-                                if action['type'] == 'maroc':
-                                    q.send_maroc_params(action['data'])
-                                    time.sleep(0.01)
-                                elif action['type'] == 'daq_workaround':
-                                    # Execute the hardware bug DAQ flush
-                                    q.data_packet_destination(action['dest'])
-                                    q.send_daq_params(action['start'])
-                                    time.sleep(2.0)  # Emulate hardware settle time from config.py
-                                    q.send_daq_params(action['stop'])
-                                    time.sleep(0.01)
-                            except socket.timeout:
-                                pass
-                finally:
-                    q.sock.settimeout(original_timeout)
-
-            # -----------------------------------------------------------------
-            # STAGE 2: FPGA Trigger Masks
-            # -----------------------------------------------------------------
-            for ip in ordered_ips:
-                if not ip: continue
-                q = self.quabos[ip]
-                original_timeout = q.sock.gettimeout()
-                q.sock.settimeout(0.01)
-
-                try:
-                    if ip in cache['mask']:
-                        try:
-                            q.send_trigger_mask(cache['mask'][ip])
-                            time.sleep(0.01)
-                            q.send_goe_mask(cache['mask'][ip])
-                            time.sleep(0.01)
-                        except socket.timeout:
-                            pass
-                finally:
-                    q.sock.settimeout(original_timeout)
-
-            # -----------------------------------------------------------------
-            # STAGE 3: DAQ Configuration (Activate System)
-            # -----------------------------------------------------------------
-            for ip in ordered_ips:
-                if not ip: continue
-                q = self.quabos[ip]
-                original_timeout = q.sock.gettimeout()
-                q.sock.settimeout(0.01)
-
-                try:
-                    if 'daq' in cache:
-                        try:
-                            q.send_daq_params(cache['daq'])
-                            time.sleep(0.01)
-                        except socket.timeout:
-                            pass
-                finally:
-                    q.sock.settimeout(original_timeout)
-
-        # Execute modules in parallel while strictly gating internal stage pacing
-        futures = [self.executor.submit(blast_module, ips) for ips in self.module_ips]
-
-        for f in as_completed(futures):
+        def send_to_quabo(q):
             try:
-                f.result()
-            except Exception:
-                pass
-
-    def _stop_data_flow(self) -> None:
-        """Stops DAQ sequentially within modules for hardware safety."""
-        # Note: bl_subtract is now False to perfectly match stop.py
-        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
-
-        if self.dry_run:
-            return
-
-        def stop_module(ordered_ips: List[Optional[str]]):
-            for ip in ordered_ips:
-                if not ip: continue
-                q = self.quabos[ip]
-
-                # Drop timeout so we don't block waiting for an ACK that won't come
                 original_timeout = q.sock.gettimeout()
-                q.sock.settimeout(0.01)
+                q.sock.settimeout(0.05)
+                q.send_daq_params(daq_params)
+                q.sock.settimeout(original_timeout)
+            except socket.timeout:
+                pass  # UDP drops are ignored per protocol
+            except Exception as e:
+                logger.debug(f"Error sending DAQ params to {q.ip}: {e}")
 
-                try:
-                    q.send_daq_params(stop_params)
-                    time.sleep(0.05)  # CRITICAL: Give FPGA 50ms to physically halt data generation
-                except socket.timeout:
-                    pass
-                except Exception as e:
-                    logger.debug(f"Ignored non-timeout error on stop DAQ send: {e}")
-                finally:
-                    # Always safely restore the original timeout
-                    q.sock.settimeout(original_timeout)
-
-        futures = [self.executor.submit(stop_module, ips) for ips in self.module_ips]
+        futures = [self.executor.submit(send_to_quabo, q) for q in self.quabos]
         for f in as_completed(futures):
-            f.result()
+            pass
 
-    # --- Utility Methods ---
-    def _acquire_lock(self):
-        if os.path.exists(PID_FILE):
-            with open(PID_FILE, "r") as f:
-                try:
-                    old_pid = int(f.read().strip())
-                    os.kill(old_pid, 0)
-                    logger.critical(f"Another process running (PID {old_pid}). Run `config.py --stop-interleave`.")
-                    sys.exit(1)
-                except:
-                    pass
-        with open(PID_FILE, "w") as f:
-            f.write(str(os.getpid()))
+    def build_daq_params(self, active_data_config: Dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
+        """Constructs DAQ_PARAMS object based on the current data configuration."""
+        do_image = 'image' in active_data_config
+        do_image_8bit = 'image_8bit' in active_data_config
+        do_ph = 'pulse_height' in active_data_config
 
-    def _release_lock(self):
-        if os.path.exists(PID_FILE): os.remove(PID_FILE)
+        image_us = 0
+        if do_image:
+            image_us = active_data_config['image'].get('integration_time_usec', 0)
+        elif do_image_8bit:
+            image_us = active_data_config['image_8bit'].get('integration_time_usec', 0)
 
-    def _handle_shutdown_signal(self, signum, frame):
-        logger.warning("Shutdown signal received.")
-        self.keep_running = False
+        return quabo_driver.DAQ_PARAMS(
+            do_image=do_image,
+            image_us=image_us,
+            image_8bit=do_image_8bit,
+            do_ph=do_ph,
+            bl_subtract=False
+        )
 
-    def _init_event_logger(self):
-        os.makedirs(os.path.dirname(EVENT_LOG_FILE), exist_ok=True)
-        exists = os.path.exists(EVENT_LOG_FILE) and os.path.getsize(EVENT_LOG_FILE) > 0
-        self.csv_file = open(EVENT_LOG_FILE, mode='a', newline='')
-        self.csv_writer = csv.writer(self.csv_file)
-        if not exists:
-            self.csv_writer.writerow(["unix_timestamp", "utc_datetime", "event_type", "state_name", "details"])
+    def prepare_state_config(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Creates a patched copy of data_config that maps the requested interleave mode to default keys."""
+        state_config = copy.deepcopy(self.data_config)
 
-    def _log_event(self, event_type: str, state_name: str, details: str = ""):
-        now_ts = time.time()
-        now_utc = datetime.fromtimestamp(now_ts, tz=timezone.utc).isoformat()
-        if self.csv_writer and self.csv_file:
-            self.csv_writer.writerow([f"{now_ts:.6f}", now_utc, event_type, state_name, details])
-            self.csv_file.flush()
-            os.fsync(self.csv_file.fileno())
+        # Remove default keys to prevent overlapping configs
+        for key in ['image', 'image_8bit', 'pulse_height']:
+            state_config.pop(key, None)
 
-    def generate_state_dict(self, movie_key: Optional[str], ph_key: Optional[str]) -> Dict[str, Any]:
-        temp_dict = copy.deepcopy(self.original_data_config)
-        temp_dict.pop('image', None);
-        temp_dict.pop('pulse_height', None)
-        if movie_key and movie_key in temp_dict: temp_dict['image'] = copy.deepcopy(temp_dict[movie_key])
-        if ph_key and ph_key in temp_dict: temp_dict['pulse_height'] = copy.deepcopy(temp_dict[ph_key])
-        return temp_dict
+        # Map movie mode config
+        movie_mode = state.get('movie_mode_config')
+        if movie_mode and movie_mode in self.data_config:
+            # Simple heuristic: if '8bit' is in the key name, map to 'image_8bit', else 'image'
+            target_key = 'image_8bit' if '8bit' in movie_mode.lower() else 'image'
+            state_config[target_key] = self.data_config[movie_mode]
 
-    def build_daq_params(self, state_dict: Dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
-        do_img, do_ph = 'image' in state_dict, 'pulse_height' in state_dict
-        image_us = state_dict['image'].get('integration_time_usec', 0) if do_img else 0
-        image_8bit = (state_dict['image'].get('quabo_sample_size', 0) == 8) if do_img else False
-        any_trig, grp_ph = False, False
-        if do_ph and 'any_trigger' in state_dict['pulse_height']:
-            any_trig = True
-            grp_ph = bool(state_dict['pulse_height']['any_trigger'].get('group_ph_frames', 0))
-        return quabo_driver.DAQ_PARAMS(do_img, image_us, image_8bit, do_ph, True, any_trig, grp_ph)
+        # Map pulse height mode config
+        ph_mode = state.get('pulse_height_mode_config')
+        if ph_mode and ph_mode in self.data_config:
+            state_config['pulse_height'] = self.data_config[ph_mode]
 
-    def _sleep_until(self, target_time: float):
-        while self.keep_running:
-            rem = target_time - time.perf_counter()
-            if rem <= 0.005: break
-            time.sleep(rem - 0.005)
-        while self.keep_running and time.perf_counter() < target_time: pass
+        return state_config
 
-    # --- Core Loop ---
-    def run_loop(self) -> None:
-        if not self.interleave_cfg.get("enable", False):
-            logger.info("Interleaving disabled. Exiting.")
-            self._release_lock()
+    def apply_state(self, state: Dict[str, Any]):
+        """Executes a single mode transition using the robust config.py implementations."""
+        state_name = state.get('state_name', 'UNKNOWN')
+        logger.info(f"Transitioning to state: {state_name}")
+
+        start_transition = time.time()
+
+        # 1. Stop Data Flow Globally
+        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+        self._broadcast_acq_mode(stop_params)
+        time.sleep(0.05)  # Fixed hardware settling delay
+
+        # 2. Reconfigure FPGA & MAROCs
+        state_data_config = self.prepare_state_config(state)
+
+        if not self.dry_run:
+            # We call the functions directly from config.py
+            # True indicates we want standard console/logging outputs enabled
+            pano_config.do_maroc_config(
+                self.modules, self.quabo_uids, self.quabo_info,
+                state_data_config, self.obs_config, self.daq_config,
+                self.network_config, True
+            )
+
+            pano_config.do_mask_config(
+                self.modules, state_data_config,
+                self.network_config, self.quabo_uids, True
+            )
+
+        time.sleep(0.05)  # Fixed hardware settling delay
+
+        # 3. Start Data Flow (New Acquisition Mode)
+        start_params = self.build_daq_params(state_data_config)
+        self._broadcast_acq_mode(start_params)
+
+        transition_overhead = time.time() - start_transition
+        self.stats["total_switch_overhead_sec"] += transition_overhead
+        logger.info(f"State {state_name} active. Transition overhead: {transition_overhead:.3f}s")
+
+        # Sleep for observation duration
+        duration = state.get('duration_seconds', 1.0)
+        time.sleep(duration)
+
+    def run_loop(self):
+        """Main interleave execution loop."""
+        if not self.states:
+            logger.error("No interleave states defined in data_config. Exiting.")
             return
 
-        states = self.interleave_cfg.get("states", [])
-        schedule_start_time = time.perf_counter()
-        next_state_time = schedule_start_time
-
-        self._log_event("INTERLEAVE_START", "GLOBAL", "Pre-computation complete. Running schedule.")
+        logger.info("Starting Interleave scheduler...")
 
         try:
             while self.keep_running:
-                if self.max_cycles and self.stats["total_cycles"] >= self.max_cycles: break
-
-                for state in states:
-                    if not self.keep_running: break
-                    name = state["state_name"]
-                    duration = state["duration_seconds"]
-                    next_state_time += duration
-
-                    logger.info(f"\n--- Entering State: {name} ---")
-                    self._log_event("SWITCH_START", name, "Stopping DAQ and fast-blasting cache")
-                    t_overhead_start = time.perf_counter()
-
-                    self._stop_data_flow()
-                    self._fast_blast_state(name)  # Sub-100ms switch
-
-                    overhead = time.perf_counter() - t_overhead_start
-                    self.stats["total_switch_overhead_sec"] += overhead
-                    self._log_event("OBSERVE_START", name, f"Reconfigured in {overhead:.3f}s")
-
-                    if time.perf_counter() > next_state_time:
-                        logger.warning("Overhead exceeded state duration. Resetting timeline.")
-                        next_state_time = time.perf_counter()
-                        continue
-
-                    self._sleep_until(next_state_time)
-                    self._log_event("OBSERVE_END", name, "Observation duration complete")
+                for state in self.states:
+                    if not self.keep_running:
+                        break
+                    self.apply_state(state)
 
                 self.stats["total_cycles"] += 1
-
-        except Exception as e:
-            logger.error(f"Error in interleaving loop: {e}", exc_info=True)
-            self._log_event("ERROR", "GLOBAL", str(e))
+                if self.max_cycles and self.stats["total_cycles"] >= self.max_cycles:
+                    logger.info(f"Reached max cycles ({self.max_cycles}). Stopping.")
+                    break
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user.")
         finally:
-            self._teardown()
+            self.shutdown()
 
-    def _teardown(self) -> None:
-        logger.info("Teardown initiated. Restoring pristine hardware defaults...")
-        self._log_event("TEARDOWN_START", "GLOBAL", "Restoring pristine default state from RAM cache")
-        try:
-            self._stop_data_flow()
-            self._fast_blast_state("DEFAULT_TEARDOWN")
-            logger.info("Hardware defaults restored successfully.")
-            self._log_event("TEARDOWN_COMPLETE", "GLOBAL", "Done")
-        except Exception as e:
-            logger.error(f"Failed to restore hardware: {e}")
-            self._log_event("TEARDOWN_ERROR", "GLOBAL", str(e))
-        finally:
-            self.executor.shutdown(wait=False)
-            if not self.dry_run:
-                for q in self.quabos.values(): q.close()
-            if self.csv_file: self.csv_file.close()
-            self._release_lock()
+    def shutdown(self):
+        """Gracefully restores system to the default state and closes connections."""
+        logger.info("Restoring pristine default state...")
+        # Re-apply the original config
+        default_state = {
+            'state_name': 'RESTORE_DEFAULT',
+            'duration_seconds': 0,
+            # We must map back exactly the keys that existed in the original file
+            'movie_mode_config': 'image_8bit' if 'image_8bit' in self.data_config else 'image' if 'image' in self.data_config else None,
+            'pulse_height_mode_config': 'pulse_height' if 'pulse_height' in self.data_config else None
+        }
+        self.apply_state(default_state)
+
+        self.executor.shutdown(wait=False)
+        for q in self.quabos:
+            q.close()
+        logger.info("Shutdown complete.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('--max-cycles', type=int, default=None)
+    parser = argparse.ArgumentParser(description="PANOSETI Interleave Controller")
+    parser.add_argument('--dry-run', action='store_true', help='Simulate execution without hardware commands')
+    parser.add_argument('--max-cycles', type=int, default=None, help='Limit the number of schedule loops')
     args = parser.parse_args()
 
+    controller = None
     try:
         controller = InterleaveController(
             data_config=config_file.get_data_config(),
@@ -401,5 +234,4 @@ if __name__ == "__main__":
         )
         controller.run_loop()
     except Exception as e:
-        logger.error(f"Startup failed: {e}")
-        sys.exit(1)
+        logger.error(f"Interleave startup failed: {e}")

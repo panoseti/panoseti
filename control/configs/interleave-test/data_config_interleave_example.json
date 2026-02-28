@@ -39,25 +39,25 @@
         "states": [
             {
                 "state_name": "dual-mode-img16",
-                "duration_seconds": 4.0,
+                "duration_seconds": 10.0,
                 "movie_mode_config": "image",
                 "pulse_height_mode_config": "pulse_height"
             },
             {
                 "state_name": "ph-only",
-                "duration_seconds": 6.0,
+                "duration_seconds": 10.0,
                 "movie_mode_config": null,
                 "pulse_height_mode_config": "pulse_height"
             },
             {
                 "state_name": "img8-only",
-                "duration_seconds": 4.0,
+                "duration_seconds": 10.0,
                 "movie_mode_config": "image_8bit",
                 "pulse_height_mode_config": null
             },
             {
                 "state_name": "img16-only",
-                "duration_seconds": 4.0,
+                "duration_seconds": 10.0,
                 "movie_mode_config": "image",
                 "pulse_height_mode_config": null
             }
