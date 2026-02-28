@@ -13,6 +13,7 @@ import argparse
 import sys
 import os
 import signal
+import psutil
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -21,7 +22,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from driver import quabo_driver
 import config as pano_config
 from utils import config_file, util
-from utils.pydantic_config_models import DataConfigValidator
 
 PID_FILE = "tmp/interleave.pid"
 
@@ -42,11 +42,15 @@ class InterleaveController:
 
         self._acquire_lock()
 
-        # Bypass prerequisite check if in dry-run mode
-        if not self.dry_run and not os.path.exists(util.run_name_file):
+        # 1. Enforce that an active run exists (mimicking status.py / stop.py)
+        run_name = util.read_run_name()
+        if not self.dry_run and not run_name:
             self._release_lock()
-            raise RuntimeError(f"No active observation found ({util.run_name_file} missing). "
-                               "Please run `python start.py` before starting the interleaver.")
+            logger.error("No run is currently in progress. Interleaving requires an active observation.")
+            logger.error("Please run `python start.py` before starting the interleaver.")
+            sys.exit(1)
+        elif not self.dry_run:
+            logger.info(f"Attached to active run: {run_name}")
 
         self.data_config = data_config
         self.interleave_cfg = data_config.get("interleave", {})
@@ -62,6 +66,7 @@ class InterleaveController:
             for i in range(4):
                 uid = util.quabo_uid(module, quabo_uids, i)
                 if not uid: continue
+                # Use util.get_quabo_ip_port to cleanly support port-forwarded routing
                 ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
                 self.quabos.append(quabo_driver.QUABO(ip_ports['ip_addr'], ip_ports['cmd_port']))
 
@@ -77,28 +82,36 @@ class InterleaveController:
     def _acquire_lock(self):
         """Ensures at most one instance of interleave.py is running."""
         if os.path.exists(PID_FILE):
-            with open(PID_FILE, "r") as f:
-                try:
+            try:
+                with open(PID_FILE, "r") as f:
                     old_pid = int(f.read().strip())
-                    os.kill(old_pid, 0)  # Throws OSError if process does not exist
 
+                # Cross-verify with the OS that the old PID didn't crash silently
+                if psutil.pid_exists(old_pid):
                     logger.critical(
                         f"CRITICAL: Another interleave process (PID {old_pid}) is currently running.\n"
                         "Only one instance may run at a time to prevent hardware command collisions.\n"
                         "To resolve this, run `python config.py --stop-interleave`.\n"
-                        "If the process is dead, manually remove `tmp/interleave.pid`."
+                        f"If the process is dead, manually remove `{PID_FILE}`."
                     )
                     sys.exit(1)
-                except (ValueError, OSError):
-                    # Stale PID file, overwrite it
-                    pass
+                else:
+                    logger.warning(f"Stale PID file detected for dead process {old_pid}. Cleaning up...")
+                    os.remove(PID_FILE)
+            except (ValueError, OSError):
+                os.remove(PID_FILE)
 
+        # Ensure directory exists before writing PID
+        os.makedirs(os.path.dirname(PID_FILE), exist_ok=True)
         with open(PID_FILE, "w") as f:
             f.write(str(os.getpid()))
 
     def _release_lock(self):
         if os.path.exists(PID_FILE):
-            os.remove(PID_FILE)
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
 
     def _handle_shutdown_signal(self, signum, frame):
         logger.warning("Shutdown signal received. Preparing to restore default configuration...")
@@ -246,7 +259,8 @@ class InterleaveController:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PANOSETI Interleave Controller")
     parser.add_argument('--dry-run', action='store_true', help='Simulate execution without hardware commands')
-    parser.add_argument('--max-cycles', type=int, default=None, help='Limit the number of schedule loops (useful for CI)')
+    parser.add_argument('--max-cycles', type=int, default=None,
+                        help='Limit the number of schedule loops (useful for CI)')
     args = parser.parse_args()
 
     controller = None
@@ -265,5 +279,8 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Interleave startup failed: {e}")
         if controller:
-            controller._teardown(None)
+            try:
+                controller._teardown(None)
+            except:
+                pass
         sys.exit(1)

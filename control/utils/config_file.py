@@ -139,7 +139,8 @@ def ping_host(ip_addr: str) -> bool:
 def validate_all(check_network: bool = False, debug: bool = False) -> bool:
     """
     The orchestrator function. Sets global CLI flags so the loaders output
-    pretty formatted terminal text, loops over configs, and pings the network.
+    pretty formatted terminal text, loops over configs, and pings the network
+    (resolving port-forwarded gateway IPs using util.py natively).
     """
     global IS_CLI_VALIDATION, DEBUG_VALIDATION, RAISE_VALIDATION_ERRORS
     IS_CLI_VALIDATION = True
@@ -148,6 +149,7 @@ def validate_all(check_network: bool = False, debug: bool = False) -> bool:
 
     all_passed = True
     ips_to_ping = set()
+    validated_configs = {}
 
     console.print(Panel.fit("[bold cyan]PANOSETI Configuration Validator[/bold cyan]"))
 
@@ -160,40 +162,70 @@ def validate_all(check_network: bool = False, debug: bool = False) -> bool:
         ("Firmware Config", get_firmware_config),
     ]
 
+    # 1. Validate all files and store the dictionaries
     for name, getter in configs_to_check:
         try:
-            validated_dict = getter()
-
-            # Aggregate IP Addresses for ping testing
-            if check_network:
-                if name == "Obs Config":
-                    if validated_dict.get('wr_ip_addr'): ips_to_ping.add(str(validated_dict['wr_ip_addr']))
-                    if validated_dict.get('dome_controller_ip_addr'): ips_to_ping.add(
-                        str(validated_dict['dome_controller_ip_addr']))
-                    for dome in validated_dict.get('domes', []):
-                        for mod in dome.get('modules', []):
-                            if mod.get('ip_addr'): ips_to_ping.add(str(mod['ip_addr']))
-                elif name == "DAQ Config":
-                    if validated_dict.get('head_node_ip_addr'): ips_to_ping.add(
-                        str(validated_dict['head_node_ip_addr']))
-                    for node in validated_dict.get('daq_nodes', []):
-                        if node.get('ip_addr'): ips_to_ping.add(str(node['ip_addr']))
+            validated_configs[name] = getter()
         except FileNotFoundError:
             all_passed = False
         except Exception:
             all_passed = False
 
-    if check_network and ips_to_ping:
-        console.print("\n" + "=" * 50)
-        console.print(Panel.fit("[bold cyan]Network Connectivity Check[/bold cyan]"))
+    # 2. Network Connectivity Check
+    if check_network:
+        # Import dynamically to avoid circular dependency on load
+        from utils import util
 
-        for ip in sorted(list(ips_to_ping)):
-            console.print(f"Pinging [bold cyan]{ip}[/bold cyan]...", end=" ")
-            if ping_host(ip):
-                console.print("[bold green]ALIVE[/bold green]")
-            else:
-                console.print("[bold red]UNREACHABLE[/bold red]")
-                all_passed = False
+        net_conf = validated_configs.get("Network Config", {})
+
+        # Gather Obs Config IPs using util.get_quabo_ip_port
+        obs_conf = validated_configs.get("Obs Config", {})
+        if obs_conf.get('wr_ip_addr'):
+            ips_to_ping.add(str(obs_conf['wr_ip_addr']))
+        if obs_conf.get('dome_controller_ip_addr'):
+            ips_to_ping.add(str(obs_conf['dome_controller_ip_addr']))
+
+        for dome in obs_conf.get('domes', []):
+            for mod in dome.get('modules', []):
+                ip = mod.get('ip_addr')
+                if not ip:
+                    continue
+                # util.get_quabo_ip_port seamlessly returns the Gateway IP if port forwarded,
+                # or safely falls back to the local Quabo IP if not.
+                try:
+                    # We only need to ping the first Quabo representation (index 0)
+                    ip_ports = util.get_quabo_ip_port(ip, 0, net_conf)
+                    ips_to_ping.add(str(ip_ports['ip_addr']))
+                except Exception as e:
+                    console.print(f"[bold red]Error resolving IP for module {ip}: {e}[/bold red]")
+                    all_passed = False
+
+        # Gather DAQ Config IPs using util.attach_daq_config
+        daq_conf = validated_configs.get("DAQ Config", {})
+        if daq_conf:
+            # Let util securely mutate the dictionary
+            util.attach_daq_config(daq_conf, net_conf)
+
+            if daq_conf.get('head_node_ip_addr'):
+                ips_to_ping.add(str(daq_conf['head_node_ip_addr']))
+            for node in daq_conf.get('daq_nodes', []):
+                if 'port_forwarding' in node and node['port_forwarding'].get('status'):
+                    ips_to_ping.add(str(node['port_forwarding']['gw_ip']))
+                elif node.get('ip_addr'):
+                    ips_to_ping.add(str(node['ip_addr']))
+
+        # Ping the extracted IPs
+        if ips_to_ping:
+            console.print("\n" + "=" * 50)
+            console.print(Panel.fit("[bold cyan]Network Connectivity Check[/bold cyan]"))
+
+            for ip in sorted(list(ips_to_ping)):
+                console.print(f"Pinging [bold cyan]{ip}[/bold cyan]...", end=" ")
+                if ping_host(ip):
+                    console.print("[bold green]ALIVE[/bold green]")
+                else:
+                    console.print("[bold red]UNREACHABLE[/bold red]")
+                    all_passed = False
 
     console.print("\n" + "=" * 50)
     if all_passed:
