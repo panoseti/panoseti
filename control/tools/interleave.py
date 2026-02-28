@@ -189,16 +189,35 @@ class InterleaveController:
 
     def _stop_data_flow(self) -> None:
         """Stops DAQ sequentially within modules for hardware safety."""
-        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, True)
-        if self.dry_run: return
+        # Note: bl_subtract is now False to perfectly match stop.py
+        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+
+        if self.dry_run:
+            return
 
         def stop_module(ordered_ips: List[Optional[str]]):
             for ip in ordered_ips:
-                if ip:
-                    self.quabos[ip].send_daq_params(stop_params)
+                if not ip: continue
+                q = self.quabos[ip]
+
+                # Drop timeout so we don't block waiting for an ACK that won't come
+                original_timeout = q.sock.gettimeout()
+                q.sock.settimeout(0.01)
+
+                try:
+                    q.send_daq_params(stop_params)
+                    time.sleep(0.05)  # CRITICAL: Give FPGA 50ms to physically halt data generation
+                except socket.timeout:
+                    pass
+                except Exception as e:
+                    logger.debug(f"Ignored non-timeout error on stop DAQ send: {e}")
+                finally:
+                    # Always safely restore the original timeout
+                    q.sock.settimeout(original_timeout)
 
         futures = [self.executor.submit(stop_module, ips) for ips in self.module_ips]
-        for f in as_completed(futures): f.result()
+        for f in as_completed(futures):
+            f.result()
 
     # --- Utility Methods ---
     def _acquire_lock(self):
