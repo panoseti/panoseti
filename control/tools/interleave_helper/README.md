@@ -6,9 +6,9 @@ The PANOSETI system supports rapid, automated switching between different config
 Interleaving is an overlay on top of standard observing. You must start a standard run before interleaving can begin.
 
 1. **Validate Configs:** Calls Pydantic models to check if all configuration files specify valid observing states and adhere to configuration schemas.
-   2. `python config.py --validate` 
-   3. `python config.py --validate debug` prints all configuration files and their absolute paths.
-   3. `python config.py --validate network` checks network connectivity to observatory devices.
+   * `python config.py --validate` reports OK or specific errors for each configuration file and their absolute paths.
+   * `python config.py --validate debug` additionally prints the contents of configuration files.
+   * `python config.py --validate network` validates configuration files and checks network connectivity to observatory devices.
 2. **Start Observation:** `python start.py` (Initializes the run using the default `image` and `pulse_height` keys).
 3. **Begin Interleaving:** `python config.py --start-interleave` (Runs the scheduler in the background).
 4. **Stop Interleaving:** `python config.py --stop-interleave` (Gracefully stops the scheduler and returns the Quabos to the default `image` and `pulse_height` state).
