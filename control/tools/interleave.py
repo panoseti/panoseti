@@ -10,6 +10,7 @@ switch Quabo FPGA and MAROC registers between different observing modes.
 import time
 import logging
 import argparse
+import copy
 import sys
 import os
 import signal
@@ -52,7 +53,7 @@ class InterleaveController:
         elif not self.dry_run:
             logger.info(f"Attached to active run: {run_name}")
 
-        self.data_config = data_config
+        self.data_config = copy.deepcopy(data_config)
         self.interleave_cfg = data_config.get("interleave", {})
         self.obs_config = obs_config
         self.daq_config = daq_config
@@ -148,6 +149,7 @@ class InterleaveController:
         temp_dict.pop('pulse_height', None)
         if movie_key: temp_dict['image'] = self.data_config[movie_key]
         if ph_key: temp_dict['pulse_height'] = self.data_config[ph_key]
+        logger.debug(f"Generating state dict for {temp_dict=}")
         return temp_dict
 
     def build_daq_params(self, state_dict: Dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
@@ -156,16 +158,34 @@ class InterleaveController:
         if do_img:
             image_us = state_dict['image'].get('integration_time_usec', 0)
             image_8bit = state_dict['image'].get('quabo_sample_size', 0) == 8
+
         do_any_trigger, do_group_ph_frames = False, False
         if do_ph and 'any_trigger' in state_dict['pulse_height']:
             do_any_trigger = True
             do_group_ph_frames = bool(state_dict['pulse_height']['any_trigger'].get('group_ph_frames', 0))
 
-        return quabo_driver.DAQ_PARAMS(
+        daq_params = quabo_driver.DAQ_PARAMS(
             do_image=do_img, image_us=image_us, image_8bit=image_8bit,
             do_ph=do_ph, bl_subtract=True, do_any_trigger=do_any_trigger,
             do_group_ph_frames=do_group_ph_frames
         )
+
+        # class logic -> must set stim AFTER creating daq_params obj
+        do_stim, do_flash = 'stim_params' in state_dict, 'flash_params' in state_dict
+        if do_stim:
+            daq_params.set_stim_params(
+                rate=state_dict['stim_params'].get('rate', 0),
+                level=state_dict['stim_params'].get('level', 255)
+            )
+
+        if do_flash:
+            daq_params.set_flash_params(
+                rate=state_dict['flash_params'].get('rate', 2),
+                level=state_dict['flash_params'].get('level', 12),
+                width=state_dict['flash_params'].get('width', 5)
+            )
+
+        return daq_params
 
     def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
         while self.keep_running:
