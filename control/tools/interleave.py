@@ -162,14 +162,14 @@ class InterleaveController:
                                 logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
 
                     # 2. Send FPGA Trigger Masks
-                    if ip in cache['mask']:
-                        try:
-                            q.send_trigger_mask(cache['mask'][ip])
-                            time.sleep(0.01)  # <-- CRITICAL: Pacing
-                            q.send_goe_mask(cache['mask'][ip])
-                            time.sleep(0.01)  # <-- CRITICAL: Pacing
-                        except socket.timeout:
-                            pass
+                    # if ip in cache['mask']:
+                    #     try:
+                    #         q.send_trigger_mask(cache['mask'][ip])
+                    #         time.sleep(0.01)  # <-- CRITICAL: Pacing
+                    #         q.send_goe_mask(cache['mask'][ip])
+                    #         time.sleep(0.01)  # <-- CRITICAL: Pacing
+                    #     except socket.timeout:
+                    #         pass
 
                     # 3. Send DAQ Configuration (start data flow)
                     try:
