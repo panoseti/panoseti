@@ -133,6 +133,7 @@ class InterleaveController:
     def _fast_blast_state(self, state_name: str) -> None:
         """
         Parallel across modules, but STRICTLY SEQUENTIAL (0, 1, 2, 3) within each module.
+        Paced to prevent UDP buffer overflows on the Quabo embedded processors.
         """
         cache = self.state_cache[state_name]
 
@@ -141,41 +142,45 @@ class InterleaveController:
             return
 
         def blast_module(ordered_ips: List[Optional[str]]):
-            # Iterate strictly 0 -> 3
             for ip in ordered_ips:
                 if not ip: continue
                 q = self.quabos[ip]
 
-                # original_timeout = q.sock.gettimeout()
-                # q.sock.settimeout(0.001)
+                original_timeout = q.sock.gettimeout()
+                q.sock.settimeout(0.01)
 
-                # 1. Send MAROC Configurations
-                if ip in cache['maroc']:
-                    for m_dict in cache['maroc'][ip]:
+                try:
+                    # 1. Send MAROC Configurations
+                    if ip in cache['maroc']:
+                        for m_dict in cache['maroc'][ip]:
+                            try:
+                                q.send_maroc_params(m_dict)
+                                time.sleep(0.01)  # <-- CRITICAL: Give FPGA time to clock MAROC chips
+                            except socket.timeout:
+                                pass
+                            except Exception as e:
+                                logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
+
+                    # 2. Send FPGA Trigger Masks
+                    if ip in cache['mask']:
                         try:
-                            q.send_maroc_params(m_dict)
+                            q.send_trigger_mask(cache['mask'][ip])
+                            time.sleep(0.01)  # <-- CRITICAL: Pacing
+                            q.send_goe_mask(cache['mask'][ip])
+                            time.sleep(0.01)  # <-- CRITICAL: Pacing
                         except socket.timeout:
                             pass
-                        except Exception as e:
-                            logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
 
-                # 2. Send FPGA Trigger Masks
-                if ip in cache['mask']:
+                    # 3. Send DAQ Configuration (start data flow)
                     try:
-                        q.send_trigger_mask(cache['mask'][ip])
-                        q.send_goe_mask(cache['mask'][ip])
+                        q.send_daq_params(cache['daq'])
+                        time.sleep(0.01)  # <-- CRITICAL: Pacing
                     except socket.timeout:
                         pass
 
-                # 3. Send DAQ Configuration (start data flow)
-                try:
-                    q.send_daq_params(cache['daq'])
-                except socket.timeout:
-                    pass
-
-                # finally:
+                finally:
                     # Always safely restore the original timeout
-                    # q.sock.settimeout(original_timeout)
+                    q.sock.settimeout(original_timeout)
 
         # Execute concurrently across modules
         futures = [self.executor.submit(blast_module, ips) for ips in self.module_ips]
