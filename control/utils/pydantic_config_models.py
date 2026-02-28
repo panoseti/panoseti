@@ -196,7 +196,6 @@ class ObsConfigValidator(BaseModel):
 # --- DAQ Config Models ---
 
 class DaqNodeValidator(BaseStrictModel):
-    comment: Optional[str]
     username: str
     data_dir: str
     ip_addr: IPvAnyAddress
@@ -205,6 +204,7 @@ class DaqNodeValidator(BaseStrictModel):
     bindhost: Optional[str] = Field("0.0.0.0")
 
 class DaqConfigValidator(BaseStrictModel):
+    comment: Optional[str]
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
     head_node_container: bool = Field(False)
