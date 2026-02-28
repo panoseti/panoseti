@@ -196,6 +196,7 @@ class ObsConfigValidator(BaseModel):
 # --- DAQ Config Models ---
 
 class DaqNodeValidator(BaseStrictModel):
+    comment: Optional[str]
     username: str
     data_dir: str
     ip_addr: IPvAnyAddress
