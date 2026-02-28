@@ -50,20 +50,14 @@
                 "pulse_height_mode_config": "pulse_height"
             },
             {
-                "state_name": "dual-mode-img8",
-                "duration_seconds": 4.0,
-                "movie_mode_config": "image_8bit",
-                "pulse_height_mode_config": "pulse_height"
-            },
-            {
                 "state_name": "img8-only",
-                "duration_seconds": 2.0,
+                "duration_seconds": 4.0,
                 "movie_mode_config": "image_8bit",
                 "pulse_height_mode_config": null
             },
             {
                 "state_name": "img16-only",
-                "duration_seconds": 2.0,
+                "duration_seconds": 4.0,
                 "movie_mode_config": "image",
                 "pulse_height_mode_config": null
             }

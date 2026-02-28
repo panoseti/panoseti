@@ -122,7 +122,7 @@ class InterleaveController:
             state_dict, self.obs_config, self.network_config
         )
         mask_payloads = pano_config.compute_mask_config(
-            self.modules, state_dict, self.network_config
+            self.modules, state_dict, self.network_config, self.quabo_uids
         )
         self.state_cache[name] = {
             "maroc": maroc_payloads,
