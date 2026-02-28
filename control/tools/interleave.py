@@ -146,37 +146,36 @@ class InterleaveController:
                 if not ip: continue
                 q = self.quabos[ip]
 
-                original_timeout = q.sock.gettimeout()
-                q.sock.settimeout(0.001)
+                # original_timeout = q.sock.gettimeout()
+                # q.sock.settimeout(0.001)
 
-                try:
-                    # 1. Send MAROC Configurations
-                    if ip in cache['maroc']:
-                        for m_dict in cache['maroc'][ip]:
-                            try:
-                                q.send_maroc_params(m_dict)
-                            except socket.timeout:
-                                pass
-                            except Exception as e:
-                                logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
-
-                    # 2. Send FPGA Trigger Masks
-                    if ip in cache['mask']:
+                # 1. Send MAROC Configurations
+                if ip in cache['maroc']:
+                    for m_dict in cache['maroc'][ip]:
                         try:
-                            q.send_trigger_mask(cache['mask'][ip])
-                            q.send_goe_mask(cache['mask'][ip])
+                            q.send_maroc_params(m_dict)
                         except socket.timeout:
                             pass
+                        except Exception as e:
+                            logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
 
-                    # 3. Send DAQ Configuration (start data flow)
+                # 2. Send FPGA Trigger Masks
+                if ip in cache['mask']:
                     try:
-                        q.send_daq_params(cache['daq'])
+                        q.send_trigger_mask(cache['mask'][ip])
+                        q.send_goe_mask(cache['mask'][ip])
                     except socket.timeout:
                         pass
 
-                finally:
+                # 3. Send DAQ Configuration (start data flow)
+                try:
+                    q.send_daq_params(cache['daq'])
+                except socket.timeout:
+                    pass
+
+                # finally:
                     # Always safely restore the original timeout
-                    q.sock.settimeout(original_timeout)
+                    # q.sock.settimeout(original_timeout)
 
         # Execute concurrently across modules
         futures = [self.executor.submit(blast_module, ips) for ips in self.module_ips]
