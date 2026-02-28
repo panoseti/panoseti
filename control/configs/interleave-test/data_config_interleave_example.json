@@ -5,46 +5,66 @@
     "max_file_size_mb": 2000,
     "stim_params":{
         "rate": 0,
-        "level": 128,
-        "mask": [1, 0, 0, 0]
+        "level": 255,
+        "mask": [1, 1, 1, 1]
     },
     "image": {
         "integration_time_usec": 10000,
         "pe_threshold": 3,
         "quabo_sample_size": 16
     },
-    "pulse_height": {
-        "pe_threshold": 12.5,
-        "any_trigger": {
-            "group_ph_frames": 0
-        },
-        "two_pixel_trigger": 0,
-        "three_pixel_trigger": 0
-    },
     "image_8bit": {
         "integration_time_usec": 5000,
         "pe_threshold": 3,
         "quabo_sample_size": 8
     },
+    "pulse_height": {
+        "pe_threshold": 12.5,
+        "any_trigger": {
+            "group_ph_frames": 1
+        },
+        "two_pixel_trigger": 0,
+        "three_pixel_trigger": 0
+    },
+    "pulse_height_uhe": {
+        "pe_threshold": 12.5,
+        "any_trigger": {
+            "group_ph_frames": 1
+        },
+        "two_pixel_trigger": 1,
+        "three_pixel_trigger": 0
+    },
     "interleave": {
         "enable": true,
         "states": [
             {
-                "state_name": "image-16bit-mode",
-                "duration_seconds": 8.0,
+                "state_name": "dual-mode-img16",
+                "duration_seconds": 4.0,
                 "movie_mode_config": "image",
-                "pulse_height_mode_config": null
-            },
-            {
-                "state_name": "ph256-mode",
-                "duration_seconds": 2.0,
-                "movie_mode_config": null,
                 "pulse_height_mode_config": "pulse_height"
             },
             {
-                "state_name": "image-8bit-mode",
-                "duration_seconds": 12.0,
+                "state_name": "2pix_ph1024",
+                "duration_seconds": 6.0,
+                "movie_mode_config": null,
+                "pulse_height_mode_config": "pulse_height_uhe"
+            },
+            {
+                "state_name": "dual-mode-img8",
+                "duration_seconds": 4.0,
                 "movie_mode_config": "image_8bit",
+                "pulse_height_mode_config": "pulse_height"
+            },
+            {
+                "state_name": "img8-only",
+                "duration_seconds": 2.0,
+                "movie_mode_config": "image_8bit",
+                "pulse_height_mode_config": null
+            },
+            {
+                "state_name": "img16-only",
+                "duration_seconds": 2.0,
+                "movie_mode_config": "image",
                 "pulse_height_mode_config": null
             }
         ]

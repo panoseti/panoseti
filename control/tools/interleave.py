@@ -9,6 +9,7 @@ millisecond-precision mode switching during active observations.
 """
 
 import time
+import socket
 import logging
 import argparse
 import sys
@@ -58,17 +59,25 @@ class InterleaveController:
 
         self.modules = config_file.get_modules(obs_config)
 
-        # We index Quabo objects by real_ip so the blast function can map payloads
         self.quabos: Dict[str, quabo_driver.QUABO] = {}
+        self.module_ips: List[List[Optional[str]]] = []  # Tracks 0->3 order per module
+
         for module in self.modules:
+            ordered_ips_for_module = []
             for i in range(4):
                 uid = util.quabo_uid(module, quabo_uids, i)
-                if not uid: continue
+                if not uid:
+                    ordered_ips_for_module.append(None)
+                    continue
                 ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
                 real_ip = ip_ports['ip_addr']
                 self.quabos[real_ip] = quabo_driver.QUABO(real_ip, ip_ports['cmd_port'])
+                ordered_ips_for_module.append(real_ip)
 
-        self.executor = ThreadPoolExecutor(max_workers=len(self.modules) * 4)
+            self.module_ips.append(ordered_ips_for_module)
+
+        # Thread pool size can now be optimized to the number of modules
+        self.executor = ThreadPoolExecutor(max_workers=len(self.modules))
 
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
         signal.signal(signal.SIGINT, self._handle_shutdown_signal)
@@ -123,8 +132,7 @@ class InterleaveController:
 
     def _fast_blast_state(self, state_name: str) -> None:
         """
-        Ultra-fast threaded network broadcast. Grabs pre-computed payloads
-        from RAM and sends them directly to Quabos via UDP. No disk I/O. No sleep.
+        Parallel across modules, but STRICTLY SEQUENTIAL (0, 1, 2, 3) within each module.
         """
         cache = self.state_cache[state_name]
 
@@ -132,28 +140,60 @@ class InterleaveController:
             logger.info(f"[DRY-RUN] Simulating fast-blast for state: {state_name}")
             return
 
-        def blast(ip: str, q: quabo_driver.QUABO):
-            # 1. Send MAROC Configurations
-            if ip in cache['maroc']:
-                for m_dict in cache['maroc'][ip]:
-                    q.send_maroc_params(m_dict)
+        def blast_module(ordered_ips: List[Optional[str]]):
+            # Iterate strictly 0 -> 3
+            for ip in ordered_ips:
+                if not ip: continue
+                q = self.quabos[ip]
 
-            # 2. Send FPGA Trigger Masks
-            if ip in cache['mask']:
-                q.send_trigger_mask(cache['mask'][ip])
-                q.send_goe_mask(cache['mask'][ip])
+                original_timeout = q.sock.gettimeout()
+                q.sock.settimeout(0.001)
 
-            # 3. Send DAQ Configuration (start data flow)
-            q.send_daq_params(cache['daq'])
+                try:
+                    # 1. Send MAROC Configurations
+                    if ip in cache['maroc']:
+                        for m_dict in cache['maroc'][ip]:
+                            try:
+                                q.send_maroc_params(m_dict)
+                            except socket.timeout:
+                                pass
+                            except Exception as e:
+                                logger.debug(f"Ignored non-timeout error on MAROC send: {e}")
 
-        futures = [self.executor.submit(blast, ip, q) for ip, q in self.quabos.items()]
+                    # 2. Send FPGA Trigger Masks
+                    if ip in cache['mask']:
+                        try:
+                            q.send_trigger_mask(cache['mask'][ip])
+                            q.send_goe_mask(cache['mask'][ip])
+                        except socket.timeout:
+                            pass
+
+                    # 3. Send DAQ Configuration (start data flow)
+                    try:
+                        q.send_daq_params(cache['daq'])
+                    except socket.timeout:
+                        pass
+
+                finally:
+                    # Always safely restore the original timeout
+                    q.sock.settimeout(original_timeout)
+
+        # Execute concurrently across modules
+        futures = [self.executor.submit(blast_module, ips) for ips in self.module_ips]
         for f in as_completed(futures):
             f.result()
 
     def _stop_data_flow(self) -> None:
+        """Stops DAQ sequentially within modules for hardware safety."""
         stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, True)
         if self.dry_run: return
-        futures = [self.executor.submit(lambda q: q.send_daq_params(stop_params), q) for q in self.quabos.values()]
+
+        def stop_module(ordered_ips: List[Optional[str]]):
+            for ip in ordered_ips:
+                if ip:
+                    self.quabos[ip].send_daq_params(stop_params)
+
+        futures = [self.executor.submit(stop_module, ips) for ips in self.module_ips]
         for f in as_completed(futures): f.result()
 
     # --- Utility Methods ---
