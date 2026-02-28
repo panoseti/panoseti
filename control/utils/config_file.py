@@ -252,9 +252,9 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
 
         if IS_CLI_VALIDATION and DEBUG_VALIDATION:
             console.print("\n[dim]Validated Configuration Structure:[/dim]")
-            pprint(validated.model_dump(), expand_all=True)
+            pprint(validated.model_dump(exclude_unset=True), expand_all=True)
 
-        return validated.model_dump()
+        return validated.model_dump(mode='json', exclude_unset=True)
 
     except ValidationError as e:
         console.print(f"\n[bold red][FAIL] Schema Validation Error in {config_name} ({filename}):[/bold red]")
