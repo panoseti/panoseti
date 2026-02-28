@@ -36,6 +36,13 @@ logger = logging.getLogger("PanosetiInterface")
 
 # --- Precise Timing Helper (Integer Arithmetic) ---
 
+def get_coarse_time_ns(tv_sec: int, tv_usec: int) -> int:
+    """
+    Calculates a permissive, coarse-resolution timestamp in NANOSECONDS
+    using only the system clock (DAQ Unix seconds and microseconds).
+    """
+    return (tv_sec * 1_000_000_000) + (tv_usec * 1_000)
+
 def get_precise_time_ns(tv_sec: int, tv_usec: int, pkt_nsec: int) -> int:
     """
     Calculates precise timestamp in NANOSECONDS using pure integer arithmetic.
@@ -318,7 +325,7 @@ class PFFSequence:
 
         return header_obj, img.copy()
 
-    def get_frame_time(self, idx: int) -> int:
+    def get_frame_time(self, idx: int, precise: bool = False) -> int:
         """
         Retrieves ONLY the precise nanosecond timestamp for a frame.
         Fastest way to get time.
@@ -333,12 +340,23 @@ class PFFSequence:
         h = orjson.loads(header_bytes)
 
         # Manual extraction for speed (skipping Pydantic)
+
         if 'quabo_0' in h:
-            q = h['quabo_0']
-            return get_precise_time_ns(q['tv_sec'], q['tv_usec'], q['pkt_nsec'])
+            for i in range(4):
+                q = h[f'quabo_{i}']
+                if q['tv_sec'] != 0:
+                    break
+            if precise:
+                return get_precise_time_ns(q['tv_sec'], q['tv_usec'], q['pkt_nsec'])
+            else:
+                return get_coarse_time_ns(q['tv_sec'], q['tv_usec'])
         elif 'pkt_nsec' in h:
-            return get_precise_time_ns(h['tv_sec'], h['tv_usec'], h['pkt_nsec'])
-        return 0
+            if precise:
+                return get_precise_time_ns(h['tv_sec'], h['tv_usec'], h['pkt_nsec'])
+            else:
+                return get_coarse_time_ns(h['tv_sec'], h['tv_usec'])
+        else:
+            return 0
 
     def seek_time(self, target_time_ns: int) -> int:
         """
