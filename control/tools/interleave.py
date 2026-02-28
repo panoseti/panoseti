@@ -12,7 +12,8 @@ import logging
 import argparse
 import sys
 import os
-import copy
+import signal
+import psutil
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -39,179 +40,211 @@ class InterleaveController:
         self.max_cycles = max_cycles
         self.stats = {"total_cycles": 0, "total_switch_overhead_sec": 0.0}
 
+        self._acquire_lock()
+
+        # Enforce that an active run exists
+        run_name = util.read_run_name()
+        if not self.dry_run and not run_name:
+            self._release_lock()
+            logger.error("No run is currently in progress. Interleaving requires an active observation.")
+            logger.error("Please run `python start.py` before starting the interleaver.")
+            sys.exit(1)
+        elif not self.dry_run:
+            logger.info(f"Attached to active run: {run_name}")
+
         self.data_config = data_config
+        self.interleave_cfg = data_config.get("interleave", {})
         self.obs_config = obs_config
         self.daq_config = daq_config
         self.quabo_uids = quabo_uids
         self.quabo_info = quabo_info
         self.network_config = network_config
 
-        # Extract modules from obs_config
-        self.modules = []
-        for dome in self.obs_config.get('domes', []):
-            for module in dome.get('modules', []):
-                self.modules.append(module)
-
-        self.interleave_config = self.data_config.get('interleave', {})
-        self.states = self.interleave_config.get('states', [])
-
-        # We will use ThreadPoolExecutor for broadcasting DAQ acq mode commands across nodes
-        self.executor = ThreadPoolExecutor(max_workers=len(self.modules) * 4 if self.modules else 1)
-
-        # Setup base quabo connections for broadcasting DAQ start/stop commands
-        self.quabos = []
+        self.modules = config_file.get_modules(obs_config)
+        self.quabos: List[quabo_driver.QUABO] = []
         for module in self.modules:
             for i in range(4):
-                ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, self.network_config)
-                self.quabos.append(quabo_driver.QUABO(ip_ports['ip_addr']))
+                uid = util.quabo_uid(module, quabo_uids, i)
+                if not uid: continue
+                ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+                self.quabos.append(quabo_driver.QUABO(ip_ports['ip_addr'], ip_ports['cmd_port']))
 
-    def _broadcast_acq_mode(self, daq_params):
-        """Broadcasts DAQ parameters to all Quabos concurrently to start/stop data flow."""
+        self.executor = ThreadPoolExecutor(max_workers=len(self.modules) + 4)
+
+        # Register signal handlers for graceful shutdown
+        signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
+        signal.signal(signal.SIGINT, self._handle_shutdown_signal)
+
         if self.dry_run:
-            logger.info(f"DRY RUN: Broadcasting DAQ params {daq_params.__dict__}")
+            logger.info("=== DRY RUN MODE ENABLED: Hardware commands will be simulated ===")
+
+    def _acquire_lock(self):
+        """Ensures at most one instance of interleave.py is running."""
+        if os.path.exists(PID_FILE):
+            try:
+                with open(PID_FILE, "r") as f:
+                    old_pid = int(f.read().strip())
+
+                if psutil.pid_exists(old_pid):
+                    logger.critical(
+                        f"CRITICAL: Another interleave process (PID {old_pid}) is currently running.\n"
+                        "To resolve this, run `python config.py --stop-interleave`."
+                    )
+                    sys.exit(1)
+                else:
+                    logger.warning(f"Stale PID file detected for dead process {old_pid}. Cleaning up...")
+                    os.remove(PID_FILE)
+            except (ValueError, OSError):
+                os.remove(PID_FILE)
+
+        os.makedirs(os.path.dirname(PID_FILE), exist_ok=True)
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+
+    def _release_lock(self):
+        if os.path.exists(PID_FILE):
+            try:
+                os.remove(PID_FILE)
+            except OSError:
+                pass
+
+    def _handle_shutdown_signal(self, signum, frame):
+        if self.keep_running:
+            logger.warning("Shutdown signal received. Breaking cycle to restore defaults...")
+            self.keep_running = False
+
+    def _broadcast_acq_mode(self, daq_params: quabo_driver.DAQ_PARAMS) -> None:
+        if self.dry_run:
+            logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
             return
 
-        def send_to_quabo(q):
-            try:
-                original_timeout = q.sock.gettimeout()
-                q.sock.settimeout(0.05)
-                q.send_daq_params(daq_params)
-                q.sock.settimeout(original_timeout)
-            except socket.timeout:
-                pass  # UDP drops are ignored per protocol
-            except Exception as e:
-                logger.debug(f"Error sending DAQ params to {q.ip}: {e}")
+        def send_acq(q: quabo_driver.QUABO):
+            q.send_daq_params(daq_params)
 
-        futures = [self.executor.submit(send_to_quabo, q) for q in self.quabos]
-        for f in as_completed(futures):
-            pass
+        futures = [self.executor.submit(send_acq, q) for q in self.quabos]
+        for f in as_completed(futures): f.result()
 
-    def build_daq_params(self, active_data_config: Dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
-        """Constructs DAQ_PARAMS object based on the current data configuration."""
-        do_image = 'image' in active_data_config
-        do_image_8bit = 'image_8bit' in active_data_config
-        do_ph = 'pulse_height' in active_data_config
+    def _reconfigure_quabos(self, state_config_dict: Dict[str, Any]) -> None:
+        if self.dry_run:
+            return
 
-        image_us = 0
-        if do_image:
-            image_us = active_data_config['image'].get('integration_time_usec', 0)
-        elif do_image_8bit:
-            image_us = active_data_config['image_8bit'].get('integration_time_usec', 0)
+        def reconfig_module(module):
+            pano_config.do_maroc_config(
+                [module], self.quabo_uids, self.quabo_info,
+                state_config_dict, self.obs_config, self.daq_config,
+                self.network_config, verbose=False
+            )
+
+        futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
+        for f in as_completed(futures): f.result()
+
+    def generate_state_dict(self, movie_key: Optional[str], ph_key: Optional[str]) -> Dict[str, Any]:
+        temp_dict = self.data_config.copy()
+        temp_dict.pop('image', None)
+        temp_dict.pop('pulse_height', None)
+        if movie_key: temp_dict['image'] = self.data_config[movie_key]
+        if ph_key: temp_dict['pulse_height'] = self.data_config[ph_key]
+        return temp_dict
+
+    def build_daq_params(self, state_dict: Dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
+        do_img, do_ph = 'image' in state_dict, 'pulse_height' in state_dict
+        image_us, image_8bit = 0, False
+        if do_img:
+            image_us = state_dict['image'].get('integration_time_usec', 0)
+            image_8bit = state_dict['image'].get('quabo_sample_size', 0) == 8
+        do_any_trigger, do_group_ph_frames = False, False
+        if do_ph and 'any_trigger' in state_dict['pulse_height']:
+            do_any_trigger = True
+            do_group_ph_frames = bool(state_dict['pulse_height']['any_trigger'].get('group_ph_frames', 0))
 
         return quabo_driver.DAQ_PARAMS(
-            do_image=do_image,
-            image_us=image_us,
-            image_8bit=do_image_8bit,
-            do_ph=do_ph,
-            bl_subtract=False
+            do_image=do_img, image_us=image_us, image_8bit=image_8bit,
+            do_ph=do_ph, bl_subtract=True, do_any_trigger=do_any_trigger,
+            do_group_ph_frames=do_group_ph_frames
         )
 
-    def prepare_state_config(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Creates a patched copy of data_config that maps the requested interleave mode to default keys."""
-        state_config = copy.deepcopy(self.data_config)
+    def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
+        while self.keep_running:
+            now = time.perf_counter()
+            remaining = target_time - now
+            if remaining <= spin_wait_threshold: break
+            time.sleep(remaining - spin_wait_threshold)
+        while self.keep_running and time.perf_counter() < target_time:
+            pass
 
-        # Remove default keys to prevent overlapping configs
-        for key in ['image', 'image_8bit', 'pulse_height']:
-            state_config.pop(key, None)
-
-        # Map movie mode config
-        movie_mode = state.get('movie_mode_config')
-        if movie_mode and movie_mode in self.data_config:
-            # Simple heuristic: if '8bit' is in the key name, map to 'image_8bit', else 'image'
-            target_key = 'image_8bit' if '8bit' in movie_mode.lower() else 'image'
-            state_config[target_key] = self.data_config[movie_mode]
-
-        # Map pulse height mode config
-        ph_mode = state.get('pulse_height_mode_config')
-        if ph_mode and ph_mode in self.data_config:
-            state_config['pulse_height'] = self.data_config[ph_mode]
-
-        return state_config
-
-    def apply_state(self, state: Dict[str, Any]):
-        """Executes a single mode transition using the robust config.py implementations."""
-        state_name = state.get('state_name', 'UNKNOWN')
-        logger.info(f"Transitioning to state: {state_name}")
-
-        start_transition = time.time()
-
-        # 1. Stop Data Flow Globally
-        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
-        self._broadcast_acq_mode(stop_params)
-        time.sleep(0.05)  # Fixed hardware settling delay
-
-        # 2. Reconfigure FPGA & MAROCs
-        state_data_config = self.prepare_state_config(state)
-
-        if not self.dry_run:
-            # We call the functions directly from config.py
-            # True indicates we want standard console/logging outputs enabled
-            pano_config.do_maroc_config(
-                self.modules, self.quabo_uids, self.quabo_info,
-                state_data_config, self.obs_config, self.daq_config,
-                self.network_config, True
-            )
-
-            pano_config.do_mask_config(
-                self.modules, state_data_config,
-                self.network_config, self.quabo_uids, True
-            )
-
-        time.sleep(0.05)  # Fixed hardware settling delay
-
-        # 3. Start Data Flow (New Acquisition Mode)
-        start_params = self.build_daq_params(state_data_config)
-        self._broadcast_acq_mode(start_params)
-
-        transition_overhead = time.time() - start_transition
-        self.stats["total_switch_overhead_sec"] += transition_overhead
-        logger.info(f"State {state_name} active. Transition overhead: {transition_overhead:.3f}s")
-
-        # Sleep for observation duration
-        duration = state.get('duration_seconds', 1.0)
-        time.sleep(duration)
-
-    def run_loop(self):
-        """Main interleave execution loop."""
-        if not self.states:
-            logger.error("No interleave states defined in data_config. Exiting.")
+    def run_loop(self) -> None:
+        if not self.interleave_cfg.get("enable", False):
+            logger.info("Interleaving disabled in config. Exiting.")
+            self._release_lock()
             return
 
-        logger.info("Starting Interleave scheduler...")
+        states = self.interleave_cfg.get("states", [])
+        stop_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, True)
 
         try:
             while self.keep_running:
-                for state in self.states:
-                    if not self.keep_running:
-                        break
-                    self.apply_state(state)
+                if self.max_cycles and self.stats["total_cycles"] >= self.max_cycles:
+                    logger.info(f"Max cycles ({self.max_cycles}) reached. Ending run_loop.")
+                    break
+
+                for state in states:
+                    if not self.keep_running: break
+
+                    name = state["state_name"]
+                    duration = state["duration_seconds"]
+
+                    logger.info(f"\n--- Entering State: {name} (Duration: {duration}s) ---")
+                    t_overhead_start = time.perf_counter()
+
+                    self._broadcast_acq_mode(stop_params)
+                    state_dict = self.generate_state_dict(
+                        state.get("movie_mode_config"),
+                        state.get("pulse_height_mode_config")
+                    )
+                    self._reconfigure_quabos(state_dict)
+                    self._broadcast_acq_mode(self.build_daq_params(state_dict))
+
+                    overhead = time.perf_counter() - t_overhead_start
+                    self.stats["total_switch_overhead_sec"] += overhead
+
+                    logger.info(f"Hardware configured in {overhead:.2f}s. Actively observing for {duration}s...")
+
+                    # Relative Active Scheduling: Guarantee the full duration occurs AFTER configuration
+                    self._sleep_until(time.perf_counter() + duration)
 
                 self.stats["total_cycles"] += 1
-                if self.max_cycles and self.stats["total_cycles"] >= self.max_cycles:
-                    logger.info(f"Reached max cycles ({self.max_cycles}). Stopping.")
-                    break
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user.")
+
+        except Exception as e:
+            logger.error(f"Error in interleaving loop: {e}", exc_info=True)
         finally:
-            self.shutdown()
+            self._teardown(stop_params)
 
-    def shutdown(self):
-        """Gracefully restores system to the default state and closes connections."""
-        logger.info("Restoring pristine default state...")
-        # Re-apply the original config
-        default_state = {
-            'state_name': 'RESTORE_DEFAULT',
-            'duration_seconds': 0,
-            # We must map back exactly the keys that existed in the original file
-            'movie_mode_config': 'image_8bit' if 'image_8bit' in self.data_config else 'image' if 'image' in self.data_config else None,
-            'pulse_height_mode_config': 'pulse_height' if 'pulse_height' in self.data_config else None
-        }
-        self.apply_state(default_state)
+    def _teardown(self, stop_params: quabo_driver.DAQ_PARAMS):
+        """Restores Quabos to default settings and cleans up."""
+        if self.dry_run:
+            logger.info("[DRY-RUN] Teardown initiated. Simulating hardware default restoration.")
+            self._release_lock()
+            return
 
-        self.executor.shutdown(wait=False)
-        for q in self.quabos:
-            q.close()
-        logger.info("Shutdown complete.")
+        logger.info("Teardown initiated. Restoring default hardware configuration...")
+        try:
+            # FIX: Forcefully drop old tasks and spin up a fresh pool
+            # to guarantee teardown commands aren't stuck behind deadlocked threads.
+            self.executor.shutdown(wait=False)
+            self.executor = ThreadPoolExecutor(max_workers=len(self.modules) + 4)
+
+            self._broadcast_acq_mode(stop_params)
+            default_dict = self.generate_state_dict("image" if "image" in self.data_config else None,
+                                                    "pulse_height" if "pulse_height" in self.data_config else None)
+            self._reconfigure_quabos(default_dict)
+            self._broadcast_acq_mode(self.build_daq_params(default_dict))
+            logger.info("Hardware defaults restored successfully.")
+        except Exception as e:
+            logger.error(f"Failed to restore hardware defaults: {e}")
+        finally:
+            self.executor.shutdown(wait=False)
+            for q in self.quabos: q.close()
+            self._release_lock()
 
 
 if __name__ == "__main__":
@@ -235,3 +268,9 @@ if __name__ == "__main__":
         controller.run_loop()
     except Exception as e:
         logger.error(f"Interleave startup failed: {e}")
+        if controller:
+            try:
+                controller._teardown(None)
+            except:
+                pass
+        sys.exit(1)
