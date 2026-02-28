@@ -134,6 +134,10 @@ class InterleaveController:
                 state_config_dict, self.obs_config, self.daq_config,
                 self.network_config, verbose=False
             )
+            pano_config.do_mask_config(
+                [module], self.data_config, self.network_config,
+                self.quabo_uids, verbose=False
+            )
 
         futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
         for f in as_completed(futures): f.result()
