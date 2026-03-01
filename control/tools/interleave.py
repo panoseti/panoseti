@@ -15,6 +15,7 @@ import sys
 import os
 import signal
 import psutil
+import numpy as np
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -46,7 +47,11 @@ class InterleaveController:
         self.keep_running = True
         self.dry_run = dry_run
         self.max_cycles = max_cycles
-        self.stats = {"total_cycles": 0, "total_switch_overhead_sec": 0.0}
+        self.stats = {
+            "total_cycles": 0,
+            "total_switch_overhead_sec": 0.0,
+            "overhead": []
+        }
 
         self._acquire_lock()
 
@@ -186,6 +191,9 @@ class InterleaveController:
 
 
     def run_loop(self) -> None:
+        # Must import start dynamically to avoid circular import errors
+        from start import get_daq_params
+
         if not self.interleave_cfg.get("enable", False):
             logger.info("Interleaving disabled in config. Exiting.")
             self._release_lock()
@@ -195,8 +203,6 @@ class InterleaveController:
         stop_daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
 
         try:
-            # Must import start dynamically to avoid circular import errors
-            from start import get_daq_params
             while self.keep_running:
                 if self.max_cycles and self.stats["total_cycles"] >= self.max_cycles:
                     logger.info(f"Max cycles ({self.max_cycles}) reached. Ending run_loop.")
@@ -228,8 +234,9 @@ class InterleaveController:
 
                     overhead = time.perf_counter() - t_overhead_start
                     self.stats["total_switch_overhead_sec"] += overhead
+                    self.stats["overhead"].append(overhead)
 
-                    logger.info(f"Hardware configured in {overhead:.2f}s. Actively observing for {duration}s...")
+                    logger.info(f"Hardware configured in {overhead * 1e3:.4f} ms. Actively observing for {duration}s...")
 
                     # Relative Active Scheduling: Guarantee the full duration occurs AFTER configuration
                     self._sleep_until(time.perf_counter() + duration)
@@ -239,22 +246,28 @@ class InterleaveController:
         except Exception as e:
             logger.error(f"Error in interleaving loop: {e}", exc_info=True)
         finally:
-            self._teardown()
+            start_default_daq_params = get_daq_params(self.data_config)
+            self._teardown(stop_daq_params, start_default_daq_params)
 
-    def _teardown(self):
+    def _teardown(self, stop_daq_params: quabo_driver.DAQ_PARAMS, start_default_daq_params) -> None:
         """Restores Quabos to default settings and cleans up."""
+        logger.info(f"Overhead stats: "
+                    f"\n\tmean:\t{np.mean(self.stats['overhead']) * 1e3:.5f} ms"
+                    f"\n\tstdev:\t{np.std(self.stats['overhead']) * 1e3:.5f} ms"
+                    f"\n\tmedian:\t{np.median(self.stats['overhead']) * 1e3:.5f} ms"
+                    f"\n\tmin:\t{np.min(self.stats['overhead']) * 1e3:.5f} ms"
+                    f"\n\tmax:\t{np.max(self.stats['overhead']) * 1e3:.5f} ms")
         if self.dry_run:
             logger.info("[DRY-RUN] Teardown initiated. Simulating hardware default restoration.")
             self._release_lock()
             return
 
         logger.info("Teardown initiated. Restoring default hardware configuration...")
-        stop_daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+        # stop_daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
         try:
-            from start import get_daq_params
+            # from start import get_daq_params
             # get default daq params
-            next_state_data_config = self.data_config
-            start_default_daq_params = get_daq_params(next_state_data_config)
+            # next_state_data_config = self.data_config
 
             # Forcefully drop old tasks and spin up a fresh pool to guarantee teardown commands aren't stuck behind deadlocked threads.
             self.executor.shutdown(wait=False)
@@ -262,7 +275,7 @@ class InterleaveController:
 
             # restore default parameters
             self._broadcast_acq_mode(stop_daq_params)
-            self._reconfigure_quabos(next_state_data_config)
+            self._reconfigure_quabos(self.data_config)
             self._broadcast_acq_mode(start_default_daq_params)
 
             logger.info("Hardware defaults restored successfully.")
