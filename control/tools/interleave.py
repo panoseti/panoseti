@@ -251,6 +251,7 @@ class InterleaveController:
         logger.info("Teardown initiated. Restoring default hardware configuration...")
         stop_daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
         try:
+            from start import get_daq_params
             # get default daq params
             next_state_data_config = self.data_config
             start_default_daq_params = get_daq_params(next_state_data_config)
