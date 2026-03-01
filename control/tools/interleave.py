@@ -156,11 +156,11 @@ class InterleaveController:
             pano_config.do_maroc_config(
                 [module], self.quabo_uids, self.quabo_info,
                 next_state_data_config, self.obs_config, self.daq_config,
-                self.network_config, verbose=False
+                self.network_config, verbose=False, write_config=False
             )
             pano_config.do_mask_config(
                 [module], next_state_data_config, self.network_config,
-                self.quabo_uids, verbose=False
+                self.quabo_uids, verbose=False, write_config=False, do_flush_rx_buf=False,
             )
 
         futures = [self.executor.submit(reconfig_module, module) for module in self.modules]

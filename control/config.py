@@ -321,7 +321,8 @@ def do_hv_off(modules, quabo_uids, network_config):
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False):
+MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False, write_config=True):
     """set the DAC1/DA2/GAIN* params for MAROC chips"""
     logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
     gain = float(data_config['gain'])
@@ -340,7 +341,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
         if "mask" in data_config["stim_params"]:
             stim_mask_quaboi = data_config["stim_params"]["mask"]
         
-    qc_dict_src = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+    qc_dict_src = copy.deepcopy(MAROC_CONFIG_QUABO_CONFIG)
     for module in modules:
         for i in range(4):
             no_cali = False
@@ -482,14 +483,16 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     assert ctest_key in qc_dict, f"{ctest_key=} not in qc_dict"
                     qc_dict[ctest_key] = "0,0,0,0"
             quabo.send_maroc_params(qc_dict)
-            quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+            if write_config:
+                quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # set CHANMASK and GOEMASK for modules
 #
-def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False):
+MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
+def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=True):
     logger = logging.getLogger('PANOSETI.Config.do_mask_config')
-    qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+    qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
     do_ph = 'pulse_height' in data_config.keys()
     qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
@@ -530,10 +533,12 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
             logger.info('Real IP: %s'%real_ip)
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            quabo.send_trigger_mask(qc_dict)
-            quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
-            quabo.send_goe_mask(qc_dict)
-            quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+            quabo.send_trigger_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
+            if write_config:
+                quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+            quabo.send_goe_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
+            if write_config:
+                quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # compute PH baselines on quabos and write to file
