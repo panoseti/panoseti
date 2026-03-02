@@ -1,6 +1,6 @@
 # Interleaved Mode Observation
 
-The PANOSETI system supports rapid, automated switching between different configuration states (e.g., alternating between a primary science trigger mode and a periodic movie-mode for astrometry) during an active run.
+To support rapid mode switching during a single observation, `data_config.json` now supports optional "interleaved" mode definitions and scheduling.
 
 ## Using Interleave Modes
 Interleaving is an overlay on top of standard observing. You must start a standard run before interleaving can begin.
@@ -13,10 +13,12 @@ Interleaving is an overlay on top of standard observing. You must start a standa
 3. **Begin Interleaving:** `python config.py --start-interleave` (Runs the scheduler in the background).
 4. **Stop Interleaving:** `python config.py --stop-interleave` (Gracefully stops the scheduler and returns the Quabos to the default `image` and `pulse_height` state).
 5. **Stop Observation:** `python stop.py`
-   6. *(Note: Running `stop.py` while interleaving is active will automatically terminate the interleaver and stop data flow).*
 
-## Defining Interleave States
+*(Note: Running `stop.py` while interleaving is active will automatically terminate the interleaver and stop data flow).*
+
+## Configuring Interleave in `data_config.json`
 To define alternative modes in `data_config.json`, you must use keys that begin with the prefix `image_` or `pulse_height_`. The suffix can be any descriptive name (e.g., `pulse_height_DUAL`, `image_astrometry`).
+Such extra modes are ignored by default, unless explicitly scheduled in the `interleave` block.
 
 * **Note:** The root keys `image` and `pulse_height` are strictly reserved for the **default** operating state.
 
@@ -53,11 +55,6 @@ To define alternative modes in `data_config.json`, you must use keys that begin 
 
 ```
 
-### Interleave Configuration (Extends `data_config.json`)
-
-To support rapid mode switching during a single observation, `data_config.json` now supports optional "interleaved" mode definitions and scheduling.
-
-Additional modes can be defined by appending an underscore and an ID to the standard mode keys (e.g., `image_1`, `pulse_height_2`). These are ignored by default unless explicitly scheduled in the `interleave` block.
 
 * **interleave**: Contains the schedule for mode switching. (Overrides the initial config during the interleaving loop).
 * **enable**: `true` or `false`. If `false` or missing, interleaving is completely ignored, and the system uses only the default `image` and `pulse_height` configs (implicit id=0).
@@ -68,5 +65,8 @@ Additional modes can be defined by appending an underscore and an ID to the stan
   * **pulse_height_mode_config**: The string key of the pulse height mode to use (e.g., `"pulse_height_2pix-ph1024"` or `"pulse_height"`). Set to `null` to disable pulse height mode for this state.
 
 
-**Note:** A given interleaving state cannot have both `movie_mode_config` and `pulse_height_mode_config` set to `null`. Furthermore, due to hardware/firmware constraints, if a pulse height mode enables `two_pixel_trigger` or `three_pixel_trigger` (> 0), movie-mode imaging *cannot* be enabled in the same interval state. These rules are automatically to `data_config.json` by Pydantic validation rules. 
+**Config Validation:**
+The following rules are automatically applied to `data_config.json` with Pydantic:
+1. A given interleaving state cannot have both `movie_mode_config` and `pulse_height_mode_config` set to `null`. 
+2. Due to hardware/firmware constraints, if a pulse height mode enables `two_pixel_trigger` or `three_pixel_trigger` (> 0), movie-mode imaging *cannot* be enabled in the same interval state.  
 

@@ -8,11 +8,16 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.pretty import pprint
 from rich.panel import Panel
+from rich.tree import Tree
 
+# import Pydantic validation models
 from .pydantic_config_models import (
     DataConfigValidator, ObsConfigValidator, DaqConfigValidator,
     NetworkConfigValidator, DaemonConfigValidator, FirmwareConfigValidator
 )
+
+from .validation_report import ValidationReport
+from .global_validator import GlobalConfigValidator
 
 # Globals to control console verbosity
 IS_CLI_VALIDATION = False
@@ -127,6 +132,49 @@ def check_config_file(name, dir='.'):
 
 # --- Orchestrated Validation Methods ---
 
+def print_topology_graph(obs_conf, daq_conf, net_conf):
+    """Generates an ASCII/Unicode visual tree of the data routing and hardware topology."""
+    if not obs_conf: return
+
+    console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
+
+    obs_name = obs_conf.get('name', 'Unknown Observatory')
+    root = Tree(f"🔭 [bold magenta]Observatory: {obs_name}[/bold magenta]")
+
+    # Pre-map networks for fast lookup
+    net_gw_map = {m.get('ip_addr'): m.get('port_forwarding', {}).get('gw_ip') for m in net_conf.get('modules', [])}
+
+    for dome in obs_conf.get('domes', []):
+        d_name = dome.get('name', 'Unknown Dome')
+        d_lat = dome.get('obslat', 0.0)
+        d_lon = dome.get('obslon', 0.0)
+        dome_node = root.add(f"🏛️  [bold yellow]Dome: {d_name}[/bold yellow] (Lat: {d_lat}, Lon: {d_lon})")
+
+        for mod in dome.get('modules', []):
+            m_ip = mod.get('ip_addr')
+            m_hw = mod.get('quabo_version', 'unknown')
+            gw_ip = net_gw_map.get(m_ip, "Direct Local")
+
+            # Find destination DAQ (Simplified lookup based on your config matching)
+            daq_dest = "Unknown DAQ"
+            for daq in daq_conf.get('daq_nodes', []):
+                # (In reality, you'd match the module_ids string to the IP block,
+                # but we'll show the mapped node if associate() was run, or fallback)
+                if 'modules' in daq and any(m.get('ip_addr') == m_ip for m in daq['modules']):
+                    daq_dest = f"{daq.get('ip_addr')} ({daq.get('bindhost', 'eth0')})"
+                    break
+
+            mod_node = dome_node.add(f"[bold blue]Module {m_ip}[/bold blue] \[HW: {m_hw}]")
+            for q in range(4):
+                # Simulated Quabo IP logic (+0, +1, +2, +3)
+                base_ip_parts = m_ip.split('.')
+                q_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{int(base_ip_parts[3]) + q}"
+                mod_node.add(
+                    f"Quabo {q} ({q_ip}) ──[Gateway: [green]{gw_ip}[/green]]──> DAQ: [cyan]{daq_dest}[/cyan]")
+
+    console.print(root)
+    print("\n")
+
 def ping_host(ip_addr: str) -> bool:
     cmd = ['ping', '-c', '1', '-W', '1', str(ip_addr)]
     try:
@@ -136,43 +184,47 @@ def ping_host(ip_addr: str) -> bool:
         return False
 
 
-def validate_all(check_network: bool = False, debug: bool = False) -> bool:
+def validate_all(check_network: bool = False, debug: bool = False, graph: bool = False) -> bool:
     """
-    The orchestrator function. Sets global CLI flags so the loaders output
-    pretty formatted terminal text, loops over configs, and pings the network
-    (resolving port-forwarded gateway IPs using util.py natively).
+    Master validation orchestrator.
+    Now supports Global Tier-2 validation and topology graphing.
     """
-    global IS_CLI_VALIDATION, DEBUG_VALIDATION, RAISE_VALIDATION_ERRORS
+    global IS_CLI_VALIDATION, DEBUG_VALIDATION
     IS_CLI_VALIDATION = True
     DEBUG_VALIDATION = debug
-    RAISE_VALIDATION_ERRORS = True
 
     all_passed = True
     ips_to_ping = set()
     validated_configs = {}
 
-    console.print(Panel.fit("[bold cyan]PANOSETI Configuration Validator[/bold cyan]"))
+    console.print(Panel.fit("[bold cyan]Starting PanoSETI Pre-Flight Validation[/bold cyan]"))
 
-    configs_to_check = [
-        ("Data Config", get_data_config),
-        ("Obs Config", get_obs_config),
-        ("DAQ Config", get_daq_config),
-        ("Network Config", get_network_config),
-        ("Daemons Config", get_daemons_config),
-        ("Firmware Config", get_firmware_config),
-    ]
+    # 1. Tier 1: Strict File Validation (Existing Logic)
+    try:
+        validated_configs['obs'] = get_obs_config()
+        validated_configs['daemons'] = get_daemons_config()
+        validated_configs['daq'] = get_daq_config()
+        validated_configs['data'] = get_data_config()
+        validated_configs['network'] = get_network_config()
+        validated_configs['firmware'] = get_firmware_config()
+        console.print("[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
+    except Exception as e:
+        console.print(f"[red]✖ Tier-1 Validation Failed: {e}[/red]")
+        all_passed = False
 
-    # 1. Validate all files and store the dictionaries
-    for name, getter in configs_to_check:
-        try:
-            validated_configs[name] = getter()
-        except FileNotFoundError:
+    # 2. Tier 2: Global Cross-Configuration Validation
+    if all_passed:
+        console.print("\n[bold cyan]Running Tier-2 Global Cross-Checks...[/bold cyan]")
+        global_validator = GlobalConfigValidator(validated_configs)
+        if not global_validator.validate_all_rules():
             all_passed = False
-        except Exception:
-            all_passed = False
 
-    # 2. Network Connectivity Check
-    if check_network:
+    # 3. Visual Topology Graph
+    if all_passed and graph:
+        print_topology_graph(validated_configs['obs'], validated_configs['daq'], validated_configs['network'])
+
+    # 4. Network Ping Checks (Your existing logic)
+    if check_network and all_passed:
         # Import dynamically to avoid circular dependency on load
         from utils import util
 
@@ -200,45 +252,112 @@ def validate_all(check_network: bool = False, debug: bool = False) -> bool:
                     console.print(f"[bold red]Error resolving IP for module {ip}: {e}[/bold red]")
                     all_passed = False
 
-        # Gather DAQ Config IPs using util.attach_daq_config
-        daq_conf = validated_configs.get("DAQ Config", {})
-        if daq_conf:
-            # Let util securely mutate the dictionary
-            util.attach_daq_config(daq_conf, net_conf)
-
-            if daq_conf.get('head_node_ip_addr'):
-                ips_to_ping.add(str(daq_conf['head_node_ip_addr']))
-            for node in daq_conf.get('daq_nodes', []):
-                if 'port_forwarding' in node and node['port_forwarding'].get('status'):
-                    ips_to_ping.add(str(node['port_forwarding']['gw_ip']))
-                elif node.get('ip_addr'):
-                    ips_to_ping.add(str(node['ip_addr']))
-
-        # Ping the extracted IPs
-        if ips_to_ping:
-            console.print("\n" + "=" * 50)
-            console.print(Panel.fit("[bold cyan]Network Connectivity Check[/bold cyan]"))
-
-            for ip in sorted(list(ips_to_ping)):
-                console.print(f"Pinging [bold cyan]{ip}[/bold cyan]...", end=" ")
-                if ping_host(ip):
-                    console.print("[bold green]ALIVE[/bold green]")
-                else:
-                    console.print("[bold red]UNREACHABLE[/bold red]")
-                    all_passed = False
-
-    console.print("\n" + "=" * 50)
-    if all_passed:
-        console.print("[bold green]SUCCESS: Validation Complete![/bold green]")
-    else:
-        console.print("[bold red]FAILURE: Validation found errors. See above.[/bold red]")
-
-    # Reset globals in case standard script execution continues
-    IS_CLI_VALIDATION = False
-    DEBUG_VALIDATION = False
-    RAISE_VALIDATION_ERRORS = False
-
     return all_passed
+
+
+# def validate_all(check_network: bool = False, debug: bool = False) -> bool:
+#     """
+#     The orchestrator function. Sets global CLI flags so the loaders output
+#     pretty formatted terminal text, loops over configs, and pings the network
+#     (resolving port-forwarded gateway IPs using util.py natively).
+#     """
+#     global IS_CLI_VALIDATION, DEBUG_VALIDATION, RAISE_VALIDATION_ERRORS
+#     IS_CLI_VALIDATION = True
+#     DEBUG_VALIDATION = debug
+#     RAISE_VALIDATION_ERRORS = True
+#
+#     all_passed = True
+#     ips_to_ping = set()
+#     validated_configs = {}
+#
+#     console.print(Panel.fit("[bold cyan]PANOSETI Configuration Validator[/bold cyan]"))
+#
+#     configs_to_check = [
+#         ("Data Config", get_data_config),
+#         ("Obs Config", get_obs_config),
+#         ("DAQ Config", get_daq_config),
+#         ("Network Config", get_network_config),
+#         ("Daemons Config", get_daemons_config),
+#         ("Firmware Config", get_firmware_config),
+#     ]
+#
+#     # 1. Validate all files and store the dictionaries
+#     for name, getter in configs_to_check:
+#         try:
+#             validated_configs[name] = getter()
+#         except FileNotFoundError:
+#             all_passed = False
+#         except Exception:
+#             all_passed = False
+#
+    # 2. Network Connectivity Check
+    # if check_network:
+    #     # Import dynamically to avoid circular dependency on load
+    #     from utils import util
+    #
+    #     net_conf = validated_configs.get("Network Config", {})
+    #
+    #     # Gather Obs Config IPs using util.get_quabo_ip_port
+    #     obs_conf = validated_configs.get("Obs Config", {})
+    #     if obs_conf.get('wr_ip_addr'):
+    #         ips_to_ping.add(str(obs_conf['wr_ip_addr']))
+    #     if obs_conf.get('dome_controller_ip_addr'):
+    #         ips_to_ping.add(str(obs_conf['dome_controller_ip_addr']))
+    #
+    #     for dome in obs_conf.get('domes', []):
+    #         for mod in dome.get('modules', []):
+    #             ip = mod.get('ip_addr')
+    #             if not ip:
+    #                 continue
+    #             # util.get_quabo_ip_port seamlessly returns the Gateway IP if port forwarded,
+    #             # or safely falls back to the local Quabo IP if not.
+    #             try:
+    #                 # We only need to ping the first Quabo representation (index 0)
+    #                 ip_ports = util.get_quabo_ip_port(ip, 0, net_conf)
+    #                 ips_to_ping.add(str(ip_ports['ip_addr']))
+    #             except Exception as e:
+    #                 console.print(f"[bold red]Error resolving IP for module {ip}: {e}[/bold red]")
+    #                 all_passed = False
+
+        # # Gather DAQ Config IPs using util.attach_daq_config
+        # daq_conf = validated_configs.get("DAQ Config", {})
+        # if daq_conf:
+        #     # Let util securely mutate the dictionary
+        #     util.attach_daq_config(daq_conf, net_conf)
+        #
+        #     if daq_conf.get('head_node_ip_addr'):
+        #         ips_to_ping.add(str(daq_conf['head_node_ip_addr']))
+        #     for node in daq_conf.get('daq_nodes', []):
+        #         if 'port_forwarding' in node and node['port_forwarding'].get('status'):
+        #             ips_to_ping.add(str(node['port_forwarding']['gw_ip']))
+        #         elif node.get('ip_addr'):
+        #             ips_to_ping.add(str(node['ip_addr']))
+        #
+        # # Ping the extracted IPs
+        # if ips_to_ping:
+        #     console.print("\n" + "=" * 50)
+        #     console.print(Panel.fit("[bold cyan]Network Connectivity Check[/bold cyan]"))
+        #
+        #     for ip in sorted(list(ips_to_ping)):
+        #         console.print(f"Pinging [bold cyan]{ip}[/bold cyan]...", end=" ")
+        #         if ping_host(ip):
+        #             console.print("[bold green]ALIVE[/bold green]")
+        #         else:
+        #             console.print("[bold red]UNREACHABLE[/bold red]")
+        #             all_passed = False
+        #
+    # console.print("\n" + "=" * 50)
+    # if all_passed:
+    #     console.print("[bold green]SUCCESS: Validation Complete![/bold green]")
+    # else:
+    #     console.print("[bold red]FAILURE: Validation found errors. See above.[/bold red]")
+    #
+    # # Reset globals in case standard script execution continues
+    # IS_CLI_VALIDATION = False
+    # DEBUG_VALIDATION = False
+    # RAISE_VALIDATION_ERRORS = False
+    #
+    # return all_passed
 
 
 def load_and_validate(validator_class, filename, dir, config_name, preprocessor=None):

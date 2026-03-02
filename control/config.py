@@ -814,6 +814,7 @@ def main():
                         help='Test the interleave schedule for 2 cycles without hardware commands.')
     parser.add_argument('--validate', nargs='*', default=None,
                         help='Validate configs. Modifiers: "debug" (print full structures), "network" (ping IPs). Example: --validate debug network')
+    # parser.add_argument('--validate-graph', action='store_true', help='Display the physical/network topology tree.')
     # we need one option at least
     if len(sys.argv) == 1:
         parser.print_help()
@@ -886,10 +887,13 @@ def main():
         modifiers = args.validate
         debug_mode = 'debug' in modifiers
         network_mode = 'network' in modifiers
+        graph_mode = 'graph' in modifiers
 
         # Run the comprehensive check and exit gracefully!
-        success = config_file.validate_all(check_network=network_mode, debug=debug_mode)
-        sys.exit(0 if success else 1)
+        passed = config_file.validate_all(check_network=network_mode, debug=debug_mode, graph=graph_mode)
+        if not passed:
+            sys.exit(1)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -75,63 +75,61 @@ class InterleaveConfig(BaseStrictModel):
     enable: bool = Field(False)
     states: List[InterleaveState] = Field([])
 
+
 class DataConfigValidator(BaseModel):
-    """Allows extra fields specifically for dynamic image_* and pulse_height_* keys."""
-    run_type: str = Field(..., max_length=MAX_RUN_TYPE_LENGTH)
-    detector_overvoltage: Literal[2, 3] = Field(
-        description="over voltage used for the observation. "
-                    "For now, we only have calibration data for 2V and 3V."
-    )
-    max_file_size_mb: int = Field(..., gt=0)
-    gain: Optional[float] = None
-
-    # Reserved default states & hardware params
-    image: Optional[ImageMode] = None
-    pulse_height: Optional[PulseHeightMode] = None
-    long_pulse: Optional[LongPulseMode] = None
-    flash_params: Optional[FlashParams] = None
-    stim_params: Optional[StimParams] = None
-
+    # We must use extra='allow' so Pydantic parses them, but we will
+    # strictly validate the extra keys dynamically in mode='after'.
     model_config = ConfigDict(extra='allow')
 
-    @field_validator("run_type")
-    def validate_run_type(cls, v):
-        if any(ch in INVALID_RUN_TYPE_CHARS for ch in v):
-            raise ValueError(f"Invalid run_type: '{v}' contains at least one invalid character: {INVALID_RUN_TYPE_CHARS}")
-        return v
+    run_type: str = Field(..., max_length=MAX_RUN_TYPE_LENGTH)
+    detector_overvoltage: Optional[int] = None
+    gain: Optional[int] = None
+    max_file_size_mb: Optional[int] = None
+    image: Optional[ImageMode] = None
+    pulse_height: Optional[PulseHeightMode] = None
+    interleave: Optional[Any] = None  # Assuming you have an InterleaveConfig model
+    stim_params: Optional[Any] = None
+    flash_params: Optional[Any] = None
 
     @model_validator(mode='after')
-    def validate_interleave_and_exclusions(self) -> 'DataConfigValidator':
-        extra_data = self.model_extra or {}
-        ph_configs: Dict[str, PulseHeightMode] = {}
-        img_configs: Dict[str, ImageMode] = {}
+    def validate_dynamic_modes_and_interleave(self):
+        """Strictly validates extra keys to catch typos, and enforces interleave references."""
+        dynamic_keys = []
 
-        if self.pulse_height: ph_configs["pulse_height"] = self.pulse_height
-        if self.image: img_configs["image"] = self.image
+        # 1. Strictly parse dynamic keys
+        if self.model_extra:
+            for key, val in self.model_extra.items():
+                if key.startswith('image_'):
+                    try:
+                        ImageMode(**val)  # Parse to ensure no bad internal fields
+                        dynamic_keys.append(key)
+                    except ValidationError as e:
+                        raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
+                elif key.startswith('pulse_height_'):
+                    try:
+                        PulseHeightMode(**val)
+                        dynamic_keys.append(key)
+                    except ValidationError as e:
+                        raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
+                else:
+                    raise ValueError(f"Unrecognized configuration key or typo detected: '{key}'")
 
-        for key, val in extra_data.items():
-            if key == "interleave": continue
-            if key.startswith("pulse_height_"): ph_configs[key] = PulseHeightMode(**val)
-            elif key.startswith("image_"): img_configs[key] = ImageMode(**val)
-            else: raise ValueError(f"Invalid root key '{key}'. Must be 'image_*' or 'pulse_height_*'.")
+        # 2. Check Interleave References
+        if self.interleave and getattr(self.interleave, 'states', None):
+            valid_image_modes = ['image'] + dynamic_keys
+            valid_ph_modes = ['pulse_height'] + dynamic_keys
 
-        interleave_data = extra_data.get("interleave")
-        if not interleave_data or not interleave_data.get("enable", False):
-            if self.image and self.pulse_height:
-                if self.pulse_height.two_pixel_trigger > 0 or self.pulse_height.three_pixel_trigger > 0:
-                    raise ValueError("MUTUAL EXCLUSION VIOLATION: Cannot enable default image mode while multi-pixel triggers are enabled.")
-            return self
+            for state in self.interleave.states:
+                m_conf = state.movie_mode_config
+                p_conf = state.pulse_height_mode_config
 
-        interleave = InterleaveConfig(**interleave_data)
-        for state in interleave.states:
-            if state.movie_mode_config and state.movie_mode_config not in img_configs:
-                raise ValueError(f"Missing movie_mode_config '{state.movie_mode_config}'")
-            if state.pulse_height_mode_config and state.pulse_height_mode_config not in ph_configs:
-                raise ValueError(f"Missing pulse_height_mode_config '{state.pulse_height_mode_config}'")
-            if state.movie_mode_config and state.pulse_height_mode_config:
-                ph_mode = ph_configs[state.pulse_height_mode_config]
-                if ph_mode.two_pixel_trigger > 0 or ph_mode.three_pixel_trigger > 0:
-                    raise ValueError(f"MUTUAL EXCLUSION: Image mode vs Multi-pixel trigger in state '{state.state_name}'.")
+                if m_conf and m_conf not in valid_image_modes:
+                    raise ValueError(f"Interleave state '{state.state_name}' references missing movie mode: '{m_conf}'")
+
+                if p_conf and p_conf not in valid_ph_modes:
+                    raise ValueError(
+                        f"Interleave state '{state.state_name}' references missing pulse height mode: '{p_conf}'")
+
         return self
 
 

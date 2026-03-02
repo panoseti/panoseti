@@ -52,4 +52,5 @@ urllib3==2.0.2
 wcwidth==0.2.6
 zipp==3.15.0
 zope.interface==6.0
+haversine>=2.9.0
 panoseti_grpc>=0.3.5
