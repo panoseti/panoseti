@@ -4,6 +4,7 @@
 
 import os,sys,json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pydantic import ValidationError
 from rich.console import Console
 from rich.pretty import pprint
@@ -130,7 +131,31 @@ def check_config_file(name, dir='.'):
         sys.exit()
 
 
-# --- Orchestrated Validation Methods ---
+# Orchestrated Validation Methods
+
+def _expand_module_ids(id_input) -> set:
+    """Parses a string like '0-255' or '10,11,15-20', or a list of ints, into a set of integers."""
+    ids = set()
+
+    # If it was already parsed into a list by previous steps, handle it directly
+    if isinstance(id_input, list):
+        return set(int(x) for x in id_input)
+
+    # Otherwise, parse the string
+    for part in str(id_input).split(','):
+        # strip() removes whitespace, strip('[]') removes brackets just in case it was stringified
+        part = part.strip().strip('[]')
+        if not part:
+            continue
+
+        if '-' in part:
+            start, end = part.split('-')
+            ids.update(range(int(start), int(end) + 1))
+        else:
+            ids.add(int(part))
+
+    return ids
+
 
 def print_topology_graph(obs_conf, daq_conf, net_conf):
     """Generates an ASCII/Unicode visual tree of the data routing and hardware topology."""
@@ -139,49 +164,157 @@ def print_topology_graph(obs_conf, daq_conf, net_conf):
     console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
 
     obs_name = obs_conf.get('name', 'Unknown Observatory')
-    root = Tree(f"🔭 [bold magenta]Observatory: {obs_name}[/bold magenta]")
+    root = Tree(f"[bold magenta]Observatory: {obs_name}[/bold magenta]")
 
-    # Pre-map networks for fast lookup
-    net_gw_map = {m.get('ip_addr'): m.get('port_forwarding', {}).get('gw_ip') for m in net_conf.get('modules', [])}
+    # Map network configs for fast lookup
+    net_module_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in net_conf.get('modules', [])}
+
+    # Pre-parse DAQ ranges using our updated _expand_module_ids function
+    daq_map = {}
+    for daq in daq_conf.get('daq_nodes', []):
+        daq_ids = _expand_module_ids(daq.get('module_ids', ''))
+        for mod_id in daq_ids:
+            daq_map[mod_id] = daq
 
     for dome in obs_conf.get('domes', []):
         d_name = dome.get('name', 'Unknown Dome')
-        d_lat = dome.get('obslat', 0.0)
-        d_lon = dome.get('obslon', 0.0)
-        dome_node = root.add(f"🏛️  [bold yellow]Dome: {d_name}[/bold yellow] (Lat: {d_lat}, Lon: {d_lon})")
+        dome_node = root.add(f"[bold yellow]Dome: {d_name}[/bold yellow]")
 
         for mod in dome.get('modules', []):
             m_ip = mod.get('ip_addr')
             m_hw = mod.get('quabo_version', 'unknown')
-            gw_ip = net_gw_map.get(m_ip, "Direct Local")
 
-            # Find destination DAQ (Simplified lookup based on your config matching)
-            daq_dest = "Unknown DAQ"
-            for daq in daq_conf.get('daq_nodes', []):
-                # (In reality, you'd match the module_ids string to the IP block,
-                # but we'll show the mapped node if associate() was run, or fallback)
-                if 'modules' in daq and any(m.get('ip_addr') == m_ip for m in daq['modules']):
-                    daq_dest = f"{daq.get('ip_addr')} ({daq.get('bindhost', 'eth0')})"
-                    break
+            # Use the existing codebase utility to get the official Module ID
+            try:
+                mod_id = ip_addr_to_module_id(m_ip)
+            except Exception as e:
+                mod_id = -1
 
-            mod_node = dome_node.add(f"[bold blue]Module {m_ip}[/bold blue] \[HW: {m_hw}]")
+            # Lookup the destination DAQ based on the official ID
+            dest_daq = daq_map.get(mod_id)
+            if dest_daq:
+                daq_str = f"{dest_daq.get('ip_addr')} (Interface: {dest_daq.get('bindhost', 'eth0')})"
+            else:
+                daq_str = "[red]UNMAPPED - No matching DAQ module_ids[/red]"
+
+            # Check network routing
+            pf = net_module_map.get(m_ip, {})
+            is_forwarded = pf.get('status') is True
+            gw_ip = pf.get('gw_ip', 'Local Direct')
+            cmd_ports = pf.get('cmd_port', [60000, 60000, 60000, 60000])  # Fallback to default UDP port
+
+            # Display the resolved Module ID so the observer can trace the DAQ routing
+            mod_node = dome_node.add(
+                f"[bold blue]Module {m_ip}[/bold blue] \[ID: {mod_id}] \[HW: {m_hw}] -> Stream DAQ: [cyan]{daq_str}[/cyan]")
+
             for q in range(4):
-                # Simulated Quabo IP logic (+0, +1, +2, +3)
                 base_ip_parts = m_ip.split('.')
-                q_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{int(base_ip_parts[3]) + q}"
-                mod_node.add(
-                    f"Quabo {q} ({q_ip}) ──[Gateway: [green]{gw_ip}[/green]]──> DAQ: [cyan]{daq_dest}[/cyan]")
+                if len(base_ip_parts) == 4:
+                    q_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{int(base_ip_parts[3]) + q}"
+                else:
+                    q_ip = "Invalid IP Format"
+
+                real_ip = gw_ip if is_forwarded else q_ip
+                real_port = cmd_ports[q] if len(cmd_ports) > q else 60000
+
+                route_str = f"──[Tunnel: [green]{gw_ip}[/green]]──> [magenta]{real_ip}:{real_port}[/magenta]" if is_forwarded else f"──[Direct]──> [magenta]{real_ip}:{real_port}[/magenta]"
+
+                mod_node.add(f"Quabo {q} ({q_ip}) {route_str}")
 
     console.print(root)
     print("\n")
 
-def ping_host(ip_addr: str) -> bool:
-    cmd = ['ping', '-c', '1', '-W', '1', str(ip_addr)]
-    try:
-        result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return result.returncode == 0
-    except Exception:
-        return False
+
+import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def _ping_ip(ip: str) -> bool:
+    """Helper worker to execute a single ping."""
+    # -c 1 (1 packet), -W 1 (1 sec timeout)
+    result = subprocess.run(
+        ['ping', '-c', '1', '-W', '1', ip],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    return result.returncode == 0
+
+
+def perform_network_ping_sweep(validated_configs: dict) -> bool:
+    """
+    Parses required target IPs from configs and pings them concurrently.
+    Returns True if all reachable, False otherwise.
+    """
+    console.print("[bold cyan]Running Parallel Network Ping Sweep...[/bold cyan]")
+
+    targets_to_ping = set()
+
+    # 1. Collect Head Node
+    head_ip = validated_configs['daq'].get('head_node_ip_addr')
+    if head_ip:
+        targets_to_ping.add(('Head Node', head_ip))
+
+    # 2. Collect DAQ Nodes & Gateways
+    pf_daq_map = {d.get('ip_addr'): d.get('port_forwarding', {}) for d in
+                  validated_configs['network'].get('daq_nodes', [])}
+    for daq in validated_configs['daq'].get('daq_nodes', []):
+        daq_ip = daq.get('ip_addr')
+        pf = pf_daq_map.get(daq_ip, {})
+        if pf.get('status') is True:
+            targets_to_ping.add((f"DAQ Gateway ({daq_ip})", pf.get('gw_ip')))
+        else:
+            targets_to_ping.add(("DAQ Node", daq_ip))
+
+    # 3. Collect Modules & Gateways
+    pf_mod_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in
+                  validated_configs['network'].get('modules', [])}
+    for dome in validated_configs['obs'].get('domes', []):
+        for mod in dome.get('modules', []):
+            m_ip = mod.get('ip_addr')
+            pf = pf_mod_map.get(m_ip, {})
+            if pf.get('status') is True:
+                targets_to_ping.add((f"Module Gateway ({m_ip})", pf.get('gw_ip')))
+            else:
+                targets_to_ping.add(("Module Base IP", m_ip))
+
+    # 4. Execute Pings Concurrently
+    all_passed = True
+    ping_failures = 0
+    results = []
+
+    # Use ThreadPoolExecutor to ping all targets simultaneously
+    with ThreadPoolExecutor(max_workers=30) as executor:
+        # Dictionary mapping the Future back to its (description, ip)
+        future_to_target = {
+            executor.submit(_ping_ip, ip): (desc, ip)
+            for desc, ip in targets_to_ping if ip
+        }
+
+        for future in as_completed(future_to_target):
+            desc, ip = future_to_target[future]
+            try:
+                is_up = future.result()
+                results.append((desc, ip, is_up))
+            except Exception:
+                results.append((desc, ip, False))
+
+    # 5. Report Results (Sorted alphabetically by description for clean UI)
+    results.sort(key=lambda x: (x[0], x[1]))
+
+    for desc, ip, is_up in results:
+        if is_up:
+            console.print(f"  [green]✔ {desc:<25} ({ip}) is UP[/green]")
+        else:
+            console.print(f"  [red]✖ {desc:<25} ({ip}) is DOWN / UNREACHABLE[/red]")
+            ping_failures += 1
+            all_passed = False
+
+    if ping_failures == 0:
+        console.print("[green]All network targets reachable.[/green]\n")
+    else:
+        console.print(f"[red]{ping_failures} network target(s) failed ping sweep.[/red]\n")
+
+    return all_passed
 
 
 def validate_all(check_network: bool = False, debug: bool = False, graph: bool = False) -> bool:
@@ -201,12 +334,12 @@ def validate_all(check_network: bool = False, debug: bool = False, graph: bool =
 
     # 1. Tier 1: Strict File Validation (Existing Logic)
     try:
-        validated_configs['obs'] = get_obs_config()
+        validated_configs['firmware'] = get_firmware_config()
         validated_configs['daemons'] = get_daemons_config()
+        validated_configs['obs'] = get_obs_config()
+        validated_configs['network'] = get_network_config()
         validated_configs['daq'] = get_daq_config()
         validated_configs['data'] = get_data_config()
-        validated_configs['network'] = get_network_config()
-        validated_configs['firmware'] = get_firmware_config()
         console.print("[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
     except Exception as e:
         console.print(f"[red]✖ Tier-1 Validation Failed: {e}[/red]")
@@ -223,34 +356,10 @@ def validate_all(check_network: bool = False, debug: bool = False, graph: bool =
     if all_passed and graph:
         print_topology_graph(validated_configs['obs'], validated_configs['daq'], validated_configs['network'])
 
-    # 4. Network Ping Checks (Your existing logic)
-    if check_network and all_passed:
-        # Import dynamically to avoid circular dependency on load
-        from utils import util
-
-        net_conf = validated_configs.get("Network Config", {})
-
-        # Gather Obs Config IPs using util.get_quabo_ip_port
-        obs_conf = validated_configs.get("Obs Config", {})
-        if obs_conf.get('wr_ip_addr'):
-            ips_to_ping.add(str(obs_conf['wr_ip_addr']))
-        if obs_conf.get('dome_controller_ip_addr'):
-            ips_to_ping.add(str(obs_conf['dome_controller_ip_addr']))
-
-        for dome in obs_conf.get('domes', []):
-            for mod in dome.get('modules', []):
-                ip = mod.get('ip_addr')
-                if not ip:
-                    continue
-                # util.get_quabo_ip_port seamlessly returns the Gateway IP if port forwarded,
-                # or safely falls back to the local Quabo IP if not.
-                try:
-                    # We only need to ping the first Quabo representation (index 0)
-                    ip_ports = util.get_quabo_ip_port(ip, 0, net_conf)
-                    ips_to_ping.add(str(ip_ports['ip_addr']))
-                except Exception as e:
-                    console.print(f"[bold red]Error resolving IP for module {ip}: {e}[/bold red]")
-                    all_passed = False
+    # 4. Network Ping Checks
+    if check_network:
+        if not perform_network_ping_sweep(validated_configs):
+            all_passed = False
 
     return all_passed
 

@@ -14,7 +14,7 @@ from rich.table import Table
 
 console = Console()
 
-MAX_DOME_BASELINE_KM = 10
+MAX_DOME_BASELINE_KM = 1
 
 class ValidationReport:
     """Aggregates errors and warnings for a unified pre-flight report."""
@@ -90,7 +90,7 @@ class GlobalConfigValidator:
                 )
 
     def _check_geospatial_coherence(self):
-        """Ensures all domes in the observatory are within a 10km radius."""
+        """Ensures all domes baselines in the observatory are at most {MAX_DOME_BASELINE_KM} kilometers."""
         if not self.obs_conf or 'domes' not in self.obs_conf:
             return
 
@@ -110,8 +110,9 @@ class GlobalConfigValidator:
 
                 if distance > MAX_DOME_BASELINE_KM:
                     self.report.add_error(
-                        f"Geospatial anomaly: Domes '{name1}' and '{name2}' are {distance:.2f} km apart (>10km limit). "
-                        "Check for missing decimal places in GPS coordinates."
+                        f"Geospatial anomaly: Domes '{name1}'\t and '{name2}'\t are \t{distance:.3f} km apart "
+                        f"(> {MAX_DOME_BASELINE_KM:.3f}km limit). "
+                        "Check for missing errors in the GPS coordinates."
                     )
 
     def _check_network_tunneling(self):
