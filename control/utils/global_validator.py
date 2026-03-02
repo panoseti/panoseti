@@ -6,6 +6,8 @@ and hardware states are cohesive across the entire PanoSETI observatory.
 """
 
 import math
+import os
+import shutil
 from typing import Dict, Any, List
 from haversine import haversine, Unit
 from rich.console import Console
@@ -171,4 +173,66 @@ class GlobalConfigValidator:
             self.report.add_error(
                 f"Overvoltage mismatch: obs_config says {obs_ov}V, but data_config says {data_ov}V. "
                 "This will result in invalid calibrations."
+            )
+
+    def _check_disk_space(self):
+        """Validates head node data directory capacity and acquisition rate requirements."""
+        if not self.daq_conf or not self.data_conf:
+            return
+
+        head_dir = self.daq_conf.get('head_node_data_dir')
+        if not head_dir:
+            return
+
+        # We assume the code is running on the head node machine
+        if not os.path.exists(head_dir):
+            self.report.add_warning(
+                f"Head node data directory '{head_dir}' does not exist on this machine. Cannot check disk space.")
+            return
+
+        try:
+            total, used, free = shutil.disk_usage(head_dir)
+        except Exception as e:
+            self.report.add_warning(f"Failed to check disk space for '{head_dir}': {e}")
+            return
+
+        free_tb = free / (1024 ** 4)  # Convert bytes to Terabytes
+
+        if free_tb < 1.0:
+            self.report.add_warning(
+                f"Head node disk space is critically low: {free_tb:.2f} TB free (< 1.0 TB safe limit).")
+
+        # --- Compute Estimated Data Requirements (Image Mode) ---
+        num_modules = sum(len(dome.get('modules', [])) for dome in self.obs_conf.get('domes', []))
+        if num_modules == 0:
+            return
+
+        img_conf = self.data_conf.get('image')
+        if not img_conf:
+            return  # Only estimating for active image modes
+
+        integration_usec = img_conf.get('integration_time_usec', 100000)
+        nsum = img_conf.get('nsum', 1)
+        sample_size_bits = img_conf.get('quabo_sample_size', 16)  # default 16-bit
+
+        if integration_usec == 0 or nsum == 0:
+            return
+
+        # Math: Frames Per Second -> Bytes Per Frame -> Total MB/s -> TB/hour
+        fps = 1_000_000 / (integration_usec * nsum)
+        bytes_per_pixel = sample_size_bits / 8
+        bytes_per_frame = (32 * 32) * bytes_per_pixel  # 1024 pixels per Quabo
+        bytes_per_sec_per_module = fps * 4 * bytes_per_frame  # 4 Quabos per module
+
+        total_tb_per_hour = (bytes_per_sec_per_module * num_modules * 3600) / (1024 ** 4)
+
+        # Calculate for a standard 8-hour observing night
+        assumed_hours = 8
+        estimated_run_tb = total_tb_per_hour * assumed_hours
+
+        if (free_tb - estimated_run_tb) < 1.0:
+            self.report.add_warning(
+                f"Data acquisition estimate: {total_tb_per_hour:.3f} TB/hr for {num_modules} modules in image mode. "
+                f"An {assumed_hours}-hour run requires {estimated_run_tb:.2f} TB. "
+                f"This leaves the disk with < 1TB of safe margin ({free_tb - estimated_run_tb:.2f} TB remaining)."
             )

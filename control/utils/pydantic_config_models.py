@@ -6,7 +6,11 @@ Centralized Pydantic models for validating PANOSETI configuration files.
 
 import logging
 from typing import List, Optional, Dict, Any, Union, Literal
-from pydantic import BaseModel, Field, model_validator, ConfigDict, IPvAnyAddress, field_validator
+from pydantic import (
+    BaseModel, Field, model_validator,
+    ConfigDict, IPvAnyAddress, field_validator,
+    ValidationError
+)
 from rich.console import Console
 from rich.pretty import pprint
 
@@ -193,13 +197,27 @@ class ObsConfigValidator(BaseModel):
 
 # --- DAQ Config Models ---
 
+class CompactList(list):
+    """A list that prints compactly in the terminal, preventing long vertical scrolls."""
+    def __repr__(self):
+        if len(self) > 6:
+            return f"[{self[0]}, {self[1]}, ..., {self[-2]}, {self[-1]}] (len={len(self)})"
+        return super().__repr__()
+
 class DaqNodeValidator(BaseStrictModel):
     username: str
     data_dir: str
     ip_addr: IPvAnyAddress
-    # Allow List[int] because `expand_ranges()` parses "253" into a list prior to validation
     module_ids: Union[str, List[int]]
     bindhost: Optional[str] = Field("0.0.0.0")
+
+    @field_validator('module_ids', mode='after')
+    @classmethod
+    def compact_module_ids(cls, v):
+        """Converts the parsed list into a CompactList so Pydantic dumps it cleanly on one line."""
+        if isinstance(v, list):
+            return CompactList(v)
+        return v
 
 class DaqConfigValidator(BaseStrictModel):
     comment: Optional[str] = None
