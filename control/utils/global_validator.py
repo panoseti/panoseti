@@ -179,7 +179,7 @@ class GlobalConfigValidator:
         tb_per_hr = (fps * 4 * 1024 * bytes_pp * 3600 * num_modules) / (1024 ** 4)
         total_tb = tb_per_hr * 8  # Assume 8 hour run
 
-        formula = f"({fps:.1f}frame/sec * 4quabo * 1024px/quabo * {bytes_pp}B * 3600sec * {num_modules}mod) / 1TiB"
+        formula = f"({fps:.1f}frame/sec * 4quabo/mod * 1024px/quabo * {bytes_pp}B/px * 3600sec * {num_modules}mod) / (1024^4 B/TB)"
         return tb_per_hr, total_tb, formula
 
     def _check_headnode_disk_space(self):
@@ -232,7 +232,7 @@ class GlobalConfigValidator:
                         free_kb = int(parts[3])
                         free_tb = free_kb / (1024 ** 3)
 
-                        if est_total > 0 and (free_tb - est_total) <= 0:
+                        if est_total > 0 >= (free_tb - est_total):
                             results.append(f"{ip}: {free_tb:.2f} TB (INSUFFICIENT)")
                             has_error = True
                         elif free_tb < 1.0:

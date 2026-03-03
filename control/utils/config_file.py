@@ -382,7 +382,7 @@ def perform_network_ping_sweep(validated_configs: dict) -> bool:
         pf = pf_daq_map.get(ip, {})
         if pf.get('status'):
             # Check gateway, AND attempt SSH through the gateway to the DAQ node
-            targets.add((f"DAQ Gateway ({ip})", pf.get('gw_ip'), pf.get('port', 22), True))
+            targets.add((f"DAQ Node ({ip})", pf.get('gw_ip'), pf.get('port', 22), True))
         else:
             targets.add(("DAQ Node", ip, 22, False))
 
