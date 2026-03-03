@@ -19,7 +19,8 @@ from rich.tree import Tree
 # import Pydantic validation models
 from .pydantic_config_models import (
     DataConfigValidator, ObsConfigValidator, DaqConfigValidator,
-    NetworkConfigValidator, DaemonConfigValidator, FirmwareConfigValidator
+    NetworkConfigValidator, DaemonConfigValidator, FirmwareConfigValidator,
+    QuaboUidsValidator
 )
 
 from .validation_report import ValidationReport
@@ -173,12 +174,13 @@ def get_daemons_config(dir='.'):
 
 def get_quabo_uids():
     if not os.path.exists(quabo_uids_filename):
-        print("%s is missing.  Run get_uids.py"%quabo_uids_filename)
+        print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
         sys.exit()
-    with open(quabo_uids_filename) as f:
-        s = f.read()
-    quabo_uids_conf = json.loads(s)
-    assign_numbers(quabo_uids_conf)
+    # with open(quabo_uids_filename) as f:
+    #     s = f.read()
+    # quabo_uids_conf = json.loads(s)
+    # assign_numbers(quabo_uids_conf)
+    return load_and_validate(QuaboUidsValidator, quabo_uids_filename, dir, "UID Config", assign_numbers)
     return quabo_uids_conf
 
 # get detector info as an array indexed by serialno
@@ -504,6 +506,7 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
     console.print(Panel.fit("[bold cyan]Starting PANOSETI Configuration Validation[/bold cyan]"))
 
     # 1. Tier 1: Strict File Validation (Batched)
+    console.print("\n[bold cyan]Running Tier-1 File Syntax & Schema Checks...[/bold cyan]")
     t1_errors = 0
     loaders = [
         ('firmware', get_firmware_config),
@@ -524,7 +527,7 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
             all_passed = False
 
     if t1_errors == 0:
-        console.print("[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
+        console.print("\n[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
     else:
         # If Tier-1 fails, we cannot proceed to Tier-2 because the data structures are missing/corrupt.
         console.print(
@@ -532,10 +535,12 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
         console.print("[red]Please fix the above schema errors before proceeding to Tier-2 checks.[/red]")
         return False
     # 2. Tier 2: Global Cross-Configuration Validation
-    console.print("\n[bold cyan]Running Tier-2 Global Cross-Checks...[/bold cyan]")
+    console.print("\n[bold cyan]Running Tier-2 Global Cross-Config Checks...[/bold cyan]")
     global_validator = GlobalConfigValidator(validated_configs)
     if not global_validator.validate_all_rules():
         all_passed = False
+    else:
+        console.print("\n[green]✔ Tier-2 Global Cross-Config Validation Passed.[/green]")
 
     # 3. Visual Topology Graph
     if graph:

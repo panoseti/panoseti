@@ -61,11 +61,11 @@ class FlashParams(BaseStrictModel):
 class StimParams(BaseStrictModel):
     rate: int = Field(..., ge=0, le=7)
     level: int = Field(..., ge=0, le=255)
-    mask: List[int] = Field(..., max_length=4, min_length=4)
+    mask: List[bool] = Field(..., max_length=4, min_length=4)
 
 class InterleaveState(BaseStrictModel):
     state_name: str
-    duration_seconds: float = Field(..., gt=0.0)
+    duration_seconds: float = Field(..., gt=0.01)
     movie_mode_config: Optional[str] = None
     pulse_height_mode_config: Optional[str] = None
 
@@ -86,14 +86,14 @@ class DataConfigValidator(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     run_type: str = Field(..., max_length=MAX_RUN_TYPE_LENGTH)
-    detector_overvoltage: Optional[int] = None
+    detector_overvoltage: Optional[Literal[2, 3]] = None
     gain: Optional[int] = None
-    max_file_size_mb: Optional[int] = None
+    max_file_size_mb: int = Field(0, ge=0)
     image: Optional[ImageMode] = None
     pulse_height: Optional[PulseHeightMode] = None
-    interleave: Optional[Any] = None  # Assuming you have an InterleaveConfig model
-    stim_params: Optional[Any] = None
-    flash_params: Optional[Any] = None
+    interleave: Optional[InterleaveConfig] = None  # Assuming you have an InterleaveConfig model
+    stim_params: Optional[StimParams] = None
+    flash_params: Optional[FlashParams] = None
 
     @field_validator("run_type")
     def validate_run_type(cls, v):
@@ -135,7 +135,6 @@ class DataConfigValidator(BaseModel):
                         raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
                 else:
                     raise ValueError(f"Unrecognized configuration key or typo detected: '{key}'")
-
         if self.interleave and getattr(self.interleave, 'states', None):
             valid_image_modes = ['image'] + dynamic_keys
             valid_ph_modes = ['pulse_height'] + dynamic_keys
@@ -165,7 +164,6 @@ class DataConfigValidator(BaseModel):
                             f"Cannot enable movie-mode ('{m_conf}') while pulse height mode ('{p_conf}') "
                             f"has two_pixel_trigger or three_pixel_trigger enabled."
                         )
-
         return self
 
 
