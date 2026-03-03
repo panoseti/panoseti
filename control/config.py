@@ -813,7 +813,7 @@ def main():
     parser.add_argument('--dry-run-interleave', action='store_true',
                         help='Test the interleave schedule for 2 cycles without hardware commands.')
     parser.add_argument('--validate', nargs='*', default=None,
-                        help='Validate configs. Modifiers: "debug" (print full structures), "network" (ping IPs). Example: --validate debug network')
+                        help='Validate configs. Modifiers: "graph" (print network routing), "network" (ping IPs), "debug" (print parsed config). Example: --validate graph network')
     # parser.add_argument('--validate-graph', action='store_true', help='Display the physical/network topology tree.')
     # we need one option at least
     if len(sys.argv) == 1:
