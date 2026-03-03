@@ -91,9 +91,9 @@ class DataConfigValidator(BaseModel):
     max_file_size_mb: Optional[int] = None
     image: Optional[ImageMode] = None
     pulse_height: Optional[PulseHeightMode] = None
-    interleave: Optional[Any] = None  # Assuming you have an InterleaveConfig model
-    stim_params: Optional[Any] = None
-    flash_params: Optional[Any] = None
+    interleave: Optional[InterleaveConfig] = None  # Assuming you have an InterleaveConfig model
+    stim_params: Optional[StimParams] = None
+    flash_params: Optional[FlashParams] = None
 
     @field_validator("run_type")
     def validate_run_type(cls, v):
