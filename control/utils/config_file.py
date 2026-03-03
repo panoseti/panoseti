@@ -3,6 +3,7 @@
 # functions to read and parse config files
 
 import os,sys,json
+import pydantic
 import subprocess
 import platform
 
@@ -134,7 +135,7 @@ def check_config_file(name, dir='.'):
         print("Create a symbolic link from %s to a specific config file, e.g.:"%name)
         print("   ln -s %s_lick.json %s"%(name.split('.')[0], name))
 
-        sys.exit()
+        sys.exit(1)
 
 
 def get_obs_config(dir='.'):
@@ -175,7 +176,7 @@ def get_daemons_config(dir='.'):
 def get_quabo_uids():
     if not os.path.exists(quabo_uids_filename):
         print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
-        sys.exit()
+        sys.exit(1)
     with open(quabo_uids_filename) as f:
         s = f.read()
     quabo_uids_conf = json.loads(s)
@@ -520,11 +521,14 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
     for key, loader in loaders:
         try:
             validated_configs[key] = loader()
-        except Exception:
+        except ValueError as e:
             # The specific error details are printed by load_and_validate.
             # We just catch it here so we don't crash, allowing the loop to continue.
             t1_errors += 1
             all_passed = False
+            pass
+        except Exception as e:
+            console.print_exception()
 
     if t1_errors == 0:
         console.print("\n[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
@@ -615,7 +619,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
 
         if IS_CLI_VALIDATION and DEBUG_VALIDATION:
             console.print("\n[dim]Validated Configuration Structure:[/dim]")
-            pprint(validated.model_dump(exclude_unset=True), expand_all=True)
+            pprint(validated.model_dump(exclude_unset=True), expand_all=False)
         return validated.model_dump(mode='json', exclude_unset=True)
 
     except ValidationError as e:
@@ -628,7 +632,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
             console.print(f"  [bold red]Error:[/bold red] {msg}\n")
         if IS_CLI_VALIDATION and DEBUG_VALIDATION:
             console.print("[dim]Raw Config Dictionary (for debugging):[/dim]")
-            pprint(raw_data, expand_all=True)
+            pprint(raw_data, expand_all=True, max_length=5)
         if IS_CLI_VALIDATION:
             console.print(f"Target: {config_name} - [red]{err_count} Error(s), 0 Warning(s)[/red]")
             # 'from None' suppresses the double traceback in Python
@@ -644,6 +648,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
             raise ValueError(f"JSON Parse Error in {filename}") from None
         else:
             if RAISE_VALIDATION_ERRORS:
+                console.print_exception()
                 raise e
             sys.exit(1)
 
