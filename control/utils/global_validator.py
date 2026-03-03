@@ -153,10 +153,11 @@ class GlobalConfigValidator:
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
     def _check_daq_assignment_overlap(self):
         """Ensures a single module ID is not being actively listened to by multiple DAQ nodes."""
-        from .config_file import _expand_module_ids
+        from .config_file import expand_ranges
         seen_ids = set()
+        expand_ranges(self.daq_conf)
         for daq in self.daq_conf.get('daq_nodes', []):
-            ids = _expand_module_ids(daq.get('module_ids', ''))
+            ids = daq.get('module_ids', '')
             overlap = seen_ids.intersection(ids)
             if overlap:
                 self.report.add_test("DAQ Overlap", "ERROR",

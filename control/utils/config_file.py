@@ -3,14 +3,6 @@
 # functions to read and parse config files
 
 import os,sys,json
-import pydantic
-import subprocess
-import platform
-
-import socket
-import urllib.parse
-from typing import List, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pydantic import ValidationError
 from rich.console import Console
 from rich.pretty import pprint
@@ -23,16 +15,14 @@ from .pydantic_config_models import (
     NetworkConfigValidator, DaemonConfigValidator, FirmwareConfigValidator,
     QuaboUidsValidator
 )
-
-from .validation_report import ValidationReport
 from .global_validator import GlobalConfigValidator
+from .config_validator import perform_network_ping_sweep
+console = Console()
 
 # Globals to control console verbosity
 IS_CLI_VALIDATION = False
 DEBUG_VALIDATION = False
 RAISE_VALIDATION_ERRORS = False
-
-console = Console()
 
 import logging
 # TODO: we need to improve the file path
@@ -117,7 +107,17 @@ def string_to_list(s):
 #
 def expand_ranges(daq_config):
     for node in daq_config['daq_nodes']:
-        node['module_ids'] = string_to_list(node['module_ids'])
+        module_ids = node['module_ids']
+        # If it was already parsed into a list by previous steps, handle it directly
+        if isinstance(module_ids, list):
+            unique_module_ids = set(int(x) for x in module_ids)
+            module_ids_list = list(unique_module_ids)
+        elif isinstance(module_ids, str):
+            module_ids_list = string_to_list(module_ids)
+        else:
+            raise ValueError(f"Expected 'module_ids' to be a list or str, not {type(module_ids)=}")
+        # print(module_ids_list)
+        node['module_ids'] = module_ids_list
 
 # given a module ID, find the DAQ node that's handling it
 #
@@ -279,173 +279,25 @@ def show_daq_assignments(quabo_uids):
                     %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
                 )
 
-# Pydantic Validation
-
-## Validation graph
-def print_compact_config(config_name: str, config_dict: dict):
-    """Prints a configuration dictionary but collapses massive lists like module_ids."""
-    import copy
-    compact_dict = copy.deepcopy(config_dict)
-
-    if config_name.lower() == 'daq':
-        for node in compact_dict.get('daq_nodes', []):
-            if isinstance(node.get('module_ids'), list):
-                # Compress [0, 1, 2... 255] into a readable string
-                ids = node['module_ids']
-                if len(ids) > 5:
-                    node['module_ids'] = f"[{ids[0]}, {ids[1]} ... {len(ids)} total IDs ... {ids[-1]}]"
-
-    console.print(Panel(f"[bold green]Parsed {config_name} Config[/bold green]"))
-    pprint(compact_dict, expand_all=True)
-
-def _expand_module_ids(id_input) -> set:
-    """Parses a string like '0-255' or '10,11,15-20', or a list of ints, into a set of integers."""
-    ids = set()
-
-    # If it was already parsed into a list by previous steps, handle it directly
-    if isinstance(id_input, list):
-        return set(int(x) for x in id_input)
-
-    # Otherwise, parse the string
-    for part in str(id_input).split(','):
-        # strip() removes whitespace, strip('[]') removes brackets just in case it was stringified
-        part = part.strip().strip('[]')
-        if not part:
-            continue
-
-        if '-' in part:
-            start, end = part.split('-')
-            ids.update(range(int(start), int(end) + 1))
-        else:
-            ids.add(int(part))
-
-    return ids
-
-
-
-
-def _check_reachability(ip: str, tcp_port: int = None, check_ssh: bool = False) -> Tuple[bool, str]:
-    """Returns (is_up, status_string). Robust cross-platform ping and TCP/SSH fallbacks."""
-
-    # 1. SSH Gateway Check
-    if check_ssh and tcp_port:
-        # Pinging DAQ node behind gateway using specific port
-        cmd = ['ssh', '-p', str(tcp_port), '-o', 'ConnectTimeout=2', '-o', 'BatchMode=yes', f'panoseti@{ip}', 'echo',
-               '1']
-        res = subprocess.run(cmd, capture_output=True)
-        return res.returncode == 0, f"Gateway DAQ Access ({ip}:{tcp_port})"
-
-    # 2. Cross-platform ICMP Ping Check
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    try:
-        # Use Python's timeout instead of ping's OS-specific -W parameter
-        res = subprocess.run(['ping', param, '1', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             timeout=1.5)
-        if res.returncode == 0:
-            return True, ""
-    except subprocess.TimeoutExpired:
-        pass
-
-    # 3. TCP Port Fallback (Crucial for routers/gateways that block ICMP)
-    if tcp_port is not None:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(1.0)
-                s.connect((ip, tcp_port))
-            return True, ""
-        except:
-            pass
-
-    return False, ""
-
-
-def perform_network_ping_sweep(validated_configs: dict) -> bool:
-    console.print("[bold cyan]Running Parallel Network Ping Sweep...[/bold cyan]")
-    targets = set()
-
-    # Head Node
-    head_ip = validated_configs['daq'].get('head_node_ip_addr')
-    if head_ip: targets.add(('Head Node', head_ip, 22, False))
-
-    # WPS Power Strips
-    for dome in validated_configs['obs'].get('domes', []):
-        for mod in dome.get('modules', []):
-            wps_name = mod.get('wps')
-            if wps_name and wps_name in validated_configs['obs']:
-                wps_url = validated_configs['obs'][wps_name].get('url', '')
-                parsed = urllib.parse.urlparse(wps_url)
-                if parsed.hostname:
-                    targets.add((f"WPS ({wps_name})", parsed.hostname, 80, False))
-
-    # DAQ Nodes
-    pf_daq_map = {d.get('ip_addr'): d.get('port_forwarding', {}) for d in
-                  validated_configs['network'].get('daq_nodes', [])}
-    for daq in validated_configs['daq'].get('daq_nodes', []):
-        ip = daq.get('ip_addr')
-        pf = pf_daq_map.get(ip, {})
-        if pf.get('status'):
-            # Check gateway, AND attempt SSH through the gateway to the DAQ node
-            targets.add((f"DAQ Node ({ip})", pf.get('gw_ip'), pf.get('port', 22), True))
-        else:
-            targets.add(("DAQ Node", ip, 22, False))
-
-    # Modules
-    pf_mod_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in
-                  validated_configs['network'].get('modules', [])}
-    # Create mapping of IP to Dome Name for better labels
-    ip_to_dome = {m.get('ip_addr'): d.get('name', 'Unknown') for d in validated_configs['obs'].get('domes', []) for m in
-                  d.get('modules', [])}
-
-    for ip, dome_name in ip_to_dome.items():
-        pf = pf_mod_map.get(ip, {})
-        if pf.get('status'):
-            targets.add((f"Module Gateway ({dome_name})", pf.get('gw_ip'), 80, False))
-        else:
-            targets.add((f"Module ({dome_name})", ip, None, False))
-
-    all_passed = True
-    results = []
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        future_to_target = {executor.submit(_check_reachability, ip, port, ssh): (desc, ip) for desc, ip, port, ssh in
-                            targets}
-        for future in as_completed(future_to_target):
-            desc, ip = future_to_target[future]
-            try:
-                is_up, extra = future.result()
-                results.append((desc, ip, is_up, extra))
-            except Exception:
-                results.append((desc, ip, False, ""))
-
-    results.sort(key=lambda x: (x[0], x[1]))
-    failures = 0
-    for desc, ip, is_up, extra in results:
-        disp = f"{desc} [{extra}]" if extra else desc
-        if is_up:
-            console.print(f"  [green]✔ {disp:<30} ({ip}) is UP[/green]")
-        else:
-            console.print(f"  [red]✖ {disp:<30} ({ip}) is DOWN[/red]")
-            failures += 1
-            all_passed = False
-
-    if failures == 0: console.print("[green]All network targets reachable.[/green]\n")
-    return all_passed
+## Apply global validation
 
 
 def print_topology_graph(obs_conf, daq_conf, net_conf):
     console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
 
     obs_name = obs_conf.get('name', 'Unknown Observatory')
-    root = Tree(f"Observatory: {obs_name}")
+    root = Tree(f"[bold magenta]Observatory: {obs_name}[/bold magenta]")
 
     net_module_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in net_conf.get('modules', [])}
     daq_map = {}
+    expand_ranges(daq_conf)
     for daq in daq_conf.get('daq_nodes', []):
-        for mod_id in _expand_module_ids(daq.get('module_ids', '')):
+        for mod_id in daq.get('module_ids', ''):
             daq_map[mod_id] = daq
 
     # Group by Gateway
     gw_tree_map = {}
-    local_tree = root.add("Local Direct Network")
+    local_tree = root.add("[bold green] Local Direct Network [/bold green]")
 
     for dome in obs_conf.get('domes', []):
         d_name = dome.get('name', 'Unknown Dome')
@@ -469,14 +321,14 @@ def print_topology_graph(obs_conf, daq_conf, net_conf):
             # Decide which tree branch to add this to
             if gw_ip:
                 if gw_ip not in gw_tree_map:
-                    gw_tree_map[gw_ip] = root.add(f"Gateway: [green]{gw_ip}[/green]")
-                target_node = gw_tree_map[gw_ip].add(f"Dome: {d_name}")
+                    gw_tree_map[gw_ip] = root.add(f"[bold green] Gateway: {gw_ip}[/bold green]")
+                target_node = gw_tree_map[gw_ip].add(f"[bold blue]Dome: {d_name}[/bold blue]")
             else:
-                target_node = local_tree.add(f"Dome: {d_name}")
+                target_node = local_tree.add(f"[bold blue]Dome: {d_name}[/bold blue]")
 
             cmd_ports = pf.get('cmd_port', [60000] * 4)
             mod_node = target_node.add(
-                f"Module {m_ip} [ID: {mod_id}] [HW: {m_hw}] [Timing: {m_timing}] -> Stream DAQ: [cyan]{daq_str}[/cyan]")
+                f"[bold gold3] Module {mod_id} [/bold gold3][IP: {m_ip}] [HW: {m_hw}] [Timing: {m_timing}]  -> [bold dark_orange] DAQ Node: {daq_str}[/bold dark_orange]")
 
             for q in range(4):
                 base_ip_parts = m_ip.split('.')
@@ -484,13 +336,12 @@ def print_topology_graph(obs_conf, daq_conf, net_conf):
                     base_ip_parts) == 4 else "Invalid"
                 real_ip = gw_ip if gw_ip else q_ip
                 real_port = cmd_ports[q] if len(cmd_ports) > q else 60000
-                mod_node.add(f"Quabo {q} ({q_ip}) -> {real_ip}:{real_port}")
+                mod_node.add(f"[bold yellow] Q{q} [/bold yellow]({q_ip}) -> {real_ip}:{real_port}")
 
     console.print(root)
     print("\n")
 
 
-## Apply global validation
 
 def validate_all(check_network: bool = True, debug: bool = False, graph: bool = False) -> bool:
     """
@@ -651,7 +502,6 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
                 console.print_exception()
                 raise e
             sys.exit(1)
-
 
 
 
