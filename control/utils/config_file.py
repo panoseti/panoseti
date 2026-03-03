@@ -4,6 +4,7 @@
 
 import os,sys,json
 import subprocess
+import platform
 
 import socket
 import urllib.parse
@@ -318,26 +319,40 @@ def _expand_module_ids(id_input) -> set:
     return ids
 
 
-def _check_reachability(ip: str, tcp_port: int = None, check_ssh: bool = False, timeout=0.2) -> Tuple[bool, str]:
-    """Returns (is_up, status_string). If check_ssh is True, attempts to ping the machine BEHIND the gateway via SSH."""
-    if check_ssh:
-        # Pinging DAQ node behind gateway
-        res = subprocess.run(['ssh', '-o', f'ConnectTimeout={timeout}', '-o', 'BatchMode=yes', f'panoseti@{ip}', 'echo', '1'],
-                             capture_output=True)
-        return res.returncode == 0, f"Gateway DAQ Access ({ip})"
 
-    res = subprocess.run(['ping', '-c', '1', '-W', timeout, ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if res.returncode == 0:
-        return True, ""
 
+def _check_reachability(ip: str, tcp_port: int = None, check_ssh: bool = False) -> Tuple[bool, str]:
+    """Returns (is_up, status_string). Robust cross-platform ping and TCP/SSH fallbacks."""
+
+    # 1. SSH Gateway Check
+    if check_ssh and tcp_port:
+        # Pinging DAQ node behind gateway using specific port
+        cmd = ['ssh', '-p', str(tcp_port), '-o', 'ConnectTimeout=2', '-o', 'BatchMode=yes', f'panoseti@{ip}', 'echo',
+               '1']
+        res = subprocess.run(cmd, capture_output=True)
+        return res.returncode == 0, f"Gateway DAQ Access ({ip}:{tcp_port})"
+
+    # 2. Cross-platform ICMP Ping Check
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    try:
+        # Use Python's timeout instead of ping's OS-specific -W parameter
+        res = subprocess.run(['ping', param, '1', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             timeout=1.5)
+        if res.returncode == 0:
+            return True, ""
+    except subprocess.TimeoutExpired:
+        pass
+
+    # 3. TCP Port Fallback (Crucial for routers/gateways that block ICMP)
     if tcp_port is not None:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(timeout)
+                s.settimeout(1.0)
                 s.connect((ip, tcp_port))
             return True, ""
-        except socket.timeout:
+        except:
             pass
+
     return False, ""
 
 
@@ -516,8 +531,7 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
             f"\n[bold red]✖ Tier-1 Validation Failed: {t1_errors} configuration file(s) contained errors.[/bold red]")
         console.print("[red]Please fix the above schema errors before proceeding to Tier-2 checks.[/red]")
         return False
-
-        # 2. Tier 2: Global Cross-Configuration Validation
+    # 2. Tier 2: Global Cross-Configuration Validation
     console.print("\n[bold cyan]Running Tier-2 Global Cross-Checks...[/bold cyan]")
     global_validator = GlobalConfigValidator(validated_configs)
     if not global_validator.validate_all_rules():
@@ -525,13 +539,17 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
 
     # 3. Visual Topology Graph
     if graph:
-        print_topology_graph(validated_configs.get('obs'), validated_configs.get('daq'),
-                             validated_configs.get('network'))
+        print_topology_graph(
+            validated_configs.get('obs'),
+            validated_configs.get('daq'),
+            validated_configs.get('network')
+        )
 
     # 4. Network Ping Checks
     if check_network:
         if not perform_network_ping_sweep(validated_configs):
             all_passed = False
+
 
     if all_passed:
         console.print("\n[bold green]✅ ALL VALIDATION CHECKS PASSED.[/bold green] The observatory is ready.")

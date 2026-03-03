@@ -97,28 +97,38 @@ class DataConfigValidator(BaseModel):
 
     @model_validator(mode='after')
     def validate_dynamic_modes_and_interleave(self):
-        """Strictly validates extra keys to catch typos, and enforces interleave references."""
         dynamic_keys = []
+        ph_modes_dict = {}
 
-        # 1. Strictly parse dynamic keys
+        if self.pulse_height:
+            ph_modes_dict['pulse_height'] = self.pulse_height
+
+        # Global hardware check for the default modes
+        if self.image and self.pulse_height:
+            if self.pulse_height.two_pixel_trigger > 0 or self.pulse_height.three_pixel_trigger > 0:
+                raise ValueError(
+                    "Hardware Constraint Violation: Cannot enable root 'image' mode while "
+                    "root 'pulse_height' mode has two_pixel_trigger or three_pixel_trigger > 0."
+                )
+
         if self.model_extra:
             for key, val in self.model_extra.items():
                 if key.startswith('image_'):
                     try:
-                        ImageMode(**val)  # Parse to ensure no bad internal fields
+                        ImageMode(**val)
                         dynamic_keys.append(key)
                     except ValidationError as e:
                         raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
                 elif key.startswith('pulse_height_'):
                     try:
-                        PulseHeightMode(**val)
+                        ph_obj = PulseHeightMode(**val)
+                        ph_modes_dict[key] = ph_obj
                         dynamic_keys.append(key)
                     except ValidationError as e:
                         raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
                 else:
                     raise ValueError(f"Unrecognized configuration key or typo detected: '{key}'")
 
-        # 2. Check Interleave References
         if self.interleave and getattr(self.interleave, 'states', None):
             valid_image_modes = ['image'] + dynamic_keys
             valid_ph_modes = ['pulse_height'] + dynamic_keys
@@ -127,12 +137,27 @@ class DataConfigValidator(BaseModel):
                 m_conf = state.movie_mode_config
                 p_conf = state.pulse_height_mode_config
 
+                # Rule 1: No Double Nulls
+                if not m_conf and not p_conf:
+                    raise ValueError(
+                        f"Interleave state '{state.state_name}' has BOTH movie_mode and pulse_height_mode set to null. At least one must be active.")
+
                 if m_conf and m_conf not in valid_image_modes:
                     raise ValueError(f"Interleave state '{state.state_name}' references missing movie mode: '{m_conf}'")
 
                 if p_conf and p_conf not in valid_ph_modes:
                     raise ValueError(
                         f"Interleave state '{state.state_name}' references missing pulse height mode: '{p_conf}'")
+
+                # Rule 2: Hardware Mutual Exclusion
+                if m_conf and p_conf:
+                    ph_obj = ph_modes_dict.get(p_conf)
+                    if ph_obj and (ph_obj.two_pixel_trigger > 0 or ph_obj.three_pixel_trigger > 0):
+                        raise ValueError(
+                            f"Hardware Constraint Violation in interleave state '{state.state_name}': "
+                            f"Cannot enable movie-mode ('{m_conf}') while pulse height mode ('{p_conf}') "
+                            f"has two_pixel_trigger or three_pixel_trigger enabled."
+                        )
 
         return self
 
