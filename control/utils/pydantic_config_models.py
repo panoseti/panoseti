@@ -259,3 +259,16 @@ class DaemonConfigValidator(BaseStrictModel):
 
 class FirmwareConfigValidator(BaseModel):
     model_config = ConfigDict(extra='allow') # Allow 'qfp', 'bga', or future hardware variants
+
+# --- Quabo UIDs Config Models ---
+class QuaboUidEntry(BaseStrictModel):
+    uid: str = Field(..., description="Hex string of the Quabo UID. Empty string if offline.")
+
+class QuaboUidModule(BaseStrictModel):
+    quabos: List[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
+
+class QuaboUidDome(BaseStrictModel):
+    modules: List[QuaboUidModule]
+
+class QuaboUidsValidator(BaseStrictModel):
+    domes: List[QuaboUidDome]

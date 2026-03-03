@@ -4,7 +4,10 @@
 
 import os,sys,json
 import subprocess
+
 import socket
+import urllib.parse
+from typing import List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pydantic import ValidationError
 from rich.console import Console
@@ -315,227 +318,233 @@ def _expand_module_ids(id_input) -> set:
     return ids
 
 
-def print_topology_graph(obs_conf, daq_conf, net_conf):
-    """Generates an ASCII/Unicode visual tree of the data routing and hardware topology."""
-    if not obs_conf: return
+def _check_reachability(ip: str, tcp_port: int = None, check_ssh: bool = False, timeout=0.2) -> Tuple[bool, str]:
+    """Returns (is_up, status_string). If check_ssh is True, attempts to ping the machine BEHIND the gateway via SSH."""
+    if check_ssh:
+        # Pinging DAQ node behind gateway
+        res = subprocess.run(['ssh', '-o', f'ConnectTimeout={timeout}', '-o', 'BatchMode=yes', f'panoseti@{ip}', 'echo', '1'],
+                             capture_output=True)
+        return res.returncode == 0, f"Gateway DAQ Access ({ip})"
 
+    res = subprocess.run(['ping', '-c', '1', '-W', timeout, ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if res.returncode == 0:
+        return True, ""
+
+    if tcp_port is not None:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                s.connect((ip, tcp_port))
+            return True, ""
+        except socket.timeout:
+            pass
+    return False, ""
+
+
+def perform_network_ping_sweep(validated_configs: dict) -> bool:
+    console.print("[bold cyan]Running Parallel Network Ping Sweep...[/bold cyan]")
+    targets = set()
+
+    # Head Node
+    head_ip = validated_configs['daq'].get('head_node_ip_addr')
+    if head_ip: targets.add(('Head Node', head_ip, 22, False))
+
+    # WPS Power Strips
+    for dome in validated_configs['obs'].get('domes', []):
+        for mod in dome.get('modules', []):
+            wps_name = mod.get('wps')
+            if wps_name and wps_name in validated_configs['obs']:
+                wps_url = validated_configs['obs'][wps_name].get('url', '')
+                parsed = urllib.parse.urlparse(wps_url)
+                if parsed.hostname:
+                    targets.add((f"WPS ({wps_name})", parsed.hostname, 80, False))
+
+    # DAQ Nodes
+    pf_daq_map = {d.get('ip_addr'): d.get('port_forwarding', {}) for d in
+                  validated_configs['network'].get('daq_nodes', [])}
+    for daq in validated_configs['daq'].get('daq_nodes', []):
+        ip = daq.get('ip_addr')
+        pf = pf_daq_map.get(ip, {})
+        if pf.get('status'):
+            # Check gateway, AND attempt SSH through the gateway to the DAQ node
+            targets.add((f"DAQ Gateway ({ip})", pf.get('gw_ip'), pf.get('port', 22), True))
+        else:
+            targets.add(("DAQ Node", ip, 22, False))
+
+    # Modules
+    pf_mod_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in
+                  validated_configs['network'].get('modules', [])}
+    # Create mapping of IP to Dome Name for better labels
+    ip_to_dome = {m.get('ip_addr'): d.get('name', 'Unknown') for d in validated_configs['obs'].get('domes', []) for m in
+                  d.get('modules', [])}
+
+    for ip, dome_name in ip_to_dome.items():
+        pf = pf_mod_map.get(ip, {})
+        if pf.get('status'):
+            targets.add((f"Module Gateway ({dome_name})", pf.get('gw_ip'), 80, False))
+        else:
+            targets.add((f"Module ({dome_name})", ip, None, False))
+
+    all_passed = True
+    results = []
+    with ThreadPoolExecutor(max_workers=30) as executor:
+        future_to_target = {executor.submit(_check_reachability, ip, port, ssh): (desc, ip) for desc, ip, port, ssh in
+                            targets}
+        for future in as_completed(future_to_target):
+            desc, ip = future_to_target[future]
+            try:
+                is_up, extra = future.result()
+                results.append((desc, ip, is_up, extra))
+            except Exception:
+                results.append((desc, ip, False, ""))
+
+    results.sort(key=lambda x: (x[0], x[1]))
+    failures = 0
+    for desc, ip, is_up, extra in results:
+        disp = f"{desc} [{extra}]" if extra else desc
+        if is_up:
+            console.print(f"  [green]✔ {disp:<30} ({ip}) is UP[/green]")
+        else:
+            console.print(f"  [red]✖ {disp:<30} ({ip}) is DOWN[/red]")
+            failures += 1
+            all_passed = False
+
+    if failures == 0: console.print("[green]All network targets reachable.[/green]\n")
+    return all_passed
+
+
+def print_topology_graph(obs_conf, daq_conf, net_conf):
     console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
 
     obs_name = obs_conf.get('name', 'Unknown Observatory')
-    root = Tree(f"[bold magenta]Observatory: {obs_name}[/bold magenta]")
+    root = Tree(f"Observatory: {obs_name}")
 
-    # Map network configs for fast lookup
     net_module_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in net_conf.get('modules', [])}
-
-    # Pre-parse DAQ ranges using our updated _expand_module_ids function
     daq_map = {}
     for daq in daq_conf.get('daq_nodes', []):
-        daq_ids = _expand_module_ids(daq.get('module_ids', ''))
-        for mod_id in daq_ids:
+        for mod_id in _expand_module_ids(daq.get('module_ids', '')):
             daq_map[mod_id] = daq
+
+    # Group by Gateway
+    gw_tree_map = {}
+    local_tree = root.add("Local Direct Network")
 
     for dome in obs_conf.get('domes', []):
         d_name = dome.get('name', 'Unknown Dome')
-        dome_node = root.add(f"[bold yellow]Dome: {d_name}[/bold yellow]")
 
         for mod in dome.get('modules', []):
             m_ip = mod.get('ip_addr')
             m_hw = mod.get('quabo_version', 'unknown')
             m_timing = mod.get('timing_mode', 'wr')
 
-            # Use the existing codebase utility to get the official Module ID
             try:
                 mod_id = ip_addr_to_module_id(m_ip)
-            except Exception as e:
+            except:
                 mod_id = -1
 
-            # Lookup the destination DAQ based on the official ID
             dest_daq = daq_map.get(mod_id)
-            if dest_daq:
-                daq_str = f"{dest_daq.get('ip_addr')} (Interface: {dest_daq.get('bindhost', 'eth0')})"
-            else:
-                daq_str = "[red]UNMAPPED - No matching DAQ module_ids[/red]"
+            daq_str = f"{dest_daq.get('ip_addr')} ({dest_daq.get('bindhost', 'eth0')})" if dest_daq else "UNMAPPED"
 
-            # Check network routing
             pf = net_module_map.get(m_ip, {})
-            is_forwarded = pf.get('status') is True
-            gw_ip = pf.get('gw_ip', 'Local Direct')
-            cmd_ports = pf.get('cmd_port', [60000, 60000, 60000, 60000])  # Fallback to default UDP port
+            gw_ip = pf.get('gw_ip') if pf.get('status') else None
 
-            # Display the resolved Module ID so the observer can trace the DAQ routing
-            mod_node = dome_node.add(
+            # Decide which tree branch to add this to
+            if gw_ip:
+                if gw_ip not in gw_tree_map:
+                    gw_tree_map[gw_ip] = root.add(f"Gateway: [green]{gw_ip}[/green]")
+                target_node = gw_tree_map[gw_ip].add(f"Dome: {d_name}")
+            else:
+                target_node = local_tree.add(f"Dome: {d_name}")
+
+            cmd_ports = pf.get('cmd_port', [60000] * 4)
+            mod_node = target_node.add(
                 f"Module {m_ip} [ID: {mod_id}] [HW: {m_hw}] [Timing: {m_timing}] -> Stream DAQ: [cyan]{daq_str}[/cyan]")
+
             for q in range(4):
                 base_ip_parts = m_ip.split('.')
-                if len(base_ip_parts) == 4:
-                    q_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{int(base_ip_parts[3]) + q}"
-                else:
-                    q_ip = "Invalid IP Format"
-
-                real_ip = gw_ip if is_forwarded else q_ip
+                q_ip = f"{base_ip_parts[0]}.{base_ip_parts[1]}.{base_ip_parts[2]}.{int(base_ip_parts[3]) + q}" if len(
+                    base_ip_parts) == 4 else "Invalid"
+                real_ip = gw_ip if gw_ip else q_ip
                 real_port = cmd_ports[q] if len(cmd_ports) > q else 60000
-
-                route_str = f"──[Tunnel: [green]{gw_ip}[/green]]──> [magenta]{real_ip}:{real_port}[/magenta]" if is_forwarded else f"──[Direct]──> [magenta]{real_ip}:{real_port}[/magenta]"
-
-                mod_node.add(f"Quabo {q} ({q_ip}) {route_str}")
+                mod_node.add(f"Quabo {q} ({q_ip}) -> {real_ip}:{real_port}")
 
     console.print(root)
     print("\n")
 
-## Test network connectivity
-
-
-
-def _check_reachability(ip: str, tcp_port: int = None) -> bool:
-    """Check if an IP is reachable via ICMP ping, or optional TCP port check."""
-    # 1. Try standard ICMP Ping first
-    res = subprocess.run(['ping', '-c', '1', '-W', '1', ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if res.returncode == 0:
-        return True
-
-    # 2. If ICMP fails (e.g., router blocks it), try TCP port if provided
-    if tcp_port is not None:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(1.0)
-                s.connect((ip, tcp_port))
-            return True
-        except (socket.timeout, ConnectionRefusedError, OSError):
-            pass
-
-    # 3. As a final fallback for gateways (often running web servers), try TCP 80
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1.0)
-            s.connect((ip, 80))
-        return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
-        pass
-
-    return False
-
-
-def perform_network_ping_sweep(validated_configs: dict) -> bool:
-    """Parses required target IPs from configs and pings them concurrently."""
-    console.print("[bold cyan]Running Parallel Network Ping Sweep...[/bold cyan]")
-
-    # Now storing tuples of (Description, IP, TCP_Fallback_Port)
-    targets_to_ping = set()
-
-    head_ip = validated_configs['daq'].get('head_node_ip_addr')
-    if head_ip:
-        targets_to_ping.add(('Head Node', head_ip, 22))
-
-    pf_daq_map = {d.get('ip_addr'): d.get('port_forwarding', {}) for d in
-                  validated_configs['network'].get('daq_nodes', [])}
-    for daq in validated_configs['daq'].get('daq_nodes', []):
-        daq_ip = daq.get('ip_addr')
-        pf = pf_daq_map.get(daq_ip, {})
-        if pf.get('status') is True:
-            targets_to_ping.add((f"DAQ Gateway ({daq_ip})", pf.get('gw_ip'), pf.get('port', 22)))
-        else:
-            targets_to_ping.add(("DAQ Node", daq_ip, 22))
-
-    pf_mod_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in
-                  validated_configs['network'].get('modules', [])}
-    for dome in validated_configs['obs'].get('domes', []):
-        for mod in dome.get('modules', []):
-            m_ip = mod.get('ip_addr')
-            pf = pf_mod_map.get(m_ip, {})
-            if pf.get('status') is True:
-                targets_to_ping.add((f"Module Gateway ({m_ip})", pf.get('gw_ip'), 80))
-            else:
-                targets_to_ping.add(("Module Base IP", m_ip, None))
-
-    all_passed = True
-    ping_failures = 0
-    results = []
-
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        future_to_target = {
-            executor.submit(_check_reachability, ip, port): (desc, ip)
-            for desc, ip, port in targets_to_ping if ip
-        }
-
-        for future in as_completed(future_to_target):
-            desc, ip = future_to_target[future]
-            try:
-                is_up = future.result()
-                results.append((desc, ip, is_up))
-            except Exception:
-                results.append((desc, ip, False))
-
-    results.sort(key=lambda x: (x[0], x[1]))
-
-    for desc, ip, is_up in results:
-        if is_up:
-            console.print(f"  [green]✔ {desc:<25} ({ip}) is UP[/green]")
-        else:
-            console.print(f"  [red]✖ {desc:<25} ({ip}) is DOWN / UNREACHABLE[/red]")
-            ping_failures += 1
-            all_passed = False
-
-    if ping_failures == 0:
-        console.print("[green]All network targets reachable.[/green]\n")
-    else:
-        console.print(f"[red]{ping_failures} network target(s) failed ping sweep.[/red]\n")
-
-    return all_passed
-
 
 ## Apply global validation
 
-def validate_all(check_network: bool = False, debug: bool = False, graph: bool = False) -> bool:
+def validate_all(check_network: bool = True, debug: bool = False, graph: bool = False) -> bool:
     """
     Master validation orchestrator.
-    Now supports Global Tier-2 validation and topology graphing.
+    Batches Tier-1 errors, supports Global Tier-2 validation, and topology graphing.
     """
     global IS_CLI_VALIDATION, DEBUG_VALIDATION
     IS_CLI_VALIDATION = True
     DEBUG_VALIDATION = debug
 
     all_passed = True
-    ips_to_ping = set()
     validated_configs = {}
 
-    console.print(Panel.fit("[bold cyan]Starting PanoSETI Pre-Flight Validation[/bold cyan]"))
+    console.print(Panel.fit("[bold cyan]Starting PANOSETI Configuration Validation[/bold cyan]"))
 
-    # 1. Tier 1: Strict File Validation (Existing Logic)
-    try:
-        validated_configs['firmware'] = get_firmware_config()
-        validated_configs['daemons'] = get_daemons_config()
-        validated_configs['obs'] = get_obs_config()
-        validated_configs['network'] = get_network_config()
-        validated_configs['daq'] = get_daq_config()
-        validated_configs['data'] = get_data_config()
-        console.print("[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
-    except Exception as e:
-        console.print(f"[red]✖ Tier-1 Validation Failed: {e}[/red]")
-        all_passed = False
+    # 1. Tier 1: Strict File Validation (Batched)
+    t1_errors = 0
+    loaders = [
+        ('firmware', get_firmware_config),
+        ('daemons', get_daemons_config),
+        ('obs', get_obs_config),
+        ('network', get_network_config),
+        ('daq', get_daq_config),
+        ('data', get_data_config)
+    ]
 
-    # 2. Tier 2: Global Cross-Configuration Validation
-    if all_passed:
-        console.print("\n[bold cyan]Running Tier-2 Global Cross-Checks...[/bold cyan]")
-        global_validator = GlobalConfigValidator(validated_configs)
-        if not global_validator.validate_all_rules():
+    for key, loader in loaders:
+        try:
+            validated_configs[key] = loader()
+        except Exception:
+            # The specific error details are printed by load_and_validate.
+            # We just catch it here so we don't crash, allowing the loop to continue.
+            t1_errors += 1
             all_passed = False
 
+    if t1_errors == 0:
+        console.print("[green]✔ Tier-1 File Syntax & Schema Validation Passed.[/green]")
+    else:
+        # If Tier-1 fails, we cannot proceed to Tier-2 because the data structures are missing/corrupt.
+        console.print(
+            f"\n[bold red]✖ Tier-1 Validation Failed: {t1_errors} configuration file(s) contained errors.[/bold red]")
+        console.print("[red]Please fix the above schema errors before proceeding to Tier-2 checks.[/red]")
+        return False
+
+        # 2. Tier 2: Global Cross-Configuration Validation
+    console.print("\n[bold cyan]Running Tier-2 Global Cross-Checks...[/bold cyan]")
+    global_validator = GlobalConfigValidator(validated_configs)
+    if not global_validator.validate_all_rules():
+        all_passed = False
+
     # 3. Visual Topology Graph
-    if all_passed and graph:
-        print_topology_graph(validated_configs['obs'], validated_configs['daq'], validated_configs['network'])
+    if graph:
+        print_topology_graph(validated_configs.get('obs'), validated_configs.get('daq'),
+                             validated_configs.get('network'))
 
     # 4. Network Ping Checks
     if check_network:
         if not perform_network_ping_sweep(validated_configs):
             all_passed = False
 
-    return all_passed
+    if all_passed:
+        console.print("\n[bold green]✅ ALL VALIDATION CHECKS PASSED.[/bold green] The observatory is ready.")
+    else:
+        console.print(
+            "\n[bold red]❌ VALIDATION FAILED.[/bold red] Please review the errors above before observing.")
 
+    return all_passed
 
 def load_and_validate(validator_class, filename, dir, config_name, preprocessor=None):
     """
     Unified loader: reads JSON, applies runtime preprocessing, validates against Pydantic models.
-    Only prints UI elements if the explicit CLI validator is running.
+    Batches errors by raising Exceptions instead of immediately exiting the program.
     """
     path = os.path.join(dir, filename)
 
@@ -545,10 +554,10 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
     if not os.path.exists(path):
         if IS_CLI_VALIDATION:
             console.print(f"[bold red][FAIL][/bold red] {filename} not found.")
+            console.print(f"Target: {config_name} - [red]1 Error(s), 0 Warning(s)[/red]")
         if RAISE_VALIDATION_ERRORS:
             raise FileNotFoundError(f"{path} not found.")
-        else:
-            check_config_file(filename, dir)
+        raise ValueError(f"Missing file: {filename}")
 
     # Symlink printing logic
     if IS_CLI_VALIDATION:
@@ -559,8 +568,16 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
             console.print(f"[dim]File path:[/dim] {os.path.abspath(path)}")
 
     # 1. Load Data
-    with open(path, 'r') as f:
-        raw_data = json.load(f)
+    try:
+        with open(path, 'r') as f:
+            raw_data = json.load(f)
+    except json.JSONDecodeError as e:
+        console.print(f"\n[bold red][FAIL] JSON Parsing Error in {config_name} ({filename}):[/bold red] {e}")
+        if IS_CLI_VALIDATION:
+            console.print(f"Target: {config_name} - [red]1 Error(s), 0 Warning(s)[/red]")
+        if RAISE_VALIDATION_ERRORS:
+            raise e
+        raise ValueError(f"JSON Parse Error in {filename}")
 
     # 2. Preprocess (e.g. assign_numbers, expand_ranges)
     if preprocessor:
@@ -571,35 +588,41 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
         validated = validator_class(**raw_data)
 
         if IS_CLI_VALIDATION:
-            console.print("[bold green][OK][/bold green] Passed validation.")
+            console.print("[bold green][OK][/bold green] Passed validation (0 Errors, 0 Warnings).")
 
         if IS_CLI_VALIDATION and DEBUG_VALIDATION:
             console.print("\n[dim]Validated Configuration Structure:[/dim]")
             pprint(validated.model_dump(exclude_unset=True), expand_all=True)
-
         return validated.model_dump(mode='json', exclude_unset=True)
 
     except ValidationError as e:
+        err_count = len(e.errors())
         console.print(f"\n[bold red][FAIL] Schema Validation Error in {config_name} ({filename}):[/bold red]")
         for err in e.errors():
             loc = " -> ".join([str(l) for l in err["loc"]])
             msg = err["msg"]
             console.print(f"  [bold red]Field:[/bold red] {loc}")
             console.print(f"  [bold red]Error:[/bold red] {msg}\n")
-
         if IS_CLI_VALIDATION and DEBUG_VALIDATION:
             console.print("[dim]Raw Config Dictionary (for debugging):[/dim]")
             pprint(raw_data, expand_all=True)
-
-        if RAISE_VALIDATION_ERRORS:
-            raise e
-        sys.exit(1)
-
+        if IS_CLI_VALIDATION:
+            console.print(f"Target: {config_name} - [red]{err_count} Error(s), 0 Warning(s)[/red]")
+            # 'from None' suppresses the double traceback in Python
+            raise ValueError(f"Pydantic Validation failed for {config_name}") from None
+        else:
+            if RAISE_VALIDATION_ERRORS:
+                raise e
+            sys.exit(1)  # Clean exit for normal runs, no traceback
     except json.JSONDecodeError as e:
         console.print(f"\n[bold red][FAIL] JSON Parsing Error in {config_name} ({filename}):[/bold red] {e}")
-        if RAISE_VALIDATION_ERRORS:
-            raise e
-        sys.exit(1)
+        if IS_CLI_VALIDATION:
+            console.print(f"Target: {config_name} - [red]1 Error(s), 0 Warning(s)[/red]")
+            raise ValueError(f"JSON Parse Error in {filename}") from None
+        else:
+            if RAISE_VALIDATION_ERRORS:
+                raise e
+            sys.exit(1)
 
 
 

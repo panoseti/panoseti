@@ -820,6 +820,20 @@ def main():
         parser.print_help()
         sys.exit(1)
     args = parser.parse_args()
+
+    # Validate arguments before loading config files to check for invalid config before any load attempts
+    if args.validate is not None:
+        modifiers = args.validate
+        debug_mode = 'debug' in modifiers
+        network_mode = 'network' in modifiers
+        graph_mode = 'graph' in modifiers
+
+        # Run the comprehensive check and exit gracefully!
+        passed = config_file.validate_all(check_network=network_mode, debug=debug_mode, graph=graph_mode)
+        if not passed:
+            sys.exit(1)
+        sys.exit(0)
+
     # load config files
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
@@ -883,17 +897,7 @@ def main():
         do_stop_interleave()
     elif args.dry_run_interleave:
         do_dry_run_interleave()
-    if args.validate is not None:
-        modifiers = args.validate
-        debug_mode = 'debug' in modifiers
-        network_mode = 'network' in modifiers
-        graph_mode = 'graph' in modifiers
 
-        # Run the comprehensive check and exit gracefully!
-        passed = config_file.validate_all(check_network=network_mode, debug=debug_mode, graph=graph_mode)
-        if not passed:
-            sys.exit(1)
-        sys.exit(0)
 
 
 if __name__ == "__main__":

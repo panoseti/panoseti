@@ -5,13 +5,12 @@ Executes Tier-2 cross-configuration validations to ensure physical, network,
 and hardware states are cohesive across the entire PanoSETI observatory.
 """
 
-import math
 import os
 import shutil
-from typing import Dict, Any, List
+import subprocess
+from typing import Dict, Any, List, Tuple
 from haversine import haversine, Unit
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
 console = Console()
@@ -19,46 +18,38 @@ console = Console()
 MAX_DOME_BASELINE_KM = 1
 
 class ValidationReport:
-    """Aggregates errors and warnings for a unified pre-flight report."""
+    """Aggregates tests for a unified pre-flight report."""
+
     def __init__(self):
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
+        self.tests: List[Dict[str, str]] = []
+        self.has_errors = False
 
-    def add_error(self, msg: str):
-        self.errors.append(msg)
-
-    def add_warning(self, msg: str):
-        self.warnings.append(msg)
-
-    def has_errors(self) -> bool:
-        return len(self.errors) > 0
+    def add_test(self, name: str, status: str, info: str = ""):
+        self.tests.append({"name": name, "status": status, "info": info})
+        if status == "ERROR":
+            self.has_errors = True
 
     def print_report(self):
-        """Prints a nicely formatted table of all findings to the console."""
-        if not self.errors and not self.warnings:
-            console.print(Panel("[bold green]All Global Pre-Flight Checks Passed![/bold green]", border_style="green"))
-            return
+        table = Table(title="Global Tier-2 Validation Report", show_lines=True)
+        table.add_column("Test Name", style="cyan")
+        table.add_column("Status", justify="center")
+        table.add_column("Details")
 
-        table = Table(title="Global Configuration Validation Report", show_lines=True)
-        table.add_column("Severity", justify="center", style="bold")
-        table.add_column("Message")
+        for t in self.tests:
+            if t["status"] == "PASS":
+                status_fmt = "[green]PASS[/green]"
+            elif t["status"] == "WARN":
+                status_fmt = "[yellow]WARN[/yellow]"
+            else:
+                status_fmt = "[red]ERROR[/red]"
 
-        for err in self.errors:
-            table.add_row("[red]ERROR[/red]", f"[red]{err}[/red]")
-        for warn in self.warnings:
-            table.add_row("[yellow]WARNING[/yellow]", f"[yellow]{warn}[/yellow]")
+            table.add_row(t["name"], status_fmt, t["info"])
 
         console.print(table)
 
 
 class GlobalConfigValidator:
-    """
-    Cross-references all loaded PanoSETI configurations.
-    Methods starting with '_check_' are automatically executed.
-    """
     def __init__(self, validated_configs: Dict[str, Any]):
-        # These are assumed to be the raw dictionaries that have already
-        # passed Tier-1 Pydantic validation.
         self.obs_conf = validated_configs.get('obs', {})
         self.data_conf = validated_configs.get('data', {})
         self.daq_conf = validated_configs.get('daq', {})
@@ -67,172 +58,200 @@ class GlobalConfigValidator:
         self.report = ValidationReport()
 
     def validate_all_rules(self) -> bool:
-        """Executes all rule methods and prints the report."""
-        rule_methods = [getattr(self, func) for func in dir(self) if callable(getattr(self, func)) and func.startswith("_check_")]
+        rule_methods = [getattr(self, func) for func in dir(self) if
+                        callable(getattr(self, func)) and func.startswith("_check_")]
         for rule in rule_methods:
             rule()
-
         self.report.print_report()
-        return not self.report.has_errors()
+        return not self.report.has_errors
 
     def _check_science_guardrails(self):
-        """Warns if artificial signals are enabled during a non-engineering run."""
-        if not self.data_conf:
-            return
-
         run_type = self.data_conf.get('run_type', '').lower()
         if "eng" not in run_type:
             flash_on = 'flash_params' in self.data_conf
             stim_on = 'stim_params' in self.data_conf
-
             if flash_on or stim_on:
-                self.report.add_warning(
-                    f"Non-engineering run_type '{run_type}' detected, but flash_params or stim_params are ENABLED. "
-                    "This will inject artificial signals into science data."
-                )
+                self.report.add_test("Science Guardrails", "WARN",
+                                     f"Run type '{run_type}' has flash/stim enabled. Artificial signals will be injected.")
+                return
+        self.report.add_test("Science Guardrails", "PASS", f"Run type: {run_type}")
 
     def _check_geospatial_coherence(self):
-        """Ensures all domes baselines in the observatory are at most {MAX_DOME_BASELINE_KM} kilometers."""
-        if not self.obs_conf or 'domes' not in self.obs_conf:
-            return
-
-        domes = self.obs_conf['domes']
+        domes = self.obs_conf.get('domes', [])
         if len(domes) < 2:
+            self.report.add_test("Geospatial Coherence", "PASS", "Only one dome defined.")
             return
 
-        coords = [(d['name'], d['obslat'], d['obslon']) for d in domes if 'obslat' in d and 'obslon' in d]
-
+        coords = [(d['name'], d.get('obslat'), d.get('obslon')) for d in domes if 'obslat' in d]
+        max_dist = 0
         for i in range(len(coords)):
             for j in range(i + 1, len(coords)):
-                name1, lat1, lon1 = coords[i]
-                name2, lat2, lon2 = coords[j]
+                dist = haversine((coords[i][1], coords[i][2]), (coords[j][1], coords[j][2]), unit=Unit.KILOMETERS)
+                max_dist = max(max_dist, dist)
 
-                # Calculate distance in kilometers
-                distance = haversine((lat1, lon1), (lat2, lon2), unit=Unit.KILOMETERS)
-
-                if distance > MAX_DOME_BASELINE_KM:
-                    self.report.add_error(
-                        f"Geospatial anomaly: Domes '{name1}'\t and '{name2}'\t are \t{distance:.3f} km apart "
-                        f"(> {MAX_DOME_BASELINE_KM:.3f}km limit). "
-                        "Check for missing errors in the GPS coordinates."
-                    )
+        if max_dist > MAX_DOME_BASELINE_KM:
+            self.report.add_test("Geospatial Coherence", "ERROR",
+                                 f"Domes are {max_dist:.2f} km apart (> {MAX_DOME_BASELINE_KM} km max baseline). Check decimal places.")
+        else:
+            self.report.add_test("Geospatial Coherence", "PASS", f"Max baseline: {max_dist:.2f} km")
 
     def _check_network_tunneling(self):
-        """Ensures every module in obs_config has explicit mapping if port forwarding is needed."""
-        if not self.obs_conf or not self.net_conf:
-            return
+        obs_ips = {m.get('ip_addr') for d in self.obs_conf.get('domes', []) for m in d.get('modules', [])}
+        net_mapped_ips = {m.get('ip_addr') for m in self.net_conf.get('modules', []) if
+                          m.get('port_forwarding', {}).get('status')}
 
-        obs_ips = []
-        for dome in self.obs_conf.get('domes', []):
-            for mod in dome.get('modules', []):
-                obs_ips.append(mod.get('ip_addr'))
-
-        net_modules = self.net_conf.get('modules', [])
-        net_mapped_ips = {m.get('ip_addr') for m in net_modules if m.get('port_forwarding', {}).get('status') is True}
-
-        # If network tunneling is entirely empty, assume direct local network and skip
-        if not net_modules:
-            return
-
-        for ip in obs_ips:
-            if ip not in net_mapped_ips:
-                self.report.add_warning(
-                    f"Module IP {ip} defined in obs_config but lacks active port_forwarding in network_config. "
-                    "If on a remote subnet, commands to this module will fail silently."
-                )
+        missing = obs_ips - net_mapped_ips
+        if missing and self.net_conf.get('modules'):
+            self.report.add_test("Network Tunneling Mapping", "WARN",
+                                 f"Modules lacking port forwarding: {', '.join(missing)}")
+        else:
+            self.report.add_test("Network Tunneling Mapping", "PASS", "All modules accounted for in routing.")
 
     def _check_hardware_firmware(self):
-        """Ensures firmware binaries exist for the hardware versions specified in the domes."""
-        if not self.obs_conf or not self.firmware_conf:
-            return
-
         required_hw = set()
-        for dome in self.obs_conf.get('domes', []):
-            for mod in dome.get('modules', []):
-                qv = mod.get('quabo_version')
+        for d in self.obs_conf.get('domes', []):
+            for m in d.get('modules', []):
+                qv = m.get('quabo_version')
                 if isinstance(qv, list):
                     required_hw.update(qv)
-                elif isinstance(qv, str):
+                else:
                     required_hw.add(qv)
 
-        for hw_version in required_hw:
-            if hw_version not in self.firmware_conf:
-                self.report.add_error(
-                    f"Hardware mismatch: obs_config requires '{hw_version}' firmware, but it is missing from firmware.json."
-                )
+        missing = required_hw - set(self.firmware_conf.keys())
+        if missing:
+            self.report.add_test("Firmware Verification", "ERROR", f"Missing binaries for HW types: {missing}")
+        else:
+            self.report.add_test("Firmware Verification", "PASS", "Binaries exist for all active hardware.")
 
     def _check_overvoltage_consensus(self):
-        """Ensures obs_config and data_config agree on the physical overvoltage."""
-        if not self.obs_conf or not self.data_conf:
-            return
-
         obs_ov = self.obs_conf.get('detector_overvoltage')
         data_ov = self.data_conf.get('detector_overvoltage')
-
         if obs_ov is not None and data_ov is not None and obs_ov != data_ov:
-            self.report.add_error(
-                f"Overvoltage mismatch: obs_config says {obs_ov}V, but data_config says {data_ov}V. "
-                "This will result in invalid calibrations."
-            )
+            self.report.add_test("Overvoltage Consensus", "ERROR",
+                                 f"obs_config ({obs_ov}V) != data_config ({data_ov}V)")
+        else:
+            self.report.add_test("Overvoltage Consensus", "PASS", f"Voltage aligned at {obs_ov}V")
 
-    def _check_disk_space(self):
-        """Validates head node data directory capacity and acquisition rate requirements."""
-        if not self.daq_conf or not self.data_conf:
-            return
+    def _check_port_collisions(self):
+        """Ensures multiple modules sharing a Gateway IP do not use overlapping forwarded ports."""
+        gw_ports = {}
+        for m in self.net_conf.get('modules', []):
+            pf = m.get('port_forwarding', {})
+            if pf.get('status'):
+                gw = pf.get('gw_ip')
+                ports = pf.get('cmd_port', []) + pf.get('reboot_port', [])
+                if gw not in gw_ports:
+                    gw_ports[gw] = set()
+                for p in ports:
+                    if p in gw_ports[gw]:
+                        self.report.add_test("Port Collision", "ERROR",
+                                             f"Gateway {gw} has multiple modules attempting to forward port {p}.")
+                        return
+                    gw_ports[gw].add(p)
+        self.report.add_test("Port Collision", "PASS", "No forwarded port overlaps detected on gateways.")
 
-        head_dir = self.daq_conf.get('head_node_data_dir')
-        if not head_dir:
-            return
+    # --- NEW TEST 2: DAQ Assignment Overlap Check ---
+    def _check_daq_assignment_overlap(self):
+        """Ensures a single module ID is not being actively listened to by multiple DAQ nodes."""
+        from .config_file import _expand_module_ids
+        seen_ids = set()
+        for daq in self.daq_conf.get('daq_nodes', []):
+            ids = _expand_module_ids(daq.get('module_ids', ''))
+            overlap = seen_ids.intersection(ids)
+            if overlap:
+                self.report.add_test("DAQ Overlap", "ERROR",
+                                     f"Module IDs {overlap} are assigned to multiple DAQ nodes!")
+                return
+            seen_ids.update(ids)
+        self.report.add_test("DAQ Overlap", "PASS", "No overlapping module_ids across DAQ nodes.")
 
-        # We assume the code is running on the head node machine
-        if not os.path.exists(head_dir):
-            self.report.add_warning(
-                f"Head node data directory '{head_dir}' does not exist on this machine. Cannot check disk space.")
-            return
+    def _estimate_data_usage(self) -> Tuple[float, float, str]:
+        """Returns (TB_per_hour, total_estimated_TB, formula_string)"""
+        num_modules = sum(len(d.get('modules', [])) for d in self.obs_conf.get('domes', []))
+        img_conf = self.data_conf.get('image', {})
+        if num_modules == 0 or not img_conf: return 0.0, 0.0, "N/A"
 
-        try:
-            total, used, free = shutil.disk_usage(head_dir)
-        except Exception as e:
-            self.report.add_warning(f"Failed to check disk space for '{head_dir}': {e}")
-            return
-
-        free_tb = free / (1024 ** 4)  # Convert bytes to Terabytes
-
-        if free_tb < 1.0:
-            self.report.add_warning(
-                f"Head node disk space is critically low: {free_tb:.2f} TB free (< 1.0 TB safe limit).")
-
-        # --- Compute Estimated Data Requirements (Image Mode) ---
-        num_modules = sum(len(dome.get('modules', [])) for dome in self.obs_conf.get('domes', []))
-        if num_modules == 0:
-            return
-
-        img_conf = self.data_conf.get('image')
-        if not img_conf:
-            return  # Only estimating for active image modes
-
-        integration_usec = img_conf.get('integration_time_usec', 100000)
+        int_usec = img_conf.get('integration_time_usec', 100000)
         nsum = img_conf.get('nsum', 1)
-        sample_size_bits = img_conf.get('quabo_sample_size', 16)  # default 16-bit
+        bytes_pp = img_conf.get('quabo_sample_size', 16) / 8
 
-        if integration_usec == 0 or nsum == 0:
+        fps = 1_000_000 / (int_usec * nsum)
+        tb_per_hr = (fps * 4 * 1024 * bytes_pp * 3600 * num_modules) / (1024 ** 4)
+        total_tb = tb_per_hr * 8  # Assume 8 hour run
+
+        formula = f"({fps:.1f}fps * 4q * 1024px * {bytes_pp}B * 3600s * {num_modules}m) / 1024^4"
+        return tb_per_hr, total_tb, formula
+
+    def _check_headnode_disk_space(self):
+        head_dir = self.daq_conf.get('head_node_data_dir')
+        if not head_dir or not os.path.exists(head_dir):
+            self.report.add_test("Headnode Disk Space", "WARN", f"Path '{head_dir}' missing or unreachable.")
             return
 
-        # Math: Frames Per Second -> Bytes Per Frame -> Total MB/s -> TB/hour
-        fps = 1_000_000 / (integration_usec * nsum)
-        bytes_per_pixel = sample_size_bits / 8
-        bytes_per_frame = (32 * 32) * bytes_per_pixel  # 1024 pixels per Quabo
-        bytes_per_sec_per_module = fps * 4 * bytes_per_frame  # 4 Quabos per module
+        total, used, free = shutil.disk_usage(head_dir)
+        free_tb = free / (1024 ** 4)
 
-        total_tb_per_hour = (bytes_per_sec_per_module * num_modules * 3600) / (1024 ** 4)
+        tb_per_hr, est_total, formula = self._estimate_data_usage()
 
-        # Calculate for a standard 8-hour observing night
-        assumed_hours = 8
-        estimated_run_tb = total_tb_per_hour * assumed_hours
+        msg = f"Available: {free_tb:.2f} TB. Est: {tb_per_hr:.3f} TB/hr. Formula: {formula}"
+        if est_total > 0 and (free_tb - est_total) <= 0:
+            self.report.add_test("Headnode Disk Space", "ERROR", f"INSUFFICIENT SPACE! {msg}")
+        elif free_tb < 1.0:
+            self.report.add_test("Headnode Disk Space", "WARN", f"Low Space! {msg}")
+        else:
+            self.report.add_test("Headnode Disk Space", "PASS", msg)
 
-        if (free_tb - estimated_run_tb) < 1.0:
-            self.report.add_warning(
-                f"Data acquisition estimate: {total_tb_per_hour:.3f} TB/hr for {num_modules} modules in image mode. "
-                f"An {assumed_hours}-hour run requires {estimated_run_tb:.2f} TB. "
-                f"This leaves the disk with < 1TB of safe margin ({free_tb - estimated_run_tb:.2f} TB remaining)."
-            )
+    def _check_daqnode_disk_space(self, timeout=0.2):
+        """Uses SSH to check the specific data volume on each DAQ node."""
+        failures = []
+        tb_per_hr, est_total, _ = self._estimate_data_usage()
+
+        for daq in self.daq_conf.get('daq_nodes', []):
+            ip = daq.get('ip_addr')
+            usr = daq.get('username', 'panoseti')
+            data_dir = daq.get('data_dir')
+
+            # Executing df over SSH
+            cmd = ['ssh', '-o', f'ConnectTimeout={timeout}', '-o', 'BatchMode=yes', f'{usr}@{ip}', 'df', '-k', data_dir]
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True)
+                if res.returncode == 0:
+                    # Output example: Filesystem 1K-blocks Used Available Use% Mounted on
+                    lines = res.stdout.strip().split('\n')
+                    if len(lines) > 1:
+                        parts = lines[1].split()
+                        free_kb = int(parts[3])
+                        free_tb = free_kb / (1024 ** 3)
+
+                        # DAQ nodes only store a fraction of the data based on assigned modules.
+                        # For simplicity, we ensure they at least have the total run's space.
+                        if est_total > 0 >= (free_tb - est_total):
+                            failures.append(f"{ip}: INSUFFICIENT ({free_tb:.2f} TB free)")
+                        elif free_tb < 1.0:
+                            failures.append(f"{ip}: LOW ({free_tb:.2f} TB free)")
+            except Exception:
+                pass  # Skip if SSH fails, ping sweep handles reachability
+
+        if failures:
+            self.report.add_test("DAQ Node Disk Space", "WARN", " | ".join(failures))
+        else:
+            self.report.add_test("DAQ Node Disk Space", "PASS", "All reachable DAQ nodes have sufficient space.")
+
+    def _check_wps_references(self):
+        """Ensures that all Web Power Switches referenced by modules are defined in obs_config."""
+        if not self.obs_conf: return
+
+        missing_wps = set()
+        for d in self.obs_conf.get('domes', []):
+            for m in d.get('modules', []):
+                # The default is 'wps' if not specified
+                wps_name = m.get('wps', 'wps')
+                if wps_name not in self.obs_conf:
+                    missing_wps.add(wps_name)
+
+        if missing_wps:
+            self.report.add_test("WPS Reference Map", "ERROR",
+                                 f"Modules reference undefined WPS units: {', '.join(missing_wps)}")
+        else:
+            self.report.add_test("WPS Reference Map", "PASS", "All referenced WPS units exist in obs_config.")
+
