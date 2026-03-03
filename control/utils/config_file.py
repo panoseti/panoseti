@@ -176,11 +176,11 @@ def get_quabo_uids():
     if not os.path.exists(quabo_uids_filename):
         print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
         sys.exit()
-    # with open(quabo_uids_filename) as f:
-    #     s = f.read()
-    # quabo_uids_conf = json.loads(s)
-    # assign_numbers(quabo_uids_conf)
-    return load_and_validate(QuaboUidsValidator, quabo_uids_filename, dir, "UID Config", assign_numbers)
+    with open(quabo_uids_filename) as f:
+        s = f.read()
+    quabo_uids_conf = json.loads(s)
+    assign_numbers(quabo_uids_conf)
+    # return load_and_validate(QuaboUidsValidator, quabo_uids_filename, dir, "UID Config", assign_numbers)
     return quabo_uids_conf
 
 # get detector info as an array indexed by serialno
