@@ -490,7 +490,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
 # set CHANMASK and GOEMASK for modules
 #
 MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
-def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=True):
+def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=False):
     logger = logging.getLogger('PANOSETI.Config.do_mask_config')
     qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
     do_ph = 'pulse_height' in data_config.keys()
