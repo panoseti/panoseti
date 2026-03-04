@@ -1,9 +1,11 @@
 import mmap
 import re
 import logging
-import numpy as np
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Union, Sequence, Any
+from typing import List, Dict, Tuple, Optional, Union, Sequence, Any, Optional
+import bisect
+
+import numpy as np
 from pydantic import BaseModel, ValidationError
 
 # Efficiency Imports
@@ -149,9 +151,22 @@ class PFFSequence:
     """
 
     def __init__(self, file_paths: Sequence[Union[str, Path]]):
-        self.file_paths = sorted([Path(p) for p in file_paths], key=lambda x: str(x))
-        if not self.file_paths:
+        # Convert to Path objects
+        paths = [Path(p) for p in file_paths]
+        if not paths:
             raise ValueError("No files provided.")
+
+        # Robust natural sort by seqno
+        def extract_seqno(filepath: Path) -> int:
+            for part in filepath.name.split('.'):
+                if part.startswith('seqno_'):
+                    try:
+                        return int(part.split('_')[1])
+                    except ValueError:
+                        pass
+            return 0  # Fallback if no seqno is found
+
+        self.file_paths = sorted(paths, key=extract_seqno)
 
         self.name = self.file_paths[0].name.split('.seqno')[0]
         self.meta = self._parse_filename(self.file_paths[0].name)
@@ -193,7 +208,7 @@ class PFFSequence:
         return meta
 
     def _analyze_structure(self):
-        """Determines frame structure from first valid file."""
+        """Determines frame structure and enforces exact PanoSETI shapes and types."""
         sample_file = next((p for p in self.file_paths if p.stat().st_size > 0), None)
         if not sample_file:
             return
@@ -203,37 +218,36 @@ class PFFSequence:
             # Find JSON end: }\n\n*
             match = re.search(b'}\n\n\\*', chunk)
             if not match:
-                match = re.search(b'\n\n\\*', chunk)  # Fallback
+                match = re.search(b'\n\n\\*', chunk)
 
             if not match:
                 raise ValueError(f"Invalid PFF format in {sample_file}")
 
-            marker_idx = match.end() - 1
-            header_bytes = chunk[:marker_idx]
+            self.header_size = match.end() - 1
+            fmt = str(self.meta.get('dp', 'unknown')).lower()
 
-            # Use orjson for initial probe
-            try:
-                h = orjson.loads(header_bytes)
-            except Exception:
-                # Fallback if orjson fails or header incomplete
-                h = {}
-
-            self.header_size = len(header_bytes)
-
-            # Determine shape based on metadata or header content
-            fmt = self.meta.get('dp', 'unknown')
-            bpp = self.meta.get('bpp', 2)
-
-            # Deduce shape
-            if 'ph1024' in str(fmt) or 'img16' in str(fmt):
+            # Apply exact specifications
+            if 'img8' in fmt:
                 shape = (32, 32)
-                dtype = np.int16 if bpp == 2 else np.uint8
-            elif 'ph256' in str(fmt):
+                dtype = np.uint8
+                bpp = 1
+            elif 'img16' in fmt:
+                shape = (32, 32)
+                dtype = np.uint16
+                bpp = 2
+            elif 'ph256' in fmt:
                 shape = (16, 16)
                 dtype = np.int16
-            else:
+                bpp = 2
+            elif 'ph1024' in fmt:
                 shape = (32, 32)
                 dtype = np.int16
+                bpp = 2
+            else:
+                logger.warning(f"Unknown dp format '{fmt}'. Defaulting to 32x32 int16.")
+                shape = (32, 32)
+                dtype = np.int16
+                bpp = 2
 
             payload_size = shape[0] * shape[1] * bpp
             frame_size = self.header_size + 1 + payload_size
@@ -245,7 +259,7 @@ class PFFSequence:
                 image_shape=shape,
                 dtype_str=np.dtype(dtype).name,
                 bytes_per_pixel=bpp,
-                format_name=str(fmt)
+                format_name=fmt
             )
 
     def _index_files(self):
@@ -278,33 +292,53 @@ class PFFSequence:
 
     def _locate_frame(self, idx: int) -> Tuple[int, int]:
         """
-        Maps global index to (file_index, local_index).
+        Maps a global frame index to its corresponding (file_index, local_index).
+
+        Utilizes binary search for O(log N) fast lookups across the file sequences.
+
+        Args:
+            idx: Global index of the frame.
+
+        Returns:
+            Tuple[int, int]: (index_of_file, local_frame_index_within_file)
+
+        Raises:
+            IndexError: If the requested frame is out of bounds.
         """
-        if idx >= self._total_frames or idx < 0:
+        if not (0 <= idx < self._total_frames):
             raise IndexError(f"Frame index {idx} out of range (Total: {self._total_frames})")
 
-        # Bisect could be used here if file counts are huge, but typically < 1000 files
-        for i, limit in enumerate(self._cumulative_frames):
-            if idx < limit:
-                prev_limit = self._cumulative_frames[i - 1] if i > 0 else 0
-                return i, idx - prev_limit
-        raise IndexError("Index out of bounds")
+        # Binary search for the file bucket
+        file_idx = bisect.bisect_right(self._cumulative_frames, idx)
+
+        prev_limit = self._cumulative_frames[file_idx - 1] if file_idx > 0 else 0
+        local_idx = idx - prev_limit
+
+        return file_idx, local_idx
 
     def get_frame(self, idx: int) -> Tuple[Union[QuaboHeader, ModuleHeader, Dict], np.ndarray]:
         """
-        Full frame retrieval with parsing. Slow path.
-        Returns: (HeaderObject, NumpyImage)
+        Retrieves a fully parsed header and image array for a single frame.
+
+        Args:
+            idx: Global frame index.
+
+        Returns:
+            Tuple containing the parsed Pydantic header object (or raw dict on failure)
+            and the numpy image array.
         """
         file_idx, local_idx = self._locate_frame(idx)
         conf = self.frame_config
         mm = self._get_mmap(file_idx)
+
+        if not mm:
+            raise RuntimeError(f"Failed to access memory map for file index {file_idx}.")
+
         offset = local_idx * conf.frame_size
 
-        # Read Header
+        # Read and parse the JSON Header
         header_end = offset + conf.header_size
         header_bytes = mm[offset:header_end]
-
-        # Fast JSON parse
         header_dict = orjson.loads(header_bytes)
 
         # Type conversion via Pydantic
@@ -315,15 +349,39 @@ class PFFSequence:
                 header_obj = QuaboHeader(**header_dict)
             else:
                 header_obj = header_dict
-        except ValidationError:
+        except ValidationError as e:
+            logger.debug(f"Pydantic validation failed for frame {idx}: {e}")
             header_obj = header_dict
 
-        # Read Image
+        # Read Image Data
         img_start = header_end + 1
         img_end = img_start + conf.payload_size
+
+        # Slicing the mmap returns a bytes copy, safely avoiding NumPy alignment constraints
         img = np.frombuffer(mm[img_start:img_end], dtype=conf.dtype).reshape(conf.image_shape)
 
-        return header_obj, img.copy()
+        return header_obj, img
+
+    def get_frames(self, indices: List[int]) -> np.ndarray:
+        """
+        Retrieves an array of images for a specific list of disjoint indices.
+        """
+        if not indices:
+            return np.empty((0, *self.frame_config.image_shape), dtype=self.frame_config.dtype)
+
+        conf = self.frame_config
+        out = np.empty((len(indices), *conf.image_shape), dtype=conf.dtype)
+
+        for i, global_idx in enumerate(indices):
+            file_idx, local_idx = self._locate_frame(global_idx)
+            mm = self._get_mmap(file_idx)
+            offset = local_idx * conf.frame_size
+            img_start = offset + conf.header_size + 1
+            img_end = img_start + conf.payload_size
+
+            out[i] = np.frombuffer(mm[img_start:img_end], dtype=conf.dtype).reshape(conf.image_shape)
+
+        return out
 
     def get_frame_time(self, idx: int, precise: bool = False) -> int:
         """
@@ -393,14 +451,26 @@ class PFFSequence:
         candidates = [c for c in [high, low] if 0 <= c < self._total_frames]
         return min(candidates, key=lambda i: abs(self.get_frame_time(i) - target_time_ns))
 
-    def get_image_array(self, start=0, count=None) -> np.ndarray:
+    def get_image_array(self, start: int = 0, count: Optional[int] = None) -> np.ndarray:
         """
-        Optimized 'Virtual Array' access.
-        Returns raw image stack, skipping all headers/json.
+        Optimized 'Virtual Array' access for retrieving multiple consecutive frames.
+
+        Intelligently determines whether a zero-copy NumPy strided view is safe
+        based on byte alignment, falling back to a highly optimized copy loop if not.
+
+        Args:
+            start: Global starting frame index.
+            count: Number of frames to retrieve. Defaults to all remaining frames.
+
+        Returns:
+            np.ndarray: A stacked array of images of shape (count, H, W).
         """
-        if count is None: count = self._total_frames - start
+        if count is None:
+            count = self._total_frames - start
+
         count = min(count, self._total_frames - start)
-        if count <= 0: return np.empty((0, *self.frame_config.image_shape), dtype=self.frame_config.dtype)
+        if count <= 0:
+            return np.empty((0, *self.frame_config.image_shape), dtype=self.frame_config.dtype)
 
         conf = self.frame_config
         dtype = conf.dtype
@@ -410,37 +480,27 @@ class PFFSequence:
         frames_collected = 0
         current_global = start
 
-        # Strided read if alignment allows
-        can_use_strided = (conf.frame_size % itemsize == 0)
-        strides = None
-        if can_use_strided:
-            strides = (
-                conf.frame_size,
-                conf.image_shape[1] * itemsize,
-                itemsize
-            )
-
         while frames_collected < count:
-            # Locate file for current_global
-            file_idx = 0
-            # Simple linear scan for file bucket (fast enough for sequential reads)
-            for i, limit in enumerate(self._cumulative_frames):
-                if current_global < limit:
-                    file_idx = i
-                    break
-
-            prev_limit = self._cumulative_frames[file_idx - 1] if file_idx > 0 else 0
-            local_start = current_global - prev_limit
+            file_idx, local_start = self._locate_frame(current_global)
             file_total = self._file_frame_counts[file_idx]
-
             to_read = min(count - frames_collected, file_total - local_start)
 
             if to_read > 0:
                 mm = self._get_mmap(file_idx)
+                if not mm:
+                    raise RuntimeError("Failed to read mmap block.")
+
                 start_offset = (local_start * conf.frame_size) + conf.header_size + 1
 
-                if can_use_strided and mm:
-                    # ZERO-COPY View
+                # Zero-copy validity check: Both the step size and starting offset must align
+                can_use_strided = (conf.frame_size % itemsize == 0) and (start_offset % itemsize == 0)
+
+                if can_use_strided:
+                    strides = (
+                        conf.frame_size,
+                        conf.image_shape[1] * itemsize,
+                        itemsize
+                    )
                     chunk = np.ndarray(
                         shape=(to_read, *conf.image_shape),
                         dtype=dtype,
@@ -449,8 +509,8 @@ class PFFSequence:
                         strides=strides
                     )
                     chunks.append(chunk)
-                elif mm:
-                    # Fallback copy
+                else:
+                    # Fallback fast-copy
                     temp = np.empty((to_read, *conf.image_shape), dtype=dtype)
                     cursor = start_offset
                     for i in range(to_read):
@@ -462,13 +522,10 @@ class PFFSequence:
             frames_collected += to_read
             current_global += to_read
 
-        # Merge
         if len(chunks) == 1:
-            return np.array(chunks[0])
-        elif len(chunks) > 1:
-            return np.concatenate(chunks, axis=0)
-        else:
-            return np.empty((0, *conf.image_shape), dtype=dtype)
+            return chunks[0].copy() if chunks[0].base is not None else chunks[0]
+
+        return np.concatenate(chunks, axis=0)
 
     def to_dask(self, chunks='auto'):
         """
