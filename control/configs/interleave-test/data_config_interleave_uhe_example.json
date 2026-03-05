@@ -1,6 +1,6 @@
 {
     "run_type": "eng-interleave",
-    "detector_overvoltage": 3,
+    "detector_overvoltage": 2,
     "gain": 60,
     "max_file_size_mb": 2000,
     "stim_params":{

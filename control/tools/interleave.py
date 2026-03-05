@@ -89,7 +89,7 @@ class InterleaveController:
                 q = quabo_driver.QUABO(real_ip, cmd_port)
                 self.quabos[module_id].append(q) # use a list to retain sequential ordering
 
-        self.executor = ThreadPoolExecutor(max_workers=self.MAX_THREADS)
+        # self.executor = ThreadPoolExecutor(max_workers=self.MAX_THREADS)
 
         # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGTERM, self._handle_shutdown_signal)
@@ -139,7 +139,7 @@ class InterleaveController:
             - Sequentially to quabos in the same module
         """
         if self.dry_run:
-            logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
+            #logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
             return
 
         def send_acq_mode_to_module(module_id: int):
@@ -147,29 +147,31 @@ class InterleaveController:
             quabos = self.quabos[module_id]
             for q in quabos:
                 q.send_daq_params(daq_params)
-        futures = []
+        #futures = []
         for mid in self.quabos.keys():
-            futures.append(self.executor.submit(send_acq_mode_to_module, mid))
-        for f in as_completed(futures):
-            f.result()
+            #futures.append(self.executor.submit(send_acq_mode_to_module, mid))
+            send_acq_mode_to_module(mid)
+        #for f in as_completed(futures):
+        #    f.result()
 
     def _reconfigure_quabos(self, next_state_data_config: Dict[str, Any]) -> None:
         if self.dry_run:
             return
 
-        def reconfig_module(module):
+        def reconfig_modules(modules):
             pano_config.do_maroc_config(
-                [module], self.quabo_uids, self.quabo_info,
+                modules, self.quabo_uids, self.quabo_info,
                 next_state_data_config, self.obs_config, self.daq_config,
-                self.network_config, verbose=False, write_config=False
+                self.network_config, verbose=False, write_config=False, do_log=False
             )
             pano_config.do_mask_config(
-                [module], next_state_data_config, self.network_config,
-                self.quabo_uids, verbose=False, write_config=False, do_flush_rx_buf=False,
+                modules, next_state_data_config, self.network_config,
+                self.quabo_uids, verbose=False, write_config=False, do_flush_rx_buf=False, do_log=False
             )
 
-        futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
-        for f in as_completed(futures): f.result()
+        reconfig_modules(self.modules)
+        #futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
+        #for f in as_completed(futures): f.result()
 
     def generate_state_dict(self, movie_key: Optional[str], ph_key: Optional[str]) -> Dict[str, Any]:
         temp_dict = self.data_config.copy()
@@ -177,7 +179,7 @@ class InterleaveController:
         temp_dict.pop('pulse_height', None)
         if movie_key: temp_dict['image'] = self.data_config[movie_key]
         if ph_key: temp_dict['pulse_height'] = self.data_config[ph_key]
-        logger.debug(f"Generating state dict for {temp_dict=}")
+        #logger.debug(f"Generating state dict for {temp_dict=}")
         return temp_dict
 
     def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
@@ -195,7 +197,7 @@ class InterleaveController:
         from start import get_daq_params
 
         if not self.interleave_cfg.get("enable", False):
-            logger.info("Interleaving disabled in config. Exiting.")
+            #logger.info("Interleaving disabled in config. Exiting.")
             self._release_lock()
             return
 
@@ -222,7 +224,6 @@ class InterleaveController:
                     )
                     start_daq_params = get_daq_params(next_state_data_config)
 
-                    logger.info(f"\n--- Entering State: {name} (Duration: {duration}s) ---")
                     t_overhead_start = time.perf_counter()
 
                     # 1. Stop data flow
@@ -236,7 +237,10 @@ class InterleaveController:
                     self.stats["total_switch_overhead_sec"] += overhead
                     self.stats["overhead"].append(overhead)
 
-                    logger.info(f"Hardware configured in {overhead * 1e3:.4f} ms. Actively observing for {duration}s...")
+                    logger.info(
+                        f"\n--- Entering State: {name} (Duration: {duration}s) ---"
+                        f"Hardware configured in {overhead * 1e3:.4f} ms. Actively observing for {duration}s..."
+                    )
 
                     # Relative Active Scheduling: Guarantee the full duration occurs AFTER configuration
                     self._sleep_until(time.perf_counter() + duration)
@@ -251,14 +255,15 @@ class InterleaveController:
 
     def _teardown(self, stop_daq_params: quabo_driver.DAQ_PARAMS, start_default_daq_params) -> None:
         """Restores Quabos to default settings and cleans up."""
-        logger.info(f"Overhead stats: "
+        logger.critical(f"Overhead stats: "
+                    f"\n\tcount:\t{len(self.stats['overhead'])}"
                     f"\n\tmean:\t{np.mean(self.stats['overhead']) * 1e3:.5f} ms"
                     f"\n\tstdev:\t{np.std(self.stats['overhead']) * 1e3:.5f} ms"
                     f"\n\tmedian:\t{np.median(self.stats['overhead']) * 1e3:.5f} ms"
                     f"\n\tmin:\t{np.min(self.stats['overhead']) * 1e3:.5f} ms"
                     f"\n\tmax:\t{np.max(self.stats['overhead']) * 1e3:.5f} ms")
         if self.dry_run:
-            logger.info("[DRY-RUN] Teardown initiated. Simulating hardware default restoration.")
+            #logger.info("[DRY-RUN] Teardown initiated. Simulating hardware default restoration.")
             self._release_lock()
             return
 
@@ -270,8 +275,8 @@ class InterleaveController:
             # next_state_data_config = self.data_config
 
             # Forcefully drop old tasks and spin up a fresh pool to guarantee teardown commands aren't stuck behind deadlocked threads.
-            self.executor.shutdown(wait=False)
-            self.executor = ThreadPoolExecutor(max_workers=self.MAX_THREADS)
+            # self.executor.shutdown(wait=False)
+            # self.executor = ThreadPoolExecutor(max_workers=self.MAX_THREADS)
 
             # restore default parameters
             self._broadcast_acq_mode(stop_daq_params)
@@ -282,7 +287,7 @@ class InterleaveController:
         except Exception as e:
             logger.exception(f"Failed to restore hardware defaults: {e}")
         finally:
-            self.executor.shutdown(wait=False)
+            # self.executor.shutdown(wait=False)
             for quabos in self.quabos.values():
                 for q in quabos: q.close()
             self._release_lock()

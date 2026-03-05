@@ -322,9 +322,12 @@ def do_hv_off(modules, quabo_uids, network_config):
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
 MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False, write_config=True):
+cal_cache = {}
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False, write_config=True, do_log=True):
     """set the DAC1/DA2/GAIN* params for MAROC chips"""
-    logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
+    logger = None
+    if do_log:
+        logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -374,7 +377,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 op_mode = 'img'
             else:
                 op_mode = 'ph'
-            quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
+
+            # Cache calibration data to reduce I/O
+            cal_cache_key = (serialno, detovervol, op_mode)
+            if cal_cache_key not in cal_cache:
+                quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
+                cal_cache[cal_cache_key] = quabo_calib
+            else:
+                quabo_calib = cal_cache[cal_cache_key]
 
             # compute DAC1[] and possibly DAC2 based on calibration data
             dac1 = [0]*4
@@ -432,9 +442,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Cmd Port: %d'%cmd_port)
+            if do_log:
+                logger.info('Quabo IP: %s'%ip_addr)
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             # For ph mode, we seem to have a bug in firmware.
             # we need to set DAC2 to low, and make the quabos send out data first.
@@ -473,7 +484,8 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 # print('Warning: No calibration data for the board with UID: %s'%uid)
                 # print('         Using default calibration data.')
                 # print('**************************************************************************')
-                logger.warning('No calibration data: UID -%s'%uid)
+                if do_log:
+                    logger.warning('No calibration data: UID -%s'%uid)
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             #print(stim_mask_quaboi[i], type(stim_mask_quaboi[i]))
             if stim_mask_quaboi[i] == 0:
@@ -490,8 +502,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
 # set CHANMASK and GOEMASK for modules
 #
 MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
-def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=False):
-    logger = logging.getLogger('PANOSETI.Config.do_mask_config')
+def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=False, do_log=True):
+    logger = None
+    if do_log:
+        logger = logging.getLogger('PANOSETI.Config.do_mask_config')
     qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
     do_ph = 'pulse_height' in data_config.keys()
     qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
@@ -529,9 +543,10 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Cmd Port: %d'%cmd_port)
+            if do_log:
+                logger.info('Quabo IP: %s'%ip_addr)
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
             if write_config:
