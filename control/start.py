@@ -32,6 +32,60 @@ from utils import pff, config_file
 import logging
 from argparse import ArgumentParser
 
+# ---------------- PRINT -> UT TIMESTAMP + FILE LOG ----------------
+import builtins
+from datetime import datetime, timezone
+
+_LOG_ROOT = "/mnt/data11/data/palomar/L0"
+
+def _ut_yyyymmdd():
+    return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+def _ut_human_ts():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UT")
+
+def _datarec_log_path():
+    yyyymmdd = _ut_yyyymmdd()
+    obslogs_dir = os.path.join(_LOG_ROOT, yyyymmdd, "obslogs")
+    return obslogs_dir, os.path.join(obslogs_dir, f"datarec_{yyyymmdd}.log")
+
+def _print(*args, **kwargs):
+    sep = kwargs.get("sep", " ")
+    end = kwargs.get("end", "\n")
+    file_arg = kwargs.get("file", None)
+    flush = kwargs.get("flush", False)
+
+    msg = sep.join(str(a) for a in args)
+    line = f"{_ut_human_ts()} {msg}"
+
+    # Console (or provided file), with timestamp prepended
+    builtins._orig_print(line, sep=sep, end=end, file=file_arg, flush=flush)
+
+    # Append at the beginning of daily log file (best-effort; no extra prints)
+    try:
+        obslogs_dir, log_path = _datarec_log_path()
+        os.makedirs(obslogs_dir, exist_ok=True)
+
+        # Read existing contents (if any), then write new line + old contents
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                old = f.read()
+        except FileNotFoundError:
+            old = ""
+
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(line + end)
+            if old:
+                f.write(old)
+            if flush and hasattr(f, "flush"):
+                f.flush()
+    except Exception:
+        pass
+
+builtins._orig_print = builtins.print
+builtins.print = _print
+# ------------------------------------------------------------------
+
 verbose = False
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
@@ -379,3 +433,4 @@ if __name__ == "__main__":
         stop.stop_run(daq_config, quabo_uids)
         if stop_session:
             session_stop.session_stop(obs_config)
+

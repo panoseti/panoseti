@@ -1,21 +1,14 @@
 {
-    "run_type": "eng-test",
+    "run_type": "obs-test",
     "detector_overvoltage": 2,
-    "gain": 60,
+    "gain": 60.0,
     "pulse_height": {
-            "pe_threshold": 20,
-            "two_pixel_trigger": 0,
-            "three_pixel_trigger": 0
+        "pe_threshold": 3.5,
+        "two_pixel_trigger": 1,
+        "three_pixel_trigger": 0,
+        "any_trigger": {
+            "group_ph_frames": 0
+        }
     },
-    "image": {
-        "integration_time_usec": 10000,
-        "pe_threshold": 15,
-        "quabo_sample_size": 8
-    },
-    "stim_params":{
-        "rate": 2,
-        "level": 255,
-	"mask": [1, 1, 1, 1]
-    },
-    "max_file_size_mb": 10
+    "max_file_size_mb": 100.0
 }
