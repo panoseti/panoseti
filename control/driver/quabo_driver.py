@@ -214,19 +214,21 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_trigger_mask(self, config):
+    def send_trigger_mask(self, config, do_flush_rx_buf=True):
         self.logger.info('send_trigger_mask')
         cmd = self.make_cmd(0x06)
         self.make_trigger_mask_cmd(config, cmd)
-        self.flush_rx_buf()
+        if do_flush_rx_buf:
+            self.flush_rx_buf()
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_goe_mask(self, config):
+    def send_goe_mask(self, config, do_flush_rx_buf=True):
         self.logger.info('send_goe_mask')
         cmd = self.make_cmd(0x0e)
         self.make_goe_mask_cmd(config, cmd)
-        self.flush_rx_buf()
+        if do_flush_rx_buf:
+            self.flush_rx_buf()
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
         
@@ -466,7 +468,7 @@ class QUABO:
                 # returns (data, ip_addr)
                 nbytes += len(x[0])
                 count += 1
-            except:
+            except socket.timeout:
                 break
         #print('flush_rx_buffer: got %d bytes'%nbytes)
 

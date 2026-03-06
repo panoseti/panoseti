@@ -8,7 +8,7 @@ firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess, time, datetime, json, statistics
+import sys, os, subprocess, time, datetime, json, statistics, signal
 import copy
 import logging
 from utils import util, file_xfer
@@ -381,8 +381,13 @@ def do_hv_off(modules, quabo_uids, network_config):
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False):
-    logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
+MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+cal_cache = {}
+def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False, write_config=True, do_log=True):
+    """set the DAC1/DA2/GAIN* params for MAROC chips"""
+    logger = None
+    if do_log:
+        logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
     gain = float(data_config['gain'])
     do_img = 'image' in data_config.keys()
     do_ph = 'pulse_height' in data_config.keys()
@@ -399,7 +404,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
         if "mask" in data_config["stim_params"]:
             stim_mask_quaboi = data_config["stim_params"]["mask"]
         
-    qc_dict_src = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+    qc_dict_src = copy.deepcopy(MAROC_CONFIG_QUABO_CONFIG)
     for module in modules:
         for i in range(4):
             no_cali = False
@@ -432,7 +437,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 op_mode = 'img'
             else:
                 op_mode = 'ph'
-            quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
+
+            # Cache calibration data to reduce I/O
+            cal_cache_key = (serialno, detovervol, op_mode)
+            if cal_cache_key not in cal_cache:
+                quabo_calib = config_file.get_quabo_calib(serialno, detovervol, op_mode)
+                cal_cache[cal_cache_key] = quabo_calib
+            else:
+                quabo_calib = cal_cache[cal_cache_key]
 
             # compute DAC1[] and possibly DAC2 based on calibration data
             dac1 = [0]*4
@@ -490,9 +502,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Cmd Port: %d'%cmd_port)
+            if do_log:
+                logger.info('Quabo IP: %s'%ip_addr)
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             # For ph mode, we seem to have a bug in firmware.
             # we need to set DAC2 to low, and make the quabos send out data first.
@@ -527,7 +540,12 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
             if no_cali:
-                logger.warning('No calibration data: UID -%s'%uid)
+                # print('**************************************************************************')
+                # print('Warning: No calibration data for the board with UID: %s'%uid)
+                # print('         Using default calibration data.')
+                # print('**************************************************************************')
+                if do_log:
+                    logger.warning('No calibration data: UID -%s'%uid)
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             if stim_mask_quaboi[i] == 0:
                 for k in range(64):
@@ -535,14 +553,18 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     assert ctest_key in qc_dict, f"{ctest_key=} not in qc_dict"
                     qc_dict[ctest_key] = "0,0,0,0"
             quabo.send_maroc_params(qc_dict)
-            quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+            if write_config:
+                quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # set CHANMASK and GOEMASK for modules
 #
-def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False):
-    logger = logging.getLogger('PANOSETI.Config.do_mask_config')
-    qc_dict = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
+MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
+def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=False, do_log=True):
+    logger = None
+    if do_log:
+        logger = logging.getLogger('PANOSETI.Config.do_mask_config')
+    qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
     do_ph = 'pulse_height' in data_config.keys()
     qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
@@ -576,14 +598,17 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Cmd Port: %d'%cmd_port)
+            if do_log:
+                logger.info('Quabo IP: %s'%ip_addr)
+                logger.info('Real IP: %s'%real_ip)
+                logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            quabo.send_trigger_mask(qc_dict)
-            quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
-            quabo.send_goe_mask(qc_dict)
-            quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+            quabo.send_trigger_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
+            if write_config:
+                quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+            quabo.send_goe_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
+            if write_config:
+                quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # compute PH baselines on quabos and write to file
@@ -747,6 +772,67 @@ def do_shutter(action):
     elif action == "close":
         os.system("tools/shutter.py --close")
 
+def do_start_interleave():
+    """Starts the interleaver process in the background."""
+    if not os.path.exists("tmp/current_run"):
+        print("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
+        sys.exit(1)
+
+    print("Starting interleave controller in the background...")
+    # Start detached background process
+    subprocess.Popen(['python3', 'tools/interleave.py'],
+                     stdout=open('logs/interleave.log', 'a'),
+                     stderr=subprocess.STDOUT)
+    print("Interleave process started. Check logs/interleave.log for details.")
+
+def do_stop_interleave():
+    """Gracefully stops the background interleaver if it is running."""
+    pid_file = "tmp/interleave.pid"
+    if not os.path.exists(pid_file):
+        print("No active interleave process found (PID file missing).")
+        return # Return instead of sys.exit(0) so other scripts can call this safely
+
+    with open(pid_file, "r") as f:
+        try:
+            pid = int(f.read().strip())
+        except ValueError:
+            print("Stale PID file found. Cleaning up.")
+            os.remove(pid_file)
+            return
+
+    print(f"Sending shutdown signal to interleave process (PID {pid})...")
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print("Signal sent. Waiting for hardware default restoration to complete...")
+        # Simple wait loop to ensure process dies and deletes its pid file
+        for _ in range(20):
+            if not os.path.exists(pid_file):
+                break
+            time.sleep(0.5)
+        print("Interleave process successfully stopped.")
+    except OSError:
+        print("Process was already dead. Cleaning up stale PID file.")
+        os.remove(pid_file)
+
+
+def do_dry_run_interleave():
+    """Runs the interleaver in the foreground for 2 cycles without hardware commands."""
+    print("Starting interleave DRY RUN (2 cycles) in the foreground...")
+
+    # We use subprocess.run to block and stream output directly to the console for CI tools
+    result = subprocess.run(
+        ['python3', 'tools/interleave.py', '--dry-run', '--max-cycles', '2']
+    )
+
+    if result.returncode == 0:
+        print("\nDry run completed successfully.")
+    else:
+        print(f"\nDry run failed with return code {result.returncode}.")
+        sys.exit(result.returncode)
+
+
+
+
 def main():
     if not os.path.exists('logs'):
         os.makedirs('logs')
@@ -797,11 +883,32 @@ def main():
                         help='Close all module shutters')
     parser.add_argument('--disk_space', dest='disk_space', action='store_true', default=False,
                         help='Check the disk_space.')
+    parser.add_argument('--start-interleave', action='store_true', help='Start background interleaver')
+    parser.add_argument('--stop-interleave', action='store_true', help='Stop background interleaver')
+    parser.add_argument('--dry-run-interleave', action='store_true',
+                        help='Test the interleave schedule for 2 cycles without hardware commands.')
+    parser.add_argument('--validate', nargs='*', default=None,
+                        help='Validate configs. Modifiers: "graph" (print network routing), "network" (ping IPs), "debug" (print parsed config). Example: --validate graph network')
+    # parser.add_argument('--validate-graph', action='store_true', help='Display the physical/network topology tree.')
     # we need one option at least
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
     args = parser.parse_args()
+
+    # Validate arguments before loading config files to check for invalid config before any load attempts
+    if args.validate is not None:
+        modifiers = args.validate
+        debug_mode = 'debug' in modifiers
+        network_mode = 'network' in modifiers
+        graph_mode = 'graph' in modifiers
+
+        # Run the comprehensive check and exit gracefully!
+        passed = config_file.validate_all(check_network=network_mode, debug=debug_mode, graph=graph_mode)
+        if not passed:
+            sys.exit(1)
+        sys.exit(0)
+
     # load config files
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
@@ -869,6 +976,14 @@ def main():
         do_show_ph_baselines(quabo_uids)
     elif args.reboot_single is not None:
         do_reboot_single_quabo(args.reboot_single, obs_config, network_config)
+    elif args.start_interleave:
+        do_start_interleave()
+    elif args.stop_interleave:
+        do_stop_interleave()
+    elif args.dry_run_interleave:
+        do_dry_run_interleave()
+
+
 
 if __name__ == "__main__":
     main()

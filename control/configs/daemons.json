@@ -2,6 +2,7 @@
     "daemons": {
         "hk": true,
         "gps": false,
+        "telemetry_service": true,
         "guider": false,
         "power": false,
         "datarecweb": true,
