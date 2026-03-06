@@ -2,22 +2,46 @@
 
 # show the status of a recording run
 
-import subprocess, sys, json
+import subprocess, sys, json, os
+from datetime import datetime, timezone
 import util
 sys.path.insert(0, '../util')
 import config_file
 
+# ---------- logging setup ----------
+def ut_now_str():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+def ut_date_str():
+    return datetime.now(timezone.utc).strftime("%Y%m%d")
+
+def log_print(*args, **kwargs):
+    msg = " ".join(str(a) for a in args)
+    line = f"[{ut_now_str()}] {msg}"
+
+    # console
+    print(line, **kwargs)
+
+    # file
+    yyyymmdd = ut_date_str()
+    log_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f"datarec_{yyyymmdd}.log")
+    with open(log_path, "a") as f:
+        f.write(line + "\n")
+
+# ---------- main logic ----------
 def status():
     run_name = util.read_run_name()
     if run_name:
-        print('Run in progress: %s'%run_name)
+        log_print('Run in progress: %s' % run_name)
     else:
-        print("No run is in progress")
+        log_print("No run is in progress")
 
     if util.is_hk_recorder_running():
-        print('HK recorder is running')
+        log_print('HK recorder is running')
     else:
-        print('HK recorder is not running')
+        log_print('HK recorder is not running')
 
     # in theory should use config files in run dir
     obs_config = config_file.get_obs_config()
@@ -26,32 +50,35 @@ def status():
     data_config = config_file.get_data_config()
     config_file.associate(daq_config, quabo_uids)
     my_ip = util.local_ip()
+
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
         ip_addr = node['ip_addr']
-        print('status on DAQ node %s:'%ip_addr)
+        log_print('status on DAQ node %s:' % ip_addr)
         j = util.get_daq_node_status(node)
-        #print(j)
+
         if j['hashpipe_running']:
-            print('   hashpipe is running')
+            log_print('   hashpipe is running')
         else:
-            print('   hashpipe is not running')
+            log_print('   hashpipe is not running')
+
         if 'current_run' in j.keys():
-            print('   current run:', j['current_run'])
+            log_print('   current run:', j['current_run'])
             if 'current_run_disk' in j.keys():
-                print('   disk usage:', j['current_run_disk'])
+                log_print('   disk usage:', j['current_run_disk'])
             else:
-                print("   run dir doesn't exist")
+                log_print("   run dir doesn't exist")
         else:
-            print('   no current run')
-            
+            log_print('   no current run')
+
         vols = j['vols']
-        print('   volumes:')
+        log_print('   volumes:')
         for name in vols.keys():
             vol = vols[name]
-            print('      name:', name)
-            print('         free space: %.2fGB'%(vol['free']/1e9))
-            print('         modules:', vol['modules'])
+            log_print('      name:', name)
+            log_print('         free space: %.2fGB' % (vol['free'] / 1e9))
+            log_print('         modules:', vol['modules'])
 
 status()
+

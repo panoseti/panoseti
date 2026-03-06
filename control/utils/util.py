@@ -6,9 +6,9 @@ import subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
 import netifaces, json
 
-# this sccipt will be copied to daq nodes, 
+# this script will be copied to daq nodes,
 # but the quabo_driver and config_file won't be copied to daq nodes
-# TODO: we may need to improve this 
+# TODO: we may need to improve this
 try:
     from driver import quabo_driver
     from utils import config_file
@@ -16,6 +16,7 @@ except:
     pass
 
 import logging
+
 #-------------- DEFAULTS ---------------
 
 default_max_file_size_mb = 0        # no limit
@@ -55,6 +56,8 @@ hp_stdout_prefix = 'hp_stdout_'
     # hashpipe stdout file is prefix_ipaddr
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
+
+# Base daemons (always included in the "capture"/redis daemon set)
 redis_daemons = [
     'daemons/storeInfluxDB.py'
 ]
@@ -112,7 +115,8 @@ def local_ip():
         raise Exception("can't get local IP")
     else:
         return ips
-    
+
+
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
@@ -124,6 +128,7 @@ def ip_addr_str_to_bytes(ip_addr_str):
             raise Exception('bad IP addr %s'%ip_addr_str)
         bytes[i] = x
     return bytes
+
 
 # return true if can ping IP addr
 #
@@ -138,6 +143,7 @@ def ping(ip_addr, cmd_port):
     else:
         quabo = quabo_driver.QUABO(ip_addr, cmd_port)
         return quabo.data_packet_destination('192.168.1.1')
+
 
 def mac_addr_str(bytes):
     s = ['']*6
@@ -165,10 +171,12 @@ def quabo_uid(module, quabo_uids, i):
                 return q['uid']
     raise Exception("no module %s found; run get_uids.py"%module['ip_addr'])
 
+
 # see if quabo is alive by seeing if we got its UID
 #
 def is_quabo_alive(module, quabo_uids, i):
     return quabo_uid(module, quabo_uids, i) != ''
+
 
 # is quabo new or old hardware version, as specified in obs_config?
 # can be specified as either string or array of 4 strings
@@ -193,6 +201,7 @@ def is_quabo_old_version(module, i, quabo_uids, quabo_info):
         print('uid: %s can\'t be found in quabo_info.json'%uid)
         return
     return v == 'qfp'
+
 #-------------- RECORDING ---------------
 
 def start_daemon(prog):
@@ -200,7 +209,7 @@ def start_daemon(prog):
         print('%s is already running'%prog)
         return
     try:
-        process = subprocess.Popen(
+        subprocess.Popen(
             ['./'+prog], start_new_session=True,
             close_fds=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -210,55 +219,131 @@ def start_daemon(prog):
         return
     print('started %s'%prog)
 
+
+def _stop_daemon(prog, sig=signal.SIGKILL):
+    """
+    Stop a daemon started via start_daemon(prog).
+
+    start_daemon uses ['./'+prog], which typically shows up in cmdline as:
+      [<python interpreter>, "./<prog>"]
+    """
+    target = './%s' % prog
+    for p in psutil.process_iter():
+        try:
+            c = p.cmdline()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if len(c) == 2 and c[1] == target:
+            try:
+                os.kill(p.pid, sig)
+            except ProcessLookupError:
+                pass
+            print('stopped %s' % prog)
+
+
+def _show_daemon(prog):
+    if is_script_running(prog):
+        print('%s is running' % prog)
+    else:
+        print('%s is not running' % prog)
+
+
+def _are_daemons_running(progs):
+    for prog in progs:
+        if not is_script_running(prog):
+            return False
+    return True
+
+
+def _safe_get_daemons_config():
+    # Handle "util.py copied to daq nodes" case (config_file may not exist).
+    try:
+        return config_file.get_daemons_config()
+    except Exception:
+        return {}
+
+
 def get_daemons():
-    # get daemons from daemons.json
-    daemons_config = config_file.get_daemons_config()
-    daemons = daemons_config['daemons']
-    for k,v in daemons.items():
+    """
+    Return the capture daemon list built from daemons.json, without mutating globals.
+
+    - Always includes daemons/storeInfluxDB.py (base list).
+    - Adds daemons/capture_<k>.py for enabled items in daemons_config['daemons'].
+    """
+    daemons_config = _safe_get_daemons_config()
+    enabled = daemons_config.get('daemons', {})
+
+    lst = list(redis_daemons)  # copy base list; do NOT mutate global
+    for k, v in enabled.items():
         if v:
-            redis_daemons.append('daemons/capture_%s.py'%k)
-    return redis_daemons
+            lst.append('daemons/capture_%s.py' % k)
+    return lst
+
+
 # start daemons that write HK/GPS/WR data to Redis
 #
 def start_redis_daemons():
-    redis_daemons = get_daemons()
-    for daemon in redis_daemons:
+    for daemon in get_daemons():
         start_daemon(daemon)
 
+
 def stop_redis_daemons():
-    redis_daemons = get_daemons()
-    for d in redis_daemons:
-        prog = './%s'%d
-        for p in psutil.process_iter():
-            c = p.cmdline()
-            if len(c) == 2 and c[1] == prog:
-                os.kill(p.pid, signal.SIGKILL)
-                print('stopped %s'%d)
+    for d in get_daemons():
+        _stop_daemon(d, sig=signal.SIGKILL)
+
 
 def show_redis_daemons():
-    redis_daemons = get_daemons()
-    for daemon in redis_daemons:
-        if is_script_running(daemon):
-            print('%s is running'%daemon)
-        else:
-            print('%s is not running'%daemon)
+    for daemon in get_daemons():
+        _show_daemon(daemon)
+
 
 def are_redis_daemons_running():
-    redis_daemons = get_daemons()
-    for daemon in redis_daemons:
-        if not is_script_running(daemon):
-            return False
-    return True
+    return _are_daemons_running(get_daemons())
+
+
+# ---- Permanent daemons (new set) ----
+# Convention: daemons/permanent_<name>.py enabled by daemons.json key "permanent_daemons"
+# Also includes daemons/storeInfluxDB.py by default (so it can run with permanent services).
+
+def get_permanent_daemons():
+    daemons_config = _safe_get_daemons_config()
+    enabled = daemons_config.get('permanent_daemons', {})
+
+    lst = ['daemons/storeInfluxDB.py']
+    for k, v in enabled.items():
+        if v:
+            lst.append('daemons/permanent_%s.py' % k)
+    return lst
+
+
+def start_permanent_daemons():
+    for d in get_permanent_daemons():
+        start_daemon(d)
+
+
+def stop_permanent_daemons():
+    for d in get_permanent_daemons():
+        _stop_daemon(d, sig=signal.SIGKILL)
+
+
+def show_permanent_daemons():
+    for d in get_permanent_daemons():
+        _show_daemon(d)
+
+
+def are_permanent_daemons_running():
+    return _are_daemons_running(get_permanent_daemons())
+
 
 def start_hk_recorder(daq_config, run_name):
     path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
-        process = subprocess.Popen([hk_recorder_name, path])
+        subprocess.Popen([hk_recorder_name, path])
     except:
         print("can't launch HK recorder")
         raise
 
-        
+
 # Start high-voltage updater daemon
 def start_hv_updater():
     if is_hv_updater_running():
@@ -294,15 +379,18 @@ def write_run_name(daq_config, run_name):
     # record the run name in skymap_info_dir, which will be used by skymap_helper
     os.system('cp %s %s'%(run_name_file, 'tmp/skymap_info_dir'))
 
+
 def read_run_name():
     if not os.path.exists(run_name_file):
         return None
     with open(run_name_file) as f:
         return f.read()
 
+
 def remove_run_name():
     if os.path.exists(run_name_file):
         os.unlink(run_name_file)
+
 
 # if hashpipe is running, send it a SIGINT and wait for it to exit
 #
@@ -318,51 +406,82 @@ def stop_hashpipe(pid):
                 time.sleep(0.1)
     return False
 
+
 def is_script_running(script):
-    s = './%s'%script
+    """
+    Original behavior checked only for './<script>' in cmdline.
+    This version also recognizes '<script>' (without './') to match
+    scripts launched via subprocess.Popen([script]) elsewhere in this file.
+    """
+    s1 = './%s' % script
+    s2 = '%s' % script
     for p in psutil.process_iter():
-        if s in p.cmdline():
+        try:
+            cmd = p.cmdline()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if s1 in cmd or s2 in cmd:
             return True
     return False
+
 
 def is_hashpipe_running():
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
-            return True;
-    return False
-
-def is_hk_recorder_running():
-    for p in psutil.process_iter():
-        if hk_recorder_name in p.cmdline():
             return True
     return False
 
+
+def is_hk_recorder_running():
+    for p in psutil.process_iter():
+        try:
+            if hk_recorder_name in p.cmdline():
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return False
+
+
 def is_hv_updater_running():
-    return is_script_running(hv_updater_name[2:])
+    return is_script_running(hv_updater_name)
+
 
 def is_module_temp_monitor_running():
-    return is_script_running(hv_updater_name[2:])
+    return is_script_running(module_temp_monitor_name)
+
 
 def kill_hashpipe():
     for p in psutil.process_iter():
         if p.name() == hashpipe_name:
             os.kill(p.pid, signal.SIGKILL)
 
+
 def kill_hk_recorder():
     for p in psutil.process_iter():
-        if hk_recorder_name in p.cmdline():
-            os.kill(p.pid, signal.SIGKILL)
+        try:
+            if hk_recorder_name in p.cmdline():
+                os.kill(p.pid, signal.SIGKILL)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
 
 def kill_hv_updater():
     for p in psutil.process_iter():
-        if hv_updater_name in p.cmdline():
-            os.kill(p.pid, signal.SIGKILL)
+        try:
+            if hv_updater_name in p.cmdline():
+                os.kill(p.pid, signal.SIGKILL)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
 
 
 def kill_module_temp_monitor():
     for p in psutil.process_iter():
-        if module_temp_monitor_name in p.cmdline():
-            os.kill(p.pid, signal.SIGKILL)
+        try:
+            if module_temp_monitor_name in p.cmdline():
+                os.kill(p.pid, signal.SIGKILL)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
 
 # write a message to per-run log file, and to stdout
 #
@@ -376,15 +495,18 @@ def write_log(msg):
     except:
         f = open('log.txt', 'a')
 
+
 def disk_usage(dir):
     x = 0
     for f in os.listdir(dir):
         x += os.path.getsize('%s/%s'%(dir, f))
     return x
 
+
 def free_space(path):
     total, used, free = shutil.disk_usage(os.path.realpath(path))
     return free
+
 
 # estimate bytes per second per module for a given data config
 def daq_bytes_per_sec_per_module(data_config):
@@ -409,6 +531,7 @@ def daq_bytes_per_sec_per_module(data_config):
         x += ph_per_sec*(4*(256*2+ph_json_header_size))
     return x
 
+
 def get_daq_node_status(node):
     # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
@@ -430,7 +553,6 @@ def daq_get_run_name():
             return f.read().strip()
     return None
 
-
 #-------------- WR and GPS---------------
 
 def get_wr_ip_addr(obs_config):
@@ -439,6 +561,7 @@ def get_wr_ip_addr(obs_config):
     else:
         return '192.168.1.254'
 
+
 # get GPS receiver port (path of the tty)
 #
 def get_gps_port(obs_config):
@@ -446,6 +569,7 @@ def get_gps_port(obs_config):
         return obs_config['gps_port']
     else:
         return '/dev/ttyUSB0'
+
 
 # We may use port forwarding, so we need to get the real IP and ports.
 # this is based on the network_config.
@@ -473,14 +597,16 @@ def get_quabo_ip_port(ip_addr, i, network_config):
             break
     return ip_ports
 
-# attach port forwarding info to daq config based on network_config        
+
+# attach port forwarding info to daq config based on network_config
 def attach_daq_config(daq_config, network_config):
     for i in range(len(daq_config['daq_nodes'])):
         daq = daq_config['daq_nodes'][i]
         for pdaq in network_config['daq_nodes']:
              if daq['ip_addr'] == pdaq['ip_addr'] and pdaq['port_forwarding']['status'] == True:
                  daq_config['daq_nodes'][i]['port_forwarding'] = pdaq['port_forwarding']
-                
+
+
 # get the valid IPs
 def get_valid_ip(obs_config):
     logger = logging.getLogger('PANOSETI.Config.util.get_valid_ip')
@@ -496,8 +622,9 @@ def get_valid_ip(obs_config):
                 ips.append(quabo_ip)
     return ips
 
+
 # convert IP format to 192.168.xx.xxx
-# 
+#
 def convert_ip(ip):
     try:
         qid = int(ip)
@@ -508,3 +635,4 @@ def convert_ip(ip):
         blast = 4*(last//4)
         index = last - blast
         return f"{ipstr[0]}.{ipstr[1]}.{ipstr[2]}.{str(blast)}", index
+

@@ -22,6 +22,69 @@ from utils import pff, config_file
 
 from argparse import ArgumentParser
 import logging
+
+import builtins
+import tempfile
+from datetime import datetime, timezone
+
+# =========================
+# Print -> also prepend to UT log file
+# =========================
+
+_ORIG_PRINT = builtins.print
+
+def _ut_human_timestamp():
+    # Human-readable UTC timestamp
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UT')
+
+def _ut_yyyymmdd():
+    return datetime.now(timezone.utc).strftime('%Y%m%d')
+
+def _datarec_log_path():
+    yyyymmdd = _ut_yyyymmdd()
+    log_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
+    os.makedirs(log_dir, exist_ok=True)
+    return os.path.join(log_dir, f"datarec_{yyyymmdd}.log")
+
+def _prepend_line_to_file(path, line):
+    # Prepend efficiently by writing a temp file then replacing.
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+
+    old = b""
+    try:
+        with open(path, "rb") as f:
+            old = f.read()
+    except FileNotFoundError:
+        old = b""
+
+    new_bytes = (line + "\n").encode("utf-8", errors="replace")
+
+    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_datarec_", dir=d or None)
+    try:
+        with os.fdopen(fd, "wb") as tf:
+            tf.write(new_bytes)
+            tf.write(old)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception:
+            pass
+
+def print(*args, **kwargs):
+    # Console print as-is + prepend to UT log file with timestamp.
+    msg = " ".join(str(a) for a in args)
+    try:
+        _prepend_line_to_file(_datarec_log_path(), f"{_ut_human_timestamp()}: {msg}")
+    except Exception:
+        pass
+    _ORIG_PRINT(*args, **kwargs)
+
+builtins.print = print
+
 # write message to error log
 #
 def log_error(msg, run_dir):
@@ -227,3 +290,5 @@ if __name__ == "__main__":
     attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
     stop_run(daq_config, network_config, quabo_uids, verbose, no_cleanup, no_collect, run)
+
+

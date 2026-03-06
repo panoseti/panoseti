@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""
+infer_nearest_object.py
+
+Infer the nearest *named* object to the current Ekos Mount RA/Dec (with tolerance),
+and print the best match if within tolerance, otherwise print UNKNOWN.
+
+Uses the SAME creds/methods pattern as your kstars_coords.py:
+  - load mountcontrol.conf (same schema + default path)
+  - ssh to site (same SSH_OPTS + timeout)
+  - run qdbus on the remote host
+
+Two modes:
+  1) Live Ekos Mount query:
+        python3 infer_nearest_object.py --site Winter --tol-arcmin 10
+
+  2) Offline / explicit coordinates:
+        python3 infer_nearest_object.py --ra "05:35:17.3" --dec "-05:23:28" --tol-arcmin 5
+
+Catalog:
+  - Default: small built-in Messier subset
+  - Or provide a CSV with columns: name,ra_deg,dec_deg
+        python3 infer_nearest_object.py --site Winter --catalog /path/to/catalog.csv
+
+Exit codes:
+  0: matched within tolerance
+  2: no match (UNKNOWN)
+  3: runtime / query / parse error
+"""
+
+import argparse
+import csv
+import json
+import math
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+
+# ---------------- CONFIG (match kstars_coords.py) ----------------
+DEFAULT_CONF = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_mount/mountcontrol.conf"
+
+SSH_OPTS = [
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=3",
+    "-o", "ConnectionAttempts=1",
+    "-o", "StrictHostKeyChecking=accept-new",
+]
+SSH_TIMEOUT = 8
+# ---------------------------------------------------------------
+
+
+# ---------------- Built-in minimal catalog ----------------
+# RA/Dec in degrees (J2000-ish; sufficient for ?what object am I near?? inference)
+BUILTIN_OBJECTS = [
+    ("M 1",      84.03,  22.03),
+    ("Mrk 421",    166.485,  38.0644),
+    ("Capella",       79.66,  46.02),
+    ("M45 Pleiades",        56.750000,  24.116667),
+    ("M51 Whirlpool",      202.469575,  47.195258),
+    ("M57 Ring Nebula",    283.396563,  33.030278),
+    ("M81",                148.888221,  69.065295),
+    ("M82",                148.968458,  69.679703),
+    ("M104 Sombrero",      189.997917, -11.623056),
+]
+
+
+@dataclass(frozen=True)
+class SiteConf:
+    name: str
+    ssh_user: str
+    ssh_host: str
+    ssh_port: int
+    indi_port: int
+    device: str
+
+
+@dataclass
+class Obj:
+    name: str
+    ra_deg: float
+    dec_deg: float
+
+
+# ---------- CONFIG ----------
+def load_conf(conf_path: str) -> Dict[str, SiteConf]:
+    """
+    Same parser behavior as kstars_coords.py:
+      - ignores comments (#)
+      - requires 6 columns
+      - keys by lowercased site name
+    """
+    out: Dict[str, SiteConf] = {}
+    with open(conf_path, newline="") as f:
+        for row in csv.reader(f):
+            if not row or row[0].strip().startswith("#"):
+                continue
+            if len(row) < 6:
+                continue
+            name, user, host, ssh_port, indi_port, device = [x.strip() for x in row[:6]]
+            out[name.lower()] = SiteConf(
+                name=name,
+                ssh_user=user,
+                ssh_host=host,
+                ssh_port=int(ssh_port),
+                indi_port=int(indi_port),
+                device=device.strip().strip('"'),
+            )
+    return out
+
+
+# ---------- SSH ----------
+def run_ssh(site: SiteConf, remote_cmd: List[str]) -> str:
+    """
+    Same SSH wrapper pattern as kstars_coords.py (including timeout + error reporting).
+    """
+    cmd = [
+        "ssh", "-p", str(site.ssh_port),
+        *SSH_OPTS,
+        f"{site.ssh_user}@{site.ssh_host}",
+        *remote_cmd
+    ]
+    try:
+        p = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=SSH_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("SSH timeout")
+
+    if p.returncode != 0:
+        raise RuntimeError(p.stderr.strip() or p.stdout.strip())
+
+    return p.stdout.strip()
+
+
+def parse_first_float(s: str) -> float:
+    m = re.search(r"([-+]?\d+(?:\.\d*)?)", s)
+    if not m:
+        raise ValueError(f"Could not parse float from: {s!r}")
+    return float(m.group(1))
+
+
+# ---------- Mount query ----------
+def get_mount_radec(site: SiteConf) -> Tuple[float, float]:
+    """
+    Query Ekos Mount coordinates using the properties that actually exist on your system.
+
+    From introspection:
+      - org.kde.kstars.Ekos.Mount.equatorialCoords : array<double>
+
+    Returns:
+      (ra_hours, dec_deg)
+
+    Heuristic:
+      - If RA value > 24 -> assume RA is in degrees, convert to hours.
+      - Else -> assume RA is already in hours.
+    """
+    # Read equatorialCoords property (array<double>)
+    s = run_ssh(site, [
+        "qdbus", "--literal",
+        "org.kde.kstars",
+        "/KStars/Ekos/Mount",
+        "org.freedesktop.DBus.Properties.Get",
+        "org.kde.kstars.Ekos.Mount",
+        "equatorialCoords",
+    ])
+
+    # Extract all floats from the returned QVariant/variant text
+    nums = [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", s)]
+    if len(nums) < 2:
+        raise RuntimeError(f"Could not parse equatorialCoords from: {s!r}")
+
+    ra_val = nums[0]
+    dec_deg = nums[1]
+
+    # Interpret RA units
+    if ra_val > 24.0:
+        ra_hours = (ra_val / 15.0) % 24.0  # degrees -> hours
+    else:
+        ra_hours = ra_val % 24.0           # already hours
+
+    return ra_hours, dec_deg
+
+# ---------- Parsing helpers ----------
+def hms_to_hours(s: str) -> float:
+    parts = re.split(r"[:\s]+", s.strip())
+    parts = [p for p in parts if p]
+    if len(parts) == 1:
+        return float(parts[0])
+    hh = float(parts[0])
+    mm = float(parts[1])
+    ss = float(parts[2]) if len(parts) > 2 else 0.0
+    return hh + mm / 60.0 + ss / 3600.0
+
+
+def dms_to_degrees(s: str) -> float:
+    s = s.strip()
+    sign = -1.0 if s.startswith("-") else 1.0
+    s2 = s.lstrip("+-")
+    parts = re.split(r"[:\s]+", s2)
+    parts = [p for p in parts if p]
+    if len(parts) == 1:
+        return sign * float(parts[0])
+    dd = float(parts[0])
+    mm = float(parts[1])
+    ss = float(parts[2]) if len(parts) > 2 else 0.0
+    return sign * (dd + mm / 60.0 + ss / 3600.0)
+
+
+# ---------- Catalog ----------
+def load_catalog(path: Optional[str]) -> List[Obj]:
+    if not path:
+        return [Obj(n, ra, de) for (n, ra, de) in BUILTIN_OBJECTS]
+
+    objs: List[Obj] = []
+    with open(path, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        required = {"name", "ra_deg", "dec_deg"}
+        fields = set(reader.fieldnames or [])
+        if not required.issubset(fields):
+            raise ValueError(f"Catalog must have columns {sorted(required)}. Found: {reader.fieldnames}")
+        for row in reader:
+            name = (row.get("name") or "").strip()
+            if not name:
+                continue
+            objs.append(Obj(name=name, ra_deg=float(row["ra_deg"]), dec_deg=float(row["dec_deg"])))
+
+    if not objs:
+        raise ValueError(f"Catalog loaded zero objects from {path}")
+    return objs
+
+
+# ---------- Matching ----------
+def ang_sep_deg(ra1_deg: float, dec1_deg: float, ra2_deg: float, dec2_deg: float) -> float:
+    ra1 = math.radians(ra1_deg)
+    de1 = math.radians(dec1_deg)
+    ra2 = math.radians(ra2_deg)
+    de2 = math.radians(dec2_deg)
+    cosd = (math.sin(de1) * math.sin(de2) +
+            math.cos(de1) * math.cos(de2) * math.cos(ra1 - ra2))
+    cosd = max(-1.0, min(1.0, cosd))
+    return math.degrees(math.acos(cosd))
+
+
+def find_nearest(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tuple[Obj, float]:
+    """
+    Returns (nearest_object, separation_deg).
+    Uses astropy if available; otherwise pure-math fallback.
+    """
+    try:
+        from astropy.coordinates import SkyCoord  # type: ignore
+        import astropy.units as u  # type: ignore
+
+        target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
+        cat = SkyCoord(
+            ra=[o.ra_deg for o in objs] * u.deg,
+            dec=[o.dec_deg for o in objs] * u.deg,
+            frame="icrs",
+        )
+        idx, sep, _ = target.match_to_catalog_sky(cat)
+        nearest = objs[int(idx)]
+        return nearest, float(sep.deg)
+    except Exception:
+        best = objs[0]
+        best_sep = ang_sep_deg(ra_deg, dec_deg, best.ra_deg, best.dec_deg)
+        for o in objs[1:]:
+            s = ang_sep_deg(ra_deg, dec_deg, o.ra_deg, o.dec_deg)
+            if s < best_sep:
+                best_sep = s
+                best = o
+        return best, best_sep
+
+
+# ---------- MAIN ----------
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Infer nearest named object to Ekos Mount RA/Dec (with tolerance).")
+
+    ap.add_argument("--conf", default=DEFAULT_CONF, help=f"mountcontrol.conf path (default: {DEFAULT_CONF})")
+
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--site", help="Gattini, Winter, Fern, PTI")
+    src.add_argument("--ra", help="RA (HH:MM:SS or hours as float). Requires --dec.")
+
+    ap.add_argument("--dec", help="Dec (+DD:MM:SS or degrees as float). Used with --ra.")
+    ap.add_argument("--catalog", help="CSV catalog with columns: name,ra_deg,dec_deg")
+    ap.add_argument("--tol-arcmin", type=float, default=10.0, help="Tolerance to accept a match (arcmin).")
+    ap.add_argument("--json", action="store_true", help="Also print JSON (second line).")
+    ap.add_argument("--print-radec", action="store_true", help="Also print computed RA/Dec degrees.")
+    args = ap.parse_args()
+
+    try:
+        # --- Resolve coords ---
+        if args.site:
+            conf = load_conf(args.conf)
+            site_key = args.site.lower()
+            if site_key not in conf:
+                known = ", ".join(sorted({c.name for c in conf.values()}))
+                print(f"Unknown site {args.site}. Known: {known}", file=sys.stderr)
+                return 2
+
+            site = conf[site_key]
+            ra_h, dec_deg = get_mount_radec(site)
+            ra_deg = (ra_h % 24.0) * 15.0
+            source = f"ekos-mount@{site.name}"
+        else:
+            if args.dec is None:
+                ap.error("--ra requires --dec")
+            ra_h = hms_to_hours(args.ra)
+            dec_deg = dms_to_degrees(args.dec)
+            ra_deg = (ra_h % 24.0) * 15.0
+            source = "cli"
+
+        # --- Match ---
+        objs = load_catalog(args.catalog)
+        nearest, sep_deg = find_nearest(objs, ra_deg, dec_deg)
+        sep_arcmin = sep_deg * 60.0
+
+        matched = sep_arcmin <= float(args.tol_arcmin)
+        name = nearest.name if matched else "UNKNOWN"
+
+        extra = ""
+        if args.print_radec:
+            extra = f"  (ra_deg={ra_deg:.6f} dec_deg={dec_deg:.6f})"
+
+        print(f"{name}  (sep={sep_arcmin:.2f} arcmin, tol={float(args.tol_arcmin):.2f} arcmin, source={source}){extra}")
+
+        if args.json:
+            payload = {
+                "matched": matched,
+                "name": name,
+                "nearest_candidate": nearest.name,
+                "sep_arcmin": sep_arcmin,
+                "tol_arcmin": float(args.tol_arcmin),
+                "ra_hours": ra_h,
+                "ra_deg": ra_deg,
+                "dec_deg": dec_deg,
+                "source": source,
+                "catalog": args.catalog or "builtin_messier_subset",
+            }
+            print(json.dumps(payload, sort_keys=True))
+
+        return 0 if matched else 2
+
+    except Exception as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+

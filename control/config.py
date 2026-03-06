@@ -20,6 +20,66 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from argparse import ArgumentParser
 
+# ---- PRINT WRAPPER: prefix UTC timestamp + prepend to UT-day logfile ----
+import builtins as _builtins
+
+_builtin_print = _builtins.print
+
+def _utc_ts():
+    # Human-readable UTC timestamp
+    return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UT")
+
+def _ut_yyyymmdd():
+    return datetime.datetime.utcnow().strftime("%Y%m%d")
+
+def _datarec_log_path():
+    yyyymmdd = _ut_yyyymmdd()
+    d = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, f"datarec_{yyyymmdd}.log")
+
+def _prepend_to_file(path, text):
+    # Prepend text to the beginning of the file (newest entries on top)
+    tmp_path = path + ".tmp"
+    old = ""
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                old = f.read()
+    except Exception:
+        old = ""
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        f.write(text)
+        if old:
+            f.write(old)
+    os.replace(tmp_path, path)
+
+def print(*args, **kwargs):
+    sep = kwargs.get("sep", " ")
+    end = kwargs.get("end", "\n")
+    flush = kwargs.get("flush", False)
+
+    msg = sep.join(str(a) for a in args) + end
+    ts = _utc_ts()
+
+    parts = msg.splitlines(True)  # keep line endings
+    out_parts = []
+    for p in parts:
+        out_parts.append(f"{ts} {p}")
+
+    out_text = "".join(out_parts)
+
+    # Console output
+    _builtin_print(out_text, end="", flush=flush)
+
+    # Prepend to logfile
+    try:
+        _prepend_to_file(_datarec_log_path(), out_text)
+    except Exception:
+        pass
+# -----------------------------------------------------------------------
+
+
 def ask_use_default_calibration(ip_addr):
     while True:
         choice = input(f"Use default calibration file for {ip_addr}? (Y/N): ").strip().upper()
@@ -197,10 +257,6 @@ def do_reboot(modules, quabo_uids, network_config):
     print("Reboot Stop  Time :", end_dt.strftime("%Y-%m-%d %H:%M:%S"))
     print(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
     print('*******************************************************')
-    if False in status:
-        return False
-    else:
-        return True
 
 def do_loads(modules, quabo_uids, quabo_info, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_loads')
@@ -471,16 +527,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 # set the DAC2 values back
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
             if no_cali:
-                # print('**************************************************************************')
-                # print('Warning: No calibration data for the board with UID: %s'%uid)
-                # print('         Using default calibration data.')
-                # print('**************************************************************************')
                 logger.warning('No calibration data: UID -%s'%uid)
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
-            #print(stim_mask_quaboi[i], type(stim_mask_quaboi[i]))
             if stim_mask_quaboi[i] == 0:
                 for k in range(64):
-                    #print(qc_dict[f'CTEST_{k}'])
                     ctest_key = f'CTEST_{k}'
                     assert ctest_key in qc_dict, f"{ctest_key=} not in qc_dict"
                     qc_dict[ctest_key] = "0,0,0,0"
@@ -499,19 +549,16 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
         qc_dict['CHANMASK_'+str(i)] = int(qc_dict['CHANMASK_'+str(i)], 16)
     if do_ph:
         # config CHANMASK_8 for any_trigger
-        # if we use anytrigger mode, bit8 in CHANMASK_8 should be set to 1 
         if 'any_trigger' in data_config['pulse_height']:
             qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] & 0x0ff
         else:
             qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | (0x100)
         
         # config GOEMASK for 2/3 pixel_trigger
-        # if we use 3 pixel trigger, GOEMASK should be 1, CHANMASK_8 should be 0x0ff or 0x1ff
         if 'three_pixel_trigger' in data_config['pulse_height']:
             if data_config['pulse_height']['three_pixel_trigger']:
                 qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
                 qc_dict['GOEMASK'] = qc_dict['GOEMASK'] & 0x1
-        # if we use 2 pixel trigger, GOEMASK should be 2, CHANMASK_8 should be 0x0ff or 0x1ff
         if 'two_pixel_trigger' in data_config['pulse_height']:
             if data_config['pulse_height']['two_pixel_trigger']:
                 qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
@@ -566,7 +613,6 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
     d = datetime.datetime.utcnow()
     x['date'] = d.isoformat()
     x['quabos'] = quabos;
-    # create a tmp directory
     baseline_file = config_file.quabo_ph_baseline_filename
     os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
     with open(baseline_file, "w") as f:
@@ -727,6 +773,12 @@ def main():
                         help='Start daemons to populate Redis with HK/GPS/WR data, and to copy data from Redis to InfluxDB.')
     parser.add_argument('--stop_redis_daemons', dest='stop_redis_daemons', action='store_true', default=False,
                         help='Stop the above.')
+    parser.add_argument('--permanent_daemons', dest='permanent_daemons', action='store_true', default=False,
+                        help='Start permanent daemons (permanent_*.py) plus storeInfluxDB.py.')
+    parser.add_argument('--stop_permanent_daemons', dest='stop_permanent_daemons', action='store_true', default=False,
+                        help='Stop the above.')
+    parser.add_argument('--show_permanent_daemons', dest='show_permanent_daemons', action='store_true', default=False,
+                        help='Show permanent daemon status.')
     parser.add_argument('--hv_on', dest='hv_on', action='store_true', default=False,
                         help='Enable detectors.')
     parser.add_argument('--hv_off', dest='hv_off', action='store_true', default=False,
@@ -783,6 +835,16 @@ def main():
         logger = logging.getLogger('PANOSETI.Config.stop_redis_daemons')
         logger.info('Stop redis daemons.')
         util.stop_redis_daemons()
+    elif args.permanent_daemons:
+        logger = logging.getLogger('PANOSETI.Config.start_permanent_daemons')
+        logger.info('Start permanent daemons.')
+        util.start_permanent_daemons()
+    elif args.stop_permanent_daemons:
+        logger = logging.getLogger('PANOSETI.Config.stop_permanent_daemons')
+        logger.info('Stop permanent daemons.')
+        util.stop_permanent_daemons()
+    elif args.show_permanent_daemons:
+        util.show_permanent_daemons()
     elif args.show:
         show_config(obs_config, quabo_uids)
         util.show_redis_daemons()
@@ -810,3 +872,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
