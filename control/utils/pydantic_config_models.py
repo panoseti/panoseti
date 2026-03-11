@@ -330,8 +330,10 @@ class NetworkConfigValidator(BaseStrictModel):
 class Daemons(BaseModel):
     model_config = ConfigDict(extra='allow') # Allow dynamic casper_xx keys
 
+
 class DaemonConfigValidator(BaseStrictModel):
     daemons: Daemons
+    permanent_daemons: Daemons
 
 # ------------------------------
 # --- Firmware Config Models ---
