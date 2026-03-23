@@ -29,7 +29,11 @@ UPDATE_INTERVAL = 5
 # Min & max detector operating temperatures (degrees Celsius).
 MIN_TEMP = -20.0
 MAX_TEMP = 60.0
-
+# Min & max hv.
+MIN_HV = 50
+MAX_HV = 60
+# we don't use the loop to set up the HV the first time.
+INIT_SET = True
 #--------- Implementation Globals --------#
 
 # Get quabo and detector info.
@@ -46,6 +50,15 @@ def is_acceptable_temperature(temp: float):
     MIN_TEMP and MAX_TEMP."""
     return MIN_TEMP <= temp <= MAX_TEMP
 
+def is_acceptable_hv(monitored_hv: list):
+    """Returns True only if the provided hv is reasonable. """
+    r = True
+    for hv in monitored_hv:
+        if MIN_HV <= hv <= MAX_HV:
+            r = True
+        else:
+            r = False
+    return r
 
 def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
     """Given a detector serial number and a temperature in degrees Celsius,
@@ -67,7 +80,8 @@ def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
 
 def update_quabo(quabo_obj: quabo_driver.QUABO,
                  det_serial_nums: list,
-                 temp: float):
+                 temp: float,
+                 monitored_hv: list):
     """Helper method for the function update_all_quabos. Updates each
      detector in the quabo represented by quabo_obj."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
@@ -75,7 +89,18 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
     try:
         for detector_index in range(4):
             det_serial_num = det_serial_nums[detector_index]
-            adjusted_hv = get_adjusted_detector_hv(det_serial_num, temp)
+            target_hv = get_adjusted_detector_hv(det_serial_num, temp)
+            if INIT_SET:
+                # When we set HV the first time, we don't use the loop
+                adjusted_hv = target_hv
+                INIT_SET = False
+                logger.debug('Init HV setting.')
+            else:
+                # Now, we start to use the loop the set the HV
+                adjusted_hv = target_hv + (target_hv - monitored_hv[detector_index])*0.5
+            logger.debug(f'Target HV{detector_index}: -{target_hv}V')
+            logger.debug(f'Monitored HV{detector_index}: -{monitored_hv[detector_index]}V')
+            logger.debug(f'Adjusted HV{detector_index}: -{adjusted_hv}V')
             # Save int encoding
             #adjusted_hv_values[detector_index] = int((adjusted_hv + HV_OFFSET) / 0.0011453)
             adjusted_hv_values[detector_index] = int((adjusted_hv) / 0.0011324717)
@@ -97,13 +122,32 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
+        logger.err(msg.format(err))
         raise
     except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += "Temperature HK data may be missing. "
         msg += "Error msg: {1}"
+        logger.err(msg.format(rkey, terr))
         raise
 
+def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
+    """Given a Quabo's redis key, rkey, returns the field value of HVMON{q} in Redis."""
+    logger = logging.getLogger('PANOSETI.HVUpdater')
+    try:
+        hv = float(r.hget(rkey, f'HVMON{q}'))
+        return hv
+    except redis.RedisError as err:
+        msg = "hv_updater: A Redis error occurred. "
+        msg += "Error msg: {0}"
+        logger.err(msg.format(err))
+        raise
+    except TypeError as terr:
+        msg = "hv_updater: Failed to update '{0}'. "
+        msg += f"HV{q} HK data may be missing. "
+        msg += "Error msg: {1}"
+        logger.err(msg.format(rkey, terr))
+        raise
 
 def update_all_quabos(r: redis.Redis):
     """Iterates through each quabo in the observatory and updates
@@ -129,6 +173,11 @@ def update_all_quabos(r: redis.Redis):
                     else:
                         # Get the temperature data for this quabo.
                         temp = get_redis_temp(r, rkey)
+                        # Get the monitored HV
+                        monitored_hv = []
+                        for i in range(4):
+                            mhv = get_redis_hv(r, rkey, i)
+                            monitored_hv.append(mhv)
                     # Get quabo object
                     q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
                     logger.debug('Quabo IP: %s'%q_ip_addr)
@@ -166,8 +215,8 @@ def update_all_quabos(r: redis.Redis):
                 else:
                     # Checks whether the quabo temperature is acceptable.
                     # See https://github.com/panoseti/panoseti/issues/58.
-                    if is_acceptable_temperature(temp):
-                        update_quabo(quabo_obj, detector_serial_nums, temp)
+                    if is_acceptable_temperature(temp) and is_acceptable_hv(monitored_hv):
+                        update_quabo(quabo_obj, detector_serial_nums, temp, monitored_hv)
                     else:
                         msg = "hv_updater: The temperature of quabo {0} with base IP {1} is {2} C, "
                         msg += "which exceeds the maximum operating temperatures. \n"
@@ -186,7 +235,6 @@ def update_all_quabos(r: redis.Redis):
                 finally:
                     if quabo_obj is not None:
                         quabo_obj.close()
-
 
 def main():
     """Makes a call to update_all_quabos every UPDATE_INTERVAL seconds."""
