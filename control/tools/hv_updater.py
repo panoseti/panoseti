@@ -24,7 +24,7 @@ import logging
 HV_OFFSET = 1.073
 
 # Seconds between updates.
-UPDATE_INTERVAL = 5
+UPDATE_INTERVAL = 3
 
 # Min & max detector operating temperatures (degrees Celsius).
 MIN_TEMP = -20.0
@@ -34,7 +34,10 @@ MIN_HV = 0
 MAX_HV = 60
 # we don't use the loop to set up the HV the first time.
 INIT_SET = True
+
+# global vars for recording the previous data
 adjusted_hv = [0] * 4
+timestamp_pre = 0
 #--------- Implementation Globals --------#
 
 # Get quabo and detector info.
@@ -100,6 +103,9 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             else:
                 # Now, we start to use the loop the set the HV
                 adjusted_hv[detector_index] = adjusted_hv[detector_index] + (target_hv - monitored_hv[detector_index])*0.5
+                # make sure the adjusted_hv is a reasonable value
+                if adjusted_hv[detector_index] >= MAX_HV:
+                    adjusted_hv[detector_index] = MAX_HV
                 #adjusted_hv = target_hv
             logger.debug(f'Target HV{detector_index}: -{target_hv}V')
             logger.debug(f'Monitored HV{detector_index}: -{monitored_hv[detector_index]}V')
@@ -155,6 +161,27 @@ def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
         logger.err(msg.format(rkey, terr))
         raise
 
+def check_timestamp(r: redis.Redis, rkey: str):
+    """
+        check the timestamp in the redis database.
+        if the timestamp doesn't change, return false
+    """
+    logger = logging.getLogger('PANOSETI.HVUpdater')
+    global timestamp_pre
+    try:
+        timestamp = float(r.hget(rkey, 'Computer_UTC'))
+        if timestamp - timestamp_pre > 0.1 :
+            # check the timestamp difference, to make sure the hk data is updated
+            timestamp_pre = timestamp
+            return True
+        else:
+            return False
+    except redis.RedisError as err:
+        msg = "hv_updater: A Redis error occurred. "
+        msg += "Error msg: {0}"
+        logger.err(msg.format(err))
+        raise
+
 def update_all_quabos(r: redis.Redis):
     """Iterates through each quabo in the observatory and updates
     its detectors' high-voltage values, provided its temperature is
@@ -172,6 +199,9 @@ def update_all_quabos(r: redis.Redis):
                         continue
                     uid = module['quabos'][quabo_index]['uid']
                     if uid == '':
+                        continue
+                    if not check_timestamp(r, rkey):
+                        logger.warning("Housekeeping data hasn't been updated.")
                         continue
                     # Get this Quabo's temp, if it exists.
                     if rkey.encode('utf-8') not in r.keys():
