@@ -30,10 +30,11 @@ UPDATE_INTERVAL = 5
 MIN_TEMP = -20.0
 MAX_TEMP = 60.0
 # Min & max hv.
-MIN_HV = 50
+MIN_HV = 0
 MAX_HV = 60
 # we don't use the loop to set up the HV the first time.
 INIT_SET = True
+adjusted_hv = [0] * 4
 #--------- Implementation Globals --------#
 
 # Get quabo and detector info.
@@ -86,24 +87,26 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
      detector in the quabo represented by quabo_obj."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
     adjusted_hv_values = [0] * 4
+    global adjusted_hv
     try:
+        global INIT_SET
         for detector_index in range(4):
             det_serial_num = det_serial_nums[detector_index]
             target_hv = get_adjusted_detector_hv(det_serial_num, temp)
             if INIT_SET:
                 # When we set HV the first time, we don't use the loop
-                adjusted_hv = target_hv
-                INIT_SET = False
+                adjusted_hv[detector_index] = target_hv
                 logger.debug('Init HV setting.')
             else:
                 # Now, we start to use the loop the set the HV
-                adjusted_hv = target_hv + (target_hv - monitored_hv[detector_index])*0.5
+                adjusted_hv[detector_index] = adjusted_hv[detector_index] + (target_hv - monitored_hv[detector_index])*0.5
+                #adjusted_hv = target_hv
             logger.debug(f'Target HV{detector_index}: -{target_hv}V')
             logger.debug(f'Monitored HV{detector_index}: -{monitored_hv[detector_index]}V')
-            logger.debug(f'Adjusted HV{detector_index}: -{adjusted_hv}V')
+            logger.debug(f'Adjusted HV{detector_index}: -{adjusted_hv[detector_index]}V')
             # Save int encoding
             #adjusted_hv_values[detector_index] = int((adjusted_hv + HV_OFFSET) / 0.0011453)
-            adjusted_hv_values[detector_index] = int((adjusted_hv) / 0.0011324717)
+            adjusted_hv_values[detector_index] = int((adjusted_hv[detector_index]) / 0.0011324717)
     except KeyError as kerr:
         msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
         msg += "Error message: {1}"
@@ -111,6 +114,9 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
         raise
     else:
         quabo_obj.hv_set(adjusted_hv_values)
+        if INIT_SET:
+            time.sleep(5)
+            INIT_SET = False
 
 
 def get_redis_temp(r: redis.Redis, rkey: str) -> float:
@@ -135,7 +141,7 @@ def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
     """Given a Quabo's redis key, rkey, returns the field value of HVMON{q} in Redis."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
-        hv = float(r.hget(rkey, f'HVMON{q}'))
+        hv = float(r.hget(rkey, f'HVMON{q}')) * -1
         return hv
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
@@ -215,7 +221,8 @@ def update_all_quabos(r: redis.Redis):
                 else:
                     # Checks whether the quabo temperature is acceptable.
                     # See https://github.com/panoseti/panoseti/issues/58.
-                    if is_acceptable_temperature(temp) and is_acceptable_hv(monitored_hv):
+                    #if is_acceptable_temperature(temp) and is_acceptable_hv(monitored_hv):
+                    if is_acceptable_temperature(temp):
                         update_quabo(quabo_obj, detector_serial_nums, temp, monitored_hv)
                     else:
                         msg = "hv_updater: The temperature of quabo {0} with base IP {1} is {2} C, "
