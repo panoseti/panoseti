@@ -7,7 +7,7 @@ on:
       - 'control/**'
       - '.github/workflows/unit-tests.yml'
   pull_request:
-    branches: [master, dev, mount-metadata, claude-refactor]
+    branches: [master, dev, mount-metadata, claude-refactor, phase-2-robustness-and-driver-tests]
     paths:
       - 'control/**'
 
