@@ -1,6 +1,8 @@
 # functions to parse PFF files,
 # and to create and parse PFF dir/file names
 
+from __future__ import annotations
+
 import struct, os, time, datetime, json
 
 # returns the string (doesn't parse it)
@@ -96,7 +98,7 @@ def parse_name(name):
 # return the directory name for a run
 #
 def run_dir_name(obs_name, run_type):
-    dt = datetime.datetime.utcnow()
+    dt = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
     return 'obs_%s.start_%sZ.runtype_%s.pffd'%(obs_name, dt_str, run_type)
@@ -125,7 +127,7 @@ def img_header_time(h):
     try:
         # this is for img16, img8 and ph1024
         t = pkt_header_time(h['quabo_0'])
-    except:
+    except (KeyError, TypeError):
         # this is for ph256
         t = pkt_header_time(h)
     return t

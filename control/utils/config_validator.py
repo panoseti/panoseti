@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Tuple
 import urllib
 from rich.console import Console
 from rich.pretty import pprint
@@ -29,7 +30,7 @@ def print_compact_config(config_name: str, config_dict: dict):
 
 
 
-def _check_tcp_port(ip: str, port: int, timeout: float = 2.0) -> Tuple[bool, str]:
+def _check_tcp_port(ip: str, port: int, timeout: float = 2.0) -> tuple[bool, str]:
     """Fast TCP check to see if a port is accepting connections."""
     try:
         with socket.create_connection((ip, port), timeout=timeout):

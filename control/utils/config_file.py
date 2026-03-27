@@ -1,8 +1,11 @@
 #! /usr/bin/env python3
+from __future__ import annotations
 
 # functions to read and parse config files
+# CWD CONTRACT: all relative paths in this file are relative to the control/ directory.
+# Scripts must be launched from control/ (e.g. `cd control && python start.py`).
 
-import os,sys,json
+import os, sys, json, pathlib
 from pydantic import ValidationError
 from rich.console import Console
 from rich.pretty import pprint
@@ -18,6 +21,10 @@ from .pydantic_config_models import (
 from .global_validator import GlobalConfigValidator
 from .config_validator import perform_network_ping_sweep
 console = Console()
+
+# Resolved root of the control/ package (useful for tests and tooling).
+# Do NOT use this for runtime hardware paths — use CWD-relative strings instead.
+_CONTROL_BASE = pathlib.Path(__file__).parent.parent.resolve()
 
 # Globals to control console verbosity
 IS_CLI_VALIDATION = False
@@ -201,10 +208,10 @@ def get_detector_info():
     for det in c:
         try:
             d[str(det['serialno'])] = float(det['operating_voltage'])
-        except:
+        except (KeyError, ValueError, TypeError):
             try:
                 d[str(det['serialno'])] = float(det['breakdown_voltage']) + data_config['detector_overvoltage']
-            except:
+            except (KeyError, ValueError, TypeError):
                 d[str(det['serialno'])] = float(det['breakdown_voltage']) + 3
     if 'detector_overvoltage' not in data_config:
         print('**************************************************************************')
@@ -309,7 +316,7 @@ def print_topology_graph(obs_conf, daq_conf, net_conf):
 
             try:
                 mod_id = ip_addr_to_module_id(m_ip)
-            except:
+            except (ValueError, IndexError, AttributeError):
                 mod_id = -1
 
             dest_daq = daq_map.get(mod_id)

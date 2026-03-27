@@ -4,9 +4,11 @@ pydantic_config_models.py
 Centralized Pydantic models for validating PANOSETI configuration files.
 """
 
+from __future__ import annotations
+
 import logging
 import re
-from typing import List, Optional, Dict, Any, Union, Literal
+from typing import Any, Literal
 from pydantic import (
     BaseModel, Field, model_validator,
     ConfigDict, IPvAnyAddress, field_validator,
@@ -44,7 +46,7 @@ class AnyTriggerConfig(BaseStrictModel):
 
 class PulseHeightMode(BaseStrictModel):
     pe_threshold: float = Field(..., ge=MIN_PULSE_HEIGHT_PE_THRESHOLD, description="Pulse height threshold in photoelectrons")
-    any_trigger: Optional[AnyTriggerConfig] = None
+    any_trigger: AnyTriggerConfig | None = None
     two_pixel_trigger: int = Field(0, description="If set to 1, 2 pixel trigger mode will be enabled.")
     three_pixel_trigger: int = Field(0, description="If set to 1, 3 pixel trigger mode will be enabled.")
 
@@ -64,7 +66,7 @@ class ImageMode(BaseStrictModel):
 ## -- data_config: Test signal injection
 class LongPulseMode(BaseStrictModel):
     octaves: int
-    threshold_sigma: List[float]
+    threshold_sigma: list[float]
 
 class FlashParams(BaseStrictModel):
     rate: int = Field(..., ge=0, le=7, description="3-bit value controlling flash rate (0-7)")
@@ -74,14 +76,14 @@ class FlashParams(BaseStrictModel):
 class StimParams(BaseStrictModel):
     rate: int = Field(..., ge=0, le=7, description="Rate from 190 to 24,400 Hz")
     level: int = Field(..., ge=0, le=255)
-    mask: List[bool] = Field(..., max_length=4, min_length=4)
+    mask: list[bool] = Field(..., max_length=4, min_length=4)
 
 ## data_config: Interleaving mode
 class InterleaveState(BaseStrictModel):
     state_name: str
     duration_seconds: float = Field(..., gt=0.01)
-    movie_mode_config: Optional[str] = None
-    pulse_height_mode_config: Optional[str] = None
+    movie_mode_config: str | None = None
+    pulse_height_mode_config: str | None = None
 
     @model_validator(mode='after')
     def check_at_least_one_mode(self) -> 'InterleaveState':
@@ -91,7 +93,7 @@ class InterleaveState(BaseStrictModel):
 
 class InterleaveConfig(BaseStrictModel):
     enable: bool = Field(False)
-    states: List[InterleaveState] = Field([])
+    states: list[InterleaveState] = Field([])
 
 ## data_config: global validator
 class DataConfigValidator(BaseModel):
@@ -100,14 +102,14 @@ class DataConfigValidator(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     run_type: str = Field(..., max_length=MAX_RUN_TYPE_LENGTH)
-    detector_overvoltage: Optional[Literal[2, 3]] = None
-    gain: Optional[int] = None
-    max_file_size_mb: Optional[int] = Field(None, gt=0)
-    image: Optional[ImageMode] = None
-    pulse_height: Optional[PulseHeightMode] = None
-    interleave: Optional[InterleaveConfig] = None  # Assuming you have an InterleaveConfig model
-    stim_params: Optional[StimParams] = None
-    flash_params: Optional[FlashParams] = None
+    detector_overvoltage: Literal[2, 3] | None = None
+    gain: int | None = None
+    max_file_size_mb: int | None = Field(None, gt=0)
+    image: ImageMode | None = None
+    pulse_height: PulseHeightMode | None = None
+    interleave: InterleaveConfig | None = None  # Assuming you have an InterleaveConfig model
+    stim_params: StimParams | None = None
+    flash_params: FlashParams | None = None
 
     @field_validator("run_type")
     def validate_run_type(cls, v):
@@ -191,17 +193,17 @@ class WpsConfig(BaseStrictModel):
 
 class ObsModuleConfig(BaseStrictModel):
     mobo_serialno: str
-    quabo_version: Union[str, List[str]]
+    quabo_version: str | list[str]
     ip_addr: IPvAnyAddress
-    wps: Optional[str] = None
-    ups: Optional[str] = None
-    timing_mode: Optional[str] = Field("wr", pattern="^(wr|gnss)$")
-    azimuth: Optional[float] = Field(None, ge=0, le=360)
-    elevation: Optional[float] = Field(None, ge=-90, le=90)
-    position_angle: Optional[float] = None
+    wps: str | None = None
+    ups: str | None = None
+    timing_mode: str | None = Field("wr", pattern="^(wr|gnss)$")
+    azimuth: float | None = Field(None, ge=0, le=360)
+    elevation: float | None = Field(None, ge=-90, le=90)
+    position_angle: float | None = None
 
     # Injected fields by config_file.py at runtime
-    id: Optional[int] = None
+    id: int | None = None
 
 
 class ObsDomeConfig(BaseStrictModel):
@@ -209,20 +211,20 @@ class ObsDomeConfig(BaseStrictModel):
     obslat: float = Field(..., ge=-90, le=90)
     obslon: float = Field(..., ge=-180, le=180)
     obsalt: float
-    modules: List[ObsModuleConfig]
+    modules: list[ObsModuleConfig]
 
     # Injected fields by config_file.py at runtime
-    num: Optional[int] = None
+    num: int | None = None
 
 
 class ObsConfigValidator(BaseModel):
     name: str
-    comment: Optional[str] = None
-    wr_ip_addr: Optional[IPvAnyAddress] = Field("192.168.1.254")
-    dome_controller_ip_addr: Optional[IPvAnyAddress] = None
-    gps_port: Optional[str] = Field("/dev/ttyUSB0")
-    detector_overvoltage: Optional[int] = None
-    domes: List[ObsDomeConfig]
+    comment: str | None = None
+    wr_ip_addr: IPvAnyAddress | None = Field("192.168.1.254")
+    dome_controller_ip_addr: IPvAnyAddress | None = None
+    gps_port: str | None = Field("/dev/ttyUSB0")
+    detector_overvoltage: int | None = None
+    domes: list[ObsDomeConfig]
 
     model_config = ConfigDict(extra='allow')
 
@@ -248,8 +250,8 @@ class DaqNodeValidator(BaseStrictModel):
     username: str
     data_dir: str
     ip_addr: IPvAnyAddress
-    module_ids: Union[str, List[int]]
-    bindhost: Optional[str] = Field("0.0.0.0")
+    module_ids: str | list[int]
+    bindhost: str | None = Field("0.0.0.0")
 
     @field_validator('module_ids', mode='after')
     def validate_module_range(cls, v):
@@ -279,11 +281,11 @@ class DaqNodeValidator(BaseStrictModel):
 
 
 class DaqConfigValidator(BaseStrictModel):
-    comment: Optional[str] = None
+    comment: str | None = None
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
     head_node_container: bool = Field(False)
-    daq_nodes: List[DaqNodeValidator]
+    daq_nodes: list[DaqNodeValidator]
 
     @model_validator(mode='after')
     def check_head_node_data_dir_match(self) -> 'DaqConfigValidator':
@@ -307,9 +309,9 @@ class DaqConfigValidator(BaseStrictModel):
 class PortForwarding(BaseStrictModel):
     status: bool
     gw_ip: IPvAnyAddress
-    reboot_port: Optional[List[int]] = None
-    cmd_port: Optional[List[int]] = None
-    port: Optional[int] = None
+    reboot_port: list[int | None] = None
+    cmd_port: list[int | None] = None
+    port: int | None = None
 
 class NetworkModule(BaseStrictModel):
     ip_addr: IPvAnyAddress
@@ -320,8 +322,8 @@ class NetworkDaqNode(BaseStrictModel):
     port_forwarding: PortForwarding
 
 class NetworkConfigValidator(BaseStrictModel):
-    modules: List[NetworkModule]
-    daq_nodes: List[NetworkDaqNode]
+    modules: list[NetworkModule]
+    daq_nodes: list[NetworkDaqNode]
 
 # ----------------------------
 # --- Daemon Config Models ---
@@ -350,7 +352,7 @@ class QuaboUidEntry(BaseStrictModel):
     uid: str = Field(..., description="Hex string of the Quabo UID. Empty string if offline.")
 
 class QuaboUidModule(BaseStrictModel):
-    quabos: List[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
+    quabos: list[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
 
     @field_validator('quabos')
     def ensure_four_quabos(cls, v):
@@ -359,7 +361,7 @@ class QuaboUidModule(BaseStrictModel):
         return v
 
 class QuaboUidDome(BaseStrictModel):
-    modules: List[QuaboUidModule]
+    modules: list[QuaboUidModule]
 
 class QuaboUidsValidator(BaseStrictModel):
-    domes: List[QuaboUidDome]
+    domes: list[QuaboUidDome]

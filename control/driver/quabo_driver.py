@@ -14,9 +14,11 @@
 #
 # See https://github.com/panoseti/panoseti/wiki/Quabo-device-driver
 
-import socket, time, json
+from __future__ import annotations
+
+import socket, time, json, logging
 from utils import util
-import os, logging
+import os
 
 UDP_CMD_PORT= 60000
     # port used on both sides for command packets
@@ -75,9 +77,15 @@ class QUABO:
         self.MAROC_regs = []
         for i in range (4):
             self.MAROC_regs.append([0 for x in range(104)])
-        # create a logger
+        # create a logger (uses panoseti_grpc telemetry if available, stdlib fallback)
         util.create_logger(logfile, 'PANOSETI.Driver', 'a')
         self.logger = logging.getLogger('PANOSETI.Driver')
+        # prefer the telemetry-backed logger when panoseti_grpc is installed
+        try:
+            from panoseti_grpc.telemetry.logger import get_logger
+            self.logger = get_logger('quabo_driver', grpc_enabled=False, reset=False)
+        except ImportError:
+            pass
         self.logger.info('************************************')
 
     def close(self):
@@ -313,7 +321,7 @@ class QUABO:
         try:
             with open(config_file, 'rb') as f:
                 cfg = json.load(f)
-        except:
+        except (OSError, json.JSONDecodeError):
             cfg = {}
         # create the tag list
         tag_list = ['OTABG_ON'      , 'DAC_ON'      , 'SMALL_DAC'       , 'DAC2'    ,
@@ -352,7 +360,7 @@ class QUABO:
         try:
             with open(config_file, 'rb') as f:
                 cfg = json.load(f)
-        except:
+        except (OSError, json.JSONDecodeError):
             cfg = {}
         # create the tag list
         tag_list = []
@@ -370,7 +378,7 @@ class QUABO:
         try:
             with open(config_file, 'rb') as f:
                 cfg = json.load(f)
-        except:
+        except (OSError, json.JSONDecodeError):
             cfg = {}
         # create the tag list
         tag = 'GOEMASK'
@@ -398,7 +406,7 @@ class QUABO:
             try:
                 x = self.hk_sock.recvfrom(2048)
                 # returns (data, (ip_addr, port))
-            except:
+            except (socket.timeout, OSError):
                 continue
             src = x[1]
             if src[0] == self.ip_addr:
@@ -428,7 +436,7 @@ class QUABO:
             reply = self.sock.recvfrom(12)
             bytes = reply[0]
             count = len(bytes)
-        except:
+        except (socket.timeout, OSError):
             count = 0
         if count != 12:
             return False

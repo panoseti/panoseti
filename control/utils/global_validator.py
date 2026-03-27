@@ -5,10 +5,12 @@ Executes Tier-2 cross-configuration validations to ensure physical, network,
 and hardware states are cohesive across the entire PanoSETI observatory.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess
-from typing import Dict, Any, List, Tuple
+from typing import Any
 from haversine import haversine, Unit
 from rich.console import Console
 from rich.table import Table
@@ -21,7 +23,7 @@ class ValidationReport:
     """Aggregates tests for a unified pre-flight report."""
 
     def __init__(self):
-        self.tests: List[Dict[str, str]] = []
+        self.tests: list[dict[str, str]] = []
         self.has_errors = False
 
     def add_test(self, name: str, status: str, info: str = ""):
@@ -49,7 +51,7 @@ class ValidationReport:
 
 
 class GlobalConfigValidator:
-    def __init__(self, validated_configs: Dict[str, Any]):
+    def __init__(self, validated_configs: dict[str, Any]):
         self.obs_conf = validated_configs.get('obs', {})
         self.data_conf = validated_configs.get('data', {})
         self.daq_conf = validated_configs.get('daq', {})
@@ -166,7 +168,7 @@ class GlobalConfigValidator:
             seen_ids.update(ids)
         self.report.add_test("DAQ Overlap", "PASS", "No overlapping module_ids across DAQ nodes.")
 
-    def _estimate_data_usage(self) -> Tuple[float, float, str]:
+    def _estimate_data_usage(self) -> tuple[float, float, str]:
         """Returns (TB_per_hour, total_estimated_TB, formula_string)"""
         num_modules = sum(len(d.get('modules', [])) for d in self.obs_conf.get('domes', []))
         img_conf = self.data_conf.get('image', {})

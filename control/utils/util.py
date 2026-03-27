@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 # control script utilities
+# CWD CONTRACT: relative paths in this module are relative to the control/ directory.
+# Scripts must be launched from control/ (e.g. `cd control && python start.py`).
 import os, sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -12,7 +16,7 @@ import netifaces, json
 try:
     from driver import quabo_driver
     from utils import config_file
-except:
+except ImportError:
     pass
 
 import logging
@@ -79,23 +83,33 @@ default_hk_dest = '192.168.1.100'
 
 # create logger
 #
-def create_logger(logfile, tag, mode='w'):
-    logger = logging.getLogger(tag)
-    logger.setLevel(logging.DEBUG)
-    logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
-    # write log to log file
-    fhandler = logging.FileHandler(logfile, mode=mode)
-    fhandler.setFormatter(logformat)
-    fhandler.setLevel(logging.DEBUG)
-    # write log to terminal (Warning and Error messages only)
-    shandler = logging.StreamHandler()
-    shandler.setFormatter(logformat)
-    shandler.setLevel(logging.WARNING)
-    if logger.handlers:
-        logger.handlers.clear()
-    # add handlers
-    logger.addHandler(fhandler)
-    logger.addHandler(shandler)
+def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
+    """
+    Configure a named logger, forwarding to the panoseti_grpc Telemetry service
+    when available, with graceful fallback to standard Python logging.
+
+    Backwards-compatible: existing callers use create_logger(logfile, tag) then
+    logging.getLogger(tag) — that pattern continues to work unchanged.
+    """
+    log_dir = os.path.dirname(os.path.abspath(logfile)) if logfile else None
+    try:
+        from panoseti_grpc.telemetry.logger import get_logger
+        get_logger(tag, log_dir=log_dir, grpc_enabled=False, reset=True)
+    except ImportError:
+        # panoseti_grpc not installed — fall back to standard handlers
+        logger = logging.getLogger(tag)
+        logger.setLevel(logging.DEBUG)
+        logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
+        fhandler = logging.FileHandler(logfile, mode=mode)
+        fhandler.setFormatter(logformat)
+        fhandler.setLevel(logging.DEBUG)
+        shandler = logging.StreamHandler()
+        shandler.setFormatter(logformat)
+        shandler.setLevel(logging.WARNING)
+        if logger.handlers:
+            logger.handlers.clear()
+        logger.addHandler(fhandler)
+        logger.addHandler(shandler)
 
 
 # our IP address on local network (192.x.x.x)
@@ -134,10 +148,10 @@ def ip_addr_str_to_bytes(ip_addr_str):
 #
 def ping(ip_addr, cmd_port):
     logger = logging.getLogger('PANOSETI.Config.util.ping')
-    #return not os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+    #return not subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr], capture_output=True).returncode
     # TODO: implement the qping cmd in the firmware
     # For now, we just use the data_packet_destination to see if we can talk to Quabo
-    s = os.system('ping -c 1 -w 1 -q %s > /dev/null 2>&1'%ip_addr)
+    s = subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr], capture_output=True).returncode
     if not s:
         return True
     else:
@@ -197,7 +211,7 @@ def is_quabo_old_version(module, i, quabo_uids, quabo_info):
                 uid = m['quabos'][i]['uid']
     try:
         v = quabo_info[uid]['board_version']
-    except:
+    except (KeyError, TypeError):
         print('uid: %s can\'t be found in quabo_info.json'%uid)
         return
     return v == 'qfp'
@@ -214,7 +228,7 @@ def start_daemon(prog):
             close_fds=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-    except:
+    except OSError:
         print("can't launch %s"%prog)
         return
     print('started %s'%prog)
@@ -339,7 +353,7 @@ def start_hk_recorder(daq_config, run_name):
     path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
         subprocess.Popen([hk_recorder_name, path])
-    except:
+    except OSError:
         print("can't launch HK recorder")
         raise
 
@@ -351,7 +365,7 @@ def start_hv_updater():
         return
     try:
         subprocess.Popen([hv_updater_name])
-    except:
+    except OSError:
         print("can't launch HV updater")
         raise
 
@@ -363,7 +377,7 @@ def start_module_temp_monitor():
         return
     try:
         subprocess.Popen([module_temp_monitor_name])
-    except:
+    except OSError:
         print("can't launch module temperature monitor")
         raise
 
@@ -377,7 +391,7 @@ def write_run_name(daq_config, run_name):
     run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
     os.symlink(run_dir, run_symlink, True)
     # record the run name in skymap_info_dir, which will be used by skymap_helper
-    os.system('cp %s %s'%(run_name_file, 'tmp/skymap_info_dir'))
+    shutil.copy(run_name_file, 'tmp/skymap_info_dir')
 
 
 def read_run_name():
@@ -401,7 +415,7 @@ def stop_hashpipe(pid):
             while True:
                 try:
                     os.kill(pid, 0)
-                except:
+                except (OSError, ProcessLookupError):
                     return True
                 time.sleep(0.1)
     return False
@@ -492,7 +506,7 @@ def write_log(msg):
         f = open('run/log.txt', 'a')
         f.write('%s: %s: %s'%(__main__.__file__, now, msg))
         f.close()
-    except:
+    except OSError:
         f = open('log.txt', 'a')
 
 
