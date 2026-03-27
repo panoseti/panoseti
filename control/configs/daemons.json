@@ -3,6 +3,7 @@
         "hk": true,
         "gps": false,
         "telemetry_service": true,
+        "loki": false,
         "guider": false,
         "power": false,
         "datarecweb": true,

@@ -94,7 +94,7 @@ def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
     log_dir = os.path.dirname(os.path.abspath(logfile)) if logfile else None
     try:
         from panoseti_grpc.telemetry.logger import get_logger
-        get_logger(tag, log_dir=log_dir, grpc_enabled=False, reset=True)
+        get_logger(tag, log_dir=log_dir, grpc_enabled=True, reset=True)
     except ImportError:
         # panoseti_grpc not installed — fall back to standard handlers
         logger = logging.getLogger(tag)
@@ -110,6 +110,20 @@ def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
             logger.handlers.clear()
         logger.addHandler(fhandler)
         logger.addHandler(shandler)
+
+    # Check if we are the main process (to avoid double logging in multiprocessing)
+    # and if we haven't already set up the logger.
+    if not any(isinstance(h, logging.Handler) and getattr(h, 'service_name', '') for h in logging.getLogger().handlers):
+        print("Injecting gRPC logger into Process...")
+
+        # Attach gRPC handler to the ROOT logger
+        # This captures all 'logging.info()' calls from config.py, drivers, etc.
+        get_logger(
+            service_name="control_logger",
+            level=logging.DEBUG,
+            console=False,
+            grpc_enabled=True,
+        )
 
 
 # our IP address on local network (192.x.x.x)

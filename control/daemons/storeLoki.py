@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""
+storeLoki.py
+------------
+Consumes logs from the Redis Queue and pushes them to Grafana Loki.
+Implements batching, GZIP compression, and exponential backoff for robustness.
+
+Architecture:
+    [gRPC Server] -> (RPUSH) -> [Redis List] -> (BLPOP) -> [storeLoki] -> (POST) -> [Loki]
+"""
+from __future__ import annotations
+
+import gzip
+import json
+import logging
+import os
+import sys
+import time
+
+import redis
+import requests
+from pathlib import Path
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+try:
+    from panoseti_grpc.telemetry.logger import get_logger
+    from panoseti_grpc.telemetry.config import TelemetryConfig
+except ImportError:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
+    from panoseti_grpc.telemetry.logger import get_logger
+    from panoseti_grpc.telemetry.config import TelemetryConfig
+
+logger = get_logger("storeLoki", grpc_enabled=False)
+
+# --- Configuration Constants ---
+DEFAULT_LOKI_URL = "http://localhost:3100/loki/api/v1/push"
+DEFAULT_REDIS_KEY = "logs:ingress"
+BATCH_SIZE = 100          # Flush when we have 100 logs
+MAX_BUFFER_SIZE = 2000    # Stop pulling from Redis if we hold this many
+FLUSH_INTERVAL = 2.0      # Flush at least every 2 seconds
+MAX_BACKOFF_SECONDS = 60  # Cap retry wait time
+
+
+class LokiPublisher:
+    """Handles buffering and pushing logs to Loki with GZIP compression and backoff."""
+
+    def __init__(self, loki_url: str):
+        self.url = loki_url
+        self.buffer: list[dict] = []
+        self.last_flush = time.time()
+
+        # Backoff state
+        self.consecutive_errors = 0
+        self.next_retry_time = 0.0
+
+        # Robust HTTP session with retry
+        self.session = requests.Session()
+        retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504])
+        self.session.mount('http://', HTTPAdapter(max_retries=retries))
+
+    def can_accept_more(self) -> bool:
+        """Returns False if buffer is full (backpressure to Redis)."""
+        return len(self.buffer) < MAX_BUFFER_SIZE
+
+    def add(self, log_entry: dict) -> None:
+        self.buffer.append(log_entry)
+
+    def should_flush(self) -> bool:
+        if not self.buffer:
+            return False
+        if time.time() < self.next_retry_time:
+            return False
+        is_full = len(self.buffer) >= BATCH_SIZE
+        is_stale = (time.time() - self.last_flush) > FLUSH_INTERVAL
+        return is_full or is_stale
+
+    def flush(self) -> None:
+        """Compress buffer and POST to Loki; preserve buffer on retriable errors."""
+        if not self.buffer:
+            return
+
+        payload = self._build_loki_payload()
+
+        try:
+            compressed_data = gzip.compress(json.dumps(payload).encode('utf-8'))
+        except (ValueError, OSError) as e:
+            logger.error(f"Compression failed: {e}. Dropping batch.")
+            self.buffer.clear()
+            return
+
+        try:
+            headers = {"Content-Type": "application/json", "Content-Encoding": "gzip"}
+            resp = self.session.post(self.url, data=compressed_data, headers=headers, timeout=5)
+
+            if resp.status_code == 204:
+                if self.consecutive_errors > 0:
+                    logger.info("Reconnected to Loki.")
+                self.buffer.clear()
+                self.last_flush = time.time()
+                self.consecutive_errors = 0
+                self.next_retry_time = 0.0
+
+            elif resp.status_code == 429:
+                logger.warning("Loki rate limit (429). Slowing down.")
+                self._apply_backoff(initial=2.0)
+
+            elif 400 <= resp.status_code < 500:
+                logger.error(f"Loki rejected data ({resp.status_code}): {resp.text}")
+                self.buffer.clear()
+
+            else:
+                logger.warning(f"Loki server error ({resp.status_code}). Retrying.")
+                self._apply_backoff()
+
+        except requests.exceptions.RequestException as e:
+            if self.consecutive_errors == 0:
+                logger.error(f"Loki unreachable: {e}")
+            self._apply_backoff()
+
+    def _apply_backoff(self, initial: float = 1.0) -> None:
+        self.consecutive_errors += 1
+        delay = min(initial * (2 ** (self.consecutive_errors - 1)), MAX_BACKOFF_SECONDS)
+        self.next_retry_time = time.time() + delay
+
+    def _build_loki_payload(self) -> dict:
+        """Group logs by labels for Loki efficiency."""
+        streams: dict[str, dict] = {}
+
+        for entry in self.buffer:
+            labels = {
+                "host":          entry.get("host", "unknown"),
+                "service":       entry.get("service_name", "unknown"),
+                "severity":      str(entry.get("severity", 2)),
+                "function_name": entry.get("function_name", "unknown"),
+                "git_branch":    entry.get("git_branch", "unknown"),
+                "git_commit":    entry.get("git_commit", "unknown"),
+            }
+            stream_key = json.dumps(labels, sort_keys=True)
+            if stream_key not in streams:
+                streams[stream_key] = {"stream": labels, "values": []}
+
+            try:
+                ts_ns = int(entry.get("timestamp", time.time()) * 1e9)
+                ts_str = str(ts_ns)
+            except (ValueError, TypeError):
+                ts_str = str(int(time.time() * 1e9))
+
+            line_str = entry.get("payload_json", "{}")
+            streams[stream_key]["values"].append([ts_str, line_str])
+
+        return {"streams": list(streams.values())}
+
+
+def main() -> None:
+    logger.info("Starting Loki log shipper...")
+
+    config_path = Path("capture_telemetry_service/telemetry_config.toml")
+    if not config_path.exists():
+        config_path = Path("telemetry_config.toml")
+
+    redis_key = DEFAULT_REDIS_KEY
+    loki_url = DEFAULT_LOKI_URL
+
+    if config_path.exists():
+        try:
+            TelemetryConfig.load(str(config_path))
+        except (OSError, ValueError, KeyError) as e:
+            logger.warning(f"Config load warning: {e} — using defaults")
+
+    logger.info(f"Source Redis key: {redis_key}")
+    logger.info(f"Target Loki URL: {loki_url}")
+
+    try:
+        r = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
+        r.ping()
+        publisher = LokiPublisher(loki_url)
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        logger.critical(f"Redis startup failed: {e}")
+        sys.exit(1)
+
+    while True:
+        try:
+            if publisher.should_flush():
+                publisher.flush()
+
+            if publisher.can_accept_more():
+                item = r.blpop(redis_key, timeout=1)
+                if item:
+                    try:
+                        log_entry = json.loads(item[1])
+                        publisher.add(log_entry)
+                    except json.JSONDecodeError:
+                        logger.error("Skipping invalid JSON log entry")
+            else:
+                time.sleep(0.5)
+
+        except redis.RedisError as e:
+            logger.error(f"Redis connection error: {e}")
+            time.sleep(2)
+        except KeyboardInterrupt:
+            logger.info("Shutdown signal. Flushing final logs...")
+            publisher.flush()
+            break
+
+
+if __name__ == "__main__":
+    main()
