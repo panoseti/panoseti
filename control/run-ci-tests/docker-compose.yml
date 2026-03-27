@@ -1,0 +1,63 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Redis — needed for redis_utils tests (via fakeredis, no live Redis needed
+  # for unit tests, but here for integration tests that hit a real instance)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Unit test runner
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    build:
+      context: ..
+      dockerfile: run-ci-tests/Dockerfile.test
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      # Mount repo for live edits during local development
+      - ..:/app
+    working_dir: /app
+    command: >
+      pytest tests/unit/ -v --tb=short
+        --color=yes
+        -p no:cacheprovider
+    profiles:
+      - unit
+
+  # ---------------------------------------------------------------------------
+  # Integration test runner (future — Phase 4)
+  # ---------------------------------------------------------------------------
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: run-ci-tests/Dockerfile.test
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ..:/app
+    working_dir: /app
+    command: >
+      pytest tests/integration/ -v --tb=short
+        --color=yes
+        -p no:cacheprovider
+    profiles:
+      - integration
