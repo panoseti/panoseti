@@ -27,10 +27,10 @@ _builtin_print = _builtins.print
 
 def _utc_ts():
     # Human-readable UTC timestamp
-    return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UT")
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S UT")
 
 def _ut_yyyymmdd():
-    return datetime.datetime.utcnow().strftime("%Y%m%d")
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
 
 def _datarec_log_path():
     yyyymmdd = _ut_yyyymmdd()
@@ -635,7 +635,7 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             q['coefs'] = coefs
             quabos.append(q)
     x={}
-    d = datetime.datetime.utcnow()
+    d = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     x['date'] = d.isoformat()
     x['quabos'] = quabos;
     baseline_file = config_file.quabo_ph_baseline_filename

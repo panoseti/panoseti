@@ -17,7 +17,7 @@ import redis
 import time
 from signal import signal, SIGINT
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from utils.redis_utils import *
 from utils import util, config_file
 
@@ -141,7 +141,7 @@ def main():
         # check softpll status
         res = wrs.pllstatus()
         r.hset(RKEY, 'SOFTPLL', 1 if res[0] == SOFTPLL_LOCKED else 0)
-        print(datetime.utcnow())
+        print(datetime.now(timezone.utc).replace(tzinfo=None))
         time.sleep(1)
 
 if __name__ == "__main__":

@@ -56,12 +56,12 @@ def extract_state(outlet):
 
 def write_daily_log(site, outlets):
     """Append log to /mnt/data11/data/palomar/L0/YYYYMMDD/site/power/"""
-    date = datetime.datetime.utcnow().strftime("%Y%m%d")
+    date = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
     dpath = os.path.join(SAVE_BASE, date, site, "power")
     os.makedirs(dpath, exist_ok=True)
     logpath = os.path.join(dpath, f"{site}_power_{date}.log")
 
-    ts = datetime.datetime.utcnow().isoformat()
+    ts = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat()
     with open(logpath, "a") as f:
         for o in outlets:
             name = o.get("name", "Outlet").replace(" ", "_")
@@ -70,7 +70,7 @@ def write_daily_log(site, outlets):
 
 def write_current_json(all_sites_data):
     """Write combined JSON file and upload to cylon"""
-    all_sites_data["timestamp"] = datetime.datetime.utcnow().isoformat()
+    all_sites_data["timestamp"] = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat()
 
     with open(CURRENT_DIR_LOCAL, "w") as f:
         json.dump(all_sites_data, f, indent=2)

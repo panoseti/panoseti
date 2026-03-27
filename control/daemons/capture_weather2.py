@@ -93,7 +93,7 @@ def save_to_redis(weather):
 def write_log(weather):
     """Append weather data to a daily log file with header if new."""
     # Create directory /mnt/data11/data/palomar/L0/YYYYMMDD/weather
-    utc_date = datetime.datetime.utcnow().strftime("%Y%m%d")
+    utc_date = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
     log_dir = os.path.join(BASE_DIR, utc_date, "weather")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "weather.log")

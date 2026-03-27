@@ -143,7 +143,7 @@ def parse_dec_deg(val: str) -> Optional[float]:
         return None
 
 def ensure_day_log(name: str) -> str:
-    day = datetime.datetime.utcnow().strftime("%Y%m%d")
+    day = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
     path = os.path.join(SAVE_ROOT, day, name, "mount")
     os.makedirs(path, exist_ok=True)
     return os.path.join(path, f"{name}_mount_{day}.log")

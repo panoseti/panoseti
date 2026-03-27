@@ -3,7 +3,7 @@ import os
 import time
 import base64
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import paramiko
@@ -95,8 +95,8 @@ def capture_phd2_once(site):
         h = reply["result"]["height"]
         arr = np.frombuffer(base64.b64decode(img_b64), dtype=np.uint16).reshape(h, w)
 
-        date_str = datetime.utcnow().strftime("%Y%m%d")
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        date_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+        ts = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
         local_dir = os.path.join(LOCAL_BASE, date_str, site["name"], "guider")
         os.makedirs(local_dir, exist_ok=True)
         fits_path = os.path.join(local_dir, f"guider_{site['name']}_{ts}.fits")
@@ -121,8 +121,8 @@ def capture_ekos_once(site):
             print(f"?? [{site['name']}] No FITS found.")
             ssh.close()
             return
-        date_str = datetime.utcnow().strftime("%Y%m%d")
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        date_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+        ts = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
         local_dir = os.path.join(LOCAL_BASE, date_str, site["name"], "guider")
         os.makedirs(local_dir, exist_ok=True)
         local_fits = os.path.join(local_dir, f"guider_{site['name']}_{ts}.fits")

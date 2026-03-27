@@ -49,7 +49,7 @@ def local_tz_label():
         return "LOCAL"
 
 def UT_and_local():
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     utc = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     return f"{utc} ({local_tz_label()})"
 
@@ -179,7 +179,7 @@ def main():
     print(f"[INFO] Monitoring {len(sites)} domes every {INTERVAL_SECONDS}s.")
 
     while True:
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         yyyymmdd = now.strftime("%Y%m%d")
         timestamp = now.isoformat(timespec="seconds") + "Z"
 

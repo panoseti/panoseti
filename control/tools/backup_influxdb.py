@@ -80,7 +80,7 @@ def do_backup():
     2. Creates a backup of the influxdb data generated since the last backup, and
     3. Calls update_backup_log to add a log entry for this backup.
     """
-    date = datetime.datetime.utcnow()
+    date = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     backup_folder_path = get_backup_folder_path(date)
     # Create backup directory.
     make_dir_command = 'mkdir -p {0}'.format(backup_folder_path)

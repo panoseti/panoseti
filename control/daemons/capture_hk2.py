@@ -6,12 +6,12 @@
 
 import os, sys, json, subprocess
 import socket, redis, time
-from datetime import datetime
+from datetime import datetime, timezone
 from signal import signal, SIGINT
 from sys import exit
 
 # ===== Path to panoseti project root =====
-sys.path.append("/home/obs/panoseti_mount/panoseti/control")
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.redis_utils import *
 from capture_hk.panosetiSIconvert import HKconvert
@@ -60,7 +60,7 @@ def run_command(cmd, label):
 
 def append_to_daily_log(redis_set, boardName):
     """Append housekeeping record to local daily JSON log."""
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
     log_dir = os.path.join(BASE_DIR, date_str, OBSERVATORY, "hk")
     log_file = os.path.join(log_dir, f"{boardName}.json")
 

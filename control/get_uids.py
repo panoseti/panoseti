@@ -12,14 +12,14 @@ from utils import config_file, util
 import json
 import argparse
 from argparse import ArgumentParser
-from datetime import datetime
+from datetime import datetime, timezone
 
 # =========================
 # Logging / print wrapper
 # =========================
 
 def _ut_now():
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 def _log_paths():
     ut = _ut_now()

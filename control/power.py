@@ -10,11 +10,11 @@
 
 import sys, os
 from utils import config_file
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ---------- logging helper (UTC) ----------
 def log_print(msg):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     ts = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     yyyymmdd = now.strftime("%Y%m%d")
 

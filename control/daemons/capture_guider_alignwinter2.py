@@ -42,7 +42,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -272,11 +272,11 @@ def infer_current_target_name(site: SiteConf, tol_arcmin: float, catalog_csv: Op
 # Misc helpers
 # ==============================
 def utc_datestr():
-    return datetime.utcnow().strftime("%Y%m%d")
+    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
 
 
 def utc_ts_compact():
-    return datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
 
 
 def site_norm(name: str) -> str:
