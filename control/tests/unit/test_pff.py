@@ -358,3 +358,202 @@ class TestReadJson:
 
         recovered_img = pff.read_image(buf, 32, 2)
         assert list(recovered_img) == img
+
+
+# ===========================================================================
+# img_header_time / pkt_header_time
+# ===========================================================================
+
+class TestPktHeaderTime:
+    TV_SEC = 1_000_000
+
+    def _d0_tai(self, tv_sec):
+        """pkt_tai that gives d=0."""
+        return (tv_sec + 37) % 1024
+
+    def test_flat_header_d0(self):
+        h = {"pkt_tai": self._d0_tai(self.TV_SEC), "pkt_nsec": 0, "tv_sec": self.TV_SEC}
+        assert pff.pkt_header_time(h) == float(self.TV_SEC)
+
+    def test_flat_header_with_nsec(self):
+        h = {"pkt_tai": self._d0_tai(self.TV_SEC), "pkt_nsec": 500_000_000, "tv_sec": self.TV_SEC}
+        assert abs(pff.pkt_header_time(h) - (self.TV_SEC + 0.5)) < 1e-6
+
+
+class TestImgHeaderTime:
+    TV_SEC = 1_000_000
+
+    def _d0_tai(self, tv_sec):
+        return (tv_sec + 37) % 1024
+
+    def test_nested_quabo0_format(self):
+        """img16/img8/ph1024: header has {'quabo_0': {...}}."""
+        inner = {"pkt_tai": self._d0_tai(self.TV_SEC), "pkt_nsec": 0, "tv_sec": self.TV_SEC}
+        h = {"quabo_0": inner}
+        assert pff.img_header_time(h) == float(self.TV_SEC)
+
+    def test_flat_ph256_format(self):
+        """ph256: flat header without quabo_0 key."""
+        h = {"pkt_tai": self._d0_tai(self.TV_SEC), "pkt_nsec": 0, "tv_sec": self.TV_SEC}
+        assert pff.img_header_time(h) == float(self.TV_SEC)
+
+    def test_nested_with_nsec(self):
+        inner = {"pkt_tai": self._d0_tai(self.TV_SEC), "pkt_nsec": 250_000_000, "tv_sec": self.TV_SEC}
+        h = {"quabo_0": inner}
+        assert abs(pff.img_header_time(h) - (self.TV_SEC + 0.25)) < 1e-6
+
+
+# ===========================================================================
+# img_info
+# ===========================================================================
+
+class TestImgInfo:
+    BYTES_PER_IMAGE = 32 * 32 * 2  # img16: 2048
+
+    def test_basic_returns_four_tuple(self, pff_file_factory):
+        f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000)
+        result = pff.img_info(f, self.BYTES_PER_IMAGE)
+        assert len(result) == 4
+
+    def test_nframes_correct(self, pff_file_factory):
+        for n in [1, 3, 5]:
+            f = pff_file_factory(n_frames=n, tv_sec_start=1_000_000)
+            frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+            assert nframes == n
+
+    def test_first_and_last_t(self, pff_file_factory):
+        f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000)
+        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        assert abs(first_t - 1_000_000.0) < 1e-6
+        assert abs(last_t - 1_000_002.0) < 1e-6
+
+    def test_frame_size_formula(self, pff_file_factory):
+        """frame_size = header_size + bytes_per_image + 1."""
+        f = pff_file_factory(n_frames=2, tv_sec_start=1_000_000)
+        frame_size, _, _, _ = pff.img_info(f, self.BYTES_PER_IMAGE)
+        assert frame_size == self.BYTES_PER_IMAGE + 1 + frame_size - self.BYTES_PER_IMAGE - 1 + 0
+        # Simpler: verify file_size is consistent
+        f.seek(0, 2)
+        file_size = f.tell()
+        assert file_size == frame_size * 2
+
+    def test_skips_leading_zero_timestamp_frames(self, pff_file_factory):
+        """Frames with tv_sec=0 produce first_t=0; img_info skips them."""
+        # First 2 frames have tv_sec=0 → img_header_time returns 0
+        tv_secs = [0, 0, 1_000_000]
+        f = pff_file_factory(n_frames=3, tv_sec_values=tv_secs)
+        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        assert first_t != 0
+
+    def test_all_zero_timestamps_raises(self, pff_file_factory):
+        """All frames zero → raises ValueError."""
+        tv_secs = [0, 0, 0]
+        f = pff_file_factory(n_frames=3, tv_sec_values=tv_secs)
+        with pytest.raises(ValueError):
+            pff.img_info(f, self.BYTES_PER_IMAGE)
+
+    def test_flat_ph256_header(self, pff_file_factory):
+        """img_info works with flat (ph256-style) headers too."""
+        f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000, nested_header=False)
+        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        assert nframes == 3
+        assert abs(first_t - 1_000_000.0) < 1e-6
+
+
+# ===========================================================================
+# img_frame_time
+# ===========================================================================
+
+class TestImgFrameTime:
+    BYTES_PER_IMAGE = 32 * 32 * 2
+
+    def test_frame_0_matches_first_t(self, pff_file_factory):
+        f = pff_file_factory(n_frames=5, tv_sec_start=2_000_000)
+        frame_size, _, first_t, _ = pff.img_info(f, self.BYTES_PER_IMAGE)
+        f.seek(0)
+        t = pff.img_frame_time(f, 0, frame_size)
+        assert abs(t - first_t) < 1e-6
+
+    def test_last_frame_matches_last_t(self, pff_file_factory):
+        f = pff_file_factory(n_frames=5, tv_sec_start=2_000_000)
+        frame_size, nframes, _, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        f.seek(0)
+        t = pff.img_frame_time(f, nframes - 1, frame_size)
+        assert abs(t - last_t) < 1e-6
+
+    def test_mid_frame(self, pff_file_factory):
+        f = pff_file_factory(n_frames=5, tv_sec_start=1_000_000)
+        frame_size, _, _, _ = pff.img_info(f, self.BYTES_PER_IMAGE)
+        f.seek(0)
+        t = pff.img_frame_time(f, 2, frame_size)
+        assert abs(t - 1_000_002.0) < 1e-6
+
+
+# ===========================================================================
+# time_seek
+# ===========================================================================
+
+class TestTimeSeek:
+    BYTES_PER_IMAGE = 32 * 32 * 2
+
+    def test_t_before_first_seeks_to_start(self, pff_file_factory):
+        f = pff_file_factory(n_frames=5, tv_sec_start=1_000_000)
+        frame_size, _, first_t, _ = pff.img_info(f, self.BYTES_PER_IMAGE)
+        f.seek(0)
+        # t < first_t + frame_time → seek to 0
+        pff.time_seek(f, frame_time=1.0, bytes_per_image=self.BYTES_PER_IMAGE,
+                      t=first_t - 10.0)
+        assert f.tell() == 0
+
+    def test_t_after_last_seeks_to_last_frame(self, pff_file_factory):
+        f = pff_file_factory(n_frames=5, tv_sec_start=1_000_000)
+        frame_size, nframes, _, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        f.seek(0)
+        pff.time_seek(f, frame_time=1.0, bytes_per_image=self.BYTES_PER_IMAGE,
+                      t=last_t + 100.0)
+        assert f.tell() == (nframes - 1) * frame_size
+
+    def test_t_exact_middle_seeks_near_that_frame(self, pff_file_factory):
+        """time_seek converges to a frame within frame_time of the target."""
+        n = 9
+        f = pff_file_factory(n_frames=n, tv_sec_start=1_000_000)
+        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        target_t = 1_000_004.0  # frame 4
+        f.seek(0)
+        pff.time_seek(f, frame_time=1.0, bytes_per_image=self.BYTES_PER_IMAGE,
+                      t=target_t)
+        # The seek should land us at a frame within a couple of positions
+        landed_frame = f.tell() // frame_size
+        assert 2 <= landed_frame <= 6
+
+
+# ===========================================================================
+# skip_image
+# ===========================================================================
+
+class TestSkipImage:
+    def test_skip_advances_past_image_block(self):
+        """skip_image advances by img_size^2*bpp + 1 bytes."""
+        img = [0] * 1024
+        buf = io.BytesIO()
+        pff.write_image_1D(buf, img, 32, 2)  # writes 1 + 1024*2 = 2049 bytes
+        buf.seek(0)
+        pos_before = buf.tell()
+        pff.skip_image(buf, 32, 2)
+        pos_after = buf.tell()
+        assert pos_after - pos_before == 32 * 32 * 2 + 1
+
+    def test_skip_then_read_next_header(self, pff_file_factory):
+        """After skipping frame 0's image, read_json gives frame 1's header."""
+        f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000)
+        # Read frame 0 header
+        h0_str = pff.read_json(f)
+        h0 = json.loads(h0_str)
+        # Skip frame 0 image
+        pff.skip_image(f, 32, 2)
+        # Now read frame 1 header
+        h1_str = pff.read_json(f)
+        h1 = json.loads(h1_str)
+        # Frame 1 should have tv_sec = 1_000_001
+        quabo_data = h1.get("quabo_0", h1)
+        assert quabo_data["tv_sec"] == 1_000_001

@@ -192,3 +192,71 @@ def make_minimal_pff_bytes(n_frames: int = 3, tv_sec_start: int = 1_000_000) -> 
         buf.write(header)
         buf.write(_make_pff_image_block_16bit())
     return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Fixed-size PFF file factory (for img_info / time_seek tests)
+# All frames have identical header sizes — required by img_info's frame_size math.
+# pkt_tai is set so that d = (tv_sec - pkt_tai + 37) % 1024 == 0 for every frame.
+# ---------------------------------------------------------------------------
+
+_FIXED_HEADER_JSON_LEN = 120  # pad all JSON to this many bytes before '\n\n'
+
+
+def _make_fixed_header(tv_sec: int, pkt_num: int = 0, nested: bool = True) -> bytes:
+    """
+    Build a PFF JSON header padded to _FIXED_HEADER_JSON_LEN + 2 bytes total.
+    nested=True  → img16/img8 style   {"quabo_0": {...}}
+    nested=False → ph256 style        {...}
+    d=0 guaranteed: pkt_tai = (tv_sec + 37) % 1024.
+    """
+    pkt_tai = (tv_sec + 37) % 1024
+    inner = {
+        "quabo_num": 0,
+        "pkt_num": pkt_num,
+        "pkt_tai": pkt_tai,
+        "pkt_nsec": 0,
+        "tv_sec": tv_sec,
+        "tv_usec": 0,
+    }
+    payload = {"quabo_0": inner} if nested else inner
+    s = json.dumps(payload)
+    # Pad with spaces so every header has the same byte length
+    s = s + " " * max(0, _FIXED_HEADER_JSON_LEN - len(s))
+    return (s + "\n\n").encode()
+
+
+def make_pff_file(
+    n_frames: int = 3,
+    tv_sec_start: int = 1_000_000,
+    tv_sec_values: list | None = None,
+    nested_header: bool = True,
+    img_size: int = 32,
+    bpp: int = 2,
+) -> io.BytesIO:
+    """
+    Write an in-memory PFF file and return a seeked-to-start BytesIO.
+
+    All frames have identical fixed-size headers (padded to _FIXED_HEADER_JSON_LEN).
+    tv_sec_values, if provided, overrides per-frame tv_sec; must be length n_frames.
+    """
+    if tv_sec_values is None:
+        tv_sec_values = [tv_sec_start + i for i in range(n_frames)]
+    assert len(tv_sec_values) == n_frames, "tv_sec_values length must match n_frames"
+
+    n_pixels = img_size * img_size
+    fmt = f"{n_pixels}{'H' if bpp == 2 else 'B'}"
+    image_bytes = b"*" + struct.pack(fmt, *([0] * n_pixels))
+
+    buf = io.BytesIO()
+    for i, tv_sec in enumerate(tv_sec_values):
+        buf.write(_make_fixed_header(tv_sec, pkt_num=i, nested=nested_header))
+        buf.write(image_bytes)
+    buf.seek(0)
+    return buf
+
+
+@pytest.fixture
+def pff_file_factory():
+    """Fixture that returns the make_pff_file() helper."""
+    return make_pff_file
