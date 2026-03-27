@@ -2,12 +2,12 @@ name: Unit Tests
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, dev, claude-refactor, phase-2-robustness-and-driver-tests]
     paths:
       - 'control/**'
       - '.github/workflows/unit-tests.yml'
   pull_request:
-    branches: [master, main]
+    branches: [master, dev, mount-metadata, claude-refactor]
     paths:
       - 'control/**'
 
@@ -15,49 +15,17 @@ jobs:
   unit-tests:
     runs-on: ubuntu-24.04
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: control/pyproject.toml
-
-      - name: Stub netifaces (not available on CI runner)
-        run: |
-          python -c "
-          stub = 'def interfaces(): return []\ndef ifaddresses(i): return {}\n'
-          open('netifaces.py', 'w').write(stub)
-          "
+      # The run-unit-tests.sh script handles building the Dockerfile, 
+      # starting Redis, running pytest via Docker Compose, and tearing down.
+      - name: Run unit tests via Docker
+        run: bash run-ci-tests/run-unit-tests.sh
         working-directory: control
 
-      - name: Install package with dev extras
-        run: pip install -e ".[dev]"
-        working-directory: control
-
-      - name: Run unit tests
-        run: >
-          pytest tests/unit/ -v --tb=short --color=yes
-          -p no:cacheprovider
-        working-directory: control
-        env:
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          PYTHONDONTWRITEBYTECODE: '1'
-
+      # Because docker-compose.yml mounts the control/ directory to /app, 
+      # the .pytest_cache generated inside the container will be available here.
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

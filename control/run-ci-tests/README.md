@@ -21,7 +21,7 @@ bash run-ci-tests/run-unit-tests.sh
 | Service | Image | Purpose |
 |---------|-------|---------|
 | `redis` | `redis:7-alpine` | In-container Redis (for integration tests; unit tests use fakeredis) |
-| `unit-tests` | Built from `Dockerfile.test` | Python 3.12 test runner |
+| `unit-tests` | Built from `Dockerfile.test` | Python 3.14 test runner |
 
 ## Running specific tests
 
@@ -75,4 +75,4 @@ docker compose -f run-ci-tests/docker-compose.yml --profile integration up
 
 - Docker Engine 24+
 - Docker Compose v2 (`docker compose` — note: no hyphen)
-- ~500 MB disk for the test image (Python 3.12 slim + deps)
+- ~500 MB disk for the test image (Python 3.14 slim + deps)
