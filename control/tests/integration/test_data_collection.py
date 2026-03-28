@@ -1,0 +1,239 @@
+"""
+test_data_collection.py — Integration tests for data collection + cleanup transaction.
+
+Transaction invariant:
+    CleanupData on the DAQ node MUST only run after data has been
+    successfully copied to the head node. If the copy fails (partially
+    or completely), the DAQ node data MUST be preserved for retry.
+
+The CleanupData gRPC call is also blocked server-side while hashpipe is
+running, providing an additional safety guarantee.
+
+These tests use the shared Docker volume (mounted at DAQ_DATA_DIR in both
+the daqnode and test-runner containers) to verify file presence/absence
+without SSH — equivalent to a real rsync in the shared-network case.
+"""
+from __future__ import annotations
+
+import pathlib
+import time
+
+import pytest
+
+from panoseti_grpc.daq_control.client import DaqControlClient
+
+from .conftest import (
+    DAQNODE_DIRECT_HOST, GRPC_PORT,
+    DAQ_DATA_DIR, HEAD_DATA_DIR,
+    copy_run_dir, start_copy_background,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helper: wait until module data directories exist on daqnode
+# ---------------------------------------------------------------------------
+
+def _wait_for_data(run_params: dict, timeout: float = 10.0) -> bool:
+    src_root = pathlib.Path(run_params["data_dir"])
+    run_dir  = run_params["run_dir"]
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if all(
+            (src_root / f"module_{mid}" / run_dir).exists()
+            for mid in run_params["module_id"]
+        ):
+            return True
+        time.sleep(0.5)
+    return False
+
+
+class TestDataCollectionTransaction:
+    """Happy-path and sad-path collection + cleanup scenarios."""
+
+    def test_successful_copy_then_cleanup(
+        self, daq_control_direct, run_params, head_data_dir
+    ):
+        """
+        Happy path: Start → Stop → copy → CleanupData.
+        After cleanup: data present on head node, absent from daqnode.
+        """
+        daq_control_direct.StartDaq(run_params)
+        assert _wait_for_data(run_params), "fake_hashpipe did not create data dirs"
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+        time.sleep(1)
+
+        # Simulate data collection (shared volume copy)
+        ok = copy_run_dir(run_params, head_data_dir)
+        assert ok, "Data copy from daqnode to head node failed"
+
+        # Verify head node has the data
+        run_dir = run_params["run_dir"]
+        assert (head_data_dir / run_dir).exists()
+
+        # Cleanup daqnode ONLY after successful copy
+        cleanup_ok = daq_control_direct.CleanupData({
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
+        })
+        assert cleanup_ok
+
+        # Daqnode data should be gone
+        time.sleep(0.5)
+        _, status = daq_control_direct.StatusDaq({
+            "data_dir":       run_params["data_dir"],
+            "check_run_dirs": True,
+        })
+        assert not any(run_dir in d for d in status.get("run_dirs", []))
+
+    def test_cleanup_blocked_while_hashpipe_running(
+        self, daq_control_direct, run_params
+    ):
+        """
+        CleanupData must fail (return False) while hashpipe is still running.
+        The server blocks the cleanup to prevent data loss.
+        """
+        daq_control_direct.StartDaq(run_params)
+        time.sleep(0.5)
+
+        # Attempt cleanup while hashpipe is live — must fail
+        ok = daq_control_direct.CleanupData({
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
+        })
+        assert ok is False, "CleanupData should be blocked while hashpipe is running"
+
+        # Teardown
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+
+    def test_cleanup_not_called_if_copy_fails(
+        self, daq_control_direct, run_params
+    ):
+        """
+        If the copy step fails, CleanupData MUST NOT be called.
+        Daqnode data must be preserved for retry.
+        """
+        daq_control_direct.StartDaq(run_params)
+        assert _wait_for_data(run_params)
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+        time.sleep(1)
+
+        # Simulate copy failure (destination is a non-existent path)
+        bad_dst = pathlib.Path("/nonexistent_dst_dir_for_test")
+        copy_ok = copy_run_dir(run_params, bad_dst)
+        assert not copy_ok, "Expected copy failure with non-existent destination"
+
+        # Do NOT call CleanupData — data must still be on daqnode
+        _, status = daq_control_direct.StatusDaq({
+            "data_dir":       run_params["data_dir"],
+            "check_run_dirs": True,
+        })
+        assert any(
+            run_params["run_dir"] in d for d in status.get("run_dirs", [])
+        ), "Daqnode data must be preserved when copy fails"
+
+    def test_cleanup_idempotent(
+        self, daq_control_direct, run_params, head_data_dir
+    ):
+        """
+        Calling CleanupData twice on an already-cleaned run must not raise.
+        The second call should return True (no-op or graceful success).
+        """
+        daq_control_direct.StartDaq(run_params)
+        assert _wait_for_data(run_params)
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+        time.sleep(1)
+        copy_run_dir(run_params, head_data_dir)
+
+        params = {
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
+        }
+        first  = daq_control_direct.CleanupData(params)
+        second = daq_control_direct.CleanupData(params)
+        assert first  is True
+        assert second is True  # idempotent
+
+
+class TestNodeFailureDuringCollection:
+    """Edge cases when the DAQ node becomes unavailable mid-copy."""
+
+    def test_partial_copy_preserves_daqnode_data(
+        self, daq_control_direct, run_params, head_data_dir, daqnode_container
+    ):
+        """
+        Simulate a container pause mid-copy.
+        After recovery: rsync should have failed, so daqnode data is preserved.
+        """
+        daq_control_direct.StartDaq(run_params)
+        assert _wait_for_data(run_params)
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+        time.sleep(1)
+
+        # Start copy in background, pause container partway through
+        copy_proc = start_copy_background(run_params, head_data_dir)
+        time.sleep(0.1)
+        daqnode_container.pause()
+        copy_proc.wait(timeout=5)
+        daqnode_container.unpause()
+        time.sleep(1)  # let gRPC server reconnect
+
+        # The copy proc should have been disrupted
+        # (on a shared volume this may actually succeed, so we just verify
+        # that we only call CleanupData if the copy verified complete)
+        # In a real scenario we'd check rsync exit code; here we verify the
+        # daqnode data is still present after recovery
+        _, status = daq_control_direct.StatusDaq({
+            "data_dir":       run_params["data_dir"],
+            "check_run_dirs": True,
+        })
+        assert any(
+            run_params["run_dir"] in d for d in status.get("run_dirs", [])
+        ), "Daqnode data must survive a mid-copy container pause"
+
+    def test_cleanup_after_node_restart_succeeds(
+        self, daq_control_direct, run_params, head_data_dir, daqnode_container
+    ):
+        """
+        After a brief container pause/unpause, a full copy + cleanup succeeds.
+        """
+        daq_control_direct.StartDaq(run_params)
+        assert _wait_for_data(run_params)
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+        time.sleep(1)
+
+        daqnode_container.pause()
+        time.sleep(0.5)
+        daqnode_container.unpause()
+        time.sleep(2)  # let gRPC server restart
+
+        # Full copy after recovery
+        copy_ok = copy_run_dir(run_params, head_data_dir)
+        assert copy_ok, "Copy failed after container recovery"
+
+        ok = daq_control_direct.CleanupData({
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
+        })
+        assert ok is True

@@ -1,0 +1,144 @@
+# docker-compose.integration.yml — PANOSETI end-to-end integration test environment.
+#
+# Topology (simulating Palomar-like VPN gateway):
+#
+#   headnode_net (10.0.1.0/24):
+#     test-runner (10.0.1.5)   — runs pytest integration suite
+#     gateway     (10.0.1.1)   — socat TCP bridge to daqnode_net
+#     redis       (10.0.1.20)  — for log/telemetry pipeline tests
+#     loki        (10.0.1.21)  — for storeLoki.py tests
+#
+#   daqnode_net (192.168.0.0/24):
+#     daqnode     (192.168.0.10) — daq_control + daq_data gRPC servers + fake hashpipe
+#     gateway     (192.168.0.1)  — socat bridge (same container, two NICs)
+#
+# Environment variables for hardware CI override:
+#   DAQNODE_DIRECT_HOST   — direct IP of real DAQ node (default: 192.168.0.10)
+#   DAQNODE_GATEWAY_HOST  — gateway IP for forwarded access (default: 10.0.1.1)
+#   GRPC_PORT             — gRPC port (default: 50051)
+
+networks:
+  headnode_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24
+  daqnode_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.0.0/24
+
+volumes:
+  daq_data:   # shared between daqnode and test-runner for data collection tests
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Redis — telemetry log queue + storeLoki pipeline
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    networks:
+      headnode_net:
+        ipv4_address: 10.0.1.20
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Loki — log aggregation (storeLoki ships logs here)
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.6.0
+    networks:
+      headnode_net:
+        ipv4_address: 10.0.1.21
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # DAQ node — runs daq_control + daq_data gRPC servers + fake hashpipe
+  # ---------------------------------------------------------------------------
+  daqnode:
+    build:
+      context: ../                     # build context = control/
+      dockerfile: run-ci-tests/integration/Dockerfile.daqnode
+    networks:
+      daqnode_net:
+        ipv4_address: 192.168.0.10
+    volumes:
+      - daq_data:/data
+    environment:
+      GRPC_PORT: "50051"
+      DATA_PORT: "50052"
+    healthcheck:
+      # Wait until the daq_control gRPC port is open
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Gateway — socat TCP bridge simulating a NAT/VPN router
+  # ---------------------------------------------------------------------------
+  gateway:
+    image: alpine/socat
+    networks:
+      headnode_net:
+        ipv4_address: 10.0.1.1
+      daqnode_net:
+        ipv4_address: 192.168.0.1
+    volumes:
+      - ./gateway_setup.sh:/gateway_setup.sh:ro
+    entrypoint: ["sh", "/gateway_setup.sh"]
+    environment:
+      DAQNODE_IP: "192.168.0.10"
+    depends_on:
+      daqnode:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Test runner — runs pytest tests/integration/
+  # ---------------------------------------------------------------------------
+  test-runner:
+    build:
+      context: ../                     # build context = control/
+      dockerfile: run-ci-tests/integration/Dockerfile.headnode
+    networks:
+      headnode_net:
+        ipv4_address: 10.0.1.5
+    volumes:
+      - daq_data:/data                 # shared with daqnode for data collection tests
+      - /var/run/docker.sock:/var/run/docker.sock  # for container pause/unpause tests
+    environment:
+      DAQNODE_DIRECT_HOST:   "${DAQNODE_DIRECT_HOST:-192.168.0.10}"
+      DAQNODE_GATEWAY_HOST:  "${DAQNODE_GATEWAY_HOST:-10.0.1.1}"
+      GRPC_PORT:             "${GRPC_PORT:-50051}"
+      LOKI_URL:              "http://10.0.1.21:3100"
+      REDIS_HOST:            "10.0.1.20"
+      DAQ_DATA_DIR:          "/data"
+      HEAD_DATA_DIR:         "/data/head"
+      DAQNODE_CONTAINER_NAME: "integration-daqnode-1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    depends_on:
+      daqnode:
+        condition: service_healthy
+      gateway:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    command: >
+      pytest tests/integration/ -v --tb=short --color=yes
+        -p no:cacheprovider
+        --timeout=60

@@ -1,0 +1,13 @@
+{
+    "head_node_data_dir": "/data/head",
+    "head_node_ip_addr": "10.0.1.10",
+    "daq_nodes": [
+        {
+            "username": "panoseti",
+            "data_dir": "/data",
+            "ip_addr": "192.168.0.10",
+            "module_ids": "200-200",
+            "bindhost": "0.0.0.0"
+        }
+    ]
+}
