@@ -24,6 +24,7 @@ from driver import quabo_driver
 from utils.util import *
 from utils import pff, config_file
 from tools.interleave import PID_FILE
+from panoseti_grpc.daq_control.client import DaqControlClient
 
 
 
@@ -154,25 +155,18 @@ def stop_data_flow(quabo_uids, network_config):
 def stop_recording(daq_config, run_dir, verbose):
     logger = logging.getLogger('PANOSETI.Stop.stop_recording')
     for node in daq_config['daq_nodes']:
-        if 'port_forwarding' in node:
-            real_ip = node['port_forwarding']['gw_ip']
-            port = node['port_forwarding']['port']
-            logger.info('Use port forwarding')
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Port: %d'%port)
-            cmd = 'ssh -p %d %s@%s "cd %s; ./stop_daq.py"'%(
-                port, node['username'], real_ip, node['data_dir']
-            )
-        else:
-            cmd = 'ssh %s@%s "cd %s; ./stop_daq.py"'%(
-                node['username'], node['ip_addr'], node['data_dir']
-            )
+        grpc_host, grpc_port = daq_grpc_endpoint(node)
         if verbose:
-            print(cmd)
-        ret = os.system(cmd)
-        if ret:
-            msg = '%s returned %d'%(cmd, ret)
-            logger.error(msg, run_dir)
+            print(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
+        logger.info(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
+        client = DaqControlClient(host=grpc_host, port=grpc_port)
+        ok = client.StopDaq({
+            'data_dir': node['data_dir'],
+            'run_dir':  run_dir,
+        })
+        if not ok:
+            msg = f'StopDaq failed for node {node["ip_addr"]}'
+            logger.error(msg)
             raise Exception(msg)
 
 # write a "complete file" in the run dir
@@ -226,6 +220,42 @@ def make_links(run_dir, verbose):
     if not did_hk:
         print('make_links(): No nonempty housekeeping file')
 
+
+def _cleanup_daq_grpc(daq_config, run_dir, head_run_dir, verbose):
+    """Call CleanupData on each DAQ node via gRPC.
+    Only called after collect_data() succeeds (transactional guarantee).
+    CleanupData is blocked server-side if hashpipe is still running.
+    """
+    logger = logging.getLogger('PANOSETI.Stop._cleanup_daq_grpc')
+    my_ip = local_ip()
+    for node in daq_config['daq_nodes']:
+        if node['ip_addr'] in my_ip:
+            # Head node is also DAQ node: local rm -rf (same as before)
+            cmd = 'rm -rf %s/module_*/%s' % (node['data_dir'], run_dir)
+            if verbose:
+                print(cmd)
+            ret = os.system(cmd)
+            if ret:
+                log_error('cleanup_daq (local): %s returned %d' % (cmd, ret), head_run_dir)
+        else:
+            module_ids = [m['id'] for m in node.get('modules', [])]
+            grpc_host, grpc_port = daq_grpc_endpoint(node)
+            if verbose:
+                print(f'CleanupData via gRPC: {grpc_host}:{grpc_port}  run_dir={run_dir}  modules={module_ids}')
+            logger.info(f'CleanupData via gRPC: {grpc_host}:{grpc_port}')
+            try:
+                client = DaqControlClient(host=grpc_host, port=grpc_port)
+                ok = client.CleanupData({
+                    'data_dir':  node['data_dir'],
+                    'run_dir':   run_dir,
+                    'module_id': module_ids,
+                })
+                if not ok:
+                    log_error(f'CleanupData failed for node {node["ip_addr"]}', head_run_dir)
+            except Exception as e:
+                log_error(f'CleanupData error for node {node["ip_addr"]}: {e}', head_run_dir)
+
+
 def stop_run(
     daq_config, network_config, quabo_uids, verbose=False, no_cleanup=False, no_collect=False,
     run = None
@@ -275,10 +305,8 @@ def stop_run(
         if collect_error == '':
             if not no_cleanup:
                 if verbose:
-                    print("cleaning up DAQ nodes")
-                error_msg = collect.cleanup_daq(daq_config, run, verbose)
-                if error_msg != '':
-                    log_error(error_msg, run_dir)
+                    print("cleaning up DAQ nodes via gRPC CleanupData")
+                _cleanup_daq_grpc(daq_config, run, run_dir, verbose)
             make_links(run_dir, verbose)
             write_complete_file(run_dir, run_complete_filename)
             print('completed run %s'%run)

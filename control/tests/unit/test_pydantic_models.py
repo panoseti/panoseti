@@ -26,6 +26,7 @@ from utils.pydantic_config_models import (
     DaqNodeValidator,
     DaqConfigValidator,
     NetworkConfigValidator,
+    PortForwarding,
     DaemonConfigValidator,
     FirmwareConfigValidator,
     QuaboUidEntry,
@@ -589,3 +590,36 @@ class TestFirmwareConfigValidator:
 
     def test_empty_firmware_config_ok(self):
         FirmwareConfigValidator()
+
+
+# ===========================================================================
+# PortForwarding — grpc_port field
+# ===========================================================================
+
+class TestPortForwarding:
+    _BASE = {"status": True, "gw_ip": "203.0.113.1"}
+
+    def test_valid_without_grpc_port(self):
+        """grpc_port is optional; omitting it is valid."""
+        pf = PortForwarding(**self._BASE)
+        assert pf.grpc_port is None
+
+    def test_valid_grpc_port(self):
+        """grpc_port in 1–65535 is accepted."""
+        pf = PortForwarding(**self._BASE, grpc_port=50051)
+        assert pf.grpc_port == 50051
+
+    def test_grpc_port_zero_rejected(self):
+        """grpc_port=0 is below the valid range."""
+        with pytest.raises(Exception):
+            PortForwarding(**self._BASE, grpc_port=0)
+
+    def test_grpc_port_too_large_rejected(self):
+        """grpc_port above 65535 is rejected."""
+        with pytest.raises(Exception):
+            PortForwarding(**self._BASE, grpc_port=65536)
+
+    def test_grpc_port_max_valid(self):
+        """grpc_port=65535 is the highest valid value."""
+        pf = PortForwarding(**self._BASE, grpc_port=65535)
+        assert pf.grpc_port == 65535

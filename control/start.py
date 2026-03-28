@@ -31,6 +31,7 @@ from utils import pff, config_file
 
 import logging
 from argparse import ArgumentParser
+from panoseti_grpc.daq_control.client import DaqControlClient
 
 # ---------------- PRINT -> UT TIMESTAMP + FILE LOG ----------------
 import builtins
@@ -303,33 +304,27 @@ def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
-        username = node['username']
         data_dir = node['data_dir']
-        remote_cmd = './start_daq.py --daq_ip_addr %s --run_dir %s --max_file_size_mb %d --group_ph_frames %d --obs %s'%(
-            node['ip_addr'], run_name, max_file_size_mb, daq_params.do_group_ph_frames, obs
-        )
-        if 'bindhost' in node.keys():
-            remote_cmd += ' --bindhost %s'%node['bindhost']
-        for m in node['modules']:
-            module_id = config_file.ip_addr_to_module_id(m['ip_addr'])
-            remote_cmd += ' --module_id %d'%module_id
-        if 'port_forwarding' in node:
-            real_ip = node['port_forwarding']['gw_ip']
-            port = node['port_forwarding']['port']
-            logger.info('Use port forwarding')
-            logger.info('Real IP: %s'%real_ip)
-            logger.info('Port: %d'%port)
-            cmd = 'ssh -p %d %s@%s "cd %s; %s"'%(
-                port, username, real_ip, data_dir, remote_cmd
-            )
-        else:
-            cmd = 'ssh %s@%s "cd %s; %s"'%(
-            username, node['ip_addr'], data_dir, remote_cmd
-            )
+        module_ids = [
+            config_file.ip_addr_to_module_id(m['ip_addr']) for m in node['modules']
+        ]
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
         if verbose:
-            print(cmd)
-        ret = os.system(cmd)
-        if ret: raise Exception('%s returned %d'%(cmd, ret))
+            print(f'StartDaq via gRPC: {grpc_host}:{grpc_port}  modules={module_ids}')
+        logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port}  modules={module_ids}')
+        client = DaqControlClient(host=grpc_host, port=grpc_port)
+        ok = client.StartDaq({
+            'data_dir':         data_dir,
+            'daq_ip_addr':      str(node['ip_addr']),
+            'bindhost':         node.get('bindhost', '0.0.0.0'),
+            'max_file_size_mb': float(max_file_size_mb),
+            'group_ph_frames':  bool(daq_params.do_group_ph_frames),
+            'run_dir':          run_name,
+            'obs':              obs,
+            'module_id':        module_ids,
+        })
+        if not ok:
+            raise Exception(f'StartDaq failed for node {node["ip_addr"]}')
 
 def start_run(
     obs_config, daq_config, quabo_uids, data_config, no_hv, no_redis, no_data

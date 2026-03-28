@@ -311,7 +311,8 @@ class PortForwarding(BaseStrictModel):
     gw_ip: IPvAnyAddress
     reboot_port: list[int | None] = None
     cmd_port: list[int | None] = None
-    port: int | None = None
+    port: int | None = None                              # SSH forwarded port (legacy)
+    grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
 
 class NetworkModule(BaseStrictModel):
     ip_addr: IPvAnyAddress

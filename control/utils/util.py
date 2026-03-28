@@ -111,19 +111,16 @@ def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
         logger.addHandler(fhandler)
         logger.addHandler(shandler)
 
-    # Check if we are the main process (to avoid double logging in multiprocessing)
-    # and if we haven't already set up the logger.
-    if not any(isinstance(h, logging.Handler) and getattr(h, 'service_name', '') for h in logging.getLogger().handlers):
-        print("Injecting gRPC logger into Process...")
 
-        # Attach gRPC handler to the ROOT logger
-        # This captures all 'logging.info()' calls from config.py, drivers, etc.
-        get_logger(
-            service_name="control_logger",
-            level=logging.DEBUG,
-            console=False,
-            grpc_enabled=True,
-        )
+def daq_grpc_endpoint(node: dict) -> tuple[str, int]:
+    """Return (host, port) for the gRPC DAQ-control server on this node.
+    Reads port_forwarding from the node dict (attached by attach_daq_config).
+    Falls back to direct connection on port 50051.
+    """
+    if 'port_forwarding' in node:
+        pf = node['port_forwarding']
+        return str(pf['gw_ip']), int(pf.get('grpc_port', 50051))
+    return str(node['ip_addr']), 50051
 
 
 # our IP address on local network (192.x.x.x)
