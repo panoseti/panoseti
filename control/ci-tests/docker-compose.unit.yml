@@ -16,10 +16,11 @@ services:
   # ---------------------------------------------------------------------------
   # Unit test runner
   # ---------------------------------------------------------------------------
-  unit-tests:
+  unit-test-runner:
     build:
       context: ..
-      dockerfile: run-ci-tests/Dockerfile.test
+      dockerfile: ci-tests/Dockerfile.ci
+      target: unit-test-runner
     depends_on:
       redis:
         condition: service_healthy
@@ -37,27 +38,3 @@ services:
         -p no:cacheprovider
     profiles:
       - unit
-
-  # ---------------------------------------------------------------------------
-  # Integration test runner (future — Phase 4)
-  # ---------------------------------------------------------------------------
-  integration-tests:
-    build:
-      context: ..
-      dockerfile: run-ci-tests/Dockerfile.test
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      PYTHONDONTWRITEBYTECODE: "1"
-    volumes:
-      - ..:/app
-    working_dir: /app
-    command: >
-      pytest tests/integration/ -v --tb=short
-        --color=yes
-        -p no:cacheprovider
-    profiles:
-      - integration

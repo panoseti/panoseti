@@ -70,8 +70,9 @@ services:
   # ---------------------------------------------------------------------------
   daqnode:
     build:
-      context: ../../                     # build context = control/
-      dockerfile: run-ci-tests/integration/Dockerfile.daqnode
+      context: ../                     # build context = control/
+      dockerfile: ci-tests/Dockerfile.ci
+      target: integration-daqnode
     networks:
       daqnode_net:
         ipv4_address: 192.168.0.10
@@ -99,7 +100,7 @@ services:
       daqnode_net:
         ipv4_address: 192.168.0.254
     volumes:
-      - ./gateway_setup.sh:/gateway_setup.sh:ro
+      - integration/build/gateway_setup.sh:/gateway_setup.sh:ro
     entrypoint: ["sh", "/gateway_setup.sh"]
     environment:
       DAQNODE_IP: "192.168.0.10"
@@ -112,8 +113,9 @@ services:
   # ---------------------------------------------------------------------------
   storeloki:
     build:
-      context: ../../                     # build context = control/
-      dockerfile: run-ci-tests/integration/Dockerfile.headnode
+      context: ../                     # build context = control/
+      dockerfile: ci-tests/Dockerfile.ci
+      target: integration-headnode
     networks:
       headnode_net:
         ipv4_address: 10.0.1.22
@@ -138,10 +140,11 @@ services:
   # ---------------------------------------------------------------------------
   # Test runner — runs pytest tests/integration/
   # ---------------------------------------------------------------------------
-  test-runner:
+  integration-test-runner:
     build:
-      context: ../../                     # build context = control/
-      dockerfile: run-ci-tests/integration/Dockerfile.headnode
+      context: ../                     # build context = control/
+      dockerfile: ci-tests/Dockerfile.ci
+      target: integration-headnode
     networks:
       headnode_net:
         ipv4_address: 10.0.1.5
@@ -172,6 +175,6 @@ services:
       storeloki:
         condition: service_healthy
     command: >
-      pytest tests/integration/ -v --tb=short --color=yes
+      pytest ci-tests/integration/ -v --tb=short --color=yes
         -p no:cacheprovider
         --timeout=60

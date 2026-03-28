@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# run-tests.sh — Unified test runner for PANOSETI control.
+# run.sh — Unified test runner for PANOSETI control.
 #
 # Usage:
-#   bash run-ci-tests/run-tests.sh unit [pytest args...]
-#   bash run-ci-tests/run-tests.sh integration [pytest args...]
+#   bash ci-tests/run.sh unit [pytest args...]
+#   bash ci-tests/run.sh integration [pytest args...]
 
 set -euo pipefail
 
@@ -19,15 +19,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 1. Setup Suite-Specific Variables
 if [[ "$SUITE" == "unit" ]]; then
-    COMPOSE_FILE="$SCRIPT_DIR/docker-compose-unit.yml"
-    SERVICE_NAME="unit-tests"
+    COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unit.yml"
+    SERVICE_NAME="unit-test-runner"
     # Isolate state by prefixing the docker project
-    export COMPOSE_PROJECT_NAME="panoseti_ci_unit" 
+    export COMPOSE_PROJECT_NAME="control-unit-ci-tests" 
 else
     COMPOSE_FILE="$SCRIPT_DIR/docker-compose.integration.yml"
-    SERVICE_NAME="test-runner"
+    SERVICE_NAME="integration-test-runner"
     # Isolate state by prefixing the docker project
-    export COMPOSE_PROJECT_NAME="panoseti_ci_integration"
+    export COMPOSE_PROJECT_NAME="control-integration-ci-tests"
 fi
 
 # 2. Rigorous Teardown Management
@@ -50,4 +50,4 @@ docker compose -f "$COMPOSE_FILE" build "$SERVICE_NAME"
 echo "--- Starting $SUITE test environment & running tests ---"
 docker compose -f "$COMPOSE_FILE" run --rm \
     "$SERVICE_NAME" \
-    pytest "tests/$SUITE/" -v --tb=short --color=yes "$@"
+    pytest "ci-tests/$SUITE/" -v --tb=short --color=yes "$@"

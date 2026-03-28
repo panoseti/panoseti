@@ -52,7 +52,7 @@ RUN make N_INPUT_BLOCKS=64 N_OUTPUT_BLOCKS=1
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS unit-test-runner
 COPY . .
-CMD ["pytest", "tests/unit/", "-v", "--tb=short", "--color=yes"]
+CMD ["pytest", "ci-tests/unit/", "-v", "--tb=short", "--color=yes"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -67,7 +67,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 RUN mkdir -p /data /data/head
 
-CMD ["pytest", "tests/integration/", "-v", "--tb=short", "--color=yes"]
+CMD ["pytest", "ci-tests/integration/", "-v", "--tb=short", "--color=yes"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
