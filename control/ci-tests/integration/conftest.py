@@ -48,8 +48,13 @@ CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/in
 DIRECT_CONFIG = CONFIG_DIR / "direct"
 GATEWAY_CONFIG = CONFIG_DIR / "gateway"
 
-sys.path.append(CONTROL_DIR / "utils")
-import config_file
+# 1. Point sys.path to the root 'control' directory, NOT the 'utils' directory.
+# 'conftest.py' is in control/ci-tests/integration/, so we go up two levels.
+control_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if control_root not in sys.path:
+    sys.path.insert(0, control_root)
+    
+from utils import config_file
 
 @pytest.fixture(scope="session")
 def get_daq_and_network_config(kind="direct") -> tuple[dict, dict]:
