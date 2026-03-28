@@ -75,8 +75,9 @@ cd control && python start.py --validate-only
 
 ```bash
 cd control
-pytest ci-tests/unit/ -v --tb=short          # unit tests, no hardware needed
-bash ci-tests/run.sh {unit, integration}     # same, via Docker
+pytest ci-tests/unit/ -v --tb=short          # 460 unit tests, no hardware needed
+bash ci-tests/run.sh unit                    # same, via Docker (parallel with -n auto)
+bash ci-tests/run.sh integration             # end-to-end: 43 passing, 7 skipped
 ```
 
 ---
@@ -137,7 +138,8 @@ Two precision timing sources:
 See [`docs/plan/control-upgrade-plan.md`](docs/plan/control-upgrade-plan.md) for the full control system upgrade plan.
 
 - [x] Phase 0 — `pyproject.toml` packaging, Python ≥ 3.9
-- [x] Phase 1 — Unit tests for all utility modules
+- [x] Phase 1 — Unit tests for all utility modules (460 tests)
+- [x] Phase 1b — Integration test suite (Docker, real hashpipe, gRPC end-to-end; 43 tests)
 - [ ] Phase 2 — Python 3.9→3.14 modernization
 - [ ] Phase 3 — SSH → gRPC migration (`start.py`/`stop.py`/`status.py`)
-- [ ] Phase 4 — Integration tests for end-to-end session lifecycle
+- [ ] Phase 4 — Telemetry pipeline integration tests (requires Telemetry service in compose)

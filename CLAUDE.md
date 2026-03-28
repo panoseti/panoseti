@@ -45,20 +45,23 @@ python session_stop.py             # power off, stop daemons
 cd control
 pip install -e ".[dev]"
 
-# Unit tests (no hardware required)
+# Unit tests (460 tests, no hardware required)
 pytest ci-tests/unit/ -v --tb=short
 
 # With coverage report
 pytest ci-tests/unit/ --cov=utils --cov-report=term-missing
 
-# Via Docker CI — unit suite (recommended)
+# Via Docker CI — unit suite (parallel with -n auto, ~10s)
 bash ci-tests/run.sh unit
 
-# Via Docker CI — full integration suite
+# Via Docker CI — full integration suite (43 passing, 7 skipped)
 bash ci-tests/run.sh integration
 
 # Integration: single test group
 bash ci-tests/run.sh integration -- -k "TestDaqLifecycle"
+
+# Enable Loki/Redis telemetry tests
+ENABLE_TELEMETRY_TESTS=1 bash ci-tests/run.sh integration
 
 # Real hashpipe + tcpreplay tests (requires RUN_REAL_DATA_TESTS=1)
 RUN_REAL_DATA_TESTS=1 bash ci-tests/run.sh integration -- -k "real_data"
@@ -266,24 +269,33 @@ module_id = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
 `control/pyproject.toml` sets `requires-python = ">=3.9"`. Target migration to 3.14+ syntax incrementally.
 
 ### Test locations
-- `control/ci-tests/unit/` — hardware-agnostic Python unit tests (12 utility modules)
-- `control/ci-tests/integration/` — end-to-end Docker integration tests
+- `control/ci-tests/unit/` — hardware-agnostic Python unit tests (460 tests, 10 modules)
+- `control/ci-tests/integration/` — end-to-end Docker integration tests (43 passing, 7 skipped)
 - `control/ci-tests/Dockerfile.ci` — multi-stage image for all test suites
 - `control/ci-tests/run.sh` — unified runner (`unit` or `integration`)
 
 ### Integration test topology
-The integration suite spins up five containers:
 
-| Container | IP | Role |
-|---|---|---|
-| daqnode | 192.168.0.10 | daq_control gRPC + real hashpipe binary |
-| daqnode-data | 192.168.0.11 | daq_data gRPC server (simulation or real-UDS) |
-| daqnode-2 | 192.168.0.20 | second daq_control node (two-node tests) |
-| gateway | 10.0.1.254 / 192.168.0.254 | socat TCP bridge (NAT/VPN simulation) |
-| redis | 10.0.1.20 | Redis for telemetry pipeline tests |
-| loki | 10.0.1.21 | Loki for log-shipping tests |
-| storeloki | 10.0.1.22 | Redis→Loki daemon under test |
-| integration-test-runner | 10.0.1.5 / 192.168.0.5 | pytest runner |
+```
+headnode_net (10.0.1.0/24)
+  test-runner   10.0.1.5        pytest runner
+  gateway       10.0.1.254      socat TCP bridge → daqnode_net
+  redis         10.0.1.20       log queue (logs:ingress)
+  loki          10.0.1.21       log aggregation
+  storeloki     10.0.1.22       Redis→Loki daemon
+
+daqnode_net (192.168.0.0/24)
+  daqnode       192.168.0.10    daq_control gRPC + real hashpipe binary
+  daqnode-data  192.168.0.11    daq_data gRPC server
+  daqnode-2     192.168.0.20    second daq_control node (two-node tests)
+  gateway       192.168.0.254   socat bridge (dual-homed)
+```
+
+**Critical CI notes:**
+- All containers use `BINDHOST=lo` (loopback). Docker virtual NICs don't support the `TPACKET_V3` mode that hashpipe's net_thread requires on `eth0`.
+- `daqnode-2` has its own isolated `daq_data_2` volume to prevent `module.config` write races.
+- The `integration-daqnode` entrypoint copies `hashpipe.so` from `/usr/local/lib/` to `/data/` at startup to survive the Docker volume initialization race.
+- Cleanup fixtures must call `StopDaq` unconditionally before `CleanupData` — the server checks `hashpipe_pid > 0` (not liveness), so a crashed hashpipe leaves a stale PID that blocks cleanup.
 
 Key env vars used by the test suite:
 
@@ -293,6 +305,7 @@ Key env vars used by the test suite:
 | `DAQNODE_DATA_HOST` | 192.168.0.11 | daq_data gRPC server IP |
 | `DAQNODE2_HOST` | 192.168.0.20 | second DAQ node IP |
 | `DAQNODE_GATEWAY_HOST` | 10.0.1.254 | socat gateway IP |
+| `BINDHOST` | lo | hashpipe network interface (always `lo` in Docker CI) |
 | `RUN_REAL_DATA_TESTS` | (unset) | set to `1` to enable tcpreplay/hashpipe tests |
 | `ENABLE_TELEMETRY_TESTS` | (unset) | set to `1` to enable Telemetry gRPC tests |
 
