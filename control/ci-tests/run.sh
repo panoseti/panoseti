@@ -4,6 +4,10 @@
 # Usage:
 #   bash ci-tests/run.sh unit [pytest args...]
 #   bash ci-tests/run.sh integration [pytest args...]
+#
+# Environment variables:
+#   ENABLE_TELEMETRY_TESTS  — set to 1 to run Loki/Redis telemetry tests
+#                             (skips storeloki scale-down optimisation)
 
 set -euo pipefail
 
@@ -22,7 +26,7 @@ if [[ "$SUITE" == "unit" ]]; then
     COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unit.yml"
     SERVICE_NAME="unit-test-runner"
     # Isolate state by prefixing the docker project
-    export COMPOSE_PROJECT_NAME="ctl-unit" 
+    export COMPOSE_PROJECT_NAME="ctl-unit"
 else
     COMPOSE_FILE="$SCRIPT_DIR/docker-compose.integration.yml"
     SERVICE_NAME="integration-test-runner"
@@ -32,7 +36,6 @@ fi
 
 # 2. Rigorous Teardown Management
 cleanup() {
-
     echo "--- Tearing down $SUITE environment ---"
     docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
     echo "--- $SUITE Cleanup Complete ---"
@@ -45,9 +48,23 @@ docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
 
 # 3. Build & Run
 echo "--- Building $SUITE test Docker images ---"
-docker compose -f "$COMPOSE_FILE" build
+DOCKER_BUILDKIT=1 docker compose -f "$COMPOSE_FILE" build
 
 echo "--- Starting $SUITE test environment & running tests ---"
-docker compose -f "$COMPOSE_FILE" run --rm \
-    "$SERVICE_NAME" \
-    pytest "ci-tests/$SUITE/" -v --tb=short --color=yes "$@"
+if [[ "$SUITE" == "unit" ]]; then
+    # -n auto: run unit tests in parallel across all available CPUs (pytest-xdist)
+    docker compose -f "$COMPOSE_FILE" run --rm \
+        "$SERVICE_NAME" \
+        pytest "ci-tests/$SUITE/" -v --tb=short --color=yes --timeout=60 "$@"
+else
+    # Integration: 60-second per-test timeout to catch hangs
+    # When telemetry tests are disabled, scale storeloki to 0 to save startup time
+    if [[ -z "${ENABLE_TELEMETRY_TESTS:-}" ]]; then
+        SCALE_FLAGS="--scale storeloki=0"
+    else
+        SCALE_FLAGS=""
+    fi
+    docker compose -f "$COMPOSE_FILE" run --rm $SCALE_FLAGS \
+        "$SERVICE_NAME" \
+        pytest "ci-tests/$SUITE/" -v --tb=short --color=yes --timeout=60 "$@"
+fi

@@ -30,7 +30,8 @@ networks:
         - subnet: 192.168.0.0/24
 
 volumes:
-  daq_data:        # shared between daqnode(s) and test-runner for data collection tests
+  daq_data:        # shared between daqnode (192.168.0.10) and test-runner for data collection tests
+  daq_data_2:      # private volume for daqnode-2 (192.168.0.20) — isolated to avoid module.config conflicts
   hashpipe_uds:    # hashpipe UDS sockets shared between daqnode and daqnode-daqdata-snoop (real-data tests)
   hashpipe_uds_2:
 
@@ -122,6 +123,12 @@ services:
     networks:
       daqnode_net:
         ipv4_address: 192.168.0.10
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
     volumes:
       - daq_data:/data
       - hashpipe_uds:/tmp              # hashpipe UDS sockets visible to daqnode-daqdata-snoop
@@ -156,11 +163,11 @@ services:
       - SYS_NICE       # Allows Hashpipe to set real-time thread priorities
     shm_size: '2gb'    # Overrides 64MB default to support Hashpipe's 1GB ring buffers
     volumes:
-      - daq_data:/data
+      - daq_data_2:/data   # private volume — prevents module.config conflicts with daqnode
       # - hashpipe_uds_2:/tmp # Give this daq node a private /tmp directory to avoid uds issues
     environment:
       GRPC_PORT: "50051"
-      BINDHOST: "eth0"
+      BINDHOST: "lo"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
@@ -218,7 +225,7 @@ services:
       DAQNODE_GATEWAY_HOST:  "${DAQNODE_GATEWAY_HOST:-10.0.1.254}"
       DAQNODE_DATA_HOST:     "${DAQNODE_DATA_HOST:-192.168.0.11}"
       DAQNODE2_HOST:         "${DAQNODE2_HOST:-192.168.0.20}"
-      BINDHOST:              "${BINDHOST:-eth0}"
+      BINDHOST:              "${BINDHOST:-lo}"
       GRPC_PORT:             "${GRPC_PORT:-50051}"
       LOKI_URL:              "http://10.0.1.21:3100"
       REDIS_HOST:            "10.0.1.20"

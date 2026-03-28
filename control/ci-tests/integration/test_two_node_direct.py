@@ -44,18 +44,14 @@ def ensure_node2_clean(daq_control_node2, run_params_node2):
     """Stop and cleanup node-2 after each test regardless of outcome."""
     yield
     try:
-        ok, status = daq_control_node2.StatusDaq({
-            "data_dir":               run_params_node2["data_dir"],
-            "check_hashpipe_running": True,
-            "check_disk_usage":       False,
-            "check_run_dirs":         False,
+        daq_control_node2.StopDaq({
+            "data_dir": run_params_node2["data_dir"],
+            "run_dir":  run_params_node2["run_dir"],
         })
-        if ok and status.get("hashpipe_running"):
-            daq_control_node2.StopDaq({
-                "data_dir": run_params_node2["data_dir"],
-                "run_dir":  run_params_node2["run_dir"],
-            })
-            time.sleep(1)
+        time.sleep(0.5)
+    except Exception:
+        pass
+    try:
         daq_control_node2.CleanupData({
             "data_dir":  run_params_node2["data_dir"],
             "run_dir":   run_params_node2["run_dir"],

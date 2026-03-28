@@ -43,7 +43,7 @@ HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
 # BINDHOST is the network interface name on the daqnode for receiving science packets.
 # In Docker CI containers the primary interface is always "eth0".
-BINDHOST             = os.getenv("BINDHOST", "eth0")
+BINDHOST             = os.getenv("BINDHOST", "lo")
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
 CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
@@ -252,24 +252,22 @@ def start_copy_background_fn():
 def ensure_clean_daq_state(daq_control_direct, run_params):
     """Stop hashpipe and clean up if a test leaves it running."""
     yield
+    # Always call StopDaq unconditionally — it's idempotent and handles
+    # the case where hashpipe crashed (leaving a stale hashpipe_pid on the
+    # server) so CleanupData isn't blocked by the stale pid check.
     try:
-        ok, status = daq_control_direct.StatusDaq({
-            "data_dir":               run_params["data_dir"],
-            "check_hashpipe_running": True,
-            "check_disk_usage":       False,
-            "check_run_dirs":         False,
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
         })
-        if ok and status.get("hashpipe_running"):
-            daq_control_direct.StopDaq({
-                "data_dir": run_params["data_dir"],
-                "run_dir":  run_params["run_dir"],
-            })
-            time.sleep(1)
-        # Best-effort cleanup
+        time.sleep(0.5)
+    except Exception:
+        pass
+    try:
         daq_control_direct.CleanupData({
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
         })
     except Exception:
-        pass  # cleanup best-effort only
+        pass

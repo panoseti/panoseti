@@ -14,11 +14,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml .
 
 # Install panoseti-grpc and test dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
+# BuildKit cache mount keeps pip wheel cache between builds → fast re-installs
+# when pyproject.toml is unchanged.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -e ".[dev]"
 
 # Extra deps needed by integration tests but not in pyproject.toml dev extras
-RUN pip install --no-cache-dir \
-    "redis>=7" "requests>=2.31" "docker>=7.0" "pytest-timeout>=2.0"
+# pytest-xdist: parallel unit-test execution (-n auto)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+    "redis>=7" "requests>=2.31" "docker>=7.0" "pytest-timeout>=2.0" "pytest-xdist>=3.0"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -113,14 +118,18 @@ COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN ldconfig
 
-# Copy the panoseti_daq plugin (hashpipe.so) to /data/ — StartDaq launches
-# hashpipe with "-p {data_dir}/hashpipe.so" where data_dir defaults to "/data".
+# Copy the panoseti_daq plugin to /data/ (fallback for standalone use) AND to
+# /usr/local/lib/ (persistent, not overridden by the daq_data volume mount).
+# The entrypoint always copies from /usr/local/lib/ into /data/ at startup so
+# the plugin is available even when the daq_data Docker volume is shared with
+# another container (e.g. daqnode-daqdata-snoop) that initialised the volume first.
 RUN mkdir -p /data
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
+COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
 
 WORKDIR /app
 COPY . .
 
 # Only the daq_control gRPC server runs here (port 50051).
 # daq_data runs in the separate integration-daqdata stage / daqnode-data container.
-CMD ["python", "-m", "panoseti_grpc.daq_control.server"]
+CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec python -m panoseti_grpc.daq_control.server"]
