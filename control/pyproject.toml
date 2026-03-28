@@ -15,12 +15,12 @@ dependencies = [
     "psutil>=5.9",
     "haversine>=2.9",
     "GitPython>=3.1",
-    "netifaces>=0.11",
     "PyYAML>=6.0",
     "pyserial>=3.5",
     "requests>=2.31",
     "rich>=13.0",
     "pydantic>=2.0",
+    "tftpy>=0.8.2",
     "typing_extensions>=4.5",
     "panoseti_grpc>=0.4.0",
 ]

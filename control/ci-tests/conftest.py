@@ -21,11 +21,6 @@ import pytest
 # Stub out system/hardware dependencies imported at module level in util.py
 # but not available (or needed) in the test environment.
 # ---------------------------------------------------------------------------
-if 'netifaces' not in sys.modules:
-    _netifaces_stub = MagicMock()
-    _netifaces_stub.interfaces.return_value = []
-    _netifaces_stub.ifaddresses.return_value = {}
-    sys.modules['netifaces'] = _netifaces_stub
 
 # Allow bare `import pff` as used inside image_quantiles.py
 _utils_dir = os.path.join(os.path.dirname(__file__), "..", "utils")

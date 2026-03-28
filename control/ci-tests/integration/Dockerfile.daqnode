@@ -22,11 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /daqnode
 
-# Install panoseti_grpc from pre-built wheel (placed by run-integration-tests.sh)
-# Falls back to PyPI if no local wheel is found.
-COPY run-ci-tests/integration/wheels/ /tmp/wheels/
-RUN pip install --no-cache-dir /tmp/wheels/panoseti*.whl 2>/dev/null \
-    || pip install --no-cache-dir "panoseti-grpc>=0.4.0"
+# Install panoseti_grpc from PyPI (0.4.0+ supports Python 3.14)
+RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0"
 
 # fake hashpipe: install on PATH as 'hashpipe'
 COPY run-ci-tests/integration/fake_hashpipe.py /usr/local/bin/hashpipe

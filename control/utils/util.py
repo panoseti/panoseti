@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import subprocess, signal, socket, datetime, time, psutil, shutil
 import __main__
-import netifaces, json
+import json
 
 # this script will be copied to daq nodes,
 # but the quabo_driver and config_file won't be copied to daq nodes
@@ -123,24 +123,20 @@ def daq_grpc_endpoint(node: dict) -> tuple[str, int]:
     return str(node['ip_addr']), 50051
 
 
-# our IP address on local network (192.x.x.x)
-# see https://pypi.org/project/netifaces/
-#
 def local_ip():
+    """our IP address on local network (192.x.x.x)"""
     ips = []
-    for ifname in netifaces.interfaces():
-        addrs = netifaces.ifaddresses(ifname)
-        for a, b in addrs.items():
-            for c in b:
-                z = c['addr']
-                # TODO: Do we have to filter the IPs??
-                #if (z.startswith('192.')):
-                ips.append(z)
+    # psutil.net_if_addrs() returns a dictionary of interfaces and their addresses
+    for interface, snics in psutil.net_if_addrs().items():
+        for snic in snics:
+            # Check if it's an IPv4 address to match your previous logic
+            if snic.family == socket.AF_INET:
+                ips.append(snic.address)
+                
     if not ips:
         raise Exception("can't get local IP")
-    else:
-        return ips
-
+    
+    return ips
 
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')

@@ -1,0 +1,96 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 1: base
+# Python + panoseti-grpc dev dependencies. Inherited by all test stages.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml .
+
+# Install panoseti-grpc and test dependencies
+RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0" && \
+    pip install --no-cache-dir -e ".[dev]" || \
+    pip install --no-cache-dir \
+        pytest>=8.0 pytest-asyncio>=0.23 pytest-mock>=3.12 \
+        fakeredis>=2.26 pydantic>=2.0 haversine>=2.9 \
+        rich>=13.0 numpy>=1.24 redis>=7 psutil>=5.9 requests>=2.31 docker>=7
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 2: hashpipe-builder
+# Compiles the core hashpipe C library.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS hashpipe-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    autoconf libtool zlib1g-dev git
+
+# Assume hashpipe source is mounted or copied here
+COPY hashpipe_src/ /build/hashpipe/
+WORKDIR /build/hashpipe
+RUN autoreconf -is && ./configure && make && make install
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 3: daq-control-plugin-builder
+# Compiles the panoseti_daq plugin (hashpipe.so) using your Makefile.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM hashpipe-builder AS daq-control-plugin-builder
+COPY panoseti_daq/ /build/panoseti_daq/
+WORKDIR /build/panoseti_daq
+RUN make N_INPUT_BLOCKS=64 N_OUTPUT_BLOCKS=1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 4: unit-test-runner
+# Runs standard hardware-agnostic Python unit tests.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS unit-test-runner
+COPY . .
+CMD ["pytest", "tests/unit/", "-v", "--tb=short", "--color=yes"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 5: integration-headnode (Test Runner)
+# Acts as the headnode running the pytest integration suite.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS integration-headnode
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    rsync openssh-client docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+RUN mkdir -p /data /data/head
+
+CMD ["pytest", "tests/integration/", "-v", "--tb=short", "--color=yes"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 6: integration-daqnode
+# The DAQ node simulation. Contains REAL hashpipe, panoseti plugin, 
+# tcpreplay (for pcap simulation), and socat (for gateway tests).
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS integration-daqnode
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    socat tcpreplay \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy core hashpipe binaries and libraries from builder
+COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
+COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
+RUN ldconfig
+
+# Copy the panoseti_daq plugin (hashpipe.so)
+RUN mkdir -p /app/data && chmod 755 /app/data
+COPY --from=daq-control-plugin-builder /build/panoseti_daq/hashpipe.so /app/data/
+
+# Create data directories expected by the gRPC servers
+RUN mkdir -p /data
+
+WORKDIR /app
+COPY . .

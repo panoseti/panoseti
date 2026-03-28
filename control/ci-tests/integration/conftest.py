@@ -39,6 +39,7 @@ DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "integration-daqnode-
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent  # control/
 
+
 # ---------------------------------------------------------------------------
 # DaqControlClient fixtures
 # ---------------------------------------------------------------------------
@@ -66,7 +67,7 @@ def run_params() -> dict:
         "data_dir":         DAQ_DATA_DIR,
         "daq_ip_addr":      DAQNODE_DIRECT_HOST,
         "bindhost":         "0.0.0.0",
-        "max_file_size_mb": 100.0,
+        "max_file_size_mb": 100,
         "group_ph_frames":  False,
         "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",
@@ -176,8 +177,10 @@ def ensure_clean_daq_state(daq_control_direct, run_params):
     yield
     try:
         ok, status = daq_control_direct.StatusDaq({
-            "data_dir":              run_params["data_dir"],
+            "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
         })
         if ok and status.get("hashpipe_running"):
             daq_control_direct.StopDaq({

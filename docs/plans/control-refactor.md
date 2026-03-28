@@ -75,14 +75,6 @@ Migration order (one file at a time):
 2. `utils/util.py` — refactor `create_logger()` to delegate
 3. `power.py` → `status.py` → `stop.py` → `start.py`
 
-### 1.4 Fix `netifaces` Blocker (30 min, required before CI)
-
-`util.py` imports `netifaces` at module level (line 7), crashing any CI environment without network interfaces. Make it lazy:
-```python
-def local_ip() -> list[str]:
-    import netifaces  # inside function, only fails when called
-    ...
-```
 
 ---
 
@@ -213,7 +205,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-mock pydantic rich haversine ruff mypy
-          # Deliberately exclude hardware deps: netifaces, redis, influxdb, tftpy, psutil
+          # Deliberately exclude hardware deps: redis, influxdb, tftpy, psutil
       - name: Lint
         run: ruff check control/utils/ control/driver/
       - name: Type check
@@ -223,7 +215,7 @@ jobs:
                control/utils/global_validator.py \
                --ignore-missing-imports --no-strict-optional
       - name: Unit tests
-        run: cd control && python -m pytest tests/ -v --tb=short
+        run: cd control && python -m pytest tests/ -v --tb=long
         env:
           PYTHONPATH: .
 
@@ -320,7 +312,6 @@ As `panoseti_grpc.daq_control` matures, migrate `control/daq_scripts/start_daq.p
 | 1 | Shell injection fix (subprocess list args) | 1 day | Security |
 | 2 | Exception hierarchy + top-5 bare excepts | 2 days | Observability during ops |
 | 3 | Logging consolidation (remove print monkey-patch) | 3 days | Reliability |
-| 4 | Fix `netifaces` lazy import | 30 min | Unblocks CI |
 | 5 | Write Pydantic model tests | 3 days | Regression protection |
 | 6 | Write config utility tests | 2 days | IP math correctness |
 | 7 | Write global validator tests | 2 days | Business rule regressions |

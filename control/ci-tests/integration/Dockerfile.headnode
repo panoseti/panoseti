@@ -4,7 +4,7 @@
 # (Set by docker-compose.integration.yml context: ../)
 #
 # Contains:
-#   - panoseti-software control/ package (with all dev deps)
+#   - panoseti-software control/ package source on PYTHONPATH
 #   - panoseti_grpc (for DaqControlClient, DaqDataClient, etc.)
 #   - rsync, ssh-client for data collection simulation
 
@@ -21,25 +21,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install panoseti_grpc from pre-built wheel (placed by run-integration-tests.sh)
-COPY run-ci-tests/integration/wheels/ /tmp/wheels/
-RUN pip install --no-cache-dir /tmp/wheels/panoseti*.whl 2>/dev/null \
-    || pip install --no-cache-dir "panoseti-grpc>=0.4.0"
+# Install panoseti_grpc from PyPI (0.4.0+ supports Python 3.14)
+RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0"
 
-# Install panoseti control package with dev extras
-COPY pyproject.toml .
+# Install test and runtime dependencies for the control package
 RUN pip install --no-cache-dir \
-        netifaces-plus \
-    && pip install --no-cache-dir -e ".[dev]" \
-    || pip install --no-cache-dir \
         pytest>=8.0 \
         pytest-asyncio>=0.23 \
         pytest-mock>=3.12 \
+        pytest-timeout>=4.0 \
         fakeredis>=2.26 \
         pydantic>=2.0 \
         haversine>=2.9 \
         rich>=13.0 \
-        numpy>=1.24 \
+        numpy>=2.0 \
         redis>=7 \
         psutil>=5.9 \
         requests>=2.31 \
@@ -47,6 +42,9 @@ RUN pip install --no-cache-dir \
 
 # Copy full control/ source
 COPY . .
+
+# Add control/ to PYTHONPATH so "from utils.X import ..." works
+ENV PYTHONPATH="/app:${PYTHONPATH}"
 
 # Create data directories
 RUN mkdir -p /data /data/head

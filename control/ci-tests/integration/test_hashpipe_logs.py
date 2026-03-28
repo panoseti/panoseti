@@ -7,10 +7,19 @@ capture_telemetry_service daemon. That daemon pushes logs to:
   1. Redis (logs:ingress list) — immediate
   2. Loki  (via storeLoki.py) — within ~10s
 
-These tests verify that a StartDaq/StopDaq cycle produces log entries
-visible on the headnode.
+These tests require the full Telemetry pipeline (Telemetry gRPC server +
+capture_telemetry_service daemon). They are skipped unless
+ENABLE_TELEMETRY_TESTS=1 is set in the environment.
 """
 from __future__ import annotations
+
+import os
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("ENABLE_TELEMETRY_TESTS", "0") != "1",
+    reason="Requires Telemetry gRPC service + capture_telemetry_service (set ENABLE_TELEMETRY_TESTS=1)",
+)
 
 import time
 

@@ -36,19 +36,21 @@ class TestDaqLifecycle:
         daq_client.StartDaq(run_params)
         time.sleep(1)
         ok, status = daq_client.StatusDaq({
-            "data_dir":              run_params["data_dir"],
+            "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
         })
         assert ok
         assert status.get("hashpipe_running") is True
 
     def test_double_start_rejected(self, daq_client, run_params):
-        """A second StartDaq while hashpipe is running must fail."""
+        """A second StartDaq while hashpipe is running must fail (raises ValueError)."""
         daq_client.StartDaq(run_params)
         time.sleep(0.5)
-        ok = daq_client.StartDaq(run_params)
-        # Server returns success=False (does not raise) for double-start
-        assert ok is False
+        # Server returns success=False → client raises ValueError
+        with pytest.raises(ValueError):
+            daq_client.StartDaq(run_params)
 
     def test_stop_daq(self, daq_client, run_params):
         """StopDaq returns True."""
@@ -70,8 +72,10 @@ class TestDaqLifecycle:
         })
         time.sleep(1)
         ok, status = daq_client.StatusDaq({
-            "data_dir":              run_params["data_dir"],
+            "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
         })
         assert ok
         assert status.get("hashpipe_running") is False
@@ -81,8 +85,10 @@ class TestDaqLifecycle:
         daq_client.StartDaq(run_params)
         time.sleep(1)
         ok, status = daq_client.StatusDaq({
-            "data_dir":        run_params["data_dir"],
-            "check_run_dirs":  True,
+            "data_dir":               run_params["data_dir"],
+            "check_hashpipe_running": False,
+            "check_disk_usage":       False,
+            "check_run_dirs":         True,
         })
         assert ok
         run_dirs = status.get("run_dirs", [])
@@ -110,8 +116,10 @@ class TestDaqDiskUsage:
             "run_dir":  run_params["run_dir"],
         })
         ok, status = daq_control_direct.StatusDaq({
-            "data_dir":       run_params["data_dir"],
-            "check_disk_usage": True,
+            "data_dir":               run_params["data_dir"],
+            "check_hashpipe_running": False,
+            "check_disk_usage":       True,
+            "check_run_dirs":         False,
         })
         assert ok
         du = status.get("disk_usage", {})

@@ -13,11 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # pyproject.toml is at /app/pyproject.toml (context = control/)
 COPY pyproject.toml .
 
-# Install a stub for netifaces (not needed in tests, but imported at module level)
-# and install the package with dev extras
-RUN pip install --no-cache-dir \
-    netifaces-plus \
-    && pip install --no-cache-dir -e ".[dev]" \
+RUN pip install --no-cache-dir -e ".[dev]" \
     || pip install --no-cache-dir \
         pytest>=8.0 \
         pytest-asyncio>=0.23 \

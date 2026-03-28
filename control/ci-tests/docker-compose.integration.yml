@@ -10,11 +10,11 @@
 #
 #   daqnode_net (192.168.0.0/24):
 #     daqnode     (192.168.0.10) — daq_control + daq_data gRPC servers + fake hashpipe
-#     gateway     (192.168.0.1)  — socat bridge (same container, two NICs)
+#     gateway     (192.168.0.254)  — socat bridge (same container, two NICs)
 #
 # Environment variables for hardware CI override:
 #   DAQNODE_DIRECT_HOST   — direct IP of real DAQ node (default: 192.168.0.10)
-#   DAQNODE_GATEWAY_HOST  — gateway IP for forwarded access (default: 10.0.1.1)
+#   DAQNODE_GATEWAY_HOST  — gateway IP for forwarded access (default: 10.0.1.254)
 #   GRPC_PORT             — gRPC port (default: 50051)
 
 networks:
@@ -52,24 +52,25 @@ services:
   # Loki — log aggregation (storeLoki ships logs here)
   # ---------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.6.0
+    image: grafana/loki:3.7.0  # Bump to 3.7.0 or newer
     networks:
       headnode_net:
         ipv4_address: 10.0.1.21
     command: ["-config.file=/etc/loki/local-config.yaml"]
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:3100/ready || exit 1"]
-      interval: 10s
-      timeout: 5s
+      # Use the new built-in health flag; bypasses the missing shell
+      test: ["CMD", "loki", "-health"]
+      interval: 5s
+      timeout: 3s
       retries: 12
-      start_period: 20s
+      # start_period: 20s
 
   # ---------------------------------------------------------------------------
   # DAQ node — runs daq_control + daq_data gRPC servers + fake hashpipe
   # ---------------------------------------------------------------------------
   daqnode:
     build:
-      context: ../                     # build context = control/
+      context: ../../                     # build context = control/
       dockerfile: run-ci-tests/integration/Dockerfile.daqnode
     networks:
       daqnode_net:
@@ -94,9 +95,9 @@ services:
     image: alpine/socat
     networks:
       headnode_net:
-        ipv4_address: 10.0.1.1
+        ipv4_address: 10.0.1.254
       daqnode_net:
-        ipv4_address: 192.168.0.1
+        ipv4_address: 192.168.0.254
     volumes:
       - ./gateway_setup.sh:/gateway_setup.sh:ro
     entrypoint: ["sh", "/gateway_setup.sh"]
@@ -107,21 +108,51 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
+  # storeLoki — Redis→Loki log-shipping daemon (for test_loki_pipeline.py)
+  # ---------------------------------------------------------------------------
+  storeloki:
+    build:
+      context: ../../                     # build context = control/
+      dockerfile: run-ci-tests/integration/Dockerfile.headnode
+    networks:
+      headnode_net:
+        ipv4_address: 10.0.1.22
+    environment:
+      REDIS_HOST: "10.0.1.20"
+      LOKI_URL:   "http://10.0.1.21:3100"
+      PYTHONDONTWRITEBYTECODE: "1"
+    depends_on:
+      redis:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    command: >
+      python daemons/storeLoki.py
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import redis; r=redis.Redis(host='10.0.1.20'); r.ping()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
   # Test runner — runs pytest tests/integration/
   # ---------------------------------------------------------------------------
   test-runner:
     build:
-      context: ../                     # build context = control/
+      context: ../../                     # build context = control/
       dockerfile: run-ci-tests/integration/Dockerfile.headnode
     networks:
       headnode_net:
         ipv4_address: 10.0.1.5
+      daqnode_net:
+        ipv4_address: 192.168.0.5
     volumes:
       - daq_data:/data                 # shared with daqnode for data collection tests
       - /var/run/docker.sock:/var/run/docker.sock  # for container pause/unpause tests
     environment:
       DAQNODE_DIRECT_HOST:   "${DAQNODE_DIRECT_HOST:-192.168.0.10}"
-      DAQNODE_GATEWAY_HOST:  "${DAQNODE_GATEWAY_HOST:-10.0.1.1}"
+      DAQNODE_GATEWAY_HOST:  "${DAQNODE_GATEWAY_HOST:-10.0.1.254}"
       GRPC_PORT:             "${GRPC_PORT:-50051}"
       LOKI_URL:              "http://10.0.1.21:3100"
       REDIS_HOST:            "10.0.1.20"
@@ -137,6 +168,8 @@ services:
       redis:
         condition: service_healthy
       loki:
+        condition: service_healthy
+      storeloki:
         condition: service_healthy
     command: >
       pytest tests/integration/ -v --tb=short --color=yes
