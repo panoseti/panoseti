@@ -25,6 +25,7 @@ import uuid
 import pytest
 
 from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_data.client import DaqDataClient
 
 # ---------------------------------------------------------------------------
 # Environment / connection parameters
@@ -32,12 +33,17 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 
 DAQNODE_DIRECT_HOST  = os.getenv("DAQNODE_DIRECT_HOST",  "localhost")
 DAQNODE_GATEWAY_HOST = os.getenv("DAQNODE_GATEWAY_HOST", "localhost")
+DAQNODE_DATA_HOST    = os.getenv("DAQNODE_DATA_HOST",    "localhost")
+DAQNODE2_HOST        = os.getenv("DAQNODE2_HOST",        "localhost")
 GRPC_PORT            = int(os.getenv("GRPC_PORT", "50051"))
 LOKI_URL             = os.getenv("LOKI_URL",   "http://localhost:3100")
 REDIS_HOST           = os.getenv("REDIS_HOST", "localhost")
 DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
 HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
-DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "integration-daqnode-1")
+DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
+# BINDHOST is the network interface name on the daqnode for receiving science packets.
+# In Docker CI containers the primary interface is always "eth0".
+BINDHOST             = os.getenv("BINDHOST", "eth0")
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
 CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
@@ -56,8 +62,7 @@ if control_root not in sys.path:
     
 from utils import config_file
 
-@pytest.fixture(scope="session")
-def get_daq_and_network_config(kind="direct") -> tuple[dict, dict]:
+def get_daq_and_network_config(kind="direct") -> tuple[dict, dict | None]:
     """(daq_config.json, network_config.json) for clients connected:
         1. Directly to the daqnode (bypasses gateway).
         2. Via the socat gateway (simulates VPN/NAT topology)
@@ -65,14 +70,30 @@ def get_daq_and_network_config(kind="direct") -> tuple[dict, dict]:
     match kind:
         case "direct": 
             cfg_dir = DIRECT_CONFIG
+            net_cfg = None
         case "gateway": 
             cfg_dir = GATEWAY_CONFIG
+            net_cfg = config_file.get_network_config(cfg_dir)
         case _:
             raise ValueError(f"Invalid {kind=}. Must be 'direct' or 'gateway'")
 
     daq_cfg = config_file.get_daq_config(cfg_dir)
-    net_cfg = config_file.get_network_config(cfg_dir)
     return daq_cfg, net_cfg
+
+
+# ---------------------------------------------------------------------------
+# Session setup — ensure shared data directories exist before any test runs
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session", autouse=True)
+def create_data_dirs():
+    """Create expected data directories on the shared volume at session start.
+
+    /data/head is referenced by daq_config.json (head_node_data_dir) and must
+    exist for global_validator's Headnode Disk Space check to pass.
+    """
+    pathlib.Path(HEAD_DATA_DIR).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(DAQ_DATA_DIR).mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +112,27 @@ def daq_control_gateway() -> DaqControlClient:
     return DaqControlClient(host=DAQNODE_GATEWAY_HOST, port=GRPC_PORT)
 
 
+@pytest.fixture(scope="session")
+def daq_control_node2() -> DaqControlClient:
+    """DaqControlClient connected to the second DAQ node (two-node tests)."""
+    return DaqControlClient(host=DAQNODE2_HOST, port=GRPC_PORT)
+
+
+@pytest.fixture(scope="session")
+def daq_data_client() -> DaqDataClient:
+    """Session-scoped DaqDataClient connected to daqnode-data.
+
+    The connection is established once for the whole test session.
+    Each test is responsible for calling init_sim() or init_hp_io()
+    to configure server state — do NOT share hp_io state between tests.
+    """
+    daq_cfg = {
+        "daq_nodes": [{"ip_addr": DAQNODE_DATA_HOST, "data_dir": DAQ_DATA_DIR}]
+    }
+    with DaqDataClient(daq_cfg, network_config=None) as client:
+        yield client
+
+
 # ---------------------------------------------------------------------------
 # Run parameters fixture
 # ---------------------------------------------------------------------------
@@ -101,7 +143,7 @@ def run_params() -> dict:
     return {
         "data_dir":         DAQ_DATA_DIR,
         "daq_ip_addr":      DAQNODE_DIRECT_HOST,
-        "bindhost":         "0.0.0.0",
+        "bindhost":         BINDHOST,
         "max_file_size_mb": 100,
         "group_ph_frames":  False,
         "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",

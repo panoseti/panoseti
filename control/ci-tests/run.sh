@@ -45,7 +45,7 @@ docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
 
 # 3. Build & Run
 echo "--- Building $SUITE test Docker images ---"
-docker compose -f "$COMPOSE_FILE" build "$SERVICE_NAME"
+docker compose -f "$COMPOSE_FILE" build
 
 echo "--- Starting $SUITE test environment & running tests ---"
 docker compose -f "$COMPOSE_FILE" run --rm \

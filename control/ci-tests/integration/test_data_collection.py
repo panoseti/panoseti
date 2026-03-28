@@ -101,12 +101,14 @@ class TestDataCollectionTransaction:
         time.sleep(0.5)
 
         # Server blocks cleanup while hashpipe is live → client raises ValueError
-        with pytest.raises(ValueError, match="HASHPIPE is running"):
-            daq_control_direct.CleanupData({
-                "data_dir":  run_params["data_dir"],
-                "run_dir":   run_params["run_dir"],
-                "module_id": run_params["module_id"],
-            })
+        # with pytest.raises(ValueError, match="HASHPIPE is running"):
+        cleanup_resp = daq_control_direct.CleanupData({
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
+        })
+        assert cleanup_resp['success'] is False
+        assert "HASHPIPE is running" in cleanup_resp['message']
 
         # Teardown
         daq_control_direct.StopDaq({
@@ -162,12 +164,12 @@ class TestDataCollectionTransaction:
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
         }
-        first = daq_control_direct.CleanupData(params)
+        first = daq_control_direct.CleanupData(params)['success']
         assert first is True
         # Second call: dirs are already gone — server returns success=False (ValueError)
         # Acceptable: idempotent intent means the data is gone either way
         try:
-            daq_control_direct.CleanupData(params)
+            assert daq_control_direct.CleanupData(params)['success'] is False
         except ValueError:
             pass  # expected: server rejects cleanup of already-removed dirs
 
@@ -240,5 +242,5 @@ class TestNodeFailureDuringCollection:
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
-        })
+        })['success']
         assert ok is True

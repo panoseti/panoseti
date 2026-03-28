@@ -14,12 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml .
 
 # Install panoseti-grpc and test dependencies
-RUN pip install --no-cache-dir -e ".[dev]" 
-    #|| \
-    # pip install --no-cache-dir \
-    #     pytest>=8.0 pytest-asyncio>=0.23 pytest-mock>=3.12 \
-    #     fakeredis>=2.26 pydantic>=2.0 haversine>=2.9 \
-    #     rich>=13.0 numpy>=1.24 redis>=7 psutil>=5.9 requests>=2.31 docker>=7
+RUN pip install --no-cache-dir -e ".[dev]"
+
+# Extra deps needed by integration tests but not in pyproject.toml dev extras
+RUN pip install --no-cache-dir \
+    "redis>=7" "requests>=2.31" "docker>=7.0" "pytest-timeout>=2.0"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -62,6 +61,21 @@ RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ═══════════════════════════════════════════════════════════════════════════
+# Stage: integration-daqdata
+# Runs the daq_data gRPC server on a dedicated container (192.168.0.11).
+# Keeps daq_data on its own IP so it owns port 50051 independently of the
+# daq_control server on daqnode (192.168.0.10).
+# For real-data tests (RUN_REAL_DATA_TESTS=1) the hashpipe_uds Docker volume
+# must be mounted at /tmp in both this container and the daqnode container so
+# hashpipe UDS sockets are visible to both processes.
+# ═══════════════════════════════════════════════════════════════════════════
+FROM base AS integration-daqdata
+COPY . .
+RUN mkdir -p /data /data/head
+CMD ["python", "-m", "panoseti_grpc.daq_data.server"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Stage: unit-test-runner
 # Runs standard hardware-agnostic Python unit tests.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -99,20 +113,14 @@ COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN ldconfig
 
-# Copy the panoseti_daq plugin (hashpipe.so)
-RUN mkdir -p /app/data && chmod 755 /app/data
-COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /app/data/
-
-# Create data directories expected by the gRPC servers
+# Copy the panoseti_daq plugin (hashpipe.so) to /data/ — StartDaq launches
+# hashpipe with "-p {data_dir}/hashpipe.so" where data_dir defaults to "/data".
 RUN mkdir -p /data
+COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
 
 WORKDIR /app
 COPY . .
 
-# Start both gRPC servers:
-#   - daq_control (port 50051): manages hashpipe lifecycle
-#   - daq_data    (port 50052): streams science data
-CMD ["sh", "-c", \
-     "python -m panoseti_grpc.daq_control.server & \
-      python -m panoseti_grpc.daq_data.server & \
-      wait"]
+# Only the daq_control gRPC server runs here (port 50051).
+# daq_data runs in the separate integration-daqdata stage / daqnode-data container.
+CMD ["python", "-m", "panoseti_grpc.daq_control.server"]

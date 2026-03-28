@@ -33,7 +33,7 @@ services:
       - ..:/app
     working_dir: /app
     command: >
-      pytest tests/unit/ -v --tb=short
+      pytest ci-tests/unit/ -v --tb=short
         --color=yes
         -p no:cacheprovider
     profiles:

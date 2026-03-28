@@ -1,13 +1,26 @@
 {
-    "modules": [],
+    "modules": [
+        {
+            "ip_addr": "192.168.3.200",
+            "port_forwarding": { "status": true, "gw_ip": "10.0.1.1" }
+        },
+        {
+            "ip_addr": "192.168.3.201",
+            "port_forwarding": { "status": true, "gw_ip": "10.0.1.1" }
+        },
+        {
+            "ip_addr": "192.168.3.250",
+            "port_forwarding": { "status": true, "gw_ip": "10.0.1.1" }
+        },
+        {
+            "ip_addr": "192.168.3.251",
+            "port_forwarding": { "status": true, "gw_ip": "10.0.1.1" }
+        }
+    ],
     "daq_nodes": [
         {
             "ip_addr": "192.168.0.10",
-            "port_forwarding": {
-                "status": true,
-                "gw_ip": "10.0.1.1",
-                "grpc_port": 50051
-            }
+            "port_forwarding": { "status": true, "gw_ip": "10.0.1.1", "grpc_port": 50051 }
         }
     ]
 }

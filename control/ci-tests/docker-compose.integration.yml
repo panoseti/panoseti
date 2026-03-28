@@ -30,7 +30,9 @@ networks:
         - subnet: 192.168.0.0/24
 
 volumes:
-  daq_data:   # shared between daqnode and test-runner for data collection tests
+  daq_data:        # shared between daqnode(s) and test-runner for data collection tests
+  hashpipe_uds:    # hashpipe UDS sockets shared between daqnode and daqnode-daqdata-snoop (real-data tests)
+  hashpipe_uds_2:
 
 services:
 
@@ -66,30 +68,6 @@ services:
       # start_period: 20s
 
   # ---------------------------------------------------------------------------
-  # DAQ node — runs daq_control + daq_data gRPC servers + fake hashpipe
-  # ---------------------------------------------------------------------------
-  daqnode:
-    build:
-      context: ../                     # build context = control/
-      dockerfile: ci-tests/Dockerfile.ci
-      target: integration-daqnode
-    networks:
-      daqnode_net:
-        ipv4_address: 192.168.0.10
-    volumes:
-      - daq_data:/data
-    environment:
-      GRPC_PORT: "50051"
-      DATA_PORT: "50052"
-    healthcheck:
-      # Wait until the daq_control gRPC port is open
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
-
-  # ---------------------------------------------------------------------------
   # Gateway — socat TCP bridge simulating a NAT/VPN router
   # ---------------------------------------------------------------------------
   gateway:
@@ -107,6 +85,88 @@ services:
     depends_on:
       daqnode:
         condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # DAQ Data node — runs only the daq_data gRPC server (port 50051).
+  # Separate from daqnode so each server owns its own port 50051 on its IP.
+  # For real-data tests (RUN_REAL_DATA_TESTS=1) the hashpipe_uds volume
+  # provides access to the UDS sockets created by hashpipe on daqnode.
+  # ---------------------------------------------------------------------------
+  daqnode-daqdata-snoop:
+    build:
+      context: ../
+      dockerfile: ci-tests/Dockerfile.ci
+      target: integration-daqdata
+    networks:
+      daqnode_net:
+        ipv4_address: 192.168.0.11
+    volumes:
+      - daq_data:/data
+      - hashpipe_uds:/tmp              # UDS sockets from daqnode's hashpipe process
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # DAQ node — runs daq_control gRPC server + real hashpipe binary
+  # daq_data gRPC server runs separately on daqnode-daqdata-snoop (192.168.0.11)
+  # ---------------------------------------------------------------------------
+  daqnode:
+    build:
+      context: ../                     # build context = control/
+      dockerfile: ci-tests/Dockerfile.ci
+      target: integration-daqnode
+    networks:
+      daqnode_net:
+        ipv4_address: 192.168.0.10
+    volumes:
+      - daq_data:/data
+      - hashpipe_uds:/tmp              # hashpipe UDS sockets visible to daqnode-daqdata-snoop
+    environment:
+      GRPC_PORT: "50051"
+      DATA_PORT: "50052"
+    healthcheck:
+      # Wait until the daq_control gRPC port is open
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+
+  # ---------------------------------------------------------------------------
+  # Second DAQ node — for two-node integration tests.
+  # Runs daq_control only; mirrors daqnode on 192.168.0.20.
+  # ---------------------------------------------------------------------------
+  daqnode-2:
+    build:
+      context: ../
+      dockerfile: ci-tests/Dockerfile.ci
+      target: integration-daqnode
+    networks:
+      daqnode_net:
+        ipv4_address: 192.168.0.20
+    cap_add:
+      - NET_RAW        # Allows AF_PACKET raw sockets for pktsock
+      - NET_ADMIN      # Allows network interface binding/promiscuous mode
+      - IPC_LOCK       # Allows locking shared memory into RAM (mlock)
+      - SYS_NICE       # Allows Hashpipe to set real-time thread priorities
+    shm_size: '2gb'    # Overrides 64MB default to support Hashpipe's 1GB ring buffers
+    volumes:
+      - daq_data:/data
+      # - hashpipe_uds_2:/tmp # Give this daq node a private /tmp directory to avoid uds issues
+    environment:
+      GRPC_PORT: "50051"
+      BINDHOST: "eth0"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   # ---------------------------------------------------------------------------
   # storeLoki — Redis→Loki log-shipping daemon (for test_loki_pipeline.py)
@@ -156,15 +216,23 @@ services:
     environment:
       DAQNODE_DIRECT_HOST:   "${DAQNODE_DIRECT_HOST:-192.168.0.10}"
       DAQNODE_GATEWAY_HOST:  "${DAQNODE_GATEWAY_HOST:-10.0.1.254}"
+      DAQNODE_DATA_HOST:     "${DAQNODE_DATA_HOST:-192.168.0.11}"
+      DAQNODE2_HOST:         "${DAQNODE2_HOST:-192.168.0.20}"
+      BINDHOST:              "${BINDHOST:-eth0}"
       GRPC_PORT:             "${GRPC_PORT:-50051}"
       LOKI_URL:              "http://10.0.1.21:3100"
       REDIS_HOST:            "10.0.1.20"
       DAQ_DATA_DIR:          "/data"
       HEAD_DATA_DIR:         "/data/head"
-      DAQNODE_CONTAINER_NAME: "integration-daqnode-1"
+      DAQNODE_CONTAINER_NAME: "ctl-int-daqnode-1"
       PYTHONDONTWRITEBYTECODE: "1"
+      RUN_REAL_DATA_TESTS:    0
     depends_on:
       daqnode:
+        condition: service_healthy
+      daqnode-daqdata-snoop:
+        condition: service_healthy
+      daqnode-2:
         condition: service_healthy
       gateway:
         condition: service_started
