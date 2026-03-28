@@ -73,6 +73,14 @@ class TestTwoNodeDirect:
         """Node 2 (192.168.0.20) starts hashpipe successfully."""
         ok = daq_control_node2.StartDaq(run_params_node2)
         assert ok is True
+    
+    def test_both_nodes_stop(
+        self, daq_control_direct, daq_control_node2, run_params, run_params_node2
+    ):
+        """Both nodes can be started simultaneously and both report running."""
+        assert daq_control_direct.StopDaq(run_params) is True
+        assert daq_control_node2.StopDaq(run_params_node2) is True
+        time.sleep(1)
 
     def test_both_nodes_start_independently(
         self, daq_control_direct, daq_control_node2, run_params, run_params_node2

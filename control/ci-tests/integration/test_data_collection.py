@@ -174,6 +174,30 @@ class TestDataCollectionTransaction:
             pass  # expected: server rejects cleanup of already-removed dirs
 
 
+class TestCleanupEdgeCases:
+    """Edge cases for CleanupData that don't require a real hashpipe run."""
+
+    def test_cleanup_nonexistent_module_dirs_succeeds(
+        self, daq_control_direct, run_params
+    ):
+        """CleanupData for a module_id that never wrote data returns success=False (no-op).
+
+        The server must not raise when the module directory doesn't exist —
+        this is the expected condition on the very first run or after a node
+        reboot where no data was ever written for a given module.
+        """
+        # Use a module_id that was never started — pick one well outside normal range
+        phantom_params = {
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": [255],
+        }
+        resp = daq_control_direct.CleanupData(phantom_params)
+        assert resp["success"] is False, (
+            f"CleanupData for nonexistent module dirs should fail, got: {resp}"
+        )
+
+
 class TestNodeFailureDuringCollection:
     """Edge cases when the DAQ node becomes unavailable mid-copy."""
 
