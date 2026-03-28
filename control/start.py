@@ -317,7 +317,7 @@ def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
             'data_dir':         data_dir,
             'daq_ip_addr':      str(node['ip_addr']),
             'bindhost':         node.get('bindhost', '0.0.0.0'),
-            'max_file_size_mb': float(max_file_size_mb),
+            'max_file_size_mb': int(max_file_size_mb),
             'group_ph_frames':  bool(daq_params.do_group_ph_frames),
             'run_dir':          run_name,
             'obs':              obs,

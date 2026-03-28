@@ -245,13 +245,13 @@ def _cleanup_daq_grpc(daq_config, run_dir, head_run_dir, verbose):
             logger.info(f'CleanupData via gRPC: {grpc_host}:{grpc_port}')
             try:
                 client = DaqControlClient(host=grpc_host, port=grpc_port)
-                ok = client.CleanupData({
+                cleanup_resp = client.CleanupData({
                     'data_dir':  node['data_dir'],
                     'run_dir':   run_dir,
                     'module_id': module_ids,
                 })
-                if not ok:
-                    log_error(f'CleanupData failed for node {node["ip_addr"]}', head_run_dir)
+                if not cleanup_resp['success']:
+                    log_error(f'CleanupData failed for node {node["ip_addr"]} with {cleanup_resp=}', head_run_dir) 
             except Exception as e:
                 log_error(f'CleanupData error for node {node["ip_addr"]}: {e}', head_run_dir)
 
