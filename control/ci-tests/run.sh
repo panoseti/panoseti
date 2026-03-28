@@ -22,12 +22,12 @@ if [[ "$SUITE" == "unit" ]]; then
     COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unit.yml"
     SERVICE_NAME="unit-test-runner"
     # Isolate state by prefixing the docker project
-    export COMPOSE_PROJECT_NAME="control-unit-ci-tests" 
+    export COMPOSE_PROJECT_NAME="ctl-unit" 
 else
     COMPOSE_FILE="$SCRIPT_DIR/docker-compose.integration.yml"
     SERVICE_NAME="integration-test-runner"
     # Isolate state by prefixing the docker project
-    export COMPOSE_PROJECT_NAME="control-integration-ci-tests"
+    export COMPOSE_PROJECT_NAME="ctl-int"
 fi
 
 # 2. Rigorous Teardown Management

@@ -18,7 +18,7 @@ import pytest
 
 from .conftest import CONTROL_DIR
 
-INTEGRATION_CONFIGS = CONTROL_DIR / "run-ci-tests" / "integration" / "configs"
+INTEGRATION_CONFIGS = CONTROL_DIR / "ci-tests" / "integration" / "configs"
 
 # Common config files (same for both direct and gateway topologies)
 _COMMON_FILES = ["obs_config.json", "data_config.json", "firmware.json", "daemons.json"]

@@ -46,13 +46,13 @@ cd control
 pip install -e ".[dev]"
 
 # All unit tests (no hardware required)
-pytest tests/unit/ -v --tb=short
+pytest ci-tests/unit/ -v --tb=short
 
 # With coverage report
-pytest tests/unit/ --cov=utils --cov-report=term-missing
+pytest ci-tests/unit/ --cov=utils --cov-report=term-missing
 
 # Via Docker CI (self-contained, recommended for CI)
-bash run-ci-tests/run-unit-tests.sh
+bash ci-tests/run.sh
 ```
 
 ### Lint and type-check
@@ -257,9 +257,9 @@ module_id = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
 `control/pyproject.toml` sets `requires-python = ">=3.9"`. Target migration to 3.14+ syntax incrementally.
 
 ### Test locations
-- `control/tests/unit/` — unit tests for all 12 utility modules (no hardware required)
-- `control/tests/integration/` — end-to-end session lifecycle (Phase 4, future)
-- `control/run-ci-tests/` — Docker CI scripts (`run-unit-tests.sh`, `docker-compose.yml`)
+- `control/ci-tests/unit/` — unit tests for all utility modules (no hardware required)
+- `control/ci-tests/integration/` — end-to-end session lifecycle
+- `control/ci-tests/` — Docker CI scripts (`run.sh`, `docker-compose.unit.yml`, `docker-compose.integration.yml`)
 
 ### Upgrade plan
 Full five-phase upgrade plan: `docs/plan/control-upgrade-plan.md`

@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 1: base
+# Stage: base
 # Python + panoseti-grpc dev dependencies. Inherited by all test stages.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM python:3.14-slim AS base
@@ -14,40 +14,55 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml .
 
 # Install panoseti-grpc and test dependencies
-RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0" && \
-    pip install --no-cache-dir -e ".[dev]" || \
-    pip install --no-cache-dir \
-        pytest>=8.0 pytest-asyncio>=0.23 pytest-mock>=3.12 \
-        fakeredis>=2.26 pydantic>=2.0 haversine>=2.9 \
-        rich>=13.0 numpy>=1.24 redis>=7 psutil>=5.9 requests>=2.31 docker>=7
+RUN pip install --no-cache-dir -e ".[dev]" 
+    #|| \
+    # pip install --no-cache-dir \
+    #     pytest>=8.0 pytest-asyncio>=0.23 pytest-mock>=3.12 \
+    #     fakeredis>=2.26 pydantic>=2.0 haversine>=2.9 \
+    #     rich>=13.0 numpy>=1.24 redis>=7 psutil>=5.9 requests>=2.31 docker>=7
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 2: hashpipe-builder
-# Compiles the core hashpipe C library.
+# Stage: hashpipe-builder
+# Compiles hashpipe from source.  Both daq-data-hashpipe and daq-control
+# COPY from this stage, so hashpipe is built exactly once.
 # ═══════════════════════════════════════════════════════════════════════════
-FROM base AS hashpipe-builder
+FROM python:3.14-slim AS hashpipe-builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    autoconf libtool zlib1g-dev git
+        build-essential git autoconf automake libtool g++ make \
+    && rm -rf /var/lib/apt/lists/*
 
-# Assume hashpipe source is mounted or copied here
-COPY hashpipe_src/ /build/hashpipe/
-WORKDIR /build/hashpipe
-RUN autoreconf -is && ./configure && make && make install
-
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
+WORKDIR /build/hashpipe/src
+RUN autoreconf -is && \
+    ./configure --prefix=/usr/local && \
+    make && \
+    make install
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 3: daq-control-plugin-builder
-# Compiles the panoseti_daq plugin (hashpipe.so) using your Makefile.
+# Stage: daq-data-hashpipe-plugin-builder
+# Clones panoseti_daq and compiles it with the daq_data_hashpipe Makefile.
+# Separate from daq-control-plugin-builder because the two Makefiles differ
+# (daq_control adds process_frame.c).
 # ═══════════════════════════════════════════════════════════════════════════
-FROM hashpipe-builder AS daq-control-plugin-builder
-COPY panoseti_daq/ /build/panoseti_daq/
+FROM hashpipe-builder AS hashpipe-plugin-builder
+
+ENV PANOSETI_DAQ_BRANCH="dev"
+
+WORKDIR /build
+RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
-RUN make N_INPUT_BLOCKS=64 N_OUTPUT_BLOCKS=1
-
+COPY ci-tests/integration/build/Makefile .
+COPY ci-tests/integration/build/databuf.h .
+RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 4: unit-test-runner
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: unit-test-runner
 # Runs standard hardware-agnostic Python unit tests.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS unit-test-runner
@@ -56,7 +71,7 @@ CMD ["pytest", "ci-tests/unit/", "-v", "--tb=short", "--color=yes"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 5: integration-headnode (Test Runner)
+# Stage: integration-headnode (Test Runner)
 # Acts as the headnode running the pytest integration suite.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-headnode
@@ -69,9 +84,8 @@ RUN mkdir -p /data /data/head
 
 CMD ["pytest", "ci-tests/integration/", "-v", "--tb=short", "--color=yes"]
 
-
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage 6: integration-daqnode
+# Stage: integration-daqnode
 # The DAQ node simulation. Contains REAL hashpipe, panoseti plugin, 
 # tcpreplay (for pcap simulation), and socat (for gateway tests).
 # ═══════════════════════════════════════════════════════════════════════════
@@ -87,10 +101,18 @@ RUN ldconfig
 
 # Copy the panoseti_daq plugin (hashpipe.so)
 RUN mkdir -p /app/data && chmod 755 /app/data
-COPY --from=daq-control-plugin-builder /build/panoseti_daq/hashpipe.so /app/data/
+COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /app/data/
 
 # Create data directories expected by the gRPC servers
 RUN mkdir -p /data
 
 WORKDIR /app
 COPY . .
+
+# Start both gRPC servers:
+#   - daq_control (port 50051): manages hashpipe lifecycle
+#   - daq_data    (port 50052): streams science data
+CMD ["sh", "-c", \
+     "python -m panoseti_grpc.daq_control.server & \
+      python -m panoseti_grpc.daq_data.server & \
+      wait"]

@@ -12,7 +12,7 @@ from itertools import islice
 
 import pytest
 
-from .conftest import DAQNODE_DIRECT_HOST
+from .conftest import DAQNODE_DIRECT_HOST, get_daq_and_network_config
 
 
 # Skip if daq_data client is not available
@@ -26,9 +26,10 @@ DATA_GRPC_PORT = int(os.getenv("DATA_PORT", "50052"))
 
 
 @pytest.fixture(scope="module")
-def daq_data_client():
+def daq_data_client(kind):
     """Session-scoped DaqDataClient."""
-    client = DaqDataClient(host=DAQNODE_DIRECT_HOST, port=DATA_GRPC_PORT)
+    daq_cfg, net_cfg = get_daq_and_network_config(kind) 
+    client = DaqDataClient(daq_config=daq_cfg, network_config=net_cfg)
     yield client
 
 

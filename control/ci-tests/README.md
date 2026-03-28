@@ -6,14 +6,14 @@ Convenience scripts to run the `control/` test suite in a reproducible Docker en
 
 ```bash
 # From the control/ directory:
-bash run-ci-tests/run-unit-tests.sh
+bash ci-tests/run.sh
 ```
 
 Or, from anywhere in the repo:
 
 ```bash
 cd panoseti-software/control
-bash run-ci-tests/run-unit-tests.sh
+bash ci-tests/run.sh
 ```
 
 ## What gets started
@@ -27,13 +27,13 @@ bash run-ci-tests/run-unit-tests.sh
 
 ```bash
 # Run only pff tests
-bash run-ci-tests/run-unit-tests.sh -k test_pff
+bash ci-tests/run.sh -k test_pff
 
 # Run with verbose output and stop after first failure
-bash run-ci-tests/run-unit-tests.sh -x -v
+bash ci-tests/run.sh -x -v
 
 # Collect (list) all unit tests without running
-bash run-ci-tests/run-unit-tests.sh --collect-only
+bash ci-tests/run.sh --collect-only
 ```
 
 ## Local development (without Docker)
@@ -65,10 +65,10 @@ The `docker-compose.yml` uses profiles to avoid starting unnecessary services:
 
 ```bash
 # Unit tests only (starts Redis, unit-test runner)
-docker compose -f run-ci-tests/docker-compose.yml --profile unit up
+docker compose -f ci-tests/docker-compose.unit.yml
 
 # Integration tests only
-docker compose -f run-ci-tests/docker-compose.yml --profile integration up
+docker compose -f ci-tests/docker-compose.integration.yml
 ```
 
 ## Requirements

@@ -10,10 +10,12 @@ Environment variables (set by docker-compose.integration.yml):
     DAQ_DATA_DIR          — data dir on the daqnode (and shared volume mount point)
     HEAD_DATA_DIR         — headnode data destination dir
     DAQNODE_CONTAINER_NAME — Docker container name for pause/unpause tests
+    CONFIG_DIR            - Directory to integration test configuration files
 """
 from __future__ import annotations
 
 import os
+import sys
 import pathlib
 import shutil
 import subprocess
@@ -37,7 +39,35 @@ DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
 HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "integration-daqnode-1")
 
-CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent  # control/
+CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
+CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
+
+# ---------------------------------------------------------------------------
+# Portforwarding fixtures
+# ---------------------------------------------------------------------------
+DIRECT_CONFIG = CONFIG_DIR / "direct"
+GATEWAY_CONFIG = CONFIG_DIR / "gateway"
+
+sys.path.append(CONTROL_DIR / "utils")
+import config_file
+
+@pytest.fixture(scope="session")
+def get_daq_and_network_config(kind="direct") -> tuple[dict, dict]:
+    """(daq_config.json, network_config.json) for clients connected:
+        1. Directly to the daqnode (bypasses gateway).
+        2. Via the socat gateway (simulates VPN/NAT topology)
+    """
+    match kind:
+        case "direct": 
+            cfg_dir = DIRECT_CONFIG
+        case "gateway": 
+            cfg_dir = GATEWAY_CONFIG
+        case _:
+            raise ValueError(f"Invalid {kind=}. Must be 'direct' or 'gateway'")
+
+    daq_cfg = config_file.get_daq_config(cfg_dir)
+    net_cfg = config_file.get_network_config(cfg_dir)
+    return daq_cfg, net_cfg
 
 
 # ---------------------------------------------------------------------------

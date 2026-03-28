@@ -75,8 +75,8 @@ cd control && python start.py --validate-only
 
 ```bash
 cd control
-pytest tests/unit/ -v --tb=short          # unit tests, no hardware needed
-bash run-ci-tests/run-unit-tests.sh       # same, via Docker
+pytest ci-tests/unit/ -v --tb=short          # unit tests, no hardware needed
+bash ci-tests/run.sh {unit, integration}     # same, via Docker
 ```
 
 ---

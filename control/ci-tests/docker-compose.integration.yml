@@ -100,7 +100,7 @@ services:
       daqnode_net:
         ipv4_address: 192.168.0.254
     volumes:
-      - integration/build/gateway_setup.sh:/gateway_setup.sh:ro
+      - ./integration/build/gateway_setup.sh:/gateway_setup.sh:ro
     entrypoint: ["sh", "/gateway_setup.sh"]
     environment:
       DAQNODE_IP: "192.168.0.10"
@@ -126,8 +126,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      loki:
-        condition: service_healthy
+      # loki:
+      #   condition: service_healthy
     command: >
       python daemons/storeLoki.py
     healthcheck:
