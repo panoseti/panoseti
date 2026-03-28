@@ -60,7 +60,8 @@ else
     # Integration: 60-second per-test timeout to catch hangs
     # When telemetry tests are disabled, scale storeloki to 0 to save startup time
     if [[ -z "${ENABLE_TELEMETRY_TESTS:-}" ]]; then
-        SCALE_FLAGS="--scale storeloki=0"
+        #SCALE_FLAGS="--scale storeloki=0"
+        SCALE_FLAGS=""
     else
         SCALE_FLAGS=""
     fi
