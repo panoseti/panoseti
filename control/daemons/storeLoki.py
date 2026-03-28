@@ -160,7 +160,8 @@ def main() -> None:
         config_path = Path("telemetry_config.toml")
 
     redis_key = DEFAULT_REDIS_KEY
-    loki_url = DEFAULT_LOKI_URL
+    loki_base = os.getenv("LOKI_URL", "http://localhost:3100")
+    loki_url = loki_base.rstrip("/") + "/loki/api/v1/push"
 
     if config_path.exists():
         try:
