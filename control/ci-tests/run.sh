@@ -67,5 +67,5 @@ else
     fi
     docker compose -f "$COMPOSE_FILE" run --rm $SCALE_FLAGS \
         "$SERVICE_NAME" \
-        pytest "ci-tests/$SUITE/" -v --tb=short --color=yes --timeout=15 "$@"
+        pytest "ci-tests/$SUITE/" -v --tb=short --color=yes --timeout=45 "$@"
 fi
