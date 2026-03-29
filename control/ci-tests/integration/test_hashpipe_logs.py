@@ -1,30 +1,28 @@
 """
 test_hashpipe_logs.py — Integration tests for hashpipe log forwarding.
 
-The daq_control gRPC server uses get_logger("daq_control", grpc_enabled=True),
-which forwards log records via the Telemetry gRPC service to the headnode's
-capture_telemetry_service daemon. That daemon pushes logs to:
-  1. Redis (logs:ingress list) — immediate
-  2. Loki  (via storeLoki.py) — within ~10s
+The daqnode runs the unified panoseti-server (daq_data + daq_control) with
+grpc_logging=true.  Log records are forwarded via gRPC to the headnode's
+Telemetry service (panoseti-server --profile headnode at 10.0.1.22:50051),
+which writes them to Redis (logs:ingress). storeLoki.py then ships them to Loki.
 
-These tests require the full Telemetry pipeline (Telemetry gRPC server +
-capture_telemetry_service daemon). They are skipped unless
-ENABLE_TELEMETRY_TESTS=1 is set in the environment.
+These tests are enabled by default in Docker CI (ENABLE_TELEMETRY_TESTS=1 is
+set in docker-compose.integration.yml). Unset it to skip when running locally
+without a live headnode Telemetry service.
 """
 from __future__ import annotations
-
-import os
-import pytest
-
-pytestmark = pytest.mark.skipif(
-    os.getenv("ENABLE_TELEMETRY_TESTS", "0") != "1",
-    reason="Requires Telemetry gRPC service + capture_telemetry_service (set ENABLE_TELEMETRY_TESTS=1)",
-)
 
 import time
 
 import pytest
 import requests
+
+from .conftest import ENABLE_TELEMETRY_TESTS
+
+pytestmark = pytest.mark.skipif(
+    not ENABLE_TELEMETRY_TESTS,
+    reason="Requires Telemetry gRPC service on headnode (set ENABLE_TELEMETRY_TESTS=1)",
+)
 
 from .conftest import LOKI_URL, REDIS_HOST
 

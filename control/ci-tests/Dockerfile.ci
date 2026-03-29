@@ -65,22 +65,6 @@ COPY ci-tests/integration/build/databuf.h .
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ═══════════════════════════════════════════════════════════════════════════
-# Stage: integration-daqdata
-# Runs the daq_data gRPC server on a dedicated container (192.168.0.11).
-# Keeps daq_data on its own IP so it owns port 50051 independently of the
-# daq_control server on daqnode (192.168.0.10).
-# For real-data tests (RUN_REAL_DATA_TESTS=1) the hashpipe_uds Docker volume
-# must be mounted at /tmp in both this container and the daqnode container so
-# hashpipe UDS sockets are visible to both processes.
-# ═══════════════════════════════════════════════════════════════════════════
-FROM base AS integration-daqdata
-COPY . .
-RUN mkdir -p /data /data/head
-CMD ["python", "-m", "panoseti_grpc.daq_data.server"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
 # Stage: unit-test-runner
 # Runs standard hardware-agnostic Python unit tests.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -105,8 +89,9 @@ CMD ["pytest", "ci-tests/integration/", "-v", "--tb=short", "--color=yes"]
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: integration-daqnode
-# The DAQ node simulation. Contains REAL hashpipe, panoseti plugin, 
-# tcpreplay (for pcap simulation), and socat (for gateway tests).
+# The DAQ node simulation. Runs the unified panoseti-server (daq_data +
+# daq_control on port 50051), real hashpipe binary, tcpreplay for pcap
+# simulation, and socat for gateway tests.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -118,11 +103,9 @@ COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN ldconfig
 
-# Copy the panoseti_daq plugin to /data/ (fallback for standalone use) AND to
-# /usr/local/lib/ (persistent, not overridden by the daq_data volume mount).
+# Copy the panoseti_daq plugin to /data/ (fallback) AND to /usr/local/lib/ (persistent).
 # The entrypoint always copies from /usr/local/lib/ into /data/ at startup so
-# the plugin is available even when the daq_data Docker volume is shared with
-# another container (e.g. daqnode-daqdata-snoop) that initialised the volume first.
+# the plugin survives Docker volume initialization races on the shared daq_data volume.
 RUN mkdir -p /data
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
@@ -130,6 +113,6 @@ COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/l
 WORKDIR /app
 COPY . .
 
-# Only the daq_control gRPC server runs here (port 50051).
-# daq_data runs in the separate integration-daqdata stage / daqnode-data container.
-CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec python -m panoseti_grpc.daq_control.server"]
+# Unified gRPC server: daq_data + daq_control on a single port (50051).
+# hashpipe UDS sockets live in /tmp inside this container — no shared volume needed.
+CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci-tests/integration/configs/daqnode/server.toml"]

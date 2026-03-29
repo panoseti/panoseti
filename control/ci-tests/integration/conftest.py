@@ -2,19 +2,25 @@
 conftest.py — Shared fixtures for the PANOSETI integration test suite.
 
 Environment variables (set by docker-compose.integration.yml):
-    DAQNODE_DIRECT_HOST   — IP of the daqnode container (direct access)
-    DAQNODE_GATEWAY_HOST  — IP of the gateway container (forwarded access)
-    GRPC_PORT             — gRPC port (default 50051)
-    LOKI_URL              — Loki HTTP base URL
-    REDIS_HOST            — Redis hostname
-    DAQ_DATA_DIR          — data dir on the daqnode (and shared volume mount point)
-    HEAD_DATA_DIR         — headnode data destination dir
+    DAQNODE_DIRECT_HOST    — IP of the daqnode container (direct access)
+    DAQNODE_GATEWAY_HOST   — IP of the gateway container (forwarded access)
+    DAQNODE_DATA_HOST      — IP for daq_data gRPC (defaults to DAQNODE_DIRECT_HOST;
+                             unified server hosts daq_data + daq_control on the same port)
+    DAQNODE2_HOST          — IP of the second DAQ node
+    HEADNODE_HOST          — IP of the headnode Telemetry gRPC service
+    GRPC_PORT              — gRPC port (default 50051)
+    LOKI_URL               — Loki HTTP base URL
+    REDIS_HOST             — Redis hostname
+    DAQ_DATA_DIR           — data dir on the daqnode (and shared volume mount point)
+    HEAD_DATA_DIR          — headnode data destination dir
     DAQNODE_CONTAINER_NAME — Docker container name for pause/unpause tests
-    CONFIG_DIR            - Directory to integration test configuration files
+    CONFIG_DIR             — Directory to integration test configuration files
+    ENABLE_TELEMETRY_TESTS — set to "1" to run test_hashpipe_logs.py
 """
 from __future__ import annotations
 
 import os
+import json
 import sys
 import pathlib
 import shutil
@@ -33,17 +39,19 @@ from panoseti_grpc.daq_data.client import DaqDataClient
 
 DAQNODE_DIRECT_HOST  = os.getenv("DAQNODE_DIRECT_HOST",  "localhost")
 DAQNODE_GATEWAY_HOST = os.getenv("DAQNODE_GATEWAY_HOST", "localhost")
-DAQNODE_DATA_HOST    = os.getenv("DAQNODE_DATA_HOST",    "localhost")
+# Unified server: daq_data + daq_control share the same port on the same IP.
+# DAQNODE_DATA_HOST defaults to DAQNODE_DIRECT_HOST (no separate container needed).
+DAQNODE_DATA_HOST    = os.getenv("DAQNODE_DATA_HOST", DAQNODE_DIRECT_HOST)
 DAQNODE2_HOST        = os.getenv("DAQNODE2_HOST",        "localhost")
+HEADNODE_HOST        = os.getenv("HEADNODE_HOST",        "localhost")
 GRPC_PORT            = int(os.getenv("GRPC_PORT", "50051"))
 LOKI_URL             = os.getenv("LOKI_URL",   "http://localhost:3100")
 REDIS_HOST           = os.getenv("REDIS_HOST", "localhost")
 DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
 HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
-# BINDHOST is the network interface name on the daqnode for receiving science packets.
-# In Docker CI containers the primary interface is always "eth0".
 BINDHOST             = os.getenv("BINDHOST", "lo")
+ENABLE_TELEMETRY_TESTS = os.getenv("ENABLE_TELEMETRY_TESTS", "0") == "1"
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
 CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
@@ -73,11 +81,15 @@ def get_daq_and_network_config(kind="direct") -> tuple[dict, dict | None]:
             net_cfg = None
         case "gateway": 
             cfg_dir = GATEWAY_CONFIG
-            net_cfg = config_file.get_network_config(cfg_dir)
+            with open(cfg_dir / "network_config.json", 'rb') as f:
+                net_cfg_raw = json.load(f)
+                net_cfg = config_file.NetworkConfigValidator(**net_cfg_raw).model_dump(mode='json', exclude_unset=True)
         case _:
             raise ValueError(f"Invalid {kind=}. Must be 'direct' or 'gateway'")
 
-    daq_cfg = config_file.get_daq_config(cfg_dir)
+    with open(cfg_dir / "daq_config.json", 'rb') as f:
+        daq_cfg_raw = json.load(f)
+        daq_cfg = config_file.DaqConfigValidator(**daq_cfg_raw).model_dump(mode='json', exclude_unset=True)
     return daq_cfg, net_cfg
 
 
@@ -126,10 +138,11 @@ def daq_data_client() -> DaqDataClient:
     Each test is responsible for calling init_sim() or init_hp_io()
     to configure server state — do NOT share hp_io state between tests.
     """
-    daq_cfg = {
-        "daq_nodes": [{"ip_addr": DAQNODE_DATA_HOST, "data_dir": DAQ_DATA_DIR}]
-    }
-    with DaqDataClient(daq_cfg, network_config=None) as client:
+    # daq_cfg = {
+    #     "daq_nodes": [{"ip_addr": DAQNODE_DATA_HOST, "data_dir": DAQ_DATA_DIR}]
+    # }
+    daq_cfg, net_cfg = get_daq_and_network_config(kind="gateway")
+    with DaqDataClient(daq_cfg, network_config=net_cfg) as client:
         yield client
 
 

@@ -11,8 +11,10 @@ Requires:
     - tcpreplay installed inside the daqnode container
     - hashpipe.so at /data/hashpipe.so inside the daqnode container
     - PCAP file at /app/ci-tests/integration/data/*.pcapng inside daqnode
-    - hashpipe_uds Docker volume shared between daqnode and daqnode-data
-      (mounted at /tmp in both) so UDS sockets are visible to both
+
+With the unified server, daq_data and daq_control run in the same container
+process, so hashpipe UDS sockets at /tmp are directly accessible to the
+daq_data service — no shared volume needed.
 
 The current PCAP contains pulse-height data only.  Tests request both
 stream_movie_data and stream_pulse_height_data so that when mixed PH+MM
@@ -124,8 +126,9 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
 @pytest.fixture(scope="module")
 def real_daq_data_client(hashpipe_pcap_session):
     """
-    DaqDataClient connected to daqnode-data, initialized for real hashpipe mode.
-    The hashpipe_uds volume at /tmp makes UDS sockets from daqnode visible here.
+    DaqDataClient connected to the unified daqnode gRPC server.
+    daq_data and daq_control share a process, so hashpipe UDS sockets
+    at /tmp are directly accessible — no shared volume required.
     """
     run_params = hashpipe_pcap_session
     daq_cfg = {
@@ -136,8 +139,7 @@ def real_daq_data_client(hashpipe_pcap_session):
         if not ok:
             pytest.skip(
                 "init_hp_io(simulate_daq=False) failed — "
-                "hashpipe UDS sockets may not be visible to daqnode-data. "
-                "Ensure hashpipe_uds volume is mounted at /tmp in both containers."
+                "check that hashpipe started and UDS sockets are present at /tmp."
             )
         yield client
 
