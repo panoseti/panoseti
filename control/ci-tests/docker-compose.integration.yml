@@ -9,9 +9,9 @@
 #     loki        (10.0.1.21)  — log aggregation (storeLoki ships here)
 #     headnode    (10.0.1.22)  — Telemetry gRPC (50051) + storeLoki daemon
 #
-#   daqnode_net (192.168.0.0/24):
-#     daqnode     (192.168.0.10) — unified gRPC server (daq_data + daq_control, port 50051) + hashpipe
-#     daqnode-2   (192.168.0.20) — unified gRPC server (daq_data + daq_control, port 50051)
+#   daqnode_net (192.168.0.0/24) — also has headnode_net IPs for grpc_logging:
+#     daqnode     (192.168.0.10 / 10.0.1.10) — unified gRPC server + hashpipe
+#     daqnode-2   (192.168.0.20 / 10.0.1.11) — unified gRPC server
 #     gateway     (192.168.0.254) — socat bridge (same container, dual NIC)
 #
 # Environment variable overrides (for hardware CI):
@@ -137,6 +137,8 @@ services:
       dockerfile: ci-tests/Dockerfile.ci
       target: integration-daqnode
     networks:
+      headnode_net:
+        ipv4_address: 10.0.1.10   # dual-homed: can reach headnode (10.0.1.22) for grpc_logging
       daqnode_net:
         ipv4_address: 192.168.0.10
     cap_add:
@@ -149,7 +151,7 @@ services:
       - daq_data:/data
     environment:
       GRPC_PORT:          "50051"
-      BINDHOST:           "lo"
+      BINDHOST:           "eth0"
       HEADNODE_IP:        "10.0.1.22"
       HEADNODE_GRPC_PORT: "50051"
     healthcheck:
@@ -169,6 +171,8 @@ services:
       dockerfile: ci-tests/Dockerfile.ci
       target: integration-daqnode
     networks:
+      headnode_net:
+        ipv4_address: 10.0.1.11   # dual-homed: can reach headnode for grpc_logging
       daqnode_net:
         ipv4_address: 192.168.0.20
     cap_add:
@@ -181,7 +185,7 @@ services:
       - daq_data_2:/data   # isolated — prevents module.config conflicts with daqnode
     environment:
       GRPC_PORT:          "50051"
-      BINDHOST:           "lo"
+      BINDHOST:           "eth0"
       HEADNODE_IP:        "10.0.1.22"
       HEADNODE_GRPC_PORT: "50051"
     healthcheck:
@@ -213,7 +217,7 @@ services:
       DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST:-192.168.0.10}"
       DAQNODE2_HOST:          "${DAQNODE2_HOST:-192.168.0.20}"
       HEADNODE_HOST:          "10.0.1.22"
-      BINDHOST:               "${BINDHOST:-lo}"
+      BINDHOST:               "${BINDHOST:-eth0}"
       GRPC_PORT:              "${GRPC_PORT:-50051}"
       LOKI_URL:               "http://10.0.1.21:3100"
       REDIS_HOST:             "10.0.1.20"

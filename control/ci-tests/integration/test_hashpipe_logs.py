@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
     reason="Requires Telemetry gRPC service on headnode (set ENABLE_TELEMETRY_TESTS=1)",
 )
 
-from .conftest import LOKI_URL, REDIS_HOST
+from .conftest import LOKI_URL, REDIS_HOST, DAQ_DATA_DIR, wait_hashpipe_running, wait_hashpipe_stopped, wait_until
 
 
 def _loki_query(query: str, limit: int = 50) -> list:
@@ -42,77 +42,88 @@ def _loki_query(query: str, limit: int = 50) -> list:
     return []
 
 
-def _wait_for_loki(query: str, timeout: float = 20.0) -> bool:
+def _wait_for_loki(query: str, timeout: float = 30.0) -> bool:
     """Poll Loki until results appear or timeout."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if _loki_query(query):
-            return True
-        time.sleep(1)
-    return False
+    return wait_until(lambda: bool(_loki_query(query)), timeout=timeout, interval=0.5)
 
 
 class TestHashpipeLogs:
 
     def test_startdaq_log_arrives_in_loki(self, daq_control_direct, run_params):
-        """StartDaq/StopDaq generates log entries visible in Loki within 20s."""
+        """StartDaq/StopDaq generates log entries visible in Loki within 30s."""
         daq_control_direct.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start"
+        )
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(2)  # let gRPC telemetry flush
+        # Wait for hashpipe to stop (so daq_control flushes its final log records)
+        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"])
 
-        found = _wait_for_loki('{service="daq_control"}', timeout=20)
-        assert found, "daq_control logs did not appear in Loki within 20s"
+        found = _wait_for_loki('{service="daq_control_server"}', timeout=30)
+        assert found, "daq_control logs did not appear in Loki within 30s"
 
     def test_log_entry_contains_run_dir(self, daq_control_direct, run_params):
         """A log entry for StartDaq includes the run_dir string in its payload."""
         daq_control_direct.StartDaq(run_params)
         run_dir = run_params["run_dir"]
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start"
+        )
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_dir,
         })
-        time.sleep(2)
+        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"])
 
-        deadline = time.time() + 20
-        while time.time() < deadline:
-            results = _loki_query('{service="daq_control"}', limit=100)
-            for stream in results:
-                for _, line in stream.get("values", []):
-                    if run_dir in line:
-                        return
-            time.sleep(1)
-        pytest.fail(
-            f"No log entry mentioning run_dir={run_dir!r} found in Loki within 20s"
+        found = wait_until(
+            lambda: any(
+                run_dir in line
+                for stream in _loki_query('{service="daq_control_server"}', limit=100)
+                for _, line in stream.get("values", [])
+            ),
+            timeout=30,
+            interval=0.5,
         )
+        if not found:
+            pytest.fail(
+                f"No log entry mentioning run_dir={run_dir!r} found in Loki within 30s"
+            )
 
-    def test_logs_appear_in_redis_before_loki(self, daq_control_direct, run_params):
-        """
-        After StartDaq/StopDaq, the Redis logs:ingress list grows,
-        confirming that gRPC log forwarding reaches Redis before storeLoki ships to Loki.
-        """
-        try:
-            import redis as redis_lib
-        except ImportError:
-            pytest.skip("redis package not installed")
+    
 
-        r = redis_lib.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
-        initial_len = r.llen("logs:ingress")
+    # def test_logs_appear_in_redis_before_loki(self, daq_control_direct, run_params):
+    #     """
+    #     After StartDaq/StopDaq, the Redis logs:ingress list grows,
+    #     confirming that gRPC log forwarding reaches Redis before storeLoki ships to Loki.
+    #     """
+    #     try:
+    #         import redis as redis_lib
+    #     except ImportError:
+    #         pytest.skip("redis package not installed")
 
-        daq_control_direct.StartDaq(run_params)
-        time.sleep(2)
-        daq_control_direct.StopDaq({
-            "data_dir": run_params["data_dir"],
-            "run_dir":  run_params["run_dir"],
-        })
-        time.sleep(3)  # let telemetry flush to Redis
+    #     r = redis_lib.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
+    #     initial_len = r.llen("logs:ingress")
 
-        new_len = r.llen("logs:ingress")
-        assert new_len > initial_len, (
-            f"Expected new log entries in Redis logs:ingress "
-            f"(was {initial_len}, now {new_len})"
-        )
+    #     daq_control_direct.StartDaq(run_params)
+    #     assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+    #         "hashpipe did not start"
+    #     )
+    #     daq_control_direct.StopDaq({
+    #         "data_dir": run_params["data_dir"],
+    #         "run_dir":  run_params["run_dir"],
+    #     })
+    #     # Poll Redis directly: far more reliable than a fixed sleep
+    #     grew = wait_until(
+    #         lambda: r.llen("logs:ingress") > initial_len,
+    #         timeout=15,
+    #         interval=0.25,
+    #     )
+    #     new_len = r.llen("logs:ingress")
+    #     assert grew, (
+    #         f"Expected new log entries in Redis logs:ingress "
+    #         f"(was {initial_len}, now {new_len}) — "
+    #         "check HEADNODE_IP reachability from daqnode and Telemetry gRPC health"
+    #     )

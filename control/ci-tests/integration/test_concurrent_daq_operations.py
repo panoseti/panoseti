@@ -17,7 +17,10 @@ import pytest
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
-from .conftest import DAQNODE_DIRECT_HOST, GRPC_PORT, DAQ_DATA_DIR, BINDHOST
+from .conftest import (
+    DAQNODE_DIRECT_HOST, GRPC_PORT, DAQ_DATA_DIR, BINDHOST,
+    wait_hashpipe_running, wait_hashpipe_stopped,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +83,9 @@ class TestConcurrentDaqOperations:
         """Ten concurrent StatusDaq calls while hashpipe is running → all succeed."""
         rp = run_params_conc
         daq_control_direct.StartDaq(rp)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_direct, rp["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         status_params = {
             "data_dir":               rp["data_dir"],
@@ -105,7 +110,9 @@ class TestConcurrentDaqOperations:
         """CleanupData is blocked while hashpipe is running; succeeds after StopDaq."""
         rp = run_params_conc
         daq_control_direct.StartDaq(rp)
-        time.sleep(0.5)
+        assert wait_hashpipe_running(daq_control_direct, rp["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         # CleanupData should be blocked while hashpipe is live
         cleanup_resp = daq_control_direct.CleanupData({
@@ -121,7 +128,9 @@ class TestConcurrentDaqOperations:
             "data_dir": rp["data_dir"],
             "run_dir":  rp["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, rp["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         cleanup_resp2 = daq_control_direct.CleanupData({
             "data_dir":  rp["data_dir"],
@@ -142,7 +151,10 @@ class TestConcurrentDaqOperations:
             ok = daq_control_direct.StartDaq(rp)
             assert ok is True, f"Cycle {cycle}: StartDaq returned {ok!r}"
 
-            time.sleep(1)
+            # Wait for hashpipe to be confirmed running before stopping
+            assert wait_hashpipe_running(daq_control_direct, rp["data_dir"]), (
+                f"Cycle {cycle}: hashpipe did not start within timeout"
+            )
 
             stop_ok = daq_control_direct.StopDaq({
                 "data_dir": rp["data_dir"],
@@ -150,15 +162,10 @@ class TestConcurrentDaqOperations:
             })
             assert stop_ok is True, f"Cycle {cycle}: StopDaq returned {stop_ok!r}"
 
-            time.sleep(0.5)
-
-            # After stopping, hashpipe should not be reported as running
-            _, status = daq_control_direct.StatusDaq({
-                "data_dir":               rp["data_dir"],
-                "check_hashpipe_running": True,
-                "check_disk_usage":       False,
-                "check_run_dirs":         False,
-            })
-            assert status.get("hashpipe_running") is False, (
+            # Wait for hashpipe to fully exit before the next StartDaq.
+            # Fixed-delay sleep is not sufficient: the process may still be in the
+            # teardown path when the next StartDaq arrives, leaving a stale pid > 0
+            # on the server that rejects the new start.
+            assert wait_hashpipe_stopped(daq_control_direct, rp["data_dir"]), (
                 f"Cycle {cycle}: hashpipe still running after StopDaq"
             )

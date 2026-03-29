@@ -6,13 +6,14 @@ connections, validating that gRPC topology works end-to-end for both paths.
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
-from .conftest import DAQNODE_DIRECT_HOST, DAQNODE_GATEWAY_HOST, GRPC_PORT
+from .conftest import (
+    DAQNODE_DIRECT_HOST, DAQNODE_GATEWAY_HOST, GRPC_PORT,
+    wait_hashpipe_running, wait_hashpipe_stopped,
+)
 
 
 @pytest.fixture(params=["direct", "gateway"])
@@ -29,12 +30,17 @@ class TestDaqLifecycle:
     def test_start_daq(self, daq_client, run_params):
         """StartDaq returns True for a fresh run."""
         ok = daq_client.StartDaq(run_params)
-        assert ok is True
+        assert wait_hashpipe_running(daq_client, run_params['data_dir']), (
+            "Hashpipe failed to start"
+        )
+        # assert ok is True
 
     def test_status_shows_running(self, daq_client, run_params):
         """After StartDaq, StatusDaq reports hashpipe_running=True."""
         daq_client.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         ok, status = daq_client.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
@@ -47,7 +53,9 @@ class TestDaqLifecycle:
     def test_double_start_rejected(self, daq_client, run_params):
         """A second StartDaq while hashpipe is running must fail (raises ValueError)."""
         daq_client.StartDaq(run_params)
-        time.sleep(0.5)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         # Server returns success=False → client raises ValueError
         with pytest.raises(ValueError):
             daq_client.StartDaq(run_params)
@@ -55,7 +63,9 @@ class TestDaqLifecycle:
     def test_stop_daq(self, daq_client, run_params):
         """StopDaq returns True."""
         daq_client.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         ok = daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
@@ -65,12 +75,16 @@ class TestDaqLifecycle:
     def test_status_shows_stopped_after_stop(self, daq_client, run_params):
         """After StopDaq, StatusDaq reports hashpipe_running=False."""
         daq_client.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_client, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
         ok, status = daq_client.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
@@ -83,7 +97,9 @@ class TestDaqLifecycle:
     def test_run_dir_appears_in_status(self, daq_client, run_params):
         """After StartDaq, the run_dir appears in StatusDaq run_dirs list."""
         daq_client.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         ok, status = daq_client.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": False,
@@ -110,7 +126,9 @@ class TestDaqDiskUsage:
     def test_disk_usage_fields_present(self, daq_control_direct, run_params):
         """StatusDaq with check_disk_usage returns expected disk usage keys."""
         daq_control_direct.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
@@ -162,22 +180,31 @@ class TestDaqRunDirIsolation:
         rp_b = dict(run_params)
         rp_b["run_dir"] = f"ci_run_b_{_uuid.uuid4().hex[:8]}.pffd"
 
-        # Start and stop both runs so their directories are created
+        # Start, confirm running, then stop run A
         daq_control_direct.StartDaq(run_params)
-        time.sleep(0.5)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "run A: hashpipe did not start"
+        )
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(0.5)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "run A: hashpipe did not stop"
+        )
 
+        # Start, confirm running, then stop run B
         daq_control_direct.StartDaq(rp_b)
-        time.sleep(0.5)
+        assert wait_hashpipe_running(daq_control_direct, rp_b["data_dir"]), (
+            "run B: hashpipe did not start"
+        )
         daq_control_direct.StopDaq({
             "data_dir": rp_b["data_dir"],
             "run_dir":  rp_b["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, rp_b["data_dir"]), (
+            "run B: hashpipe did not stop"
+        )
 
         # Clean up run A only
         daq_control_direct.CleanupData({
@@ -185,7 +212,6 @@ class TestDaqRunDirIsolation:
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
         })
-        time.sleep(0.5)
 
         _, status = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],

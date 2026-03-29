@@ -17,7 +17,10 @@ import pytest
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
-from .conftest import DAQ_DATA_DIR, BINDHOST
+from .conftest import (
+    DAQ_DATA_DIR, BINDHOST,
+    wait_hashpipe_stopped, wait_hashpipe_running
+)
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +51,9 @@ def ensure_node2_clean(daq_control_node2, run_params_node2):
             "data_dir": run_params_node2["data_dir"],
             "run_dir":  run_params_node2["run_dir"],
         })
-        time.sleep(0.5)
+        assert wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
     except Exception:
         pass
     try:
@@ -56,6 +61,29 @@ def ensure_node2_clean(daq_control_node2, run_params_node2):
             "data_dir":  run_params_node2["data_dir"],
             "run_dir":   run_params_node2["run_dir"],
             "module_id": run_params_node2["module_id"],
+        })
+    except Exception:
+        pass
+
+@pytest.fixture(autouse=True)
+def ensure_node1_clean(daq_control_direct, run_params):
+    """Stop and cleanup node-2 after each test regardless of outcome."""
+    yield
+    try:
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
+    except Exception:
+        pass
+    try:
+        daq_control_direct.CleanupData({
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
         })
     except Exception:
         pass
@@ -77,10 +105,13 @@ class TestTwoNodeDirect:
     def test_both_nodes_stop(
         self, daq_control_direct, daq_control_node2, run_params, run_params_node2
     ):
-        """Both nodes can be started simultaneously and both report running."""
+        """Both nodes can be stopped simultaneously and both report running."""
         assert daq_control_direct.StopDaq(run_params) is True
         assert daq_control_node2.StopDaq(run_params_node2) is True
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
+        # time.sleep(1)
 
     def test_both_nodes_start_independently(
         self, daq_control_direct, daq_control_node2, run_params, run_params_node2
@@ -88,8 +119,13 @@ class TestTwoNodeDirect:
         """Both nodes can be started simultaneously and both report running."""
         assert daq_control_direct.StartDaq(run_params) is True
         assert daq_control_node2.StartDaq(run_params_node2) is True
-        time.sleep(1)
 
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
+        assert wait_hashpipe_running(daq_control_node2, run_params_node2["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         _, s1 = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
@@ -111,13 +147,21 @@ class TestTwoNodeDirect:
         """Stopping hashpipe on node 1 does not stop it on node 2."""
         assert daq_control_direct.StartDaq(run_params) is True
         assert daq_control_node2.StartDaq(run_params_node2) is True
-        time.sleep(1)
+        
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
+        assert wait_hashpipe_running(daq_control_node2, run_params_node2["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         _, s1 = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],
@@ -140,7 +184,13 @@ class TestTwoNodeDirect:
         """Each node tracks its own run_dir independently."""
         assert daq_control_direct.StartDaq(run_params) is True
         assert daq_control_node2.StartDaq(run_params_node2) is True
-        time.sleep(1)
+
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
+        assert wait_hashpipe_running(daq_control_node2, run_params_node2["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         _, s1 = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],

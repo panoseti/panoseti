@@ -25,6 +25,8 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 from .conftest import (
     DAQ_DATA_DIR, HEAD_DATA_DIR,
     copy_run_dir, start_copy_background,
+    wait_hashpipe_stopped, wait_hashpipe_running,
+    wait_grpc_reachable
 )
 
 
@@ -62,7 +64,9 @@ class TestDataCollectionTransaction:
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         # Simulate data collection (shared volume copy)
         ok = copy_run_dir(run_params, head_data_dir)
@@ -98,7 +102,9 @@ class TestDataCollectionTransaction:
         Server returns success=False → client raises ValueError.
         """
         daq_control_direct.StartDaq(run_params)
-        time.sleep(0.5)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         # Server blocks cleanup while hashpipe is live → client raises ValueError
         # with pytest.raises(ValueError, match="HASHPIPE is running"):
@@ -129,7 +135,9 @@ class TestDataCollectionTransaction:
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         # Simulate: copy failed (e.g. network error) — skip CleanupData
         # Data must still be on daqnode (run_dir directory exists)
@@ -156,7 +164,9 @@ class TestDataCollectionTransaction:
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
         copy_run_dir(run_params, head_data_dir)
 
         params = {
@@ -214,7 +224,9 @@ class TestNodeFailureDuringCollection:
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         # Start copy in background, pause container partway through
         copy_proc = start_copy_background(run_params, head_data_dir)
@@ -223,6 +235,10 @@ class TestNodeFailureDuringCollection:
         copy_proc.wait(timeout=5)
         daqnode_container.unpause()
         time.sleep(1)  # let gRPC server reconnect
+        assert wait_grpc_reachable(daq_control_direct, run_params["data_dir"]), (
+            "grpc not reachable within timeout"
+        )
+        
 
         # The copy proc should have been disrupted
         # (on a shared volume this may actually succeed, so we just verify
@@ -251,12 +267,16 @@ class TestNodeFailureDuringCollection:
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         daqnode_container.pause()
         time.sleep(0.5)
         daqnode_container.unpause()
-        time.sleep(2)  # let gRPC server restart
+        assert wait_grpc_reachable(daq_control_direct, run_params["data_dir"]), (
+            "grpc not reachable within timeout"
+        )
 
         # Full copy after recovery
         copy_ok = copy_run_dir(run_params, head_data_dir)

@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import time
 import uuid
+from typing import Callable
 
 import pytest
 
@@ -50,11 +51,90 @@ REDIS_HOST           = os.getenv("REDIS_HOST", "localhost")
 DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
 HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
-BINDHOST             = os.getenv("BINDHOST", "lo")
+BINDHOST             = os.getenv("BINDHOST", "eth0")
 ENABLE_TELEMETRY_TESTS = os.getenv("ENABLE_TELEMETRY_TESTS", "0") == "1"
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
 CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
+
+# ---------------------------------------------------------------------------
+# Polling helpers — replace time.sleep with condition-based waits
+# ---------------------------------------------------------------------------
+
+def wait_until(
+    condition: Callable[[], bool],
+    *,
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> bool:
+    """Poll condition() until it returns truthy or timeout expires.
+
+    Exceptions from condition() are swallowed (treated as False) so callers
+    don't need try/except around transient gRPC errors.
+
+    Returns True on success, False on timeout.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if condition():
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
+    return False
+
+
+_HP_STATUS_PARAMS: dict = {
+    "check_hashpipe_running": True,
+    "check_disk_usage":       False,
+    "check_run_dirs":         False,
+}
+
+
+def wait_hashpipe_running(
+    client: DaqControlClient,
+    data_dir: str,
+    *,
+    timeout: float = 10.0,
+) -> bool:
+    """Poll StatusDaq until hashpipe_running=True or timeout."""
+    return wait_until(
+        lambda: client.StatusDaq({"data_dir": data_dir, **_HP_STATUS_PARAMS})[1].get(
+            "hashpipe_running"
+        )
+        is True,
+        timeout=timeout,
+    )
+
+
+def wait_hashpipe_stopped(
+    client: DaqControlClient,
+    data_dir: str,
+    *,
+    timeout: float = 10.0,
+) -> bool:
+    """Poll StatusDaq until hashpipe_running is False/None or timeout."""
+    return wait_until(
+        lambda: client.StatusDaq({"data_dir": data_dir, **_HP_STATUS_PARAMS})[1].get(
+            "hashpipe_running"
+        )
+        is not True,
+        timeout=timeout,
+    )
+
+
+def wait_grpc_reachable(client, data_dir: str, *, timeout: float = 15.0) -> bool:
+    """Poll until a StatusDaq RPC succeeds (server is back after restart/pause)."""
+    return wait_until(
+        lambda: client.StatusDaq({
+            "data_dir":               data_dir,
+            "check_hashpipe_running": False,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
+        })[0] is True,
+        timeout=timeout,
+    )
 
 # ---------------------------------------------------------------------------
 # Portforwarding fixtures
@@ -157,11 +237,11 @@ def run_params() -> dict:
         "data_dir":         DAQ_DATA_DIR,
         "daq_ip_addr":      DAQNODE_DIRECT_HOST,
         "bindhost":         BINDHOST,
-        "max_file_size_mb": 100,
+        "max_file_size_mb": 1,
         "group_ph_frames":  False,
         "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",
-        "module_id":        [200],
+        "module_id":        [250],
     }
 
 
@@ -273,7 +353,7 @@ def ensure_clean_daq_state(daq_control_direct, run_params):
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(0.5)
+        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
     except Exception:
         pass
     try:

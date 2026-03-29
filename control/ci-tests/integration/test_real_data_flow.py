@@ -35,6 +35,9 @@ from .conftest import (
     DAQ_DATA_DIR,
     DAQNODE_DATA_HOST,
     copy_run_dir,
+    wait_hashpipe_running,
+    wait_hashpipe_stopped,
+    wait_until,
 )
 
 # ---------------------------------------------------------------------------
@@ -75,35 +78,29 @@ _HASHPIPE_READY_RETRIES = 20
 # Module-scoped fixture: start hashpipe + tcpreplay, tear down after all tests
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
+
+
+@pytest.fixture
 def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
     """
     Start hashpipe via daq_control gRPC, inject PCAP packets via docker exec
     tcpreplay, then yield.  Tears down hashpipe on exit.
 
-    Scope is module-level so tcpreplay runs once for the whole test file.
-    Each individual test should NOT re-initialize hashpipe — they share this run.
+    Function-scoped: each test gets its own fresh hashpipe run so tests are
+    fully independent (test_data_collectible_after_stop stops hashpipe mid-test).
     """
-    # 1. Start hashpipe via gRPC (bindhost=lo so it receives loopback packets)
-    lp = {**run_params, "bindhost": "lo"}
+    # 1. Start hashpipe via gRPC (bindhost=eth0 so it receives loopback packets)
+    lp = {**run_params, "bindhost": "eth0"}
     daq_control_direct.StartDaq(lp)
 
     # 2. Wait for hashpipe to be confirmed running
-    for i in range(_HASHPIPE_READY_RETRIES):
-        ok, status = daq_control_direct.StatusDaq({
-            "data_dir":               run_params["data_dir"],
-            "check_hashpipe_running": True,
-            "check_disk_usage":       False,
-            "check_run_dirs":         False,
-        })
-        if ok and status.get("hashpipe_running"):
-            break
-        time.sleep(1)
-    else:
+    if not wait_hashpipe_running(
+        daq_control_direct, run_params["data_dir"], timeout=_HASHPIPE_READY_RETRIES
+    ):
         pytest.fail(f"hashpipe did not start within {_HASHPIPE_READY_RETRIES}s")
 
     # 3. Run tcpreplay inside daqnode container (loop=5, low rate to avoid overflow)
-    replay_cmd = f"sh -c 'tcpreplay --mbps=1 --loop=5 --intf1=lo {_PCAP_GLOB}'"
+    replay_cmd = f"sh -c 'tcpreplay --mbps=0.5 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
     daqnode_container.exec_run(replay_cmd, detach=True)
 
     yield run_params
@@ -114,7 +111,7 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
     except Exception:
         pass
 
@@ -123,7 +120,7 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
 # Helper: daq_data client configured for real (non-simulated) mode
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def real_daq_data_client(hashpipe_pcap_session):
     """
     DaqDataClient connected to the unified daqnode gRPC server.
@@ -157,15 +154,16 @@ class TestRealDataFlow:
         under DAQ_DATA_DIR/module_{id}/{run_dir}/.
         """
         run_params = hashpipe_pcap_session
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            found = any(
+        found = wait_until(
+            lambda: any(
                 (daq_data_dir / f"module_{mid}" / run_params["run_dir"]).exists()
                 for mid in run_params["module_id"]
-            )
-            if found:
-                return
-            time.sleep(1)
+            ),
+            timeout=30,
+            interval=0.1,
+        )
+        if found:
+            return
         pytest.fail(
             f"No module data directory appeared in {daq_data_dir} within 30s. "
             f"Expected module_{run_params['module_id']} / {run_params['run_dir']}"
@@ -220,7 +218,7 @@ class TestRealDataFlow:
                 "data_dir": run_params["data_dir"],
                 "run_dir":  run_params["run_dir"],
             })
-            time.sleep(1)
+            wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
         except Exception:
             pass
 
@@ -233,5 +231,7 @@ class TestRealDataFlow:
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
-        })
+        })['success']
         assert ok is True
+
+    

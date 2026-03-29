@@ -18,6 +18,11 @@ import pytest
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
+from .conftest import (
+    DAQNODE_DIRECT_HOST, DAQNODE_GATEWAY_HOST, GRPC_PORT,
+    wait_hashpipe_running, wait_hashpipe_stopped,
+)
+
 
 class TestGatewayForwarding:
     """Gateway (socat) client reaches the daqnode and observes consistent state."""
@@ -30,7 +35,9 @@ class TestGatewayForwarding:
     def test_gateway_client_reports_running(self, daq_control_gateway, run_params):
         """After StartDaq via gateway, StatusDaq also via gateway sees hashpipe_running=True."""
         daq_control_gateway.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_gateway, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         ok, status = daq_control_gateway.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
@@ -45,7 +52,9 @@ class TestGatewayForwarding:
     ):
         """Direct and gateway clients report the same hashpipe_running state."""
         daq_control_direct.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         status_request = {
             "data_dir":               run_params["data_dir"],
@@ -65,14 +74,18 @@ class TestGatewayForwarding:
     ):
         """StopDaq issued via gateway makes hashpipe_running=False on the direct client."""
         daq_control_direct.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
 
         ok = daq_control_gateway.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
         assert ok is True
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_gateway, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
 
         _, status = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],
@@ -85,19 +98,25 @@ class TestGatewayForwarding:
     def test_gateway_double_start_rejected(self, daq_control_gateway, run_params):
         """A second StartDaq via gateway while hashpipe is running raises ValueError."""
         daq_control_gateway.StartDaq(run_params)
-        time.sleep(0.5)
+        assert wait_hashpipe_running(daq_control_gateway, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         with pytest.raises(ValueError):
             daq_control_gateway.StartDaq(run_params)
 
     def test_gateway_cleanup_after_stop(self, daq_control_gateway, run_params):
         """CleanupData via gateway succeeds after StopDaq."""
         daq_control_gateway.StartDaq(run_params)
-        time.sleep(1)
+        assert wait_hashpipe_running(daq_control_gateway, run_params["data_dir"]), (
+            "hashpipe did not start within timeout"
+        )
         daq_control_gateway.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        time.sleep(1)
+        assert wait_hashpipe_stopped(daq_control_gateway, run_params["data_dir"]), (
+            "hashpipe did not stop within timeout"
+        )
         ok = daq_control_gateway.CleanupData({
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
