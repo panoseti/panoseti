@@ -104,16 +104,20 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
     daqnode_container.exec_run(replay_cmd, detach=True)
 
     yield run_params
-
+    
     # 4. Teardown
+    # Kill TCPREPLAY first to stop the packet flood
+    daqnode_container.exec_run("pkill -9 tcpreplay", detach=False)
+
+    # 5. Teardown
     try:
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
     except Exception:
         pass
+    assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
 
 
 # ---------------------------------------------------------------------------

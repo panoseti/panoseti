@@ -51,11 +51,14 @@ def ensure_node2_clean(daq_control_node2, run_params_node2):
             "data_dir": run_params_node2["data_dir"],
             "run_dir":  run_params_node2["run_dir"],
         })
-        assert wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"]), (
-            "hashpipe did not stop within timeout"
-        )
     except Exception:
         pass
+
+    # We must block until it is actually stopped before proceeding to the next test.
+    assert wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"], timeout=8), (
+        "hashpipe did not stop within timeout"
+    )
+
     try:
         daq_control_node2.CleanupData({
             "data_dir":  run_params_node2["data_dir"],
@@ -74,11 +77,12 @@ def ensure_node1_clean(daq_control_direct, run_params):
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
-            "hashpipe did not stop within timeout"
-        )
     except Exception:
         pass
+
+    assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+        "hashpipe did not stop within timeout"
+    )
     try:
         daq_control_direct.CleanupData({
             "data_dir":  run_params["data_dir"],
