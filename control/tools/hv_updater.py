@@ -90,12 +90,15 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
     temp = quabo_status[rkey]['temp']
     det_serial_nums = quabo_status[rkey]['detector_serial_nums']
     monitored_hv = quabo_status[rkey]['monitored_hv']
+    monitored_det_cur = quabo_status[rkey]['monitored_det_cur']
     init_set = quabo_status[rkey]['init_set']
     try:
         logger.debug(f'           Temp: {temp:.02f}')
         for detector_index in range(4):
             det_serial_num = det_serial_nums[detector_index]
-            target_hv = get_adjusted_detector_hv(det_serial_num, temp)
+            # compensate for current limitter(LND150) voltage drop
+            # the typical resistance of LND150 is 850 ohm
+            target_hv = get_adjusted_detector_hv(det_serial_num, temp) + monitored_det_cur[detector_index] * 850
             if init_set:
                 # When we set HV the first time, we don't use the loop
                 adjusted_hv[detector_index] = target_hv
@@ -109,11 +112,12 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
                 #adjusted_hv = target_hv
             logger.debug(f'     Target HV{detector_index}: -{target_hv:.3f}V')
             logger.debug(f'  Monitored HV{detector_index}: -{monitored_hv[detector_index]:.3f}V')
+            logger.debug(f'  Detector Cur{detector_index}:  {monitored_det_cur[detector_index]*1000:.3f}mA')
             logger.debug(f'   Adjusted HV{detector_index}: -{adjusted_hv[detector_index]:.3f}V')
+            logger.debug(' ')
             # Save int encoding
-            #adjusted_hv_values[detector_index] = int((adjusted_hv[detector_index] + HV_OFFSET) / 0.0011453)
-            adjusted_hv_values[detector_index] = int((adjusted_hv[detector_index]) / 0.0011324717)
-        logger.debug(' ')
+            adjusted_hv_values[detector_index] = int((adjusted_hv[detector_index] + HV_OFFSET) / 0.0011453)
+            #adjusted_hv_values[detector_index] = int((adjusted_hv[detector_index]) / 0.0011324717)
     except KeyError as kerr:
         msg = "A detector in the quabo with IP {0} could not be found in the configuration files. "
         msg += "Error message: {1}"
@@ -162,6 +166,24 @@ def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
         logger.err(msg.format(rkey, terr))
         raise
 
+def get_redis_det_current(r: redis.Redis, rkey: str, q: int) -> float:
+    """Given a Quabo's redis key, rkey, returns the field value of DETR{q}_CURR in Redis."""
+    logger = logging.getLogger('PANOSETI.HVUpdater')
+    try:
+        det_cur = float(r.hget(rkey, f'DETR{q}_CURR'))
+        return det_cur
+    except redis.RedisError as err:
+        msg = "hv_updater: A Redis error occurred. "
+        msg += "Error msg: {0}"
+        logger.err(msg.format(err))
+        raise
+    except TypeError as terr:
+        msg = "hv_updater: Failed to update '{0}'. "
+        msg += f"HV{q} HK data may be missing. "
+        msg += "Error msg: {1}"
+        logger.err(msg.format(rkey, terr))
+        raise
+
 def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict):
     """
         check the timestamp in the redis database.
@@ -190,8 +212,8 @@ def init_quabo_status(rkey: str, quabo_status: dict):
         'detector_serial_nums' : [0, 0, 0, 0],
         'temp' : 0,
         'monitored_hv' : [0, 0, 0, 0],
-        'monitored_hvi' : [0, 0, 0, 0],
-        'adjusted_hv' : [0, 0, 0, 0]
+        'monitored_det_cur' : [0, 0, 0, 0],
+        'adjusted_hv' : [0, 0, 0, 0],
     }
 
 def update_all_quabos(r: redis.Redis, quabo_status: dict):
@@ -232,12 +254,18 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                             mhv = get_redis_hv(r, rkey, i)
                             monitored_hv.append(mhv)
                         quabo_status[rkey]['monitored_hv'] = monitored_hv
-                        # TODO: add monitored_hvi
+                        # Get the monitored detector current
+                        monitored_det_cur = []
+                        for i in range(4):
+                            mdetcur = get_redis_det_current(r, rkey, i)
+                            monitored_det_cur.append(mdetcur)
+                        quabo_status[rkey]['monitored_det_cur'] = monitored_det_cur
                     # Get quabo object
                     q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
                     ip_port = util.get_quabo_ip_port(module_ip_addr, quabo_index, network_config)
                     real_ip = ip_port['ip_addr']
                     port = ip_port['cmd_port']
+                    logger.debug(f'-------------------------')
                     logger.debug(f'{rkey}({q_ip_addr}):')
                     logger.debug(f'Port forwarding: {real_ip}:{port}')
                     quabo_obj = quabo_driver.QUABO(real_ip, port)
