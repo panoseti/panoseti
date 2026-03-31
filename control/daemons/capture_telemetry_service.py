@@ -33,7 +33,7 @@ def main():
     try:
         asyncio.run(serve(
             redis_host=os.getenv("REDIS_HOST", "localhost"),
-            grpc_port=int(os.getenv("GRPC_PORT", 50051)),
+            port=int(os.getenv("GRPC_PORT", 50051)),
             config_path=config_arg
         ))
     except KeyboardInterrupt:
