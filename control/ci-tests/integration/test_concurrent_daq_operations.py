@@ -36,7 +36,7 @@ def run_params_conc() -> dict:
         "data_dir":         DAQ_DATA_DIR,
         "daq_ip_addr":      DAQNODE_DIRECT_HOST,
         "bindhost":         BINDHOST,
-        "max_file_size_mb": 100,
+        "max_file_size_mb": 1,
         "group_ph_frames":  False,
         "run_dir":          f"ci_conc_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",

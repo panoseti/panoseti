@@ -238,7 +238,7 @@ def run_params() -> dict:
         "daq_ip_addr":      DAQNODE_DIRECT_HOST,
         "bindhost":         BINDHOST,
         "max_file_size_mb": 1,
-        "group_ph_frames":  False,
+        "group_ph_frames":  True,
         "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",
         "module_id":        [250],

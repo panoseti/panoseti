@@ -34,11 +34,11 @@ def run_params_node2() -> dict:
         "data_dir":         DAQ_DATA_DIR,
         "daq_ip_addr":      "192.168.0.20",
         "bindhost":         BINDHOST,
-        "max_file_size_mb": 100,
+        "max_file_size_mb": 1,
         "group_ph_frames":  False,
         "run_dir":          f"ci_run2_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",
-        "module_id":        [201],
+        "module_id":        [200],
     }
 
 

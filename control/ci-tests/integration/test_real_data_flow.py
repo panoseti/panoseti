@@ -89,6 +89,10 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
     Function-scoped: each test gets its own fresh hashpipe run so tests are
     fully independent (test_data_collectible_after_stop stops hashpipe mid-test).
     """
+    # 0. Verify PCAP exists so tcpreplay doesn't silently fail
+    if daqnode_container.exec_run(f"sh -c 'ls {_PCAP_GLOB}'").exit_code != 0:
+        pytest.fail(f"PCAP missing in container at {_PCAP_GLOB}")
+    
     # 1. Start hashpipe via gRPC (bindhost=eth0 so it receives loopback packets)
     lp = {**run_params, "bindhost": "eth0"}
     daq_control_direct.StartDaq(lp)
@@ -101,6 +105,7 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
 
     # 3. Run tcpreplay inside daqnode container (loop=5, low rate to avoid overflow)
     replay_cmd = f"sh -c 'tcpreplay --mbps=0.5 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
+    # daqnode_container.exec_run(replay_cmd, detach=True)
     daqnode_container.exec_run(replay_cmd, detach=True)
 
     yield run_params
