@@ -98,7 +98,7 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
             det_serial_num = det_serial_nums[detector_index]
             # compensate for current limitter(LND150) voltage drop
             # the typical resistance of LND150 is 850 ohm
-            target_hv = get_adjusted_detector_hv(det_serial_num, temp) + monitored_det_cur[detector_index] * 850
+            target_hv = get_adjusted_detector_hv(det_serial_num, temp) + monitored_det_cur[detector_index] * 850/4
             if init_set:
                 # When we set HV the first time, we don't use the loop
                 adjusted_hv[detector_index] = target_hv
