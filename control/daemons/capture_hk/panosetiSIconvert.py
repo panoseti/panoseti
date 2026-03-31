@@ -30,13 +30,13 @@ class HKconvert():
         self.currentFactor = 1e9
         
     def HVMON(self, value):
-        return -value*1.22*1e6 / self.voltageFactor
+        return -value*1.209361*1e6 / self.voltageFactor
 
     def HVIMON(self, value):
         return (65535-value)*38.1 / self.currentFactor
 
     def RAWHVMON(self, value):
-        return -value*1.22*1e6 / self.voltageFactor
+        return -value*1.209361*1e6 / self.voltageFactor
 
     def V12MON(self, value):
         return value*19.07*1e3 / self.voltageFactor
