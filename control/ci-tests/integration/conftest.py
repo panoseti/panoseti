@@ -230,7 +230,7 @@ def daq_data_client() -> DaqDataClient:
 # Run parameters fixture
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def run_params() -> dict:
     """Fresh run parameters for each test — unique run_dir per test."""
     return {
