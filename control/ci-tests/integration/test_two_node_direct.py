@@ -35,7 +35,7 @@ def run_params_node2() -> dict:
         "daq_ip_addr":      "192.168.0.20",
         "bindhost":         BINDHOST,
         "max_file_size_mb": 1,
-        "group_ph_frames":  False,
+        "group_ph_frames":  True,
         "run_dir":          f"ci_run2_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",
         "module_id":        [200],
@@ -115,7 +115,6 @@ class TestTwoNodeDirect:
         assert wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"]), (
             "hashpipe did not stop within timeout"
         )
-        # time.sleep(1)
 
     def test_both_nodes_start_independently(
         self, daq_control_direct, daq_control_node2, run_params, run_params_node2
@@ -149,6 +148,23 @@ class TestTwoNodeDirect:
         self, daq_control_direct, daq_control_node2, run_params, run_params_node2
     ):
         """Stopping hashpipe on node 1 does not stop it on node 2."""
+        _, s1 = daq_control_direct.StatusDaq({
+            "data_dir":               run_params["data_dir"],
+            "check_hashpipe_running": True,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
+        })
+        _, s2 = daq_control_node2.StatusDaq({
+            "data_dir":               run_params_node2["data_dir"],
+            "check_hashpipe_running": True,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
+        })
+        assert s1.get("hashpipe_running") is False, "Node 1 should be stopped"
+        assert s2.get("hashpipe_running") is False,  "Node 2 should be stopped"
+        
+        
+        # Start test
         assert daq_control_direct.StartDaq(run_params) is True
         assert daq_control_node2.StartDaq(run_params_node2) is True
         

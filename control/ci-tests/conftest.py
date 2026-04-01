@@ -112,7 +112,7 @@ def minimal_daq_config():
                 "username": "panoseti",
                 "data_dir": "/data",
                 "ip_addr": "10.0.0.2",
-                "module_ids": "224-225",
+                "module_ids": "250, 254",
                 "bindhost": "0.0.0.0",
             }
         ],
@@ -133,15 +133,15 @@ def minimal_data_config():
     }
 
 
-@pytest.fixture
-def ph_only_data_config():
-    """Pulse-height-only data config (no image)."""
-    return {
-        "run_type": "sci",
-        "pulse_height": {
-            "pe_threshold": 3.0,
-        },
-    }
+# @pytest.fixture
+# def ph_only_data_config():
+#     """Pulse-height-only data config (no image)."""
+#     return {
+#         "run_type": "sci",
+#         "pulse_height": {
+#             "pe_threshold": 3.0,
+#         },
+#     }
 
 
 @pytest.fixture

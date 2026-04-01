@@ -241,7 +241,7 @@ def run_params() -> dict:
         "group_ph_frames":  True,
         "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",
         "obs":              "citest",
-        "module_id":        [250],
+        "module_id":        [250, 254],
     }
 
 

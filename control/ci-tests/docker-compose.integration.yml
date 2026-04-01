@@ -146,7 +146,7 @@ services:
       - NET_ADMIN
       - IPC_LOCK
       - SYS_NICE
-    shm_size: '2gb'
+    shm_size: '1gb'
     volumes:
       - daq_data:/data
     environment:
@@ -180,7 +180,7 @@ services:
       - NET_ADMIN
       - IPC_LOCK
       - SYS_NICE
-    shm_size: '2gb'
+    shm_size: '1gb'
     volumes:
       - daq_data_2:/data   # isolated — prevents module.config conflicts with daqnode
     environment:

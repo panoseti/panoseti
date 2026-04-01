@@ -51,7 +51,7 @@ read_timeout         = 600.0
 
 [daq_data.simulate_daq_cfg]
 simulation_mode         = "uds"
-sim_module_ids          = [224]
+sim_module_ids          = [250, 254]
 movie_type              = "img16"
 ph_type                 = "ph256"
 

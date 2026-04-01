@@ -104,7 +104,7 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
         pytest.fail(f"hashpipe did not start within {_HASHPIPE_READY_RETRIES}s")
 
     # 3. Run tcpreplay inside daqnode container (loop=5, low rate to avoid overflow)
-    replay_cmd = f"sh -c 'tcpreplay --mbps=0.5 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
+    replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
     # daqnode_container.exec_run(replay_cmd, detach=True)
     daqnode_container.exec_run(replay_cmd, detach=True)
 

@@ -65,7 +65,7 @@ class TestLokiPipeline:
             results = _loki_query(f'{{service="{service}"}}')
             if results:
                 return
-            time.sleep(1)
+            time.sleep(0.2)
         pytest.fail(f"Log with service={service!r} did not appear in Loki within 15s")
 
     def test_multiple_entries_all_arrive(self, redis_client):
@@ -92,7 +92,7 @@ class TestLokiPipeline:
             total = sum(len(stream.get("values", [])) for stream in results)
             if total >= n_entries:
                 return
-            time.sleep(1)
+            time.sleep(0.2)
         pytest.fail(
             f"Expected {n_entries} entries for service={service!r} in Loki, "
             f"but pipeline did not deliver them within 15s"
@@ -104,7 +104,7 @@ class TestLokiPipeline:
 
         # Push garbage
         redis_client.rpush("logs:ingress", "this is not json {{{")
-        time.sleep(3)  # let storeLoki process the bad entry
+        time.sleep(1)  # let storeLoki process the bad entry
 
         # Push a valid entry — storeLoki should still be running
         entry = {
@@ -123,7 +123,7 @@ class TestLokiPipeline:
         while time.time() < deadline:
             if _loki_query(f'{{service="{service}"}}'):
                 return
-            time.sleep(1)
+            time.sleep(0.2)
         pytest.fail("storeLoki did not recover after invalid JSON — pipeline may have crashed")
 
     def test_log_severity_levels_distinct(self, redis_client):
@@ -154,7 +154,7 @@ class TestLokiPipeline:
             total = sum(len(s.get("values", [])) for s in results)
             if total >= 4:
                 return
-            time.sleep(1)
+            time.sleep(0.2)
         pytest.fail(
             f"Expected ≥4 severity-labeled entries for service={service!r} in Loki within 20s"
         )
@@ -184,7 +184,7 @@ class TestLokiPipeline:
                         return   # full payload present
                     if len(line) > 4900:
                         return   # close enough — Loki may JSON-encode the outer wrapper
-            time.sleep(1)
+            time.sleep(0.2)
         pytest.fail(
             f"Large 5000-char payload did not appear (or was truncated) in Loki within 20s"
         )
@@ -212,7 +212,7 @@ class TestLokiPipeline:
             total = sum(len(s.get("values", [])) for s in results)
             if total >= n:
                 return
-            time.sleep(2)
+            time.sleep(0.2)
         pytest.fail(
             f"Expected {n} burst entries for service={service!r} in Loki within 30s"
         )
@@ -242,7 +242,7 @@ class TestLokiPipeline:
                     f"Expected stream label service={service!r}, got labels={labels}"
                 )
                 return
-            time.sleep(1)
+            time.sleep(0.2)
         pytest.fail(
             f"Log entry for service={service!r} did not appear in Loki within 20s"
         )
