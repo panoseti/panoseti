@@ -247,4 +247,4 @@ services:
         condition: service_started
       headnode:
         condition: service_healthy
-    command: ["sh", "-c", "pytest ci-tests/integration/ -v --tb=auto --showlocals --color=yes --timeout=60 ${PYTEST_ARGS}"]
+    command: ["sh", "-c", "pytest ci-tests/integration/ -v --tb=auto --showlocals --color=yes --timeout=60 ${PYTEST_ARGS:-}"]

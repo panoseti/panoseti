@@ -60,7 +60,7 @@ if [[ "$SUITE" == "unit" ]]; then
 else
     # Pass extra pytest args into the environment
     export PYTEST_ARGS="$*"
-    
+
     # Run the whole topology together, exiting when the test runner finishes
     docker compose -f "$COMPOSE_FILE" up \
         --abort-on-container-exit \
