@@ -29,7 +29,7 @@ if [[ "$SUITE" == "unit" ]]; then
     export COMPOSE_PROJECT_NAME="ctl-unit"
 else
     COMPOSE_FILE="$SCRIPT_DIR/docker-compose.integration.yml"
-    SERVICE_NAME="integration-test-runner"
+    SERVICE_NAME="int-tester"
     # Isolate state by prefixing the docker project
     export COMPOSE_PROJECT_NAME="ctl-int"
 fi
@@ -48,25 +48,23 @@ docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans
 
 # 3. Build & Run
 echo "--- Building $SUITE test Docker images ---"
-DOCKER_BUILDKIT=1 docker compose -f "$COMPOSE_FILE" build
+# ---> FIXED: Added inline cache injection for faster CI builds <---
+DOCKER_BUILDKIT=1 docker compose -f "$COMPOSE_FILE" build --build-arg BUILDKIT_INLINE_CACHE=1
 
 echo "--- Starting $SUITE test environment & running tests ---"
 if [[ "$SUITE" == "unit" ]]; then
     # -n auto: run unit tests in parallel across all available CPUs (pytest-xdist)
     docker compose -f "$COMPOSE_FILE" run --rm \
         "$SERVICE_NAME" \
-        pytest "ci-tests/$SUITE/" -v --tb=short --color=yes --timeout=60 "$@"
+        pytest "ci-tests/$SUITE/" -v --tb=auto --showlocals --color=yes --timeout=60 "$@"
 else
-    # Integration: 60-second per-test timeout to catch hangs
-    # When telemetry tests are disabled, scale storeloki to 0 to save startup time
-    if [[ -z "${ENABLE_TELEMETRY_TESTS:-}" ]]; then
-        #SCALE_FLAGS="--scale storeloki=0"
-        SCALE_FLAGS=""
-    else
-        SCALE_FLAGS=""
-    fi
-    # docker compose -f "$COMPOSE_FILE" run --rm $SCALE_FLAGS \
-    docker compose -f "$COMPOSE_FILE" run $SCALE_FLAGS \
-        "$SERVICE_NAME" \
-        pytest "ci-tests/$SUITE/" -v --tb=long --showlocals  --color=yes --timeout=60 "$@"
+    # Pass extra pytest args into the environment
+    export PYTEST_ARGS="$*"
+    
+    # Run the whole topology together, exiting when the test runner finishes
+    docker compose -f "$COMPOSE_FILE" up \
+        --abort-on-container-exit \
+        --exit-code-from "$SERVICE_NAME" \
+        --attach "$SERVICE_NAME"
 fi
+

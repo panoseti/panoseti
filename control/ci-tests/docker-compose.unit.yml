@@ -23,7 +23,7 @@ services:
       target: unit-test-runner
     depends_on:
       redis:
-        condition: service_healthy
+        condition: service_started
     environment:
       REDIS_HOST: redis
       REDIS_PORT: "6379"

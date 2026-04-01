@@ -63,12 +63,15 @@ services:
     networks:
       headnode_net:
         ipv4_address: 10.0.1.21
-    command: ["-config.file=/etc/loki/local-config.yaml"]
-    healthcheck:
-      test: ["CMD", "loki", "-health"]
-      interval: 2s
-      timeout: 3s
-      retries: 12
+    # command: 
+    #   - "-config.file=/etc/loki/local-config.yaml"
+    #   - "-ingester.lifecycler.join-after=0s"
+    #   - "-ingester.lifecycler.min-ready-duration=0s"
+    # healthcheck:
+    #   test: ["CMD", "loki", "-health"]
+    #   interval: 2s
+    #   timeout: 3s
+    #   retries: 12
 
   # ---------------------------------------------------------------------------
   # Gateway — socat TCP bridge simulating a NAT/VPN router
@@ -85,9 +88,13 @@ services:
     entrypoint: ["sh", "/gateway_setup.sh"]
     environment:
       DAQNODE_IP: "192.168.0.10"
-    depends_on:
-      daqnode:
-        condition: service_healthy
+    healthcheck:
+      # nc -z scans for listening daemons without sending any data.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 50051 || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 2s
 
   # ---------------------------------------------------------------------------
   # Headnode — Telemetry gRPC service (50051) + storeLoki daemon
@@ -198,7 +205,7 @@ services:
   # ---------------------------------------------------------------------------
   # Test runner — runs pytest ci-tests/integration/
   # ---------------------------------------------------------------------------
-  integration-test-runner:
+  int-tester:
     build:
       context: ../
       dockerfile: ci-tests/Dockerfile.ci
@@ -233,14 +240,11 @@ services:
       daqnode-2:
         condition: service_healthy
       gateway:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
       headnode:
         condition: service_healthy
-    command: >
-      pytest ci-tests/integration/ -v --tb=short --color=yes
-        -p no:cacheprovider
-        --timeout=60
+    command: ["sh", "-c", "pytest ci-tests/integration/ -v --tb=auto --showlocals --color=yes --timeout=60 ${PYTEST_ARGS}"]

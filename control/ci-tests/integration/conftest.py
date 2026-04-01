@@ -57,6 +57,101 @@ ENABLE_TELEMETRY_TESTS = os.getenv("ENABLE_TELEMETRY_TESTS", "0") == "1"
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
 CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
 
+
+# ---------------------------------------------------------------------------
+# Real Hashpipe Test module-scoped fixture: start hashpipe + tcpreplay, tear down after all tests
+# ---------------------------------------------------------------------------
+
+# Path to PCAP file *inside* the daqnode container (after COPY . .)
+PCAP_GLOB = "/app/ci-tests/integration/data/*.pcapng"
+
+# hp_io_cfg for real (non-simulated) hashpipe mode
+REAL_HP_IO_CFG = {
+    "update_interval_seconds": 0.1,
+    "simulate_daq": False,
+    "force": True,
+    "module_ids": [],   # stream from all active modules
+}
+
+HASHPIPE_READY_RETRIES = 20
+
+
+@pytest.fixture(scope="module")
+def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
+    """
+    Start hashpipe via daq_control gRPC, inject PCAP packets via docker exec
+    tcpreplay, then yield.  Tears down hashpipe on exit.
+
+    Function-scoped: each test gets its own fresh hashpipe run so tests are
+    fully independent (test_data_collectible_after_stop stops hashpipe mid-test).
+    """
+    # 0. Verify PCAP exists so tcpreplay doesn't silently fail
+    if daqnode_container.exec_run(f"sh -c 'ls {PCAP_GLOB}'").exit_code != 0:
+        pytest.fail(f"PCAP missing in container at {PCAP_GLOB}")
+    
+    # 1. Start hashpipe via gRPC (bindhost=lo so it receives loopback packets)
+    lp = {**run_params, "bindhost": "lo"}
+    try:
+        daq_control_direct.StartDaq(lp)
+    except Exception as e:
+        pytest.fail(f"Failed to start hashpipe via gRPC: {e}")
+
+    # 2. Wait for hashpipe to be confirmed running
+    if not wait_hashpipe_running(
+        daq_control_direct, run_params["data_dir"], timeout=HASHPIPE_READY_RETRIES
+    ):
+        pytest.fail(f"hashpipe did not start within {HASHPIPE_READY_RETRIES}s")
+    
+    # Forces the native Linux veth to accept the foreign MAC addresses from the PCAP
+    daqnode_container.exec_run("ip link set lo promisc on")
+
+    # 3. Run tcpreplay inside daqnode container (loop=5, low rate to avoid overflow)
+    replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {PCAP_GLOB}'"
+    # daqnode_container.exec_run(replay_cmd, detach=True)
+    daqnode_container.exec_run(replay_cmd, detach=True)
+
+    yield run_params
+    
+    # 4. Teardown
+    # Kill TCPREPLAY first to stop the packet flood
+    daqnode_container.exec_run("pkill -9 tcpreplay", detach=False)
+
+    # 5. Teardown
+    try:
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+    except Exception:
+        pass
+    assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
+
+
+# ---------------------------------------------------------------------------
+# Helper: daq_data client configured for real (non-simulated) mode
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def real_daq_data_client(hashpipe_pcap_session):
+    """
+    DaqDataClient connected to the unified daqnode gRPC server.
+    daq_data and daq_control share a process, so hashpipe UDS sockets
+    at /tmp are directly accessible — no shared volume required.
+    """
+    run_params = hashpipe_pcap_session
+    daq_cfg = {
+        "daq_nodes": [{"ip_addr": DAQNODE_DATA_HOST, "data_dir": run_params["data_dir"]}]
+    }
+    with DaqDataClient(daq_cfg, network_config=None) as client:
+        ok = client.init_hp_io(hosts=None, hp_io_cfg=REAL_HP_IO_CFG)
+        if not ok:
+            pytest.skip(
+                "init_hp_io(simulate_daq=False) failed — "
+                "check that hashpipe started and UDS sockets are present at /tmp."
+            )
+        yield client
+
+
 # ---------------------------------------------------------------------------
 # Polling helpers — replace time.sleep with condition-based waits
 # ---------------------------------------------------------------------------
