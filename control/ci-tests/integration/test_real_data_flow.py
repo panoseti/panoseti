@@ -93,8 +93,8 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
     if daqnode_container.exec_run(f"sh -c 'ls {_PCAP_GLOB}'").exit_code != 0:
         pytest.fail(f"PCAP missing in container at {_PCAP_GLOB}")
     
-    # 1. Start hashpipe via gRPC (bindhost=eth0 so it receives loopback packets)
-    lp = {**run_params, "bindhost": "eth0"}
+    # 1. Start hashpipe via gRPC (bindhost=lo so it receives loopback packets)
+    lp = {**run_params, "bindhost": "lo"}
     try:
         daq_control_direct.StartDaq(lp)
     except Exception as e:
@@ -107,10 +107,10 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
         pytest.fail(f"hashpipe did not start within {_HASHPIPE_READY_RETRIES}s")
     
     # Forces the native Linux veth to accept the foreign MAC addresses from the PCAP
-    daqnode_container.exec_run("ip link set eth0 promisc on")
+    daqnode_container.exec_run("ip link set lo promisc on")
 
     # 3. Run tcpreplay inside daqnode container (loop=5, low rate to avoid overflow)
-    replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
+    replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {_PCAP_GLOB}'"
     # daqnode_container.exec_run(replay_cmd, detach=True)
     daqnode_container.exec_run(replay_cmd, detach=True)
 

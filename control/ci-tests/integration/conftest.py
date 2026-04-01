@@ -51,7 +51,7 @@ REDIS_HOST           = os.getenv("REDIS_HOST", "localhost")
 DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
 HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
-BINDHOST             = os.getenv("BINDHOST", "eth0")
+BINDHOST             = os.getenv("BINDHOST", "lo")
 ENABLE_TELEMETRY_TESTS = os.getenv("ENABLE_TELEMETRY_TESTS", "0") == "1"
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/

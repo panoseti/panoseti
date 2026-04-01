@@ -151,7 +151,7 @@ services:
       - daq_data:/data
     environment:
       GRPC_PORT:          "50051"
-      BINDHOST:           "eth0"
+      BINDHOST:           "lo"
       HEADNODE_IP:        "10.0.1.22"
       HEADNODE_GRPC_PORT: "50051"
     healthcheck:
@@ -185,7 +185,7 @@ services:
       - daq_data_2:/data   # isolated — prevents module.config conflicts with daqnode
     environment:
       GRPC_PORT:          "50051"
-      BINDHOST:           "eth0"
+      BINDHOST:           "lo"
       HEADNODE_IP:        "10.0.1.22"
       HEADNODE_GRPC_PORT: "50051"
     healthcheck:
@@ -217,7 +217,7 @@ services:
       DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST:-192.168.0.10}"
       DAQNODE2_HOST:          "${DAQNODE2_HOST:-192.168.0.20}"
       HEADNODE_HOST:          "10.0.1.22"
-      BINDHOST:               "${BINDHOST:-eth0}"
+      BINDHOST:               "${BINDHOST:-lo}"
       GRPC_PORT:              "${GRPC_PORT:-50051}"
       LOKI_URL:               "http://10.0.1.21:3100"
       REDIS_HOST:             "10.0.1.20"
