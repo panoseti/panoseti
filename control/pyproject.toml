@@ -22,7 +22,7 @@ dependencies = [
     "pydantic>=2.0",
     "tftpy>=0.8.2",
     "typing_extensions>=4.5",
-    "panoseti_grpc>=0.4.3",
+    "panoseti_grpc>=0.4.4",
 ]
 
 [project.optional-dependencies]

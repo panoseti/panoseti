@@ -95,16 +95,22 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
     
     # 1. Start hashpipe via gRPC (bindhost=eth0 so it receives loopback packets)
     lp = {**run_params, "bindhost": "eth0"}
-    daq_control_direct.StartDaq(lp)
+    try:
+        daq_control_direct.StartDaq(lp)
+    except Exception as e:
+        pytest.fail(f"Failed to start hashpipe via gRPC: {e}")
 
     # 2. Wait for hashpipe to be confirmed running
     if not wait_hashpipe_running(
         daq_control_direct, run_params["data_dir"], timeout=_HASHPIPE_READY_RETRIES
     ):
         pytest.fail(f"hashpipe did not start within {_HASHPIPE_READY_RETRIES}s")
+    
+    # Forces the native Linux veth to accept the foreign MAC addresses from the PCAP
+    daqnode_container.exec_run("ip link set eth0 promisc on")
 
     # 3. Run tcpreplay inside daqnode container (loop=5, low rate to avoid overflow)
-    replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
+    replay_cmd = f"sh -c 'tcpreplay --mbps=0.01 --loop=0 --intf1=eth0 {_PCAP_GLOB}'"
     # daqnode_container.exec_run(replay_cmd, detach=True)
     daqnode_container.exec_run(replay_cmd, detach=True)
 
@@ -130,7 +136,7 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def real_daq_data_client(hashpipe_pcap_session):
+def real_daq_data_client(hashpipe_pcap_session, ensure_clean_daq_state):
     """
     DaqDataClient connected to the unified daqnode gRPC server.
     daq_data and daq_control share a process, so hashpipe UDS sockets
@@ -157,7 +163,7 @@ def real_daq_data_client(hashpipe_pcap_session):
 class TestRealDataFlow:
     """End-to-end tests: tcpreplay → hashpipe → daq_data gRPC → headnode."""
 
-    def test_hashpipe_writes_data_dirs(self, hashpipe_pcap_session, daq_data_dir):
+    def test_hashpipe_writes_data_dirs(self, hashpipe_pcap_session, daq_data_dir, ensure_clean_daq_state):
         """
         After tcpreplay, hashpipe creates module-level data directories
         under DAQ_DATA_DIR/module_{id}/{run_dir}/.
@@ -178,11 +184,12 @@ class TestRealDataFlow:
             f"Expected module_{run_params['module_id']} / {run_params['run_dir']}"
         )
 
-    def test_real_stream_delivers_frames(self, real_daq_data_client):
+    def test_real_stream_delivers_frames(self, hashpipe_pcap_session, real_daq_data_client, ensure_clean_daq_state):
         """
         After init_hp_io(simulate_daq=False), stream_images() yields at least 1 frame
         driven by live hashpipe output (from tcpreplay PCAP injection).
         """
+        run_params = hashpipe_pcap_session
         frames = list(islice(
             real_daq_data_client.stream_images(
                 hosts=None,
@@ -197,8 +204,9 @@ class TestRealDataFlow:
             "Check tcpreplay ran and hashpipe UDS sockets are accessible."
         )
 
-    def test_frame_is_dict(self, real_daq_data_client):
+    def test_frame_is_dict(self, hashpipe_pcap_session, real_daq_data_client, ensure_clean_daq_state):
         """Each frame returned by the real stream is a non-empty dict."""
+        run_params = hashpipe_pcap_session
         for frame in islice(
             real_daq_data_client.stream_images(
                 hosts=None,
@@ -217,6 +225,7 @@ class TestRealDataFlow:
         daq_control_direct,
         daq_data_dir,
         head_data_dir,
+        ensure_clean_daq_state,
     ):
         """After StopDaq, data is copy-able to the headnode and cleanup succeeds."""
         run_params = hashpipe_pcap_session

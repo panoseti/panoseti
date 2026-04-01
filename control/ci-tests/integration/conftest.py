@@ -341,7 +341,7 @@ def start_copy_background_fn():
 # Auto-cleanup: stop any lingering hashpipe after each test
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=False)
 def ensure_clean_daq_state(daq_control_direct, run_params):
     """Stop hashpipe and clean up if a test leaves it running."""
     yield
@@ -353,9 +353,9 @@ def ensure_clean_daq_state(daq_control_direct, run_params):
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
     except Exception:
         pass
+    wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
     try:
         daq_control_direct.CleanupData({
             "data_dir":  run_params["data_dir"],

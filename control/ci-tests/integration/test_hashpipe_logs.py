@@ -49,7 +49,7 @@ def _wait_for_loki(query: str, timeout: float = 30.0) -> bool:
 
 class TestHashpipeLogs:
 
-    def test_startdaq_log_arrives_in_loki(self, daq_control_direct, run_params):
+    def test_startdaq_log_arrives_in_loki(self, daq_control_direct, run_params, ensure_clean_daq_state):
         """StartDaq/StopDaq generates log entries visible in Loki within 30s."""
         daq_control_direct.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
@@ -65,7 +65,7 @@ class TestHashpipeLogs:
         found = _wait_for_loki('{service="daq_control_server"}', timeout=30)
         assert found, "daq_control logs did not appear in Loki within 30s"
 
-    def test_log_entry_contains_run_dir(self, daq_control_direct, run_params):
+    def test_log_entry_contains_run_dir(self, daq_control_direct, run_params, ensure_clean_daq_state):
         """A log entry for StartDaq includes the run_dir string in its payload."""
         daq_control_direct.StartDaq(run_params)
         run_dir = run_params["run_dir"]

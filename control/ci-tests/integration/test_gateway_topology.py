@@ -27,12 +27,12 @@ from .conftest import (
 class TestGatewayForwarding:
     """Gateway (socat) client reaches the daqnode and observes consistent state."""
 
-    def test_gateway_client_starts_daq(self, daq_control_gateway, run_params):
+    def test_gateway_client_starts_daq(self, daq_control_gateway, run_params, ensure_clean_daq_state):
         """DaqControlClient via socat gateway can issue StartDaq successfully."""
         ok = daq_control_gateway.StartDaq(run_params)
         assert ok is True
 
-    def test_gateway_client_reports_running(self, daq_control_gateway, run_params):
+    def test_gateway_client_reports_running(self, daq_control_gateway, run_params, ensure_clean_daq_state):
         """After StartDaq via gateway, StatusDaq also via gateway sees hashpipe_running=True."""
         daq_control_gateway.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_gateway, run_params["data_dir"]), (
@@ -48,7 +48,7 @@ class TestGatewayForwarding:
         assert status.get("hashpipe_running") is True
 
     def test_direct_and_gateway_see_same_state(
-        self, daq_control_direct, daq_control_gateway, run_params
+        self, daq_control_direct, daq_control_gateway, run_params, ensure_clean_daq_state
     ):
         """Direct and gateway clients report the same hashpipe_running state."""
         daq_control_direct.StartDaq(run_params)
@@ -70,7 +70,7 @@ class TestGatewayForwarding:
         assert s_direct["hashpipe_running"] == s_gateway["hashpipe_running"]
 
     def test_gateway_stop_is_visible_to_direct(
-        self, daq_control_direct, daq_control_gateway, run_params
+        self, daq_control_direct, daq_control_gateway, run_params, ensure_clean_daq_state
     ):
         """StopDaq issued via gateway makes hashpipe_running=False on the direct client."""
         daq_control_direct.StartDaq(run_params)
@@ -95,7 +95,7 @@ class TestGatewayForwarding:
         })
         assert status.get("hashpipe_running") is False
 
-    def test_gateway_double_start_rejected(self, daq_control_gateway, run_params):
+    def test_gateway_double_start_rejected(self, daq_control_gateway, run_params, ensure_clean_daq_state):
         """A second StartDaq via gateway while hashpipe is running raises ValueError."""
         daq_control_gateway.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_gateway, run_params["data_dir"]), (
@@ -104,7 +104,7 @@ class TestGatewayForwarding:
         with pytest.raises(ValueError):
             daq_control_gateway.StartDaq(run_params)
 
-    def test_gateway_cleanup_after_stop(self, daq_control_gateway, run_params):
+    def test_gateway_cleanup_after_stop(self, daq_control_gateway, run_params, ensure_clean_daq_state):
         """CleanupData via gateway succeeds after StopDaq."""
         daq_control_gateway.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_gateway, run_params["data_dir"]), (

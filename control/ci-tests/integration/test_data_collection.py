@@ -52,7 +52,7 @@ class TestDataCollectionTransaction:
     """Happy-path and sad-path collection + cleanup scenarios."""
 
     def test_successful_copy_then_cleanup(
-        self, daq_control_direct, run_params, head_data_dir
+        self, daq_control_direct, run_params, head_data_dir, ensure_clean_daq_state
     ):
         """
         Happy path: Start → Stop → copy → CleanupData.
@@ -95,7 +95,7 @@ class TestDataCollectionTransaction:
         assert not any(run_dir in d for d in status.get("run_dirs", []))
 
     def test_cleanup_blocked_while_hashpipe_running(
-        self, daq_control_direct, run_params
+        self, daq_control_direct, run_params, ensure_clean_daq_state
     ):
         """
         CleanupData must be rejected while hashpipe is still running.
@@ -123,7 +123,7 @@ class TestDataCollectionTransaction:
         })
 
     def test_cleanup_not_called_if_copy_fails(
-        self, daq_control_direct, run_params
+        self, daq_control_direct, run_params, ensure_clean_daq_state
     ):
         """
         If the copy step fails, CleanupData is not called.
@@ -152,7 +152,7 @@ class TestDataCollectionTransaction:
         ), "Daqnode data must be preserved when CleanupData is not called"
 
     def test_cleanup_idempotent(
-        self, daq_control_direct, run_params, head_data_dir
+        self, daq_control_direct, run_params, head_data_dir, ensure_clean_daq_state
     ):
         """
         Calling CleanupData twice on an already-cleaned run must not raise.
@@ -188,7 +188,7 @@ class TestCleanupEdgeCases:
     """Edge cases for CleanupData that don't require a real hashpipe run."""
 
     def test_cleanup_nonexistent_module_dirs_succeeds(
-        self, daq_control_direct, run_params
+        self, daq_control_direct, run_params, ensure_clean_daq_state
     ):
         """CleanupData for a module_id that never wrote data returns success=False (no-op).
 
@@ -212,7 +212,7 @@ class TestNodeFailureDuringCollection:
     """Edge cases when the DAQ node becomes unavailable mid-copy."""
 
     def test_partial_copy_preserves_daqnode_data(
-        self, daq_control_direct, run_params, head_data_dir, daqnode_container
+        self, daq_control_direct, run_params, head_data_dir, daqnode_container, ensure_clean_daq_state
     ):
         """
         Simulate a container pause mid-copy.
@@ -256,7 +256,7 @@ class TestNodeFailureDuringCollection:
         ), "Daqnode data must survive a mid-copy container pause"
 
     def test_cleanup_after_node_restart_succeeds(
-        self, daq_control_direct, run_params, head_data_dir, daqnode_container
+        self, daq_control_direct, run_params, head_data_dir, daqnode_container, ensure_clean_daq_state
     ):
         """
         After a brief container pause/unpause, a full copy + cleanup succeeds.

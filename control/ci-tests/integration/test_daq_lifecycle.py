@@ -27,7 +27,7 @@ def daq_client(request, daq_control_direct, daq_control_gateway) -> DaqControlCl
 class TestDaqLifecycle:
     """Full Start → Status (running) → double-start rejected → Stop → Status (stopped)."""
 
-    def test_start_daq(self, daq_client, run_params):
+    def test_start_daq(self, daq_client, run_params, ensure_clean_daq_state):
         """StartDaq returns True for a fresh run."""
         ok = daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params['data_dir']), (
@@ -35,7 +35,7 @@ class TestDaqLifecycle:
         )
         # assert ok is True
 
-    def test_status_shows_running(self, daq_client, run_params):
+    def test_status_shows_running(self, daq_client, run_params, ensure_clean_daq_state):
         """After StartDaq, StatusDaq reports hashpipe_running=True."""
         daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
@@ -50,7 +50,7 @@ class TestDaqLifecycle:
         assert ok
         assert status.get("hashpipe_running") is True
 
-    def test_double_start_rejected(self, daq_client, run_params):
+    def test_double_start_rejected(self, daq_client, run_params, ensure_clean_daq_state):
         """A second StartDaq while hashpipe is running must fail (raises ValueError)."""
         daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
@@ -60,7 +60,7 @@ class TestDaqLifecycle:
         with pytest.raises(ValueError):
             daq_client.StartDaq(run_params)
 
-    def test_stop_daq(self, daq_client, run_params):
+    def test_stop_daq(self, daq_client, run_params, ensure_clean_daq_state):
         """StopDaq returns True."""
         daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
@@ -72,7 +72,7 @@ class TestDaqLifecycle:
         })
         assert ok is True
 
-    def test_status_shows_stopped_after_stop(self, daq_client, run_params):
+    def test_status_shows_stopped_after_stop(self, daq_client, run_params, ensure_clean_daq_state):
         """After StopDaq, StatusDaq reports hashpipe_running=False."""
         daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
@@ -94,7 +94,7 @@ class TestDaqLifecycle:
         assert ok
         assert status.get("hashpipe_running") is False
 
-    def test_run_dir_appears_in_status(self, daq_client, run_params):
+    def test_run_dir_appears_in_status(self, daq_client, run_params, ensure_clean_daq_state):
         """After StartDaq, the run_dir appears in StatusDaq run_dirs list."""
         daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
@@ -112,7 +112,7 @@ class TestDaqLifecycle:
             f"run_dir={run_params['run_dir']!r} not in {run_dirs}"
         )
 
-    def test_stop_idempotent(self, daq_client, run_params):
+    def test_stop_idempotent(self, daq_client, run_params, ensure_clean_daq_state):
         """StopDaq when nothing is running should not raise."""
         ok = daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
@@ -123,7 +123,7 @@ class TestDaqLifecycle:
 
 class TestDaqDiskUsage:
 
-    def test_disk_usage_fields_present(self, daq_control_direct, run_params):
+    def test_disk_usage_fields_present(self, daq_control_direct, run_params, ensure_clean_daq_state):
         """StatusDaq with check_disk_usage returns expected disk usage keys."""
         daq_control_direct.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
@@ -145,7 +145,7 @@ class TestDaqDiskUsage:
         assert du.get("free_disk_space", -1) >= 0
         assert du.get("used_disk_space", -1) >= 0
 
-    def test_disk_usage_values_plausible(self, daq_control_direct, run_params):
+    def test_disk_usage_values_plausible(self, daq_control_direct, run_params, ensure_clean_daq_state):
         """Disk usage values are internally consistent: used ≈ total − free."""
         ok, status = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],
@@ -173,7 +173,7 @@ class TestDaqRunDirIsolation:
     """Multiple run directories coexist independently on the same node."""
 
     def test_cleanup_removes_only_specified_run(
-        self, daq_control_direct, run_params
+        self, daq_control_direct, run_params, ensure_clean_daq_state
     ):
         """CleanupData for run_dir A must not remove run_dir B on the same node."""
         import uuid as _uuid

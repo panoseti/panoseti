@@ -267,15 +267,20 @@ class DaqNodeValidator(BaseStrictModel):
                 return v
         elif isinstance(v, str):
             if re.match(r'^\d+\-\d+$', v):
-                print(v)
+                # print(v)
                 start, end = map(int, v.split('-'))
                 if start > end:
                     raise ValueError(f"Start module ID ({start}) must be <= End module ID ({end})")
                 return v
+            elif re.match(r'^(\d+)(, ?\d+)*$', v):
+                # print(v)
+                module_ids = list(map(int, v.split(',')))
+                assert len(module_ids) == len(set(module_ids)), "module_ids in list format must be unique"
+                return v
             elif re.match(r'^\[\d+\]$', v):
                 return v
             else:
-                raise ValueError("module_ids must be in the format 'start-end' (e.g., '0-127')")
+                raise ValueError("module_ids must be in the format 'start-end' (e.g., '0-127') OR '<module_id_A>, <module_id_B>, ..., <module_id_N>'")
         else:
             raise ValueError(f"Unexpected type for 'module_ids': '{type(v)=}'")
 

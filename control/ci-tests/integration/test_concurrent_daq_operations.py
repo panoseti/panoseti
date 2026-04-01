@@ -48,7 +48,7 @@ class TestConcurrentDaqOperations:
     """Server must serialise concurrent StartDaq requests (asyncio event loop)."""
 
     def test_concurrent_start_only_one_wins(
-        self, daq_control_direct, run_params_conc
+        self, daq_control_direct, run_params_conc, ensure_clean_daq_state
     ):
         """Three simultaneous StartDaq calls: exactly one returns True, rest raise ValueError.
 
@@ -78,7 +78,7 @@ class TestConcurrentDaqOperations:
         assert len(failures) == 2, f"Expected exactly 2 failures, got {failures}"
 
     def test_concurrent_status_all_succeed(
-        self, daq_control_direct, run_params_conc
+        self, daq_control_direct, run_params_conc, ensure_clean_daq_state
     ):
         """Ten concurrent StatusDaq calls while hashpipe is running → all succeed."""
         rp = run_params_conc
@@ -105,7 +105,7 @@ class TestConcurrentDaqOperations:
         assert all(results), f"Some concurrent StatusDaq calls failed: {results}"
 
     def test_cleanup_blocked_while_running_then_succeeds(
-        self, daq_control_direct, run_params_conc
+        self, daq_control_direct, run_params_conc, ensure_clean_daq_state
     ):
         """CleanupData is blocked while hashpipe is running; succeeds after StopDaq."""
         rp = run_params_conc
@@ -140,7 +140,7 @@ class TestConcurrentDaqOperations:
         assert cleanup_resp2["success"] is True
 
     def test_rapid_start_stop_cycles(
-        self, daq_control_direct, run_params_conc
+        self, daq_control_direct, run_params_conc, ensure_clean_daq_state
     ):
         """Five rapid Start→Stop cycles complete without server state corruption."""
         rp = run_params_conc
