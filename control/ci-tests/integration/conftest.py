@@ -15,7 +15,6 @@ Environment variables (set by docker-compose.integration.yml):
     HEAD_DATA_DIR          — headnode data destination dir
     DAQNODE_CONTAINER_NAME — Docker container name for pause/unpause tests
     CONFIG_DIR             — Directory to integration test configuration files
-    ENABLE_TELEMETRY_TESTS — set to "1" to run test_hashpipe_logs.py
 """
 from __future__ import annotations
 
@@ -52,7 +51,6 @@ DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
 HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
 BINDHOST             = os.getenv("BINDHOST", "lo")
-ENABLE_TELEMETRY_TESTS = os.getenv("ENABLE_TELEMETRY_TESTS", "0") == "1"
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
 CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/

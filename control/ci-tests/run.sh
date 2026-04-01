@@ -5,9 +5,6 @@
 #   bash ci-tests/run.sh unit [pytest args...]
 #   bash ci-tests/run.sh integration [pytest args...]
 #
-# Environment variables:
-#   ENABLE_TELEMETRY_TESTS  — set to 1 to run Loki/Redis telemetry tests
-#                             (skips storeloki scale-down optimisation)
 
 set -euo pipefail
 

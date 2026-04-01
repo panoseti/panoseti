@@ -1,3 +1,4 @@
+![PANOSETI gRPC CI](https://github.com/panoseti/panoseti/actions/workflows/ci-tests.yml/badge.svg)
 # PANOSETI Software
 
 Software for the [PANOSETI Project](https://oirlab.ucsd.edu/PANOSETI.html) — a wide-field optical/near-infrared telescope array searching for nanosecond-scale transients (ETI signals, gamma-ray bursts, fast radio bursts).

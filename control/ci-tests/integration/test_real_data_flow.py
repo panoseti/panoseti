@@ -6,7 +6,6 @@ End-to-end pipeline under test:
     daq_data gRPC server → headnode streaming client
 
 Requires:
-    - RUN_REAL_DATA_TESTS=1 env var (guard, skipped by default)
     - Docker SDK (docker>=7.0) mounted at /var/run/docker.sock
     - tcpreplay installed inside the daqnode container
     - hashpipe.so at /data/hashpipe.so inside the daqnode container
@@ -43,11 +42,6 @@ from .conftest import (
 # ---------------------------------------------------------------------------
 # Guard: skip unless explicitly enabled
 # ---------------------------------------------------------------------------
-
-pytestmark = pytest.mark.skipif(
-    os.getenv("RUN_REAL_DATA_TESTS") != "1",
-    reason="Set RUN_REAL_DATA_TESTS=1 to enable PCAP-based hashpipe tests",
-)
 
 pytest.importorskip(
     "panoseti_grpc.daq_data.client",

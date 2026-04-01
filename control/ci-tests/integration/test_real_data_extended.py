@@ -3,7 +3,6 @@ test_real_data_extended.py — Advanced integration tests for the real hashpipe 
 
 Validates gateway routing, client disconnect resilience, and state machine robustness
 using the real tcpreplay -> hashpipe -> UDS pipeline.
-Requires: RUN_REAL_DATA_TESTS=1
 """
 from __future__ import annotations
 
@@ -21,11 +20,8 @@ from .conftest import (
 
 pytestmark = pytest.mark.asyncio
 
-# ---------------------------------------------------------------------------
-# Guard
-# ---------------------------------------------------------------------------
-if not os.getenv("RUN_REAL_DATA_TESTS"):
-    pytest.skip("Skipping real hashpipe data tests. Set RUN_REAL_DATA_TESTS=1", allow_module_level=True)
+# if not os.getenv("RUN_REAL_DATA_TESTS"):
+#     pytest.skip("Skipping real hashpipe data tests. Set RUN_REAL_DATA_TESTS=1", allow_module_level=True)
 
 
 class TestRealDataExtended:

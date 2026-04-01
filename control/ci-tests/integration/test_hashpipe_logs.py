@@ -6,9 +6,6 @@ grpc_logging=true.  Log records are forwarded via gRPC to the headnode's
 Telemetry service (panoseti-server --profile headnode at 10.0.1.22:50051),
 which writes them to Redis (logs:ingress). storeLoki.py then ships them to Loki.
 
-These tests are enabled by default in Docker CI (ENABLE_TELEMETRY_TESTS=1 is
-set in docker-compose.integration.yml). Unset it to skip when running locally
-without a live headnode Telemetry service.
 """
 from __future__ import annotations
 
@@ -17,12 +14,6 @@ import time
 import pytest
 import requests
 
-from .conftest import ENABLE_TELEMETRY_TESTS
-
-pytestmark = pytest.mark.skipif(
-    not ENABLE_TELEMETRY_TESTS,
-    reason="Requires Telemetry gRPC service on headnode (set ENABLE_TELEMETRY_TESTS=1)",
-)
 
 from .conftest import LOKI_URL, REDIS_HOST, DAQ_DATA_DIR, wait_hashpipe_running, wait_hashpipe_stopped, wait_until
 
