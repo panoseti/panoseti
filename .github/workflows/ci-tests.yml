@@ -2,12 +2,12 @@ name: CI Tests
 
 on:
   push:
-    branches: [master, dev, claude-refactor, add-linting]
+    branches: [master, dev, claude-refactor, phase-2-robustness-and-driver-tests, add-linting]
     paths:
       - 'control/**'
       - '.github/workflows/ci.yml'
   pull_request:
-    branches: [master, dev, mount-metadata, claude-refactor, add-linting]
+    branches: [master, dev, mount-metadata, claude-refactor, phase-2-robustness-and-driver-tests, add-linting]
     paths:
       - 'control/**'
 
@@ -22,7 +22,7 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: 1
 
 jobs:
-  # 1. Warm up the base cache. This avoids redundant building in parallel jobs.
+  # 1. Warm up the base cache.
   prepare-base:
     runs-on: ubuntu-24.04
     steps:
@@ -40,7 +40,7 @@ jobs:
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
 
-  # 2. Run Lint and Unit tests together. They share the same image and setup.
+  # 2. Run Lint and Unit tests together.
   lint-and-unit:
     needs: prepare-base
     runs-on: ubuntu-24.04
@@ -50,17 +50,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      # Use the warmed base cache
-      # We allow access to '..' because docker-compose.unit.yml sets context: ..
+      # Explicitly set context and dockerfile to avoid resolution issues with parent-dir contexts
       - name: Build unit-test image
         run: |
           docker buildx bake \
-            --allow fs.read=.. \
-            -f ci/docker-compose.unit.yml \
+            -f control/ci/docker-compose.unit.yml \
+            --set *.context=control \
+            --set *.dockerfile=ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=base \
             --set *.cache-to=type=gha,mode=max,scope=unit \
             unit-test-runner
-        working-directory: control
 
       - name: Run Linting
         run: python3 ci/qa.py lint
@@ -78,7 +77,7 @@ jobs:
           path: control/.pytest_cache/
           if-no-files-found: ignore
 
-  # 3. Integration tests run in parallel with unit tests
+  # 3. Integration tests
   integration-tests:
     needs: prepare-base
     runs-on: ubuntu-24.04
@@ -88,15 +87,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # We allow access to '..' because docker-compose.integration.yml sets context: ..
+      # Explicitly set context and dockerfile
       - name: Build Integration Stack
         run: |
           docker buildx bake \
-            --allow fs.read=.. \
-            -f ci/docker-compose.integration.yml \
+            -f control/ci/docker-compose.integration.yml \
+            --set *.context=control \
+            --set *.dockerfile=ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=base \
             --set *.cache-to=type=gha,mode=max,scope=integration
-        working-directory: control
 
       - name: Run Integration Tests
         run: python3 ci/qa.py integration
