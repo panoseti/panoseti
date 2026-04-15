@@ -41,7 +41,7 @@ class tftpw(object):
     #get flash_id
     def get_flashuid(self,filename='flashuid'):
         self.logger.info('get_flashuid: filename - %s'%filename)
-        self.client.download('/flashuid',filename, timeout=1)
+        self.client.download('/flashuid',filename, timeout=3)
         print('Get flash Device ID successfully!')
     
     #get wrpc_filesys
