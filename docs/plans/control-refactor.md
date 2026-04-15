@@ -1,7 +1,7 @@
 # Plan: Refactor `control/` into a Production-Grade Repo
 
 **Created:** 2026-03-26
-**Branch:** `add-ci-tests`
+**Branch:** `add-ci`
 
 ## Context
 
@@ -187,7 +187,7 @@ Create `.github/workflows/ci.yml` at repo root:
 name: CI
 on:
   push:
-    branches: [add-ci-tests, main]
+    branches: [add-ci, main]
   pull_request:
     branches: [main]
 
@@ -335,5 +335,5 @@ As `panoseti_grpc.daq_control` matures, migrate `control/daq_scripts/start_daq.p
 
 - Phase 1: Run `python start.py --validate-only` after each change; no behavior regression
 - Phase 2: `cd control && python -m pytest tests/ -v`; all tests green before moving to CI
-- Phase 3: Push to `add-ci-tests` branch; both `control-tests` and `grpc-tests` GitHub Actions jobs must show green
+- Phase 3: Push to `add-ci` branch; both `control-tests` and `grpc-tests` GitHub Actions jobs must show green
 - Phase 4: Run `mypy --strict` on refactored files; zero errors

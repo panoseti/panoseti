@@ -55,7 +55,7 @@ services:
   headnode:
     build:
       context: ../
-      dockerfile: ci-tests/Dockerfile.ci
+      dockerfile: ci/Dockerfile.ci
       target: integration-headnode
     networks:
       headnode_net:
@@ -72,7 +72,7 @@ services:
       loki:
         condition: service_started
     command: >
-      /bin/sh -c "panoseti-server --config /app/ci-tests/integration/configs/headnode/server.toml &
+      /bin/sh -c "panoseti-server --config /app/ci/integration/configs/headnode/server.toml &
       exec python daemons/storeLoki.py"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
@@ -84,7 +84,7 @@ services:
   daqnode:
     build:
       context: ../
-      dockerfile: ci-tests/Dockerfile.ci
+      dockerfile: ci/Dockerfile.ci
       target: integration-daqnode
     networks:
       headnode_net:
@@ -115,7 +115,7 @@ services:
   daqnode-2:
     build:
       context: ../
-      dockerfile: ci-tests/Dockerfile.ci
+      dockerfile: ci/Dockerfile.ci
       target: integration-daqnode
     networks:
       headnode_net:
@@ -146,7 +146,7 @@ services:
   int-tester:
     build:
       context: ../
-      dockerfile: ci-tests/Dockerfile.ci
+      dockerfile: ci/Dockerfile.ci
       target: integration-headnode
     networks:
       headnode_net:

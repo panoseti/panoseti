@@ -52,7 +52,7 @@ DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
 BINDHOST             = os.getenv("BINDHOST", "lo")
 
 CONTROL_DIR = pathlib.Path(__file__).parent.parent.parent   # control/
-CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/integration/configs/
+CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci/integration/configs/
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ CONFIG_DIR = pathlib.Path(__file__).parent / "configs"      # config/ci-tests/in
 # ---------------------------------------------------------------------------
 
 # Path to PCAP file *inside* the daqnode container (after COPY . .)
-PCAP_GLOB = "/app/ci-tests/integration/data/*.pcapng"
+PCAP_GLOB = "/app/ci/integration/data/*.pcapng"
 
 # hp_io_cfg for real (non-simulated) hashpipe mode
 REAL_HP_IO_CFG = {
@@ -235,7 +235,7 @@ DIRECT_CONFIG = CONFIG_DIR / "direct"
 GATEWAY_CONFIG = CONFIG_DIR / "gateway"
 
 # 1. Point sys.path to the root 'control' directory, NOT the 'utils' directory.
-# 'conftest.py' is in control/ci-tests/integration/, so we go up two levels.
+# 'conftest.py' is in control/ci/integration/, so we go up two levels.
 control_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 if control_root not in sys.path:
     sys.path.insert(0, control_root)

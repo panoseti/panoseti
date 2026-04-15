@@ -1,6 +1,6 @@
 # PANOSETI Control — CI Test Suite
 
-All tests live under `control/ci-tests/` and run inside Docker via a single
+All tests live under `control/ci/` and run inside Docker via a single
 multi-stage `Dockerfile.ci` using `uv` for high-performance builds.
 
 **Current status:** 460 unit tests passing · integration suite: 65 tests passing
@@ -13,21 +13,21 @@ The new CI infrastructure uses **persistent background daemons**. You start the 
 
 ```bash
 # 1. Start the background infrastructure
-python ci-tests/qa.py up
+python ci/qa.py up
 
 # 2. Run tests instantly
-python ci-tests/qa.py unit           # Parallel unit tests (~3s)
-python ci-tests/qa.py integration    # E2E integration tests (~75s)
-python ci-tests/qa.py lint           # Ruff & MyPy (concurrent)
+python ci/qa.py unit           # Parallel unit tests (~3s)
+python ci/qa.py integration    # E2E integration tests (~75s)
+python ci/qa.py lint           # Ruff & MyPy (concurrent)
 
 # 3. Targeted debugging (pass any pytest args)
-python ci-tests/qa.py unit -k test_pff
-python ci-tests/qa.py integration -k TestDaqLifecycle
+python ci/qa.py unit -k test_pff
+python ci/qa.py integration -k TestDaqLifecycle
 
 # 4. Infrastructure management
-python ci-tests/qa.py build          # Rebuild images (uv cached)
-python ci-tests/qa.py restart        # Restart daemons
-python ci-tests/qa.py down           # Tear down everything
+python ci/qa.py build          # Rebuild images (uv cached)
+python ci/qa.py restart        # Restart daemons
+python ci/qa.py down           # Tear down everything
 ```
 
 ---
@@ -77,7 +77,7 @@ The `real_data` test files validate the full data path using `tcpreplay` to inje
 
 ```bash
 # Run only real data tests
-python ci-tests/qa.py integration -k "real_data"
+python ci/qa.py integration -k "real_data"
 ```
 
 ### The "Loopback Shortcut" Requirement
@@ -97,5 +97,5 @@ If you prefer to run tests natively, ensure you have `uv` installed:
 uv sync --all-extras
 
 # Run tests
-uv run pytest ci-tests/unit/
+uv run pytest ci/unit/
 ```

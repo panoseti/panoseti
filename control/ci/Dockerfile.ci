@@ -59,8 +59,8 @@ ENV PANOSETI_DAQ_BRANCH="dev"
 WORKDIR /build
 RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
-COPY ci-tests/integration/build/Makefile .
-COPY ci-tests/integration/build/databuf.h .
+COPY ci/integration/build/Makefile .
+COPY ci/integration/build/databuf.h .
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -123,4 +123,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
 
 # Unified gRPC server: daq_data + daq_control on a single port (50051).
-CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci-tests/integration/configs/daqnode/server.toml"]
+CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci/integration/configs/daqnode/server.toml"]

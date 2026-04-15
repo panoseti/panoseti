@@ -9,7 +9,7 @@ Requires:
     - Docker SDK (docker>=7.0) mounted at /var/run/docker.sock
     - tcpreplay installed inside the daqnode container
     - hashpipe.so at /data/hashpipe.so inside the daqnode container
-    - PCAP file at /app/ci-tests/integration/data/*.pcapng inside daqnode
+    - PCAP file at /app/ci/integration/data/*.pcapng inside daqnode
 
 With the unified server, daq_data and daq_control run in the same container
 process, so hashpipe UDS sockets at /tmp are directly accessible to the

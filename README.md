@@ -1,4 +1,4 @@
-![PANOSETI gRPC CI](https://github.com/panoseti/panoseti/actions/workflows/ci-tests.yml/badge.svg)
+![PANOSETI gRPC CI](https://github.com/panoseti/panoseti/actions/workflows/ci.yml/badge.svg)
 # PANOSETI Software
 
 Software for the [PANOSETI Project](https://oirlab.ucsd.edu/PANOSETI.html) — a wide-field optical/near-infrared telescope array searching for nanosecond-scale transients (ETI signals, gamma-ray bursts, fast radio bursts).
@@ -76,9 +76,9 @@ cd control && python start.py --validate-only
 
 ```bash
 cd control
-pytest ci-tests/unit/ -v --tb=short          # 460 unit tests, no hardware needed
-bash ci-tests/run.sh unit                    # same, via Docker (parallel with -n auto)
-bash ci-tests/run.sh integration             # end-to-end: 43 passing, 7 skipped
+pytest ci/unit/ -v --tb=short          # 460 unit tests, no hardware needed
+bash ci/run.sh unit                    # same, via Docker (parallel with -n auto)
+bash ci/run.sh integration             # end-to-end: 43 passing, 7 skipped
 ```
 
 ---

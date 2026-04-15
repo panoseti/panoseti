@@ -98,7 +98,7 @@ pytest tests/unit/ -v --tb=short
 pytest tests/unit/ --cov=utils --cov-report=term-missing
 
 # Via Docker (all dependencies provided)
-bash run-ci-tests/run-unit-tests.sh
+bash run-ci/run-unit-tests.sh
 ```
 
 ### Coverage targets per module
@@ -236,7 +236,7 @@ Add to `session_start.py`: verify gRPC connectivity (`Ping` RPC) to each DAQ nod
 ## Docker CI Setup
 
 ```
-control/run-ci-tests/
+control/run-ci/
 ├── docker-compose.yml        # Redis sidecar + test runner
 ├── Dockerfile.test           # Python 3.12 + panoseti-control[dev]
 ├── run-unit-tests.sh         # One-shot: start → test → tear down
@@ -247,7 +247,7 @@ control/run-ci-tests/
 **Quick start:**
 ```bash
 cd control
-bash run-ci-tests/run-unit-tests.sh
+bash run-ci/run-unit-tests.sh
 ```
 
 ---
@@ -258,7 +258,7 @@ bash run-ci-tests/run-unit-tests.sh
 |------|------|--------|
 | `control/pyproject.toml` | **NEW** | Package metadata, dev deps, pytest config |
 | `control/tests/` | **NEW** | Full test suite |
-| `control/run-ci-tests/` | **NEW** | Docker CI scripts |
+| `control/run-ci/` | **NEW** | Docker CI scripts |
 | `control/start.py` | Modify | Replace SSH with `DaqControlClient.StartDaq()` |
 | `control/stop.py` | Modify | Replace SSH with `DaqControlClient.StopDaq()` |
 | `control/status.py` | Modify | Replace SSH with `DaqControlClient.StatusDaq()` |
@@ -299,7 +299,7 @@ ruff check utils/ start.py stop.py status.py
 mypy utils/config_file.py utils/pydantic_config_models.py --ignore-missing-imports
 
 # 5. Docker CI (self-contained)
-bash run-ci-tests/run-unit-tests.sh
+bash run-ci/run-unit-tests.sh
 
 # 6. gRPC connectivity (requires DAQ node)
 python -c "

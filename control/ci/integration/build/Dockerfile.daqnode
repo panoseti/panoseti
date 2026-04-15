@@ -26,7 +26,7 @@ WORKDIR /daqnode
 RUN pip install --no-cache-dir "panoseti-grpc>=0.4.0"
 
 # fake hashpipe: install on PATH as 'hashpipe'
-COPY run-ci-tests/integration/fake_hashpipe.py /usr/local/bin/hashpipe
+COPY run-ci/integration/fake_hashpipe.py /usr/local/bin/hashpipe
 RUN chmod +x /usr/local/bin/hashpipe
 
 # Create data directory

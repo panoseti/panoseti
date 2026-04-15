@@ -46,25 +46,25 @@ cd control
 pip install -e ".[dev]"
 
 # Unit tests (460 tests, no hardware required)
-pytest ci-tests/unit/ -v --tb=short
+pytest ci/unit/ -v --tb=short
 
 # With coverage report
-pytest ci-tests/unit/ --cov=utils --cov-report=term-missing
+pytest ci/unit/ --cov=utils --cov-report=term-missing
 
 # Via Docker CI — unit suite (parallel with -n auto, ~10s)
-bash ci-tests/run.sh unit
+bash ci/run.sh unit
 
 # Via Docker CI — full integration suite (43 passing, 7 skipped)
-bash ci-tests/run.sh integration
+bash ci/run.sh integration
 
 # Integration: single test group
-bash ci-tests/run.sh integration -- -k "TestDaqLifecycle"
+bash ci/run.sh integration -- -k "TestDaqLifecycle"
 
 # Enable Loki/Redis telemetry tests
-ENABLE_TELEMETRY_TESTS=1 bash ci-tests/run.sh integration
+ENABLE_TELEMETRY_TESTS=1 bash ci/run.sh integration
 
 # Real hashpipe + tcpreplay tests (requires RUN_REAL_DATA_TESTS=1)
-RUN_REAL_DATA_TESTS=1 bash ci-tests/run.sh integration -- -k "real_data"
+RUN_REAL_DATA_TESTS=1 bash ci/run.sh integration -- -k "real_data"
 ```
 
 ### Lint and type-check
@@ -181,7 +181,7 @@ python scripts/compile_protos.py
 Run the gRPC test suite (requires Docker for Redis/InfluxDB/Loki):
 ```bash
 cd ../panoseti_grpc
-bash scripts/run-ci-tests/run-daq-data-ci-test.sh
+bash scripts/run-ci/run-daq-data-ci-test.sh
 ```
 
 **The four services:**
@@ -269,10 +269,10 @@ module_id = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
 `control/pyproject.toml` sets `requires-python = ">=3.9"`. Target migration to 3.14+ syntax incrementally.
 
 ### Test locations
-- `control/ci-tests/unit/` — hardware-agnostic Python unit tests (460 tests, 10 modules)
-- `control/ci-tests/integration/` — end-to-end Docker integration tests (43 passing, 7 skipped)
-- `control/ci-tests/Dockerfile.ci` — multi-stage image for all test suites
-- `control/ci-tests/run.sh` — unified runner (`unit` or `integration`)
+- `control/ci/unit/` — hardware-agnostic Python unit tests (460 tests, 10 modules)
+- `control/ci/integration/` — end-to-end Docker integration tests (43 passing, 7 skipped)
+- `control/ci/Dockerfile.ci` — multi-stage image for all test suites
+- `control/ci/run.sh` — unified runner (`unit` or `integration`)
 
 ### Integration test topology
 

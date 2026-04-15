@@ -2,8 +2,8 @@
 # run.sh — Unified test runner for PANOSETI control.
 #
 # Usage:
-#   bash ci-tests/run.sh unit [pytest args...]
-#   bash ci-tests/run.sh integration [pytest args...]
+#   bash ci/run.sh unit [pytest args...]
+#   bash ci/run.sh integration [pytest args...]
 #
 
 set -euo pipefail
@@ -53,7 +53,7 @@ if [[ "$SUITE" == "unit" ]]; then
     # -n auto: run unit tests in parallel across all available CPUs (pytest-xdist)
     docker compose -f "$COMPOSE_FILE" run --rm \
         "$SERVICE_NAME" \
-        pytest "ci-tests/$SUITE/" -v --tb=auto --showlocals --color=yes --timeout=60 "$@"
+        pytest "ci/$SUITE/" -v --tb=auto --showlocals --color=yes --timeout=60 "$@"
 else
     # Pass extra pytest args into the environment
     export PYTEST_ARGS="$*"

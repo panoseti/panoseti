@@ -5,7 +5,7 @@ on:
     branches: [master, dev, claude-refactor, phase-2-robustness-and-driver-tests]
     paths:
       - 'control/**'
-      - '.github/workflows/ci-tests.yml'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [master, dev, mount-metadata, claude-refactor, phase-2-robustness-and-driver-tests]
     paths:
@@ -39,7 +39,7 @@ jobs:
           echo "COMPOSE_BAKE=true" >> $GITHUB_ENV
 
       - name: Run unit tests via Docker
-        run: bash ci-tests/run.sh unit
+        run: bash ci/run.sh unit
         working-directory: control
 
       # Upload raw cache/logs for deep debugging
@@ -69,7 +69,7 @@ jobs:
           echo "COMPOSE_BAKE=true" >> $GITHUB_ENV
 
       - name: Run integration tests via Docker
-        run: bash ci-tests/run.sh integration
+        run: bash ci/run.sh integration
         working-directory: control
 
       - name: Upload test artifacts
