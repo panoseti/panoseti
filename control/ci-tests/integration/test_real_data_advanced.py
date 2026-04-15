@@ -2,7 +2,6 @@
 test_real_data_advanced.py — Rigorous integration tests for the real hashpipe data path.
 
 Validates throughput, timing, consistency, and concurrency under real load.
-Requires: RUN_REAL_DATA_TESTS=1
 """
 from __future__ import annotations
 

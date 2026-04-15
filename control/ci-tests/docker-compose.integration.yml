@@ -19,9 +19,6 @@
 #   DAQNODE_GATEWAY_HOST  — gateway IP for forwarded access (default: 10.0.1.254)
 #   GRPC_PORT             — gRPC port                      (default: 50051)
 #
-# Feature gates:
-#   ENABLE_TELEMETRY_TESTS=1   — run test_hashpipe_logs.py (default: on in this compose)
-#   RUN_REAL_DATA_TESTS=1      — run test_real_data_flow.py (default: off)
 
 networks:
   headnode_net:
@@ -231,8 +228,6 @@ services:
       DAQ_DATA_DIR:           "/data"
       HEAD_DATA_DIR:          "/data/head"
       DAQNODE_CONTAINER_NAME: "ctl-int-daqnode-1"
-      ENABLE_TELEMETRY_TESTS: "1"
-      RUN_REAL_DATA_TESTS:    "1"
       PYTHONDONTWRITEBYTECODE: "1"
     depends_on:
       daqnode:

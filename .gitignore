@@ -53,4 +53,6 @@ control/quabos/detovervol_2v/ph/attic/
 test/
 
 
-
+# IDE settings
+.vscode
+.idea
