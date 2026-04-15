@@ -126,7 +126,7 @@ def perform_network_ping_sweep(validated_configs: dict) -> bool:
 
     # --- Display Results cleanly ---
     results.sort(key=lambda x: x[0])
-    for desc, is_up, err in results:
+    for desc, is_up, _err in results:
         if is_up:
             console.print(f"  [green]✔ {desc:<40} is UP[/green]")
         else:

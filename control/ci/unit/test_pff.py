@@ -276,14 +276,14 @@ class TestImageRoundTrip:
     def test_read_image_bad_type_code_raises(self):
         """read_image raises Exception when magic byte is not b'*'."""
         buf = io.BytesIO(b'X' + struct.pack("1024H", *([0] * 1024)))
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="bad type code"):
             pff.read_image(buf, 32, 2)
 
     def test_write_image_bad_params_raises(self):
         """write_image_1D raises Exception for unsupported (img_size, bpp) combinations."""
         img = [0] * 256
         buf = io.BytesIO()
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="bad params"):
             pff.write_image_1D(buf, img, 16, 2)  # only 32x32 is supported
 
     def test_image_all_zeros(self):
@@ -332,7 +332,7 @@ class TestReadJson:
 
     def test_bad_first_byte_raises(self):
         buf = io.BytesIO(b'X{"key": "val"}\n\n')
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match=r"read_json\(\): expected \{"):
             pff.read_json(buf)
 
     def test_full_pff_frame_roundtrip(self):

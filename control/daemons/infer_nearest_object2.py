@@ -128,7 +128,7 @@ def run_ssh(site: SiteConf, remote_cmd: list[str]) -> str:
             timeout=SSH_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("SSH timeout")
+        raise RuntimeError("SSH timeout") from None
 
     if p.returncode != 0:
         raise RuntimeError(p.stderr.strip() or p.stdout.strip())

@@ -20,7 +20,7 @@ from signal import SIGINT, signal
 import serial
 
 from utils import config_file, util
-from utils.redis_utils import *
+from utils.redis_utils import redis_init
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'

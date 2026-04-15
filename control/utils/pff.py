@@ -45,14 +45,14 @@ def read_image(f, img_size, bytes_per_pixel):
         elif bytes_per_pixel == 1:
             return struct.unpack("1024B", f.read(1024))
         else:
-            raise Exception("bad bytes per pixel: %d"%bytes_per_pixel)
+            raise Exception(f"bad bytes per pixel: {bytes_per_pixel}")
     elif img_size == 16:
         if bytes_per_pixel == 2:
             return struct.unpack("256H", f.read(512))
         elif bytes_per_pixel == 2:
             return struct.unpack("256B", f.read(256))
         else:
-            raise Exception("bad bytes per pixel: %d"%bytes_per_pixel)
+            raise Exception(f"bad bytes per pixel: {bytes_per_pixel}")
     else:
         raise Exception("bad image size")
 
@@ -214,12 +214,12 @@ def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
         new_f = min_f + int(frac*(max_f-min_f))
         if new_f <= min_f+1:
             if verbose:
-                print('new_f %d is close to min_f %d'%(new_f, min_f))
+                print(f'new_f {new_f} is close to min_f {min_f}')
             new_f = min_f
             break
         if new_f >= max_f-1:
             if verbose:
-                print('new_f %d is close to max_f %d'%(new_f, max_f))
+                print(f'new_f {new_f} is close to max_f {max_f}')
             break
         new_t = img_frame_time(f, new_f, frame_size)
         if verbose:
@@ -256,12 +256,12 @@ def wr_to_unix(pkt_tai, pkt_nsec, tv_sec, ignore_clock_desync=False):
             approx_t = tv_sec + pkt_nsec / 1e9
             return approx_t
         else:
-            raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
+            raise Exception(f'WR and Unix times differ by > 1 sec: pkt_tai {pkt_tai} tv_sec {tv_sec} d {d}')
             return 0
         return 0
         #raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
 
-from decimal import *
+from decimal import Decimal
 
 
 def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):

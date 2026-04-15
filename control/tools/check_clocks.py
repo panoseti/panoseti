@@ -136,7 +136,7 @@ class check_clocks:
         try:
             data,client_addr = server.recvfrom(BUFFERSIZE)
         except:
-            raise Exception('\n No packets from Quabo!\n Please make sure the quabo is powered on and rebooted.')
+            raise Exception('\n No packets from Quabo!\n Please make sure the quabo is powered on and rebooted.') from None
         server.close()
 
         t_host = time.time()

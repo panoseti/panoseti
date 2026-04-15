@@ -19,7 +19,7 @@ from signal import SIGINT, signal
 
 from utils import config_file, util
 from utils.panoseti_snmp import wrs_snmp
-from utils.redis_utils import *
+from utils.redis_utils import redis_init
 
 # wrs status
 LINK_DOWN   =   '1'
@@ -57,9 +57,9 @@ def wrsSFPCheck(wrs):
                 if(len(res[i]) != 0):
                     if(res[i] != SFP_PN1):
                         failed = 1
-                        print('WR-SWITCH(%s) : sfp%2d is %-16s[ FAIL ]' %(wrs.dev, i+1, res[i]))
+                        print(f'WR-SWITCH({wrs.dev}) : sfp{i+1:2d} is {res[i]:<16}[ FAIL ]')
                     else:
-                        print('WR-SWITCH(%s) : sfp%2d is %-16s[ PASS ]' %(wrs.dev, i+1, res[i]))
+                        print(f'WR-SWITCH({wrs.dev}) : sfp{i+1:2d} is {res[i]:<16}[ PASS ]')
             if failed == 0:
                 print(' ')
                 print(f'WR-SWITCH({wrs.dev}) : sfp transceivers are checked!')
@@ -85,9 +85,9 @@ def wrsLinkStatusCheck(wrs):
         else:
             for i in range(len(res)):
                 if res[i] == LINK_UP :
-                    print('WR-SWITCH(%s) : Port%2d LINK_UP  ' %(wrs.dev, i+1))
+                    print(f'WR-SWITCH({wrs.dev}) : Port{i+1:2d} LINK_UP  ')
                 else:
-                    print('WR-SWITCH(%s) : Port%2d LINK_DOWN' %(wrs.dev, i+1))
+                    print(f'WR-SWITCH({wrs.dev}) : Port{i+1:2d} LINK_DOWN')
     print(' ')
 
 # check the softpll status
@@ -135,7 +135,7 @@ def main():
         # check link status
         res = wrs.linkstatus()
         for i in range(len(res)):
-            r.hset(RKEY, 'Port%2d_LINK'%(i+1), 1 if res[i] == LINK_UP else 0)
+            r.hset(RKEY, f'Port{i+1:2d}_LINK', 1 if res[i] == LINK_UP else 0)
         # check softpll status
         res = wrs.pllstatus()
         r.hset(RKEY, 'SOFTPLL', 1 if res[0] == SOFTPLL_LOCKED else 0)

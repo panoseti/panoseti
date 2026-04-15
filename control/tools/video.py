@@ -36,13 +36,11 @@ def main(quabo_uids, module_id, dp):
                     break
             if found: break
         if not found:
-            print('no such module %d'%module_id)
+            print(f'no such module {module_id}')
             return
     daq_node = module['daq_node']
         
-    cmd = 'cd %s; ./video_daq.py --module %d --dp %s'%(
-            daq_node['data_dir'], module_id, dp
-    )
+    cmd = f"cd {daq_node['data_dir']}; ./video_daq.py --module {module_id} --dp {dp}"
     print(cmd)
     process = subprocess.Popen(['ssh',
         '{}@{}'.format(daq_node['username'], daq_node['ip_addr']),
@@ -76,7 +74,7 @@ def main(quabo_uids, module_id, dp):
         img = np.array(img)
         if dp == 'ph256' or dp == 'ph1024':
             img = img.astype(np.int16)
-        print('max: %d, min: %d'%(max(img), min(img)))
+        print(f'max: {max(img)}, min: {min(img)}')
         #show_pff.image_as_text(img, image_size, bpp, 0, 256)
         img = img - img.min()
         img = img/img.max()
@@ -110,7 +108,7 @@ if ph:
     elif ph == 256:
         dp = 'ph256'
     else:
-        raise Exception('ph%d not supported'%(ph))
+        raise Exception(f'ph{ph} not supported')
 else:
     if 'image' not in data_config.keys():
         raise Exception('no image data being recorded')

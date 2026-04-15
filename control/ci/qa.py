@@ -454,7 +454,7 @@ Examples:
     p_unit = sub.add_parser("unit", help="Run unit tests [-j N] [pytest args...]")
     p_unit.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers")
 
-    p_int = sub.add_parser("integration", help="Run integration tests [pytest args...]")
+    sub.add_parser("integration", help="Run integration tests [pytest args...]")
     
     p_all = sub.add_parser("all", help="Run full suite [pytest args...]")
     p_all.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers for unit tests")
@@ -465,7 +465,7 @@ Examples:
         sys.exit(0)
 
     # Store any extra args for use in the commands
-    setattr(args, "extra", extra)
+    args.extra = extra
 
     runner = QARunner(QA_TOML_PATH)
 

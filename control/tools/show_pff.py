@@ -76,18 +76,11 @@ def print_json(j, is_ph, verbose):
     else:
         j = json.loads(j)
         if is_ph:
-            print('quabo %d: pkt_num %d, pkt_tai %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
-                j['quabo_num'], j['pkt_num'],
-                j['pkt_tai'], j['pkt_nsec'],
-                j['tv_sec'], j['tv_usec']
-            ))
+            print(f"quabo {j['quabo_num']}: pkt_num {j['pkt_num']}, pkt_tai {j['pkt_tai']} pkt_nsec {j['pkt_nsec']}, tv_sec {j['tv_sec']}, tv_usec {j['tv_usec']}")
         else:
             for i in range(4):
-                q = j['quabo_%d'%i]
-                print('quabo %d: pkt_num %d, pkt_tai %d pkt_nsec %d, tv_sec %d, tv_usec %d'%(
-                    i, q['pkt_num'], q['pkt_tai'], q['pkt_nsec'],
-                    q['tv_sec'], q['tv_usec']
-                ))
+                q = j[f'quabo_{i}']
+                print(f"quabo {i}: pkt_num {q['pkt_num']}, pkt_tai {q['pkt_tai']} pkt_nsec {q['pkt_nsec']}, tv_sec {q['tv_sec']}, tv_usec {q['tv_usec']}")
         
 def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
     with open(fname, 'rb') as f:
@@ -158,7 +151,7 @@ if __name__ == "__main__":
         [min, max] = image_quantiles.get_quantiles(
             fname, image_size, bytes_per_pixel, quantile
         )
-        print('pixel 10/90 percentiles: %d, %d'%(min, max))
+        print(f'pixel 10/90 percentiles: {min}, {max}')
         show_file(fname, image_size, bytes_per_pixel, min, max, is_ph, verbose)
 
     main()

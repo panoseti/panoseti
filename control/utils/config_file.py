@@ -140,7 +140,7 @@ def module_id_to_daq_node(daq_config, module_id):
     for node in daq_config['daq_nodes']:
         if module_id in node['module_ids']:
             return node
-    raise Exception("no DAQ node is handling module %d"%module_id)
+    raise Exception(f"no DAQ node is handling module {module_id}")
 
 def check_config_file(name, dir='.'):
     path = os.path.join(dir, name)
@@ -469,7 +469,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
             console.print(f"Target: {config_name} - [red]1 Error(s), 0 Warning(s)[/red]")
         if RAISE_VALIDATION_ERRORS:
             raise e
-        raise ValueError(f"JSON Parse Error in {filename}")
+        raise ValueError(f"JSON Parse Error in {filename}") from None
 
     # 2. Preprocess (e.g. assign_numbers, expand_ranges)
     if preprocessor:

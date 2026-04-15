@@ -21,8 +21,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from capture_hk import metadata_status_monitor_utils as md_utils
 from capture_hk.panosetiSIconvert import HKconvert
-
-from utils.redis_utils import *
+from utils.redis_utils import redis_init
 
 # ===== CONFIGURATION =====
 HOST = '0.0.0.0'

@@ -144,14 +144,14 @@ class DataConfigValidator(BaseModel):
                         ImageMode(**val)
                         dynamic_keys.append(key)
                     except ValidationError as e:
-                        raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
+                        raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}") from e
                 elif key.startswith('pulse_height_'):
                     try:
                         ph_obj = PulseHeightMode(**val)
                         ph_modes_dict[key] = ph_obj
                         dynamic_keys.append(key)
                     except ValidationError as e:
-                        raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}")
+                        raise ValueError(f"Invalid fields in dynamic mode '{key}': {e}") from e
                 else:
                     raise ValueError(f"Unrecognized configuration key or typo detected: '{key}'")
         if self.interleave and getattr(self.interleave, 'states', None):
@@ -240,7 +240,7 @@ class ObsConfigValidator(BaseModel):
                 try:
                     WpsConfig(**val)
                 except Exception as e:
-                    raise ValueError(f"Invalid format for '{key}': {e}")
+                    raise ValueError(f"Invalid format for '{key}': {e}") from e
             else:
                 raise ValueError(f"Extra key '{key}' is not allowed unless it's a 'wps' unit.")
         return self

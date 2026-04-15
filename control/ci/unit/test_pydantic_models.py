@@ -601,12 +601,12 @@ class TestPortForwarding:
 
     def test_grpc_port_zero_rejected(self):
         """grpc_port=0 is below the valid range."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             PortForwarding(**self._BASE, grpc_port=0)
 
     def test_grpc_port_too_large_rejected(self):
         """grpc_port above 65535 is rejected."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             PortForwarding(**self._BASE, grpc_port=65536)
 
     def test_grpc_port_max_valid(self):

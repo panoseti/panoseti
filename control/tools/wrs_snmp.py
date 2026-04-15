@@ -37,9 +37,9 @@ def wrsSFPCheck(wrs):
                 if(len(res[i]) != 0):
                     if(res[i] != SFP_PN1):
                         failed = 1
-                        print('WR-SWITCH(%s) : sfp%2d is %-16s[ FAIL ]' %(wrs.dev, i+1, res[i]))
+                        print(f'WR-SWITCH({wrs.dev}) : sfp{i+1:2d} is {res[i]:-16s}[ FAIL ]')
                     else:
-                        print('WR-SWITCH(%s) : sfp%2d is %-16s[ PASS ]' %(wrs.dev, i+1, res[i]))
+                        print(f'WR-SWITCH({wrs.dev}) : sfp{i+1:2d} is {res[i]:-16s}[ PASS ]')
             if failed == 0:
                 print(' ')
                 print(f'WR-SWITCH({wrs.dev}) : sfp transceivers are checked!')
@@ -65,9 +65,9 @@ def wrsLinkStatusCheck(wrs):
         else:
             for i in range(len(res)):
                 if res[i] == LINK_UP :
-                    print('WR-SWITCH(%s) : Port%2d LINK_UP  ' %(wrs.dev, i+1))
+                    print(f'WR-SWITCH({wrs.dev}) : Port{i+1:2d} LINK_UP  ')
                 else:
-                    print('WR-SWITCH(%s) : Port%2d LINK_DOWN' %(wrs.dev, i+1))
+                    print(f'WR-SWITCH({wrs.dev}) : Port{i+1:2d} LINK_DOWN')
 
 # check the softpll status
 #

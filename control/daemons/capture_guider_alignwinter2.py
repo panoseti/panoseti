@@ -133,7 +133,7 @@ def run_ssh(site: SiteConf, remote_cmd: str, timeout: int = SSH_TIMEOUT) -> str:
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise RuntimeError("SSH timeout")
+        raise RuntimeError("SSH timeout") from None
     if p.returncode != 0:
         raise RuntimeError(p.stderr.strip() or p.stdout.strip() or f"ssh rc={p.returncode}")
     return (p.stdout or "").strip()
@@ -148,7 +148,7 @@ def run_scp_get(site: SiteConf, remote_path: str, local_path: str, timeout: int 
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise RuntimeError("SCP timeout")
+        raise RuntimeError("SCP timeout") from None
     if p.returncode != 0:
         raise RuntimeError(p.stderr.strip() or p.stdout.strip() or f"scp rc={p.returncode}")
 

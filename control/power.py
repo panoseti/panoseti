@@ -52,10 +52,10 @@ def quabo_power(wps, on):
     url = wps['url']
     socket = wps['quabo_socket']
     value = 'ON' if on else 'OFF'
-    cmd = 'curl -s %s/outlet?%d=%s > /dev/null' % (url, socket, value)
+    cmd = f'curl -s {url}/outlet?{socket}={value} > /dev/null'
     ret = os.system(cmd)
     if ret:
-        raise Exception('%s returned %d' % (cmd, ret))
+        raise Exception(f'{cmd} returned {ret}')
 
 
 # return True if power is on

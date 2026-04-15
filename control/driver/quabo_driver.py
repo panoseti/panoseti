@@ -114,9 +114,9 @@ class QUABO:
         cmd[12] = 69
         if params.do_flash:
             self.logger.info('flash is on.')
-            self.logger.debug('flash_rate: %d'%params.flash_rate)
-            self.logger.debug('flash_level: %d'%params.flash_level)
-            self.logger.debug('flash_width: %d'%params.flash_width)
+            self.logger.debug(f'flash_rate: {params.flash_rate}')
+            self.logger.debug(f'flash_level: {params.flash_level}')
+            self.logger.debug(f'flash_width: {params.flash_width}')
             cmd[22] = params.flash_rate
             cmd[24] = params.flash_level
             cmd[26] = params.flash_width
@@ -124,8 +124,8 @@ class QUABO:
             self.logger.info('flash is off.')
         if params.do_stim:
             self.logger.info('STIM is on.')
-            self.logger.debug('stim_level: %d'%params.stim_level)
-            self.logger.debug('stim_rate: %d'%params.stim_rate)
+            self.logger.debug(f'stim_level: {params.stim_level}')
+            self.logger.debug(f'stim_rate: {params.stim_rate}')
             cmd[14] = 1
             cmd[16] = params.stim_level
             cmd[18] = params.stim_rate
@@ -194,7 +194,7 @@ class QUABO:
         self.send(cmd)
 
     def hv_set_chan(self, chan, value):
-        self.logger.info('hv_set_chan: ch - %d, val - %d'%(chan, value))
+        self.logger.info(f'hv_set_chan: ch - {chan}, val - {value}')
         cmd = self.make_cmd(0x02)
         self.HV_vals[chan] = int(value)
         for i in range(4):
@@ -208,7 +208,7 @@ class QUABO:
     # set high voltage for all 4 channels
     #
     def hv_set(self, values):
-        self.logger.info('hv_set: val - %d %d %d %d'%(values[0], values[1], values[2], values[3]))
+        self.logger.info(f'hv_set: val - {values[0]} {values[1]} {values[2]} {values[3]}')
         cmd = self.make_cmd(0x02)
         for i in range(4):
             cmd[2*i+2] = values[i] & 0xff
@@ -250,7 +250,7 @@ class QUABO:
         self.send(cmd)
 
     def focus(self, steps):      # 1 to 50000, 0 to recalibrate
-        self.logger.info('focus: steps - %d'%steps)
+        self.logger.info(f'focus: steps - {steps}')
         endzone = 300
         backoff = 200
         step_ontime = 10000
@@ -273,7 +273,7 @@ class QUABO:
         self.send(cmd)
 
     def shutter(self, closed):
-        self.logger.info('shutter: %d'%closed)
+        self.logger.info(f'shutter: {closed}')
         cmd = self.make_cmd(0x05)
         self.shutter_open = 0 if closed else 1
         self.shutter_power = 1
@@ -289,7 +289,7 @@ class QUABO:
         self.send(cmd)
 
     def fan(self, fanspeed):     # fanspeed is 0..15
-        self.logger.info('fan: speed - %d'%fanspeed)
+        self.logger.info(f'fan: speed - {fanspeed}')
         self.fanspeed = fanspeed
         cmd = self.make_cmd(0x85)
         cmd[6] = self.shutter_open | (self.shutter_power<<1)
@@ -300,14 +300,14 @@ class QUABO:
         self.flush_rx_buf()
 
     def shutter_new(self, closed):
-        self.logger.info('shutter_new: %d'%closed)
+        self.logger.info(f'shutter_new: {closed}')
         cmd = self.make_cmd(0x08)
         cmd[1] = 0x01 if closed else 0x0
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
     def lf(self, val):
-        self.logger.info('lf: val - %d'%val)
+        self.logger.info(f'lf: val - {val}')
         cmd = self.make_cmd(0x09)
         cmd[1] = 0x01 if val else 0x0
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
@@ -340,16 +340,16 @@ class QUABO:
                     'CMD_FSB'       , 'CMD_SS'      , 'CMD_FSU']            
         # add GAIN to the tag list
         for i in range(64):
-            tag_list.append('GAIN%d'%(i))
+            tag_list.append(f'GAIN{i}')
         # add CTEST to the tag list
         for i in range(64):
-            tag_list.append('CTEST_%d'%(i))
+            tag_list.append(f'CTEST_{i}')
         # add MASKOR1 to the tag list
         for i in range(64):
-            tag_list.append('MASKOR1_%d'%(i))
+            tag_list.append(f'MASKOR1_{i}')
         # added MASKOR2 to the tag list
         for i in range(64):
-            tag_list.append('MASKOR2_%d'%(i))
+            tag_list.append(f'MASKOR2_{i}')
         
         # get the maroc config params from config
         for tag in tag_list:
@@ -368,7 +368,7 @@ class QUABO:
         # create the tag list
         tag_list = []
         for i in range(9):
-            tag_list.append('CHANMASK_%d'%(i))
+            tag_list.append(f'CHANMASK_{i}')
         # get trigger mask params from config
         for tag in tag_list:
             cfg[tag] = hex(config[tag])
@@ -460,7 +460,7 @@ class QUABO:
 # IMPLEMENTATION STUFF FOLLOWS
 
     def send(self, cmd):
-        self.logger.debug('send: %d bytes'%len(cmd))
+        self.logger.debug(f'send: {len(cmd)} bytes')
         self.sock.sendto(bytes(cmd), (self.ip_addr, self.port))
 
     def make_cmd(self, cmd):
@@ -486,18 +486,20 @@ class QUABO:
     def parse_hv_params(self, fhand, cmd):
         self.logger.info('parse_hv_params')
         for line in fhand:
-            if line.startswith("*"): continue
+            if line.startswith("*"):
+                continue
             #strip off the comment
             strippedline = line.split('*')[0]
             #Split the tag field from the cs value field
             fields = strippedline.split("=")
-            if len(fields) !=2: continue
+            if len(fields) !=2:
+                continue
             tag = fields[0].strip()
             if (tag.startswith("HV")):
                 chan = tag.split('_')[1]
                 chan = int(chan)
                 val = int(fields[1],0)
-                self.logger.debug('chan - %d, val - %d'%(chan, val))
+                self.logger.debug(f'chan - {chan}, val - {val}')
                 self.HV_vals[chan]=val
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
@@ -507,12 +509,14 @@ class QUABO:
     def parse_trigger_mask(self, fhand, cmd):
         self.logger.info('parse_trigger_mask')
         for line in fhand:
-            if line.startswith("*"): continue
+            if line.startswith("*"):
+                continue
             #strip off the comment
             strippedline = line.split('*')[0]
             #Split the tag field from the cs value field
             fields = strippedline.split("=")
-            if len(fields) !=2: continue
+            if len(fields) !=2:
+                continue
             tag = fields[0].strip()
             chan_mask = [0,0,0,0,0,0,0,0,0]
             if (tag.startswith("CHANMASK")):
@@ -520,7 +524,7 @@ class QUABO:
                 chan = int(chan)
                 val = int(fields[1],0)
                 chan_mask[chan]=val
-                self.logger.debug('chan - %d, val - 0x%x'%(chan, val))
+                self.logger.debug(f'chan - {chan}, val - 0x{val:x}')
                 for _i in range (4):
                     cmd[4*chan+4]=val & 0xff
                     cmd[4*chan+5]=(val>>8) & 0xff
@@ -530,12 +534,14 @@ class QUABO:
     def parse_goe_mask(self, fhand, cmd):
         self.logger.info('parse_goe_mask')
         for line in fhand:
-            if line.startswith("*"): continue
+            if line.startswith("*"):
+                continue
             #strip off the comment
             strippedline = line.split('*')[0]
             #Split the tag field from the cs value field
             fields = strippedline.split("=")
-            if len(fields) !=2: continue
+            if len(fields) !=2:
+                continue
             tag = fields[0].strip()
             if (tag.startswith("GOEMASK")):
                 val = int(fields[1],0)
@@ -545,12 +551,14 @@ class QUABO:
     def parse_acq_parameters(self, fhand, cmd):
         self.logger.info('parse_acq_paramters')
         for line in fhand:
-            if line.startswith("*"): continue
+            if line.startswith("*"):
+                continue
             #strip off the comment
             strippedline = line.split('*')[0]
             #Split the tag field from the cs value field
             fields = strippedline.split("=")
-            if len(fields) !=2: continue
+            if len(fields) !=2:
+                continue
             tag = fields[0].strip()
             if (tag == "ACQMODE"):
                 val = int(fields[1],0)
@@ -561,84 +569,84 @@ class QUABO:
                 cmd[3]=MSbyte
             if (tag == "ACQINT"):
                 val = int(fields[1],0)
-                self.logger.debug('ACQINT - %d'%val)
+                self.logger.debug(f'ACQINT - {val}')
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
                 cmd[4]=LSbyte
                 cmd[5]=MSbyte
             if (tag == "HOLD1"):
                 val = int(fields[1],0)
-                self.logger.debug('HOLD1 - %d'%val)
+                self.logger.debug(f'HOLD1 - {val}')
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
                 cmd[6]=LSbyte
                 cmd[7]=MSbyte
             if (tag == "HOLD2"):
                 val = int(fields[1],0)
-                self.logger.debug('HOLD2 - %d'%val)
+                self.logger.debug(f'HOLD2 - {val}')
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
                 cmd[8]=LSbyte
                 cmd[9]=MSbyte
             if (tag == "ADCCLKPH"):
                 val = int(fields[1],0)
-                self.logger.debug('ADCCLKPH - %d'%val)
+                self.logger.debug(f'ADCCLKPH - {val}')
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
                 cmd[10]=LSbyte
                 cmd[11]=MSbyte
             if (tag == "MONCHAN"):
                 val = int(fields[1],0)
-                self.logger.debug('MONCHAN   - %d'%val)
+                self.logger.debug(f'MONCHAN   - {val}')
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
                 cmd[12]=LSbyte
                 cmd[13]=MSbyte
             if (tag == "STIMON"):
                 val = int(fields[1],0)
-                self.logger.debug('STIMON - %d'%val)
+                self.logger.debug(f'STIMON - {val}')
                 LSbyte = val & 0x01
                 MSbyte = 0
                 cmd[14]=LSbyte
                 cmd[15]=MSbyte
             if (tag == "STIM_LEVEL"):
                 val = int(fields[1],0)
-                self.logger.debug('STIM_LEVEL - %d'%val)
+                self.logger.debug(f'STIM_LEVEL - {val}')
                 LSbyte = val & 0xff
                 MSbyte = 0
                 cmd[16]=LSbyte
                 cmd[17]=MSbyte
             if (tag == "STIM_RATE"):
                 val = int(fields[1],0)
-                self.logger.debug('STIM_RATE - %d'%val)
+                self.logger.debug(f'STIM_RATE - {val}')
                 LSbyte = val & 0xff
                 MSbyte = 0
                 cmd[18]=LSbyte
                 cmd[19]=MSbyte
             if (tag == "EN_WR_UART"):
                 val = int(fields[1],0)
-                self.logger.debug('EN_WR_UART - %d'%val)
+                self.logger.debug(f'EN_WR_UART - {val}')
                 LSbyte = val & 0x01
                 MSbyte = 0
                 cmd[20]=LSbyte
                 cmd[21]=MSbyte
             if (tag == "FLASH_RATE"):
                 val = int(fields[1],0)
-                self.logger.debug('FLASH_RATE - %d'%val)
+                self.logger.debug(f'FLASH_RATE - {val}')
                 LSbyte = val & 0x07
                 MSbyte = 0
                 cmd[22]=LSbyte
                 cmd[23]=MSbyte
             if (tag == "FLASH_LEVEL"):
                 val = int(fields[1],0)
-                self.logger.debug('FLASH_LEVEL - %d'%val)
+                self.logger.debug(f'FLASH_LEVEL - {val}')
                 LSbyte = val & 0x1f
                 MSbyte = 0
                 cmd[24]=LSbyte
                 cmd[25]=MSbyte
             if (tag == "FLASH_WIDTH"):
                 val = int(fields[1],0)
-                self.logger.debug('FLASH_WIDTH - %d'%val)
+                self.logger.debug(f'FLASH_WIDTH - {val}')
                 LSbyte = val & 0x0f
                 MSbyte = 0
                 cmd[26]=LSbyte

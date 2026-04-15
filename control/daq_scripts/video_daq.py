@@ -20,7 +20,7 @@ def main(dp, nsecs, module):
     if not run:
         print('no run')
         return
-    dir = 'module_%d/%s'%(module, run)
+    dir = f'module_{module}/{run}'
 
     files = glob(f'{dir}/*{dp}*.pff')
     nfiles = len(files) 

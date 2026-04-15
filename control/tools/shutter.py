@@ -41,7 +41,7 @@ def shutterop(ip, port, op):
         opstr = 'close'
     else:
         opstr = 'open'
-    logger.info('%s shutter on %s:%d'%(opstr,ip, port))
+    logger.info(f'{opstr} shutter on {ip}:{port}')
     quabo = quabo_driver.QUABO(ip, port)
     quabo.shutter_new(op)
 
@@ -69,7 +69,7 @@ def main():
             real_ip = ip_ports['ip_addr']
             real_port = ip_ports['cmd_port']
             logger.debug(f'Quabo IP: {real_ip}')
-            logger.debug('Real IP: %d'%real_port)
+            logger.debug(f'Real IP: {real_port}')
             shutterop(real_ip, real_port, op)
 
 if __name__ == "__main__":

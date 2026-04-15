@@ -185,7 +185,7 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
                 cmd_port = ip_ports['cmd_port']
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
-                logger.info('Cmd Port: %d'%cmd_port)
+                logger.info(f'Cmd Port: {cmd_port}')
                 quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 if verbose:
                     print(f'setting HK packet dest to {head_node_ip_addr} on quabo {ip_addr}')
@@ -236,22 +236,17 @@ def make_run_dirs(run_name, daq_config):
         ip_addr = node['ip_addr']
         if ip_addr in my_ip:
             for module in node['modules']:
-                cmd = 'mkdir -p %s/module_%d/%s'%(
-                    daq_config['head_node_data_dir'],
-                    module['id'], run_name
-                )
+                cmd = f'mkdir -p {daq_config["head_node_data_dir"]}/module_{module["id"]}/{run_name}'
                 if verbose:
                     print(cmd)
                 ret = os.system(cmd)
-                if ret: raise Exception('%s returned %d'%(cmd, ret))
+                if ret: raise Exception(f'{cmd} returned {ret}')
         else:
             username = node['username']
             data_dir = node['data_dir']
             rcmds = [f'mkdir {data_dir}/{run_name}']
             for module in node['modules']:
-                rcmds.append('mkdir -p %s/module_%d/%s'%(
-                    data_dir, module['id'], run_name
-                ))
+                rcmds.append(f'mkdir -p {data_dir}/module_{module["id"]}/{run_name}')
             # create process snapshot
             rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
             rcmd = ';'.join(rcmds)
@@ -261,14 +256,14 @@ def make_run_dirs(run_name, daq_config):
                 port = node['port_forwarding']['port']
                 logger.info('Use port forwarding')
                 logger.info(f'Real IP: {real_ip}')
-                logger.info('Port: %d'%port)
-                cmd = 'ssh -p %d %s@%s "%s"'%(port, username, real_ip, rcmd)
+                logger.info(f'Port: {port}')
+                cmd = f'ssh -p {port} {username}@{real_ip} "{rcmd}"'
             else:
                 cmd = f'ssh {username}@{ip_addr} "{rcmd}"'
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
-            if ret: raise Exception('%s returned %d'%(cmd, ret))
+            if ret: raise Exception(f'{cmd} returned {ret}')
 
     # copy config files to DAQ nodes
     file_xfer.copy_config_files(daq_config, run_name, verbose)

@@ -104,13 +104,13 @@ def show_config(obs_config, quabo_uids):
         for module in dome['modules']:
             module_id = module['id']
             ip_addr = module['ip_addr']
-            print('   module ID %d'%module_id)
+            print(f'   module ID {module_id}')
             print('      Mobo serial#: {}'.format(module['mobo_serialno']))
             for i in range(4):
                 quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
-                print('      quabo %d'%i)
+                print(f'      quabo {i}')
                 print(f'         IP addr: {quabo_ip}')
-    #print("This node's IP addr: %s"%util.local_ip())
+    #print(f"This node's IP addr: {util.local_ip()}")
     config_file.show_daq_assignments(quabo_uids)
 
 # compute available recording time, given data config and free disk space.
@@ -133,7 +133,7 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
         reboot_port = ip_ports['reboot_port']
         logger.info(f'Quabo IP: {ip_addr}')
         logger.info(f'Real IP: {real_ip}')
-        logger.info('Reboot port: %d'%reboot_port)
+        logger.info(f'Reboot port: {reboot_port}')
         x = tftpw(real_ip, reboot_port)
         x.reboot()
         # wait for the board to reboot
@@ -184,7 +184,7 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
         reboot_port = ip_ports['reboot_port']
         logger.info(f'Quabo IP: {ip_addr}')
         logger.info(f'Real IP: {real_ip}')
-        logger.info('Reboot port: %d'%reboot_port)
+        logger.info(f'Reboot port: {reboot_port}')
         x = tftpw(real_ip, reboot_port)
         # check timing mode, and only use it on Quabo0
         if i == 0:
@@ -331,7 +331,7 @@ def do_hk_dest(modules, quabo_uids, daq_config, network_config):
             cmd_port = ip_ports['cmd_port']
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
-            logger.info('Cmd Port: %d'%cmd_port)
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hk_packet_destination(headnode_ip_addr)
             quabo.close()
@@ -355,14 +355,12 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, ver
             cmd_port = ip_ports['cmd_port']
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
-            logger.info('Cmd Port: %d'%cmd_port)
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
             if verbose:
-                print('%s: set HV to [%d %d %d %d]'%(
-                    ip_addr, v[0], v[1], v[2], v[3]
-                ))
+                print(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
 
 def do_hv_off(modules, quabo_uids, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_hv_off')
@@ -377,7 +375,7 @@ def do_hv_off(modules, quabo_uids, network_config):
             cmd_port = ip_ports['cmd_port']
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
-            logger.info('Cmd Port: %d'%cmd_port)
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
@@ -426,7 +424,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     is_qfp = False
                     no_cali = True
                 else:
-                    raise Exception(f'No calibration file is found for {ip_addr}')
+                    raise Exception(f'No calibration file is found for {ip_addr}') from None
             serialno = qi['serialno'][3:]
             # try to find the detector overvoltage in data_config.json
             # if we can't find it, we will use 3v by default.
@@ -464,11 +462,11 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 if do_ph:
                     dac2[j] = int(ah*gain*pe_thresh2 + bh)
             if do_img:
-                qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
+                qc_dict['DAC1'] = f'{dac1[0]},{dac1[1]},{dac1[2]},{dac1[3]}'
                 if verbose:
                     print('{}: DAC1 = {}'.format(ip_addr, qc_dict['DAC1'])) 
             if do_ph:
-                qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
+                qc_dict['DAC2'] = f'{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}'
                 if verbose:
                     print('{}: DAC2 = {}'.format(ip_addr, qc_dict['DAC2']))
             # compute GAIN0[]..GAIN63[] based on calibration data
@@ -482,11 +480,8 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     g = int(round(gain*(1+delta)))
                     maroc_gain[k][j] = g
             for k in range(64):
-                tag = 'GAIN%d'%k
-                qc_dict[tag] = '%d,%d,%d,%d'%(
-                    maroc_gain[k][0], maroc_gain[k][1],
-                    maroc_gain[k][2], maroc_gain[k][3]
-                )
+                tag = f'GAIN{k}'
+                qc_dict[tag] = f'{maroc_gain[k][0]},{maroc_gain[k][1]},{maroc_gain[k][2]},{maroc_gain[k][3]}'
                 if verbose:
                     print(f'{ip_addr}: {tag} = {qc_dict[tag]}')
             # set D1_D2 based on the two_pixel_trigger and three_pixel_trigger in data_config.json
@@ -499,7 +494,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     do_three_pixel_trigger = data_config['pulse_height']['three_pixel_trigger']
             # if using 2/3 pixel trigger, D1_D2 should be set to 1,1,1,1
             if do_two_pixel_trigger or do_three_pixel_trigger:
-                qc_dict['D1_D2'] = '%d,%d,%d,%d'%(1,1,1,1)
+                qc_dict['D1_D2'] = '1,1,1,1'
             if verbose:
                 print('{}: {} = {}'.format(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
@@ -509,7 +504,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             if do_log:
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
-                logger.info('Cmd Port: %d'%cmd_port)
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             # For ph mode, we seem to have a bug in firmware.
             # we need to set DAC2 to low, and make the quabos send out data first.
@@ -521,7 +516,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     ah = quad['ah']
                     bh = quad['bh']
                     tmp[j] = int(ah*gain*5.5 + bh)
-                qc_dict['DAC2'] = '%d,%d,%d,%d'%(tmp[0],tmp[1],tmp[2],tmp[3])
+                qc_dict['DAC2'] = f'{tmp[0]},{tmp[1]},{tmp[2]},{tmp[3]}'
                 quabo.send_maroc_params(qc_dict)
                 # make the quabos send out some ph packets
                 """
@@ -542,10 +537,10 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 quabo.send_daq_params(daq_stop)
                 """
                 # set the DAC2 values back
-                qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
+                qc_dict['DAC2'] = f'{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}'
             if no_cali:
                 # print('**************************************************************************')
-                # print('Warning: No calibration data for the board with UID: %s'%uid)
+                # print(f'Warning: No calibration data for the board with UID: {uid}')
                 # print('         Using default calibration data.')
                 # print('**************************************************************************')
                 if do_log:
@@ -605,7 +600,7 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
             if do_log:
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
-                logger.info('Cmd Port: %d'%cmd_port)
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
             if write_config:
@@ -630,7 +625,7 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             cmd_port = ip_ports['cmd_port']
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
-            logger.info('Cmd Port: %d'%cmd_port)
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
@@ -687,7 +682,7 @@ def do_disk_space(data_config, daq_config, verbose=False):
     logger.info('Check disk space.')
     bps = util.daq_bytes_per_sec_per_module(data_config)
     if verbose:
-        print('Data rate per module: %.2f MB/sec'%(bps/1e6))
+        print(f'Data rate per module: {bps/1e6:.2f} MB/sec')
     nmod_total = 0
     available_hours = 1e9
 
@@ -700,7 +695,7 @@ def do_disk_space(data_config, daq_config, verbose=False):
         nmod_total += nmod
         ip_addr = node['ip_addr']
         if verbose:
-            print('DAQ node %s: %d modules'%(ip_addr, nmod))
+            print(f'DAQ node {ip_addr}: {nmod} modules')
 
         # get list of volumes on the DAQ node
         #
@@ -745,7 +740,7 @@ def do_disk_space(data_config, daq_config, verbose=False):
                     available_hours = t
             else:
                 if verbose:
-                    print('      space: %.2fTB'%(free/1e12))
+                    print(f'      space: {free/1e12:.2f}TB')
     # TODO: this is hard-coded??
     head_node_vols = json.loads(open("/home/panosetigraph/web/head_node_volumes.json").read())
     hnd = daq_config['head_node_data_dir']

@@ -249,7 +249,7 @@ def load_sites_from_mountconf(path: str) -> dict[str, SiteCfg]:
             try:
                 ssh_port = int(str(raw[3]).strip())
             except Exception:
-                raise ValueError(f"Invalid ssh_port for site {name!r} in {path}: {raw[3]!r}")
+                raise ValueError(f"Invalid ssh_port for site {name!r} in {path}: {raw[3]!r}") from None
 
             if name:
                 sites[name] = SiteCfg(name=name, ssh_user=ssh_user, ssh_host=ssh_host, ssh_port=ssh_port)

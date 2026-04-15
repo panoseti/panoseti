@@ -18,6 +18,8 @@ import logging
 import os
 import signal
 import sys
+import socket
+import time
 from argparse import ArgumentParser
 
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -25,7 +27,25 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 from driver import quabo_driver
 from tools.interleave import PID_FILE
 from utils import collect, config_file, pff
-from utils.util import *
+from utils.util import (
+    attach_daq_config,
+    collect_complete_filename,
+    create_logger,
+    daq_grpc_endpoint,
+    get_quabo_ip_port,
+    hk_symlink,
+    img_symlink,
+    kill_hk_recorder,
+    kill_hv_updater,
+    kill_module_temp_monitor,
+    local_ip,
+    now_str,
+    ph_symlink,
+    read_run_name,
+    recording_ended_filename,
+    remove_run_name,
+    run_complete_filename,
+)
 
 
 def stop_interleave(retry_limit=10):
@@ -143,7 +163,7 @@ def stop_data_flow(quabo_uids, network_config):
                 cmd_port = ip_ports['cmd_port']
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
-                logger.info('Cmd Port: %d'%cmd_port)
+                logger.info(f'Cmd Port: {cmd_port}')
                 quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 quabo.send_daq_params(daq_params)
                 quabo.close()
@@ -234,7 +254,7 @@ def _cleanup_daq_grpc(daq_config, run_dir, head_run_dir, verbose):
                 print(cmd)
             ret = os.system(cmd)
             if ret:
-                log_error('cleanup_daq (local): %s returned %d' % (cmd, ret), head_run_dir)
+                log_error(f'cleanup_daq (local): {cmd} returned {ret}', head_run_dir)
         else:
             module_ids = [m['id'] for m in node.get('modules', [])]
             grpc_host, grpc_port = daq_grpc_endpoint(node)

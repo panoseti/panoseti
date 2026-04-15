@@ -186,9 +186,9 @@ def mac_addr_str(bytes):
 
 def print_binary(data):
     n = len(data)
-    print('got %d bytes'%n)
+    print(f'got {n} bytes')
     for i in range(n):
-        print("%d: %d"%(i, data[i]))
+        print(f"{i}: {data[i]}")
 
 #-------------- QUABO OPS ---------------
 

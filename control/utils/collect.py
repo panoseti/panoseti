@@ -26,15 +26,12 @@ def collect_data(daq_config, run_dir, verbose=False):
             if node['ip_addr'] in my_ip:
                 # head node is also a DAQ node.
                 # Move files locally; if different volume, this will copy
-                cmd = 'mv %s/module_%d/%s/* %s/%s'%(
-                    node['data_dir'], module_id, run_dir,
-                    daq_config['head_node_data_dir'], run_dir
-                )
+                cmd = f"mv {node['data_dir']}/module_{module_id}/{run_dir}/* {daq_config['head_node_data_dir']}/{run_dir}"
                 if verbose:
                     print(cmd)
                 ret = os.system(cmd)
                 if ret:
-                    error_msg += 'command %s failed: %d'%(cmd, ret)
+                    error_msg += f'command {cmd} failed: {ret}'
             else:
                 error_msg += file_xfer.copy_dir_from_node(
                     run_dir, daq_config, node, module_id, verbose
@@ -61,16 +58,14 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                 print(cmd)
             ret = os.system(cmd)
             if ret:
-                error_msg += 'cleanup_daq(): %s returned %d '%(cmd, ret)
+                error_msg += f'cleanup_daq(): {cmd} returned {ret} '
         else:
             rcmd = 'rm -rf {}/module_*/{}; rm -rf {}/{}'.format(
                 node['data_dir'], run_dir,
                 node['data_dir'], run_dir
             )
             if 'port_forwarding' in node:
-                cmd = 'ssh -p %d %s@%s "%s"'%(
-                    node['port_forwarding']['port'], node['username'], node['port_forwarding']['gw_ip'], rcmd
-                )
+                cmd = f"ssh -p {node['port_forwarding']['port']} {node['username']}@{node['port_forwarding']['gw_ip']} \"{rcmd}\""
             else:
                 cmd = 'ssh {}@{} "{}"'.format(
                     node['username'], node['ip_addr'], rcmd
@@ -79,7 +74,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                 print(cmd)
             ret = os.system(cmd)
             if ret:
-                error_msg += 'cleanup_daq(): %s returned %d '%(cmd, ret)
+                error_msg += f'cleanup_daq(): {cmd} returned {ret} '
     return error_msg
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ class TestIpAddrStrToBytes:
             ip_addr_str_to_bytes("192.168.1.1.1")
 
     def test_empty_string_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="bad IP addr"):
             ip_addr_str_to_bytes("")
 
     def test_octet_above_255_raises(self):

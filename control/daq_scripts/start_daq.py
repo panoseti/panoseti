@@ -86,13 +86,13 @@ def main():
 
     f = open('module.config', 'w')
     for id in module_ids:
-        f.write('%d\n'%id)
+        f.write(f'{id}\n')
     f.close()
 
     # create the run script
 
     f = open('run_hashpipe.sh', 'w')
-    f.write('hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="%s" -o MAXFILESIZE=%d -o GROUPPHFRAMES=%d -o RUNDIR="%s" -o CONFIG="./module.config" -o OBS="%s" net_thread compute_thread  output_thread > %s/%s%s'%(bindhost, max_file_size_mb, group_ph_frames, run_dir, obs, run_dir, util.hp_stdout_prefix, daq_ip_addr))
+    f.write(f'hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="{bindhost}" -o MAXFILESIZE={max_file_size_mb} -o GROUPPHFRAMES={group_ph_frames} -o RUNDIR="{run_dir}" -o CONFIG="./module.config" -o OBS="{obs}" net_thread compute_thread  output_thread > {run_dir}/{util.hp_stdout_prefix}{daq_ip_addr}')
     f.close()
 
     # run the script
@@ -112,7 +112,7 @@ def main():
     try:
         child_pid = int(result.stdout)
     except:
-        raise Exception(f"can't get hashpipe PID; it may have crashed: {result.stdout}")
+        raise Exception(f"can't get hashpipe PID; it may have crashed: {result.stdout}") from None
 
     # write it to a file
 

@@ -81,7 +81,7 @@ step_offtime = 10000
 #Four 104-byte arrays in which to form the 829-bit sequences to be sent to the MAROC chips
 #the LS Bit of byte[0] of each array will be sent out first, and is the ON/OFF_otabg bit
 MAROC_regs=[]
-for i in range (4):
+for _i in range (4):
     MAROC_regs.append([0 for x in range(104)])
 
 #Store the HV values so we can update one at a time if we want
@@ -444,7 +444,7 @@ def send_trigger_mask(fhand):
             chan = int(chan)
             val = int(fields[1],0)
             chan_mask[chan]=val
-            for i in range (4):
+            for _i in range (4):
                 cmd_payload[4*chan+4]=val & 0xff
                 cmd_payload[4*chan+5]=(val>>8) & 0xff
                 cmd_payload[4*chan+6]=(val>>16) & 0xff
@@ -785,7 +785,7 @@ while True:
                 print('PH MAC: ', mac1)
                 print('IM MAC: ', mac2)
             else:
-                print('data length is incorrect: expect 12 bytes, but got %d'%len(reply[0]))
+                print(f'data length is incorrect: expect 12 bytes, but got {len(reply[0])}')
         except:
             print('No data received.')
     elif inp == 'HK-IP':

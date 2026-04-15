@@ -355,7 +355,7 @@ if __name__ == "__main__":
         logger.warning('detector_overvoltage is not set in data_config.json')
         logger.warning('Use the default overvoltage: 3V.')
     else:
-        logger.info('Use the overvoltage: %d'%data_config['detector_overvoltage'])
+        logger.info(f"Use the overvoltage: {data_config['detector_overvoltage']}")
     try:
         main()
     except Exception as e:
