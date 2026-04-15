@@ -7,12 +7,9 @@ minimal config dicts and verifying the ValidationReport outcome.
 No hardware or network access required.
 """
 
-import os
 import pytest
-from unittest.mock import patch
 
 from utils.global_validator import GlobalConfigValidator
-
 
 # ---------------------------------------------------------------------------
 # Helpers

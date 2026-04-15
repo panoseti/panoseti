@@ -12,15 +12,11 @@ Topology (from docker-compose.integration.yml):
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 
-from panoseti_grpc.daq_control.client import DaqControlClient
-
 from .conftest import (
-    DAQNODE_DIRECT_HOST, DAQNODE_GATEWAY_HOST, GRPC_PORT,
-    wait_hashpipe_running, wait_hashpipe_stopped,
+    wait_hashpipe_running,
+    wait_hashpipe_stopped,
 )
 
 

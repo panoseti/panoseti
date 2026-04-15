@@ -10,10 +10,9 @@ We also add control/utils/ for modules that use bare `import pff` style imports
 
 import io
 import json
+import os
 import struct
 import sys
-import os
-from unittest.mock import MagicMock
 
 import pytest
 

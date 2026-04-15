@@ -23,18 +23,12 @@ Function-scoped fixtures: each test gets a fresh hashpipe run.
 """
 from __future__ import annotations
 
-import os
-import time
-import pathlib
 from itertools import islice
 
 import pytest
 
 from .conftest import (
-    DAQ_DATA_DIR,
-    DAQNODE_DATA_HOST,
     copy_run_dir,
-    wait_hashpipe_running,
     wait_hashpipe_stopped,
     wait_until,
 )
@@ -48,7 +42,6 @@ pytest.importorskip(
     reason="panoseti_grpc.daq_data not available",
 )
 
-from panoseti_grpc.daq_data.client import DaqDataClient  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Tests

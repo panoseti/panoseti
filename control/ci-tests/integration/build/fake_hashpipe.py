@@ -17,7 +17,6 @@ via a Docker volume — no container changes needed.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import signal
 import sys

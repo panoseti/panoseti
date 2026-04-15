@@ -10,18 +10,11 @@ concurrent StartDaq calls work without interference.
 """
 from __future__ import annotations
 
-import time
 import uuid
 
 import pytest
 
-from panoseti_grpc.daq_control.client import DaqControlClient
-
-from .conftest import (
-    DAQ_DATA_DIR, BINDHOST,
-    wait_hashpipe_stopped, wait_hashpipe_running
-)
-
+from .conftest import BINDHOST, DAQ_DATA_DIR, wait_hashpipe_running, wait_hashpipe_stopped
 
 # ---------------------------------------------------------------------------
 # Node-2 run parameters (different module and run_dir from the default fixture)

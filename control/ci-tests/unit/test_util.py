@@ -10,16 +10,15 @@ No hardware or network access required.
 """
 
 import datetime
-import re
+
 import pytest
 
 from utils.util import (
-    ip_addr_str_to_bytes,
-    now_str,
     get_daemons,
     get_permanent_daemons,
+    ip_addr_str_to_bytes,
+    now_str,
 )
-
 
 # ===========================================================================
 # ip_addr_str_to_bytes

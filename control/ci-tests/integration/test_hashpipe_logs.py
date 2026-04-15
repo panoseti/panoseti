@@ -9,13 +9,15 @@ which writes them to Redis (logs:ingress). storeLoki.py then ships them to Loki.
 """
 from __future__ import annotations
 
-import time
-
 import pytest
 import requests
 
-
-from .conftest import LOKI_URL, REDIS_HOST, DAQ_DATA_DIR, wait_hashpipe_running, wait_hashpipe_stopped, wait_until
+from .conftest import (
+    LOKI_URL,
+    wait_hashpipe_running,
+    wait_hashpipe_stopped,
+    wait_until,
+)
 
 
 def _loki_query(query: str, limit: int = 50) -> list:

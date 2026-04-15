@@ -7,12 +7,11 @@ connections, validating that gRPC topology works end-to-end for both paths.
 from __future__ import annotations
 
 import pytest
-
 from panoseti_grpc.daq_control.client import DaqControlClient
 
 from .conftest import (
-    DAQNODE_DIRECT_HOST, DAQNODE_GATEWAY_HOST, GRPC_PORT,
-    wait_hashpipe_running, wait_hashpipe_stopped,
+    wait_hashpipe_running,
+    wait_hashpipe_stopped,
 )
 
 

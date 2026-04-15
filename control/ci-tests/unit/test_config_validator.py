@@ -7,15 +7,11 @@ Unit tests for control/utils/config_validator.py:
 """
 from __future__ import annotations
 
-import io
 import socket
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from utils.config_validator import print_compact_config, perform_network_ping_sweep
-
+from utils.config_validator import perform_network_ping_sweep, print_compact_config
 
 # ===========================================================================
 # TestPrintCompactConfig

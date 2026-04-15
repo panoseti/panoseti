@@ -13,27 +13,22 @@ Packet format reference:
 """
 from __future__ import annotations
 
-import json
-import logging
+import os
 import socket
 import struct
-import sys
-import os
 
 import pytest
 
 # Ensure control/ is on the path (pyproject.toml sets pythonpath=["."])
 from driver.quabo_driver import (
-    QUABO,
-    DAQ_PARAMS,
     ACQ_IMAGE,
-    ACQ_PULSE_HEIGHT,
     ACQ_IMAGE_8BIT,
     ACQ_NO_BASELINE_SUBTRACT,
+    ACQ_PULSE_HEIGHT,
+    DAQ_PARAMS,
+    QUABO,
     UDP_CMD_PORT,
-    UDP_HK_PORT,
 )
-
 
 # ---------------------------------------------------------------------------
 # FakeSocket — captures sendto() calls and optionally injects responses

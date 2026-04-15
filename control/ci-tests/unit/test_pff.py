@@ -14,16 +14,11 @@ No hardware required.
 
 import io
 import json
-import math
 import struct
-import tempfile
-import os
-import re
 
 import pytest
 
 from utils import pff
-
 
 # ===========================================================================
 # parse_name

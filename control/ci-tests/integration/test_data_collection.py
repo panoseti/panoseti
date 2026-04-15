@@ -18,17 +18,13 @@ from __future__ import annotations
 import pathlib
 import time
 
-import pytest
-
-from panoseti_grpc.daq_control.client import DaqControlClient
-
 from .conftest import (
-    DAQ_DATA_DIR, HEAD_DATA_DIR,
-    copy_run_dir, start_copy_background,
-    wait_hashpipe_stopped, wait_hashpipe_running,
-    wait_grpc_reachable
+    copy_run_dir,
+    start_copy_background,
+    wait_grpc_reachable,
+    wait_hashpipe_running,
+    wait_hashpipe_stopped,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helper: wait until module data directories exist on daqnode

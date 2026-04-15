@@ -1,8 +1,4 @@
 services:
-  # ---------------------------------------------------------------------------
-  # Redis — needed for redis_utils tests (via fakeredis, no live Redis needed
-  # for unit tests, but here for integration tests that hit a real instance)
-  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     ports:
@@ -13,9 +9,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # ---------------------------------------------------------------------------
-  # Unit test runner
-  # ---------------------------------------------------------------------------
   unit-test-runner:
     build:
       context: ..
@@ -32,9 +25,7 @@ services:
       # Mount repo for live edits during local development
       - ..:/app
     working_dir: /app
-    command: >
-      pytest ci-tests/unit/ -v --tb=short
-        --color=yes
-        -p no:cacheprovider
+    # Keeps container running in the background for `qa.py` execution
+    command: ["sleep", "infinity"]
     profiles:
       - unit

@@ -6,13 +6,11 @@ using the real tcpreplay -> hashpipe -> UDS pipeline.
 """
 from __future__ import annotations
 
-import os
 import asyncio
-import time
 
 import pytest
-
 from panoseti_grpc.daq_data.client import AioDaqDataClient
+
 from .conftest import (
     DAQNODE_DATA_HOST,
     DAQNODE_GATEWAY_HOST,

@@ -14,8 +14,6 @@ import shutil
 import sys
 import tempfile
 
-import pytest
-
 from .conftest import CONTROL_DIR
 
 INTEGRATION_CONFIGS = CONTROL_DIR / "ci-tests" / "integration" / "configs"

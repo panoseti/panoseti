@@ -9,15 +9,14 @@ Covers:
   - get_updated_redis_keys: timestamp-based change detection
 """
 
-import pytest
 import fakeredis
+import pytest
 
 from utils.redis_utils import (
-    store_in_redis,
     get_casted_redis_value,
     get_updated_redis_keys,
+    store_in_redis,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

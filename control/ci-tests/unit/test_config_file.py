@@ -7,23 +7,21 @@ module→DAQ-node assignment utilities.  No hardware required.
 """
 
 import json
-import os
+
 import pytest
-import tempfile
 
 from utils.config_file import (
-    ip_addr_to_module_id,
-    quabo_ip_addr,
-    get_boardloc,
-    string_to_list,
-    expand_ranges,
-    module_id_to_daq_node,
     assign_numbers,
-    load_and_validate,
+    expand_ranges,
+    get_boardloc,
     get_modules,
+    ip_addr_to_module_id,
+    load_and_validate,
+    module_id_to_daq_node,
+    quabo_ip_addr,
+    string_to_list,
 )
 from utils.pydantic_config_models import DataConfigValidator
-
 
 # ===========================================================================
 # ip_addr_to_module_id

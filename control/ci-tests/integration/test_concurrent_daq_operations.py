@@ -9,19 +9,20 @@ Tests:
 """
 from __future__ import annotations
 
-import time
-import uuid
 import concurrent.futures
+import uuid
 
 import pytest
-
 from panoseti_grpc.daq_control.client import DaqControlClient
 
 from .conftest import (
-    DAQNODE_DIRECT_HOST, GRPC_PORT, DAQ_DATA_DIR, BINDHOST,
-    wait_hashpipe_running, wait_hashpipe_stopped,
+    BINDHOST,
+    DAQ_DATA_DIR,
+    DAQNODE_DIRECT_HOST,
+    GRPC_PORT,
+    wait_hashpipe_running,
+    wait_hashpipe_stopped,
 )
-
 
 # ---------------------------------------------------------------------------
 # Extra run_params fixture for concurrent tests (distinct module + run_dir

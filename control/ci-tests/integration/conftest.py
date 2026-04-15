@@ -18,18 +18,17 @@ Environment variables (set by docker-compose.integration.yml):
 """
 from __future__ import annotations
 
-import os
 import json
-import sys
+import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from typing import Callable
 
 import pytest
-
 from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.daq_data.client import DaqDataClient
 
@@ -242,6 +241,7 @@ if control_root not in sys.path:
     sys.path.insert(0, control_root)
     
 from utils import config_file
+
 
 def get_daq_and_network_config(kind="direct") -> tuple[dict, dict | None]:
     """(daq_config.json, network_config.json) for clients connected:

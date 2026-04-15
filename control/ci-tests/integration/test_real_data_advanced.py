@@ -5,15 +5,14 @@ Validates throughput, timing, consistency, and concurrency under real load.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import time
-import asyncio
 
 import pytest
-
 from panoseti_grpc.daq_data.client import AioDaqDataClient
+
 from .conftest import (
-    REAL_HP_IO_CFG,
     DAQNODE_DATA_HOST,
     copy_run_dir,
     wait_hashpipe_stopped,
@@ -24,8 +23,8 @@ from .conftest import (
 # ---------------------------------------------------------------------------
 # Guard
 # ---------------------------------------------------------------------------
-if not os.getenv("RUN_REAL_DATA_TESTS"):
-    pytest.skip("Skipping real hashpipe data tests. Set RUN_REAL_DATA_TESTS=1", allow_module_level=True)
+# if not os.getenv("RUN_REAL_DATA_TESTS"):
+#     pytest.skip("Skipping real hashpipe data tests. Set RUN_REAL_DATA_TESTS=1", allow_module_level=True)
 
 
 class TestRealDataAdvanced:

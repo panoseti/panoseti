@@ -186,7 +186,7 @@ class TestLokiPipeline:
                         return   # close enough — Loki may JSON-encode the outer wrapper
             time.sleep(0.2)
         pytest.fail(
-            f"Large 5000-char payload did not appear (or was truncated) in Loki within 20s"
+            "Large 5000-char payload did not appear (or was truncated) in Loki within 20s"
         )
 
     def test_burst_logging_all_entries_arrive(self, redis_client):

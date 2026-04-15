@@ -1,25 +1,3 @@
-# docker-compose.integration.yml — PANOSETI end-to-end integration test environment.
-#
-# Topology:
-#
-#   headnode_net (10.0.1.0/24):
-#     test-runner (10.0.1.5)   — runs pytest integration suite
-#     gateway     (10.0.1.254) — socat TCP bridge to daqnode_net
-#     redis       (10.0.1.20)  — telemetry log queue + storeLoki pipeline
-#     loki        (10.0.1.21)  — log aggregation (storeLoki ships here)
-#     headnode    (10.0.1.22)  — Telemetry gRPC (50051) + storeLoki daemon
-#
-#   daqnode_net (192.168.0.0/24) — also has headnode_net IPs for grpc_logging:
-#     daqnode     (192.168.0.10 / 10.0.1.10) — unified gRPC server + hashpipe
-#     daqnode-2   (192.168.0.20 / 10.0.1.11) — unified gRPC server
-#     gateway     (192.168.0.254) — socat bridge (same container, dual NIC)
-#
-# Environment variable overrides (for hardware CI):
-#   DAQNODE_DIRECT_HOST   — direct IP of real DAQ node    (default: 192.168.0.10)
-#   DAQNODE_GATEWAY_HOST  — gateway IP for forwarded access (default: 10.0.1.254)
-#   GRPC_PORT             — gRPC port                      (default: 50051)
-#
-
 networks:
   headnode_net:
     driver: bridge
@@ -33,14 +11,11 @@ networks:
         - subnet: 192.168.0.0/24
 
 volumes:
-  daq_data:    # shared between daqnode and test-runner for data collection tests
-  daq_data_2:  # private volume for daqnode-2 — isolated to avoid module.config conflicts
+  daq_data:
+  daq_data_2:
 
 services:
 
-  # ---------------------------------------------------------------------------
-  # Redis — telemetry log queue + storeLoki pipeline
-  # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     networks:
@@ -52,54 +27,31 @@ services:
       timeout: 2s
       retries: 10
 
-  # ---------------------------------------------------------------------------
-  # Loki — log aggregation (storeLoki ships logs here)
-  # ---------------------------------------------------------------------------
   loki:
     image: grafana/loki:3.7.0
     networks:
       headnode_net:
         ipv4_address: 10.0.1.21
-    # command: 
-    #   - "-config.file=/etc/loki/local-config.yaml"
-    #   - "-ingester.lifecycler.join-after=0s"
-    #   - "-ingester.lifecycler.min-ready-duration=0s"
-    # healthcheck:
-    #   test: ["CMD", "loki", "-health"]
-    #   interval: 2s
-    #   timeout: 3s
-    #   retries: 12
 
-  # ---------------------------------------------------------------------------
-  # Gateway — socat TCP bridge simulating a NAT/VPN router
-  # ---------------------------------------------------------------------------
   gateway:
     image: alpine/socat
     networks:
       headnode_net:
-        ipv4_address: 10.0.1.254
+        ipv4_address: ${DAQNODE_GATEWAY_HOST}
       daqnode_net:
         ipv4_address: 192.168.0.254
     volumes:
       - ./integration/build/gateway_setup.sh:/gateway_setup.sh:ro
     entrypoint: ["sh", "/gateway_setup.sh"]
     environment:
-      DAQNODE_IP: "192.168.0.10"
+      DAQNODE_IP: "${DAQNODE_DIRECT_HOST}"
     healthcheck:
-      # nc -z scans for listening daemons without sending any data.
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 50051 || exit 1"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${GRPC_PORT} || exit 1"]
       interval: 3s
       timeout: 2s
       retries: 5
       start_period: 2s
 
-  # ---------------------------------------------------------------------------
-  # Headnode — Telemetry gRPC service (50051) + storeLoki daemon
-  #
-  # The Telemetry service receives gRPC log records from DAQ nodes
-  # (grpc_logging=true in daqnode server.toml) and writes to Redis.
-  # storeLoki then ships the Redis logs:ingress list to Loki.
-  # ---------------------------------------------------------------------------
   headnode:
     build:
       context: ../
@@ -107,10 +59,12 @@ services:
       target: integration-headnode
     networks:
       headnode_net:
-        ipv4_address: 10.0.1.22
+        ipv4_address: ${HEADNODE_HOST}
+    volumes:
+      - ..:/app
     environment:
-      REDIS_HOST: "10.0.1.20"
-      LOKI_URL:   "http://10.0.1.21:3100"
+      REDIS_HOST: "${REDIS_HOST}"
+      LOKI_URL:   "${LOKI_URL}"
       PYTHONDONTWRITEBYTECODE: "1"
     depends_on:
       redis:
@@ -121,20 +75,12 @@ services:
       /bin/sh -c "panoseti-server --config /app/ci-tests/integration/configs/headnode/server.toml &
       exec python daemons/storeLoki.py"
     healthcheck:
-      # Healthy when the Telemetry gRPC port is open
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
 
-  # ---------------------------------------------------------------------------
-  # DAQ node — unified gRPC server (daq_data + daq_control, port 50051) + hashpipe
-  #
-  # The unified server eliminates the old two-container split (daqnode +
-  # daqnode-daqdata-snoop). hashpipe UDS sockets live in the container's own
-  # /tmp — no shared volume needed.
-  # ---------------------------------------------------------------------------
   daqnode:
     build:
       context: ../
@@ -142,9 +88,9 @@ services:
       target: integration-daqnode
     networks:
       headnode_net:
-        ipv4_address: 10.0.1.10   # dual-homed: can reach headnode (10.0.1.22) for grpc_logging
+        ipv4_address: 10.0.1.10
       daqnode_net:
-        ipv4_address: 192.168.0.10
+        ipv4_address: ${DAQNODE_DIRECT_HOST}
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -153,22 +99,19 @@ services:
     shm_size: '1gb'
     volumes:
       - daq_data:/data
+      - ..:/app
     environment:
-      GRPC_PORT:          "50051"
-      BINDHOST:           "lo"
-      HEADNODE_IP:        "10.0.1.22"
-      HEADNODE_GRPC_PORT: "50051"
+      GRPC_PORT:          "${GRPC_PORT}"
+      BINDHOST:           "${BINDHOST}"
+      HEADNODE_IP:        "${HEADNODE_HOST}"
+      HEADNODE_GRPC_PORT: "${GRPC_PORT}"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
 
-  # ---------------------------------------------------------------------------
-  # Second DAQ node — for two-node integration tests.
-  # Mirrors daqnode with an isolated data volume.
-  # ---------------------------------------------------------------------------
   daqnode-2:
     build:
       context: ../
@@ -176,9 +119,9 @@ services:
       target: integration-daqnode
     networks:
       headnode_net:
-        ipv4_address: 10.0.1.11   # dual-homed: can reach headnode for grpc_logging
+        ipv4_address: 10.0.1.11
       daqnode_net:
-        ipv4_address: 192.168.0.20
+        ipv4_address: ${DAQNODE2_HOST}
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -186,22 +129,20 @@ services:
       - SYS_NICE
     shm_size: '1gb'
     volumes:
-      - daq_data_2:/data   # isolated — prevents module.config conflicts with daqnode
+      - daq_data_2:/data
+      - ..:/app
     environment:
-      GRPC_PORT:          "50051"
-      BINDHOST:           "lo"
-      HEADNODE_IP:        "10.0.1.22"
-      HEADNODE_GRPC_PORT: "50051"
+      GRPC_PORT:          "${GRPC_PORT}"
+      BINDHOST:           "${BINDHOST}"
+      HEADNODE_IP:        "${HEADNODE_HOST}"
+      HEADNODE_GRPC_PORT: "${GRPC_PORT}"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',50051)); s.close()\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
 
-  # ---------------------------------------------------------------------------
-  # Test runner — runs pytest ci-tests/integration/
-  # ---------------------------------------------------------------------------
   int-tester:
     build:
       context: ../
@@ -215,16 +156,17 @@ services:
     volumes:
       - daq_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/app
     environment:
-      DAQNODE_DIRECT_HOST:    "${DAQNODE_DIRECT_HOST:-192.168.0.10}"
-      DAQNODE_GATEWAY_HOST:   "${DAQNODE_GATEWAY_HOST:-10.0.1.254}"
-      DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST:-192.168.0.10}"
-      DAQNODE2_HOST:          "${DAQNODE2_HOST:-192.168.0.20}"
-      HEADNODE_HOST:          "10.0.1.22"
-      BINDHOST:               "${BINDHOST:-lo}"
-      GRPC_PORT:              "${GRPC_PORT:-50051}"
-      LOKI_URL:               "http://10.0.1.21:3100"
-      REDIS_HOST:             "10.0.1.20"
+      DAQNODE_DIRECT_HOST:    "${DAQNODE_DIRECT_HOST}"
+      DAQNODE_GATEWAY_HOST:   "${DAQNODE_GATEWAY_HOST}"
+      DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST}"
+      DAQNODE2_HOST:          "${DAQNODE2_HOST}"
+      HEADNODE_HOST:          "${HEADNODE_HOST}"
+      BINDHOST:               "${BINDHOST}"
+      GRPC_PORT:              "${GRPC_PORT}"
+      LOKI_URL:               "${LOKI_URL}"
+      REDIS_HOST:             "${REDIS_HOST}"
       DAQ_DATA_DIR:           "/data"
       HEAD_DATA_DIR:          "/data/head"
       DAQNODE_CONTAINER_NAME: "ctl-int-daqnode-1"
@@ -242,4 +184,4 @@ services:
         condition: service_started
       headnode:
         condition: service_healthy
-    command: ["sh", "-c", "pytest ci-tests/integration/ -v --tb=auto --showlocals --color=yes --timeout=60 ${PYTEST_ARGS:-}"]
+    command: ["sleep", "infinity"]

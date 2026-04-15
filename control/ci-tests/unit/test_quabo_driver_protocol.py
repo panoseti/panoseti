@@ -23,18 +23,16 @@ import struct
 import pytest
 
 from driver.quabo_driver import (
-    QUABO,
-    DAQ_PARAMS,
     ACQ_IMAGE,
-    ACQ_PULSE_HEIGHT,
     ACQ_IMAGE_8BIT,
     ACQ_NO_BASELINE_SUBTRACT,
-    UDP_CMD_PORT,
-    UDP_HK_PORT,
+    ACQ_PULSE_HEIGHT,
+    DAQ_PARAMS,
+    QUABO,
     SERIAL_COMMAND_LENGTH,
+    UDP_CMD_PORT,
 )
-from utils.config_file import ip_addr_to_module_id, get_boardloc
-
+from utils.config_file import get_boardloc, ip_addr_to_module_id
 
 # ===========================================================================
 # FakeSocket + fixture (local copy — avoids cross-file import coupling)

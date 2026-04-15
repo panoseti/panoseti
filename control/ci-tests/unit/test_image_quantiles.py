@@ -9,18 +9,12 @@ Note: image_quantiles.py uses `import pff` (bare import).
 The conftest.py adds control/utils/ to sys.path so this resolves correctly.
 """
 
-import io
 import json
-import os
 import struct
-import tempfile
-
-import pytest
 
 # These imports rely on conftest.py adding control/utils/ to sys.path
 import image_quantiles
-import pff as pff_module  # bare import, same as image_quantiles uses
-
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers
