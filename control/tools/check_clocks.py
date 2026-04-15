@@ -100,7 +100,7 @@ class check_clocks:
             if(recv_byte == b'\x10' and last_recv_byte == b'\x10'):
                 pass
             else:
-                if(timestamp == False):
+                if(not timestamp):
                     t_host = time.time()
                     timestamp = True
                 data += recv_byte
@@ -114,7 +114,7 @@ class check_clocks:
                     id = data[1:3]
                     if id == b'\x8f\xab':
                         gps_time = self._parse_primary_packet(data[2:dataSize-2])
-                        if(gps_time !=None):
+                        if(gps_time is not None):
                             recv_state = False
                 data = b''
                 dataSize = 0

@@ -109,7 +109,7 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
                     rkey = f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}'
                     # Get this Quabo's detector and fpga temperatures, if they exist.
                     if rkey.encode('utf-8') not in r.keys():
-                        raise Warning("%s is not tracked in Redis." % rkey)
+                        raise Warning(f"{rkey} is not tracked in Redis.")
                     else:
                         temps = get_redis_temps(r, rkey)
                 except Warning as werr:
@@ -172,7 +172,6 @@ def main():
         logger.info('Please start redis daemons')
         return
     print("module_temp_monitor: Running...")
-    startup = True
     while True:
         time.sleep(UPDATE_INTERVAL)
         wps_to_turn_off = check_all_module_temps(obs_config, wps_to_modules, r)

@@ -90,7 +90,7 @@ def storeInRedis(packet, r:redis.Redis):
     # The byte with offset 2 <= n <= 63 in the HK packet is obtained as follows:
     #              array[(n - 2) // 2] & 0x00FF, if n is even
     #       (array[(n - 2) // 2] & 0xFF00) >> 8, if n is odd.
-    for i, sign in zip(range(2,len(packet), 2), signed):
+    for i, sign in zip(range(2,len(packet), 2), signed, strict=False):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
 
 

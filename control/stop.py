@@ -119,9 +119,9 @@ builtins.print = print
 #
 def log_error(msg, run_dir):
     print(msg)
-    log_path = '%s/stop_errors'%run_dir if run_dir else 'stop_errors'
+    log_path = f'{run_dir}/stop_errors' if run_dir else 'stop_errors'
     with open(log_path, 'a') as f:
-        f.write('%s: %s\n'%(now_str(), msg))
+        f.write(f'{now_str()}: {msg}\n')
 
 # tell the quabos to stop sending data
 #
@@ -141,8 +141,8 @@ def stop_data_flow(quabo_uids, network_config):
                 ip_ports = get_quabo_ip_port(base_ip_addr, i, network_config)
                 real_ip = ip_ports['ip_addr']
                 cmd_port = ip_ports['cmd_port']
-                logger.info('Quabo IP: %s'%ip_addr)
-                logger.info('Real IP: %s'%real_ip)
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
                 logger.info('Cmd Port: %d'%cmd_port)
                 quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 quabo.send_daq_params(daq_params)
@@ -170,12 +170,12 @@ def stop_recording(daq_config, run_dir, verbose):
 # write a "complete file" in the run dir
 #
 def write_complete_file(run_dir, filename):
-    path = '%s/%s'%(run_dir, filename)
+    path = f'{run_dir}/{filename}'
     with open(path , 'w') as f:
         f.write(now_str())
 
 def complete_file_exists(run_dir, filename):
-    path = '%s/%s'%(run_dir, filename)
+    path = f'{run_dir}/{filename}'
     return os.path.exists(path)
 
 # make symlinks to the first nonempty image and ph files in that dir
@@ -191,7 +191,7 @@ def make_links(run_dir, verbose):
     did_ph = False
     did_hk = False
     for f in os.listdir(run_dir):
-        path = '%s/%s'%(run_dir, f)
+        path = f'{run_dir}/{f}'
         if not pff.is_pff_file(path): continue
         if os.path.getsize(path) == 0: continue
         ftype = pff.pff_file_type(f)
@@ -199,17 +199,17 @@ def make_links(run_dir, verbose):
             os.symlink(path, img_symlink)
             did_img = True
             if verbose:
-                print('linked %s to %s'%(img_symlink, f))
+                print(f'linked {img_symlink} to {f}')
         elif not did_ph and ftype in ['ph256', 'ph1024']:
             os.symlink(path, ph_symlink)
             did_ph = True
             if verbose:
-                print('linked %s to %s'%(ph_symlink, f))
+                print(f'linked {ph_symlink} to {f}')
         elif not did_hk and ftype == 'hk':
             os.symlink(path, hk_symlink)
             did_hk = True
             if verbose:
-                print('linked %s to %s'%(hk_symlink, f))
+                print(f'linked {hk_symlink} to {f}')
         if did_img and did_ph and did_hk: break
     if not did_img:
         print('make_links(): No nonempty image file')
@@ -229,7 +229,7 @@ def _cleanup_daq_grpc(daq_config, run_dir, head_run_dir, verbose):
     for node in daq_config['daq_nodes']:
         if node['ip_addr'] in my_ip:
             # Head node is also DAQ node: local rm -rf (same as before)
-            cmd = 'rm -rf %s/module_*/%s' % (node['data_dir'], run_dir)
+            cmd = 'rm -rf {}/module_*/{}'.format(node['data_dir'], run_dir)
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
@@ -262,7 +262,7 @@ def stop_run(
     head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
     if head_node_ip not in local_ip():
         raise Exception(
-            'This computer (%s) is not the head node specified in daq_config.json (%s)'%(
+            'This computer ({}) is not the head node specified in daq_config.json ({})'.format(
                 local_ip(), daq_config['head_node_ip_addr']
             )
         )
@@ -270,7 +270,7 @@ def stop_run(
     if not run:
         run = read_run_name()
     data_dir = daq_config['head_node_data_dir']
-    run_dir = '%s/%s'%(data_dir, run)
+    run_dir = f'{data_dir}/{run}'
     if not os.path.exists(run_dir):
         run_dir = None
 
@@ -307,7 +307,7 @@ def stop_run(
                 _cleanup_daq_grpc(daq_config, run, run_dir, verbose)
             make_links(run_dir, verbose)
             write_complete_file(run_dir, run_complete_filename)
-            print('completed run %s'%run)
+            print(f'completed run {run}')
         else:
             log_error(collect_error, run_dir)
         remove_run_name()

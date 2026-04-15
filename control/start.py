@@ -183,27 +183,23 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
                 ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
                 real_ip = ip_ports['ip_addr']
                 cmd_port = ip_ports['cmd_port']
-                logger.info('Quabo IP: %s'%ip_addr)
-                logger.info('Real IP: %s'%real_ip)
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
                 logger.info('Cmd Port: %d'%cmd_port)
                 quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 if verbose:
-                    print('setting HK packet dest to %s on quabo %s'%(
-                        head_node_ip_addr, ip_addr
-                    ))
+                    print(f'setting HK packet dest to {head_node_ip_addr} on quabo {ip_addr}')
                 quabo.hk_packet_destination(head_node_ip_addr)
                 if verbose:
-                    print('setting data packet dest to %s on quabo %s'%(
-                        daq_node_ip_addr, ip_addr
-                    ))
+                    print(f'setting data packet dest to {daq_node_ip_addr} on quabo {ip_addr}')
                 quabo.data_packet_destination(daq_node_ip_addr)
                 if verbose:
-                    print('setting DAQ mode on quabo %s'%ip_addr)
+                    print(f'setting DAQ mode on quabo {ip_addr}')
                 quabo.send_daq_params(daq_params)
                 quabo.close()
             # send software 1PPS
             time.sleep(0.5)
-            logger.info('Send software 1PPS to %s'%(base_ip_addr))
+            logger.info(f'Send software 1PPS to {base_ip_addr}')
             ip_ports = util.get_quabo_ip_port(base_ip_addr, 0, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
@@ -221,16 +217,16 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
 def make_run_dirs(run_name, daq_config):
     logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
-    run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
+    run_dir = '{}/{}'.format(daq_config['head_node_data_dir'], run_name)
     os.mkdir(run_dir)
 
     # copy config files to run dir on this node
-    local_data_dir = daq_config['head_node_data_dir']
+    daq_config['head_node_data_dir']
     for f in config_file.config_file_names:
         files = glob(f)
         for file in files:
             fparts = file.split('/')
-            shutil.copyfile(file, '%s/%s'%(run_dir, fparts[-1]))
+            shutil.copyfile(file, f'{run_dir}/{fparts[-1]}')
      
     # make module and run directories on DAQ nodes
     #
@@ -251,24 +247,24 @@ def make_run_dirs(run_name, daq_config):
         else:
             username = node['username']
             data_dir = node['data_dir']
-            rcmds = ['mkdir %s/%s'%(data_dir, run_name)]
+            rcmds = [f'mkdir {data_dir}/{run_name}']
             for module in node['modules']:
                 rcmds.append('mkdir -p %s/module_%d/%s'%(
                     data_dir, module['id'], run_name
                 ))
             # create process snapshot
-            rcmds.append('cd %s/%s; ps -ux > pss_%s.log'%(data_dir,run_name, ip_addr))
+            rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
             rcmd = ';'.join(rcmds)
-            logger.info('DAQ IP: %s'%ip_addr)
+            logger.info(f'DAQ IP: {ip_addr}')
             if 'port_forwarding' in node:
                 real_ip = node['port_forwarding']['gw_ip']
                 port = node['port_forwarding']['port']
                 logger.info('Use port forwarding')
-                logger.info('Real IP: %s'%real_ip)
+                logger.info(f'Real IP: {real_ip}')
                 logger.info('Port: %d'%port)
                 cmd = 'ssh -p %d %s@%s "%s"'%(port, username, real_ip, rcmd)
             else:
-                cmd = 'ssh %s@%s "%s"'%(username, ip_addr, rcmd)
+                cmd = f'ssh {username}@{ip_addr} "{rcmd}"'
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
@@ -285,7 +281,7 @@ def make_run_dirs(run_name, daq_config):
 #
 def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
     logger = logging.getLogger('PANOSETI.Start.start_recording')
-    my_ip = util.local_ip()
+    util.local_ip()
 
     # start recording HK data
     util.start_hk_recorder(daq_config, run_name)
@@ -336,12 +332,12 @@ def start_run(
     # convert head node name to IP address
     head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
     if  head_node_ip not in my_ip:
-        print('This node (%s) is not the head node specified in daq_config.json (%s)'%(my_ip, daq_config['head_node_ip_addr']))
+        print('This node ({}) is not the head node specified in daq_config.json ({})'.format(my_ip, daq_config['head_node_ip_addr']))
         return False
 
     rn = util.read_run_name()
     if (rn):
-        print('A run is already in progress: %s' %rn)
+        print(f'A run is already in progress: {rn}')
         print('Run stop.py, then try again.')
         return False
 
@@ -385,7 +381,7 @@ def start_run(
         print('running stop.py will kill their run.')
         return False
     util.write_run_name(daq_config, run_name)
-    print('started run %s'%run_name)
+    print(f'started run {run_name}')
     return True
 
 if __name__ == "__main__":

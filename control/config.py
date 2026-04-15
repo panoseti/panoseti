@@ -100,16 +100,16 @@ def show_config(obs_config, quabo_uids):
     logger = logging.getLogger('PANOSETI.Config.show_config')
     logger.info('Show config')
     for dome in obs_config['domes']:
-        print('dome %s'%dome['name'])
+        print('dome {}'.format(dome['name']))
         for module in dome['modules']:
             module_id = module['id']
             ip_addr = module['ip_addr']
             print('   module ID %d'%module_id)
-            print('      Mobo serial#: %s'%module['mobo_serialno'])
+            print('      Mobo serial#: {}'.format(module['mobo_serialno']))
             for i in range(4):
                 quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
                 print('      quabo %d'%i)
-                print('         IP addr: %s'%quabo_ip)
+                print(f'         IP addr: {quabo_ip}')
     #print("This node's IP addr: %s"%util.local_ip())
     config_file.show_daq_assignments(quabo_uids)
 
@@ -131,8 +131,8 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
         real_ip = ip_ports['ip_addr']
         cmd_port = ip_ports['cmd_port']
         reboot_port = ip_ports['reboot_port']
-        logger.info('Quabo IP: %s'%ip_addr)
-        logger.info('Real IP: %s'%real_ip)
+        logger.info(f'Quabo IP: {ip_addr}')
+        logger.info(f'Real IP: {real_ip}')
         logger.info('Reboot port: %d'%reboot_port)
         x = tftpw(real_ip, reboot_port)
         x.reboot()
@@ -182,8 +182,8 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
         real_ip = ip_ports['ip_addr']
         cmd_port = ip_ports['cmd_port']
         reboot_port = ip_ports['reboot_port']
-        logger.info('Quabo IP: %s'%ip_addr)
-        logger.info('Real IP: %s'%real_ip)
+        logger.info(f'Quabo IP: {ip_addr}')
+        logger.info(f'Real IP: {real_ip}')
         logger.info('Reboot port: %d'%reboot_port)
         x = tftpw(real_ip, reboot_port)
         # check timing mode, and only use it on Quabo0
@@ -276,16 +276,16 @@ def do_loads(modules, quabo_uids, quabo_info, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             port = ip_ports['reboot_port']
-            logger.info('Real IP: %s'%real_ip)
+            logger.info(f'Real IP: {real_ip}')
             logger.info('Reboot Port: %d', port)
             if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
                 fw = firmware_silver_qfp
-                logger.info('Loading firmware: %s'%firmware_silver_qfp)
+                logger.info(f'Loading firmware: {firmware_silver_qfp}')
             else:
                 fw = firmware_silver_bga
-                logger.info('Loading firmware: %s'%firmware_silver_bga)
+                logger.info(f'Loading firmware: {firmware_silver_bga}')
             x = tftpw(real_ip, port)
-            print('loading %s into %s'%(fw, ip_addr))
+            print(f'loading {fw} into {ip_addr}')
             x.put_bin_file(fw)
 
 def do_loadg(modules):
@@ -304,7 +304,7 @@ def do_ping(modules, network_config, verbose=False):
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             real_ip = ip_ports['ip_addr']
             port = ip_ports['cmd_port']
-            logger.info('Real IP: %s'%real_ip)
+            logger.info(f'Real IP: {real_ip}')
             logger.info('Cmd Port: %d', port)
             if util.ping(real_ip, port):
                 ping_record["ping_true"].append(ip_addr)
@@ -312,15 +312,15 @@ def do_ping(modules, network_config, verbose=False):
                 ping_record["ping_false"].append(ip_addr)
     if verbose:
         for ip in ping_record["ping_true"]:
-            print("pinged %s" % ip)
+            print(f"pinged {ip}")
         for ip in ping_record["ping_false"]:
-            print("can't ping %s" % ip)
+            print(f"can't ping {ip}")
     return ping_record
 
 def do_hk_dest(modules, quabo_uids, daq_config, network_config):
     logger = logging.getLogger('PANOSETI.Config.do_hk_dest')
     headnode_ip_addr = daq_config['head_node_ip_addr']
-    logger.info('Head node IP: %s'%headnode_ip_addr)
+    logger.info(f'Head node IP: {headnode_ip_addr}')
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
@@ -329,8 +329,8 @@ def do_hk_dest(modules, quabo_uids, daq_config, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hk_packet_destination(headnode_ip_addr)
@@ -353,8 +353,8 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, ver
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
@@ -375,13 +375,13 @@ def do_hv_off(modules, quabo_uids, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
-            print('%s: set HV to zero'%ip_addr)
+            print(f'{ip_addr}: set HV to zero')
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
@@ -466,11 +466,11 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             if do_img:
                 qc_dict['DAC1'] = '%d,%d,%d,%d'%(dac1[0], dac1[1], dac1[2], dac1[3])
                 if verbose:
-                    print('%s: DAC1 = %s'%(ip_addr, qc_dict['DAC1'])) 
+                    print('{}: DAC1 = {}'.format(ip_addr, qc_dict['DAC1'])) 
             if do_ph:
                 qc_dict['DAC2'] = '%d,%d,%d,%d'%(dac2[0], dac2[1], dac2[2], dac2[3])
                 if verbose:
-                    print('%s: DAC2 = %s'%(ip_addr, qc_dict['DAC2']))
+                    print('{}: DAC2 = {}'.format(ip_addr, qc_dict['DAC2']))
             # compute GAIN0[]..GAIN63[] based on calibration data
             # TODO: fix indexing
             maroc_gain = [[0]*4 for i in range(64)]
@@ -488,7 +488,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     maroc_gain[k][2], maroc_gain[k][3]
                 )
                 if verbose:
-                    print('%s: %s = %s'%(ip_addr, tag, qc_dict[tag]))
+                    print(f'{ip_addr}: {tag} = {qc_dict[tag]}')
             # set D1_D2 based on the two_pixel_trigger and three_pixel_trigger in data_config.json
             do_two_pixel_trigger = False
             do_three_pixel_trigger = False
@@ -501,14 +501,14 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             if do_two_pixel_trigger or do_three_pixel_trigger:
                 qc_dict['D1_D2'] = '%d,%d,%d,%d'%(1,1,1,1)
             if verbose:
-                print('%s: %s = %s'%(ip_addr, 'D1_D2', qc_dict['D1_D2']))
+                print('{}: {} = {}'.format(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
             if do_log:
-                logger.info('Quabo IP: %s'%ip_addr)
-                logger.info('Real IP: %s'%real_ip)
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
                 logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             # For ph mode, we seem to have a bug in firmware.
@@ -549,7 +549,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 # print('         Using default calibration data.')
                 # print('**************************************************************************')
                 if do_log:
-                    logger.warning('No calibration data: UID -%s'%uid)
+                    logger.warning(f'No calibration data: UID -{uid}')
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             if stim_mask_quaboi[i] == 0:
                 for k in range(64):
@@ -558,7 +558,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                     qc_dict[ctest_key] = "0,0,0,0"
             quabo.send_maroc_params(qc_dict)
             if write_config:
-                quabo.write_maroc_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+                quabo.write_maroc_config(qc_dict, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # set CHANMASK and GOEMASK for modules
@@ -597,22 +597,22 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             for tag in ['CHANMASK_8', 'GOEMASK']:
                 if verbose:
-                    print('%s: %s = 0x%x'%(ip_addr, tag, qc_dict[tag]))
+                    print(f'{ip_addr}: {tag} = 0x{qc_dict[tag]:x}')
             # send MASK params to the quabo
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
             if do_log:
-                logger.info('Quabo IP: %s'%ip_addr)
-                logger.info('Real IP: %s'%real_ip)
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
                 logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
             if write_config:
-                quabo.write_trigger_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+                quabo.write_trigger_mask_config(qc_dict, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.send_goe_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
             if write_config:
-                quabo.write_goe_mask_config(qc_dict, '%s_%s.json'%('tmp/quabo_config',ip_addr))
+                quabo.write_goe_mask_config(qc_dict, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # compute PH baselines on quabos and write to file
@@ -628,8 +628,8 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info('Quabo IP: %s'%ip_addr)
-            logger.info('Real IP: %s'%real_ip)
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
             logger.info('Cmd Port: %d'%cmd_port)
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
@@ -735,12 +735,12 @@ def do_disk_space(data_config, daq_config, verbose=False):
             free = vol['free']
             nmods = len(['mods_here'])
             if verbose:
-                print('   %s:'%name)
+                print(f'   {name}:')
             if nmods:
                 t = free/(3600.*bps*nmods)
                 if verbose:
                     print('      modules: ', vol['mods_here'])
-                    print('      space: %.2fTB (%.2f hours)'%(free/1e12, t))
+                    print(f'      space: {free/1e12:.2f}TB ({t:.2f} hours)')
                 if t < available_hours:
                     available_hours = t
             else:
@@ -752,21 +752,21 @@ def do_disk_space(data_config, daq_config, verbose=False):
     hnd = os.path.realpath(hnd)
     print('head node:')
     for vol in head_node_vols:
-        path = '/home/panosetigraph/web/%s/data'%vol
+        path = f'/home/panosetigraph/web/{vol}/data'
         path = os.path.realpath(path)
         hfree = util.free_space(path)
         if verbose:
-            print('   %s (%s)'%(path, vol))
+            print(f'   {path} ({vol})')
         t = hfree/(3600*bps*nmod_total)
         if hnd == path:
             if t < available_hours:
                 available_hours = t
             if verbose:
                 print('      selected for write')
-        print('      space: %.2fTB (%.2f hours)'%(hfree/1e12, t))
+        print(f'      space: {hfree/1e12:.2f}TB ({t:.2f} hours)')
 
     if verbose:
-        print('---------------\nAvailable recording time: %.2f hours'%available_hours)
+        print(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
     return available_hours
 
 

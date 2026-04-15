@@ -32,7 +32,7 @@ backup_log_path = f'{BACKUP_DIR_PATH}/{backup_log_filename}'
 
 
 def get_backup_folder_path(date):
-    backup_folder_path = '{0}/influx_backup_{1}'.format(BACKUP_DIR_PATH, date.strftime("%Y_%m_%dT%H_%M_%SZ"))
+    backup_folder_path = '{}/influx_backup_{}'.format(BACKUP_DIR_PATH, date.strftime("%Y_%m_%dT%H_%M_%SZ"))
     return backup_folder_path
 
 

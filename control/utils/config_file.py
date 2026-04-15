@@ -146,9 +146,9 @@ def check_config_file(name, dir='.'):
     path = os.path.join(dir, name)
     if not os.path.isfile(path):
     # if not os.path.exists('%s/%s'%(dir, name)):
-        print("The config file '%s' doesn't exist."%name)
-        print("Create a symbolic link from %s to a specific config file, e.g.:"%name)
-        print("   ln -s %s_lick.json %s"%(name.split('.')[0], name))
+        print(f"The config file '{name}' doesn't exist.")
+        print(f"Create a symbolic link from {name} to a specific config file, e.g.:")
+        print("   ln -s {}_lick.json {}".format(name.split('.')[0], name))
 
         sys.exit(1)
 
@@ -166,7 +166,7 @@ def get_data_config(dir='.'):
 
 def get_network_config(dir='.'):
     check_config_file(network_config_filename, dir)
-    path = '%s/%s'%(dir, network_config_filename)
+    path = f'{dir}/{network_config_filename}'
     # as the network config file is not designed to the users,
     # we check it manually, instead of using check_config_file.
     try:
@@ -209,7 +209,7 @@ def get_detector_info():
     d = {}
     with open(obs_config_filename) as f:
         s = f.read()
-    obs_config = json.loads(s)
+    json.loads(s)
     with open(data_config_filename) as f:
         s = f.read()
     data_config = json.loads(s)
@@ -290,8 +290,7 @@ def show_daq_assignments(quabo_uids):
             daq_node = module['daq_node']
             for i in range(4):
                 q = module['quabos'][i]
-                print("data from quabo %s (%s) -> DAQ node %s"
-                    %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
+                print("data from quabo {} ({}) -> DAQ node {}".format(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
                 )
 
 ## Apply global validation

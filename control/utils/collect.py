@@ -54,7 +54,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
     error_msg = ''
     for node in daq_config['daq_nodes']:
         if node['ip_addr'] in my_ip:
-            cmd = 'rm -rf %s/module_*/%s'%(
+            cmd = 'rm -rf {}/module_*/{}'.format(
                 node['data_dir'], run_dir
             )
             if verbose:
@@ -63,7 +63,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
             if ret:
                 error_msg += 'cleanup_daq(): %s returned %d '%(cmd, ret)
         else:
-            rcmd = 'rm -rf %s/module_*/%s; rm -rf %s/%s'%(
+            rcmd = 'rm -rf {}/module_*/{}; rm -rf {}/{}'.format(
                 node['data_dir'], run_dir,
                 node['data_dir'], run_dir
             )
@@ -72,7 +72,7 @@ def cleanup_daq(daq_config, run_dir, verbose=False):
                     node['port_forwarding']['port'], node['username'], node['port_forwarding']['gw_ip'], rcmd
                 )
             else:
-                cmd = 'ssh %s@%s "%s"'%(
+                cmd = 'ssh {}@{} "{}"'.format(
                     node['username'], node['ip_addr'], rcmd
                 )
             if verbose:

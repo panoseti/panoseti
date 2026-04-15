@@ -66,7 +66,7 @@ def run_ssh(ssh_user: str, ssh_host: str, ssh_port: int, remote_argv: list, time
     """Run a remote command via SSH; return stdout or None on error/timeout."""
     try:
         cmd = ["ssh", "-p", str(ssh_port), *SSH_OPTS, f"{ssh_user}@{ssh_host}", *remote_argv]
-        p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if p.returncode != 0:
             return None
         return (p.stdout or "").strip()

@@ -123,8 +123,7 @@ def run_ssh(site: SiteConf, remote_cmd: list[str]) -> str:
     try:
         p = subprocess.run(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             timeout=SSH_TIMEOUT,
         )

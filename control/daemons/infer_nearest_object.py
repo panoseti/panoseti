@@ -85,7 +85,7 @@ class SiteCfg:
 
 
 def run_cmd(cmd: list[str]) -> str:
-    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
         raise RuntimeError(
             "Command failed (rc={}): {}\n{}".format(p.returncode, " ".join(cmd), (p.stderr or "").strip())

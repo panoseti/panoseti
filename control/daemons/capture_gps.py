@@ -59,7 +59,7 @@ def primaryTimingPacket(data, r):
         print(data)
         print('Packet size is ', len(data))
         return
-    tvUTC = str(datetime.now(UTC))
+    str(datetime.now(UTC))
     
     timeofWeek = int.from_bytes(data[1:5], byteorder=BYTEORDER, signed=False)
     

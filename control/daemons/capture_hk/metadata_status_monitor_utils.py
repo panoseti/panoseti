@@ -24,7 +24,7 @@ def write_status(datatype, redis_key, metadata_dict):
     Get the current status redis_key then write it into metadata_dict.
     """
     status = get_status(datatype, metadata_dict)
-    new_status = (redis_key not in status_history) or (status_history[redis_key] != status)
+    (redis_key not in status_history) or (status_history[redis_key] != status)
     status_history[redis_key] = status
     metadata_dict['AGG_STATUS_MSG'] = status[0]
     metadata_dict['AGG_STATUS_LEVEL'] = status[1]

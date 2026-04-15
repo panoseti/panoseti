@@ -247,7 +247,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                         continue
                     # Get this Quabo's temp, if it exists.
                     if rkey.encode('utf-8') not in r.keys():
-                        raise Warning("%s is not tracked in Redis." % rkey)
+                        raise Warning(f"{rkey} is not tracked in Redis.")
                     else:
                         # Get the temperature data for this quabo.
                         temp = get_redis_temp(r, rkey)
@@ -278,7 +278,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                         q_info = quabo_info[uid]
                     except:
                         q_info = quabo_info['default']
-                        logger.warning('No calibration data: UID - %s'%uid)
+                        logger.warning(f'No calibration data: UID - {uid}')
                     detector_serial_nums = [s for s in q_info['detector_serialno']]
                     # record the detector_serial_nums in the quabo_status dict
                     quabo_status[rkey]['detector_serial_nums'] = detector_serial_nums

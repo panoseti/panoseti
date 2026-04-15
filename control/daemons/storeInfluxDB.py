@@ -194,7 +194,7 @@ def extract_redis_payload(r: redis.Redis, rkey: str) -> dict[str, Any] | None:
         raw_hash = r.hgetall(rkey)
         data_fields = {}
 
-        for field_b, val_b in raw_hash.items():
+        for field_b, _val_b in raw_hash.items():
             field = field_b.decode('utf-8')
             # do robust type casting (str -> int/float)
             val = get_casted_redis_value(r, rkey, field)

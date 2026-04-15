@@ -137,7 +137,7 @@ def local_ip():
     """our IP address on local network (192.x.x.x)"""
     ips = []
     # psutil.net_if_addrs() returns a dictionary of interfaces and their addresses
-    for interface, snics in psutil.net_if_addrs().items():
+    for _interface, snics in psutil.net_if_addrs().items():
         for snic in snics:
             # Check if it's an IPv4 address to match your previous logic
             if snic.family == socket.AF_INET:
@@ -151,12 +151,12 @@ def local_ip():
 def ip_addr_str_to_bytes(ip_addr_str):
     pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
-        raise Exception('bad IP addr %s'%ip_addr_str)
+        raise Exception(f'bad IP addr {ip_addr_str}')
     bytes = bytearray(4)
     for i in range(4):
         x = int(pieces[i])
         if x<0 or x>255:
-            raise Exception('bad IP addr %s'%ip_addr_str)
+            raise Exception(f'bad IP addr {ip_addr_str}')
         bytes[i] = x
     return bytes
 
@@ -164,7 +164,7 @@ def ip_addr_str_to_bytes(ip_addr_str):
 # return true if can ping IP addr
 #
 def ping(ip_addr, cmd_port):
-    logger = logging.getLogger('PANOSETI.Config.util.ping')
+    logging.getLogger('PANOSETI.Config.util.ping')
     #return not subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr], capture_output=True).returncode
     # TODO: implement the qping cmd in the firmware
     # For now, we just use the data_packet_destination to see if we can talk to Quabo
@@ -200,7 +200,7 @@ def quabo_uid(module, quabo_uids, i):
             if m['ip_addr'] == module['ip_addr']:
                 q = m['quabos'][i]
                 return q['uid']
-    raise Exception("no module %s found; run get_uids.py"%module['ip_addr'])
+    raise Exception("no module {} found; run get_uids.py".format(module['ip_addr']))
 
 
 # see if quabo is alive by seeing if we got its UID
@@ -229,7 +229,7 @@ def is_quabo_old_version(module, i, quabo_uids, quabo_info):
     try:
         v = quabo_info[uid]['board_version']
     except (KeyError, TypeError):
-        print('uid: %s can\'t be found in quabo_info.json'%uid)
+        print(f'uid: {uid} can\'t be found in quabo_info.json')
         return
     return v == 'qfp'
 
@@ -237,7 +237,7 @@ def is_quabo_old_version(module, i, quabo_uids, quabo_info):
 
 def start_daemon(prog):
     if is_script_running(prog):
-        print('%s is already running'%prog)
+        print(f'{prog} is already running')
         return
     try:
         subprocess.Popen(
@@ -246,9 +246,9 @@ def start_daemon(prog):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     except OSError:
-        print("can't launch %s"%prog)
+        print(f"can't launch {prog}")
         return
-    print('started %s'%prog)
+    print(f'started {prog}')
 
 
 def _stop_daemon(prog, sig=signal.SIGKILL):
@@ -258,7 +258,7 @@ def _stop_daemon(prog, sig=signal.SIGKILL):
     start_daemon uses ['./'+prog], which typically shows up in cmdline as:
       [<python interpreter>, "./<prog>"]
     """
-    target = './%s' % prog
+    target = f'./{prog}'
     for p in psutil.process_iter():
         try:
             c = p.cmdline()
@@ -269,14 +269,14 @@ def _stop_daemon(prog, sig=signal.SIGKILL):
                 os.kill(p.pid, sig)
             except ProcessLookupError:
                 pass
-            print('stopped %s' % prog)
+            print(f'stopped {prog}')
 
 
 def _show_daemon(prog):
     if is_script_running(prog):
-        print('%s is running' % prog)
+        print(f'{prog} is running')
     else:
-        print('%s is not running' % prog)
+        print(f'{prog} is not running')
 
 
 def _are_daemons_running(progs):
@@ -307,7 +307,7 @@ def get_daemons():
     lst = list(redis_daemons)  # copy base list; do NOT mutate global
     for k, v in enabled.items():
         if v:
-            lst.append('daemons/capture_%s.py' % k)
+            lst.append(f'daemons/capture_{k}.py')
     return lst
 
 
@@ -343,7 +343,7 @@ def get_permanent_daemons():
     lst = ['daemons/storeInfluxDB.py']
     for k, v in enabled.items():
         if v:
-            lst.append('daemons/permanent_%s.py' % k)
+            lst.append(f'daemons/permanent_{k}.py')
     return lst
 
 
@@ -367,7 +367,7 @@ def are_permanent_daemons_running():
 
 
 def start_hk_recorder(daq_config, run_name):
-    path = '%s/%s/%s'%(daq_config['head_node_data_dir'], run_name, hk_file_name)
+    path = '{}/{}/{}'.format(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
         subprocess.Popen([hk_recorder_name, path])
     except OSError:
@@ -405,7 +405,7 @@ def write_run_name(daq_config, run_name):
         f.write(run_name)
     if os.path.lexists(run_symlink):
         os.unlink(run_symlink)
-    run_dir = '%s/%s'%(daq_config['head_node_data_dir'], run_name)
+    run_dir = '{}/{}'.format(daq_config['head_node_data_dir'], run_name)
     os.symlink(run_dir, run_symlink, True)
     # record the run name in skymap_info_dir, which will be used by skymap_helper
     shutil.copy(run_name_file, 'tmp/skymap_info_dir')
@@ -444,8 +444,8 @@ def is_script_running(script):
     This version also recognizes '<script>' (without './') to match
     scripts launched via subprocess.Popen([script]) elsewhere in this file.
     """
-    s1 = './%s' % script
-    s2 = '%s' % script
+    s1 = f'./{script}'
+    s2 = f'{script}'
     for p in psutil.process_iter():
         try:
             cmd = p.cmdline()
@@ -518,10 +518,10 @@ def kill_module_temp_monitor():
 #
 def write_log(msg):
     now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
-    print('%s: %s: %s'%(__main__.__file__, now, msg))
+    print(f'{__main__.__file__}: {now}: {msg}')
     try:
         f = open('run/log.txt', 'a')
-        f.write('%s: %s: %s'%(__main__.__file__, now, msg))
+        f.write(f'{__main__.__file__}: {now}: {msg}')
         f.close()
     except OSError:
         f = open('log.txt', 'a')
@@ -530,7 +530,7 @@ def write_log(msg):
 def disk_usage(dir):
     x = 0
     for f in os.listdir(dir):
-        x += os.path.getsize('%s/%s'%(dir, f))
+        x += os.path.getsize(f'{dir}/{f}')
     return x
 
 
@@ -566,8 +566,8 @@ def daq_bytes_per_sec_per_module(data_config):
 def get_daq_node_status(node):
     # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
-        '%s@%s'%(node['username'], node['ip_addr']),
-        'cd %s; ./status_daq.py'%(node['data_dir']),
+        '{}@{}'.format(node['username'], node['ip_addr']),
+        'cd {}; ./status_daq.py'.format(node['data_dir']),
         ],
         stdout = subprocess.PIPE
     )
@@ -621,7 +621,7 @@ def get_quabo_ip_port(ip_addr, i, network_config):
     for m in network_config['modules']:
         if ip_addr == m['ip_addr']:
             p = m['port_forwarding']
-            if p['status'] == True:
+            if p['status']:
                 ip_ports['ip_addr'] = p['gw_ip']
                 ip_ports['reboot_port'] = p['reboot_port'][i]
                 ip_ports['cmd_port'] = p['cmd_port'][i]
@@ -634,7 +634,7 @@ def attach_daq_config(daq_config, network_config):
     for i in range(len(daq_config['daq_nodes'])):
         daq = daq_config['daq_nodes'][i]
         for pdaq in network_config['daq_nodes']:
-             if daq['ip_addr'] == pdaq['ip_addr'] and pdaq['port_forwarding']['status'] == True:
+             if daq['ip_addr'] == pdaq['ip_addr'] and pdaq['port_forwarding']['status']:
                  daq_config['daq_nodes'][i]['port_forwarding'] = pdaq['port_forwarding']
 
 

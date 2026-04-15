@@ -20,7 +20,7 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
     # TODO: daq_config is not used
     dest_path = node['data_dir']
     if run_dir:
-        dest_path += '/%s'%(run_dir)
+        dest_path += f'/{run_dir}'
     else:
         dest_path += '/'
     files = glob(file)
@@ -30,7 +30,7 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
             node['port_forwarding']['port'], f, node['username'], node['port_forwarding']['gw_ip'], dest_path
             )
         else:
-            cmd = 'scp -q %s %s@%s:%s'%(
+            cmd = 'scp -q {} {}@{}:{}'.format(
                 f, node['username'], node['ip_addr'], dest_path
             )
         if verbose:
@@ -48,10 +48,10 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
 #
 def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
     local_data_dir = daq_config['head_node_data_dir']
-    run_dir_path = '%s/%s'%(local_data_dir, run_name)
+    run_dir_path = f'{local_data_dir}/{run_name}'
 
     if not os.path.isdir(run_dir_path):
-        return 'copy_dir_from_node(): no run dir %s'%run_dir_path
+        return f'copy_dir_from_node(): no run dir {run_dir_path}'
         
     # copy stdout from remote node to this node
     if 'port_forwarding' in node:
@@ -61,7 +61,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
             run_dir_path
         )
     else:
-        cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
+        cmd = 'rsync -P {}@{}:{}/{}/{}* {}'.format(
             node['username'], node['ip_addr'],
             node['data_dir'], run_name, util.hp_stdout_prefix,
             run_dir_path
@@ -81,7 +81,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
             run_dir_path
         )
     else:
-        cmd = 'rsync -P %s@%s:%s/%s/%s* %s'%(
+        cmd = 'rsync -P {}@{}:{}/{}/{}* {}'.format(
             node['username'], node['ip_addr'],
             node['data_dir'], run_name, util.pss_prefix,
             run_dir_path
@@ -117,7 +117,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
 #
 def make_remote_dirs(daq_config, dirname):
     for node in daq_config['daq_nodes']:
-        cmd = 'ssh %s@%s "cd %s; mkdir %s"'%(
+        cmd = 'ssh {}@{} "cd {}; mkdir {}"'.format(
             node['username'], node['ip_addr'], node['data_dir'], dirname
         )
         print(cmd)
@@ -141,7 +141,7 @@ def copy_daq_files(daq_config):
     else:
         hashpipe_so_exist = False
         print('**************************************************************************')
-        print('%s does not exist!'%'hashpipe.so')
+        print('{} does not exist!'.format('hashpipe.so'))
         print('clone the submodule and compile it, or compile it on the daq node.')
         print('**************************************************************************')
     for node in daq_config['daq_nodes']:

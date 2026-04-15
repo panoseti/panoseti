@@ -115,7 +115,7 @@ def storeInRedis(packet, r: redis.Redis):
     if int.from_bytes(packet[1:2], byteorder='little') == 0xaa:
         startUp = 1
 
-    for i, sign in zip(range(2, len(packet), 2), signed):
+    for i, sign in zip(range(2, len(packet), 2), signed, strict=False):
         array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
 
     boardName = "QUABO_" + str(array[0])

@@ -64,11 +64,11 @@ def main():
     network_config = config_file.get_network_config()
     for dome in obs_config['domes']:
         for m in dome['modules']:
-            ip = config_file.quabo_ip_addr(m['ip_addr'],1)
+            config_file.quabo_ip_addr(m['ip_addr'],1)
             ip_ports = util.get_quabo_ip_port(m['ip_addr'], 1, network_config)
             real_ip = ip_ports['ip_addr']
             real_port = ip_ports['cmd_port']
-            logger.debug('Quabo IP: %s'%real_ip)
+            logger.debug(f'Quabo IP: {real_ip}')
             logger.debug('Real IP: %d'%real_port)
             shutterop(real_ip, real_port, op)
 

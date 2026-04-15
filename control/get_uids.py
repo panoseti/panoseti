@@ -62,11 +62,13 @@ def get_uid(ip_addr, port):
         x.get_flashuid()
         with open('flashuid', 'rb') as f:
             i = struct.unpack('q', f.read(8))
-            return "%x" % (i[0])
+            return f"{i[0]:x}"
     except:
         return ""
 
-def get_uids(obs_config, network_config, exclude=[]):
+def get_uids(obs_config, network_config, exclude=None):
+    if exclude is None:
+        exclude = []
     quabo_uids = {}
     quabo_uids['domes'] = []
     for d in obs_config['domes']:
@@ -87,9 +89,9 @@ def get_uids(obs_config, network_config, exclude=[]):
                     # TODO: we need to ping the board before get_uid
                     uid = get_uid(real_ip, port)
                     if len(uid):
-                        print("%s has UID %s" % (ip_addr, uid))
+                        print(f"{ip_addr} has UID {uid}")
                     else:
-                        print("%s is offline" % ip_addr)
+                        print(f"{ip_addr} is offline")
                     quabo['uid'] = uid
                 else:
                     quabo['uid'] = ''
@@ -112,7 +114,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
-    if args.exclude == None:
+    if args.exclude is None:
         exclude = []
     else:
         exclude = args.exclude

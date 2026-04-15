@@ -44,9 +44,6 @@ import sys
 import time
 
 #run this under Python 3.x
-if (sys.version_info < (3,0)):
-	print("Must run under python 3.x")
-	quit()
 
 configfilename = "quabo_config.txt"
 baseline_fname = "./quabo_baseline.csv"
@@ -100,7 +97,7 @@ def set_bits(chip, lsb_pos, field_width, value):
     shift = (lsb_pos % 8)
     byte_pos = int((lsb_pos+7-shift)/8)
     mask=0
-    for ii in range(0, field_width):
+    for _ii in range(0, field_width):
         mask = mask << 1
         mask = (mask | 0x1)
     mask = mask << shift
@@ -117,7 +114,7 @@ def set_bits(chip, lsb_pos, field_width, value):
 
 def reverse_bits(data_in, width):
     data_out = 0
-    for ii in range(width):
+    for _ii in range(width):
         data_out = data_out << 1
         if (data_in & 1): data_out = data_out | 1
         data_in = data_in >> 1
@@ -129,7 +126,7 @@ def flush_rx_buf():
     while (dumpcount<32):
         try:
             #print (dumpcount)
-            dumpbytes = sock.recvfrom(2048)
+            sock.recvfrom(2048)
             dumpcount +=1
         except:
             break    
@@ -468,7 +465,6 @@ def send_goe_mask(fhand):
         fields = strippedline.split("=")
         if len(fields) !=2: continue
         tag = fields[0].strip()
-        chan_mask = [0]
         if (tag.startswith("GOEMASK")):
             val = int(fields[1],0)
             print(val)

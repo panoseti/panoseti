@@ -43,7 +43,7 @@ def session_start(obs_config, quabo_info, data_config, daq_config, network_confi
         print('rebooting quabos')
         quabo_uids = config_file.get_quabo_uids()
         status = config.do_reboot(modules, quabo_uids, network_config)
-        if status == False:
+        if not status:
             print('Reboot Failed.')
             return
         else:

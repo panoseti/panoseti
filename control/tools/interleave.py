@@ -82,7 +82,7 @@ class InterleaveController:
             for i in range(4):
                 uid = util.quabo_uid(module, quabo_uids, i)
                 if not uid: continue
-                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
+                config_file.quabo_ip_addr(base_ip_addr, i)
                 ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
                 real_ip = ip_ports['ip_addr']
                 cmd_port = ip_ports['cmd_port']

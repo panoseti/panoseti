@@ -12,13 +12,8 @@ import requests
 # ============================================================
 # === Python version compatibility for type hints (3.7?3.12) ==
 # ============================================================
-if sys.version_info >= (3, 10):
-    StrOrNone = str | None
-    IntOrNone = int | None
-else:
-    from typing import Optional
-    StrOrNone = Optional[str]
-    IntOrNone = Optional[int]
+StrOrNone = str | None
+IntOrNone = int | None
 
 # =====================
 # ====== CONFIG =======
@@ -127,7 +122,7 @@ def fetch_openmeteo_cloudcover(lat, lon, days=4):
     times = data.get("hourly", {}).get("time", []) or []
     cover = data.get("hourly", {}).get("cloudcover", []) or []
     cc = {}
-    for t, c in zip(times, cover):
+    for t, c in zip(times, cover, strict=False):
         t_utc = parse_iso_any(t)
         key = t_utc.strftime("%Y-%m-%dT%H:00Z")
         cc[key] = int(c)
@@ -177,7 +172,7 @@ def build_rows(periods, cloud_map):
         cc = cloud_map.get(key)
 
                 # Convert temperature to °C
-        temp_c = (temp - 32) * 5.0 / 9.0 if temp is not None else None
+        (temp - 32) * 5.0 / 9.0 if temp is not None else None
 
         rows.append({
             "time_utc": fmt_utc(start),

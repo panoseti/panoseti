@@ -26,7 +26,7 @@ def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
     for key in avaliable_keys:
         try:
             compUTC = r.hget(key, 'Computer_UTC')
-            if compUTC == None:
+            if compUTC is None:
                 continue
             if key in key_timestamps and key_timestamps[key] == compUTC.decode("utf-8"):
                 continue

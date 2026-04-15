@@ -63,7 +63,7 @@ def quabo_power(wps, on):
 def quabo_power_query(wps):
     url = wps['url']
     socket = wps['quabo_socket']
-    cmd = 'curl -s %s/status' % (url)
+    cmd = f'curl -s {url}/status'
     out = os.popen(cmd).read()
     off = out.find('state">')
     off += len('state">')
@@ -77,15 +77,15 @@ def do_wps(name, obs_config, op):
     wps = obs_config[name]
     if op == 'query':
         if quabo_power_query(wps):
-            log_print("%s: power is on" % name)
+            log_print(f"{name}: power is on")
         else:
-            log_print("%s: power is off" % name)
+            log_print(f"{name}: power is off")
     elif op == 'on':
         quabo_power(wps, True)
-        log_print("%s: turned power on" % name)
+        log_print(f"{name}: turned power on")
     elif op == 'off':
         quabo_power(wps, False)
-        log_print("%s: turned power off" % name)
+        log_print(f"{name}: turned power off")
 
 
 def do_all(obs_config, op):

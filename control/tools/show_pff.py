@@ -137,7 +137,7 @@ if __name__ == "__main__":
         real_fname = os.path.basename(path)
         dict = pff.parse_name(real_fname)
         if not dict:
-            raise Exception('bad PFF filename %s'%real_fname)
+            raise Exception(f'bad PFF filename {real_fname}')
         dp = dict['dp']
 
         if dp == 'img16' or dp == 'ph1024':
@@ -153,7 +153,7 @@ if __name__ == "__main__":
             bytes_per_pixel = 2
             is_ph = True
         else:
-            raise Exception("bad data product %s"%dp)
+            raise Exception(f"bad data product {dp}")
 
         [min, max] = image_quantiles.get_quantiles(
             fname, image_size, bytes_per_pixel, quantile

@@ -22,10 +22,10 @@ def main(dp, nsecs, module):
         return
     dir = 'module_%d/%s'%(module, run)
 
-    files = glob('%s/*%s*.pff'%(dir,dp))
+    files = glob(f'{dir}/*{dp}*.pff')
     nfiles = len(files) 
     if nfiles == 0:
-        print('no file of type %s'%dp)
+        print(f'no file of type {dp}')
         return
     else:
         file = sorted(files)[-1]
@@ -53,7 +53,7 @@ def main(dp, nsecs, module):
     last_frame = -1
     while True:
         # check if we have a new file
-        files = glob('%s/*%s*.pff'%(dir,dp))
+        files = glob(f'{dir}/*{dp}*.pff')
         if len(files) > nfiles:
             nfiles = len(files)
             f.close()

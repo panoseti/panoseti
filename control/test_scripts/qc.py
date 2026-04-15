@@ -85,7 +85,7 @@ def do_cmd(quabo, words):
     elif cmd == 'HK-IP':
         quabo.hk_packet_destination(words.pop(0))
     else:
-        print('unknown command %s'%cmd)
+        print(f'unknown command {cmd}')
 
     return False
 

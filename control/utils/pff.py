@@ -54,7 +54,7 @@ def read_image(f, img_size, bytes_per_pixel):
         else:
             raise Exception("bad bytes per pixel: %d"%bytes_per_pixel)
     else:
-        raise Exception("bad image size"%img_size)
+        raise Exception("bad image size")
 
 def skip_image(f, img_size, bytes_per_pixel):
     f.seek(img_size*img_size*bytes_per_pixel+1, os.SEEK_CUR)
@@ -105,7 +105,7 @@ def run_dir_name(obs_name, run_type):
     dt = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
-    return 'obs_%s.start_%sZ.runtype_%s.pffd'%(obs_name, dt_str, run_type)
+    return f'obs_{obs_name}.start_{dt_str}Z.runtype_{run_type}.pffd'
 
 def is_pff_dir(name):
     return name.endswith('.pffd')
@@ -137,7 +137,7 @@ def img_header_time(h):
     return t
 
 def img_frame_size(f, bytes_per_image):
-    h = json.loads(read_json(f))
+    json.loads(read_json(f))
     header_size = f.tell()
     frame_size = header_size + bytes_per_image + 1
     return frame_size
@@ -229,7 +229,7 @@ def time_seek(f, frame_time, bytes_per_image, t, verbose=False):
             min_f = new_f
         elif new_t < t + frame_time:
             if verbose:
-                print('new_t %f is close to t %f'%(new_t, t))
+                print(f'new_t {new_t:f} is close to t {t:f}')
             f.seek(new_f*frame_size)
             return
         else:

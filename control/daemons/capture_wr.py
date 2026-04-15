@@ -45,12 +45,12 @@ def wrsSFPCheck(wrs):
     res = wrs.sfppn()
     if(res == -1):
         print('************************************************')
-        print("We can't connect to WR-SWITCH(%s)!"%(wrs.dev))
+        print(f"We can't connect to WR-SWITCH({wrs.dev})!")
         print('************************************************')
     else:
         print('*****************WR-SWITCH SFP CHECK***********************')
         if(res == 0):
-            print('WR-SWITCH(%s) : No sfp transceivers detected!' %(wrs.dev))
+            print(f'WR-SWITCH({wrs.dev}) : No sfp transceivers detected!')
         else:
             failed = 0
             for i in range(len(res)):
@@ -62,12 +62,12 @@ def wrsSFPCheck(wrs):
                         print('WR-SWITCH(%s) : sfp%2d is %-16s[ PASS ]' %(wrs.dev, i+1, res[i]))
             if failed == 0:
                 print(' ')
-                print('WR-SWITCH(%s) : sfp transceivers are checked!' % (wrs.dev))
+                print(f'WR-SWITCH({wrs.dev}) : sfp transceivers are checked!')
                 print(' ')
             else:
                 print(' ')
                 print('Error : Please check the sfp transceivers!!')
-                print('The part number of the sfp transceiver should be %s'%(SFP_PN1))
+                print(f'The part number of the sfp transceiver should be {SFP_PN1}')
                 print(' ')
 
 # check the link status
@@ -76,12 +76,12 @@ def wrsLinkStatusCheck(wrs):
     res = wrs.linkstatus()
     if(res == -1):
         print('********************Error***************************')
-        print("We can't connect to WR-Endpoint(%s)!"%(wrs.dev))
+        print(f"We can't connect to WR-Endpoint({wrs.dev})!")
         print('****************************************************')
     else:
         print('*****************WR-SWITCH LINK CHECK***********************')
         if(res == 0):
-            print('WR-SWITCH(%s) : No sfp transceivers detected!' %(wrs.dev))
+            print(f'WR-SWITCH({wrs.dev}) : No sfp transceivers detected!')
         else:
             for i in range(len(res)):
                 if res[i] == LINK_UP :
@@ -96,17 +96,17 @@ def wrsSoftPLLCheck(wrs):
     res = wrs.pllstatus()
     if(res[0] == -1):
         print('********************Error***************************')
-        print("We can't connect to WR-Endpoint(%s)!"%(wrs.dev))
+        print(f"We can't connect to WR-Endpoint({wrs.dev})!")
         print('****************************************************')
     else:
         print('***************WR-SWITCH SoftPLL CHECK**********************')
         if(res == SOFTPLL_LOCKED):
-            print('WR-SWITCH(%s) SoftPLL Status: %s'%(wrs.dev, 'LOCKED'))
+            print('WR-SWITCH({}) SoftPLL Status: {}'.format(wrs.dev, 'LOCKED'))
         elif(res == SOFTPLL_UNLOCKED):
-            print('WR-SWITCH(%s) SoftPLL Status: %s'%(wrs.dev, 'UNLOCK'))
+            print('WR-SWITCH({}) SoftPLL Status: {}'.format(wrs.dev, 'UNLOCK'))
             print('Please Check 10MHz and 1PPS!!!')
         else:
-            print('WR-SWITCH(%s) SoftPLL Status: %s(%s)'%(wrs.dev, 'WEIRD STATUS', res[0]))
+            print('WR-SWITCH({}) SoftPLL Status: {}({})'.format(wrs.dev, 'WEIRD STATUS', res[0]))
             print('WEIRD STATUS! Please Check 10MHz and 1PPS!!!')
         print(' ')
 
@@ -120,7 +120,7 @@ def initialize():
 
 def main():
     script_dir = Path(__file__).resolve().parent
-    os.environ['MIBDIRS']= '+%s/capture_wr'%str(script_dir)
+    os.environ['MIBDIRS']= f'+{str(script_dir)}/capture_wr'
     wrs, r = initialize()
     # check the current status one time, including sfpPN, link status and softpll status,
     # and print the info out

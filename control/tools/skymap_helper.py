@@ -98,7 +98,7 @@ def create_empty_entry(template='skymap_format.json'):
 def write_complete_entry(skymap_t, host='localhost', port=6379):
     client = redis.Redis(host=host, port=port, db=0)
     runs = client.json().get('runs')
-    if(runs==None):
+    if(runs is None):
         runs = {'runs':[]}
     runs['runs'].append(skymap_t)
     client.json().set('runs', '$', runs)
@@ -129,4 +129,4 @@ def stop_skymap_info_gen(skymap_info_file='skymap_info.json'):
     write_complete_entry(skymap_t)
 
 def copy_skymap_info_to_run_dir(run_dir):
-    os.system('cp skymap_info.json %s'%run_dir)
+    os.system(f'cp skymap_info.json {run_dir}')

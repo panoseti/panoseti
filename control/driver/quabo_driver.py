@@ -78,7 +78,7 @@ class QUABO:
         self.fanspeed = 0
         self.HV_vals = [0,0,0,0]
         self.MAROC_regs = []
-        for i in range (4):
+        for _i in range (4):
             self.MAROC_regs.append([0 for x in range(104)])
         # create a logger (uses panoseti_grpc telemetry if available, stdlib fallback)
         util.create_logger(logfile, 'PANOSETI.Driver', 'a')
@@ -137,7 +137,7 @@ class QUABO:
     def send_maroc_params_file(self):
         self.logger.info('send_maroc_params_file')
         cmd = bytearray(492)
-        with open(self.config_file_path) as f:
+        with open(self.config_file_path):
             config = parse_quabo_config_file(self.config_file_path)
         self.make_maroc_cmd(config, cmd)
         self.flush_rx_buf()
@@ -424,7 +424,7 @@ class QUABO:
     # set destination IP addr for both PH and image packets
     #
     def data_packet_destination(self, ip_addr_str):
-        self.logger.info('data_packet_destination: %s'%ip_addr_str)
+        self.logger.info(f'data_packet_destination: {ip_addr_str}')
         # get the IP address from hostname
         ip_addr_str = socket.gethostbyname(ip_addr_str)
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
@@ -447,7 +447,7 @@ class QUABO:
             return True
 
     def hk_packet_destination(self, ip_addr_str):
-        self.logger.info('hk_packet_destination: %s'%ip_addr_str)
+        self.logger.info(f'hk_packet_destination: {ip_addr_str}')
         # get the IP address from hostname
         ip_addr_str = socket.gethostbyname(ip_addr_str)
         ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
@@ -521,7 +521,7 @@ class QUABO:
                 val = int(fields[1],0)
                 chan_mask[chan]=val
                 self.logger.debug('chan - %d, val - 0x%x'%(chan, val))
-                for i in range (4):
+                for _i in range (4):
                     cmd[4*chan+4]=val & 0xff
                     cmd[4*chan+5]=(val>>8) & 0xff
                     cmd[4*chan+6]=(val>>16) & 0xff
@@ -537,7 +537,6 @@ class QUABO:
             fields = strippedline.split("=")
             if len(fields) !=2: continue
             tag = fields[0].strip()
-            goe_mask = 0
             if (tag.startswith("GOEMASK")):
                 val = int(fields[1],0)
                 cmd[4] = val & 0x03
@@ -555,7 +554,7 @@ class QUABO:
             tag = fields[0].strip()
             if (tag == "ACQMODE"):
                 val = int(fields[1],0)
-                self.logger.debug('ACQMODE - 0x%x'%val)
+                self.logger.debug(f'ACQMODE - 0x{val:x}')
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
                 cmd[2]=LSbyte
@@ -771,7 +770,7 @@ class QUABO:
         shift = (lsb_pos % 8)
         byte_pos = int((lsb_pos+7-shift)/8)
         mask=0
-        for ii in range(0, field_width):
+        for _ii in range(0, field_width):
             mask = mask << 1
             mask = (mask | 0x1)
         mask = mask << shift
@@ -826,7 +825,7 @@ def parse_quabo_config_file(path):
 
 def reverse_bits(data_in, width):
     data_out = 0
-    for ii in range(width):
+    for _ii in range(width):
         data_out = data_out << 1
         if (data_in & 1): data_out = data_out | 1
         data_in = data_in >> 1

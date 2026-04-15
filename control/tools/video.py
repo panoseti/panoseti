@@ -26,7 +26,7 @@ def main(quabo_uids, module_id, dp):
         dome = quabo_uids['domes'][0]
         module = dome['modules'][0]
         module_id = module['id']
-        node = daq_config['daq_nodes'][0]
+        daq_config['daq_nodes'][0]
     else:
         found = False
         for dome in quabo_uids['domes']:
@@ -45,7 +45,7 @@ def main(quabo_uids, module_id, dp):
     )
     print(cmd)
     process = subprocess.Popen(['ssh',
-        '%s@%s'%(daq_node['username'], daq_node['ip_addr']),
+        '{}@{}'.format(daq_node['username'], daq_node['ip_addr']),
         cmd,
         ],
         shell=False, stdout = subprocess.PIPE

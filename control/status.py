@@ -38,7 +38,7 @@ def log_print(*args, **kwargs):
 def status():
     run_name = util.read_run_name()
     if run_name:
-        log_print('Run in progress: %s' % run_name)
+        log_print(f'Run in progress: {run_name}')
     else:
         log_print("No run is in progress")
 
@@ -48,18 +48,18 @@ def status():
         log_print('HK recorder is not running')
 
     # in theory should use config files in run dir
-    obs_config = config_file.get_obs_config()
+    config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
-    data_config = config_file.get_data_config()
+    config_file.get_data_config()
     config_file.associate(daq_config, quabo_uids)
-    my_ip = util.local_ip()
+    util.local_ip()
 
     for node in daq_config['daq_nodes']:
         if not node['modules']:
             continue
         ip_addr = node['ip_addr']
-        log_print('status on DAQ node %s:' % ip_addr)
+        log_print(f'status on DAQ node {ip_addr}:')
         j = util.get_daq_node_status(node)
 
         if j['hashpipe_running']:

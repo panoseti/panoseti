@@ -7,7 +7,7 @@ import pff
 def get_values(file, image_size, bytes_per_pixel, nframes=100):
     fin = open(file, "rb")
     values = []
-    for i in range(nframes):
+    for _i in range(nframes):
         x = pff.read_json(fin)
         if x is None:
             break
