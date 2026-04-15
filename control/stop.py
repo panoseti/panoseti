@@ -14,18 +14,18 @@
 #   --no_cleanup        don't delete files from DAQ nodes
 #   --run X             clean up run X (default: read from current_run)
 
-import os, sys
-from argparse import ArgumentParser
-import signal
 import logging
+import os
+import signal
+import sys
+from argparse import ArgumentParser
 
-from utils import collect
-from driver import quabo_driver
-from utils.util import *
-from utils import pff, config_file
-from tools.interleave import PID_FILE
 from panoseti_grpc.daq_control.client import DaqControlClient
 
+from driver import quabo_driver
+from tools.interleave import PID_FILE
+from utils import collect, config_file, pff
+from utils.util import *
 
 
 def stop_interleave(retry_limit=10):
@@ -37,7 +37,7 @@ def stop_interleave(retry_limit=10):
     if os.path.exists(pid_file):
         print("Active interleave process detected. Stopping it gracefully...")
         try:
-            with open(pid_file, "r") as f:
+            with open(pid_file) as f:
                 pid = int(f.read().strip())
             os.kill(pid, signal.SIGTERM)
 
@@ -52,12 +52,10 @@ def stop_interleave(retry_limit=10):
             os.remove(pid_file)
 
 
-from argparse import ArgumentParser
-import logging
 
 import builtins
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # =========================
 # Print -> also prepend to UT log file
@@ -67,10 +65,10 @@ _ORIG_PRINT = builtins.print
 
 def _ut_human_timestamp():
     # Human-readable UTC timestamp
-    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UT')
+    return datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UT')
 
 def _ut_yyyymmdd():
-    return datetime.now(timezone.utc).strftime('%Y%m%d')
+    return datetime.now(UTC).strftime('%Y%m%d')
 
 def _datarec_log_path():
     yyyymmdd = _ut_yyyymmdd()
@@ -323,7 +321,7 @@ if __name__ == "__main__":
     create_logger(logfile, 'PANOSETI.Stop', 'a')
     logger = logging.getLogger('PANOSETI.Stop')
     logger.info('************************************')
-    i = 1;
+    i = 1
     argv = sys.argv
     verbose = False
     no_cleanup = False

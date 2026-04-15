@@ -7,20 +7,21 @@ See https://github.com/panoseti/panoseti/issues/58.
 
 NOTE: this script calls stop.py if any boards or detectors get too hot.
 """
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import time, sys
 import datetime
+import logging
+import sys
+import time
+
 import redis
-from utils import redis_utils
-from utils import config_file
 
 import power
+from utils import config_file, redis_utils
 from utils.util import are_redis_daemons_running, create_logger
-
-import logging
-
 
 # Seconds between updates.
 UPDATE_INTERVAL = 10
@@ -76,7 +77,7 @@ def update_power(obs_config, wps_to_modules, wps_to_turn_off):
     modules and quabos are no longer powered, then stop this script."""
     if wps_to_turn_off:
         # Stop any active runs.
-        logger.info(f'Running ./stop.py...')
+        logger.info('Running ./stop.py...')
         os.system('./stop.py')
         for wps_name in wps_to_turn_off:
             wps_dict = obs_config[wps_name]

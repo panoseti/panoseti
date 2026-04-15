@@ -21,8 +21,13 @@
 # If we run hashpipe via a shell script and kill the shell process,
 # hashpipe keeps running.
 
-import sys, os, subprocess, time
+import os
+import subprocess
+import sys
+import time
+
 import util
+
 
 def main():
     argv = sys.argv
@@ -107,7 +112,7 @@ def main():
     try:
         child_pid = int(result.stdout)
     except:
-        raise Exception("can't get hashpipe PID; it may have crashed: %s"%result.stdout);
+        raise Exception("can't get hashpipe PID; it may have crashed: %s"%result.stdout)
 
     # write it to a file
 

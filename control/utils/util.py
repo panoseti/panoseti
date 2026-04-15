@@ -3,12 +3,22 @@ from __future__ import annotations
 # control script utilities
 # CWD CONTRACT: relative paths in this module are relative to the control/ directory.
 # Scripts must be launched from control/ (e.g. `cd control && python start.py`).
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import subprocess, signal, socket, datetime, time, psutil, shutil
-import __main__
+import datetime
 import json
+import shutil
+import signal
+import socket
+import subprocess
+import time
+
+import psutil
+
+import __main__
 
 # this script will be copied to daq nodes,
 # but the quabo_driver and config_file won't be copied to daq nodes

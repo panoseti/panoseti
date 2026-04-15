@@ -3,7 +3,11 @@
 
 from __future__ import annotations
 
-import struct, os, time, datetime, json
+import datetime
+import json
+import os
+import struct
+
 
 # returns the string (doesn't parse it)
 #
@@ -24,7 +28,7 @@ def read_json(f):
         else:
             last_nl = False
         s += c.decode()
-    return s;
+    return s
 
 # returns the image as a list of N numbers
 # see https://docs.python.org/3/library/struct.html
@@ -98,7 +102,7 @@ def parse_name(name):
 # return the directory name for a run
 #
 def run_dir_name(obs_name, run_type):
-    dt = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    dt = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     dt = dt.replace(microsecond=0)
     dt_str = dt.isoformat()
     return 'obs_%s.start_%sZ.runtype_%s.pffd'%(obs_name, dt_str, run_type)
@@ -258,6 +262,8 @@ def wr_to_unix(pkt_tai, pkt_nsec, tv_sec, ignore_clock_desync=False):
         #raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
 
 from decimal import *
+
+
 def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
     pkt_tai = Decimal(str(pkt_tai))
     pkt_nsec = Decimal(str(pkt_nsec))
@@ -276,6 +282,8 @@ def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
 
 
 import numpy as np
+
+
 def wr_to_unix_numpy(pkt_tai, pkt_nsec, tv_sec):
     pkt_tai = np.longdouble(pkt_tai)
     pkt_nsec = np.longdouble(pkt_nsec)

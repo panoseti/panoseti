@@ -7,17 +7,17 @@ Runs as a background daemon during an active observation to rapidly
 switch Quabo FPGA and MAROC registers between different observing modes.
 """
 
-import time
-import logging
 import argparse
 import copy
-import sys
+import logging
 import os
 import signal
-import psutil
+import sys
+import time
+from typing import Any
+
 import numpy as np
-from typing import List, Dict, Any, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import psutil
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -27,8 +27,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # from control.stop import stop_data_flow
 # from ..utils import config_file, util
 
-from driver import quabo_driver
 import config as pano_config
+from driver import quabo_driver
 from utils import config_file, util
 
 PID_FILE = "tmp/interleave.pid"
@@ -39,10 +39,10 @@ logger = logging.getLogger("panoseti.interleave")
 
 class InterleaveController:
     MAX_THREADS = 8
-    def __init__(self, data_config: Dict[str, Any], obs_config: Dict[str, Any],
-                 daq_config: Dict[str, Any], quabo_uids: Dict[str, Any],
-                 quabo_info: List[Dict[str, Any]], network_config: Dict[str, Any],
-                 dry_run: bool = False, max_cycles: Optional[int] = None):
+    def __init__(self, data_config: dict[str, Any], obs_config: dict[str, Any],
+                 daq_config: dict[str, Any], quabo_uids: dict[str, Any],
+                 quabo_info: list[dict[str, Any]], network_config: dict[str, Any],
+                 dry_run: bool = False, max_cycles: int | None = None):
 
         self.keep_running = True
         self.dry_run = dry_run
@@ -74,7 +74,7 @@ class InterleaveController:
         self.network_config = network_config
 
         self.modules = config_file.get_modules(obs_config)
-        self.quabos: Dict[int, List[quabo_driver.QUABO]] = {}  # map module_id to quabo_driver instances
+        self.quabos: dict[int, list[quabo_driver.QUABO]] = {}  # map module_id to quabo_driver instances
         for module in self.modules:
             base_ip_addr = module['ip_addr']
             module_id = config_file.ip_addr_to_module_id(base_ip_addr)
@@ -102,7 +102,7 @@ class InterleaveController:
         """Ensures at most one instance of interleave.py is running."""
         if os.path.exists(PID_FILE):
             try:
-                with open(PID_FILE, "r") as f:
+                with open(PID_FILE) as f:
                     old_pid = int(f.read().strip())
 
                 if psutil.pid_exists(old_pid):
@@ -154,7 +154,7 @@ class InterleaveController:
         #for f in as_completed(futures):
         #    f.result()
 
-    def _reconfigure_quabos(self, next_state_data_config: Dict[str, Any]) -> None:
+    def _reconfigure_quabos(self, next_state_data_config: dict[str, Any]) -> None:
         if self.dry_run:
             return
 
@@ -173,7 +173,7 @@ class InterleaveController:
         #futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
         #for f in as_completed(futures): f.result()
 
-    def generate_state_dict(self, movie_key: Optional[str], ph_key: Optional[str]) -> Dict[str, Any]:
+    def generate_state_dict(self, movie_key: str | None, ph_key: str | None) -> dict[str, Any]:
         temp_dict = self.data_config.copy()
         temp_dict.pop('image', None)
         temp_dict.pop('pulse_height', None)

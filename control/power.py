@@ -8,13 +8,16 @@
 #   use the "wps1" element from obs_config.json
 #   default is "wps"
 
-import sys, os
+import os
+import sys
+from datetime import UTC, datetime
+
 from utils import config_file
-from datetime import datetime, timezone
+
 
 # ---------- logging helper (UTC) ----------
 def log_print(msg):
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     ts = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     yyyymmdd = now.strftime("%Y%m%d")
 
@@ -29,7 +32,7 @@ def log_print(msg):
     # Prepend the new line at the beginning of the log file
     old = ""
     if os.path.exists(log_file):
-        with open(log_file, "r") as f:
+        with open(log_file) as f:
             old = f.read()
 
     tmp_file = log_file + ".tmp"

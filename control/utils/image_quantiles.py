@@ -1,11 +1,11 @@
 # read the first N frames of a PFF file.
 # compute the x and 1-x quantiles of the pixels
 
-import os, sys
 import pff
 
+
 def get_values(file, image_size, bytes_per_pixel, nframes=100):
-    fin = open(file, "rb");
+    fin = open(file, "rb")
     values = []
     for i in range(nframes):
         x = pff.read_json(fin)

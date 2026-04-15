@@ -1,25 +1,34 @@
 #! /usr/bin/env python3
 from __future__ import annotations
 
+import json
+
 # functions to read and parse config files
 # CWD CONTRACT: all relative paths in this file are relative to the control/ directory.
 # Scripts must be launched from control/ (e.g. `cd control && python start.py`).
+import os
+import pathlib
+import sys
 
-import os, sys, json, pathlib
 from pydantic import ValidationError
 from rich.console import Console
-from rich.pretty import pprint
 from rich.panel import Panel
+from rich.pretty import pprint
 from rich.tree import Tree
+
+from .config_validator import perform_network_ping_sweep
+from .global_validator import GlobalConfigValidator
 
 # import Pydantic validation models
 from .pydantic_config_models import (
-    DataConfigValidator, ObsConfigValidator, DaqConfigValidator,
-    NetworkConfigValidator, DaemonConfigValidator, FirmwareConfigValidator,
-    QuaboUidsValidator
+    DaemonConfigValidator,
+    DaqConfigValidator,
+    DataConfigValidator,
+    FirmwareConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
 )
-from .global_validator import GlobalConfigValidator
-from .config_validator import perform_network_ping_sweep
+
 console = Console()
 
 # Resolved root of the control/ package (useful for tests and tooling).
@@ -31,7 +40,6 @@ IS_CLI_VALIDATION = False
 DEBUG_VALIDATION = False
 RAISE_VALIDATION_ERRORS = False
 
-import logging
 # TODO: we need to improve the file path
 # configs file
 obs_config_filename = 'configs/obs_config.json'
@@ -218,7 +226,7 @@ def get_detector_info():
         print('detector_overvoltage is not set in data_config.json')
         print('Use the default overvoltage: 3V')
         print('**************************************************************************')
-    return d;
+    return d
 
 # get quabo info as an array indexed by uid
 #
@@ -230,7 +238,7 @@ def get_quabo_info():
     d = {}
     for q in c:
         d[q['uid']] = q
-    return d;
+    return d
 
 def get_quabo_ph_baselines():
     check_config_file(quabo_ph_baseline_filename)
@@ -281,7 +289,7 @@ def show_daq_assignments(quabo_uids):
             ip_addr = module['ip_addr']
             daq_node = module['daq_node']
             for i in range(4):
-                q = module['quabos'][i];
+                q = module['quabos'][i]
                 print("data from quabo %s (%s) -> DAQ node %s"
                     %(q['uid'], quabo_ip_addr(ip_addr, i), daq_node['ip_addr'])
                 )
@@ -379,13 +387,13 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
     for key, loader in loaders:
         try:
             validated_configs[key] = loader()
-        except ValueError as e:
+        except ValueError:
             # The specific error details are printed by load_and_validate.
             # We just catch it here so we don't crash, allowing the loop to continue.
             t1_errors += 1
             all_passed = False
             pass
-        except Exception as e:
+        except Exception:
             console.print_exception()
 
     if t1_errors == 0:
@@ -454,7 +462,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
 
     # 1. Load Data
     try:
-        with open(path, 'r') as f:
+        with open(path) as f:
             raw_data = json.load(f)
     except json.JSONDecodeError as e:
         console.print(f"\n[bold red][FAIL] JSON Parsing Error in {config_name} ({filename}):[/bold red] {e}")

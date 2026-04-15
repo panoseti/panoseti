@@ -25,11 +25,11 @@ Behavior (as requested):
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
-import math
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 try:
     from zoneinfo import ZoneInfo  # py>=3.9
@@ -55,11 +55,11 @@ LOCAL_TZ_NAME = "America/Los_Angeles"
 # ===================== TZ =====================
 def _tz():
     if ZoneInfo is None:
-        return timezone.utc
+        return UTC
     try:
         return ZoneInfo(LOCAL_TZ_NAME)  # type: ignore
     except Exception:
-        return timezone.utc
+        return UTC
 
 
 LOCAL_TZ = _tz()
@@ -67,10 +67,10 @@ LOCAL_TZ = _tz()
 
 # ===================== HELPERS =====================
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def ut_yyyymmdd(now_utc: Optional[datetime] = None) -> str:
+def ut_yyyymmdd(now_utc: datetime | None = None) -> str:
     n = now_utc or utc_now()
     return n.strftime("%Y%m%d")
 
@@ -79,7 +79,7 @@ def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def safe_float(x: Any) -> Optional[float]:
+def safe_float(x: Any) -> float | None:
     try:
         if x is None:
             return None
@@ -92,7 +92,7 @@ def severity_label(sev: int) -> str:
     return ["GOOD", "CAUTION", "BAD"][max(0, min(2, sev))]
 
 
-def parse_iso_like_to_utc(s: str) -> Optional[datetime]:
+def parse_iso_like_to_utc(s: str) -> datetime | None:
     """
     Accepts:
       - "2026-02-06T00:05:19.149"
@@ -115,7 +115,7 @@ def parse_iso_like_to_utc(s: str) -> Optional[datetime]:
         x2 = x[:-1]
         try:
             dt = datetime.fromisoformat(x2)
-            return dt.replace(tzinfo=timezone.utc)
+            return dt.replace(tzinfo=UTC)
         except Exception:
             return None
 
@@ -124,20 +124,20 @@ def parse_iso_like_to_utc(s: str) -> Optional[datetime]:
         try:
             dt = datetime.fromisoformat(x)
             if dt.tzinfo is None:
-                return dt.replace(tzinfo=timezone.utc)
-            return dt.astimezone(timezone.utc)
+                return dt.replace(tzinfo=UTC)
+            return dt.astimezone(UTC)
         except Exception:
             return None
 
     # Otherwise assume UTC
     try:
         dt = datetime.fromisoformat(x)
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     except Exception:
         return None
 
 
-def parse_time_local(s: str) -> Optional[datetime]:
+def parse_time_local(s: str) -> datetime | None:
     """
     Forecast time_local like "YYYY-MM-DD HH:MM" (no tz).
     Treat as LOCAL_TZ.
@@ -158,7 +158,7 @@ def parse_time_local(s: str) -> Optional[datetime]:
             return None
 
 
-def is_fresh(dt_utc: Optional[datetime], max_minutes: int = FRESHNESS_MINUTES) -> bool:
+def is_fresh(dt_utc: datetime | None, max_minutes: int = FRESHNESS_MINUTES) -> bool:
     if dt_utc is None:
         return False
     age = abs((utc_now() - dt_utc).total_seconds())
@@ -176,13 +176,13 @@ def fmt_num(x: Any, ndp: int = 1) -> str:
 # 9 comma-separated fields:
 # timestamp, temperature_C, humidity, dew_point_C, barometer_MB,
 # wind_speed_MPH, wind_direction, weather_status, last_update
-def read_latest_weather_log(weather_log_path: str) -> Tuple[Optional[Dict[str, Any]], Optional[datetime]]:
+def read_latest_weather_log(weather_log_path: str) -> tuple[dict[str, Any] | None, datetime | None]:
     if not os.path.exists(weather_log_path):
         return None, None
 
     last = None
     try:
-        with open(weather_log_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(weather_log_path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -219,12 +219,12 @@ def read_latest_weather_log(weather_log_path: str) -> Tuple[Optional[Dict[str, A
 
 
 # ===================== FORECAST JSONL READER =====================
-def read_latest_forecast_jsonl(path: str) -> Optional[Dict[str, Any]]:
+def read_latest_forecast_jsonl(path: str) -> dict[str, Any] | None:
     if not os.path.exists(path):
         return None
     last = None
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -239,7 +239,7 @@ def read_latest_forecast_jsonl(path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def pick_best_forecast_hour(fc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def pick_best_forecast_hour(fc: dict[str, Any]) -> dict[str, Any] | None:
     hours = fc.get("hours")
     if not isinstance(hours, list) or not hours:
         return None
@@ -265,7 +265,7 @@ def pick_best_forecast_hour(fc: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 # ===================== WEATHER CLASSIFICATION (mirror JS) =====================
-def determine_safety_local(w: Dict[str, Any]) -> Dict[str, Any]:
+def determine_safety_local(w: dict[str, Any]) -> dict[str, Any]:
     """
     Mirror current_status.php JS determineSafety().
     Returns {label, severity, reasons[]}
@@ -279,7 +279,7 @@ def determine_safety_local(w: Dict[str, Any]) -> Dict[str, Any]:
     if t is not None and d is not None:
         spread = t - d
 
-    reasons: List[str] = []
+    reasons: list[str] = []
     sev = 0
 
     # BAD triggers
@@ -313,7 +313,7 @@ def determine_safety_local(w: Dict[str, Any]) -> Dict[str, Any]:
     return {"label": severity_label(sev), "severity": sev, "reasons": reasons}
 
 
-def classify_nws_text(forecast_text: Optional[str]) -> str:
+def classify_nws_text(forecast_text: str | None) -> str:
     # Mirror JS classifyNWS()
     if not forecast_text:
         return "CAUTION"
@@ -337,7 +337,7 @@ def classify_cloud_cover(cloud_pc: Any) -> str:
     return "BAD"
 
 
-def combine_overall_weather(local_label: str, nws_label: str, cloud_label: str) -> Dict[str, Any]:
+def combine_overall_weather(local_label: str, nws_label: str, cloud_label: str) -> dict[str, Any]:
     overall = "GOOD"
     if "BAD" in (local_label, nws_label, cloud_label):
         overall = "BAD"
@@ -357,7 +357,7 @@ def combine_overall_weather(local_label: str, nws_label: str, cloud_label: str) 
 
 
 # ===================== SUN: hard daytime BAD =====================
-def sun_times_for_date_local(date_local: datetime, lat: float = LAT, lon: float = LON) -> Tuple[datetime, datetime]:
+def sun_times_for_date_local(date_local: datetime, lat: float = LAT, lon: float = LON) -> tuple[datetime, datetime]:
     """
     NOAA-style approximate sunrise/sunset in LOCAL_TZ for the given local date.
     """
@@ -386,7 +386,7 @@ def sun_times_for_date_local(date_local: datetime, lat: float = LAT, lon: float 
     return sunrise, sunset
 
 
-def sun_phase_now() -> Dict[str, Any]:
+def sun_phase_now() -> dict[str, Any]:
     """
     HARD RULE: between sunrise and sunset (local) => BAD, else GOOD.
     """
@@ -409,12 +409,12 @@ def sun_phase_now() -> Dict[str, Any]:
 
 
 # ===================== DOME LOG READER =====================
-def read_last_json_line(path: str) -> Optional[Dict[str, Any]]:
+def read_last_json_line(path: str) -> dict[str, Any] | None:
     if not os.path.exists(path):
         return None
     last = None
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -429,7 +429,7 @@ def read_last_json_line(path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def dome_snapshot_for_site(yyyymmdd: str, site: str) -> Tuple[Optional[Dict[str, Any]], Optional[datetime], str]:
+def dome_snapshot_for_site(yyyymmdd: str, site: str) -> tuple[dict[str, Any] | None, datetime | None, str]:
     p = os.path.join(SAVE_ROOT, yyyymmdd, site, "dome", "roof_status.log")
     obj = read_last_json_line(p)
     if not obj:
@@ -446,7 +446,7 @@ def sensor_state_str(flag: Any) -> str:
     return "UNKNOWN"
 
 
-def sensor_severity(flag: Any, missing_label: str, issues: List[str]) -> int:
+def sensor_severity(flag: Any, missing_label: str, issues: list[str]) -> int:
     """
     Mirror JS sensorSeverity():
       true  -> BAD (2)
@@ -464,22 +464,22 @@ def sensor_severity(flag: Any, missing_label: str, issues: List[str]) -> int:
 # ===================== OVERALL PER SITE =====================
 def overall_for_site(
     site: str,
-    dome_obj: Optional[Dict[str, Any]],
-    dome_dt: Optional[datetime],
+    dome_obj: dict[str, Any] | None,
+    dome_dt: datetime | None,
     overall_weather_label: str,
     overall_weather_sev: int,
     weather_fresh: bool,
     dome_fresh: bool,
-    sp: Dict[str, Any],
-) -> Dict[str, Any]:
+    sp: dict[str, Any],
+) -> dict[str, Any]:
     """
     Returns a dict with:
       label/severity (final)
       reasons[]  -> ALWAYS populated with the actual drivers (like PHP panel text)
       issues[]   -> ONLY data-quality / uncertainty notes
     """
-    issues: List[str] = []
-    reasons: List[str] = []
+    issues: list[str] = []
+    reasons: list[str] = []
 
     worst = 0
 
@@ -573,7 +573,7 @@ def overall_for_site(
 
 
 # ===================== JSONL WRITER =====================
-def append_jsonl(path: str, obj: Dict[str, Any]) -> None:
+def append_jsonl(path: str, obj: dict[str, Any]) -> None:
     ensure_dir(os.path.dirname(path))
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
@@ -622,10 +622,10 @@ def main() -> int:
         sp = sun_phase_now()
 
         # ---- Dome logs ----
-        dome_paths: Dict[str, str] = {}
-        dome_objs: Dict[str, Optional[Dict[str, Any]]] = {}
-        dome_dts: Dict[str, Optional[datetime]] = {}
-        dome_fresh_map: Dict[str, bool] = {}
+        dome_paths: dict[str, str] = {}
+        dome_objs: dict[str, dict[str, Any] | None] = {}
+        dome_dts: dict[str, datetime | None] = {}
+        dome_fresh_map: dict[str, bool] = {}
 
         for site in SITES_ORDER:
             obj, dt, path = dome_snapshot_for_site(yyyymmdd, site)
@@ -635,7 +635,7 @@ def main() -> int:
             dome_fresh_map[site] = is_fresh(dt, FRESHNESS_MINUTES) if dt else False
 
         # ---- Per-site overall ----
-        sites_overall: Dict[str, Any] = {}
+        sites_overall: dict[str, Any] = {}
         for site in SITES_ORDER:
             ov = overall_for_site(
                 site=site,

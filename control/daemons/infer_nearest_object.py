@@ -43,8 +43,6 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
-
 
 SSH_OPTS = [
     "-o", "BatchMode=yes",
@@ -86,7 +84,7 @@ class SiteCfg:
     ssh_port: int
 
 
-def run_cmd(cmd: List[str]) -> str:
+def run_cmd(cmd: list[str]) -> str:
     p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if p.returncode != 0:
         raise RuntimeError(
@@ -99,11 +97,11 @@ def parse_first_float(s: str) -> float:
     # qdbus sometimes returns additional text; grab the first float-like token.
     m = re.search(r"([-+]?\d+(?:\.\d*)?)", s)
     if not m:
-        raise ValueError("Could not parse float from {!r}".format(s))
+        raise ValueError(f"Could not parse float from {s!r}")
     return float(m.group(1))
 
 
-def query_mount_radec_via_ssh(ssh_user: str, ssh_host: str, ssh_port: int) -> Tuple[float, float]:
+def query_mount_radec_via_ssh(ssh_user: str, ssh_host: str, ssh_port: int) -> tuple[float, float]:
     """
     Query Ekos Mount RA/Dec via SSH on the remote Ekos host.
 
@@ -113,7 +111,7 @@ def query_mount_radec_via_ssh(ssh_user: str, ssh_host: str, ssh_port: int) -> Tu
     base = [
         "ssh", "-p", str(ssh_port),
         *SSH_OPTS,
-        "{}@{}".format(ssh_user, ssh_host),
+        f"{ssh_user}@{ssh_host}",
         "qdbus", "--literal",
     ]
 
@@ -152,18 +150,18 @@ def dms_to_degrees(s: str) -> float:
     return sign * (dd + mm / 60.0 + ss / 3600.0)
 
 
-def load_catalog(path: Optional[str]) -> List[Obj]:
+def load_catalog(path: str | None) -> list[Obj]:
     if not path:
         return [Obj(n, ra, de) for (n, ra, de) in BUILTIN_OBJECTS]
 
-    objs: List[Obj] = []
-    with open(path, "r", newline="") as f:
+    objs: list[Obj] = []
+    with open(path, newline="") as f:
         reader = csv.DictReader(f)
         required = {"name", "ra_deg", "dec_deg"}
         fields = set(reader.fieldnames or [])
         if not required.issubset(fields):
             raise ValueError(
-                "Catalog must have columns {}. Found: {}".format(sorted(required), reader.fieldnames)
+                f"Catalog must have columns {sorted(required)}. Found: {reader.fieldnames}"
             )
         for row in reader:
             name = (row.get("name") or "").strip()
@@ -172,7 +170,7 @@ def load_catalog(path: Optional[str]) -> List[Obj]:
             objs.append(Obj(name=name, ra_deg=float(row["ra_deg"]), dec_deg=float(row["dec_deg"])))
 
     if not objs:
-        raise ValueError("Catalog loaded zero objects from {}".format(path))
+        raise ValueError(f"Catalog loaded zero objects from {path}")
     return objs
 
 
@@ -188,7 +186,7 @@ def ang_sep_deg(ra1_deg: float, dec1_deg: float, ra2_deg: float, dec2_deg: float
     return math.degrees(math.acos(cosd))
 
 
-def find_nearest(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tuple[Obj, float]:
+def find_nearest(objs: list[Obj], ra_deg: float, dec_deg: float) -> tuple[Obj, float]:
     """
     Returns:
       (nearest_object, separation_deg)
@@ -196,8 +194,8 @@ def find_nearest(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tuple[Obj, f
     Uses astropy if available; otherwise pure-math fallback.
     """
     try:
-        from astropy.coordinates import SkyCoord  # type: ignore
         import astropy.units as u  # type: ignore
+        from astropy.coordinates import SkyCoord  # type: ignore
 
         target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
         cat = SkyCoord(
@@ -219,7 +217,7 @@ def find_nearest(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tuple[Obj, f
         return best_o, best_sep
 
 
-def load_sites_from_mountconf(path: str) -> Dict[str, SiteCfg]:
+def load_sites_from_mountconf(path: str) -> dict[str, SiteCfg]:
     """
     Parse mountcontrol.conf formatted as CSV lines, comments allowed:
 
@@ -231,8 +229,8 @@ def load_sites_from_mountconf(path: str) -> Dict[str, SiteCfg]:
     if not os.path.exists(path):
         raise FileNotFoundError(f"mountconf not found: {path}")
 
-    sites: Dict[str, SiteCfg] = {}
-    with open(path, "r", newline="") as f:
+    sites: dict[str, SiteCfg] = {}
+    with open(path, newline="") as f:
         # csv.reader handles quoted device field etc.
         reader = csv.reader(f, skipinitialspace=True)
         for raw in reader:

@@ -15,15 +15,15 @@ Environment variables:
   REDIS_HOST  — Redis hostname (applied when using bundled profile)
   GRPC_PORT   — override server port (always applied)
 """
+import asyncio
 import os
 import sys
-import asyncio
 from pathlib import Path
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 try:
-    from panoseti_grpc.server import PanosetiServerConfig, PanosetiServer
+    from panoseti_grpc.server import PanosetiServer, PanosetiServerConfig
     from panoseti_grpc.telemetry.resources import make_rich_logger
 except ImportError:
     print("CRITICAL: 'panoseti_grpc' not installed.")

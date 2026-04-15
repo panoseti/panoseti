@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils.panoseti_snmp import wrs_snmp

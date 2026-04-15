@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-import os
-import time
+import argparse
 import base64
 import json
-import argparse
+import os
 import re
 import shutil
 import subprocess
-import numpy as np
-from datetime import datetime, timezone
-from astropy.io import fits
+import time
+from datetime import UTC, datetime
+
 import matplotlib.pyplot as plt
+import numpy as np
 import paramiko
+from astropy.io import fits
 
 # ---------------- CONFIG ----------------
 CONFIG_FILE = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_guider/sites.conf"
@@ -324,8 +325,8 @@ def capture_phd2_once(site):
         h = reply["result"]["height"]
         arr = np.frombuffer(base64.b64decode(img_b64), dtype=np.uint16).reshape(h, w)
 
-        date_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
-        ts = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
+        date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
+        ts = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
         local_dir = os.path.join(LOCAL_BASE, date_str, site["name"], "guider")
         os.makedirs(local_dir, exist_ok=True)
 
@@ -597,8 +598,8 @@ def capture_ekos_once(site, iteration_idx, do_align):
         LAST_EKOS_REMOTE[site["name"]] = new_path
 
         # ---- Download to local ----
-        date_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
-        ts = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
+        date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
+        ts = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
         local_dir = os.path.join(LOCAL_BASE, date_str, site["name"], "guider")
         os.makedirs(local_dir, exist_ok=True)
 

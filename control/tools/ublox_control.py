@@ -15,9 +15,10 @@
 #
 # The IP addr of the RPI and the socket # come from a config file
 # This can be used as a module or a script.
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import config_file
 
 import argparse
 

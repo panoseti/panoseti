@@ -37,12 +37,11 @@
 #V11.3: add a new command for setting GOE mask
 #V11.4: add SW_1PPS command for resetting nanosec counter
 
-import time
-import string
-import socket
-import sys
 import os
+import socket
 import struct
+import sys
+import time
 
 #run this under Python 3.x
 if (sys.version_info < (3,0)):
@@ -502,7 +501,7 @@ print ("Quadrant Board Control")
 try :
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
     print ("Socket Created")
-except socket.error as msg :
+except OSError as msg :
     print ('Failed to create socket. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
     sys.exit()    
 sock.settimeout(0.5)
@@ -515,7 +514,7 @@ try:
     #sock.bind((UDP_DEST_IP, UDP_CMD_PORT))    
     #sock.bind(("", UDP_CMD_PORT))
     pass
-except socket.error as msg:
+except OSError as msg:
     print ('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
     sys.exit()
      
@@ -831,7 +830,7 @@ while True:
         cmd_payload = bytearray(514)
         for i in range(514): cmd_payload[i]=0
         cmd_payload[0] = 0x0d
-        fp = open('bl.txt','r')
+        fp = open('bl.txt')
         d_str = fp.readlines()
         n = 2
         for i in range(256):

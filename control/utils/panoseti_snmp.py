@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 
-import os
-import sys
 import netsnmp
 
 #os.environ['MIBDIRS']='+./'
@@ -10,7 +8,7 @@ wrsSnmpObjs={'sfppn'         : 'WR-SWITCH-MIB::wrsPortStatusSfpPN' , \
              'linkstatus'    : 'WR-SWITCH-MIB::wrsPortStatusLink'  , \
              'pllstatus'     : 'WR-SWITCH-MIB::wrsSoftPLLStatus'         }
 
-class snmp_wapper(object):
+class snmp_wapper:
     def __init__(self, dev, obj):
         self.dev = dev
         self.obj = obj
@@ -27,7 +25,7 @@ class snmp_wapper(object):
         except:
             return -1
 
-class wrs_snmp(object):    
+class wrs_snmp:    
     def __init__(self, dev = '10.0.1.36', objs = wrsSnmpObjs):
         self.dev = dev
         self.objs = objs

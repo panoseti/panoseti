@@ -19,9 +19,8 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 # ---------------- CONFIG ----------------
 L0_ROOT = "/mnt/data11/data/palomar/L0"
@@ -44,10 +43,10 @@ def run_cmd(cmd: str) -> None:
 
 
 def today_yyyymmdd_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return datetime.now(UTC).strftime("%Y%m%d")
 
 
-def resolve_yyyymmdd(arg: Optional[str]) -> str:
+def resolve_yyyymmdd(arg: str | None) -> str:
     if arg is None:
         return today_yyyymmdd_utc()
     if not re.fullmatch(r"\d{8}", arg):
@@ -112,7 +111,7 @@ def process_once(yyyymmdd: str) -> None:
     upload_to_cylon(src)
 
     state[key] = sig
-    state["last_upload_utc"] = datetime.now(timezone.utc).isoformat()
+    state["last_upload_utc"] = datetime.now(UTC).isoformat()
     save_state(state)
 
     print("[datarec] upload complete")

@@ -7,21 +7,19 @@
 # added to each set of values with a variable labeled as
 # 'Computer_UTC'.
 ##############################################################
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import time
+from datetime import UTC, datetime
 from pathlib import Path
+from signal import SIGINT, signal
 
-import netsnmp
-import redis
-import time
-from signal import signal, SIGINT
-import time
-from datetime import datetime, timezone
-from utils.redis_utils import *
-from utils import util, config_file
-
+from utils import config_file, util
 from utils.panoseti_snmp import wrs_snmp
+from utils.redis_utils import *
 
 # wrs status
 LINK_DOWN   =   '1'
@@ -141,7 +139,7 @@ def main():
         # check softpll status
         res = wrs.pllstatus()
         r.hset(RKEY, 'SOFTPLL', 1 if res[0] == SOFTPLL_LOCKED else 0)
-        print(datetime.now(timezone.utc).replace(tzinfo=None))
+        print(datetime.now(UTC).replace(tzinfo=None))
         time.sleep(1)
 
 if __name__ == "__main__":

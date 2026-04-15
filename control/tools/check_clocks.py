@@ -3,16 +3,20 @@
 # 'check_clocks' is a class for checking time synchronization in PANOSETI system.
 # There are several functions in this class for getting time from GPS receiver, quabo and WRS.
 # 
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import time
-import serial
-from datetime import datetime, timezone
 import socket
-import paramiko
 import struct
+import time
+from datetime import UTC, datetime
+
+import paramiko
+import serial
 from check_clocks import qstart
+
 from utils import config_file
 
 # this is the offset time between tai and utc
@@ -33,7 +37,7 @@ def SSH_Init(wrs_ip):
 
 # The class is used for checking timing synchronization in PANOSETI system.
 #
-class check_clocks(object):
+class check_clocks:
     def __init__(self, gps_port='/dev/ttyUSB0', wrs_ip='192.168.1.254', host_ip='192.168.1.100', port=60001):
         self.gps_port = gps_port
         self.host_ip = host_ip
@@ -58,7 +62,7 @@ class check_clocks(object):
         month = int.from_bytes(data[14:15], byteorder=BYTEORDER, signed=False)
         year = int.from_bytes(data[15:17], byteorder=BYTEORDER, signed=False)
         # there is no nanosec info from GPS receiver, so nanosec value is set to 0 here
-        lastTime = datetime(year, month, dayofMonth, hours, minutes, seconds, 0).replace(tzinfo=timezone.utc)
+        lastTime = datetime(year, month, dayofMonth, hours, minutes, seconds, 0).replace(tzinfo=UTC)
         return lastTime.timestamp() - GPS_SEC
  
     

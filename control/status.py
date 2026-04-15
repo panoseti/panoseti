@@ -2,18 +2,22 @@
 
 # show the status of a recording run
 
-import subprocess, sys, json, os
-from datetime import datetime, timezone
+import os
+import sys
+from datetime import UTC, datetime
+
 import util
+
 sys.path.insert(0, '../util')
 import config_file
 
+
 # ---------- logging setup ----------
 def ut_now_str():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 def ut_date_str():
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return datetime.now(UTC).strftime("%Y%m%d")
 
 def log_print(*args, **kwargs):
     msg = " ".join(str(a) for a in args)

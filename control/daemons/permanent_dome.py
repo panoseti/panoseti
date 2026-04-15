@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-import requests
+import datetime
 import json
 import os
-import time
-import datetime
-import subprocess
-import re
 import socket
+import subprocess
+import time
+
+import requests
 
 # ================== CONFIG ==================
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "capture_dome", "sites_config.json")
@@ -50,12 +50,12 @@ def local_tz_label():
         return "LOCAL"
 
 def UT_and_local():
-    now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     utc = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     return f"{utc} ({local_tz_label()})"
 
 def load_sites():
-    with open(CONFIG_FILE, "r") as f:
+    with open(CONFIG_FILE) as f:
         return json.load(f)["sites"]
 
 def http_get_json(url):
@@ -185,7 +185,7 @@ def main():
     print(f"[INFO] Monitoring {len(sites)} domes every {INTERVAL_SECONDS}s.")
 
     while True:
-        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
         yyyymmdd = now.strftime("%Y%m%d")
         timestamp = now.isoformat(timespec="seconds") + "Z"
 
@@ -202,7 +202,7 @@ def main():
                 bundle_status["sites"][name] = snapshot
                 bundle_logs["sites"][name] = snapshot["gattini_state_message"]
                 append_status(name, yyyymmdd, snapshot)
-                print(f"[OK] Gattini handled")
+                print("[OK] Gattini handled")
                 continue
 
             for key, endpoint in ENDPOINTS.items():

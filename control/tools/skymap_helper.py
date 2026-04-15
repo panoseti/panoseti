@@ -2,10 +2,13 @@
 Scripts for generating redis-json for sky map.
 """
 
-import json, os, time
+import json
+import os
+import time
 from datetime import datetime
+
 import redis
-from redis.commands.json.path import Path
+
 
 # Add obs config to the skymap template.
 # The obs config is from obs_config.json by default.

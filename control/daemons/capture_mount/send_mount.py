@@ -49,7 +49,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
         print(f"\nReceived response from server {server_address}:")
         print(f"Response data: {response_dict}")
 
-    except socket.timeout:
+    except TimeoutError:
         print("No response from server; request may have been lost.")
     except ValueError as e:
         print(f"Error: {e}")

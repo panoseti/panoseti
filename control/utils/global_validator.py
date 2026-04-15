@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 from typing import Any
-from haversine import haversine, Unit
+
+from haversine import Unit, haversine
 from rich.console import Console
 from rich.table import Table
 

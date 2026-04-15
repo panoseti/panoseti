@@ -6,16 +6,19 @@ Centralized Pydantic models for validating PANOSETI configuration files.
 
 from __future__ import annotations
 
-import logging
 import re
-from typing import Any, Literal
+from typing import Literal
+
 from pydantic import (
-    BaseModel, Field, model_validator,
-    ConfigDict, IPvAnyAddress, field_validator,
-    ValidationError
+    BaseModel,
+    ConfigDict,
+    Field,
+    IPvAnyAddress,
+    ValidationError,
+    field_validator,
+    model_validator,
 )
 from rich.console import Console
-from rich.pretty import pprint
 
 console = Console()
 
@@ -86,7 +89,7 @@ class InterleaveState(BaseStrictModel):
     pulse_height_mode_config: str | None = None
 
     @model_validator(mode='after')
-    def check_at_least_one_mode(self) -> 'InterleaveState':
+    def check_at_least_one_mode(self) -> InterleaveState:
         if not self.movie_mode_config and not self.pulse_height_mode_config:
             raise ValueError(f"State '{self.state_name}' must have at least one valid mode (movie or pulse_height).")
         return self
@@ -229,7 +232,7 @@ class ObsConfigValidator(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     @model_validator(mode='after')
-    def validate_wps_extras(self) -> 'ObsConfigValidator':
+    def validate_wps_extras(self) -> ObsConfigValidator:
         """Ensures that dynamic 'wps-' keys match the WpsConfig schema."""
         extra_data = self.model_extra or {}
         for key, val in extra_data.items():
@@ -293,7 +296,7 @@ class DaqConfigValidator(BaseStrictModel):
     daq_nodes: list[DaqNodeValidator]
 
     @model_validator(mode='after')
-    def check_head_node_data_dir_match(self) -> 'DaqConfigValidator':
+    def check_head_node_data_dir_match(self) -> DaqConfigValidator:
         # If the head node and the DAQ node are the same machine, data_dir must match.
         head_ip = str(self.head_node_ip_addr)
         for node in self.daq_nodes:

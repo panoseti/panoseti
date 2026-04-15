@@ -4,9 +4,12 @@
 # You can use this as a script or a module.
 
 import sys
+
 import quabo_driver
+
 sys.path.insert(0, '../util')
 import config_file
+
 
 def qstart(s):
     obs_config = config_file.get_obs_config()

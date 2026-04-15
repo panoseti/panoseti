@@ -18,16 +18,17 @@ Without email notifications:
 0 9 1,15 * * /path/to/this/script/backup_influxdb.py --backup >/dev/null 2>&1
 """
 
-import os, sys
 import datetime
 import json
+import os
+import sys
 import time
 
 # Globals
 BACKUP_DIR_PATH = '/tmp/influxdb_backups'
 RESTORE_DIR_PATH = BACKUP_DIR_PATH
 backup_log_filename = 'backup_log.json'
-backup_log_path = '{0}/{1}'.format(BACKUP_DIR_PATH, backup_log_filename)
+backup_log_path = f'{BACKUP_DIR_PATH}/{backup_log_filename}'
 
 
 def get_backup_folder_path(date):
@@ -80,24 +81,24 @@ def do_backup():
     2. Creates a backup of the influxdb data generated since the last backup, and
     3. Calls update_backup_log to add a log entry for this backup.
     """
-    date = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    date = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     backup_folder_path = get_backup_folder_path(date)
     # Create backup directory.
-    make_dir_command = 'mkdir -p {0}'.format(backup_folder_path)
+    make_dir_command = f'mkdir -p {backup_folder_path}'
     os.system(make_dir_command)
     # Get and run backup command.
     last_backup_date = get_last_backup_date()
     if last_backup_date:
-        backup_command = 'influxd backup -portable -db metadata -since {0} {1} '.format(last_backup_date, backup_folder_path)
+        backup_command = f'influxd backup -portable -db metadata -since {last_backup_date} {backup_folder_path} '
     else:
-        backup_command = 'influxd backup -portable -db metadata {0}'.format(backup_folder_path)
+        backup_command = f'influxd backup -portable -db metadata {backup_folder_path}'
     exit_status = os.system(backup_command)
     exit_status = 'SUCCESS' if not exit_status else 'FAILED'
     # Add log entry for this backup.
     update_backup_log(backup_folder_path, date, exit_status)
     # Report success or failure of backup.
     if exit_status == 'SUCCESS':
-        msg = 'Successfully backed up the database to {0}.'.format(backup_folder_path)
+        msg = f'Successfully backed up the database to {backup_folder_path}.'
         print(msg)
     else:
         msg = 'Failed to back up the database.'
@@ -113,7 +114,7 @@ def restore_one_backup(path_to_backup):
         3) Delete the temporary database.
     """
     print("Restoring the backup to the temporary database 'metadata-tmp'...")
-    command_1 = 'influxd restore -portable -db "metadata" -newdb "metadata-tmp" {0}'.format(path_to_backup)
+    command_1 = f'influxd restore -portable -db "metadata" -newdb "metadata-tmp" {path_to_backup}'
     os.system(command_1)
 
     print("Querying data from 'metadata-tmp' and writing it into 'metadata'...")
@@ -142,11 +143,11 @@ def do_restore():
 
     print('Attempting to restore the following backups:')
     for name in backup_directories:
-        print('\t* {0}'.format(name))
+        print(f'\t* {name}')
 
     for name in backup_directories:
         print('\n\n\t' + '**' * 3, name, '**' * 3)
-        path_to_backup = '{0}/{1}'.format(RESTORE_DIR_PATH, name)
+        path_to_backup = f'{RESTORE_DIR_PATH}/{name}'
         restore_one_backup(path_to_backup)
     print("\nRestored all backups.")
 

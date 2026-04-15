@@ -4,14 +4,15 @@
 Script for capturing metadata from each ethernet outlet
 and storing it in the Redis database.
 """
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from datetime import datetime
 import time
 
 import power
-from utils import redis_utils, config_file
+from utils import config_file, redis_utils
 
 # Time between updates.
 UPDATE_INTERVAL = 1

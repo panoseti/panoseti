@@ -7,20 +7,20 @@
 # computer and added to each set of values with a variable 
 # labeled as 'Computer_UTC'.
 ##############################################################
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import time
-import serial
 import struct
-import redis
-from influxdb import InfluxDBClient
-from signal import signal, SIGINT
-from datetime import datetime
-from datetime import timezone
-from utils.redis_utils import *
-from utils import util, config_file
+import time
+from datetime import UTC, datetime
+from signal import SIGINT, signal
 
+import serial
+
+from utils import config_file, util
+from utils.redis_utils import *
 
 BYTEORDER = 'big'
 RKEY = 'GPSPRIM'
@@ -59,7 +59,7 @@ def primaryTimingPacket(data, r):
         print(data)
         print('Packet size is ', len(data))
         return
-    tvUTC = str(datetime.now(timezone.utc))
+    tvUTC = str(datetime.now(UTC))
     
     timeofWeek = int.from_bytes(data[1:5], byteorder=BYTEORDER, signed=False)
     

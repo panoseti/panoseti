@@ -16,9 +16,12 @@
 
 from __future__ import annotations
 
-import socket, time, json, logging
+import json
+import logging
+import socket
+import time
+
 from utils import util
-import os
 
 UDP_CMD_PORT= 60000
     # port used on both sides for command packets
@@ -406,7 +409,7 @@ class QUABO:
             try:
                 x = self.hk_sock.recvfrom(2048)
                 # returns (data, (ip_addr, port))
-            except (socket.timeout, OSError):
+            except (TimeoutError, OSError):
                 continue
             src = x[1]
             if src[0] == self.ip_addr:
@@ -436,7 +439,7 @@ class QUABO:
             reply = self.sock.recvfrom(12)
             bytes = reply[0]
             count = len(bytes)
-        except (socket.timeout, OSError):
+        except (TimeoutError, OSError):
             count = 0
         if count != 12:
             return False
@@ -476,7 +479,7 @@ class QUABO:
                 # returns (data, ip_addr)
                 nbytes += len(x[0])
                 count += 1
-            except socket.timeout:
+            except TimeoutError:
                 break
         #print('flush_rx_buffer: got %d bytes'%nbytes)
 

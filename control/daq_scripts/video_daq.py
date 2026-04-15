@@ -6,10 +6,14 @@
 # --nsecs X     return at most 1 image per X sec
 # --module N    images from module N
 
-import time, sys, os
+import os
+import sys
+import time
 from glob import glob
 
-import pff, util
+import pff
+import util
+
 
 def main(dp, nsecs, module):
     run = util.daq_get_run_name()

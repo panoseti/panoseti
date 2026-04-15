@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-import time
-import requests
-import redis
 import argparse
 import datetime
-import os
 import json
+import os
+import time
+
+import redis
+import requests
 from astropy.time import Time
 
 URL = "http://10.200.130.100/admin/scripts/getMainWeather.php"
@@ -93,7 +94,7 @@ def save_to_redis(weather):
 def write_log(weather):
     """Append weather data to a daily log file with header if new."""
     # Create directory /mnt/data11/data/palomar/L0/YYYYMMDD/weather
-    utc_date = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+    utc_date = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y%m%d")
     log_dir = os.path.join(BASE_DIR, utc_date, "weather")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "weather.log")
@@ -148,7 +149,7 @@ def copy_weather_to_cylon(weather):
         # Fix permissions for web download
         os.system(f'ssh {REMOTE_SERVER} "chmod 644 {REMOTE_WEATHER_DIR2}/weather_current.json || true"')
 
-        print(f"? Updated weather_current.json on cylon")
+        print("? Updated weather_current.json on cylon")
 
     except Exception as e:
         print(f"? Failed to upload weather_current.json: {e}")

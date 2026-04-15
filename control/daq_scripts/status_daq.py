@@ -7,8 +7,11 @@
 #
 # runs in the data dir on the DAQ node
 
-import os, json
+import json
+import os
+
 import util
+
 
 def status():
     x = {}

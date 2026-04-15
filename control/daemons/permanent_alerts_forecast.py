@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import os
-import sys
 import json
-import time
 import subprocess
+import sys
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -62,19 +60,19 @@ UA = {"User-Agent": "PANOSETI-ops (contact: ops@example.com)"}
 # ===== UTILITIES =====
 # =====================
 def now_utc():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 def fmt_local(ts):
     return ts.astimezone().strftime("%Y-%m-%d %H:%M")
 
 def fmt_utc(ts):
-    return ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    return ts.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%SZ")
 
 def parse_iso_any(s):
     if s.endswith("Z"):
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(UTC)
     dt = datetime.fromisoformat(s)
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 def mph_from_str(s: StrOrNone) -> IntOrNone:
     if not s:

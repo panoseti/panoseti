@@ -7,10 +7,13 @@
 # --run_dir X   specify run dir
 # --cleanup     clean up DAQ nodes; don't collect
 # --verbose
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils import file_xfer, util, config_file
+from utils import config_file, file_xfer, util
+
 
 # return '' if data collection was successful, else error msg
 #

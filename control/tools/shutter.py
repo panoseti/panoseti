@@ -3,15 +3,17 @@
 # open or close shutter, which is controlled by quabo1.
 # if the ip is not specified, we will open the shutter on all of the used modules.
 
-import sys, os, subprocess, time, datetime, json
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils import util, file_xfer
-from driver.quabo_tftp import tftpw
-from driver import quabo_driver
-from utils import config_file, pixel_coords
-from argparse import ArgumentParser
 import logging
+from argparse import ArgumentParser
+
+from driver import quabo_driver
+from utils import config_file, util
+
 # check the ip address
 # shutter controller is connected to quabo1
 # 

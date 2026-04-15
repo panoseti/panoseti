@@ -36,8 +36,6 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
-
 
 # ---------------- CONFIG (match kstars_coords.py) ----------------
 DEFAULT_CONF = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_mount/mountcontrol.conf"
@@ -85,14 +83,14 @@ class Obj:
 
 
 # ---------- CONFIG ----------
-def load_conf(conf_path: str) -> Dict[str, SiteConf]:
+def load_conf(conf_path: str) -> dict[str, SiteConf]:
     """
     Same parser behavior as kstars_coords.py:
       - ignores comments (#)
       - requires 6 columns
       - keys by lowercased site name
     """
-    out: Dict[str, SiteConf] = {}
+    out: dict[str, SiteConf] = {}
     with open(conf_path, newline="") as f:
         for row in csv.reader(f):
             if not row or row[0].strip().startswith("#"):
@@ -112,7 +110,7 @@ def load_conf(conf_path: str) -> Dict[str, SiteConf]:
 
 
 # ---------- SSH ----------
-def run_ssh(site: SiteConf, remote_cmd: List[str]) -> str:
+def run_ssh(site: SiteConf, remote_cmd: list[str]) -> str:
     """
     Same SSH wrapper pattern as kstars_coords.py (including timeout + error reporting).
     """
@@ -147,7 +145,7 @@ def parse_first_float(s: str) -> float:
 
 
 # ---------- Mount query ----------
-def get_mount_radec(site: SiteConf) -> Tuple[float, float]:
+def get_mount_radec(site: SiteConf) -> tuple[float, float]:
     """
     Query Ekos Mount coordinates using the properties that actually exist on your system.
 
@@ -214,12 +212,12 @@ def dms_to_degrees(s: str) -> float:
 
 
 # ---------- Catalog ----------
-def load_catalog(path: Optional[str]) -> List[Obj]:
+def load_catalog(path: str | None) -> list[Obj]:
     if not path:
         return [Obj(n, ra, de) for (n, ra, de) in BUILTIN_OBJECTS]
 
-    objs: List[Obj] = []
-    with open(path, "r", newline="") as f:
+    objs: list[Obj] = []
+    with open(path, newline="") as f:
         reader = csv.DictReader(f)
         required = {"name", "ra_deg", "dec_deg"}
         fields = set(reader.fieldnames or [])
@@ -248,14 +246,14 @@ def ang_sep_deg(ra1_deg: float, dec1_deg: float, ra2_deg: float, dec2_deg: float
     return math.degrees(math.acos(cosd))
 
 
-def find_nearest(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tuple[Obj, float]:
+def find_nearest(objs: list[Obj], ra_deg: float, dec_deg: float) -> tuple[Obj, float]:
     """
     Returns (nearest_object, separation_deg).
     Uses astropy if available; otherwise pure-math fallback.
     """
     try:
-        from astropy.coordinates import SkyCoord  # type: ignore
         import astropy.units as u  # type: ignore
+        from astropy.coordinates import SkyCoord  # type: ignore
 
         target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
         cat = SkyCoord(

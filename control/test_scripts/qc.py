@@ -10,8 +10,10 @@
 #
 # See https://github.com/panoseti/panoseti/wiki/Quabo-command-line-interface
 
-import quabo_driver, util
 import sys
+
+import quabo_driver
+import util
 
 config_filename = "./config/quabo_config.txt"
 baseline_filename = "./quabo_baseline.csv"

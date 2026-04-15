@@ -1,7 +1,11 @@
 #! /usr/bin/env python3
-import git
 import json
+
+import git
+
 from utils import config_file
+
+
 def get_sw_info():
     repo = git.Repo(search_parent_directories=True)
     commit = repo.head.commit.hexsha

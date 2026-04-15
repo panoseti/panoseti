@@ -12,12 +12,15 @@
 # - start the Redis daemons
 # - copy software to DAQ nodes
 
-import sys, time, os
+import os
+import time
+from argparse import ArgumentParser
 
-import config, power, get_uids
+import config
+import get_uids
+import power
 from utils import config_file, util
 
-from argparse import ArgumentParser
 
 def session_start(obs_config, quabo_info, data_config, daq_config, network_config, no_hv, stage ):
 

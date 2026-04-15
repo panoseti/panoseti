@@ -42,13 +42,11 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from datetime import UTC, datetime
 
+import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
-import matplotlib.pyplot as plt
-
 
 # ---------------- CONFIG ----------------
 MOUNTCONF = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_mount/mountcontrol.conf"
@@ -89,7 +87,7 @@ EKOS_GUIDING = os.path.join(HELPER_DIR, "ekos_guiding.py")
 # ------------------------------------------------------
 
 # Tracks last-downloaded remote file per site (extra safety against repeats)
-LAST_EKOS_REMOTE: Dict[str, str] = {}  # site_name -> remote_path
+LAST_EKOS_REMOTE: dict[str, str] = {}  # site_name -> remote_path
 
 
 # ==============================
@@ -105,8 +103,8 @@ class SiteConf:
     device: str
 
 
-def load_mountconf(conf_path: str) -> Dict[str, SiteConf]:
-    out: Dict[str, SiteConf] = {}
+def load_mountconf(conf_path: str) -> dict[str, SiteConf]:
+    out: dict[str, SiteConf] = {}
     with open(conf_path, newline="") as f:
         for row in csv.reader(f):
             if not row or row[0].strip().startswith("#"):
@@ -190,12 +188,12 @@ def _angular_sep_deg(ra1_deg: float, dec1_deg: float, ra2_deg: float, dec2_deg: 
     return math.degrees(math.acos(cosd))
 
 
-def _load_target_catalog(csv_path: Optional[str]) -> List[Obj]:
+def _load_target_catalog(csv_path: str | None) -> list[Obj]:
     if not csv_path:
         return list(BUILTIN_OBJECTS)
 
-    objs: List[Obj] = []
-    with open(csv_path, "r", newline="") as f:
+    objs: list[Obj] = []
+    with open(csv_path, newline="") as f:
         reader = csv.DictReader(f)
         required = {"name", "ra_deg", "dec_deg"}
         fields = set(reader.fieldnames or [])
@@ -212,10 +210,10 @@ def _load_target_catalog(csv_path: Optional[str]) -> List[Obj]:
     return objs
 
 
-def _find_nearest_target(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tuple[Obj, float]:
+def _find_nearest_target(objs: list[Obj], ra_deg: float, dec_deg: float) -> tuple[Obj, float]:
     try:
-        from astropy.coordinates import SkyCoord
         import astropy.units as u
+        from astropy.coordinates import SkyCoord
 
         target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
         cat = SkyCoord(
@@ -236,7 +234,7 @@ def _find_nearest_target(objs: List[Obj], ra_deg: float, dec_deg: float) -> Tupl
         return best, best_sep
 
 
-def ekos_mount_equatorial_coords_deg(site: SiteConf) -> Tuple[float, float]:
+def ekos_mount_equatorial_coords_deg(site: SiteConf) -> tuple[float, float]:
     cmd = (
         "qdbus --literal org.kde.kstars /KStars/Ekos/Mount "
         "org.freedesktop.DBus.Properties.Get org.kde.kstars.Ekos.Mount equatorialCoords"
@@ -257,7 +255,7 @@ def ekos_mount_equatorial_coords_deg(site: SiteConf) -> Tuple[float, float]:
     return ra_deg, dec_deg
 
 
-def infer_current_target_name(site: SiteConf, tol_arcmin: float, catalog_csv: Optional[str]) -> Tuple[str, float, float, float]:
+def infer_current_target_name(site: SiteConf, tol_arcmin: float, catalog_csv: str | None) -> tuple[str, float, float, float]:
     objs = _load_target_catalog(catalog_csv)
     ra_deg, dec_deg = ekos_mount_equatorial_coords_deg(site)
     nearest, sep_deg = _find_nearest_target(objs, ra_deg, dec_deg)
@@ -272,18 +270,18 @@ def infer_current_target_name(site: SiteConf, tol_arcmin: float, catalog_csv: Op
 # Misc helpers
 # ==============================
 def utc_datestr():
-    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+    return datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
 
 
 def utc_ts_compact():
-    return datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
+    return datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
 
 
 def site_norm(name: str) -> str:
     return (name or "").strip().lower()
 
 
-def extract_last_int(s: str) -> Optional[int]:
+def extract_last_int(s: str) -> int | None:
     nums = re.findall(r"-?\d+", s or "")
     if not nums:
         return None
@@ -293,7 +291,7 @@ def extract_last_int(s: str) -> Optional[int]:
         return None
 
 
-def extract_last_float(s: str) -> Optional[float]:
+def extract_last_float(s: str) -> float | None:
     nums = re.findall(r"-?\d+(?:\.\d+)?", s or "")
     if not nums:
         return None
@@ -303,7 +301,7 @@ def extract_last_float(s: str) -> Optional[float]:
         return None
 
 
-def run_local(argv: List[str]) -> int:
+def run_local(argv: list[str]) -> int:
     return subprocess.run(argv).returncode
 
 
@@ -382,7 +380,7 @@ def ekos_guide_suspend(site: SiteConf):
     return run_ssh(site, cmd)
 
 
-def ekos_mount_tracking_and_ha_hours(site: SiteConf) -> Tuple[Optional[bool], Optional[float]]:
+def ekos_mount_tracking_and_ha_hours(site: SiteConf) -> tuple[bool | None, float | None]:
     tracking = None
     ha_hours = None
 

@@ -7,9 +7,12 @@
 # --hashpipe            copy hashpipe executable (hashpipe.so) to nodes
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
-import sys, os
+import os
+import sys
 from glob import glob
+
 from utils import config_file, util
+
 
 # copy a file to a DAQ node
 #

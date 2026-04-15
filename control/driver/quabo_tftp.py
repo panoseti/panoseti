@@ -1,9 +1,11 @@
-import tftpy
-import struct
-import os
 import logging
+import os
+import struct
 
-class tftpw(object):
+import tftpy
+
+
+class tftpw:
     def __init__(self,ip,port=69):
         self.ip = ip
         self.client = tftpy.TftpClient(ip,port)

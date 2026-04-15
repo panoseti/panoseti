@@ -5,14 +5,19 @@
 # --quantile: find the x and 1-x quantiles, and use those as limits
 #   default: 0.1
 # if no filename specified, use 'img'
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import random, json
+import json
+import random
+
 import matplotlib.pyplot as plt
 import numpy as np
 
-from utils import pff, image_quantiles
+from utils import image_quantiles, pff
+
 
 def create_figure(image_size):
     imshape = (image_size,image_size)

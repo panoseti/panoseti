@@ -8,11 +8,9 @@
 import re
 import unittest
 
-from numpy import place
-
 convertValues = {r'[A-Z]':1e9, r'm[A-Z]':1e6, r'u[A-Z]':1e3, r'n[A-Z]':1 }
 
-class HKconvert():
+class HKconvert:
     def __init__(self):
         self.keyFormat = {r'HVMON[0-3]':self.HVMON,
                          r'HVIMON[0-3]':self.HVIMON,

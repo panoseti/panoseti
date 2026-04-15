@@ -10,15 +10,19 @@ this code resolves.
 See the Hamamatsu datasheet for its MPPC arrays: S13361-3050 series
 for more info about the detector constants used in this script.
 """
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import time
-import redis
-from driver import quabo_driver 
-
-from utils import config_file, util, redis_utils
 import logging
+import time
+
+import redis
+
+from driver import quabo_driver
+from utils import config_file, redis_utils, util
+
 #-------------- CONSTANTS ---------------#
 # HV offset
 HV_OFFSET = 1.073
@@ -228,7 +232,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                 quabo_obj = None
                 try:
                     # Get this Quabo's redis key.
-                    rkey = "QUABO_{0}".format(config_file.get_boardloc(module_ip_addr, quabo_index))
+                    rkey = f"QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}"
                     # check if we already have records for this Quabo
                     if rkey not in quabo_status:
                         # if not, we need to create a new record for this Quabo
@@ -265,7 +269,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                     ip_port = util.get_quabo_ip_port(module_ip_addr, quabo_index, network_config)
                     real_ip = ip_port['ip_addr']
                     port = ip_port['cmd_port']
-                    logger.debug(f'-------------------------')
+                    logger.debug('-------------------------')
                     logger.debug(f'{rkey}({q_ip_addr}):')
                     logger.debug(f'Port forwarding: {real_ip}:{port}')
                     quabo_obj = quabo_driver.QUABO(real_ip, port)
@@ -293,7 +297,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                     msg += "Error msg: {2}"
                     logger.error(msg.format(quabo_index, module_ip_addr, kerr))
                     raise
-                except OSError as oserr:
+                except OSError:
                     continue
                 else:
                     # Checks whether the quabo temperature is acceptable.

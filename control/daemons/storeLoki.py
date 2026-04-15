@@ -12,24 +12,23 @@ from __future__ import annotations
 
 import gzip
 import json
-import logging
 import os
 import sys
 import time
+from pathlib import Path
 
 import redis
 import requests
-from pathlib import Path
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 try:
-    from panoseti_grpc.telemetry.logger import get_logger
     from panoseti_grpc.telemetry.config import TelemetryConfig
+    from panoseti_grpc.telemetry.logger import get_logger
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-    from panoseti_grpc.telemetry.logger import get_logger
     from panoseti_grpc.telemetry.config import TelemetryConfig
+    from panoseti_grpc.telemetry.logger import get_logger
 
 logger = get_logger("storeLoki", grpc_enabled=False)
 

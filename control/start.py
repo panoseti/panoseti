@@ -20,30 +20,33 @@
 
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
-import os, sys, traceback, shutil, time
-from glob import glob
-from utils import util, file_xfer
-from driver import quabo_driver
-import stop, session_stop
-from tools.sw_info import get_sw_info
-import socket
-from utils import pff, config_file
-
-import logging
-from argparse import ArgumentParser
-from panoseti_grpc.daq_control.client import DaqControlClient
-
 # ---------------- PRINT -> UT TIMESTAMP + FILE LOG ----------------
 import builtins
-from datetime import datetime, timezone
+import logging
+import os
+import shutil
+import socket
+import time
+import traceback
+from argparse import ArgumentParser
+from datetime import UTC, datetime
+from glob import glob
+
+from panoseti_grpc.daq_control.client import DaqControlClient
+
+import session_stop
+import stop
+from driver import quabo_driver
+from tools.sw_info import get_sw_info
+from utils import config_file, file_xfer, pff, util
 
 _LOG_ROOT = "/mnt/data11/data/palomar/L0"
 
 def _ut_yyyymmdd():
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    return datetime.now(UTC).strftime("%Y%m%d")
 
 def _ut_human_ts():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UT")
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UT")
 
 def _datarec_log_path():
     yyyymmdd = _ut_yyyymmdd()
@@ -69,7 +72,7 @@ def _print(*args, **kwargs):
 
         # Read existing contents (if any), then write new line + old contents
         try:
-            with open(log_path, "r", encoding="utf-8") as f:
+            with open(log_path, encoding="utf-8") as f:
                 old = f.read()
         except FileNotFoundError:
             old = ""

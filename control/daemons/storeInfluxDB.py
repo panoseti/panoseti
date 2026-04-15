@@ -18,20 +18,21 @@
 #           Runs the Telemetry gRPC Service for high-performance metadata streams from remote Linux machines.
 #       - Modification: possible with client-only modifications or changes to capture_telemetry_service/telemetry_config.toml
 ##############################################################
+import logging
 import os
+import re
 import sys
 import time
-import re
-import redis
-import logging
 from datetime import datetime
+from typing import Any
+
+import redis
 from influxdb import InfluxDBClient
-from typing import Dict, Optional, Tuple, Any, List
 from requests.exceptions import ConnectionError
+from rich.console import Console
 
 # Rich Logging Imports
 from rich.logging import RichHandler
-from rich.console import Console
 
 # Add control root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -39,7 +40,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'capture_telemetry_service')))
 
 from utils import config_file
-from utils.redis_utils import redis_init, get_casted_redis_value
+from utils.redis_utils import get_casted_redis_value, redis_init
 
 try:
     from archiver_utils import TelemetryConfigManager
@@ -92,10 +93,10 @@ logger = logging.getLogger("storeInfluxDB")
 # List of keys with the time stamp values
 # - Track timestamps to avoid duplicate writes
 # - Structure: {redis_key: last_seen_computer_utc}
-key_timestamps: Dict[str, str] = {}
+key_timestamps: dict[str, str] = {}
 
 
-def init_influx_clients() -> Tuple[InfluxDBClient, InfluxDBClient]:
+def init_influx_clients() -> tuple[InfluxDBClient, InfluxDBClient]:
     """
     Robustly connects to InfluxDB (Prod and Dev) with retry logic.
     Blocks until connection succeeds.
@@ -136,8 +137,8 @@ def determine_routing(
         rkey: str,
         client_prod: InfluxDBClient,
         client_dev: InfluxDBClient,
-        telemetry_mgr: Optional[Any]
-) -> Tuple[Optional[InfluxDBClient], Optional[str]]:
+        telemetry_mgr: Any | None
+) -> tuple[InfluxDBClient | None, str | None]:
     """
     Decides where a Redis Key should go based on Legacy Regex or Dynamic Config.
 
@@ -166,7 +167,7 @@ def determine_routing(
     return None, None
 
 
-def extract_redis_payload(r: redis.Redis, rkey: str) -> Optional[Dict[str, Any]]:
+def extract_redis_payload(r: redis.Redis, rkey: str) -> dict[str, Any] | None:
     """
     Fetches hash from Redis, performs type casting, and deduplicates based on timestamp.
 
@@ -214,7 +215,7 @@ def extract_redis_payload(r: redis.Redis, rkey: str) -> Optional[Dict[str, Any]]
         return None
 
 
-def format_influx_point(key: str, data_fields: Dict[str, Any], datatype: str) -> Optional[Dict[str, Any]]:
+def format_influx_point(key: str, data_fields: dict[str, Any], datatype: str) -> dict[str, Any] | None:
     """
     Formats a raw dictionary of fields into an InfluxDB JSON point structure.
 
@@ -253,7 +254,7 @@ def process_redis_keys(
         r: redis.Redis,
         client_prod: InfluxDBClient,
         client_dev: InfluxDBClient,
-        telemetry_mgr: Optional[Any]
+        telemetry_mgr: Any | None
 ):
     """
     Main processing logic: Scans keys, routes them, extracts data, and prepares batch writes.

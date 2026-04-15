@@ -12,13 +12,19 @@ Assumptions:
 - Remote "current" dir on cylon already exists; we do NOT mkdir remotely.
 """
 
-import os, csv, json, time, socket, datetime, subprocess
-from typing import Tuple, Optional, Dict, Any
+import csv
+import datetime
+import json
+import os
+import socket
+import subprocess
+import time
+from typing import Any
 
-import redis
-from astropy.coordinates import AltAz, EarthLocation, SkyCoord, FK5
-from astropy.time import Time
 import astropy.units as u
+import redis
+from astropy.coordinates import FK5, AltAz, EarthLocation, SkyCoord
+from astropy.time import Time
 
 # ===================== CONFIG =====================
 CONFIG_FILE   = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_mount/mounts.conf"
@@ -56,7 +62,7 @@ SSH_CMD_TIMEOUT = 4  # seconds (per remote command)
 SCP_TIMEOUT     = 4  # seconds
 
 # ===================== HELPERS =====================
-def run_ssh(ssh_user: str, ssh_host: str, ssh_port: int, remote_argv: list, timeout: int = SSH_CMD_TIMEOUT) -> Optional[str]:
+def run_ssh(ssh_user: str, ssh_host: str, ssh_port: int, remote_argv: list, timeout: int = SSH_CMD_TIMEOUT) -> str | None:
     """Run a remote command via SSH; return stdout or None on error/timeout."""
     try:
         cmd = ["ssh", "-p", str(ssh_port), *SSH_OPTS, f"{ssh_user}@{ssh_host}", *remote_argv]
@@ -67,7 +73,7 @@ def run_ssh(ssh_user: str, ssh_host: str, ssh_port: int, remote_argv: list, time
     except Exception:
         return None
 
-def indi_getprop(ssh_user: str, ssh_host: str, ssh_port: int, indi_port: int, prop: str) -> Optional[str]:
+def indi_getprop(ssh_user: str, ssh_host: str, ssh_port: int, indi_port: int, prop: str) -> str | None:
     """Fetch an INDI property via indi_getprop over SSH; returns value (string after '=') or None."""
     out = run_ssh(ssh_user, ssh_host, ssh_port, ["indi_getprop", "-p", str(indi_port), prop])
     if not out:
@@ -82,7 +88,7 @@ def qdbus_target(ssh_user: str, ssh_host: str, ssh_port: int) -> str:
     )
     return out if out else ""
 
-def qdbus_altaz(ssh_user: str, ssh_host: str, ssh_port: int) -> Tuple[Optional[float], Optional[float]]:
+def qdbus_altaz(ssh_user: str, ssh_host: str, ssh_port: int) -> tuple[float | None, float | None]:
     """
     Get Alt/Az via qdbus --literal.
     Expected string contains "{az, alt}" or "{alt, az}". We try to parse two floats.
@@ -114,7 +120,7 @@ def qdbus_altaz(ssh_user: str, ssh_host: str, ssh_port: int) -> Tuple[Optional[f
     except Exception:
         return None, None
 
-def parse_ra_hours(val: str) -> Optional[float]:
+def parse_ra_hours(val: str) -> float | None:
     """RA string -> decimal hours. Accepts '2.5' or '02:30:00.0'."""
     if val is None:
         return None
@@ -127,7 +133,7 @@ def parse_ra_hours(val: str) -> Optional[float]:
     except Exception:
         return None
 
-def parse_dec_deg(val: str) -> Optional[float]:
+def parse_dec_deg(val: str) -> float | None:
     """Dec string -> decimal degrees. Accepts '-12.5' or '-12:30:00.0' (with +/?)."""
     if val is None:
         return None
@@ -143,7 +149,7 @@ def parse_dec_deg(val: str) -> Optional[float]:
         return None
 
 def ensure_day_log(name: str) -> str:
-    day = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+    day = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y%m%d")
     path = os.path.join(SAVE_ROOT, day, name, "mount")
     os.makedirs(path, exist_ok=True)
     return os.path.join(path, f"{name}_mount_{day}.log")
@@ -155,7 +161,7 @@ def write_log(logfile: str, line: str) -> None:
     except Exception:
         pass
 
-def safe_redis_mapping(d: Dict[str, Any]) -> Dict[str, str]:
+def safe_redis_mapping(d: dict[str, Any]) -> dict[str, str]:
     """Convert values to strings; skip None (Redis cannot store None)."""
     out = {}
     for k, v in d.items():
@@ -231,7 +237,7 @@ def main():
 
     # Prepare log file map (refresh if day rolls)
     current_day = None
-    log_paths: Dict[str, str] = {}
+    log_paths: dict[str, str] = {}
 
     while True:
         now = Time.now()

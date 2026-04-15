@@ -7,19 +7,22 @@
 # and added to each set of values with a variable labeled as
 # 'Computer_UTC'.
 ##############################################################
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import socket
-import redis
-from signal import signal, SIGINT
-from sys import exit
 import time
-from datetime import datetime
+from signal import SIGINT, signal
+from sys import exit
+
+import redis
+from capture_hk import metadata_status_monitor_utils as md_utils
+from capture_hk.panosetiSIconvert import HKconvert
+
 from utils.redis_utils import *
 
-from capture_hk.panosetiSIconvert import HKconvert
-from capture_hk import metadata_status_monitor_utils as md_utils
 HKconv = HKconvert()
 HKconv.changeUnits('V')
 HKconv.changeUnits('A')
@@ -126,7 +129,7 @@ def storeInRedis(packet, r:redis.Redis):
         'VCCINT': HKconv.convertValue('VCCINT', array[19]),
         'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
 
-        'UID': '0x{0:04x}{1:04x}{2:04x}{3:04x}'.format(array[24],array[23],array[22],array[21]),
+        'UID': f'0x{array[24]:04x}{array[23]:04x}{array[22]:04x}{array[21]:04x}',
 
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
@@ -135,8 +138,8 @@ def storeInRedis(packet, r:redis.Redis):
         # Bit 0 in the byte with offset 53.
         'PCBREV_N': ((array[25]&0xFF00) >> 8) & 0x01,
 
-        'FWTIME': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
-        'FWVER': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),
+        'FWTIME': f'0x{array[28]:04x}{array[27]:04x}',
+        'FWVER': bytes.fromhex(f'{array[30]:04x}{array[29]:04x}').decode("ASCII"),
         
         'StartUp': startUp,
         'AGG_STATUS_MSG': "",

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import socket
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from rich.console import Console
-from rich.pretty import pprint
 from rich.panel import Panel
+from rich.pretty import pprint
 
 console = Console()
 

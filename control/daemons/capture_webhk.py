@@ -15,13 +15,12 @@ Requires:
 """
 
 import json
-import time
 import subprocess
-from datetime import datetime, timezone
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from influxdb import InfluxDBClient
-
 
 # ---------------- CONFIG ----------------
 # Influx
@@ -72,7 +71,7 @@ def run_cmd(cmd: str) -> None:
 
 
 def ns_to_iso_utc(ns: int) -> str:
-    dt = datetime.fromtimestamp(ns / 1e9, tz=timezone.utc)
+    dt = datetime.fromtimestamp(ns / 1e9, tz=UTC)
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
@@ -81,7 +80,7 @@ def rfc3339_to_ns(ts: str) -> int:
         ts = ts[:-1] + "+00:00"
     dt = datetime.fromisoformat(ts)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return int(dt.timestamp() * 1e9)
 
 
@@ -229,7 +228,7 @@ def main():
 
         # NEW: gate upload based on freshest parsed Influx timestamp
         if not parsed_ages_seconds:
-            print(f"[!] No parsable Influx timestamps found; skipping upload to cylon.")
+            print("[!] No parsable Influx timestamps found; skipping upload to cylon.")
         else:
             min_age = min(parsed_ages_seconds)
             if min_age > MAX_UPLOAD_AGE_SECONDS:

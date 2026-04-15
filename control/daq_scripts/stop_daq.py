@@ -9,11 +9,14 @@
 #
 # On success, print OK.  Otherwise print an error message
 
-import os, signal, util
+import os
+
+import util
+
 
 def main():
     try:
-        f = open(util.daq_hashpipe_pid_filename, 'r')
+        f = open(util.daq_hashpipe_pid_filename)
     except:
         f = None
     if f:

@@ -8,13 +8,15 @@
 # format separated by the characters '\n\n'.
 # As pertained in the panoseti metdata json format specifications.
 ##############################################################
-import os, sys
+import os
+import sys
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from io import FileIO
-import redis
 import json
 import time
+from io import FileIO
+
 from utils.redis_utils import *
 
 file_ptr = None

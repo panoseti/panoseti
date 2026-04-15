@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-import requests
-from requests.auth import HTTPDigestAuth
-from datetime import datetime, timezone
 import os
-import time
 import socket
 import subprocess
+import time
+from datetime import UTC, datetime
+
+import requests
+from requests.auth import HTTPDigestAuth
 
 # ---------------- CONFIGURATION ----------------
 CONFIG_FILE = "/home/obs/panoseti_mount/panoseti/control/daemons/capture_webcam/sites_webcam.conf"
@@ -34,7 +35,7 @@ def run_command(cmd):
 
 def load_sites(config_path):
     sites = []
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -44,7 +45,7 @@ def load_sites(config_path):
     return sites
 
 def make_save_dir(site_name):
-    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    date_str = datetime.now(UTC).strftime("%Y%m%d")
     save_dir = os.path.join(BASE_DIR_ROOT, date_str, site_name, "webcam")
     os.makedirs(save_dir, exist_ok=True)
     return save_dir
@@ -61,7 +62,7 @@ def capture_and_upload(site):
         r = requests.get(url, auth=HTTPDigestAuth(USERNAME, PASSWORD), timeout=10)
         r.raise_for_status()
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         local_filename = os.path.join(save_dir, f"webcam_{site_name}_{RPI_HOST}_{timestamp}.jpg")
 
         with open(local_filename, "wb") as f:

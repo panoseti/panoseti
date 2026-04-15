@@ -4,18 +4,25 @@
 # Logs each step to the console for debugging
 ##############################################################
 
-import os, sys, json, subprocess
-import socket, redis, time
-from datetime import datetime, timezone
-from signal import signal, SIGINT
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from datetime import UTC, datetime
+from signal import SIGINT, signal
 from sys import exit
+
+import redis
 
 # ===== Path to panoseti project root =====
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.redis_utils import *
-from capture_hk.panosetiSIconvert import HKconvert
 from capture_hk import metadata_status_monitor_utils as md_utils
+from capture_hk.panosetiSIconvert import HKconvert
+
+from utils.redis_utils import *
 
 # ===== CONFIGURATION =====
 HOST = '0.0.0.0'
@@ -60,7 +67,7 @@ def run_command(cmd, label):
 
 def append_to_daily_log(redis_set, boardName):
     """Append housekeeping record to local daily JSON log."""
-    date_str = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+    date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
     log_dir = os.path.join(BASE_DIR, date_str, OBSERVATORY, "hk")
     log_file = os.path.join(log_dir, f"{boardName}.json")
 
@@ -93,7 +100,7 @@ def send_latest_to_remote(redis_set, boardName):
 
     try:
         os.remove(tmpfile)
-        print(f"   ? Temp file removed.")
+        print("   ? Temp file removed.")
     except FileNotFoundError:
         pass
 
@@ -137,12 +144,12 @@ def storeInRedis(packet, r: redis.Redis):
         'TEMP2': HKconv.convertValue('TEMP2', array[18]),
         'VCCINT': HKconv.convertValue('VCCINT', array[19]),
         'VCCAUX': HKconv.convertValue('VCCAUX', array[20]),
-        'UID': '0x{0:04x}{1:04x}{2:04x}{3:04x}'.format(array[24],array[23],array[22],array[21]),
+        'UID': f'0x{array[24]:04x}{array[23]:04x}{array[22]:04x}{array[21]:04x}',
         'SHUTTER_STATUS': array[25]&0x01,
         'LIGHT_SENSOR_STATUS': (array[25]&0x02) >> 1,
         'PCBREV_N': ((array[25]&0xFF00) >> 8) & 0x01,
-        'FWTIME': '0x{0:04x}{1:04x}'.format(array[28],array[27]),
-        'FWVER': bytes.fromhex('{0:04x}{1:04x}'.format(array[30],array[29])).decode("ASCII"),
+        'FWTIME': f'0x{array[28]:04x}{array[27]:04x}',
+        'FWVER': bytes.fromhex(f'{array[30]:04x}{array[29]:04x}').decode("ASCII"),
         'StartUp': startUp,
         'AGG_STATUS_MSG': "",
         'AGG_STATUS_LEVEL': 0

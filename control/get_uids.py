@@ -6,20 +6,23 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import sys, os, struct
+import argparse
+import json
+import os
+import struct
+import sys
+from argparse import ArgumentParser
+from datetime import UTC, datetime
+
 from driver.quabo_tftp import tftpw
 from utils import config_file, util
-import json
-import argparse
-from argparse import ArgumentParser
-from datetime import datetime, timezone
 
 # =========================
 # Logging / print wrapper
 # =========================
 
 def _ut_now():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 def _log_paths():
     ut = _ut_now()
@@ -39,7 +42,7 @@ def print(*args, **kwargs):
 
     # prepend to log file
     if os.path.exists(log_file):
-        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+        with open(log_file, encoding="utf-8", errors="ignore") as f:
             old = f.read()
     else:
         old = ""

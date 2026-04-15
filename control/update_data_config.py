@@ -19,17 +19,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import tempfile
 import subprocess
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
-
+from typing import Any
 
 DEFAULT_CONFIG_PATH = "/home/obs/panoseti_mount/panoseti/control/configs/data_config.json"
 CYLON_DEST = "cylon:/web/panoseti-palomar/current/data_config_current.json"
 
 
-def _load_json(path: Path) -> Dict[str, Any]:
+def _load_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
@@ -42,7 +41,7 @@ def _load_json(path: Path) -> Dict[str, Any]:
         raise RuntimeError(f"Failed to read JSON from {path}: {e}") from e
 
 
-def _parse_obj(s: Optional[str], flagname: str) -> Optional[Dict[str, Any]]:
+def _parse_obj(s: str | None, flagname: str) -> dict[str, Any] | None:
     if s is None:
         return None
     try:
@@ -54,7 +53,7 @@ def _parse_obj(s: Optional[str], flagname: str) -> Optional[Dict[str, Any]]:
     return obj
 
 
-def _atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
+def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
     fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))

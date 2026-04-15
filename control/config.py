@@ -8,29 +8,33 @@ firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
 firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
-import sys, os, subprocess, time, datetime, json, statistics, signal
-import copy
-import logging
-from utils import util, file_xfer
-from driver.quabo_tftp import tftpw
-from driver import quabo_driver, quabo_tftp
-from utils import pixel_coords
-from utils import config_file
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from argparse import ArgumentParser
-
 # ---- PRINT WRAPPER: prefix UTC timestamp + prepend to UT-day logfile ----
 import builtins as _builtins
+import copy
+import datetime
+import json
+import logging
+import os
+import signal
+import statistics
+import subprocess
+import sys
+import time
+from argparse import ArgumentParser
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from driver import quabo_driver
+from driver.quabo_tftp import tftpw
+from utils import config_file, file_xfer, pixel_coords, util
 
 _builtin_print = _builtins.print
 
 def _utc_ts():
     # Human-readable UTC timestamp
-    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S UT")
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S UT")
 
 def _ut_yyyymmdd():
-    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).strftime("%Y%m%d")
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y%m%d")
 
 def _datarec_log_path():
     yyyymmdd = _ut_yyyymmdd()
@@ -44,7 +48,7 @@ def _prepend_to_file(path, text):
     old = ""
     try:
         if os.path.exists(path):
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, encoding="utf-8", errors="replace") as f:
                 old = f.read()
     except Exception:
         old = ""
@@ -225,7 +229,7 @@ def do_reboot(modules, quabo_uids, network_config):
     # ... same for quabo 1 etc.
     #
     logger = logging.getLogger('PANOSETI.Config.do_reboot')
-    logger.info(f"Rebooting all of the modules in parallel...")
+    logger.info("Rebooting all of the modules in parallel...")
     start_time = time.time()
     start_dt = datetime.datetime.fromtimestamp(start_time)
     nmodules = len(modules)
@@ -635,9 +639,9 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             q['coefs'] = coefs
             quabos.append(q)
     x={}
-    d = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    d = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     x['date'] = d.isoformat()
-    x['quabos'] = quabos;
+    x['quabos'] = quabos
     baseline_file = config_file.quabo_ph_baseline_filename
     os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
     with open(baseline_file, "w") as f:
@@ -792,7 +796,7 @@ def do_stop_interleave():
         print("No active interleave process found (PID file missing).")
         return # Return instead of sys.exit(0) so other scripts can call this safely
 
-    with open(pid_file, "r") as f:
+    with open(pid_file) as f:
         try:
             pid = int(f.read().strip())
         except ValueError:
