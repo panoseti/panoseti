@@ -240,7 +240,7 @@ control_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if control_root not in sys.path:
     sys.path.insert(0, control_root)
     
-from utils import config_file
+from utils import config_file  # noqa: E402
 
 
 def get_daq_and_network_config(kind="direct") -> tuple[dict, dict | None]:

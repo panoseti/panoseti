@@ -81,7 +81,8 @@ class InterleaveController:
             self.quabos[module_id] = []
             for i in range(4):
                 uid = util.quabo_uid(module, quabo_uids, i)
-                if not uid: continue
+                if not uid:
+                    continue
                 config_file.quabo_ip_addr(base_ip_addr, i)
                 ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
                 real_ip = ip_ports['ip_addr']
@@ -177,8 +178,10 @@ class InterleaveController:
         temp_dict = self.data_config.copy()
         temp_dict.pop('image', None)
         temp_dict.pop('pulse_height', None)
-        if movie_key: temp_dict['image'] = self.data_config[movie_key]
-        if ph_key: temp_dict['pulse_height'] = self.data_config[ph_key]
+        if movie_key:
+            temp_dict['image'] = self.data_config[movie_key]
+        if ph_key:
+            temp_dict['pulse_height'] = self.data_config[ph_key]
         #logger.debug(f"Generating state dict for {temp_dict=}")
         return temp_dict
 
@@ -186,7 +189,8 @@ class InterleaveController:
         while self.keep_running:
             now = time.perf_counter()
             remaining = target_time - now
-            if remaining <= spin_wait_threshold: break
+            if remaining <= spin_wait_threshold:
+                break
             time.sleep(remaining - spin_wait_threshold)
         while self.keep_running and time.perf_counter() < target_time:
             pass
@@ -211,7 +215,8 @@ class InterleaveController:
                     break
 
                 for state in states:
-                    if not self.keep_running: break
+                    if not self.keep_running:
+                        break
 
                     name = state["state_name"]
                     duration = state["duration_seconds"]
@@ -289,7 +294,8 @@ class InterleaveController:
         finally:
             # self.executor.shutdown(wait=False)
             for quabos in self.quabos.values():
-                for q in quabos: q.close()
+                for q in quabos:
+                    q.close()
             self._release_lock()
 
 

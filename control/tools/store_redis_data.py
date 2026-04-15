@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import json
 import time
 from io import FileIO
+
 from utils.redis_utils import get_updated_redis_keys, redis_init
 
 file_ptr = None

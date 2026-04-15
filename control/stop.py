@@ -14,13 +14,16 @@
 #   --no_cleanup        don't delete files from DAQ nodes
 #   --run X             clean up run X (default: read from current_run)
 
+import builtins
 import logging
 import os
 import signal
-import sys
 import socket
+import sys
+import tempfile
 import time
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
@@ -71,11 +74,6 @@ def stop_interleave(retry_limit=10):
         except (OSError, ValueError):
             os.remove(pid_file)
 
-
-
-import builtins
-import tempfile
-from datetime import UTC, datetime
 
 # =========================
 # Print -> also prepend to UT log file
@@ -212,8 +210,10 @@ def make_links(run_dir, verbose):
     did_hk = False
     for f in os.listdir(run_dir):
         path = f'{run_dir}/{f}'
-        if not pff.is_pff_file(path): continue
-        if os.path.getsize(path) == 0: continue
+        if not pff.is_pff_file(path):
+            continue
+        if os.path.getsize(path) == 0:
+            continue
         ftype = pff.pff_file_type(f)
         if not did_img and ftype in ['img16', 'img8']:
             os.symlink(path, img_symlink)
@@ -230,7 +230,8 @@ def make_links(run_dir, verbose):
             did_hk = True
             if verbose:
                 print(f'linked {hk_symlink} to {f}')
-        if did_img and did_ph and did_hk: break
+        if did_img and did_ph and did_hk:
+            break
     if not did_img:
         print('make_links(): No nonempty image file')
     if not did_ph:

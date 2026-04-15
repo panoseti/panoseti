@@ -33,9 +33,12 @@ def status():
     vols = {}
     for f in os.listdir('.'):
         y = f.split('_')
-        if len(y) != 2: continue
-        if y[0] != 'module': continue
-        if not y[1].isnumeric(): continue
+        if len(y) != 2:
+            continue
+        if y[0] != 'module':
+            continue
+        if not y[1].isnumeric():
+            continue
         modnum = int(y[1])
         n = os.path.realpath(f)
         n = n.split('/')

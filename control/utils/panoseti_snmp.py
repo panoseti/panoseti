@@ -22,7 +22,7 @@ class snmp_wapper:
             for i in range(len(res)):
                 r.append(bytes.decode(res[i]))
             return r
-        except:
+        except Exception:
             return -1
 
 class wrs_snmp:    

@@ -32,7 +32,8 @@ class TelemetryConfigManager:
 
     def reload(self):
         """Checks disk for changes and reloads if necessary."""
-        if not TelemetryConfig: return
+        if not TelemetryConfig:
+            return
 
         try:
             if not self.config_path.exists():
@@ -58,7 +59,8 @@ class TelemetryConfigManager:
         Matches a Redis Key to a (datatype, mode) tuple.
         Returns (None, None) if no match.
         """
-        if not self.config: return None, None
+        if not self.config:
+            return None, None
 
         # Fast prefix check
         # Note: This simple implementation assumes prefixes don't overlap in ambiguous ways

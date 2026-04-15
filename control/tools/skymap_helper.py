@@ -25,7 +25,7 @@ def add_obs_config(skymap_t, obs_config_file='obs_config.json'):
                 m.pop('quabo_version')
                 m.pop('wps')
                 m.pop('name')
-            except:
+            except Exception:
                 pass
     skymap_t['observatory_config']['domes'] = domes
 
@@ -38,11 +38,11 @@ def add_data_config(skymap_t, data_config_file='data_config.json'):
     skymap_t['run_type'] = data_config['run_type']
     try:
         skymap_t['data_config']['image'] = data_config['image']
-    except:
+    except Exception:
         pass
     try:
         skymap_t['data_config']['pulse_height']['pe_threshold'] = data_config['pulse_height']['pe_threshold']
-    except:
+    except Exception:
         pass
 
 # Add software version info to the skymap template.

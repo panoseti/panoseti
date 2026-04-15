@@ -107,11 +107,12 @@ def main():
     pid = process.pid
     while True:
         result = subprocess.run(['pgrep', '-P', str(pid)], stdout=subprocess.PIPE)
-        if result.stdout != '': break
+        if result.stdout != '':
+            break
         time.sleep(1)
     try:
         child_pid = int(result.stdout)
-    except:
+    except Exception:
         raise Exception(f"can't get hashpipe PID; it may have crashed: {result.stdout}") from None
 
     # write it to a file

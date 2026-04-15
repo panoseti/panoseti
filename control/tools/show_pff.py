@@ -44,10 +44,13 @@ def image_as_text(img, img_size, bytes_per_pixel, min, max):
             x = img[row*img_size+col]
             if max != min:
                 y = (x-min)/(max-min)
-                if y<0: y=0
-                if y>1: y=1
+                if y < 0:
+                    y = 0
+                if y > 1:
+                    y = 1
                 i = int(y*8)
-                if i>=8: i=7
+                if i >= 8:
+                    i = 7
 #print(x, y, min, max, i)
             else:
                 if bytes_per_pixel == 2:

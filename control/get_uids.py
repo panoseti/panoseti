@@ -63,7 +63,7 @@ def get_uid(ip_addr, port):
         with open('flashuid', 'rb') as f:
             i = struct.unpack('q', f.read(8))
             return f"{i[0]:x}"
-    except:
+    except Exception:
         return ""
 
 def get_uids(obs_config, network_config, exclude=None):

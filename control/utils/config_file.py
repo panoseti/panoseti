@@ -173,7 +173,7 @@ def get_network_config(dir='.'):
         with open(path) as f:
             s = f.read()
         net_conf = json.loads(s)
-    except:
+    except Exception:
         print("***********Warning: No network config file! **************")
         print("******All the devices should be in the same subnet *******")
         net_conf = {}
@@ -491,7 +491,7 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
         err_count = len(e.errors())
         console.print(f"\n[bold red][FAIL] Schema Validation Error in {config_name} ({filename}):[/bold red]")
         for err in e.errors():
-            loc = " -> ".join([str(l) for l in err["loc"]])
+            loc = " -> ".join([str(part) for part in err["loc"]])
             msg = err["msg"]
             console.print(f"  [bold red]Field:[/bold red] {loc}")
             console.print(f"  [bold red]Error:[/bold red] {msg}\n")

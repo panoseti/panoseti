@@ -4,10 +4,6 @@
 # See usage() for options.
 # see matlab/initq.m, startq*.py
 
-firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
-firmware_silver_bga = 'quabo_0207_28514055.bin'
-firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
-
 # ---- PRINT WRAPPER: prefix UTC timestamp + prepend to UT-day logfile ----
 import builtins as _builtins
 import copy
@@ -26,6 +22,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from driver import quabo_driver
 from driver.quabo_tftp import tftpw
 from utils import config_file, file_xfer, pixel_coords, util
+
+firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
+firmware_silver_bga = 'quabo_0207_28514055.bin'
+firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 _builtin_print = _builtins.print
 
@@ -324,7 +324,8 @@ def do_hk_dest(modules, quabo_uids, daq_config, network_config):
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
-            if uid == '': continue
+            if uid == '':
+                continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
@@ -341,7 +342,8 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, ver
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
-            if uid == '': continue
+            if uid == '':
+                continue
             qi = quabo_info[uid]
             v = [0]*4
             for j in range(4):
@@ -367,7 +369,8 @@ def do_hv_off(modules, quabo_uids, network_config):
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
-            if uid == '': continue
+            if uid == '':
+                continue
             v = [0]*4
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
@@ -413,11 +416,12 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             qc_dict = copy.deepcopy(qc_dict_src)
             uid = util.quabo_uid(module, quabo_uids, i)
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            if uid == '': continue
+            if uid == '':
+                continue
             is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
             try:
                 qi = quabo_info[uid]
-            except:
+            except Exception:
                 use_default_calib = ask_use_default_calibration(ip_addr)
                 if use_default_calib:
                     qi = quabo_info['default']
@@ -430,7 +434,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             # if we can't find it, we will use 3v by default.
             try:
                 detovervol = data_config['detector_overvoltage']
-            except:
+            except Exception:
                 detovervol = 3
             # We have different calibration files for different modes: image alone and image/ph together
             # so we have to specifiy the mode here.
@@ -588,7 +592,8 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
-            if uid == '': continue
+            if uid == '':
+                continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             for tag in ['CHANMASK_8', 'GOEMASK']:
                 if verbose:
@@ -618,7 +623,8 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
-            if uid == '': continue
+            if uid == '':
+                continue
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']

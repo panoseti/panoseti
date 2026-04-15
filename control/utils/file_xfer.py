@@ -34,7 +34,8 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
         if verbose:
             print(cmd)
         ret = os.system(cmd)
-        if ret: raise Exception(f'{cmd} returned {ret}')
+        if ret:
+            raise Exception(f'{cmd} returned {ret}')
 
 # Copy the contents of a module/run dir from a DAQ node
 # to the corresponding run dir on this (head) node.
@@ -64,7 +65,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         print(cmd)
     try:
         ret = os.system(cmd)
-    except:
+    except Exception:
         return f'copy_dir_from_node(): {cmd} returned {ret}'
     
     # copy process snapshot from remote node to this node
@@ -80,7 +81,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         print(cmd)
     try:
         ret = os.system(cmd)
-    except:
+    except Exception:
         return f'copy_dir_from_node(): {cmd} returned {ret}'
     # copy PFF files from remote node to this node
     if 'port_forwarding' in node:
@@ -91,7 +92,7 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         print(cmd)
     try:
         ret = os.system(cmd)
-    except:
+    except Exception:
         return f'copy_dir_from_node(): {cmd} returned {ret}'
     return ''
 
@@ -104,7 +105,8 @@ def make_remote_dirs(daq_config, dirname):
         )
         print(cmd)
         ret = os.system(cmd)
-        if ret: raise Exception(f'{cmd} returned {ret}')
+        if ret:
+            raise Exception(f'{cmd} returned {ret}')
 
 # copy config files to run dirs on DAQ nodes
 #

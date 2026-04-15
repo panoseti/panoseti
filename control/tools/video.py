@@ -34,7 +34,8 @@ def main(quabo_uids, module_id, dp):
                 if module['id'] == module_id:
                     found = True
                     break
-            if found: break
+            if found:
+                break
         if not found:
             print(f'no such module {module_id}')
             return

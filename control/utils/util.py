@@ -660,7 +660,7 @@ def convert_ip(ip):
     try:
         qid = int(ip)
         return f"192.168.{qid>>8}.{qid&0xfc}", qid&0x3
-    except:
+    except Exception:
         ipstr = ip.split('.')
         last = int(ipstr[3])
         blast = 4*(last//4)

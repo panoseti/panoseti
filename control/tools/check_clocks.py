@@ -135,7 +135,7 @@ class check_clocks:
         server.settimeout(1)
         try:
             data,client_addr = server.recvfrom(BUFFERSIZE)
-        except:
+        except Exception:
             raise Exception('\n No packets from Quabo!\n Please make sure the quabo is powered on and rebooted.') from None
         server.close()
 

@@ -153,7 +153,7 @@ class tftpw:
         # print('*******************************************************')
         try:
             self.client.upload(remote_filename,filename)
-        except:
+        except Exception:
             pass
         os.remove(filename)
         

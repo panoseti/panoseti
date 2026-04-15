@@ -77,7 +77,7 @@ def mph_from_str(s: StrOrNone) -> IntOrNone:
     for p in parts:
         try:
             nums.append(int(p))
-        except:
+        except Exception:
             pass
     return max(nums) if nums else None
 

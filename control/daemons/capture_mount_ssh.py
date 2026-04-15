@@ -266,7 +266,8 @@ def main():
 
             if not ra_str or not dec_str:
                 msg = f"[{name}] {iso} | NO DATA (mount offline or INDI unreachable)"
-                print(msg); write_log(logf, msg)
+                print(msg)
+                write_log(logf, msg)
                 combined["mounts"][name] = {
                     "timestamp": iso, "mount": name, "status": "OFFLINE",
                     "ra_hours": None, "dec_deg": None, "alt_deg": None, "az_deg": None,
@@ -283,7 +284,8 @@ def main():
             dec_d = parse_dec_deg(dec_str)
             if ra_h is None or dec_d is None:
                 msg = f"[{name}] {iso} | BAD RA/DEC FORMAT ({ra_str}, {dec_str})"
-                print(msg); write_log(logf, msg)
+                print(msg)
+                write_log(logf, msg)
                 # record placeholder so UI still shows a panel
                 snap = {
                     "timestamp": iso, "mount": name, "status": "BAD_RADEC",
@@ -293,7 +295,8 @@ def main():
                     "target_name": qdbus_target(ssh_user, ssh_host, ssh_port) or ""
                 }
                 combined["mounts"][name] = snap
-                if r: r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(snap))
+                if r:
+                    r.hset(f"MOUNT_{name.upper()}", mapping=safe_redis_mapping(snap))
                 continue
 
             # ---------- Compute J2000 RA/Dec from EOD ----------
@@ -337,7 +340,8 @@ def main():
                     f"Dec_J2000:{(dec_j2000_d if dec_j2000_d is not None else float('nan')):.6f}° "
                     f"Side:{side}({side_code}) "
                     f"Tracking:{tracking}({tracking_code}) Target:{target}")
-            print(line); write_log(logf, line)
+            print(line)
+            write_log(logf, line)
 
             # ---------- Snapshot ----------
             snap = dict(

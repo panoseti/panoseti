@@ -276,7 +276,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                     # Get the list of detector serial numbers for this quabo.
                     try:
                         q_info = quabo_info[uid]
-                    except:
+                    except Exception:
                         q_info = quabo_info['default']
                         logger.warning(f'No calibration data: UID - {uid}')
                     detector_serial_nums = [s for s in q_info['detector_serialno']]

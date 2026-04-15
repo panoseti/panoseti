@@ -662,12 +662,16 @@ class QUABO:
 
             # Make a list of integers
             vals_int = []
-            for i in range(len(vals)): vals_int.append(int(vals[i],0))
+            for i in range(len(vals)):
+                vals_int.append(int(vals[i],0))
 
             # For each tag, set the appropriate bit field
-            if (tag == "OTABG_ON"): self.set_bits_4(tag, vals_int, 0, 1)
-            if (tag == "DAC_ON"): self.set_bits_4(tag, vals_int, 1, 1)
-            if (tag == "SMALL_DAC"): self.set_bits_4(tag, vals_int, 2, 1)
+            if (tag == "OTABG_ON"):
+                self.set_bits_4(tag, vals_int, 0, 1)
+            if (tag == "DAC_ON"):
+                self.set_bits_4(tag, vals_int, 1, 1)
+            if (tag == "SMALL_DAC"):
+                self.set_bits_4(tag, vals_int, 2, 1)
             if (tag == "DAC2"):
                 #need to reverse the bits
                 vals_revbits = []
@@ -679,44 +683,82 @@ class QUABO:
                 for i in range (4):
                     vals_revbits.append(reverse_bits(int(vals[i],0),10))
                 self.set_bits_4(tag, vals_revbits, 13, 10)
-            if (tag == "ENB_OUT_ADC"): self.set_bits_4(tag, vals_int, 23, 1)
-            if (tag == "INV_START_GRAY"): self.set_bits_4(tag, vals_int, 24, 1)
-            if (tag == "RAMP8B"): self.set_bits_4(tag, vals_int, 25, 1)
-            if (tag == "RAMP10B"): self.set_bits_4(tag, vals_int, 26, 1)
-            if (tag == "CMD_CK_MUX"): self.set_bits_4(tag, vals_int, 155, 1)
-            if (tag == "D1_D2"): self.set_bits_4(tag, vals_int, 156, 1)
-            if (tag == "INV_DISCR_ADC"): self.set_bits_4(tag, vals_int, 157, 1)
-            if (tag == "POLAR_DISCRI"): self.set_bits_4(tag, vals_int, 158, 1)
-            if (tag == "ENB3ST"): self.set_bits_4(tag, vals_int, 159, 1)
-            if (tag == "VAL_DC_FSB2"): self.set_bits_4(tag, vals_int, 160, 1)
-            if (tag == "SW_FSB2_50F"): self.set_bits_4(tag, vals_int, 161, 1)
-            if (tag == "SW_FSB2_100F"): self.set_bits_4(tag, vals_int, 162, 1)
-            if (tag == "SW_FSB2_100K"): self.set_bits_4(tag, vals_int, 163, 1)
-            if (tag == "SW_FSB2_50K"): self.set_bits_4(tag, vals_int, 164, 1)
-            if (tag == "VALID_DC_FS"): self.set_bits_4(tag, vals_int, 165, 1)
-            if (tag == "CMD_FSB_FSU"): self.set_bits_4(tag, vals_int, 166, 1)
-            if (tag == "SW_FSB1_50F"): self.set_bits_4(tag, vals_int, 167, 1)
-            if (tag == "SW_FSB1_100F"): self.set_bits_4(tag, vals_int, 168, 1)
-            if (tag == "SW_FSB1_100K"): self.set_bits_4(tag, vals_int, 169, 1)
-            if (tag == "SW_FSB1_50k"): self.set_bits_4(tag, vals_int, 170, 1)
-            if (tag == "SW_FSU_100K"): self.set_bits_4(tag, vals_int, 171, 1)
-            if (tag == "SW_FSU_50K"): self.set_bits_4(tag, vals_int, 172, 1)
-            if (tag == "SW_FSU_25K"): self.set_bits_4(tag, vals_int, 173, 1)
-            if (tag == "SW_FSU_40F"): self.set_bits_4(tag, vals_int, 174, 1)
-            if (tag == "SW_FSU_20F"): self.set_bits_4(tag, vals_int, 175, 1)
-            if (tag == "H1H2_CHOICE"): self.set_bits_4(tag, vals_int, 176, 1)
-            if (tag == "EN_ADC"): self.set_bits_4(tag, vals_int, 177, 1)
-            if (tag == "SW_SS_1200F"): self.set_bits_4(tag, vals_int, 178, 1)
-            if (tag == "SW_SS_600F"): self.set_bits_4(tag, vals_int, 179, 1)
-            if (tag == "SW_SS_300F"): self.set_bits_4(tag, vals_int, 180, 1)
-            if (tag == "ON_OFF_SS"): self.set_bits_4(tag, vals_int, 181, 1)
-            if (tag == "SWB_BUF_2P"): self.set_bits_4(tag, vals_int, 182, 1)
-            if (tag == "SWB_BUF_1P"): self.set_bits_4(tag, vals_int, 183, 1)
-            if (tag == "SWB_BUF_500F"): self.set_bits_4(tag, vals_int, 184, 1)
-            if (tag == "SWB_BUF_250F"): self.set_bits_4(tag, vals_int, 185, 1)
-            if (tag == "CMD_FSB"): self.set_bits_4(tag, vals_int, 186, 1)
-            if (tag == "CMD_SS"): self.set_bits_4(tag, vals_int, 187, 1)
-            if (tag == "CMD_FSU"): self.set_bits_4(tag, vals_int, 188, 1)
+            if (tag == "ENB_OUT_ADC"):
+                self.set_bits_4(tag, vals_int, 23, 1)
+            if (tag == "INV_START_GRAY"):
+                self.set_bits_4(tag, vals_int, 24, 1)
+            if (tag == "RAMP8B"):
+                self.set_bits_4(tag, vals_int, 25, 1)
+            if (tag == "RAMP10B"):
+                self.set_bits_4(tag, vals_int, 26, 1)
+            if (tag == "CMD_CK_MUX"):
+                self.set_bits_4(tag, vals_int, 155, 1)
+            if (tag == "D1_D2"):
+                self.set_bits_4(tag, vals_int, 156, 1)
+            if (tag == "INV_DISCR_ADC"):
+                self.set_bits_4(tag, vals_int, 157, 1)
+            if (tag == "POLAR_DISCRI"):
+                self.set_bits_4(tag, vals_int, 158, 1)
+            if (tag == "ENB3ST"):
+                self.set_bits_4(tag, vals_int, 159, 1)
+            if (tag == "VAL_DC_FSB2"):
+                self.set_bits_4(tag, vals_int, 160, 1)
+            if (tag == "SW_FSB2_50F"):
+                self.set_bits_4(tag, vals_int, 161, 1)
+            if (tag == "SW_FSB2_100F"):
+                self.set_bits_4(tag, vals_int, 162, 1)
+            if (tag == "SW_FSB2_100K"):
+                self.set_bits_4(tag, vals_int, 163, 1)
+            if (tag == "SW_FSB2_50K"):
+                self.set_bits_4(tag, vals_int, 164, 1)
+            if (tag == "VALID_DC_FS"):
+                self.set_bits_4(tag, vals_int, 165, 1)
+            if (tag == "CMD_FSB_FSU"):
+                self.set_bits_4(tag, vals_int, 166, 1)
+            if (tag == "SW_FSB1_50F"):
+                self.set_bits_4(tag, vals_int, 167, 1)
+            if (tag == "SW_FSB1_100F"):
+                self.set_bits_4(tag, vals_int, 168, 1)
+            if (tag == "SW_FSB1_100K"):
+                self.set_bits_4(tag, vals_int, 169, 1)
+            if (tag == "SW_FSB1_50k"):
+                self.set_bits_4(tag, vals_int, 170, 1)
+            if (tag == "SW_FSU_100K"):
+                self.set_bits_4(tag, vals_int, 171, 1)
+            if (tag == "SW_FSU_50K"):
+                self.set_bits_4(tag, vals_int, 172, 1)
+            if (tag == "SW_FSU_25K"):
+                self.set_bits_4(tag, vals_int, 173, 1)
+            if (tag == "SW_FSU_40F"):
+                self.set_bits_4(tag, vals_int, 174, 1)
+            if (tag == "SW_FSU_20F"):
+                self.set_bits_4(tag, vals_int, 175, 1)
+            if (tag == "H1H2_CHOICE"):
+                self.set_bits_4(tag, vals_int, 176, 1)
+            if (tag == "EN_ADC"):
+                self.set_bits_4(tag, vals_int, 177, 1)
+            if (tag == "SW_SS_1200F"):
+                self.set_bits_4(tag, vals_int, 178, 1)
+            if (tag == "SW_SS_600F"):
+                self.set_bits_4(tag, vals_int, 179, 1)
+            if (tag == "SW_SS_300F"):
+                self.set_bits_4(tag, vals_int, 180, 1)
+            if (tag == "ON_OFF_SS"):
+                self.set_bits_4(tag, vals_int, 181, 1)
+            if (tag == "SWB_BUF_2P"):
+                self.set_bits_4(tag, vals_int, 182, 1)
+            if (tag == "SWB_BUF_1P"):
+                self.set_bits_4(tag, vals_int, 183, 1)
+            if (tag == "SWB_BUF_500F"):
+                self.set_bits_4(tag, vals_int, 184, 1)
+            if (tag == "SWB_BUF_250F"):
+                self.set_bits_4(tag, vals_int, 185, 1)
+            if (tag == "CMD_FSB"):
+                self.set_bits_4(tag, vals_int, 186, 1)
+            if (tag == "CMD_SS"):
+                self.set_bits_4(tag, vals_int, 187, 1)
+            if (tag == "CMD_FSU"):
+                self.set_bits_4(tag, vals_int, 188, 1)
 
             #Look for a MASKOR1 value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("MASKOR1"):
@@ -773,8 +815,10 @@ class QUABO:
     # Maximum value for field_width is 16 (a value can only span three bytes)
     #
     def set_bits(self, chip, lsb_pos, field_width, value):
-        if (field_width >16): return
-        if ((field_width + lsb_pos) > SERIAL_COMMAND_LENGTH): return
+        if (field_width >16):
+            return
+        if ((field_width + lsb_pos) > SERIAL_COMMAND_LENGTH):
+            return
         shift = (lsb_pos % 8)
         byte_pos = int((lsb_pos+7-shift)/8)
         mask=0
@@ -835,7 +879,8 @@ def reverse_bits(data_in, width):
     data_out = 0
     for _ii in range(width):
         data_out = data_out << 1
-        if (data_in & 1): data_out = data_out | 1
+        if (data_in & 1):
+            data_out = data_out | 1
         data_in = data_in >> 1
     return data_out
 

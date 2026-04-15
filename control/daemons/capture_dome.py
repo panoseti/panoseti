@@ -45,7 +45,7 @@ def local_tz_label():
     is_dst = time.localtime().tm_isdst
     try:
         return time.tzname[1] if is_dst else time.tzname[0]
-    except:
+    except Exception:
         return "LOCAL"
 
 def UT_and_local():
@@ -62,7 +62,7 @@ def http_get_json(url):
         r = requests.get(url, timeout=6)
         r.raise_for_status()
         return r.json()
-    except:
+    except Exception:
         return None
 
 def http_get_text(url):
@@ -70,7 +70,7 @@ def http_get_text(url):
         r = requests.get(url, timeout=8, headers={"accept": "text/plain"})
         r.raise_for_status()
         return r.text
-    except:
+    except Exception:
         return None
 
 def ensure_dir(path):
@@ -140,7 +140,7 @@ def get_gattini_dome_status():
         r = requests.get(url, timeout=7)
         r.raise_for_status()
         lines = r.text.upper().splitlines()
-    except:
+    except Exception:
         return {
             "roofSignalsStatus": {"roofPosition": "UNKNOWN", "roofStatus": "UNKNOWN", "operationMode": "UNKNOWN"},
             "gattini_state_message": "NO DATA"
@@ -161,7 +161,7 @@ def get_gattini_dome_status():
             op_mode = "NORMAL"
             break
 
-    state_msg = next((l for l in r.text.splitlines() if "state" in l.lower()), "NO STATE")
+    state_msg = next((line for line in r.text.splitlines() if "state" in line.lower()), "NO STATE")
 
     return {
         "roofSignalsStatus": {

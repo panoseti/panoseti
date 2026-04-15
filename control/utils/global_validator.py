@@ -172,7 +172,8 @@ class GlobalConfigValidator:
         """Returns (TB_per_hour, total_estimated_TB, formula_string)"""
         num_modules = sum(len(d.get('modules', [])) for d in self.obs_conf.get('domes', []))
         img_conf = self.data_conf.get('image', {})
-        if num_modules == 0 or not img_conf: return 0.0, 0.0, "N/A"
+        if num_modules == 0 or not img_conf:
+            return 0.0, 0.0, "N/A"
 
         int_usec = img_conf.get('integration_time_usec', 100000)
         nsum = img_conf.get('nsum', 1)
@@ -263,7 +264,8 @@ class GlobalConfigValidator:
 
     def _check_wps_references(self):
         """Ensures that all Web Power Switches referenced by modules are defined in obs_config."""
-        if not self.obs_conf: return
+        if not self.obs_conf:
+            return
 
         missing_wps = set()
         for d in self.obs_conf.get('domes', []):

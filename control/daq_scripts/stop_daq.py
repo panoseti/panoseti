@@ -17,7 +17,7 @@ import util
 def main():
     try:
         f = open(util.daq_hashpipe_pid_filename)
-    except:
+    except Exception:
         f = None
     if f:
         pid = int(f.read())
@@ -34,7 +34,7 @@ def main():
 
     try:
         os.unlink(util.daq_run_name_filename)
-    except:
+    except Exception:
         pass
 
     print('stop_daq.py: OK')

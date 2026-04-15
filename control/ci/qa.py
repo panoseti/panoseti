@@ -195,10 +195,14 @@ class QARunner:
                 is_sequential_result = "::" in plain_line and any(upper_line.endswith(kw) or f"{kw} [" in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"])
                 
                 if is_parallel_result or is_sequential_result:
-                    if "PASSED" in upper_line or "XPASS" in upper_line: stats["passed"] += 1
-                    elif "FAILED" in upper_line: stats["failed"] += 1
-                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line: stats["skipped"] += 1
-                    elif "ERROR" in upper_line: stats["error"] += 1
+                    if "PASSED" in upper_line or "XPASS" in upper_line:
+                        stats["passed"] += 1
+                    elif "FAILED" in upper_line:
+                        stats["failed"] += 1
+                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line:
+                        stats["skipped"] += 1
+                    elif "ERROR" in upper_line:
+                        stats["error"] += 1
 
             # Detect pytest-xdist worker prefixes like [gw0]
             if line.startswith("[gw"):

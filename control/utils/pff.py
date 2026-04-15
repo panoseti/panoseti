@@ -7,6 +7,9 @@ import datetime
 import json
 import os
 import struct
+from decimal import Decimal
+
+import numpy as np
 
 
 # returns the string (doesn't parse it)
@@ -261,8 +264,6 @@ def wr_to_unix(pkt_tai, pkt_nsec, tv_sec, ignore_clock_desync=False):
         return 0
         #raise Exception('WR and Unix times differ by > 1 sec: pkt_tai %d tv_sec %d d %d'%(pkt_tai, tv_sec, d))
 
-from decimal import Decimal
-
 
 def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
     pkt_tai = Decimal(str(pkt_tai))
@@ -279,9 +280,6 @@ def wr_to_unix_decimal(pkt_tai, pkt_nsec, tv_sec):
         return tv_sec + 1 + pkt_nsec / nanosec_factor
     else:
         return 0
-
-
-import numpy as np
 
 
 def wr_to_unix_numpy(pkt_tai, pkt_nsec, tv_sec):

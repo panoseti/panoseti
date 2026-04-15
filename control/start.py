@@ -240,7 +240,8 @@ def make_run_dirs(run_name, daq_config):
                 if verbose:
                     print(cmd)
                 ret = os.system(cmd)
-                if ret: raise Exception(f'{cmd} returned {ret}')
+                if ret:
+                    raise Exception(f'{cmd} returned {ret}')
         else:
             username = node['username']
             data_dir = node['data_dir']
@@ -263,7 +264,8 @@ def make_run_dirs(run_name, daq_config):
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
-            if ret: raise Exception(f'{cmd} returned {ret}')
+            if ret:
+                raise Exception(f'{cmd} returned {ret}')
 
     # copy config files to DAQ nodes
     file_xfer.copy_config_files(daq_config, run_name, verbose)
@@ -369,7 +371,7 @@ def start_run(
             start_data_flow(quabo_uids, data_config, daq_config, network_config)
             print('starting recording')
             start_recording(obs_config, data_config, daq_config, run_name, no_hv)
-    except:
+    except Exception:
         print(traceback.format_exc())
         print("Couldn't start run.  Run stop.py, then try again.")
         print('If other users might be using the telescope, check with them;')
@@ -422,4 +424,3 @@ if __name__ == "__main__":
         stop.stop_run(daq_config, quabo_uids)
         if stop_session:
             session_stop.session_stop(obs_config)
-

@@ -20,6 +20,7 @@ from sys import exit
 import redis
 from capture_hk import metadata_status_monitor_utils as md_utils
 from capture_hk.panosetiSIconvert import HKconvert
+
 from utils.redis_utils import redis_init
 
 HKconv = HKconvert()
