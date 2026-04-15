@@ -28,7 +28,7 @@ class TestDaqLifecycle:
 
     def test_start_daq(self, daq_client, run_params, ensure_clean_daq_state):
         """StartDaq returns True for a fresh run."""
-        ok = daq_client.StartDaq(run_params)
+        daq_client.StartDaq(run_params)
         assert wait_hashpipe_running(daq_client, run_params['data_dir']), (
             "Hashpipe failed to start"
         )

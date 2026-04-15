@@ -8,10 +8,10 @@ tasks (unit, integration) stream without a prefix — the section header is enou
 
 Usage:
   python ci/qa.py build
-  python ci/qa.py lint
+  python ci/qa.py lint [ruff/mypy args...]
   python ci/qa.py unit [-j N] [pytest args...]
   python ci/qa.py integration [pytest args...]
-  python ci/qa.py all [-j N]
+  python ci/qa.py all [-j N] [pytest args...]
 """
 
 import argparse
@@ -314,7 +314,7 @@ class QARunner:
 
         task_colors = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(tasks)}
         descs = descriptions or {}
-        for name, cmd in tasks.items():
+        for name, _cmd in tasks.items():
             colored_name = C.paint(f"[{name}]", task_colors[name])
             print(f"  {colored_name}  {descs.get(name, '')}", flush=True)
         print(flush=True)
@@ -371,7 +371,12 @@ async def cmd_lint(args: argparse.Namespace, runner: QARunner) -> bool:
     
     results: list[Result] = []
     try:
-        tasks   = runner.lint_tasks()
+        # Pass extra args to both ruff and mypy
+        extra_str = " ".join(args.extra) if args.extra else ""
+        tasks = runner.lint_tasks()
+        if extra_str:
+            tasks = {k: f"{v} {extra_str}" for k, v in tasks.items()}
+            
         descs   = runner.lint_descriptions()
         results = await runner.run_parallel("LINTING", tasks, descs)
     finally:
@@ -391,7 +396,7 @@ async def cmd_unit(args: argparse.Namespace, runner: QARunner) -> bool:
     results: list[Result] = []
     try:
         jobs    = getattr(args, "jobs", None)
-        tasks   = runner.test_tasks("unit", jobs, getattr(args, "extra", []))
+        tasks   = runner.test_tasks("unit", jobs, args.extra)
         descs   = {"test.unit": runner.test_description("unit")}
         results = await runner.run_sequential("UNIT TESTS", tasks, descs)
     finally:
@@ -410,7 +415,7 @@ async def cmd_integration(args: argparse.Namespace, runner: QARunner) -> bool:
     
     results: list[Result] = []
     try:
-        tasks   = runner.test_tasks("integration", extra_args=getattr(args, "extra", []))
+        tasks   = runner.test_tasks("integration", extra_args=args.extra)
         descs   = {"test.integration": runner.test_description("integration")}
         results = await runner.run_sequential("INTEGRATION TESTS", tasks, descs)
     finally:
@@ -430,26 +435,37 @@ async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="python ci/qa.py")
-    sub    = parser.add_subparsers(dest="command")
+    parser = argparse.ArgumentParser(
+        prog="python ci/qa.py",
+        description="Unified QA Runner. Any unrecognized arguments are passed directly to the underlying tools (pytest, ruff, mypy).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python ci/qa.py unit -v -k test_logic
+  python ci/qa.py integration --durations=10
+  python ci/qa.py lint --fix
+"""
+    )
+    sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("build", help="Rebuild test images")
-    sub.add_parser("lint", help="Run linters (auto-setup/teardown)")
+    sub.add_parser("lint", help="Run linters [ruff/mypy args...]")
     
-    p_unit = sub.add_parser("unit", help="Run unit tests (auto-setup/teardown)")
+    p_unit = sub.add_parser("unit", help="Run unit tests [-j N] [pytest args...]")
     p_unit.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers")
-    p_unit.add_argument("extra", nargs="*", help="Extra pytest arguments")
 
-    p_int = sub.add_parser("integration", help="Run integration tests (auto-setup/teardown)")
-    p_int.add_argument("extra", nargs="*", help="Extra pytest arguments")
+    p_int = sub.add_parser("integration", help="Run integration tests [pytest args...]")
     
-    p_all = sub.add_parser("all", help="Run full suite (auto-setup/teardown each)")
+    p_all = sub.add_parser("all", help="Run full suite [pytest args...]")
     p_all.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers for unit tests")
 
-    args = parser.parse_args()
+    args, extra = parser.parse_known_args()
     if not args.command:
         parser.print_help()
         sys.exit(0)
+
+    # Store any extra args for use in the commands
+    setattr(args, "extra", extra)
 
     runner = QARunner(QA_TOML_PATH)
 

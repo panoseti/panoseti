@@ -95,7 +95,7 @@ class TestRealDataExtended:
             )
             received = 0
             async with asyncio.timeout(10.0):
-                async for frame in stream2:
+                async for _frame in stream2:
                     received += 1
                     if received >= 5:
                         break

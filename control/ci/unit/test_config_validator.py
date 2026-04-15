@@ -7,7 +7,6 @@ Unit tests for control/utils/config_validator.py:
 """
 from __future__ import annotations
 
-import socket
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
@@ -112,7 +111,6 @@ def _patch_tcp_check(up_hosts: set):
     Patch socket.create_connection so that connections to IPs in up_hosts
     succeed and all others raise OSError (connection refused).
     """
-    original = socket.create_connection
 
     def fake_create_connection(addr, timeout=None):
         ip, port = addr

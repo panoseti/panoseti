@@ -424,7 +424,7 @@ class TestHeadnodeDiskSpace:
         v._check_headnode_disk_space()
         # Should not error (tmp_path exists, system has disk space)
         # It may WARN if space is low, but should not ERROR unless truly full
-        errors = [t for t in v.report.tests if t["status"] == "ERROR" and "Path" not in t["info"]]
+        [t for t in v.report.tests if t["status"] == "ERROR" and "Path" not in t["info"]]
         # Only error is disk-full scenario, not path-not-found
         assert not any("missing or unreachable" in t["info"] for t in v.report.tests)
 

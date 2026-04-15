@@ -76,7 +76,6 @@ class TestRealDataFlow:
         After init_hp_io(simulate_daq=False), stream_images() yields at least 1 frame
         driven by live hashpipe output (from tcpreplay PCAP injection).
         """
-        run_params = hashpipe_pcap_session
         frames = list(islice(
             real_daq_data_client.stream_images(
                 hosts=None,
@@ -93,7 +92,6 @@ class TestRealDataFlow:
 
     def test_frame_is_dict(self, hashpipe_pcap_session, real_daq_data_client):
         """Each frame returned by the real stream is a non-empty dict."""
-        run_params = hashpipe_pcap_session
         for frame in islice(
             real_daq_data_client.stream_images(
                 hosts=None,

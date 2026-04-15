@@ -543,7 +543,7 @@ class TestSkipImage:
         f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000)
         # Read frame 0 header
         h0_str = pff.read_json(f)
-        h0 = json.loads(h0_str)
+        json.loads(h0_str)
         # Skip frame 0 image
         pff.skip_image(f, 32, 2)
         # Now read frame 1 header
