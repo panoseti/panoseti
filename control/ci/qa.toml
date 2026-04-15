@@ -33,7 +33,7 @@ command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --pr
 description = "Ruff lint + autofix"
 
 [lint.mypy]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run mypy . --color-output"
+command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run mypy . --explicit-package-bases --color-output"
 description = "MyPy static type check"
 
 # ── Test tasks ────────────────────────────────────────────────────────────────

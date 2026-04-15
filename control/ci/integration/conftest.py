@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 import uuid
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient

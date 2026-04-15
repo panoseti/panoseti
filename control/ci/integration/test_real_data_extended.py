@@ -159,7 +159,7 @@ class TestRealDataExtended:
                 try:
                     async with asyncio.timeout(3.0):
                         await anext(stream)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pytest.fail(f"Stream cycle {cycle} timed out")
                 
                 # In Python's gRPC aio, cancelling the async generator closes the stream

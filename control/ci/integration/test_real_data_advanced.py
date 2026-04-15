@@ -60,7 +60,7 @@ class TestRealDataAdvanced:
                         received_frames.append(frame)
                         if len(received_frames) >= 3:
                             break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pytest.fail("Stream timed out before receiving 3 frames.")
 
             assert len(received_frames) == 3
@@ -93,7 +93,7 @@ class TestRealDataAdvanced:
                         frames.append(frame)
                         if len(frames) >= 10:
                             break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
             assert len(frames) >= 10, f"Only {len(frames)} frames arrived within 15s. Is tcpreplay running?"

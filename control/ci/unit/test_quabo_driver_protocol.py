@@ -17,7 +17,6 @@ Reference: Quabo-packet-interface.md / quabo_driver.py
 from __future__ import annotations
 
 import os
-import socket
 import struct
 
 import pytest
@@ -58,7 +57,7 @@ class FakeSocket:
             opcode = self.sent[-1][0][0] & 0x7F
             if opcode in self.responses:
                 return self.responses[opcode], ("192.168.0.100", UDP_CMD_PORT)
-        raise socket.timeout()
+        raise TimeoutError()
 
     @property
     def last_cmd(self) -> bytes:

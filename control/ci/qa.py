@@ -20,10 +20,9 @@ import json
 import re
 import sys
 import time
+import tomllib
 from pathlib import Path
 from typing import Any
-
-import tomllib
 
 
 class C:
