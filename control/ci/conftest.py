@@ -254,3 +254,26 @@ def make_pff_file(
 def pff_file_factory():
     """Fixture that returns the make_pff_file() helper."""
     return make_pff_file
+
+
+# ---------------------------------------------------------------------------
+# Machine-readable test summary for qa.py
+# ---------------------------------------------------------------------------
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """
+    Hook to print a JSON-formatted summary of test results at the very end
+    of the pytest run. qa.py parses this to build its metrics table.
+    """
+    stats = terminalreporter.stats
+    # terminalreporter.stats is a dict mapping status -> list of reports
+    summary = {
+        "passed": len(stats.get("passed", [])),
+        "failed": len(stats.get("failed", [])),
+        "skipped": len(stats.get("skipped", [])),
+        "error": len(stats.get("error", [])),
+        "xfail": len(stats.get("xfail", [])),
+        "xpass": len(stats.get("xpass", [])),
+    }
+    # Print with a unique prefix so it's easy to grep from the stream
+    print(f"\nTEST_METRICS_JSON: {json.dumps(summary)}")

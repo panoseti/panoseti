@@ -5,21 +5,25 @@ default_parallel = 4
 
 # ── Infrastructure tasks ──────────────────────────────────────────────────────
 
-[infra.up]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit up -d && docker compose --env-file .env -f ci/docker-compose.integration.yml up -d"
-description = "Start all background test containers"
+[infra.up_unit]
+command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit up -d"
+description = "Start unit/lint test stack"
 
-[infra.down]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit down && docker compose --env-file .env -f ci/docker-compose.integration.yml down"
-description = "Tear down all test containers"
+[infra.down_unit]
+command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit down -v"
+description = "Tear down unit/lint stack and volumes"
+
+[infra.up_integration]
+command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml up -d"
+description = "Start integration test stack"
+
+[infra.down_integration]
+command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml down -v"
+description = "Tear down integration stack and volumes"
 
 [infra.build]
 command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit build && docker compose --env-file .env -f ci/docker-compose.integration.yml build"
 description = "Rebuild all test images"
-
-[infra.restart]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit restart && docker compose --env-file .env -f ci/docker-compose.integration.yml restart"
-description = "Restart all test containers"
 
 # ── Lint tasks ───────────────────────────────────────────────────────────────
 # All lint tasks run concurrently. Output lines are prefixed with the task name.

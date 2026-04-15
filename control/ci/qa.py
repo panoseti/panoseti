@@ -7,10 +7,7 @@ the task name so concurrent streams never mangle each other. Sequential
 tasks (unit, integration) stream without a prefix — the section header is enough.
 
 Usage:
-  python ci/qa.py up
-  python ci/qa.py down
   python ci/qa.py build
-  python ci/qa.py restart
   python ci/qa.py lint
   python ci/qa.py unit [-j N] [pytest args...]
   python ci/qa.py integration [pytest args...]
@@ -19,6 +16,8 @@ Usage:
 
 import argparse
 import asyncio
+import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -163,19 +162,44 @@ class QARunner:
         # worker_colors maps [gw0], [gw1], etc. to distinct PALETTE entries.
         worker_colors: dict[str, str] = {}
         stats = {"passed": 0, "failed": 0, "skipped": 0, "error": 0}
+        is_parallel = "-n" in cmd
+        has_json_metrics = False
+        
+        # Regex to strip ANSI color escape codes
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace").rstrip()
-            upper_line = line.upper()
             
-            # Identify result lines (both parallel [gwX] and sequential)
-            is_result = any(kw in upper_line for kw in [" PASSED", " FAILED", " SKIPPED", " ERROR"])
+            # Strip color for robust keyword detection
+            plain_line = ansi_escape.sub('', line)
             
-            if "::" in line and is_result:
-                if " PASSED" in upper_line: stats["passed"] += 1
-                elif " FAILED" in upper_line: stats["failed"] += 1
-                elif " SKIPPED" in upper_line: stats["skipped"] += 1
-                elif " ERROR" in upper_line: stats["error"] += 1
+            # 1. Check for machine-readable summary (pytest-native hook in conftest.py)
+            if "TEST_METRICS_JSON: " in plain_line:
+                try:
+                    json_str = plain_line.split("TEST_METRICS_JSON: ")[1]
+                    summary = json.loads(json_str)
+                    # Use JSON summary as the source of truth
+                    stats["passed"] = summary.get("passed", 0) + summary.get("xpass", 0)
+                    stats["failed"] = summary.get("failed", 0)
+                    stats["skipped"] = summary.get("skipped", 0) + summary.get("xfail", 0)
+                    stats["error"] = summary.get("error", 0)
+                    has_json_metrics = True
+                except (json.JSONDecodeError, IndexError):
+                    pass
+
+            upper_line = plain_line.upper()
+            
+            # Identify actual test result lines (Fallback/Incremental tracking)
+            if not has_json_metrics:
+                is_parallel_result = plain_line.startswith("[gw") and any(kw in upper_line for kw in [" PASSED", " FAILED", " SKIPPED", " ERROR", " XFAIL", " XPASS"])
+                is_sequential_result = "::" in plain_line and any(upper_line.endswith(kw) or f"{kw} [" in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"])
+                
+                if is_parallel_result or is_sequential_result:
+                    if "PASSED" in upper_line or "XPASS" in upper_line: stats["passed"] += 1
+                    elif "FAILED" in upper_line: stats["failed"] += 1
+                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line: stats["skipped"] += 1
+                    elif "ERROR" in upper_line: stats["error"] += 1
 
             # Detect pytest-xdist worker prefixes like [gw0]
             if line.startswith("[gw"):
@@ -189,11 +213,11 @@ class QARunner:
                     
                     line = f"{C.paint(worker_id, worker_colors[worker_id])}{rest}"
             
-            # Suppress redundant "starting test" declarations in parallel mode.
-            # These lines contain "::" but do not start with a worker ID bracket
-            # AND they are not result lines.
-            elif "::" in line and not line.startswith("[") and not is_result:
-                continue
+            # Suppress redundant "starting test" declarations ONLY in parallel mode.
+            elif is_parallel and "::" in plain_line and not plain_line.startswith("["):
+                is_result_line = any(kw in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"])
+                if not is_result_line:
+                    continue
 
             async with lock:
                 print(f"{tag}{line}", flush=True)
@@ -332,87 +356,95 @@ class QARunner:
 
 # ── Command handlers ───────────────────────────────────────────────────────────
 
-async def cmd_infra(args: argparse.Namespace, runner: QARunner) -> bool:
-    kind    = args.command
-    tasks   = runner.infra_task(kind)
-    descs   = {f"infra.{kind}": runner.infra_description(kind)}
-    results = await runner.run_sequential("INFRASTRUCTURE", tasks, descs)
+async def cmd_build(args: argparse.Namespace, runner: QARunner) -> bool:
+    tasks   = runner.infra_task("build")
+    descs   = {"infra.build": runner.infra_description("build")}
+    results = await runner.run_sequential("BUILD", tasks, descs)
     runner._summary(results)
     return all(r.ok for r in results)
 
 
 async def cmd_lint(args: argparse.Namespace, runner: QARunner) -> bool:
     await runner.check_docker()
-    tasks   = runner.lint_tasks()
-    descs   = runner.lint_descriptions()
-    results = await runner.run_parallel("LINTING", tasks, descs)
+    
+    # SETUP
+    await runner.run_sequential("SETUP", runner.infra_task("up_unit"), {"infra.up_unit": runner.infra_description("up_unit")})
+    
+    results: list[Result] = []
+    try:
+        tasks   = runner.lint_tasks()
+        descs   = runner.lint_descriptions()
+        results = await runner.run_parallel("LINTING", tasks, descs)
+    finally:
+        # CLEANUP
+        await runner.run_sequential("CLEANUP", runner.infra_task("down_unit"), {"infra.down_unit": runner.infra_description("down_unit")})
+    
     runner._summary(results)
     return all(r.ok for r in results)
 
 
 async def cmd_unit(args: argparse.Namespace, runner: QARunner) -> bool:
     await runner.check_docker()
-    jobs    = getattr(args, "jobs", None)
-    tasks   = runner.test_tasks("unit", jobs, getattr(args, "extra", []))
-    descs   = {"test.unit": runner.test_description("unit")}
-    results = await runner.run_sequential("UNIT TESTS", tasks, descs)
+    
+    # SETUP
+    await runner.run_sequential("SETUP", runner.infra_task("up_unit"), {"infra.up_unit": runner.infra_description("up_unit")})
+    
+    results: list[Result] = []
+    try:
+        jobs    = getattr(args, "jobs", None)
+        tasks   = runner.test_tasks("unit", jobs, getattr(args, "extra", []))
+        descs   = {"test.unit": runner.test_description("unit")}
+        results = await runner.run_sequential("UNIT TESTS", tasks, descs)
+    finally:
+        # CLEANUP
+        await runner.run_sequential("CLEANUP", runner.infra_task("down_unit"), {"infra.down_unit": runner.infra_description("down_unit")})
+    
     runner._summary(results)
     return all(r.ok for r in results)
 
 
 async def cmd_integration(args: argparse.Namespace, runner: QARunner) -> bool:
     await runner.check_docker()
-    tasks   = runner.test_tasks("integration", extra_args=getattr(args, "extra", []))
-    descs   = {"test.integration": runner.test_description("integration")}
-    results = await runner.run_sequential("INTEGRATION TESTS", tasks, descs)
+    
+    # SETUP
+    await runner.run_sequential("SETUP", runner.infra_task("up_integration"), {"infra.up_integration": runner.infra_description("up_integration")})
+    
+    results: list[Result] = []
+    try:
+        tasks   = runner.test_tasks("integration", extra_args=getattr(args, "extra", []))
+        descs   = {"test.integration": runner.test_description("integration")}
+        results = await runner.run_sequential("INTEGRATION TESTS", tasks, descs)
+    finally:
+        # CLEANUP
+        await runner.run_sequential("CLEANUP", runner.infra_task("down_integration"), {"infra.down_integration": runner.infra_description("down_integration")})
+    
     runner._summary(results)
     return all(r.ok for r in results)
 
 
 async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
-    await runner.check_docker()
-    all_results: list[Result] = []
-    
-    all_results += await runner.run_parallel(
-        "LINTING", runner.lint_tasks(), runner.lint_descriptions(),
-    )
-    
-    all_results += await runner.run_sequential(
-        "UNIT TESTS", runner.test_tasks("unit", getattr(args, "jobs", None)),
-        {"test.unit": runner.test_description("unit")}
-    )
-    
-    all_results += await runner.run_sequential(
-        "INTEGRATION TESTS", runner.test_tasks("integration"),
-        {"test.integration": runner.test_description("integration")}
-    )
-
-    width = 60
-    print(f"\n{C.bold(C.cyan('═' * width))}")
-    print(f"{C.bold(C.cyan('  Summary'))}")
-    print(f"{C.bold(C.cyan('═' * width))}")
-    runner._summary(all_results)
-    return all(r.ok for r in all_results)
+    # 'all' will run each sub-command, which handle their own setup/teardown.
+    ok_lint = await cmd_lint(args, runner)
+    ok_unit = await cmd_unit(args, runner)
+    ok_int  = await cmd_integration(args, runner)
+    return ok_lint and ok_unit and ok_int
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python ci/qa.py")
     sub    = parser.add_subparsers(dest="command")
 
-    # Infra commands
-    for infra in ["up", "down", "build", "restart"]:
-        sub.add_parser(infra, help=f"Infra: {infra}")
+    sub.add_parser("build", help="Rebuild test images")
+    sub.add_parser("lint", help="Run linters (auto-setup/teardown)")
     
-    sub.add_parser("lint", help="Run linters")
-    
-    p_unit = sub.add_parser("unit", help="Run unit tests")
+    p_unit = sub.add_parser("unit", help="Run unit tests (auto-setup/teardown)")
     p_unit.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers")
     p_unit.add_argument("extra", nargs="*", help="Extra pytest arguments")
 
-    p_int = sub.add_parser("integration", help="Run integration tests")
+    p_int = sub.add_parser("integration", help="Run integration tests (auto-setup/teardown)")
     p_int.add_argument("extra", nargs="*", help="Extra pytest arguments")
     
-    p_all = sub.add_parser("all", help="Run full suite")
+    p_all = sub.add_parser("all", help="Run full suite (auto-setup/teardown each)")
     p_all.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers for unit tests")
 
     args = parser.parse_args()
@@ -423,11 +455,7 @@ def main() -> None:
     runner = QARunner(QA_TOML_PATH)
 
     try:
-        # Determine if it's an infra command or a QA command
-        if args.command in ["up", "down", "build", "restart"]:
-            ok = asyncio.run(cmd_infra(args, runner))
-        else:
-            ok = asyncio.run(getattr(sys.modules[__name__], f"cmd_{args.command}")(args, runner))
+        ok = asyncio.run(getattr(sys.modules[__name__], f"cmd_{args.command}")(args, runner))
     except KeyboardInterrupt:
         sys.exit(130)
 
