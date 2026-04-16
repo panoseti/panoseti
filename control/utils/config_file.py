@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import sys
+from typing import Any
 
 from pydantic import ValidationError
 from rich.console import Console
@@ -68,20 +69,20 @@ config_file_names = [
 
 # compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
 #
-def ip_addr_to_module_id(ip_addr_str):
+def ip_addr_to_module_id(ip_addr_str: str) -> int:
     pieces = ip_addr_str.split('.')
     n = int(pieces[3]) + 256*int(pieces[2])
     return (n>>2)&255
 
 # given module base IP address, return IP addr of quabo i
 #
-def quabo_ip_addr(base, i):
+def quabo_ip_addr(base: str, i: int) -> str:
     x = base.split('.')
     x[3] = str(int(x[3])+i)
     return '.'.join(x)
 
 
-def get_boardloc(module_ip_addr, quabo_index):
+def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
     """Given a module ip address and a quabo index, returns the BOARDLOC of
     the corresponding quabo."""
     pieces = module_ip_addr.split('.')
@@ -92,7 +93,7 @@ def get_boardloc(module_ip_addr, quabo_index):
 # assign sequential numbers to domes,
 # and IDs to modules
 #
-def assign_numbers(c):
+def assign_numbers(c: dict[str, Any]) -> None:
     ndome = 0
     for dome in c['domes']:
         dome['num'] = ndome
@@ -103,8 +104,8 @@ def assign_numbers(c):
 # input: a string of the form "0-2, 5-6"
 # output: a list of integers, e.g. 0,1,2,5,6
 #
-def string_to_list(s):
-    out = []
+def string_to_list(s: str) -> list[int]:
+    out: list[int] = []
     parts = s.split(',')
     for part in parts:
         nums = part.split('-')
@@ -120,7 +121,7 @@ def string_to_list(s):
 # in DAQ node objects, expand module range strings
 # to list of module numbers
 #
-def expand_ranges(daq_config):
+def expand_ranges(daq_config: dict[str, Any]) -> None:
     for node in daq_config['daq_nodes']:
         module_ids = node['module_ids']
         # If it was already parsed into a list by previous steps, handle it directly
@@ -136,13 +137,13 @@ def expand_ranges(daq_config):
 
 # given a module ID, find the DAQ node that's handling it
 #
-def module_id_to_daq_node(daq_config, module_id):
+def module_id_to_daq_node(daq_config: dict[str, Any], module_id: int) -> dict[str, Any]:
     for node in daq_config['daq_nodes']:
         if module_id in node['module_ids']:
             return node
     raise Exception(f"no DAQ node is handling module {module_id}")
 
-def check_config_file(name, dir='.'):
+def check_config_file(name: str, dir: str = '.') -> None:
     path = os.path.join(dir, name)
     if not os.path.isfile(path):
     # if not os.path.exists('%s/%s'%(dir, name)):
@@ -153,18 +154,18 @@ def check_config_file(name, dir='.'):
         sys.exit(1)
 
 
-def get_obs_config(dir='.'):
+def get_obs_config(dir: str = '.') -> dict[str, Any]:
     # pass assign_numbers so it injects `id` and `num` before validation
     return load_and_validate(ObsConfigValidator, obs_config_filename, dir, "Obs Config", assign_numbers)
 
-def get_daq_config(dir='.'):
+def get_daq_config(dir: str = '.') -> dict[str, Any]:
     # pass expand_ranges so it parses module string ranges before validation
     return load_and_validate(DaqConfigValidator, daq_config_filename, dir, "DAQ Config", expand_ranges)
 
-def get_data_config(dir='.'):
+def get_data_config(dir: str = '.') -> dict[str, Any]:
     return load_and_validate(DataConfigValidator, data_config_filename, dir, "Data Config")
 
-def get_network_config(dir='.'):
+def get_network_config(dir: str = '.') -> dict[str, Any]:
     check_config_file(network_config_filename, dir)
     path = f'{dir}/{network_config_filename}'
     # as the network config file is not designed to the users,
@@ -182,37 +183,36 @@ def get_network_config(dir='.'):
     return load_and_validate(NetworkConfigValidator, network_config_filename, dir, "Network Config")
 
 
-def get_firmware_config(dir='.'):
+def get_firmware_config(dir: str = '.') -> dict[str, Any]:
     return load_and_validate(FirmwareConfigValidator, firmware_config_filename, dir, "Firmware Config")
 
-def get_daemons_config(dir='.'):
+def get_daemons_config(dir: str = '.') -> dict[str, Any]:
     return load_and_validate(DaemonConfigValidator, daemons_config_filename, dir, "Daemons Config")
 
-def get_quabo_uids():
+def get_quabo_uids() -> dict[str, Any]:
     if not os.path.exists(quabo_uids_filename):
         print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
         sys.exit(1)
     with open(quabo_uids_filename) as f:
         s = f.read()
-    quabo_uids_conf = json.loads(s)
+    quabo_uids_conf: dict[str, Any] = json.loads(s)
     assign_numbers(quabo_uids_conf)
-    # return load_and_validate(QuaboUidsValidator, quabo_uids_filename, dir, "UID Config", assign_numbers)
     return quabo_uids_conf
 
 # get detector info as an array indexed by serialno
 #
-def get_detector_info():
+def get_detector_info() -> dict[str, float]:
     check_config_file(detector_info_filename)
     with open(detector_info_filename) as f:
         s = f.read()
-    c = json.loads(s)
-    d = {}
+    c: list[dict[str, Any]] = json.loads(s)
+    d: dict[str, float] = {}
     with open(obs_config_filename) as f:
         s = f.read()
     json.loads(s)
     with open(data_config_filename) as f:
         s = f.read()
-    data_config = json.loads(s)
+    data_config: dict[str, Any] = json.loads(s)
     for det in c:
         try:
             d[str(det['serialno'])] = float(det['operating_voltage'])
@@ -230,26 +230,26 @@ def get_detector_info():
 
 # get quabo info as an array indexed by uid
 #
-def get_quabo_info():
+def get_quabo_info() -> dict[str, Any]:
     check_config_file(quabo_info_filename)
     with open(quabo_info_filename) as f:
         s = f.read()
-    c = json.loads(s)
-    d = {}
+    c: list[dict[str, Any]] = json.loads(s)
+    d: dict[str, Any] = {}
     for q in c:
         d[q['uid']] = q
     return d
 
-def get_quabo_ph_baselines():
+def get_quabo_ph_baselines() -> dict[str, Any]:
     check_config_file(quabo_ph_baseline_filename)
     with open(quabo_ph_baseline_filename) as f:
         s = f.read()
-    c = json.loads(s)
+    c: dict[str, Any] = json.loads(s)
     return c
 
 # get quabo calibration info
 #
-def get_quabo_calib(serialno, detovervol, mode):
+def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]:
     #print('reading calib file %s'%serialno)
     path = quabo_calib_filename%(detovervol, mode, serialno)
     with open(path) as f:
@@ -258,8 +258,8 @@ def get_quabo_calib(serialno, detovervol, mode):
 
 # return list of modules from obs_config
 #
-def get_modules(c):
-    modules = []
+def get_modules(c: dict[str, Any]) -> list[dict[str, Any]]:
+    modules: list[dict[str, Any]] = []
     for dome in c['domes']:
         for module in dome['modules']:
             modules.append(module)
@@ -272,7 +272,7 @@ def get_modules(c):
 # - in the quabo_uids data structure, in each module object,
 #   add a link "daq_node" to the DAQ node that's handling it.
 #
-def associate(daq_config, quabo_uids):
+def associate(daq_config: dict[str, Any], quabo_uids: dict[str, Any]) -> None:
     for node in daq_config['daq_nodes']:
         node['modules'] = []
     for dome in quabo_uids['domes']:
@@ -283,7 +283,7 @@ def associate(daq_config, quabo_uids):
 
 # show which module is going to which data recorder
 #
-def show_daq_assignments(quabo_uids):
+def show_daq_assignments(quabo_uids: dict[str, Any]) -> None:
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
             ip_addr = module['ip_addr']
@@ -296,7 +296,7 @@ def show_daq_assignments(quabo_uids):
 ## Apply global validation
 
 
-def print_topology_graph(obs_conf, daq_conf, net_conf):
+def print_topology_graph(obs_conf: dict[str, Any], daq_conf: dict[str, Any], net_conf: dict[str, Any]) -> None:
     console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
 
     obs_name = obs_conf.get('name', 'Unknown Observatory')
@@ -414,9 +414,9 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
     # 3. Visual Topology Graph
     if graph:
         print_topology_graph(
-            validated_configs.get('obs'),
-            validated_configs.get('daq'),
-            validated_configs.get('network')
+            validated_configs.get('obs', {}),
+            validated_configs.get('daq', {}),
+            validated_configs.get('network', {})
         )
 
     # 4. Network Ping Checks
@@ -432,8 +432,7 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
             "\n[bold red]❌ VALIDATION FAILED.[/bold red] Please review the errors above before observing.")
 
     return all_passed
-
-def load_and_validate(validator_class, filename, dir, config_name, preprocessor=None):
+def load_and_validate(validator_class: Any, filename: str, dir: str, config_name: str, preprocessor: Any = None) -> dict[str, Any]:
     """
     Unified loader: reads JSON, applies runtime preprocessing, validates against Pydantic models.
     Batches errors by raising Exceptions instead of immediately exiting the program.
@@ -448,8 +447,9 @@ def load_and_validate(validator_class, filename, dir, config_name, preprocessor=
             console.print(f"[bold red][FAIL][/bold red] {filename} not found.")
             console.print(f"Target: {config_name} - [red]1 Error(s), 0 Warning(s)[/red]")
         if RAISE_VALIDATION_ERRORS:
-            raise FileNotFoundError(f"{path} not found.")
-        raise ValueError(f"Missing file: {filename}")
+            raise Exception(f"{config_name} config file not found: {path}")
+        else:
+            sys.exit(1)
 
     # Symlink printing logic
     if IS_CLI_VALIDATION:

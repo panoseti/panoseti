@@ -61,7 +61,7 @@ class ImageMode(BaseStrictModel):
     quabo_sample_size: Literal[8, 16] = Field(..., description="Size of the sample")
 
     @field_validator('integration_time_usec')
-    def check_integration_time_divisor(cls, v):
+    def check_integration_time_divisor(cls, v: int) -> int:
         if 1_000_000 % v != 0:
             raise ValueError(f"integration_time_usec ({v}) must evenly divide 1,000,000 usec.")
         return v
@@ -115,15 +115,15 @@ class DataConfigValidator(BaseModel):
     flash_params: FlashParams | None = None
 
     @field_validator("run_type")
-    def validate_run_type(cls, v):
+    def validate_run_type(cls, v: str) -> str:
         if any(ch in INVALID_RUN_TYPE_CHARS for ch in v):
             raise ValueError(
                 f"Invalid run_type: '{v}' contains at least one invalid character: {INVALID_RUN_TYPE_CHARS}")
         return v
 
     @model_validator(mode='after')
-    def validate_dynamic_modes_and_interleave(self):
-        dynamic_keys = []
+    def validate_dynamic_modes_and_interleave(self) -> DataConfigValidator:
+        dynamic_keys: list[str] = []
         ph_modes_dict: dict[str, PulseHeightMode] = {}
 
         if self.pulse_height:
@@ -257,7 +257,7 @@ class DaqNodeValidator(BaseStrictModel):
     bindhost: str | None = Field("0.0.0.0")
 
     @field_validator('module_ids', mode='after')
-    def validate_module_range(cls, v):
+    def validate_module_range(cls, v: str | list[int]) -> str | list[int]:
         if isinstance(v, list):
             # Module ids must be non-negative
             if not all(mid >= 0 for mid in v):
@@ -364,7 +364,7 @@ class QuaboUidModule(BaseStrictModel):
     quabos: list[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
 
     @field_validator('quabos')
-    def ensure_four_quabos(cls, v):
+    def ensure_four_quabos(cls, v: list[QuaboUidEntry]) -> list[QuaboUidEntry]:
         if len(v) != 4:
             raise ValueError(f"A module must specify exactly 4 quabos, found {len(v)}.")
         return v

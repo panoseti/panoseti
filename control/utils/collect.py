@@ -9,6 +9,7 @@
 # --verbose
 import os
 import sys
+from typing import Any
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -17,7 +18,7 @@ from utils import config_file, file_xfer, util
 
 # return '' if data collection was successful, else error msg
 #
-def collect_data(daq_config, run_dir, verbose=False):
+def collect_data(daq_config: dict[str, Any], run_dir: str, verbose: bool = False) -> str:
     my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config['daq_nodes']:
@@ -46,7 +47,7 @@ def collect_data(daq_config, run_dir, verbose=False):
 #    data/module_n/run (should be empty dir)
 # return error message or ''
 #
-def cleanup_daq(daq_config, run_dir, verbose=False):
+def cleanup_daq(daq_config: dict[str, Any], run_dir: str, verbose: bool = False) -> str:
     my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config['daq_nodes']:
@@ -92,9 +93,10 @@ if __name__ == "__main__":
             cleanup = True
         i += 1
     if not run_dir:
-        run_dir = util.read_run_name()
-        if not run_dir:
+        run_dir_val = util.read_run_name()
+        if not run_dir_val:
             raise Exception("No run found")
+        run_dir = run_dir_val
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.associate(daq_config, quabo_uids)
@@ -102,4 +104,4 @@ if __name__ == "__main__":
         cleanup_daq(daq_config, run_dir, verbose)
     else:
         ret = collect_data(daq_config, run_dir, verbose)
-        print('success' if ret else 'failed')
+        print('success' if not ret else 'failed')

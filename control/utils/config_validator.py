@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 import urllib
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -13,7 +14,7 @@ console = Console()
 # Pydantic Validation
 
 ## Validation graph
-def print_compact_config(config_name: str, config_dict: dict):
+def print_compact_config(config_name: str, config_dict: dict[str, Any]) -> None:
     """Prints a configuration dictionary but collapses massive lists like module_ids."""
     import copy
     compact_dict = copy.deepcopy(config_dict)
@@ -40,11 +41,11 @@ def _check_tcp_port(ip: str, port: int, timeout: float = 2.0) -> tuple[bool, str
         return False, str(e)
 
 
-def perform_network_ping_sweep(validated_configs: dict) -> bool:
+def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
     console.print("[bold cyan]Running Parallel Network Ping Sweep...[/bold cyan]")
 
     # targets: tuple of (Description, Target_IP, Port, Associated_IP_to_Mark_Up)
-    targets = set()
+    targets: set[tuple[str, str, int, str | None]] = set()
 
     # --- 1. Head Node ---
     head_ip = validated_configs['daq'].get('head_node_ip_addr')
@@ -101,7 +102,7 @@ def perform_network_ping_sweep(validated_configs: dict) -> bool:
     # --- Execute Parallel Sweep ---
     up_hosts = set()
     all_passed = True
-    results = []
+    results: list[tuple[str, bool, str]] = []
 
     with ThreadPoolExecutor(max_workers=30) as executor:
         future_to_target = {

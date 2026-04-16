@@ -22,16 +22,16 @@ MAX_DOME_BASELINE_KM = 2
 class ValidationReport:
     """Aggregates tests for a unified pre-flight report."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.tests: list[dict[str, str]] = []
         self.has_errors = False
 
-    def add_test(self, name: str, status: str, info: str = ""):
+    def add_test(self, name: str, status: str, info: str = "") -> None:
         self.tests.append({"name": name, "status": status, "info": info})
         if status == "ERROR":
             self.has_errors = True
 
-    def print_report(self):
+    def print_report(self) -> None:
         table = Table(title="Global Tier-2 Validation Report", show_lines=True)
         table.add_column("Test Name", style="cyan")
         table.add_column("Status", justify="center")
@@ -67,7 +67,7 @@ class GlobalConfigValidator:
         self.report.print_report()
         return not self.report.has_errors
 
-    def _check_science_guardrails(self):
+    def _check_science_guardrails(self) -> None:
         run_type = self.data_conf.get('run_type', '').lower()
         if "eng" not in run_type:
             flash_on = 'flash_params' in self.data_conf
@@ -78,7 +78,7 @@ class GlobalConfigValidator:
                 return
         self.report.add_test("Science Guardrails", "PASS", f"Run type: {run_type}")
 
-    def _check_geospatial_coherence(self):
+    def _check_geospatial_coherence(self) -> None:
         domes = self.obs_conf.get('domes', [])
         if len(domes) < 2:
             self.report.add_test("Geospatial Coherence", "PASS", "Only one dome defined.")
@@ -97,7 +97,7 @@ class GlobalConfigValidator:
         else:
             self.report.add_test("Geospatial Coherence", "PASS", f"Max baseline: {max_dist:.2f} km")
 
-    def _check_network_tunneling(self):
+    def _check_network_tunneling(self) -> None:
         obs_ips = {m.get('ip_addr') for d in self.obs_conf.get('domes', []) for m in d.get('modules', [])}
         net_mapped_ips = {m.get('ip_addr') for m in self.net_conf.get('modules', []) if
                           m.get('port_forwarding', {}).get('status')}
@@ -109,7 +109,7 @@ class GlobalConfigValidator:
         else:
             self.report.add_test("Network Tunneling Mapping", "PASS", "All modules accounted for in routing.")
 
-    def _check_hardware_firmware(self):
+    def _check_hardware_firmware(self) -> None:
         required_hw = set()
         for d in self.obs_conf.get('domes', []):
             for m in d.get('modules', []):
@@ -125,7 +125,7 @@ class GlobalConfigValidator:
         else:
             self.report.add_test("Firmware Verification", "PASS", "Binaries exist for all active hardware.")
 
-    def _check_overvoltage_consensus(self):
+    def _check_overvoltage_consensus(self) -> None:
         obs_ov = self.obs_conf.get('detector_overvoltage')
         data_ov = self.data_conf.get('detector_overvoltage')
         if obs_ov is not None and data_ov is not None and obs_ov != data_ov:
@@ -134,7 +134,7 @@ class GlobalConfigValidator:
         else:
             self.report.add_test("Overvoltage Consensus", "PASS", f"Voltage aligned at {obs_ov}V")
 
-    def _check_port_collisions(self):
+    def _check_port_collisions(self) -> None:
         """Ensures multiple modules sharing a Gateway IP do not use overlapping forwarded ports."""
         gw_ports: dict[str, set[int]] = {}
         for m in self.net_conf.get('modules', []):
@@ -153,7 +153,7 @@ class GlobalConfigValidator:
         self.report.add_test("Port Collision", "PASS", "No forwarded port overlaps detected on gateways.")
 
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
-    def _check_daq_assignment_overlap(self):
+    def _check_daq_assignment_overlap(self) -> None:
         """Ensures a single module ID is not being actively listened to by multiple DAQ nodes."""
         from .config_file import expand_ranges
         seen_ids: set[int] = set()
@@ -186,7 +186,7 @@ class GlobalConfigValidator:
         formula = f"({fps:.1f}frame/sec * 4quabo/mod * 1024px/quabo * {bytes_pp}B/px * 3600sec * {num_modules}mod) / (1024^4 B/TB)"
         return tb_per_hr, total_tb, formula
 
-    def _check_headnode_disk_space(self):
+    def _check_headnode_disk_space(self) -> None:
         head_dir = self.daq_conf.get('head_node_data_dir')
         if not head_dir or not os.path.exists(head_dir):
             self.report.add_test("Headnode Disk Space", "ERROR", f"Path '{head_dir}' missing or unreachable.")
@@ -262,12 +262,12 @@ class GlobalConfigValidator:
     #     else:
     #         self.report.add_test("DAQ Node Disk Space", "PASS", detail_str)
 
-    def _check_wps_references(self):
+    def _check_wps_references(self) -> None:
         """Ensures that all Web Power Switches referenced by modules are defined in obs_config."""
         if not self.obs_conf:
             return
 
-        missing_wps = set()
+        missing_wps: set[str] = set()
         for d in self.obs_conf.get('domes', []):
             for m in d.get('modules', []):
                 # The default is 'wps' if not specified

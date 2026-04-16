@@ -10,13 +10,14 @@
 import os
 import sys
 from glob import glob
+from typing import Any
 
 from utils import config_file, util
 
 
 # copy a file to a DAQ node
 #
-def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
+def copy_file_to_node(file: str, daq_config: dict[str, Any], node: dict[str, Any], run_dir: str = '', verbose: bool = False) -> None:
     # TODO: daq_config is not used
     dest_path = node['data_dir']
     if run_dir:
@@ -45,7 +46,7 @@ def copy_file_to_node(file, daq_config, node, run_dir='', verbose=False):
 #
 # return error message, or '' on success
 #
-def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
+def copy_dir_from_node(run_name: str, daq_config: dict[str, Any], node: dict[str, Any], module_id: int, verbose: bool = False) -> str:
     local_data_dir = daq_config['head_node_data_dir']
     run_dir_path = f'{local_data_dir}/{run_name}'
 
@@ -65,8 +66,10 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         print(cmd)
     try:
         ret = os.system(cmd)
-    except Exception:
-        return f'copy_dir_from_node(): {cmd} returned {ret}'
+        if ret:
+            return f'copy_dir_from_node(): {cmd} returned {ret}'
+    except Exception as e:
+        return f'copy_dir_from_node(): {cmd} failed with {e}'
     
     # copy process snapshot from remote node to this node
     if 'port_forwarding' in node:
@@ -81,8 +84,10 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         print(cmd)
     try:
         ret = os.system(cmd)
-    except Exception:
-        return f'copy_dir_from_node(): {cmd} returned {ret}'
+        if ret:
+            return f'copy_dir_from_node(): {cmd} returned {ret}'
+    except Exception as e:
+        return f'copy_dir_from_node(): {cmd} failed with {e}'
     # copy PFF files from remote node to this node
     if 'port_forwarding' in node:
         cmd = f'rsync -P -e "ssh -p {node["port_forwarding"]["port"]}" {node["username"]}@{node["port_forwarding"]["gw_ip"]}:{node["data_dir"]}/module_{module_id}/{run_name}/* {run_dir_path}'
@@ -92,13 +97,15 @@ def copy_dir_from_node(run_name, daq_config, node, module_id, verbose=False):
         print(cmd)
     try:
         ret = os.system(cmd)
-    except Exception:
-        return f'copy_dir_from_node(): {cmd} returned {ret}'
+        if ret:
+            return f'copy_dir_from_node(): {cmd} returned {ret}'
+    except Exception as e:
+        return f'copy_dir_from_node(): {cmd} failed with {e}'
     return ''
 
 # create a directory on DAQ nodes
 #
-def make_remote_dirs(daq_config, dirname):
+def make_remote_dirs(daq_config: dict[str, Any], dirname: str) -> None:
     for node in daq_config['daq_nodes']:
         cmd = 'ssh {}@{} "cd {}; mkdir {}"'.format(
             node['username'], node['ip_addr'], node['data_dir'], dirname
@@ -110,14 +117,14 @@ def make_remote_dirs(daq_config, dirname):
 
 # copy config files to run dirs on DAQ nodes
 #
-def copy_config_files(daq_config, run_dir, verbose=False):
+def copy_config_files(daq_config: dict[str, Any], run_dir: str, verbose: bool = False) -> None:
     for node in daq_config['daq_nodes']:
         for f in config_file.config_file_names:
             copy_file_to_node(f, daq_config, node, run_dir, verbose)
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
-def copy_daq_files(daq_config):
+def copy_daq_files(daq_config: dict[str, Any]) -> None:
     # hashpipe.so may not exist, as we may cross compile it on the daq node
     hashpipe_so = '../daq/hashpipe.so'
     if os.path.exists(hashpipe_so):
@@ -140,7 +147,7 @@ def copy_daq_files(daq_config):
 
 if __name__ == "__main__":
 
-    def usage():
+    def usage() -> None:
         print('''options:
     --init_daq_nodes: copy software to DAQ nodes
     ''')

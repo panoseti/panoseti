@@ -30,20 +30,20 @@ firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 _builtin_print = _builtins.print
 
-def _utc_ts():
+def _utc_ts() -> str:
     # Human-readable UTC timestamp
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S UT")
 
-def _ut_yyyymmdd():
+def _ut_yyyymmdd() -> str:
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y%m%d")
 
-def _datarec_log_path():
+def _datarec_log_path() -> str:
     yyyymmdd = _ut_yyyymmdd()
     d = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
     os.makedirs(d, exist_ok=True)
     return os.path.join(d, f"datarec_{yyyymmdd}.log")
 
-def _prepend_to_file(path, text):
+def _prepend_to_file(path: str, text: str) -> None:
     # Prepend text to the beginning of the file (newest entries on top)
     tmp_path = path + ".tmp"
     old = ""
@@ -59,7 +59,7 @@ def _prepend_to_file(path, text):
             f.write(old)
     os.replace(tmp_path, path)
 
-def print(*args, **kwargs):
+def print(*args: Any, **kwargs: Any) -> None:
     sep = kwargs.get("sep", " ")
     end = kwargs.get("end", "\n")
     flush = kwargs.get("flush", False)
@@ -85,7 +85,7 @@ def print(*args, **kwargs):
 # -----------------------------------------------------------------------
 
 
-def ask_use_default_calibration(ip_addr):
+def ask_use_default_calibration(ip_addr: str) -> bool:
     while True:
         choice = input(f"Use default calibration file for {ip_addr}? (Y/N): ").strip().upper()
         if choice == "Y":
@@ -97,7 +97,7 @@ def ask_use_default_calibration(ip_addr):
 
 # print summary of obs and daq config files
 #
-def show_config(obs_config, quabo_uids):
+def show_config(obs_config: dict[str, Any], quabo_uids: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Config.show_config')
     logger.info('Show config')
     for dome in obs_config['domes']:
@@ -117,7 +117,7 @@ def show_config(obs_config, quabo_uids):
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
 #
-def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
+def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: dict[str, Any], timeout: int = 60) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
     logger.info(f"The Quabo IP address/ID is {ip}.")
     ips = util.get_valid_ip(obs_config)
@@ -155,10 +155,10 @@ def do_reboot_single_quabo(ip, obs_config, network_config, timeout=60):
 
 # Reboot one module
 #
-def reboot_module(module, quabo_uids, network_config, timeout=60):
+def reboot_module(module: dict[str, Any], quabo_uids: dict[str, Any], network_config: dict[str, Any], timeout: int = 60) -> list[dict[str, bool]]:
     # Reboot the four quabos one by one
     logger = logging.getLogger('PANOSETI.Config.reboot_module')
-    reboot_status = []
+    reboot_status: list[dict[str, bool]] = []
     for i in range(4):
         if not util.is_quabo_alive(module, quabo_uids, i):
             continue
@@ -222,7 +222,7 @@ def reboot_module(module, quabo_uids, network_config, timeout=60):
             logger.error(f'Quabo ({ip_addr}) is failed to rebooted.')
     return reboot_status
 
-def do_reboot(modules, quabo_uids, network_config):
+def do_reboot(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
     # need to reboot quabos in order 0..3
     # to parallelize:
     # start reboot of quabo 0 in all modules
@@ -263,7 +263,7 @@ def do_reboot(modules, quabo_uids, network_config):
     print(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
     print('*******************************************************')
 
-def do_loads(modules, quabo_uids, quabo_info, network_config):
+def do_loads(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_info: dict[str, Any], network_config: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_loads')
     # TODO The hard-coded path may not be good
     firmware = config_file.get_firmware_config()
@@ -289,11 +289,11 @@ def do_loads(modules, quabo_uids, quabo_info, network_config):
             print(f'loading {fw} into {ip_addr}')
             x.put_bin_file(fw)
 
-def do_loadg(modules):
+def do_loadg(modules: list[dict[str, Any]]) -> None:
     print("not supported")
     #x.put_bin_file(firmware_gold, 0x0)
 
-def do_ping(modules, network_config, verbose=False):
+def do_ping(modules: list[dict[str, Any]], network_config: dict[str, Any], verbose: bool = False) -> dict[str, list[str]]:
     logger = logging.getLogger('PANOSETI.Config.do_ping')
     ping_record: dict[str, list[str]] = {
         "ping_true": [],
@@ -318,7 +318,7 @@ def do_ping(modules, network_config, verbose=False):
             print(f"can't ping {ip}")
     return ping_record
 
-def do_hk_dest(modules, quabo_uids, daq_config, network_config):
+def do_hk_dest(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], daq_config: dict[str, Any], network_config: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_hk_dest')
     headnode_ip_addr = daq_config['head_node_ip_addr']
     logger.info(f'Head node IP: {headnode_ip_addr}')
@@ -339,7 +339,7 @@ def do_hk_dest(modules, quabo_uids, daq_config, network_config):
             quabo.hk_packet_destination(headnode_ip_addr)
             quabo.close()
 
-def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, verbose=False):
+def do_hv_on(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: dict[str, Any], verbose: bool = False) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_hv_on')
     for module in modules:
         for i in range(4):
@@ -367,7 +367,7 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, ver
             if verbose:
                 print(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
 
-def do_hv_off(modules, quabo_uids, network_config):
+def do_hv_off(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_hv_off')
     for module in modules:
         for i in range(4):
@@ -391,9 +391,8 @@ def do_hv_off(modules, quabo_uids, network_config):
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
 MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
-cal_cache = {}
-def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, verbose=False, write_config=True, do_log=True):
-    """set the DAC1/DA2/GAIN* params for MAROC chips"""
+cal_cache: dict[tuple[Any, ...], Any] = {}
+def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_info: dict[str, Any], data_config: dict[str, Any], obs_config: dict[str, Any], daq_config: dict[str, Any], network_config: dict[str, Any], verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
     logger = None
     if do_log:
         logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
@@ -567,7 +566,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
 # set CHANMASK and GOEMASK for modules
 #
 MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
-def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=False, write_config=True, do_flush_rx_buf=False, do_log=True):
+def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], network_config: dict[str, Any], quabo_uids: dict[str, Any], verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
     logger = None
     if do_log:
         logger = logging.getLogger('PANOSETI.Config.do_mask_config')
@@ -621,9 +620,9 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
 
 # compute PH baselines on quabos and write to file
 #
-def do_calibrate_ph(modules, quabo_uids, network_config):
+def do_calibrate_ph(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_calibrate_ph')
-    quabos = []
+    quabos: list[dict[str, Any]] = []
     for module in modules:
         for i in range(4):
             uid = util.quabo_uid(module, quabo_uids, i)
@@ -640,7 +639,7 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
-            q = {}
+            q: dict[str, Any] = {}
             q['uid'] = uid
             q['coefs'] = coefs
             quabos.append(q)
@@ -655,7 +654,7 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
 
 
 # show summary statistics for the PH baseline calibrations of each quabo
-def do_show_ph_baselines(quabo_uids):
+def do_show_ph_baselines(quabo_uids: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_show_ph_baselines')
     logger.info('Show PH baseline')
     quabo_ph_baselines = config_file.get_quabo_ph_baselines()
@@ -667,7 +666,7 @@ def do_show_ph_baselines(quabo_uids):
             for quabo_index in range(4):
                 quabo_num = config_file.get_boardloc(module_ip_addr, quabo_index)
                 quabo_uid = module['quabos'][quabo_index]['uid']
-                quabo_baselines = None
+                quabo_baselines: Any = None
                 for q in quabo_ph_baselines['quabos']:
                     if q['uid'] == quabo_uid:
                         quabo_baselines = q
@@ -688,7 +687,7 @@ def do_show_ph_baselines(quabo_uids):
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
 #
-def do_disk_space(data_config, daq_config, verbose=False):
+def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbose: bool = False) -> float:
     logger = logging.getLogger('PANOSETI.Config.do_disk_space')
     logger.info('Check disk space.')
     bps = util.daq_bytes_per_sec_per_module(data_config)
@@ -716,7 +715,7 @@ def do_disk_space(data_config, daq_config, verbose=False):
         # initialize list of module IDs each vol will handle,
         # and find the default volume for this node
         #
-        default_vol = None
+        default_vol: Any = None
         for vol in vols.values():
             vol['mods_here'] = []
             if -1 in vol['modules']:
@@ -777,13 +776,13 @@ def do_disk_space(data_config, daq_config, verbose=False):
     return available_hours
 
 
-def do_shutter(action):
+def do_shutter(action: str) -> None:
     if action == "open":
         os.system("tools/shutter.py --open")
     elif action == "close":
         os.system("tools/shutter.py --close")
 
-def do_start_interleave():
+def do_start_interleave() -> None:
     """Starts the interleaver process in the background."""
     if not os.path.exists("tmp/current_run"):
         print("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
@@ -796,7 +795,7 @@ def do_start_interleave():
                      stderr=subprocess.STDOUT)
     print("Interleave process started. Check logs/interleave.log for details.")
 
-def do_stop_interleave():
+def do_stop_interleave() -> None:
     """Gracefully stops the background interleaver if it is running."""
     pid_file = "tmp/interleave.pid"
     if not os.path.exists(pid_file):
@@ -826,7 +825,7 @@ def do_stop_interleave():
         os.remove(pid_file)
 
 
-def do_dry_run_interleave():
+def do_dry_run_interleave() -> None:
     """Runs the interleaver in the foreground for 2 cycles without hardware commands."""
     print("Starting interleave DRY RUN (2 cycles) in the foreground...")
 
@@ -844,7 +843,7 @@ def do_dry_run_interleave():
 
 
 
-def main():
+def main() -> None:
     if not os.path.exists('logs'):
         os.makedirs('logs')
     logfile = 'logs/config.log'
