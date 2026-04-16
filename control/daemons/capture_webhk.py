@@ -19,6 +19,7 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from influxdb import InfluxDBClient
 
@@ -149,9 +150,9 @@ def main():
         now_ns = time.time_ns()
         max_age_ns = int(MAX_AGE_MIN * 60 * 1e9)
 
-        summary_lists = {"fresh": [], "stale": [], "missing": [], "errors": []}
+        summary_lists: dict[str, list[str]] = {"fresh": [], "stale": [], "missing": [], "errors": []}
 
-        out = {
+        out: dict[str, Any] = {
             "generated_time_ns": now_ns,
             "generated_utc": ns_to_iso_utc(now_ns),
             "max_age_minutes": MAX_AGE_MIN,

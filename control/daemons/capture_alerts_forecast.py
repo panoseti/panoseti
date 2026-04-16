@@ -6,6 +6,7 @@ import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -198,7 +199,7 @@ CLOUD_CAUTION = CLOUD_CAUTION if 'CLOUD_CAUTION' in globals() else 70
 
 def flag_window(rows, h_start, h_end, first_only=False):
     now = now_utc()
-    results = []
+    results: list[Any] = []
 
     for r in rows:
         t = parse_iso_any(r["time_utc"])

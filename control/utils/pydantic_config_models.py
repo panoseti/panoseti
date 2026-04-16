@@ -124,7 +124,7 @@ class DataConfigValidator(BaseModel):
     @model_validator(mode='after')
     def validate_dynamic_modes_and_interleave(self):
         dynamic_keys = []
-        ph_modes_dict = {}
+        ph_modes_dict: dict[str, PulseHeightMode] = {}
 
         if self.pulse_height:
             ph_modes_dict['pulse_height'] = self.pulse_height
@@ -176,8 +176,8 @@ class DataConfigValidator(BaseModel):
 
                 # Rule 2: Hardware Mutual Exclusion
                 if m_conf and p_conf:
-                    ph_obj = ph_modes_dict.get(p_conf)
-                    if ph_obj and (ph_obj.two_pixel_trigger > 0 or ph_obj.three_pixel_trigger > 0):
+                    state_ph_obj = ph_modes_dict.get(p_conf)
+                    if state_ph_obj and (state_ph_obj.two_pixel_trigger > 0 or state_ph_obj.three_pixel_trigger > 0):
                         raise ValueError(
                             f"Hardware Constraint Violation in interleave state '{state.state_name}': "
                             f"Cannot enable movie-mode ('{m_conf}') while pulse height mode ('{p_conf}') "

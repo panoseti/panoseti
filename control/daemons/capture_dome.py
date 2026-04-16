@@ -184,8 +184,8 @@ def main():
         yyyymmdd = now.strftime("%Y%m%d")
         timestamp = now.isoformat(timespec="seconds") + "Z"
 
-        bundle_status = {"timestamp": timestamp, "sites": {}}
-        bundle_logs = {"timestamp": timestamp, "sites": {}}
+        bundle_status: dict[str, Any] = {"timestamp": timestamp, "sites": {}}
+        bundle_logs: dict[str, Any] = {"timestamp": timestamp, "sites": {}}
 
         for site in sites:
             name = site["name"]

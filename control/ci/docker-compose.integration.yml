@@ -96,7 +96,7 @@ services:
       - NET_ADMIN
       - IPC_LOCK
       - SYS_NICE
-    shm_size: '1gb'
+    shm_size: '2gb'
     volumes:
       - daq_data:/data
       - ..:/app
@@ -127,7 +127,7 @@ services:
       - NET_ADMIN
       - IPC_LOCK
       - SYS_NICE
-    shm_size: '1gb'
+    shm_size: '2gb'
     volumes:
       - daq_data_2:/data
       - ..:/app

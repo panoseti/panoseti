@@ -21,7 +21,7 @@ class TelemetryConfigManager:
         else:
             self.config_path = Path(__file__).parent / "telemetry_config.toml"
 
-        self.last_mtime = 0
+        self.last_mtime = 0.0
         self.config = None
         self.active_prefixes = {}  # Cache for fast lookups
 

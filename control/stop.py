@@ -291,8 +291,8 @@ def stop_run(
     if not run:
         run = read_run_name()
     data_dir = daq_config['head_node_data_dir']
-    run_dir = f'{data_dir}/{run}'
-    if not os.path.exists(run_dir):
+    run_dir: str | None = f'{data_dir}/{run}'
+    if run_dir is not None and not os.path.exists(run_dir):
         run_dir = None
 
     # do things that don't depend on having a run dir

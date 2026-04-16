@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 """
 test_pydantic_models.py
 
@@ -6,10 +7,12 @@ Covers every field boundary, cross-field validator, and interleave constraint.
 No hardware required.
 """
 
+
 import pytest
 from pydantic import ValidationError
 
 from utils.pydantic_config_models import (
+    AnyTriggerConfig,
     DaqConfigValidator,
     DaqNodeValidator,
     DataConfigValidator,
@@ -66,7 +69,7 @@ class TestImageMode:
 
     def test_invalid_quabo_sample_size(self):
         with pytest.raises(ValidationError):
-            ImageMode(integration_time_usec=100_000, pe_threshold=1.0, quabo_sample_size=4)
+            ImageMode(integration_time_usec=100_000, pe_threshold=1.0, quabo_sample_size=4)  # type: ignore
 
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
@@ -80,34 +83,39 @@ class TestImageMode:
 
 class TestPulseHeightMode:
     def test_valid_pulse_height_mode(self):
-        m = PulseHeightMode(pe_threshold=3.0)
+        m = PulseHeightMode(pe_threshold=3.0, two_pixel_trigger=0, three_pixel_trigger=0)
         assert m.pe_threshold == 3.0
         assert m.two_pixel_trigger == 0
         assert m.three_pixel_trigger == 0
 
     def test_pe_threshold_at_minimum(self):
-        PulseHeightMode(pe_threshold=2.0)
+        PulseHeightMode(pe_threshold=2.0, two_pixel_trigger=0, three_pixel_trigger=0)
 
     def test_pe_threshold_below_minimum(self):
         with pytest.raises(ValidationError):
-            PulseHeightMode(pe_threshold=1.9)
+            PulseHeightMode(pe_threshold=1.9, two_pixel_trigger=0, three_pixel_trigger=0)
 
     def test_two_pixel_trigger(self):
-        m = PulseHeightMode(pe_threshold=3.0, two_pixel_trigger=1)
+        m = PulseHeightMode(pe_threshold=3.0, two_pixel_trigger=1, three_pixel_trigger=0)
         assert m.two_pixel_trigger == 1
 
     def test_three_pixel_trigger(self):
-        m = PulseHeightMode(pe_threshold=3.0, three_pixel_trigger=1)
+        m = PulseHeightMode(pe_threshold=3.0, two_pixel_trigger=0, three_pixel_trigger=1)
         assert m.three_pixel_trigger == 1
 
     def test_any_trigger_config(self):
-        m = PulseHeightMode(pe_threshold=3.0, any_trigger={"group_ph_frames": 1})
+        m = PulseHeightMode(
+            pe_threshold=3.0,
+            two_pixel_trigger=0,
+            three_pixel_trigger=0,
+            any_trigger=AnyTriggerConfig(group_ph_frames=1)
+        )
         assert m.any_trigger is not None
         assert m.any_trigger.group_ph_frames == 1
 
     def test_extra_fields_forbidden(self):
         with pytest.raises(ValidationError):
-            PulseHeightMode(pe_threshold=3.0, unexpected=True)
+            PulseHeightMode(pe_threshold=3.0, two_pixel_trigger=0, three_pixel_trigger=0, unexpected=True) # type: ignore[call-arg]
 
 
 # ===========================================================================
@@ -142,58 +150,58 @@ class TestDataConfigValidator:
 
     def test_detector_overvoltage_invalid(self):
         with pytest.raises(ValidationError):
-            DataConfigValidator(run_type="sci", detector_overvoltage=5)
+            DataConfigValidator(run_type="sci", detector_overvoltage=5)  # type: ignore
 
     def test_image_and_ph_without_trigger_ok(self):
         """Image + PH with no multi-pixel trigger is valid."""
-        DataConfigValidator(
-            run_type="sci",
-            image={"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
-            pulse_height={"pe_threshold": 3.0},
-        )
+        DataConfigValidator(**{  # type: ignore
+            "run_type": "sci",
+            "image": {"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
+            "pulse_height": {"pe_threshold": 3.0},
+        })
 
     def test_image_and_ph_with_two_pixel_trigger_raises(self):
         """image + PH with two_pixel_trigger violates hardware constraint."""
         with pytest.raises(ValidationError, match="Hardware Constraint"):
-            DataConfigValidator(
-                run_type="sci",
-                image={"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
-                pulse_height={"pe_threshold": 3.0, "two_pixel_trigger": 1},
-            )
+            DataConfigValidator(**{  # type: ignore
+                "run_type": "sci",
+                "image": {"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
+                "pulse_height": {"pe_threshold": 3.0, "two_pixel_trigger": 1},
+            })
 
     def test_image_and_ph_with_three_pixel_trigger_raises(self):
         with pytest.raises(ValidationError, match="Hardware Constraint"):
-            DataConfigValidator(
-                run_type="sci",
-                image={"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
-                pulse_height={"pe_threshold": 3.0, "three_pixel_trigger": 1},
-            )
+            DataConfigValidator(**{  # type: ignore
+                "run_type": "sci",
+                "image": {"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
+                "pulse_height": {"pe_threshold": 3.0, "three_pixel_trigger": 1},
+            })
 
     def test_dynamic_image_key_valid(self):
         """Keys prefixed 'image_' must be valid ImageMode objects."""
-        DataConfigValidator(
-            run_type="sci",
-            image_8bit={"integration_time_usec": 200_000, "pe_threshold": 1.0, "quabo_sample_size": 8},
-        )
+        DataConfigValidator(**{  # type: ignore
+            "run_type": "sci",
+            "image_8bit": {"integration_time_usec": 200_000, "pe_threshold": 1.0, "quabo_sample_size": 8},
+        })
 
     def test_dynamic_image_key_invalid_fields(self):
         with pytest.raises(ValidationError, match="Invalid fields in dynamic mode"):
-            DataConfigValidator(
-                run_type="sci",
-                image_8bit={"integration_time_usec": 7, "pe_threshold": 1.0, "quabo_sample_size": 8},
-            )
+            DataConfigValidator(**{  # type: ignore
+                "run_type": "sci",
+                "image_8bit": {"integration_time_usec": 7, "pe_threshold": 1.0, "quabo_sample_size": 8},
+            })
 
     def test_dynamic_ph_key_valid(self):
         """Keys prefixed 'pulse_height_' must be valid PulseHeightMode objects."""
-        DataConfigValidator(
-            run_type="sci",
-            pulse_height_uhe={"pe_threshold": 5.0},
-        )
+        DataConfigValidator(**{  # type: ignore
+            "run_type": "sci",
+            "pulse_height_uhe": {"pe_threshold": 5.0},
+        })
 
     def test_unrecognized_top_level_key_raises(self):
         """Keys that are neither image_* nor pulse_height_* must be rejected."""
         with pytest.raises(ValidationError, match="Unrecognized configuration key"):
-            DataConfigValidator(run_type="sci", foobar={"x": 1})
+            DataConfigValidator(**{"run_type": "sci", "foobar": {"x": 1}})  # type: ignore
 
     def test_max_file_size_must_be_positive(self):
         with pytest.raises(ValidationError):
@@ -338,30 +346,30 @@ class TestObsConfigValidator:
 
     def test_missing_name_raises(self):
         with pytest.raises(ValidationError):
-            ObsConfigValidator(domes=[])
+            ObsConfigValidator(domes=[])  # type: ignore
 
     def test_invalid_wr_ip_addr(self):
         with pytest.raises(ValidationError):
-            ObsConfigValidator(name="x", domes=[], wr_ip_addr="not.an.ip")
+            ObsConfigValidator(name="x", domes=[], wr_ip_addr="not.an.ip")  # type: ignore
 
     def test_invalid_wps_extra_key(self, minimal_obs_config):
         """Only 'wps' prefixed extra keys are allowed."""
         cfg = dict(minimal_obs_config)
         cfg["notawps_key"] = {"url": "x", "quabo_socket": 1}
         with pytest.raises(ValidationError, match="not allowed"):
-            ObsConfigValidator(**cfg)
+            ObsConfigValidator(**cfg)  # type: ignore
 
     def test_valid_wps_extra_key(self, minimal_obs_config):
         """Keys starting with 'wps' (e.g. wps1) are allowed."""
         cfg = dict(minimal_obs_config)
         cfg["wps1"] = {"url": "http://192.168.1.3", "quabo_socket": 2}
-        ObsConfigValidator(**cfg)
+        ObsConfigValidator(**cfg)  # type: ignore
 
     def test_invalid_wps_format_raises(self, minimal_obs_config):
         cfg = dict(minimal_obs_config)
         cfg["wps1"] = {"url": "http://192.168.1.3"}  # missing quabo_socket
         with pytest.raises(ValidationError, match="Invalid format"):
-            ObsConfigValidator(**cfg)
+            ObsConfigValidator(**cfg)  # type: ignore
 
 
 class TestObsDomeConfig:
@@ -386,7 +394,7 @@ class TestObsModuleConfig:
 
     def test_invalid_ip_addr(self):
         with pytest.raises(ValidationError):
-            ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga", ip_addr="999.0.0.1")
+            ObsModuleConfig(mobo_serialno="SN1", quabo_version="bga", ip_addr="999.0.0.1")  # type: ignore
 
     @pytest.mark.parametrize("mode", ["wr", "gnss"])
     def test_valid_timing_modes(self, mode):
@@ -439,15 +447,15 @@ class TestDaqNodeValidator:
 
     def test_range_string_start_greater_than_end_raises(self):
         with pytest.raises(ValidationError, match="must be <="):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="10-5")
+            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="10-5")  # type: ignore
 
     def test_module_ids_empty_list_raises(self):
         with pytest.raises(ValidationError, match="non-empty"):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[])
+            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[])  # type: ignore
 
     def test_module_ids_negative_raises(self):
         with pytest.raises(ValidationError, match="non-negative"):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[-1, 0])
+            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[-1, 0])  # type: ignore
 
     def test_module_ids_duplicates_raise(self):
         with pytest.raises(ValidationError, match="unique"):
@@ -461,7 +469,7 @@ class TestDaqNodeValidator:
 
     def test_invalid_ip_addr(self):
         with pytest.raises(ValidationError):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="999.0.0.1", module_ids="0-10")
+            DaqNodeValidator(username="p", data_dir="/d", ip_addr="999.0.0.1", module_ids="0-10")  # type: ignore
 
 
 class TestDaqConfigValidator:
@@ -576,10 +584,10 @@ class TestQuaboUidsValidator:
 class TestFirmwareConfigValidator:
     def test_arbitrary_hw_keys_allowed(self):
         """Firmware config accepts any hardware variant keys."""
-        FirmwareConfigValidator(bga="fw_bga_v2.bin", qfp="fw_qfp_v1.bin")
+        FirmwareConfigValidator(bga="fw_bga_v2.bin", qfp="fw_qfp_v1.bin")  # type: ignore
 
     def test_empty_firmware_config_ok(self):
-        FirmwareConfigValidator()
+        FirmwareConfigValidator()  # type: ignore
 
 
 # ===========================================================================
@@ -602,14 +610,14 @@ class TestPortForwarding:
     def test_grpc_port_zero_rejected(self):
         """grpc_port=0 is below the valid range."""
         with pytest.raises(ValidationError):
-            PortForwarding(**self._BASE, grpc_port=0)
+            PortForwarding(**self._BASE, grpc_port=0)  # type: ignore
 
     def test_grpc_port_too_large_rejected(self):
         """grpc_port above 65535 is rejected."""
         with pytest.raises(ValidationError):
-            PortForwarding(**self._BASE, grpc_port=65536)
+            PortForwarding(**self._BASE, grpc_port=65536)  # type: ignore
 
     def test_grpc_port_max_valid(self):
         """grpc_port=65535 is the highest valid value."""
-        pf = PortForwarding(**self._BASE, grpc_port=65535)
+        pf = PortForwarding(**self._BASE, grpc_port=65535)  # type: ignore
         assert pf.grpc_port == 65535

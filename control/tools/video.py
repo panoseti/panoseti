@@ -63,12 +63,13 @@ def main(quabo_uids, module_id, dp):
     figure, im = show_pff.create_figure(image_size)
     while True:
         j = ''
+        if process.stdout is None:
+            break
         while True:
-            line = process.stdout.readline()
-            line = line.decode()
-            if line == '\n':
+            line_bytes = process.stdout.readline()
+            if line_bytes == b'\n' or line_bytes == b'':
                 break
-            j += line
+            j += line_bytes.decode()
         show_pff.print_json(j, ph, False)
         #print('got header')
         img = pff.read_image(process.stdout, image_size, bpp)

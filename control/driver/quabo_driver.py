@@ -890,5 +890,5 @@ def write_maroc_config_cmd():
     config = parse_quabo_config_file('quabo_config.txt')
     cmd = bytearray(492)
     q.make_maroc_cmd(config, cmd)
-    with open('maroc_cmd_new.bin', 'w') as f:
+    with open('maroc_cmd_new.bin', 'wb') as f:
         f.write(cmd)

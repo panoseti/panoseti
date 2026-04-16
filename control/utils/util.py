@@ -15,6 +15,7 @@ import signal
 import socket
 import subprocess
 import time
+from typing import Any
 
 import psutil
 
@@ -571,7 +572,7 @@ def get_daq_node_status(node):
         ],
         stdout = subprocess.PIPE
     )
-    if x=='':
+    if x.stdout == b'':
         raise Exception("can't talk to DAQ node")
     y = x.stdout.decode()
     return json.loads(y)
@@ -608,7 +609,7 @@ def get_gps_port(obs_config):
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
 def get_quabo_ip_port(ip_addr, i, network_config):
-    ip_ports = {}
+    ip_ports: dict[str, Any] = {}
     x = ip_addr.split('.')
     x[3] = str(int(x[3])+i)
     quabo_ip =  '.'.join(x)

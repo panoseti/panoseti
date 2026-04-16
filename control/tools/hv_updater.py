@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import logging
 import time
+from typing import Any
 
 import redis
 
@@ -351,7 +352,7 @@ def main():
     5. monitored_hvi - this is a list, which records the monitored 4 hv  current on the quabo;
     5. adjusted_hv - this is a list, which records the latest 4 hv on the quabo.
     """
-    quabo_status = {}
+    quabo_status: dict[str, Any] = {}
     while True:
         update_all_quabos(r, quabo_status)
         time.sleep(UPDATE_INTERVAL)

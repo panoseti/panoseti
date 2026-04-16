@@ -16,13 +16,14 @@ import struct
 import time
 from datetime import UTC, datetime
 from signal import SIGINT, signal
+from typing import Literal
 
 import serial
 
 from utils import config_file, util
 from utils.redis_utils import redis_init
 
-BYTEORDER = 'big'
+BYTEORDER: Literal['big', 'little'] = 'big'
 RKEY = 'GPSPRIM'
 RKEYsupp = 'GPSSUPP'
 
@@ -238,7 +239,7 @@ def initialize():
 def main():
     data = b''
     data_size = 0
-    last_recv_byte = 0
+    last_recv_byte = b''
 
     ser, r = initialize()
 

@@ -13,6 +13,7 @@ import struct
 import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
+from typing import Any
 
 from driver.quabo_tftp import tftpw
 from utils import config_file, util
@@ -51,8 +52,9 @@ def print(*args, **kwargs):
         f.write(line)
         f.write(old)
 
-    sys.__stdout__.write(line)
-    sys.__stdout__.flush()
+    if sys.__stdout__ is not None:
+        sys.__stdout__.write(line)
+        sys.__stdout__.flush()
 
 # return quabo UID as hex string
 #
@@ -69,13 +71,13 @@ def get_uid(ip_addr, port):
 def get_uids(obs_config, network_config, exclude=None):
     if exclude is None:
         exclude = []
-    quabo_uids = {}
+    quabo_uids: dict[str, Any] = {}
     quabo_uids['domes'] = []
     for d in obs_config['domes']:
-        dome = {}
+        dome: dict[str, Any] = {}
         dome['modules'] = []
         for m in d['modules']:
-            module = {}
+            module: dict[str, Any] = {}
             module['ip_addr'] = m['ip_addr']
             module['quabos'] = []
             for i in range(4):

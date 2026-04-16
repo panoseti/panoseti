@@ -12,6 +12,7 @@ import socket
 import struct
 import time
 from datetime import UTC, datetime
+from typing import Literal
 
 import paramiko
 import serial
@@ -37,14 +38,17 @@ def SSH_Init(wrs_ip):
 
 # The class is used for checking timing synchronization in PANOSETI system.
 #
+
+
+# ...
 class check_clocks:
     def __init__(self, gps_port='/dev/ttyUSB0', wrs_ip='192.168.1.254', host_ip='192.168.1.100', port=60001):
         self.gps_port = gps_port
         self.host_ip = host_ip
         self.port = port
         self.wrs_ip = wrs_ip
-        self.ser = 0
-        self.ssh =  0
+        self.ser: serial.Serial | int = 0
+        self.ssh: paramiko.SSHClient | int =  0
 
     
     # parse primary timing packets from GPS receiver
@@ -53,7 +57,7 @@ class check_clocks:
         # check the length of data
         if len(data) != 17:
             return
-        BYTEORDER = 'big'
+        BYTEORDER: Literal['big', 'little'] = 'big'
         # get time info from the data packet
         seconds = int.from_bytes(data[10:11], byteorder=BYTEORDER, signed=False)
         minutes = int.from_bytes(data[11:12], byteorder=BYTEORDER, signed=False)
@@ -80,7 +84,7 @@ class check_clocks:
             bytesize=serial.EIGHTBITS
         )
 
-        if not self.ser.isOpen():
+        if isinstance(self.ser, serial.Serial) and not self.ser.isOpen():
             self.ser.open()
 
         data = b''
@@ -88,15 +92,17 @@ class check_clocks:
         bytesToRead = 0
         timestamp = False
         gps_time = []
-        recv_byte = 0
-        last_recv_byte = 0
+        recv_byte = b''
+        last_recv_byte = b''
         recv_state = True
 
         while(recv_state):
             # get gps packets from uart port
             while bytesToRead == 0:
-                bytesToRead = self.ser.inWaiting()
-            recv_byte = self.ser.read(bytesToRead)
+                if isinstance(self.ser, serial.Serial):
+                    bytesToRead = self.ser.inWaiting()
+            if isinstance(self.ser, serial.Serial):
+                recv_byte = self.ser.read(bytesToRead)
             if(recv_byte == b'\x10' and last_recv_byte == b'\x10'):
                 pass
             else:
@@ -120,7 +126,8 @@ class check_clocks:
                 dataSize = 0
                 timestamp = False
 
-        self.ser.close()
+        if isinstance(self.ser, serial.Serial):
+            self.ser.close()
         return gps_time, t_host
 
     
@@ -159,6 +166,8 @@ class check_clocks:
         cmd0 = "/wr/bin/wr_date get"
 
         self.ssh =  SSH_Init(self.wrs_ip)
+        if not isinstance(self.ssh, paramiko.SSHClient):
+            return 0, 0
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd0)
         r0=ssh_stdout.read()
         t_host = time.time()

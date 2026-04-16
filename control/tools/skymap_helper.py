@@ -6,6 +6,7 @@ import json
 import os
 import time
 from datetime import datetime
+from typing import Any
 
 import redis
 
@@ -97,9 +98,12 @@ def create_empty_entry(template='skymap_format.json'):
 #
 def write_complete_entry(skymap_t, host='localhost', port=6379):
     client = redis.Redis(host=host, port=port, db=0)
-    runs = client.json().get('runs')
-    if(runs is None):
-        runs = {'runs':[]}
+    res = client.json().get('runs')
+    runs: dict[str, Any] = {}
+    if not isinstance(res, dict) or 'runs' not in res:
+        runs = {'runs': []}
+    else:
+        runs = res
     runs['runs'].append(skymap_t)
     client.json().set('runs', '$', runs)
     return runs

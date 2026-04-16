@@ -148,7 +148,7 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
 
 def get_wps_to_modules(obs_config):
     """Dictionary storing pairs of [wps_name]:[set of IPs of the modules connected to this wps]."""
-    wps_to_modules = dict()
+    wps_to_modules: dict[str, set[str]] = dict()
     for dome in obs_config['domes']:
         for module in dome['modules']:
             module_ip_addr = module['ip_addr']

@@ -7,6 +7,8 @@ minimal config dicts and verifying the ValidationReport outcome.
 No hardware or network access required.
 """
 
+from typing import Any
+
 import pytest
 
 from utils.global_validator import GlobalConfigValidator
@@ -178,6 +180,12 @@ class TestHardwareFirmware:
         v = _make_validator(firmware={"bga": "fw.bin"})
         v._check_hardware_firmware()
         assert not v.report.has_errors
+
+    def test_empty_firmware_dict_errors(self):
+        obs = {"domes": [{"modules": [{"quabo_version": "bga"}]}]}
+        v = _make_validator(obs=obs, firmware={})
+        v._check_hardware_firmware()
+        assert v.report.has_errors
 
 
 # ===========================================================================
@@ -418,7 +426,7 @@ class TestHeadnodeDiskSpace:
 
     def test_existing_dir_passes(self, tmp_path):
         daq = {"head_node_data_dir": str(tmp_path), "daq_nodes": []}
-        obs = {"domes": [{"modules": []}]}
+        obs: dict[str, Any] = {"domes": [{"modules": []}]}
         data = {"image": {"integration_time_usec": 100_000, "quabo_sample_size": 16}}
         v = _make_validator(obs=obs, data=data, daq=daq)
         v._check_headnode_disk_space()

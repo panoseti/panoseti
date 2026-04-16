@@ -93,11 +93,11 @@ def do_backup():
     else:
         backup_command = f'influxd backup -portable -db metadata {backup_folder_path}'
     exit_status = os.system(backup_command)
-    exit_status = 'SUCCESS' if not exit_status else 'FAILED'
+    status_msg = 'SUCCESS' if not exit_status else 'FAILED'
     # Add log entry for this backup.
-    update_backup_log(backup_folder_path, date, exit_status)
+    update_backup_log(backup_folder_path, date, status_msg)
     # Report success or failure of backup.
-    if exit_status == 'SUCCESS':
+    if status_msg == 'SUCCESS':
         msg = f'Successfully backed up the database to {backup_folder_path}.'
         print(msg)
     else:

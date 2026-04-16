@@ -136,7 +136,7 @@ class GlobalConfigValidator:
 
     def _check_port_collisions(self):
         """Ensures multiple modules sharing a Gateway IP do not use overlapping forwarded ports."""
-        gw_ports = {}
+        gw_ports: dict[str, set[int]] = {}
         for m in self.net_conf.get('modules', []):
             pf = m.get('port_forwarding', {})
             if pf.get('status'):
@@ -156,7 +156,7 @@ class GlobalConfigValidator:
     def _check_daq_assignment_overlap(self):
         """Ensures a single module ID is not being actively listened to by multiple DAQ nodes."""
         from .config_file import expand_ranges
-        seen_ids = set()
+        seen_ids: set[int] = set()
         expand_ranges(self.daq_conf)
         for daq in self.daq_conf.get('daq_nodes', []):
             ids = daq.get('module_ids', '')

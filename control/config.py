@@ -18,6 +18,7 @@ import sys
 import time
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from driver import quabo_driver
 from driver.quabo_tftp import tftpw
@@ -294,7 +295,7 @@ def do_loadg(modules):
 
 def do_ping(modules, network_config, verbose=False):
     logger = logging.getLogger('PANOSETI.Config.do_ping')
-    ping_record = {
+    ping_record: dict[str, list[str]] = {
         "ping_true": [],
         "ping_false": []
     }
@@ -330,9 +331,10 @@ def do_hk_dest(modules, quabo_uids, daq_config, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            if isinstance(logger, logging.Logger):
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hk_packet_destination(headnode_ip_addr)
             quabo.close()
@@ -355,9 +357,10 @@ def do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, ver
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            if isinstance(logger, logging.Logger):
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
@@ -376,9 +379,10 @@ def do_hv_off(modules, quabo_uids, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            if isinstance(logger, logging.Logger):
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
@@ -505,7 +509,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            if do_log:
+            if do_log and isinstance(logger, logging.Logger):
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
                 logger.info(f'Cmd Port: {cmd_port}')
@@ -547,7 +551,7 @@ def do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, da
                 # print(f'Warning: No calibration data for the board with UID: {uid}')
                 # print('         Using default calibration data.')
                 # print('**************************************************************************')
-                if do_log:
+                if do_log and isinstance(logger, logging.Logger):
                     logger.warning(f'No calibration data: UID -{uid}')
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             if stim_mask_quaboi[i] == 0:
@@ -602,7 +606,7 @@ def do_mask_config(modules, data_config, network_config, quabo_uids, verbose=Fal
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            if do_log:
+            if do_log and isinstance(logger, logging.Logger):
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
                 logger.info(f'Cmd Port: {cmd_port}')
@@ -629,9 +633,10 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            if isinstance(logger, logging.Logger):
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
@@ -639,7 +644,7 @@ def do_calibrate_ph(modules, quabo_uids, network_config):
             q['uid'] = uid
             q['coefs'] = coefs
             quabos.append(q)
-    x={}
+    x: dict[str, Any] = {}
     d = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     x['date'] = d.isoformat()
     x['quabos'] = quabos
@@ -728,19 +733,20 @@ def do_disk_space(data_config, daq_config, verbose=False):
                     vol['mods_here'].append(mid)
                     found = True
                     break
-            if not found:
+            if not found and default_vol:
                 default_vol['mods_here'].append(mid)
 
         for name in vols.keys():
             vol = vols[name]
             free = vol['free']
-            nmods = len(['mods_here'])
+            mods_here_list = vol.get('mods_here', [])
+            nmods = len(mods_here_list)
             if verbose:
                 print(f'   {name}:')
             if nmods:
                 t = free/(3600.*bps*nmods)
                 if verbose:
-                    print('      modules: ', vol['mods_here'])
+                    print('      modules: ', mods_here_list)
                     print(f'      space: {free/1e12:.2f}TB ({t:.2f} hours)')
                 if t < available_hours:
                     available_hours = t

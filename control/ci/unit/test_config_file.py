@@ -7,6 +7,7 @@ module→DAQ-node assignment utilities.  No hardware required.
 """
 
 import json
+from typing import Any
 
 import pytest
 
@@ -145,22 +146,22 @@ class TestStringToList:
 
 class TestExpandRanges:
     def test_string_range_becomes_list(self):
-        config = {"daq_nodes": [{"module_ids": "224-225"}]}
+        config: dict[str, Any] = {"daq_nodes": [{"module_ids": "224-225"}]}
         expand_ranges(config)
         assert config["daq_nodes"][0]["module_ids"] == [224, 225]
 
     def test_single_value_string(self):
-        config = {"daq_nodes": [{"module_ids": "0"}]}
+        config: dict[str, Any] = {"daq_nodes": [{"module_ids": "0"}]}
         expand_ranges(config)
         assert config["daq_nodes"][0]["module_ids"] == [0]
 
     def test_already_list_is_preserved(self):
-        config = {"daq_nodes": [{"module_ids": [0, 1, 2]}]}
+        config: dict[str, Any] = {"daq_nodes": [{"module_ids": [0, 1, 2]}]}
         expand_ranges(config)
         assert set(config["daq_nodes"][0]["module_ids"]) == {0, 1, 2}
 
     def test_multiple_nodes(self):
-        config = {
+        config: dict[str, Any] = {
             "daq_nodes": [
                 {"module_ids": "0-1"},
                 {"module_ids": "128-129"},
@@ -171,7 +172,7 @@ class TestExpandRanges:
         assert config["daq_nodes"][1]["module_ids"] == [128, 129]
 
     def test_invalid_type_raises(self):
-        config = {"daq_nodes": [{"module_ids": 42}]}
+        config: dict[str, Any] = {"daq_nodes": [{"module_ids": 42}]}
         with pytest.raises((ValueError, TypeError)):
             expand_ranges(config)
 
@@ -183,7 +184,7 @@ class TestExpandRanges:
 class TestModuleIdToDaqNode:
     @pytest.fixture
     def expanded_config(self):
-        config = {
+        config: dict[str, Any] = {
             "daq_nodes": [
                 {"ip_addr": "10.0.0.2", "module_ids": "224-225"},
                 {"ip_addr": "10.0.0.3", "module_ids": "226-227"},
@@ -216,7 +217,7 @@ class TestModuleIdToDaqNode:
 
 class TestAssignNumbers:
     def test_dome_num_starts_at_zero(self):
-        config = {
+        config: dict[str, Any] = {
             "domes": [
                 {"modules": [{"ip_addr": "192.168.3.200"}]},
                 {"modules": [{"ip_addr": "192.168.3.204"}]},
@@ -227,12 +228,12 @@ class TestAssignNumbers:
         assert config["domes"][1]["num"] == 1
 
     def test_module_id_is_correct(self):
-        config = {"domes": [{"modules": [{"ip_addr": "192.168.3.200"}]}]}
+        config: dict[str, Any] = {"domes": [{"modules": [{"ip_addr": "192.168.3.200"}]}]}
         assign_numbers(config)
         assert config["domes"][0]["modules"][0]["id"] == 242
 
     def test_multiple_modules_in_one_dome(self):
-        config = {
+        config: dict[str, Any] = {
             "domes": [
                 {
                     "modules": [
@@ -247,10 +248,15 @@ class TestAssignNumbers:
         assert config["domes"][0]["modules"][1]["id"] == 243
 
     def test_does_not_change_other_fields(self):
-        config = {"domes": [{"name": "dome0", "modules": [{"ip_addr": "192.168.3.200", "extra": "x"}]}]}
+        config: dict[str, Any] = {"domes": [{"name": "dome0", "modules": [{"ip_addr": "192.168.3.200", "extra": "x"}]}]}
         assign_numbers(config)
         assert config["domes"][0]["name"] == "dome0"
         assert config["domes"][0]["modules"][0]["extra"] == "x"
+
+    def test_assign_numbers_no_domes(self):
+        config: dict[str, Any] = {}
+        with pytest.raises(KeyError):
+            assign_numbers(config)
 
 
 # ===========================================================================
