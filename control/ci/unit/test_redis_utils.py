@@ -23,7 +23,7 @@ from utils.redis_utils import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def r():
+def r() -> fakeredis.FakeRedis:
     """An in-memory fakeredis instance — no live Redis server needed."""
     return fakeredis.FakeRedis()
 

@@ -26,7 +26,8 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -74,7 +75,7 @@ HASHPIPE_READY_RETRIES = 20
 
 
 @pytest.fixture(scope="module")
-def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
+def hashpipe_pcap_session(daqnode_container: Any, daq_control_direct: DaqControlClient, run_params: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """
     Start hashpipe via daq_control gRPC, inject PCAP packets via docker exec
     tcpreplay, then yield.  Tears down hashpipe on exit.
@@ -129,7 +130,7 @@ def hashpipe_pcap_session(daqnode_container, daq_control_direct, run_params):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def real_daq_data_client(hashpipe_pcap_session):
+def real_daq_data_client(hashpipe_pcap_session: dict[str, Any]) -> Iterator[DaqDataClient]:
     """
     DaqDataClient connected to the unified daqnode gRPC server.
     daq_data and daq_control share a process, so hashpipe UDS sockets
@@ -216,7 +217,7 @@ def wait_hashpipe_stopped(
     )
 
 
-def wait_grpc_reachable(client, data_dir: str, *, timeout: float = 15.0) -> bool:
+def wait_grpc_reachable(client: DaqControlClient, data_dir: str, *, timeout: float = 15.0) -> bool:
     """Poll until a StatusDaq RPC succeeds (server is back after restart/pause)."""
     return wait_until(
         lambda: client.StatusDaq({
@@ -243,7 +244,7 @@ if control_root not in sys.path:
 from utils import config_file  # noqa: E402
 
 
-def get_daq_and_network_config(kind="direct") -> tuple[dict, dict | None]:
+def get_daq_and_network_config(kind: str = "direct") -> tuple[dict[str, Any], dict[str, Any] | None]:
     """(daq_config.json, network_config.json) for clients connected:
         1. Directly to the daqnode (bypasses gateway).
         2. Via the socat gateway (simulates VPN/NAT topology)
@@ -271,7 +272,7 @@ def get_daq_and_network_config(kind="direct") -> tuple[dict, dict | None]:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session", autouse=True)
-def create_data_dirs():
+def create_data_dirs() -> None:
     """Create expected data directories on the shared volume at session start.
 
     /data/head is referenced by daq_config.json (head_node_data_dir) and must
@@ -304,7 +305,7 @@ def daq_control_node2() -> DaqControlClient:
 
 
 @pytest.fixture(scope="session")
-def daq_data_client() -> DaqDataClient:
+def daq_data_client() -> Iterator[DaqDataClient]:
     """Session-scoped DaqDataClient connected to daqnode-data.
 
     The connection is established once for the whole test session.
@@ -324,7 +325,7 @@ def daq_data_client() -> DaqDataClient:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope='module')
-def run_params() -> dict:
+def run_params() -> dict[str, Any]:
     """Fresh run parameters for each test — unique run_dir per test."""
     return {
         "data_dir":         DAQ_DATA_DIR,
@@ -361,7 +362,7 @@ def head_data_dir() -> pathlib.Path:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def daqnode_container():
+def daqnode_container() -> Any:
     """
     Returns a thin wrapper around the daqnode Docker container.
     Requires /var/run/docker.sock to be mounted in the test-runner.
@@ -380,7 +381,7 @@ def daqnode_container():
 # Helper: simulate data copy (rsync equivalent using shared volume)
 # ---------------------------------------------------------------------------
 
-def copy_run_dir(run_params: dict, dst: pathlib.Path) -> bool:
+def copy_run_dir(run_params: dict[str, Any], dst: pathlib.Path) -> bool:
     """
     Simulate rsync from daqnode to headnode using the shared Docker volume.
     Copies module_{id}/{run_dir}/ from daq_data_dir to dst/{run_dir}/.
@@ -406,7 +407,7 @@ def copy_run_dir(run_params: dict, dst: pathlib.Path) -> bool:
     return success
 
 
-def start_copy_background(run_params: dict, dst: pathlib.Path) -> subprocess.Popen:
+def start_copy_background(run_params: dict[str, Any], dst: pathlib.Path) -> subprocess.Popen:
     """
     Start a copy in the background using cp -r (subprocess).
     Returns the Popen handle so tests can pause containers mid-copy.
@@ -421,12 +422,12 @@ def start_copy_background(run_params: dict, dst: pathlib.Path) -> subprocess.Pop
 
 # Expose helpers as fixtures too
 @pytest.fixture
-def copy_run_dir_fn():
+def copy_run_dir_fn() -> Callable[[dict[str, Any], pathlib.Path], bool]:
     return copy_run_dir
 
 
 @pytest.fixture
-def start_copy_background_fn():
+def start_copy_background_fn() -> Callable[[dict[str, Any], pathlib.Path], subprocess.Popen]:
     return start_copy_background
 
 
@@ -435,7 +436,7 @@ def start_copy_background_fn():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=False)
-def ensure_clean_daq_state(daq_control_direct, run_params):
+def ensure_clean_daq_state(daq_control_direct: DaqControlClient, run_params: dict[str, Any]) -> Iterator[None]:
     """Stop hashpipe and clean up if a test leaves it running."""
     yield
     # Always call StopDaq unconditionally — it's idempotent and handles

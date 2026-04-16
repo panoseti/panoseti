@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import struct
+from typing import Any
 
 import pytest
 
@@ -71,7 +72,7 @@ class FakeSocket:
 
 
 @pytest.fixture
-def quabo_and_sock(monkeypatch, tmp_path):
+def quabo_and_sock(monkeypatch: Any, tmp_path: Any) -> tuple[QUABO, FakeSocket]:
     """Yield (quabo, fake_sock). All socket I/O is captured in fake_sock."""
     fake_sock = FakeSocket()
     monkeypatch.setattr("socket.socket", lambda *a, **kw: fake_sock)

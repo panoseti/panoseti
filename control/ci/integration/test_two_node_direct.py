@@ -11,6 +11,8 @@ concurrent StartDaq calls work without interference.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
@@ -21,7 +23,7 @@ from .conftest import BINDHOST, DAQ_DATA_DIR, wait_hashpipe_running, wait_hashpi
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def run_params_node2() -> dict:
+def run_params_node2() -> dict[str, Any]:
     """Fresh run parameters for node-2 — distinct run_dir and module_id."""
     return {
         "data_dir":         DAQ_DATA_DIR,
@@ -36,7 +38,7 @@ def run_params_node2() -> dict:
 
 
 @pytest.fixture(autouse=True)
-def ensure_node2_clean(daq_control_node2, run_params_node2):
+def ensure_node2_clean(daq_control_node2: Any, run_params_node2: dict[str, Any]) -> Iterator[None]:
     """Stop and cleanup node-2 after each test regardless of outcome."""
     yield
     try:
@@ -62,7 +64,7 @@ def ensure_node2_clean(daq_control_node2, run_params_node2):
         pass
 
 @pytest.fixture(autouse=True)
-def ensure_node1_clean(daq_control_direct, run_params):
+def ensure_node1_clean(daq_control_direct: Any, run_params: dict[str, Any]) -> Iterator[None]:
     """Stop and cleanup node-2 after each test regardless of outcome."""
     yield
     try:

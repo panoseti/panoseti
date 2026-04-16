@@ -11,14 +11,16 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 
 import pytest
+import redis
 import requests
 
 from .conftest import LOKI_URL, REDIS_HOST
 
 
-def _loki_query(query: str, limit: int = 50) -> list:
+def _loki_query(query: str, limit: int = 50) -> list[Any]:
     try:
         resp = requests.get(
             f"{LOKI_URL}/loki/api/v1/query_range",
@@ -33,9 +35,8 @@ def _loki_query(query: str, limit: int = 50) -> list:
 
 
 @pytest.fixture(scope="module")
-def redis_client():
+def redis_client() -> redis.Redis:
     try:
-        import redis
         r = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
         r.ping()
         return r

@@ -21,6 +21,7 @@ import pathlib
 import signal
 import sys
 import time
+from typing import Any
 
 
 def _read_module_ids(cwd: pathlib.Path) -> list[int]:
@@ -67,7 +68,7 @@ def main() -> None:
     # Stay alive until SIGINT / SIGTERM
     running = True
 
-    def _stop(signum, frame):
+    def _stop(signum: int, frame: Any) -> None:
         nonlocal running
         running = False
 

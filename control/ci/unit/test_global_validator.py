@@ -17,7 +17,13 @@ from utils.global_validator import GlobalConfigValidator
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_validator(obs=None, data=None, daq=None, net=None, firmware=None):
+def _make_validator(
+    obs: dict[str, Any] | None = None,
+    data: dict[str, Any] | None = None,
+    daq: dict[str, Any] | None = None,
+    net: dict[str, Any] | None = None,
+    firmware: dict[str, Any] | None = None
+) -> GlobalConfigValidator:
     """Build a GlobalConfigValidator with sensible defaults, overrideable per-test."""
     return GlobalConfigValidator({
         "obs":      obs      or {},
@@ -28,18 +34,18 @@ def _make_validator(obs=None, data=None, daq=None, net=None, firmware=None):
     })
 
 
-def _run_check(validator, method_name):
+def _run_check(validator: GlobalConfigValidator, method_name: str) -> tuple[bool, Any]:
     """Call a single _check_* method and return (passed, report)."""
     getattr(validator, method_name)()
     return not validator.report.has_errors, validator.report
 
 
-def _check_passes(validator, method_name):
+def _check_passes(validator: GlobalConfigValidator, method_name: str) -> bool:
     passed, _ = _run_check(validator, method_name)
     return passed
 
 
-def _check_fails(validator, method_name):
+def _check_fails(validator: GlobalConfigValidator, method_name: str) -> bool:
     passed, _ = _run_check(validator, method_name)
     return not passed
 

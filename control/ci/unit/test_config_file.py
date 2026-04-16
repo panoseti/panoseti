@@ -183,7 +183,7 @@ class TestExpandRanges:
 
 class TestModuleIdToDaqNode:
     @pytest.fixture
-    def expanded_config(self):
+    def expanded_config(self) -> dict[str, Any]:
         config: dict[str, Any] = {
             "daq_nodes": [
                 {"ip_addr": "10.0.0.2", "module_ids": "224-225"},

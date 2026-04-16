@@ -91,7 +91,7 @@ def do_wps(name: str, obs_config: dict[str, Any], op: str) -> None:
 
 
 def do_all(obs_config: dict[str, Any], op: str) -> None:
-    for key in [k for k in obs_config.keys() if 'wps' in k.lower()]:
+    for key in [k for k in obs_config if 'wps' in k.lower()]:
         do_wps(key, obs_config, op)
 
 

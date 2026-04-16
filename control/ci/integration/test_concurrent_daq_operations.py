@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import uuid
+from typing import Any
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -31,7 +32,7 @@ from .conftest import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def run_params_conc() -> dict:
+def run_params_conc() -> dict[str, Any]:
     """Run parameters for concurrent tests — unique per test invocation."""
     return {
         "data_dir":         DAQ_DATA_DIR,

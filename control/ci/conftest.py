@@ -13,6 +13,8 @@ import json
 import os
 import struct
 import sys
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -32,7 +34,7 @@ if _utils_dir not in sys.path:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def minimal_obs_config():
+def minimal_obs_config() -> dict[str, Any]:
     """Smallest valid obs_config dict: one dome, one module."""
     return {
         "name": "test_obs",
@@ -61,7 +63,7 @@ def minimal_obs_config():
 
 
 @pytest.fixture
-def two_dome_obs_config():
+def two_dome_obs_config() -> dict[str, Any]:
     """Two-dome obs config for geospatial checks."""
     return {
         "name": "two_dome_obs",
@@ -101,7 +103,7 @@ def two_dome_obs_config():
 
 
 @pytest.fixture
-def minimal_daq_config():
+def minimal_daq_config() -> dict[str, Any]:
     """Smallest valid daq_config dict: one DAQ node."""
     return {
         "head_node_data_dir": "/data",
@@ -119,7 +121,7 @@ def minimal_daq_config():
 
 
 @pytest.fixture
-def minimal_data_config():
+def minimal_data_config() -> dict[str, Any]:
     """Smallest valid data_config dict: image mode only."""
     return {
         "run_type": "sci",
@@ -144,7 +146,7 @@ def minimal_data_config():
 
 
 @pytest.fixture
-def minimal_firmware_config():
+def minimal_firmware_config() -> dict[str, Any]:
     """Firmware config listing the 'bga' hardware variant."""
     return {"bga": "firmware_bga_v2.bin"}
 
@@ -223,7 +225,7 @@ def _make_fixed_header(tv_sec: int, pkt_num: int = 0, nested: bool = True) -> by
 def make_pff_file(
     n_frames: int = 3,
     tv_sec_start: int = 1_000_000,
-    tv_sec_values: list | None = None,
+    tv_sec_values: list[int] | None = None,
     nested_header: bool = True,
     img_size: int = 32,
     bpp: int = 2,
@@ -251,7 +253,7 @@ def make_pff_file(
 
 
 @pytest.fixture
-def pff_file_factory():
+def pff_file_factory() -> Callable[..., io.BytesIO]:
     """Fixture that returns the make_pff_file() helper."""
     return make_pff_file
 
@@ -260,7 +262,7 @@ def pff_file_factory():
 # Machine-readable test summary for qa.py
 # ---------------------------------------------------------------------------
 
-def pytest_terminal_summary(terminalreporter, exitstatus, config):
+def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any) -> None:
     """
     Hook to print a JSON-formatted summary of test results at the very end
     of the pytest run. qa.py parses this to build its metrics table.

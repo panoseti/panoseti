@@ -6,6 +6,8 @@ connections, validating that gRPC topology works end-to-end for both paths.
 """
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 
@@ -16,7 +18,7 @@ from .conftest import (
 
 
 @pytest.fixture(params=["direct", "gateway"])
-def daq_client(request, daq_control_direct, daq_control_gateway) -> DaqControlClient:
+def daq_client(request: Any, daq_control_direct: DaqControlClient, daq_control_gateway: DaqControlClient) -> DaqControlClient:
     """Parameterized fixture — runs every test against both network paths."""
     if request.param == "direct":
         return daq_control_direct

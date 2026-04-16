@@ -294,7 +294,7 @@ def start_recording(obs_config: dict[str, Any], data_config: dict[str, Any], daq
 
     # start hashpipe on DAQ nodes
 
-    if 'max_file_size_mb' in data_config.keys():
+    if 'max_file_size_mb' in data_config:
         max_file_size_mb = int(data_config['max_file_size_mb'])
     else:
         max_file_size_mb = util.default_max_file_size_mb

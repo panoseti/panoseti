@@ -589,7 +589,7 @@ def daq_get_run_name() -> str | None:
 #-------------- WR and GPS---------------
 
 def get_wr_ip_addr(obs_config: dict[str, Any]) -> str:
-    if 'wr_ip_addr' in obs_config.keys():
+    if 'wr_ip_addr' in obs_config:
         return str(obs_config['wr_ip_addr'])
     else:
         return '192.168.1.254'
@@ -598,7 +598,7 @@ def get_wr_ip_addr(obs_config: dict[str, Any]) -> str:
 # get GPS receiver port (path of the tty)
 #
 def get_gps_port(obs_config: dict[str, Any]) -> str:
-    if 'gps_port' in obs_config.keys():
+    if 'gps_port' in obs_config:
         return str(obs_config['gps_port'])
     else:
         return '/dev/ttyUSB0'

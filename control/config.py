@@ -397,8 +397,8 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
     if do_log:
         logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
     gain = float(data_config['gain'])
-    do_img = 'image' in data_config.keys()
-    do_ph = 'pulse_height' in data_config.keys()
+    do_img = 'image' in data_config
+    do_ph = 'pulse_height' in data_config
 
     if do_img:
         pe_thresh1 = float(data_config['image']['pe_threshold'])
@@ -572,7 +572,7 @@ def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], n
         logger = logging.getLogger('PANOSETI.Config.do_mask_config')
     qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
     qc_dict_int: dict[str, int] = {}
-    do_ph = 'pulse_height' in data_config.keys()
+    do_ph = 'pulse_height' in data_config
     qc_dict_int['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
         qc_dict_int['CHANMASK_'+str(i)] = int(qc_dict['CHANMASK_'+str(i)], 16)

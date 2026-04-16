@@ -34,26 +34,31 @@ class TestParseName:
     ])
     def test_extracts_data_product(self, filename, key, expected_val):
         d = pff.parse_name(filename)
+        assert d
         assert d[key] == expected_val
 
     def test_extracts_module_id(self):
         fname = "start_2026-01-01T00:00:00Z.dp_ph256.bpp_2.module_254.seqno_0.pff"
         d = pff.parse_name(fname)
+        assert d
         assert d["module"] == "254"
 
     def test_extracts_bpp(self):
         fname = "start_2026-01-01T00:00:00Z.dp_img16.bpp_2.module_0.seqno_1.pff"
         d = pff.parse_name(fname)
+        assert d
         assert d["bpp"] == "2"
 
     def test_extracts_seqno(self):
         fname = "start_2026-01-01T00:00:00Z.dp_ph256.bpp_2.module_254.seqno_7.pff"
         d = pff.parse_name(fname)
+        assert d
         assert d["seqno"] == "7"
 
     def test_extracts_start_timestamp(self):
         fname = "start_2026-01-01T12:30:00Z.dp_img16.bpp_2.module_0.seqno_0.pff"
         d = pff.parse_name(fname)
+        assert d
         # parse_name splits on '_'; start_timestamp contains '-' so it's a
         # single token "start" → "2026-01-01T12:30:00Z"
         assert "start" in d
@@ -254,6 +259,7 @@ class TestImageRoundTrip:
         pff.write_image_1D(buf, img, 32, 2)
         buf.seek(0)
         recovered = pff.read_image(buf, 32, 2)
+        assert recovered is not None
         assert list(recovered) == img
 
     def test_round_trip_8bit(self):
@@ -263,6 +269,7 @@ class TestImageRoundTrip:
         pff.write_image_1D(buf, img, 32, 1)
         buf.seek(0)
         recovered = pff.read_image(buf, 32, 1)
+        assert recovered is not None
         assert list(recovered) == img
 
     def test_image_block_starts_with_star(self):
@@ -291,14 +298,18 @@ class TestImageRoundTrip:
         buf = io.BytesIO()
         pff.write_image_1D(buf, img, 32, 2)
         buf.seek(0)
-        assert list(pff.read_image(buf, 32, 2)) == img
+        recovered = pff.read_image(buf, 32, 2)
+        assert recovered is not None
+        assert list(recovered) == img
 
     def test_image_max_values_16bit(self):
         img = [65535] * 1024
         buf = io.BytesIO()
         pff.write_image_1D(buf, img, 32, 2)
         buf.seek(0)
-        assert list(pff.read_image(buf, 32, 2)) == img
+        recovered = pff.read_image(buf, 32, 2)
+        assert recovered is not None
+        assert list(recovered) == img
 
 
 # ===========================================================================
@@ -315,6 +326,7 @@ class TestReadJson:
         payload = {"quabo_num": 0, "pkt_num": 42}
         buf = io.BytesIO(self._make_json_block(payload))
         result = pff.read_json(buf)
+        assert result is not None
         parsed = json.loads(result)
         assert parsed["quabo_num"] == 0
         assert parsed["pkt_num"] == 42
@@ -323,6 +335,7 @@ class TestReadJson:
         payload = {"quabo_0": {"pkt_tai": 613, "pkt_nsec": 0, "tv_sec": 1_000_000}}
         buf = io.BytesIO(self._make_json_block(payload))
         result = pff.read_json(buf)
+        assert result is not None
         parsed = json.loads(result)
         assert parsed["quabo_0"]["pkt_tai"] == 613
 
@@ -348,10 +361,12 @@ class TestReadJson:
 
         buf.seek(0)
         header_str = pff.read_json(buf)
+        assert header_str is not None
         header = json.loads(header_str)
         assert header["quabo_0"]["pkt_tai"] == 613
 
         recovered_img = pff.read_image(buf, 32, 2)
+        assert recovered_img is not None
         assert list(recovered_img) == img
 
 
@@ -543,11 +558,13 @@ class TestSkipImage:
         f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000)
         # Read frame 0 header
         h0_str = pff.read_json(f)
+        assert h0_str is not None
         json.loads(h0_str)
         # Skip frame 0 image
         pff.skip_image(f, 32, 2)
         # Now read frame 1 header
         h1_str = pff.read_json(f)
+        assert h1_str is not None
         h1 = json.loads(h1_str)
         # Frame 1 should have tv_sec = 1_000_001
         quabo_data = h1.get("quabo_0", h1)
