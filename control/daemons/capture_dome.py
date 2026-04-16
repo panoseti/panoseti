@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+from typing import Any
 
 import requests
 
@@ -30,7 +31,7 @@ ENDPOINTS = {
     "twilightSwitchSettings": "/rest/twilightSwitchSettings"
 }
 
-last_signal_state = {}
+last_signal_state: dict[str, Any] = {}
 
 # ================== HELPERS ==================
 

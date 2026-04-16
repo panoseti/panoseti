@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,7 +36,8 @@ FORCE_ALIGN_SOLVER_ACTION = 2  # e.g., 2 (if your build uses 2 for "Slew to Targ
 
 
 # Tracks last-downloaded remote file per site (extra safety against repeats)
-LAST_EKOS_REMOTE = {}  # site_name -> remote_path
+LAST_EKOS_REMOTE: dict[str, Any] = {}
+  # site_name -> remote_path
 
 
 def load_sites(config_file):

@@ -53,6 +53,8 @@ def _datarec_log_path():
     obslogs_dir = os.path.join(_LOG_ROOT, yyyymmdd, "obslogs")
     return obslogs_dir, os.path.join(obslogs_dir, f"datarec_{yyyymmdd}.log")
 
+_orig_print = builtins.print
+
 def _print(*args, **kwargs):
     sep = kwargs.get("sep", " ")
     end = kwargs.get("end", "\n")
@@ -63,7 +65,7 @@ def _print(*args, **kwargs):
     line = f"{_ut_human_ts()} {msg}"
 
     # Console (or provided file), with timestamp prepended
-    builtins._orig_print(line, sep=sep, end=end, file=file_arg, flush=flush)
+    _orig_print(line, sep=sep, end=end, file=file_arg, flush=flush)
 
     # Append at the beginning of daily log file (best-effort; no extra prints)
     try:
@@ -86,7 +88,6 @@ def _print(*args, **kwargs):
     except Exception:
         pass
 
-builtins._orig_print = builtins.print
 builtins.print = _print
 # ------------------------------------------------------------------
 
@@ -421,6 +422,6 @@ if __name__ == "__main__":
     )
     if nsecs:
         time.sleep(nsecs)
-        stop.stop_run(daq_config, quabo_uids)
+        stop.stop_run(daq_config, network_config, quabo_uids)
         if stop_session:
             session_stop.session_stop(obs_config)

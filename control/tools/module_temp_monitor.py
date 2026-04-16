@@ -27,13 +27,14 @@ from utils.util import are_redis_daemons_running, create_logger
 UPDATE_INTERVAL = 10
 
 # Min & max module operating temperatures (degrees Celsius).
+
 MIN_DETECTOR_TEMP = -20.0
 MAX_DETECTOR_TEMP = 60.0
 MAX_FPGA_TEMP = 85.0
 
 logger = logging.getLogger('PANOSETI.TempMonitor')
 
-def is_acceptable_temperature(temps: (float, float)):
+def is_acceptable_temperature(temps: tuple[float, float]):
     """
     Returns a tuple of (TEMP1 is ok?, TEMP2 is ok?) if the corresponding
     sensor temperature is within the specified operating range.
@@ -43,7 +44,7 @@ def is_acceptable_temperature(temps: (float, float)):
     return temp1_ok, temp2_ok
 
 
-def get_redis_temps(r: redis.Redis, rkey: str) -> (float, float):
+def get_redis_temps(r: redis.Redis, rkey: str) -> tuple[float, float]:
     """Given a Quabo's redis key, rkey, returns (TEMP1, TEMP2)."""
     try:
         temp1 = redis_utils.get_casted_redis_value(r, rkey, 'TEMP1')
@@ -108,7 +109,8 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
                     # Get this Quabo's redis key.
                     rkey = f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}'
                     # Get this Quabo's detector and fpga temperatures, if they exist.
-                    if rkey.encode('utf-8') not in r.keys():
+                    all_keys = r.keys()
+                    if not isinstance(all_keys, list) or rkey.encode('utf-8') not in all_keys:
                         raise Warning(f"{rkey} is not tracked in Redis.")
                     else:
                         temps = get_redis_temps(r, rkey)

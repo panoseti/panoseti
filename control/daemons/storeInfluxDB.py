@@ -184,7 +184,7 @@ def extract_redis_payload(r: redis.Redis, rkey: str) -> dict[str, Any] | None:
         if not comp_utc_raw:
             return None
 
-        comp_utc = comp_utc_raw.decode('utf-8')
+        comp_utc = comp_utc_raw.decode('utf-8') if isinstance(comp_utc_raw, bytes) else str(comp_utc_raw)
 
         # Deduplication: Has this timestamp been processed?
         if key_timestamps.get(rkey) == comp_utc:
@@ -192,10 +192,13 @@ def extract_redis_payload(r: redis.Redis, rkey: str) -> dict[str, Any] | None:
 
         # Fetch Full Hash
         raw_hash = r.hgetall(rkey)
+        if not isinstance(raw_hash, dict):
+            return None
+            
         data_fields = {}
 
         for field_b, _val_b in raw_hash.items():
-            field = field_b.decode('utf-8')
+            field = field_b.decode('utf-8') if isinstance(field_b, bytes) else str(field_b)
             # do robust type casting (str -> int/float)
             val = get_casted_redis_value(r, rkey, field)
             if val is not None and val != "":
@@ -286,7 +289,7 @@ def process_redis_keys(
             data_fields = extract_redis_payload(r, rkey)
 
             # C. Format and buffer the point if data exists
-            if data_fields:
+            if data_fields and datatype:
                 point = format_influx_point(rkey, data_fields, datatype)
                 if point:
                     if target_client == client_prod:

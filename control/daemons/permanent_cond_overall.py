@@ -373,7 +373,8 @@ def sun_times_for_date_local(date_local: datetime, lat: float = LAT, lon: float 
     cos_h0 = max(-1.0, min(1.0, cos_h0))
     h0 = math.acos(cos_h0)
 
-    tz_offset_h = d.utcoffset().total_seconds() / 3600.0 if d.utcoffset() else 0.0
+    tz_offset = d.utcoffset()
+    tz_offset_h = tz_offset.total_seconds() / 3600.0 if tz_offset is not None else 0.0
     solar_noon_local = 12 + tz_offset_h - lon / 15.0 - eot / 60.0
     day_len_h = 2 * math.degrees(h0) / 15.0
 
@@ -616,7 +617,7 @@ def main() -> int:
             cloud_status = "CAUTION"
             best_time_local = None
 
-        overall_weather = combine_overall_weather(local_safety["label"], nws_status, cloud_status)
+        overall_weather = combine_overall_weather(str(local_safety["label"]), str(nws_status), str(cloud_status))
 
         # ---- Sun phase ----
         sp = sun_phase_now()

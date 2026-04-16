@@ -6,6 +6,7 @@ import time
 
 import redis
 import requests
+import urllib3
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "capture_power", "power_switches.conf")
 SAVE_BASE   = "/mnt/data11/data/palomar/L0"
@@ -13,7 +14,7 @@ CURRENT_DIR_REMOTE = "panoseti@132.239.146.24:/web/panoseti-palomar/current/"
 CURRENT_DIR_LOCAL  = "/tmp/power_current.json"
 
 POLL_INTERVAL = 5
-requests.packages.urllib3.disable_warnings()
+urllib3.disable_warnings()
 
 def load_config():
     sites = {}

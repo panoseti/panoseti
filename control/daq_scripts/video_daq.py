@@ -78,7 +78,7 @@ def do_test():
         time.sleep(1)
 
 dp = None
-nsecs = 1
+nsecs = 1.0
 module = -1
 argv = sys.argv
 test = False

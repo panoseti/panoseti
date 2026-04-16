@@ -86,7 +86,7 @@ def main(quabo_uids, module_id, dp):
 i = 1
 module_id = -1
 argv = sys.argv
-ph = False
+ph = 0
 while i<len(argv):
     if argv[i] == '--module':
         i += 1

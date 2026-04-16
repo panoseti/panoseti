@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -32,7 +33,8 @@ CYLON_BANDWIDTH_LIMIT = 40000  # kbit/s scp limit
 
 
 # Tracks last-downloaded remote file per site (extra safety against repeats)
-LAST_EKOS_REMOTE = {}  # site_name -> remote_path
+LAST_EKOS_REMOTE: dict[str, Any] = {}
+  # site_name -> remote_path
 
 
 def load_sites(config_file):

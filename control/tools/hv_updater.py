@@ -138,54 +138,63 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
     """Given a Quabo's redis key, rkey, returns the field value of TEMP1 in Redis."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
-        temp = float(r.hget(rkey, 'TEMP1'))
+        val = r.hget(rkey, 'TEMP1')
+        if val is None:
+            raise TypeError("TEMP1 is None")
+        temp = float(val.decode('utf-8') if isinstance(val, bytes) else str(val))
         return temp
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
-        logger.err(msg.format(err))
+        logger.error(msg.format(err))
         raise
     except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += "Temperature HK data may be missing. "
         msg += "Error msg: {1}"
-        logger.err(msg.format(rkey, terr))
+        logger.error(msg.format(rkey, terr))
         raise
 
 def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
     """Given a Quabo's redis key, rkey, returns the field value of HVMON{q} in Redis."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
-        hv = float(r.hget(rkey, f'HVMON{q}')) * -1
+        val = r.hget(rkey, f'HVMON{q}')
+        if val is None:
+            raise TypeError(f"HVMON{q} is None")
+        hv = float(val.decode('utf-8') if isinstance(val, bytes) else str(val)) * -1
         return hv
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
-        logger.err(msg.format(err))
+        logger.error(msg.format(err))
         raise
     except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += f"HV{q} HK data may be missing. "
         msg += "Error msg: {1}"
-        logger.err(msg.format(rkey, terr))
+        logger.error(msg.format(rkey, terr))
         raise
 
 def get_redis_det_current(r: redis.Redis, rkey: str, q: int) -> float:
     """Given a Quabo's redis key, rkey, returns the field value of DETR{q}_CURR in Redis."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
-        det_cur = float(r.hget(rkey, f'DETR{q}_CURR'))
+        val = r.hget(rkey, f'DETR{q}_CURR')
+        if val is None:
+            raise TypeError(f"DETR{q}_CURR is None")
+        det_cur = float(val.decode('utf-8') if isinstance(val, bytes) else str(val))
         return det_cur
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
-        logger.err(msg.format(err))
+        logger.error(msg.format(err))
         raise
     except TypeError as terr:
         msg = "hv_updater: Failed to update '{0}'. "
         msg += f"HV{q} HK data may be missing. "
         msg += "Error msg: {1}"
-        logger.err(msg.format(rkey, terr))
+        logger.error(msg.format(rkey, terr))
         raise
 
 def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict):
@@ -195,7 +204,10 @@ def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict):
     """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
-        timestamp = float(r.hget(rkey, 'Computer_UTC'))
+        val = r.hget(rkey, 'Computer_UTC')
+        if val is None:
+            return False
+        timestamp = float(val.decode('utf-8') if isinstance(val, bytes) else str(val))
         if timestamp - quabo_status[rkey]['timestamp_pre'] > 0.1 :
             # check the timestamp difference, to make sure the hk data is updated
             quabo_status[rkey]['timestamp_pre'] = timestamp
@@ -205,7 +217,7 @@ def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict):
     except redis.RedisError as err:
         msg = "hv_updater: A Redis error occurred. "
         msg += "Error msg: {0}"
-        logger.err(msg.format(err))
+        logger.error(msg.format(err))
         raise
 
 def init_quabo_status(rkey: str, quabo_status: dict):
@@ -246,7 +258,8 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                         logger.warning("Housekeeping data hasn't been updated.")
                         continue
                     # Get this Quabo's temp, if it exists.
-                    if rkey.encode('utf-8') not in r.keys():
+                    all_keys = r.keys()
+                    if not isinstance(all_keys, list) or rkey.encode('utf-8') not in all_keys:
                         raise Warning(f"{rkey} is not tracked in Redis.")
                     else:
                         # Get the temperature data for this quabo.

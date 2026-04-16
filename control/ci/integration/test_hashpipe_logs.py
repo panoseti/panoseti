@@ -25,7 +25,7 @@ def _loki_query(query: str, limit: int = 50) -> list:
     try:
         resp = requests.get(
             f"{LOKI_URL}/loki/api/v1/query_range",
-            params={"query": query, "limit": limit},
+            params={"query": query, "limit": str(limit)},
             timeout=5,
         )
         if resp.status_code == 200:

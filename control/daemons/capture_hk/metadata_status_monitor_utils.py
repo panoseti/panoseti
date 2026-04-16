@@ -3,6 +3,7 @@
  Log messages are added to the appropriate metadata field and are displayed on the Grafana webpage."""
 import json
 from pathlib import Path
+from typing import Any
 
 script_dir = Path(__file__).resolve().parent
 
@@ -16,7 +17,7 @@ status_map = {
     "crit": 32
 }
 
-status_history = dict()
+status_history: dict[str, Any] = dict()
 
 
 def write_status(datatype, redis_key, metadata_dict):

@@ -3,32 +3,42 @@
 # commands to redis databases
 ##############################################################
 import re
+from typing import Any
 
 import redis
 
 
-def redis_init():
+def redis_init() -> redis.Redis:
     return redis.Redis(host='localhost', port=6379, db=0)
 
 
-def store_in_redis(r: redis.Redis, rkey: [bytes, str], rkey_fields: dict):
+def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict):
     """
     Writes every field from rkey_fields into the hashset stored at rkey
     in the Redis database represented by the object r.
     """
+    rk = rkey.decode("utf-8") if isinstance(rkey, bytes) else str(rkey)
     for field, value in rkey_fields.items():
-        r.hset(rkey, field, value)
+        r.hset(rk, field, value)
 
 
-def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
-    avaliable_keys = [key.decode("utf-8") for key in r.keys('*')]
+def get_updated_redis_keys(r: redis.Redis, key_timestamps: dict) -> list[str]:
+    # r.keys returns a list of bytes or a list of awaitables depending on the redis client version
+    # The sync client returns a list of bytes.
+    keys_raw = r.keys('*')
+    if not isinstance(keys_raw, list):
+        return []
+    
+    avaliable_keys = [key.decode("utf-8") if isinstance(key, bytes) else str(key) for key in keys_raw]
     list_of_updates = []
     for key in avaliable_keys:
         try:
             compUTC = r.hget(key, 'Computer_UTC')
             if compUTC is None:
                 continue
-            if key in key_timestamps and key_timestamps[key] == compUTC.decode("utf-8"):
+            # compUTC is bytes from hget in sync client
+            compUTC_str = compUTC.decode("utf-8") if isinstance(compUTC, bytes) else str(compUTC)
+            if key in key_timestamps and key_timestamps[key] == compUTC_str:
                 continue
             list_of_updates.append(key)
         except redis.ResponseError:
@@ -36,23 +46,26 @@ def get_updated_redis_keys(r:redis.Redis, key_timestamps:dict):
     return list_of_updates
 
 
-def get_casted_redis_value(r:redis.Redis, rkey: [bytes, str], field: [bytes, str]):
+def get_casted_redis_value(r: redis.Redis, rkey: bytes | str, field: bytes | str) -> Any:
     """Returns val = r.hget(rkey, field) casted to int, float, or string
      as follows:
         1. int, if val has the form X where X.isnumeric(),
         2. float, if val has the form (-)X.Y where X.isnumeric() and Y.isnumeric(),
         3. string otherwise.
     """
-    val = None
+    val_raw = None
     # Checks if val exists in the provided Redis database.
     try:
-        val = r.hget(rkey, field)
+        rk = rkey.decode("utf-8") if isinstance(rkey, bytes) else str(rkey)
+        fld = field.decode("utf-8") if isinstance(field, bytes) else str(field)
+        val_raw = r.hget(rk, fld)
     except redis.RedisError as rerr:
         msg = "redis_utils.py: A Redis error occurred: {0}."
         print(msg.format(rerr))
         pass
-    if val is not None:
-        val = val.decode('utf-8')
+    
+    if val_raw is not None:
+        val: str = val_raw.decode('utf-8') if isinstance(val_raw, bytes) else str(val_raw)
         # Checks if val has the form X, with X numeric.
         if val.isnumeric() or (len(val) > 0 and val[0] == '-' and val[1:].isnumeric()):
             return int(val)

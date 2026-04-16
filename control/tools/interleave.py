@@ -47,11 +47,12 @@ class InterleaveController:
         self.keep_running = True
         self.dry_run = dry_run
         self.max_cycles = max_cycles
-        self.stats = {
+        self.stats: dict[str, Any] = {
             "total_cycles": 0,
             "total_switch_overhead_sec": 0.0,
             "overhead": []
         }
+
 
         self._acquire_lock()
 
@@ -260,13 +261,16 @@ class InterleaveController:
 
     def _teardown(self, stop_daq_params: quabo_driver.DAQ_PARAMS, start_default_daq_params) -> None:
         """Restores Quabos to default settings and cleans up."""
-        logger.critical(f"Overhead stats: "
-                    f"\n\tcount:\t{len(self.stats['overhead'])}"
-                    f"\n\tmean:\t{np.mean(self.stats['overhead']) * 1e3:.5f} ms"
-                    f"\n\tstdev:\t{np.std(self.stats['overhead']) * 1e3:.5f} ms"
-                    f"\n\tmedian:\t{np.median(self.stats['overhead']) * 1e3:.5f} ms"
-                    f"\n\tmin:\t{np.min(self.stats['overhead']) * 1e3:.5f} ms"
-                    f"\n\tmax:\t{np.max(self.stats['overhead']) * 1e3:.5f} ms")
+        overhead_list = self.stats['overhead']
+        logger.critical(fr"""Overhead stats: 
+    count:	{len(overhead_list)}
+    mean:	{np.mean(overhead_list) * 1e3:.5f} ms
+    stdev:	{np.std(overhead_list) * 1e3:.5f} ms
+    median:	{np.median(overhead_list) * 1e3:.5f} ms
+    min:	{np.min(overhead_list) * 1e3:.5f} ms
+    max:	{np.max(overhead_list) * 1e3:.5f} ms""")
+
+
         if self.dry_run:
             #logger.info("[DRY-RUN] Teardown initiated. Simulating hardware default restoration.")
             self._release_lock()

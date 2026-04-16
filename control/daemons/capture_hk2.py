@@ -116,7 +116,7 @@ def storeInRedis(packet, r: redis.Redis):
         startUp = 1
 
     for i, sign in zip(range(2, len(packet), 2), signed, strict=False):
-        array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
+        array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=bool(sign)))
 
     boardName = "QUABO_" + str(array[0])
     print(f"\n? Received packet from {boardName}")

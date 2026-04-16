@@ -223,7 +223,7 @@ class ObsDomeConfig(BaseStrictModel):
 class ObsConfigValidator(BaseModel):
     name: str
     comment: str | None = None
-    wr_ip_addr: IPvAnyAddress | None = Field("192.168.1.254")
+    wr_ip_addr: IPvAnyAddress | None = IPvAnyAddress("192.168.1.254") # type: ignore
     dome_controller_ip_addr: IPvAnyAddress | None = None
     gps_port: str | None = Field("/dev/ttyUSB0")
     detector_overvoltage: int | None = None
@@ -317,8 +317,8 @@ class DaqConfigValidator(BaseStrictModel):
 class PortForwarding(BaseStrictModel):
     status: bool
     gw_ip: IPvAnyAddress
-    reboot_port: list[int | None] = None
-    cmd_port: list[int | None] = None
+    reboot_port: list[int | None] | None = Field(None)
+    cmd_port: list[int | None] | None = Field(None)
     port: int | None = None                              # SSH forwarded port (legacy)
     grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
 

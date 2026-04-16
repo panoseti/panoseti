@@ -15,22 +15,24 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json
 import time
-from io import FileIO
+from typing import TextIO
 
 from utils.redis_utils import get_updated_redis_keys, redis_init
 
 file_ptr = None
 r = redis_init()
 #List of keys with the time stamp values
-key_timestamps = {}    
+key_timestamps: dict[str, str] = {}    
 
-def write_redis_keys(file_ptr:FileIO, redis_keys:list, key_timestamps:dict):
+def write_redis_keys(file_ptr: TextIO, redis_keys: list, key_timestamps: dict):
     for rkey in redis_keys:
         redis_value = r.hgetall(rkey)
-        value_dict = { k.decode('utf-8'): redis_value[k].decode('utf-8') for k in redis_value.keys() }
+        if not isinstance(redis_value, dict):
+            continue
+        value_dict = { (k.decode('utf-8') if isinstance(k, bytes) else str(k)): (v.decode('utf-8') if isinstance(v, bytes) else str(v)) for k, v in redis_value.items() }
         json.dump({rkey: value_dict}, file_ptr)
         file_ptr.write("\n\n")
-        key_timestamps[rkey] = value_dict['Computer_UTC']
+        key_timestamps[rkey] = value_dict.get('Computer_UTC', '')
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

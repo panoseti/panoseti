@@ -573,7 +573,7 @@ try :
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) # UDP
     print ("Socket Created")
 except OSError as msg :
-    print ('Failed to create socket. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+    print (f'Failed to create socket. Error Code : {msg.errno} Message {msg.strerror}')
     sys.exit()    
 sock.settimeout(0.5)
 #os.system('arp -a')
@@ -586,7 +586,7 @@ try:
     #sock.bind(("", UDP_CMD_PORT))
     pass
 except OSError as msg:
-    print ('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+    print (f'Bind failed. Error Code : {msg.errno} Message {msg.strerror}')
     sys.exit()
      
 print ('Socket bind complete')
