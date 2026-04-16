@@ -11,11 +11,11 @@ import sys
 import time
 from glob import glob
 
-import pff
-import util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import pff, util
 
 
-def main(dp, nsecs, module):
+def main(dp: str, nsecs: float, module: int) -> None:
     run = util.daq_get_run_name()
     if not run:
         print('no run')
@@ -71,7 +71,7 @@ def main(dp, nsecs, module):
         sys.stdout.flush()
         time.sleep(nsecs)
 
-def do_test():
+def do_test() -> None:
     while True:
         print('x')
         sys.stdout.flush()

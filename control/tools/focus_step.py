@@ -19,7 +19,7 @@ import time
 from driver import quabo_driver
 
 
-def main(ip_addr, start, end, step, dt):
+def main(ip_addr: str, start: int, end: int, step: int, dt: float) -> None:
     q = quabo_driver.QUABO(ip_addr)
     val = start
     while val < end:

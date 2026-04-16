@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import time
+from typing import Any
 
 import redis
 import requests
@@ -15,8 +16,6 @@ CURRENT_DIR_LOCAL  = "/tmp/power_current.json"
 
 POLL_INTERVAL = 5
 urllib3.disable_warnings()
-
-from typing import Any
 
 
 def load_config() -> dict[str, dict[str, str]]:

@@ -120,7 +120,7 @@ def qdbus_altaz(ssh_user: str, ssh_host: str, ssh_port: int) -> tuple[float | No
     except Exception:
         return None, None
 
-def parse_ra_hours(val: str) -> float | None:
+def parse_ra_hours(val: str | None) -> float | None:
     """RA string -> decimal hours. Accepts '2.5' or '02:30:00.0'."""
     if val is None:
         return None
@@ -133,7 +133,7 @@ def parse_ra_hours(val: str) -> float | None:
     except Exception:
         return None
 
-def parse_dec_deg(val: str) -> float | None:
+def parse_dec_deg(val: str | None) -> float | None:
     """Dec string -> decimal degrees. Accepts '-12.5' or '-12:30:00.0' (with +/?)."""
     if val is None:
         return None
@@ -173,8 +173,8 @@ def safe_redis_mapping(d: dict[str, Any]) -> dict[str, str]:
             out[k] = str(v)
     return out
 
-def load_mounts(conf_path: str):
-    mounts = []
+def load_mounts(conf_path: str) -> list[dict[str, Any]]:
+    mounts: list[dict[str, Any]] = []
     try:
         with open(conf_path) as f:
             for row in csv.reader(f):
@@ -208,7 +208,7 @@ def scp_upload(local_path: str, remote_server: str, remote_path: str) -> None:
         pass
 
 # ===================== MAIN =====================
-def main():
+def main() -> None:
     mounts = load_mounts(CONFIG_FILE)
     if not mounts:
         print("[capture_mounts] No mounts configured.")
@@ -394,4 +394,3 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\n[INFO] Stopped by user.\n")
-

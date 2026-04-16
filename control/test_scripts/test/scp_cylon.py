@@ -22,7 +22,7 @@ log_dir = "/mnt/data11/data/palomar/L0/logs"
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, f"scp_{yyyymmdd}.log")
 
-def log(msg):
+def log(msg: str) -> None:
     """Append message with timestamp to log file and print to console."""
     timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{timestamp}] {msg}"

@@ -9,6 +9,9 @@
 ##############################################################
 import os
 import sys
+from typing import Any
+
+import redis
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -32,10 +35,6 @@ SOFTPLL_UNLOCKED    =   '2'
 SWITCHIP    =   util.get_wr_ip_addr(config_file.get_obs_config())
 RKEY        =   f'WRSWITCH{""}'
 OBSERVATORY =   'lick'
-
-from typing import Any
-
-import redis
 
 
 def handler(signal_recieved: Any, frame: Any) -> None:

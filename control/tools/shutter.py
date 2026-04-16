@@ -23,7 +23,7 @@ logfile = 'logs/shutter.log'
 util.create_logger(logfile, 'PANOSETI.Shutter', 'a')
 logger = logging.getLogger('PANOSETI.Shutter')
 
-def ip_check(ip):
+def ip_check(ip: str) -> int:
     ip_str = ip.split('.')
     if(int(ip_str[3])%4==1):
         return 0
@@ -32,7 +32,7 @@ def ip_check(ip):
     
 # shutter operation
 #
-def shutterop(ip, port, op):
+def shutterop(ip: str, port: int, op: int) -> None:
     # ip: ip address of quabo
     # port: port used for communicating with Quabo.
     # op: 0--open the shutter
@@ -43,9 +43,9 @@ def shutterop(ip, port, op):
         opstr = 'open'
     logger.info(f'{opstr} shutter on {ip}:{port}')
     quabo = quabo_driver.QUABO(ip, port)
-    quabo.shutter_new(op)
+    quabo.shutter_new(bool(op))
 
-def main():
+def main() -> None:
     logger.info('************************************')
     parser = ArgumentParser(description="Usage for openning/closing shutter.")
     parser.add_argument("--ip",type=str, dest="ip",help="ip address of the quabo")

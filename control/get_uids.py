@@ -22,17 +22,17 @@ from utils import config_file, util
 # Logging / print wrapper
 # =========================
 
-def _ut_now():
+def _ut_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
-def _log_paths():
+def _log_paths() -> tuple[str, str]:
     ut = _ut_now()
     yyyymmdd = ut.strftime("%Y%m%d")
     base_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
     log_file = os.path.join(base_dir, f"datarec_{yyyymmdd}.log")
     return base_dir, log_file
 
-def print(*args, **kwargs):
+def print(*args: Any, **kwargs: Any) -> None:
     msg = " ".join(str(a) for a in args)
     ut = _ut_now()
     prefix = ut.strftime("%Y-%m-%d %H:%M:%S UT")
@@ -58,7 +58,7 @@ def print(*args, **kwargs):
 
 # return quabo UID as hex string
 #
-def get_uid(ip_addr, port):
+def get_uid(ip_addr: str, port: int) -> str:
     x = tftpw(ip_addr, port)
     try:
         x.get_flashuid()
@@ -68,7 +68,7 @@ def get_uid(ip_addr, port):
     except Exception:
         return ""
 
-def get_uids(obs_config, network_config, exclude=None):
+def get_uids(obs_config: dict[str, Any], network_config: dict[str, Any], exclude: list[int] | None = None) -> None:
     if exclude is None:
         exclude = []
     quabo_uids: dict[str, Any] = {}
@@ -81,7 +81,7 @@ def get_uids(obs_config, network_config, exclude=None):
             module['ip_addr'] = m['ip_addr']
             module['quabos'] = []
             for i in range(4):
-                quabo = {}
+                quabo: dict[str, Any] = {}
                 if i not in exclude:
                     ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
                     ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
@@ -104,7 +104,7 @@ def get_uids(obs_config, network_config, exclude=None):
     with open(config_file.quabo_uids_filename, "w", encoding="utf-8") as f:
         json.dump(quabo_uids, f, ensure_ascii=False, indent=4)
 
-def check_range(val):
+def check_range(val: str) -> int:
     ivalue = int(val)
     if ivalue < 0 or ivalue > 3:
         raise argparse.ArgumentTypeError(f"{val} is out of allowed range [0-3]")

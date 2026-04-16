@@ -3,23 +3,20 @@
 # show the status of a recording run
 
 import os
-import sys
 from datetime import UTC, datetime
+from typing import Any
 
-import util
-
-sys.path.insert(0, '../util')
-import config_file
+from utils import config_file, util
 
 
 # ---------- logging setup ----------
-def ut_now_str():
+def ut_now_str() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-def ut_date_str():
+def ut_date_str() -> str:
     return datetime.now(UTC).strftime("%Y%m%d")
 
-def log_print(*args, **kwargs):
+def log_print(*args: Any, **kwargs: Any) -> None:
     msg = " ".join(str(a) for a in args)
     line = f"[{ut_now_str()}] {msg}"
 
@@ -35,7 +32,7 @@ def log_print(*args, **kwargs):
         f.write(line + "\n")
 
 # ---------- main logic ----------
-def status():
+def status() -> None:
     run_name = util.read_run_name()
     if run_name:
         log_print(f'Run in progress: {run_name}')

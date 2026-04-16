@@ -29,7 +29,7 @@ TOLERANCE = 0.5
 
 # create ssh session for getting wrs time
 #
-def SSH_Init(wrs_ip):
+def SSH_Init(wrs_ip: str) -> paramiko.SSHClient:
     ssh=paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(wrs_ip,username='root',password='')
@@ -42,7 +42,7 @@ def SSH_Init(wrs_ip):
 
 # ...
 class check_clocks:
-    def __init__(self, gps_port='/dev/ttyUSB0', wrs_ip='192.168.1.254', host_ip='192.168.1.100', port=60001):
+    def __init__(self, gps_port: str = '/dev/ttyUSB0', wrs_ip: str = '192.168.1.254', host_ip: str = '192.168.1.100', port: int = 60001) -> None:
         self.gps_port = gps_port
         self.host_ip = host_ip
         self.port = port
@@ -53,10 +53,10 @@ class check_clocks:
     
     # parse primary timing packets from GPS receiver
     #
-    def _parse_primary_packet(self,data):
+    def _parse_primary_packet(self, data: bytes) -> float | None:
         # check the length of data
         if len(data) != 17:
-            return
+            return None
         BYTEORDER: Literal['big', 'little'] = 'big'
         # get time info from the data packet
         seconds = int.from_bytes(data[10:11], byteorder=BYTEORDER, signed=False)
@@ -73,7 +73,7 @@ class check_clocks:
     # Get time from GPS receiver.
     # The information is from a serial port, which is defined in obs_config.json.
     #
-    def get_gps_time(self):
+    def get_gps_time(self) -> tuple[float | None, float]:
 
         self.ser = serial.Serial(
             port=self.gps_port,
@@ -91,7 +91,8 @@ class check_clocks:
         dataSize = 0
         bytesToRead = 0
         timestamp = False
-        gps_time = []
+        gps_time: float | None = None
+        t_host: float = 0.0
         recv_byte = b''
         last_recv_byte = b''
         recv_state = True
@@ -134,7 +135,7 @@ class check_clocks:
     # Get time from a quabo.
     # We just use 1 quabo for the test, and the IP address of the quabo is defined in obs_config.json.
     #
-    def get_quabo_time(self):
+    def get_quabo_time(self) -> tuple[float, float]:
         BUFFERSIZE = 1024
         IP_PORT = (self.host_ip,self.port)
         server = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -162,12 +163,10 @@ class check_clocks:
     # The information is from a ssh session, which requires the IP address of the WRS.
     # The IP address is defined in obs_config.json.
     #
-    def get_wrs_time(self):
+    def get_wrs_time(self) -> tuple[float, float]:
         cmd0 = "/wr/bin/wr_date get"
 
         self.ssh =  SSH_Init(self.wrs_ip)
-        if not isinstance(self.ssh, paramiko.SSHClient):
-            return 0, 0
         ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd0)
         r0=ssh_stdout.read()
         t_host = time.time()
@@ -176,15 +175,13 @@ class check_clocks:
         s=r0_str.split(' ')
         wrs_time = float(s[0]) - LEAP_SEC
         self.ssh.close()
-        del(self.ssh,ssh_stdin, ssh_stdout, ssh_stderr)
         return wrs_time, t_host
-
     
     # Compare the GPS time with host computer time.
     #
-    def check_gps_time(self):
+    def check_gps_time(self) -> bool:
         t_gps, t_host = self.get_gps_time()
-        if(abs(t_gps - t_host) < TOLERANCE):
+        if t_gps is not None and (abs(t_gps - t_host) < TOLERANCE):
             return True
         else:
             return False
@@ -192,7 +189,7 @@ class check_clocks:
     
     # Compare the quabo time with host computer time.
     #  
-    def check_quabo_time(self):
+    def check_quabo_time(self) -> bool:
         t_quabo, t_host = self.get_quabo_time()
         if(abs(t_quabo - t_host) < TOLERANCE):
             return True
@@ -202,7 +199,7 @@ class check_clocks:
     
     # Compare the WRS time with host computer time.
     #
-    def check_wrs_time(self):
+    def check_wrs_time(self) -> bool:
         t_wrs, t_host = self.get_wrs_time()
         if(abs(t_wrs - t_host) < TOLERANCE):
             return True
@@ -213,7 +210,7 @@ class check_clocks:
     # Check the time from GPS reciever, quabo and WRS.
     # If all of the time is good, it means the system timing is synced.
     #
-    def check_time_sync(self):
+    def check_time_sync(self) -> bool:
         s0 = self.check_gps_time()
         s1 = self.check_quabo_time()
         s2 = self.check_wrs_time()
@@ -246,8 +243,8 @@ if __name__ == '__main__':
     
     # start image mode on 1 quabo
     qstart.qstart(True)
-    t_quabo = 0
-    t_host1 = 0
+    t_quabo: float = 0.0
+    t_host1: float = 0.0
     r1 = True
     # get quabo time
     t_quabo, t_host1 = cts.get_quabo_time()

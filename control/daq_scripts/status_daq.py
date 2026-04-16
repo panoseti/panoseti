@@ -9,12 +9,14 @@
 
 import json
 import os
+import sys
 from typing import Any
 
-import util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import util
 
 
-def status():
+def status() -> None:
     x: dict[str, Any] = {}
     x['hashpipe_running'] = 1 if util.is_hashpipe_running() else 0
 

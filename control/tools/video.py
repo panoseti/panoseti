@@ -14,6 +14,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import subprocess
+from typing import Any
 
 import numpy as np
 
@@ -21,7 +22,7 @@ from tools import show_pff
 from utils import config_file, pff
 
 
-def main(quabo_uids, module_id, dp):
+def main(quabo_uids: dict[str, Any], module_id: int, dp: str) -> None:
     if module_id < 0:
         dome = quabo_uids['domes'][0]
         module = dome['modules'][0]
@@ -72,14 +73,17 @@ def main(quabo_uids, module_id, dp):
             j += line_bytes.decode()
         show_pff.print_json(j, ph, False)
         #print('got header')
-        img = pff.read_image(process.stdout, image_size, bpp)
-        img = np.array(img)
+        raw_img = pff.read_image(process.stdout, image_size, bpp)
+        if raw_img is None:
+            break
+        img = np.array(raw_img)
         if dp == 'ph256' or dp == 'ph1024':
             img = img.astype(np.int16)
-        print(f'max: {max(img)}, min: {min(img)}')
+        print(f'max: {np.max(img)}, min: {np.min(img)}')
         #show_pff.image_as_text(img, image_size, bpp, 0, 256)
         img = img - img.min()
-        img = img/img.max()
+        if img.max() != 0:
+            img = img/img.max()
         show_pff.image_as_figure(figure, im, img.reshape(image_size,image_size))
         if process.poll() is not None:
             break

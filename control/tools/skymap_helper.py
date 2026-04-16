@@ -14,7 +14,7 @@ import redis
 # Add obs config to the skymap template.
 # The obs config is from obs_config.json by default.
 #
-def add_obs_config(skymap_t, obs_config_file='obs_config.json'):
+def add_obs_config(skymap_t: dict[str, Any], obs_config_file: str = 'obs_config.json') -> None:
     with open(obs_config_file) as f:
         obs_config = json.load(f)
     skymap_t['observatory_config']['obs_name'] = obs_config['name']
@@ -33,7 +33,7 @@ def add_obs_config(skymap_t, obs_config_file='obs_config.json'):
 # Add data config to the skymap template.
 # The data config is from data_config.json by default.
 #
-def add_data_config(skymap_t, data_config_file='data_config.json'):
+def add_data_config(skymap_t: dict[str, Any], data_config_file: str = 'data_config.json') -> None:
     with open(data_config_file) as f:
         data_config = json.load(f)
     skymap_t['run_type'] = data_config['run_type']
@@ -49,7 +49,7 @@ def add_data_config(skymap_t, data_config_file='data_config.json'):
 # Add software version info to the skymap template.
 # The software version is from sw_info.json by default. 
 # 
-def add_sw_info(skymap_t, sw='Production', Ver='V0.0.1', sw_info_file='sw_info.json'):
+def add_sw_info(skymap_t: dict[str, Any], sw: str = 'Production', Ver: str = 'V0.0.1', sw_info_file: str = 'sw_info.json') -> None:
     skymap_t['software_config']['type'] = sw
     # if it's production code, we will get the Ver from sw_info.json
     if(sw == 'Production'):
@@ -62,7 +62,7 @@ def add_sw_info(skymap_t, sw='Production', Ver='V0.0.1', sw_info_file='sw_info.j
 # Add obs comments to the skymap template.
 # The comments are from obs_comments.txt by default.
 #
-def add_obs_info(skymap_t, obs_com_file='obs_comments.txt'):
+def add_obs_info(skymap_t: dict[str, Any], obs_com_file: str = 'obs_comments.txt') -> None:
     with open(obs_com_file) as f:
         comments = f.readlines()
     skymap_t['observer_info']['names'].append(comments[0].rstrip())
@@ -71,7 +71,7 @@ def add_obs_info(skymap_t, obs_com_file='obs_comments.txt'):
     
 # Add start time to the skymap template.
 #
-def add_start_time(skymap_t):
+def add_start_time(skymap_t: dict[str, Any]) -> None:
     t = time.time()
     dt = datetime.fromtimestamp(t)
     t_str = datetime.strftime(dt, '%Y-%m-%dT%H:%M:%S')
@@ -80,7 +80,7 @@ def add_start_time(skymap_t):
 
 # Add stop time to the skymap template.
 #
-def add_stop_time(skymap_t):
+def add_stop_time(skymap_t: dict[str, Any]) -> None:
     t = time.time()
     dt = datetime.fromtimestamp(t)
     t_str = datetime.strftime(dt, '%Y-%m-%dT%H:%M:%SZ')
@@ -89,26 +89,26 @@ def add_stop_time(skymap_t):
 
 # Create a skymap template, which is from skymap_format.json.
 #    
-def create_empty_entry(template='skymap_format.json'):
+def create_empty_entry(template: str = 'skymap_format.json') -> dict[str, Any]:
     with open(template) as f:
         skymap_t = json.load(f)
     return skymap_t
 
 # Write the skymap data into redis server.
 #
-def write_complete_entry(skymap_t, host='localhost', port=6379):
+def write_complete_entry(skymap_t: dict[str, Any], host: str = 'localhost', port: int = 6379) -> dict[str, Any]:
     client = redis.Redis(host=host, port=port, db=0)
     res = client.json().get('runs')
     runs: dict[str, Any] = {}
-    if not isinstance(res, dict) or 'runs' not in res:
+    if not isinstance(res, dict) or 'runs' not in res: # type: ignore
         runs = {'runs': []}
     else:
-        runs = res
+        runs = res # type: ignore
     runs['runs'].append(skymap_t)
     client.json().set('runs', '$', runs)
     return runs
 
-def start_skymap_info_gen(skymap_info_file='skymap_info.json'):
+def start_skymap_info_gen(skymap_info_file: str = 'skymap_info.json') -> None:
     skymap_t = create_empty_entry()
     add_obs_config(skymap_t)
     add_data_config(skymap_t)
@@ -122,7 +122,7 @@ def start_skymap_info_gen(skymap_info_file='skymap_info.json'):
     with open(skymap_info_file,'w') as f:
         f.write(json_object)
 
-def stop_skymap_info_gen(skymap_info_file='skymap_info.json'):
+def stop_skymap_info_gen(skymap_info_file: str = 'skymap_info.json') -> None:
     with open(skymap_info_file) as f:
         skymap_t = json.load(f)
     add_stop_time(skymap_t)
@@ -132,5 +132,5 @@ def stop_skymap_info_gen(skymap_info_file='skymap_info.json'):
         f.write(json_object)
     write_complete_entry(skymap_t)
 
-def copy_skymap_info_to_run_dir(run_dir):
+def copy_skymap_info_to_run_dir(run_dir: str) -> None:
     os.system(f'cp skymap_info.json {run_dir}')

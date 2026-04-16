@@ -32,29 +32,29 @@ rpis = {
 }
 
 
-def init_ublox_chip(args):
+def init_ublox_chip(args: argparse.Namespace) -> None:
     rpi = rpis[args.rpi]
     print("init_ublox_chip")
     print(f"{args.rpi}: {rpi=}")
 
-def start_ublox_redis(args):
+def start_ublox_redis(args: argparse.Namespace) -> None:
     rpi = rpis[args.rpi]
     print("start_ublox_redis")
     print(f"{args.rpi}: {rpi=}")
 
-def stop_ublox_redis(args):
+def stop_ublox_redis(args: argparse.Namespace) -> None:
     rpi = rpis[args.rpi]
     print("stop_ublox_redis")
     print(f"{args.rpi}: {rpi=}")
 
-def test_ublox_redis(args):
+def test_ublox_redis(args: argparse.Namespace) -> None:
     rpi = rpis[args.rpi]
     interval_seconds = args.interval_seconds
     print("test_ublox_redis")
     print(f"{args.rpi}: {rpi=}, {interval_seconds = }")
     
 
-def cli_handler():
+def cli_handler() -> None:
     #ubx = obs_config[name]
     
 

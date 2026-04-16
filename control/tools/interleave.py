@@ -21,12 +21,6 @@ import psutil
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# from ..driver import quabo_driver
-# import control.config as pano_config
-# from control.start import get_daq_params
-# from control.stop import stop_data_flow
-# from ..utils import config_file, util
-
 import config as pano_config
 from driver import quabo_driver
 from utils import config_file, util
@@ -41,8 +35,8 @@ class InterleaveController:
     MAX_THREADS = 8
     def __init__(self, data_config: dict[str, Any], obs_config: dict[str, Any],
                  daq_config: dict[str, Any], quabo_uids: dict[str, Any],
-                 quabo_info: list[dict[str, Any]], network_config: dict[str, Any],
-                 dry_run: bool = False, max_cycles: int | None = None):
+                 quabo_info: dict[str, Any], network_config: dict[str, Any],
+                 dry_run: bool = False, max_cycles: int | None = None) -> None:
 
         self.keep_running = True
         self.dry_run = dry_run
@@ -100,7 +94,7 @@ class InterleaveController:
         if self.dry_run:
             logger.info("=== DRY RUN MODE ENABLED: Hardware commands will be simulated ===")
 
-    def _acquire_lock(self):
+    def _acquire_lock(self) -> None:
         """Ensures at most one instance of interleave.py is running."""
         if os.path.exists(PID_FILE):
             try:
@@ -123,14 +117,14 @@ class InterleaveController:
         with open(PID_FILE, "w") as f:
             f.write(str(os.getpid()))
 
-    def _release_lock(self):
+    def _release_lock(self) -> None:
         if os.path.exists(PID_FILE):
             try:
                 os.remove(PID_FILE)
             except OSError:
                 pass
 
-    def _handle_shutdown_signal(self, signum, frame):
+    def _handle_shutdown_signal(self, signum: int, frame: Any) -> None:
         if self.keep_running:
             logger.warning("Shutdown signal received. Breaking cycle to restore defaults...")
             self.keep_running = False
@@ -144,7 +138,7 @@ class InterleaveController:
             #logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
             return
 
-        def send_acq_mode_to_module(module_id: int):
+        def send_acq_mode_to_module(module_id: int) -> None:
             """Sequentially broadcast ACQ mode to Quabos in the Q0, Q1, Q2, Q3 order."""
             quabos = self.quabos[module_id]
             for q in quabos:
@@ -160,7 +154,7 @@ class InterleaveController:
         if self.dry_run:
             return
 
-        def reconfig_modules(modules):
+        def reconfig_modules(modules: list[dict[str, Any]]) -> None:
             pano_config.do_maroc_config(
                 modules, self.quabo_uids, self.quabo_info,
                 next_state_data_config, self.obs_config, self.daq_config,
@@ -193,8 +187,6 @@ class InterleaveController:
             if remaining <= spin_wait_threshold:
                 break
             time.sleep(remaining - spin_wait_threshold)
-        while self.keep_running and time.perf_counter() < target_time:
-            pass
 
 
     def run_loop(self) -> None:
@@ -207,6 +199,10 @@ class InterleaveController:
             return
 
         states = self.interleave_cfg.get("states", [])
+        if not states:
+            self._release_lock()
+            return
+
         stop_daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
 
         try:
@@ -216,9 +212,6 @@ class InterleaveController:
                     break
 
                 for state in states:
-                    if not self.keep_running:
-                        break
-
                     name = state["state_name"]
                     duration = state["duration_seconds"]
 
@@ -251,6 +244,7 @@ class InterleaveController:
                     # Relative Active Scheduling: Guarantee the full duration occurs AFTER configuration
                     self._sleep_until(time.perf_counter() + duration)
 
+                # Move this inside if needed, or remove the 'break' that confuses mypy
                 self.stats["total_cycles"] += 1
 
         except Exception as e:
@@ -259,10 +253,11 @@ class InterleaveController:
             start_default_daq_params = get_daq_params(self.data_config)
             self._teardown(stop_daq_params, start_default_daq_params)
 
-    def _teardown(self, stop_daq_params: quabo_driver.DAQ_PARAMS, start_default_daq_params) -> None:
+    def _teardown(self, stop_daq_params: quabo_driver.DAQ_PARAMS, start_default_daq_params: quabo_driver.DAQ_PARAMS) -> None:
         """Restores Quabos to default settings and cleans up."""
         overhead_list = self.stats['overhead']
-        logger.critical(fr"""Overhead stats: 
+        if overhead_list:
+            logger.critical(fr"""Overhead stats: 
     count:	{len(overhead_list)}
     mean:	{np.mean(overhead_list) * 1e3:.5f} ms
     stdev:	{np.std(overhead_list) * 1e3:.5f} ms

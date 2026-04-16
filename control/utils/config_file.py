@@ -446,10 +446,7 @@ def load_and_validate(validator_class: Any, filename: str, dir: str, config_name
         if IS_CLI_VALIDATION:
             console.print(f"[bold red][FAIL][/bold red] {filename} not found.")
             console.print(f"Target: {config_name} - [red]1 Error(s), 0 Warning(s)[/red]")
-        if RAISE_VALIDATION_ERRORS:
-            raise Exception(f"{config_name} config file not found: {path}")
-        else:
-            sys.exit(1)
+        raise ValueError(f"Missing file: {config_name} config file not found: {path}")
 
     # Symlink printing logic
     if IS_CLI_VALIDATION:

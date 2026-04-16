@@ -10,10 +10,13 @@
 #
 # See https://github.com/panoseti/panoseti/wiki/Quabo-command-line-interface
 
+import os
 import sys
 
-import quabo_driver
-import util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from driver import quabo_driver
+from utils import util
 
 config_filename = "./config/quabo_config.txt"
 baseline_filename = "./quabo_baseline.csv"
@@ -21,25 +24,25 @@ baseline_filename = "./quabo_baseline.csv"
 # do a command; get words from start of list (which may have other commands)
 # return true if quit command
 #
-def do_cmd(quabo, words):
+def do_cmd(quabo: quabo_driver.QUABO, words: list[str]) -> bool:
     cmd = words.pop(0)
     if cmd == 'q':
         return True
     elif cmd == 'M':
         quabo.send_maroc_params_file()
     elif cmd == 'B':
-        coefs = quabo.calibrate_ph_baseline(baseline_filename)
+        coefs = quabo.calibrate_ph_baseline(baseline_filename) # type: ignore
         print('baseline coefficients:')
         for i in range(256):
             print(coefs[i])
     elif cmd == 'V':
-        quabo.hv_config(config_filename)
+        quabo.hv_config(config_filename) # type: ignore
     elif cmd == 'v':
         chan = int(words.pop(0))
         value = int(words.pop(0))
-        quabo.hv_chan(chan, value)
+        quabo.hv_chan(chan, value) # type: ignore
     elif cmd == 'VV':
-        quabo.hv_zero()
+        quabo.hv_zero() # type: ignore
     elif cmd == 'A':
         quabo.send_acq_parameters_file()
     elif cmd == 'AM':
@@ -49,11 +52,11 @@ def do_cmd(quabo, words):
         do_ph = int(words.pop(0))
         bl_subtract = int(words.pop(0))
         am = quabo_driver.DAQ_PARAMS(
-            do_image, image_us, image_8bit, do_ph, bl_subtract
+            do_image, image_us, image_8bit, do_ph, bl_subtract # type: ignore
         )
         quabo.send_daq_params(am)
     elif cmd == 'T':
-        quabo.send_trigger_mask()
+        quabo.send_trigger_mask() # type: ignore
     elif cmd == 'R':
         quabo.reset()
     elif cmd == 'ST':
@@ -71,9 +74,9 @@ def do_cmd(quabo, words):
     elif cmd == 'SHC_NEW':
         quabo.shutter_new(True)
     elif cmd == 'LF0':
-        quabo.lf(0)
+        quabo.lf(0) # type: ignore
     elif cmd == 'LF1':
-        quabo.lf(1)
+        quabo.lf(1) # type: ignore
     elif cmd == 'HK':
         data = quabo.read_hk_packet()
         if data:
@@ -91,15 +94,15 @@ def do_cmd(quabo, words):
 
 # command line version: do one or more commands from argv
 #
-def cmdline():
+def cmdline() -> None:
     sys.argv.pop(0)
     ip_addr = sys.argv.pop(0)
-    quabo = quabo_driver.QUABO(ip_addr, config_filename)
+    quabo = quabo_driver.QUABO(ip_addr, config_filename) # type: ignore
     while len(sys.argv) > 0:
         do_cmd(quabo, sys.argv)
     quabo.close()
 
-def print_cmds():
+def print_cmds() -> None:
     print('''Enter
     "M" to load only the MAROC setup parameters from quabo_config.txt,
     "B" to calibrate PH Baseline,
@@ -126,10 +129,10 @@ def print_cmds():
 
 # interpreter version: prompt for commands
 #
-def interpreter():
+def interpreter() -> None:
     print("IP address of quabo: ")
     ip_addr = input()
-    quabo = quabo_driver.QUABO(ip_addr, config_filename)
+    quabo = quabo_driver.QUABO(ip_addr, config_filename) # type: ignore
     while True:
         print_cmds()
         line = input()

@@ -24,7 +24,7 @@ r = redis_init()
 #List of keys with the time stamp values
 key_timestamps: dict[str, str] = {}    
 
-def write_redis_keys(file_ptr: TextIO, redis_keys: list, key_timestamps: dict):
+def write_redis_keys(file_ptr: TextIO, redis_keys: list[str], key_timestamps: dict[str, str]) -> None:
     for rkey in redis_keys:
         redis_value = r.hgetall(rkey)
         if not isinstance(redis_value, dict):

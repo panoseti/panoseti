@@ -15,6 +15,7 @@
 import os
 import time
 from argparse import ArgumentParser
+from typing import Any
 
 import config
 import get_uids
@@ -22,7 +23,15 @@ import power
 from utils import config_file, util
 
 
-def session_start(obs_config, quabo_info, data_config, daq_config, network_config, no_hv, stage ):
+def session_start(
+    obs_config: dict[str, Any],
+    quabo_info: dict[str, Any],
+    data_config: dict[str, Any],
+    daq_config: dict[str, Any],
+    network_config: dict[str, Any],
+    no_hv: bool,
+    stage: str
+) -> None:
 
     modules = config_file.get_modules(obs_config)
     # power on the telescopes
@@ -42,12 +51,8 @@ def session_start(obs_config, quabo_info, data_config, daq_config, network_confi
         modules = config_file.get_modules(obs_config)
         print('rebooting quabos')
         quabo_uids = config_file.get_quabo_uids()
-        status = config.do_reboot(modules, quabo_uids, network_config)
-        if not status:
-            print('Reboot Failed.')
-            return
-        else:
-            print('Reboot Successfully.')
+        config.do_reboot(modules, quabo_uids, network_config)
+        print('Reboot Successfully.')
 
     if stage == 'hk_dest':
         stage = 'start_redis'
@@ -83,7 +88,7 @@ def session_start(obs_config, quabo_info, data_config, daq_config, network_confi
     #     print('opening shutters')
     #     config.do_shutter("open")
 
-def main():
+def main() -> None:
     parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
     parser.add_argument('--no_hv', dest='no_hv', action='store_true', default=False,
                         help='Turn off HV when running `start.py`.')

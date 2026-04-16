@@ -16,6 +16,7 @@ import datetime
 import logging
 import sys
 import time
+from typing import Any
 
 import redis
 
@@ -34,7 +35,7 @@ MAX_FPGA_TEMP = 85.0
 
 logger = logging.getLogger('PANOSETI.TempMonitor')
 
-def is_acceptable_temperature(temps: tuple[float, float]):
+def is_acceptable_temperature(temps: tuple[float, float]) -> tuple[bool, bool]:
     """
     Returns a tuple of (TEMP1 is ok?, TEMP2 is ok?) if the corresponding
     sensor temperature is within the specified operating range.
@@ -63,7 +64,7 @@ def get_redis_temps(r: redis.Redis, rkey: str) -> tuple[float, float]:
         raise
 
 
-def log_powered_off_modules(wps_name, wps_to_modules):
+def log_powered_off_modules(wps_name: str, wps_to_modules: dict[str, set[str]]) -> None:
     """If power to this module has just been turned off, add its IP to modules_off and inform operator."""
     msg = 'Successfully powered off the wps: {0}. The following quabos are no longer powered: {1}.'
     quabos_off = list()
@@ -73,7 +74,7 @@ def log_powered_off_modules(wps_name, wps_to_modules):
     logger.info(msg.format(wps_name, quabos_off))
 
 
-def update_power(obs_config, wps_to_modules, wps_to_turn_off):
+def update_power(obs_config: dict[str, Any], wps_to_modules: dict[str, set[str]], wps_to_turn_off: set[str]) -> None:
     """Turn off each wps in wps_off, write a log message describing which
     modules and quabos are no longer powered, then stop this script."""
     if wps_to_turn_off:
@@ -93,7 +94,7 @@ def update_power(obs_config, wps_to_modules, wps_to_turn_off):
         sys.exit()
 
 
-def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
+def check_all_module_temps(obs_config: dict[str, Any], wps_to_modules: dict[str, set[str]], r: redis.Redis) -> set[str]:
     """
     Iterates through each quabo in the observatory and reads the detector and fpga temperature from Redis.
     If the temperature is too extreme, we turn off the corresponding module power supply.
@@ -146,7 +147,7 @@ def check_all_module_temps(obs_config, wps_to_modules, r: redis.Redis):
                         wps_to_turn_off.add(module_wps_key)
     return wps_to_turn_off
 
-def get_wps_to_modules(obs_config):
+def get_wps_to_modules(obs_config: dict[str, Any]) -> dict[str, set[str]]:
     """Dictionary storing pairs of [wps_name]:[set of IPs of the modules connected to this wps]."""
     wps_to_modules: dict[str, set[str]] = dict()
     for dome in obs_config['domes']:
@@ -159,7 +160,7 @@ def get_wps_to_modules(obs_config):
                 wps_to_modules[module_wps_key] = {module_ip_addr}
     return wps_to_modules
 
-def main():
+def main() -> None:
     # create logger
     logfile = 'logs/temp_monitor.log'
     os.makedirs(os.path.dirname(logfile), exist_ok=True)

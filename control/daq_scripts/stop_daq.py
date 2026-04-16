@@ -10,11 +10,13 @@
 # On success, print OK.  Otherwise print an error message
 
 import os
+import sys
 
-import util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import util
 
 
-def main():
+def main() -> None:
     try:
         f = open(util.daq_hashpipe_pid_filename)
     except Exception:

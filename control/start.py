@@ -31,6 +31,7 @@ import traceback
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from glob import glob
+from typing import Any
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
@@ -42,20 +43,20 @@ from utils import config_file, file_xfer, pff, util
 
 _LOG_ROOT = "/mnt/data11/data/palomar/L0"
 
-def _ut_yyyymmdd():
+def _ut_yyyymmdd() -> str:
     return datetime.now(UTC).strftime("%Y%m%d")
 
-def _ut_human_ts():
+def _ut_human_ts() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UT")
 
-def _datarec_log_path():
+def _datarec_log_path() -> tuple[str, str]:
     yyyymmdd = _ut_yyyymmdd()
     obslogs_dir = os.path.join(_LOG_ROOT, yyyymmdd, "obslogs")
     return obslogs_dir, os.path.join(obslogs_dir, f"datarec_{yyyymmdd}.log")
 
 _orig_print = builtins.print
 
-def _print(*args, **kwargs):
+def _print(*args: Any, **kwargs: Any) -> None:
     sep = kwargs.get("sep", " ")
     end = kwargs.get("end", "\n")
     file_arg = kwargs.get("file")
@@ -95,7 +96,7 @@ verbose = False
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
-def ph_baseline_file_ok():
+def ph_baseline_file_ok() -> bool:
     if not os.path.exists(config_file.quabo_ph_baseline_filename):
         print('quabo_ph_baseline.json not found.  Run config.py --calibrate_ph')
         return False
@@ -107,7 +108,7 @@ def ph_baseline_file_ok():
 
 # check validity of image params (rate, bpp)
 #
-def check_img_params(image_8bit, image_usec):
+def check_img_params(image_8bit: bool, image_usec: int) -> None:
     if image_8bit:
         if image_usec < 20 or image_usec > 25:
             raise Exception('integration time must be 20-25 usec in 8 bit mode')
@@ -117,7 +118,7 @@ def check_img_params(image_8bit, image_usec):
 
 # parse the data config file to get DAQ params for quabos
 #
-def get_daq_params(data_config):
+def get_daq_params(data_config: dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
     do_image = False
     image_usec = 1
     image_8bit = False
@@ -164,7 +165,7 @@ def get_daq_params(data_config):
 # - tell it where to send data packets
 # - set its DAQ mode
 #
-def start_data_flow(quabo_uids, data_config, daq_config, network_config):
+def start_data_flow(quabo_uids: dict[str, Any], data_config: dict[str, Any], daq_config: dict[str, Any], network_config: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Start.start_data_flow')
     daq_params = get_daq_params(data_config)        
     for dome in quabo_uids['domes']:
@@ -177,8 +178,8 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
             daq_node_ip_addr = daq_node['ip_addr']
             head_node_ip_addr = daq_config['head_node_ip_addr']
             for i in range(4):
-                quabo = module['quabos'][i]
-                if quabo['uid'] == '':
+                quabo_uid = module['quabos'][i]
+                if quabo_uid['uid'] == '':
                     continue
                 ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
                 ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
@@ -215,7 +216,7 @@ def start_data_flow(quabo_uids, data_config, daq_config, network_config):
 #     module_n
 #         run/     .pff files go here
 #
-def make_run_dirs(run_name, daq_config):
+def make_run_dirs(run_name: str, daq_config: dict[str, Any]) -> None:
     logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
     run_dir = '{}/{}'.format(daq_config['head_node_data_dir'], run_name)
@@ -277,7 +278,7 @@ def make_run_dirs(run_name, daq_config):
 #       copy config files to run directory
 #       start hashpipe program
 #
-def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
+def start_recording(obs_config: dict[str, Any], data_config: dict[str, Any], daq_config: dict[str, Any], run_name: str, no_hv: bool) -> None:
     logger = logging.getLogger('PANOSETI.Start.start_recording')
     util.local_ip()
 
@@ -324,8 +325,8 @@ def start_recording(obs_config, data_config, daq_config, run_name, no_hv):
             raise Exception(f'StartDaq failed for node {node["ip_addr"]}')
 
 def start_run(
-    obs_config, daq_config, quabo_uids, data_config, no_hv, no_redis, no_data
-):
+    obs_config: dict[str, Any], daq_config: dict[str, Any], quabo_uids: dict[str, Any], data_config: dict[str, Any], no_hv: bool, no_redis: bool, no_data: bool
+) -> bool:
     my_ip = util.local_ip()
     # convert head node name to IP address
     head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])

@@ -26,10 +26,11 @@ import subprocess
 import sys
 import time
 
-import util
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils import util
 
 
-def main():
+def main() -> None:
     argv = sys.argv
     i = 1
     max_file_size_mb = -1

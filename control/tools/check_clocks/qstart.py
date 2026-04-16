@@ -3,15 +3,16 @@
 # Tell a single quabo to send image packets (for timing test)
 # You can use this as a script or a module.
 
+import os
 import sys
 
-import quabo_driver
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-sys.path.insert(0, '../util')
-import config_file
+from driver import quabo_driver
+from utils import config_file
 
 
-def qstart(s):
+def qstart(s: bool) -> None:
     obs_config = config_file.get_obs_config()
     d = obs_config['domes'][0]
     m = d['modules'][0]

@@ -1,11 +1,13 @@
 #! /usr/bin/env python3
 
 
+from typing import Any
+
 import power
 from utils import config_file, util
 
 
-def session_stop(obs_config):
+def session_stop(obs_config: dict[str, Any]) -> None:
     power.do_all(obs_config, 'off')
     try:
         util.stop_redis_daemons()

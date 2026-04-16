@@ -6,7 +6,7 @@ import git
 from utils import config_file
 
 
-def get_sw_info():
+def get_sw_info() -> None:
     repo = git.Repo(search_parent_directories=True)
     commit = repo.head.commit.hexsha
     author = repo.head.commit.author.name

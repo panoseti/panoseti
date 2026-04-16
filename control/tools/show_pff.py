@@ -12,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json
 import random
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,7 +20,7 @@ import numpy as np
 from utils import image_quantiles, pff
 
 
-def create_figure(image_size):
+def create_figure(image_size: int) -> tuple[Any, Any]:
     imshape = (image_size,image_size)
     plt.ion()
     figure, ax = plt.subplots()
@@ -27,14 +28,14 @@ def create_figure(image_size):
     im = ax.imshow(imdata,cmap='plasma')
     return figure, im
 
-def image_as_figure(figure, im, img):
+def image_as_figure(figure: Any, im: Any, img: Any) -> None:
     # update image data
     im.set_data(img)
     # draw and flush the figure .
     figure.canvas.draw()
     figure.canvas.flush_events()
 
-def image_as_text(img, img_size, bytes_per_pixel, min, max):
+def image_as_text(img: list[int] | np.ndarray, img_size: int, bytes_per_pixel: int, min: float, max: float) -> None:
     scale = ' .,-+=#@'
         # 8 chars w/ increasing density
     print('-'*(img_size*2+2))
@@ -66,26 +67,25 @@ def image_as_text(img, img_size, bytes_per_pixel, min, max):
     print('-'*(img_size*2+2))
 
 
-def test():
+def test() -> None:
     img = [0]*1024
     for i in range(1024):
         img[i] = random.randrange(2**16)
     image_as_text(img, 32, 2, 0, 0)
 #test()
-
-def print_json(j, is_ph, verbose):
+def print_json(j: bytes | str, is_ph: bool, verbose: bool) -> None:
     if verbose:
         print(j)
     else:
-        j = json.loads(j)
+        j_dict = json.loads(j)
         if is_ph:
-            print(f"quabo {j['quabo_num']}: pkt_num {j['pkt_num']}, pkt_tai {j['pkt_tai']} pkt_nsec {j['pkt_nsec']}, tv_sec {j['tv_sec']}, tv_usec {j['tv_usec']}")
+            print(f"quabo {j_dict['quabo_num']}: pkt_num {j_dict['pkt_num']}, pkt_tai {j_dict['pkt_tai']} pkt_nsec {j_dict['pkt_nsec']}, tv_sec {j_dict['tv_sec']}, tv_usec {j_dict['tv_usec']}")
         else:
             for i in range(4):
-                q = j[f'quabo_{i}']
+                q = j_dict[f'quabo_{i}']
                 print(f"quabo {i}: pkt_num {q['pkt_num']}, pkt_tai {q['pkt_tai']} pkt_nsec {q['pkt_nsec']}, tv_sec {q['tv_sec']}, tv_usec {q['tv_usec']}")
         
-def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
+def show_file(fname: str, img_size: int, bytes_per_pixel: int, min: float, max: float, is_ph: bool, verbose: bool) -> None:
     with open(fname, 'rb') as f:
         i = 0
         while True:
@@ -96,6 +96,8 @@ def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
             print('frame', i)
             print_json(j.encode(), is_ph, verbose)
             img = pff.read_image(f, img_size, bytes_per_pixel)
+            if img is None:
+                break
             image_as_text(img, img_size, bytes_per_pixel, min, max)
             i += 1
             x = input("Enter for next frame, 'q' to quit: ")
@@ -104,10 +106,10 @@ def show_file(fname, img_size, bytes_per_pixel, min, max, is_ph, verbose):
 
 if __name__ == "__main__":
 
-    def usage():
+    def usage() -> None:
         print("usage: show_pff.py [--quantile x] [--verbose] file")
 
-    def main():
+    def main() -> None:
         i = 1
         fname = None
         quantile = .1

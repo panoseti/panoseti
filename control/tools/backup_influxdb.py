@@ -31,23 +31,23 @@ backup_log_filename = 'backup_log.json'
 backup_log_path = f'{BACKUP_DIR_PATH}/{backup_log_filename}'
 
 
-def get_backup_folder_path(date):
+def get_backup_folder_path(date: datetime.datetime) -> str:
     backup_folder_path = '{}/influx_backup_{}'.format(BACKUP_DIR_PATH, date.strftime("%Y_%m_%dT%H_%M_%SZ"))
     return backup_folder_path
 
 
-def get_last_backup_date():
+def get_last_backup_date() -> str | None:
     """Returns the last backup date, or None if this is the first backup."""
     last_backup_date = None
     if os.path.exists(backup_log_path):
         with open(backup_log_path) as f:
             s = f.read()
             c = json.loads(s)
-            last_backup_date = c["backups"][-1]["timestamp"]
+            last_backup_date = str(c["backups"][-1]["timestamp"])
     return last_backup_date
 
 
-def update_backup_log(backup_folder_path, date, exit_status):
+def update_backup_log(backup_folder_path: str, date: datetime.datetime, exit_status: str) -> None:
     """Updates the backup json file (creating it if necessary) with a new log entry."""
     new_log_data = {
         "backup_number": 0,
@@ -75,7 +75,7 @@ def update_backup_log(backup_folder_path, date, exit_status):
             f.write(json_obj)
 
 
-def do_backup():
+def do_backup() -> None:
     """
     1. Creates a new directory: 'influx_backup_{current date in year-month-day-format}',
     2. Creates a backup of the influxdb data generated since the last backup, and
@@ -105,7 +105,7 @@ def do_backup():
         print(msg)
 
 
-def restore_one_backup(path_to_backup):
+def restore_one_backup(path_to_backup: str) -> None:
     """
     Restores one backup. Note that InfluxDB does not allow us to directly restore backups to
      an existing database, so we must do the following:
@@ -127,7 +127,7 @@ def restore_one_backup(path_to_backup):
     os.system(command_3)
 
 
-def do_restore():
+def do_restore() -> None:
     """Restore the metadata database from the backups in the specified restore directory."""
     try:
         backup_directories = [name for name in os.listdir(RESTORE_DIR_PATH)]
@@ -152,7 +152,7 @@ def do_restore():
     print("\nRestored all backups.")
 
 
-def usage():
+def usage() -> None:
     msg = 'Usage:'
     msg += '\n\t--backup\tcreate a backup of the influxdb data since the last update and save it in the directory specified by BACKUP_DIR_PATH.'
     msg += '\n\t--restore\trestore the metadata database from backups in the directory specified by RESTORE_DIR_PATH.'

@@ -13,6 +13,7 @@ import time
 from datetime import UTC, datetime
 from signal import SIGINT, signal
 from sys import exit
+from typing import Any
 
 import redis
 
@@ -44,8 +45,6 @@ signed = [
     0,0,0,0,0, 0,0,0,0, 0,0,0,0,0, 0,0,0,
     1,0,0,0, 0,0,0,0, 0,0, 0,0,0,0
 ]
-
-from typing import Any
 
 
 ##############################################################

@@ -42,6 +42,7 @@ import socket
 import struct
 import sys
 import time
+from typing import Any
 
 #run this under Python 3.x
 
@@ -90,7 +91,7 @@ HV_vals=[0,0,0,0]
 SERIAL_COMMAND_LENGTH = 829
 #Set bits in the command_buf according to the input values.  Maximum value
 # for field_width is 16 (a value can only span three bytes)
-def set_bits(chip, lsb_pos, field_width, value):
+def set_bits(chip: int, lsb_pos: int, field_width: int, value: int) -> None:
     #print("setbits " + str(chip) + " " + str(lsb_pos) + " " + str(field_width) + " " + str(value)  + "\n")
     if (field_width >16):
         return
@@ -114,7 +115,7 @@ def set_bits(chip, lsb_pos, field_width, value):
         MAROC_regs[chip][byte_pos + 2] = MAROC_regs[chip][byte_pos + 2] & ((~(mask>>16)) & 0xff)
         MAROC_regs[chip][byte_pos + 2] = MAROC_regs[chip][byte_pos + 2] | (((value >> (16-shift))) & 0xff)
 
-def reverse_bits(data_in, width):
+def reverse_bits(data_in: int, width: int) -> int:
     data_out = 0
     for _ii in range(width):
         data_out = data_out << 1
@@ -123,7 +124,7 @@ def reverse_bits(data_in, width):
         data_in = data_in >> 1
     return data_out
 
-def flush_rx_buf():
+def flush_rx_buf() -> None:
     dumpcount = 0    
     #How big is the UDP buffer?  This is just guesswork
     while (dumpcount<32):
@@ -135,14 +136,14 @@ def flush_rx_buf():
             break    
 
 #payload is a bytearray of the desired length
-def sendit(payload):
+def sendit(payload: bytearray | bytes) -> None:
     sock.sendto(bytes(payload), (UDP_DEST_IP, UDP_CMD_PORT))
     time.sleep(.001)
     if debug_print:
         print (payload)
 
 #take a 4-element list and call set_bits 4 times
-def set_bits_4(tag, vals, lsb_pos, field_width):
+def set_bits_4(tag: str, vals: list[int], lsb_pos: int, field_width: int) -> None:
     #vals = instring.split(",")
     if (len(vals) != 4):
         print("need 4 elements for " + tag +"\n")
@@ -152,7 +153,7 @@ def set_bits_4(tag, vals, lsb_pos, field_width):
     set_bits(2, lsb_pos, field_width, vals[2])
     set_bits(3, lsb_pos, field_width, vals[3])
 
-def send_maroc_params(fhand):
+def send_maroc_params(fhand: Any) -> None:
     cmd_payload = bytearray(492)
     for line in fhand:
         if debug_print == 1:
@@ -357,7 +358,7 @@ def send_maroc_params(fhand):
                 else:
                     print("Data read back DOESN'T MATCH that sent out")
             
-def send_HV_params(fhand):
+def send_HV_params(fhand: Any) -> None:
     cmd_payload = bytearray(64)
     for i in range(64):
         cmd_payload[i]=0
@@ -390,7 +391,7 @@ def send_HV_params(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
         
-def send_acq_parameters(fhand): 
+def send_acq_parameters(fhand: Any) -> None: 
     cmd_payload = bytearray(64)
     for i in range(64):
         cmd_payload[i]=0
@@ -492,7 +493,7 @@ def send_acq_parameters(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
 
-def send_trigger_mask(fhand):
+def send_trigger_mask(fhand: Any) -> None:
     cmd_payload = bytearray(64)
     for i in range(64):
         cmd_payload[i]=0
@@ -525,7 +526,7 @@ def send_trigger_mask(fhand):
         flush_rx_buf()
         sendit(cmd_payload)
 
-def send_goe_mask(fhand):
+def send_goe_mask(fhand: Any) -> None:
     cmd_payload = bytearray(64)
     for i in range(64):
         cmd_payload[i]=0
@@ -553,7 +554,7 @@ def send_goe_mask(fhand):
 # convert IP addr string, eg. '192.0.100.3' to a byte array
 # Do error checking.
 #
-def get_ip(str_in):
+def get_ip(str_in: str) -> bytearray | int:
     ip_str = str_in.split('.')
     if(len(ip_str) != 4):
         return -1
@@ -848,10 +849,11 @@ while True:
         if(ph_ip == -2):
             print('Please check the IP address: value incorrect')
             continue
-        cmd_payload[1] = ph_ip[0]
-        cmd_payload[2] = ph_ip[1]
-        cmd_payload[3] = ph_ip[2]
-        cmd_payload[4] = ph_ip[3]
+        if isinstance(ph_ip, bytearray):
+            cmd_payload[1] = ph_ip[0]
+            cmd_payload[2] = ph_ip[1]
+            cmd_payload[3] = ph_ip[2]
+            cmd_payload[4] = ph_ip[3]
         str_in = input('IM IP: ')
         im_ip = get_ip(str_in)
         #print(im_ip)
@@ -861,10 +863,11 @@ while True:
         if(im_ip == -2):
             print('Please check the IP address: value incorrect')
             continue
-        cmd_payload[5] = im_ip[0]
-        cmd_payload[6] = im_ip[1]
-        cmd_payload[7] = im_ip[2]
-        cmd_payload[8] = im_ip[3]
+        if isinstance(im_ip, bytearray):
+            cmd_payload[5] = im_ip[0]
+            cmd_payload[6] = im_ip[1]
+            cmd_payload[7] = im_ip[2]
+            cmd_payload[8] = im_ip[3]
         sendit(cmd_payload)
         try:
             reply = sock.recvfrom(1024)
@@ -893,10 +896,11 @@ while True:
         if(hk_ip == -2):
             print('Please check the IP address: value incorrect')
             continue
-        cmd_payload[1] = hk_ip[0]
-        cmd_payload[2] = hk_ip[1]
-        cmd_payload[3] = hk_ip[2]
-        cmd_payload[4] = hk_ip[3]
+        if isinstance(hk_ip, bytearray):
+            cmd_payload[1] = hk_ip[0]
+            cmd_payload[2] = hk_ip[1]
+            cmd_payload[3] = hk_ip[2]
+            cmd_payload[4] = hk_ip[3]
         sendit(cmd_payload)
     elif inp == 'R-PH':
         cmd_payload = bytearray(64)

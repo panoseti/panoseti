@@ -21,8 +21,8 @@ SOFTPLL_UNLOCKED    =   '2'
 #------------------------------------------------------------#
 # check the PN of SFP transceivers
 #
-def wrsSFPCheck(wrs):
-    res = wrs.sfppn()
+def wrsSFPCheck(wrs: wrs_snmp) -> None:
+    res = wrs.sfppn() # type: ignore
     if(res == -1):
         print('************************************************')
         print(f"We can't connect to WR-SWITCH({wrs.dev})!")
@@ -31,7 +31,7 @@ def wrsSFPCheck(wrs):
         print('*****************WR-SWITCH SFP CHECK***********************')
         if(res == 0):
             print(f'WR-SWITCH({wrs.dev}) : No sfp transceivers detected!')
-        else:
+        elif isinstance(res, list):
             failed = 0
             for i in range(len(res)):
                 if(len(res[i]) != 0):
@@ -52,8 +52,8 @@ def wrsSFPCheck(wrs):
 
 # check the link status
 #
-def wrsLinkStatusCheck(wrs):
-    res = wrs.linkstatus()
+def wrsLinkStatusCheck(wrs: wrs_snmp) -> None:
+    res = wrs.linkstatus() # type: ignore
     if(res == -1):
         print('********************Error***************************')
         print(f"We can't connect to WR-Endpoint({wrs.dev})!")
@@ -62,7 +62,7 @@ def wrsLinkStatusCheck(wrs):
         print('*****************WR-SWITCH LINK CHECK***********************')
         if(res == 0):
             print(f'WR-SWITCH({wrs.dev}) : No sfp transceivers detected!')
-        else:
+        elif isinstance(res, list):
             for i in range(len(res)):
                 if res[i] == LINK_UP :
                     print(f'WR-SWITCH({wrs.dev}) : Port{i+1:2d} LINK_UP  ')
@@ -71,9 +71,9 @@ def wrsLinkStatusCheck(wrs):
 
 # check the softpll status
 #
-def wrsSoftPLLCheck(wrs):
-    res = wrs.pllstatus()
-    if(res[0] == -1):
+def wrsSoftPLLCheck(wrs: wrs_snmp) -> None:
+    res = wrs.pllstatus() # type: ignore
+    if isinstance(res, int) and res == -1:
         print('********************Error***************************')
         print(f"We can't connect to WR-Endpoint({wrs.dev})!")
         print('****************************************************')
@@ -84,11 +84,11 @@ def wrsSoftPLLCheck(wrs):
         elif(res == SOFTPLL_UNLOCKED):
             print('WR-SWITCH({}) SoftPLL Status: {}'.format(wrs.dev, 'UNLOCK'))
             print('Please Check 10MHz and 1PPS!!!')
-        else:
+        elif isinstance(res, list) and len(res) > 0:
             print('WR-SWITCH({}) SoftPLL Status: {}({})'.format(wrs.dev, 'WEIRD STATUS', res[0]))
             print('Please Check 10MHz and 1PPS!!!')
        
-def main():
+def main() -> None:
     dev = '10.0.1.36'
     wrs = wrs_snmp(dev)
     wrsSFPCheck(wrs)

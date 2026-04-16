@@ -49,12 +49,12 @@ network_config = config_file.get_network_config()
 # Set of quabos whose detectors have been turned off by this script.
 quabos_off = set()
 
-def is_acceptable_temperature(temp: float):
+def is_acceptable_temperature(temp: float) -> bool:
     """Returns True only if the provided temperature is between
     MIN_TEMP and MAX_TEMP."""
     return MIN_TEMP <= temp <= MAX_TEMP
 
-def is_acceptable_hv(monitored_hv: list):
+def is_acceptable_hv(monitored_hv: list[float]) -> bool:
     """Returns True only if the provided hv is reasonable. """
     r = True
     for hv in monitored_hv:
@@ -84,8 +84,8 @@ def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
 
 def update_quabo(quabo_obj: quabo_driver.QUABO,
                  rkey: str,
-                 quabo_status: dict
-                ):
+                 quabo_status: dict[str, Any]
+                ) -> None:
     """Helper method for the function update_all_quabos. Updates each
      detector in the quabo represented by quabo_obj."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
@@ -198,7 +198,7 @@ def get_redis_det_current(r: redis.Redis, rkey: str, q: int) -> float:
         logger.error(msg.format(rkey, terr))
         raise
 
-def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict):
+def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict[str, Any]) -> bool:
     """
         check the timestamp in the redis database.
         if the timestamp doesn't change, return false
@@ -221,7 +221,7 @@ def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict):
         logger.error(msg.format(err))
         raise
 
-def init_quabo_status(rkey: str, quabo_status: dict):
+def init_quabo_status(rkey: str, quabo_status: dict[str, Any]) -> None:
     """init the quabo info for the specific Quabo. """
     quabo_status[rkey] = {
         'init_set' : True,
@@ -233,7 +233,7 @@ def init_quabo_status(rkey: str, quabo_status: dict):
         'adjusted_hv' : [0, 0, 0, 0],
     }
 
-def update_all_quabos(r: redis.Redis, quabo_status: dict):
+def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
     """Iterates through each quabo in the observatory and updates
     its detectors' high-voltage values, provided its temperature is
     not too extreme."""
@@ -338,7 +338,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict):
                     if quabo_obj is not None:
                         quabo_obj.close()
 
-def main():
+def main() -> None:
     """Makes a call to update_all_quabos every UPDATE_INTERVAL seconds."""
     r = redis_utils.redis_init()
     print("hv_updater: Running...")
