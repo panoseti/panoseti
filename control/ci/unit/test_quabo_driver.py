@@ -92,7 +92,8 @@ def quabo_and_sock(monkeypatch: Any, tmp_path: Any) -> tuple[QUABO, FakeSocket]:
         os.path.dirname(__file__), "..", "..", "driver", "quabo_config.txt"
     )
     if os.path.exists(real_cfg):
-        cfg_file.write_text(open(real_cfg).read())
+        with open(real_cfg) as f:
+            cfg_file.write_text(f.read())
     else:
         cfg_file.write_text("* minimal stub\n")
 

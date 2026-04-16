@@ -37,10 +37,7 @@ def shutterop(ip: str, port: int, op: int) -> None:
     # port: port used for communicating with Quabo.
     # op: 0--open the shutter
     #     1--close the shutter
-    if(op):
-        opstr = 'close'
-    else:
-        opstr = 'open'
+    opstr = 'close' if op else 'open'
     logger.info(f'{opstr} shutter on {ip}:{port}')
     quabo = quabo_driver.QUABO(ip, port)
     quabo.shutter_new(bool(op))

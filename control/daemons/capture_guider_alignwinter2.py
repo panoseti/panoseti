@@ -247,10 +247,7 @@ def ekos_mount_equatorial_coords_deg(site: SiteConf) -> tuple[float, float]:
     ra_val = nums[0]
     dec_deg = nums[1]
 
-    if ra_val > 24.0:
-        ra_deg = ra_val % 360.0
-    else:
-        ra_deg = (ra_val % 24.0) * 15.0
+    ra_deg = ra_val % 360.0 if ra_val > 24.0 else (ra_val % 24.0) * 15.0
 
     return ra_deg, dec_deg
 
@@ -434,10 +431,9 @@ def wait_for_new_fits(site: SiteConf, site_name: str, baseline_mtime: float | No
 
     while time.time() < deadline:
         mtime, path, _ = remote_find_newest_fits_with_mtime(site)
-        if path and (mtime is not None):
-            if (baseline_mtime is None or mtime > baseline_mtime) and (path != last_seen):
-                print(f"? [{site_name}] New FITS detected: mtime={mtime:.3f} path={path}")
-                return mtime, path
+        if path and (mtime is not None) and (baseline_mtime is None or mtime > baseline_mtime) and (path != last_seen):
+            print(f"? [{site_name}] New FITS detected: mtime={mtime:.3f} path={path}")
+            return mtime, path
         time.sleep(poll_interval)
 
     print(f"?? [{site_name}] Timed out waiting for a new FITS.")

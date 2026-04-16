@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import contextlib
 import json
 import os
 import re
@@ -283,10 +284,8 @@ def capture_ekos_once(site: dict[str, Any]) -> None:
             except Exception as e:
                 print(f"?? [{site['name']}] Guide resume/status check failed: {e}")
 
-            try:
+            with contextlib.suppress(Exception):
                 ssh.close()
-            except Exception:
-                pass
 
 
 # ==============================

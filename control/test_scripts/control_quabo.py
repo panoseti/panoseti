@@ -49,10 +49,7 @@ from typing import Any
 configfilename = "quabo_config.txt"
 baseline_fname = "./quabo_baseline.csv"
 #Send to hard-coded quabo address
-if (len(sys.argv) > 1):
-    UDP_DEST_IP = sys.argv[1]
-else:
-    UDP_DEST_IP = "192.168.3.248"
+UDP_DEST_IP = sys.argv[1] if (len(sys.argv) > 1) else "192.168.3.248"
 print(UDP_DEST_IP)
 #quabo expects commands on this port and will respond with housekeeping data to this port
 UDP_CMD_PORT= 60000
@@ -307,23 +304,21 @@ def send_maroc_params(fhand: Any) -> None:
             cmd_payload[ii+388] = MAROC_regs[3][ii]
     if (debug_file):
         try:
-            fdebug = open(".\debug.txt", 'w')
+            with open(".\\debug.txt", 'w') as fdebug:
+                for i in range(492):
+                    fdebug.write((hex(cmd_payload[i])) + "\n")
         except Exception as e:
             print (e)
             #continue
-        for i in range(492):
-            fdebug.write((hex(cmd_payload[i])) + "\n")
-        fdebug.close()
         try:
-            fdebug_bits = open(".\debug_bits.txt", 'w')
+            with open(".\\debug_bits.txt", 'w') as fdebug_bits:
+                for i in range(4,108):
+                    for j in range(8):
+                        fdebug_bits.write((str((int(cmd_payload[i])>>j) & 1))+"\n")
+                        #print(i,j)
         except Exception as e:
             print (e)
             #continue
-        for i in range(4,108):
-            for j in range(8):
-                fdebug_bits.write((str((int(cmd_payload[i])>>j) & 1))+"\n")
-                #print(i,j)
-        fdebug_bits.close()
     if connected == 1:
         flush_rx_buf()
         sendit(cmd_payload)
@@ -591,8 +586,13 @@ except OSError as msg:
     sys.exit()
      
 print ('Socket bind complete')
+# Open baseline file using contextlib if possible, but here it's kept open throughout the loop?
+# Actually it's open(baseline_fname, 'w') and then fhand_bl.write() inside loop.
+# I should probably just use
+# Or move it inside the loop if it's opened for each write, but it's 'w' so it would truncate.
+
 try:
-    fhand_bl = open(baseline_fname, 'w')
+    fhand_bl = open(baseline_fname, 'w')  # noqa: SIM115
 except Exception as e:
     print (e)
 
@@ -629,12 +629,11 @@ while True:
 
     elif inp == 'M':
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_maroc_params(fhand)
         except Exception as e:
             print (e)
             continue
-        send_maroc_params(fhand)
-        fhand.close()
     elif inp == 'B':
         cmd_payload = bytearray(64)
         for i in range(64):
@@ -657,12 +656,11 @@ while True:
     elif inp == 'V':
       #while(1):
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_HV_params(fhand)
         except Exception as e:
             print (e)
             continue
-        send_HV_params(fhand)
-        fhand.close()
         #time.sleep(1)
 
     elif inp == 'v':
@@ -706,28 +704,26 @@ while True:
     elif inp == 'A':
       #while(1):
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_acq_parameters(fhand)
         except Exception as e:
             print (e)
             continue
-        send_acq_parameters(fhand)
-        fhand.close()
         #time.sleep(2)
     elif inp == 'T':
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_trigger_mask(fhand)
         except Exception as e:
             print (e)
             continue
-        send_trigger_mask(fhand)
-        fhand.close()
     elif inp == 'GT':
         try:
-            fhand = open(configfilename)
+            with open(configfilename) as fhand:
+                send_goe_mask(fhand)
         except Exception as e:
             print (e)
             continue
-        send_goe_mask(fhand)
     elif inp == 'R':
         cmd_payload = bytearray(64)
         for i in range(64):
@@ -913,20 +909,19 @@ while True:
         bytesback = reply[0]
         print(len(bytesback))
         now =time.ctime().split(" ")[3]
-        fp = open('quabo_ph.csv', 'w')
-        fp.write(str(now) + ',')
-        for n in range(256):
-            val=bytesback[2*n+4]+256*bytesback[2*n+5]
-            fp.write(str(val) + ',')
-        fp.write('\n')
-        fp.close()
+        with open('quabo_ph.csv', 'w') as fp:
+            fp.write(str(now) + ',')
+            for n in range(256):
+                val=bytesback[2*n+4]+256*bytesback[2*n+5]
+                fp.write(str(val) + ',')
+            fp.write('\n')
     elif inp == 'W-BL':
         cmd_payload = bytearray(514)
         for i in range(514):
             cmd_payload[i]=0
         cmd_payload[0] = 0x0d
-        fp = open('bl.txt')
-        d_str = fp.readlines()
+        with open('bl.txt') as fp:
+            d_str = fp.readlines()
         n = 2
         for i in range(256):
             tmp = struct.pack('h',int(d_str[i]))

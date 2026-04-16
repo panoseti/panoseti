@@ -79,22 +79,19 @@ def main() -> None:
              
     # record the run name in a file
 
-    f = open(util.daq_run_name_filename, 'w')
-    f.write(run_dir)
-    f.close()
+    with open(util.daq_run_name_filename, 'w') as f:
+        f.write(run_dir)
 
     # create module.config
 
-    f = open('module.config', 'w')
-    for id in module_ids:
-        f.write(f'{id}\n')
-    f.close()
+    with open('module.config', 'w') as f:
+        for mid in module_ids:
+            f.write(f'{mid}\n')
 
     # create the run script
 
-    f = open('run_hashpipe.sh', 'w')
-    f.write(f'hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="{bindhost}" -o MAXFILESIZE={max_file_size_mb} -o GROUPPHFRAMES={group_ph_frames} -o RUNDIR="{run_dir}" -o CONFIG="./module.config" -o OBS="{obs}" net_thread compute_thread  output_thread > {run_dir}/{util.hp_stdout_prefix}{daq_ip_addr}')
-    f.close()
+    with open('run_hashpipe.sh', 'w') as f:
+        f.write(f'hashpipe -p ./hashpipe.so -I 0 -o BINDHOST="{bindhost}" -o MAXFILESIZE={max_file_size_mb} -o GROUPPHFRAMES={group_ph_frames} -o RUNDIR="{run_dir}" -o CONFIG="./module.config" -o OBS="{obs}" net_thread compute_thread  output_thread > {run_dir}/{util.hp_stdout_prefix}{daq_ip_addr}')
 
     # run the script
 
@@ -118,8 +115,7 @@ def main() -> None:
 
     # write it to a file
 
-    f = open(util.daq_hashpipe_pid_filename, 'w')
-    f.write(str(child_pid))
-    f.close()
+    with open(util.daq_hashpipe_pid_filename, 'w') as f:
+        f.write(str(child_pid))
 
 main()

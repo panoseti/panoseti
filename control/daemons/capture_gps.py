@@ -36,18 +36,13 @@ def handler(signal_recieved: Any, frame: Any) -> None:
     exit(0)
 
 def floatfrom_bytes(bytesData: bytes, bytesorder: str = BYTEORDER) -> float:
-    if BYTEORDER == 'little':
-        f = '<f'
-    else:
-        f = '>f'
+    f = '<f' if BYTEORDER == 'little' else '>f'
 
     return float(struct.unpack(f, bytesData)[0])
 
+
 def doublefrom_bytes(bytesData: bytes, bytesorder: str = BYTEORDER) -> float:
-    if BYTEORDER == 'little':
-        d = '<d'
-    else:
-        d = '>d'
+    d = '<d' if BYTEORDER == 'little' else '>d'
 
     return float(struct.unpack(d, bytesData)[0])
 

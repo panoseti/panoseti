@@ -94,10 +94,8 @@ def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
 # and IDs to modules
 #
 def assign_numbers(c: dict[str, Any]) -> None:
-    ndome = 0
-    for dome in c['domes']:
+    for ndome, dome in enumerate(c['domes']):
         dome['num'] = ndome
-        ndome += 1
         for module in dome['modules']:
             module['id'] = ip_addr_to_module_id(module['ip_addr'])
 
@@ -420,9 +418,8 @@ def validate_all(check_network: bool = True, debug: bool = False, graph: bool = 
         )
 
     # 4. Network Ping Checks
-    if check_network:
-        if not perform_network_ping_sweep(validated_configs):
-            all_passed = False
+    if check_network and not perform_network_ping_sweep(validated_configs):
+        all_passed = False
 
 
     if all_passed:

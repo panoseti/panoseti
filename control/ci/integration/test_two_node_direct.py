@@ -10,6 +10,7 @@ concurrent StartDaq calls work without interference.
 """
 from __future__ import annotations
 
+import contextlib
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -41,51 +42,43 @@ def run_params_node2() -> dict[str, Any]:
 def ensure_node2_clean(daq_control_node2: Any, run_params_node2: dict[str, Any]) -> Iterator[None]:
     """Stop and cleanup node-2 after each test regardless of outcome."""
     yield
-    try:
+    with contextlib.suppress(Exception):
         daq_control_node2.StopDaq({
             "data_dir": run_params_node2["data_dir"],
             "run_dir":  run_params_node2["run_dir"],
         })
-    except Exception:
-        pass
 
     # We must block until it is actually stopped before proceeding to the next test.
     assert wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"], timeout=8), (
         "hashpipe did not stop within timeout"
     )
 
-    try:
+    with contextlib.suppress(Exception):
         daq_control_node2.CleanupData({
             "data_dir":  run_params_node2["data_dir"],
             "run_dir":   run_params_node2["run_dir"],
             "module_id": run_params_node2["module_id"],
         })
-    except Exception:
-        pass
 
 @pytest.fixture(autouse=True)
 def ensure_node1_clean(daq_control_direct: Any, run_params: dict[str, Any]) -> Iterator[None]:
     """Stop and cleanup node-2 after each test regardless of outcome."""
     yield
-    try:
+    with contextlib.suppress(Exception):
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-    except Exception:
-        pass
 
     assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
         "hashpipe did not stop within timeout"
     )
-    try:
+    with contextlib.suppress(Exception):
         daq_control_direct.CleanupData({
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
         })
-    except Exception:
-        pass
 
 
 class TestTwoNodeDirect:

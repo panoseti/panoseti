@@ -17,6 +17,7 @@ Writes atomically (temp file + replace) and preserves other keys in the config.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -73,7 +74,7 @@ def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
 
 def _best_effort_copy_to_cylon(src_path: Path) -> None:
     # Best-effort only: do not raise, do not mkdir, do not print.
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(
             ["scp", "-q", str(src_path), CYLON_DEST],
             stdin=subprocess.DEVNULL,
@@ -82,9 +83,6 @@ def _best_effort_copy_to_cylon(src_path: Path) -> None:
             timeout=5,
             check=False,
         )
-    except Exception:
-        # Includes: cylon unreachable, scp not installed, auth issues, timeout, etc.
-        pass
 
 
 def main() -> int:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import contextlib
 import json
 import subprocess
 import sys
@@ -76,10 +77,8 @@ def mph_from_str(s: StrOrNone) -> IntOrNone:
     parts = s.replace("to", " ").split()
     nums = []
     for p in parts:
-        try:
+        with contextlib.suppress(Exception):
             nums.append(int(p))
-        except Exception:
-            pass
     return max(nums) if nums else None
 
 def time_left_str(future: datetime, ref: datetime) -> str:

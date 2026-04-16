@@ -18,6 +18,7 @@ Environment variables (set by docker-compose.integration.yml):
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import pathlib
@@ -115,13 +116,11 @@ def hashpipe_pcap_session(daqnode_container: Any, daq_control_direct: DaqControl
     daqnode_container.exec_run("pkill -9 tcpreplay", detach=False)
 
     # 5. Teardown
-    try:
+    with contextlib.suppress(Exception):
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-    except Exception:
-        pass
     assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
 
 
@@ -442,19 +441,15 @@ def ensure_clean_daq_state(daq_control_direct: DaqControlClient, run_params: dic
     # Always call StopDaq unconditionally — it's idempotent and handles
     # the case where hashpipe crashed (leaving a stale hashpipe_pid on the
     # server) so CleanupData isn't blocked by the stale pid check.
-    try:
+    with contextlib.suppress(Exception):
         daq_control_direct.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-    except Exception:
-        pass
     wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
-    try:
+    with contextlib.suppress(Exception):
         daq_control_direct.CleanupData({
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
         })
-    except Exception:
-        pass

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import contextlib
 import datetime
 import json
 import os
@@ -36,10 +37,8 @@ last_signal_state: dict[str, Any] = {}
 # ================== HELPERS ==================
 
 def run_cmd(cmd: str) -> None:
-    try:
+    with contextlib.suppress(subprocess.CalledProcessError):
         subprocess.run(cmd, shell=True, check=True)
-    except subprocess.CalledProcessError:
-        pass
 
 def local_tz_label() -> str:
     """Return PST/PDT label based on local system time."""

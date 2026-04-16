@@ -130,12 +130,11 @@ class DataConfigValidator(BaseModel):
             ph_modes_dict['pulse_height'] = self.pulse_height
 
         # Global hardware check for the default modes
-        if self.image and self.pulse_height:
-            if self.pulse_height.two_pixel_trigger > 0 or self.pulse_height.three_pixel_trigger > 0:
-                raise ValueError(
-                    "Hardware Constraint Violation: Cannot enable root 'image' mode while "
-                    "root 'pulse_height' mode has two_pixel_trigger or three_pixel_trigger > 0."
-                )
+        if self.image and self.pulse_height and (self.pulse_height.two_pixel_trigger > 0 or self.pulse_height.three_pixel_trigger > 0):
+            raise ValueError(
+                "Hardware Constraint Violation: Cannot enable root 'image' mode while "
+                "root 'pulse_height' mode has two_pixel_trigger or three_pixel_trigger > 0."
+            )
 
         if self.model_extra:
             for key, val in self.model_extra.items():
@@ -300,13 +299,11 @@ class DaqConfigValidator(BaseStrictModel):
         # If the head node and the DAQ node are the same machine, data_dir must match.
         head_ip = str(self.head_node_ip_addr)
         for node in self.daq_nodes:
-            if str(node.ip_addr) == head_ip:
-                if node.data_dir != self.head_node_data_dir:
-                    raise ValueError(
-                        f"DAQ Node IP ({node.ip_addr}) matches head node, but "
-                        f"data_dir '{node.data_dir}' does not match "
-                        f"head_node_data_dir '{self.head_node_data_dir}'."
-                    )
+            if str(node.ip_addr) == head_ip and node.data_dir != self.head_node_data_dir:
+                raise ValueError(
+                    f"DAQ Node IP ({node.ip_addr}) matches head node, but "
+                    f"data_dir ({node.data_dir}) differs from head_node_data_dir ({self.head_node_data_dir})."
+                )
         return self
 
 

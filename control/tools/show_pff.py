@@ -54,12 +54,9 @@ def image_as_text(img: list[int] | np.ndarray, img_size: int, bytes_per_pixel: i
                     i = 7
 #print(x, y, min, max, i)
             else:
-                if bytes_per_pixel == 2:
-                    i = x//8192
-                else:
-                    i = x//32
-                if x>0 and i==0:
-                    i=1
+                i = x // 8192 if bytes_per_pixel == 2 else x // 32
+                if x > 0 and i == 0:
+                    i = 1
             s += scale[i]
             s += ' '
         s += '|'

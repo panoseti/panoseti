@@ -8,6 +8,7 @@ switch Quabo FPGA and MAROC registers between different observing modes.
 """
 
 import argparse
+import contextlib
 import copy
 import logging
 import os
@@ -119,10 +120,8 @@ class InterleaveController:
 
     def _release_lock(self) -> None:
         if os.path.exists(PID_FILE):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(PID_FILE)
-            except OSError:
-                pass
 
     def _handle_shutdown_signal(self, signum: int, frame: Any) -> None:
         if self.keep_running:
@@ -144,7 +143,7 @@ class InterleaveController:
             for q in quabos:
                 q.send_daq_params(daq_params)
         #futures = []
-        for mid in self.quabos.keys():
+        for mid in self.quabos:
             #futures.append(self.executor.submit(send_acq_mode_to_module, mid))
             send_acq_mode_to_module(mid)
         #for f in as_completed(futures):

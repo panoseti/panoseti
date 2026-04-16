@@ -485,7 +485,7 @@ class TestDaqConfigValidator:
 
     def test_head_node_matches_daq_node_data_dir_must_match(self):
         """When DAQ node IP == head node IP, data_dirs must match."""
-        with pytest.raises(ValidationError, match="does not match"):
+        with pytest.raises(ValidationError, match="differs from"):
             DaqConfigValidator(
                 head_node_data_dir="/data",
                 head_node_ip_addr="10.0.0.1",

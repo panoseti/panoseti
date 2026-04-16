@@ -6,6 +6,7 @@ connections, validating that gRPC topology works end-to-end for both paths.
 """
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 import pytest
@@ -232,11 +233,9 @@ class TestDaqRunDirIsolation:
         )
 
         # Teardown run B
-        try:
+        with contextlib.suppress(Exception):
             daq_control_direct.CleanupData({
                 "data_dir":  rp_b["data_dir"],
                 "run_dir":   rp_b["run_dir"],
                 "module_id": rp_b["module_id"],
             })
-        except Exception:
-            pass

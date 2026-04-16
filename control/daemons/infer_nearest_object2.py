@@ -177,10 +177,7 @@ def get_mount_radec(site: SiteConf) -> tuple[float, float]:
     dec_deg = nums[1]
 
     # Interpret RA units
-    if ra_val > 24.0:
-        ra_hours = (ra_val / 15.0) % 24.0  # degrees -> hours
-    else:
-        ra_hours = ra_val % 24.0           # already hours
+    ra_hours = (ra_val / 15.0) % 24.0 if ra_val > 24.0 else ra_val % 24.0  # deg->hrs if > 24
 
     return ra_hours, dec_deg
 

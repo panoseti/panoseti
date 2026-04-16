@@ -2,6 +2,7 @@
 Scripts for generating redis-json for sky map.
 """
 
+import contextlib
 import json
 import os
 import time
@@ -22,12 +23,10 @@ def add_obs_config(skymap_t: dict[str, Any], obs_config_file: str = 'obs_config.
     # remove some unnecesssary info
     for dome in domes:
         for m in dome['modules']:
-            try:
+            with contextlib.suppress(Exception):
                 m.pop('quabo_version')
                 m.pop('wps')
                 m.pop('name')
-            except Exception:
-                pass
     skymap_t['observatory_config']['domes'] = domes
 
 # Add data config to the skymap template.
@@ -37,14 +36,10 @@ def add_data_config(skymap_t: dict[str, Any], data_config_file: str = 'data_conf
     with open(data_config_file) as f:
         data_config = json.load(f)
     skymap_t['run_type'] = data_config['run_type']
-    try:
+    with contextlib.suppress(Exception):
         skymap_t['data_config']['image'] = data_config['image']
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(Exception):
         skymap_t['data_config']['pulse_height']['pe_threshold'] = data_config['pulse_height']['pe_threshold']
-    except Exception:
-        pass
 
 # Add software version info to the skymap template.
 # The software version is from sw_info.json by default. 
@@ -99,11 +94,7 @@ def create_empty_entry(template: str = 'skymap_format.json') -> dict[str, Any]:
 def write_complete_entry(skymap_t: dict[str, Any], host: str = 'localhost', port: int = 6379) -> dict[str, Any]:
     client = redis.Redis(host=host, port=port, db=0)
     res = client.json().get('runs')
-    runs: dict[str, Any] = {}
-    if not isinstance(res, dict) or 'runs' not in res: # type: ignore
-        runs = {'runs': []}
-    else:
-        runs = res # type: ignore
+    runs: dict[str, Any] = {'runs': []} if not isinstance(res, dict) or 'runs' not in res else res # type: ignore
     runs['runs'].append(skymap_t)
     client.json().set('runs', '$', runs)
     return runs

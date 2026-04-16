@@ -58,10 +58,7 @@ def is_acceptable_hv(monitored_hv: list[float]) -> bool:
     """Returns True only if the provided hv is reasonable. """
     r = True
     for hv in monitored_hv:
-        if MIN_HV <= hv <= MAX_HV:
-            r = True
-        else:
-            r = False
+        r = MIN_HV <= hv <= MAX_HV
     return r
 
 def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:

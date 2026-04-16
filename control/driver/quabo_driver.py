@@ -448,10 +448,7 @@ class QUABO:
             count = len(bytes_back)
         except (TimeoutError, OSError):
             count = 0
-        if count != 12:
-            return False
-        else:
-            return True
+        return count == 12
 
     def hk_packet_destination(self, ip_addr_str: str) -> None:
         self.logger.info(f'hk_packet_destination: {ip_addr_str}')

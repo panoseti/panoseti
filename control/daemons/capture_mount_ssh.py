@@ -12,6 +12,7 @@ Assumptions:
 - Remote "current" dir on cylon already exists; we do NOT mkdir remotely.
 """
 
+import contextlib
 import csv
 import datetime
 import json
@@ -106,10 +107,8 @@ def qdbus_altaz(ssh_user: str, ssh_host: str, ssh_port: int) -> tuple[float | No
         parts = [p.strip() for p in inside.split(",") if p.strip()]
         nums = []
         for p in parts:
-            try:
+            with contextlib.suppress(ValueError):
                 nums.append(float(p))
-            except ValueError:
-                pass
         if len(nums) < 2:
             return None, None
         # Heuristic: many versions return {Az, Alt}. Sanity-check Alt range.
@@ -202,10 +201,8 @@ def scp_upload(local_path: str, remote_server: str, remote_path: str) -> None:
     if BANDWIDTH_LIMIT and BANDWIDTH_LIMIT > 0:
         cmd += ["-l", str(BANDWIDTH_LIMIT)]
     cmd += [local_path, f"{remote_server}:{remote_path}"]
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=SCP_TIMEOUT, check=False)
-    except Exception:
-        pass
 
 # ===================== MAIN =====================
 def main() -> None:
@@ -372,10 +369,8 @@ def main() -> None:
 
             # UDP
             if udp_sock and UDP_PORT:
-                try:
+                with contextlib.suppress(Exception):
                     udp_sock.sendto(json.dumps(snap).encode("utf-8"), (UDP_HOST, UDP_PORT))
-                except Exception:
-                    pass
 
         # ---------- Write & upload mounts_current.json ----------
         try:

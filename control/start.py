@@ -344,11 +344,10 @@ def start_run(
         print('The HK recorder is running.  Run stop.py, then try again.')
         return False
         
-    if not no_redis:
-        if not util.are_redis_daemons_running():
-            print('Redis daemons are not running.  Run config.py --redis_daemons')
-            util.show_redis_daemons()
-            return False
+    if not no_redis and not util.are_redis_daemons_running():
+        print('Redis daemons are not running.  Run config.py --redis_daemons')
+        util.show_redis_daemons()
+        return False
 
     if not ph_baseline_file_ok():
         return False

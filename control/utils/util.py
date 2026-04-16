@@ -8,6 +8,7 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import contextlib
 import datetime
 import json
 import shutil
@@ -267,10 +268,8 @@ def _stop_daemon(prog: str, sig: int = signal.SIGKILL) -> None:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
         if len(c) == 2 and c[1] == target:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 os.kill(p.pid, sig)
-            except ProcessLookupError:
-                pass
             print(f'stopped {prog}')
 
 
@@ -282,10 +281,7 @@ def _show_daemon(prog: str) -> None:
 
 
 def _are_daemons_running(progs: list[str]) -> bool:
-    for prog in progs:
-        if not is_script_running(prog):
-            return False
-    return True
+    return all(is_script_running(prog) for prog in progs)
 
 
 def _safe_get_daemons_config() -> dict[str, Any]:
@@ -459,10 +455,7 @@ def is_script_running(script: str) -> bool:
 
 
 def is_hashpipe_running() -> bool:
-    for p in psutil.process_iter():
-        if p.name() == hashpipe_name:
-            return True
-    return False
+    return any(p.name() == hashpipe_name for p in psutil.process_iter())
 
 
 def is_hk_recorder_running() -> bool:
@@ -520,13 +513,14 @@ def kill_module_temp_monitor() -> None:
 #
 def write_log(msg: str) -> None:
     now = datetime.datetime.now().strftime("%B %d, %Y, %I:%M%p")
-    print(f'{__main__.__file__}: {now}: {msg}')
+    log_line = f"{__main__.__file__}: {now}: {msg}"
+    print(log_line)
     try:
-        f = open('run/log.txt', 'a')
-        f.write(f'{__main__.__file__}: {now}: {msg}')
-        f.close()
+        with open("run/log.txt", "a") as f:
+            f.write(log_line)
     except OSError:
-        f = open('log.txt', 'a')
+        with open("log.txt", "a") as f:
+            f.write(log_line)
 
 
 def disk_usage(dir: str) -> int:
@@ -552,11 +546,8 @@ def daq_bytes_per_sec_per_module(data_config: dict[str, Any]) -> float:
 
     if 'image' in data_config:
         image = data_config['image']
-        fps = 1e6/image['integration_time_usec']
-        if image['quabo_sample_size'] == 8:
-            bpf = 1
-        else:
-            bpf = 2
+        fps = image['frame_rate']
+        bpf = 1 if image['quabo_sample_size'] == 8 else 2
         x += fps*(1024*bpf + img_json_header_size)
     if 'pulse_height' in data_config:
         # assume one PH event per sec per quabo

@@ -16,6 +16,7 @@ Environment variables:
   GRPC_PORT   — override server port (always applied)
 """
 import asyncio
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -60,10 +61,8 @@ def _build_config() -> PanosetiServerConfig:
 
 def main() -> None:
     cfg = _build_config()
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(PanosetiServer.run(cfg))
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

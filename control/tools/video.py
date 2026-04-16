@@ -107,7 +107,7 @@ quabo_uids = config_file.get_quabo_uids()
 config_file.associate(daq_config, quabo_uids)
 data_config = config_file.get_data_config()
 if ph:
-    if 'pulse_height' not in data_config.keys():
+    if 'pulse_height' not in data_config:
         raise Exception('no pulse height being recorded')
     if ph == 1024:
         dp = 'ph1024'
@@ -116,12 +116,9 @@ if ph:
     else:
         raise Exception(f'ph{ph} not supported')
 else:
-    if 'image' not in data_config.keys():
+    if 'image' not in data_config:
         raise Exception('no image data being recorded')
     bits_pixel = data_config['image']['quabo_sample_size']
-    if bits_pixel == 16:
-        dp = 'img16'
-    else:
-        dp = 'img8'
+    dp = 'img16' if bits_pixel == 16 else 'img8'
 
 main(quabo_uids, module_id, dp)

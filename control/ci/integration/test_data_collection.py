@@ -15,6 +15,7 @@ without SSH — equivalent to a real rsync in the shared-network case.
 """
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import time
 
@@ -174,10 +175,8 @@ class TestDataCollectionTransaction:
         assert first is True
         # Second call: dirs are already gone — server returns success=False (ValueError)
         # Acceptable: idempotent intent means the data is gone either way
-        try:
+        with contextlib.suppress(ValueError):
             assert daq_control_direct.CleanupData(params)['success'] is False
-        except ValueError:
-            pass  # expected: server rejects cleanup of already-removed dirs
 
 
 class TestCleanupEdgeCases:

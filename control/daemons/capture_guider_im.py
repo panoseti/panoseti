@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import contextlib
 import json
 import os
 import re
@@ -340,11 +341,9 @@ def wait_for_new_fits(ssh: paramiko.SSHClient, site_name: str, baseline_mtime: f
             # Not fatal; keep polling
             print(f"?? [{site_name}] find stderr: {err}")
 
-        if path and (mtime is not None):
-            # Strictly newer than baseline and not same as last downloaded
-            if (baseline_mtime is None or mtime > baseline_mtime) and (path != last_seen):
-                print(f"? [{site_name}] New FITS detected: mtime={mtime:.3f} path={path}")
-                return mtime, path
+        if path and (mtime is not None) and (baseline_mtime is None or mtime > baseline_mtime) and (path != last_seen):
+            print(f"? [{site_name}] New FITS detected: mtime={mtime:.3f} path={path}")
+            return mtime, path
 
         time.sleep(poll_interval)
 
@@ -468,10 +467,8 @@ def capture_ekos_once(site: dict[str, Any]) -> None:
             except Exception as e:
                 print(f"?? [{site['name']}] Guide resume/status check failed: {e}")
 
-            try:
+            with contextlib.suppress(Exception):
                 ssh.close()
-            except Exception:
-                pass
 
 
 # ==============================

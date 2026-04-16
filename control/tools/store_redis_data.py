@@ -41,7 +41,7 @@ if __name__ == "__main__":
     elif len(sys.argv) > 2:
         print("Too many command line arguments")
         exit(0)
-    file_ptr = open(sys.argv[1], "w+")
-    while True:
-        write_redis_keys(file_ptr, get_updated_redis_keys(r, key_timestamps), key_timestamps)
-        time.sleep(1)
+    with open(sys.argv[1], "w+") as file_ptr:
+        while True:
+            write_redis_keys(file_ptr, get_updated_redis_keys(r, key_timestamps), key_timestamps)
+            time.sleep(1)

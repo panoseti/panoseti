@@ -15,6 +15,7 @@
 #   --run X             clean up run X (default: read from current_run)
 
 import builtins
+import contextlib
 import logging
 import os
 import signal
@@ -126,10 +127,8 @@ def _prepend_line_to_file(path: str, line: str) -> None:
 def print(*args: Any, **kwargs: Any) -> None:
     # Console print as-is + prepend to UT log file with timestamp.
     msg = " ".join(str(a) for a in args)
-    try:
+    with contextlib.suppress(Exception):
         _prepend_line_to_file(_datarec_log_path(), f"{_ut_human_timestamp()}: {msg}")
-    except Exception:
-        pass
     _ORIG_PRINT(*args, **kwargs)
 
 builtins.print = print

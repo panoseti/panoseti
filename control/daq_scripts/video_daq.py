@@ -47,7 +47,7 @@ def main(dp: str, nsecs: float, module: int) -> None:
 
     # get file info, e.g. frame size
     #print('file: ', filepath)
-    f = open(filepath, 'rb')
+    f = open(filepath, 'rb')  # noqa: SIM115
     (frame_size, nframes, _first_t, _last_t) = pff.img_info(f, bytes_per_image)
 
     last_frame = -1
@@ -59,7 +59,7 @@ def main(dp: str, nsecs: float, module: int) -> None:
             f.close()
             file = sorted(files)[-1]
             filepath = file
-            f = open(filepath, 'rb')
+            f = open(filepath, 'rb')  # noqa: SIM115
             last_frame = -1
         fsize = f.seek(0, os.SEEK_END)
         nframes = int(fsize/frame_size)

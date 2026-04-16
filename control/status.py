@@ -64,9 +64,9 @@ def status() -> None:
         else:
             log_print('   hashpipe is not running')
 
-        if 'current_run' in j.keys():
+        if 'current_run' in j:
             log_print('   current run:', j['current_run'])
-            if 'current_run_disk' in j.keys():
+            if 'current_run_disk' in j:
                 log_print('   disk usage:', j['current_run_disk'])
             else:
                 log_print("   run dir doesn't exist")
@@ -75,7 +75,7 @@ def status() -> None:
 
         vols = j['vols']
         log_print('   volumes:')
-        for name in vols.keys():
+        for name in vols:
             vol = vols[name]
             log_print('      name:', name)
             log_print('         free space: %.2fGB' % (vol['free'] / 1e9))

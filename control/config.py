@@ -6,6 +6,7 @@
 
 # ---- PRINT WRAPPER: prefix UTC timestamp + prepend to UT-day logfile ----
 import builtins as _builtins
+import contextlib
 import copy
 import datetime
 import json
@@ -78,10 +79,8 @@ def print(*args: Any, **kwargs: Any) -> None:
     _builtin_print(out_text, end="", flush=flush)
 
     # Prepend to logfile
-    try:
+    with contextlib.suppress(Exception):
         _prepend_to_file(_datarec_log_path(), out_text)
-    except Exception:
-        pass
 # -----------------------------------------------------------------------
 
 
@@ -408,9 +407,8 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
         raise Exception('data_config.json specifies no data products')
 
     stim_mask_quaboi = [1, 1, 1, 1]
-    if "stim_params" in data_config:
-        if "mask" in data_config["stim_params"]:
-            stim_mask_quaboi = data_config["stim_params"]["mask"]
+    if "stim_params" in data_config and "mask" in data_config["stim_params"]:
+        stim_mask_quaboi = data_config["stim_params"]["mask"]
         
     qc_dict_src = copy.deepcopy(MAROC_CONFIG_QUABO_CONFIG)
     for module in modules:
@@ -442,10 +440,7 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
             # We have different calibration files for different modes: image alone and image/ph together
             # so we have to specifiy the mode here.
             # TODO: If it's PH alone, what calibration file should we use?
-            if do_img and not do_ph:
-                op_mode = 'img'
-            else:
-                op_mode = 'ph'
+            op_mode = 'img' if do_img and not do_ph else 'ph'
 
             # Cache calibration data to reduce I/O
             cal_cache_key = (serialno, detovervol, op_mode)
@@ -545,13 +540,8 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
                 """
                 # set the DAC2 values back
                 qc_dict['DAC2'] = f'{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}'
-            if no_cali:
-                # print('**************************************************************************')
-                # print(f'Warning: No calibration data for the board with UID: {uid}')
-                # print('         Using default calibration data.')
-                # print('**************************************************************************')
-                if do_log and isinstance(logger, logging.Logger):
-                    logger.warning(f'No calibration data: UID -{uid}')
+            if no_cali and do_log and isinstance(logger, logging.Logger):
+                logger.warning(f'No calibration data: UID -{uid}')
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             if stim_mask_quaboi[i] == 0:
                 for k in range(64):
@@ -584,14 +574,12 @@ def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], n
             qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | (0x100)
         
         # config GOEMASK for 2/3 pixel_trigger
-        if 'three_pixel_trigger' in data_config['pulse_height']:
-            if data_config['pulse_height']['three_pixel_trigger']:
-                qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
-                qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x1
-        if 'two_pixel_trigger' in data_config['pulse_height']:
-            if data_config['pulse_height']['two_pixel_trigger']:
-                qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
-                qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x2
+        if 'three_pixel_trigger' in data_config['pulse_height'] and data_config['pulse_height']['three_pixel_trigger']:
+            qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
+            qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x1
+        if 'two_pixel_trigger' in data_config['pulse_height'] and data_config['pulse_height']['two_pixel_trigger']:
+            qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
+            qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x2
 
     for module in modules:
         for i in range(4):
@@ -736,7 +724,7 @@ def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbo
             if not found and default_vol:
                 default_vol['mods_here'].append(mid)
 
-        for name in vols.keys():
+        for name in vols:
             vol = vols[name]
             free = vol['free']
             mods_here_list = vol.get('mods_here', [])
@@ -754,7 +742,8 @@ def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbo
                 if verbose:
                     print(f'      space: {free/1e12:.2f}TB')
     # TODO: this is hard-coded??
-    head_node_vols = json.loads(open("/home/panosetigraph/web/head_node_volumes.json").read())
+    with open("/home/panosetigraph/web/head_node_volumes.json") as f:
+        head_node_vols = json.loads(f.read())
     hnd = daq_config['head_node_data_dir']
     hnd = os.path.realpath(hnd)
     print('head node:')
@@ -792,7 +781,7 @@ def do_start_interleave() -> None:
     print("Starting interleave controller in the background...")
     # Start detached background process
     subprocess.Popen(['python3', 'tools/interleave.py'],
-                     stdout=open('logs/interleave.log', 'a'),
+                     stdout=open('logs/interleave.log', 'a'), # noqa: SIM115
                      stderr=subprocess.STDOUT)
     print("Interleave process started. Check logs/interleave.log for details.")
 

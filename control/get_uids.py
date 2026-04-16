@@ -116,10 +116,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
-    if args.exclude is None:
-        exclude = []
-    else:
-        exclude = args.exclude
+    exclude = [] if args.exclude is None else args.exclude
     get_uids(obs_config, network_config, exclude)
     if os.path.exists('flashuid'):
         os.remove('flashuid')

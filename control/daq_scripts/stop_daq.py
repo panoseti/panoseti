@@ -1,14 +1,14 @@
 #! /usr/bin/env python3
 
-# This script is run (remotely) on a DAQ node to stop recording
-# - get the PID of the hashpipe process
-# - send it a SIGINT signal
-# - wait for it to exit
-#
+# stop_daq.py: stop a hashpipe process.
+# This is called on a DAQ node via SSH by a daemon on the head node.
+# It reads the PID of the hashpipe process from a file.
+# It kills that process, then kills the HK recorder.
 # Then kill any other hashpipe processes
 #
 # On success, print OK.  Otherwise print an error message
 
+import contextlib
 import os
 import sys
 
@@ -18,15 +18,13 @@ from utils import util
 
 def main() -> None:
     try:
-        f = open(util.daq_hashpipe_pid_filename)
-    except Exception:
-        f = None
-    if f:
-        pid = int(f.read())
-        f.close()
+        with open(util.daq_hashpipe_pid_filename) as f:
+            pid = int(f.read())
         if not util.stop_hashpipe(pid):
             print("Couldn't stop hashpipe")
         os.unlink(util.daq_hashpipe_pid_filename)
+    except Exception:
+        pass
 
     util.kill_hashpipe()
 
@@ -34,11 +32,11 @@ def main() -> None:
     # But it shouldn't be there, so kill it
     util.kill_hk_recorder()
 
-    try:
+    with contextlib.suppress(Exception):
         os.unlink(util.daq_run_name_filename)
-    except Exception:
-        pass
 
-    print('stop_daq.py: OK')
+    print("stop_daq.py: OK")
 
-main()
+
+if __name__ == "__main__":
+    main()

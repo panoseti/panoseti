@@ -41,7 +41,7 @@ def get_wps_rkey(wps_key: str) -> str:
 def main() -> None:
     r = redis_utils.redis_init()
     obs_config = config_file.get_obs_config()
-    wps_keys = [key for key in obs_config.keys() if 'wps' in key.lower()]
+    wps_keys = [key for key in obs_config if 'wps' in key.lower()]
     print("capture_power.py: Running...")
     while True:
         for wps_key in wps_keys:

@@ -181,30 +181,21 @@ class check_clocks:
     #
     def check_gps_time(self) -> bool:
         t_gps, t_host = self.get_gps_time()
-        if t_gps is not None and (abs(t_gps - t_host) < TOLERANCE):
-            return True
-        else:
-            return False
+        return t_gps is not None and (abs(t_gps - t_host) < TOLERANCE)
 
     
     # Compare the quabo time with host computer time.
     #  
     def check_quabo_time(self) -> bool:
         t_quabo, t_host = self.get_quabo_time()
-        if(abs(t_quabo - t_host) < TOLERANCE):
-            return True
-        else:
-            return False
+        return abs(t_quabo - t_host) < TOLERANCE
     
     
     # Compare the WRS time with host computer time.
     #
     def check_wrs_time(self) -> bool:
         t_wrs, t_host = self.get_wrs_time()
-        if(abs(t_wrs - t_host) < TOLERANCE):
-            return True
-        else:
-            return False
+        return abs(t_wrs - t_host) < TOLERANCE
     
     
     # Check the time from GPS reciever, quabo and WRS.
@@ -214,10 +205,7 @@ class check_clocks:
         s0 = self.check_gps_time()
         s1 = self.check_quabo_time()
         s2 = self.check_wrs_time()
-        if(s0 and s1 and s2):
-            return True
-        else:
-            return False
+        return bool(s0 and s1 and s2)
 
 if __name__ == '__main__':
     # get uart_port, wrs_ip from config file
