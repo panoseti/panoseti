@@ -113,7 +113,7 @@ def _patch_tcp_check(up_hosts: set):
     """
 
     def fake_create_connection(addr, timeout=None):
-        ip, port = addr
+        ip, _port = addr
         if ip in up_hosts:
             m = MagicMock()
             m.__enter__ = lambda s: s

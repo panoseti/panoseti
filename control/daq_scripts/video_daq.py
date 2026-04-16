@@ -48,7 +48,7 @@ def main(dp: str, nsecs: float, module: int) -> None:
     # get file info, e.g. frame size
     #print('file: ', filepath)
     f = open(filepath, 'rb')
-    (frame_size, nframes, first_t, last_t) = pff.img_info(f, bytes_per_image)
+    (frame_size, nframes, _first_t, _last_t) = pff.img_info(f, bytes_per_image)
 
     last_frame = -1
     while True:

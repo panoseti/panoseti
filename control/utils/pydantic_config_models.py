@@ -155,8 +155,8 @@ class DataConfigValidator(BaseModel):
                 else:
                     raise ValueError(f"Unrecognized configuration key or typo detected: '{key}'")
         if self.interleave and getattr(self.interleave, 'states', None):
-            valid_image_modes = ['image'] + dynamic_keys
-            valid_ph_modes = ['pulse_height'] + dynamic_keys
+            valid_image_modes = ["image", *dynamic_keys]
+            valid_ph_modes = ["pulse_height", *dynamic_keys]
 
             for state in self.interleave.states:
                 m_conf = state.movie_mode_config

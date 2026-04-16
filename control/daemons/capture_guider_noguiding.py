@@ -84,7 +84,7 @@ def ssh_connect(site: dict[str, Any]) -> paramiko.SSHClient:
 
 def ssh_exec(ssh: paramiko.SSHClient, cmd: str, timeout: float | None = None) -> tuple[str, str]:
     """Execute remote command, return (stdout, stderr) as strings."""
-    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    _stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode(errors="replace").strip()
     err = stderr.read().decode(errors="replace").strip()
     return out, err
@@ -130,7 +130,7 @@ def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
-        out, err = ssh_exec(ssh, cmd)
+        out, _err = ssh_exec(ssh, cmd)
         ssh.close()
         return ("PHDVersion" in out) or ('"result"' in out)
     except Exception:

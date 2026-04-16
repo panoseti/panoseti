@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 import struct
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -292,10 +292,10 @@ class TestHousekeepingPacketParsing:
         pkt = _make_hk_packet(temp1_raw=0)
         assert _parse_hk_field(pkt, 17, signed=True) == 0
 
-    # --- TEMP2 (FPGA temperature, unsigned, formula N/130.04 − 273.15) ---
+    # --- TEMP2 (FPGA temperature, unsigned, formula N/130.04 - 273.15) ---
 
     def test_temp2_at_array18(self):
-        """TEMP2 at bytes[38:40]: N/130.04 − 273.15 ≈ 0 °C for N ≈ 35569."""
+        """TEMP2 at bytes[38:40]: N/130.04 - 273.15 ≈ 0 °C for N ≈ 35569."""
         raw = 35569
         pkt = _make_hk_packet(temp2_raw=raw)
         val = _parse_hk_field(pkt, 18)
@@ -306,8 +306,8 @@ class TestHousekeepingPacketParsing:
     # --- HVMON0 (HV monitor, 1 LSB ≈ 1.22 mV, unsigned) ---
 
     def test_hvmon0_at_array1(self):
-        """HVMON0 at bytes[4:6]; voltage = −raw × 1.22e-3 V."""
-        raw = 61475  # ≈ −75 V at 1.22 mV/LSB
+        """HVMON0 at bytes[4:6]; voltage = -raw x 1.22e-3 V."""
+        raw = 61475  # ≈ -75 V at 1.22 mV/LSB
         pkt = _make_hk_packet(hvmon0=raw)
         val = _parse_hk_field(pkt, 1)
         assert val == raw
@@ -315,14 +315,14 @@ class TestHousekeepingPacketParsing:
         assert voltage == pytest.approx(-75.0, abs=0.1)
 
     def test_hvmon_full_scale(self):
-        """0xFFFF raw (≈ −80 V) is representable in the packet field."""
+        """0xFFFF raw (≈ -80 V) is representable in the packet field."""
         pkt = _make_hk_packet(hvmon0=0xFFFF)
         val = _parse_hk_field(pkt, 1)
         assert val == 0xFFFF
         voltage = -val * 1.22e-3
         assert voltage == pytest.approx(-80.0, abs=0.1)
 
-    # --- UID (4 × uint16 LE at bytes[44:52]) ---
+    # --- UID (4 x uint16 LE at bytes[44:52]) ---
 
     def test_uid_four_words(self):
         """UID occupies arrays [21..24] = bytes[44:52]."""
@@ -383,15 +383,15 @@ class TestHousekeepingPacketParsing:
 # TestHvVoltageConversion
 # ===========================================================================
 
-class TestHvVoltageConversion:
+class TestHvSetMath:
     """Math tests for HV DAC encoding in hv_set().
 
-    Conversion: voltage_V = −raw × 1.22e-3
-    (1 LSB ≈ 1.22 mV; 0xFFFF ≈ −80 V)
+    Conversion: voltage_V = -raw x 1.22e-3
+    (1 LSB ≈ 1.22 mV; 0xFFFF ≈ -80 V)
     """
 
     def test_encoding_for_approx_75v(self, quabo_and_sock):
-        """Raw 61475 → bytes[2:4] = 61475, decoded as ≈ −75 V."""
+        """Raw 61475 → bytes[2:4] = 61475, decoded as ≈ -75 V."""
         q, sock = quabo_and_sock
         raw = 61475
         q.hv_set([raw, 0, 0, 0])
@@ -415,7 +415,7 @@ class TestHvVoltageConversion:
             assert struct.unpack_from("<H", sock.last_cmd, 2 + i * 2)[0] == 0
 
     def test_full_scale_encoding(self, quabo_and_sock):
-        """0xFFFF in every channel encodes correctly (≈ −80 V)."""
+        """0xFFFF in every channel encodes correctly (≈ -80 V)."""
         q, sock = quabo_and_sock
         q.hv_set([0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF])
         for i in range(4):
@@ -500,9 +500,9 @@ class TestMarocPacketStructure:
     """
 
     # ASIC region boundaries: start[i] = 4 + i * 128
-    _ASIC_STARTS = [4, 132, 260, 388]
+    _ASIC_STARTS: ClassVar[list[int]] = [4, 132, 260, 388]
     _ASIC_LEN = 104
-    _GAP_REGIONS = [(108, 132), (236, 260), (364, 388)]
+    _GAP_REGIONS: ClassVar[list[tuple[int, int]]] = [(108, 132), (236, 260), (364, 388)]
 
     def test_packet_length(self, quabo_and_sock):
         q, sock = quabo_and_sock
@@ -522,7 +522,7 @@ class TestMarocPacketStructure:
 
     def test_four_asic_region_boundaries(self, quabo_and_sock):
         """ASIC regions start at 4, 132, 260, 388 and each fit in the 492-byte packet."""
-        q, sock = quabo_and_sock
+        q, _sock = quabo_and_sock
         q.send_maroc_params(_minimal_maroc_config())
         for start in self._ASIC_STARTS:
             assert start + self._ASIC_LEN <= 492
@@ -566,7 +566,7 @@ class TestTriggerMaskMultiChannel:
             assert encoded == 0xFFFFFFFF, f"CHANMASK_{i} not all-ones"
 
     def test_all_channels_disabled(self, quabo_and_sock):
-        """All CHANMASK_N = 0 → bytes 4–39 all zero."""
+        """All CHANMASK_N = 0 → bytes 4-39 all zero."""
         q, sock = quabo_and_sock
         config = {f"CHANMASK_{i}": 0 for i in range(9)}
         q.send_trigger_mask(config, do_flush_rx_buf=False)

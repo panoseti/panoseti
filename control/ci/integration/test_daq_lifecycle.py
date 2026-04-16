@@ -147,7 +147,7 @@ class TestDaqDiskUsage:
         assert du.get("used_disk_space", -1) >= 0
 
     def test_disk_usage_values_plausible(self, daq_control_direct, run_params, ensure_clean_daq_state):
-        """Disk usage values are internally consistent: used ≈ total − free."""
+        """Disk usage values are internally consistent: used ≈ total - free."""
         ok, status = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": False,

@@ -405,7 +405,7 @@ class TestMarocParamPacket:
 
     def test_four_asic_regions_present(self, quabo_and_sock):
         """ASIC data starts at offsets 4, 132, 260, 388 (104 bytes each)."""
-        q, sock = quabo_and_sock
+        q, _sock = quabo_and_sock
         config = self._minimal_maroc_config()
         q.send_maroc_params(config)
         # Each ASIC region is 104 bytes; verify they fit within the 492-byte packet
@@ -472,7 +472,7 @@ class TestDataPacketDestination:
 
     def test_returns_false_on_no_response(self, quabo_and_sock):
         """When recvfrom times out (no response injected), returns False."""
-        q, sock = quabo_and_sock
+        q, _sock = quabo_and_sock
         # No response injected → socket.timeout raised → count=0 → return False
         result = q.data_packet_destination("10.0.0.1")
         assert result is False

@@ -74,7 +74,7 @@ def ssh_connect(site: dict[str, Any]) -> paramiko.SSHClient:
 
 def ssh_exec(ssh: paramiko.SSHClient, cmd: str, timeout: float | None = None) -> tuple[str, str]:
     """Execute remote command, return (stdout, stderr) strings."""
-    stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+    _stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode(errors="replace").strip()
     err = stderr.read().decode(errors="replace").strip()
     return out, err
@@ -237,7 +237,7 @@ def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
-        out, err = ssh_exec(ssh, cmd)
+        out, _err = ssh_exec(ssh, cmd)
         ssh.close()
         return ("PHDVersion" in out) or ('"result"' in out)
     except Exception:
@@ -407,7 +407,7 @@ def capture_ekos_once(site: dict[str, Any]) -> None:
             print(f"?? [{site['name']}] Capture.start stderr: {err_cap}")
 
         # ---- Robust: poll for a new FITS newer than baseline ----
-        new_mtime, new_path = wait_for_new_fits(
+        _new_mtime, new_path = wait_for_new_fits(
             ssh=ssh,
             site_name=site["name"],
             baseline_mtime=baseline_mtime,

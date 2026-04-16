@@ -142,7 +142,7 @@ class check_clocks:
         server.bind(IP_PORT)
         server.settimeout(1)
         try:
-            data,client_addr = server.recvfrom(BUFFERSIZE)
+            data, _client_addr = server.recvfrom(BUFFERSIZE)
         except Exception:
             raise Exception('\n No packets from Quabo!\n Please make sure the quabo is powered on and rebooted.') from None
         server.close()
@@ -167,7 +167,7 @@ class check_clocks:
         cmd0 = "/wr/bin/wr_date get"
 
         self.ssh =  SSH_Init(self.wrs_ip)
-        ssh_stdin, ssh_stdout, ssh_stderr = self.ssh.exec_command(cmd0)
+        _ssh_stdin, ssh_stdout, _ssh_stderr = self.ssh.exec_command(cmd0)
         r0=ssh_stdout.read()
         t_host = time.time()
         

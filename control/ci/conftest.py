@@ -175,7 +175,7 @@ def _make_pff_json_header(quabo_num: int = 0, pkt_num: int = 0,
 
 
 def _make_pff_image_block_16bit(width: int = 32) -> bytes:
-    """Build a 16-bit image block (32×32 pixels, all zeros)."""
+    """Build a 16-bit image block (32x32 pixels, all zeros)."""
     n = width * width
     return b"*" + struct.pack(f"{n}H", *([0] * n))
 

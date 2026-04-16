@@ -59,7 +59,7 @@ target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "UP", "B", "I", "ASYNC"]#, "SIM", "RUF"]
+select = ["E", "F", "UP", "B", "I", "ASYNC", "RUF"]
 ignore = [
     "E501",   # line too long – handled separately
     "B008",   # function calls in default args (common in Pydantic)

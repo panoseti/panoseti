@@ -428,12 +428,12 @@ class TestImgInfo:
     def test_nframes_correct(self, pff_file_factory):
         for n in [1, 3, 5]:
             f = pff_file_factory(n_frames=n, tv_sec_start=1_000_000)
-            frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+            _frame_size, nframes, _first_t, _last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
             assert nframes == n
 
     def test_first_and_last_t(self, pff_file_factory):
         f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000)
-        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        _frame_size, _nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
         assert abs(first_t - 1_000_000.0) < 1e-6
         assert abs(last_t - 1_000_002.0) < 1e-6
 
@@ -452,7 +452,7 @@ class TestImgInfo:
         # First 2 frames have tv_sec=0 → img_header_time returns 0
         tv_secs = [0, 0, 1_000_000]
         f = pff_file_factory(n_frames=3, tv_sec_values=tv_secs)
-        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        _frame_size, _nframes, first_t, _last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
         assert first_t != 0
 
     def test_all_zero_timestamps_raises(self, pff_file_factory):
@@ -465,7 +465,7 @@ class TestImgInfo:
     def test_flat_ph256_header(self, pff_file_factory):
         """img_info works with flat (ph256-style) headers too."""
         f = pff_file_factory(n_frames=3, tv_sec_start=1_000_000, nested_header=False)
-        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        _frame_size, nframes, first_t, _last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
         assert nframes == 3
         assert abs(first_t - 1_000_000.0) < 1e-6
 
@@ -508,7 +508,7 @@ class TestTimeSeek:
 
     def test_t_before_first_seeks_to_start(self, pff_file_factory):
         f = pff_file_factory(n_frames=5, tv_sec_start=1_000_000)
-        frame_size, _, first_t, _ = pff.img_info(f, self.BYTES_PER_IMAGE)
+        _frame_size, _, first_t, _ = pff.img_info(f, self.BYTES_PER_IMAGE)
         f.seek(0)
         # t < first_t + frame_time → seek to 0
         pff.time_seek(f, frame_time=1.0, bytes_per_image=self.BYTES_PER_IMAGE,
@@ -527,7 +527,7 @@ class TestTimeSeek:
         """time_seek converges to a frame within frame_time of the target."""
         n = 9
         f = pff_file_factory(n_frames=n, tv_sec_start=1_000_000)
-        frame_size, nframes, first_t, last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
+        frame_size, _nframes, _first_t, _last_t = pff.img_info(f, self.BYTES_PER_IMAGE)
         target_t = 1_000_004.0  # frame 4
         f.seek(0)
         pff.time_seek(f, frame_time=1.0, bytes_per_image=self.BYTES_PER_IMAGE,

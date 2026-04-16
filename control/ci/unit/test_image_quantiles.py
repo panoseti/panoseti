@@ -58,7 +58,7 @@ def _make_pff_file(tmp_path, frames, fill_value=None):
 
 class TestGetValues:
     def test_returns_correct_number_of_values(self, tmp_path):
-        """3 frames × 1024 pixels = 3072 values."""
+        """3 frames x 1024 pixels = 3072 values."""
         frames = [[100] * 1024 for _ in range(3)]
         fpath = _make_pff_file(tmp_path, frames)
         vals = image_quantiles.get_values(fpath, 32, 2, nframes=3)

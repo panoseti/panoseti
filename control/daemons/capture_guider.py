@@ -69,7 +69,7 @@ def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
-        stdin, stdout, stderr = ssh.exec_command(cmd)
+        _stdin, stdout, _stderr = ssh.exec_command(cmd)
         output = stdout.read().decode().strip()
         ssh.close()
         return "PHDVersion" in output or '"result"' in output
@@ -81,7 +81,7 @@ def capture_phd2_once(site: dict[str, Any]) -> None:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_star_image\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 5 localhost 4400"
-        stdin, stdout, stderr = ssh.exec_command(cmd)
+        _stdin, stdout, _stderr = ssh.exec_command(cmd)
         output = stdout.read().decode()
         ssh.close()
         reply = None
@@ -116,7 +116,7 @@ def capture_ekos_once(site: dict[str, Any]) -> None:
         ssh.exec_command(f'qdbus org.kde.kstars /KStars/Ekos/Capture '
                          f'org.kde.kstars.Ekos.Capture.start \"{TRAIN_NAME}\"')
         time.sleep(WAIT_SECONDS)
-        stdin, stdout, stderr = ssh.exec_command(
+        _stdin, stdout, _stderr = ssh.exec_command(
             f'find {REMOTE_DIR} -type f -name "*.fit*" '
             '-printf "%T@ %p\\n" | sort -nr | head -n 1 | cut -d" " -f2')
         preview_name = stdout.read().decode().strip()

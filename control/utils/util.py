@@ -537,7 +537,7 @@ def disk_usage(dir: str) -> int:
 
 
 def free_space(path: str) -> int:
-    total, used, free = shutil.disk_usage(os.path.realpath(path))
+    _total, _used, free = shutil.disk_usage(os.path.realpath(path))
     return free
 
 

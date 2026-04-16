@@ -97,7 +97,7 @@ class TestConcurrentDaqOperations:
         }
 
         def poll_status():
-            ok, status = daq_control_direct.StatusDaq(status_params)
+            ok, _status = daq_control_direct.StatusDaq(status_params)
             return ok
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:

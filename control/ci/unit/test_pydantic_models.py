@@ -8,6 +8,8 @@ No hardware required.
 """
 
 
+from typing import Any, ClassVar
+
 import pytest
 from pydantic import ValidationError
 
@@ -595,7 +597,7 @@ class TestFirmwareConfigValidator:
 # ===========================================================================
 
 class TestPortForwarding:
-    _BASE = {"status": True, "gw_ip": "203.0.113.1"}
+    _BASE: ClassVar[dict[str, Any]] = {"status": True, "gw_ip": "203.0.113.1"}
 
     def test_valid_without_grpc_port(self):
         """grpc_port is optional; omitting it is valid."""
@@ -603,7 +605,7 @@ class TestPortForwarding:
         assert pf.grpc_port is None
 
     def test_valid_grpc_port(self):
-        """grpc_port in 1–65535 is accepted."""
+        """grpc_port in 1-65535 is accepted."""
         pf = PortForwarding(**self._BASE, grpc_port=50051)
         assert pf.grpc_port == 50051
 

@@ -197,7 +197,7 @@ def read_latest_weather_log(weather_log_path: str) -> tuple[dict[str, Any] | Non
     if len(parts) < 9:
         # attempt salvage if last_update contained commas
         if len(parts) >= 8:
-            parts = parts[:8] + [",".join(parts[8:])]
+            parts = [*parts[:8], ",".join(parts[8:])]
         else:
             return None, None
 

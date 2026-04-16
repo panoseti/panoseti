@@ -115,8 +115,8 @@ def query_mount_radec_via_ssh(ssh_user: str, ssh_host: str, ssh_port: int) -> tu
         "qdbus", "--literal",
     ]
 
-    ra_s = run_cmd(base + ["org.kde.kstars", "/KStars/Ekos/Mount", "org.kde.kstars.Ekos.Mount.ra"])
-    de_s = run_cmd(base + ["org.kde.kstars", "/KStars/Ekos/Mount", "org.kde.kstars.Ekos.Mount.dec"])
+    ra_s = run_cmd([*base, "org.kde.kstars", "/KStars/Ekos/Mount", "org.kde.kstars.Ekos.Mount.ra"])
+    de_s = run_cmd([*base, "org.kde.kstars", "/KStars/Ekos/Mount", "org.kde.kstars.Ekos.Mount.dec"])
 
     ra_h = parse_first_float(ra_s)
     dec_d = parse_first_float(de_s)

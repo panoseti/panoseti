@@ -484,7 +484,7 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
                 for k in range(64):
                     [x, y] = pixel_coords.detector_to_quabo(k, j, bool(is_qfp))
                     delta = quabo_calib['pixel_gain'][x][y]
-                    g = int(round(gain*(1+delta)))
+                    g = round(gain*(1+delta))
                     maroc_gain[k][j] = g
             for k in range(64):
                 tag = f'GAIN{k}'

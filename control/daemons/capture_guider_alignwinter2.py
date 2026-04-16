@@ -579,11 +579,11 @@ def capture_ekos_once(site: SiteConf, iteration_idx: int, do_align: bool) -> Non
             print(f"? [{name}] Capture.start returned: {out_cap}")
 
         # Wait for new FITS newer than baseline
-        new_mtime, new_path = wait_for_new_fits(
+        _new_mtime, new_path = wait_for_new_fits(
             site=site,
             site_name=name,
             baseline_mtime=baseline_mtime,
-            max_wait_seconds=max_wait_seconds,
+            max_wait_seconds=max_wait_seconds
         )
         if not new_path:
             return

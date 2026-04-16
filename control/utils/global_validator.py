@@ -192,7 +192,7 @@ class GlobalConfigValidator:
             self.report.add_test("Headnode Disk Space", "ERROR", f"Path '{head_dir}' missing or unreachable.")
             return
 
-        total, used, free = shutil.disk_usage(head_dir)
+        _total, _used, free = shutil.disk_usage(head_dir)
         free_tb = free / (1024 ** 4)
 
         tb_per_hr, est_total, formula = self._estimate_data_usage()
