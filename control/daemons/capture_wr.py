@@ -120,7 +120,7 @@ def initialize():
 
 def main():
     script_dir = Path(__file__).resolve().parent
-    os.environ['MIBDIRS']= f'+{str(script_dir)}/capture_wr'
+    os.environ['MIBDIRS']= f'+{script_dir!s}/capture_wr'
     wrs, r = initialize()
     # check the current status one time, including sfpPN, link status and softpll status,
     # and print the info out

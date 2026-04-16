@@ -45,7 +45,7 @@ def status():
         module_parts = module_path.split('/')
         module_parts = module_parts[0:3]
         name = '/'.join(module_parts)
-        if name in vols.keys():
+        if name in vols:
             vol = vols[name]
             vol['modules'].append(modnum)
         else:
@@ -58,7 +58,7 @@ def status():
     cwd_parts = cwd_path.split('/')
     cwd_parts = cwd_parts[0:3]
     name = '/'.join(cwd_parts)
-    if name in vols.keys():
+    if name in vols:
         vol = vols[name]
         vol['modules'].append(-1)
     else:

@@ -98,7 +98,7 @@ def primaryTimingPacket(data, r):
         'TIMEFROMGPS': (timeFrom+1)%2
     }
 
-    for key in redis_set.keys():
+    for key in redis_set:
         r.hset(RKEY, key, redis_set[key])
     
 
@@ -188,7 +188,7 @@ def supplementaryTimingPacket(data, r):
     if discipliningActivity in disActivityValues:
         redis_set['DISCIPLININGACTIVITY'] = disActivityValues[discipliningActivity]
     
-    for key in redis_set.keys():
+    for key in redis_set:
         r.hset(RKEYsupp, key, redis_set[key])
     
     lastTimeUpdated = False

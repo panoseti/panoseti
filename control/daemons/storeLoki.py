@@ -186,7 +186,7 @@ def main() -> None:
 
             if publisher.can_accept_more():
                 item = r.blpop(redis_key, timeout=1)
-                if isinstance(item, list) and len(item) > 1:
+                if isinstance(item, tuple) and len(item) > 1:
                     try:
                         log_entry = json.loads(item[1])
                         publisher.add(log_entry)
@@ -202,6 +202,9 @@ def main() -> None:
             logger.info("Shutdown signal. Flushing final logs...")
             publisher.flush()
             break
+        except Exception as e:
+            logger.exception(f"Unexpected Critical Error: {e}")
+            time.sleep(1)
 
 
 if __name__ == "__main__":

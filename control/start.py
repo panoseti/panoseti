@@ -58,7 +58,7 @@ _orig_print = builtins.print
 def _print(*args, **kwargs):
     sep = kwargs.get("sep", " ")
     end = kwargs.get("end", "\n")
-    file_arg = kwargs.get("file", None)
+    file_arg = kwargs.get("file")
     flush = kwargs.get("flush", False)
 
     msg = sep.join(str(a) for a in args)

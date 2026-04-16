@@ -666,5 +666,5 @@ def convert_ip(ip):
         last = int(ipstr[3])
         blast = 4*(last//4)
         index = last - blast
-        return f"{ipstr[0]}.{ipstr[1]}.{ipstr[2]}.{str(blast)}", index
+        return f"{ipstr[0]}.{ipstr[1]}.{ipstr[2]}.{blast!s}", index
 

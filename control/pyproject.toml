@@ -59,7 +59,7 @@ target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "UP", "B", "I"]
+select = ["E", "F", "UP", "B", "I"]#, "ASYNC", "SIM", "RUF"]
 ignore = [
     "E501",   # line too long – handled separately
     "B008",   # function calls in default args (common in Pydantic)
@@ -74,6 +74,10 @@ strict_equality = true
 extra_checks = true
 ignore_missing_imports = true
 warn_return_any = false
+# disallow_untyped_defs = true
+# disallow_incomplete_defs = true
+# warn_unused_ignores = true
+# warn_unreachable = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

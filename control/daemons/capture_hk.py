@@ -158,7 +158,7 @@ def storeInRedis(packet, r:redis.Redis):
         true_detector_x_current_uA = get_true_detector_current(redis_set[f'HVIMON{x}'], redis_set[f'HVMON{x}'])
         redis_set[f'DETR{x}_CURR'] = true_detector_x_current_uA
 
-    for key in redis_set.keys():
+    for key in redis_set:
         r.hset(boardName, key, redis_set[key])
 
 def initialize():
