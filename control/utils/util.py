@@ -68,14 +68,15 @@ daq_hashpipe_pid_filename = 'daq_hashpipe_pid'
     # stores PID of hashpipe process
 daq_run_name_filename = 'daq_run_name'
     # stores name of current run
-hp_stdout_prefix = 'hp_stdout_'
+hp_stdout_prefix = 'hp_stdout'
     # hashpipe stdout file is prefix_ipaddr
 pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 
 # Base daemons (always included in the "capture"/redis daemon set)
 redis_daemons = [
-    'daemons/storeInfluxDB.py'
+    'daemons/storeInfluxDB.py',
+    # 'daemons/storeLoki.py'
 ]
 #capture_power.py
 

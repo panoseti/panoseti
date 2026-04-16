@@ -15,6 +15,7 @@ from typing import Any
 
 from utils import config_file
 
+LOG_DIR_ROOT = "/mnt/data11"
 
 # ---------- logging helper (UTC) ----------
 def log_print(msg: str) -> None:
@@ -22,7 +23,7 @@ def log_print(msg: str) -> None:
     ts = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     yyyymmdd = now.strftime("%Y%m%d")
 
-    log_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
+    log_dir = f"{LOG_DIR_ROOT}/data/palomar/L0/{yyyymmdd}/obslogs"
     os.makedirs(log_dir, exist_ok=True)
 
     log_file = os.path.join(log_dir, f"datarec_{yyyymmdd}.log")
