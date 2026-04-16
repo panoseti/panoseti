@@ -258,7 +258,7 @@ def process_redis_keys(
         client_prod: InfluxDBClient,
         client_dev: InfluxDBClient,
         telemetry_mgr: Any | None
-):
+) -> None:
     """
     Main processing logic: Scans keys, routes them, extracts data, and prepares batch writes.
     Opt: Uses r.scan_iter() for non-blocking iteration and writes in batches.
@@ -312,7 +312,7 @@ def process_redis_keys(
         logger.error(f"Unexpected error in process loop: {e}")
 
 
-def main():
+def main() -> None:
     logger.info("storeInfluxDB: Starting Dual-Database Archiver (Optimized)...")
 
     # 1. Initialize the Redis client and Prod/Dev InfluxDB clients

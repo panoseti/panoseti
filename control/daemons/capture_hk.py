@@ -16,6 +16,7 @@ import socket
 import time
 from signal import SIGINT, signal
 from sys import exit
+from typing import Any
 
 import redis
 from capture_hk import metadata_status_monitor_utils as md_utils
@@ -55,7 +56,7 @@ signed = [
     0,0,0,0                     # FWID0 and FWID1
 ]
 
-def get_true_detector_current(raw_detector_current_uA, detector_hv_volts):
+def get_true_detector_current(raw_detector_current_uA: float, detector_hv_volts: float) -> float:
     """The detector current metadata we receive from the quabos has a voltage-dependent offset from the true detector current.
     (See https://github.com/panoseti/panoseti/issues/149 for more details).
 
@@ -68,15 +69,15 @@ def get_true_detector_current(raw_detector_current_uA, detector_hv_volts):
     return true_detector_current
 
 
-def handler(signal_recieved, frame):
+def handler(signal_recieved: Any, frame: Any) -> None:
     print('\nSIGINT or CTRL-C detected. Exiting')
     exit(0)
     
-def getUID(intArr):
+def getUID(intArr: list[int]) -> int:
     return intArr[0] + (intArr[1] << 16) + (intArr[2] << 32) + (intArr[3] << 48)
     
-def storeInRedis(packet, r:redis.Redis):
-    array = []
+def storeInRedis(packet: bytes, r: redis.Redis) -> bool:
+    array: list[int] = []
     startUp = 0
     
     if int.from_bytes(packet[0:1], byteorder='little') != 0x20:
@@ -91,7 +92,7 @@ def storeInRedis(packet, r:redis.Redis):
     #              array[(n - 2) // 2] & 0x00FF, if n is even
     #       (array[(n - 2) // 2] & 0xFF00) >> 8, if n is odd.
     for i, sign in zip(range(2,len(packet), 2), signed, strict=False):
-        array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=sign))
+        array.append(int.from_bytes(packet[i:i+2], byteorder='little', signed=bool(sign)))
 
 
     # See the following docs for the packet format in the housekeeping packet:
@@ -99,7 +100,7 @@ def storeInRedis(packet, r:redis.Redis):
 
     boardName = "QUABO_" + str(array[0])
     
-    redis_set = {
+    redis_set: dict[str, Any] = {
         'Computer_UTC': time.time(),#datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         'BOARDLOC': array[0],
         'HVMON0': HKconv.convertValue('HVMON0', array[1]),
@@ -150,18 +151,22 @@ def storeInRedis(packet, r:redis.Redis):
     ext_10mhz_status = (array[25] & 0x08) >> 3  # 52[3] EXT_10MHz_STATUS
     ext_1pps_status = (array[25] & 0x010) >> 4  # 52[4] EXT_1PPS_STATUS
     redis_set['EXT_10MHz_STATUS'] = ext_10mhz_status
-    redis_set['EXT_1PPS_STATUS'] = ext_1pps_status & ext_10mhz_status  # 1PPs is valid only if 10 MHz is valid
+    redis_set['EXT_1PPS_STATUS'] = ext_10mhz_status & ext_1pps_status  # 1PPs is valid only if 10 MHz is valid
 
     md_utils.write_status("housekeeping", boardName, redis_set)
 
     for x in range(4):
-        true_detector_x_current_uA = get_true_detector_current(redis_set[f'HVIMON{x}'], redis_set[f'HVMON{x}'])
-        redis_set[f'DETR{x}_CURR'] = true_detector_x_current_uA
+        hv_val = redis_set[f'HVMON{x}']
+        im_val = redis_set[f'HVIMON{x}']
+        if hv_val is not None and im_val is not None:
+            true_detector_x_current_uA = get_true_detector_current(float(im_val), float(hv_val))
+            redis_set[f'DETR{x}_CURR'] = true_detector_x_current_uA
 
     for key in redis_set:
-        r.hset(boardName, key, redis_set[key])
+        r.hset(boardName, key, str(redis_set[key]))
+    return True
 
-def initialize():
+def initialize() -> tuple[socket.socket, redis.Redis]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     r = redis_init()
     return sock, r
@@ -170,15 +175,15 @@ def initialize():
     
 signal(SIGINT, handler)
 
-def main():
+def main() -> None:
     sock, r = initialize()
     print('Running')
     sock.bind((HOST,PORT))
     num = 0
     while(True):
-        packet = sock.recvfrom(64)
+        packet, _addr = sock.recvfrom(64)
         num += 1
-        storeInRedis(packet[0], r)
+        storeInRedis(packet, r)
         print(COUNTER.format(num), end='')
 
 if __name__ == "__main__":

@@ -35,13 +35,13 @@ last_signal_state: dict[str, Any] = {}
 
 # ================== HELPERS ==================
 
-def run_cmd(cmd):
+def run_cmd(cmd: str) -> None:
     try:
         subprocess.run(cmd, shell=True, check=True)
     except subprocess.CalledProcessError:
         pass
 
-def local_tz_label():
+def local_tz_label() -> str:
     """Return PST/PDT label based on local system time."""
     is_dst = time.localtime().tm_isdst
     try:
@@ -49,16 +49,16 @@ def local_tz_label():
     except Exception:
         return "LOCAL"
 
-def UT_and_local():
+def UT_and_local() -> str:
     now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     utc = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     return f"{utc} ({local_tz_label()})"
 
-def load_sites():
+def load_sites() -> list[dict[str, Any]]:
     with open(CONFIG_FILE) as f:
         return json.load(f)["sites"]
 
-def http_get_json(url):
+def http_get_json(url: str) -> Any:
     try:
         r = requests.get(url, timeout=6)
         r.raise_for_status()
@@ -66,7 +66,7 @@ def http_get_json(url):
     except Exception:
         return None
 
-def http_get_text(url):
+def http_get_text(url: str) -> str | None:
     try:
         r = requests.get(url, timeout=8, headers={"accept": "text/plain"})
         r.raise_for_status()
@@ -74,10 +74,10 @@ def http_get_text(url):
     except Exception:
         return None
 
-def ensure_dir(path):
+def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
-def detect_changes(site, yyyymmdd, signals):
+def detect_changes(site: str, yyyymmdd: str, signals: dict[str, Any]) -> None:
     global last_signal_state
     prev = last_signal_state.get(site)
     if not prev:
@@ -88,7 +88,7 @@ def detect_changes(site, yyyymmdd, signals):
             log_event(site, yyyymmdd, f"{field}: {prev.get(field)} -> {signals.get(field)}")
     last_signal_state[site] = signals
 
-def log_event(site, yyyymmdd, msg):
+def log_event(site: str, yyyymmdd: str, msg: str) -> None:
     log_dir = os.path.join(SAVE_ROOT, yyyymmdd, site, "dome")
     ensure_dir(log_dir)
     fn = os.path.join(log_dir, "roof_events.log")
@@ -96,14 +96,14 @@ def log_event(site, yyyymmdd, msg):
         f.write(f"{UT_and_local()}  {site}: {msg}\n")
     print(f"[EVENT] {site}: {msg}")
 
-def append_status(site, yyyymmdd, snapshot):
+def append_status(site: str, yyyymmdd: str, snapshot: dict[str, Any]) -> None:
     log_dir = os.path.join(SAVE_ROOT, yyyymmdd, site, "dome")
     ensure_dir(log_dir)
     fn = os.path.join(log_dir, "roof_status.log")
     with open(fn, "a") as f:
         f.write(json.dumps(snapshot) + "\n")
 
-def save_dome_logfile(site, yyyymmdd, text):
+def save_dome_logfile(site: str, yyyymmdd: str, text: str | None) -> None:
     if not text:
         return
     date_fmt = f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:]}"
@@ -114,7 +114,7 @@ def save_dome_logfile(site, yyyymmdd, text):
         f.write(text)
     print(f"[LOGFILE] Saved dome log for {site}")
 
-def copy_to_cylon(name, bundle):
+def copy_to_cylon(name: str, bundle: dict[str, Any]) -> None:
     tmp = f"/tmp/{name}.json"
     ensure_dir("/tmp")
     with open(tmp, "w") as f:
@@ -135,7 +135,7 @@ def copy_to_cylon(name, bundle):
 
 # ================== GATTINI PARSER (IMPROVED) ==================
 
-def get_gattini_dome_status():
+def get_gattini_dome_status() -> dict[str, Any]:
     url = "https://sites.astro.caltech.edu/~mhankins/gattini/data/gattini_status_nf.txt"
     try:
         r = requests.get(url, timeout=7)
@@ -175,7 +175,7 @@ def get_gattini_dome_status():
 
 # ================== MAIN LOOP ==================
 
-def main():
+def main() -> None:
     sites = load_sites()
     print(f"[INFO] Monitoring {len(sites)} domes every {INTERVAL_SECONDS}s.")
 

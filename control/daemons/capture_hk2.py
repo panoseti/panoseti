@@ -45,15 +45,18 @@ signed = [
     1,0,0,0, 0,0,0,0, 0,0, 0,0,0,0
 ]
 
+from typing import Any
+
+
 ##############################################################
-def get_true_detector_current(raw_detector_current_uA, detector_hv_volts):
+def get_true_detector_current(raw_detector_current_uA: float, detector_hv_volts: float) -> float:
     return raw_detector_current_uA - (abs(detector_hv_volts) / 0.499) / 1_000_000
 
-def handler(sig, frame):
+def handler(sig: Any, frame: Any) -> None:
     print('\n? SIGINT or CTRL-C detected. Exiting gracefully.')
     exit(0)
 
-def run_command(cmd, label):
+def run_command(cmd: str, label: str) -> bool:
     """Run a shell command and print status."""
     print(f"   ??  {label}: {cmd}")
     try:
@@ -65,7 +68,7 @@ def run_command(cmd, label):
         print(f"   ??  {label} FAILED.")
         return False
 
-def append_to_daily_log(redis_set, boardName):
+def append_to_daily_log(redis_set: dict[str, Any], boardName: str) -> bool:
     """Append housekeeping record to local daily JSON log."""
     date_str = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
     log_dir = os.path.join(BASE_DIR, date_str, OBSERVATORY, "hk")
@@ -81,7 +84,7 @@ def append_to_daily_log(redis_set, boardName):
         print(f"   ? Failed to write log {log_file}: {e}")
         return False
 
-def send_latest_to_remote(redis_set, boardName):
+def send_latest_to_remote(redis_set: dict[str, Any], boardName: str) -> None:
     """Send latest record to remote 'current' folder."""
     tmpfile = f"/tmp/{boardName}_hk.json"
     try:
@@ -105,7 +108,7 @@ def send_latest_to_remote(redis_set, boardName):
         pass
 
 ##############################################################
-def storeInRedis(packet, r: redis.Redis):
+def storeInRedis(packet: bytes, r: redis.Redis) -> bool:
     """Decode HK packet, store to Redis, log to file, and sync latest."""
     array = []
     startUp = 0
@@ -156,22 +159,26 @@ def storeInRedis(packet, r: redis.Redis):
     }
 
     for x in range(4):
-        redis_set[f'DETR{x}_CURR'] = get_true_detector_current(
-            redis_set[f'HVIMON{x}'], redis_set[f'HVMON{x}'])
+        hv_val = redis_set[f'HVMON{x}']
+        im_val = redis_set[f'HVIMON{x}']
+        if hv_val is not None and im_val is not None:
+            redis_set[f'DETR{x}_CURR'] = get_true_detector_current(
+                float(im_val), float(hv_val))
 
     try:
         md_utils.write_status("housekeeping", boardName, redis_set)
         for key, val in redis_set.items():
-            r.hset(boardName, key, val)
+            r.hset(boardName, key, str(val))
         print(f"   ? Redis update succeeded for {boardName}")
     except Exception as e:
         print(f"   ? Redis update failed: {e}")
 
     append_to_daily_log(redis_set, boardName)
     send_latest_to_remote(redis_set, boardName)
+    return True
 
 ##############################################################
-def initialize():
+def initialize() -> tuple[socket.socket, redis.Redis]:
     print("? Initializing socket and Redis connection...")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     r = redis_init()
@@ -181,15 +188,15 @@ def initialize():
 ##############################################################
 signal(SIGINT, handler)
 
-def main():
+def main() -> None:
     sock, r = initialize()
     print(f"? Running and listening on UDP port {PORT}")
     sock.bind((HOST, PORT))
     num = 0
     while True:
-        packet = sock.recvfrom(64)
+        packet, _addr = sock.recvfrom(64)
         num += 1
-        storeInRedis(packet[0], r)
+        storeInRedis(packet, r)
         print(COUNTER.format(num), end='')
 
 if __name__ == "__main__":

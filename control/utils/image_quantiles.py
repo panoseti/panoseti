@@ -1,25 +1,26 @@
 # read the first N frames of a PFF file.
 # compute the x and 1-x quantiles of the pixels
 
-import pff
+
+from utils import pff
 
 
-def get_values(file, image_size, bytes_per_pixel, nframes=100):
+def get_values(file: str, image_size: int, bytes_per_pixel: int, nframes: int = 100) -> list[int]:
     fin = open(file, "rb")
-    values = []
+    values: list[int] = []
     for _i in range(nframes):
         x = pff.read_json(fin)
         if x is None:
             break
-        x = pff.read_image(fin, image_size, bytes_per_pixel)
-        if x is None:
+        img = pff.read_image(fin, image_size, bytes_per_pixel)
+        if img is None:
             break
         for j in range(image_size*image_size):
-            values.append(x[j])
+            values.append(img[j])
     fin.close()
     return values
 
-def get_quantiles(file, img_size, bytes_per_pixel, x):
+def get_quantiles(file: str, img_size: int, bytes_per_pixel: int, x: float) -> list[int]:
     values = get_values(file, img_size, bytes_per_pixel)
     n = len(values)
     values.sort()

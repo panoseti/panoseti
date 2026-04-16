@@ -117,7 +117,7 @@ def process_once(yyyymmdd: str) -> None:
     print("[datarec] upload complete")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="YYYYMMDD (default: today UTC)")
     ap.add_argument("--once", action="store_true", help="Run once and exit")

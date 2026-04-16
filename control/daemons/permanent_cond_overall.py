@@ -53,11 +53,11 @@ LOCAL_TZ_NAME = "America/Los_Angeles"
 
 
 # ===================== TZ =====================
-def _tz():
+def _tz() -> Any:
     if ZoneInfo is None:
         return UTC
     try:
-        return ZoneInfo(LOCAL_TZ_NAME)  # type: ignore
+        return ZoneInfo(LOCAL_TZ_NAME)
     except Exception:
         return UTC
 

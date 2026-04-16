@@ -269,11 +269,11 @@ def infer_current_target_name(site: SiteConf, tol_arcmin: float, catalog_csv: st
 # ==============================
 # Misc helpers
 # ==============================
-def utc_datestr():
+def utc_datestr() -> str:
     return datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d")
 
 
-def utc_ts_compact():
+def utc_ts_compact() -> str:
     return datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d_%H%M%S")
 
 
@@ -302,17 +302,17 @@ def extract_last_float(s: str) -> float | None:
 
 
 def run_local(argv: list[str]) -> int:
-    return subprocess.run(argv).returncode
+    return int(subprocess.run(argv).returncode)
 
 
 # ==============================
 # PNG lossless recompression
 # ==============================
-def optipng_available():
+def optipng_available() -> bool:
     return shutil.which("optipng") is not None
 
 
-def recompress_png_lossless(png_path, level=OPTIPNG_LEVEL):
+def recompress_png_lossless(png_path: str, level: int = OPTIPNG_LEVEL) -> None:
     if not optipng_available():
         print(f"?? optipng not found, skipping PNG recompression: {png_path}")
         return
@@ -334,7 +334,7 @@ def recompress_png_lossless(png_path, level=OPTIPNG_LEVEL):
         print(f"?? optipng failed for {png_path}: {e}")
 
 
-def convert_fits_to_png(fits_path):
+def convert_fits_to_png(fits_path: str) -> None:
     try:
         with fits.open(fits_path) as hdul:
             data = hdul[0].data
@@ -365,7 +365,7 @@ def convert_fits_to_png(fits_path):
 # ==============================
 # Ekos helpers (remote via ssh)
 # ==============================
-def ekos_get_guide_status(site: SiteConf):
+def ekos_get_guide_status(site: SiteConf) -> tuple[int | None, str]:
     cmd = (
         "qdbus org.kde.kstars /KStars/Ekos/Guide "
         "org.freedesktop.DBus.Properties.Get org.kde.kstars.Ekos.Guide status"
@@ -375,7 +375,7 @@ def ekos_get_guide_status(site: SiteConf):
     return st, out
 
 
-def ekos_guide_suspend(site: SiteConf):
+def ekos_guide_suspend(site: SiteConf) -> str:
     cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.suspend"
     return run_ssh(site, cmd)
 
@@ -403,7 +403,7 @@ def ekos_mount_tracking_and_ha_hours(site: SiteConf) -> tuple[bool | None, float
     return tracking, ha_hours
 
 
-def remote_find_newest_fits_with_mtime(site: SiteConf):
+def remote_find_newest_fits_with_mtime(site: SiteConf) -> tuple[float | None, str, str]:
     cmd = (
         f'find {REMOTE_DIR} -type f -name "*.fit*" '
         '-printf "%T@ %p\\n" | sort -nr | head -n 1'
@@ -425,7 +425,7 @@ def remote_find_newest_fits_with_mtime(site: SiteConf):
     return mtime, path, ""
 
 
-def wait_for_new_fits(site: SiteConf, site_name: str, baseline_mtime, max_wait_seconds):
+def wait_for_new_fits(site: SiteConf, site_name: str, baseline_mtime: float | None, max_wait_seconds: float) -> tuple[float | None, str]:
     poll_interval = 1.0
     deadline = time.time() + max_wait_seconds
     last_seen = LAST_EKOS_REMOTE.get(site_name)
@@ -471,7 +471,7 @@ def run_align_sync_goto_and_restart_guiding(site_name: str, target_name: str) ->
     return rc
 
 
-def maybe_align_winter(site: SiteConf, iteration_idx: int, do_align: bool):
+def maybe_align_winter(site: SiteConf, iteration_idx: int, do_align: bool) -> None:
     if not do_align:
         return
     if site_norm(site.name) != "winter":
@@ -526,7 +526,7 @@ def maybe_align_winter(site: SiteConf, iteration_idx: int, do_align: bool):
 # ==============================
 # Ekos capture
 # ==============================
-def capture_ekos_once(site: SiteConf, iteration_idx: int, do_align: bool):
+def capture_ekos_once(site: SiteConf, iteration_idx: int, do_align: bool) -> None:
     name = site.name
     print(f"? [{name}] Capturing via Ekos (baseline->capture->poll->download) ...")
 
@@ -631,7 +631,7 @@ def phd2_running(site: SiteConf) -> bool:
         return False
 
 
-def capture_phd2_once(site: SiteConf):
+def capture_phd2_once(site: SiteConf) -> None:
     print(f"? [{site.name}] Capturing via PHD2 ...")
     try:
         cmd = "echo '{\"method\":\"get_star_image\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 5 localhost 4400"
@@ -671,7 +671,7 @@ def capture_phd2_once(site: SiteConf):
 # ==============================
 # Main / CLI
 # ==============================
-def parse_args():
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Capture guider images periodically from remote sites (ssh/scp).")
     p.add_argument("--use-phd2", action="store_true",
                    help="Use PHD2 get_star_image if PHD2 is running remotely; otherwise fall back to Ekos.")
@@ -687,7 +687,7 @@ def parse_args():
     return p.parse_args()
 
 
-def main():
+def main() -> None:
     global TARGET_CATALOG_CSV, INFER_TARGET_TOL_ARCMIN
 
     args = parse_args()

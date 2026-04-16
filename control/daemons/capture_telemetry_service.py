@@ -58,7 +58,7 @@ def _build_config() -> PanosetiServerConfig:
     return cfg
 
 
-def main():
+def main() -> None:
     cfg = _build_config()
     try:
         asyncio.run(PanosetiServer.run(cfg))

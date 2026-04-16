@@ -4,6 +4,7 @@ import json
 import os
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,7 +20,7 @@ LOOP_INTERVAL_MIN = 1
 LOCAL_BASE = "/mnt/data11/data/palomar/L0"
 # ----------------------------------------
 
-def load_sites(config_file):
+def load_sites(config_file: str) -> list[dict[str, Any]]:
     """Read sites.conf and return list of dicts."""
     sites = []
     with open(config_file) as f:
@@ -40,7 +41,7 @@ def load_sites(config_file):
             })
     return sites
 
-def convert_fits_to_png(fits_path):
+def convert_fits_to_png(fits_path: str) -> None:
     try:
         with fits.open(fits_path) as hdul:
             data = hdul[0].data
@@ -57,14 +58,14 @@ def convert_fits_to_png(fits_path):
     except Exception as e:
         print(f"? FITS conversion failed: {e}")
 
-def ssh_connect(site):
+def ssh_connect(site: dict[str, Any]) -> paramiko.SSHClient:
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(site["host"], port=site["port"], username=site["user"],
                 password=site["password"], timeout=5)
     return ssh
 
-def phd2_running_via_ssh(site):
+def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
@@ -75,7 +76,7 @@ def phd2_running_via_ssh(site):
     except Exception:
         return False
 
-def capture_phd2_once(site):
+def capture_phd2_once(site: dict[str, Any]) -> None:
     print(f"? [{site['name']}] Capturing via PHD2 ...")
     try:
         ssh = ssh_connect(site)
@@ -108,7 +109,7 @@ def capture_phd2_once(site):
     except Exception as e:
         print(f"? [{site['name']}] PHD2 capture failed: {e}")
 
-def capture_ekos_once(site):
+def capture_ekos_once(site: dict[str, Any]) -> None:
     print(f"? [{site['name']}] Capturing via Ekos ...")
     try:
         ssh = ssh_connect(site)
@@ -137,7 +138,7 @@ def capture_ekos_once(site):
     except Exception as e:
         print(f"? [{site['name']}] Ekos capture failed: {e}")
 
-def main():
+def main() -> None:
     sites = load_sites(CONFIG_FILE)
     print(f"? Active sites: {[s['name'] for s in sites]}")
     while True:

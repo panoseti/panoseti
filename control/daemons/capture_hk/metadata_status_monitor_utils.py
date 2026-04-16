@@ -20,7 +20,7 @@ status_map = {
 status_history: dict[str, Any] = dict()
 
 
-def write_status(datatype, redis_key, metadata_dict):
+def write_status(datatype: str, redis_key: str, metadata_dict: dict[str, Any]) -> None:
     """
     Get the current status redis_key then write it into metadata_dict.
     """
@@ -31,7 +31,7 @@ def write_status(datatype, redis_key, metadata_dict):
     metadata_dict['AGG_STATUS_LEVEL'] = status[1]
 
 
-def get_status(datatype, metadata_dict):
+def get_status(datatype: str, metadata_dict: dict[str, Any]) -> tuple[str, int]:
     """
     This creates a log message for the Grafana webpage to report statuses
     an operator should address while monitoring an observing run.

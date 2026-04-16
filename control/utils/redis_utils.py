@@ -12,7 +12,7 @@ def redis_init() -> redis.Redis:
     return redis.Redis(host='localhost', port=6379, db=0)
 
 
-def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict):
+def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict) -> None:
     """
     Writes every field from rkey_fields into the hashset stored at rkey
     in the Redis database represented by the object r.

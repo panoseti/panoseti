@@ -1,8 +1,9 @@
 import json
 import socket
+from typing import Any
 
 
-def send_fixed_packet(sock, data_dict, packet_size=1024):
+def send_fixed_packet(sock: socket.socket, data_dict: dict[str, Any], packet_size: int = 1024) -> None:
     """
     Serializes a dictionary, pads it to a fixed size, and sends it over a socket.
 
@@ -32,7 +33,7 @@ def send_fixed_packet(sock, data_dict, packet_size=1024):
     print(f"Sent a fixed-size packet of {len(padded_data)} bytes.")
 
 
-def recv_fixed_packet(sock, packet_size=1024):
+def recv_fixed_packet(sock: socket.socket, packet_size: int = 1024) -> dict[str, Any]:
     """
     Receives a fixed-size packet from a socket and deserializes it into a dictionary.
 

@@ -482,7 +482,7 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
 
             for j in range(4):
                 for k in range(64):
-                    [x, y] = pixel_coords.detector_to_quabo(k, j, is_qfp)
+                    [x, y] = pixel_coords.detector_to_quabo(k, j, bool(is_qfp))
                     delta = quabo_calib['pixel_gain'][x][y]
                     g = int(round(gain*(1+delta)))
                     maroc_gain[k][j] = g
@@ -571,26 +571,27 @@ def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], n
     if do_log:
         logger = logging.getLogger('PANOSETI.Config.do_mask_config')
     qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
+    qc_dict_int: dict[str, int] = {}
     do_ph = 'pulse_height' in data_config.keys()
-    qc_dict['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
+    qc_dict_int['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
-        qc_dict['CHANMASK_'+str(i)] = int(qc_dict['CHANMASK_'+str(i)], 16)
+        qc_dict_int['CHANMASK_'+str(i)] = int(qc_dict['CHANMASK_'+str(i)], 16)
     if do_ph:
         # config CHANMASK_8 for any_trigger
         if 'any_trigger' in data_config['pulse_height']:
-            qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] & 0x0ff
+            qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] & 0x0ff
         else:
-            qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | (0x100)
+            qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | (0x100)
         
         # config GOEMASK for 2/3 pixel_trigger
         if 'three_pixel_trigger' in data_config['pulse_height']:
             if data_config['pulse_height']['three_pixel_trigger']:
-                qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
-                qc_dict['GOEMASK'] = qc_dict['GOEMASK'] & 0x1
+                qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
+                qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x1
         if 'two_pixel_trigger' in data_config['pulse_height']:
             if data_config['pulse_height']['two_pixel_trigger']:
-                qc_dict['CHANMASK_8'] = qc_dict['CHANMASK_8'] | 0xff
-                qc_dict['GOEMASK'] = qc_dict['GOEMASK'] & 0x2
+                qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
+                qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x2
 
     for module in modules:
         for i in range(4):
@@ -600,7 +601,7 @@ def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], n
             ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
             for tag in ['CHANMASK_8', 'GOEMASK']:
                 if verbose:
-                    print(f'{ip_addr}: {tag} = 0x{qc_dict[tag]:x}')
+                    print(f'{ip_addr}: {tag} = 0x{qc_dict_int[tag]:x}')
             # send MASK params to the quabo
             ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
             real_ip = ip_ports['ip_addr']
@@ -610,12 +611,12 @@ def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], n
                 logger.info(f'Real IP: {real_ip}')
                 logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            quabo.send_trigger_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
+            quabo.send_trigger_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
             if write_config:
-                quabo.write_trigger_mask_config(qc_dict, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
-            quabo.send_goe_mask(qc_dict, do_flush_rx_buf=do_flush_rx_buf)
+                quabo.write_trigger_mask_config(qc_dict_int, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
+            quabo.send_goe_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
             if write_config:
-                quabo.write_goe_mask_config(qc_dict, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
+                quabo.write_goe_mask_config(qc_dict_int, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
 
 # compute PH baselines on quabos and write to file

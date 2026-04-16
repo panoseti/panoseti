@@ -4,6 +4,7 @@ import datetime
 import json
 import os
 import time
+from typing import Any
 
 import redis
 import requests
@@ -21,7 +22,7 @@ REMOTE_WEATHER_DIR2 = "/web/panoseti-palomar/current"
 BANDWIDTH_LIMIT = 40000  # kbit/s
 
 
-def deg_to_dir(deg):
+def deg_to_dir(deg: float) -> str:
     """Convert numeric wind direction (degrees) to compass label."""
     directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                   "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
@@ -32,7 +33,7 @@ def deg_to_dir(deg):
         return "N/A"
 
 
-def get_weather():
+def get_weather() -> dict[str, Any] | None:
     """Fetch current WINTER weather data from Palomar server."""
     try:
         r = requests.get(URL, timeout=5)
@@ -49,7 +50,7 @@ def get_weather():
     w = data["winter"]
 
     # Parse values safely
-    def safe_float(x):
+    def safe_float(x: Any) -> float | None:
         try:
             return float(x)
         except Exception:
@@ -81,7 +82,7 @@ def get_weather():
     return weather
 
 
-def save_to_redis(weather):
+def save_to_redis(weather: dict[str, Any]) -> None:
     """Store weather hash in Redis."""
     try:
         r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
@@ -91,7 +92,7 @@ def save_to_redis(weather):
         print(f"? Redis error: {e}")
 
 
-def write_log(weather):
+def write_log(weather: dict[str, Any]) -> None:
     """Append weather data to a daily log file with header if new."""
     # Create directory /mnt/data11/data/palomar/L0/YYYYMMDD/weather
     utc_date = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y%m%d")
@@ -135,7 +136,7 @@ def write_log(weather):
     with open(log_file, "a") as f:
         f.write(line)
 
-def copy_weather_to_cylon(weather):
+def copy_weather_to_cylon(weather: dict[str, Any]) -> None:
     """Write latest weather to weather_current.json and transfer to cylon."""
     tmp = "/tmp/weather_current.json"
     try:
@@ -155,7 +156,7 @@ def copy_weather_to_cylon(weather):
         print(f"? Failed to upload weather_current.json: {e}")
 
 
-def main(interval):
+def main(interval: int) -> None:
     print(f"Starting Palomar weather capture every {interval}s...")
     while True:
         weather = get_weather()

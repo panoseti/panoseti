@@ -40,7 +40,7 @@ LAST_EKOS_REMOTE: dict[str, Any] = {}
   # site_name -> remote_path
 
 
-def load_sites(config_file):
+def load_sites(config_file: str) -> list[dict[str, Any]]:
     """Read sites.conf and return list of dicts: name, host, user, password, port."""
     sites = []
     with open(config_file) as f:
@@ -62,7 +62,7 @@ def load_sites(config_file):
     return sites
 
 
-def ssh_connect(site):
+def ssh_connect(site: dict[str, Any]) -> paramiko.SSHClient:
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(
@@ -75,7 +75,7 @@ def ssh_connect(site):
     return ssh
 
 
-def ssh_exec(ssh, cmd, timeout=None):
+def ssh_exec(ssh: paramiko.SSHClient, cmd: str, timeout: float | None = None) -> tuple[str, str]:
     """Execute remote command, return (stdout, stderr) strings."""
     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode(errors="replace").strip()
@@ -86,12 +86,12 @@ def ssh_exec(ssh, cmd, timeout=None):
 # ==============================
 # PNG lossless recompression
 # ==============================
-def optipng_available():
+def optipng_available() -> bool:
     """Return True if optipng is available in PATH on THIS machine (local)."""
     return shutil.which("optipng") is not None
 
 
-def recompress_png_lossless(png_path, level=OPTIPNG_LEVEL):
+def recompress_png_lossless(png_path: str, level: int = OPTIPNG_LEVEL) -> None:
     """Losslessly recompress a PNG in-place using optipng."""
     if not optipng_available():
         print(f"?? optipng not found, skipping PNG recompression: {png_path}")
@@ -117,7 +117,7 @@ def recompress_png_lossless(png_path, level=OPTIPNG_LEVEL):
         print(f"?? optipng failed for {png_path}: {e}")
 
 
-def convert_fits_to_png(fits_path):
+def convert_fits_to_png(fits_path: str) -> None:
     """Convert FITS to PNG and then losslessly recompress PNG (optipng)."""
     try:
         with fits.open(fits_path) as hdul:
@@ -149,7 +149,7 @@ def convert_fits_to_png(fits_path):
 # ==============================
 # Ekos Guide status / control
 # ==============================
-def ekos_get_guide_status(ssh):
+def ekos_get_guide_status(ssh: paramiko.SSHClient) -> tuple[int | None, str, str]:
     """
     Return (status_int_or_None, raw_stdout, raw_stderr).
 
@@ -173,12 +173,12 @@ def ekos_get_guide_status(ssh):
     return status, out, err
 
 
-def ekos_guide_suspend(ssh):
+def ekos_guide_suspend(ssh: paramiko.SSHClient) -> tuple[str, str]:
     cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.suspend"
     return ssh_exec(ssh, cmd)
 
 
-def ekos_guide_resume(ssh):
+def ekos_guide_resume(ssh: paramiko.SSHClient) -> tuple[str, str]:
     cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.resume"
     return ssh_exec(ssh, cmd)
 
@@ -186,7 +186,7 @@ def ekos_guide_resume(ssh):
 # ==============================
 # OPTIONAL: mount tracking + HA checks (best-effort, skip if unknown)
 # ==============================
-def _extract_last_number(s):
+def _extract_last_number(s: str) -> float | None:
     nums = re.findall(r"-?\d+(?:\.\d+)?", s or "")
     if not nums:
         return None
@@ -196,7 +196,7 @@ def _extract_last_number(s):
         return None
 
 
-def _parse_ha_to_hours(ha_str):
+def _parse_ha_to_hours(ha_str: str | None) -> float | None:
     """
     Parse HA into hours. Accepts:
       - float-like ("-0.62")
@@ -238,7 +238,7 @@ def _parse_ha_to_hours(ha_str):
     return None
 
 
-def ekos_mount_is_tracking_and_ha_hours(ssh):
+def ekos_mount_is_tracking_and_ha_hours(ssh: paramiko.SSHClient) -> tuple[bool | None, float | None]:
     """
     Best-effort retrieval of:
       - tracking state (bool or None)
@@ -290,7 +290,7 @@ def ekos_mount_is_tracking_and_ha_hours(ssh):
 # ==============================
 # PHD2 helpers (optional)
 # ==============================
-def phd2_running_via_ssh(site):
+def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
@@ -301,7 +301,7 @@ def phd2_running_via_ssh(site):
         return False
 
 
-def capture_phd2_once(site):
+def capture_phd2_once(site: dict[str, Any]) -> None:
     print(f"? [{site['name']}] Capturing via PHD2 ...")
     try:
         ssh = ssh_connect(site)
@@ -345,7 +345,7 @@ def capture_phd2_once(site):
 # ==============================
 # Robust Ekos FITS detection
 # ==============================
-def remote_find_newest_fits_with_mtime(ssh):
+def remote_find_newest_fits_with_mtime(ssh: paramiko.SSHClient) -> tuple[float | None, str, str]:
     """
     Return (mtime_float_or_None, path_or_empty, stderr).
     Uses recursive search under REMOTE_DIR.
@@ -372,7 +372,7 @@ def remote_find_newest_fits_with_mtime(ssh):
     return mtime, path, err
 
 
-def wait_for_new_fits(ssh, site_name, baseline_mtime, max_wait_seconds):
+def wait_for_new_fits(ssh: paramiko.SSHClient, site_name: str, baseline_mtime: float | None, max_wait_seconds: float) -> tuple[float | None, str]:
     """
     Poll until we see a FITS with mtime strictly greater than baseline_mtime,
     and not equal to the last downloaded path for this site (extra safety).
@@ -409,7 +409,7 @@ def wait_for_new_fits(ssh, site_name, baseline_mtime, max_wait_seconds):
 # ==============================
 # OPTIONAL: Align (capture & solve with "Slew to Target")  [PATCHED]
 # ==============================
-def _get_align_status_int(ssh):
+def _get_align_status_int(ssh: paramiko.SSHClient) -> tuple[int | None, str, str]:
     """
     Return (status_int_or_None, raw_stdout, raw_stderr) for Ekos Align.status
     """
@@ -430,7 +430,7 @@ def _get_align_status_int(ssh):
     return status, out, err
 
 
-def wait_for_align_done(ssh, site_name, max_wait_seconds):
+def wait_for_align_done(ssh: paramiko.SSHClient, site_name: str, max_wait_seconds: float) -> bool:
     """
     Wait until Align is no longer busy.
     We treat status==0 as "idle/done". We don't rely on exact enum mappings.
@@ -467,7 +467,7 @@ def wait_for_align_done(ssh, site_name, max_wait_seconds):
     return False
 
 
-def maybe_align_winter(ssh, site_name, iteration_idx, do_align):
+def maybe_align_winter(ssh: paramiko.SSHClient, site_name: str, iteration_idx: int, do_align: bool) -> None:
     """
     Called immediately AFTER guiding is suspended.
     Performs Align (captureAndSolve) ONLY IF:
@@ -533,7 +533,7 @@ def maybe_align_winter(ssh, site_name, iteration_idx, do_align):
 # ==============================
 # Ekos capture (default, robust)
 # ==============================
-def capture_ekos_once(site, iteration_idx, do_align):
+def capture_ekos_once(site: dict[str, Any], iteration_idx: int, do_align: bool) -> None:
     print(f"? [{site['name']}] Capturing via Ekos (robust: baseline->capture->poll->download) ...")
     ssh = None
 
@@ -653,7 +653,7 @@ def capture_ekos_once(site, iteration_idx, do_align):
 # ==============================
 # Main loop / CLI
 # ==============================
-def parse_args():
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Capture guider images periodically from remote sites. Ekos by default; optional PHD2."
     )
@@ -670,7 +670,7 @@ def parse_args():
     return p.parse_args()
 
 
-def main():
+def main() -> None:
     args = parse_args()
     sites = load_sites(CONFIG_FILE)
 

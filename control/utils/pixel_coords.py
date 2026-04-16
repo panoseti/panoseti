@@ -1,12 +1,12 @@
 # pixel coordinate conversions
 
-def detector_to_quabo(offset, quadrant, is_qfp):
+def detector_to_quabo(offset: int, quadrant: int, is_qfp: bool) -> list[int]:
     if is_qfp:
         return detector_to_quabo_qfp[offset][quadrant]
     else:
         return detector_to_quabo_bga[offset][quadrant]
 
-def quabo_to_detector(x, y, is_qfp):
+def quabo_to_detector(x: int, y: int, is_qfp: bool) -> list[int]:
     if is_qfp:
         return quabo_to_detector_qfp[x][y]
     else:

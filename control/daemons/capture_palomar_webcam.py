@@ -18,21 +18,21 @@ REMOTE_DIR2 = "/web/panoseti-palomar/current"    # Used only for chmod
 BANDWIDTH_LIMIT = 40000        # kbit/s scp limit
 # ----------------------------------------
 
-def run_cmd(cmd):
+def run_cmd(cmd: str) -> None:
     """Run a shell command and show if error occurs."""
     try:
         subprocess.run(cmd, shell=True, check=True)
     except subprocess.CalledProcessError:
         print(f"[!] Command failed: {cmd}")
 
-def make_save_dir():
+def make_save_dir() -> str:
     """Return today's (UTC) save directory and create it if missing."""
     utc_date = datetime.now(UTC).strftime("%Y%m%d")
     save_dir = os.path.join(BASE_DIR, utc_date, "allsky")
     os.makedirs(save_dir, exist_ok=True)
     return save_dir
 
-def download_image(save_dir):
+def download_image(save_dir: str) -> None:
     """Download the All-Sky image and save it with a UTC timestamp."""
     try:
         r = requests.get(IMAGE_URL, timeout=10)
@@ -52,7 +52,7 @@ def download_image(save_dir):
     except Exception as e:
         print(f"[!] Error downloading image: {e}")
 
-def upload_latest_to_cylon(local_path):
+def upload_latest_to_cylon(local_path: str) -> None:
     """Copy latest All-Sky image to cylon as allsky_current.jpg."""
     tmp = "/tmp/allsky_current.jpg"
     try:
@@ -70,7 +70,7 @@ def upload_latest_to_cylon(local_path):
     except Exception as e:
         print(f"[!] Failed to upload to cylon: {e}")
 
-def main():
+def main() -> None:
     print(f"Fetching All-Sky images every {INTERVAL} seconds (UTC timestamps).")
     print("Press Ctrl-C to stop.")
     while True:

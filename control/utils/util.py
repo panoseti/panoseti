@@ -15,7 +15,7 @@ import signal
 import socket
 import subprocess
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import psutil
 
@@ -123,7 +123,7 @@ def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
         logger.addHandler(shandler)
 
 
-def daq_grpc_endpoint(node: Dict[str, Any]) -> Tuple[str, int]:
+def daq_grpc_endpoint(node: dict[str, Any]) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.
     Reads port_forwarding from the node dict (attached by attach_daq_config).
     Falls back to direct connection on port 50051.
@@ -134,9 +134,9 @@ def daq_grpc_endpoint(node: Dict[str, Any]) -> Tuple[str, int]:
     return str(node['ip_addr']), 50051
 
 
-def local_ip() -> List[str]:
+def local_ip() -> list[str]:
     """our IP address on local network (192.x.x.x)"""
-    ips: List[str] = []
+    ips: list[str] = []
     # psutil.net_if_addrs() returns a dictionary of interfaces and their addresses
     for _interface, snics in psutil.net_if_addrs().items():
         for snic in snics:
@@ -178,7 +178,7 @@ def ping(ip_addr: str, cmd_port: int) -> bool:
 
 
 def mac_addr_str(b: bytes) -> str:
-    s: List[str] = ['']*6
+    s: list[str] = ['']*6
     for i in range(6):
         s[i] = hex(b[i])[2:]
     return ':'.join(s)
@@ -195,7 +195,7 @@ def print_binary(data: bytes) -> None:
 
 # get the UID of quabo i in a given module
 #
-def quabo_uid(module: Dict[str, Any], quabo_uids: Dict[str, Any], i: int) -> str:
+def quabo_uid(module: dict[str, Any], quabo_uids: dict[str, Any], i: int) -> str:
     for dome in quabo_uids['domes']:
         for m in dome['modules']:
             if m['ip_addr'] == module['ip_addr']:
@@ -206,7 +206,7 @@ def quabo_uid(module: Dict[str, Any], quabo_uids: Dict[str, Any], i: int) -> str
 
 # see if quabo is alive by seeing if we got its UID
 #
-def is_quabo_alive(module: Dict[str, Any], quabo_uids: Dict[str, Any], i: int) -> bool:
+def is_quabo_alive(module: dict[str, Any], quabo_uids: dict[str, Any], i: int) -> bool:
     return quabo_uid(module, quabo_uids, i) != ''
 
 
@@ -220,7 +220,7 @@ def is_quabo_old_version(module, i):
         v = v[i]
     return v == 'qfp'
 '''
-def is_quabo_old_version(module: Dict[str, Any], i: int, quabo_uids: Dict[str, Any], quabo_info: Dict[str, Any]) -> bool | None:
+def is_quabo_old_version(module: dict[str, Any], i: int, quabo_uids: dict[str, Any], quabo_info: dict[str, Any]) -> bool | None:
     domes = quabo_uids['domes']
     uid = ""
     for dome in domes:
@@ -281,14 +281,14 @@ def _show_daemon(prog: str) -> None:
         print(f'{prog} is not running')
 
 
-def _are_daemons_running(progs: List[str]) -> bool:
+def _are_daemons_running(progs: list[str]) -> bool:
     for prog in progs:
         if not is_script_running(prog):
             return False
     return True
 
 
-def _safe_get_daemons_config() -> Dict[str, Any]:
+def _safe_get_daemons_config() -> dict[str, Any]:
     # Handle "util.py copied to daq nodes" case (config_file may not exist).
     try:
         return config_file.get_daemons_config()
@@ -296,7 +296,7 @@ def _safe_get_daemons_config() -> Dict[str, Any]:
         return {}
 
 
-def get_daemons() -> List[str]:
+def get_daemons() -> list[str]:
     """
     Return the capture daemon list built from daemons.json, without mutating globals.
 
@@ -304,9 +304,9 @@ def get_daemons() -> List[str]:
     - Adds daemons/capture_<k>.py for enabled items in daemons_config['daemons'].
     """
     daemons_config = _safe_get_daemons_config()
-    enabled: Dict[str, Any] = daemons_config.get('daemons', {})
+    enabled: dict[str, Any] = daemons_config.get('daemons', {})
 
-    lst: List[str] = list(redis_daemons)  # copy base list; do NOT mutate global
+    lst: list[str] = list(redis_daemons)  # copy base list; do NOT mutate global
     for k, v in enabled.items():
         if v:
             lst.append(f'daemons/capture_{k}.py')
@@ -338,11 +338,11 @@ def are_redis_daemons_running() -> bool:
 # Convention: daemons/permanent_<name>.py enabled by daemons.json key "permanent_daemons"
 # Also includes daemons/storeInfluxDB.py by default (so it can run with permanent services).
 
-def get_permanent_daemons() -> List[str]:
+def get_permanent_daemons() -> list[str]:
     daemons_config = _safe_get_daemons_config()
-    enabled: Dict[str, Any] = daemons_config.get('permanent_daemons', {})
+    enabled: dict[str, Any] = daemons_config.get('permanent_daemons', {})
 
-    lst: List[str] = ['daemons/storeInfluxDB.py']
+    lst: list[str] = ['daemons/storeInfluxDB.py']
     for k, v in enabled.items():
         if v:
             lst.append(f'daemons/permanent_{k}.py')
@@ -368,7 +368,7 @@ def are_permanent_daemons_running() -> bool:
     return _are_daemons_running(get_permanent_daemons())
 
 
-def start_hk_recorder(daq_config: Dict[str, Any], run_name: str) -> None:
+def start_hk_recorder(daq_config: dict[str, Any], run_name: str) -> None:
     path = '{}/{}/{}'.format(daq_config['head_node_data_dir'], run_name, hk_file_name)
     try:
         subprocess.Popen([hk_recorder_name, path])
@@ -402,7 +402,7 @@ def start_module_temp_monitor() -> None:
 
 
 # write run name to a file, and symlink 'run' to the run dir
-def write_run_name(daq_config: Dict[str, Any], run_name: str) -> None:
+def write_run_name(daq_config: dict[str, Any], run_name: str) -> None:
     with open(run_name_file, 'w') as f:
         f.write(run_name)
     if os.path.lexists(run_symlink):
@@ -542,7 +542,7 @@ def free_space(path: str) -> int:
 
 
 # estimate bytes per second per module for a given data config
-def daq_bytes_per_sec_per_module(data_config: Dict[str, Any]) -> float:
+def daq_bytes_per_sec_per_module(data_config: dict[str, Any]) -> float:
     img_json_header_size = 600
     ph_json_header_size = 150
     x = 0.0
@@ -565,7 +565,7 @@ def daq_bytes_per_sec_per_module(data_config: Dict[str, Any]) -> float:
     return x
 
 
-def get_daq_node_status(node: Dict[str, Any]) -> Dict[str, Any]:
+def get_daq_node_status(node: dict[str, Any]) -> dict[str, Any]:
     # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
         '{}@{}'.format(node['username'], node['ip_addr']),
@@ -588,7 +588,7 @@ def daq_get_run_name() -> str | None:
 
 #-------------- WR and GPS---------------
 
-def get_wr_ip_addr(obs_config: Dict[str, Any]) -> str:
+def get_wr_ip_addr(obs_config: dict[str, Any]) -> str:
     if 'wr_ip_addr' in obs_config.keys():
         return str(obs_config['wr_ip_addr'])
     else:
@@ -597,7 +597,7 @@ def get_wr_ip_addr(obs_config: Dict[str, Any]) -> str:
 
 # get GPS receiver port (path of the tty)
 #
-def get_gps_port(obs_config: Dict[str, Any]) -> str:
+def get_gps_port(obs_config: dict[str, Any]) -> str:
     if 'gps_port' in obs_config.keys():
         return str(obs_config['gps_port'])
     else:
@@ -609,8 +609,8 @@ def get_gps_port(obs_config: Dict[str, Any]) -> str:
 #
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
-def get_quabo_ip_port(ip_addr: str, i: int, network_config: Dict[str, Any]) -> Dict[str, Any]:
-    ip_ports: Dict[str, Any] = {}
+def get_quabo_ip_port(ip_addr: str, i: int, network_config: dict[str, Any]) -> dict[str, Any]:
+    ip_ports: dict[str, Any] = {}
     x = ip_addr.split('.')
     x[3] = str(int(x[3])+i)
     quabo_ip =  '.'.join(x)
@@ -632,7 +632,7 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: Dict[str, Any]) -> D
 
 
 # attach port forwarding info to daq config based on network_config
-def attach_daq_config(daq_config: Dict[str, Any], network_config: Dict[str, Any]) -> None:
+def attach_daq_config(daq_config: dict[str, Any], network_config: dict[str, Any]) -> None:
     for i in range(len(daq_config['daq_nodes'])):
         daq = daq_config['daq_nodes'][i]
         for pdaq in network_config['daq_nodes']:
@@ -641,9 +641,9 @@ def attach_daq_config(daq_config: Dict[str, Any], network_config: Dict[str, Any]
 
 
 # get the valid IPs
-def get_valid_ip(obs_config: Dict[str, Any]) -> List[str]:
+def get_valid_ip(obs_config: dict[str, Any]) -> list[str]:
     logger = logging.getLogger('PANOSETI.Config.util.get_valid_ip')
-    ips: List[str] = []
+    ips: list[str] = []
     for dome in obs_config['domes']:
         for m in dome['modules']:
             ip = m['ip_addr']
@@ -658,7 +658,7 @@ def get_valid_ip(obs_config: Dict[str, Any]) -> List[str]:
 
 # convert IP format to 192.168.xx.xxx
 #
-def convert_ip(ip: str) -> Tuple[str, int]:
+def convert_ip(ip: str) -> tuple[str, int]:
     try:
         qid = int(ip)
         return f"192.168.{qid>>8}.{qid&0xfc}", qid&0x3

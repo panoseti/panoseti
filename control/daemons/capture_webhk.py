@@ -85,7 +85,7 @@ def rfc3339_to_ns(ts: str) -> int:
     return int(dt.timestamp() * 1e9)
 
 
-def parse_time_to_ns(t) -> int:
+def parse_time_to_ns(t: Any) -> int:
     """Accept int/float epoch (ns) or RFC3339 string; return epoch ns."""
     if isinstance(t, int):
         return t
@@ -99,7 +99,7 @@ def parse_time_to_ns(t) -> int:
     raise ValueError(f"Unsupported time type: {type(t)} ({t!r})")
 
 
-def latest_point(client: InfluxDBClient, measurement: str):
+def latest_point(client: InfluxDBClient, measurement: str) -> dict[str, Any] | None:
     field_list = ", ".join([f'"{f}"' for f in FIELDS])
     q = f'SELECT {field_list} FROM "{measurement}" ORDER BY time DESC LIMIT 1'
     res = client.query(q)
@@ -133,7 +133,7 @@ def upload_json_to_cylon(local_json_path: str) -> None:
     print("? Updated quabo_hvtemps_latest.json on cylon")
 
 
-def main():
+def main() -> None:
     client = InfluxDBClient(
         host=INFLUX_HOST,
         port=INFLUX_PORT,
@@ -249,6 +249,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-

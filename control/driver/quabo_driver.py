@@ -20,6 +20,7 @@ import json
 import logging
 import socket
 import time
+from typing import Any
 
 from utils import util
 
@@ -38,7 +39,7 @@ ACQ_NO_BASELINE_SUBTRACT = 0x10
 
 QUABO_CONFIG = 'quabo_config'
 class DAQ_PARAMS:
-    def __init__(self, do_image, image_us, image_8bit, do_ph, bl_subtract, do_any_trigger=False, do_group_ph_frames=False):
+    def __init__(self, do_image: bool, image_us: int, image_8bit: bool, do_ph: bool, bl_subtract: bool, do_any_trigger: bool = False, do_group_ph_frames: bool = False) -> None:
         self.do_image = do_image
         self.image_us = image_us
         self.image_8bit = image_8bit
@@ -48,38 +49,40 @@ class DAQ_PARAMS:
         self.do_group_ph_frames = do_group_ph_frames
         self.do_flash = False
         self.do_stim = False
+        self.flash_rate: int = 0
+        self.flash_level: int = 0
+        self.flash_width: int = 0
+        self.stim_rate: int = 0
+        self.stim_level: int = 0
 
-    def set_flash_params(self, rate, level, width):
+    def set_flash_params(self, rate: int, level: int, width: int) -> None:
         self.do_flash = True
         self.flash_rate = rate
         self.flash_level = level
         self.flash_width = width
     
-    def set_stim_params(self, rate, level):
+    def set_stim_params(self, rate: int, level: int) -> None:
         self.do_stim = True
         self.stim_rate = rate
         self.stim_level = level
-# currently each QUABO object has its own sockets,
-# which means you can only have one at a time.
-# will probably need to change this at some point
 
 class QUABO:
-    def __init__(self, ip_addr, port=UDP_CMD_PORT, config_file_path='quabo_config.txt', logfile='logs/quabo_driver.log'):
+    def __init__(self, ip_addr: str, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt', logfile: str = 'logs/quabo_driver.log') -> None:
         self.ip_addr = ip_addr
-        self.port=port
+        self.port = port
         self.config_file_path = config_file_path
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
-        #self.sock.bind(("", UDP_CMD_PORT))
         self.have_hk_sock = False
+        self.hk_sock: socket.socket | None = None
 
         self.shutter_open = 0
         self.shutter_power = 0
         self.fanspeed = 0
-        self.HV_vals = [0,0,0,0]
-        self.MAROC_regs = []
-        for _i in range (4):
-            self.MAROC_regs.append([0 for x in range(104)])
+        self.HV_vals: list[int] = [0, 0, 0, 0]
+        self.MAROC_regs: list[list[int]] = []
+        for _i in range(4):
+            self.MAROC_regs.append([0 for _x in range(104)])
         # create a logger (uses panoseti_grpc telemetry if available, stdlib fallback)
         util.create_logger(logfile, 'PANOSETI.Driver', 'a')
         self.logger = logging.getLogger('PANOSETI.Driver')
@@ -91,11 +94,11 @@ class QUABO:
             pass
         self.logger.info('************************************')
 
-    def close(self):
+    def close(self) -> None:
         self.logger.info('close')
         self.sock.close()
 
-    def send_daq_params(self, params):
+    def send_daq_params(self, params: DAQ_PARAMS) -> None:
         self.logger.info('send_daq_params')
         cmd = self.make_cmd(0x03)
         mode = 0
@@ -134,7 +137,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_maroc_params_file(self):
+    def send_maroc_params_file(self) -> None:
         self.logger.info('send_maroc_params_file')
         cmd = bytearray(492)
         with open(self.config_file_path):
@@ -144,7 +147,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_maroc_params(self, config):
+    def send_maroc_params(self, config: dict[str, Any]) -> None:
         self.logger.info('send_maroc_params')
         cmd = bytearray(492)
         self.make_maroc_cmd(config, cmd)
@@ -153,7 +156,7 @@ class QUABO:
 
     # returns the list of 256 coefficients
     #
-    def calibrate_ph_baseline(self):
+    def calibrate_ph_baseline(self) -> list[int]:
         self.logger.info('calibrate_ph_baseline')
         # make the quabos send out some ph packets
         daq_start = DAQ_PARAMS(
@@ -178,13 +181,13 @@ class QUABO:
         time.sleep(2)
         reply = self.sock.recvfrom(1024)
         bytesback = reply[0]
-        x = []
+        x: list[int] = []
         for n in range(256):
             val = bytesback[2*n+4] + 256*bytesback[2*n+5]
             x.append(val)
         return x
 
-    def hv_config(self):
+    def hv_config(self) -> None:
         self.logger.info('hv_config')
         cmd = self.make_cmd(0x02)
         with open(self.config_file_path) as f:
@@ -193,7 +196,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def hv_set_chan(self, chan, value):
+    def hv_set_chan(self, chan: int, value: int) -> None:
         self.logger.info(f'hv_set_chan: ch - {chan}, val - {value}')
         cmd = self.make_cmd(0x02)
         self.HV_vals[chan] = int(value)
@@ -207,7 +210,7 @@ class QUABO:
 
     # set high voltage for all 4 channels
     #
-    def hv_set(self, values):
+    def hv_set(self, values: list[int]) -> None:
         self.logger.info(f'hv_set: val - {values[0]} {values[1]} {values[2]} {values[3]}')
         cmd = self.make_cmd(0x02)
         for i in range(4):
@@ -216,7 +219,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_acq_parameters_file(self):
+    def send_acq_parameters_file(self) -> None:
         self.logger.info('send_acq_parameters_file')
         cmd = self.make_cmd(0x03)
         with open(self.config_file_path) as f:
@@ -225,7 +228,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_trigger_mask(self, config, do_flush_rx_buf=True):
+    def send_trigger_mask(self, config: dict[str, int], do_flush_rx_buf: bool = True) -> None:
         self.logger.info('send_trigger_mask')
         cmd = self.make_cmd(0x06)
         self.make_trigger_mask_cmd(config, cmd)
@@ -234,7 +237,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_goe_mask(self, config, do_flush_rx_buf=True):
+    def send_goe_mask(self, config: dict[str, int], do_flush_rx_buf: bool = True) -> None:
         self.logger.info('send_goe_mask')
         cmd = self.make_cmd(0x0e)
         self.make_goe_mask_cmd(config, cmd)
@@ -243,13 +246,13 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
         
-    def reset(self):
+    def reset(self) -> None:
         self.logger.info('reset')
         cmd = self.make_cmd(0x04)
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def focus(self, steps):      # 1 to 50000, 0 to recalibrate
+    def focus(self, steps: int) -> None:      # 1 to 50000, 0 to recalibrate
         self.logger.info(f'focus: steps - {steps}')
         endzone = 300
         backoff = 200
@@ -272,7 +275,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def shutter(self, closed):
+    def shutter(self, closed: bool) -> None:
         self.logger.info(f'shutter: {closed}')
         cmd = self.make_cmd(0x05)
         self.shutter_open = 0 if closed else 1
@@ -288,7 +291,7 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def fan(self, fanspeed):     # fanspeed is 0..15
+    def fan(self, fanspeed: int) -> None:     # fanspeed is 0..15
         self.logger.info(f'fan: speed - {fanspeed}')
         self.fanspeed = fanspeed
         cmd = self.make_cmd(0x85)
@@ -299,27 +302,27 @@ class QUABO:
         time.sleep(1)
         self.flush_rx_buf()
 
-    def shutter_new(self, closed):
+    def shutter_new(self, closed: bool) -> None:
         self.logger.info(f'shutter_new: {closed}')
         cmd = self.make_cmd(0x08)
         cmd[1] = 0x01 if closed else 0x0
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def lf(self, val):
+    def lf(self, val: bool) -> None:
         self.logger.info(f'lf: val - {val}')
         cmd = self.make_cmd(0x09)
         cmd[1] = 0x01 if val else 0x0
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def swpps(self):
+    def swpps(self) -> None:
         self.logger.info('set software 1PPS.')
         cmd = self.make_cmd(0x0f)
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def write_maroc_config(self, config, config_file='quabo_config.json'):
+    def write_maroc_config(self, config: dict[str, Any], config_file: str = 'quabo_config.json') -> None:
         self.logger.info('write_maroc_config')
         try:
             with open(config_file, 'rb') as f:
@@ -358,7 +361,7 @@ class QUABO:
         with open(config_file, 'w') as f:
             json.dump(cfg, f, indent=2)
     
-    def write_trigger_mask_config(self, config,  config_file='quabo_config.json'):
+    def write_trigger_mask_config(self, config: dict[str, int], config_file: str = 'quabo_config.json') -> None:
         self.logger.info('write_trigger_mask_config')
         try:
             with open(config_file, 'rb') as f:
@@ -366,7 +369,7 @@ class QUABO:
         except (OSError, json.JSONDecodeError):
             cfg = {}
         # create the tag list
-        tag_list = []
+        tag_list: list[str] = []
         for i in range(9):
             tag_list.append(f'CHANMASK_{i}')
         # get trigger mask params from config
@@ -376,7 +379,7 @@ class QUABO:
         with open(config_file, 'w') as f:
             json.dump(cfg, f, indent=2)
 
-    def write_goe_mask_config(self, config, config_file='quabo_config.json'):
+    def write_goe_mask_config(self, config: dict[str, int], config_file: str = 'quabo_config.json') -> None:
         self.logger.info('write_goe_mask_config')
         try:
             with open(config_file, 'rb') as f:
@@ -395,9 +398,9 @@ class QUABO:
     # wait for up to 10 sec
     # returns the HK packet, or None
     #
-    def read_hk_packet(self):
+    def read_hk_packet(self) -> bytes | None:
         self.logger.info('read_hk_packet')
-        x = None
+        x: Any = None
         end_time = time.time() + 10
         if not self.have_hk_sock:
             self.hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -407,23 +410,27 @@ class QUABO:
 
         while True:
             try:
+                if self.hk_sock is None:
+                    continue
                 x = self.hk_sock.recvfrom(2048)
                 # returns (data, (ip_addr, port))
             except (TimeoutError, OSError):
                 continue
             src = x[1]
             if src[0] == self.ip_addr:
-                self.hk_sock.close()
+                if self.hk_sock:
+                    self.hk_sock.close()
                 self.have_hk_sock = False
                 return x[0]
             if time.time() > end_time:
-                self.hk_sock.close()
+                if self.hk_sock:
+                    self.hk_sock.close()
                 self.have_hk_sock = False
                 return None
 
     # set destination IP addr for both PH and image packets
     #
-    def data_packet_destination(self, ip_addr_str):
+    def data_packet_destination(self, ip_addr_str: str) -> bool:
         self.logger.info(f'data_packet_destination: {ip_addr_str}')
         # get the IP address from hostname
         ip_addr_str = socket.gethostbyname(ip_addr_str)
@@ -437,8 +444,8 @@ class QUABO:
         self.send(cmd)
         try:
             reply = self.sock.recvfrom(12)
-            bytes = reply[0]
-            count = len(bytes)
+            bytes_back = reply[0]
+            count = len(bytes_back)
         except (TimeoutError, OSError):
             count = 0
         if count != 12:
@@ -446,7 +453,7 @@ class QUABO:
         else:
             return True
 
-    def hk_packet_destination(self, ip_addr_str):
+    def hk_packet_destination(self, ip_addr_str: str) -> None:
         self.logger.info(f'hk_packet_destination: {ip_addr_str}')
         # get the IP address from hostname
         ip_addr_str = socket.gethostbyname(ip_addr_str)
@@ -459,18 +466,18 @@ class QUABO:
 
 # IMPLEMENTATION STUFF FOLLOWS
 
-    def send(self, cmd):
+    def send(self, cmd: bytearray | list[int]) -> None:
         self.logger.debug(f'send: {len(cmd)} bytes')
         self.sock.sendto(bytes(cmd), (self.ip_addr, self.port))
 
-    def make_cmd(self, cmd):
+    def make_cmd(self, cmd: int) -> bytearray:
         x = bytearray(64)
         for i in range(64):
             x[i] = 0
         x[0] = cmd
         return x
 
-    def flush_rx_buf(self):
+    def flush_rx_buf(self) -> None:
         count = 0
         nbytes = 0
         while (count<32):
@@ -479,11 +486,11 @@ class QUABO:
                 # returns (data, ip_addr)
                 nbytes += len(x[0])
                 count += 1
-            except TimeoutError:
+            except (TimeoutError, OSError):
                 break
         #print('flush_rx_buffer: got %d bytes'%nbytes)
 
-    def parse_hv_params(self, fhand, cmd):
+    def parse_hv_params(self, fhand: Any, cmd: bytearray) -> None:
         self.logger.info('parse_hv_params')
         for line in fhand:
             if line.startswith("*"):
@@ -497,16 +504,16 @@ class QUABO:
             tag = fields[0].strip()
             if (tag.startswith("HV")):
                 chan = tag.split('_')[1]
-                chan = int(chan)
+                chan_int = int(chan)
                 val = int(fields[1],0)
-                self.logger.debug(f'chan - {chan}, val - {val}')
-                self.HV_vals[chan]=val
+                self.logger.debug(f'chan - {chan_int}, val - {val}')
+                self.HV_vals[chan_int]=val
                 LSbyte = val & 0xff
                 MSbyte = (val >> 8) & 0xff
-                cmd[2*chan+2]=LSbyte
-                cmd[2*chan+3]=MSbyte
+                cmd[2*chan_int+2]=LSbyte
+                cmd[2*chan_int+3]=MSbyte
 
-    def parse_trigger_mask(self, fhand, cmd):
+    def parse_trigger_mask(self, fhand: Any, cmd: bytearray) -> None:
         self.logger.info('parse_trigger_mask')
         for line in fhand:
             if line.startswith("*"):
@@ -521,17 +528,17 @@ class QUABO:
             chan_mask = [0,0,0,0,0,0,0,0,0]
             if (tag.startswith("CHANMASK")):
                 chan = tag.split('_')[1]
-                chan = int(chan)
+                chan_int = int(chan)
                 val = int(fields[1],0)
-                chan_mask[chan]=val
-                self.logger.debug(f'chan - {chan}, val - 0x{val:x}')
+                chan_mask[chan_int]=val
+                self.logger.debug(f'chan - {chan_int}, val - 0x{val:x}')
                 for _i in range (4):
-                    cmd[4*chan+4]=val & 0xff
-                    cmd[4*chan+5]=(val>>8) & 0xff
-                    cmd[4*chan+6]=(val>>16) & 0xff
-                    cmd[4*chan+7]=(val>>24) & 0xff
+                    cmd[4*chan_int+4]=val & 0xff
+                    cmd[4*chan_int+5]=(val>>8) & 0xff
+                    cmd[4*chan_int+6]=(val>>16) & 0xff
+                    cmd[4*chan_int+7]=(val>>24) & 0xff
 
-    def parse_goe_mask(self, fhand, cmd):
+    def parse_goe_mask(self, fhand: Any, cmd: bytearray) -> None:
         self.logger.info('parse_goe_mask')
         for line in fhand:
             if line.startswith("*"):
@@ -548,7 +555,7 @@ class QUABO:
                 cmd[4] = val & 0x03
                 self.logger.debug('goe mask val - 0x%x'%(val & 0x03))
 
-    def parse_acq_parameters(self, fhand, cmd):
+    def parse_acq_parameters(self, fhand: Any, cmd: bytearray) -> None:
         self.logger.info('parse_acq_paramters')
         for line in fhand:
             if line.startswith("*"):
@@ -654,7 +661,7 @@ class QUABO:
 
     # given a config dictionary, make a MAROC config command
     #
-    def make_maroc_cmd(self, config, cmd):
+    def make_maroc_cmd(self, config: dict[str, Any], cmd: bytearray) -> None:
         cmd[0] = 0x01
         for tag, val in config.items():
             # Make a list of the should-be 4 ascii values
@@ -763,31 +770,31 @@ class QUABO:
             #Look for a MASKOR1 value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("MASKOR1"):
                 chan = tag.split('_')[1]
-                chan = int(chan)
-                self.set_bits_4(tag, vals_int, 154-(2*chan), 1)
+                chan_int = int(chan)
+                self.set_bits_4(tag, vals_int, 154-(2*chan_int), 1)
             #Look for a MASKOR2 value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("MASKOR2"):
                 chan = tag.split('_')[1]
-                chan = int(chan)
-                self.set_bits_4(tag, vals_int, 153-(2*chan), 1)
+                chan_int = int(chan)
+                self.set_bits_4(tag, vals_int, 153-(2*chan_int), 1)
             #Look for a CTEST value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("CTEST"):
                 chan = tag.split('_')[1]
-                chan = int(chan)
+                chan_int = int(chan)
                 #if chan in range(4):
                     #vals_int = [0,0,0,0]
-                self.set_bits_4(tag, vals_int, 828-chan, 1)
+                self.set_bits_4(tag, vals_int, 828-chan_int, 1)
                 #print(tag, vals_int, chan)
 
             #Look for a GAIN value; chan is in range 0-63, with a quad of values, one for each chip
             if tag.startswith("GAIN"):
                 chan = tag.split('N')[1]
-                chan = int(chan)
+                chan_int = int(chan)
                 #Another list, with integer values, bits reversed
                 vals_revbits = []
                 for i in range (4):
                     vals_revbits.append(reverse_bits((vals_int[i]),8))
-                self.set_bits_4(tag, vals_revbits, 757-9*chan,8)
+                self.set_bits_4(tag, vals_revbits, 757-9*chan_int,8)
             for ii in range(104):
                 cmd[ii+4] = self.MAROC_regs[0][ii]
                 cmd[ii+132] = self.MAROC_regs[1][ii]
@@ -796,17 +803,17 @@ class QUABO:
 
     # given a config dictionary, make a trigger mask config command
     #
-    def make_trigger_mask_cmd(self, config, cmd):
+    def make_trigger_mask_cmd(self, config: dict[str, int], cmd: bytearray) -> None:
         for tag, val in config.items():
             if(tag.startswith('CHANMASK')):
                 ch = tag.split('_')[1]
-                ch = int(ch)
+                ch_int = int(ch)
                 for j in range(4): 
-                    cmd[4+ch*4+j] = (val>>j*8) & 0xff 
+                    cmd[4+ch_int*4+j] = (val>>j*8) & 0xff 
 
     # given a config dictionary, make a goe mask config command
     #
-    def make_goe_mask_cmd(self, config, cmd):
+    def make_goe_mask_cmd(self, config: dict[str, int], cmd: bytearray) -> None:
         for tag, val in config.items():
             if(tag == 'GOEMASK'):
                 cmd[4] = val & 0x03
@@ -814,7 +821,7 @@ class QUABO:
     # Set bits in MAROC_regs[chip] according to the input values.
     # Maximum value for field_width is 16 (a value can only span three bytes)
     #
-    def set_bits(self, chip, lsb_pos, field_width, value):
+    def set_bits(self, chip: int, lsb_pos: int, field_width: int, value: int) -> None:
         if (field_width >16):
             return
         if ((field_width + lsb_pos) > SERIAL_COMMAND_LENGTH):
@@ -839,7 +846,7 @@ class QUABO:
 
     # take a 4-element list and call set_bits for each MAROC
     #
-    def set_bits_4(self, tag, vals, lsb_pos, field_width):
+    def set_bits_4(self, tag: str, vals: list[int], lsb_pos: int, field_width: int) -> None:
         #vals = instring.split(",")
         if (len(vals) != 4):
             raise Exception("need 4 elements for " + tag +"\n")
@@ -856,8 +863,8 @@ class QUABO:
 # ... and return a dictionary mapping name to value.
 # strip off comments (text starting with *)
 #
-def parse_quabo_config_file(path):
-    x = {}
+def parse_quabo_config_file(path: str) -> dict[str, str]:
+    x: dict[str, str] = {}
     with open(path) as f:
         for line in f:
             if line.startswith("*"):
@@ -875,7 +882,7 @@ def parse_quabo_config_file(path):
             x[name] = val
     return x
 
-def reverse_bits(data_in, width):
+def reverse_bits(data_in: int, width: int) -> int:
     data_out = 0
     for _ii in range(width):
         data_out = data_out << 1
@@ -885,7 +892,7 @@ def reverse_bits(data_in, width):
     return data_out
 
 # write maroc config cmd to a file
-def write_maroc_config_cmd():
+def write_maroc_config_cmd() -> None:
     q = QUABO('1.1.1.1')
     config = parse_quabo_config_file('quabo_config.txt')
     cmd = bytearray(492)

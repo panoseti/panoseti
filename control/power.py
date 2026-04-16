@@ -11,12 +11,13 @@
 import os
 import sys
 from datetime import UTC, datetime
+from typing import Any
 
 from utils import config_file
 
 
 # ---------- logging helper (UTC) ----------
-def log_print(msg):
+def log_print(msg: str) -> None:
     now = datetime.now(UTC).replace(tzinfo=None)
     ts = now.strftime("%Y-%m-%d %H:%M:%S UTC")
     yyyymmdd = now.strftime("%Y%m%d")
@@ -48,7 +49,7 @@ def log_print(msg):
 
 # turn power on or off
 #
-def quabo_power(wps, on):
+def quabo_power(wps: dict[str, Any], on: bool) -> None:
     url = wps['url']
     socket = wps['quabo_socket']
     value = 'ON' if on else 'OFF'
@@ -60,7 +61,7 @@ def quabo_power(wps, on):
 
 # return True if power is on
 #
-def quabo_power_query(wps):
+def quabo_power_query(wps: dict[str, Any]) -> str | None:
     url = wps['url']
     socket = wps['quabo_socket']
     cmd = f'curl -s {url}/status'
@@ -71,9 +72,10 @@ def quabo_power_query(wps):
     status = int(y, 16)
     if status & (1 << (socket - 1)):
         return 'true'
+    return None
 
 
-def do_wps(name, obs_config, op):
+def do_wps(name: str, obs_config: dict[str, Any], op: str) -> None:
     wps = obs_config[name]
     if op == 'query':
         if quabo_power_query(wps):
@@ -88,7 +90,7 @@ def do_wps(name, obs_config, op):
         log_print(f"{name}: turned power off")
 
 
-def do_all(obs_config, op):
+def do_all(obs_config: dict[str, Any], op: str) -> None:
     for key in [k for k in obs_config.keys() if 'wps' in k.lower()]:
         do_wps(key, obs_config, op)
 

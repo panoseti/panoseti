@@ -16,8 +16,9 @@ import struct
 import time
 from datetime import UTC, datetime
 from signal import SIGINT, signal
-from typing import Literal
+from typing import Any, Literal
 
+import redis
 import serial
 
 from utils import config_file, util
@@ -30,30 +31,30 @@ RKEYsupp = 'GPSSUPP'
 lastTime = ''
 lastTimeUpdated = False
 
-def handler(signal_recieved, frame):
+def handler(signal_recieved: Any, frame: Any) -> None:
     print('\nSIGINT or CTRL-C detected. Exiting')
     exit(0)
 
-def floatfrom_bytes(bytesData, bytesorder=BYTEORDER):
+def floatfrom_bytes(bytesData: bytes, bytesorder: str = BYTEORDER) -> float:
     if BYTEORDER == 'little':
         f = '<f'
     else:
         f = '>f'
 
-    return struct.unpack(f, bytesData)[0]
+    return float(struct.unpack(f, bytesData)[0])
 
-def doublefrom_bytes(bytesData, bytesorder=BYTEORDER):
+def doublefrom_bytes(bytesData: bytes, bytesorder: str = BYTEORDER) -> float:
     if BYTEORDER == 'little':
         d = '<d'
     else:
         d = '>d'
 
-    return struct.unpack(d, bytesData)[0]
+    return float(struct.unpack(d, bytesData)[0])
 
 timingFlagValues = {0:'GPS', 1:'UTC'}
 
 # OutputID 0x8F-AB
-def primaryTimingPacket(data, r):
+def primaryTimingPacket(data: bytes, r: redis.Redis) -> None:
     global lastTime, lastTimeUpdated
     if len(data) != 17:
         print(RKEY, ' is malformed ignoring the following data packet')
@@ -99,7 +100,7 @@ def primaryTimingPacket(data, r):
     }
 
     for key in redis_set:
-        r.hset(RKEY, key, redis_set[key])
+        r.hset(RKEY, key, str(redis_set[key]))
     
 
     
@@ -112,7 +113,7 @@ disActivityValues = {0:'Phase locking', 1:'Oscillator warm-up', 2:'Frequency loc
                      5:'Compensating OCXO (holdover)', 6:'Inactive', 7:'Not used', 8:'Recovery mode', 9:'Calibration/control voltage'}
 DEFAULTVALUE = 'Uknown Value {0}'
 # OutputID 0x8F-AC
-def supplementaryTimingPacket(data, r):
+def supplementaryTimingPacket(data: bytes, r: redis.Redis) -> None:
     global lastTimeUpdated
     if len(data) != 68:
         print(RKEYsupp, ' is malformed ignoring the following data packet')
@@ -189,7 +190,7 @@ def supplementaryTimingPacket(data, r):
         redis_set['DISCIPLININGACTIVITY'] = disActivityValues[discipliningActivity]
     
     for key in redis_set:
-        r.hset(RKEYsupp, key, redis_set[key])
+        r.hset(RKEYsupp, key, str(redis_set[key]))
     
     lastTimeUpdated = False
     
@@ -219,7 +220,7 @@ def supplementaryTimingPacket(data, r):
 
 signal(SIGINT, handler)
 
-def initialize():
+def initialize() -> tuple[serial.Serial, redis.Redis]:
     r = redis_init()
 
     # configure the serial connections (the parameters differs on the device you are connecting to)
@@ -236,7 +237,7 @@ def initialize():
     return ser, r
 
 
-def main():
+def main() -> None:
     data = b''
     data_size = 0
     last_recv_byte = b''

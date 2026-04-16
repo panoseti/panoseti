@@ -6,6 +6,7 @@ import os
 import re
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,7 +23,7 @@ LOCAL_BASE = "/mnt/data11/data/palomar/L0"
 # ----------------------------------------
 
 
-def load_sites(config_file):
+def load_sites(config_file: str) -> list[dict[str, Any]]:
     """Read sites.conf and return list of dicts."""
     sites = []
     with open(config_file) as f:
@@ -44,7 +45,7 @@ def load_sites(config_file):
     return sites
 
 
-def convert_fits_to_png(fits_path):
+def convert_fits_to_png(fits_path: str) -> None:
     try:
         with fits.open(fits_path) as hdul:
             data = hdul[0].data
@@ -68,7 +69,7 @@ def convert_fits_to_png(fits_path):
         print(f"? FITS conversion failed: {e}")
 
 
-def ssh_connect(site):
+def ssh_connect(site: dict[str, Any]) -> paramiko.SSHClient:
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(
@@ -81,7 +82,7 @@ def ssh_connect(site):
     return ssh
 
 
-def ssh_exec(ssh, cmd, timeout=None):
+def ssh_exec(ssh: paramiko.SSHClient, cmd: str, timeout: float | None = None) -> tuple[str, str]:
     """Execute remote command, return (stdout, stderr) as strings."""
     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
     out = stdout.read().decode(errors="replace").strip()
@@ -92,7 +93,7 @@ def ssh_exec(ssh, cmd, timeout=None):
 # ==============================
 # Ekos Guide status / control
 # ==============================
-def ekos_get_guide_status(ssh):
+def ekos_get_guide_status(ssh: paramiko.SSHClient) -> tuple[int | None, str, str]:
     """
     Return (status_int_or_None, raw_stdout, raw_stderr).
     The numeric mapping is Ekos-version dependent; we display the raw int.
@@ -112,12 +113,12 @@ def ekos_get_guide_status(ssh):
     return status, out, err
 
 
-def ekos_guide_suspend(ssh):
+def ekos_guide_suspend(ssh: paramiko.SSHClient) -> tuple[str, str]:
     cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.suspend"
     return ssh_exec(ssh, cmd)
 
 
-def ekos_guide_resume(ssh):
+def ekos_guide_resume(ssh: paramiko.SSHClient) -> tuple[str, str]:
     cmd = "qdbus org.kde.kstars /KStars/Ekos/Guide org.kde.kstars.Ekos.Guide.resume"
     return ssh_exec(ssh, cmd)
 
@@ -125,7 +126,7 @@ def ekos_guide_resume(ssh):
 # ==============================
 # PHD2 helpers (optional)
 # ==============================
-def phd2_running_via_ssh(site):
+def phd2_running_via_ssh(site: dict[str, Any]) -> bool:
     try:
         ssh = ssh_connect(site)
         cmd = "echo '{\"method\":\"get_app_state\",\"id\":1,\"jsonrpc\":\"2.0\"}' | nc -w 2 localhost 4400"
@@ -136,7 +137,7 @@ def phd2_running_via_ssh(site):
         return False
 
 
-def capture_phd2_once(site):
+def capture_phd2_once(site: dict[str, Any]) -> None:
     print(f"? [{site['name']}] Capturing via PHD2 ...")
     try:
         ssh = ssh_connect(site)
@@ -180,7 +181,7 @@ def capture_phd2_once(site):
 # ==============================
 # Ekos capture (default)
 # ==============================
-def capture_ekos_once(site):
+def capture_ekos_once(site: dict[str, Any]) -> None:
     print(f"? [{site['name']}] Capturing via Ekos (suspend -> capture -> resume) ...")
     ssh = None
 
@@ -291,7 +292,7 @@ def capture_ekos_once(site):
 # ==============================
 # Main loop
 # ==============================
-def parse_args():
+def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Capture guider images periodically from remote sites. Ekos by default; optional PHD2."
     )
@@ -303,7 +304,7 @@ def parse_args():
     return p.parse_args()
 
 
-def main():
+def main() -> None:
     args = parse_args()
     sites = load_sites(CONFIG_FILE)
 

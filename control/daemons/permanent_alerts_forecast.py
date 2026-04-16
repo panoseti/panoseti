@@ -55,16 +55,16 @@ UA = {"User-Agent": "PANOSETI-ops (contact: ops@example.com)"}
 # =====================
 # ===== UTILITIES =====
 # =====================
-def now_utc():
+def now_utc() -> datetime:
     return datetime.now(UTC)
 
-def fmt_local(ts):
+def fmt_local(ts: datetime) -> str:
     return ts.astimezone().strftime("%Y-%m-%d %H:%M")
 
-def fmt_utc(ts):
+def fmt_utc(ts: datetime) -> str:
     return ts.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%SZ")
 
-def parse_iso_any(s):
+def parse_iso_any(s: str) -> datetime:
     if s.endswith("Z"):
         return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(UTC)
     dt = datetime.fromisoformat(s)
@@ -82,13 +82,13 @@ def mph_from_str(s: StrOrNone) -> IntOrNone:
             pass
     return max(nums) if nums else None
 
-def time_left_str(future, ref):
+def time_left_str(future: datetime, ref: datetime) -> str:
     delta = future - ref
     total_min = max(0, int(delta.total_seconds() // 60))
     h, m = divmod(total_min, 60)
     return f"in {h}h {m}m" if h else f"in {m}m"
 
-def run_cmd(cmd):
+def run_cmd(cmd: str) -> bool:
     try:
         subprocess.run(cmd, shell=True, check=True)
         return True
@@ -99,12 +99,12 @@ def run_cmd(cmd):
 # ==========================
 # ====== DATA FETCH ========
 # ==========================
-def get_json(url):
+def get_json(url: str) -> Any:
     r = requests.get(url, headers=UA, timeout=30)
     r.raise_for_status()
     return r.json()
 
-def fetch_nws_endpoints(lat, lon):
+def fetch_nws_endpoints(lat: float, lon: float) -> dict[str, Any]:
     meta = get_json(f"https://api.weather.gov/points/{lat},{lon}")
     props = meta["properties"]
     return {
@@ -112,10 +112,10 @@ def fetch_nws_endpoints(lat, lon):
         "zone": props.get("forecastZone") or props.get("county")
     }
 
-def fetch_nws_hourly(hourly_url):
+def fetch_nws_hourly(hourly_url: str) -> list[dict[str, Any]]:
     return get_json(hourly_url)["properties"]["periods"]
 
-def fetch_openmeteo_cloudcover(lat, lon, days=4):
+def fetch_openmeteo_cloudcover(lat: float, lon: float, days: int = 4) -> dict[str, int]:
     data = get_json(
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}&hourly=cloudcover&timezone=UTC&forecast_days={days}"
@@ -129,7 +129,7 @@ def fetch_openmeteo_cloudcover(lat, lon, days=4):
         cc[key] = int(c)
     return cc
 
-def fetch_active_alerts(zone_url: StrOrNone):
+def fetch_active_alerts(zone_url: StrOrNone) -> list[dict[str, Any]]:
     if not zone_url:
         return []
     zone_code = zone_url.split("/")[-1]
@@ -151,7 +151,7 @@ def fetch_active_alerts(zone_url: StrOrNone):
 # ==========================
 # ====== PROCESSING ========
 # ==========================
-def build_rows(periods, cloud_map):
+def build_rows(periods: list[dict[str, Any]], cloud_map: dict[str, int]) -> list[dict[str, Any]]:
     now = now_utc()
     cutoff = now + timedelta(hours=HOURS_AHEAD)
     rows = []
@@ -197,7 +197,7 @@ WIND_CAUTION = WIND_CAUTION      # wind mph steady caution
 GUST_ALERT = GUST_ALERT          # gust mph alert
 CLOUD_CAUTION = CLOUD_CAUTION if 'CLOUD_CAUTION' in globals() else 70
 
-def flag_window(rows, h_start, h_end, first_only=False):
+def flag_window(rows: list[dict[str, Any]], h_start: float, h_end: float, first_only: bool = False) -> list[str]:
     now = now_utc()
     results: list[Any] = []
 
@@ -249,7 +249,7 @@ def flag_window(rows, h_start, h_end, first_only=False):
 # ======================
 # ====== STORAGE =======
 # ======================
-def one_cycle(tmp_dir: Path):
+def one_cycle(tmp_dir: Path) -> tuple[Path, Path]:
     endpoints = fetch_nws_endpoints(LAT, LON)
     periods = fetch_nws_hourly(endpoints["hourly_url"])
     cloud_map = fetch_openmeteo_cloudcover(LAT, LON, days=4)
@@ -373,7 +373,7 @@ def one_cycle(tmp_dir: Path):
 
     return latest_json, latest_log
 
-def scp_latest(json_path: Path, log_path: Path):
+def scp_latest(json_path: Path, log_path: Path) -> None:
     run_cmd(f"scp -l {BANDWIDTH_LIMIT} {json_path} {REMOTE_SERVER}:{REMOTE_WEBCAM_DIR}/{SNAP_JSON_NAME}")
     run_cmd(f"scp -l {BANDWIDTH_LIMIT} {log_path} {REMOTE_SERVER}:{REMOTE_WEBCAM_DIR}/{SNAP_LOG_NAME}")
     run_cmd(f'ssh {REMOTE_SERVER} "chmod 664 {REMOTE_WEBCAM_DIR2}/{SNAP_JSON_NAME}"')
@@ -382,7 +382,7 @@ def scp_latest(json_path: Path, log_path: Path):
 # ====================
 # ===== MAIN LOOP ====
 # ====================
-def main():
+def main() -> None:
     tmp_dir = Path("./palomar_weather_tmp")
     tmp_dir.mkdir(exist_ok=True)
     while True:

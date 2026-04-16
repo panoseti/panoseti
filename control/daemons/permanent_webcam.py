@@ -25,7 +25,7 @@ REMOTE_WEBCAM_DIR2 = "/web/panoseti-palomar/current"
 RPI_HOST = socket.gethostname()
 
 # ---------------- HELPERS ----------------
-def run_command(cmd):
+def run_command(cmd: str) -> None:
     print(f"[CMD] {cmd}")
     try:
         subprocess.run(cmd, shell=True, check=True)
@@ -33,7 +33,7 @@ def run_command(cmd):
     except subprocess.CalledProcessError:
         print("  ? Failed.")
 
-def load_sites(config_path):
+def load_sites(config_path: str) -> list[dict[str, str]]:
     sites = []
     with open(config_path) as f:
         for line in f:
@@ -44,14 +44,14 @@ def load_sites(config_path):
             sites.append({"name": name, "ip": ip})
     return sites
 
-def make_save_dir(site_name):
+def make_save_dir(site_name: str) -> str:
     date_str = datetime.now(UTC).strftime("%Y%m%d")
     save_dir = os.path.join(BASE_DIR_ROOT, date_str, site_name, "webcam")
     os.makedirs(save_dir, exist_ok=True)
     return save_dir
 
 # ---------------- CAPTURE + UPLOAD ----------------
-def capture_and_upload(site):
+def capture_and_upload(site: dict[str, str]) -> None:
     site_name = site["name"]
     camera_ip = site["ip"]
 
@@ -85,7 +85,7 @@ def capture_and_upload(site):
         print(f"[!] ?? {site_name}: Capture/upload failed: {e}")
 
 # ---------------- MAIN LOOP ----------------
-def main():
+def main() -> None:
     sites = load_sites(CONFIG_FILE)
     print(f"Starting webcam capture + web sync every {INTERVAL_SEC}s for {len(sites)} sites...")
     for s in sites:

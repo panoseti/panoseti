@@ -10,6 +10,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import time
+from typing import Any
 
 import power
 from utils import config_file, redis_utils
@@ -18,26 +19,26 @@ from utils import config_file, redis_utils
 UPDATE_INTERVAL = 1
 
 
-def get_wps_fields(wps_dict):
+def get_wps_fields(wps_dict: dict[str, Any]) -> dict[str, Any]:
     """Creates a dictionary of values to write into Redis."""
     try:
         power_status = "ON" if power.quabo_power_query(wps_dict) else "OFF"
     except Exception:
         print(f'capture_power.py: Failed to query {wps_dict}. The login info for this UPS may be incorrect."')
         raise
-    rkey_fields = {
+    rkey_fields: dict[str, Any] = {
         'Computer_UTC': time.time(),
         'POWER': power_status
     }
     return rkey_fields
 
 
-def get_wps_rkey(wps_key):
+def get_wps_rkey(wps_key: str) -> str:
     """Returns the Redis key for the wps named 'wps_key'."""
     return wps_key.upper()
 
 
-def main():
+def main() -> None:
     r = redis_utils.redis_init()
     obs_config = config_file.get_obs_config()
     wps_keys = [key for key in obs_config.keys() if 'wps' in key.lower()]

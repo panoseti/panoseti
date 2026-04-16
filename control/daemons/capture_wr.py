@@ -33,7 +33,12 @@ SWITCHIP    =   util.get_wr_ip_addr(config_file.get_obs_config())
 RKEY        =   f'WRSWITCH{""}'
 OBSERVATORY =   'lick'
 
-def handler(signal_recieved, frame):
+from typing import Any
+
+import redis
+
+
+def handler(signal_recieved: Any, frame: Any) -> None:
     print('\nSIGINT or CTRL-C detected. Exiting')
     exit(0)
 signal(SIGINT, handler)
@@ -41,8 +46,8 @@ signal(SIGINT, handler)
 #------------------------------------------------------------#
 # check the PN of SFP transceivers
 #
-def wrsSFPCheck(wrs):
-    res = wrs.sfppn()
+def wrsSFPCheck(wrs: wrs_snmp) -> None:
+    res = wrs.sfppn() # type: ignore
     if(res == -1):
         print('************************************************')
         print(f"We can't connect to WR-SWITCH({wrs.dev})!")
@@ -72,8 +77,8 @@ def wrsSFPCheck(wrs):
 
 # check the link status
 #
-def wrsLinkStatusCheck(wrs):
-    res = wrs.linkstatus()
+def wrsLinkStatusCheck(wrs: wrs_snmp) -> None:
+    res = wrs.linkstatus() # type: ignore
     if(res == -1):
         print('********************Error***************************')
         print(f"We can't connect to WR-Endpoint({wrs.dev})!")
@@ -92,8 +97,8 @@ def wrsLinkStatusCheck(wrs):
 
 # check the softpll status
 #
-def wrsSoftPLLCheck(wrs):
-    res = wrs.pllstatus()
+def wrsSoftPLLCheck(wrs: wrs_snmp) -> None:
+    res = wrs.pllstatus() # type: ignore
     if(res[0] == -1):
         print('********************Error***************************')
         print(f"We can't connect to WR-Endpoint({wrs.dev})!")
@@ -113,12 +118,12 @@ def wrsSoftPLLCheck(wrs):
 
 # init redis and create wrs_snmp obj
 #
-def initialize():
+def initialize() -> tuple[wrs_snmp, redis.Redis]:
     r = redis_init()
     wrs = wrs_snmp(SWITCHIP)
     return wrs, r
 
-def main():
+def main() -> None:
     script_dir = Path(__file__).resolve().parent
     os.environ['MIBDIRS']= f'+{script_dir!s}/capture_wr'
     wrs, r = initialize()
@@ -131,14 +136,14 @@ def main():
     # then check link status and softpll status once a second,
     # and write the status into redis
     while(True):
-        r.hset(RKEY, 'Computer_UTC', time.time())
+        r.hset(RKEY, 'Computer_UTC', str(time.time()))
         # check link status
-        res = wrs.linkstatus()
+        res = wrs.linkstatus() # type: ignore
         for i in range(len(res)):
-            r.hset(RKEY, f'Port{i+1:2d}_LINK', 1 if res[i] == LINK_UP else 0)
+            r.hset(RKEY, f'Port{i+1:2d}_LINK', str(1 if res[i] == LINK_UP else 0))
         # check softpll status
-        res = wrs.pllstatus()
-        r.hset(RKEY, 'SOFTPLL', 1 if res[0] == SOFTPLL_LOCKED else 0)
+        res = wrs.pllstatus() # type: ignore
+        r.hset(RKEY, 'SOFTPLL', str(1 if res[0] == SOFTPLL_LOCKED else 0))
         print(datetime.now(UTC).replace(tzinfo=None))
         time.sleep(1)
 

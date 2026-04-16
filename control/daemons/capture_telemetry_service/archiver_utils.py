@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 # Try importing the library; handle failure gracefully for legacy systems
 try:
@@ -13,7 +14,7 @@ class TelemetryConfigManager:
     Handles hot-reloading of the toml file and matching Redis keys to device modes.
     """
 
-    def __init__(self, config_dir=None):
+    def __init__(self, config_dir: str | None = None) -> None:
         # 1. Determine Config Path
         # Default: look in the same directory as this util file
         if config_dir:
@@ -21,16 +22,16 @@ class TelemetryConfigManager:
         else:
             self.config_path = Path(__file__).parent / "telemetry_config.toml"
 
-        self.last_mtime = 0.0
-        self.config = None
-        self.active_prefixes = {}  # Cache for fast lookups
+        self.last_mtime: float = 0.0
+        self.config: Any = None
+        self.active_prefixes: dict[str, tuple[str, str]] = {}  # Cache for fast lookups
 
         if TelemetryConfig:
             self.reload()
         else:
             print("[TelemeteryService] Library not found. Dynamic features disabled.")
 
-    def reload(self):
+    def reload(self) -> None:
         """Checks disk for changes and reloads if necessary."""
         if not TelemetryConfig:
             return
@@ -54,7 +55,7 @@ class TelemetryConfigManager:
         except Exception as e:
             print(f"[TelemeteryService] Config Load Error: {e}")
 
-    def match_key(self, redis_key):
+    def match_key(self, redis_key: str) -> tuple[str | None, str | None]:
         """
         Matches a Redis Key to a (datatype, mode) tuple.
         Returns (None, None) if no match.

@@ -16,8 +16,11 @@ CURRENT_DIR_LOCAL  = "/tmp/power_current.json"
 POLL_INTERVAL = 5
 urllib3.disable_warnings()
 
-def load_config():
-    sites = {}
+from typing import Any
+
+
+def load_config() -> dict[str, dict[str, str]]:
+    sites: dict[str, dict[str, str]] = {}
     with open(CONFIG_FILE) as f:
         for line in f:
             line=line.strip()
@@ -28,7 +31,7 @@ def load_config():
     return sites
 
 
-def fetch_outlets(site):
+def fetch_outlets(site: dict[str, str]) -> list[dict[str, Any]]:
     """Return list of outlet dicts in normalized format."""
     url = f"http://{site['ip']}/restapi/relay/outlets/"
     r = requests.get(url, auth=(site['user'], site['pwd']), timeout=4, verify=False)
@@ -39,14 +42,14 @@ def fetch_outlets(site):
 
     # Normalize:
     if isinstance(data, dict) and "outlets" in data:
-        return data["outlets"]
+        return list(data["outlets"])
     elif isinstance(data, list):
         return data
     else:
         raise ValueError(f"Unexpected outlet format from {site['ip']}: {type(data)}")
 
 
-def extract_state(outlet):
+def extract_state(outlet: dict[str, Any]) -> bool:
     """Return True/False from any available boolean field."""
     return bool(
         outlet.get("physical_state") or
@@ -56,7 +59,7 @@ def extract_state(outlet):
     )
 
 
-def write_daily_log(site, outlets):
+def write_daily_log(site: str, outlets: list[dict[str, Any]]) -> None:
     """Append log to /mnt/data11/data/palomar/L0/YYYYMMDD/site/power/"""
     date = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).strftime("%Y%m%d")
     dpath = os.path.join(SAVE_BASE, date, site, "power")
@@ -70,7 +73,7 @@ def write_daily_log(site, outlets):
             f.write(f"{ts} | {site} | {name} | {'ON' if extract_state(o) else 'OFF'}\n")
 
 
-def write_current_json(all_sites_data):
+def write_current_json(all_sites_data: dict[str, Any]) -> None:
     """Write combined JSON file and upload to cylon"""
     all_sites_data["timestamp"] = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()
 
@@ -80,7 +83,7 @@ def write_current_json(all_sites_data):
     os.system(f"scp -q {CURRENT_DIR_LOCAL} {CURRENT_DIR_REMOTE}")
 
 
-def push_redis(r, site, outlets):
+def push_redis(r: redis.Redis, site: str, outlets: list[dict[str, Any]]) -> None:
     
     for o in outlets:
         ts = time.time()
@@ -114,16 +117,16 @@ def push_redis(r, site, outlets):
         key = f"POWER_{site.upper()}_{name.upper()}"
 
         r.hset(key, mapping={
-            "Computer_UTC": ts,
-            "POWER": 1 if extract_state(o) else 0,
+            "Computer_UTC": str(ts),
+            "POWER": str(1 if extract_state(o) else 0),
             "site": site.upper(),
-            "device": name.upper()
+            "device": str(name).upper()
         })
         time.sleep(0.005)  # optional: tiny delay to ensure unique timestamps
 
 
 
-def main():
+def main() -> None:
     sites = load_config()
     print(f"[capture_power_switches] Using config: {CONFIG_FILE}")
     print(f"[capture_power_switches] Polling every {POLL_INTERVAL} seconds")

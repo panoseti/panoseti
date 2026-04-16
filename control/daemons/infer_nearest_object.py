@@ -194,8 +194,8 @@ def find_nearest(objs: list[Obj], ra_deg: float, dec_deg: float) -> tuple[Obj, f
     Uses astropy if available; otherwise pure-math fallback.
     """
     try:
-        import astropy.units as u  # type: ignore
-        from astropy.coordinates import SkyCoord  # type: ignore
+        import astropy.units as u
+        from astropy.coordinates import SkyCoord
 
         target = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
         cat = SkyCoord(
