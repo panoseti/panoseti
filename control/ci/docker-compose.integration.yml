@@ -9,10 +9,16 @@ networks:
     ipam:
       config:
         - subnet: 192.168.0.0/24
+  quabo_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.3.0/24
 
 volumes:
   daq_data:
   daq_data_2:
+  mock_quabo_uds:
 
 services:
 
@@ -143,6 +149,29 @@ services:
       retries: 12
       start_period: 10s
 
+  mock-quabo:
+    build:
+      context: ../
+      dockerfile: ci/mock_quabo/Dockerfile
+    container_name: ctl-int-mock-quabo-1
+    networks:
+      quabo_net:
+        ipv4_address: 192.168.3.32
+    cap_add:
+      - NET_ADMIN
+    environment:
+      MOCK_QUABO_BASE_IP: "192.168.3.32"
+      MOCK_QUABO_MODULE_ID: "200"
+      MOCK_QUABO_UDS: "/uds/mock_quabo.sock"
+    volumes:
+      - mock_quabo_uds:/uds
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /uds/mock_quabo.sock || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+
   int-tester:
     build:
       context: ../
@@ -153,10 +182,8 @@ services:
         ipv4_address: 10.0.1.5
       daqnode_net:
         ipv4_address: 192.168.0.5
-    volumes:
-      - daq_data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ..:/app
+      quabo_net:
+        ipv4_address: 192.168.3.5
     environment:
       DAQNODE_DIRECT_HOST:    "${DAQNODE_DIRECT_HOST}"
       DAQNODE_GATEWAY_HOST:   "${DAQNODE_GATEWAY_HOST}"
@@ -170,7 +197,13 @@ services:
       DAQ_DATA_DIR:           "/data"
       HEAD_DATA_DIR:          "/data/head"
       DAQNODE_CONTAINER_NAME: "ctl-int-daqnode-1"
+      MOCK_QUABO_UDS:         "/uds/mock_quabo.sock"
       PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - daq_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ..:/app
+      - mock_quabo_uds:/uds:ro
     depends_on:
       daqnode:
         condition: service_healthy
@@ -183,5 +216,7 @@ services:
       loki:
         condition: service_started
       headnode:
+        condition: service_healthy
+      mock-quabo:
         condition: service_healthy
     command: ["sleep", "infinity"]
