@@ -1,9 +1,10 @@
+import bisect
+import logging
 import mmap
 import re
-import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Union, Sequence, Any, Optional
-import bisect
+from typing import Any
 
 import numpy as np
 from pydantic import BaseModel, ValidationError
@@ -15,16 +16,13 @@ except ImportError:
     import json as orjson  # Fallback, though orjson is highly recommended
 
 try:
-    import dask.array as da
-
     HAS_DASK = True
 except ImportError:
     HAS_DASK = False
 
 # Setup Rich Logging
-from rich.logging import RichHandler
 from rich.console import Console
-from rich.table import Table
+from rich.logging import RichHandler
 from rich.tree import Tree
 
 logging.basicConfig(
@@ -45,50 +43,43 @@ def get_coarse_time_ns(tv_sec: int, tv_usec: int) -> int:
     """
     return (tv_sec * 1_000_000_000) + (tv_usec * 1_000)
 
-def get_precise_time_ns(tv_sec: int, tv_usec: int, pkt_nsec: int) -> int:
+def get_precise_time_ns(tv_sec: int, tv_usec: int, pkt_nsec: int, pkt_tai: int = 0) -> int:
     """
     Calculates precise timestamp in NANOSECONDS using pure integer arithmetic.
     Avoids float64 precision loss (which occurs at ~microsecond levels for current Unix timestamps).
 
-    Logic:
-    1. Unix time is derived from DAQ nodes (NTP synced, ms accuracy).
-    2. Packet time is derived from White Rabbit/GPS (ns accuracy).
-    3. We use the 'seconds' from DAQ and 'nanoseconds' from WR.
-    4. We detect boundary wraps by comparing tv_usec (microseconds) to pkt_nsec.
-
-    Args:
-        tv_sec: DAQ Unix seconds.
-        tv_usec: DAQ Unix microseconds.
-        pkt_nsec: White Rabbit nanoseconds.
-
-    Returns:
-        int: Total nanoseconds since Unix epoch.
+    Logic from Precise-Timing.md and pff.py:
+    1. If pkt_tai (10-bit quabo TAI counter) is provided, use it for second reconciliation.
+       Difference d = (UTC - (TAI - 37)) % 1024. Currently TAI = UTC + 37.
+    2. Fall back to sub-second reconciliation (tv_usec vs pkt_nsec) if pkt_tai is 0.
+       Threshold for wrap-around detection is 500ms.
+    3. The 25ms threshold from Precise-Timing.md is used to document 'in-sync' range.
     """
-    # 1. Convert DAQ usec to nsec for comparison
-    tv_nsec_equiv = tv_usec * 1000
-    diff = tv_nsec_equiv - pkt_nsec
-
-    # 2. Reconcile drift
-    # Threshold: 50ms (50,000,000 ns)
-
     final_sec = tv_sec
 
-    if abs(diff) < 50_000_000:
-        # Case 1: In sync. Trust DAQ seconds.
-        pass
-    elif diff > 500_000_000:
-        # Case 2: tv_usec is large (e.g. 999ms), pkt_nsec is small (e.g. 1ms).
-        # DAQ clock hasn't wrapped yet, but GPS has.
-        # We are effectively into the *next* second compared to what tv_sec says?
-        # Note: logic from notes: "tv_usec much larger... tv_sec is 1 sec slower" => +1
-        final_sec += 1
-    elif diff < -500_000_000:
-        # Case 3: pkt_nsec is large, tv_usec is small.
-        # GPS is behind NTP? Or NTP wrapped early?
-        # Note: logic from notes: "tv_sec is 1 sec faster" => -1
-        final_sec -= 1
+    if pkt_tai != 0:
+        # Reconciliation based on quabo's 10-bit TAI counter (robust to multi-second drift)
+        # TAI = UTC + 37 (as of 2024).
+        # d = (tv_sec - (pkt_tai - 37)) % 1024
+        d = (tv_sec - pkt_tai + 37) % 1024
+        if d == 1:
+            # DAQ is 1s ahead
+            final_sec = tv_sec - 1
+        elif d == 1023:
+            # DAQ is 1s behind
+            final_sec = tv_sec + 1
+    else:
+        # Sub-second reconciliation (Precise-Timing.md)
+        tv_nsec_equiv = tv_usec * 1000
+        diff = tv_nsec_equiv - pkt_nsec
 
-    # 3. Combine integer seconds and nanoseconds
+        if diff > 500_000_000:
+            # tv_usec near 1s, pkt_nsec near 0s. DAQ clock hasn't wrapped yet.
+            final_sec = tv_sec + 1
+        elif diff < -500_000_000:
+            # pkt_nsec near 1s, tv_usec near 0s. DAQ clock wrapped early.
+            final_sec = tv_sec - 1
+
     return (final_sec * 1_000_000_000) + pkt_nsec
 
 
@@ -105,7 +96,7 @@ class PFFHeader(BaseModel):
     @property
     def timestamp_ns(self) -> int:
         """Returns nanoseconds since epoch as int64 compatible integer."""
-        return get_precise_time_ns(self.tv_sec, self.tv_usec, self.pkt_nsec)
+        return get_precise_time_ns(self.tv_sec, self.tv_usec, self.pkt_nsec, self.pkt_tai)
 
 
 class QuaboHeader(PFFHeader):
@@ -129,7 +120,7 @@ class FrameConfig(BaseModel):
     header_size: int
     payload_size: int
     frame_size: int
-    image_shape: Tuple[int, int]
+    image_shape: tuple[int, int]
     dtype_str: str
     bytes_per_pixel: int
     format_name: str
@@ -150,7 +141,7 @@ class PFFSequence:
     - Binary search for time seeking.
     """
 
-    def __init__(self, file_paths: Sequence[Union[str, Path]]):
+    def __init__(self, file_paths: Sequence[str | Path]):
         # Convert to Path objects
         paths = [Path(p) for p in file_paths]
         if not paths:
@@ -171,14 +162,15 @@ class PFFSequence:
         self.name = self.file_paths[0].name.split('.seqno')[0]
         self.meta = self._parse_filename(self.file_paths[0].name)
 
-        self.frame_config: Optional[FrameConfig] = None
-        self._file_frame_counts: List[int] = []
-        self._cumulative_frames: List[int] = []
+        self.frame_config: FrameConfig | None = None
+        self._file_frame_counts: list[int] = []
+        self._cumulative_frames: list[int] = []
         self._total_frames: int = 0
+        self._timestamps: np.ndarray | None = None
 
         # MMap Cache
-        self._open_mmaps: Dict[int, mmap.mmap] = {}
-        self._open_files: Dict[int, Any] = {}
+        self._open_mmaps: dict[int, mmap.mmap] = {}
+        self._open_files: dict[int, Any] = {}
 
         self._analyze_structure()
         self._index_files()
@@ -188,12 +180,14 @@ class PFFSequence:
 
     def close(self):
         """Explicitly close file handles."""
-        for mm in self._open_mmaps.values(): mm.close()
-        for f in self._open_files.values(): f.close()
+        for mm in self._open_mmaps.values():
+            mm.close()
+        for f in self._open_files.values():
+            f.close()
         self._open_mmaps.clear()
         self._open_files.clear()
 
-    def _parse_filename(self, fname: str) -> Dict[str, Any]:
+    def _parse_filename(self, fname: str) -> dict[str, Any]:
         meta = {}
         clean_name = fname.split('.pff')[0]
         parts = clean_name.split('.')
@@ -201,8 +195,9 @@ class PFFSequence:
             if '_' in part:
                 k, v = part.split('_', 1)
                 try:
-                    if v.isdigit(): v = int(v)
-                except:
+                    if v.isdigit():
+                        v = int(v)
+                except (ValueError, TypeError):
                     pass
                 meta[k] = v
         return meta
@@ -273,6 +268,23 @@ class PFFSequence:
                 total += n
         self._total_frames = total
 
+    def index_timestamps(self):
+        """
+        Pre-calculates and caches all frame timestamps.
+        Highly recommended before performing multiple seek_time() operations.
+        """
+        if self._timestamps is not None:
+            return
+
+        logger.info(f"Indexing {self._total_frames:,} timestamps for {self.name}...")
+        import time as pytime
+        t0 = time.monotonic()
+        self._timestamps = np.zeros(self._total_frames, dtype=np.int64)
+        for i in range(self._total_frames):
+            self._timestamps[i] = self.get_frame_time(i, precise=True)
+        elapsed = time.monotonic() - t0
+        logger.info(f"Indexed {self._total_frames:,} frames in {elapsed:.2f}s")
+
     def __len__(self):
         return self._total_frames
 
@@ -281,7 +293,7 @@ class PFFSequence:
             return self._open_mmaps[file_idx]
 
         filepath = self.file_paths[file_idx]
-        f = open(filepath, 'rb')
+        f = open(filepath, 'rb')  # noqa: SIM115
         try:
             mm = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
             self._open_files[file_idx] = f
@@ -290,7 +302,7 @@ class PFFSequence:
         except ValueError:
             return None
 
-    def _locate_frame(self, idx: int) -> Tuple[int, int]:
+    def _locate_frame(self, idx: int) -> tuple[int, int]:
         """
         Maps a global frame index to its corresponding (file_index, local_index).
 
@@ -316,7 +328,7 @@ class PFFSequence:
 
         return file_idx, local_idx
 
-    def get_frame(self, idx: int) -> Tuple[Union[QuaboHeader, ModuleHeader, Dict], np.ndarray]:
+    def get_frame(self, idx: int) -> tuple[QuaboHeader | ModuleHeader | dict, np.ndarray]:
         """
         Retrieves a fully parsed header and image array for a single frame.
 
@@ -362,7 +374,7 @@ class PFFSequence:
 
         return header_obj, img
 
-    def get_frames(self, indices: List[int]) -> np.ndarray:
+    def get_frames(self, indices: list[int]) -> np.ndarray:
         """
         Retrieves an array of images for a specific list of disjoint indices.
         """
@@ -386,8 +398,11 @@ class PFFSequence:
     def get_frame_time(self, idx: int, precise: bool = False) -> int:
         """
         Retrieves ONLY the precise nanosecond timestamp for a frame.
-        Fastest way to get time.
+        Fastest way to get time. Results are cached if precise=True and index_timestamps() was called.
         """
+        if precise and self._timestamps is not None:
+            return self._timestamps[idx]
+
         file_idx, local_idx = self._locate_frame(idx)
         conf = self.frame_config
         mm = self._get_mmap(file_idx)
@@ -405,12 +420,12 @@ class PFFSequence:
                 if q['tv_sec'] != 0:
                     break
             if precise:
-                return get_precise_time_ns(q['tv_sec'], q['tv_usec'], q['pkt_nsec'])
+                return get_precise_time_ns(q['tv_sec'], q['tv_usec'], q['pkt_nsec'], q.get('pkt_tai', 0))
             else:
                 return get_coarse_time_ns(q['tv_sec'], q['tv_usec'])
         elif 'pkt_nsec' in h:
             if precise:
-                return get_precise_time_ns(h['tv_sec'], h['tv_usec'], h['pkt_nsec'])
+                return get_precise_time_ns(h['tv_sec'], h['tv_usec'], h['pkt_nsec'], h.get('pkt_tai', 0))
             else:
                 return get_coarse_time_ns(h['tv_sec'], h['tv_usec'])
         else:
@@ -424,17 +439,20 @@ class PFFSequence:
         Returns:
             Global frame index.
         """
-        if self._total_frames == 0: return 0
+        if self._total_frames == 0:
+            return 0
 
         low = 0
         high = self._total_frames - 1
 
         # Bounds Check
         t_start = self.get_frame_time(low)
-        if target_time_ns <= t_start: return low
+        if target_time_ns <= t_start:
+            return low
 
         t_end = self.get_frame_time(high)
-        if target_time_ns >= t_end: return high
+        if target_time_ns >= t_end:
+            return high
 
         while low <= high:
             mid = (low + high) // 2
@@ -451,7 +469,7 @@ class PFFSequence:
         candidates = [c for c in [high, low] if 0 <= c < self._total_frames]
         return min(candidates, key=lambda i: abs(self.get_frame_time(i) - target_time_ns))
 
-    def get_image_array(self, start: int = 0, count: Optional[int] = None) -> np.ndarray:
+    def get_image_array(self, start: int = 0, count: int | None = None) -> np.ndarray:
         """
         Optimized 'Virtual Array' access for retrieving multiple consecutive frames.
 
@@ -547,12 +565,11 @@ class PFFSequence:
         # For now, we assume this runs on a shared filesystem.
 
         # Strategy: Create a dask array for EACH file, then concatenate.
-        dask_chunks = []
-        conf = self.frame_config
 
-        for i, fpath in enumerate(self.file_paths):
+        for i, _fpath in enumerate(self.file_paths):
             n_frames = self._file_frame_counts[i]
-            if n_frames == 0: continue
+            if n_frames == 0:
+                continue
 
             # We define a function that reads a chunk from a SPECIFIC file
             # This function must be robust to opening/closing files on workers
@@ -588,10 +605,10 @@ class PFFSequence:
 
 
 class PanosetiRun:
-    def __init__(self, run_dir: Union[str, Path]):
+    def __init__(self, run_dir: str | Path):
         self.run_dir = Path(run_dir)
-        self.products: Dict[str, PFFSequence] = {}
-        self.configs: Dict[str, Any] = {}
+        self.products: dict[str, PFFSequence] = {}
+        self.configs: dict[str, Any] = {}
 
         self.load_configs()
         self._scan()
@@ -608,8 +625,10 @@ class PanosetiRun:
     def _scan(self):
         files_map = {}
         for f in self.run_dir.glob("*.pff"):
-            if f.name == 'hk.pff': continue
-            if f.stat().st_size == 0: continue
+            if f.name == 'hk.pff':
+                continue
+            if f.stat().st_size == 0:
+                continue
 
             parts = f.name.split('.')
             key_parts = []
@@ -619,7 +638,8 @@ class PanosetiRun:
                 key_parts.append(p)
 
             key = ".".join(key_parts)
-            if key not in files_map: files_map[key] = []
+            if key not in files_map:
+                files_map[key] = []
             files_map[key].append(f)
 
         for k, v in files_map.items():
@@ -630,7 +650,7 @@ class PanosetiRun:
             except Exception as e:
                 logger.warning(f"Skipping product {k}: {e}")
 
-    def list_products(self) -> List[str]:
+    def list_products(self) -> list[str]:
         return sorted(self.products.keys())
 
     def get_product(self, product_name: str) -> PFFSequence:
@@ -645,7 +665,7 @@ class PanosetiRun:
         # 1. Configs
         tree = Tree(f"[bold gold1]Run: {self.run_dir.name}[/]")
         config_branch = tree.add("Configurations")
-        for k in self.configs.keys():
+        for k in self.configs:
             config_branch.add(f"[cyan]{k}.json[/]")
 
         # 2. Products

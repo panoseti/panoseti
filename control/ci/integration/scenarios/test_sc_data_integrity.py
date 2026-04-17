@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import typing
 from typing import Any
 
 import pytest
@@ -406,7 +407,7 @@ def test_SC047_movie_mode_with_trigger_in_same_state_is_rejected() -> None:
         },
     }
     with pytest.raises(Exception):
-        m.DataConfigValidator(**cfg)
+        m.DataConfigValidator(**typing.cast(Any, cfg))
 
 
 # ── SC-048 / SC-048b: Interleave state references undefined/null config key ───
@@ -438,7 +439,7 @@ def test_SC048_interleave_undefined_key_error_names_the_key() -> None:
         },
     }
     with pytest.raises(Exception) as exc_info:
-        m.DataConfigValidator(**cfg)
+        m.DataConfigValidator(**typing.cast(Any, cfg))
     # The error MUST name the missing key
     assert "image_MISSING" in str(exc_info.value) or "not found" in str(exc_info.value).lower(), (
         "FAIL (SC-048): Validation error for missing interleave key does not name "
@@ -471,7 +472,7 @@ def test_SC048b_interleave_both_configs_null_rejected() -> None:
         },
     }
     with pytest.raises(Exception):
-        m.DataConfigValidator(**cfg)
+        m.DataConfigValidator(**typing.cast(Any, cfg))
 
 
 # ── SC-049: max_file_size_mb rollover during interleave transition ────────────
@@ -520,7 +521,7 @@ def test_SC050_quabo_slot0_absent_empty_uid_handled() -> None:
     try:
         result = config_file.get_module_quabo_uids_from_dict(uids)
         # An empty UID must appear as empty string or None, not cause a crash
-        first_module = next(iter(result.values()), [])
+        first_module: list[str] = next(iter(result.values()), [])
         assert len(first_module) == 4, "Must return all 4 quabo UID slots"
     except AttributeError:
         pytest.skip("config_file.get_module_quabo_uids_from_dict not found — check API")

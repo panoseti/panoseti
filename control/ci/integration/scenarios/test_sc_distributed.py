@@ -93,7 +93,7 @@ def test_SCN001_sequential_start_latency_scales_linearly(
     t0 = time.monotonic()
     started = []
     try:
-        for i, (client, run_dir) in enumerate(zip(clients, run_dirs)):
+        for i, (client, run_dir) in enumerate(zip(clients, run_dirs, strict=True)):
             rp = {
                 "data_dir": DAQ_DATA_DIR,
                 "daq_ip_addr": DAQNODE_DIRECT_HOST if i == 0 else DAQNODE2_HOST,
@@ -164,10 +164,10 @@ def test_SCN002_parallel_start_is_faster_than_sequential(
         t0 = time.monotonic()
         results = await asyncio.gather(*(
             loop.run_in_executor(executor, c.StartDaq, p)
-            for c, p in zip(clients, params_list)
+            for c, p in zip(clients, params_list, strict=True)
         ), return_exceptions=True)
         elapsed = time.monotonic() - t0
-        for i, (result, rp) in enumerate(zip(results, params_list)):
+        for i, (result, rp) in enumerate(zip(results, params_list, strict=True)):
             if isinstance(result, tuple) and result[0]:
                 started.append((clients[i], rp))
         return elapsed
@@ -356,7 +356,7 @@ def test_SCN006_telemetry_volume_scales_with_n_nodes(
     Ensures RedisBatcher keeps up with N concurrent log producers.
     Skipped if telemetry tests are disabled.
     """
-    if not os.getenv("ENABLE_TELEMETRY_TESTS", "").strip() == "1":
+    if os.getenv("ENABLE_TELEMETRY_TESTS", "").strip() != "1":
         pytest.skip("Set ENABLE_TELEMETRY_TESTS=1 to run telemetry scaling tests")
 
     try:
@@ -372,7 +372,7 @@ def test_SCN006_telemetry_volume_scales_with_n_nodes(
     run_dirs = [f"scn006_{uuid.uuid4().hex[:8]}.pffd" for _ in range(n_nodes)]
     started = []
 
-    for i, (client, run_dir) in enumerate(zip(clients, run_dirs)):
+    for i, (client, run_dir) in enumerate(zip(clients, run_dirs, strict=True)):
         rp = {
             "data_dir": DAQ_DATA_DIR,
             "daq_ip_addr": DAQNODE_DIRECT_HOST if i == 0 else DAQNODE2_HOST,
@@ -389,7 +389,7 @@ def test_SCN006_telemetry_volume_scales_with_n_nodes(
 
     time.sleep(3)  # Let logs accumulate
 
-    depth_after = rc.llen("logs:ingress")
+    depth_after = await rc.llen("logs:ingress") # type: ignore
 
     for client, rp in started:
         with contextlib.suppress(Exception):

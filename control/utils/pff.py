@@ -297,9 +297,26 @@ def wr_to_unix_numpy(pkt_tai: Any, pkt_nsec: Any, tv_sec: Any) -> Any:
     l_tv_sec = np.longdouble(tv_sec)
     d = (l_tv_sec - l_tai + 37)%1024
     if d == 0:
-        return l_tv_sec + l_nsec / np.longdouble(1e9)
+        return l_tai + l_nsec / np.longdouble(1e9)
     elif d == 1:
-        return l_tv_sec - 1 + l_nsec / np.longdouble(1e9)
+        return l_tai - 1 + l_nsec / np.longdouble(1e9)
     elif d == 1023:
-        return l_tv_sec + 1 + l_nsec / np.longdouble(1e9)
+        return l_tai + 1 + l_nsec / np.longdouble(1e9)
     return np.longdouble(0)
+
+
+def read_pff_file(path: str) -> Iterator[dict[str, Any]]:
+    """Generator that yields JSON headers from a PFF file using PFFSequence."""
+    from pydantic import BaseModel
+
+    from utils.panoseti_interface import PFFSequence
+    
+    seq = PFFSequence([path])
+    for i in range(len(seq)):
+        header, _ = seq.get_frame(i)
+        if isinstance(header, BaseModel):
+            yield header.model_dump()
+        else:
+            # It's already a dict
+            yield header
+

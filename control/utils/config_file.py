@@ -197,6 +197,16 @@ def get_quabo_uids() -> dict[str, Any]:
     assign_numbers(quabo_uids_conf)
     return quabo_uids_conf
 
+def get_module_quabo_uids_from_dict(uids_dict: dict[str, Any]) -> dict[str, list[str]]:
+    """Validates and returns a mapping of module IP to list of quabo UIDs."""
+    from .pydantic_config_models import QuaboUidsValidator
+    validated = QuaboUidsValidator(**uids_dict)
+    res = {}
+    for dome in validated.domes:
+        for module in dome.modules:
+            res[str(module.ip_addr)] = [q.uid for q in module.quabos]
+    return res
+
 # get detector info as an array indexed by serialno
 #
 def get_detector_info() -> dict[str, float]:

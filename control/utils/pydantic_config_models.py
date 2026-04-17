@@ -358,6 +358,7 @@ class QuaboUidEntry(BaseStrictModel):
     uid: str = Field(..., description="Hex string of the Quabo UID. Empty string if offline.")
 
 class QuaboUidModule(BaseStrictModel):
+    ip_addr: IPvAnyAddress
     quabos: list[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
 
     @field_validator('quabos')

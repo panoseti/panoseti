@@ -96,12 +96,17 @@ verbose = False
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
-def ph_baseline_file_ok() -> bool:
-    if not os.path.exists(config_file.quabo_ph_baseline_filename):
-        print('quabo_ph_baseline.json not found.  Run config.py --calibrate_ph')
+def ph_baseline_file_ok(filename: str | None = None) -> bool:
+    if filename is None:
+        filename = config_file.quabo_ph_baseline_filename
+    if not os.path.exists(filename):
+        print(f'{filename} not found.  Run config.py --calibrate_ph')
         return False
-    if os.path.getmtime(config_file.quabo_ph_baseline_filename) < time.time() - 24*86400:
-        print('quabo_ph_baseline.json is too old.  Run config.py --calibrate_ph')
+    if os.path.getsize(filename) == 0:
+        print(f'{filename} is empty.  Run config.py --calibrate_ph')
+        return False
+    if os.path.getmtime(filename) < time.time() - 86400:
+        print(f'{filename} is too old.  Run config.py --calibrate_ph')
         return False
     return True
 

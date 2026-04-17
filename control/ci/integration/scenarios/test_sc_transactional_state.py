@@ -160,7 +160,7 @@ class TestSC024ConcurrentStart:
         """
         import threading
 
-        outcomes: list[tuple[bool, Any]] = []
+        outcomes: list[tuple[bool, Any, str]] = []
         lock = threading.Lock()
 
         def _start(suffix: str) -> None:
@@ -232,7 +232,7 @@ class TestSC024ConcurrentStart:
                         "data_dir": run_params["data_dir"], "run_dir": run_dir
                     })
                 await asyncio.get_event_loop().run_in_executor(
-                    None, wait_hashpipe_stopped, daq_control_direct, DAQ_DATA_DIR, 8
+                    None, lambda: wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
                 )
                 with contextlib.suppress(Exception):
                     daq_control_direct.CleanupData({
@@ -305,7 +305,7 @@ class TestSC031PHBaslineStaleness:
         except ImportError:
             pytest.skip("Could not import start.ph_baseline_file_ok — check sys.path")
 
-        is_ok = ph_baseline_file_ok(str(ph_file))
+        is_ok = ph_baseline_file_ok()
         assert not is_ok, (
             "FAIL (SC-031): ph_baseline_file_ok() returned True for a 26-hour-old file.\n"
             "The comparison uses time.time() - 24*86400 (= 24 days) instead of 86400 (24 hours).\n"
@@ -324,7 +324,7 @@ class TestSC031PHBaslineStaleness:
         except ImportError:
             pytest.skip("Could not import start.ph_baseline_file_ok")
 
-        assert ph_baseline_file_ok(str(ph_file)), \
+        assert ph_baseline_file_ok(), \
             "A 23-hour-old PH baseline file must be accepted"
 
     def test_SC031_missing_file_is_rejected(self, tmp_path: pathlib.Path) -> None:

@@ -62,21 +62,21 @@ class TestIntegrationTimeConstraints:
     def test_SC081_not_multiple_of_10_rejected(self) -> None:
         m = _load_pydantic_models()
         cfg = dict(BASE_DATA)
-        cfg["image"] = dict(cfg["image"], integration_time_usec=7)
+        cfg["image"] = {**BASE_DATA["image"], "integration_time_usec": 7} # type: ignore
         with pytest.raises(Exception):
             m.DataConfigValidator(**cfg)
 
     def test_SC082_does_not_divide_1e6_rejected(self) -> None:
         m = _load_pydantic_models()
         cfg = dict(BASE_DATA)
-        cfg["image"] = dict(cfg["image"], integration_time_usec=7000)
+        cfg["image"] = {**BASE_DATA["image"], "integration_time_usec": 7000} # type: ignore
         with pytest.raises(Exception):
             m.DataConfigValidator(**cfg)
 
     def test_valid_integration_time_accepted(self) -> None:
         m = _load_pydantic_models()
         cfg = dict(BASE_DATA)
-        cfg["image"] = dict(cfg["image"], integration_time_usec=100000)
+        cfg["image"] = {**BASE_DATA["image"], "integration_time_usec": 100000} # type: ignore
         # Should not raise
         m.DataConfigValidator(**cfg)
 
@@ -373,7 +373,7 @@ def test_SC094_gnss_module_with_wr_ip_causes_port_collision() -> None:
     Fix: add timing-mode port-collision check to validate_all().
     """
     gv = _load_global_validator()
-    obs = dict(BASE_OBS)
+    obs: Any = dict(BASE_OBS)
     # Add a second module with same WR IP but GNSS timing — port collision
     obs["domes"][0]["modules"].append({
         "mobo_serialno": "SN2",
