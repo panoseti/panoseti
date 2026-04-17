@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from . import process_chaos as _pc
 
@@ -63,7 +63,7 @@ def full_disk(
     container_name: str,
     mount_path: str,
     fill_pct: int = 99,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Context manager: fill mount_path to fill_pct% for the test block.
 
     Guarantees teardown even if the test raises.

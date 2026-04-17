@@ -15,7 +15,6 @@ import pathlib
 import sys
 import time
 import uuid
-from typing import Any
 
 import pytest
 
@@ -26,16 +25,11 @@ if str(CONTROL_ROOT) not in sys.path:
 from panoseti_grpc.daq_control.client import DaqControlClient
 
 from ci.integration.conftest import (
-    DAQNODE_DIRECT_HOST,
-    DAQNODE2_HOST,
-    GRPC_PORT,
     DAQ_DATA_DIR,
-    wait_hashpipe_running,
+    DAQNODE2_HOST,
+    DAQNODE_DIRECT_HOST,
     wait_hashpipe_stopped,
-    wait_until,
 )
-from ci.integration.fleet import Fleet, make_fleet, MAX_DEFAULT_FLEET_N
-
 
 # ── SC-069: 3 DAQ nodes, node-2 drops during StartDaq ───────────────────────
 
@@ -110,7 +104,7 @@ def test_SCN001_sequential_start_latency_scales_linearly(
                 "obs": "scn001",
                 "module_id": [250 + i],
             }
-            ok, resp = client.StartDaq(rp)
+            ok, _resp = client.StartDaq(rp)
             if ok:
                 started.append((client, rp))
     finally:
@@ -194,6 +188,161 @@ def test_SCN002_parallel_start_is_faster_than_sequential(
 
     print(f"\nSC-N002 ({n_nodes} nodes): parallel StartDaq wall time = {elapsed_parallel:.3f}s")
     # No strict timing assertion — this is a measurement test that documents parallelism gains
+
+
+# ── SC-070: 3 DAQ nodes, node 1 drops during StopDaq ────────────────────────
+
+@pytest.mark.skip(reason="SC-070: requires dynamic fleet with N≥3 nodes")
+def test_SC070_partial_stop_3_nodes_continues_to_remaining() -> None:
+    """
+    SC-070: With 3 nodes, if node-1 drops mid-StopDaq, nodes 0 and 2 must
+    still receive StopDaq. Current sequential stop loop aborts on first failure.
+
+    FAILS RED TODAY: stop_recording raises on first StopDaq failure.
+    Fix: per-node error isolation in stop_recording loop.
+    """
+    pytest.skip("Requires daqnode_fleet(n=3) fixture")
+
+
+# ── SC-072: Rolling restart of DAQ nodes during active run ───────────────────
+
+@pytest.mark.skip(reason="SC-072: requires container restart simulation during recording")
+def test_SC072_rolling_restart_during_run_survives() -> None:
+    """
+    SC-072: A rolling restart of DAQ nodes during an active run — the surviving
+    nodes continue recording while the restarted node rejoins.
+
+    FAILS RED TODAY: no heartbeat or rejoin protocol.
+    Fix: implement DAQ node health monitoring with auto-rejoin on restart.
+    """
+    pytest.skip("Requires docker restart of daqnode container mid-run")
+
+
+# ── SC-073: socat gateway crashes during command ────────────────────────────
+
+@pytest.mark.skip(reason="SC-073: requires container stop of gateway during forwarded command")
+def test_SC073_gateway_crash_makes_one_quabo_unreachable() -> None:
+    """
+    SC-073: When the socat gateway crashes during a port-forwarded quabo command,
+    one quabo becomes unreachable while others remain fine.
+
+    Current behavior: the gRPC call times out with no indication of which quabo
+    is affected.
+    Fix: add quabo-level reachability check; surface partial failure clearly.
+    """
+    pytest.skip("Requires process_chaos.kill on the gateway container")
+
+
+# ── SC-074: Module moved from daqnode-1 to daqnode-2 between runs ────────────
+
+@pytest.mark.skip(reason="SC-074: requires daq_config.json change between runs")
+def test_SC074_module_migration_between_daq_nodes() -> None:
+    """
+    SC-074: A module moved from daqnode-1 to daqnode-2 between runs requires
+    quabo.data_packet_destination to be updated to the new IP. If daq_config.json
+    is not reloaded, the quabo keeps sending to the old DAQ node.
+
+    FAILS RED TODAY: data_packet_destination is set at start_data_flow time;
+    no mechanism to update it without a full session restart.
+    Fix: read data destination from daq_config.json at each start_data_flow,
+    not from cached state.
+    """
+    pytest.skip("Requires daq_config.json modification between two sequential runs")
+
+
+# ── SC-076: Head node separate from DAQ nodes (contract test) ────────────────
+
+def test_SC076_head_node_separate_from_daq_connected(
+    daq_control_direct: DaqControlClient,
+) -> None:
+    """
+    SC-076: In the default topology, the head node (where pytest runs) is
+    separate from the DAQ nodes. StatusDaq must succeed, confirming the
+    separate head/DAQ topology works.
+
+    Not TDD-forcing — pins the default topology contract.
+    """
+    ok, resp = daq_control_direct.StatusDaq({
+        "data_dir": DAQ_DATA_DIR,
+        "check_hashpipe_running": False,
+        "check_disk_usage": False,
+        "check_run_dirs": False,
+    })
+    assert ok, f"StatusDaq failed in head-separate-from-DAQ topology: {resp}"
+
+
+# ── SC-077: Two domes, different obs coords, same module IDs ─────────────────
+
+@pytest.mark.skip(reason="SC-077: requires two-dome config with BOARDLOC uniqueness check")
+def test_SC077_two_domes_same_module_ids_boardloc_collision() -> None:
+    """
+    SC-077: Two domes with overlapping module IDs (same quabo IPs) have colliding
+    BOARDLOCs. The global validator must detect this before session_start.
+
+    FAILS RED TODAY: global_validator.py does not check cross-dome BOARDLOC uniqueness.
+    Fix: add cross-dome uniqueness check to global_validator.validate_all().
+    """
+    pytest.skip("Requires multi-dome obs_config with duplicate module IPs")
+
+
+# ── SC-078: Mixed port-forwarding topology ────────────────────────────────────
+
+@pytest.mark.skip(reason="SC-078: requires a third DAQ node with gateway-forwarded access")
+def test_SC078_mixed_direct_and_forwarded_topology() -> None:
+    """
+    SC-078: Some nodes accessed directly, others via port forwarding.
+    start.py must handle both in the same run.
+
+    Not TDD-forcing — tests the mixed-topology code path.
+    """
+    pytest.skip("Requires daqnode_fleet with mixed direct + gateway access")
+
+
+# ── SC-079: module.config write race regression ───────────────────────────────
+
+def test_SC079_two_daqnodes_have_separate_data_volumes(
+    daq_control_direct: DaqControlClient,
+    daq_control_node2: DaqControlClient,
+) -> None:
+    """
+    SC-079: daqnode and daqnode-2 have separate data volumes (daq_data and
+    daq_data_2 in docker-compose.integration.yml). A write to module.config
+    on node-1 must not affect node-2's data directory.
+
+    Pins the volume-isolation regression (already fixed in compose; this
+    test ensures it doesn't regress).
+    """
+
+    # Ask both nodes for their data dir status — must succeed independently
+    ok1, resp1 = daq_control_direct.StatusDaq({
+        "data_dir": DAQ_DATA_DIR,
+        "check_hashpipe_running": False,
+        "check_disk_usage": False,
+        "check_run_dirs": False,
+    })
+    ok2, resp2 = daq_control_node2.StatusDaq({
+        "data_dir": DAQ_DATA_DIR,
+        "check_hashpipe_running": False,
+        "check_disk_usage": False,
+        "check_run_dirs": False,
+    })
+    assert ok1, f"Node-1 StatusDaq failed: {resp1}"
+    assert ok2, f"Node-2 StatusDaq failed: {resp2}"
+    # Both nodes must be independently operational (volume isolation)
+
+
+# ── SC-080: panoseti-server SIGHUP reload ────────────────────────────────────
+
+@pytest.mark.skip(reason="SC-080: requires SIGHUP to panoseti-server and observation of reload")
+def test_SC080_server_sighup_reloads_config_without_dropping_connections() -> None:
+    """
+    SC-080: Sending SIGHUP to the unified panoseti-server should reload its
+    config without dropping active gRPC connections or aborting in-progress runs.
+
+    FAILS RED TODAY: SIGHUP behavior is not implemented or tested.
+    Fix: add SIGHUP handler that reloads config from disk; pin no-drop contract.
+    """
+    pytest.skip("Requires SIGHUP injection to running panoseti-server process")
 
 
 @pytest.mark.parametrize("n_nodes", [2])

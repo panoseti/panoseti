@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from . import process_chaos as _pc
 
@@ -32,7 +32,7 @@ def _ipt(container_name: str, action: str, dst_ip: str, port: int | None = None)
 def blackhole(container_name: str, dst_ip: str, port: int | None = None) -> None:
     """Add an OUTPUT DROP rule for dst_ip (and optionally dst_port) in container."""
     _ipt(container_name, "A", dst_ip, port)
-    logger.info(f"Blackholed {dst_ip}{':{}'.format(port) if port else ''} in {container_name}")
+    logger.info(f"Blackholed {dst_ip}{f':{port}' if port else ''} in {container_name}")
 
 
 def unblackhole(container_name: str, dst_ip: str, port: int | None = None) -> None:
@@ -46,7 +46,7 @@ def blocked_egress(
     container_name: str,
     dst_ip: str,
     port: int | None = None,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Drop outbound traffic to dst_ip[:port] for the block duration."""
     blackhole(container_name, dst_ip, port)
     try:

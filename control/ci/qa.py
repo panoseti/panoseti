@@ -430,6 +430,64 @@ async def cmd_integration(args: argparse.Namespace, runner: QARunner) -> bool:
     return all(r.ok for r in results)
 
 
+async def cmd_chaos(args: argparse.Namespace, runner: QARunner) -> bool:
+    """
+    Run TDD-forcing chaos/scenario tests against the integration stack.
+
+    These tests are DESIGNED to fail on master — each failure documents a known
+    bug that needs a production-code fix. The command exits 1 when tests fail
+    (so CI marks the suite red), but prints a note explaining this is expected.
+
+    Pass --allow-pass to suppress the expected-failure warning (used when the
+    production fixes have been merged and the suite should be green).
+    """
+    await runner.check_docker()
+
+    # SETUP — same stack as integration
+    await runner.run_sequential(
+        "SETUP",
+        runner.infra_task("up_integration"),
+        {"infra.up_integration": runner.infra_description("up_integration")},
+    )
+
+    results: list[Result] = []
+    try:
+        tasks = runner.test_tasks("chaos", extra_args=args.extra)
+        descs = {"test.chaos": runner.test_description("chaos")}
+
+        print(
+            f"\n{C.bold(C.yellow('NOTE:'))} Chaos tests are TDD-forcing — "
+            "failures on master are expected and document known bugs.\n"
+            "Each failure = one production-code fix required.\n",
+            flush=True,
+        )
+
+        results = await runner.run_sequential("CHAOS / SCENARIO TESTS", tasks, descs)
+    finally:
+        # Always tear down so the stack doesn't leak between runs
+        await runner.run_sequential(
+            "CLEANUP",
+            runner.infra_task("down_integration"),
+            {"infra.down_integration": runner.infra_description("down_integration")},
+        )
+
+    runner._summary(results)
+
+    # Surface expected-failures note in the summary footer
+    if results and not all(r.ok for r in results):
+        s = results[0].stats
+        failed = s.get("failed", 0) + s.get("error", 0)
+        print(
+            C.yellow(
+                f"  ↳ {failed} failure(s) expected on master (TDD-forcing). "
+                "Fix the production code to make them green."
+            ),
+            flush=True,
+        )
+
+    return all(r.ok for r in results)
+
+
 async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
     # 'all' will run each sub-command, which handle their own setup/teardown.
     ok_lint = await cmd_lint(args, runner)
@@ -448,18 +506,21 @@ Examples:
   python ci/qa.py unit -v -k test_logic
   python ci/qa.py integration --durations=10
   python ci/qa.py lint --fix
+  python ci/qa.py chaos                          # all TDD-forcing tests
+  python ci/qa.py chaos -k "SC010 or SC031"      # specific exemplars
 """
     )
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("build", help="Rebuild test images")
     sub.add_parser("lint", help="Run linters [ruff/mypy args...]")
-    
+
     p_unit = sub.add_parser("unit", help="Run unit tests [-j N] [pytest args...]")
     p_unit.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers")
 
     sub.add_parser("integration", help="Run integration tests [pytest args...]")
-    
+    sub.add_parser("chaos",       help="Run TDD-forcing scenario tests (expected failures on master) [pytest args...]")
+
     p_all = sub.add_parser("all", help="Run full suite [pytest args...]")
     p_all.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers for unit tests")
 

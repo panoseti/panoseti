@@ -11,8 +11,9 @@ from __future__ import annotations
 import json
 import os
 import socket
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 UDS_SOCK_PATH = os.getenv("MOCK_QUABO_UDS", "/tmp/mock_quabo.sock")
 
@@ -105,7 +106,7 @@ class MockQuaboFleet:
         return self.client.quabo_state(index)
 
     @staticmethod
-    def attach(container_name: str | None = None, uds_path: str = UDS_SOCK_PATH) -> "MockQuaboFleet":
+    def attach(container_name: str | None = None, uds_path: str = UDS_SOCK_PATH) -> MockQuaboFleet:
         """
         Attach to a running mock_quabo container.
         In CI the UDS is volume-mounted at uds_path.
@@ -114,7 +115,7 @@ class MockQuaboFleet:
 
 
 @contextmanager
-def silent_quabo(fleet: MockQuaboFleet) -> Generator[None, None, None]:
+def silent_quabo(fleet: MockQuaboFleet) -> Generator[None]:
     """Context manager: silences mock_quabo for the duration of the block."""
     fleet.silence_quabo()
     try:

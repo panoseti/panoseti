@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Generator
-from unittest.mock import patch
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ class GrpcChaosProxy:
             setattr(obj, attr, original)
         self._patches.clear()
 
-    def __enter__(self) -> "GrpcChaosProxy":
+    def __enter__(self) -> GrpcChaosProxy:
         if self.target is not None:
             self.apply(self.target)
         return self
@@ -153,7 +153,7 @@ def inject_rpc_fault(
     method: str,
     mode: str,
     timeout_s: float = 30.0,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Convenience context manager for single-method fault injection."""
     proxy = GrpcChaosProxy(client)
     proxy.set_mode(method, mode, timeout_s=timeout_s)

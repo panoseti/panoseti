@@ -13,8 +13,8 @@ from __future__ import annotations
 import contextlib
 import time as _time_module
 import unittest.mock as _mock
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Callable, Generator
 
 from . import process_chaos as _pc
 
@@ -23,7 +23,7 @@ from . import process_chaos as _pc
 def skew_container_clock(
     container_name: str,
     skew_seconds: float,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """
     Skew the system clock inside a container by skew_seconds.
 
@@ -47,7 +47,7 @@ def skew_container_clock(
 
 
 @contextmanager
-def skew_process_time(skew_seconds: float) -> Generator[None, None, None]:
+def skew_process_time(skew_seconds: float) -> Generator[None]:
     """Monkey-patch time.time() to return current_time + skew_seconds.
 
     Only affects code in the current process (test runner side).
@@ -59,7 +59,7 @@ def skew_process_time(skew_seconds: float) -> Generator[None, None, None]:
 
 
 @contextmanager
-def skew_tv_sec(skew_seconds: int) -> Generator[None, None, None]:
+def skew_tv_sec(skew_seconds: int) -> Generator[None]:
     """Return skewed tv_sec value — patches time.time() for PFF timestamp tests."""
     with skew_process_time(float(skew_seconds)):
         yield

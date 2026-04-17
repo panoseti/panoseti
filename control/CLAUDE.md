@@ -14,6 +14,7 @@ The root CLAUDE.md has some stale entries for the `control/` package:
 - **CI runner**: `python ci/qa.py <cmd>` (not `bash ci/run.sh`)
 - **Integration test count**: 65 passing (not "43 passing, 7 skipped")
 - **Unit test count**: 460 passing
+- **Chaos/scenario test count**: 113 tests (66 active, 47 stubs) in `ci/integration/scenarios/`
 
 ---
 
@@ -47,7 +48,13 @@ uv run pytest ci/unit/ -k test_config_file -v --tb=short
 
 # Real hashpipe + tcpreplay tests (requires running containers)
 python ci/qa.py integration -k "real_data"
+
+# Chaos/TDD-forcing scenario tests (expected to fail red on master)
+python ci/qa.py chaos                          # all 113 chaos tests
+python ci/qa.py chaos -k "SC010 or SC002"      # specific exemplars
 ```
+
+The `chaos` command runs `ci/integration/scenarios/` only, which is **excluded** from the normal `integration` suite. This means `python ci/qa.py integration` stays green while `python ci/qa.py chaos` is expected to have failures on unimplemented features.
 
 ### Lint and type-check
 

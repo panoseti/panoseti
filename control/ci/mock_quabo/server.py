@@ -31,7 +31,6 @@ import os
 import signal
 import socket
 import struct
-import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -208,7 +207,6 @@ def build_hk_packet(quabo: QuaboState, first: bool) -> bytes:
 
 async def hk_emitter(state: ServerState) -> None:
     """Periodically emit HK packets to the configured hk_dest_ip."""
-    loop = asyncio.get_event_loop()
     first = True
     while True:
         await asyncio.sleep(HK_INTERVAL_SEC)
@@ -292,6 +290,8 @@ async def handle_control_client(
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
+background_tasks: set[asyncio.Task[Any]] = set()
+
 async def main() -> None:
     loop = asyncio.get_event_loop()
 
@@ -312,10 +312,12 @@ async def main() -> None:
         logger.info(f"Listening on UDP 0.0.0.0:{port} (Q{i})")
 
     # Start HK emitter
-    asyncio.create_task(hk_emitter(state))
+    task = asyncio.create_task(hk_emitter(state))
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
 
     # Start UDS control socket
-    if os.path.exists(UDS_SOCK_PATH):
+    if os.path.exists(UDS_SOCK_PATH):  # noqa: ASYNC240
         os.unlink(UDS_SOCK_PATH)
     uds_server = await asyncio.start_unix_server(
         lambda r, w: handle_control_client(r, w, state),

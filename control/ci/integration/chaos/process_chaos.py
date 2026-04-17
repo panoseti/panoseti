@@ -12,8 +12,9 @@ from __future__ import annotations
 import contextlib
 import threading
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 _DOCKER_AVAILABLE = False
 try:
@@ -98,7 +99,7 @@ def kill_after(
     process_name: str,
     delay_s: float = 0.0,
     sig: str = "KILL",
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Context manager that kills process_name in container after delay_s.
 
     Teardown cancels any pending kill timer (no-op if already fired).
@@ -111,7 +112,7 @@ def kill_after(
 
 
 @contextmanager
-def freeze_process(container_name: str, process_name: str) -> Generator[None, None, None]:
+def freeze_process(container_name: str, process_name: str) -> Generator[None]:
     """SIGSTOP a process for the duration of the block, then SIGCONT."""
     kill_process(container_name, process_name, sig="STOP")
     try:

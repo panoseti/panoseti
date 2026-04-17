@@ -14,7 +14,6 @@ import contextlib
 import os
 import pathlib
 import sys
-import time
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -27,19 +26,17 @@ if str(CONTROL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_ROOT))
 
 from panoseti_grpc.daq_control.client import DaqControlClient
+
+from ci.integration.chaos import process_chaos
 from ci.integration.conftest import (
-    DAQNODE_DIRECT_HOST,
-    DAQNODE2_HOST,
-    GRPC_PORT,
     DAQ_DATA_DIR,
-    HEAD_DATA_DIR,
+    DAQNODE2_HOST,
     DAQNODE_CONTAINER,
-    wait_hashpipe_running,
+    DAQNODE_DIRECT_HOST,
+    GRPC_PORT,
     wait_hashpipe_stopped,
-    wait_until,
 )
 from ci.integration.state_probe import StateProbe
-from ci.integration.chaos import process_chaos
 
 # ── Environment ───────────────────────────────────────────────────────────────
 INTERLEAVE_PID_FILE = pathlib.Path("tmp/interleave.pid")
@@ -66,6 +63,44 @@ class CleanupRefusedPreserveData(Exception):
 
 class PHBaselineTooOld(Exception):
     """Raised by start.py when the PH baseline file is more than 24 hours old."""
+
+
+# ── gRPC API normalizers ──────────────────────────────────────────────────────
+#
+# The DaqControlClient API:
+#   StartDaq(params)  -> bool (True) on success; raises ValueError on failure
+#   StopDaq(params)   -> bool (True) on success; raises ValueError on failure
+#   StatusDaq(params) -> (bool, dict) tuple
+#   CleanupData(params) -> dict {'success': bool, 'message': str}
+#
+# These helpers normalise all calls to (ok: bool, msg: str) so scenario tests
+# can use a consistent pattern without try/except boilerplate everywhere.
+
+def _start(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
+    """StartDaq → (ok, msg).  Never raises."""
+    try:
+        client.StartDaq(params)
+        return True, ""
+    except (ValueError, ConnectionError, Exception) as exc:
+        return False, str(exc)
+
+
+def _stop(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
+    """StopDaq → (ok, msg).  Never raises."""
+    try:
+        client.StopDaq(params)
+        return True, ""
+    except (ValueError, ConnectionError, Exception) as exc:
+        return False, str(exc)
+
+
+def _cleanup(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
+    """CleanupData dict → (ok, msg).  Never raises."""
+    try:
+        result = client.CleanupData(params)
+        return result.get("success", False), result.get("message", "")
+    except (ValueError, ConnectionError, Exception) as exc:
+        return False, str(exc)
 
 
 # ── gRPC invoke helpers ───────────────────────────────────────────────────────
@@ -96,7 +131,7 @@ def grpc_start_daq(
     params: dict[str, Any],
 ) -> str:
     """Call StartDaq and return the run_dir on success, or raise StartRunFailed."""
-    ok, resp = client.StartDaq(params)
+    ok, resp = _start(client, params)
     if not ok:
         raise StartRunFailed(f"StartDaq failed: {resp}")
     return params["run_dir"]
@@ -109,10 +144,7 @@ def grpc_stop_daq(
     force_cleanup: bool = False,
 ) -> None:
     """Call StopDaq + CleanupData. Raises StopPartialFailure on error."""
-    ok, resp = client.StopDaq({
-        "data_dir": params["data_dir"],
-        "run_dir": params["run_dir"],
-    })
+    ok, resp = _stop(client, {"data_dir": params["data_dir"], "run_dir": params["run_dir"]})
     if not ok:
         raise StopPartialFailure(f"StopDaq failed: {resp}")
     wait_hashpipe_stopped(client, params["data_dir"], timeout=10)
@@ -125,7 +157,7 @@ def grpc_stop_daq(
     if force_cleanup:
         cleanup_req["force"] = True  # proposed new field — not in proto yet
 
-    ok, resp = client.CleanupData(cleanup_req)
+    ok, resp = _cleanup(client, cleanup_req)
     if not ok:
         if force_cleanup:
             raise StopPartialFailure(f"CleanupData(force=True) failed: {resp}")

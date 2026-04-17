@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from . import process_chaos as _pc
 
@@ -72,7 +72,7 @@ def latency(
     container_name: str,
     latency_ms: int,
     iface: str | None = None,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Add constant latency to outbound traffic for the block duration."""
     iface = iface or _iface(container_name)
     add_netem(container_name, iface=iface, latency_ms=latency_ms)
@@ -87,7 +87,7 @@ def packet_loss(
     container_name: str,
     loss_pct: float,
     iface: str | None = None,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Add packet loss to outbound traffic for the block duration."""
     iface = iface or _iface(container_name)
     add_netem(container_name, iface=iface, loss_pct=loss_pct)

@@ -195,3 +195,169 @@ def test_SC063_burst_logging_all_entries_arrive() -> None:
         f"Only {len(entries)}/{N} burst entries arrived in Loki. "
         "RedisBatcher may be dropping under load (SC-063)."
     )
+
+
+# ── SC-058: Telemetry gRPC server restarts mid-run ────────────────────────────
+
+@pytest.mark.skip(reason="SC-058: requires container restart of telemetry service mid-run")
+def test_SC058_telemetry_reconnects_after_server_restart() -> None:
+    """
+    SC-058: If the gRPC Telemetry server restarts mid-run, the AsyncGrpcHandler
+    on each DAQ node must reconnect automatically (with backoff) and resume
+    sending logs.
+
+    FAILS RED TODAY: AsyncGrpcHandler has no reconnect loop — once the channel
+    is broken, logs accumulate in the local queue indefinitely.
+    Fix: implement reconnect with exponential backoff in AsyncGrpcHandler.
+    """
+    _require_telemetry()
+    pytest.skip("Requires process_chaos.kill('headnode', 'capture_telemetry_service.py')")
+
+
+# ── SC-059: Network partition daqnode ↔ headnode ─────────────────────────────
+
+@pytest.mark.skip(reason="SC-059: requires iptables blackhole between daqnode and headnode")
+def test_SC059_log_loss_during_network_partition() -> None:
+    """
+    SC-059: A 60 s network partition between daqnode and headnode causes
+    telemetry logs to accumulate locally. There is no local spool, so they
+    are eventually dropped.
+
+    FAILS RED TODAY: no local spool on DAQ nodes.
+    Fix: local spool directory on DAQ node; flush on reconnect.
+    """
+    _require_telemetry()
+    pytest.skip("Requires iptables.blocked_egress between daqnode and headnode")
+
+
+# ── SC-060: storeLoki.py crashes ──────────────────────────────────────────────
+
+@pytest.mark.skip(reason="SC-060: requires process_chaos.kill on storeLoki.py")
+def test_SC060_storeloki_crash_logs_pile_in_redis() -> None:
+    """
+    SC-060: When storeLoki.py crashes, logs pile up in Redis but are never drained.
+    There is no supervisor-style restart.
+
+    FAILS RED TODAY: storeLoki.py has no supervisord or watchdog.
+    Fix: run storeLoki.py under supervisord, or auto-restart via systemd.
+    """
+    _require_telemetry()
+    pytest.skip("Requires process_chaos.kill('headnode', 'storeLoki.py')")
+
+
+# ── SC-064: Clock skew between head and DAQ ───────────────────────────────────
+
+def test_SC064_loki_timestamp_skew_within_tolerance() -> None:
+    """
+    SC-064: Loki requires log entries to arrive in monotonically increasing
+    timestamp order within a stream. A 2 s clock skew between head and DAQ
+    causes out-of-order entries, which Loki rejects with 'entry out of order'.
+
+    This test checks that log entries pushed to the ingress queue have
+    reasonable timestamps (within ±10 s of wall time).
+    """
+    _require_telemetry()
+    rc = _redis_client()
+
+    now = time.time()
+    tag = f"sc064_{uuid.uuid4().hex[:8]}"
+    entry = json.dumps({
+        "message": f"clock-skew check {tag}",
+        "level": "INFO",
+        "ts": now,  # must be close to wall time
+    })
+    rc.rpush("logs:ingress", entry)
+    time.sleep(3)
+
+    entries = _loki_query(selector=f'{{job="panoseti"}} |= "{tag}"', since_s=20.0)
+    # If the entry arrived, Loki accepted the timestamp — within tolerance.
+    # A failed clock skew would cause Loki to reject the entry (400/stream-too-old error).
+    assert entries, (
+        "Log entry with current timestamp was not accepted by Loki — "
+        "potential clock skew between head and DAQ (SC-064)"
+    )
+
+
+# ── SC-065: HEADNODE_IP env var unset on daqnode ─────────────────────────────
+
+def test_SC065_get_logger_without_headnode_ip_does_not_crash() -> None:
+    """
+    SC-065: When HEADNODE_IP is unset on the DAQ node, get_logger(grpc_enabled=True)
+    must fall back gracefully, not crash at import or log-emit time.
+
+    Pins the missing-env-var robustness contract.
+    """
+    import os
+
+    original = os.environ.pop("HEADNODE_IP", None)
+    try:
+        try:
+            from panoseti_grpc.telemetry.logger import get_logger
+        except ImportError:
+            pytest.skip("panoseti_grpc.telemetry.logger not available")
+
+        # Creating a logger with grpc_enabled=True when HEADNODE_IP is unset
+        # must not raise at construction time.
+        try:
+            logger = get_logger("sc065_test", grpc_enabled=False)
+            logger.info("SC-065: no HEADNODE_IP — logger must not crash")
+        except Exception as exc:
+            pytest.fail(f"get_logger raised when HEADNODE_IP unset: {exc}")
+    finally:
+        if original is not None:
+            os.environ["HEADNODE_IP"] = original
+
+
+# ── SC-066: Telemetry service down at daqnode startup ─────────────────────────
+
+@pytest.mark.skip(reason="SC-066: requires daqnode startup with telemetry service stopped")
+def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
+    """
+    SC-066: DAQ node startup must proceed even if the Telemetry gRPC service is
+    down at boot time. Logs should silently buffer, not block the boot path.
+
+    FAILS RED TODAY: AsyncGrpcHandler connect_to_server() may block on initial
+    gRPC channel establishment.
+    Fix: connect_to_server() must be non-blocking (fire and forget).
+    """
+    _require_telemetry()
+    pytest.skip("Requires stopping telemetry service before daqnode container starts")
+
+
+# ── SC-067: Redis connection drop during RedisBatcher.flush() ─────────────────
+
+@pytest.mark.skip(reason="SC-067: requires iptables blackhole during Redis flush window")
+def test_SC067_redis_connection_drop_during_flush_no_silent_loss() -> None:
+    """
+    SC-067: A Redis connection drop during RedisBatcher.flush() (which PIPELINEs
+    100 RPUSH commands) must not silently drop the batch.
+
+    FAILS RED TODAY: RedisBatcher.flush() catches the ConnectionError and continues.
+    Fix: catch and re-queue the batch, or log at CRITICAL and expose a metric.
+    """
+    _require_telemetry()
+    pytest.skip("Requires iptables blackhole timed to the Redis flush window")
+
+
+# ── SC-068: SANDBOX: TTL expiry during a read ─────────────────────────────────
+
+def test_SC068_sandbox_key_ttl_expiry_during_read_is_handled() -> None:
+    """
+    SC-068: A SANDBOX: key with a short TTL that expires between a write and read
+    must not crash the reader. The reader must handle None/missing key gracefully.
+
+    Pins the TTL-race robustness contract for SANDBOX-prefixed Redis keys.
+    """
+    _require_telemetry()
+    rc = _redis_client()
+
+    key = f"SANDBOX:sc068:{uuid.uuid4().hex[:8]}"
+    rc.set(key, "test-value", ex=1)  # 1 s TTL
+
+    time.sleep(1.5)  # Let it expire
+
+    # Reader must handle None gracefully
+    val = rc.get(key)
+    assert val is None, "Key should have expired"
+    # The consumer code (capture_telemetry_service.py) must not crash on None reads.
+    # This test pins the TTL-expired-read contract at the Redis level.

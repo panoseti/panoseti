@@ -13,12 +13,11 @@ into a single object so tests can make compact, readable assertions:
 
 from __future__ import annotations
 
+# HEAD_DATA_DIR matches the docker-compose volume mount on the test-runner
+import os
 import pathlib
 import time
 from typing import Any
-
-# HEAD_DATA_DIR matches the docker-compose volume mount on the test-runner
-import os
 
 HEAD_DATA_DIR = pathlib.Path(os.getenv("HEAD_DATA_DIR", "/data/head"))
 DAQ_DATA_DIR  = pathlib.Path(os.getenv("DAQ_DATA_DIR",  "/data"))
