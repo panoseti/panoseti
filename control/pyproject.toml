@@ -23,7 +23,7 @@ dependencies = [
     "tftpy>=0.8.2",
     "orjson",
     "typing_extensions>=4.5",
-    "panoseti_grpc>=0.4.4",
+    "panoseti_grpc>=0.4.5",
 ]
 
 [project.optional-dependencies]

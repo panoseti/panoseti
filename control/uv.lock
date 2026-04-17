@@ -692,7 +692,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.24" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
     { name = "orjson" },
-    { name = "panoseti-grpc", specifier = ">=0.4.4" },
+    { name = "panoseti-grpc", specifier = ">=0.4.5" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyserial", specifier = ">=3.5" },
@@ -715,7 +715,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.4"
+version = "0.4.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -739,9 +739,9 @@ dependencies = [
     { name = "snakeviz" },
     { name = "wheel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/f8/4543e3081bd1ebdc5d4c7baaf1589b7b953d372e5028be4f4e8ee34827d1/panoseti_grpc-0.4.4.tar.gz", hash = "sha256:5e8b88f1198be982bfa343cba982419a2a966d9198b7e0cfcb3066a0a6a9650b", size = 16136210, upload-time = "2026-04-01T02:00:48.695Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/83/7ba6e848e927eface8ad18c0f8b657ffd17b0ea01a1d0c72d687513b2110/panoseti_grpc-0.4.5.tar.gz", hash = "sha256:ed97ad6819c878999e54d6f46ebbfae32b467ac6d8fdeef71ad5592c121d9d8c", size = 16147900, upload-time = "2026-04-17T21:23:25.747Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/fa/c4cafb1efefc1fdc5291633fe0da210df64613814b1a2956e81bb54d3473/panoseti_grpc-0.4.4-py3-none-any.whl", hash = "sha256:498dc3616d47f0dde159bee030b787e44439408ce0e7f66feb9ccf311108c704", size = 16238895, upload-time = "2026-04-01T02:00:11.487Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/6d/ef55fc21093b091fe4c42bfd0daf26dd2383cb21ba67be0aeb84ccb64fa3/panoseti_grpc-0.4.5-py3-none-any.whl", hash = "sha256:b110bd7a4bbf0a05789fe9b2d0bab3c0014cd11bdab58f4aac0b56b8587d483c", size = 16254854, upload-time = "2026-04-17T21:23:16.63Z" },
 ]
 
 [[package]]
