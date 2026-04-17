@@ -156,15 +156,17 @@ class StateProbe:
         if self._loki_url is None:
             return []
         try:
+            import typing
+
             import requests
             start_ns = int((time.time() - since_s) * 1e9)
             resp = requests.get(
                 f"{self._loki_url}/loki/api/v1/query_range",
-                params={
+                params=typing.cast(Any, {
                     "query": selector,
                     "start": start_ns,
                     "limit": limit,
-                },
+                }),
                 timeout=5,
             )
             resp.raise_for_status()

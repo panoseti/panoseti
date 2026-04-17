@@ -25,10 +25,10 @@ CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 if str(CONTROL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_ROOT))
 
-from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_control.client import DaqControlClient  # noqa: E402
 
-from ci.integration.chaos import process_chaos
-from ci.integration.conftest import (
+from ci.integration.chaos import process_chaos  # noqa: E402
+from ci.integration.conftest import (  # noqa: E402
     DAQ_DATA_DIR,
     DAQNODE2_HOST,
     DAQNODE_CONTAINER,
@@ -36,7 +36,7 @@ from ci.integration.conftest import (
     GRPC_PORT,
     wait_hashpipe_stopped,
 )
-from ci.integration.state_probe import StateProbe
+from ci.integration.state_probe import StateProbe  # noqa: E402
 
 # ── Environment ───────────────────────────────────────────────────────────────
 INTERLEAVE_PID_FILE = pathlib.Path("tmp/interleave.pid")

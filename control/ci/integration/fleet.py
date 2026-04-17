@@ -134,14 +134,14 @@ class Fleet:
                     f"need {self.shm_bytes}. Pass shm_size correctly."
                 )
 
-    def stop_and_remove(self) -> None:
+    def tear_down(self) -> None:
         """Stop and remove all managed containers (best-effort)."""
+        import contextlib
         for container in self._containers:
-            try:
+            with contextlib.suppress(Exception):
                 container.stop(timeout=5)
-            except Exception:
-                pass
         self._containers.clear()
+
 
     def write_daq_config(self, path: pathlib.Path, head_node_ip: str) -> None:
         """Write a daq_config.json describing this fleet to path."""

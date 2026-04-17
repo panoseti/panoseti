@@ -2,20 +2,19 @@ import bisect
 import logging
 import mmap
 import re
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from pydantic import BaseModel, ValidationError
 
 # Efficiency Imports
-try:
-    import orjson
-except ImportError:
-    import json as orjson  # Fallback, though orjson is highly recommended
+import orjson
+from pydantic import BaseModel, ValidationError
 
 try:
+    import dask.array as _  # noqa: F401
     HAS_DASK = True
 except ImportError:
     HAS_DASK = False
@@ -126,7 +125,7 @@ class FrameConfig(BaseModel):
     format_name: str
 
     @property
-    def dtype(self):
+    def dtype(self) -> np.dtype:
         return np.dtype(self.dtype_str)
 
 
@@ -162,6 +161,7 @@ class PFFSequence:
         self.name = self.file_paths[0].name.split('.seqno')[0]
         self.meta = self._parse_filename(self.file_paths[0].name)
 
+        self.header_size: int = 0
         self.frame_config: FrameConfig | None = None
         self._file_frame_counts: list[int] = []
         self._cumulative_frames: list[int] = []
@@ -175,10 +175,10 @@ class PFFSequence:
         self._analyze_structure()
         self._index_files()
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.close()
 
-    def close(self):
+    def close(self) -> None:
         """Explicitly close file handles."""
         for mm in self._open_mmaps.values():
             mm.close()
@@ -188,21 +188,22 @@ class PFFSequence:
         self._open_files.clear()
 
     def _parse_filename(self, fname: str) -> dict[str, Any]:
-        meta = {}
+        meta: dict[str, Any] = {}
         clean_name = fname.split('.pff')[0]
         parts = clean_name.split('.')
         for part in parts:
             if '_' in part:
-                k, v = part.split('_', 1)
+                k, v_str = part.split('_', 1)
+                v: Any = v_str
                 try:
-                    if v.isdigit():
-                        v = int(v)
+                    if v_str.isdigit():
+                        v = int(v_str)
                 except (ValueError, TypeError):
                     pass
                 meta[k] = v
         return meta
 
-    def _analyze_structure(self):
+    def _analyze_structure(self) -> None:
         """Determines frame structure and enforces exact PanoSETI shapes and types."""
         sample_file = next((p for p in self.file_paths if p.stat().st_size > 0), None)
         if not sample_file:
@@ -222,6 +223,9 @@ class PFFSequence:
             fmt = str(self.meta.get('dp', 'unknown')).lower()
 
             # Apply exact specifications
+            shape: tuple[int, int]
+            dtype: Any
+            bpp: int
             if 'img8' in fmt:
                 shape = (32, 32)
                 dtype = np.uint8
@@ -257,7 +261,7 @@ class PFFSequence:
                 format_name=fmt
             )
 
-    def _index_files(self):
+    def _index_files(self) -> None:
         total = 0
         if self.frame_config:
             for p in self.file_paths:
@@ -268,7 +272,7 @@ class PFFSequence:
                 total += n
         self._total_frames = total
 
-    def index_timestamps(self):
+    def index_timestamps(self) -> None:
         """
         Pre-calculates and caches all frame timestamps.
         Highly recommended before performing multiple seek_time() operations.
@@ -277,18 +281,18 @@ class PFFSequence:
             return
 
         logger.info(f"Indexing {self._total_frames:,} timestamps for {self.name}...")
-        import time as pytime
         t0 = time.monotonic()
-        self._timestamps = np.zeros(self._total_frames, dtype=np.int64)
+        timestamps = np.zeros(self._total_frames, dtype=np.int64)
         for i in range(self._total_frames):
-            self._timestamps[i] = self.get_frame_time(i, precise=True)
+            timestamps[i] = self.get_frame_time(i, precise=True)
+        self._timestamps = timestamps
         elapsed = time.monotonic() - t0
         logger.info(f"Indexed {self._total_frames:,} frames in {elapsed:.2f}s")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self._total_frames
 
-    def _get_mmap(self, file_idx: int) -> mmap.mmap:
+    def _get_mmap(self, file_idx: int) -> mmap.mmap | None:
         if file_idx in self._open_mmaps:
             return self._open_mmaps[file_idx]
 
@@ -328,7 +332,7 @@ class PFFSequence:
 
         return file_idx, local_idx
 
-    def get_frame(self, idx: int) -> tuple[QuaboHeader | ModuleHeader | dict, np.ndarray]:
+    def get_frame(self, idx: int) -> tuple[QuaboHeader | ModuleHeader | dict[str, Any], np.ndarray]:
         """
         Retrieves a fully parsed header and image array for a single frame.
 
@@ -339,6 +343,9 @@ class PFFSequence:
             Tuple containing the parsed Pydantic header object (or raw dict on failure)
             and the numpy image array.
         """
+        if not self.frame_config:
+            raise RuntimeError("Frame configuration not analyzed.")
+
         file_idx, local_idx = self._locate_frame(idx)
         conf = self.frame_config
         mm = self._get_mmap(file_idx)
@@ -354,6 +361,7 @@ class PFFSequence:
         header_dict = orjson.loads(header_bytes)
 
         # Type conversion via Pydantic
+        header_obj: QuaboHeader | ModuleHeader | dict[str, Any]
         try:
             if 'quabo_0' in header_dict:
                 header_obj = ModuleHeader(**header_dict)
@@ -378,6 +386,9 @@ class PFFSequence:
         """
         Retrieves an array of images for a specific list of disjoint indices.
         """
+        if not self.frame_config:
+            return np.empty(0)
+
         if not indices:
             return np.empty((0, *self.frame_config.image_shape), dtype=self.frame_config.dtype)
 
@@ -387,6 +398,8 @@ class PFFSequence:
         for i, global_idx in enumerate(indices):
             file_idx, local_idx = self._locate_frame(global_idx)
             mm = self._get_mmap(file_idx)
+            if not mm:
+                continue
             offset = local_idx * conf.frame_size
             img_start = offset + conf.header_size + 1
             img_end = img_start + conf.payload_size
@@ -401,11 +414,16 @@ class PFFSequence:
         Fastest way to get time. Results are cached if precise=True and index_timestamps() was called.
         """
         if precise and self._timestamps is not None:
-            return self._timestamps[idx]
+            return int(self._timestamps[idx])
+
+        if not self.frame_config:
+            return 0
 
         file_idx, local_idx = self._locate_frame(idx)
         conf = self.frame_config
         mm = self._get_mmap(file_idx)
+        if not mm:
+            return 0
         offset = local_idx * conf.frame_size
 
         # Read only header bytes
@@ -419,6 +437,10 @@ class PFFSequence:
                 q = h[f'quabo_{i}']
                 if q['tv_sec'] != 0:
                     break
+            else:
+                # If all quabos are 0, use quabo_0
+                q = h['quabo_0']
+                
             if precise:
                 return get_precise_time_ns(q['tv_sec'], q['tv_usec'], q['pkt_nsec'], q.get('pkt_tai', 0))
             else:
@@ -483,6 +505,9 @@ class PFFSequence:
         Returns:
             np.ndarray: A stacked array of images of shape (count, H, W).
         """
+        if not self.frame_config:
+            return np.empty(0)
+
         if count is None:
             count = self._total_frames - start
 
@@ -545,7 +570,7 @@ class PFFSequence:
 
         return np.concatenate(chunks, axis=0)
 
-    def to_dask(self, chunks='auto'):
+    def to_dask(self, chunks: Any = 'auto') -> Any:
         """
         Convert to a Dask Array for distributed processing.
 
@@ -555,48 +580,6 @@ class PFFSequence:
         """
         if not HAS_DASK:
             raise ImportError("Dask is not installed.")
-
-        # Since get_image_array requires sophisticated logic (mmap management),
-        # standard dask.array.from_array might struggle with pickling the mmap objects.
-        # We use 'map_blocks' or 'from_delayed' strategy, or a custom slice getter.
-
-        # Simple Proxy Wrapper that is pickle-safe (closes mmaps on pickle)
-        # Note: In a real implementation, we'd make a lightweight picklable handle.
-        # For now, we assume this runs on a shared filesystem.
-
-        # Strategy: Create a dask array for EACH file, then concatenate.
-
-        for i, _fpath in enumerate(self.file_paths):
-            n_frames = self._file_frame_counts[i]
-            if n_frames == 0:
-                continue
-
-            # We define a function that reads a chunk from a SPECIFIC file
-            # This function must be robust to opening/closing files on workers
-            def load_chunk(file_path, header_size, payload_size, frame_size, shape, dtype, count):
-                # Independent read function for workers
-                with open(file_path, 'rb') as f:
-                    mm = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
-                    # Use strided trick
-                    start_offset = header_size + 1
-                    strides = (frame_size, shape[1] * dtype.itemsize, dtype.itemsize)
-                    arr = np.ndarray(
-                        shape=(count, *shape),
-                        dtype=dtype,
-                        buffer=mm,
-                        offset=start_offset,
-                        strides=strides
-                    )
-                    return np.array(arr)  # Force copy to memory for Dask
-
-            # Create delayed object
-            # Ideally we use from_map or similar, but let's effectively stack lazy arrays
-            # For simplicity in this interface: return a concatenated Dask array
-            # representing the whole stream.
-
-            # Correct Approach for Strided/Complex Binary formats in Dask:
-            # map_blocks on an index array, or da.from_array with a custom getter.
-            pass
 
         # Simplified Dask return for now:
         # User should likely use get_image_array in map_blocks manually for max control.
@@ -613,7 +596,7 @@ class PanosetiRun:
         self.load_configs()
         self._scan()
 
-    def load_configs(self):
+    def load_configs(self) -> None:
         """Loads all JSON configuration files in the run directory."""
         for f in self.run_dir.glob("*.json"):
             try:
@@ -622,8 +605,8 @@ class PanosetiRun:
             except Exception as e:
                 logger.warning(f"Failed to load config {f.name}: {e}")
 
-    def _scan(self):
-        files_map = {}
+    def _scan(self) -> None:
+        files_map: dict[str, list[Path]] = {}
         for f in self.run_dir.glob("*.pff"):
             if f.name == 'hk.pff':
                 continue
@@ -658,7 +641,7 @@ class PanosetiRun:
             raise KeyError(f"Product {product_name} not found.")
         return self.products[product_name]
 
-    def show(self):
+    def show(self) -> None:
         """Rich visualization of the Run structure."""
         console = Console()
 

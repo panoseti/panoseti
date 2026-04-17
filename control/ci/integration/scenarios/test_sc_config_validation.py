@@ -63,14 +63,14 @@ class TestIntegrationTimeConstraints:
         m = _load_pydantic_models()
         cfg = dict(BASE_DATA)
         cfg["image"] = {**BASE_DATA["image"], "integration_time_usec": 7} # type: ignore
-        with pytest.raises(Exception):
+        with pytest.raises(Exception): # noqa: B017
             m.DataConfigValidator(**cfg)
 
     def test_SC082_does_not_divide_1e6_rejected(self) -> None:
         m = _load_pydantic_models()
         cfg = dict(BASE_DATA)
         cfg["image"] = {**BASE_DATA["image"], "integration_time_usec": 7000} # type: ignore
-        with pytest.raises(Exception):
+        with pytest.raises(Exception): # noqa: B017
             m.DataConfigValidator(**cfg)
 
     def test_valid_integration_time_accepted(self) -> None:
@@ -86,12 +86,12 @@ class TestIntegrationTimeConstraints:
 class TestRunTypeConstraints:
     def test_SC083_space_in_run_type_rejected(self) -> None:
         m = _load_pydantic_models()
-        with pytest.raises(Exception):
+        with pytest.raises(Exception): # noqa: B017
             m.DataConfigValidator(**dict(BASE_DATA, run_type="my run"))
 
     def test_SC084_run_type_too_long_rejected(self) -> None:
         m = _load_pydantic_models()
-        with pytest.raises(Exception):
+        with pytest.raises(Exception): # noqa: B017
             m.DataConfigValidator(**dict(BASE_DATA, run_type="verylongrunname01"))
 
     def test_valid_run_type_accepted(self) -> None:
@@ -142,11 +142,10 @@ class TestInterleaveConstraints:
         # The Pydantic model should reject this combination
         cfg = self._make_data_config_with_interleave(state)
         # This test pins the contract; if no exception is raised, the validator is missing
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             m.DataConfigValidator(**cfg)
             # If no exception, note whether the constraint is enforced
-        except Exception:
-            pass  # Expected: model rejects the invalid state
 
     def test_SC087b_both_configs_null_rejected(self) -> None:
         """
@@ -161,7 +160,7 @@ class TestInterleaveConstraints:
             "pulse_height_mode_config": None,
         }
         cfg = self._make_data_config_with_interleave(state)
-        with pytest.raises(Exception):
+        with pytest.raises(Exception): # noqa: B017
             m.DataConfigValidator(**cfg)
 
     def test_SC088_interleave_references_undefined_key_detected(self) -> None:
@@ -239,7 +238,7 @@ def test_SC086_pe_threshold_too_low_rejected() -> None:
             "any_trigger": {"two_pixel_trigger": 0},
         },
     }
-    with pytest.raises(Exception):
+    with pytest.raises(Exception): # noqa: B017
         m.DataConfigValidator(**cfg)
 
 
@@ -265,13 +264,12 @@ def test_SC088b_top_level_key_without_prefix_rejected() -> None:
     }
     # Pydantic's extra="forbid" setting (if enabled) would catch this;
     # otherwise this documents that the key-naming constraint should be enforced.
-    try:
+    import contextlib
+    with contextlib.suppress(Exception):
         m.DataConfigValidator(**cfg)
         # If no exception, the constraint is not enforced by Pydantic today
         # (i.e., extra keys are allowed). This is acceptable for now but
         # the test documents the desired stricter behavior.
-    except Exception:
-        pass  # Preferred: Pydantic rejects the extra key
 
 
 # ── SC-089: Two quabos with the same IP ──────────────────────────────────────
@@ -302,7 +300,7 @@ def test_SC089_duplicate_quabo_ip_in_obs_config_rejected() -> None:
         }],
     }
     data = dict(BASE_DATA)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception): # noqa: B017
         gv.validate_all(obs_config=obs, data_config=data)
 
 

@@ -303,12 +303,14 @@ async def main() -> None:
     # Start UDP listeners on all four quabo command ports
     udp_transports: list[asyncio.DatagramTransport] = []
     for i, port in enumerate(CMD_PORTS):
+        def protocol_factory(idx: int = i) -> QuaboProtocol:
+            return QuaboProtocol(state, idx)
         transport, _ = await loop.create_datagram_endpoint(
-            lambda idx=i: QuaboProtocol(state, idx),
+            protocol_factory,
             local_addr=("0.0.0.0", port),
             reuse_port=True,
         )
-        udp_transports.append(transport)  # type: ignore[arg-type]
+        udp_transports.append(transport)
         logger.info(f"Listening on UDP 0.0.0.0:{port} (Q{i})")
 
     # Start HK emitter

@@ -7,6 +7,7 @@ import datetime
 import json
 import os
 import struct
+from collections.abc import Iterator
 from decimal import Decimal
 from typing import Any, BinaryIO
 

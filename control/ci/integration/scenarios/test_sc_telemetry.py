@@ -46,11 +46,13 @@ def _redis_client() -> Any:
 def _loki_query(selector: str = '{job="panoseti"}', since_s: float = 30.0) -> list[dict[str, Any]]:
     """Simple Loki query helper."""
     try:
+        import typing
+
         import requests
         start_ns = int((time.time() - since_s) * 1e9)
         resp = requests.get(
             f"{LOKI_URL}/loki/api/v1/query_range",
-            params={"query": selector, "start": start_ns, "limit": 200},
+            params=typing.cast(Any, {"query": selector, "start": start_ns, "limit": 200}),
             timeout=5,
         )
         resp.raise_for_status()
@@ -146,10 +148,10 @@ def test_SC062_non_utf8_log_message_does_not_crash() -> None:
 
     # Push a raw bytes-like entry (simulate a quabo log with binary garbage)
     entry = '{"message": "binary: \\ud800\\udfff", "level": "WARN", "ts": ' + str(time.time()) + '}'
-    try:
+    import contextlib
+    with contextlib.suppress(Exception):
         rc.rpush("logs:ingress", entry)
-    except Exception:
-        pass  # Some redis clients may reject this
+        # Some redis clients may reject this
 
     time.sleep(2)
     # Verify pipeline is still alive

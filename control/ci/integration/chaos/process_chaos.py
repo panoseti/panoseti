@@ -18,7 +18,7 @@ from typing import Any
 
 _DOCKER_AVAILABLE = False
 try:
-    import docker as _docker_sdk
+    import docker as _docker_sdk  # noqa: F401
     _DOCKER_AVAILABLE = True
 except ImportError:
     pass

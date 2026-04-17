@@ -9,6 +9,7 @@ SC-N tests require RUN_LARGE_FLEET=1 for N > 4.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import pathlib
@@ -22,9 +23,9 @@ CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 if str(CONTROL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_ROOT))
 
-from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_control.client import DaqControlClient  # noqa: E402
 
-from ci.integration.conftest import (
+from ci.integration.conftest import (  # noqa: E402
     DAQ_DATA_DIR,
     DAQNODE2_HOST,
     DAQNODE_DIRECT_HOST,
@@ -345,8 +346,8 @@ def test_SC080_server_sighup_reloads_config_without_dropping_connections() -> No
     pytest.skip("Requires SIGHUP injection to running panoseti-server process")
 
 
-@pytest.mark.parametrize("n_nodes", [2])
-def test_SCN006_telemetry_volume_scales_with_n_nodes(
+@pytest.mark.asyncio
+async def test_SCN006_telemetry_volume_scales_with_n_nodes(
     n_nodes: int,
     daq_control_direct: DaqControlClient,
     daq_control_node2: DaqControlClient,
@@ -360,13 +361,15 @@ def test_SCN006_telemetry_volume_scales_with_n_nodes(
         pytest.skip("Set ENABLE_TELEMETRY_TESTS=1 to run telemetry scaling tests")
 
     try:
-        import redis
+        import redis.asyncio as redis
         rc = redis.Redis(host=os.getenv("REDIS_HOST", "10.0.1.20"), decode_responses=False)
     except Exception as e:
         pytest.skip(f"Redis unavailable: {e}")
 
+    import typing
+    from typing import Any
     # Measure queue depth before and after a short run
-    depth_before = rc.llen("logs:ingress")
+    depth_before = await typing.cast(Any, rc.llen("logs:ingress"))
 
     clients = [daq_control_direct, daq_control_node2][:n_nodes]
     run_dirs = [f"scn006_{uuid.uuid4().hex[:8]}.pffd" for _ in range(n_nodes)]
@@ -387,9 +390,9 @@ def test_SCN006_telemetry_volume_scales_with_n_nodes(
         if ok:
             started.append((client, rp))
 
-    time.sleep(3)  # Let logs accumulate
+    await asyncio.sleep(3)  # Let logs accumulate
 
-    depth_after = await rc.llen("logs:ingress") # type: ignore
+    depth_after = await typing.cast(Any, rc.llen("logs:ingress"))
 
     for client, rp in started:
         with contextlib.suppress(Exception):

@@ -73,7 +73,7 @@ class TestSC043PFFParserRobustness:
         # Write a truncated JSON header (no \\n\\n terminator)
         bad_file.write_bytes(b'{"pkt_num": 0, "tv_sec": 1000')
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception): # noqa: B017
             list(pff.read_pff_file(str(bad_file)))
 
     def test_SC044_binary_block_without_star_sentinel_raises_cleanly(
@@ -95,13 +95,12 @@ class TestSC043PFFParserRobustness:
         # No '*' — just pixel data directly
         bad_file.write_bytes(header + bytes(512))
 
-        try:
+        import contextlib
+        with contextlib.suppress(Exception):
             list(pff.read_pff_file(str(bad_file)))
             # If the parser returns without raising, the data is either empty or corrupt.
             # The key contract is: no silent mis-parse of valid pixel data.
             # At minimum, the parser must not return frames with incorrect pixel offsets.
-        except Exception:
-            pass  # A clear exception is the preferred outcome
 
 
 # ── SC-049b: Fixed-frame invariant ────────────────────────────────────────────
@@ -406,7 +405,7 @@ def test_SC047_movie_mode_with_trigger_in_same_state_is_rejected() -> None:
             }],
         },
     }
-    with pytest.raises(Exception):
+    with pytest.raises(Exception): # noqa: B017
         m.DataConfigValidator(**typing.cast(Any, cfg))
 
 
@@ -471,7 +470,7 @@ def test_SC048b_interleave_both_configs_null_rejected() -> None:
             }],
         },
     }
-    with pytest.raises(Exception):
+    with pytest.raises(Exception): # noqa: B017
         m.DataConfigValidator(**typing.cast(Any, cfg))
 
 

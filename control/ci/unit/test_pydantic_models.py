@@ -558,24 +558,30 @@ class TestStimParams:
 
 class TestQuaboUidsValidator:
     def _make_module(self):
-        return {"quabos": [{"uid": "AABB"}, {"uid": "CCDD"}, {"uid": "EEFF"}, {"uid": ""}]}
+        return {
+            "ip_addr": "192.168.3.200",
+            "quabos": [{"uid": "AABB"}, {"uid": "CCDD"}, {"uid": "EEFF"}, {"uid": ""}]
+        }
 
     def test_valid_quabo_uids(self):
         QuaboUidsValidator(domes=[{"modules": [self._make_module()]}])
 
     def test_module_must_have_four_quabos(self):
         with pytest.raises(ValidationError):
-            QuaboUidsValidator(domes=[{"modules": [{"quabos": [{"uid": "X"}]}]}])
+            QuaboUidsValidator(domes=[{"modules": [{"ip_addr": "1.1.1.1", "quabos": [{"uid": "X"}]}]}])
 
     def test_module_cannot_have_three_quabos(self):
         with pytest.raises(ValidationError):
-            QuaboUidsValidator(domes=[{"modules": [{"quabos": [
+            QuaboUidsValidator(domes=[{"modules": [{"ip_addr": "1.1.1.1", "quabos": [
                 {"uid": "A"}, {"uid": "B"}, {"uid": "C"}
             ]}]}])
 
     def test_empty_uid_is_valid(self):
         """Empty string UID means quabo is offline."""
-        mod = {"quabos": [{"uid": ""}, {"uid": ""}, {"uid": ""}, {"uid": ""}]}
+        mod = {
+            "ip_addr": "192.168.3.200",
+            "quabos": [{"uid": ""}, {"uid": ""}, {"uid": ""}, {"uid": ""}]
+        }
         QuaboUidsValidator(domes=[{"modules": [mod]}])
 
 
