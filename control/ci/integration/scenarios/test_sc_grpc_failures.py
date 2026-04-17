@@ -32,6 +32,9 @@ from ci.integration.state_probe import StateProbe
 
 from .conftest import (
     StopPartialFailure,
+    _cleanup as grpc_cleanup,
+    _start as grpc_start,
+    _stop as grpc_stop,
     any_pff_files_on_daqnode,
 )
 
@@ -162,7 +165,7 @@ def _call_stop_recording_for_two_nodes(
     """
     errors = []
     for client, params in [(client1, params1), (client2, params2)]:
-        ok, resp = client.StopDaq({
+        ok, resp = grpc_stop(client, {
             "data_dir": params["data_dir"],
             "run_dir": params["run_dir"],
         })
@@ -186,7 +189,7 @@ def test_SC007_stop_on_already_stopped_returns_success(
 
     Not TDD-forcing — pins the idempotent-stop contract.
     """
-    ok, resp = daq_control_direct.StopDaq({
+    ok, resp = grpc_stop(daq_control_direct, {
         "data_dir": run_params["data_dir"],
         "run_dir": run_params["run_dir"],
     })
@@ -209,7 +212,7 @@ def test_SC009_cleanup_blocked_while_hashpipe_running(
     daq_control_direct.StartDaq(run_params)
     assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
     try:
-        ok, _resp = daq_control_direct.CleanupData({
+        ok, _resp = grpc_cleanup(daq_control_direct, {
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
@@ -271,7 +274,7 @@ class TestSC010OrphanedHashpipe:
 
         # The server still has hashpipe_pid > 0 in memory.
         # CleanupData MUST refuse — it should NOT silently delete science data.
-        ok, _resp = daq_control_direct.CleanupData({
+        ok, _resp = grpc_cleanup(daq_control_direct, {
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
@@ -305,7 +308,7 @@ class TestSC010OrphanedHashpipe:
         process_chaos.wait_for_process_death(DAQNODE_CONTAINER, "hashpipe", timeout=5)
 
         # force=True override: allowed to delete orphaned run data
-        ok, _resp = daq_control_direct.CleanupData({
+        ok, _resp = grpc_cleanup(daq_control_direct, {
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
@@ -336,7 +339,7 @@ class TestSC010OrphanedHashpipe:
         daq_control_direct.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
         try:
-            ok, _resp = daq_control_direct.CleanupData({
+            ok, _resp = grpc_cleanup(daq_control_direct, {
                 "data_dir":  run_params["data_dir"],
                 "run_dir":   run_params["run_dir"],
                 "module_id": run_params["module_id"],
@@ -410,13 +413,13 @@ def test_SC018_concurrent_start_same_node_only_one_wins(
 
     outcomes: list[Any] = []
 
-    def _start(run_dir_suffix: str) -> None:
+    def _inner_start(run_dir_suffix: str) -> None:
         p = dict(run_params, run_dir=f"conctest_{run_dir_suffix}.pffd")
-        ok, resp = daq_control_direct.StartDaq(p)
+        ok, resp = grpc_start(daq_control_direct, p)
         outcomes.append((ok, resp, p["run_dir"]))
 
-    t1 = threading.Thread(target=_start, args=("a",))
-    t2 = threading.Thread(target=_start, args=("b",))
+    t1 = threading.Thread(target=_inner_start, args=("a",))
+    t2 = threading.Thread(target=_inner_start, args=("b",))
     t1.start()
     t2.start()
     t1.join(timeout=10)
@@ -455,7 +458,7 @@ def test_SC003_startdaq_bad_run_dir_returns_failure(
 
     Pins the contract: server-side validation must surface config errors cleanly.
     """
-    ok, resp = daq_control_direct.StartDaq({
+    ok, resp = grpc_start(daq_control_direct, {
         **run_params,
         "run_dir": "",  # empty run_dir — invalid
     })
@@ -495,7 +498,7 @@ def test_SC008_stop_on_never_started_returns_success(
 
     Pins the idempotent-stop contract (not TDD-forcing).
     """
-    ok, resp = daq_control_direct.StopDaq({
+    ok, resp = grpc_stop(daq_control_direct, {
         "data_dir": DAQ_DATA_DIR,
         "run_dir": "never_existed_run.pffd",
     })
@@ -519,7 +522,7 @@ def test_SC011_cleanup_partial_failure_logs_and_continues(
     import uuid as _uuid
 
     # Start a run on node-0 only
-    ok, _ = daq_control_direct.StartDaq(run_params)
+    ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok, "StartDaq failed on node-0"
     assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
 
@@ -530,7 +533,7 @@ def test_SC011_cleanup_partial_failure_logs_and_continues(
     wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
 
     # Cleanup node-0 must succeed
-    ok0, resp0 = daq_control_direct.CleanupData({
+    ok0, resp0 = grpc_cleanup(daq_control_direct, {
         "data_dir":  run_params["data_dir"],
         "run_dir":   run_params["run_dir"],
         "module_id": run_params["module_id"],
@@ -538,7 +541,7 @@ def test_SC011_cleanup_partial_failure_logs_and_continues(
     assert ok0, f"CleanupData failed on node-0: {resp0}"
 
     # Cleanup node-1 for a run that never started there — must not raise/hang
-    ok1, _resp1 = daq_control_node2.CleanupData({
+    ok1, _resp1 = grpc_cleanup(daq_control_node2, {
         "data_dir":  run_params["data_dir"],
         "run_dir":   f"nonexistent_{_uuid.uuid4().hex[:8]}.pffd",
         "module_id": run_params["module_id"],

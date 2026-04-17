@@ -31,6 +31,7 @@ from ci.integration.conftest import (  # noqa: E402
     DAQNODE_DIRECT_HOST,
     wait_hashpipe_stopped,
 )
+from .conftest import _cleanup as grpc_cleanup, _start as grpc_start, _stop as grpc_stop  # noqa: E402
 
 # ── SC-069: 3 DAQ nodes, node-2 drops during StartDaq ───────────────────────
 
@@ -105,7 +106,7 @@ def test_SCN001_sequential_start_latency_scales_linearly(
                 "obs": "scn001",
                 "module_id": [250 + i],
             }
-            ok, _resp = client.StartDaq(rp)
+            ok, _resp = grpc_start(client, rp)
             if ok:
                 started.append((client, rp))
     finally:
@@ -164,7 +165,7 @@ def test_SCN002_parallel_start_is_faster_than_sequential(
         ]
         t0 = time.monotonic()
         results = await asyncio.gather(*(
-            loop.run_in_executor(executor, c.StartDaq, p)
+            loop.run_in_executor(executor, grpc_start, c, p)
             for c, p in zip(clients, params_list, strict=True)
         ), return_exceptions=True)
         elapsed = time.monotonic() - t0
@@ -346,6 +347,7 @@ def test_SC080_server_sighup_reloads_config_without_dropping_connections() -> No
     pytest.skip("Requires SIGHUP injection to running panoseti-server process")
 
 
+@pytest.mark.parametrize("n_nodes", [2])
 @pytest.mark.asyncio
 async def test_SCN006_telemetry_volume_scales_with_n_nodes(
     n_nodes: int,
@@ -386,7 +388,7 @@ async def test_SCN006_telemetry_volume_scales_with_n_nodes(
             "obs": "scn006",
             "module_id": [252 + i],
         }
-        ok, _ = client.StartDaq(rp)
+        ok, _ = grpc_start(client, rp)
         if ok:
             started.append((client, rp))
 

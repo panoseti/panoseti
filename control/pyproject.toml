@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=82"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -23,7 +23,7 @@ dependencies = [
     "tftpy>=0.8.2",
     "orjson",
     "typing_extensions>=4.5",
-    "panoseti_grpc>=0.4.5",
+    "panoseti_grpc>=0.4.6",
 ]
 
 [project.optional-dependencies]

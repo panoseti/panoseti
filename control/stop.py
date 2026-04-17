@@ -29,6 +29,8 @@ from typing import Any
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
+logger = logging.getLogger(__name__)
+
 from driver import quabo_driver
 from tools.interleave import PID_FILE
 from utils import collect, config_file, pff

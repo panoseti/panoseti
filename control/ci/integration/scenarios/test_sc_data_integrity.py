@@ -161,7 +161,7 @@ class TestSC049bFixedFrameInvariant:
         header0_len = len(frame0.split(b"\n\n")[0])
         frame1 = self._make_pff_frame(header1, pixel_data, target_header_len=header0_len)
 
-        pff_file = tmp_path / "test.ph256.pff"
+        pff_file = tmp_path / "test.dp_ph256.seqno_0.pff"
         pff_file.write_bytes(frame0 + frame1)
 
         # The parser must be able to stride over both frames
@@ -186,7 +186,7 @@ class TestSC049bFixedFrameInvariant:
         frame1_header = b'{"pkt_num": 1}\n\n'  # deliberately shorter
         pixel_data = bytes(512)
 
-        pff_file = tmp_path / "mismatched.ph256.pff"
+        pff_file = tmp_path / "mismatched.dp_ph256.seqno_0.pff"
         pff_file.write_bytes(frame0_header + b"*" + pixel_data + frame1_header + b"*" + pixel_data)
 
         frame0_header_len = len(frame0_header) - 2  # exclude \\n\\n
@@ -230,6 +230,7 @@ class TestSC054PreciseTiming:
             "tv_sec": tv_sec,
             "tv_usec": tv_usec,
             "pkt_nsec": pkt_nsec,
+            "pkt_tai": (tv_sec + 37) % 1024,
             "pkt_num": 0,
             "quabo_num": 0,
         }
@@ -316,7 +317,7 @@ class TestSC055UTCSecondBoundary:
         tv_sec = 1_700_000_001  # NTP has ticked to the next second
         tv_usec = 1_000          # 1 ms into tv_sec
         pkt_nsec = 999_990_000   # 999.99 ms — still in the previous second
-        h = {"tv_sec": tv_sec, "tv_usec": tv_usec, "pkt_nsec": pkt_nsec}
+        h = {"tv_sec": tv_sec, "tv_usec": tv_usec, "pkt_nsec": pkt_nsec, "pkt_tai": (tv_sec + 37) % 1024}
         precise_t = img_header_time(h)
         expected = (tv_sec - 1) + pkt_nsec / 1e9
         assert abs(precise_t - expected) < 1e-6, (
@@ -333,7 +334,7 @@ class TestSC055UTCSecondBoundary:
         tv_sec = 1_700_000_000  # NTP is still in second N
         tv_usec = 999_000        # 999 ms into tv_sec
         pkt_nsec = 10_000        # 0.01 ms — GPS rolled to next second
-        h = {"tv_sec": tv_sec, "tv_usec": tv_usec, "pkt_nsec": pkt_nsec}
+        h = {"tv_sec": tv_sec, "tv_usec": tv_usec, "pkt_nsec": pkt_nsec, "pkt_tai": (tv_sec + 37) % 1024}
         precise_t = img_header_time(h)
         expected = (tv_sec + 1) + pkt_nsec / 1e9
         assert abs(precise_t - expected) < 1e-6, (

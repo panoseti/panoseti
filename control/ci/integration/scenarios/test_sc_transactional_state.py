@@ -32,6 +32,13 @@ CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 if str(CONTROL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_ROOT))
 
+from .conftest import (  # noqa: E402
+    StopPartialFailure,
+    _cleanup as grpc_cleanup,
+    _start as grpc_start,
+    _stop as grpc_stop,
+)
+
 from ci.integration.conftest import (  # noqa: E402
     DAQ_DATA_DIR,
     wait_hashpipe_running,
@@ -81,7 +88,7 @@ class TestSC002PartialStartRollback:
         assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
 
         # Simulate node-1 failure: intentionally corrupt the run_dir to force failure
-        _ok, _resp = daq_control_node2.StartDaq({**rp2, "run_dir": ""})  # invalid run_dir
+        _ok, _resp = grpc_start(daq_control_node2, {**rp2, "run_dir": ""}) # invalid run_dir
         # With a valid two-node orchestrator, the node-0 start should be rolled back.
         # Currently start.py just raises and leaves node-0 running.
 
@@ -163,14 +170,14 @@ class TestSC024ConcurrentStart:
         outcomes: list[tuple[bool, Any, str]] = []
         lock = threading.Lock()
 
-        def _start(suffix: str) -> None:
+        def _inner_start(suffix: str) -> None:
             p = dict(run_params, run_dir=f"conc_{suffix}.pffd")
-            ok, resp = daq_control_direct.StartDaq(p)
+            ok, resp = grpc_start(daq_control_direct, p)
             with lock:
                 outcomes.append((ok, resp, p["run_dir"]))
 
-        t1 = threading.Thread(target=_start, args=("a",))
-        t2 = threading.Thread(target=_start, args=("b",))
+        t1 = threading.Thread(target=_inner_start, args=("a",))
+        t2 = threading.Thread(target=_inner_start, args=("b",))
         t1.start()
         t2.start()
         t1.join(timeout=10)
@@ -210,13 +217,13 @@ class TestSC024ConcurrentStart:
         """
         Async variant: asyncio.gather fires two starts simultaneously.
         """
-        async def _start(suffix: str) -> tuple[bool, Any, str]:
+        async def _inner_start(suffix: str) -> tuple[bool, Any, str]:
             p = dict(run_params, run_dir=f"async_conc_{suffix}.pffd")
             loop = asyncio.get_event_loop()
-            ok, resp = await loop.run_in_executor(None, daq_control_direct.StartDaq, p)
+            ok, resp = await loop.run_in_executor(None, grpc_start, daq_control_direct, p)
             return ok, resp, p["run_dir"]
 
-        results = await asyncio.gather(_start("x"), _start("y"), return_exceptions=True)
+        results = await asyncio.gather(_inner_start("x"), _inner_start("y"), return_exceptions=True)
         outcomes = [r for r in results if isinstance(r, tuple)]
         winners = [r for r in outcomes if r[0]]
 
@@ -256,7 +263,7 @@ def test_SC025_start_with_run_in_progress_is_rejected(
     daq_control_direct.StartDaq(run_params)
     assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
     try:
-        ok2, _resp2 = daq_control_direct.StartDaq(
+        ok2, _resp2 = grpc_start(daq_control_direct,
             dict(run_params, run_dir=f"second_{uuid.uuid4().hex[:8]}.pffd")
         )
         assert not ok2, (
@@ -608,7 +615,7 @@ def test_SC026_stop_with_no_run_is_noop(
     # Ensure no hashpipe is running
     wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=5)
 
-    ok, resp = daq_control_direct.StopDaq({
+    ok, resp = grpc_stop(daq_control_direct, {
         "data_dir": run_params["data_dir"],
         "run_dir": run_params["run_dir"],
     })
@@ -711,7 +718,7 @@ def test_SC036_run_dir_collision_is_detected(
     The server must return ok=False with a clear error, not crash.
     """
     # Start and stop a run with a known run_dir
-    ok1, _ = daq_control_direct.StartDaq(run_params)
+    ok1, _ = grpc_start(daq_control_direct, run_params)
     assert ok1, "First StartDaq must succeed"
     assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
     daq_control_direct.StopDaq({
@@ -721,7 +728,7 @@ def test_SC036_run_dir_collision_is_detected(
     wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
 
     # Attempt to start again with the same run_dir (the dir still exists on disk)
-    ok2, resp2 = daq_control_direct.StartDaq(run_params)
+    ok2, resp2 = grpc_start(daq_control_direct, run_params)
     # Server must handle the collision gracefully
     if not ok2:
         assert resp2, "Collision must produce a descriptive error message"
