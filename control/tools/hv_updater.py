@@ -235,9 +235,9 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
     its detectors' high-voltage values, provided its temperature is
     not too extreme."""
     logger = logging.getLogger('PANOSETI.HVUpdater')
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            module_ip_addr = module['ip_addr']
+    for dome in quabo_uids.domes:
+        for module in dome.modules:
+            module_ip_addr = str(module.ip_addr)
             for quabo_index in range(4):
                 quabo_obj = None
                 try:
@@ -249,7 +249,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
                         init_quabo_status(rkey, quabo_status)
                     if rkey in quabos_off:
                         continue
-                    uid = module['quabos'][quabo_index]['uid']
+                    uid = module.quabos[quabo_index].uid
                     if uid == '':
                         continue
                     if not check_timestamp(r, rkey, quabo_status):
@@ -362,11 +362,11 @@ if __name__ == "__main__":
     util.create_logger(logfile, 'PANOSETI.HVUpdater', 'a')
     logger = logging.getLogger('PANOSETI.HVUpdater')
     logger.info('************************************')
-    if 'detector_overvoltage' not in data_config:
+    if data_config.detector_overvoltage is None:
         logger.warning('detector_overvoltage is not set in data_config.json')
         logger.warning('Use the default overvoltage: 3V.')
     else:
-        logger.info(f"Use the overvoltage: {data_config['detector_overvoltage']}")
+        logger.info(f"Use the overvoltage: {data_config.detector_overvoltage}")
     try:
         main()
     except Exception as e:

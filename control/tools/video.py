@@ -14,25 +14,24 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import subprocess
-from typing import Any
 
 import numpy as np
 
 from tools import show_pff
 from utils import config_file, pff
+from utils.pydantic_config_models import QuaboUidsValidator
 
 
-def main(quabo_uids: dict[str, Any], module_id: int, dp: str) -> None:
+def main(quabo_uids: QuaboUidsValidator, module_id: int, dp: str) -> None:
     if module_id < 0:
-        dome = quabo_uids['domes'][0]
-        module = dome['modules'][0]
-        module_id = module['id']
-        daq_config['daq_nodes'][0]
+        dome = quabo_uids.domes[0]
+        module = dome.modules[0]
+        module_id = module.id if module.id is not None else -1
     else:
         found = False
-        for dome in quabo_uids['domes']:
-            for module in dome['modules']:
-                if module['id'] == module_id:
+        for dome in quabo_uids.domes:
+            for module in dome.modules:
+                if module.id == module_id:
                     found = True
                     break
             if found:
@@ -40,14 +39,20 @@ def main(quabo_uids: dict[str, Any], module_id: int, dp: str) -> None:
         if not found:
             print(f'no such module {module_id}')
             return
-    daq_node = module['daq_node']
-        
-    cmd = f"cd {daq_node['data_dir']}; ./video_daq.py --module {module_id} --dp {dp}"
+    
+    daq_node = module.daq_node
+    if daq_node is None:
+        print(f"Error: No DAQ node associated with module {module_id}")
+        return
+
+    cmd = f"cd {daq_node.data_dir}; ./video_daq.py --module {module_id} --dp {dp}"
     print(cmd)
     process = subprocess.Popen(['ssh',
-        '{}@{}'.format(daq_node['username'], daq_node['ip_addr']),
+        f'{daq_node.username}@{daq_node.ip_addr}',
         cmd,
         ],
+
+
         shell=False, stdout = subprocess.PIPE
     )
     ph = False
@@ -102,23 +107,24 @@ while i<len(argv):
     i += 1
 
 
-daq_config = config_file.get_daq_config()
-quabo_uids = config_file.get_quabo_uids()
-config_file.associate(daq_config, quabo_uids)
-data_config = config_file.get_data_config()
-if ph:
-    if 'pulse_height' not in data_config:
-        raise Exception('no pulse height being recorded')
-    if ph == 1024:
-        dp = 'ph1024'
-    elif ph == 256:
-        dp = 'ph256'
+    daq_config = config_file.get_daq_config()
+    quabo_uids = config_file.get_quabo_uids()
+    data_config = config_file.get_data_config()
+    config_file.associate(daq_config, quabo_uids)
+    
+    if ph:
+        if data_config.pulse_height is None:
+            raise Exception('no pulse height being recorded')
+        if ph == 1024:
+            dp = 'ph1024'
+        elif ph == 256:
+            dp = 'ph256'
+        else:
+            raise Exception(f'ph{ph} not supported')
     else:
-        raise Exception(f'ph{ph} not supported')
-else:
-    if 'image' not in data_config:
-        raise Exception('no image data being recorded')
-    bits_pixel = data_config['image']['quabo_sample_size']
-    dp = 'img16' if bits_pixel == 16 else 'img8'
+        if data_config.image is None:
+            raise Exception('no image data being recorded')
+        bits_pixel = data_config.image.quabo_sample_size
+        dp = 'img16' if bits_pixel == 16 else 'img8'
 
-main(quabo_uids, module_id, dp)
+    main(quabo_uids, module_id, dp)

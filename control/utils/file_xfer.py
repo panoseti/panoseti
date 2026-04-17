@@ -13,6 +13,7 @@ from glob import glob
 from typing import Any
 
 from utils import config_file, util
+from utils.pydantic_config_models import DaqConfigValidator
 
 
 # copy a file to a DAQ node
@@ -124,7 +125,10 @@ def copy_config_files(daq_config: dict[str, Any], run_dir: str, verbose: bool = 
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
-def copy_daq_files(daq_config: dict[str, Any]) -> None:
+def copy_daq_files(daq_config: DaqConfigValidator | dict[str, Any]) -> None:
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+    
     # hashpipe.so may not exist, as we may cross compile it on the daq node
     hashpipe_so = '../daq/hashpipe.so'
     if os.path.exists(hashpipe_so):
@@ -135,15 +139,16 @@ def copy_daq_files(daq_config: dict[str, Any]) -> None:
         print('{} does not exist!'.format('hashpipe.so'))
         print('clone the submodule and compile it, or compile it on the daq node.')
         print('**************************************************************************')
-    for node in daq_config['daq_nodes']:
+    for node in daq_config.daq_nodes:
+        node_dict = node.model_dump()
         if hashpipe_so_exist:
-            copy_file_to_node(hashpipe_so, daq_config, node)
-        copy_file_to_node('daq_scripts/start_daq.py', daq_config, node)
-        copy_file_to_node('daq_scripts/stop_daq.py', daq_config, node)
-        copy_file_to_node('daq_scripts/status_daq.py', daq_config, node)
-        copy_file_to_node('utils/util.py', daq_config, node)
-        copy_file_to_node('utils/pff.py', daq_config, node)
-        copy_file_to_node('daq_scripts/video_daq.py', daq_config, node)
+            copy_file_to_node(hashpipe_so, daq_config.model_dump(), node_dict)
+        copy_file_to_node('daq_scripts/start_daq.py', daq_config.model_dump(), node_dict)
+        copy_file_to_node('daq_scripts/stop_daq.py', daq_config.model_dump(), node_dict)
+        copy_file_to_node('daq_scripts/status_daq.py', daq_config.model_dump(), node_dict)
+        copy_file_to_node('utils/util.py', daq_config.model_dump(), node_dict)
+        copy_file_to_node('utils/pff.py', daq_config.model_dump(), node_dict)
+        copy_file_to_node('daq_scripts/video_daq.py', daq_config.model_dump(), node_dict)
 
 if __name__ == "__main__":
 

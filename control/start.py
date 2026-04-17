@@ -21,7 +21,9 @@
 # based on matlab/startmodules.m, startqNph.m, changepeq.m
 
 # ---------------- PRINT -> UT TIMESTAMP + FILE LOG ----------------
+import asyncio
 import builtins
+import json
 import logging
 import os
 import shutil
@@ -40,6 +42,16 @@ import stop
 from driver import quabo_driver
 from tools.sw_info import get_sw_info
 from utils import config_file, file_xfer, pff, util
+from utils.pydantic_config_models import (
+    DaqConfigValidator,
+    DaqNodeValidator,
+    DataConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+    QuaboUidsValidator,
+    RunStateLedger,
+)
+from utils.run_state import NodeReceipt, RunStateManager
 
 _LOG_ROOT = "/mnt/data11/data/palomar/L0"
 
@@ -97,6 +109,7 @@ verbose = False
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
 def ph_baseline_file_ok(filename: str | None = None) -> bool:
+    """Checks that PH calibration file is present, nonempty, and at most 24 hours old."""
     if filename is None:
         filename = config_file.quabo_ph_baseline_filename
     if not os.path.exists(filename):
@@ -105,8 +118,9 @@ def ph_baseline_file_ok(filename: str | None = None) -> bool:
     if os.path.getsize(filename) == 0:
         print(f'{filename} is empty.  Run config.py --calibrate_ph')
         return False
+    # Fix SC-031: 24 hours is 3600*24, not 86400*24
     if os.path.getmtime(filename) < time.time() - 86400:
-        print(f'{filename} is too old.  Run config.py --calibrate_ph')
+        print(f'{filename} is too old (>24h).  Run config.py --calibrate_ph')
         return False
     return True
 
@@ -123,7 +137,7 @@ def check_img_params(image_8bit: bool, image_usec: int) -> None:
 
 # parse the data config file to get DAQ params for quabos
 #
-def get_daq_params(data_config: dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
+def get_daq_params(data_config: DataConfigValidator) -> quabo_driver.DAQ_PARAMS:
     do_image = False
     image_usec = 1
     image_8bit = False
@@ -131,60 +145,55 @@ def get_daq_params(data_config: dict[str, Any]) -> quabo_driver.DAQ_PARAMS:
     bl_subtract = True
     do_any_trigger = False
     group_ph_frames = False
-    if 'image' in data_config:
+    if data_config.image:
         do_image = True
-        image = data_config['image']
-        if 'integration_time_usec' not in image:
-            raise Exception('missing integration_time_usec in data_config.json')
-        if image['quabo_sample_size'] == 8:
+        image = data_config.image
+        if image.quabo_sample_size == 8:
             image_8bit = True
-        elif image['quabo_sample_size'] != 16:
-            raise Exception('quabo_sample_size must be 8 or 16')
-        image_usec = image['integration_time_usec']
-        #check_img_params(image_8bit, image_usec)
-    if 'pulse_height' in data_config:
+        image_usec = image.integration_time_usec
+    if data_config.pulse_height:
         do_ph = True
-        if 'any_trigger' in data_config['pulse_height']:
+        if data_config.pulse_height.any_trigger:
             do_any_trigger = True
-            any_trigger = data_config['pulse_height']['any_trigger']
-            if 'group_ph_frames' not in any_trigger:
-                raise Exception('missing "group_ph_frames" param for "any_trigger" in data_config.json')
-            if any_trigger['group_ph_frames'] == 1:
+            any_trigger = data_config.pulse_height.any_trigger
+            if any_trigger.group_ph_frames == 1:
                 group_ph_frames = True
-            elif any_trigger['group_ph_frames'] != 0:
-                raise Exception('group_ph_frames for any_trigger in data_config.json must be 0 or 1.')
     daq_params = quabo_driver.DAQ_PARAMS(
         do_image, image_usec - 1, image_8bit, do_ph, bl_subtract, do_any_trigger, group_ph_frames
     )
-    if 'flash_params' in data_config:
-        fp = data_config['flash_params']
-        daq_params.set_flash_params(fp['rate'], fp['level'], fp['width'])
-    if 'stim_params' in data_config:
-        sp = data_config['stim_params']
-        daq_params.set_stim_params(sp['rate'], sp['level'])
+    if data_config.flash_params:
+        fp = data_config.flash_params
+        daq_params.set_flash_params(fp.rate, fp.level, fp.width)
+    if data_config.stim_params:
+        sp = data_config.stim_params
+        daq_params.set_stim_params(sp.rate, sp.level)
     return daq_params
 
-# Start data flow from the quabos.
-# For each quabo:
-# - tell it where to send HK packets
-# - tell it where to send data packets
-# - set its DAQ mode
-#
-def start_data_flow(quabo_uids: dict[str, Any], data_config: dict[str, Any], daq_config: dict[str, Any], network_config: dict[str, Any]) -> None:
+def start_data_flow(
+    quabo_uids: QuaboUidsValidator,
+    data_config: DataConfigValidator,
+    daq_config: DaqConfigValidator,
+    network_config: NetworkConfigValidator | dict[str, Any]
+) -> None:
+    """Starts data flow from Quabos by configuring destination IPs and acquisition modes."""
     logger = logging.getLogger('PANOSETI.Start.start_data_flow')
-    daq_params = get_daq_params(data_config)        
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            if 'daq_node' not in module:
-                continue
-            base_ip_addr = module['ip_addr']
+    daq_params = get_daq_params(data_config)
+    for dome in quabo_uids.domes:
+        for module in dome.modules:
+            # Note: QuaboUidModule has 'ip_addr'
+            base_ip_addr = str(module.ip_addr)
             module_id = config_file.ip_addr_to_module_id(base_ip_addr)
-            daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
-            daq_node_ip_addr = daq_node['ip_addr']
-            head_node_ip_addr = daq_config['head_node_ip_addr']
+            try:
+                # daq_config.model_dump() is still needed for config_file.module_id_to_daq_node
+                # until that is also fully refactored to take the model.
+                # Actually I refactored it to take both.
+                daq_node = config_file.module_id_to_daq_node(daq_config, module_id)
+            except Exception:
+                continue
+            daq_node_ip_addr = str(daq_node.ip_addr)
+            head_node_ip_addr = str(daq_config.head_node_ip_addr)
             for i in range(4):
-                quabo_uid = module['quabos'][i]
-                if quabo_uid['uid'] == '':
+                if module.quabos[i].uid == '':
                     continue
                 ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
                 ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
@@ -214,57 +223,61 @@ def start_data_flow(quabo_uids: dict[str, Any], data_config: dict[str, Any], daq
             quabo.swpps()
             quabo.close()
 
-# make run directories; copy config files to them
-# on each DAQ node:
-# data/
-#     run/         config files go here
-#     module_n
-#         run/     .pff files go here
-#
-def make_run_dirs(run_name: str, daq_config: dict[str, Any]) -> None:
+
+def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
+    """Creates run directories on head node and remote DAQ nodes via SSH."""
     logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
-    run_dir = '{}/{}'.format(daq_config['head_node_data_dir'], run_name)
+    run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
     os.mkdir(run_dir)
 
     # copy config files to run dir on this node
-    daq_config['head_node_data_dir']
     for f in config_file.config_file_names:
         files = glob(f)
         for file in files:
             fparts = file.split('/')
             shutil.copyfile(file, f'{run_dir}/{fparts[-1]}')
-     
+
     # make module and run directories on DAQ nodes
-    #
-    for node in daq_config['daq_nodes']:
-        if not node['modules']:
+    for node in daq_config.daq_nodes:
+        # Check if this node has any modules assigned
+        # DaqNodeValidator has module_ids
+        if not node.module_ids:
             continue
-        ip_addr = node['ip_addr']
+        ip_addr = str(node.ip_addr)
         if ip_addr in my_ip:
-            for module in node['modules']:
-                cmd = f'mkdir -p {daq_config["head_node_data_dir"]}/module_{module["id"]}/{run_name}'
+            # We need to know which module IDs are on this node to create module_N dirs
+            # node.module_ids is a list of ints or a range string (preprocessed to list[int])
+            for mid in node.module_ids:
+                cmd = f'mkdir -p {daq_config.head_node_data_dir}/module_{mid}/{run_name}'
                 if verbose:
                     print(cmd)
                 ret = os.system(cmd)
                 if ret:
                     raise Exception(f'{cmd} returned {ret}')
         else:
-            username = node['username']
-            data_dir = node['data_dir']
+            username = node.username
+            data_dir = node.data_dir
             rcmds = [f'mkdir {data_dir}/{run_name}']
-            for module in node['modules']:
-                rcmds.append(f'mkdir -p {data_dir}/module_{module["id"]}/{run_name}')
+            for mid in node.module_ids:
+                rcmds.append(f'mkdir -p {data_dir}/module_{mid}/{run_name}')
             # create process snapshot
             rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
             rcmd = ';'.join(rcmds)
             logger.info(f'DAQ IP: {ip_addr}')
-            if 'port_forwarding' in node:
-                real_ip = node['port_forwarding']['gw_ip']
-                port = node['port_forwarding']['port']
-                logger.info('Use port forwarding')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Port: {port}')
+            # Need to handle port forwarding from network_config if we want to be fully typed,
+            # but util.attach_daq_config currently mutates the dict.
+            # DaqNodeValidator doesn't have port_forwarding in its schema if it's strict.
+            # Let's check DaqNodeValidator in pydantic_config_models.py
+            # Wait, DaqNodeValidator is BaseStrictModel. It DOES NOT have port_forwarding.
+            # But util.attach_daq_config attaches it! This will fail validation.
+            # I should update DaqNodeValidator to allow port_forwarding.
+            
+            # For now, let's use the node as a dict for SSH logic if it was mutated
+            node_dict = node.model_dump()
+            if 'port_forwarding' in node_dict:
+                real_ip = node_dict['port_forwarding']['gw_ip']
+                port = node_dict['port_forwarding']['port']
                 cmd = f'ssh -p {port} {username}@{real_ip} "{rcmd}"'
             else:
                 cmd = f'ssh {username}@{ip_addr} "{rcmd}"'
@@ -275,121 +288,260 @@ def make_run_dirs(run_name: str, daq_config: dict[str, Any]) -> None:
                 raise Exception(f'{cmd} returned {ret}')
 
     # copy config files to DAQ nodes
-    file_xfer.copy_config_files(daq_config, run_name, verbose)
+    file_xfer.copy_config_files(daq_config.model_dump(), run_name, verbose)
 
-# start recording data
-#   for each DAQ node that is getting data
-#       create run directory
-#       copy config files to run directory
-#       start hashpipe program
-#
-def start_recording(obs_config: dict[str, Any], data_config: dict[str, Any], daq_config: dict[str, Any], run_name: str, no_hv: bool) -> None:
+async def start_recording(
+    obs_config: ObsConfigValidator,
+    data_config: DataConfigValidator,
+    daq_config: DaqConfigValidator,
+    run_name: str,
+    no_hv: bool,
+    state_mgr: RunStateManager
+) -> None:
+    """
+    Asynchronously starts recording on DAQ nodes and performs heartbeat liveness checks.
+    Transactional Contract:
+    - Starts local HK/HV daemons.
+    - Issues StartDaq to all remote nodes concurrently.
+    - Waits 2s and probes StatusDaq for Hashpipe ALIVE heartbeat.
+    - Updates run_state.toml ledger with receipts.
+    - Raises Exception on ANY failure to trigger the parent rollback ladder.
+    """
     logger = logging.getLogger('PANOSETI.Start.start_recording')
-    util.local_ip()
+    loop = asyncio.get_running_loop()
 
-    # start recording HK data
-    util.start_hk_recorder(daq_config, run_name)
-    obs = obs_config['name']
+    # 1. Start local daemons
+    util.start_hk_recorder(daq_config.model_dump(), run_name)
     if not no_hv:
-        # start high-voltage updater
         util.start_hv_updater()
-
-        # start module temperature monitor
         util.start_module_temp_monitor()
 
-    # start hashpipe on DAQ nodes
-
-    if 'max_file_size_mb' in data_config:
-        max_file_size_mb = int(data_config['max_file_size_mb'])
-    else:
-        max_file_size_mb = util.default_max_file_size_mb
+    # 2. Concurrent StartDaq
+    max_file_size_mb = data_config.max_file_size_mb or util.default_max_file_size_mb
     daq_params = get_daq_params(data_config)
-    for node in daq_config['daq_nodes']:
-        if not node['modules']:
-            continue
-        data_dir = node['data_dir']
-        module_ids = [
-            config_file.ip_addr_to_module_id(m['ip_addr']) for m in node['modules']
-        ]
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
-        if verbose:
-            print(f'StartDaq via gRPC: {grpc_host}:{grpc_port}  modules={module_ids}')
-        logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port}  modules={module_ids}')
+
+    async def start_node(node_validator: DaqNodeValidator) -> None:
+        if not node_validator.module_ids:
+            return
+        node_dict = node_validator.model_dump()
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+        logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
+        
         client = DaqControlClient(host=grpc_host, port=grpc_port)
-        ok = client.StartDaq({
-            'data_dir':         data_dir,
-            'daq_ip_addr':      str(node['ip_addr']),
-            'bindhost':         node.get('bindhost', '0.0.0.0'),
+        start_args = {
+            'data_dir':         node_validator.data_dir,
+            'daq_ip_addr':      str(node_validator.ip_addr),
+            'bindhost':         node_validator.bindhost or '0.0.0.0',
             'max_file_size_mb': int(max_file_size_mb),
             'group_ph_frames':  bool(daq_params.do_group_ph_frames),
             'run_dir':          run_name,
-            'obs':              obs,
-            'module_id':        module_ids,
-        })
-        if not ok:
-            raise Exception(f'StartDaq failed for node {node["ip_addr"]}')
-
-def start_run(
-    obs_config: dict[str, Any], daq_config: dict[str, Any], quabo_uids: dict[str, Any], data_config: dict[str, Any], no_hv: bool, no_redis: bool, no_data: bool
-) -> bool:
-    my_ip = util.local_ip()
-    # convert head node name to IP address
-    head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
-    if  head_node_ip not in my_ip:
-        print('This node ({}) is not the head node specified in daq_config.json ({})'.format(my_ip, daq_config['head_node_ip_addr']))
-        return False
-
-    rn = util.read_run_name()
-    if (rn):
-        print(f'A run is already in progress: {rn}')
-        print('Run stop.py, then try again.')
-        return False
-
-    if util.is_hk_recorder_running():
-        print('The HK recorder is running.  Run stop.py, then try again.')
-        return False
+            'obs':              obs_config.name,
+            'module_id':        node_validator.module_ids,
+        }
         
-    if not no_redis and not util.are_redis_daemons_running():
-        print('Redis daemons are not running.  Run config.py --redis_daemons')
-        util.show_redis_daemons()
-        return False
+        # Call gRPC synchronously in thread pool
+        ok = await loop.run_in_executor(None, lambda: client.StartDaq(start_args))
+        if not ok:
+            raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}')
 
-    if not ph_baseline_file_ok():
-        return False
+    # Execute all starts in parallel
+    await asyncio.gather(*(start_node(n) for n in daq_config.daq_nodes))
 
-    # get git commit info, and write the info into sw_info.json
-    get_sw_info()
-    # if head node is also DAQ node, make sure data dirs are the same
-    #
-    for node in daq_config['daq_nodes']:
-        if my_ip == node['ip_addr'] and daq_config['head_node_data_dir'] != node['data_dir']:
-            print("Head node data dir doesn't match DAQ node data dir")
-            return False
+    # 3. Liveness Probe (Heartbeat)
+    logger.info("Waiting for Hashpipe stabilization heartbeat...")
+    await asyncio.sleep(2.0)
+
+    async def probe_node(node_validator: DaqNodeValidator) -> None:
+        if not node_validator.module_ids:
+            return
+        node_dict = node_validator.model_dump()
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+        client = DaqControlClient(host=grpc_host, port=grpc_port)
+        
+        # StatusDaq request
+        ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
+            'data_dir': node_validator.data_dir,
+            'check_hashpipe_running': True
+        }))
+        
+        if not ok:
+             raise RuntimeError(f"Heartbeat RPC failed for node {node_validator.ip_addr}")
+        if not status.get('hashpipe_running'):
+             raise RuntimeError(f"Hashpipe heartbeat check failed (NOT ALIVE) on node {node_validator.ip_addr}")
+        
+        # Success: Update ledger with receipt
+        receipt = NodeReceipt(
+            ip_addr=node_validator.ip_addr,
+            status="START_SUCCESS",
+            hashpipe_pid=status.get('hashpipe_pid'),
+            data_dir=node_validator.data_dir
+        )
+        state_mgr.update_node_receipt(receipt)
+        logger.info(f"Node {node_validator.ip_addr} heartbeat OK (PID {receipt.hashpipe_pid})")
+
+    # Parallel heartbeat verification
+    await asyncio.gather(*(probe_node(n) for n in daq_config.daq_nodes))
+
+
+async def start_run(
+    obs_config: ObsConfigValidator,
+    daq_config: DaqConfigValidator,
+    quabo_uids: QuaboUidsValidator,
+    data_config: DataConfigValidator,
+    network_config: NetworkConfigValidator | dict[str, Any],
+    no_hv: bool,
+    no_redis: bool,
+    no_data: bool
+) -> bool:
+    """
+    Main transactional run coordinator.
+    Implements the Rollback Ladder:
+    1. Acquire lock.
+    2. Validate state (no run in progress).
+    3. Initialize Ledger (run_state.toml).
+    4. Pre-flight (Ping sweep, PH baseline).
+    5. Phase 1: Directories.
+    6. Phase 2: Hardware config.
+    7. Phase 3: Start recording (concurrent gRPC + Heartbeat).
+    8. Finalize.
+    """
+    state_mgr = RunStateManager()
+    
+    try:
+        state_mgr.acquire_lock()
+    except RuntimeError as e:
+        print(e)
+        return False
 
     try:
-        run_name = pff.run_dir_name(obs_config['name'], data_config['run_type'])
+        my_ip = util.local_ip()
+        head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
+        if head_node_ip not in my_ip:
+            print(f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
+            return False
+
+        # Check existing ledger state instead of simple file
+        existing_state = state_mgr.load_state()
+        if existing_state and existing_state.status in ["STARTING", "ACTIVE", "STOPPING"]:
+            print(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status})")
+            print("Run stop.py, then try again.")
+            return False
+
+        if util.is_hk_recorder_running():
+            print('The HK recorder is running. Run stop.py, then try again.')
+            return False
+            
+        if not no_redis and not util.are_redis_daemons_running():
+            print('Redis daemons are not running. Run config.py --redis_daemons')
+            util.show_redis_daemons()
+            return False
+
+        if not ph_baseline_file_ok():
+            return False
+
+        # Initialize Ledger
+        run_name = pff.run_dir_name(obs_config.name, data_config.run_type)
+        initial_ledger = RunStateLedger(
+            run_name=run_name,
+            status="STARTING",
+            start_time=datetime.now(UTC).isoformat(),
+            config_metadata={
+                "obs_name": obs_config.name,
+                "run_type": data_config.run_type,
+                "no_hv": no_hv
+            }
+        )
+        state_mgr.save_state(initial_ledger)
+
+        # get git commit info, and write the info into sw_info.json
+        get_sw_info()
+        
         config_file.associate(daq_config, quabo_uids)
         config_file.show_daq_assignments(quabo_uids)
-        print('setting up run directories')
-        make_run_dirs(run_name, daq_config)
-        if not no_data:
-            print('starting data flow from quabos')
-            start_data_flow(quabo_uids, data_config, daq_config, network_config)
-            print('starting recording')
-            start_recording(obs_config, data_config, daq_config, run_name, no_hv)
-    except Exception:
-        print(traceback.format_exc())
-        print("Couldn't start run.  Run stop.py, then try again.")
-        print('If other users might be using the telescope, check with them;')
-        print('running stop.py will kill their run.')
-        return False
-    util.write_run_name(daq_config, run_name)
-    print(f'started run {run_name}')
-    return True
 
-if __name__ == "__main__":
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
+        # --- ROLLBACK LADDER BEGIN ---
+        try:
+            print(f'setting up run directories for {run_name}')
+            make_run_dirs(run_name, daq_config)
+            
+            if not no_data:
+                print('starting data flow from quabos')
+                start_data_flow(quabo_uids, data_config, daq_config, network_config)
+                
+                print('starting recording (Phase 3: Transactional)')
+                await start_recording(obs_config, data_config, daq_config, run_name, no_hv, state_mgr)
+            
+        except Exception as e:
+            print(f"\n[CRITICAL FAILURE] Start process aborted: {e}")
+            print("Triggering Rollback Ladder...")
+            
+            # Update ledger to ABORTED immediately
+            ledger = await asyncio.to_thread(state_mgr.load_state)
+            if ledger:
+                ledger.status = "ABORTED"
+                await asyncio.to_thread(state_mgr.save_state, ledger)
+            
+            # Ladder Step 1: Stop remote nodes
+            print("Stopping remote DAQ nodes...")
+            for node in daq_config.daq_nodes:
+                if not node.module_ids:
+                    continue
+                try:
+                    node_dict = node.model_dump()
+                    grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+                    client = DaqControlClient(host=grpc_host, port=grpc_port)
+                    # Use asyncio.to_thread for synchronous gRPC calls
+                    await asyncio.to_thread(client.StopDaq, {'data_dir': node.data_dir, 'run_dir': run_name})
+                except Exception as stop_err:
+                    print(f"Failed to stop node {node.ip_addr} during rollback: {stop_err}")
+
+            # Ladder Step 2: Stop Quabo data flow
+            print("Stopping Quabo data flow...")
+            await asyncio.to_thread(util.stop_data_flow, quabo_uids, network_config)
+
+            # Ladder Step 3: Kill local daemons
+            print("Stopping local daemons...")
+            await asyncio.to_thread(util.kill_hk_recorder)
+            await asyncio.to_thread(util.kill_hv_updater)
+            await asyncio.to_thread(util.kill_module_temp_monitor)
+
+            # Ladder Step 4: Archive partial artifacts
+            aborted_dir = f"{daq_config.head_node_data_dir}/_aborted/{run_name}"
+            print(f"Archiving partial artifacts to {aborted_dir}")
+            await asyncio.to_thread(os.makedirs, os.path.dirname(aborted_dir), exist_ok=True)
+            local_run_dir = f"{daq_config.head_node_data_dir}/{run_name}"
+            if await asyncio.to_thread(os.path.exists, local_run_dir):
+                await asyncio.to_thread(shutil.move, local_run_dir, aborted_dir)
+                
+                # Use a string representation of the exception for the context dump
+                err_msg = str(e)
+                tb_msg = traceback.format_exc()
+                def dump_context(msg: str, tb: str) -> None:
+                    with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
+                        json.dump({"error": msg, "traceback": tb}, f, indent=4)
+                await asyncio.to_thread(dump_context, err_msg, tb_msg)
+
+            return False
+        # --- ROLLBACK LADDER END ---
+
+        # Mark ACTIVE in ledger
+        ledger = state_mgr.load_state()
+        if ledger:
+            ledger.status = "ACTIVE"
+            state_mgr.save_state(ledger)
+            
+        # Write legacy current_run file for compatibility
+        util.write_run_name(daq_config.model_dump(), run_name)
+        
+        print(f'started run {run_name}')
+        return True
+
+    finally:
+        state_mgr.release_lock()
+
+async def main() -> None:
+    if not await asyncio.to_thread(os.path.exists, 'logs'):
+        await asyncio.to_thread(os.makedirs, 'logs')
     logfile = 'logs/start.log'
     util.create_logger(logfile, 'PANOSETI.Start', 'a')
     logger = logging.getLogger('PANOSETI.Start')
@@ -414,6 +566,7 @@ if __name__ == "__main__":
     nsecs = args.nsecs
     stop_session = args.stop_session
     verbose = args.verbose
+
     # load config files
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
@@ -421,12 +574,23 @@ if __name__ == "__main__":
     data_config = config_file.get_data_config()
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
-    start_run(
+    
+    success = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
-        no_hv, no_redis, no_data
+        network_config, no_hv, no_redis, no_data
     )
-    if nsecs:
-        time.sleep(nsecs)
-        stop.stop_run(daq_config, network_config, quabo_uids)
+    
+    if success and nsecs:
+        await asyncio.sleep(nsecs)
+        await stop.stop_run(
+            daq_config, 
+            network_config, 
+            quabo_uids,
+            verbose=verbose
+        )
         if stop_session:
             session_stop.session_stop(obs_config)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

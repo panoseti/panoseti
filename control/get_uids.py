@@ -17,6 +17,10 @@ from typing import Any
 
 from driver.quabo_tftp import tftpw
 from utils import config_file, util
+from utils.pydantic_config_models import (
+    NetworkConfigValidator,
+    ObsConfigValidator,
+)
 
 # =========================
 # Logging / print wrapper
@@ -68,23 +72,31 @@ def get_uid(ip_addr: str, port: int) -> str:
     except Exception:
         return ""
 
-def get_uids(obs_config: dict[str, Any], network_config: dict[str, Any], exclude: list[int] | None = None) -> None:
+
+def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], exclude: list[int] | None = None) -> None:
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     if exclude is None:
         exclude = []
+
     quabo_uids: dict[str, Any] = {}
     quabo_uids['domes'] = []
-    for d in obs_config['domes']:
+    for d in obs_config.domes:
         dome: dict[str, Any] = {}
         dome['modules'] = []
-        for m in d['modules']:
+        for m in d.modules:
             module: dict[str, Any] = {}
-            module['ip_addr'] = m['ip_addr']
+            m_ip = str(m.ip_addr)
+            module['ip_addr'] = m_ip
             module['quabos'] = []
             for i in range(4):
                 quabo: dict[str, Any] = {}
                 if i not in exclude:
-                    ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
-                    ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+                    ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
+                    ip_addr = config_file.quabo_ip_addr(m_ip, i)
                     real_ip = ip_ports['ip_addr']
                     port = ip_ports['reboot_port']
                     print("get uid", ip_addr)

@@ -7,7 +7,7 @@ Centralized Pydantic models for validating PANOSETI configuration files.
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -193,7 +193,8 @@ class WpsConfig(BaseStrictModel):
     quabo_socket: int
 
 
-class ObsModuleConfig(BaseStrictModel):
+class ObsModuleConfig(BaseModel):
+    model_config = ConfigDict(extra='allow')
     mobo_serialno: str
     quabo_version: str | list[str]
     ip_addr: IPvAnyAddress
@@ -206,6 +207,7 @@ class ObsModuleConfig(BaseStrictModel):
 
     # Injected fields by config_file.py at runtime
     id: int | None = None
+    daq_node: Any | None = None
 
 
 class ObsDomeConfig(BaseStrictModel):
@@ -248,12 +250,24 @@ class ObsConfigValidator(BaseModel):
 # --- DAQ Config Models ---
 # -------------------------
 
-class DaqNodeValidator(BaseStrictModel):
+class PortForwarding(BaseStrictModel):
+    status: bool
+    gw_ip: IPvAnyAddress
+    reboot_port: list[int | None] | None = Field(None)
+    cmd_port: list[int | None] | None = Field(None)
+    port: int | None = None                              # SSH forwarded port (legacy)
+    grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
+
+
+class DaqNodeValidator(BaseModel):
+    model_config = ConfigDict(extra='allow')
     username: str
     data_dir: str
     ip_addr: IPvAnyAddress
     module_ids: str | list[int]
     bindhost: str | None = Field("0.0.0.0")
+    port_forwarding: PortForwarding | None = None
+    modules: list[Any] = Field(default_factory=list)
 
     @field_validator('module_ids', mode='after')
     def validate_module_range(cls, v: str | list[int]) -> str | list[int]:
@@ -311,14 +325,6 @@ class DaqConfigValidator(BaseStrictModel):
 # --- Network Config Models ---
 # -----------------------------
 
-class PortForwarding(BaseStrictModel):
-    status: bool
-    gw_ip: IPvAnyAddress
-    reboot_port: list[int | None] | None = Field(None)
-    cmd_port: list[int | None] | None = Field(None)
-    port: int | None = None                              # SSH forwarded port (legacy)
-    grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
-
 class NetworkModule(BaseStrictModel):
     ip_addr: IPvAnyAddress
     port_forwarding: PortForwarding
@@ -357,9 +363,12 @@ class FirmwareConfigValidator(BaseModel):
 class QuaboUidEntry(BaseStrictModel):
     uid: str = Field(..., description="Hex string of the Quabo UID. Empty string if offline.")
 
-class QuaboUidModule(BaseStrictModel):
+class QuaboUidModule(BaseModel):
+    model_config = ConfigDict(extra='allow')
     ip_addr: IPvAnyAddress
     quabos: list[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
+    id: int | None = None
+    daq_node: Any | None = None
 
     @field_validator('quabos')
     def ensure_four_quabos(cls, v: list[QuaboUidEntry]) -> list[QuaboUidEntry]:
@@ -372,3 +381,43 @@ class QuaboUidDome(BaseStrictModel):
 
 class QuaboUidsValidator(BaseStrictModel):
     domes: list[QuaboUidDome]
+
+
+# ---------------------------
+# --- Run State Ledger ---
+# ---------------------------
+
+class NodeReceipt(BaseStrictModel):
+    ip_addr: IPvAnyAddress
+    status: Literal["STARTING", "START_SUCCESS", "START_FAILED", "STOPPED"] = "STARTING"
+    hashpipe_pid: int | None = None
+    data_dir: str | None = None
+    message: str | None = None
+
+class RunStateLedger(BaseStrictModel):
+    run_name: str
+    status: Literal["STARTING", "ACTIVE", "ABORTED", "STOPPING", "COMPLETED"] = "STARTING"
+    start_time: str  # ISO 8601
+    config_metadata: dict[str, Any] = Field(default_factory=dict)
+    nodes: list[NodeReceipt] = Field(default_factory=list)
+
+
+# ---------------------------
+# --- PFF Metadata Models ---
+# ---------------------------
+
+class PFFHeader(BaseStrictModel):
+    pkt_num: int
+    pkt_tai: int
+    pkt_nsec: int
+    tv_sec: int
+    tv_usec: int
+
+class QuaboHeader(PFFHeader):
+    quabo_num: int
+
+class ModuleHeader(BaseStrictModel):
+    quabo_0: PFFHeader
+    quabo_1: PFFHeader
+    quabo_2: PFFHeader
+    quabo_3: PFFHeader

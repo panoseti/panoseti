@@ -28,6 +28,14 @@ import __main__
 try:
     from driver import quabo_driver
     from utils import config_file
+    from utils.pydantic_config_models import (
+        DaemonConfigValidator,
+        DaqConfigValidator,
+        DataConfigValidator,
+        NetworkConfigValidator,
+        ObsConfigValidator,
+        QuaboUidsValidator,
+    )
 except ImportError:
     pass
 
@@ -285,7 +293,7 @@ def _are_daemons_running(progs: list[str]) -> bool:
     return all(is_script_running(prog) for prog in progs)
 
 
-def _safe_get_daemons_config() -> dict[str, Any]:
+def _safe_get_daemons_config() -> DaemonConfigValidator | dict[str, Any]:
     # Handle "util.py copied to daq nodes" case (config_file may not exist).
     try:
         return config_file.get_daemons_config()
@@ -301,7 +309,10 @@ def get_daemons() -> list[str]:
     - Adds daemons/capture_<k>.py for enabled items in daemons_config['daemons'].
     """
     daemons_config = _safe_get_daemons_config()
-    enabled: dict[str, Any] = daemons_config.get('daemons', {})
+    if isinstance(daemons_config, DaemonConfigValidator):
+        enabled = daemons_config.daemons.model_dump()
+    else:
+        enabled = daemons_config.get('daemons', {})
 
     lst: list[str] = list(redis_daemons)  # copy base list; do NOT mutate global
     for k, v in enabled.items():
@@ -337,7 +348,10 @@ def are_redis_daemons_running() -> bool:
 
 def get_permanent_daemons() -> list[str]:
     daemons_config = _safe_get_daemons_config()
-    enabled: dict[str, Any] = daemons_config.get('permanent_daemons', {})
+    if isinstance(daemons_config, DaemonConfigValidator):
+        enabled = daemons_config.permanent_daemons.model_dump()
+    else:
+        enabled = daemons_config.get('permanent_daemons', {})
 
     lst: list[str] = ['daemons/storeInfluxDB.py']
     for k, v in enabled.items():
@@ -537,7 +551,10 @@ def free_space(path: str) -> int:
 
 
 # estimate bytes per second per module for a given data config
-def daq_bytes_per_sec_per_module(data_config: dict[str, Any]) -> float:
+def daq_bytes_per_sec_per_module(data_config: DataConfigValidator | dict[str, Any]) -> float:
+    if isinstance(data_config, dict):
+        data_config = DataConfigValidator(**data_config)
+
     img_json_header_size = 600
     ph_json_header_size = 150
     x = 0.0
@@ -545,12 +562,12 @@ def daq_bytes_per_sec_per_module(data_config: dict[str, Any]) -> float:
     # hk.pff
     x += 2000 + 800*4
 
-    if 'image' in data_config:
-        image = data_config['image']
-        fps = image['frame_rate']
-        bpf = 1 if image['quabo_sample_size'] == 8 else 2
+    if data_config.image:
+        image = data_config.image
+        fps = 1e6/image.integration_time_usec
+        bpf = 1 if image.quabo_sample_size == 8 else 2
         x += fps*(1024*bpf + img_json_header_size)
-    if 'pulse_height' in data_config:
+    if data_config.pulse_height:
         # assume one PH event per sec per quabo
         ph_per_sec = 1
         x += ph_per_sec*(4*(256*2+ph_json_header_size))
@@ -580,20 +597,24 @@ def daq_get_run_name() -> str | None:
 
 #-------------- WR and GPS---------------
 
-def get_wr_ip_addr(obs_config: dict[str, Any]) -> str:
-    if 'wr_ip_addr' in obs_config:
-        return str(obs_config['wr_ip_addr'])
-    else:
-        return '192.168.1.254'
+def get_wr_ip_addr(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+    
+    if obs_config.wr_ip_addr:
+        return str(obs_config.wr_ip_addr)
+    return '192.168.1.254'
 
 
 # get GPS receiver port (path of the tty)
 #
-def get_gps_port(obs_config: dict[str, Any]) -> str:
-    if 'gps_port' in obs_config:
-        return str(obs_config['gps_port'])
-    else:
-        return '/dev/ttyUSB0'
+def get_gps_port(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+    
+    if obs_config.gps_port:
+        return str(obs_config.gps_port)
+    return '/dev/ttyUSB0'
 
 
 # We may use port forwarding, so we need to get the real IP and ports.
@@ -601,7 +622,10 @@ def get_gps_port(obs_config: dict[str, Any]) -> str:
 #
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
-def get_quabo_ip_port(ip_addr: str, i: int, network_config: dict[str, Any]) -> dict[str, Any]:
+def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidator | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     ip_ports: dict[str, Any] = {}
     x = ip_addr.split('.')
     x[3] = str(int(x[3])+i)
@@ -612,38 +636,70 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: dict[str, Any]) -> d
     ip_ports['cmd_port'] = DEFAULT_CMD_PORT
     # if we can't find the setting for the Quabo in the network_config
     # we will use the default config
-    for m in network_config['modules']:
-        if ip_addr == m['ip_addr']:
-            p = m['port_forwarding']
-            if p['status']:
-                ip_ports['ip_addr'] = p['gw_ip']
-                ip_ports['reboot_port'] = p['reboot_port'][i]
-                ip_ports['cmd_port'] = p['cmd_port'][i]
+    
+    for m in network_config.modules:
+        if ip_addr == str(m.ip_addr):
+            p = m.port_forwarding
+            if p.status:
+                ip_ports['ip_addr'] = str(p.gw_ip)
+                if p.reboot_port:
+                    ip_ports['reboot_port'] = p.reboot_port[i]
+                if p.cmd_port:
+                    ip_ports['cmd_port'] = p.cmd_port[i]
             break
     return ip_ports
 
 
+def stop_data_flow(
+    quabo_uids: QuaboUidsValidator,
+    network_config: NetworkConfigValidator | dict[str, Any]
+) -> None:
+    """Tells all Quabos to stop sending data. Used for rollback and clean shutdown."""
+    daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
+    for dome in quabo_uids.domes:
+        for module in dome.modules:
+            base_ip_addr = str(module.ip_addr)
+            for i in range(4):
+                if module.quabos[i].uid == '':
+                    continue
+                ip_ports = get_quabo_ip_port(base_ip_addr, i, network_config)
+                real_ip = ip_ports['ip_addr']
+                cmd_port = ip_ports['cmd_port']
+                quabo = quabo_driver.QUABO(real_ip, cmd_port)
+                quabo.send_daq_params(daq_params)
+                quabo.close()
+
+
 # attach port forwarding info to daq config based on network_config
-def attach_daq_config(daq_config: dict[str, Any], network_config: dict[str, Any]) -> None:
-    for i in range(len(daq_config['daq_nodes'])):
-        daq = daq_config['daq_nodes'][i]
-        for pdaq in network_config['daq_nodes']:
-             if daq['ip_addr'] == pdaq['ip_addr'] and pdaq['port_forwarding']['status']:
-                 daq_config['daq_nodes'][i]['port_forwarding'] = pdaq['port_forwarding']
+def attach_daq_config(
+    daq_config: DaqConfigValidator | dict[str, Any],
+    network_config: NetworkConfigValidator | dict[str, Any]
+) -> None:
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
+    for daq in daq_config.daq_nodes:
+        for pdaq in network_config.daq_nodes:
+            if str(daq.ip_addr) == str(pdaq.ip_addr) and pdaq.port_forwarding.status:
+                daq.port_forwarding = pdaq.port_forwarding
+
 
 
 # get the valid IPs
-def get_valid_ip(obs_config: dict[str, Any]) -> list[str]:
-    logger = logging.getLogger('PANOSETI.Config.util.get_valid_ip')
+def get_valid_ip(obs_config: ObsConfigValidator | dict[str, Any]) -> list[str]:
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+
     ips: list[str] = []
-    for dome in obs_config['domes']:
-        for m in dome['modules']:
-            ip = m['ip_addr']
+    for dome in obs_config.domes:
+        for m in dome.modules:
+            ip = str(m.ip_addr)
             ip_str = ip.split('.')
             for i in range(4):
                 val = int(ip_str[3]) + i
                 quabo_ip = f"{ip_str[0]}.{ip_str[1]}.{ip_str[2]}.{val}"
-                logger.info(f'add {quabo_ip} to IP list')
                 ips.append(quabo_ip)
     return ips
 

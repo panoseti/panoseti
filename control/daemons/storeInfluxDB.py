@@ -62,7 +62,7 @@ DEV_RETENTION_DURATION = '7d'
 UPDATE_INTERVAL_SECONDS = 1.0
 
 # Discover current observatory name
-OBSERVATORY = config_file.get_obs_config()["name"]
+OBSERVATORY = config_file.get_obs_config().name
 
 # --- Type A metadata definitions
 # Static whitelist of Redis keys to include in InfluxDB snapshots.

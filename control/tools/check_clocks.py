@@ -211,9 +211,9 @@ if __name__ == '__main__':
     # get uart_port, wrs_ip from config file
     obs_config = config_file.get_obs_config()
     daq_config = config_file.get_daq_config()
-    gps_port = obs_config['gps_port']
-    wrs_ip = socket.gethostbyname(obs_config['wr_ip_addr'])
-    host_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
+    gps_port = str(obs_config.gps_port) if obs_config.gps_port else "/dev/ttyUSB0"
+    wrs_ip = socket.gethostbyname(str(obs_config.wr_ip_addr))
+    host_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
 
     print('===============================================================')
     print('Please make sure:')

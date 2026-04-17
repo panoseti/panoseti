@@ -1,122 +1,66 @@
-#! /usr/bin/env python3
+#!/usr/bin/env python3
 """
-Script that periodically reads each quabo's temperature and
-turns off the corresponding module power supply if its temperature
-exceeds a safe temperature range.
-See https://github.com/panoseti/panoseti/issues/58.
-
-NOTE: this script calls stop.py if any boards or detectors get too hot.
+module_temp_monitor.py: A daemon that monitors Quabo temperatures.
+If temperatures exceed safe operating ranges, it informs the operator and
+turns off the corresponding web power switch.
 """
-import os
-import sys
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import datetime
 import logging
+import os
 import sys
 import time
 from typing import Any
 
 import redis
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import redis_utils
+
 import power
-from utils import config_file, redis_utils
+from utils import config_file
+from utils.pydantic_config_models import ObsConfigValidator
 from utils.util import are_redis_daemons_running, create_logger
 
-# Seconds between updates.
-UPDATE_INTERVAL = 10
+# Safe operating temperature ranges (in Celsius)
+MIN_DETECTOR_TEMP = -20
+MAX_DETECTOR_TEMP = 60
+MAX_FPGA_TEMP = 80
 
-# Min & max module operating temperatures (degrees Celsius).
-
-MIN_DETECTOR_TEMP = -20.0
-MAX_DETECTOR_TEMP = 60.0
-MAX_FPGA_TEMP = 85.0
-
-logger = logging.getLogger('PANOSETI.TempMonitor')
-
-def is_acceptable_temperature(temps: tuple[float, float]) -> tuple[bool, bool]:
-    """
-    Returns a tuple of (TEMP1 is ok?, TEMP2 is ok?) if the corresponding
-    sensor temperature is within the specified operating range.
-    """
-    temp1_ok = MIN_DETECTOR_TEMP <= temps[0] <= MAX_DETECTOR_TEMP
-    temp2_ok = temps[1] <= MAX_FPGA_TEMP
-    return temp1_ok, temp2_ok
+UPDATE_INTERVAL = 10  # Seconds between temperature checks
 
 
-def get_redis_temps(r: redis.Redis, rkey: str) -> tuple[float, float]:
-    """Given a Quabo's redis key, rkey, returns (TEMP1, TEMP2)."""
-    try:
-        temp1 = redis_utils.get_casted_redis_value(r, rkey, 'TEMP1')
-        temp2 = redis_utils.get_casted_redis_value(r, rkey, 'TEMP2')
-        return temp1, temp2
-    except redis.RedisError as err:
-        msg = "module_temp_monitor: A Redis error occurred. "
-        msg += "Error msg: {0}"
-        logger.error(msg.format(err))
-        raise
-    except TypeError as terr:
-        msg = "module_temp_monitor: Failed to update '{0}'. "
-        msg += "Temperature HK data may be missing. "
-        msg += "Error msg: {1}"
-        logger.error(msg.format(rkey, terr))
-        raise
+def is_acceptable_temperature(temps: list[float]) -> tuple[bool, bool]:
+    """Returns (detector_temp_ok, fpga_temp_ok)."""
+    detector_temp_ok = MIN_DETECTOR_TEMP <= temps[0] <= MAX_DETECTOR_TEMP
+    fpga_temp_ok = temps[1] <= MAX_FPGA_TEMP
+    return detector_temp_ok, fpga_temp_ok
 
 
-def log_powered_off_modules(wps_name: str, wps_to_modules: dict[str, set[str]]) -> None:
-    """If power to this module has just been turned off, add its IP to modules_off and inform operator."""
-    msg = 'Successfully powered off the wps: {0}. The following quabos are no longer powered: {1}.'
-    quabos_off = list()
-    for module_ip_addr in wps_to_modules[wps_name]:
-        for quabo_index in range(4):
-            quabos_off.append(f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}')
-    logger.info(msg.format(wps_name, quabos_off))
+def check_all_module_temps(obs_config: ObsConfigValidator | dict[str, Any], wps_to_modules: dict[str, set[str]], r: redis.Redis) -> set[str]:
+    """Checks the temperatures of all Quabos in the observatory."""
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
 
-
-def update_power(obs_config: dict[str, Any], wps_to_modules: dict[str, set[str]], wps_to_turn_off: set[str]) -> None:
-    """Turn off each wps in wps_off, write a log message describing which
-    modules and quabos are no longer powered, then stop this script."""
-    if wps_to_turn_off:
-        # Stop any active runs.
-        logger.info('Running ./stop.py...')
-        os.system('./stop.py')
-        for wps_name in wps_to_turn_off:
-            wps_dict = obs_config[wps_name]
-            try:
-                power.quabo_power(wps_dict, False)
-                log_powered_off_modules(wps_name, wps_to_modules)
-            except Exception as err:
-                msg = "Failed to turn off the wps: {0}! "
-                msg += "Error msg: {1}"
-                logger.error(msg.format(wps_name, err))
-                continue
-        sys.exit()
-
-
-def check_all_module_temps(obs_config: dict[str, Any], wps_to_modules: dict[str, set[str]], r: redis.Redis) -> set[str]:
-    """
-    Iterates through each quabo in the observatory and reads the detector and fpga temperature from Redis.
-    If the temperature is too extreme, we turn off the corresponding module power supply.
-    """
-    # wps_off stores the name of each wps that is powering an over-temperature module.
+    logger = logging.getLogger('PANOSETI.TempMonitor')
     wps_to_turn_off = set()
-    for dome in obs_config['domes']:
-        for module in dome['modules']:
-            module_ip_addr = module['ip_addr']
-            module_wps_key = module['wps']
+    for dome in obs_config.domes:
+        for module in dome.modules:
+            module_ip_addr = str(module.ip_addr)
+            module_wps_key = module.wps or 'wps'
             for quabo_index in range(4):
                 try:
                     # Get this Quabo's redis key.
-                    rkey = f'QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}'
-                    # Get this Quabo's detector and fpga temperatures, if they exist.
-                    all_keys = r.keys()
-                    if not isinstance(all_keys, list) or rkey.encode('utf-8') not in all_keys:
-                        raise Warning(f"{rkey} is not tracked in Redis.")
-                    else:
-                        temps = get_redis_temps(r, rkey)
-                except Warning as werr:
-                    msg = "module_temp_monitor: {0}\n\tFailed to update quabo at index {1} with base IP {2}. "
+                    rkey = f"QUABO_{config_file.get_boardloc(module_ip_addr, quabo_index)}"
+                    # Get this Quabo's temp, if it exists.
+                    det_temp = redis_utils.get_casted_redis_value(r, rkey, 'TEMP1')
+                    fpga_temp = redis_utils.get_casted_redis_value(r, rkey, 'TEMP2')
+                    if det_temp is None or fpga_temp is None:
+                        continue
+                    temps = [float(det_temp), float(fpga_temp)]
+                except (ValueError, TypeError) as werr:
+                    msg = "module_temp_monitor: {0}\n\tA parsing error occurred for Quabo {1} at {2}. "
                     msg += "\tError msg: {3}"
                     logger.error(msg.format(datetime.datetime.now(), quabo_index, module_ip_addr, werr))
                     continue
@@ -127,45 +71,61 @@ def check_all_module_temps(obs_config: dict[str, Any], wps_to_modules: dict[str,
                     raise
                 else:
                     # Checks whether the Quabo temperatures are acceptable.
-                    # See https://github.com/panoseti/panoseti/issues/58.
                     detector_temp_ok, fpga_temp_ok = is_acceptable_temperature(temps)
                     # If the detector or fpga temps exceed thresholds, inform the operator and turn off the corresponding wps.
                     if not detector_temp_ok or not fpga_temp_ok:
-                        msg = ''
                         if not detector_temp_ok:
-                            msg += "The DETECTOR temp of Quabo {0} is {1} C, which exceeds the operating temperature range: {2} C to {3} C. "
+                            msg = "The DETECTOR temp of Quabo {0} is {1} C, which exceeds the operating temperature range: {2} C to {3} C. "
                             logger.info(msg.format(
                                 config_file.get_boardloc(module_ip_addr, quabo_index), temps[0], MIN_DETECTOR_TEMP, MAX_DETECTOR_TEMP)
                             )
                             
                         if not fpga_temp_ok:
-                            msg += "The FPGA temp of Quabo {0} is {1} C, which exceeds the operating temperature of {2} C. "
+                            msg = "The FPGA temp of Quabo {0} is {1} C, which exceeds the operating temperature of {2} C. "
                             logger.info(msg.format(
                                 config_file.get_boardloc(module_ip_addr, quabo_index), temps[1], MAX_FPGA_TEMP)
                             )
-                        msg += f'Attempting to turn off the wps: {module_wps_key}'
+                        logger.info(f'Attempting to turn off the wps: {module_wps_key}')
                         wps_to_turn_off.add(module_wps_key)
     return wps_to_turn_off
 
-def get_wps_to_modules(obs_config: dict[str, Any]) -> dict[str, set[str]]:
+
+def get_wps_to_modules(obs_config: ObsConfigValidator | dict[str, Any]) -> dict[str, set[str]]:
     """Dictionary storing pairs of [wps_name]:[set of IPs of the modules connected to this wps]."""
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+
     wps_to_modules: dict[str, set[str]] = dict()
-    for dome in obs_config['domes']:
-        for module in dome['modules']:
-            module_ip_addr = module['ip_addr']
-            module_wps_key = module['wps']
+    for dome in obs_config.domes:
+        for module in dome.modules:
+            module_ip_addr = str(module.ip_addr)
+            module_wps_key = module.wps or 'wps'
             if module_wps_key in wps_to_modules:
                 wps_to_modules[module_wps_key].add(module_ip_addr)
             else:
                 wps_to_modules[module_wps_key] = {module_ip_addr}
     return wps_to_modules
 
+
+def update_power(obs_config: ObsConfigValidator | dict[str, Any], wps_to_modules: dict[str, set[str]], wps_to_turn_off: set[str]) -> None:
+    """Turns off the web power switches of the modules with extreme temperatures."""
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+
+    for wps_name in wps_to_turn_off:
+        try:
+            power.do_wps(wps_name, obs_config, 'off')
+        except Exception as e:
+            logger = logging.getLogger('PANOSETI.TempMonitor')
+            logger.error(f"Failed to turn off WPS {wps_name}: {e}")
+
+
 def main() -> None:
     # create logger
     logfile = 'logs/temp_monitor.log'
     os.makedirs(os.path.dirname(logfile), exist_ok=True)
     create_logger(logfile, 'PANOSETI.TempMonitor', 'a')
-    logger = logging.getLogger('PANOSETI.Start')
+    logger = logging.getLogger('PANOSETI.TempMonitor')
     logger.info('************************************')
     """Makes a call to check_all_module_temps every UPDATE_INTERVAL seconds."""
     obs_config = config_file.get_obs_config()

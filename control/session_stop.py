@@ -1,13 +1,13 @@
 #! /usr/bin/env python3
 
 
-from typing import Any
 
 import power
 from utils import config_file, util
+from utils.pydantic_config_models import ObsConfigValidator
 
 
-def session_stop(obs_config: dict[str, Any]) -> None:
+def session_stop(obs_config: ObsConfigValidator) -> None:
     power.do_all(obs_config, 'off')
     try:
         util.stop_redis_daemons()

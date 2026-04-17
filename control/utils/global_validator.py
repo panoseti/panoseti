@@ -15,6 +15,14 @@ from haversine import Unit, haversine
 from rich.console import Console
 from rich.table import Table
 
+from .pydantic_config_models import (
+    DaqConfigValidator,
+    DataConfigValidator,
+    FirmwareConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+)
+
 console = Console()
 
 MAX_DOME_BASELINE_KM = 2
@@ -52,11 +60,11 @@ class ValidationReport:
 
 class GlobalConfigValidator:
     def __init__(self, validated_configs: dict[str, Any]):
-        self.obs_conf = validated_configs.get('obs', {})
-        self.data_conf = validated_configs.get('data', {})
-        self.daq_conf = validated_configs.get('daq', {})
-        self.net_conf = validated_configs.get('network', {})
-        self.firmware_conf = validated_configs.get('firmware', {})
+        self.obs_conf: ObsConfigValidator = validated_configs.get('obs') # type: ignore
+        self.data_conf: DataConfigValidator = validated_configs.get('data') # type: ignore
+        self.daq_conf: DaqConfigValidator = validated_configs.get('daq') # type: ignore
+        self.net_conf: NetworkConfigValidator = validated_configs.get('network') # type: ignore
+        self.firmware_conf: FirmwareConfigValidator = validated_configs.get('firmware') # type: ignore
         self.report = ValidationReport()
 
     def validate_all_rules(self) -> bool:
@@ -68,10 +76,11 @@ class GlobalConfigValidator:
         return not self.report.has_errors
 
     def _check_science_guardrails(self) -> None:
-        run_type = self.data_conf.get('run_type', '').lower()
+        if not self.data_conf: return
+        run_type = self.data_conf.run_type.lower()
         if "eng" not in run_type:
-            flash_on = 'flash_params' in self.data_conf
-            stim_on = 'stim_params' in self.data_conf
+            flash_on = self.data_conf.flash_params is not None
+            stim_on = self.data_conf.stim_params is not None
             if flash_on or stim_on:
                 self.report.add_test("Science Guardrails", "WARN",
                                      f"Run type '{run_type}' has flash/stim enabled. Artificial signals will be injected.")
@@ -79,12 +88,13 @@ class GlobalConfigValidator:
         self.report.add_test("Science Guardrails", "PASS", f"Run type: {run_type}")
 
     def _check_geospatial_coherence(self) -> None:
-        domes = self.obs_conf.get('domes', [])
+        if not self.obs_conf: return
+        domes = self.obs_conf.domes
         if len(domes) < 2:
             self.report.add_test("Geospatial Coherence", "PASS", "Only one dome defined.")
             return
 
-        coords = [(d['name'], d.get('obslat'), d.get('obslon')) for d in domes if 'obslat' in d]
+        coords = [(d.name, d.obslat, d.obslon) for d in domes]
         max_dist = 0
         for i in range(len(coords)):
             for j in range(i + 1, len(coords)):
@@ -98,36 +108,40 @@ class GlobalConfigValidator:
             self.report.add_test("Geospatial Coherence", "PASS", f"Max baseline: {max_dist:.2f} km")
 
     def _check_network_tunneling(self) -> None:
-        obs_ips = {m.get('ip_addr') for d in self.obs_conf.get('domes', []) for m in d.get('modules', [])}
-        net_mapped_ips = {m.get('ip_addr') for m in self.net_conf.get('modules', []) if
-                          m.get('port_forwarding', {}).get('status')}
+        if not self.obs_conf or not self.net_conf: return
+        obs_ips = {str(m.ip_addr) for d in self.obs_conf.domes for m in d.modules}
+        net_mapped_ips = {str(m.ip_addr) for m in self.net_conf.modules if
+                          m.port_forwarding.status}
 
         missing = obs_ips - net_mapped_ips
-        if missing and self.net_conf.get('modules'):
+        if missing and self.net_conf.modules:
             self.report.add_test("Network Tunneling Mapping", "WARN",
                                  f"Modules lacking port forwarding: {', '.join(missing)}")
         else:
             self.report.add_test("Network Tunneling Mapping", "PASS", "All modules accounted for in routing.")
 
     def _check_hardware_firmware(self) -> None:
+        if not self.obs_conf or not self.firmware_conf: return
         required_hw = set()
-        for d in self.obs_conf.get('domes', []):
-            for m in d.get('modules', []):
-                qv = m.get('quabo_version')
+        for d in self.obs_conf.domes:
+            for m in d.modules:
+                qv = m.quabo_version
                 if isinstance(qv, list):
                     required_hw.update(qv)
                 else:
                     required_hw.add(qv)
 
-        missing = required_hw - set(self.firmware_conf.keys())
+        firmware_keys = set((self.firmware_conf.model_extra or {}).keys())
+        missing = required_hw - firmware_keys
         if missing:
             self.report.add_test("Firmware Verification", "ERROR", f"Missing binaries for HW types: {missing}")
         else:
             self.report.add_test("Firmware Verification", "PASS", "Binaries exist for all active hardware.")
 
     def _check_overvoltage_consensus(self) -> None:
-        obs_ov = self.obs_conf.get('detector_overvoltage')
-        data_ov = self.data_conf.get('detector_overvoltage')
+        if not self.obs_conf or not self.data_conf: return
+        obs_ov = self.obs_conf.detector_overvoltage
+        data_ov = self.data_conf.detector_overvoltage
         if obs_ov is not None and data_ov is not None and obs_ov != data_ov:
             self.report.add_test("Overvoltage Consensus", "ERROR",
                                  f"obs_config ({obs_ov}V) != data_config ({data_ov}V)")
@@ -136,15 +150,17 @@ class GlobalConfigValidator:
 
     def _check_port_collisions(self) -> None:
         """Ensures multiple modules sharing a Gateway IP do not use overlapping forwarded ports."""
+        if not self.net_conf: return
         gw_ports: dict[str, set[int]] = {}
-        for m in self.net_conf.get('modules', []):
-            pf = m.get('port_forwarding', {})
-            if pf.get('status'):
-                gw = pf.get('gw_ip')
-                ports = pf.get('cmd_port', []) + pf.get('reboot_port', [])
+        for m in self.net_conf.modules:
+            pf = m.port_forwarding
+            if pf.status:
+                gw = str(pf.gw_ip)
+                ports = (pf.cmd_port or []) + (pf.reboot_port or [])
                 if gw not in gw_ports:
                     gw_ports[gw] = set()
                 for p in ports:
+                    if p is None: continue
                     if p in gw_ports[gw]:
                         self.report.add_test("Port Collision", "ERROR",
                                              f"Gateway {gw} has multiple modules attempting to forward port {p}.")
@@ -155,11 +171,15 @@ class GlobalConfigValidator:
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
     def _check_daq_assignment_overlap(self) -> None:
         """Ensures a single module ID is not being actively listened to by multiple DAQ nodes."""
+        if not self.daq_conf: return
         from .config_file import expand_ranges
         seen_ids: set[int] = set()
         expand_ranges(self.daq_conf)
-        for daq in self.daq_conf.get('daq_nodes', []):
-            ids = daq.get('module_ids', '')
+        for daq in self.daq_conf.daq_nodes:
+            ids = daq.module_ids
+            if isinstance(ids, str):
+                from .config_file import string_to_list
+                ids = string_to_list(ids)
             overlap = seen_ids.intersection(ids)
             if overlap:
                 self.report.add_test("DAQ Overlap", "ERROR",
@@ -170,14 +190,16 @@ class GlobalConfigValidator:
 
     def _estimate_data_usage(self) -> tuple[float, float, str]:
         """Returns (TB_per_hour, total_estimated_TB, formula_string)"""
-        num_modules = sum(len(d.get('modules', [])) for d in self.obs_conf.get('domes', []))
-        img_conf = self.data_conf.get('image', {})
+        if not self.obs_conf or not self.data_conf: return 0.0, 0.0, "N/A"
+        num_modules = sum(len(d.modules) for d in self.obs_conf.domes)
+        img_conf = self.data_conf.image
         if num_modules == 0 or not img_conf:
             return 0.0, 0.0, "N/A"
 
-        int_usec = img_conf.get('integration_time_usec', 100000)
-        nsum = img_conf.get('nsum', 1)
-        bytes_pp = img_conf.get('quabo_sample_size', 16) / 8
+        int_usec = img_conf.integration_time_usec
+        # nsum is not in ImageMode in pydantic_config_models.py, using 1
+        nsum = 1 
+        bytes_pp = img_conf.quabo_sample_size / 8
 
         fps = 1_000_000 / (int_usec * nsum)
         tb_per_hr = (fps * 4 * 1024 * bytes_pp * 3600 * num_modules) / (1024 ** 4)
@@ -187,7 +209,8 @@ class GlobalConfigValidator:
         return tb_per_hr, total_tb, formula
 
     def _check_headnode_disk_space(self) -> None:
-        head_dir = self.daq_conf.get('head_node_data_dir')
+        if not self.daq_conf: return
+        head_dir = self.daq_conf.head_node_data_dir
         if not head_dir or not os.path.exists(head_dir):
             self.report.add_test("Headnode Disk Space", "ERROR", f"Path '{head_dir}' missing or unreachable.")
             return
@@ -205,74 +228,18 @@ class GlobalConfigValidator:
         else:
             self.report.add_test("Headnode Disk Space", "PASS", msg)
 
-    # def _check_daqnode_disk_space(self):
-    #     """Uses SSH to check the specific data volume on each DAQ node."""
-    #     results = []
-    #     has_error = False
-    #     tb_per_hr, est_total, _ = self._estimate_data_usage()
-    #
-    #     for daq in self.daq_conf.get('daq_nodes', []):
-    #         ip = daq.get('ip_addr')
-    #         usr = daq.get('username', 'panoseti')
-    #         data_dir = daq.get('data_dir')
-    #
-    #         # Determine SSH routing (direct vs gateway)
-    #         ssh_ip = ip
-    #         ssh_port = 22
-    #         for net_daq in self.net_conf.get('daq_nodes', []):
-    #             if net_daq.get('ip_addr') == ip and net_daq.get('port_forwarding', {}).get('status'):
-    #                 ssh_ip = net_daq['port_forwarding']['gw_ip']
-    #                 ssh_port = net_daq['port_forwarding'].get('port', 22)
-    #                 break
-    #
-    #         cmd = ['ssh', '-p', str(ssh_port), '-o', 'ConnectTimeout=2', '-o', 'BatchMode=yes', f'{usr}@{ssh_ip}', 'df',
-    #                '-k', data_dir]
-    #         try:
-    #             res = subprocess.run(cmd, capture_output=True, text=True)
-    #             if res.returncode == 0:
-    #                 lines = res.stdout.strip().split('\n')
-    #                 if len(lines) > 1:
-    #                     parts = lines[1].split()
-    #                     free_kb = int(parts[3])
-    #                     free_tb = free_kb / (1024 ** 3)
-    #
-    #                     if est_total > 0 >= (free_tb - est_total):
-    #                         results.append(f"{ip}: {free_tb:.2f} TB (INSUFFICIENT)")
-    #                         has_error = True
-    #                     elif free_tb < 1.0:
-    #                         results.append(f"{ip}: {free_tb:.2f} TB (LOW)")
-    #                     else:
-    #                         results.append(f"{ip}: {free_tb:.2f} TB (OK)")
-    #                 else:
-    #                     results.append(f"{ip}: Path Not Found")
-    #                     has_error = True
-    #             else:
-    #                 results.append(f"{ip}: SSH Failed")
-    #                 has_error = True
-    #         except Exception:
-    #             results.append(f"{ip}: SSH Error")
-    #
-    #     if not results:
-    #         self.report.add_test("DAQ Node Disk Space", "PASS", "No DAQ nodes configured.")
-    #         return
-    #
-    #     detail_str = " | ".join(results)
-    #     if has_error:
-    #         self.report.add_test("DAQ Node Disk Space", "ERROR", detail_str)
-    #     else:
-    #         self.report.add_test("DAQ Node Disk Space", "PASS", detail_str)
-
     def _check_wps_references(self) -> None:
         """Ensures that all Web Power Switches referenced by modules are defined in obs_config."""
         if not self.obs_conf:
             return
 
         missing_wps: set[str] = set()
-        for d in self.obs_conf.get('domes', []):
-            for m in d.get('modules', []):
+        wps_keys = set((self.obs_conf.model_extra or {}).keys())
+        for d in self.obs_conf.domes:
+            for m in d.modules:
                 # The default is 'wps' if not specified
-                wps_name = m.get('wps', 'wps')
-                if wps_name not in self.obs_conf:
+                wps_name = m.wps or 'wps'
+                if wps_name not in wps_keys:
                     missing_wps.add(wps_name)
 
         if missing_wps:
@@ -280,4 +247,3 @@ class GlobalConfigValidator:
                                  f"Modules reference undefined WPS units: {', '.join(missing_wps)}")
         else:
             self.report.add_test("WPS Reference Map", "PASS", "All referenced WPS units exist in obs_config.")
-

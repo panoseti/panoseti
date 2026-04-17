@@ -14,13 +14,13 @@
 #   --no_cleanup        don't delete files from DAQ nodes
 #   --run X             clean up run X (default: read from current_run)
 
+import asyncio
 import builtins
 import contextlib
 import logging
 import os
 import signal
 import socket
-import sys
 import tempfile
 import time
 from argparse import ArgumentParser
@@ -29,26 +29,25 @@ from typing import Any
 
 from panoseti_grpc.daq_control.client import DaqControlClient
 
+import config
 from driver import quabo_driver
 from tools.interleave import PID_FILE
-from utils import collect, config_file, pff
+from utils import collect, config_file, pff, util
+from utils.pydantic_config_models import (
+    DaqConfigValidator,
+    DaqNodeValidator,
+    NetworkConfigValidator,
+    QuaboUidsValidator,
+)
+from utils.run_state import RunStateManager
 from utils.util import (
-    attach_daq_config,
     collect_complete_filename,
-    create_logger,
-    daq_grpc_endpoint,
     get_quabo_ip_port,
     hk_symlink,
     img_symlink,
-    kill_hk_recorder,
-    kill_hv_updater,
-    kill_module_temp_monitor,
-    local_ip,
     now_str,
     ph_symlink,
-    read_run_name,
     recording_ended_filename,
-    remove_run_name,
     run_complete_filename,
 )
 
@@ -58,7 +57,7 @@ logger = logging.getLogger(__name__)
 def stop_interleave(retry_limit: int = 10) -> None:
     """
     Checks if the interleave process is running and cleanly shuts it down.
-    This prevents background mode switching after DAQ has been commanded to stop.
+    Includes process identity verification and SIGKILL escalation.
     """
     pid_file = PID_FILE
     if os.path.exists(pid_file):
@@ -66,17 +65,64 @@ def stop_interleave(retry_limit: int = 10) -> None:
         try:
             with open(pid_file) as f:
                 pid = int(f.read().strip())
+            
+            # Verify identity: check /proc/pid/cmdline for 'interleave.py'
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    cmdline = f.read().decode().replace('\x00', ' ')
+                    if 'interleave.py' not in cmdline:
+                         print(f"PID {pid} does not appear to be interleave.py. Cleaning stale PID file.")
+                         os.remove(pid_file)
+                         return
+            except FileNotFoundError:
+                print(f"PID {pid} no longer exists. Cleaning stale PID file.")
+                os.remove(pid_file)
+                return
+
             os.kill(pid, signal.SIGTERM)
 
             # Wait briefly for it to clean up and restore defaults
-
             for r in range(retry_limit):
                 if not os.path.exists(pid_file):
-                    break
-                logger.warning(f"Stopping interleave process: {pid}. Attempt [{r}/{retry_limit}]")
+                    print("Interleave process stopped.")
+                    return
+                logger.warning(f"Waiting for interleave process {pid} to exit... [{r+1}/{retry_limit}]")
                 time.sleep(0.5)
-        except (OSError, ValueError):
-            os.remove(pid_file)
+            
+            # SIGKILL escalation
+            print(f"Interleave process {pid} refused to exit. Escalating to SIGKILL.")
+            os.kill(pid, signal.SIGKILL)
+            time.sleep(0.5)
+            if os.path.exists(pid_file):
+                os.remove(pid_file)
+            
+            # Synchronously restore MAROC defaults as a safety measure
+            print("Restoring Quabo MAROC register defaults...")
+            try:
+                # We need to load configs for this
+                obs_cfg = config_file.get_obs_config()
+                data_cfg = config_file.get_data_config()
+                daq_cfg = config_file.get_daq_config()
+                quabo_uids = config_file.get_quabo_uids()
+                quabo_info = config_file.get_quabo_info()
+                network_cfg = config_file.get_network_config()
+                config.do_maroc_config(
+                    config_file.get_modules(obs_cfg.model_dump()),
+                    quabo_uids.model_dump(),
+                    quabo_info,
+                    data_cfg.model_dump(),
+                    obs_cfg.model_dump(),
+                    daq_cfg.model_dump(),
+                    network_cfg if isinstance(network_cfg, dict) else network_cfg.model_dump(),
+                    verbose=False
+                )
+            except Exception as e:
+                print(f"Warning: Failed to restore MAROC registers: {e}")
+
+        except (OSError, ValueError) as e:
+            print(f"Error stopping interleave: {e}")
+            if os.path.exists(pid_file):
+                os.remove(pid_file)
 
 
 # =========================
@@ -146,7 +192,6 @@ def log_error(msg: str, run_dir: str | None) -> None:
 # tell the quabos to stop sending data
 #
 def stop_data_flow(quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
-    logger = logging.getLogger('PANOSETI.Stop.stop_data_flow')
     daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
@@ -170,22 +215,32 @@ def stop_data_flow(quabo_uids: dict[str, Any], network_config: dict[str, Any]) -
 
 # tell all DAQ nodes to stop recording
 #
-def stop_recording(daq_config: dict[str, Any], run_dir: str | None, verbose: bool) -> None:
-    logger = logging.getLogger('PANOSETI.Stop.stop_recording')
-    for node in daq_config['daq_nodes']:
-        grpc_host, grpc_port = daq_grpc_endpoint(node)
+async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, verbose: bool) -> None:
+    """Best-effort stop of all remote DAQ nodes. Failure on one does not block others."""
+    loop = asyncio.get_running_loop()
+
+    async def stop_node(node: DaqNodeValidator) -> None:
+        if not node.module_ids:
+            return
+        node_dict = node.model_dump()
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
         if verbose:
             print(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
-        logger.info(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
-        client = DaqControlClient(host=grpc_host, port=grpc_port)
-        ok = client.StopDaq({
-            'data_dir': node['data_dir'],
-            'run_dir':  run_dir,
-        })
-        if not ok:
-            msg = f'StopDaq failed for node {node["ip_addr"]}'
-            logger.error(msg)
-            raise Exception(msg)
+        
+        try:
+            client = DaqControlClient(host=grpc_host, port=grpc_port)
+            # Use a strict timeout for the RPC
+            ok = await loop.run_in_executor(None, lambda: client.StopDaq({
+                'data_dir': node.data_dir,
+                'run_dir':  run_dir,
+            }))
+            if not ok:
+                print(f"Warning: StopDaq returned success=False for node {node.ip_addr}")
+        except Exception as e:
+            print(f"Error stopping node {node.ip_addr}: {e}")
+
+    await asyncio.gather(*(stop_node(n) for n in daq_config.daq_nodes))
+
 
 # write a "complete file" in the run dir
 #
@@ -194,9 +249,11 @@ def write_complete_file(run_dir: str, filename: str) -> None:
     with open(path , 'w') as f:
         f.write(now_str())
 
+
 def complete_file_exists(run_dir: str, filename: str) -> bool:
     path = f'{run_dir}/{filename}'
     return os.path.exists(path)
+
 
 # make symlinks to the first nonempty image and ph files in that dir
 #
@@ -242,146 +299,189 @@ def make_links(run_dir: str, verbose: bool) -> None:
         print('make_links(): No nonempty housekeeping file')
 
 
-def _cleanup_daq_grpc(daq_config: dict[str, Any], run: str, head_run_dir: str, verbose: bool) -> None:
+def _cleanup_daq_grpc(
+    daq_config: DaqConfigValidator, 
+    run: str, 
+    head_run_dir: str, 
+    verbose: bool,
+    force: bool = False
+) -> None:
     """Call CleanupData on each DAQ node via gRPC.
     Only called after collect_data() succeeds (transactional guarantee).
-    CleanupData is blocked server-side if hashpipe is still running.
     """
-    logger = logging.getLogger('PANOSETI.Stop._cleanup_daq_grpc')
-    my_ip = local_ip()
-    for node in daq_config['daq_nodes']:
-        if node['ip_addr'] in my_ip:
-            # Head node is also DAQ node: local rm -rf (same as before)
-            cmd = 'rm -rf {}/module_*/{}'.format(node['data_dir'], run)
+    my_ip = util.local_ip()
+    for node in daq_config.daq_nodes:
+        if not node.module_ids:
+            continue
+        ip_addr = str(node.ip_addr)
+        if ip_addr in my_ip:
+            # Head node is also DAQ node: local rm -rf
+            cmd = f'rm -rf {node.data_dir}/module_*/{run}'
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
             if ret:
                 log_error(f'cleanup_daq (local): {cmd} returned {ret}', head_run_dir)
         else:
-            module_ids = [m['id'] for m in node.get('modules', [])]
-            grpc_host, grpc_port = daq_grpc_endpoint(node)
+            grpc_host, grpc_port = util.daq_grpc_endpoint(node.model_dump())
             if verbose:
-                print(f'CleanupData via gRPC: {grpc_host}:{grpc_port}  run_dir={run}  modules={module_ids}')
-            logger.info(f'CleanupData via gRPC: {grpc_host}:{grpc_port}')
+                print(f'CleanupData via gRPC: {grpc_host}:{grpc_port} run_dir={run} force={force}')
             try:
                 client = DaqControlClient(host=grpc_host, port=grpc_port)
                 cleanup_resp = client.CleanupData({
-                    'data_dir':  node['data_dir'],
+                    'data_dir':  node.data_dir,
                     'run_dir':   run,
-                    'module_id': module_ids,
+                    'module_id': node.module_ids,
+                    'force':     force
                 })
                 if not cleanup_resp['success']:
-                    log_error(f'CleanupData failed for node {node["ip_addr"]} with {cleanup_resp=}', head_run_dir) 
+                    log_error(f'CleanupData failed for node {ip_addr}: {cleanup_resp.get("message")}', head_run_dir) 
             except Exception as e:
-                log_error(f'CleanupData error for node {node["ip_addr"]}: {e}', head_run_dir)
+                log_error(f'CleanupData error for node {ip_addr}: {e}', head_run_dir)
 
 
-def stop_run(
-    daq_config: dict[str, Any], network_config: dict[str, Any], quabo_uids: dict[str, Any], verbose: bool = False, no_cleanup: bool = False, no_collect: bool = False,
-    run: str | None = None
+async def stop_run(
+    daq_config: DaqConfigValidator, 
+    network_config: NetworkConfigValidator | dict[str, Any], 
+    quabo_uids: QuaboUidsValidator, 
+    verbose: bool = False, 
+    no_cleanup: bool = False, 
+    no_collect: bool = False,
+    run: str | None = None,
+    force_cleanup: bool = False
 ) -> None:
-    # convert head node name to IP address
-    head_node_ip = socket.gethostbyname(daq_config['head_node_ip_addr'])
-    if head_node_ip not in local_ip():
-        raise Exception(
-            'This computer ({}) is not the head node specified in daq_config.json ({})'.format(
-                local_ip(), daq_config['head_node_ip_addr']
-            )
-        )
-
-    if not run:
-        run = read_run_name()
-    if not run:
-        print("No run is in progress")
+    """
+    Transactional Best-Effort Shutdown.
+    1. Acquire lock.
+    2. Identify run from ledger.
+    3. Aggressive stop of all components (Remote DAQs, Quabos, Daemons).
+    4. Safe data collection (rsync).
+    5. Cleanup.
+    """
+    state_mgr = RunStateManager()
+    try:
+        state_mgr.acquire_lock()
+    except RuntimeError as e:
+        print(e)
         return
 
-    data_dir = daq_config['head_node_data_dir']
-    run_dir: str | None = f'{data_dir}/{run}'
-    if run_dir is not None and not os.path.exists(run_dir):
-        run_dir = None
+    try:
+        # convert head node name to IP address
+        head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
+        if head_node_ip not in util.local_ip():
+            raise Exception(f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
 
-    # do things that don't depend on having a run dir
+        # Load from ledger
+        ledger = state_mgr.load_state()
+        if not run:
+            run = ledger.run_name if ledger else util.read_run_name()
 
-    print("stopping data recording")
-    stop_recording(daq_config, run, verbose)
+        if not run:
+            print("No run is in progress")
+            return
 
-    print("stopping HV updater")
-    kill_hv_updater()
+        # Validation: prevent orphaning the current run
+        if ledger and run != ledger.run_name and not force_cleanup:
+             print(f"Warning: Requested run '{run}' does not match ledger run '{ledger.run_name}'.")
+             print("Use --force-cleanup if you are sure.")
+             return
 
-    print("stopping HK recording")
-    kill_hk_recorder()
+        if ledger:
+            ledger.status = "STOPPING"
+            state_mgr.save_state(ledger)
 
-    print("stopping Temperature monitor")
-    kill_module_temp_monitor()
+        data_dir = daq_config.head_node_data_dir
+        run_dir: str | None = f'{data_dir}/{run}'
+        if run_dir is not None and not await asyncio.to_thread(os.path.exists, run_dir):
+            run_dir = None
 
-    print("stopping data generation")
-    stop_data_flow(quabo_uids, network_config)
+        print(f"stopping data recording for run {run}")
+        await stop_recording(daq_config, run, verbose)
 
-    if run_dir:
-        if not complete_file_exists(run_dir, recording_ended_filename):
-            write_complete_file(run_dir, recording_ended_filename)
-        collect_error = ''
-        if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
-            print("collecting data from DAQ nodes")
-            collect_error = collect.collect_data(daq_config, run, verbose)
+        print("stopping HV updater")
+        util.kill_hv_updater()
+
+        print("stopping HK recording")
+        util.kill_hk_recorder()
+
+        print("stopping Temperature monitor")
+        util.kill_module_temp_monitor()
+
+        print("stopping data generation from quabos")
+        util.stop_data_flow(quabo_uids, network_config)
+
+        if run_dir:
+            if not complete_file_exists(run_dir, recording_ended_filename):
+                write_complete_file(run_dir, recording_ended_filename)
+            
+            collect_error = ''
+            if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
+                print("collecting data from DAQ nodes...")
+                collect_error = collect.collect_data(daq_config.model_dump(), run, verbose)
+                if collect_error == '':
+                    write_complete_file(run_dir, collect_complete_filename)
+                else:
+                    print(f"Data collection errors occurred: {collect_error}")
+
             if collect_error == '':
-                write_complete_file(run_dir, collect_complete_filename)
-        if collect_error == '':
-            if not no_cleanup:
-                if verbose:
-                    print("cleaning up DAQ nodes via gRPC CleanupData")
-                _cleanup_daq_grpc(daq_config, run, run_dir, verbose)
-            make_links(run_dir, verbose)
-            write_complete_file(run_dir, run_complete_filename)
-            print(f'completed run {run}')
+                if not no_cleanup:
+                    print("cleaning up DAQ nodes...")
+                    _cleanup_daq_grpc(daq_config, run, run_dir, verbose, force=force_cleanup)
+                make_links(run_dir, verbose)
+                write_complete_file(run_dir, run_complete_filename)
+                print(f'completed run {run}')
+            else:
+                log_error(collect_error, run_dir)
+            
+            # Finalize ledger
+            if ledger:
+                ledger.status = "COMPLETED"
+                state_mgr.save_state(ledger)
+            util.remove_run_name()
         else:
-            log_error(collect_error, run_dir)
-        remove_run_name()
-    else:
-        print(f"Run dir {data_dir}/{run} not found; recorded artifacts may be missing.")
+            print(f"Run dir {data_dir}/{run} not found; recorded artifacts may be missing.")
+
+    finally:
+        state_mgr.release_lock()
+
 
 if __name__ == "__main__":
     if not os.path.exists('logs'):
         os.makedirs('logs')
     logfile = 'logs/stop.log'
-    create_logger(logfile, 'PANOSETI.Stop', 'a')
+    util.create_logger(logfile, 'PANOSETI.Stop', 'a')
     logger = logging.getLogger('PANOSETI.Stop')
     logger.info('************************************')
-    i = 1
-    argv = sys.argv
-    verbose = False
-    no_cleanup = False
-    no_collect = False
-    run = None
+
     parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
     parser.add_argument('--no_cleanup', dest='no_cleanup', action='store_true', default=False,
                         help='Don\'t clean up the data files on the DAQ nodes.')
     parser.add_argument('--no_collect', dest='no_collect', action='store_true', default=False,
                         help='Don\'t collect the data files to the head node.')
     parser.add_argument('--run', dest='run', type=str, default=None,
-                        help='Move the data files for the specific run to the head node.')
+                        help='Stop/Cleanup specific run.')
+    parser.add_argument('--force-cleanup', dest='force_cleanup', action='store_true', default=False,
+                        help='Force cleanup on DAQ nodes even if hashpipe liveness is uncertain.')
     parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
                         help='Print commands.')
     args = parser.parse_args()
-    verbose = args.verbose
-    no_cleanup = args.no_cleanup
-    no_collect = args.no_collect
-    run = args.run
+
+    # Load configurations as Pydantic objects
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     network_config = config_file.get_network_config()
-    attach_daq_config(daq_config, network_config)
-    config_file.associate(daq_config, quabo_uids)
-
-    # Kill interleaving before stopping primary data flow
+    util.attach_daq_config(daq_config, network_config)
+    
+    # Pre-stop interleave
     try:
         stop_interleave(retry_limit=10)
     except Exception as e:
-        logger.critical('Failed to stop interleave!')
-        logger.exception(e)
+        logger.critical(f'Failed to stop interleave: {e}')
 
-    # Stop run
-    stop_run(daq_config, network_config, quabo_uids, verbose, no_cleanup, no_collect, run)
+    # Execute async stop_run
+    asyncio.run(stop_run(
+        daq_config, network_config, quabo_uids, 
+        args.verbose, args.no_cleanup, args.no_collect, args.run, args.force_cleanup
+    ))
 
 

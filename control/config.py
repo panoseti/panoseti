@@ -24,6 +24,14 @@ from typing import Any
 from driver import quabo_driver
 from driver.quabo_tftp import tftpw
 from utils import config_file, file_xfer, pixel_coords, util
+from utils.pydantic_config_models import (
+    DaqConfigValidator,
+    DataConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+    ObsModuleConfig,
+    QuaboUidsValidator,
+)
 
 firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
@@ -96,27 +104,27 @@ def ask_use_default_calibration(ip_addr: str) -> bool:
 
 # print summary of obs and daq config files
 #
-def show_config(obs_config: dict[str, Any], quabo_uids: dict[str, Any]) -> None:
+def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) -> None:
     logger = logging.getLogger('PANOSETI.Config.show_config')
     logger.info('Show config')
-    for dome in obs_config['domes']:
-        print('dome {}'.format(dome['name']))
-        for module in dome['modules']:
-            module_id = module['id']
-            ip_addr = module['ip_addr']
+    for dome in obs_config.domes:
+        print(f'dome {dome.name}')
+        for module in dome.modules:
+            module_id = module.id
+            ip_addr = str(module.ip_addr)
             print(f'   module ID {module_id}')
-            print('      Mobo serial#: {}'.format(module['mobo_serialno']))
+            print(f'      Mobo serial#: {module.mobo_serialno}')
             for i in range(4):
                 quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
                 print(f'      quabo {i}')
                 print(f'         IP addr: {quabo_ip}')
     #print(f"This node's IP addr: {util.local_ip()}")
-    config_file.show_daq_assignments(quabo_uids)
+    config_file.show_daq_assignments(quabo_uids.model_dump())
 
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
 #
-def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: dict[str, Any], timeout: int = 60) -> None:
+def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> None:
     logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
     logger.info(f"The Quabo IP address/ID is {ip}.")
     ips = util.get_valid_ip(obs_config)
@@ -154,31 +162,36 @@ def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: 
 
 # Reboot one module
 #
-def reboot_module(module: dict[str, Any], quabo_uids: dict[str, Any], network_config: dict[str, Any], timeout: int = 60) -> list[dict[str, bool]]:
+def reboot_module(module: ObsModuleConfig | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> list[dict[str, bool]]:
     # Reboot the four quabos one by one
+    if isinstance(module, dict):
+        module = ObsModuleConfig(**module)
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.reboot_module')
     reboot_status: list[dict[str, bool]] = []
+    
+    m_ip = str(module.ip_addr)
+    
     for i in range(4):
-        if not util.is_quabo_alive(module, quabo_uids, i):
+        if not util.is_quabo_alive(module.model_dump(), quabo_uids.model_dump(), i):
             continue
-        ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+        ip_addr = config_file.quabo_ip_addr(m_ip, i)
         if i == 0:
-            if 'timing_mode' not in module:
-                print('*******************************************************')
-                print(f'Timing Mode for Quabo ({ip_addr}): WR')
-                print('*******************************************************')
-            elif module['timing_mode'] == 'gnss':
+            if module.timing_mode == 'gnss':
                 print('*******************************************************')
                 print(f'Timing Mode for Quabo ({ip_addr}): GNSS')
                 print('*******************************************************')
-            elif module['timing_mode'] == 'wr':
+            else:
                 print('*******************************************************')
                 print(f'Timing Mode for Quabo ({ip_addr}): WR')
                 print('*******************************************************')
-            else:
-                raise Exception(f"Timing Mode { module['timing_mode']} in obs_config not supported.")
+        
         print(f'rebooting quabo at {ip_addr}')
-        ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+        ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
         real_ip = ip_ports['ip_addr']
         cmd_port = ip_ports['cmd_port']
         reboot_port = ip_ports['reboot_port']
@@ -188,17 +201,13 @@ def reboot_module(module: dict[str, Any], quabo_uids: dict[str, Any], network_co
         x = tftpw(real_ip, reboot_port)
         # check timing mode, and only use it on Quabo0
         if i == 0:
-            if 'timing_mode' not in module:
-                x.put_wrpc_filesys('wr/wrpc_filesys')
-                logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
-            elif module['timing_mode'] == 'gnss':
+            if module.timing_mode == 'gnss':
                 x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
                 logger.info(f'Set Timing Mode to GNSS on Quabo {ip_addr}')
-            elif module['timing_mode'] == 'wr':
+            else:
                 x.put_wrpc_filesys('wr/wrpc_filesys')
                 logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
-            else:
-                raise Exception(f"Timing Mode { module['timing_mode']} in obs_config not supported.")
+        
         x.reboot()
         # wait for a while to let the quabo get rebooted successfully
         timeout_remaining = timeout
@@ -221,13 +230,18 @@ def reboot_module(module: dict[str, Any], quabo_uids: dict[str, Any], network_co
             logger.error(f'Quabo ({ip_addr}) is failed to rebooted.')
     return reboot_status
 
-def do_reboot(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
+def do_reboot(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
     # need to reboot quabos in order 0..3
     # to parallelize:
     # start reboot of quabo 0 in all modules
     # wait for ping of quabo 0 in all modules (means reboot is done)
     # ... same for quabo 1 etc.
     #
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+    
     logger = logging.getLogger('PANOSETI.Config.do_reboot')
     logger.info("Rebooting all of the modules in parallel...")
     start_time = time.time()
@@ -262,23 +276,34 @@ def do_reboot(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network
     print(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
     print('*******************************************************')
 
-def do_loads(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_info: dict[str, Any], network_config: dict[str, Any]) -> None:
+def do_loads(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_loads')
     # TODO The hard-coded path may not be good
     firmware = config_file.get_firmware_config()
-    firmware_silver_qfp = 'firmware/' + firmware['qfp']
-    firmware_silver_bga = 'firmware/' + firmware['bga']
+    # firmware is FirmwareConfigValidator, which allows extra fields
+    # We access them via .model_extra
+    extra = firmware.model_extra or {}
+    firmware_silver_qfp = 'firmware/' + extra.get('qfp', '')
+    firmware_silver_bga = 'firmware/' + extra.get('bga', '')
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            if not util.is_quabo_alive(module, quabo_uids, i):
+            if not util.is_quabo_alive(module.model_dump(), quabo_uids.model_dump(), i):
                 continue
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             port = ip_ports['reboot_port']
             logger.info(f'Real IP: {real_ip}')
             logger.info('Reboot Port: %d', port)
-            if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
+            if util.is_quabo_old_version(module.model_dump(), i, quabo_uids.model_dump(), quabo_info):
                 fw = firmware_silver_qfp
                 logger.info(f'Loading firmware: {firmware_silver_qfp}')
             else:
@@ -292,16 +317,22 @@ def do_loadg(modules: list[dict[str, Any]]) -> None:
     print("not supported")
     #x.put_bin_file(firmware_gold, 0x0)
 
-def do_ping(modules: list[dict[str, Any]], network_config: dict[str, Any], verbose: bool = False) -> dict[str, list[str]]:
+def do_ping(modules: list[ObsModuleConfig] | list[dict[str, Any]], network_config: NetworkConfigValidator | dict[str, Any], verbose: bool = False) -> dict[str, list[str]]:
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_ping')
     ping_record: dict[str, list[str]] = {
         "ping_true": [],
         "ping_false": []
     }
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
             real_ip = ip_ports['ip_addr']
             port = ip_ports['cmd_port']
             logger.info(f'Real IP: {real_ip}')
@@ -317,32 +348,49 @@ def do_ping(modules: list[dict[str, Any]], network_config: dict[str, Any], verbo
             print(f"can't ping {ip}")
     return ping_record
 
-def do_hk_dest(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], daq_config: dict[str, Any], network_config: dict[str, Any]) -> None:
+def do_hk_dest(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], daq_config: DaqConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_hk_dest')
-    headnode_ip_addr = daq_config['head_node_ip_addr']
+    headnode_ip_addr = str(daq_config.head_node_ip_addr)
     logger.info(f'Head node IP: {headnode_ip_addr}')
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            uid = util.quabo_uid(module, quabo_uids, i)
+            uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
             if uid == '':
                 continue
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            if isinstance(logger, logging.Logger):
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hk_packet_destination(headnode_ip_addr)
             quabo.close()
 
-def do_hv_on(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: dict[str, Any], verbose: bool = False) -> None:
+def do_hv_on(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], verbose: bool = False) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_hv_on')
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            uid = util.quabo_uid(module, quabo_uids, i)
+            uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
             if uid == '':
                 continue
             qi = quabo_info[uid]
@@ -352,36 +400,42 @@ def do_hv_on(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_in
                 op_voltage = detector_info[str(det_ser)]
                 # DAC LSB is 0.0011324717, instead of 0.00114
                 v[j] = int(op_voltage/0.0011324717)
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            if isinstance(logger, logging.Logger):
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
             if verbose:
                 print(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
 
-def do_hv_off(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
+def do_hv_off(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_hv_off')
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            uid = util.quabo_uid(module, quabo_uids, i)
+            uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
             if uid == '':
                 continue
             v = [0]*4
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            if isinstance(logger, logging.Logger):
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
@@ -391,35 +445,49 @@ def do_hv_off(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network
 #
 MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
 cal_cache: dict[tuple[Any, ...], Any] = {}
-def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], quabo_info: dict[str, Any], data_config: dict[str, Any], obs_config: dict[str, Any], daq_config: dict[str, Any], network_config: dict[str, Any], verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
+def do_maroc_config(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any], data_config: DataConfigValidator | dict[str, Any], obs_config: ObsConfigValidator | dict[str, Any], daq_config: DaqConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+    if isinstance(data_config, dict):
+        data_config = DataConfigValidator(**data_config)
+    if isinstance(obs_config, dict):
+        obs_config = ObsConfigValidator(**obs_config)
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+
     logger = None
     if do_log:
         logger = logging.getLogger('PANOSETI.Config.do_maroc_config')
-    gain = float(data_config['gain'])
-    do_img = 'image' in data_config
-    do_ph = 'pulse_height' in data_config
+    gain = float(data_config.gain) if data_config.gain is not None else 1.0
+    do_img = data_config.image is not None
+    do_ph = data_config.pulse_height is not None
 
     if do_img:
-        pe_thresh1 = float(data_config['image']['pe_threshold'])
+        pe_thresh1 = float(data_config.image.pe_threshold) if data_config.image else 1.0
     if do_ph:
-        pe_thresh2 = float(data_config['pulse_height']['pe_threshold'])
+        pe_thresh2 = float(data_config.pulse_height.pe_threshold) if data_config.pulse_height else 1.0
     if not do_img and not do_ph:
         raise Exception('data_config.json specifies no data products')
 
     stim_mask_quaboi = [1, 1, 1, 1]
-    if "stim_params" in data_config and "mask" in data_config["stim_params"]:
-        stim_mask_quaboi = data_config["stim_params"]["mask"]
+    if data_config.stim_params:
+        stim_mask_quaboi = [bool(m) for m in data_config.stim_params.mask]
         
     qc_dict_src = copy.deepcopy(MAROC_CONFIG_QUABO_CONFIG)
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
             no_cali = False
             qc_dict = copy.deepcopy(qc_dict_src)
-            uid = util.quabo_uid(module, quabo_uids, i)
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
             if uid == '':
                 continue
-            is_qfp = util.is_quabo_old_version(module, i, quabo_uids, quabo_info)
+            is_qfp = util.is_quabo_old_version(module.model_dump(), i, quabo_uids.model_dump(), quabo_info)
             try:
                 qi = quabo_info[uid]
             except Exception:
@@ -433,10 +501,7 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
             serialno = qi['serialno'][3:]
             # try to find the detector overvoltage in data_config.json
             # if we can't find it, we will use 3v by default.
-            try:
-                detovervol = data_config['detector_overvoltage']
-            except Exception:
-                detovervol = 3
+            detovervol = data_config.detector_overvoltage or 3
             # We have different calibration files for different modes: image alone and image/ph together
             # so we have to specifiy the mode here.
             # TODO: If it's PH alone, what calibration file should we use?
@@ -457,8 +522,8 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
                 quad = quabo_calib['quadrants'][j]
                 a = quad['a']       # a and b are used for img mode
                 b = quad['b']
-                ah= quad['ah']      # ah and bh are used for ph mode
-                bh= quad['bh']
+                ah = quad['ah']      # ah and bh are used for ph mode
+                bh = quad['bh']
                 if do_img:
                     dac1[j] = int(a*gain*pe_thresh1 + b)
                 if do_ph:
@@ -489,18 +554,16 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
             # set D1_D2 based on the two_pixel_trigger and three_pixel_trigger in data_config.json
             do_two_pixel_trigger = False
             do_three_pixel_trigger = False
-            if do_ph:
-                if 'two_pixel_trigger' in data_config['pulse_height']:
-                    do_two_pixel_trigger = data_config['pulse_height']['two_pixel_trigger']
-                if 'three_pixel_trigger' in data_config['pulse_height']:
-                    do_three_pixel_trigger = data_config['pulse_height']['three_pixel_trigger']
+            if do_ph and data_config.pulse_height:
+                do_two_pixel_trigger = bool(data_config.pulse_height.two_pixel_trigger)
+                do_three_pixel_trigger = bool(data_config.pulse_height.three_pixel_trigger)
             # if using 2/3 pixel trigger, D1_D2 should be set to 1,1,1,1
             if do_two_pixel_trigger or do_three_pixel_trigger:
                 qc_dict['D1_D2'] = '1,1,1,1'
             if verbose:
                 print('{}: {} = {}'.format(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
             if do_log and isinstance(logger, logging.Logger):
@@ -521,23 +584,6 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
                 qc_dict['DAC2'] = f'{tmp[0]},{tmp[1]},{tmp[2]},{tmp[3]}'
                 quabo.send_maroc_params(qc_dict)
                 # make the quabos send out some ph packets
-                """
-                daq_start = quabo_driver.DAQ_PARAMS(
-                        do_image=False,
-                        image_us=4999,
-                        image_8bit=False,
-                        do_ph=True,
-                        bl_subtract=False
-                    )
-                daq_stop = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
-                # This IP is not important, so I put a static IP here.
-                # It's just for generating a ph packet
-                daq_node_ip_addr = daq_config['daq_nodes'][0]['ip_addr']
-                quabo.data_packet_destination(daq_node_ip_addr)
-                quabo.send_daq_params(daq_start)
-                time.sleep(2)
-                quabo.send_daq_params(daq_stop)
-                """
                 # set the DAC2 values back
                 qc_dict['DAC2'] = f'{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}'
             if no_cali and do_log and isinstance(logger, logging.Logger):
@@ -556,42 +602,52 @@ def do_maroc_config(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], q
 # set CHANMASK and GOEMASK for modules
 #
 MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
-def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], network_config: dict[str, Any], quabo_uids: dict[str, Any], verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
+def do_mask_config(modules: list[ObsModuleConfig] | list[dict[str, Any]], data_config: DataConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+    if isinstance(data_config, dict):
+        data_config = DataConfigValidator(**data_config)
+
     logger = None
     if do_log:
         logger = logging.getLogger('PANOSETI.Config.do_mask_config')
     qc_dict = copy.deepcopy(MASK_CONFIG_QUABO_CONFIG)
     qc_dict_int: dict[str, int] = {}
-    do_ph = 'pulse_height' in data_config
+    do_ph = data_config.pulse_height is not None
     qc_dict_int['GOEMASK'] = int(qc_dict['GOEMASK'], 16)
     for i in range(9):
         qc_dict_int['CHANMASK_'+str(i)] = int(qc_dict['CHANMASK_'+str(i)], 16)
-    if do_ph:
+    if do_ph and data_config.pulse_height:
         # config CHANMASK_8 for any_trigger
-        if 'any_trigger' in data_config['pulse_height']:
+        if data_config.pulse_height.any_trigger:
             qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] & 0x0ff
         else:
             qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | (0x100)
         
         # config GOEMASK for 2/3 pixel_trigger
-        if 'three_pixel_trigger' in data_config['pulse_height'] and data_config['pulse_height']['three_pixel_trigger']:
+        if data_config.pulse_height.three_pixel_trigger:
             qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
             qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x1
-        if 'two_pixel_trigger' in data_config['pulse_height'] and data_config['pulse_height']['two_pixel_trigger']:
+        if data_config.pulse_height.two_pixel_trigger:
             qc_dict_int['CHANMASK_8'] = qc_dict_int['CHANMASK_8'] | 0xff
             qc_dict_int['GOEMASK'] = qc_dict_int['GOEMASK'] & 0x2
 
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            uid = util.quabo_uid(module, quabo_uids, i)
+            uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
             if uid == '':
                 continue
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
             for tag in ['CHANMASK_8', 'GOEMASK']:
                 if verbose:
                     print(f'{ip_addr}: {tag} = 0x{qc_dict_int[tag]:x}')
             # send MASK params to the quabo
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
             if do_log and isinstance(logger, logging.Logger):
@@ -607,24 +663,29 @@ def do_mask_config(modules: list[dict[str, Any]], data_config: dict[str, Any], n
                 quabo.write_goe_mask_config(qc_dict_int, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
 
-# compute PH baselines on quabos and write to file
-#
-def do_calibrate_ph(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
+def do_calibrate_ph(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+    if isinstance(network_config, dict):
+        network_config = NetworkConfigValidator(**network_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_calibrate_ph')
     quabos: list[dict[str, Any]] = []
     for module in modules:
+        if isinstance(module, dict):
+            module = ObsModuleConfig(**module)
+        m_ip = str(module.ip_addr)
         for i in range(4):
-            uid = util.quabo_uid(module, quabo_uids, i)
+            uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
             if uid == '':
                 continue
-            ip_addr = config_file.quabo_ip_addr(module['ip_addr'], i)
-            ip_ports = util.get_quabo_ip_port(module['ip_addr'], i, network_config)
+            ip_addr = config_file.quabo_ip_addr(m_ip, i)
+            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
             real_ip = ip_ports['ip_addr']
             cmd_port = ip_ports['cmd_port']
-            if isinstance(logger, logging.Logger):
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
@@ -643,18 +704,21 @@ def do_calibrate_ph(modules: list[dict[str, Any]], quabo_uids: dict[str, Any], n
 
 
 # show summary statistics for the PH baseline calibrations of each quabo
-def do_show_ph_baselines(quabo_uids: dict[str, Any]) -> None:
+def do_show_ph_baselines(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> None:
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+
     logger = logging.getLogger('PANOSETI.Config.do_show_ph_baselines')
     logger.info('Show PH baseline')
     quabo_ph_baselines = config_file.get_quabo_ph_baselines()
     msg = f"Creation date: {quabo_ph_baselines['date']}\n"
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            module_ip_addr = module['ip_addr']
+    for dome in quabo_uids.domes:
+        for module in dome.modules:
+            module_ip_addr = str(module.ip_addr)
             msg += f'module {module_ip_addr}:\n'
             for quabo_index in range(4):
                 quabo_num = config_file.get_boardloc(module_ip_addr, quabo_index)
-                quabo_uid = module['quabos'][quabo_index]['uid']
+                quabo_uid = module.quabos[quabo_index].uid
                 quabo_baselines: Any = None
                 for q in quabo_ph_baselines['quabos']:
                     if q['uid'] == quabo_uid:
@@ -676,7 +740,12 @@ def do_show_ph_baselines(quabo_uids: dict[str, Any]) -> None:
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
 #
-def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbose: bool = False) -> float:
+def do_disk_space(data_config: DataConfigValidator | dict[str, Any], daq_config: DaqConfigValidator | dict[str, Any], verbose: bool = False) -> float:
+    if isinstance(data_config, dict):
+        data_config = DataConfigValidator(**data_config)
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+
     logger = logging.getLogger('PANOSETI.Config.do_disk_space')
     logger.info('Check disk space.')
     bps = util.daq_bytes_per_sec_per_module(data_config)
@@ -687,18 +756,19 @@ def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbo
 
     # loop over DAQ nodes
     #
-    for node in daq_config['daq_nodes']:
-        if not node['modules']:
+    for node in daq_config.daq_nodes:
+        # Check if this node has any modules assigned (node.modules is a list of Any)
+        if not node.modules:
             continue
-        nmod = len(node['modules'])
+        nmod = len(node.modules)
         nmod_total += nmod
-        ip_addr = node['ip_addr']
+        ip_addr = str(node.ip_addr)
         if verbose:
             print(f'DAQ node {ip_addr}: {nmod} modules')
 
         # get list of volumes on the DAQ node
         #
-        j = util.get_daq_node_status(node)
+        j = util.get_daq_node_status(node.model_dump())
         vols = j['vols']
 
         # initialize list of module IDs each vol will handle,
@@ -713,8 +783,8 @@ def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbo
         # loop over module IDs going to this DAQ node,
         # and add them to the mods_here list for the appropriate volume
         #
-        for module in node['modules']:
-            mid = module['id']
+        for module in node.modules:
+            mid = module.id if hasattr(module, 'id') else module.get('id')
             found = False
             for vol in vols.values():
                 if mid in vol['modules']:
@@ -744,7 +814,7 @@ def do_disk_space(data_config: dict[str, Any], daq_config: dict[str, Any], verbo
     # TODO: this is hard-coded??
     with open("/home/panosetigraph/web/head_node_volumes.json") as f:
         head_node_vols = json.loads(f.read())
-    hnd = daq_config['head_node_data_dir']
+    hnd = str(daq_config.head_node_data_dir)
     hnd = os.path.realpath(hnd)
     print('head node:')
     for vol in head_node_vols:
@@ -773,8 +843,13 @@ def do_shutter(action: str) -> None:
         os.system("tools/shutter.py --close")
 
 def do_start_interleave() -> None:
-    """Starts the interleaver process in the background."""
-    if not os.path.exists("tmp/current_run"):
+    """Starts the interleaver process in the background. (SC-034b: Prevents duplicate daemons)"""
+    pid_file = "tmp/interleave.pid"
+    if os.path.exists(pid_file):
+        print("ERROR: Interleave daemon is already running (PID file exists). Stop it first.")
+        sys.exit(1)
+
+    if not os.path.exists("tmp/current_run") and not os.path.exists("tmp/run_state.toml"):
         print("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
         sys.exit(1)
 
@@ -967,7 +1042,7 @@ def main() -> None:
     elif args.calibrate_ph:
         do_calibrate_ph(modules, quabo_uids, network_config)
     elif args.disk_space:
-        do_disk_space(data_config, daq_config, True)
+        do_disk_space(data_config.model_dump(), daq_config.model_dump(), True)
     elif args.shutter_open:
         do_shutter("open")
     elif args.shutter_close:
@@ -975,7 +1050,7 @@ def main() -> None:
     elif args.show_ph_baselines:
         do_show_ph_baselines(quabo_uids)
     elif args.reboot_single is not None:
-        do_reboot_single_quabo(args.reboot_single, obs_config, network_config)
+        do_reboot_single_quabo(args.reboot_single, obs_config.model_dump(), network_config)
     elif args.start_interleave:
         do_start_interleave()
     elif args.stop_interleave:

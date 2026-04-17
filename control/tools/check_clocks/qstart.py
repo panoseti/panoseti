@@ -14,9 +14,9 @@ from utils import config_file
 
 def qstart(s: bool) -> None:
     obs_config = config_file.get_obs_config()
-    d = obs_config['domes'][0]
-    m = d['modules'][0]
-    ip_addr = m['ip_addr']
+    d = obs_config.domes[0]
+    m = d.modules[0]
+    ip_addr = str(m.ip_addr)
     quabo = quabo_driver.QUABO(ip_addr)
     quabo.send_daq_params(
         quabo_driver.DAQ_PARAMS(

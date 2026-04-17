@@ -21,19 +21,25 @@ import config
 import get_uids
 import power
 from utils import config_file, util
+from utils.pydantic_config_models import (
+    DaqConfigValidator,
+    DataConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+)
 
 
 def session_start(
-    obs_config: dict[str, Any],
+    obs_config: ObsConfigValidator,
     quabo_info: dict[str, Any],
-    data_config: dict[str, Any],
-    daq_config: dict[str, Any],
-    network_config: dict[str, Any],
+    data_config: DataConfigValidator,
+    daq_config: DaqConfigValidator,
+    network_config: NetworkConfigValidator | dict[str, Any],
     no_hv: bool,
     stage: str
 ) -> None:
 
-    modules = config_file.get_modules(obs_config)
+    modules = config_file.get_modules(obs_config.model_dump())
     # power on the telescopes
     if stage == 'poweron':
         stage = 'get_uids'
@@ -44,14 +50,14 @@ def session_start(
     if stage == 'get_uids':
         stage = 'reboot'
         print('getting quabo UIDs')
-        get_uids.get_uids(obs_config, network_config)
+        get_uids.get_uids(obs_config.model_dump(), network_config if isinstance(network_config, dict) else network_config.model_dump())
 
     if stage == 'reboot':
         stage = 'hk_dest'
-        modules = config_file.get_modules(obs_config)
+        modules = config_file.get_modules(obs_config.model_dump())
         print('rebooting quabos')
         quabo_uids = config_file.get_quabo_uids()
-        config.do_reboot(modules, quabo_uids, network_config)
+        config.do_reboot(modules, quabo_uids.model_dump(), network_config)
         print('Reboot Successfully.')
 
     if stage == 'hk_dest':
@@ -80,6 +86,7 @@ def session_start(
     if stage == 'calibrate_ph':
         stage = 'open_shutters'
         print('calibrating PH')
+        quabo_uids = config_file.get_quabo_uids()
         config.do_calibrate_ph(modules, quabo_uids, network_config)
         config.do_show_ph_baselines(quabo_uids)
 

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from utils import config_file, util
+from utils.run_state import RunStateManager
 
 
 # ---------- logging setup ----------
@@ -33,11 +34,17 @@ def log_print(*args: Any, **kwargs: Any) -> None:
 
 # ---------- main logic ----------
 def status() -> None:
-    run_name = util.read_run_name()
-    if run_name:
-        log_print(f'Run in progress: {run_name}')
+    state_mgr = RunStateManager()
+    ledger = state_mgr.load_state()
+    
+    if ledger:
+        log_print(f'Run in ledger: {ledger.run_name} (Status: {ledger.status}, Started: {ledger.start_time})')
     else:
-        log_print("No run is in progress")
+        run_name = util.read_run_name()
+        if run_name:
+            log_print(f'Run in legacy marker: {run_name}')
+        else:
+            log_print("No run is in progress")
 
     if util.is_hk_recorder_running():
         log_print('HK recorder is running')
@@ -49,15 +56,15 @@ def status() -> None:
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.get_data_config()
-    config_file.associate(daq_config, quabo_uids)
+    config_file.associate(daq_config.model_dump(), quabo_uids.model_dump())
     util.local_ip()
 
-    for node in daq_config['daq_nodes']:
-        if not node['modules']:
+    for node in daq_config.daq_nodes:
+        if not node.module_ids:
             continue
-        ip_addr = node['ip_addr']
+        ip_addr = str(node.ip_addr)
         log_print(f'status on DAQ node {ip_addr}:')
-        j = util.get_daq_node_status(node)
+        j = util.get_daq_node_status(node.model_dump())
 
         if j['hashpipe_running']:
             log_print('   hashpipe is running')

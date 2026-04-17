@@ -9,7 +9,6 @@ switch Quabo FPGA and MAROC registers between different observing modes.
 
 import argparse
 import contextlib
-import copy
 import logging
 import os
 import signal
@@ -25,6 +24,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import config as pano_config
 from driver import quabo_driver
 from utils import config_file, util
+from utils.pydantic_config_models import (
+    DaqConfigValidator,
+    DataConfigValidator,
+    InterleaveConfig,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+    ObsModuleConfig,
+    QuaboUidsValidator,
+)
 
 PID_FILE = "tmp/interleave.pid"
 
@@ -34,10 +42,21 @@ logger = logging.getLogger("panoseti.interleave")
 
 class InterleaveController:
     MAX_THREADS = 8
-    def __init__(self, data_config: dict[str, Any], obs_config: dict[str, Any],
-                 daq_config: dict[str, Any], quabo_uids: dict[str, Any],
-                 quabo_info: dict[str, Any], network_config: dict[str, Any],
+    def __init__(self, data_config: DataConfigValidator | dict[str, Any], obs_config: ObsConfigValidator | dict[str, Any],
+                 daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any],
+                 quabo_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any],
                  dry_run: bool = False, max_cycles: int | None = None) -> None:
+
+        if isinstance(data_config, dict):
+            data_config = DataConfigValidator(**data_config)
+        if isinstance(obs_config, dict):
+            obs_config = ObsConfigValidator(**obs_config)
+        if isinstance(daq_config, dict):
+            daq_config = DaqConfigValidator(**daq_config)
+        if isinstance(quabo_uids, dict):
+            quabo_uids = QuaboUidsValidator(**quabo_uids)
+        if isinstance(network_config, dict):
+            network_config = NetworkConfigValidator(**network_config)
 
         self.keep_running = True
         self.dry_run = dry_run
@@ -47,7 +66,6 @@ class InterleaveController:
             "total_switch_overhead_sec": 0.0,
             "overhead": []
         }
-
 
         self._acquire_lock()
 
@@ -61,8 +79,8 @@ class InterleaveController:
         elif not self.dry_run:
             logger.info(f"Attached to active run: {run_name}")
 
-        self.data_config = copy.deepcopy(data_config)
-        self.interleave_cfg = data_config.get("interleave", {})
+        self.data_config = data_config
+        self.interleave_cfg = data_config.interleave or InterleaveConfig()
         self.obs_config = obs_config
         self.daq_config = daq_config
         self.quabo_uids = quabo_uids
@@ -72,19 +90,19 @@ class InterleaveController:
         self.modules = config_file.get_modules(obs_config)
         self.quabos: dict[int, list[quabo_driver.QUABO]] = {}  # map module_id to quabo_driver instances
         for module in self.modules:
-            base_ip_addr = module['ip_addr']
-            module_id = config_file.ip_addr_to_module_id(base_ip_addr)
+            base_ip_addr = str(module.ip_addr)
+            module_id = module.id if module.id is not None else -1
             self.quabos[module_id] = []
             for i in range(4):
-                uid = util.quabo_uid(module, quabo_uids, i)
+                uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
                 if not uid:
                     continue
-                config_file.quabo_ip_addr(base_ip_addr, i)
                 ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
                 real_ip = ip_ports['ip_addr']
                 cmd_port = ip_ports['cmd_port']
                 q = quabo_driver.QUABO(real_ip, cmd_port)
                 self.quabos[module_id].append(q) # use a list to retain sequential ordering
+
 
         # self.executor = ThreadPoolExecutor(max_workers=self.MAX_THREADS)
 
@@ -149,35 +167,47 @@ class InterleaveController:
         #for f in as_completed(futures):
         #    f.result()
 
-    def _reconfigure_quabos(self, next_state_data_config: dict[str, Any]) -> None:
+    def _reconfigure_quabos(self, next_state_data_config: DataConfigValidator) -> None:
         if self.dry_run:
             return
 
-        def reconfig_modules(modules: list[dict[str, Any]]) -> None:
+        def reconfig_modules(modules: list[ObsModuleConfig]) -> None:
             pano_config.do_maroc_config(
-                modules, self.quabo_uids, self.quabo_info,
-                next_state_data_config, self.obs_config, self.daq_config,
-                self.network_config, verbose=False, write_config=False, do_log=False
+                [m.model_dump() for m in modules], self.quabo_uids.model_dump(), self.quabo_info,
+                next_state_data_config.model_dump(), self.obs_config.model_dump(), self.daq_config.model_dump(),
+                self.network_config, 
+                verbose=False, write_config=False, do_log=False
             )
             pano_config.do_mask_config(
-                modules, next_state_data_config, self.network_config,
-                self.quabo_uids, verbose=False, write_config=False, do_flush_rx_buf=False, do_log=False
+                [m.model_dump() for m in modules], next_state_data_config.model_dump(), 
+                self.network_config,
+                self.quabo_uids.model_dump(), verbose=False, write_config=False, do_flush_rx_buf=False, do_log=False
             )
 
         reconfig_modules(self.modules)
         #futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
         #for f in as_completed(futures): f.result()
 
-    def generate_state_dict(self, movie_key: str | None, ph_key: str | None) -> dict[str, Any]:
-        temp_dict = self.data_config.copy()
+    def generate_state_config(self, movie_key: str | None, ph_key: str | None) -> DataConfigValidator:
+        temp_dict = self.data_config.model_dump()
         temp_dict.pop('image', None)
         temp_dict.pop('pulse_height', None)
+        
+        # Access extra modes via model_extra if not root 'image'/'pulse_height'
+        extra = self.data_config.model_extra or {}
+        
         if movie_key:
-            temp_dict['image'] = self.data_config[movie_key]
+            if movie_key == 'image':
+                temp_dict['image'] = self.data_config.image.model_dump() if self.data_config.image else None
+            else:
+                temp_dict['image'] = extra.get(movie_key)
         if ph_key:
-            temp_dict['pulse_height'] = self.data_config[ph_key]
-        #logger.debug(f"Generating state dict for {temp_dict=}")
-        return temp_dict
+            if ph_key == 'pulse_height':
+                temp_dict['pulse_height'] = self.data_config.pulse_height.model_dump() if self.data_config.pulse_height else None
+            else:
+                temp_dict['pulse_height'] = extra.get(ph_key)
+        
+        return DataConfigValidator(**temp_dict)
 
     def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
         while self.keep_running:
@@ -192,12 +222,12 @@ class InterleaveController:
         # Must import start dynamically to avoid circular import errors
         from start import get_daq_params
 
-        if not self.interleave_cfg.get("enable", False):
+        if not self.interleave_cfg.enable:
             #logger.info("Interleaving disabled in config. Exiting.")
             self._release_lock()
             return
 
-        states = self.interleave_cfg.get("states", [])
+        states = self.interleave_cfg.states
         if not states:
             self._release_lock()
             return
@@ -211,14 +241,14 @@ class InterleaveController:
                     break
 
                 for state in states:
-                    name = state["state_name"]
-                    duration = state["duration_seconds"]
+                    name = state.state_name
+                    duration = state.duration_seconds
 
                     # make the next interleave state appear as the "default" state
                     # this lets us use existing production helper functions to config
-                    next_state_data_config = self.generate_state_dict(
-                        state.get("movie_mode_config"),
-                        state.get("pulse_height_mode_config")
+                    next_state_data_config = self.generate_state_config(
+                        state.movie_mode_config,
+                        state.pulse_height_mode_config
                     )
                     start_daq_params = get_daq_params(next_state_data_config)
 

@@ -14,20 +14,26 @@ from typing import Any
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils import config_file, file_xfer, util
+from utils.pydantic_config_models import DaqConfigValidator
 
 
 # return '' if data collection was successful, else error msg
 #
-def collect_data(daq_config: dict[str, Any], run_dir: str, verbose: bool = False) -> str:
+def collect_data(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, verbose: bool = False) -> str:
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+    
     my_ip = util.local_ip()
     error_msg = ''
-    for node in daq_config['daq_nodes']:
-        for module in node['modules']:
-            module_id = module['id']
-            if node['ip_addr'] in my_ip:
+    for node in daq_config.daq_nodes:
+        if not node.module_ids:
+            continue
+        # We need to know which module IDs are on this node
+        for module_id in node.module_ids:
+            if str(node.ip_addr) in my_ip:
                 # head node is also a DAQ node.
                 # Move files locally; if different volume, this will copy
-                cmd = f"mv {node['data_dir']}/module_{module_id}/{run_dir}/* {daq_config['head_node_data_dir']}/{run_dir}"
+                cmd = f"mv {node.data_dir}/module_{module_id}/{run_dir}/* {daq_config.head_node_data_dir}/{run_dir}"
                 if verbose:
                     print(cmd)
                 ret = os.system(cmd)
@@ -35,7 +41,7 @@ def collect_data(daq_config: dict[str, Any], run_dir: str, verbose: bool = False
                     error_msg += f'command {cmd} failed: {ret}'
             else:
                 error_msg += file_xfer.copy_dir_from_node(
-                    run_dir, daq_config, node, module_id, verbose
+                    run_dir, daq_config.model_dump(), node.model_dump(), int(module_id), verbose
                 )
     return error_msg
 
@@ -47,30 +53,28 @@ def collect_data(daq_config: dict[str, Any], run_dir: str, verbose: bool = False
 #    data/module_n/run (should be empty dir)
 # return error message or ''
 #
-def cleanup_daq(daq_config: dict[str, Any], run_dir: str, verbose: bool = False) -> str:
+def cleanup_daq(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, verbose: bool = False) -> str:
+    if isinstance(daq_config, dict):
+        daq_config = DaqConfigValidator(**daq_config)
+
     my_ip = util.local_ip()
     error_msg = ''
-    for node in daq_config['daq_nodes']:
-        if node['ip_addr'] in my_ip:
-            cmd = 'rm -rf {}/module_*/{}'.format(
-                node['data_dir'], run_dir
-            )
+    for node in daq_config.daq_nodes:
+        ip_addr = str(node.ip_addr)
+        if ip_addr in my_ip:
+            cmd = f'rm -rf {node.data_dir}/module_*/{run_dir}'
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
             if ret:
                 error_msg += f'cleanup_daq(): {cmd} returned {ret} '
         else:
-            rcmd = 'rm -rf {}/module_*/{}; rm -rf {}/{}'.format(
-                node['data_dir'], run_dir,
-                node['data_dir'], run_dir
-            )
-            if 'port_forwarding' in node:
-                cmd = f"ssh -p {node['port_forwarding']['port']} {node['username']}@{node['port_forwarding']['gw_ip']} \"{rcmd}\""
+            rcmd = f'rm -rf {node.data_dir}/module_*/{run_dir}; rm -rf {node.data_dir}/{run_dir}'
+            node_dict = node.model_dump()
+            if 'port_forwarding' in node_dict:
+                cmd = f"ssh -p {node_dict['port_forwarding']['port']} {node.username}@{node_dict['port_forwarding']['gw_ip']} \"{rcmd}\""
             else:
-                cmd = 'ssh {}@{} "{}"'.format(
-                    node['username'], node['ip_addr'], rcmd
-                )
+                cmd = f'ssh {node.username}@{ip_addr} "{rcmd}"'
             if verbose:
                 print(cmd)
             ret = os.system(cmd)

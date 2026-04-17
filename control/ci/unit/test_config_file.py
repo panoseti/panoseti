@@ -185,9 +185,21 @@ class TestModuleIdToDaqNode:
     @pytest.fixture
     def expanded_config(self) -> dict[str, Any]:
         config: dict[str, Any] = {
+            "head_node_data_dir": "/data",
+            "head_node_ip_addr": "10.0.0.1",
             "daq_nodes": [
-                {"ip_addr": "10.0.0.2", "module_ids": "224-225"},
-                {"ip_addr": "10.0.0.3", "module_ids": "226-227"},
+                {
+                    "username": "panoseti",
+                    "data_dir": "/data",
+                    "ip_addr": "10.0.0.2",
+                    "module_ids": "224-225"
+                },
+                {
+                    "username": "panoseti",
+                    "data_dir": "/data",
+                    "ip_addr": "10.0.0.3",
+                    "module_ids": "226-227"
+                },
             ]
         }
         expand_ranges(config)
@@ -195,19 +207,19 @@ class TestModuleIdToDaqNode:
 
     def test_finds_correct_node_for_first_range(self, expanded_config):
         node = module_id_to_daq_node(expanded_config, 224)
-        assert node["ip_addr"] == "10.0.0.2"
+        assert str(node.ip_addr) == "10.0.0.2"
 
     def test_finds_correct_node_for_second_range(self, expanded_config):
         node = module_id_to_daq_node(expanded_config, 226)
-        assert node["ip_addr"] == "10.0.0.3"
+        assert str(node.ip_addr) == "10.0.0.3"
 
     def test_missing_module_id_raises(self, expanded_config):
         with pytest.raises(Exception, match="no DAQ node"):
             module_id_to_daq_node(expanded_config, 999)
 
     def test_boundary_values(self, expanded_config):
-        assert module_id_to_daq_node(expanded_config, 225)["ip_addr"] == "10.0.0.2"
-        assert module_id_to_daq_node(expanded_config, 227)["ip_addr"] == "10.0.0.3"
+        assert str(module_id_to_daq_node(expanded_config, 225).ip_addr) == "10.0.0.2"
+        assert str(module_id_to_daq_node(expanded_config, 227).ip_addr) == "10.0.0.3"
 
 
 # ===========================================================================
@@ -266,23 +278,42 @@ class TestAssignNumbers:
 class TestGetModules:
     def test_returns_flat_list_of_modules(self):
         obs_config = {
+            "name": "test",
             "domes": [
-                {"modules": [{"ip_addr": "192.168.3.200"}, {"ip_addr": "192.168.3.204"}]},
-                {"modules": [{"ip_addr": "192.168.3.208"}]},
+                {
+                    "name": "d1", "obslat": 0, "obslon": 0, "obsalt": 0,
+                    "modules": [
+                        {"ip_addr": "192.168.3.200", "mobo_serialno": "s1", "quabo_version": "q"},
+                        {"ip_addr": "192.168.3.204", "mobo_serialno": "s2", "quabo_version": "q"}
+                    ]
+                },
+                {
+                    "name": "d2", "obslat": 0, "obslon": 0, "obsalt": 0,
+                    "modules": [{"ip_addr": "192.168.3.208", "mobo_serialno": "s3", "quabo_version": "q"}]
+                },
             ]
         }
         modules = get_modules(obs_config)
         assert len(modules) == 3
-        ips = [m["ip_addr"] for m in modules]
+        ips = [str(m.ip_addr) for m in modules]
         assert "192.168.3.200" in ips
         assert "192.168.3.208" in ips
 
     def test_single_dome_single_module(self):
-        obs_config = {"domes": [{"modules": [{"ip_addr": "192.168.3.200"}]}]}
+        obs_config = {
+            "name": "test",
+            "domes": [
+                {
+                    "name": "d1", "obslat": 0, "obslon": 0, "obsalt": 0,
+                    "modules": [{"ip_addr": "192.168.3.200", "mobo_serialno": "s1", "quabo_version": "q"}]
+                }
+            ]
+        }
         assert len(get_modules(obs_config)) == 1
 
     def test_empty_domes(self):
-        assert get_modules({"domes": []}) == []
+        assert get_modules({"name": "test", "domes": []}) == []
+
 
 
 # ===========================================================================
@@ -300,7 +331,7 @@ class TestLoadAndValidate:
     def test_loads_valid_data_config(self, tmp_path, minimal_data_config):
         base = self._write_json(tmp_path, "configs/data_config.json", minimal_data_config)
         result = load_and_validate(DataConfigValidator, "configs/data_config.json", base, "Data Config")
-        assert result["run_type"] == "sci"
+        assert result.run_type == "sci"
 
     def test_missing_file_raises_value_error(self, tmp_path):
         with pytest.raises(ValueError, match="Missing file"):

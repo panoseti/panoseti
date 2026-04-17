@@ -14,17 +14,18 @@ from typing import Any
 
 import power
 from utils import config_file, redis_utils
+from utils.pydantic_config_models import WpsConfig
 
 # Time between updates.
 UPDATE_INTERVAL = 1
 
 
-def get_wps_fields(wps_dict: dict[str, Any]) -> dict[str, Any]:
+def get_wps_fields(wps_model: WpsConfig | dict[str, Any]) -> dict[str, Any]:
     """Creates a dictionary of values to write into Redis."""
     try:
-        power_status = "ON" if power.quabo_power_query(wps_dict) else "OFF"
+        power_status = "ON" if power.quabo_power_query(wps_model) else "OFF"
     except Exception:
-        print(f'capture_power.py: Failed to query {wps_dict}. The login info for this UPS may be incorrect."')
+        print(f'capture_power.py: Failed to query {wps_model}. The login info for this UPS may be incorrect."')
         raise
     rkey_fields: dict[str, Any] = {
         'Computer_UTC': time.time(),
@@ -41,13 +42,18 @@ def get_wps_rkey(wps_key: str) -> str:
 def main() -> None:
     r = redis_utils.redis_init()
     obs_config = config_file.get_obs_config()
-    wps_keys = [key for key in obs_config if 'wps' in key.lower()]
+    
+    extra = obs_config.model_extra or {}
+    wps_keys = [key for key in extra if 'wps' in key.lower()]
+    
     print("capture_power.py: Running...")
     while True:
         for wps_key in wps_keys:
             rkey = get_wps_rkey(wps_key)
-            wps_dict = obs_config[wps_key]
-            fields = get_wps_fields(wps_dict)
+            wps_data = extra[wps_key]
+            # Convert to model if it's a dict
+            wps_model = WpsConfig(**wps_data) if isinstance(wps_data, dict) else wps_data
+            fields = get_wps_fields(wps_model)
             redis_utils.store_in_redis(r, rkey, fields)
         time.sleep(UPDATE_INTERVAL)
 

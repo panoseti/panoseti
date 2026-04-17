@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from utils import config_file
+from utils.pydantic_config_models import ObsConfigValidator, WpsConfig
 
 LOG_DIR_ROOT = "/mnt/data11"
 
@@ -50,9 +51,14 @@ def log_print(msg: str) -> None:
 
 # turn power on or off
 #
-def quabo_power(wps: dict[str, Any], on: bool) -> None:
-    url = wps['url']
-    socket = wps['quabo_socket']
+def quabo_power(wps: WpsConfig | dict[str, Any], on: bool) -> None:
+    if isinstance(wps, WpsConfig):
+        url = wps.url
+        socket = wps.quabo_socket
+    else:
+        url = wps['url']
+        socket = wps['quabo_socket']
+    
     value = 'ON' if on else 'OFF'
     cmd = f'curl -s {url}/outlet?{socket}={value} > /dev/null'
     ret = os.system(cmd)
@@ -62,9 +68,14 @@ def quabo_power(wps: dict[str, Any], on: bool) -> None:
 
 # return True if power is on
 #
-def quabo_power_query(wps: dict[str, Any]) -> str | None:
-    url = wps['url']
-    socket = wps['quabo_socket']
+def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
+    if isinstance(wps, WpsConfig):
+        url = wps.url
+        socket = wps.quabo_socket
+    else:
+        url = wps['url']
+        socket = wps['quabo_socket']
+    
     cmd = f'curl -s {url}/status'
     out = os.popen(cmd).read()
     off = out.find('state">')
@@ -76,8 +87,16 @@ def quabo_power_query(wps: dict[str, Any]) -> str | None:
     return None
 
 
-def do_wps(name: str, obs_config: dict[str, Any], op: str) -> None:
-    wps = obs_config[name]
+def do_wps(name: str, obs_config: ObsConfigValidator, op: str) -> None:
+    extra = obs_config.model_extra or {}
+    if name not in extra:
+        print(f"Error: {name} not found in obs_config.")
+        return
+    
+    # extra[name] might be a dict if it was just loaded
+    wps_data = extra[name]
+    wps = WpsConfig(**wps_data) if isinstance(wps_data, dict) else wps_data
+
     if op == 'query':
         if quabo_power_query(wps):
             log_print(f"{name}: power is on")
@@ -91,8 +110,9 @@ def do_wps(name: str, obs_config: dict[str, Any], op: str) -> None:
         log_print(f"{name}: turned power off")
 
 
-def do_all(obs_config: dict[str, Any], op: str) -> None:
-    for key in [k for k in obs_config if 'wps' in k.lower()]:
+def do_all(obs_config: ObsConfigValidator, op: str) -> None:
+    extra = obs_config.model_extra or {}
+    for key in [k for k in extra if 'wps' in k.lower()]:
         do_wps(key, obs_config, op)
 
 
@@ -111,6 +131,3 @@ if __name__ == "__main__":
 
     c = config_file.get_obs_config()
     do_all(c, op)
-
-
-
