@@ -32,10 +32,16 @@ from ci.integration.state_probe import StateProbe
 
 from .conftest import (
     StopPartialFailure,
-    _cleanup as grpc_cleanup,
-    _start as grpc_start,
-    _stop as grpc_stop,
     any_pff_files_on_daqnode,
+)
+from .conftest import (
+    _cleanup as grpc_cleanup,
+)
+from .conftest import (
+    _start as grpc_start,
+)
+from .conftest import (
+    _stop as grpc_stop,
 )
 
 # ── SC-001: StartDaq timeout ────────────────────────────────────────────────

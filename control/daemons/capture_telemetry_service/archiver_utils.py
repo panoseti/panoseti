@@ -4,8 +4,10 @@ from typing import Any
 # Try importing the library; handle failure gracefully for legacy systems
 try:
     from panoseti_grpc.telemetry.config import TelemetryConfig
+    HAS_TELEMETRY = True
 except ImportError:
-    TelemetryConfig = None
+    TelemetryConfig = None  # type: ignore[assignment, misc]
+    HAS_TELEMETRY = False
 
 
 class TelemetryConfigManager:
@@ -26,14 +28,14 @@ class TelemetryConfigManager:
         self.config: Any = None
         self.active_prefixes: dict[str, tuple[str, str]] = {}  # Cache for fast lookups
 
-        if TelemetryConfig:
+        if HAS_TELEMETRY:
             self.reload()
         else:
             print("[TelemeteryService] Library not found. Dynamic features disabled.")
 
     def reload(self) -> None:
         """Checks disk for changes and reloads if necessary."""
-        if not TelemetryConfig:
+        if not HAS_TELEMETRY:
             return
 
         try:

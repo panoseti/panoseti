@@ -32,19 +32,19 @@ CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 if str(CONTROL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_ROOT))
 
-from .conftest import (  # noqa: E402
-    StopPartialFailure,
-    _cleanup as grpc_cleanup,
-    _start as grpc_start,
-    _stop as grpc_stop,
-)
-
 from ci.integration.conftest import (  # noqa: E402
     DAQ_DATA_DIR,
     wait_hashpipe_running,
     wait_hashpipe_stopped,
 )
 from ci.integration.state_probe import StateProbe  # noqa: E402
+
+from .conftest import (  # noqa: E402
+    _start as grpc_start,
+)
+from .conftest import (  # noqa: E402
+    _stop as grpc_stop,
+)
 
 INTERLEAVE_PID_FILE = pathlib.Path("tmp/interleave.pid")
 PH_BASELINE_FILE = pathlib.Path("configs/quabo_ph_baseline.json")

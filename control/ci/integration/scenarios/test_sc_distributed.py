@@ -31,7 +31,8 @@ from ci.integration.conftest import (  # noqa: E402
     DAQNODE_DIRECT_HOST,
     wait_hashpipe_stopped,
 )
-from .conftest import _cleanup as grpc_cleanup, _start as grpc_start, _stop as grpc_stop  # noqa: E402
+
+from .conftest import _start as grpc_start  # noqa: E402
 
 # ── SC-069: 3 DAQ nodes, node-2 drops during StartDaq ───────────────────────
 

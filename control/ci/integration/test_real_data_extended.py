@@ -163,4 +163,4 @@ class TestRealDataExtended:
                     pytest.fail(f"Stream cycle {cycle} timed out")
                 
                 # In Python's gRPC aio, cancelling the async generator closes the stream
-                await stream.aclose()
+                await stream.aclose()  # type: ignore[attr-defined]
