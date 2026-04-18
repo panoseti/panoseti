@@ -293,4 +293,39 @@ with pytest.raises(ValueError, match="HASHPIPE instances running"):
     client.StartDaq(params)
 ```
 
-`ConnectionError` only fires when the TCP connection fails or the gRPC deadline expires — not when the server returns `success=False`.
+---
+
+## 6. Effective Debugging Patterns
+
+### Chaos / TDD Scenario Reproduction
+The fastest way to debug distributed race conditions or rollback failures is via `qa.py chaos`. These tests are designed to be "TDD-forcing" (failing on current master). Use them to pin a bug before fixing:
+```bash
+python ci/qa.py chaos -k SCN003 -vv  # -vv shows real-time print() debugs
+```
+
+### Mocking gRPC with IP Tracking
+When testing the orchestration ladder (e.g. `start.py`), you often need to mock `DaqControlClient` while still verifying *which* node was called. Use this pattern in your tests:
+```python
+def mocked_client_init(self, host, port):
+    self._mock_host = host
+
+def mocked_start_daq(self, params):
+    if self._mock_host == "192.168.0.32":
+        raise RuntimeError("Simulated Node 2 Failure")
+    return True
+```
+
+### Fail-Fast Orchestration
+The control scripts now use `asyncio.TaskGroup` for concurrent RPCs. This makes debugging easier: if any task in the group fails, all others are immediately cancelled. This prevents "phantom" processes from starting on some nodes while you are trying to diagnose a failure on another.
+
+### Rsync Transient vs. Fundamental Failure
+If data collection fails, check the rsync exit code in the logs.
+- **Transient (12, 23, 30, 35, 255):** Network drops or SSH timeouts. The system will auto-retry with exponential backoff (5s, 10s, 20s).
+- **Fundamental (1, 3, 5, etc.):** Permissions, disk full, or missing directories. These fail fast and skip the `CleanupData` step to prevent data loss.
+
+### Inspecting the Live Ledger
+If a run hangs or crashes, the "black box" is `tmp/run_state.toml`. Inspect it *before* running `stop.py`, as `stop.py` will transition it to `STOPPING` or `ABORTED`.
+```bash
+# See which nodes successfully returned a receipt before the crash
+cat tmp/run_state.toml
+```

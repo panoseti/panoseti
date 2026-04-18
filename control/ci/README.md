@@ -41,32 +41,93 @@ We have migrated to **Python 3.14** and **uv**. Our containers are designed to b
 *   **Venv Isolation:** Python dependencies live in `/opt/venv`, safely isolated from your local volume mounts.
 *   **Blazing Fast Builds:** We use BuildKit cache mounts (`--mount=type=cache,target=/root/.cache/uv`) and `uv sync` layers to ensure dependencies are only re-evaluated when `pyproject.toml` or `uv.lock` changes.
 
-### Integration Topology
+### Integration Topology (Fleet Testing)
 
-The integration suite simulates a Palomar-like VPN topology. Each daqnode runs
-the **unified panoseti-server** and forwards logs to the **headnode** Telemetry gRPC service.
+The integration suite simulates a Palomar-like VPN topology. We use two distinct topologies depending on whether we are testing E2E high-throughput data or distributed control logic.
+
+#### 1. Loopback Data Path (E2E Integration)
+Used in `real_data` tests to verify the high-throughput pipeline (`tcpreplay` -> `hashpipe`).
+- **Isolation:** Each DAQ node runs its own **dedicated local `tcpreplay` instance** inside its container.
+- **Path:** Science packets never leave the container; they flow through the local `lo` (loopback) interface to bypass MTU and MAC filtering overhead.
 
 ```mermaid
-graph TB
-    subgraph headnode_net["headnode_net (10.0.1.0/24)"]
-        TR["int-tester<br/>10.0.1.5<br/>(pytest)"]
-        GW["gateway<br/>10.0.1.254<br/>(socat TCP bridge)"]
-        REDIS["redis<br/>10.0.1.20"]
-        LOKI["loki<br/>10.0.1.21"]
-        HN["headnode<br/>10.0.1.22<br/>(Telemetry + storeLoki)"]
+graph BT
+    %% Sinks
+    subgraph sinks1 ["Telemetry Sinks"]
+        direction LR
+        LOKI1["loki<br/>(cold storage)"]
+        REDIS1["redis<br/>(hot storage)"]
     end
 
-    subgraph daqnode_net["daqnode_net (192.168.0.0/24)"]
-        DN1["daqnode<br/>192.168.0.10<br/>(Hashpipe + gRPC)"]
-        DN2["daqnode-2<br/>192.168.0.20<br/>(gRPC only)"]
+    %% Headnode
+    subgraph headnode_net1 ["Headnode Network (10.0.1.0/24)"]
+        direction LR
+        HN1["headnode<br/>(Telemetry gRPC)"]
+        TR1["int-tester<br/>(pytest/start.py)"]
     end
 
-    TR -->|grpc| GW
-    TR -->|grpc direct| DN1
-    GW -->|forward 50051| DN1
-    DN1 -.->|grpc log push| HN
-    HN -->|RPUSH| REDIS
-    HN -->|HTTP POST| LOKI
+    %% DAQ Nodes (Local Loopback)
+    subgraph daqnode_net1 ["DAQ Fleet (192.168.0.0/24)"]
+        direction LR
+        subgraph DN0_BOX ["daq-0 Container"]
+            DN0["hashpipe"]
+            PCAP0["tcpreplay"]
+            PCAP0 ---->|"UDP Science (lo)"| DN0
+        end
+        subgraph DN1_BOX ["daq-1 Container"]
+            DN1["hashpipe"]
+            PCAP1["tcpreplay"]
+            PCAP1 ---->|"UDP Science (lo)"| DN1
+        end
+    end
+
+    %% Global Flows
+    DN0_BOX  -.->|"gRPC Log Push"| HN1
+    DN1_BOX  -.->|"gRPC Log Push"| HN1
+    HN1      ====> REDIS1
+    HN1      ====> LOKI1
+    TR1      ===>|"gRPC / SSH"| DN0_BOX
+    TR1      ===>|"gRPC / SSH"| DN1_BOX
+```
+
+#### 2. Distributed Control Path (Chaos/Logic)
+Used in chaos scenarios to verify `start.py`/`stop.py` transaction integrity and rollback logic.
+- **Shared Service:** A single **`mock-quabo` service** simulates a full 4-quabo module (e.g. Module 200).
+- **Path:** Command packets flow from `start.py` (Headnode) to `mock-quabo` (External), and telemetry flows back up. Science packets can be triggered to any node in the fleet via the external `eth0` network.
+
+```mermaid
+graph BT
+    %% Sinks
+    subgraph sinks2 ["Telemetry Sinks"]
+        direction LR
+        LOKI2["loki<br/>(cold storage)"]
+        REDIS2["redis<br/>(hot storage)"]
+    end
+
+    %% Headnode
+    subgraph headnode_net2 ["Headnode Network (10.0.1.0/24)"]
+        direction LR
+        HN2["headnode<br/>(Telemetry gRPC)"]
+        TR2["int-tester<br/>(pytest/start.py)"]
+    end
+
+    %% DAQ Fleet
+    subgraph daqnode_net2 ["DAQ Fleet Network (192.168.0.0/24)"]
+        direction LR
+        DN_FLEET["N-Node Fleet<br/>(daq-0 ... daq-N)"]
+        MQ2["mock-quabo<br/>(Module Simulator)"]
+    end
+
+    %% Logic/Telemetry Flows
+    MQ2  ---->|"UDP Science (eth0)"| DN_FLEET
+    MQ2  -.->|"UDP Housekeeping"| HN2
+    DN_FLEET -.->|"gRPC Log Push"| HN2
+    HN2  ====> REDIS2
+    HN2  ====> LOKI2
+
+    %% Orchestration
+    TR2  ===>|"gRPC / SSH"| DN_FLEET
+    TR2  ===>|"UDS Control"| MQ2
 ```
 
 ---
