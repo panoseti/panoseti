@@ -23,7 +23,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Dependency Caching Layer
 # BuildKit cache mount keeps uv cache between builds → fast re-installs.
 # If pyproject.toml or uv.lock change, this layer rebuilds.
-COPY pyproject.toml uv.lock* ./
+# grpc/ is copied first so that the [tool.uv.sources] local path ../grpc
+# resolves correctly to /grpc/ during uv sync.
+COPY grpc/ /grpc/
+COPY control/pyproject.toml control/uv.lock* ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-install-project --all-extras
 
@@ -59,8 +62,8 @@ ENV PANOSETI_DAQ_BRANCH="dev"
 WORKDIR /build
 RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
-COPY ci/integration/build/Makefile .
-COPY ci/integration/build/databuf.h .
+COPY control/ci/integration/build/Makefile .
+COPY control/ci/integration/build/databuf.h .
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -68,7 +71,7 @@ RUN make
 # Runs standard hardware-agnostic Python unit tests.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS unit-test-runner
-COPY . .
+COPY control/ .
 # Install project as editable link after COPY . . completes
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
@@ -86,7 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io \
     && rm -rf /var/lib/apt/lists/*
 
-COPY . .
+COPY control/ .
 RUN mkdir -p /data /data/head
 
 # Install project as editable link after COPY . . completes
@@ -102,7 +105,7 @@ CMD ["sleep", "infinity"]
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    socat tcpreplay \
+    socat tcpreplay procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy core hashpipe binaries and libraries from builder
@@ -116,7 +119,7 @@ COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpi
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
 
 WORKDIR /app
-COPY . .
+COPY control/ .
 
 # Install project as editable link after COPY . . completes
 RUN --mount=type=cache,target=/root/.cache/uv \

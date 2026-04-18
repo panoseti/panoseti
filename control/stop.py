@@ -96,11 +96,9 @@ def stop_interleave(retry_limit: int = 10) -> None:
             time.sleep(0.5)
             
             # Reap zombie process if it is a child (mainly for the test environment)
-            try:
+            with contextlib.suppress(ChildProcessError):
                 os.waitpid(pid, os.WNOHANG)
-            except ChildProcessError:
-                pass
-                
+
             if os.path.exists(pid_file):
                 os.remove(pid_file)
             

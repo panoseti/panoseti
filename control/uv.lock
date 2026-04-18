@@ -8,21 +8,24 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "aiofiles"
-version = "25.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/41/c3/534eac40372d8ee36ef40df62ec129bee4fdb5ad9706e58a29be53b2c970/aiofiles-25.1.0.tar.gz", hash = "sha256:a8d728f0a29de45dc521f18f07297428d56992a742f0cd2701ba86e44d23d5b2", size = 46354, upload-time = "2025-10-09T20:51:04.358Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/8a/340a1555ae33d7354dbca4faa54948d76d89a27ceef032c8c3bc661d003e/aiofiles-25.1.0-py3-none-any.whl", hash = "sha256:abe311e527c862958650f9438e859c1fa7568a141b22abcd015e120e86a85695", size = 14668, upload-time = "2025-10-09T20:51:03.174Z" },
-]
-
-[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ee/67/531ea369ba64dcff5ec9c3402f9f51bf748cec26dde048a2f973a4eea7f5/annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89", size = 16081, upload-time = "2024-05-20T21:33:25.928Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53", size = 13643, upload-time = "2024-05-20T21:33:24.1Z" },
+]
+
+[[package]]
+name = "anyio"
+version = "4.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/19/14/2c5dd9f512b66549ae92767a9c7b330ae88e1932ca57876909410251fe13/anyio-4.13.0.tar.gz", hash = "sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc", size = 231622, upload-time = "2026-03-24T12:59:09.671Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/42/e921fccf5015463e32a3cf6ee7f980a6ed0f395ceeaa45060b61d86486c2/anyio-4.13.0-py3-none-any.whl", hash = "sha256:08b310f9e24a9594186fd75b4f73f4a4152069e3853f1ed8bfbf58369f4ad708", size = 114353, upload-time = "2026-03-24T12:59:08.246Z" },
 ]
 
 [[package]]
@@ -692,7 +695,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.24" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.24" },
     { name = "orjson" },
-    { name = "panoseti-grpc", specifier = ">=0.4.6" },
+    { name = "panoseti-grpc", editable = "../grpc" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyserial", specifier = ">=3.5" },
@@ -715,10 +718,10 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.6"
-source = { registry = "https://pypi.org/simple" }
+version = "0.4.7"
+source = { editable = "../grpc" }
 dependencies = [
-    { name = "aiofiles" },
+    { name = "anyio" },
     { name = "coverage" },
     { name = "cython" },
     { name = "gitpython" },
@@ -738,10 +741,41 @@ dependencies = [
     { name = "rich" },
     { name = "wheel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/e3/39131cd8d620b448110cb35b77c43aadab7b6667cdec1b94e8d35cd83f0b/panoseti_grpc-0.4.6.tar.gz", hash = "sha256:f0c041ad9b3b2d103132fbcdc279b3fc71c3b09cbcbd344858cb47dd0f11bedd", size = 16148062, upload-time = "2026-04-17T21:57:56.998Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d7/3f/06a97a2c80cd9f169c2e038f4a02e1e431c9fa629a6f03c2ece501600a2c/panoseti_grpc-0.4.6-py3-none-any.whl", hash = "sha256:2a07729ec04a0921e481e90d3b56246262a6cc011d5f9aaea04f51ee85771b66", size = 16255052, upload-time = "2026-04-17T21:57:48.052Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio" },
+    { name = "coverage", specifier = ">=7.10.7" },
+    { name = "cython" },
+    { name = "gitpython" },
+    { name = "grpcio", specifier = "==1.78.0" },
+    { name = "grpcio-reflection", specifier = "==1.78.0" },
+    { name = "grpcio-tools", specifier = "==1.78.0" },
+    { name = "ipython", marker = "extra == 'dev'" },
+    { name = "json5" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20.0" },
+    { name = "mypy-protobuf", marker = "extra == 'dev'" },
+    { name = "myst-parser", marker = "extra == 'docs'" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "protobuf", specifier = ">=6.31.1,<7.0.0" },
+    { name = "psutil" },
+    { name = "pydantic", specifier = ">=2.12" },
+    { name = "pyserial" },
+    { name = "pytest", marker = "extra == 'dev'" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
+    { name = "pytest-timeout", marker = "extra == 'dev'" },
+    { name = "pyubx2" },
+    { name = "redis", specifier = ">=7" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
+    { name = "sphinx", marker = "extra == 'docs'" },
+    { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'" },
+    { name = "types-protobuf", marker = "extra == 'dev'" },
+    { name = "wheel" },
 ]
+provides-extras = ["dev", "docs"]
 
 [[package]]
 name = "pathspec"

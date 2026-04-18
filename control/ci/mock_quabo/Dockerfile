@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends iproute2 && rm 
 WORKDIR /app
 
 # Copy only what the server needs
-COPY ci/mock_quabo/server.py /app/server.py
+COPY control/ci/mock_quabo/server.py /app/server.py
 
 # Environment defaults (override in docker-compose)
 ENV MOCK_QUABO_BASE_IP=0.0.0.0
@@ -16,7 +16,7 @@ ENV MOCK_QUABO_UDS=/tmp/mock_quabo.sock
 # Startup: add IP aliases for all 4 quabo IPs in the module, then launch server.
 # The base IP is the module base (quabo 0). Quabos 1-3 are base+1, base+2, base+3.
 # Requires NET_ADMIN capability.
-COPY ci/mock_quabo/entrypoint.sh /app/entrypoint.sh
+COPY control/ci/mock_quabo/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 60000/udp 60001/udp 60002/udp 60003/udp

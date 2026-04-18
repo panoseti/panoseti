@@ -60,8 +60,8 @@ services:
 
   headnode:
     build:
-      context: ../
-      dockerfile: ci/Dockerfile.ci
+      context: ../../
+      dockerfile: control/ci/Dockerfile.ci
       target: integration-headnode
     networks:
       headnode_net:
@@ -89,8 +89,8 @@ services:
 
   daqnode:
     build:
-      context: ../
-      dockerfile: ci/Dockerfile.ci
+      context: ../../
+      dockerfile: control/ci/Dockerfile.ci
       target: integration-daqnode
     networks:
       headnode_net:
@@ -120,8 +120,8 @@ services:
 
   daqnode-2:
     build:
-      context: ../
-      dockerfile: ci/Dockerfile.ci
+      context: ../../
+      dockerfile: control/ci/Dockerfile.ci
       target: integration-daqnode
     networks:
       headnode_net:
@@ -151,8 +151,8 @@ services:
 
   mock-quabo:
     build:
-      context: ../
-      dockerfile: ci/mock_quabo/Dockerfile
+      context: ../../
+      dockerfile: control/ci/mock_quabo/Dockerfile
     container_name: ctl-int-mock-quabo-1
     networks:
       quabo_net:
@@ -174,8 +174,8 @@ services:
 
   int-tester:
     build:
-      context: ../
-      dockerfile: ci/Dockerfile.ci
+      context: ../../
+      dockerfile: control/ci/Dockerfile.ci
       target: integration-headnode
     networks:
       headnode_net:

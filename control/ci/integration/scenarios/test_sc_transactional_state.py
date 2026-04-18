@@ -75,23 +75,23 @@ class TestSC002PartialStartRollback:
         current_run must be unset, and a post-mortem snapshot must exist.
         """
         import unittest.mock
+        from ipaddress import IPv4Address
 
         import start
         from utils import config_file
         from utils.pydantic_config_models import DaqNodeValidator
-        
         obs_config = config_file.get_obs_config()
         daq_config = config_file.get_daq_config()
         # Override head node IP to match test container
-        daq_config.head_node_ip_addr = "10.0.1.5"
+        daq_config.head_node_ip_addr = IPv4Address("10.0.1.5")
         daq_config.head_node_data_dir = "/data/head"
         quabo_uids = config_file.get_quabo_uids()
         data_config = config_file.get_data_config()
         network_config = config_file.get_network_config()
-        
+
         # Add a second node that will fail
         daq_config.daq_nodes.append(
-            DaqNodeValidator(ip_addr="192.168.0.20", data_dir="/data", username="root", module_ids=[200])
+            DaqNodeValidator(ip_addr=IPv4Address("192.168.0.20"), data_dir="/data", username="root", module_ids=[200])
         )
 
         original_start_daq = start.DaqControlClient.StartDaq
@@ -153,7 +153,6 @@ class TestSC024ConcurrentStart:
         """
         import os
         import subprocess
-        import shutil
 
         # Ensure no run is active and clean up any leaked state from previous tests
         subprocess.run(["python3", "stop.py", "--no_collect"], capture_output=True)
@@ -204,6 +203,8 @@ if __name__ == "__main__":
             p1.wait(timeout=15)
             p2.wait(timeout=15)
 
+            assert p1.stdout is not None and p1.stderr is not None
+            assert p2.stdout is not None and p2.stderr is not None
             out1 = p1.stdout.read() + p1.stderr.read()
             out2 = p2.stdout.read() + p2.stderr.read()
 
@@ -211,8 +212,10 @@ if __name__ == "__main__":
             rc2 = p2.returncode
 
             winners = []
-            if rc1 == 0 and "started run" in out1: winners.append(1)
-            if rc2 == 0 and "started run" in out2: winners.append(2)
+            if rc1 == 0 and "started run" in out1:
+                winners.append(1)
+            if rc2 == 0 and "started run" in out2:
+                winners.append(2)
 
             assert len(winners) == 1, (
                 f"FAIL (SC-024): expected exactly 1 winner, got {len(winners)}.\n"
@@ -617,17 +620,118 @@ def test_SC026_stop_with_no_run_is_noop(
 
 # ── SC-027: stop.py --run X when current_run says Y ──────────────────────────
 
-@pytest.mark.skip(reason="SC-027: requires full start.py/stop.py integration with current_run file")
-def test_SC027_stop_run_mismatch_leaves_current_run_orphaned() -> None:
+class TestSC027StopRunMismatch:
     """
-    SC-027: stop.py --run X when current_run=Y currently processes X and
-    leaves Y as an orphaned active run. The operator can't stop Y without
-    manually deleting current_run.
+    SC-027: stop_run called with --run X when ledger has run Y must refuse
+    (return early) unless force_cleanup=True.
 
-    FAILS RED TODAY: --run override does not check current_run consistency.
-    Fix: validate --run against current_run; require --force to override.
+    Pins the mismatch guard at stop.py:~430-437.
     """
-    pytest.skip("Requires full start.py/stop.py integration via subprocess")
+
+    def test_SC027_mismatch_without_force_skips_stop_recording(self) -> None:
+        """
+        stop_run with mismatching run name and force_cleanup=False must
+        return early without calling stop_recording.
+        """
+        import asyncio
+        from ipaddress import IPv4Address
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import stop as stop_module
+        from utils.pydantic_config_models import (
+            DaqConfigValidator,
+            NetworkConfigValidator,
+            QuaboUidsValidator,
+            RunStateLedger,
+        )
+
+        daq_config = DaqConfigValidator(
+            head_node_ip_addr=IPv4Address("10.0.1.5"),
+            head_node_data_dir="/data/head",
+            daq_nodes=[],
+        )
+        network_config = NetworkConfigValidator()
+        quabo_uids = QuaboUidsValidator(domes=[])
+
+        mock_mgr = MagicMock()
+        ledger = RunStateLedger(
+            run_name="active_run_Y.pffd",
+            status="ACTIVE",
+            start_time="2026-01-01T00:00:00Z",
+        )
+        mock_mgr.load_state.return_value = ledger
+
+        mock_stop_rec = AsyncMock()
+
+        with patch("stop.RunStateManager", return_value=mock_mgr), \
+             patch("socket.gethostbyname", return_value="10.0.1.5"), \
+             patch("utils.util.local_ip", return_value=["10.0.1.5"]), \
+             patch("stop.stop_recording", mock_stop_rec):
+
+            asyncio.run(stop_module.stop_run(
+                daq_config, network_config, quabo_uids,
+                verbose=False, run="different_run_X.pffd", force_cleanup=False,
+            ))
+
+        assert not mock_stop_rec.called, (
+            "FAIL (SC-027): stop_recording was called despite run name mismatch. "
+            "The guard at stop.py:~430 (refuse unless --force-cleanup) is missing."
+        )
+
+    def test_SC027_mismatch_with_force_proceeds_to_stop_recording(self) -> None:
+        """
+        stop_run with force_cleanup=True must proceed past the mismatch
+        guard and call stop_recording.
+        """
+        import asyncio
+        from ipaddress import IPv4Address
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import stop as stop_module
+        from utils.pydantic_config_models import (
+            DaqConfigValidator,
+            NetworkConfigValidator,
+            QuaboUidsValidator,
+            RunStateLedger,
+        )
+
+        daq_config = DaqConfigValidator(
+            head_node_ip_addr=IPv4Address("10.0.1.5"),
+            head_node_data_dir="/data/head",
+            daq_nodes=[],
+        )
+        network_config = NetworkConfigValidator()
+        quabo_uids = QuaboUidsValidator(domes=[])
+
+        mock_mgr = MagicMock()
+        ledger = RunStateLedger(
+            run_name="active_run_Y.pffd",
+            status="ACTIVE",
+            start_time="2026-01-01T00:00:00Z",
+        )
+        mock_mgr.load_state.return_value = ledger
+
+        mock_stop_rec = AsyncMock()
+
+        with patch("stop.RunStateManager", return_value=mock_mgr), \
+             patch("socket.gethostbyname", return_value="10.0.1.5"), \
+             patch("utils.util.local_ip", return_value=["10.0.1.5"]), \
+             patch("stop.stop_recording", mock_stop_rec), \
+             patch("utils.util.kill_hv_updater"), \
+             patch("utils.util.kill_hk_recorder"), \
+             patch("utils.util.kill_module_temp_monitor"), \
+             patch("utils.util.stop_data_flow"), \
+             patch("utils.util.remove_run_name"):
+
+            asyncio.run(stop_module.stop_run(
+                daq_config, network_config, quabo_uids,
+                verbose=False, run="different_run_X.pffd", force_cleanup=True,
+            ))
+
+        assert mock_stop_rec.called, (
+            "FAIL (SC-027): stop_recording was NOT called even with force_cleanup=True. "
+            "The --force-cleanup escape hatch in stop.py is broken."
+        )
 
 
 # ── SC-028 / SC-029: stop.py ctrl-C at various stages ────────────────────────

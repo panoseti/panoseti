@@ -11,8 +11,8 @@ services:
 
   unit-test-runner:
     build:
-      context: ..
-      dockerfile: ci/Dockerfile.ci
+      context: ../..
+      dockerfile: control/ci/Dockerfile.ci
       target: unit-test-runner
     depends_on:
       redis:

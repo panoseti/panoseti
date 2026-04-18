@@ -23,7 +23,7 @@ dependencies = [
     "tftpy>=0.8.2",
     "orjson",
     "typing_extensions>=4.5",
-    "panoseti_grpc>=0.4.6",
+    "panoseti_grpc>=0.4.7",
 ]
 
 [project.optional-dependencies]
@@ -84,6 +84,9 @@ warn_unreachable = true
 module = "ci.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+
+[tool.uv.sources]
+panoseti_grpc = { path = "../grpc", editable = true }
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

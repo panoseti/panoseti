@@ -8,8 +8,10 @@
 # --cleanup     clean up DAQ nodes; don't collect
 # --verbose
 import os
+import shutil
 import subprocess
 import sys
+from glob import glob
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -41,17 +43,16 @@ def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = F
         # We need to know which module IDs are on this node
         for module_id in node.module_ids:
             if str(node.ip_addr) in my_ip:
-                # head node is also a DAQ node.
-                # Move files locally; if different volume, this will copy
-                # Use glob via shell since subprocess doesn't expand it
-                src = f"{node.data_dir}/module_{module_id}/{run_dir}/*"
+                # head node is also a DAQ node — move files locally.
+                src_pattern = f"{node.data_dir}/module_{module_id}/{run_dir}/*"
                 dst = f"{daq_config.head_node_data_dir}/{run_dir}"
-                cmd = f"mv {src} {dst}"
                 if verbose:
-                    print(cmd)
-                res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-                if res.returncode != 0:
-                    errors.append(f"Local move failed for module {module_id}: {res.stderr}")
+                    print(f"mv {src_pattern} {dst}")
+                for src_file in glob(src_pattern):
+                    try:
+                        shutil.move(src_file, dst)
+                    except Exception as exc:
+                        errors.append(f"Local move failed for module {module_id}: {exc}")
             else:
                 err = file_xfer.copy_dir_from_node(
                     run_dir, daq_config, node, int(module_id), verbose
