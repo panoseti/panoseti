@@ -59,7 +59,19 @@ class ValidationReport:
 
 
 class GlobalConfigValidator:
+    """Executes cross-configuration validation rules for the observatory.
+    
+    This validator ensures that individual configuration files (obs, data, 
+    daq, network, firmware) are mutually consistent and physically plausible.
+    """
+
     def __init__(self, validated_configs: dict[str, Any]):
+        """Initialize the validator with validated configuration models.
+
+        Args:
+            validated_configs: Dictionary containing Pydantic model instances 
+                               for each configuration type.
+        """
         self.obs_conf: ObsConfigValidator = validated_configs.get('obs') # type: ignore
         self.data_conf: DataConfigValidator = validated_configs.get('data') # type: ignore
         self.daq_conf: DaqConfigValidator = validated_configs.get('daq') # type: ignore
@@ -68,6 +80,11 @@ class GlobalConfigValidator:
         self.report = ValidationReport()
 
     def validate_all_rules(self) -> bool:
+        """Execute all validation methods prefixed with '_check_'.
+
+        Returns:
+            True if all rules passed (including warnings), False if any ERROR occurred.
+        """
         rule_methods = [getattr(self, func) for func in dir(self) if
                         callable(getattr(self, func)) and func.startswith("_check_")]
         for rule in rule_methods:
@@ -76,7 +93,12 @@ class GlobalConfigValidator:
         return not self.report.has_errors
 
     def _check_science_guardrails(self) -> None:
-        if not self.data_conf: return
+        """Warn if flash or stim signals are enabled for a science run.
+
+        Prevents accidental injection of artificial signals into real science data.
+        """
+        if not self.data_conf:
+            return
         run_type = self.data_conf.run_type.lower()
         if "eng" not in run_type:
             flash_on = self.data_conf.flash_params is not None
@@ -88,7 +110,12 @@ class GlobalConfigValidator:
         self.report.add_test("Science Guardrails", "PASS", f"Run type: {run_type}")
 
     def _check_geospatial_coherence(self) -> None:
-        if not self.obs_conf: return
+        """Ensure all domes are within a reasonable physical distance (2km).
+
+        Detects decimal point errors or incorrect observatory coordinates.
+        """
+        if not self.obs_conf:
+            return
         domes = self.obs_conf.domes
         if len(domes) < 2:
             self.report.add_test("Geospatial Coherence", "PASS", "Only one dome defined.")
@@ -108,7 +135,13 @@ class GlobalConfigValidator:
             self.report.add_test("Geospatial Coherence", "PASS", f"Max baseline: {max_dist:.2f} km")
 
     def _check_network_tunneling(self) -> None:
-        if not self.obs_conf or not self.net_conf: return
+        """Verify that all defined modules have corresponding network routing.
+
+        Warns if a module is defined in obs_config but lacks a port forwarding 
+        entry in network_config when using a non-local network.
+        """
+        if not self.obs_conf or not self.net_conf:
+            return
         obs_ips = {str(m.ip_addr) for d in self.obs_conf.domes for m in d.modules}
         net_mapped_ips = {str(m.ip_addr) for m in self.net_conf.modules if
                           m.port_forwarding.status}
@@ -121,7 +154,9 @@ class GlobalConfigValidator:
             self.report.add_test("Network Tunneling Mapping", "PASS", "All modules accounted for in routing.")
 
     def _check_hardware_firmware(self) -> None:
-        if not self.obs_conf or not self.firmware_conf: return
+        """Verify that firmware binaries exist for all active hardware types (BGA/QFP)."""
+        if not self.obs_conf or not self.firmware_conf:
+            return
         required_hw = set()
         for d in self.obs_conf.domes:
             for m in d.modules:
@@ -139,7 +174,9 @@ class GlobalConfigValidator:
             self.report.add_test("Firmware Verification", "PASS", "Binaries exist for all active hardware.")
 
     def _check_overvoltage_consensus(self) -> None:
-        if not self.obs_conf or not self.data_conf: return
+        """Ensure detector overvoltage is consistent across obs and data configs."""
+        if not self.obs_conf or not self.data_conf:
+            return
         obs_ov = self.obs_conf.detector_overvoltage
         data_ov = self.data_conf.detector_overvoltage
         if obs_ov is not None and data_ov is not None and obs_ov != data_ov:
@@ -149,8 +186,9 @@ class GlobalConfigValidator:
             self.report.add_test("Overvoltage Consensus", "PASS", f"Voltage aligned at {obs_ov}V")
 
     def _check_port_collisions(self) -> None:
-        """Ensures multiple modules sharing a Gateway IP do not use overlapping forwarded ports."""
-        if not self.net_conf: return
+        """Ensure multiple modules on a Gateway do not use overlapping forwarded ports."""
+        if not self.net_conf:
+            return
         gw_ports: dict[str, set[int]] = {}
         for m in self.net_conf.modules:
             pf = m.port_forwarding
@@ -160,7 +198,8 @@ class GlobalConfigValidator:
                 if gw not in gw_ports:
                     gw_ports[gw] = set()
                 for p in ports:
-                    if p is None: continue
+                    if p is None:
+                        continue
                     if p in gw_ports[gw]:
                         self.report.add_test("Port Collision", "ERROR",
                                              f"Gateway {gw} has multiple modules attempting to forward port {p}.")
@@ -170,8 +209,9 @@ class GlobalConfigValidator:
 
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
     def _check_daq_assignment_overlap(self) -> None:
-        """Ensures a single module ID is not being actively listened to by multiple DAQ nodes."""
-        if not self.daq_conf: return
+        """Ensure a single module ID is not handled by multiple DAQ nodes."""
+        if not self.daq_conf:
+            return
         from .config_file import expand_ranges
         seen_ids: set[int] = set()
         expand_ranges(self.daq_conf)
@@ -189,8 +229,13 @@ class GlobalConfigValidator:
         self.report.add_test("DAQ Overlap", "PASS", "No overlapping module_ids across DAQ nodes.")
 
     def _estimate_data_usage(self) -> tuple[float, float, str]:
-        """Returns (TB_per_hour, total_estimated_TB, formula_string)"""
-        if not self.obs_conf or not self.data_conf: return 0.0, 0.0, "N/A"
+        """Estimate the data generation rate and total volume for an 8-hour run.
+
+        Returns:
+            A tuple of (TB_per_hour, total_estimated_TB, formula_string).
+        """
+        if not self.obs_conf or not self.data_conf:
+            return 0.0, 0.0, "N/A"
         num_modules = sum(len(d.modules) for d in self.obs_conf.domes)
         img_conf = self.data_conf.image
         if num_modules == 0 or not img_conf:
@@ -209,7 +254,9 @@ class GlobalConfigValidator:
         return tb_per_hr, total_tb, formula
 
     def _check_headnode_disk_space(self) -> None:
-        if not self.daq_conf: return
+        """Verify that the head node has sufficient disk space for the estimated run."""
+        if not self.daq_conf:
+            return
         head_dir = self.daq_conf.head_node_data_dir
         if not head_dir or not os.path.exists(head_dir):
             self.report.add_test("Headnode Disk Space", "ERROR", f"Path '{head_dir}' missing or unreachable.")
@@ -229,7 +276,7 @@ class GlobalConfigValidator:
             self.report.add_test("Headnode Disk Space", "PASS", msg)
 
     def _check_wps_references(self) -> None:
-        """Ensures that all Web Power Switches referenced by modules are defined in obs_config."""
+        """Ensure all Web Power Switches referenced by modules are defined in obs_config."""
         if not self.obs_conf:
             return
 

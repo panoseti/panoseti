@@ -7,11 +7,18 @@ minimal config dicts and verifying the ValidationReport outcome.
 No hardware or network access required.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from utils.global_validator import GlobalConfigValidator
+from utils.pydantic_config_models import (
+    DaqConfigValidator,
+    DataConfigValidator,
+    FirmwareConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -25,12 +32,43 @@ def _make_validator(
     firmware: dict[str, Any] | None = None
 ) -> GlobalConfigValidator:
     """Build a GlobalConfigValidator with sensible defaults, overrideable per-test."""
+    # Build minimal valid dictionaries to satisfy model requirements
+    obs_dict: dict[str, Any] = {"name": "test", "domes": []}
+    if obs:
+        obs_dict.update(obs)
+        # Ensure domes have required fields if provided
+        domes = cast(list[dict[str, Any]], obs_dict.get("domes", []))
+        for dome in domes:
+            if "obsalt" not in dome:
+                dome["obsalt"] = 0.0
+            if "modules" not in dome:
+                dome["modules"] = []
+
+    data_dict: dict[str, Any] = {"run_type": "sci"}
+    if data:
+        data_dict.update(data)
+        # Ensure image mode has pe_threshold if provided
+        if data_dict.get("image"):
+            image_conf = cast(dict[str, Any], data_dict["image"])
+            if "pe_threshold" not in image_conf:
+                image_conf["pe_threshold"] = 1.0
+
+    daq_dict: dict[str, Any] = {"head_node_data_dir": "/data", "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
+    if daq:
+        daq_dict.update(daq)
+    
+    net_dict: dict[str, Any] = {"modules": [], "daq_nodes": []}
+    if net:
+        net_dict.update(net)
+    
+    fw_dict: dict[str, Any] = firmware or {}
+
     return GlobalConfigValidator({
-        "obs":      obs      or {},
-        "data":     data     or {},
-        "daq":      daq      or {},
-        "network":  net      or {},
-        "firmware": firmware or {},
+        "obs":      ObsConfigValidator(**obs_dict),
+        "data":     DataConfigValidator(**data_dict),
+        "daq":      DaqConfigValidator(**daq_dict),
+        "network":  NetworkConfigValidator(**net_dict),
+        "firmware": FirmwareConfigValidator(**fw_dict),
     })
 
 
@@ -62,12 +100,12 @@ class TestScienceGuardrails:
         assert not v.report.has_errors
 
     def test_eng_run_with_flash_passes(self):
-        v = _make_validator(data={"run_type": "eng", "flash_params": {"rate": 3}})
+        v = _make_validator(data={"run_type": "eng", "flash_params": {"rate": 3, "level": 15, "width": 7}})
         v._check_science_guardrails()
         assert not v.report.has_errors
 
     def test_sci_run_with_flash_warns(self):
-        v = _make_validator(data={"run_type": "sci", "flash_params": {"rate": 3}})
+        v = _make_validator(data={"run_type": "sci", "flash_params": {"rate": 3, "level": 15, "width": 7}})
         v._check_science_guardrails()
         # WARN is not an ERROR; has_errors stays False
         assert not v.report.has_errors
@@ -75,7 +113,7 @@ class TestScienceGuardrails:
         assert "WARN" in statuses
 
     def test_sci_run_with_stim_warns(self):
-        v = _make_validator(data={"run_type": "sci", "stim_params": {"rate": 1}})
+        v = _make_validator(data={"run_type": "sci", "stim_params": {"rate": 1, "level": 128, "mask": [True]*4}})
         v._check_science_guardrails()
         assert not v.report.has_errors
         assert any(t["status"] == "WARN" for t in v.report.tests)
@@ -110,22 +148,22 @@ class TestGeospatialCoherence:
         ]
 
     def test_single_dome_passes(self):
-        v = _make_validator(obs={"domes": [{"name": "D0", "obslat": 33.0, "obslon": -116.0}]})
+        v = _make_validator(obs={"name": "test", "domes": [{"name": "D0", "obslat": 33.0, "obslon": -116.0}]})
         v._check_geospatial_coherence()
         assert not v.report.has_errors
 
     def test_no_domes_passes(self):
-        v = _make_validator(obs={"domes": []})
+        v = _make_validator(obs={"name": "test", "domes": []})
         v._check_geospatial_coherence()
         assert not v.report.has_errors
 
     def test_two_nearby_domes_pass(self):
-        v = _make_validator(obs={"domes": self._nearby()})
+        v = _make_validator(obs={"name": "test", "domes": self._nearby()})
         v._check_geospatial_coherence()
         assert not v.report.has_errors
 
     def test_two_far_domes_error(self):
-        v = _make_validator(obs={"domes": self._far_apart()})
+        v = _make_validator(obs={"name": "test", "domes": self._far_apart()})
         v._check_geospatial_coherence()
         assert v.report.has_errors
         assert any("ERROR" in t["status"] for t in v.report.tests)
@@ -136,7 +174,7 @@ class TestGeospatialCoherence:
             {"name": "D0", "obslat": 33.357, "obslon": -116.865},
             {"name": "D1", "obslat": 43.357, "obslon": -116.865},  # 10° off = ~1100 km
         ]
-        v = _make_validator(obs={"domes": domes})
+        v = _make_validator(obs={"name": "test", "domes": domes})
         v._check_geospatial_coherence()
         assert v.report.has_errors
 
@@ -148,21 +186,21 @@ class TestGeospatialCoherence:
 
 class TestHardwareFirmware:
     def test_matching_firmware_passes(self):
-        obs = {"domes": [{"modules": [{"quabo_version": "bga"}]}]}
+        obs = {"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200"}]}]}
         v = _make_validator(obs=obs, firmware={"bga": "fw_bga.bin"})
         v._check_hardware_firmware()
         assert not v.report.has_errors
 
     def test_missing_firmware_errors(self):
-        obs = {"domes": [{"modules": [{"quabo_version": "bga"}]}]}
+        obs = {"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200"}]}]}
         v = _make_validator(obs=obs, firmware={"qfp": "fw_qfp.bin"})  # bga is missing
         v._check_hardware_firmware()
         assert v.report.has_errors
 
     def test_multiple_hw_types_all_covered(self):
-        obs = {"domes": [{"modules": [
-            {"quabo_version": "bga"},
-            {"quabo_version": "qfp"},
+        obs = {"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [
+            {"mobo_serialno": "s1", "quabo_version": "bga", "ip_addr": "192.168.3.200"},
+            {"mobo_serialno": "s2", "quabo_version": "qfp", "ip_addr": "192.168.3.204"},
         ]}]}
         fw = {"bga": "fw_bga.bin", "qfp": "fw_qfp.bin"}
         v = _make_validator(obs=obs, firmware=fw)
@@ -171,14 +209,14 @@ class TestHardwareFirmware:
 
     def test_per_quabo_version_list_checked(self):
         """quabo_version can be a list of per-quabo versions."""
-        obs = {"domes": [{"modules": [{"quabo_version": ["bga", "bga", "qfp", "bga"]}]}]}
+        obs = {"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": ["bga", "bga", "qfp", "bga"], "ip_addr": "192.168.3.200"}]}]}
         fw = {"bga": "fw_bga.bin"}  # qfp missing
         v = _make_validator(obs=obs, firmware=fw)
         v._check_hardware_firmware()
         assert v.report.has_errors
 
     def test_no_modules_passes(self):
-        v = _make_validator(obs={"domes": [{"modules": []}]}, firmware={"bga": "fw.bin"})
+        v = _make_validator(obs={"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": []}]}, firmware={"bga": "fw.bin"})
         v._check_hardware_firmware()
         assert not v.report.has_errors
 
@@ -188,7 +226,7 @@ class TestHardwareFirmware:
         assert not v.report.has_errors
 
     def test_empty_firmware_dict_errors(self):
-        obs = {"domes": [{"modules": [{"quabo_version": "bga"}]}]}
+        obs = {"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200"}]}]}
         v = _make_validator(obs=obs, firmware={})
         v._check_hardware_firmware()
         assert v.report.has_errors
@@ -202,16 +240,16 @@ class TestHardwareFirmware:
 class TestOvervoltageConsensus:
     def test_matching_voltages_passes(self):
         v = _make_validator(
-            obs={"detector_overvoltage": 3},
-            data={"detector_overvoltage": 3},
+            obs={"name": "test", "domes": [], "detector_overvoltage": 3},
+            data={"run_type": "sci", "detector_overvoltage": 3},
         )
         v._check_overvoltage_consensus()
         assert not v.report.has_errors
 
     def test_mismatched_voltages_errors(self):
         v = _make_validator(
-            obs={"detector_overvoltage": 3},
-            data={"detector_overvoltage": 2},
+            obs={"name": "test", "domes": [], "detector_overvoltage": 3},
+            data={"run_type": "sci", "detector_overvoltage": 2},
         )
         v._check_overvoltage_consensus()
         assert v.report.has_errors
@@ -219,16 +257,16 @@ class TestOvervoltageConsensus:
     def test_obs_overvoltage_none_passes(self):
         """If obs doesn't specify overvoltage, no constraint."""
         v = _make_validator(
-            obs={},
-            data={"detector_overvoltage": 3},
+            obs={"name": "test", "domes": []},
+            data={"run_type": "sci", "detector_overvoltage": 3},
         )
         v._check_overvoltage_consensus()
         assert not v.report.has_errors
 
     def test_data_overvoltage_none_passes(self):
         v = _make_validator(
-            obs={"detector_overvoltage": 3},
-            data={},
+            obs={"name": "test", "domes": [], "detector_overvoltage": 3},
+            data={"run_type": "sci"},
         )
         v._check_overvoltage_consensus()
         assert not v.report.has_errors
@@ -246,8 +284,8 @@ class TestOvervoltageConsensus:
     ])
     def test_voltage_pairs(self, obs_v, data_v, should_error):
         v = _make_validator(
-            obs={"detector_overvoltage": obs_v},
-            data={"detector_overvoltage": data_v},
+            obs={"name": "test", "domes": [], "detector_overvoltage": obs_v},
+            data={"run_type": "sci", "detector_overvoltage": data_v},
         )
         v._check_overvoltage_consensus()
         assert v.report.has_errors == should_error
@@ -260,7 +298,7 @@ class TestOvervoltageConsensus:
 
 class TestPortCollisions:
     def test_no_network_config_passes(self):
-        v = _make_validator(net={})
+        v = _make_validator(net={"modules": [], "daq_nodes": []})
         v._check_port_collisions()
         assert not v.report.has_errors
 
@@ -268,7 +306,7 @@ class TestPortCollisions:
         net = {"modules": [
             {"ip_addr": "192.168.3.200", "port_forwarding": {"status": False, "gw_ip": "1.2.3.4",
                                                               "cmd_port": [60000, 60001, 60002, 60003]}}
-        ]}
+        ], "daq_nodes": []}
         v = _make_validator(net=net)
         v._check_port_collisions()
         assert not v.report.has_errors
@@ -281,7 +319,7 @@ class TestPortCollisions:
             {"ip_addr": "192.168.3.204",
              "port_forwarding": {"status": True, "gw_ip": "1.2.3.4",
                                  "cmd_port": [61000, 61001, 61002, 61003]}},
-        ]}
+        ], "daq_nodes": []}
         v = _make_validator(net=net)
         v._check_port_collisions()
         assert not v.report.has_errors
@@ -294,7 +332,7 @@ class TestPortCollisions:
             {"ip_addr": "192.168.3.204",
              "port_forwarding": {"status": True, "gw_ip": "1.2.3.4",
                                  "cmd_port": [60000, 61001, 61002, 61003]}},  # 60000 collision!
-        ]}
+        ], "daq_nodes": []}
         v = _make_validator(net=net)
         v._check_port_collisions()
         assert v.report.has_errors
@@ -307,7 +345,7 @@ class TestPortCollisions:
             {"ip_addr": "192.168.3.204",
              "port_forwarding": {"status": True, "gw_ip": "5.6.7.8",  # different gateway
                                  "cmd_port": [60000, 60001, 60002, 60003]}},
-        ]}
+        ], "daq_nodes": []}
         v = _make_validator(net=net)
         v._check_port_collisions()
         assert not v.report.has_errors
@@ -320,41 +358,57 @@ class TestPortCollisions:
 
 class TestDaqAssignmentOverlap:
     def test_no_overlap_passes(self):
-        daq = {"daq_nodes": [
-            {"module_ids": "0-127"},
-            {"module_ids": "128-255"},
-        ]}
+        daq = {
+            "head_node_data_dir": "/data",
+            "head_node_ip_addr": "10.0.0.1",
+            "daq_nodes": [
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.2", "module_ids": "0-127"},
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.3", "module_ids": "128-255"},
+            ]
+        }
         v = _make_validator(daq=daq)
         v._check_daq_assignment_overlap()
         assert not v.report.has_errors
 
     def test_overlap_errors(self):
-        daq = {"daq_nodes": [
-            {"module_ids": "0-10"},
-            {"module_ids": "5-15"},  # 5-10 overlaps
-        ]}
+        daq = {
+            "head_node_data_dir": "/data",
+            "head_node_ip_addr": "10.0.0.1",
+            "daq_nodes": [
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.2", "module_ids": "0-10"},
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.3", "module_ids": "5-15"},  # 5-10 overlaps
+            ]
+        }
         v = _make_validator(daq=daq)
         v._check_daq_assignment_overlap()
         assert v.report.has_errors
 
     def test_single_node_passes(self):
-        daq = {"daq_nodes": [{"module_ids": "224-231"}]}
+        daq = {
+            "head_node_data_dir": "/data",
+            "head_node_ip_addr": "10.0.0.1",
+            "daq_nodes": [{"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.2", "module_ids": "224-231"}]
+        }
         v = _make_validator(daq=daq)
         v._check_daq_assignment_overlap()
         assert not v.report.has_errors
 
     def test_empty_nodes_passes(self):
-        v = _make_validator(daq={"daq_nodes": []})
+        v = _make_validator(daq={"head_node_data_dir": "/data", "head_node_ip_addr": "10.0.0.1", "daq_nodes": []})
         v._check_daq_assignment_overlap()
         assert not v.report.has_errors
 
     def test_adjacent_ranges_do_not_overlap(self):
-        daq = {"daq_nodes": [
-            {"module_ids": "0-63"},
-            {"module_ids": "64-127"},
-            {"module_ids": "128-191"},
-            {"module_ids": "192-255"},
-        ]}
+        daq = {
+            "head_node_data_dir": "/data",
+            "head_node_ip_addr": "10.0.0.1",
+            "daq_nodes": [
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.2", "module_ids": "0-63"},
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.3", "module_ids": "64-127"},
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.4", "module_ids": "128-191"},
+                {"username": "p", "data_dir": "/data", "ip_addr": "10.0.0.5", "module_ids": "192-255"},
+            ]
+        }
         v = _make_validator(daq=daq)
         v._check_daq_assignment_overlap()
         assert not v.report.has_errors
@@ -368,7 +422,8 @@ class TestDaqAssignmentOverlap:
 class TestWpsReferences:
     def test_wps_defined_passes(self):
         obs = {
-            "domes": [{"modules": [{"wps": "wps"}]}],
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
             "wps": {"url": "http://x", "quabo_socket": 1},
         }
         v = _make_validator(obs=obs)
@@ -377,7 +432,8 @@ class TestWpsReferences:
 
     def test_wps_undefined_errors(self):
         obs = {
-            "domes": [{"modules": [{"wps": "wps2"}]}],
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps2"}]}],
             "wps": {"url": "http://x", "quabo_socket": 1},
             # wps2 is NOT defined
         }
@@ -388,7 +444,8 @@ class TestWpsReferences:
     def test_default_wps_reference_passes(self):
         """Module with no explicit 'wps' key defaults to 'wps'."""
         obs = {
-            "domes": [{"modules": [{}]}],  # no 'wps' key → defaults to 'wps'
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200"}]}],  # no 'wps' key → defaults to 'wps'
             "wps": {"url": "http://x", "quabo_socket": 1},
         }
         v = _make_validator(obs=obs)
@@ -397,9 +454,10 @@ class TestWpsReferences:
 
     def test_multiple_wps_references_all_defined_passes(self):
         obs = {
-            "domes": [{"modules": [
-                {"wps": "wps"},
-                {"wps": "wps1"},
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [
+                {"mobo_serialno": "s1", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"},
+                {"mobo_serialno": "s2", "quabo_version": "bga", "ip_addr": "192.168.3.204", "wps": "wps1"},
             ]}],
             "wps":  {"url": "http://x", "quabo_socket": 1},
             "wps1": {"url": "http://y", "quabo_socket": 2},
@@ -410,7 +468,7 @@ class TestWpsReferences:
 
     def test_empty_obs_skips_check(self):
         """If obs_conf is empty, the check should pass silently."""
-        v = _make_validator(obs={})
+        v = _make_validator(obs={"name": "test", "domes": []})
         v._check_wps_references()
         assert not v.report.has_errors
 
@@ -424,6 +482,7 @@ class TestHeadnodeDiskSpace:
     def test_missing_data_dir_errors(self):
         daq = {
             "head_node_data_dir": "/nonexistent_path_xyz_test",
+            "head_node_ip_addr": "10.0.0.1",
             "daq_nodes": [],
         }
         v = _make_validator(daq=daq)
@@ -431,9 +490,9 @@ class TestHeadnodeDiskSpace:
         assert v.report.has_errors
 
     def test_existing_dir_passes(self, tmp_path):
-        daq = {"head_node_data_dir": str(tmp_path), "daq_nodes": []}
-        obs: dict[str, Any] = {"domes": [{"modules": []}]}
-        data = {"image": {"integration_time_usec": 100_000, "quabo_sample_size": 16}}
+        daq = {"head_node_data_dir": str(tmp_path), "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
+        obs: dict[str, Any] = {"name": "test", "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": []}]}
+        data = {"run_type": "sci", "image": {"integration_time_usec": 100_000, "quabo_sample_size": 16}}
         v = _make_validator(obs=obs, data=data, daq=daq)
         v._check_headnode_disk_space()
         # Should not error (tmp_path exists, system has disk space)
@@ -450,9 +509,10 @@ class TestHeadnodeDiskSpace:
 class TestValidateAllRules:
     def test_runs_without_error_on_minimal_config(self, tmp_path):
         """All _check_* methods can run on a minimal config without raising."""
-        daq = {"head_node_data_dir": str(tmp_path), "daq_nodes": []}
+        daq = {"head_node_data_dir": str(tmp_path), "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
         obs = {
-            "domes": [{"modules": [{"quabo_version": "bga", "wps": "wps"}]}],
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
             "wps": {"url": "http://x", "quabo_socket": 1},
         }
         v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
@@ -463,9 +523,10 @@ class TestValidateAllRules:
 
     def test_count_of_test_results_matches_check_methods(self, tmp_path):
         """Each _check_* method contributes at least one row to the report."""
-        daq = {"head_node_data_dir": str(tmp_path), "daq_nodes": []}
+        daq = {"head_node_data_dir": str(tmp_path), "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
         obs = {
-            "domes": [{"modules": [{"quabo_version": "bga", "wps": "wps"}]}],
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
             "wps": {"url": "http://x", "quabo_socket": 1},
         }
         v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})

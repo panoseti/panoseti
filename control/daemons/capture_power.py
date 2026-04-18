@@ -21,7 +21,17 @@ UPDATE_INTERVAL = 1
 
 
 def get_wps_fields(wps_model: WpsConfig | dict[str, Any]) -> dict[str, Any]:
-    """Creates a dictionary of values to write into Redis."""
+    """Retrieve power status and timestamp for a specific WPS unit.
+
+    Args:
+        wps_model: Configuration model or dict for the target WPS unit.
+
+    Returns:
+        A dictionary of fields to write into Redis ('Computer_UTC', 'POWER').
+
+    Raises:
+        Exception: If the WPS unit cannot be queried.
+    """
     try:
         power_status = "ON" if power.quabo_power_query(wps_model) else "OFF"
     except Exception:
@@ -35,11 +45,19 @@ def get_wps_fields(wps_model: WpsConfig | dict[str, Any]) -> dict[str, Any]:
 
 
 def get_wps_rkey(wps_key: str) -> str:
-    """Returns the Redis key for the wps named 'wps_key'."""
+    """Determine the Redis key for a named WPS unit.
+
+    Args:
+        wps_key: The configuration key for the WPS unit (e.g., 'wps1').
+
+    Returns:
+        The corresponding Redis key as an uppercase string.
+    """
     return wps_key.upper()
 
 
 def main() -> None:
+    """Background loop that periodically snapshots WPS power states into Redis."""
     r = redis_utils.redis_init()
     obs_config = config_file.get_obs_config()
     

@@ -109,7 +109,17 @@ verbose = False
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
 def ph_baseline_file_ok(filename: str | None = None) -> bool:
-    """Checks that PH calibration file is present, nonempty, and at most 24 hours old."""
+    """Verify that the Pulse Height calibration file is valid.
+    
+    Checks that the file exists, is not empty, and is at most 24 hours old.
+    Stale or missing calibration data can lead to incorrect PH measurements.
+
+    Args:
+        filename: Optional path to the baseline file. Defaults to config_file.quabo_ph_baseline_filename.
+
+    Returns:
+        True if the file is valid, False otherwise.
+    """
     if filename is None:
         filename = config_file.quabo_ph_baseline_filename
     if not os.path.exists(filename):
@@ -128,6 +138,15 @@ def ph_baseline_file_ok(filename: str | None = None) -> bool:
 # check validity of image params (rate, bpp)
 #
 def check_img_params(image_8bit: bool, image_usec: int) -> None:
+    """Validate image acquisition parameters against hardware constraints.
+
+    Args:
+        image_8bit: Whether using 8-bit image mode.
+        image_usec: Integration time in microseconds.
+
+    Raises:
+        Exception: If parameters violate hardware limits.
+    """
     if image_8bit:
         if image_usec < 20 or image_usec > 25:
             raise Exception('integration time must be 20-25 usec in 8 bit mode')
@@ -138,6 +157,17 @@ def check_img_params(image_8bit: bool, image_usec: int) -> None:
 # parse the data config file to get DAQ params for quabos
 #
 def get_daq_params(data_config: DataConfigValidator) -> quabo_driver.DAQ_PARAMS:
+    """Translate the high-level data configuration into Quabo-level DAQ parameters.
+    
+    Parses image mode settings (integration time, sample size), pulse-height 
+    mode settings (any_trigger, grouping), and test signals (flash/stim).
+
+    Args:
+        data_config: The validated science/engineering configuration model.
+
+    Returns:
+        An initialized quabo_driver.DAQ_PARAMS object.
+    """
     do_image = False
     image_usec = 1
     image_8bit = False
@@ -175,7 +205,20 @@ def start_data_flow(
     daq_config: DaqConfigValidator,
     network_config: NetworkConfigValidator | dict[str, Any]
 ) -> None:
-    """Starts data flow from Quabos by configuring destination IPs and acquisition modes."""
+    """Initialize data flow from Quabos by configuring networking and modes.
+    
+    For every Quabo in every module:
+    1. Tell it where to send Housekeeping (HK) packets (head node).
+    2. Tell it where to send Data packets (assigned DAQ node).
+    3. Set its DAQ acquisition mode (Image/PH/Stim/Flash).
+    4. Synchronize PPS.
+
+    Args:
+        quabo_uids: Validated Quabo UID configuration.
+        data_config: Science/engineering acquisition parameters.
+        daq_config: DAQ node and head node networking details.
+        network_config: Network routing and port forwarding settings.
+    """
     logger = logging.getLogger('PANOSETI.Start.start_data_flow')
     daq_params = get_daq_params(data_config)
     for dome in quabo_uids.domes:
@@ -225,7 +268,21 @@ def start_data_flow(
 
 
 def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
-    """Creates run directories on head node and remote DAQ nodes via SSH."""
+    """Create hierarchical run directories and distribute configuration files.
+    
+    Directories are created on the local head node and remote DAQ nodes:
+    - Head Node: data_dir/run_name/ (config files)
+    - Head Node: data_dir/module_n/run_name/ (.pff files)
+    - Remote Node: data_dir/run_name/ (config files)
+    - Remote Node: data_dir/module_n/run_name/ (.pff files)
+
+    Args:
+        run_name: The directory name for the current observation run.
+        daq_config: Validated DAQ configuration detailing storage paths.
+
+    Raises:
+        Exception: If a directory cannot be created locally or over SSH.
+    """
     logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
     run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
@@ -263,7 +320,7 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
                 rcmds.append(f'mkdir -p {data_dir}/module_{mid}/{run_name}')
             # create process snapshot
             rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
-            rcmd = ';'.join(rcmds)
+            rcmnd = ';'.join(rcmds)
             logger.info(f'DAQ IP: {ip_addr}')
             # Need to handle port forwarding from network_config if we want to be fully typed,
             # but util.attach_daq_config currently mutates the dict.
@@ -278,9 +335,9 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
             if 'port_forwarding' in node_dict:
                 real_ip = node_dict['port_forwarding']['gw_ip']
                 port = node_dict['port_forwarding']['port']
-                cmd = f'ssh -p {port} {username}@{real_ip} "{rcmd}"'
+                cmd = f'ssh -p {port} {username}@{real_ip} "{rcmnd}"'
             else:
-                cmd = f'ssh {username}@{ip_addr} "{rcmd}"'
+                cmd = f'ssh {username}@{ip_addr} "{rcmnd}"'
             if verbose:
                 print(cmd)
             ret = os.system(cmd)
@@ -289,6 +346,7 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
 
     # copy config files to DAQ nodes
     file_xfer.copy_config_files(daq_config.model_dump(), run_name, verbose)
+
 
 async def start_recording(
     obs_config: ObsConfigValidator,

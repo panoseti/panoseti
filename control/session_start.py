@@ -38,6 +38,27 @@ def session_start(
     no_hv: bool,
     stage: str
 ) -> None:
+    """Orchestrate the initialization of a complete PANOSETI observing session.
+    
+    Performs a multi-stage startup sequence:
+    1. poweron: Power on all modules via WPS and wait for boot.
+    2. get_uids: Scan and cache hardware UIDs.
+    3. reboot: Software reboot to ensure clean state and timing mode.
+    4. hk_dest: Point Quabo telemetry to the head node.
+    5. start_redis: Launch local redis daemons.
+    6. maroc_config: Load ASIC gains and thresholds from calibration.
+    7. mask_config: Configure trigger masks.
+    8. calibrate_ph: Run baseline calibration for Pulse Height mode.
+
+    Args:
+        obs_config: Validated observatory physical configuration.
+        quabo_info: Map of Quabo UIDs to metadata.
+        data_config: Validated science observing parameters.
+        daq_config: Validated DAQ node configuration.
+        network_config: Network routing and port forwarding configuration.
+        no_hv: If True, do not enable detector high voltage.
+        stage: The starting phase of the sequence (e.g., 'poweron').
+    """
 
     modules = config_file.get_modules(obs_config.model_dump())
     # power on the telescopes

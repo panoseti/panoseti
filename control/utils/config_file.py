@@ -70,42 +70,77 @@ config_file_names = [
     quabo_config_filename, network_config_filename
 ]
 
-# compute a 'module ID', given its base quabo IP addr: bits 2..9 of IP addr
-#
 def ip_addr_to_module_id(ip_addr_str: str) -> int:
+    """Compute a 'module ID' from a base quabo IP address.
+    
+    The module ID is derived from bits 2..9 of the IP address 
+    (formed by the 3rd and 4th octets).
+
+    Args:
+        ip_addr_str: The base IP address string (e.g., '192.168.3.200').
+
+    Returns:
+        The calculated module ID as an integer (0-255).
+    """
     pieces = ip_addr_str.split('.')
     n = int(pieces[3]) + 256*int(pieces[2])
     return (n>>2)&255
 
-# given module base IP address, return IP addr of quabo i
-#
 def quabo_ip_addr(base: str, i: int) -> str:
+    """Return the IP address of the i-th quabo in a module.
+
+    Args:
+        base: The base IP address of the module (quabo 0).
+        i: The index of the quabo (0-3).
+
+    Returns:
+        The IP address string of the specified quabo.
+    """
     x = base.split('.')
     x[3] = str(int(x[3])+i)
     return '.'.join(x)
 
 
 def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
-    """Given a module ip address and a quabo index, returns the BOARDLOC of
-    the corresponding quabo."""
+    """Calculate the BOARDLOC for a quabo given its module base IP and index.
+
+    The BOARDLOC formula is: (octet3 * 256) + octet4 + quabo_index.
+
+    Args:
+        module_ip_addr: The base IP address string of the module.
+        quabo_index: The index of the quabo within the module (0-3).
+
+    Returns:
+        The BOARDLOC identifier as an integer.
+    """
     pieces = module_ip_addr.split('.')
     boardloc = int(pieces[2]) * 256 + int(pieces[3]) + quabo_index
     return boardloc
 
 
-# assign sequential numbers to domes,
-# and IDs to modules
-#
 def assign_numbers(c: dict[str, Any]) -> None:
+    """Assign sequential numbers to domes and IDs to modules within a config.
+    
+    This function injects 'num' into each dome object and 'id' (derived from 
+    IP address) into each module object. This is a pre-validation step.
+
+    Args:
+        c: The configuration dictionary to modify in-place.
+    """
     for ndome, dome in enumerate(c['domes']):
         dome['num'] = ndome
         for module in dome['modules']:
             module['id'] = ip_addr_to_module_id(module['ip_addr'])
 
-# input: a string of the form "0-2, 5-6"
-# output: a list of integers, e.g. 0,1,2,5,6
-#
 def string_to_list(s: str) -> list[int]:
+    """Parse a range string like '0-2, 5-6' into a list of integers.
+
+    Args:
+        s: A comma-separated string of ranges or individual numbers.
+
+    Returns:
+        A list of integers represented by the input string.
+    """
     out: list[int] = []
     parts = s.split(',')
     for part in parts:
@@ -119,13 +154,31 @@ def string_to_list(s: str) -> list[int]:
             out.append(int(nums[0]))
     return out
 
-# in DAQ node objects, expand module range strings
-# to list of module numbers
-#
 def expand_ranges(daq_config: DaqConfigValidator | dict[str, Any]) -> None:
-    if isinstance(daq_config, dict):
-        # We must modify the dict in place for preprocessors
-        for node in daq_config.get('daq_nodes', []):
+    """Expand module range strings to lists of module numbers in DAQ node objects.
+    
+    Mutates the input dictionary or model by converting 'module_ids' 
+    string ranges into actual lists of integers.
+
+    Args:
+        daq_config: The DAQ configuration to process, either as a model or a dict.
+
+    Raises:
+        TypeError: If module_ids is not a string or a list.
+    """
+    if hasattr(daq_config, "daq_nodes"):
+        # Implementation for model
+        # MyPy needs help knowing daq_config is a model here if isinstance check fails it
+        for node in daq_config.daq_nodes: 
+            if isinstance(node.module_ids, str):
+                node.module_ids = string_to_list(node.module_ids)
+            elif isinstance(node.module_ids, list):
+                node.module_ids = list(set(int(x) for x in node.module_ids))
+            elif node.module_ids is not None:
+                raise TypeError(f"module_ids must be str or list, not {type(node.module_ids)}")
+    else:
+        # Implementation for dict
+        for node in daq_config.get('daq_nodes', []): 
             module_ids = node.get('module_ids')
             if isinstance(module_ids, str):
                 node['module_ids'] = string_to_list(module_ids)
@@ -133,20 +186,20 @@ def expand_ranges(daq_config: DaqConfigValidator | dict[str, Any]) -> None:
                 node['module_ids'] = list(set(int(x) for x in module_ids))
             elif module_ids is not None:
                 raise TypeError(f"module_ids must be str or list, not {type(module_ids)}")
-        return
 
-    # Implementation for model
-    for node in daq_config.daq_nodes:
-        if isinstance(node.module_ids, str):
-            node.module_ids = string_to_list(node.module_ids)
-        elif isinstance(node.module_ids, list):
-            node.module_ids = list(set(int(x) for x in node.module_ids))
-        elif node.module_ids is not None:
-            raise TypeError(f"module_ids must be str or list, not {type(node.module_ids)}")
-
-# given a module ID, find the DAQ node that's handling it
-#
 def module_id_to_daq_node(daq_config: DaqConfigValidator | dict[str, Any], module_id: int) -> DaqNodeValidator:
+    """Find the DAQ node responsible for handling a specific module ID.
+
+    Args:
+        daq_config: The DAQ configuration to search.
+        module_id: The ID of the module to locate.
+
+    Returns:
+        The DaqNodeValidator object handling the module.
+
+    Raises:
+        Exception: If no DAQ node is found for the given module ID.
+    """
     if isinstance(daq_config, dict):
         daq_config = DaqConfigValidator(**daq_config)
     
@@ -157,6 +210,12 @@ def module_id_to_daq_node(daq_config: DaqConfigValidator | dict[str, Any], modul
     raise Exception(f"no DAQ node is handling module {module_id}")
 
 def check_config_file(name: str, dir: str = '.') -> None:
+    """Verify that a configuration file exists. Exits the program if missing.
+
+    Args:
+        name: The filename to check.
+        dir: The directory containing the file.
+    """
     path = os.path.join(dir, name)
     if not os.path.isfile(path):
     # if not os.path.exists('%s/%s'%(dir, name)):
@@ -168,18 +227,52 @@ def check_config_file(name: str, dir: str = '.') -> None:
 
 
 def get_obs_config(dir: str = '.') -> ObsConfigValidator:
+    """Load and validate the observatory configuration.
+
+    Args:
+        dir: The directory containing the config file.
+
+    Returns:
+        A validated ObsConfigValidator model.
+    """
     # pass assign_numbers so it injects `id` and `num` before validation
     return load_and_validate(ObsConfigValidator, obs_config_filename, dir, "Obs Config", assign_numbers)
 
 def get_daq_config(dir: str = '.') -> DaqConfigValidator:
+    """Load and validate the DAQ configuration.
+
+    Args:
+        dir: The directory containing the config file.
+
+    Returns:
+        A validated DaqConfigValidator model.
+    """
     # pass expand_ranges so it parses module string ranges before validation
     return load_and_validate(DaqConfigValidator, daq_config_filename, dir, "DAQ Config", expand_ranges)
 
 def get_data_config(dir: str = '.') -> DataConfigValidator:
+    """Load and validate the data (science/engineering) configuration.
+
+    Args:
+        dir: The directory containing the config file.
+
+    Returns:
+        A validated DataConfigValidator model.
+    """
     return load_and_validate(DataConfigValidator, data_config_filename, dir, "Data Config")
 
 def get_network_config(dir: str = '.') -> NetworkConfigValidator | dict[str, Any]:
+    """Load and validate the network configuration. 
+    
+    Falls back to an empty dictionary with a warning if the file is missing 
+    or invalid, assuming a flat local network.
 
+    Args:
+        dir: The directory containing the config file.
+
+    Returns:
+        A validated NetworkConfigValidator model or an empty dict.
+    """
     check_config_file(network_config_filename, dir)
     path = f'{dir}/{network_config_filename}'
     # as the network config file is not designed to the users,
@@ -197,12 +290,33 @@ def get_network_config(dir: str = '.') -> NetworkConfigValidator | dict[str, Any
 
 
 def get_firmware_config(dir: str = '.') -> FirmwareConfigValidator:
+    """Load and validate the firmware configuration.
+
+    Args:
+        dir: The directory containing the config file.
+
+    Returns:
+        A validated FirmwareConfigValidator model.
+    """
     return load_and_validate(FirmwareConfigValidator, firmware_config_filename, dir, "Firmware Config")
 
 def get_daemons_config(dir: str = '.') -> DaemonConfigValidator:
+    """Load and validate the daemons configuration.
+
+    Args:
+        dir: The directory containing the config file.
+
+    Returns:
+        A validated DaemonConfigValidator model.
+    """
     return load_and_validate(DaemonConfigValidator, daemons_config_filename, dir, "Daemons Config")
 
 def get_quabo_uids() -> QuaboUidsValidator:
+    """Load and validate the Quabo UIDs from the local cache file.
+
+    Returns:
+        A validated QuaboUidsValidator model.
+    """
     if not os.path.exists(quabo_uids_filename):
         print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
         sys.exit(1)
@@ -213,7 +327,14 @@ def get_quabo_uids() -> QuaboUidsValidator:
     return QuaboUidsValidator(**quabo_uids_conf)
 
 def get_module_quabo_uids_from_dict(uids_dict: dict[str, Any]) -> dict[str, list[str]]:
-    """Validates and returns a mapping of module IP to list of quabo UIDs."""
+    """Validate a raw dictionary of UIDs and return a simplified mapping.
+
+    Args:
+        uids_dict: Raw dictionary containing Quabo UID information.
+
+    Returns:
+        A dictionary mapping module IP addresses to lists of Quabo UIDs.
+    """
     validated = QuaboUidsValidator(**uids_dict)
     res = {}
     for dome in validated.domes:
@@ -221,9 +342,15 @@ def get_module_quabo_uids_from_dict(uids_dict: dict[str, Any]) -> dict[str, list
             res[str(module.ip_addr)] = [q.uid for q in module.quabos]
     return res
 
-# get detector info as an array indexed by serialno
-#
 def get_detector_info() -> dict[str, float]:
+    """Retrieve detector operating voltages indexed by serial number.
+    
+    Voltages are derived from detector_info.json and may be adjusted based 
+    on the detector_overvoltage setting in data_config.json.
+
+    Returns:
+        A dictionary mapping detector serial numbers to operating voltages.
+    """
     check_config_file(detector_info_filename)
     with open(detector_info_filename) as f:
         s = f.read()
@@ -250,9 +377,12 @@ def get_detector_info() -> dict[str, float]:
         print('**************************************************************************')
     return d
 
-# get quabo info as an array indexed by uid
-#
 def get_quabo_info() -> dict[str, Any]:
+    """Retrieve Quabo metadata indexed by UID.
+
+    Returns:
+        A dictionary mapping Quabo UIDs to their metadata objects.
+    """
     check_config_file(quabo_info_filename)
     with open(quabo_info_filename) as f:
         s = f.read()
@@ -263,24 +393,43 @@ def get_quabo_info() -> dict[str, Any]:
     return d
 
 def get_quabo_ph_baselines() -> dict[str, Any]:
+    """Retrieve Quabo pulse-height baselines from the local cache file.
+
+    Returns:
+        A dictionary containing the Quabo pulse-height baselines.
+    """
     check_config_file(quabo_ph_baseline_filename)
     with open(quabo_ph_baseline_filename) as f:
         s = f.read()
     c: dict[str, Any] = json.loads(s)
     return c
 
-# get quabo calibration info
-#
 def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]:
+    """Load Quabo calibration data for a specific detector and mode.
+
+    Args:
+        serialno: The serial number of the detector.
+        detovervol: The detector overvoltage (e.g., 2 or 3).
+        mode: The calibration mode.
+
+    Returns:
+        A dictionary containing the calibration data.
+    """
     #print('reading calib file %s'%serialno)
     path = quabo_calib_filename%(detovervol, mode, serialno)
     with open(path) as f:
         s = f.read()
     return json.loads(s)
 
-# return list of modules from obs_config
-#
 def get_modules(c: ObsConfigValidator | dict[str, Any]) -> list[ObsModuleConfig]:
+    """Extract a flat list of modules from an observatory configuration.
+
+    Args:
+        c: The observatory configuration to process.
+
+    Returns:
+        A list of ObsModuleConfig objects.
+    """
     if isinstance(c, dict):
         c = ObsConfigValidator(**c)
     modules: list[ObsModuleConfig] = []
@@ -289,14 +438,17 @@ def get_modules(c: ObsConfigValidator | dict[str, Any]) -> list[ObsModuleConfig]
             modules.append(module)
     return modules
 
-# link modules to DAQ nodes:
-# - in the daq_config data structure, add a list "modules"
-#   to each daq node object, of the module objects
-#   in the quabo_uids data structure;
-# - in the quabo_uids data structure, in each module object,
-#   add a link "daq_node" to the DAQ node that's handling it.
-#
 def associate(daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any]) -> None:
+    """Link modules to their corresponding DAQ nodes.
+    
+    Injects back-references between DAQ nodes and the modules they handle.
+    - Adds a 'modules' list to each DAQ node object.
+    - Adds a 'daq_node' link to each module object.
+
+    Args:
+        daq_config: The DAQ configuration model or dict.
+        quabo_uids: The Quabo UIDs configuration model or dict.
+    """
     if isinstance(daq_config, dict):
         daq_config = DaqConfigValidator(**daq_config)
     if isinstance(quabo_uids, dict):
@@ -311,9 +463,12 @@ def associate(daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: Quabo
             daq_node.modules.append(module)
             module.daq_node = daq_node
 
-# show which module is going to which data recorder
-#
 def show_daq_assignments(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> None:
+    """Print the assignment of Quabos to DAQ nodes to the console.
+
+    Args:
+        quabo_uids: The Quabo UIDs configuration model or dict.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
 
@@ -325,6 +480,7 @@ def show_daq_assignments(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> Non
             for i in range(4):
                 q = module.quabos[i]
                 print(f"data from quabo {q.uid} ({quabo_ip_addr(ip_addr, i)}) -> DAQ node {daq_ip}")
+
 
 ## Apply global validation
 

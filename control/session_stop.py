@@ -8,6 +8,13 @@ from utils.pydantic_config_models import ObsConfigValidator
 
 
 def session_stop(obs_config: ObsConfigValidator) -> None:
+    """Gracefully terminate an observing session.
+    
+    Powers off all modules and stops background Redis daemons.
+
+    Args:
+        obs_config: Validated observatory configuration.
+    """
     power.do_all(obs_config, 'off')
     try:
         util.stop_redis_daemons()

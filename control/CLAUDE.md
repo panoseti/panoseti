@@ -11,14 +11,47 @@ This file supplements the root-level `../CLAUDE.md`, which covers the full repo 
 The root CLAUDE.md has some stale entries for the `control/` package:
 
 - **Python version**: `requires-python = ">=3.14"` (not 3.9)
-- **CI runner**: `python ci/qa.py <cmd>` (not `bash ci/run.sh`)
-- **Integration test count**: 65 passing (not "43 passing, 7 skipped")
-- **Unit test count**: 460 passing
+- **CI runner**: `python ci/qa.py <cmd>`
+- **Integration test count**: 69 passing
+- **Unit test count**: 475 passing
 - **Chaos/scenario test count**: 113 tests (66 active, 47 stubs) in `ci/integration/scenarios/`
 
 ---
 
-## Development Commands
+## Verification & Quality Standards
+
+### Linting and Type Safety
+The project enforces strict linting via Ruff and type checking via MyPy. All new code must pass `python ci/qa.py lint`.
+
+- **Pydantic Model Authority**: Instantiated models from `utils/pydantic_config_models.py` must be passed across call boundaries. Polymorphic functions must validate dictionaries into models at the entry point.
+- **Attribute Access**: Always prefer model attribute access (`config.daq_nodes`) over dictionary indexing (`config['daq_nodes']`).
+- **MyPy Strictness**: Avoid `type: ignore` whenever possible. If required, use it on a specific line with a comment explaining why. Ensure `unused-ignore` rules pass.
+
+### Documentation (Google Style Docstrings)
+All functions and methods must have high-quality docstrings. Preserving legacy comments (prefixed with `#`) by transforming them into formal docstrings is mandatory.
+
+```python
+def example_function(arg1: int, arg2: str) -> bool:
+    """A concise summary of the function's purpose.
+
+    Detailed description of the intent and spirit of the operation, 
+    preserving any relevant implementation notes from legacy comments.
+
+    Args:
+        arg1: Description of the first argument.
+        arg2: Description of the second argument.
+
+    Returns:
+        True if the operation succeeded, False otherwise.
+    """
+```
+
+### Testing and Debugging
+- **Unit Tests**: Add new cases to `ci/unit/` for every utility function. No hardware or network access is allowed in unit tests.
+- **Integration Tests**: Verify end-to-end flows in `ci/integration/`. Use the `-k` flag to isolate failures (e.g. `python ci/qa.py integration -k TestConfigValidation`).
+- **Transactional Debugging**: If a run fails, inspect `tmp/run_state.toml` and check `_aborted/` for failure context dumps.
+- **Advisory Locking**: When debugging control scripts standalone, ensure they acquire the advisory lock on `tmp/panoseti_control.lock` or use `RunStateManager`.
+- **Async Safety**: Use `asyncio.to_thread` for blocking file system or socket I/O within async functions to prevent event loop starvation.
 
 ### Install (native, without Docker)
 

@@ -45,9 +45,11 @@ class BaseStrictModel(BaseModel):
 
 ## -- data_config: Pulse-height mode
 class AnyTriggerConfig(BaseStrictModel):
+    """Configuration for 'any_trigger' mode in pulse height acquisition."""
     group_ph_frames: int = Field(0, description="If set to 1, hashpipe will group 4 packets from 4 quabos.")
 
 class PulseHeightMode(BaseStrictModel):
+    """Parameters for Pulse Height (PH) data acquisition."""
     pe_threshold: float = Field(..., ge=MIN_PULSE_HEIGHT_PE_THRESHOLD, description="Pulse height threshold in photoelectrons")
     any_trigger: AnyTriggerConfig | None = None
     two_pixel_trigger: int = Field(0, description="If set to 1, 2 pixel trigger mode will be enabled.")
@@ -56,6 +58,7 @@ class PulseHeightMode(BaseStrictModel):
 
 ## -- data_config: Movie-mode
 class ImageMode(BaseStrictModel):
+    """Parameters for Image (Movie) mode data acquisition."""
     integration_time_usec: int = Field(..., ge=20, description="Integration time in microseconds")
     pe_threshold: float = Field(..., ge=MIN_MOVIE_MODE_PE_THRESHOLD, description="Image mode threshold in photoelectrons")
     quabo_sample_size: Literal[8, 16] = Field(..., description="Size of the sample")
@@ -68,21 +71,25 @@ class ImageMode(BaseStrictModel):
 
 ## -- data_config: Test signal injection
 class LongPulseMode(BaseStrictModel):
+    """Parameters for long-pulse event detection."""
     octaves: int
     threshold_sigma: list[float]
 
 class FlashParams(BaseStrictModel):
+    """Controls for the onboard LED flash system."""
     rate: int = Field(..., ge=0, le=7, description="3-bit value controlling flash rate (0-7)")
     level: int = Field(..., ge=0, le=31, description="Controls DC supply level (0-31)")
     width: int = Field(..., ge=0, le=15, description="Controls pulse width (0-15)")
 
 class StimParams(BaseStrictModel):
+    """Controls for the electronic stimulus (test pulse) system."""
     rate: int = Field(..., ge=0, le=7, description="Rate from 190 to 24,400 Hz")
     level: int = Field(..., ge=0, le=255)
     mask: list[bool] = Field(..., max_length=4, min_length=4)
 
 ## data_config: Interleaving mode
 class InterleaveState(BaseStrictModel):
+    """A single state in an interleaved observing sequence."""
     state_name: str
     duration_seconds: float = Field(..., gt=0.01)
     movie_mode_config: str | None = None
@@ -95,11 +102,13 @@ class InterleaveState(BaseStrictModel):
         return self
 
 class InterleaveConfig(BaseStrictModel):
+    """Full configuration for cyclical interleaved observing."""
     enable: bool = Field(False)
     states: list[InterleaveState] = Field([])
 
 ## data_config: global validator
 class DataConfigValidator(BaseModel):
+    """Science and engineering acquisition parameters (data_config.json)."""
     # We must use extra='allow' so Pydantic parses them, but we will
     # strictly validate the extra keys dynamically in mode='after'.
     model_config = ConfigDict(extra='allow')
@@ -110,7 +119,7 @@ class DataConfigValidator(BaseModel):
     max_file_size_mb: int | None = Field(None, gt=0)
     image: ImageMode | None = None
     pulse_height: PulseHeightMode | None = None
-    interleave: InterleaveConfig | None = None  # Assuming you have an InterleaveConfig model
+    interleave: InterleaveConfig | None = None
     stim_params: StimParams | None = None
     flash_params: FlashParams | None = None
 
@@ -189,11 +198,13 @@ class DataConfigValidator(BaseModel):
 # -------------------------
 
 class WpsConfig(BaseStrictModel):
+    """Configuration for a Web Power Switch (WPS) unit."""
     url: str
     quabo_socket: int
 
 
 class ObsModuleConfig(BaseModel):
+    """Configuration and state for a single observatory module."""
     model_config = ConfigDict(extra='allow')
     mobo_serialno: str
     quabo_version: str | list[str]
@@ -211,6 +222,7 @@ class ObsModuleConfig(BaseModel):
 
 
 class ObsDomeConfig(BaseStrictModel):
+    """Physical configuration for an observatory dome."""
     name: str
     obslat: float = Field(..., ge=-90, le=90)
     obslon: float = Field(..., ge=-180, le=180)
@@ -222,6 +234,7 @@ class ObsDomeConfig(BaseStrictModel):
 
 
 class ObsConfigValidator(BaseModel):
+    """Physical observatory setup and device mapping (obs_config.json)."""
     name: str
     comment: str | None = None
     wr_ip_addr: IPvAnyAddress | None = IPvAnyAddress("192.168.1.254") # type: ignore
@@ -251,6 +264,7 @@ class ObsConfigValidator(BaseModel):
 # -------------------------
 
 class PortForwarding(BaseStrictModel):
+    """Networking metadata for port-forwarded devices (Gateways)."""
     status: bool
     gw_ip: IPvAnyAddress
     reboot_port: list[int | None] | None = Field(None)
@@ -260,6 +274,7 @@ class PortForwarding(BaseStrictModel):
 
 
 class DaqNodeValidator(BaseModel):
+    """Configuration for a single remote Data Acquisition (DAQ) node."""
     model_config = ConfigDict(extra='allow')
     username: str
     data_dir: str
@@ -302,6 +317,7 @@ class DaqNodeValidator(BaseModel):
 
 
 class DaqConfigValidator(BaseStrictModel):
+    """DAQ node networking and storage configuration (daq_config.json)."""
     comment: str | None = None
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
@@ -326,14 +342,17 @@ class DaqConfigValidator(BaseStrictModel):
 # -----------------------------
 
 class NetworkModule(BaseStrictModel):
+    """Network-level mapping for a physical module."""
     ip_addr: IPvAnyAddress
     port_forwarding: PortForwarding
 
 class NetworkDaqNode(BaseStrictModel):
+    """Network-level mapping for a DAQ node."""
     ip_addr: IPvAnyAddress
     port_forwarding: PortForwarding
 
 class NetworkConfigValidator(BaseStrictModel):
+    """Global network routing and port-forwarding map (network_config.json)."""
     modules: list[NetworkModule]
     daq_nodes: list[NetworkDaqNode]
 
@@ -342,10 +361,12 @@ class NetworkConfigValidator(BaseStrictModel):
 # ----------------------------
 
 class Daemons(BaseModel):
+    """Enabled/disabled states for specific background daemons."""
     model_config = ConfigDict(extra='allow') # Allow dynamic casper_xx keys
 
 
 class DaemonConfigValidator(BaseStrictModel):
+    """Configuration for observatory background processes (daemons.json)."""
     daemons: Daemons
     permanent_daemons: Daemons
 
@@ -354,6 +375,7 @@ class DaemonConfigValidator(BaseStrictModel):
 # ------------------------------
 
 class FirmwareConfigValidator(BaseModel):
+    """Mapping of hardware types to firmware binaries."""
     model_config = ConfigDict(extra='allow') # Allow 'qfp', 'bga', or future hardware variants
 
 # --------------------------------
@@ -361,9 +383,11 @@ class FirmwareConfigValidator(BaseModel):
 # --------------------------------
 
 class QuaboUidEntry(BaseStrictModel):
+    """A single Quabo unique ID entry."""
     uid: str = Field(..., description="Hex string of the Quabo UID. Empty string if offline.")
 
 class QuaboUidModule(BaseModel):
+    """A module-level grouping of Quabo unique IDs."""
     model_config = ConfigDict(extra='allow')
     ip_addr: IPvAnyAddress
     quabos: list[QuaboUidEntry] = Field(..., min_length=4, max_length=4)
@@ -377,9 +401,11 @@ class QuaboUidModule(BaseModel):
         return v
 
 class QuaboUidDome(BaseStrictModel):
+    """A dome-level grouping of Quabo UID modules."""
     modules: list[QuaboUidModule]
 
 class QuaboUidsValidator(BaseStrictModel):
+    """Local cache of unique hardware IDs for all observatory Quabos."""
     domes: list[QuaboUidDome]
 
 
@@ -388,6 +414,7 @@ class QuaboUidsValidator(BaseStrictModel):
 # ---------------------------
 
 class NodeReceipt(BaseStrictModel):
+    """Transactional status report from a single DAQ node."""
     ip_addr: IPvAnyAddress
     status: Literal["STARTING", "START_SUCCESS", "START_FAILED", "STOPPED"] = "STARTING"
     hashpipe_pid: int | None = None
@@ -395,6 +422,7 @@ class NodeReceipt(BaseStrictModel):
     message: str | None = None
 
 class RunStateLedger(BaseStrictModel):
+    """The central source of truth for an active observatory run."""
     run_name: str
     status: Literal["STARTING", "ACTIVE", "ABORTED", "STOPPING", "COMPLETED"] = "STARTING"
     start_time: str  # ISO 8601
@@ -407,6 +435,7 @@ class RunStateLedger(BaseStrictModel):
 # ---------------------------
 
 class PFFHeader(BaseStrictModel):
+    """Standardized PanoSETI File Format (PFF) JSON header."""
     pkt_num: int
     pkt_tai: int
     pkt_nsec: int
@@ -414,9 +443,11 @@ class PFFHeader(BaseStrictModel):
     tv_usec: int
 
 class QuaboHeader(PFFHeader):
+    """PFF header specific to a single Quabo's data."""
     quabo_num: int
 
 class ModuleHeader(BaseStrictModel):
+    """Hierarchical PFF header containing telemetry for a full 4-Quabo module."""
     quabo_0: PFFHeader
     quabo_1: PFFHeader
     quabo_2: PFFHeader

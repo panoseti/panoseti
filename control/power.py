@@ -52,6 +52,12 @@ def log_print(msg: str) -> None:
 # turn power on or off
 #
 def quabo_power(wps: WpsConfig | dict[str, Any], on: bool) -> None:
+    """Turn Quabo power on or off via a Web Power Switch.
+
+    Args:
+        wps: Configuration for the WPS unit (url, quabo_socket).
+        on: True to turn power on, False to turn power off.
+    """
     if isinstance(wps, WpsConfig):
         url = wps.url
         socket = wps.quabo_socket
@@ -69,6 +75,14 @@ def quabo_power(wps: WpsConfig | dict[str, Any], on: bool) -> None:
 # return True if power is on
 #
 def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
+    """Query the power state of a Quabo socket.
+
+    Args:
+        wps: Configuration for the WPS unit.
+
+    Returns:
+        The state string from the WPS response if successful, otherwise None.
+    """
     if isinstance(wps, WpsConfig):
         url = wps.url
         socket = wps.quabo_socket
@@ -88,6 +102,13 @@ def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
 
 
 def do_wps(name: str, obs_config: ObsConfigValidator, op: str) -> None:
+    """Perform a power operation (on/off/query) on a named WPS unit.
+
+    Args:
+        name: The key name of the WPS unit in the configuration.
+        obs_config: Validated observatory configuration.
+        op: The operation to perform ('on', 'off', or 'query').
+    """
     extra = obs_config.model_extra or {}
     if name not in extra:
         print(f"Error: {name} not found in obs_config.")
@@ -111,6 +132,12 @@ def do_wps(name: str, obs_config: ObsConfigValidator, op: str) -> None:
 
 
 def do_all(obs_config: ObsConfigValidator, op: str) -> None:
+    """Perform a power operation on all WPS units defined in the configuration.
+
+    Args:
+        obs_config: Validated observatory configuration.
+        op: The operation to perform.
+    """
     extra = obs_config.model_extra or {}
     for key in [k for k in extra if 'wps' in k.lower()]:
         do_wps(key, obs_config, op)

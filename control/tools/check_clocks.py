@@ -30,19 +30,36 @@ TOLERANCE = 0.5
 # create ssh session for getting wrs time
 #
 def SSH_Init(wrs_ip: str) -> paramiko.SSHClient:
+    """Initialize an SSH session for communication with the White Rabbit Switch.
+
+    Args:
+        wrs_ip: IP address of the White Rabbit Switch.
+
+    Returns:
+        An active paramiko.SSHClient session.
+    """
     ssh=paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(wrs_ip,username='root',password='')
     return ssh
 
 
-# The class is used for checking timing synchronization in PANOSETI system.
-#
-
-
-# ...
 class check_clocks:
+    """Utilities for verifying time synchronization across the PANOSETI observatory.
+    
+    Provides methods to retrieve and compare UTC timestamps from a GPS receiver, 
+    Quabo FPGA hardware, and the White Rabbit Switch (WRS).
+    """
+
     def __init__(self, gps_port: str = '/dev/ttyUSB0', wrs_ip: str = '192.168.1.254', host_ip: str = '192.168.1.100', port: int = 60001) -> None:
+        """Initialize the clock checker with device connectivity details.
+
+        Args:
+            gps_port: TTY path for the GPS serial interface.
+            wrs_ip: IP address of the White Rabbit Switch.
+            host_ip: IP address of the local head node.
+            port: UDP port used for Quabo HK/data packets.
+        """
         self.gps_port = gps_port
         self.host_ip = host_ip
         self.port = port
@@ -51,9 +68,15 @@ class check_clocks:
         self.ssh: paramiko.SSHClient | int =  0
 
     
-    # parse primary timing packets from GPS receiver
-    #
     def _parse_primary_packet(self, data: bytes) -> float | None:
+        """Parse a primary timing packet (binary) from the GPS receiver.
+
+        Args:
+            data: Raw bytes from the serial interface.
+
+        Returns:
+            The parsed GPS timestamp in seconds (Unix epoch), adjusted to UTC.
+        """
         # check the length of data
         if len(data) != 17:
             return None
@@ -70,10 +93,12 @@ class check_clocks:
         return lastTime.timestamp() - GPS_SEC
  
     
-    # Get time from GPS receiver.
-    # The information is from a serial port, which is defined in obs_config.json.
-    #
     def get_gps_time(self) -> tuple[float | None, float]:
+        """Retrieve current time from the GPS receiver serial port.
+
+        Returns:
+            A tuple of (gps_utc_seconds, local_host_seconds).
+        """
 
         self.ser = serial.Serial(
             port=self.gps_port,
@@ -132,10 +157,15 @@ class check_clocks:
         return gps_time, t_host
 
     
-    # Get time from a quabo.
-    # We just use 1 quabo for the test, and the IP address of the quabo is defined in obs_config.json.
-    #
     def get_quabo_time(self) -> tuple[float, float]:
+        """Sniff a UDP packet from a Quabo and decode its hardware timestamp.
+
+        Returns:
+            A tuple of (quabo_utc_seconds, local_host_seconds).
+
+        Raises:
+            Exception: If no packets are received from the Quabo within 1 second.
+        """
         BUFFERSIZE = 1024
         IP_PORT = (self.host_ip,self.port)
         server = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -159,11 +189,12 @@ class check_clocks:
         return t_quabo, t_host
 
     
-    # Get time from WRS.
-    # The information is from a ssh session, which requires the IP address of the WRS.
-    # The IP address is defined in obs_config.json.
-    #
     def get_wrs_time(self) -> tuple[float, float]:
+        """Retrieve current time from the White Rabbit Switch via SSH.
+
+        Returns:
+            A tuple of (wrs_utc_seconds, local_host_seconds).
+        """
         cmd0 = "/wr/bin/wr_date get"
 
         self.ssh =  SSH_Init(self.wrs_ip)
@@ -177,31 +208,42 @@ class check_clocks:
         self.ssh.close()
         return wrs_time, t_host
     
-    # Compare the GPS time with host computer time.
-    #
     def check_gps_time(self) -> bool:
+        """Verify GPS time is synchronized with the host clock.
+
+        Returns:
+            True if the time difference is within TOLERANCE.
+        """
         t_gps, t_host = self.get_gps_time()
         return t_gps is not None and (abs(t_gps - t_host) < TOLERANCE)
 
     
-    # Compare the quabo time with host computer time.
-    #  
     def check_quabo_time(self) -> bool:
+        """Verify Quabo hardware time is synchronized with the host clock.
+
+        Returns:
+            True if the time difference is within TOLERANCE.
+        """
         t_quabo, t_host = self.get_quabo_time()
         return abs(t_quabo - t_host) < TOLERANCE
     
     
-    # Compare the WRS time with host computer time.
-    #
     def check_wrs_time(self) -> bool:
+        """Verify White Rabbit Switch time is synchronized with the host clock.
+
+        Returns:
+            True if the time difference is within TOLERANCE.
+        """
         t_wrs, t_host = self.get_wrs_time()
         return abs(t_wrs - t_host) < TOLERANCE
     
     
-    # Check the time from GPS reciever, quabo and WRS.
-    # If all of the time is good, it means the system timing is synced.
-    #
     def check_time_sync(self) -> bool:
+        """Verify that all observatory timing systems (GPS/Quabo/WRS) are synced.
+
+        Returns:
+            True if all systems pass synchronization checks.
+        """
         s0 = self.check_gps_time()
         s1 = self.check_quabo_time()
         s2 = self.check_wrs_time()

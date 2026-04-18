@@ -23,6 +23,17 @@ from utils.pydantic_config_models import QuaboUidsValidator
 
 
 def main(quabo_uids: QuaboUidsValidator, module_id: int, dp: str) -> None:
+    """Monitor and display real-time video frames from an active observation.
+    
+    Creates a remote process on the assigned DAQ node via SSH to stream 
+    recent frames from PFF files. Decodes JSON headers and binary images 
+    for visualization.
+
+    Args:
+        quabo_uids: Validated Quabo UID hardware registry.
+        module_id: ID of the module to monitor. If -1, defaults to the first available.
+        dp: Data product type to display (e.g., 'img16', 'img8', 'ph256', 'ph1024').
+    """
     if module_id < 0:
         dome = quabo_uids.domes[0]
         module = dome.modules[0]

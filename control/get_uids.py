@@ -17,10 +17,7 @@ from typing import Any
 
 from driver.quabo_tftp import tftpw
 from utils import config_file, util
-from utils.pydantic_config_models import (
-    NetworkConfigValidator,
-    ObsConfigValidator,
-)
+from utils.pydantic_config_models import NetworkConfigValidator, ObsConfigValidator
 
 # =========================
 # Logging / print wrapper
@@ -63,6 +60,15 @@ def print(*args: Any, **kwargs: Any) -> None:
 # return quabo UID as hex string
 #
 def get_uid(ip_addr: str, port: int) -> str:
+    """Retrieve the unique hardware ID (UID) from a Quabo via TFTP.
+
+    Args:
+        ip_addr: The IP address of the Quabo.
+        port: The TFTP port to use for the request.
+
+    Returns:
+        The hardware UID as a hex string, or an empty string if retrieval fails.
+    """
     x = tftpw(ip_addr, port)
     try:
         x.get_flashuid()
@@ -74,6 +80,16 @@ def get_uid(ip_addr: str, port: int) -> str:
 
 
 def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], exclude: list[int] | None = None) -> None:
+    """Scan the observatory for Quabos and cache their unique hardware IDs.
+    
+    Iterates through all modules defined in the configuration, attempts to 
+    contact each Quabo, and writes the resulting UID map to quabo_uids.json.
+
+    Args:
+        obs_config: Physical observatory configuration model or dict.
+        network_config: Network routing configuration model or dict.
+        exclude: Optional list of Quabo indices (0-3) to skip in every module.
+    """
     if isinstance(obs_config, dict):
         obs_config = ObsConfigValidator(**obs_config)
     if isinstance(network_config, dict):
@@ -117,6 +133,7 @@ def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: Ne
         json.dump(quabo_uids, f, ensure_ascii=False, indent=4)
 
 def check_range(val: str) -> int:
+    """Validate that a command-line argument is a valid Quabo index (0-3)."""
     ivalue = int(val)
     if ivalue < 0 or ivalue > 3:
         raise argparse.ArgumentTypeError(f"{val} is out of allowed range [0-3]")
@@ -132,5 +149,3 @@ if __name__ == "__main__":
     get_uids(obs_config, network_config, exclude)
     if os.path.exists('flashuid'):
         os.remove('flashuid')
-
-

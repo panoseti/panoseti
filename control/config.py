@@ -105,6 +105,12 @@ def ask_use_default_calibration(ip_addr: str) -> bool:
 # print summary of obs and daq config files
 #
 def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) -> None:
+    """Print a human-readable summary of the observatory and hardware configuration.
+    
+    Args:
+        obs_config: Validated observatory configuration model.
+        quabo_uids: Validated Quabo UID registry model.
+    """
     logger = logging.getLogger('PANOSETI.Config.show_config')
     logger.info('Show config')
     for dome in obs_config.domes:
@@ -121,10 +127,15 @@ def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) 
     #print(f"This node's IP addr: {util.local_ip()}")
     config_file.show_daq_assignments(quabo_uids.model_dump())
 
-# compute available recording time, given data config and free disk space.
-# If verbose, show details
-#
 def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> None:
+    """Reboot a specific Quabo identified by its IP address or module ID.
+
+    Args:
+        ip: Target IP address or module ID string.
+        obs_config: Physical observatory configuration.
+        network_config: Network routing configuration.
+        timeout: Maximum seconds to wait for reboot completion (default 60).
+    """
     logger = logging.getLogger('PANOSETI.Config.do_reboot_single_quabo')
     logger.info(f"The Quabo IP address/ID is {ip}.")
     ips = util.get_valid_ip(obs_config)
@@ -163,6 +174,19 @@ def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: 
 # Reboot one module
 #
 def reboot_module(module: ObsModuleConfig | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> list[dict[str, bool]]:
+    """Reboot all four Quabos within a specific module sequentially.
+    
+    Configures timing mode (WR/GNSS) on Quabo 0 before rebooting.
+
+    Args:
+        module: Configuration for the target module.
+        quabo_uids: Quabo hardware UID registry.
+        network_config: Network routing rules.
+        timeout: Seconds to wait for each Quabo to reboot (default 60).
+
+    Returns:
+        A list of status dictionaries for each Quabo reboot.
+    """
     # Reboot the four quabos one by one
     if isinstance(module, dict):
         module = ObsModuleConfig(**module)
@@ -231,12 +255,16 @@ def reboot_module(module: ObsModuleConfig | dict[str, Any], quabo_uids: QuaboUid
     return reboot_status
 
 def do_reboot(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
-    # need to reboot quabos in order 0..3
-    # to parallelize:
-    # start reboot of quabo 0 in all modules
-    # wait for ping of quabo 0 in all modules (means reboot is done)
-    # ... same for quabo 1 etc.
-    #
+    """Reboot multiple modules in parallel across the observatory.
+    
+    Reboots occur in lockstep (all Q0s, then all Q1s, etc.) to optimize 
+    wait times while ensuring sequential ordering within modules.
+
+    Args:
+        modules: List of module configuration models or dicts.
+        quabo_uids: Quabo hardware UID registry.
+        network_config: Network routing rules.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -277,6 +305,16 @@ def do_reboot(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids:
     print('*******************************************************')
 
 def do_loads(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    """Load firmware binaries onto multiple modules via TFTP.
+    
+    Automatically selects the correct binary (BGA/QFP) based on Quabo hardware version.
+
+    Args:
+        modules: List of target module configurations.
+        quabo_uids: Quabo hardware UID registry.
+        quabo_info: Detailed Quabo metadata.
+        network_config: Network routing rules.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -318,6 +356,16 @@ def do_loadg(modules: list[dict[str, Any]]) -> None:
     #x.put_bin_file(firmware_gold, 0x0)
 
 def do_ping(modules: list[ObsModuleConfig] | list[dict[str, Any]], network_config: NetworkConfigValidator | dict[str, Any], verbose: bool = False) -> dict[str, list[str]]:
+    """Check network reachability for all Quabos in the specified modules.
+
+    Args:
+        modules: List of target module configurations.
+        network_config: Network routing rules.
+        verbose: If True, prints ping results to console.
+
+    Returns:
+        A dictionary containing lists of successful ('ping_true') and failed ('ping_false') IPs.
+    """
     if isinstance(network_config, dict):
         network_config = NetworkConfigValidator(**network_config)
 
@@ -349,6 +397,16 @@ def do_ping(modules: list[ObsModuleConfig] | list[dict[str, Any]], network_confi
     return ping_record
 
 def do_hk_dest(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], daq_config: DaqConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    """Configure Housekeeping (HK) packet destination for multiple modules.
+    
+    Points all Quabos to the head node IP address for telemetry reporting.
+
+    Args:
+        modules: List of target module configurations.
+        quabo_uids: Quabo hardware UID registry.
+        daq_config: DAQ node configuration (contains head node IP).
+        network_config: Network routing rules.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(daq_config, dict):
@@ -379,6 +437,18 @@ def do_hk_dest(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids
             quabo.close()
 
 def do_hv_on(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], verbose: bool = False) -> None:
+    """Enable high voltage (HV) for all detectors in multiple modules.
+    
+    Calculates DAC values based on per-detector operating voltages.
+
+    Args:
+        modules: List of target module configurations.
+        quabo_uids: Quabo hardware UID registry.
+        quabo_info: Detailed Quabo metadata.
+        detector_info: Dictionary of per-detector operating voltages.
+        network_config: Network routing rules.
+        verbose: If True, prints HV settings for each Quabo.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -414,6 +484,13 @@ def do_hv_on(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: 
                 print(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
 
 def do_hv_off(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    """Disable high voltage (HV) for all detectors in multiple modules.
+
+    Args:
+        modules: List of target module configurations.
+        quabo_uids: Quabo hardware UID registry.
+        network_config: Network routing rules.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -446,6 +523,23 @@ def do_hv_off(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids:
 MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt')
 cal_cache: dict[tuple[Any, ...], Any] = {}
 def do_maroc_config(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any], data_config: DataConfigValidator | dict[str, Any], obs_config: ObsConfigValidator | dict[str, Any], daq_config: DaqConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
+    """Configure MAROC ASIC registers for multiple modules.
+    
+    This includes setting gains and discriminator thresholds (DAC1/DAC2) 
+    derived from calibration data for the target observing mode.
+
+    Args:
+        modules: List of target module configurations.
+        quabo_uids: Quabo hardware UID registry.
+        quabo_info: Detailed Quabo metadata.
+        data_config: Science/engineering acquisition parameters.
+        obs_config: Physical observatory configuration.
+        daq_config: DAQ node networking configuration.
+        network_config: Network routing rules.
+        verbose: If True, prints detailed register settings.
+        write_config: If True, writes JSON configuration snapshots.
+        do_log: If True, enables logging for this operation.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -603,6 +697,18 @@ def do_maroc_config(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo
 #
 MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file('driver/quabo_config.txt') # load once to avoid redundant I/O
 def do_mask_config(modules: list[ObsModuleConfig] | list[dict[str, Any]], data_config: DataConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
+    """Configure channel trigger masks and geometric coincidence masks.
+
+    Args:
+        modules: List of target module configurations.
+        data_config: Science/engineering acquisition parameters.
+        network_config: Network routing rules.
+        quabo_uids: Quabo hardware UID registry.
+        verbose: If True, prints mask values.
+        write_config: If True, writes configuration snapshots.
+        do_flush_rx_buf: If True, flushes Quabo RX buffer after update.
+        do_log: If True, enables logging.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -664,6 +770,15 @@ def do_mask_config(modules: list[ObsModuleConfig] | list[dict[str, Any]], data_c
             quabo.close()
 
 def do_calibrate_ph(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: QuaboUidsValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any]) -> None:
+    """Trigger pulse-height (PH) baseline calibration on multiple modules.
+    
+    Results are saved to the local PH baseline cache file.
+
+    Args:
+        modules: List of target module configurations.
+        quabo_uids: Quabo hardware UID registry.
+        network_config: Network routing rules.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
     if isinstance(network_config, dict):
@@ -705,6 +820,11 @@ def do_calibrate_ph(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo
 
 # show summary statistics for the PH baseline calibrations of each quabo
 def do_show_ph_baselines(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> None:
+    """Print summary statistics for the cached PH baseline calibrations.
+
+    Args:
+        quabo_uids: Quabo hardware UID registry model or dict.
+    """
     if isinstance(quabo_uids, dict):
         quabo_uids = QuaboUidsValidator(**quabo_uids)
 
@@ -741,6 +861,16 @@ def do_show_ph_baselines(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> Non
 # If verbose, show details
 #
 def do_disk_space(data_config: DataConfigValidator | dict[str, Any], daq_config: DaqConfigValidator | dict[str, Any], verbose: bool = False) -> float:
+    """Estimate remaining recording time based on available disk space.
+
+    Args:
+        data_config: Science/engineering acquisition parameters.
+        daq_config: DAQ node configuration with data paths.
+        verbose: If True, prints per-node volume details.
+
+    Returns:
+        Estimated recording time in hours.
+    """
     if isinstance(data_config, dict):
         data_config = DataConfigValidator(**data_config)
     if isinstance(daq_config, dict):

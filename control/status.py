@@ -12,12 +12,20 @@ from utils.run_state import RunStateManager
 
 # ---------- logging setup ----------
 def ut_now_str() -> str:
+    """Return the current time as a formatted UTC string."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 def ut_date_str() -> str:
+    """Return the current date as a YYYYMMDD string."""
     return datetime.now(UTC).strftime("%Y%m%d")
 
 def log_print(*args: Any, **kwargs: Any) -> None:
+    """Print a message to both the console and a daily UTC observation log.
+
+    Args:
+        *args: Variable length argument list to print.
+        **kwargs: Arbitrary keyword arguments for print().
+    """
     msg = " ".join(str(a) for a in args)
     line = f"[{ut_now_str()}] {msg}"
 
@@ -34,6 +42,11 @@ def log_print(*args: Any, **kwargs: Any) -> None:
 
 # ---------- main logic ----------
 def status() -> None:
+    """Query and display the current status of the observatory control plane.
+    
+    Checks the transactional ledger, local markers, and probes remote DAQ 
+    nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
+    """
     state_mgr = RunStateManager()
     ledger = state_mgr.load_state()
     

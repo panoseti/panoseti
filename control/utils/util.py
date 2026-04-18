@@ -552,6 +552,17 @@ def free_space(path: str) -> int:
 
 # estimate bytes per second per module for a given data config
 def daq_bytes_per_sec_per_module(data_config: DataConfigValidator | dict[str, Any]) -> float:
+    """Estimate the data generation rate (bytes per second) per module.
+    
+    This calculation includes overhead for housekeeping (hk.pff), 
+    image mode data (if enabled), and pulse-height mode events.
+
+    Args:
+        data_config: The science/engineering configuration model or dict.
+
+    Returns:
+        Estimated data rate in bytes per second per module.
+    """
     if isinstance(data_config, dict):
         data_config = DataConfigValidator(**data_config)
 
@@ -575,6 +586,17 @@ def daq_bytes_per_sec_per_module(data_config: DataConfigValidator | dict[str, An
 
 
 def get_daq_node_status(node: dict[str, Any]) -> dict[str, Any]:
+    """Retrieve the DAQ status from a remote node via SSH.
+
+    Args:
+        node: A dictionary describing the DAQ node (username, ip_addr, data_dir).
+
+    Returns:
+        A dictionary containing the parsed JSON status from the remote node.
+
+    Raises:
+        Exception: If the remote node cannot be reached.
+    """
     # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
         '{}@{}'.format(node['username'], node['ip_addr']),
@@ -590,6 +612,11 @@ def get_daq_node_status(node: dict[str, Any]) -> dict[str, Any]:
 #-------------- functions only for DAQ nodes ---------------
 
 def daq_get_run_name() -> str | None:
+    """Extract the current PANOSETI run name from the local cache file.
+
+    Returns:
+        The run name string if found, otherwise None.
+    """
     if os.path.exists(daq_run_name_filename):
         with open(daq_run_name_filename) as f:
             return f.read().strip()
@@ -598,6 +625,14 @@ def daq_get_run_name() -> str | None:
 #-------------- WR and GPS---------------
 
 def get_wr_ip_addr(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
+    """Retrieve the White Rabbit switch IP address from the configuration.
+
+    Args:
+        obs_config: The observatory configuration model or dict.
+
+    Returns:
+        The White Rabbit IP address string (defaults to 192.168.1.254).
+    """
     if isinstance(obs_config, dict):
         obs_config = ObsConfigValidator(**obs_config)
     
@@ -606,9 +641,15 @@ def get_wr_ip_addr(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
     return '192.168.1.254'
 
 
-# get GPS receiver port (path of the tty)
-#
 def get_gps_port(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
+    """Retrieve the TTY device path for the GPS receiver.
+
+    Args:
+        obs_config: The observatory configuration model or dict.
+
+    Returns:
+        The GPS port string (defaults to /dev/ttyUSB0).
+    """
     if isinstance(obs_config, dict):
         obs_config = ObsConfigValidator(**obs_config)
     
@@ -623,6 +664,19 @@ def get_gps_port(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
 def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidator | dict[str, Any]) -> dict[str, Any]:
+    """Determine the effective IP and port for a specific Quabo.
+    
+    Accounts for network port forwarding if configured. If no mapping 
+    is found, it defaults to the standard local subnet layout.
+
+    Args:
+        ip_addr: The base IP address of the module.
+        i: The index of the Quabo within the module (0-3).
+        network_config: The network configuration model or dict.
+
+    Returns:
+        A dictionary containing 'ip_addr', 'reboot_port', and 'cmd_port'.
+    """
     if isinstance(network_config, dict):
         network_config = NetworkConfigValidator(**network_config)
 
@@ -654,7 +708,15 @@ def stop_data_flow(
     quabo_uids: QuaboUidsValidator,
     network_config: NetworkConfigValidator | dict[str, Any]
 ) -> None:
-    """Tells all Quabos to stop sending data. Used for rollback and clean shutdown."""
+    """Tells all Quabos to stop sending data. Used for rollback and clean shutdown.
+    
+    Sends a DAQ_PARAMS command with all acquisition modes disabled to 
+    every Quabo listed in the UID cache.
+
+    Args:
+        quabo_uids: The validated Quabo UID configuration.
+        network_config: The network configuration model or dict.
+    """
     daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     for dome in quabo_uids.domes:
         for module in dome.modules:
@@ -670,11 +732,19 @@ def stop_data_flow(
                 quabo.close()
 
 
-# attach port forwarding info to daq config based on network_config
 def attach_daq_config(
     daq_config: DaqConfigValidator | dict[str, Any],
     network_config: NetworkConfigValidator | dict[str, Any]
 ) -> None:
+    """Merge port forwarding metadata into the DAQ configuration.
+    
+    Iterates through DAQ nodes and attaches corresponding port forwarding 
+    details from the network configuration if the IP addresses match.
+
+    Args:
+        daq_config: The DAQ configuration model or dict to modify in-place.
+        network_config: The network configuration model or dict.
+    """
     if isinstance(daq_config, dict):
         daq_config = DaqConfigValidator(**daq_config)
     if isinstance(network_config, dict):
@@ -687,8 +757,15 @@ def attach_daq_config(
 
 
 
-# get the valid IPs
 def get_valid_ip(obs_config: ObsConfigValidator | dict[str, Any]) -> list[str]:
+    """Extract all valid Quabo IP addresses from the observatory configuration.
+
+    Args:
+        obs_config: The observatory configuration model or dict.
+
+    Returns:
+        A list of IP address strings for all quabos in all modules.
+    """
     if isinstance(obs_config, dict):
         obs_config = ObsConfigValidator(**obs_config)
 
@@ -704,9 +781,15 @@ def get_valid_ip(obs_config: ObsConfigValidator | dict[str, Any]) -> list[str]:
     return ips
 
 
-# convert IP format to 192.168.xx.xxx
-#
 def convert_ip(ip: str) -> tuple[str, int]:
+    """Convert an IP address or module ID into its base IP and Quabo index.
+
+    Args:
+        ip: Either an IP address string or an integer module ID.
+
+    Returns:
+        A tuple of (base_ip_string, quabo_index).
+    """
     try:
         qid = int(ip)
         return f"192.168.{qid>>8}.{qid&0xfc}", qid&0x3
@@ -716,4 +799,5 @@ def convert_ip(ip: str) -> tuple[str, int]:
         blast = 4*(last//4)
         index = last - blast
         return f"{ipstr[0]}.{ipstr[1]}.{ipstr[2]}.{blast!s}", index
+
 

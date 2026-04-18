@@ -24,6 +24,17 @@ util.create_logger(logfile, 'PANOSETI.Shutter', 'a')
 logger = logging.getLogger('PANOSETI.Shutter')
 
 def ip_check(ip: str) -> int:
+    """Validate that the target IP address corresponds to Quabo 1.
+    
+    The shutter hardware is physically connected to the second Quabo (index 1) 
+    in each module.
+
+    Args:
+        ip: The IP address string to check.
+
+    Returns:
+        0 if the IP is valid for shutter control, -1 otherwise.
+    """
     ip_str = ip.split('.')
     if(int(ip_str[3])%4==1):
         return 0
@@ -33,6 +44,13 @@ def ip_check(ip: str) -> int:
 # shutter operation
 #
 def shutterop(ip: str, port: int, op: int) -> None:
+    """Issue a hardware command to open or close a shutter.
+
+    Args:
+        ip: IP address of the target Quabo (should be Quabo 1).
+        port: UDP command port.
+        op: Operation code (0 for open, 1 for close).
+    """
     # ip: ip address of quabo
     # port: port used for communicating with Quabo.
     # op: 0--open the shutter

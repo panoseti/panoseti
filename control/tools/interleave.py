@@ -41,11 +41,29 @@ logger = logging.getLogger("panoseti.interleave")
 
 
 class InterleaveController:
+    """Orchestrates rapid switching between observing modes across all Quabos.
+    
+    This controller manages a cyclical observing schedule defined in the 
+    data configuration. It ensures that hardware is correctly reconfigured 
+    (MAROC and FPGA registers) at every state transition.
+    """
     MAX_THREADS = 8
     def __init__(self, data_config: DataConfigValidator | dict[str, Any], obs_config: ObsConfigValidator | dict[str, Any],
                  daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any],
                  quabo_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any],
                  dry_run: bool = False, max_cycles: int | None = None) -> None:
+        """Initialize the Interleave Controller and verify system state.
+
+        Args:
+            data_config: Acquisition configuration including interleave states.
+            obs_config: Physical observatory configuration.
+            daq_config: DAQ node networking configuration.
+            quabo_uids: Quabo hardware UID registry.
+            quabo_info: Detailed Quabo metadata.
+            network_config: Network routing/port forwarding rules.
+            dry_run: If True, simulate hardware commands without sending them.
+            max_cycles: Optional limit on the number of observing cycles to run.
+        """
 
         if isinstance(data_config, dict):
             data_config = DataConfigValidator(**data_config)
@@ -114,7 +132,11 @@ class InterleaveController:
             logger.info("=== DRY RUN MODE ENABLED: Hardware commands will be simulated ===")
 
     def _acquire_lock(self) -> None:
-        """Ensures at most one instance of interleave.py is running."""
+        """Ensure only one instance of the interleaver is active using a PID file.
+        
+        Raises:
+            SystemExit: If another instance is already running.
+        """
         if os.path.exists(PID_FILE):
             try:
                 with open(PID_FILE) as f:
@@ -137,19 +159,24 @@ class InterleaveController:
             f.write(str(os.getpid()))
 
     def _release_lock(self) -> None:
+        """Remove the interleaver PID file."""
         if os.path.exists(PID_FILE):
             with contextlib.suppress(OSError):
                 os.remove(PID_FILE)
 
     def _handle_shutdown_signal(self, signum: int, frame: Any) -> None:
+        """Gracefully break the observing loop on SIGINT/SIGTERM."""
         if self.keep_running:
             logger.warning("Shutdown signal received. Breaking cycle to restore defaults...")
             self.keep_running = False
 
     def _broadcast_acq_mode(self, daq_params: quabo_driver.DAQ_PARAMS) -> None:
-        """Broadcast the ACQ mode:
-            - In parallel to all modules but
-            - Sequentially to quabos in the same module
+        """Broadcast acquisition mode parameters to all Quabos.
+        
+        Broadcasts are performed sequentially across modules.
+
+        Args:
+            daq_params: The Quabo-level DAQ parameters to send.
         """
         if self.dry_run:
             #logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
@@ -168,6 +195,11 @@ class InterleaveController:
         #    f.result()
 
     def _reconfigure_quabos(self, next_state_data_config: DataConfigValidator) -> None:
+        """Reconfigure MAROC and FPGA registers for a specific observing mode.
+
+        Args:
+            next_state_data_config: The configuration model for the target mode.
+        """
         if self.dry_run:
             return
 
@@ -189,6 +221,17 @@ class InterleaveController:
         #for f in as_completed(futures): f.result()
 
     def generate_state_config(self, movie_key: str | None, ph_key: str | None) -> DataConfigValidator:
+        """Generate a mode-specific data configuration for a target interleave state.
+        
+        Merges mode overrides into the base configuration.
+
+        Args:
+            movie_key: Key in model_extra or 'image' to use for movie mode.
+            ph_key: Key in model_extra or 'pulse_height' to use for PH mode.
+
+        Returns:
+            A new DataConfigValidator reflecting the target observing mode.
+        """
         temp_dict = self.data_config.model_dump()
         temp_dict.pop('image', None)
         temp_dict.pop('pulse_height', None)
@@ -210,6 +253,12 @@ class InterleaveController:
         return DataConfigValidator(**temp_dict)
 
     def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
+        """High-precision sleep that uses hybrid sleep/spin logic.
+
+        Args:
+            target_time: Perf counter value to sleep until.
+            spin_wait_threshold: Threshold below which to spin instead of sleep.
+        """
         while self.keep_running:
             now = time.perf_counter()
             remaining = target_time - now
@@ -219,6 +268,7 @@ class InterleaveController:
 
 
     def run_loop(self) -> None:
+        """Execute the main interleaving observing loop until stopped."""
         # Must import start dynamically to avoid circular import errors
         from start import get_daq_params
 

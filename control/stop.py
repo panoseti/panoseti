@@ -184,6 +184,12 @@ builtins.print = print
 # write message to error log
 #
 def log_error(msg: str, run_dir: str | None) -> None:
+    """Record an error message to a dedicated log file within the run directory.
+
+    Args:
+        msg: The error message to log.
+        run_dir: Path to the current run directory. If None, logs to local 'stop_errors'.
+    """
     print(msg)
     log_path = f'{run_dir}/stop_errors' if run_dir else 'stop_errors'
     with open(log_path, 'a') as f:
@@ -192,6 +198,15 @@ def log_error(msg: str, run_dir: str | None) -> None:
 # tell the quabos to stop sending data
 #
 def stop_data_flow(quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
+    """Command all Quabos to cease data transmission.
+    
+    Iterates through all configured Quabos and sends a DAQ_PARAMS packet 
+    with all acquisition modes disabled.
+
+    Args:
+        quabo_uids: Raw or validated Quabo UID configuration.
+        network_config: Raw or validated network routing configuration.
+    """
     daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     for dome in quabo_uids['domes']:
         for module in dome['modules']:
@@ -216,7 +231,16 @@ def stop_data_flow(quabo_uids: dict[str, Any], network_config: dict[str, Any]) -
 # tell all DAQ nodes to stop recording
 #
 async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, verbose: bool) -> None:
-    """Best-effort stop of all remote DAQ nodes. Failure on one does not block others."""
+    """Best-effort stop of all remote DAQ nodes. 
+    
+    Concurrently issues StopDaq gRPC commands to all active DAQ nodes. 
+    Failure on one node does not block the shutdown of others.
+
+    Args:
+        daq_config: Validated DAQ configuration model.
+        run_dir: Optional name of the run directory to stop.
+        verbose: If True, prints gRPC endpoint details.
+    """
     loop = asyncio.get_running_loop()
 
     async def stop_node(node: DaqNodeValidator) -> None:
@@ -245,12 +269,27 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
 # write a "complete file" in the run dir
 #
 def write_complete_file(run_dir: str, filename: str) -> None:
+    """Write a timestamped marker file to signify a phase of the run is complete.
+
+    Args:
+        run_dir: Path to the run directory.
+        filename: Name of the marker file (e.g., 'recording_ended').
+    """
     path = f'{run_dir}/{filename}'
     with open(path , 'w') as f:
         f.write(now_str())
 
 
 def complete_file_exists(run_dir: str, filename: str) -> bool:
+    """Check if a specific marker file exists in the run directory.
+
+    Args:
+        run_dir: Path to the run directory.
+        filename: Name of the marker file.
+
+    Returns:
+        True if the file exists, False otherwise.
+    """
     path = f'{run_dir}/{filename}'
     return os.path.exists(path)
 
@@ -258,6 +297,15 @@ def complete_file_exists(run_dir: str, filename: str) -> bool:
 # make symlinks to the first nonempty image and ph files in that dir
 #
 def make_links(run_dir: str, verbose: bool) -> None:
+    """Create symlinks in the root data dir to the first nonempty PFF files.
+    
+    Helps visualization tools quickly find the latest relevant data. 
+    Links 'img', 'ph', and 'hk' are updated.
+
+    Args:
+        run_dir: Path to the directory containing PFF artifacts.
+        verbose: If True, prints details of the linked files.
+    """
     if os.path.lexists(img_symlink):
         os.unlink(img_symlink)
     if os.path.lexists(ph_symlink):
@@ -297,6 +345,7 @@ def make_links(run_dir: str, verbose: bool) -> None:
         print('make_links(): No nonempty PH file')
     if not did_hk:
         print('make_links(): No nonempty housekeeping file')
+
 
 
 def _cleanup_daq_grpc(

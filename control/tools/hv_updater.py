@@ -50,20 +50,46 @@ network_config = config_file.get_network_config()
 quabos_off = set()
 
 def is_acceptable_temperature(temp: float) -> bool:
-    """Returns True only if the provided temperature is between
-    MIN_TEMP and MAX_TEMP."""
+    """Verify that the detector temperature is within safe operating limits.
+
+    Args:
+        temp: Temperature in degrees Celsius.
+
+    Returns:
+        True if the temperature is between MIN_TEMP and MAX_TEMP.
+    """
     return MIN_TEMP <= temp <= MAX_TEMP
 
 def is_acceptable_hv(monitored_hv: list[float]) -> bool:
-    """Returns True only if the provided hv is reasonable. """
+    """Check if the monitored high voltage values are within reasonable bounds.
+
+    Args:
+        monitored_hv: A list of four HV readings.
+
+    Returns:
+        True if all readings are between MIN_HV and MAX_HV.
+    """
     r = True
     for hv in monitored_hv:
         r = MIN_HV <= hv <= MAX_HV
     return r
 
 def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
-    """Given a detector serial number and a temperature in degrees Celsius,
-     returns the desired adjusted high-voltage value."""
+    """Calculate the temperature-compensated high voltage for a detector.
+    
+    Uses manufacturer-provided temperature coefficients to maintain 
+    optimal detector gain.
+
+    Args:
+        det_serial_num: The unique serial number of the detector.
+        temp: The current detector temperature in Celsius.
+
+    Returns:
+        The target adjusted high voltage as a float.
+
+    Raises:
+        KeyError: If the detector serial number is not found in the config.
+    """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         nominal_hv = detector_info[str(det_serial_num)]
@@ -83,8 +109,16 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
                  rkey: str,
                  quabo_status: dict[str, Any]
                 ) -> None:
-    """Helper method for the function update_all_quabos. Updates each
-     detector in the quabo represented by quabo_obj."""
+    """Update high voltage settings for all four detectors in a single Quabo.
+    
+    Implements a closed-loop adjustment to compensate for both temperature 
+    changes and voltage drops across current limiters.
+
+    Args:
+        quabo_obj: An active Quabo driver instance.
+        rkey: The Redis key representing this Quabo.
+        quabo_status: A state dictionary tracking adjustments and metadata.
+    """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     adjusted_hv_values = [0] * 4
     # get the metadata from the quabo_status dict
@@ -133,7 +167,15 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
 
 
 def get_redis_temp(r: redis.Redis, rkey: str) -> float:
-    """Given a Quabo's redis key, rkey, returns the field value of TEMP1 in Redis."""
+    """Retrieve the latest PCB temperature (TEMP1) for a Quabo from Redis.
+
+    Args:
+        r: Redis client.
+        rkey: Target Quabo key.
+
+    Returns:
+        The temperature as a float.
+    """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, 'TEMP1')
@@ -154,7 +196,16 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
         raise
 
 def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
-    """Given a Quabo's redis key, rkey, returns the field value of HVMON{q} in Redis."""
+    """Retrieve a monitored high voltage value (HVMON_q) for a Quabo from Redis.
+
+    Args:
+        r: Redis client.
+        rkey: Target Quabo key.
+        q: The detector quadrant index (0-3).
+
+    Returns:
+        The monitored HV value (negated to positive) as a float.
+    """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, f'HVMON{q}')
@@ -175,7 +226,16 @@ def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
         raise
 
 def get_redis_det_current(r: redis.Redis, rkey: str, q: int) -> float:
-    """Given a Quabo's redis key, rkey, returns the field value of DETR{q}_CURR in Redis."""
+    """Retrieve a monitored detector current (DETR_q_CURR) for a Quabo from Redis.
+
+    Args:
+        r: Redis client.
+        rkey: Target Quabo key.
+        q: The detector quadrant index (0-3).
+
+    Returns:
+        The monitored current as a float.
+    """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, f'DETR{q}_CURR')
@@ -196,9 +256,15 @@ def get_redis_det_current(r: redis.Redis, rkey: str, q: int) -> float:
         raise
 
 def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict[str, Any]) -> bool:
-    """
-        check the timestamp in the redis database.
-        if the timestamp doesn't change, return false
+    """Verify that Housekeeping telemetry has been updated since the last check.
+
+    Args:
+        r: Redis client.
+        rkey: Target Quabo key.
+        quabo_status: State dictionary containing 'timestamp_pre'.
+
+    Returns:
+        True if the Computer_UTC timestamp in Redis has increased, False otherwise.
     """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
@@ -219,7 +285,12 @@ def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict[str, Any]) -> 
         raise
 
 def init_quabo_status(rkey: str, quabo_status: dict[str, Any]) -> None:
-    """init the quabo info for the specific Quabo. """
+    """Initialize a state entry for a newly discovered Quabo.
+
+    Args:
+        rkey: Target Quabo key.
+        quabo_status: State dictionary to populate.
+    """
     quabo_status[rkey] = {
         'init_set' : True,
         'timestamp_pre' : 0,
@@ -231,9 +302,15 @@ def init_quabo_status(rkey: str, quabo_status: dict[str, Any]) -> None:
     }
 
 def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
-    """Iterates through each quabo in the observatory and updates
-    its detectors' high-voltage values, provided its temperature is
-    not too extreme."""
+    """Iterate through all active Quabos and perform closed-loop HV adjustments.
+    
+    Each Quabo is checked for temperature liveness and safe operating range 
+    before hardware updates are issued.
+
+    Args:
+        r: Active Redis client.
+        quabo_status: Persistent state dictionary tracking all Quabos.
+    """
     logger = logging.getLogger('PANOSETI.HVUpdater')
     for dome in quabo_uids.domes:
         for module in dome.modules:
