@@ -84,9 +84,11 @@ class TestSC002PartialStartRollback:
         from ipaddress import IPv4Address
         from typing import Any as AnyT
 
-        import start
         from panoseti_grpc.daq_control.client import DaqControlClient as _DaqClient
-        from utils import config_file, util as _util
+
+        import start
+        from utils import config_file
+        from utils import util as _util
         from utils.pydantic_config_models import DaqNodeValidator
         from utils.run_state import NodeReceipt, RunStateManager
 
@@ -922,3 +924,88 @@ def test_SC040_obs_config_timing_mode_change_between_session_and_run() -> None:
     matches current obs_config at start.py time.
     """
     pytest.skip("Requires obs_config mutation between session_start and start.py")
+
+# ── SC-015: Stale ledger self-heal ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_SC015_stale_ledger_self_heal(
+    daq_control_direct: DaqControlClient,
+    run_params: dict[str, Any],
+) -> None:
+    """
+    SC-015: Ensure start.py can recover if a previous run crashed violently
+    and left an ACTIVE state in the TOML ledger.
+    """
+    import os
+    import socket
+    from datetime import UTC, datetime
+
+    import start
+    from utils import config_file, util
+    from utils.pydantic_config_models import RunStateLedger
+    from utils.run_state import RunStateManager
+
+    # 1. Clear state and inject a STALE ledger
+    mgr = RunStateManager()
+    mgr.clear_state()
+    
+    # Find a dead PID
+    dead_pid = 99999
+    while True:
+        try:
+            os.kill(dead_pid, 0)
+            dead_pid -= 1
+        except OSError:
+            break
+
+    stale_ledger = RunStateLedger(
+        run_name="stale_run_to_be_archived.pffd",
+        status="ACTIVE",
+        start_time=datetime.now(UTC).isoformat(),
+        pid=dead_pid,
+        host=socket.gethostname()
+    )
+    mgr.save_state(stale_ledger)
+
+    # 2. Run start.py (should self-heal and proceed)
+    obs_config = config_file.get_obs_config()
+    daq_config = config_file.get_daq_config()
+    # Mock head node IP to match this container
+    from ipaddress import IPv4Address
+    daq_config.head_node_ip_addr = IPv4Address("10.0.1.5")
+    daq_config.head_node_data_dir = "/data/head"
+    
+    # Filter for nodes that actually exist in integration
+    reachable_ips = [IPv4Address("192.168.0.10"), IPv4Address("192.168.0.11")]
+    daq_config.daq_nodes = [n for n in daq_config.daq_nodes if n.ip_addr in reachable_ips]
+
+    quabo_uids = config_file.get_quabo_uids()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+    util.attach_daq_config(daq_config, network_config)
+
+    import unittest.mock
+    with unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("start.make_run_dirs"), \
+         unittest.mock.patch("start.start_data_flow"), \
+         unittest.mock.patch("start.start_recording"), \
+         unittest.mock.patch("utils.config_file.associate"), \
+         unittest.mock.patch("utils.config_file.show_daq_assignments"):
+        # We expect this to succeed now because self-heal logic is in start.py
+        success = await start.start_run(
+            obs_config, daq_config, quabo_uids, data_config, 
+            network_config, no_hv=True, no_redis=True, no_data=False
+        )
+    
+    assert success, "start.py failed to self-heal and start a new run (SC-015)"
+    
+    # 3. Verify archiving
+    aborted_root = pathlib.Path(daq_config.head_node_data_dir) / "_aborted"
+    archived_ledger = aborted_root / "stale_run_to_be_archived.pffd" / "stale_run_state.toml"
+    assert archived_ledger.exists(), "Stale ledger was not archived to _aborted/"
+
+    # Cleanup
+    mgr.clear_state()
+    if archived_ledger.parent.exists():
+        import shutil
+        shutil.rmtree(archived_ledger.parent)

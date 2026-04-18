@@ -63,6 +63,7 @@ services:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
       target: integration-headnode
+    restart: always
     networks:
       headnode_net:
         ipv4_address: ${HEADNODE_HOST}

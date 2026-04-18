@@ -324,19 +324,50 @@ def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
     pytest.skip("Requires stopping telemetry service before daqnode container starts")
 
 
-# ── SC-067: Redis connection drop during RedisBatcher.flush() ─────────────────
+# ── SC-067: storeLoki.py crash during flush ───────────────────────────────────
 
-@pytest.mark.skip(reason="SC-067: requires iptables blackhole during Redis flush window")
-def test_SC067_redis_connection_drop_during_flush_no_silent_loss() -> None:
+def test_SC067_storeLoki_crash_during_flush_no_silent_loss() -> None:
     """
-    SC-067: A Redis connection drop during RedisBatcher.flush() (which PIPELINEs
-    100 RPUSH commands) must not silently drop the batch.
+    SC-067: Ensure that if storeLoki.py crashes during a flush to Loki,
+    the messages are not silently lost.
 
-    FAILS RED TODAY: RedisBatcher.flush() catches the ConnectionError and continues.
-    Fix: catch and re-queue the batch, or log at CRITICAL and expose a metric.
+    Currently: storeLoki.py uses destructive BLPOP. If it crashes after
+    popping but before successful POST, those logs are lost forever.
     """
     _require_telemetry()
-    pytest.skip("Requires iptables blackhole timed to the Redis flush window")
+    rc = _redis_client()
+
+    # Clear any existing chaos triggers
+    rc.delete("chaos:storeLoki:crash_on_flush")
+
+    # 1. Push logs to ingress
+    unique_tag = f"sc067_{uuid.uuid4().hex[:8]}"
+    for i in range(5):
+        rc.rpush("logs:ingress", _make_log_entry(f"{unique_tag} message {i}"))
+
+    # 2. Trigger a crash on next flush
+    rc.set("chaos:storeLoki:crash_on_flush", "1")
+
+    # 3. Wait for storeLoki to pop the logs and crash
+    # headnode container will restart automatically due to restart: always in compose
+    time.sleep(5)
+    rc.delete("chaos:storeLoki:crash_on_flush")
+    
+    # Wait for the restarted storeLoki to recover the processing queue and flush
+    # We give it plenty of time to pass healthcheck and boot
+    time.sleep(15)
+
+    # 4. Check if they arrived in Loki
+    # If the fix works, they should ALL be there despite the crash.
+    entries = _loki_query(selector=f'{{job="panoseti"}} |= "{unique_tag}"', since_s=60.0)
+
+    assert len(entries) == 5, (
+        f"Only {len(entries)}/5 logs arrived. "
+        "Reliable queue recovery failed to restore logs after crash (SC-067)."
+    )
+
+    # Cleanup trigger
+    rc.delete("chaos:storeLoki:crash_on_flush")
 
 
 # ── SC-068: SANDBOX: TTL expiry during a read ─────────────────────────────────

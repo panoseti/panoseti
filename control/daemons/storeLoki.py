@@ -6,7 +6,7 @@ Consumes logs from the Redis Queue and pushes them to Grafana Loki.
 Implements batching, GZIP compression, and exponential backoff for robustness.
 
 Architecture:
-    [gRPC Server] -> (RPUSH) -> [Redis List] -> (BLPOP) -> [storeLoki] -> (POST) -> [Loki]
+    [gRPC Server] -> (RPUSH) -> [Redis List] -> (LMOVE) -> [Processing List] -> [storeLoki] -> (POST) -> [Loki]
 """
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ logger = get_logger("storeLoki", grpc_enabled=False)
 # --- Configuration Constants ---
 DEFAULT_LOKI_URL = "http://localhost:3100/loki/api/v1/push"
 DEFAULT_REDIS_KEY = "logs:ingress"
+PROCESSING_REDIS_KEY = "logs:processing"
 BATCH_SIZE = 100          # Flush when we have 100 logs
 MAX_BUFFER_SIZE = 2000    # Stop pulling from Redis if we hold this many
 FLUSH_INTERVAL = 2.0      # Flush at least every 2 seconds
@@ -44,8 +45,9 @@ MAX_BACKOFF_SECONDS = 60  # Cap retry wait time
 class LokiPublisher:
     """Handles buffering and pushing logs to Loki with GZIP compression and backoff."""
 
-    def __init__(self, loki_url: str):
+    def __init__(self, loki_url: str, redis_client: redis.Redis):
         self.url = loki_url
+        self.redis = redis_client
         self.buffer: list[dict] = []
         self.last_flush = time.time()
 
@@ -86,6 +88,7 @@ class LokiPublisher:
         except (ValueError, OSError) as e:
             logger.error(f"Compression failed: {e}. Dropping batch.")
             self.buffer.clear()
+            self.redis.delete(PROCESSING_REDIS_KEY)
             return
 
         try:
@@ -96,6 +99,7 @@ class LokiPublisher:
                 if self.consecutive_errors > 0:
                     logger.info("Reconnected to Loki.")
                 self.buffer.clear()
+                self.redis.delete(PROCESSING_REDIS_KEY)
                 self.last_flush = time.time()
                 self.consecutive_errors = 0
                 self.next_retry_time = 0.0
@@ -107,6 +111,7 @@ class LokiPublisher:
             elif 400 <= resp.status_code < 500:
                 logger.error(f"Loki rejected data ({resp.status_code}): {resp.text}")
                 self.buffer.clear()
+                self.redis.delete(PROCESSING_REDIS_KEY)
 
             else:
                 logger.warning(f"Loki server error ({resp.status_code}). Retrying.")
@@ -126,8 +131,12 @@ class LokiPublisher:
         """Group logs by labels for Loki efficiency."""
         streams: dict[str, dict] = {}
 
+        # Sort buffer by timestamp to ensure monotonic increasing order within each stream
+        self.buffer.sort(key=lambda x: x.get("timestamp", 0))
+
         for entry in self.buffer:
             labels = {
+                "job":           "panoseti",
                 "host":          entry.get("host", "unknown"),
                 "service":       entry.get("service_name", "unknown"),
                 "severity":      str(entry.get("severity", 2)),
@@ -149,6 +158,20 @@ class LokiPublisher:
             streams[stream_key]["values"].append([ts_str, line_str])
 
         return {"streams": list(streams.values())}
+
+
+def recover_processing_queue(r: redis.Redis, ingress_key: str, processing_key: str) -> None:
+    """Move all items from processing queue back to ingress queue on startup."""
+    count = 0
+    while True:
+        # Move from processing (left) back to ingress (right)
+        item = r.lmove(processing_key, ingress_key, src="LEFT", dest="RIGHT")
+        if item:
+            count += 1
+        else:
+            break
+    if count > 0:
+        logger.info(f"Recovered {count} logs from processing queue.")
 
 
 def main() -> None:
@@ -174,7 +197,11 @@ def main() -> None:
     try:
         r = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
         r.ping()
-        publisher = LokiPublisher(loki_url)
+        
+        # Reliable Queue Recovery
+        recover_processing_queue(r, redis_key, PROCESSING_REDIS_KEY)
+        
+        publisher = LokiPublisher(loki_url, r)
     except (redis.ConnectionError, redis.TimeoutError) as e:
         logger.critical(f"Redis startup failed: {e}")
         sys.exit(1)
@@ -185,13 +212,15 @@ def main() -> None:
                 publisher.flush()
 
             if publisher.can_accept_more():
-                item = r.blpop(redis_key, timeout=1)
-                if isinstance(item, tuple) and len(item) > 1:
+                # Atomic reliable pop: ingress -> processing
+                item = r.blmove(redis_key, PROCESSING_REDIS_KEY, timeout=1, src="RIGHT", dest="LEFT")
+                if isinstance(item, (str, bytes)):
                     try:
-                        log_entry = json.loads(item[1])
+                        log_entry = json.loads(item)
                         publisher.add(log_entry)
                     except json.JSONDecodeError:
                         logger.error("Skipping invalid JSON log entry")
+                        r.lpop(PROCESSING_REDIS_KEY) # Remove invalid item
             else:
                 time.sleep(0.5)
 
