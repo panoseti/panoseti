@@ -8,17 +8,18 @@
 # --cleanup     clean up DAQ nodes; don't collect
 # --verbose
 import os
+import subprocess
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from utils import config_file, file_xfer, util
-from utils.pydantic_config_models import DaqConfigValidator
+from utils.pydantic_config_models import CollectResult, DaqConfigValidator
 
 
-# return '' if data collection was successful, else error msg
+# return CollectResult if data collection was successful
 #
-def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> str:
+def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> CollectResult:
     """Aggregate PFF data files from remote DAQ nodes to the local head node.
 
     Uses rsync/SCP or local move (if head node is a DAQ node) to centralize
@@ -30,10 +31,10 @@ def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = F
         verbose: If True, prints detailed file transfer commands.
 
     Returns:
-        An empty string if successful, otherwise a combined error message.
+        A CollectResult object containing success status and error messages.
     """
     my_ip = util.local_ip()
-    error_msg = ''
+    errors = []
     for node in daq_config.daq_nodes:
         if not node.module_ids:
             continue
@@ -42,17 +43,26 @@ def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = F
             if str(node.ip_addr) in my_ip:
                 # head node is also a DAQ node.
                 # Move files locally; if different volume, this will copy
-                cmd = f"mv {node.data_dir}/module_{module_id}/{run_dir}/* {daq_config.head_node_data_dir}/{run_dir}"
+                # Use glob via shell since subprocess doesn't expand it
+                src = f"{node.data_dir}/module_{module_id}/{run_dir}/*"
+                dst = f"{daq_config.head_node_data_dir}/{run_dir}"
+                cmd = f"mv {src} {dst}"
                 if verbose:
                     print(cmd)
-                ret = os.system(cmd)
-                if ret:
-                    error_msg += f'command {cmd} failed: {ret}'
+                res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                if res.returncode != 0:
+                    errors.append(f"Local move failed for module {module_id}: {res.stderr}")
             else:
-                error_msg += file_xfer.copy_dir_from_node(
+                err = file_xfer.copy_dir_from_node(
                     run_dir, daq_config, node, int(module_id), verbose
                 )
-    return error_msg
+                if err:
+                    errors.append(err)
+    
+    return CollectResult(
+        success=len(errors) == 0,
+        errors=errors
+    )
 
 # remove stuff from DAQ nodes no longer needed after run
 # remote:
@@ -81,23 +91,27 @@ def cleanup_daq(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = Fa
     for node in daq_config.daq_nodes:
         ip_addr = str(node.ip_addr)
         if ip_addr in my_ip:
-            cmd = f'rm -rf {node.data_dir}/module_*/{run_dir}'
+            path = f'{node.data_dir}/module_*/{run_dir}'
+            cmd = f'rm -rf {path}'
             if verbose:
                 print(cmd)
-            ret = os.system(cmd)
-            if ret:
-                error_msg += f'cleanup_daq(): {cmd} returned {ret} '
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            if res.returncode != 0:
+                error_msg += f'cleanup_daq() local failed: {res.stderr} '
         else:
             rcmd = f'rm -rf {node.data_dir}/module_*/{run_dir}; rm -rf {node.data_dir}/{run_dir}'
+            ssh_args = ["ssh"]
             if node.port_forwarding and node.port_forwarding.status:
-                cmd = f"ssh -p {node.port_forwarding.port} {node.username}@{node.port_forwarding.gw_ip} \"{rcmd}\""
+                ssh_args.extend(["-p", str(node.port_forwarding.port), f"{node.username}@{node.port_forwarding.gw_ip}"])
             else:
-                cmd = f'ssh {node.username}@{ip_addr} "{rcmd}"'
+                ssh_args.append(f"{node.username}@{ip_addr}")
+            ssh_args.append(rcmd)
+            
             if verbose:
-                print(cmd)
-            ret = os.system(cmd)
-            if ret:
-                error_msg += f'cleanup_daq(): {cmd} returned {ret} '
+                print(" ".join(ssh_args))
+            res = subprocess.run(ssh_args, capture_output=True, text=True)
+            if res.returncode != 0:
+                error_msg += f'cleanup_daq() remote {ip_addr} failed: {res.stderr} '
     return error_msg
 
 if __name__ == "__main__":

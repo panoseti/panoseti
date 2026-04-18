@@ -421,11 +421,19 @@ class NodeReceipt(BaseStrictModel):
     data_dir: str | None = None
     message: str | None = None
 
+class CollectResult(BaseStrictModel):
+    """Result of a data collection attempt from all nodes."""
+    success: bool
+    errors: list[str] = Field(default_factory=list)
+    transferred_files: int = 0
+
 class RunStateLedger(BaseStrictModel):
     """The central source of truth for an active observatory run."""
     run_name: str
     status: Literal["STARTING", "ACTIVE", "ABORTED", "STOPPING", "COMPLETED"] = "STARTING"
     start_time: str  # ISO 8601
+    pid: int | None = None
+    host: str | None = None
     config_metadata: dict[str, Any] = Field(default_factory=dict)
     nodes: list[NodeReceipt] = Field(default_factory=list)
 

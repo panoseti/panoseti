@@ -8,7 +8,9 @@
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
 import os
+import subprocess
 import sys
+import time
 from glob import glob
 
 from utils import config_file, util
@@ -37,14 +39,34 @@ def copy_file_to_node(file: str, node: DaqNodeValidator, run_dir: str = '', verb
     files = glob(file)
     for f in files:
         if node.port_forwarding and node.port_forwarding.status:
-            cmd = f"scp -q -P {node.port_forwarding.port} {f} {node.username}@{node.port_forwarding.gw_ip}:{dest_path}"
+            cmd = ["scp", "-q", "-P", str(node.port_forwarding.port), f, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
         else:
-            cmd = f'scp -q {f} {node.username}@{node.ip_addr}:{dest_path}'
+            cmd = ["scp", "-q", f, f"{node.username}@{node.ip_addr}:{dest_path}"]
         if verbose:
-            print(cmd)
-        ret = os.system(cmd)
-        if ret:
-            raise Exception(f'{cmd} returned {ret}')
+            print(" ".join(cmd))
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f'{" ".join(cmd)} returned {res.returncode}: {res.stderr}')
+
+def _run_rsync_with_retry(cmd: list[str], verbose: bool = False) -> str:
+    """Run rsync with retries for transient failures (Task 2.7)."""
+    transient_codes = {12, 23, 30, 255}
+    max_retries = 3
+    for attempt in range(max_retries + 1):
+        if verbose:
+            print(" ".join(cmd))
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            return ""
+        
+        if res.returncode in transient_codes and attempt < max_retries:
+            print(f"Transient rsync error {res.returncode}. Retrying in 5s (Attempt {attempt+1}/{max_retries})...")
+            time.sleep(5)
+            continue
+        
+        err_type = "Transient" if res.returncode in transient_codes else "Terminal"
+        return f"{err_type} rsync error {res.returncode}: {res.stderr}"
+    return "Max retries exceeded"
 
 # Copy the contents of a module/run dir from a DAQ node
 # to the corresponding run dir on this (head) node.
@@ -78,47 +100,32 @@ def copy_dir_from_node(run_name: str, daq_config: DaqConfigValidator, node: DaqN
     pf = node.port_forwarding
     use_pf = pf is not None and pf.status
 
-    # copy stdout from remote node to this node
+    # Base rsync command
+    base_rsync = ["rsync", "-P"]
     if use_pf and pf is not None:
-        cmd = f'rsync -P -e "ssh -p {pf.port}" {node.username}@{pf.gw_ip}:{node.data_dir}/{run_name}/{util.hp_stdout_prefix}* {run_dir_path}'
+        base_rsync.extend(["-e", f"ssh -p {pf.port}"])
+        remote_host = f"{node.username}@{pf.gw_ip}"
     else:
-        cmd = f'rsync -P {node.username}@{node.ip_addr}:{node.data_dir}/{run_name}/{util.hp_stdout_prefix}* {run_dir_path}'
-    if verbose:
-        print(cmd)
-    try:
-        ret = os.system(cmd)
-        if ret:
-            return f'copy_dir_from_node(): {cmd} returned {ret}'
-    except Exception as e:
-        return f'copy_dir_from_node(): {cmd} failed with {e}'
+        remote_host = f"{node.username}@{node.ip_addr}"
 
-    # copy process snapshot from remote node to this node
-    if use_pf and pf is not None:
-        cmd = f'rsync -P -e "ssh -p {pf.port}" {node.username}@{pf.gw_ip}:{node.data_dir}/{run_name}/{util.pss_prefix}* {run_dir_path}'
-    else:
-        cmd = f'rsync -P {node.username}@{node.ip_addr}:{node.data_dir}/{run_name}/{util.pss_prefix}* {run_dir_path}'
-    if verbose:
-        print(cmd)
-    try:
-        ret = os.system(cmd)
-        if ret:
-            return f'copy_dir_from_node(): {cmd} returned {ret}'
-    except Exception as e:
-        return f'copy_dir_from_node(): {cmd} failed with {e}'
+    # 1. copy stdout
+    cmd = [*base_rsync, f"{remote_host}:{node.data_dir}/{run_name}/{util.hp_stdout_prefix}*", run_dir_path]
+    err = _run_rsync_with_retry(cmd, verbose)
+    if err:
+        return f"copy_dir_from_node(stdout): {err}"
 
-    # copy PFF files from remote node to this node
-    if use_pf and pf is not None:
-        cmd = f'rsync -P -e "ssh -p {pf.port}" {node.username}@{pf.gw_ip}:{node.data_dir}/module_{module_id}/{run_name}/* {run_dir_path}'
-    else:
-        cmd = f'rsync -P {node.username}@{node.ip_addr}:{node.data_dir}/module_{module_id}/{run_name}/* {run_dir_path}'
-    if verbose:
-        print(cmd)
-    try:
-        ret = os.system(cmd)
-        if ret:
-            return f'copy_dir_from_node(): {cmd} returned {ret}'
-    except Exception as e:
-        return f'copy_dir_from_node(): {cmd} failed with {e}'
+    # 2. copy process snapshot
+    cmd = [*base_rsync, f"{remote_host}:{node.data_dir}/{run_name}/{util.pss_prefix}*", run_dir_path]
+    err = _run_rsync_with_retry(cmd, verbose)
+    if err:
+        return f"copy_dir_from_node(snapshot): {err}"
+
+    # 3. copy PFF files
+    cmd = [*base_rsync, f"{remote_host}:{node.data_dir}/module_{module_id}/{run_name}/*", run_dir_path]
+    err = _run_rsync_with_retry(cmd, verbose)
+    if err:
+        return f"copy_dir_from_node(PFF): {err}"
+
     return ''
 
 # create a directory on DAQ nodes
@@ -134,11 +141,11 @@ def make_remote_dirs(daq_config: DaqConfigValidator, dirname: str) -> None:
         Exception: If the SSH command fails on any node.
     """
     for node in daq_config.daq_nodes:
-        cmd = f'ssh {node.username}@{node.ip_addr} "cd {node.data_dir}; mkdir {dirname}"'
-        print(cmd)
-        ret = os.system(cmd)
-        if ret:
-            raise Exception(f'{cmd} returned {ret}')
+        cmd = ["ssh", f"{node.username}@{node.ip_addr}", f"cd {node.data_dir}; mkdir {dirname}"]
+        print(" ".join(cmd))
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f'{" ".join(cmd)} returned {res.returncode}: {res.stderr}')
 
 # copy config files to run dirs on DAQ nodes
 #

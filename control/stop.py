@@ -19,12 +19,14 @@ import builtins
 import contextlib
 import logging
 import os
+import shutil
 import signal
 import socket
 import tempfile
 import time
 from argparse import ArgumentParser
 from datetime import UTC, datetime
+from glob import glob
 from typing import Any
 
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -329,12 +331,14 @@ def _cleanup_daq_grpc(
         ip_addr = str(node.ip_addr)
         if ip_addr in my_ip:
             # Head node is also DAQ node: local rm -rf
-            cmd = f'rm -rf {node.data_dir}/module_*/{run}'
+            module_dirs = glob(f'{node.data_dir}/module_*/{run}')
             if verbose:
-                print(cmd)
-            ret = os.system(cmd)
-            if ret:
-                log_error(f'cleanup_daq (local): {cmd} returned {ret}', head_run_dir)
+                print(f"Removing local directories: {module_dirs}")
+            for d in module_dirs:
+                try:
+                    shutil.rmtree(d)
+                except Exception as err:
+                    log_error(f'cleanup_daq (local): failed to remove {d}: {err}', head_run_dir)
         else:
             grpc_host, grpc_port = util.daq_grpc_endpoint(node)
             if verbose:
@@ -372,6 +376,13 @@ async def stop_run(
     5. Cleanup.
     """
     state_mgr = RunStateManager()
+    cancel_event = asyncio.Event()
+
+    # Task 2.3: Signal handlers
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: cancel_event.set())
+
     try:
         state_mgr.acquire_lock()
     except RuntimeError as e:
@@ -427,24 +438,30 @@ async def stop_run(
             if not complete_file_exists(run_dir, recording_ended_filename):
                 write_complete_file(run_dir, recording_ended_filename)
             
-            collect_error = ''
+            collect_result = None
             if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
-                print("collecting data from DAQ nodes...")
-                collect_error = collect.collect_data(daq_config, run, verbose)
-                if collect_error == '':
-                    write_complete_file(run_dir, collect_complete_filename)
+                if cancel_event.is_set():
+                    print("Stop process cancelled before collection.")
                 else:
-                    print(f"Data collection errors occurred: {collect_error}")
+                    print("collecting data from DAQ nodes...")
+                    collect_result = collect.collect_data(daq_config, run, verbose)
+                    if collect_result.success:
+                        write_complete_file(run_dir, collect_complete_filename)
+                    else:
+                        print(f"Data collection errors occurred: {', '.join(collect_result.errors)}")
 
-            if collect_error == '':
+            if collect_result is None or collect_result.success:
                 if not no_cleanup:
-                    print("cleaning up DAQ nodes...")
-                    _cleanup_daq_grpc(daq_config, run, run_dir, verbose, force=force_cleanup)
+                    if cancel_event.is_set():
+                        print("Stop process cancelled before cleanup.")
+                    else:
+                        print("cleaning up DAQ nodes...")
+                        _cleanup_daq_grpc(daq_config, run, run_dir, verbose, force=force_cleanup)
                 make_links(run_dir, verbose)
                 write_complete_file(run_dir, run_complete_filename)
                 print(f'completed run {run}')
             else:
-                log_error(collect_error, run_dir)
+                log_error("\n".join(collect_result.errors), run_dir)
             
             # Finalize ledger
             if ledger:
@@ -455,6 +472,8 @@ async def stop_run(
             print(f"Run dir {data_dir}/{run} not found; recorded artifacts may be missing.")
 
     finally:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.remove_signal_handler(sig)
         state_mgr.release_lock()
 
 

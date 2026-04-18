@@ -27,7 +27,9 @@ import json
 import logging
 import os
 import shutil
+import signal
 import socket
+import subprocess
 import time
 import traceback
 from argparse import ArgumentParser
@@ -306,12 +308,10 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
             # We need to know which module IDs are on this node to create module_N dirs
             # node.module_ids is a list of ints or a range string (preprocessed to list[int])
             for mid in node.module_ids:
-                cmd = f'mkdir -p {daq_config.head_node_data_dir}/module_{mid}/{run_name}'
+                path = f'{daq_config.head_node_data_dir}/module_{mid}/{run_name}'
                 if verbose:
-                    print(cmd)
-                ret = os.system(cmd)
-                if ret:
-                    raise Exception(f'{cmd} returned {ret}')
+                    print(f"mkdir -p {path}")
+                os.makedirs(path, exist_ok=True)
         else:
             username = node.username
             data_dir = node.data_dir
@@ -322,17 +322,20 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
             rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
             rcmnd = ';'.join(rcmds)
             logger.info(f'DAQ IP: {ip_addr}')
+            ssh_args = ["ssh"]
             if node.port_forwarding and node.port_forwarding.status:
                 real_ip = str(node.port_forwarding.gw_ip)
-                port = node.port_forwarding.port
-                cmd = f'ssh -p {port} {username}@{real_ip} "{rcmnd}"'
+                port = str(node.port_forwarding.port)
+                ssh_args.extend(["-p", port, f"{username}@{real_ip}"])
             else:
-                cmd = f'ssh {username}@{ip_addr} "{rcmnd}"'
+                ssh_args.append(f"{username}@{ip_addr}")
+            ssh_args.append(rcmnd)
+            
             if verbose:
-                print(cmd)
-            ret = os.system(cmd)
-            if ret:
-                raise Exception(f'{cmd} returned {ret}')
+                print(" ".join(ssh_args))
+            res = subprocess.run(ssh_args, capture_output=True, text=True)
+            if res.returncode != 0:
+                raise RuntimeError(f"Failed to create run dirs on {ip_addr}: {res.stderr}")
 
     # copy config files to DAQ nodes
     file_xfer.copy_config_files(daq_config, run_name, verbose)
@@ -344,16 +347,18 @@ async def start_recording(
     daq_config: DaqConfigValidator,
     run_name: str,
     no_hv: bool,
-    state_mgr: RunStateManager
+    state_mgr: RunStateManager,
+    cancel_event: asyncio.Event
 ) -> None:
     """
     Asynchronously starts recording on DAQ nodes and performs heartbeat liveness checks.
     Transactional Contract:
     - Starts local HK/HV daemons.
     - Issues StartDaq to all remote nodes concurrently.
-    - Waits 2s and probes StatusDaq for Hashpipe ALIVE heartbeat.
-    - Updates run_state.toml ledger with receipts.
-    - Raises Exception on ANY failure to trigger the parent rollback ladder.
+    - Updates run_state.toml with STARTING receipts.
+    - Performs retry heartbeat probe loop (≤ 5 attempts x 1 s back-off).
+    - Upgrades to START_SUCCESS after heartbeat.
+    - Raises Exception on ANY failure or cancellation to trigger the parent rollback ladder.
     """
     logger = logging.getLogger('PANOSETI.Start.start_recording')
     loop = asyncio.get_running_loop()
@@ -371,6 +376,9 @@ async def start_recording(
     async def start_node(node_validator: DaqNodeValidator) -> None:
         if not node_validator.module_ids:
             return
+        if cancel_event.is_set():
+            return
+
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
         
@@ -389,41 +397,78 @@ async def start_recording(
         # Call gRPC synchronously in thread pool
         ok = await loop.run_in_executor(None, lambda: client.StartDaq(start_args))
         if not ok:
+            await state_mgr.update_node_receipt(NodeReceipt(
+                ip_addr=node_validator.ip_addr,
+                status="START_FAILED",
+                message="StartDaq RPC returned False"
+            ))
             raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}')
+        
+        # Immediate receipt update (STARTING)
+        await state_mgr.update_node_receipt(NodeReceipt(
+            ip_addr=node_validator.ip_addr,
+            status="STARTING",
+            data_dir=node_validator.data_dir
+        ))
 
     # Execute all starts in parallel
     await asyncio.gather(*(start_node(n) for n in daq_config.daq_nodes))
 
-    # 3. Liveness Probe (Heartbeat)
-    logger.info("Waiting for Hashpipe stabilization heartbeat...")
-    await asyncio.sleep(2.0)
+    if cancel_event.is_set():
+        raise asyncio.CancelledError("Start process cancelled by user")
 
+    # 3. Liveness Probe (Heartbeat) with retry loop
+    logger.info("Waiting for Hashpipe stabilization heartbeat...")
+    
     async def probe_node(node_validator: DaqNodeValidator) -> None:
         if not node_validator.module_ids:
             return
+        
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         client = DaqControlClient(host=grpc_host, port=grpc_port)
         
-        # StatusDaq request
-        ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
-            'data_dir': node_validator.data_dir,
-            'check_hashpipe_running': True
-        }))
-        
-        if not ok:
-             raise RuntimeError(f"Heartbeat RPC failed for node {node_validator.ip_addr}")
-        if not status.get('hashpipe_running'):
-             raise RuntimeError(f"Hashpipe heartbeat check failed (NOT ALIVE) on node {node_validator.ip_addr}")
-        
-        # Success: Update ledger with receipt
-        receipt = NodeReceipt(
+        # Retry loop: 5 attempts, 1s backoff
+        last_err = ""
+        for attempt in range(1, 6):
+            if cancel_event.is_set():
+                raise asyncio.CancelledError("Heartbeat check cancelled by user")
+            
+            await asyncio.sleep(1.0) # 1s between attempts
+            
+            try:
+                ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
+                    'data_dir': node_validator.data_dir,
+                    'check_hashpipe_running': True
+                }))
+                
+                if ok:
+                    if status.get('hashpipe_running'):
+                        # Success: Update ledger with START_SUCCESS
+                        receipt = NodeReceipt(
+                            ip_addr=node_validator.ip_addr,
+                            status="START_SUCCESS",
+                            hashpipe_pid=status.get('hashpipe_pid'),
+                            data_dir=node_validator.data_dir
+                        )
+                        await state_mgr.update_node_receipt(receipt)
+                        logger.info(f"Node {node_validator.ip_addr} heartbeat OK on attempt {attempt} (PID {receipt.hashpipe_pid})")
+                        return
+                    else:
+                        last_err = "hashpipe not running"
+                else:
+                    last_err = "StatusDaq RPC returned False"
+            except Exception as e:
+                last_err = str(e)
+            
+            logger.warning(f"Heartbeat attempt {attempt} failed for {node_validator.ip_addr}: {last_err}")
+
+        # If we reach here, all retries failed
+        await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
-            status="START_SUCCESS",
-            hashpipe_pid=status.get('hashpipe_pid'),
-            data_dir=node_validator.data_dir
-        )
-        state_mgr.update_node_receipt(receipt)
-        logger.info(f"Node {node_validator.ip_addr} heartbeat OK (PID {receipt.hashpipe_pid})")
+            status="START_FAILED",
+            message=f"Heartbeat failed after 5 attempts: {last_err}"
+        ))
+        raise RuntimeError(f"Hashpipe heartbeat check failed on node {node_validator.ip_addr}: {last_err}")
 
     # Parallel heartbeat verification
     await asyncio.gather(*(probe_node(n) for n in daq_config.daq_nodes))
@@ -437,7 +482,8 @@ async def start_run(
     network_config: NetworkConfigValidator,
     no_hv: bool,
     no_redis: bool,
-    no_data: bool
+    no_data: bool,
+    force_reset: bool = False
 ) -> bool:
     """
     Main transactional run coordinator.
@@ -452,6 +498,12 @@ async def start_run(
     8. Finalize.
     """
     state_mgr = RunStateManager()
+    cancel_event = asyncio.Event()
+
+    # Install signal handlers for Task 2.3
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: cancel_event.set())
     
     try:
         state_mgr.acquire_lock()
@@ -466,12 +518,36 @@ async def start_run(
             print(f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
             return False
 
-        # Check existing ledger state instead of simple file
+        # Task 2.2: Stale ledger self-heal
         existing_state = state_mgr.load_state()
         if existing_state and existing_state.status in ["STARTING", "ACTIVE", "STOPPING"]:
-            print(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status})")
-            print("Run stop.py, then try again.")
-            return False
+            stale = False
+            if force_reset:
+                print("Force reset requested. Archiving existing ledger.")
+                stale = True
+            elif existing_state.host == socket.gethostname() and existing_state.pid:
+                # Check if PID is alive
+                try:
+                    os.kill(existing_state.pid, 0)
+                except OSError:
+                    print(f"Detected stale ledger from dead PID {existing_state.pid} on this host.")
+                    stale = True
+            
+            if stale:
+                aborted_base = f"{daq_config.head_node_data_dir}/_aborted/{existing_state.run_name}"
+                suffix = 1
+                aborted_dir = aborted_base
+                while await asyncio.to_thread(os.path.exists, aborted_dir):
+                    aborted_dir = f"{aborted_base}_{suffix}"
+                    suffix += 1
+                
+                print(f"Archiving stale ledger to {aborted_dir}")
+                os.makedirs(aborted_dir, exist_ok=True)
+                state_mgr.state_path.rename(f"{aborted_dir}/stale_run_state.toml")
+            else:
+                print(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status})")
+                print("Run stop.py, then try again, or use --force-reset.")
+                return False
 
         if util.is_hk_recorder_running():
             print('The HK recorder is running. Run stop.py, then try again.')
@@ -491,6 +567,8 @@ async def start_run(
             run_name=run_name,
             status="STARTING",
             start_time=datetime.now(UTC).isoformat(),
+            pid=os.getpid(),
+            host=socket.gethostname(),
             config_metadata={
                 "obs_name": obs_config.name,
                 "run_type": data_config.run_type,
@@ -507,17 +585,23 @@ async def start_run(
 
         # --- ROLLBACK LADDER BEGIN ---
         try:
+            if cancel_event.is_set():
+                raise asyncio.CancelledError()
+
             print(f'setting up run directories for {run_name}')
             make_run_dirs(run_name, daq_config)
             
             if not no_data:
+                if cancel_event.is_set():
+                    raise asyncio.CancelledError()
+
                 print('starting data flow from quabos')
                 start_data_flow(quabo_uids, data_config, daq_config, network_config)
                 
                 print('starting recording (Phase 3: Transactional)')
-                await start_recording(obs_config, data_config, daq_config, run_name, no_hv, state_mgr)
+                await start_recording(obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event)
             
-        except Exception as e:
+        except (Exception, asyncio.CancelledError) as e:
             print(f"\n[CRITICAL FAILURE] Start process aborted: {e}")
             print("Triggering Rollback Ladder...")
             
@@ -527,11 +611,17 @@ async def start_run(
                 ledger.status = "ABORTED"
                 await asyncio.to_thread(state_mgr.save_state, ledger)
             
-            # Ladder Step 1: Stop remote nodes
+            # Ladder Step 1: Stop remote nodes (Only those that were attempted)
             print("Stopping remote DAQ nodes...")
             for node in daq_config.daq_nodes:
                 if not node.module_ids:
                     continue
+                # Consult ledger to see if we should stop this node
+                # If there's a receipt, it means we at least called StartDaq
+                receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
+                if not receipt:
+                    continue
+
                 try:
                     grpc_host, grpc_port = util.daq_grpc_endpoint(node)
                     client = DaqControlClient(host=grpc_host, port=grpc_port)
@@ -551,12 +641,23 @@ async def start_run(
             await asyncio.to_thread(util.kill_module_temp_monitor)
 
             # Ladder Step 4: Archive partial artifacts
-            aborted_dir = f"{daq_config.head_node_data_dir}/_aborted/{run_name}"
+            aborted_base = f"{daq_config.head_node_data_dir}/_aborted/{run_name}"
+            suffix = 1
+            aborted_dir = aborted_base
+            while await asyncio.to_thread(os.path.exists, aborted_dir):
+                aborted_dir = f"{aborted_base}_{suffix}"
+                suffix += 1
+
             print(f"Archiving partial artifacts to {aborted_dir}")
-            await asyncio.to_thread(os.makedirs, os.path.dirname(aborted_dir), exist_ok=True)
+            await asyncio.to_thread(os.makedirs, aborted_dir, exist_ok=True)
             local_run_dir = f"{daq_config.head_node_data_dir}/{run_name}"
             if await asyncio.to_thread(os.path.exists, local_run_dir):
-                await asyncio.to_thread(shutil.move, local_run_dir, aborted_dir)
+                # Move contents to aborted_dir
+                for item in os.listdir(local_run_dir):
+                    s = os.path.join(local_run_dir, item)
+                    d = os.path.join(aborted_dir, item)
+                    await asyncio.to_thread(shutil.move, s, d)
+                await asyncio.to_thread(os.rmdir, local_run_dir)
                 
                 # Use a string representation of the exception for the context dump
                 err_msg = str(e)
@@ -582,6 +683,8 @@ async def start_run(
         return True
 
     finally:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.remove_signal_handler(sig)
         state_mgr.release_lock()
 
 async def main() -> None:
@@ -604,6 +707,8 @@ async def main() -> None:
                         help='Stop session at end of run (with --nsecs).')
     parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
                         help='print commands.')
+    parser.add_argument('--force-reset', dest='force_reset', action='store_true', default=False,
+                        help='Force reset the state ledger if stale.')
     args = parser.parse_args()
     no_hv = args.no_hv
     no_redis = args.no_redis
@@ -611,6 +716,7 @@ async def main() -> None:
     nsecs = args.nsecs
     stop_session = args.stop_session
     verbose = args.verbose
+    force_reset = args.force_reset
 
     # load config files
     obs_config = config_file.get_obs_config()
@@ -622,7 +728,7 @@ async def main() -> None:
     
     success = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
-        network_config, no_hv, no_redis, no_data
+        network_config, no_hv, no_redis, no_data, force_reset
     )
     
     if success and nsecs:
