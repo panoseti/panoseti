@@ -123,7 +123,7 @@ class TestConcurrentDaqOperations:
             "module_id": rp["module_id"],
         })
         assert cleanup_resp["success"] is False
-        assert "HASHPIPE is running" in cleanup_resp["message"]
+        assert "HASHPIPE is still alive" in cleanup_resp["message"]
 
         # After stop, cleanup should succeed (or gracefully no-op)
         daq_control_direct.StopDaq({

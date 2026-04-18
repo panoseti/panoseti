@@ -279,39 +279,43 @@ class DaqNodeValidator(BaseModel):
     username: str
     data_dir: str
     ip_addr: IPvAnyAddress
-    module_ids: str | list[int]
+    module_ids: list[int]
     bindhost: str | None = Field("0.0.0.0")
     port_forwarding: PortForwarding | None = None
     modules: list[Any] = Field(default_factory=list)
 
-    @field_validator('module_ids', mode='after')
-    def validate_module_range(cls, v: str | list[int]) -> str | list[int]:
+    @field_validator('module_ids', mode='before')
+    def validate_module_range(cls, v: Any) -> list[int]:
         if isinstance(v, list):
             # Module ids must be non-negative
-            if not all(mid >= 0 for mid in v):
+            res = [int(x) for x in v]
+            if not all(mid >= 0 for mid in res):
                 raise ValueError(f"Invalid module IDs ({v}): Module ids must be non-negative")
-            elif len(set(v)) != len(v):
+            elif len(set(res)) != len(res):
                 raise ValueError(f"Invalid module IDs ({v}): Module IDs must be unique if provided as a list of integers")
-            elif len(v) == 0:
+            elif len(res) == 0:
                 raise ValueError(f"Invalid module IDs ({v}): Module IDs must be non-empty")
             else:
-                return v
+                return res
         elif isinstance(v, str):
             if re.match(r'^\d+\-\d+$', v):
-                # print(v)
                 start, end = map(int, v.split('-'))
                 if start > end:
                     raise ValueError(f"Start module ID ({start}) must be <= End module ID ({end})")
-                return v
+                return list(range(start, end + 1))
             elif re.match(r'^(\d+)(, ?\d+)*$', v):
-                # print(v)
                 module_ids = list(map(int, v.split(',')))
-                assert len(module_ids) == len(set(module_ids)), "module_ids in list format must be unique"
-                return v
+                if len(module_ids) != len(set(module_ids)):
+                     raise ValueError("module_ids in list format must be unique")
+                return module_ids
             elif re.match(r'^\[\d+\]$', v):
-                return v
+                return [int(v[1:-1])]
+            elif v.isdigit():
+                return [int(v)]
             else:
                 raise ValueError("module_ids must be in the format 'start-end' (e.g., '0-127') OR '<module_id_A>, <module_id_B>, ..., <module_id_N>'")
+        elif isinstance(v, int):
+            return [v]
         else:
             raise ValueError(f"Unexpected type for 'module_ids': '{type(v)=}'")
 

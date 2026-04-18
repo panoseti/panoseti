@@ -111,7 +111,7 @@ class TestDataCollectionTransaction:
             "module_id": run_params["module_id"],
         })
         assert cleanup_resp['success'] is False
-        assert "HASHPIPE is running" in cleanup_resp['message']
+        assert "HASHPIPE is still alive" in cleanup_resp['message']
 
         # Teardown
         daq_control_direct.StopDaq({

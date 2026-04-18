@@ -115,9 +115,9 @@ class TestSC006StopDaqPartialFailure:
         rp2 = dict(run_params, daq_ip_addr="192.168.0.20", module_id=[200])
 
         daq_control_direct.StartDaq(rp1)
-        wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+        wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
         daq_control_node2.StartDaq(rp2)
-        wait_hashpipe_running(daq_control_node2, DAQ_DATA_DIR, timeout=10)
+        wait_hashpipe_running(daq_control_node2, DAQ_DATA_DIR, timeout=4)
 
         # Freeze node-0's hashpipe to simulate a slow exit (StopDaq times out)
         with process_chaos.freeze_process(DAQNODE_CONTAINER, "hashpipe"):
@@ -144,7 +144,7 @@ class TestSC006StopDaqPartialFailure:
             asyncio.run(stop_module.stop_recording(daq_config, rp1["run_dir"], verbose=False))
             
             # Node-1 must still have been stopped despite node-0 failure
-            assert wait_hashpipe_stopped(daq_control_node2, DAQ_DATA_DIR, timeout=8), (
+            assert wait_hashpipe_stopped(daq_control_node2, DAQ_DATA_DIR, timeout=4), (
                 "Node-1 was never told to stop because node-0 raised first "
                 "(SC-006 bug: stop_recording is not fault-isolated per node)"
             )
@@ -228,7 +228,7 @@ def test_SC009_cleanup_blocked_while_hashpipe_running(
     recording is active.
     """
     daq_control_direct.StartDaq(run_params)
-    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
     try:
         ok, _resp = grpc_cleanup(daq_control_direct, {
             "data_dir":  run_params["data_dir"],
@@ -244,7 +244,7 @@ def test_SC009_cleanup_blocked_while_hashpipe_running(
             "data_dir": run_params["data_dir"],
             "run_dir": run_params["run_dir"],
         })
-        wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+        wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
 
 # ── SC-010 (Exemplar A): Orphaned hashpipe blocks CleanupData ─────────────
@@ -281,7 +281,7 @@ class TestSC010OrphanedHashpipe:
         - Leave .pff files intact on the DAQ node
         """
         daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10), \
+        assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4), \
             "hashpipe did not start"
 
         # Simulate crash: SIGKILL bypasses StopDaq
@@ -320,7 +320,7 @@ class TestSC010OrphanedHashpipe:
         incident-key logic in the server.
         """
         daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+        assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
         process_chaos.kill_process(DAQNODE_CONTAINER, "hashpipe", sig="KILL")
         process_chaos.wait_for_process_death(DAQNODE_CONTAINER, "hashpipe", timeout=5)
@@ -355,7 +355,7 @@ class TestSC010OrphanedHashpipe:
         force is only an escape hatch for the dead-PID path, not a kill switch.
         """
         daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+        assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
         try:
             ok, _resp = grpc_cleanup(daq_control_direct, {
                 "data_dir":  run_params["data_dir"],
@@ -372,7 +372,7 @@ class TestSC010OrphanedHashpipe:
                 "data_dir": run_params["data_dir"],
                 "run_dir": run_params["run_dir"],
             })
-            wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+            wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
 
 # ── SC-013: StatusDaq during StartDaq (contract test) ────────────────────────
@@ -413,7 +413,7 @@ def test_SC013_status_during_start_is_consistent(
         "data_dir": run_params["data_dir"],
         "run_dir": run_params["run_dir"],
     })
-    wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+    wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
 
 # ── SC-018: Concurrent StartDaq to same node (contract test) ─────────────────
@@ -440,8 +440,8 @@ def test_SC018_concurrent_start_same_node_only_one_wins(
     t2 = threading.Thread(target=_inner_start, args=("b",))
     t1.start()
     t2.start()
-    t1.join(timeout=10)
-    t2.join(timeout=10)
+    t1.join(timeout=4)
+    t2.join(timeout=4)
 
     winners = [o for o in outcomes if o[0]]
     assert len(winners) <= 1, (
@@ -455,7 +455,7 @@ def test_SC018_concurrent_start_same_node_only_one_wins(
                 "data_dir": run_params["data_dir"],
                 "run_dir": run_dir,
             })
-            wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+            wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
             daq_control_direct.CleanupData({
                 "data_dir":  run_params["data_dir"],
                 "run_dir":   run_dir,
@@ -542,13 +542,13 @@ def test_SC011_cleanup_partial_failure_logs_and_continues(
     # Start a run on node-0 only
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok, "StartDaq failed on node-0"
-    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
     daq_control_direct.StopDaq({
         "data_dir": run_params["data_dir"],
         "run_dir": run_params["run_dir"],
     })
-    wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+    wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
     # Cleanup node-0 must succeed
     ok0, resp0 = grpc_cleanup(daq_control_direct, {

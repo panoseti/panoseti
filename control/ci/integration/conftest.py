@@ -361,19 +361,26 @@ def head_data_dir() -> pathlib.Path:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def daqnode_container() -> Any:
+def docker_client() -> Any:
+    """Returns a Docker SDK client handle. Skips if unavailable."""
+    try:
+        import docker
+        return docker.from_env()
+    except Exception as e:
+        pytest.skip(f"Docker SDK unavailable: {e}")
+
+
+@pytest.fixture(scope="session")
+def daqnode_container(docker_client: Any) -> Any:
     """
     Returns a thin wrapper around the daqnode Docker container.
     Requires /var/run/docker.sock to be mounted in the test-runner.
-    Skips gracefully if docker SDK is unavailable.
     """
     try:
-        import docker
-        client = docker.from_env()
-        container = client.containers.get(DAQNODE_CONTAINER)
+        container = docker_client.containers.get(DAQNODE_CONTAINER)
         return container
     except Exception as e:
-        pytest.skip(f"Docker SDK unavailable or container not found: {e}")
+        pytest.skip(f"Daqnode container {DAQNODE_CONTAINER} not found: {e}")
 
 
 # ---------------------------------------------------------------------------

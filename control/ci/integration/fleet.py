@@ -25,7 +25,7 @@ from typing import Any
 
 MAX_DEFAULT_FLEET_N = 4
 DAQNODE_SHM_BYTES = 2 * 1024 ** 3  # 2 GB
-DAQNODE_IMAGE = "integration-daqnode"
+DAQNODE_IMAGE = "ctl-int-daqnode"
 BASE_IP_PREFIX = "192.168.0"
 BASE_HEADNODE_IP_PREFIX = "10.0.1"
 BASE_IP_OFFSET = 30  # first dynamic daqnode at .30, .31, ...

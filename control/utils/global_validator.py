@@ -217,9 +217,6 @@ class GlobalConfigValidator:
         expand_ranges(self.daq_conf)
         for daq in self.daq_conf.daq_nodes:
             ids = daq.module_ids
-            if isinstance(ids, str):
-                from .config_file import string_to_list
-                ids = string_to_list(ids)
             overlap = seen_ids.intersection(ids)
             if overlap:
                 self.report.add_test("DAQ Overlap", "ERROR",

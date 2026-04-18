@@ -305,7 +305,7 @@ def test_SC025_start_with_run_in_progress_is_rejected(
     This pins the double-start prevention contract (not TDD-forcing).
     """
     daq_control_direct.StartDaq(run_params)
-    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
     try:
         ok2, _resp2 = grpc_start(daq_control_direct,
             dict(run_params, run_dir=f"second_{uuid.uuid4().hex[:8]}.pffd")
@@ -319,7 +319,7 @@ def test_SC025_start_with_run_in_progress_is_rejected(
             "data_dir": run_params["data_dir"],
             "run_dir": run_params["run_dir"],
         })
-        wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+        wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
         daq_control_direct.CleanupData({
             "data_dir": run_params["data_dir"],
             "run_dir": run_params["run_dir"],
@@ -955,12 +955,12 @@ def test_SC036_run_dir_collision_is_detected(
     # Start and stop a run with a known run_dir
     ok1, _ = grpc_start(daq_control_direct, run_params)
     assert ok1, "First StartDaq must succeed"
-    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=10)
+    assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
     daq_control_direct.StopDaq({
         "data_dir": run_params["data_dir"],
         "run_dir": run_params["run_dir"],
     })
-    wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=8)
+    wait_hashpipe_stopped(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
     # Attempt to start again with the same run_dir (the dir still exists on disk)
     ok2, resp2 = grpc_start(daq_control_direct, run_params)

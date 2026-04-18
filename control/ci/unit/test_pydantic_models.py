@@ -440,7 +440,7 @@ class TestObsModuleConfig:
 class TestDaqNodeValidator:
     def test_valid_range_string(self):
         n = DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="128-255")
-        assert n.module_ids == "128-255"
+        assert n.module_ids == list(range(128, 256))
 
     def test_valid_list_of_ints(self):
         n = DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2",

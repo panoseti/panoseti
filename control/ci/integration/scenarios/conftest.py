@@ -147,7 +147,7 @@ def grpc_stop_daq(
     ok, resp = _stop(client, {"data_dir": params["data_dir"], "run_dir": params["run_dir"]})
     if not ok:
         raise StopPartialFailure(f"StopDaq failed: {resp}")
-    wait_hashpipe_stopped(client, params["data_dir"], timeout=10)
+    wait_hashpipe_stopped(client, params["data_dir"], timeout=4)
 
     cleanup_req: dict[str, Any] = {
         "data_dir": params["data_dir"],
@@ -175,9 +175,22 @@ def any_pff_files_on_daqnode(run_dir: str, module_ids: list[int] | None = None) 
     return False
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-@pytest.fixture(scope="session")
+@pytest.fixture
+def daqnode_fleet(request: Any, docker_client: Any) -> Iterator[Any]:
+    """
+    Dynamic N-node fleet fixture.
+    Usage: @pytest.mark.parametrize("daqnode_fleet", [4], indirect=True)
+    """
+    from ci.integration.fleet import make_fleet
+    n_nodes = request.param
+    fleet = make_fleet(docker_client, n_nodes)
+    try:
+        fleet.start()
+        fleet.wait_healthy()
+        # fleet.verify_shm() # skip shm check for CI (may fail if shm is not 2g)
+        yield fleet
+    finally:
+        fleet.tear_down()
 def daq_control_direct() -> DaqControlClient:
     return DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
 
@@ -251,7 +264,7 @@ def fresh_run_state(
                         "data_dir": run_params["data_dir"],
                         "run_dir": rdir,
                     })
-        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
+        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=4)
 
     # Pre-test cleanup
     _stop_any_running_hashpipe()

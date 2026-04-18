@@ -376,8 +376,13 @@ async def start_recording(
     async def start_node(node_validator: DaqNodeValidator) -> None:
         if not node_validator.module_ids:
             return
-        if cancel_event.is_set():
-            return
+        
+        # Immediate receipt update (STARTING) before RPC
+        await state_mgr.update_node_receipt(NodeReceipt(
+            ip_addr=node_validator.ip_addr,
+            status="STARTING",
+            data_dir=node_validator.data_dir
+        ))
 
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
@@ -403,16 +408,11 @@ async def start_recording(
                 message="StartDaq RPC returned False"
             ))
             raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}')
-        
-        # Immediate receipt update (STARTING)
-        await state_mgr.update_node_receipt(NodeReceipt(
-            ip_addr=node_validator.ip_addr,
-            status="STARTING",
-            data_dir=node_validator.data_dir
-        ))
 
-    # Execute all starts in parallel
-    await asyncio.gather(*(start_node(n) for n in daq_config.daq_nodes))
+    # Execute all starts in parallel with TaskGroup for fail-fast behavior
+    async with asyncio.TaskGroup() as tg:
+        for n in daq_config.daq_nodes:
+            tg.create_task(start_node(n))
 
     if cancel_event.is_set():
         raise asyncio.CancelledError("Start process cancelled by user")
@@ -470,8 +470,10 @@ async def start_recording(
         ))
         raise RuntimeError(f"Hashpipe heartbeat check failed on node {node_validator.ip_addr}: {last_err}")
 
-    # Parallel heartbeat verification
-    await asyncio.gather(*(probe_node(n) for n in daq_config.daq_nodes))
+    # Parallel heartbeat verification with TaskGroup
+    async with asyncio.TaskGroup() as tg:
+        for n in daq_config.daq_nodes:
+            tg.create_task(probe_node(n))
 
 
 async def start_run(
@@ -611,17 +613,20 @@ async def start_run(
                 ledger.status = "ABORTED"
                 await asyncio.to_thread(state_mgr.save_state, ledger)
             
-            # Ladder Step 1: Stop remote nodes (Only those that were attempted)
+            # Ladder Step 1: Stop remote DAQ nodes (Any that were attempted)
             print("Stopping remote DAQ nodes...")
+            # Load fresh ledger to get all receipts from concurrent tasks
+            ledger = await asyncio.to_thread(state_mgr.load_state)
+            
             for node in daq_config.daq_nodes:
                 if not node.module_ids:
                     continue
-                # Consult ledger to see if we should stop this node
-                # If there's a receipt, it means we at least called StartDaq
+                # If there's a receipt, it means we at least called update_node_receipt(STARTING)
                 receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
                 if not receipt:
                     continue
 
+                print(f"Rolling back node {node.ip_addr}...")
                 try:
                     grpc_host, grpc_port = util.daq_grpc_endpoint(node)
                     client = DaqControlClient(host=grpc_host, port=grpc_port)
