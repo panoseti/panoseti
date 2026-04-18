@@ -431,7 +431,7 @@ class CollectResult(BaseStrictModel):
 class RunStateLedger(BaseStrictModel):
     """The central source of truth for an active observatory run."""
     run_name: str
-    status: Literal["STARTING", "ACTIVE", "ABORTED", "STOPPING", "COMPLETED"] = "STARTING"
+    status: Literal["STARTING", "ACTIVE", "ABORTED", "STOPPING", "COMPLETED", "STOPPED_WITH_ERRORS"] = "STARTING"
     start_time: str  # ISO 8601
     pid: int | None = None
     host: str | None = None

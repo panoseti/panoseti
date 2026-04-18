@@ -24,6 +24,7 @@ services:
     volumes:
       # Mount repo for live edits during local development
       - ..:/app
+      - ../../grpc:/grpc
     working_dir: /app
     # Keeps container running in the background for `qa.py` execution
     command: ["sleep", "infinity"]

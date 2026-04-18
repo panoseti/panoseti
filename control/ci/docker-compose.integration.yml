@@ -69,6 +69,7 @@ services:
         ipv4_address: ${HEADNODE_HOST}
     volumes:
       - ..:/app
+      - ../../grpc:/grpc
     environment:
       REDIS_HOST: "${REDIS_HOST}"
       LOKI_URL:   "${LOKI_URL}"
@@ -107,6 +108,7 @@ services:
     volumes:
       - daq_data:/data
       - ..:/app
+      - ../../grpc:/grpc
     environment:
       GRPC_PORT:          "${GRPC_PORT}"
       BINDHOST:           "${BINDHOST}"
@@ -138,6 +140,7 @@ services:
     volumes:
       - daq_data_2:/data
       - ..:/app
+      - ../../grpc:/grpc
     environment:
       GRPC_PORT:          "${GRPC_PORT}"
       BINDHOST:           "${BINDHOST}"
@@ -204,6 +207,7 @@ services:
       - daq_data:/data
       - /var/run/docker.sock:/var/run/docker.sock
       - ..:/app
+      - ../../grpc:/grpc
       - mock_quabo_uds:/uds:ro
     depends_on:
       daqnode:
