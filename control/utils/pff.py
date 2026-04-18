@@ -128,9 +128,30 @@ def pff_file_type(name: str) -> str | None:
 # return time from parsed JSON header
 #
 def pkt_header_time(h: dict[str, Any]) -> float:
-    # Assuming wr_to_unix exists in the scope or module
-    # As it's referenced here, I'll assume it returns a float/unix timestamp
+    # Use precise timing based on Precise-Timing.md 25ms threshold
+    # if tv_usec is present.
+    if 'tv_usec' in h:
+        return wr_to_unix_precise(h['tv_sec'], h['tv_usec'], h['pkt_nsec'])
     return wr_to_unix(h['pkt_tai'], h['pkt_nsec'], h['tv_sec'])
+
+def wr_to_unix_precise(tv_sec: int, tv_usec: int, pkt_nsec: int) -> float:
+    """
+    Precise timing logic according to Precise-Timing.md (25 ms threshold).
+    Compares the NTP fractional second (tv_usec * 1000) against the GPS fractional second (pkt_nsec).
+    If they differ by > 25 ms, adjust tv_sec.
+    """
+    ntp_nsec = tv_usec * 1000
+    
+    # Is NTP behind GPS by crossing a second boundary?
+    # e.g., NTP is 500ms (0.5s), GPS is 30ms. GPS already rolled over.
+    if ntp_nsec - pkt_nsec > 25_000_000:
+        return (tv_sec + 1) + pkt_nsec / 1e9
+    # Is NTP ahead of GPS by crossing a second boundary?
+    # e.g., NTP is 30ms (0.03s), GPS is 970ms. NTP already rolled over.
+    elif pkt_nsec - ntp_nsec > 25_000_000:
+        return (tv_sec - 1) + pkt_nsec / 1e9
+    else:
+        return tv_sec + pkt_nsec / 1e9
 
 def img_header_time(h: dict[str, Any]) -> float:
     try:

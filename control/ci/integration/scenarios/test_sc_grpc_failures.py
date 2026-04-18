@@ -124,18 +124,28 @@ class TestSC006StopDaqPartialFailure:
             # In the production stop.py, stop_recording loops over nodes.
             # With node-0 frozen, SIGINT will not be acked → timeout.
             # Node-1 MUST still receive StopDaq.
-            with pytest.raises(StopPartialFailure) as exc_info:
-                # invoke_stop_py() for both nodes; this should fail because
-                # stop.py currently raises and never reaches node-2
-                _call_stop_recording_for_two_nodes(
-                    daq_control_direct, daq_control_node2, rp1, rp2
-                )
+            import stop as stop_module
+            from utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+            
+            # Construct a dummy DaqConfigValidator with both nodes
+            daq_config = DaqConfigValidator(
+                head_node_ip_addr="10.0.1.22",
+                head_node_data_dir="/data/head",
+                daq_nodes=[
+                    DaqNodeValidator(ip_addr=rp1["daq_ip_addr"], data_dir=rp1["data_dir"], username="root", module_ids=rp1["module_id"]),
+                    DaqNodeValidator(ip_addr=rp2["daq_ip_addr"], data_dir=rp2["data_dir"], username="root", module_ids=rp2["module_id"])
+                ]
+            )
+            
+            import asyncio
+            # Call actual stop_recording
+            asyncio.run(stop_module.stop_recording(daq_config, rp1["run_dir"], verbose=False))
+            
             # Node-1 must still have been stopped despite node-0 failure
             assert wait_hashpipe_stopped(daq_control_node2, DAQ_DATA_DIR, timeout=8), (
                 "Node-1 was never told to stop because node-0 raised first "
                 "(SC-006 bug: stop_recording is not fault-isolated per node)"
             )
-            assert "node" in str(exc_info.value).lower() or "timeout" in str(exc_info.value).lower()
 
         # Cleanup
         with contextlib.suppress(Exception):

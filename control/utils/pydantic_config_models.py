@@ -403,6 +403,7 @@ class QuaboUidModule(BaseModel):
 class QuaboUidDome(BaseStrictModel):
     """A dome-level grouping of Quabo UID modules."""
     modules: list[QuaboUidModule]
+    num: int | None = None
 
 class QuaboUidsValidator(BaseStrictModel):
     """Local cache of unique hardware IDs for all observatory Quabos."""

@@ -543,7 +543,7 @@ async def start_run(
                 
                 print(f"Archiving stale ledger to {aborted_dir}")
                 os.makedirs(aborted_dir, exist_ok=True)
-                state_mgr.state_path.rename(f"{aborted_dir}/stale_run_state.toml")
+                shutil.move(str(state_mgr.state_path), f"{aborted_dir}/stale_run_state.toml")
             else:
                 print(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status})")
                 print("Run stop.py, then try again, or use --force-reset.")
