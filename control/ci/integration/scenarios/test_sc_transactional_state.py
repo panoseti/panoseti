@@ -73,50 +73,100 @@ class TestSC002PartialStartRollback:
         """
         With one failing node: no hashpipe should remain running on any node,
         current_run must be unset, and a post-mortem snapshot must exist.
+
+        Strategy: mock start_recording so it (a) actually starts hashpipe on
+        node-0 via gRPC and writes a STARTING receipt, then (b) raises to
+        simulate node-1 failure.  The rollback ladder must stop node-0 and
+        write _aborted/<run_name>/start_failure_context.json.
         """
+        import asyncio as _asyncio
         import unittest.mock
         from ipaddress import IPv4Address
+        from typing import Any as AnyT
 
         import start
-        from utils import config_file
+        from panoseti_grpc.daq_control.client import DaqControlClient as _DaqClient
+        from utils import config_file, util as _util
         from utils.pydantic_config_models import DaqNodeValidator
+        from utils.run_state import NodeReceipt, RunStateManager
+
+        # Clear any stale lock/ledger from a previous test run.
+        RunStateManager().clear_state()
+
         obs_config = config_file.get_obs_config()
         daq_config = config_file.get_daq_config()
-        # Override head node IP to match test container
         daq_config.head_node_ip_addr = IPv4Address("10.0.1.5")
         daq_config.head_node_data_dir = "/data/head"
         quabo_uids = config_file.get_quabo_uids()
         data_config = config_file.get_data_config()
         network_config = config_file.get_network_config()
 
-        # Add a second node that will fail
+        # Add a second node that will be made to fail.
         daq_config.daq_nodes.append(
-            DaqNodeValidator(ip_addr=IPv4Address("192.168.0.20"), data_dir="/data", username="root", module_ids=[200])
+            DaqNodeValidator(
+                ip_addr=IPv4Address("192.168.0.20"),
+                data_dir="/data",
+                username="root",
+                module_ids=[200],
+            )
         )
 
-        original_start_daq = start.DaqControlClient.StartDaq
-        def mock_start_daq(self_client, req):
-            if req['daq_ip_addr'] == "192.168.0.20":
-                return False
-            return original_start_daq(self_client, req)
+        async def mock_start_recording(
+            obs_cfg: AnyT,
+            data_cfg: AnyT,
+            daq_cfg: AnyT,
+            run_nm: str,
+            no_hv: bool,
+            state_mgr_arg: AnyT,
+            cancel_ev: AnyT,
+        ) -> None:
+            """Actually start hashpipe on node-0, write receipt, then fail for node-1."""
+            grpc_host, grpc_port = _util.daq_grpc_endpoint(daq_cfg.daq_nodes[0])
+            loop = _asyncio.get_running_loop()
+            client = _DaqClient(host=grpc_host, port=grpc_port)
+            start_args = {
+                "data_dir": daq_cfg.daq_nodes[0].data_dir,
+                "daq_ip_addr": str(daq_cfg.daq_nodes[0].ip_addr),
+                "bindhost": "lo",
+                "max_file_size_mb": 1,
+                "group_ph_frames": True,
+                "run_dir": run_nm,
+                "obs": obs_cfg.name,
+                "module_id": daq_cfg.daq_nodes[0].module_ids,
+            }
+            await loop.run_in_executor(None, lambda: client.StartDaq(start_args))
+            await state_mgr_arg.update_node_receipt(
+                NodeReceipt(
+                    ip_addr=daq_cfg.daq_nodes[0].ip_addr,
+                    status="STARTING",
+                    data_dir=daq_cfg.daq_nodes[0].data_dir,
+                )
+            )
+            raise RuntimeError("Simulated node-1 StartDaq failure — SC-002 rollback test")
 
-        with unittest.mock.patch.object(start.DaqControlClient, 'StartDaq', new=mock_start_daq), \
-             unittest.mock.patch('start.ph_baseline_file_ok', return_value=True):
-            # run with no_data=True to skip quabo hardware setup in test environment
+        with unittest.mock.patch("start.start_recording", mock_start_recording), \
+             unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
+             unittest.mock.patch("start.start_data_flow"), \
+             unittest.mock.patch("start.make_run_dirs"), \
+             unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
+             unittest.mock.patch("start.util.kill_hk_recorder"), \
+             unittest.mock.patch("start.util.kill_hv_updater"), \
+             unittest.mock.patch("start.util.kill_module_temp_monitor"), \
+             unittest.mock.patch("start.util.stop_data_flow"):
             success = await start.start_run(
                 obs_config, daq_config, quabo_uids, data_config, network_config,
-                no_hv=True, no_redis=True, no_data=True, force_reset=True
+                no_hv=True, no_redis=True, no_data=False, force_reset=True,
             )
-            assert not success, "Start run should fail due to simulated node failure"
-            
-        # Assert: node-0 hashpipe must NOT still be running after a partial failure
+            assert not success, "start_run must return False after simulated node-1 failure"
+
+        # Assert: node-0 hashpipe must NOT still be running after the rollback.
         assert not state_probe.hashpipe_running(), (
             "FAIL (SC-002): node-0 hashpipe is still running after partial multi-node "
-            "start failure — start.py has no rollback ladder.\n"
-            "Fix: wrap start_recording() in a try/except with rollback for all started nodes."
+            "start failure — start.py rollback ladder did not stop it.\n"
+            "Fix: ensure rollback calls StopDaq for all nodes with a STARTING receipt."
         )
 
-        # Check for aborted snapshot
+        # Check for aborted snapshot.
         aborted_root = state_probe.aborted_snapshot_root()
         if not aborted_root.exists():
             pytest.fail(

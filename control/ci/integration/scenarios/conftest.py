@@ -230,24 +230,36 @@ def fresh_run_state(
     """
     Pre-test: ensure no hashpipe is running.
     Post-test: unconditional stop + cleanup so the next test starts clean.
+
+    Uses StatusDaq(check_run_dirs=True) to discover the currently active run
+    directory before calling StopDaq.  The naïve approach of calling StopDaq
+    with the current test's (new, not-yet-created) run_dir fails server-side
+    validation and leaves a previous test's hashpipe running.
     """
+    def _stop_any_running_hashpipe() -> None:
+        with contextlib.suppress(Exception):
+            _ok, status = daq_control_direct.StatusDaq({
+                "data_dir": run_params["data_dir"],
+                "check_hashpipe_running": True,
+                "check_disk_usage": False,
+                "check_run_dirs": True,
+            })
+            for run_dir_path in status.get("run_dirs", []):
+                rdir = run_dir_path.rstrip("/").rsplit("/", 1)[-1]
+                with contextlib.suppress(Exception):
+                    daq_control_direct.StopDaq({
+                        "data_dir": run_params["data_dir"],
+                        "run_dir": rdir,
+                    })
+        wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
+
     # Pre-test cleanup
-    with contextlib.suppress(Exception):
-        daq_control_direct.StopDaq({
-            "data_dir": run_params["data_dir"],
-            "run_dir": run_params["run_dir"],
-        })
-    wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=5)
+    _stop_any_running_hashpipe()
 
     yield
 
     # Post-test cleanup
-    with contextlib.suppress(Exception):
-        daq_control_direct.StopDaq({
-            "data_dir": run_params["data_dir"],
-            "run_dir": run_params["run_dir"],
-        })
-    wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
+    _stop_any_running_hashpipe()
     with contextlib.suppress(Exception):
         daq_control_direct.CleanupData({
             "data_dir":  run_params["data_dir"],

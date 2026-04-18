@@ -43,6 +43,24 @@ def _redis_client() -> Any:
         pytest.skip(f"Redis unavailable: {e}")
 
 
+def _make_log_entry(payload: str, ts: float | None = None) -> str:
+    """Return a JSON string in the format storeLoki.py expects (matches LogSchema)."""
+    return json.dumps({
+        "host": "test-runner",
+        "service_name": "scenario_tests",
+        "timestamp": ts if ts is not None else time.time(),
+        "severity": 2,
+        "file_path": "test_sc_telemetry.py",
+        "line_number": 0,
+        "function_name": "test",
+        "process_id": None,
+        "thread_name": "main",
+        "git_commit": "test",
+        "git_branch": "test",
+        "payload_json": payload,
+    })
+
+
 def _loki_query(selector: str = '{job="panoseti"}', since_s: float = 30.0) -> list[dict[str, Any]]:
     """Simple Loki query helper."""
     try:
@@ -105,31 +123,20 @@ def test_SC061_large_log_payload_ships_without_crash() -> None:
     _require_telemetry()
     rc = _redis_client()
 
-    payload = "X" * 100_000  # 100 KB
-    log_entry = json.dumps({
-        "message": payload,
-        "level": "DEBUG",
-        "ts": time.time(),
-        "tag": f"sc061_{uuid.uuid4().hex[:8]}",
-    })
-    rc.rpush("logs:ingress", log_entry)
+    # Push the large payload using the storeLoki-expected format (payload_json field)
+    large_payload = "X" * 100_000  # 100 KB
+    rc.rpush("logs:ingress", _make_log_entry(large_payload))
 
     # Give storeLoki.py time to process
     time.sleep(3)
 
-    # storeLoki.py must still be running (not crashed)
-    # We can check this indirectly by verifying subsequent log entries are processed
-    small_entry = json.dumps({
-        "message": "SC-061 health check",
-        "level": "INFO",
-        "ts": time.time(),
-        "tag": "sc061_health",
-    })
-    rc.rpush("logs:ingress", small_entry)
+    # storeLoki.py must still be running — verify by checking a health-check entry arrives
+    health_tag = f"sc061_health_{uuid.uuid4().hex[:8]}"
+    rc.rpush("logs:ingress", _make_log_entry(health_tag))
     time.sleep(2)
 
     entries = _loki_query(since_s=10.0)
-    health_entries = [e for e in entries if "sc061_health" in e.get("line", "")]
+    health_entries = [e for e in entries if health_tag in e.get("line", "")]
     assert health_entries, (
         "storeLoki.py stopped processing after 100 KB payload — "
         "pipeline may have crashed (SC-061)"
@@ -141,25 +148,27 @@ def test_SC061_large_log_payload_ships_without_crash() -> None:
 def test_SC062_non_utf8_log_message_does_not_crash() -> None:
     """
     A log message containing non-UTF8 bytes must not crash storeLoki.py.
-    Currently: json.dumps/JSON encoder may raise on non-UTF8 content.
+    Lone surrogate pairs in payload_json must be handled gracefully.
     """
     _require_telemetry()
     rc = _redis_client()
 
-    # Push a raw bytes-like entry (simulate a quabo log with binary garbage)
-    entry = '{"message": "binary: \\ud800\\udfff", "level": "WARN", "ts": ' + str(time.time()) + '}'
+    # Embed lone surrogates inside payload_json; the json.dumps encode path in
+    # storeLoki's flush() must not raise on this.
     import contextlib
     with contextlib.suppress(Exception):
-        rc.rpush("logs:ingress", entry)
-        # Some redis clients may reject this
+        # Use ensure_ascii=True (Python default) so surrogates become \ud800\udfff
+        surrogate_payload = json.dumps("binary: \ud800\udfff", ensure_ascii=True)
+        rc.rpush("logs:ingress", _make_log_entry(surrogate_payload))
 
     time.sleep(2)
+
     # Verify pipeline is still alive
-    health = json.dumps({"message": "SC-062 health", "level": "INFO", "ts": time.time()})
-    rc.rpush("logs:ingress", health)
+    health_tag = f"sc062_health_{uuid.uuid4().hex[:8]}"
+    rc.rpush("logs:ingress", _make_log_entry(health_tag))
     time.sleep(2)
     entries = _loki_query(since_s=10.0)
-    assert any("SC-062 health" in e.get("line", "") for e in entries), \
+    assert any(health_tag in e.get("line", "") for e in entries), \
         "storeLoki.py stopped after non-UTF8 input (SC-062)"
 
 
@@ -176,13 +185,7 @@ def test_SC063_burst_logging_all_entries_arrive() -> None:
     burst_tag = f"sc063_{uuid.uuid4().hex[:8]}"
     N = 200  # reduced from 20k to keep test fast while still proving the path
     for i in range(N):
-        entry = json.dumps({
-            "message": f"burst {i}",
-            "level": "DEBUG",
-            "tag": burst_tag,
-            "ts": time.time(),
-        })
-        rc.rpush("logs:ingress", entry)
+        rc.rpush("logs:ingress", _make_log_entry(f"{burst_tag} burst {i}"))
 
     # Allow time for storeLoki to flush
     deadline = time.time() + 15
@@ -263,12 +266,7 @@ def test_SC064_loki_timestamp_skew_within_tolerance() -> None:
 
     now = time.time()
     tag = f"sc064_{uuid.uuid4().hex[:8]}"
-    entry = json.dumps({
-        "message": f"clock-skew check {tag}",
-        "level": "INFO",
-        "ts": now,  # must be close to wall time
-    })
-    rc.rpush("logs:ingress", entry)
+    rc.rpush("logs:ingress", _make_log_entry(f"clock-skew check {tag}", ts=now))
     time.sleep(3)
 
     entries = _loki_query(selector=f'{{job="panoseti"}} |= "{tag}"', since_s=20.0)

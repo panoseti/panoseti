@@ -48,5 +48,5 @@ command     = "docker compose --env-file .env -f ci/docker-compose.integration.y
 description = "E2E integration tests (excludes chaos scenarios)"
 
 [test.chaos]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T int-tester pytest ci/integration/scenarios/ -v --color=yes {args}"
+command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T -e ENABLE_TELEMETRY_TESTS=1 int-tester pytest ci/integration/scenarios/ -v --color=yes {args}"
 description = "Chaos/TDD-forcing scenario tests (expected to fail red on master)"

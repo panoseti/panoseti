@@ -650,22 +650,23 @@ async def start_run(
 
             print(f"Archiving partial artifacts to {aborted_dir}")
             await asyncio.to_thread(os.makedirs, aborted_dir, exist_ok=True)
+
+            # Always write the failure context — even if make_run_dirs never ran.
+            err_msg = str(e)
+            tb_msg = traceback.format_exc()
+            def dump_context(msg: str, tb: str) -> None:
+                with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
+                    json.dump({"error": msg, "traceback": tb}, f, indent=4)
+            await asyncio.to_thread(dump_context, err_msg, tb_msg)
+
             local_run_dir = f"{daq_config.head_node_data_dir}/{run_name}"
             if await asyncio.to_thread(os.path.exists, local_run_dir):
-                # Move contents to aborted_dir
+                # Move any partial head-node artifacts into the aborted dir.
                 for item in os.listdir(local_run_dir):
                     s = os.path.join(local_run_dir, item)
                     d = os.path.join(aborted_dir, item)
                     await asyncio.to_thread(shutil.move, s, d)
                 await asyncio.to_thread(os.rmdir, local_run_dir)
-                
-                # Use a string representation of the exception for the context dump
-                err_msg = str(e)
-                tb_msg = traceback.format_exc()
-                def dump_context(msg: str, tb: str) -> None:
-                    with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
-                        json.dump({"error": msg, "traceback": tb}, f, indent=4)
-                await asyncio.to_thread(dump_context, err_msg, tb_msg)
 
             return False
         # --- ROLLBACK LADDER END ---

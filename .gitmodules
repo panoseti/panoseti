@@ -3,7 +3,7 @@
 	url = https://github.com/panoseti/panoseti_daq.git
 [submodule "grpc"]
 	path = grpc
-	url = https://github.com/panoseti/panoseti_grpc.git
+	url = git@github.com:panoseti/panoseti_grpc.git
 	branch = add-linting
 [submodule "web"]
 	path = web
