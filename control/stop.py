@@ -76,7 +76,7 @@ def stop_interleave(retry_limit: int = 10) -> None:
             # Verify identity: check /proc/pid/cmdline for 'interleave.py'
             try:
                 with open(f"/proc/{pid}/cmdline", "rb") as f:
-                    cmdline = f.read().decode().replace('\x00', ' ')
+                    cmdline = f.read().decode(errors='replace').replace('\x00', ' ')
                     # Allow the chaos test's simulated process to bypass this check
                     if 'interleave.py' not in cmdline and 'import signal, time' not in cmdline:
                          logger.warning(f"PID {pid} does not appear to be interleave.py. Cleaning stale PID file.")
@@ -342,7 +342,8 @@ def _cleanup_daq_grpc(
     run: str, 
     head_run_dir: str | None, 
     verbose: bool,
-    force: bool = False
+    force: bool = False,
+    skip_ips: list[str] | None = None
 ) -> list[str]:
     """Call CleanupData on each DAQ node via gRPC.
     Only called after collect_data() succeeds (transactional guarantee).
@@ -352,10 +353,16 @@ def _cleanup_daq_grpc(
     """
     my_ip = util.local_ip()
     errors: list[str] = []
+    skip_set = set(skip_ips) if skip_ips else set()
+
     for node in daq_config.daq_nodes:
         if not node.module_ids:
             continue
         ip_addr = str(node.ip_addr)
+        if ip_addr in skip_set:
+            logger.warning(f"Skipping cleanup for node {ip_addr} due to collection failure.")
+            continue
+            
         if ip_addr in my_ip:
             # Head node is also DAQ node: local rm -rf
             module_dirs = glob(f'{node.data_dir}/module_*/{run}')
@@ -489,8 +496,11 @@ async def stop_run(
             if not complete_file_exists(run_dir, recording_ended_filename):
                 write_complete_file(run_dir, recording_ended_filename)
             
-            collect_result = None
-            if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
+            # Initial state: collection is only complete if marker already exists
+            collection_successful = complete_file_exists(run_dir, collect_complete_filename)
+            failed_ips: list[str] = []
+
+            if not no_collect and not collection_successful:
                 if cancel_event.is_set():
                     print("Stop process cancelled before collection.")
                     all_errors.append("Collection cancelled by user.")
@@ -498,29 +508,41 @@ async def stop_run(
                     print("collecting data from DAQ nodes...")
                     try:
                         collect_result = collect.collect_data(daq_config, run, verbose)
+                        failed_ips = collect_result.failed_ips
                         if collect_result.success:
                             write_complete_file(run_dir, collect_complete_filename)
+                            collection_successful = True
                         else:
                             msg = f"Data collection errors occurred: {', '.join(collect_result.errors)}"
                             print(msg)
                             all_errors.extend(collect_result.errors)
                     except Exception as e:
-                        all_errors.append(f"collect_data crashed: {e}")
+                        msg = f"collect_data crashed: {e}"
+                        all_errors.append(msg)
+                        # Safety: if we crashed, assume all nodes failed collection
+                        failed_ips = [str(n.ip_addr) for n in daq_config.daq_nodes]
 
-            if collect_result is None or collect_result.success:
+            # We proceed to cleanup if:
+            # 1. Collection was already successful (marker exists).
+            # 2. Collection was explicitly skipped via --no_collect.
+            # 3. Collection was attempted and we have a list of failed nodes to skip.
+            if collection_successful or no_collect or failed_ips:
                 if not no_cleanup:
                     if cancel_event.is_set():
                         print("Stop process cancelled before cleanup.")
                         all_errors.append("Cleanup cancelled by user.")
                     else:
                         print("cleaning up DAQ nodes...")
-                        cleanup_errors = _cleanup_daq_grpc(daq_config, run, run_dir, verbose, force=force_cleanup)
+                        cleanup_errors = _cleanup_daq_grpc(
+                            daq_config, run, run_dir, verbose, 
+                            force=force_cleanup, skip_ips=failed_ips
+                        )
                         all_errors.extend(cleanup_errors)
                 make_links(run_dir, verbose)
                 write_complete_file(run_dir, run_complete_filename)
                 print(f'completed run {run}')
             else:
-                log_error("\n".join(collect_result.errors), run_dir)
+                log_error(f"Collection unsuccessful for run {run} (and no partial results). Skipping cleanup.", run_dir)
             
             # Finalize ledger
             if ledger:

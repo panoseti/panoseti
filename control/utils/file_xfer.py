@@ -49,9 +49,10 @@ def copy_file_to_node(file: str, node: DaqNodeValidator, run_dir: str = '', verb
             raise RuntimeError(f'{" ".join(cmd)} returned {res.returncode}: {res.stderr}')
 
 def _run_rsync_with_retry(cmd: list[str], verbose: bool = False) -> str:
-    """Run rsync with retries for transient failures (Task 2.7)."""
-    transient_codes = {12, 23, 30, 255}
+    """Run rsync with exponential backoff retries for transient failures (Task 2.7)."""
+    transient_codes = {12, 23, 30, 35, 255}
     max_retries = 3
+    base_delay = 5
     for attempt in range(max_retries + 1):
         if verbose:
             print(" ".join(cmd))
@@ -60,8 +61,9 @@ def _run_rsync_with_retry(cmd: list[str], verbose: bool = False) -> str:
             return ""
         
         if res.returncode in transient_codes and attempt < max_retries:
-            print(f"Transient rsync error {res.returncode}. Retrying in 5s (Attempt {attempt+1}/{max_retries})...")
-            time.sleep(5)
+            delay = base_delay * (2 ** attempt)
+            print(f"Transient rsync error {res.returncode}. Retrying in {delay}s (Attempt {attempt+1}/{max_retries})...")
+            time.sleep(delay)
             continue
         
         err_type = "Transient" if res.returncode in transient_codes else "Terminal"
@@ -108,23 +110,17 @@ def copy_dir_from_node(run_name: str, daq_config: DaqConfigValidator, node: DaqN
     else:
         remote_host = f"{node.username}@{node.ip_addr}"
 
-    # 1. copy stdout
-    cmd = [*base_rsync, f"{remote_host}:{node.data_dir}/{run_name}/{util.hp_stdout_prefix}*", run_dir_path]
+    # Combined rsync call for stdout, snapshot, and PFF files (Phase 1 Optimization)
+    cmd = [
+        *base_rsync,
+        f"{remote_host}:{node.data_dir}/{run_name}/{util.hp_stdout_prefix}*",
+        f"{remote_host}:{node.data_dir}/{run_name}/{util.pss_prefix}*",
+        f"{remote_host}:{node.data_dir}/module_{module_id}/{run_name}/*",
+        run_dir_path
+    ]
     err = _run_rsync_with_retry(cmd, verbose)
     if err:
-        return f"copy_dir_from_node(stdout): {err}"
-
-    # 2. copy process snapshot
-    cmd = [*base_rsync, f"{remote_host}:{node.data_dir}/{run_name}/{util.pss_prefix}*", run_dir_path]
-    err = _run_rsync_with_retry(cmd, verbose)
-    if err:
-        return f"copy_dir_from_node(snapshot): {err}"
-
-    # 3. copy PFF files
-    cmd = [*base_rsync, f"{remote_host}:{node.data_dir}/module_{module_id}/{run_name}/*", run_dir_path]
-    err = _run_rsync_with_retry(cmd, verbose)
-    if err:
-        return f"copy_dir_from_node(PFF): {err}"
+        return f"copy_dir_from_node(combined): {err}"
 
     return ''
 

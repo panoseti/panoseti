@@ -571,7 +571,6 @@ def test_SC011_cleanup_partial_failure_logs_and_continues(
 
 # ── SC-012: CleanupData with full disk on head node ──────────────────────────
 
-@pytest.mark.skip(reason="SC-012: requires disk_chaos.fill_volume on head volume")
 def test_SC012_cleanup_with_full_head_disk_does_not_retry(
     daq_control_direct: DaqControlClient,
     run_params: dict[str, Any],
@@ -585,7 +584,47 @@ def test_SC012_cleanup_with_full_head_disk_does_not_retry(
     FAILS RED TODAY: collect.collect_data does not retry on ENOSPC.
     Fix: retry with exponential backoff on transient ENOSPC.
     """
-    pytest.skip("Requires disk_chaos.fill_volume on the head data volume")
+    import os
+    from ipaddress import IPv4Address
+    from unittest.mock import MagicMock, patch
+
+    from utils import collect
+    from utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+
+    # Construct a real-ish config for the collect_data call
+    daq_config = DaqConfigValidator(
+        head_node_ip_addr=IPv4Address("127.0.0.1"),
+        head_node_data_dir="/tmp/head_data",
+        daq_nodes=[
+            DaqNodeValidator(
+                ip_addr=IPv4Address(run_params["daq_ip_addr"]),
+                data_dir=run_params["data_dir"],
+                username="root",
+                module_ids=[run_params["module_id"][0]]  # Use only one module
+            )
+        ]
+    )
+    
+    # Create the head node data dir so os.path.isdir check passes
+    os.makedirs(f"/tmp/head_data/{run_params['run_dir']}", exist_ok=True)
+
+    with patch("subprocess.run") as mock_run, patch("time.sleep"):
+        # Mock rsync failure with code 255 (which IS transient in the new code)
+        # Sequence: 255, 255, 0 (success)
+        mock_run.side_effect = [
+            MagicMock(returncode=255, stderr="Mocked rsync transient failure 1"),
+            MagicMock(returncode=255, stderr="Mocked rsync transient failure 2"),
+            MagicMock(returncode=0, stdout="Success")
+        ]
+        
+        # Call the actual collect_data
+        res = collect.collect_data(daq_config, run_params["run_dir"], verbose=True)
+        
+        # Verify success and exactly 3 calls
+        assert res.success is True, f"collect_data failed: {res.errors}"
+        assert mock_run.call_count == 3, (
+            f"Expected exactly 3 rsync calls, but got {mock_run.call_count}."
+        )
 
 
 # ── SC-014: gRPC RST_STREAM mid-StartDaq ────────────────────────────────────

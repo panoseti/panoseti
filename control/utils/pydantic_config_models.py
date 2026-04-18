@@ -426,6 +426,7 @@ class CollectResult(BaseStrictModel):
     """Result of a data collection attempt from all nodes."""
     success: bool
     errors: list[str] = Field(default_factory=list)
+    failed_ips: list[str] = Field(default_factory=list)
     transferred_files: int = 0
 
 class RunStateLedger(BaseStrictModel):

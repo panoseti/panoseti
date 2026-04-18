@@ -37,6 +37,7 @@ def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = F
     """
     my_ip = util.local_ip()
     errors = []
+    failed_ips = set()
     for node in daq_config.daq_nodes:
         if not node.module_ids:
             continue
@@ -52,17 +53,21 @@ def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = F
                     try:
                         shutil.move(src_file, dst)
                     except Exception as exc:
-                        errors.append(f"Local move failed for module {module_id}: {exc}")
+                        msg = f"Local move failed for module {module_id}: {exc}"
+                        errors.append(msg)
+                        failed_ips.add(str(node.ip_addr))
             else:
                 err = file_xfer.copy_dir_from_node(
                     run_dir, daq_config, node, int(module_id), verbose
                 )
                 if err:
                     errors.append(err)
+                    failed_ips.add(str(node.ip_addr))
     
     return CollectResult(
         success=len(errors) == 0,
-        errors=errors
+        errors=errors,
+        failed_ips=list(failed_ips)
     )
 
 # remove stuff from DAQ nodes no longer needed after run

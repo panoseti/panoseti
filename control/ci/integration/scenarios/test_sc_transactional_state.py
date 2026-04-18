@@ -786,31 +786,121 @@ class TestSC027StopRunMismatch:
         )
 
 
-# ── SC-028 / SC-029: stop.py ctrl-C at various stages ────────────────────────
+# ── SC-029: Fundamental failure skips cleanup ───────────────────────────────
 
-@pytest.mark.skip(reason="SC-028: requires SIGINT injection during stop.py execution")
-def test_SC028_stop_killed_between_stop_recording_and_stop_data_flow() -> None:
+class TestSC029FundamentalFailureSkipsCleanup:
     """
-    SC-028: ctrl-C between stop_recording and stop_data_flow leaves quabos
-    streaming to a now-dead DAQ node, filling kernel buffers.
-
-    FAILS RED TODAY: no cleanup of quabo destinations in stop.py's finally block.
-    Fix: use a context manager that calls stop_data_flow() on exit regardless.
+    SC-029: if collect_data fails for a node, stop_run must NOT call CleanupData
+    for that node, and MUST NOT write the collect_complete marker.
     """
-    pytest.skip("Requires SIGINT injection mid stop.py via subprocess")
 
+    @pytest.mark.asyncio
+    async def test_SC029_fundamental_failure_skips_cleanup(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        Mock collect.collect_data to fail for 192.168.0.10.
+        Verify:
+          - CleanupData NOT called for 192.168.0.10.
+          - collect_complete file NOT written.
+        """
+        from ipaddress import IPv4Address
+        from unittest.mock import MagicMock, patch
+        
+        import stop as stop_module
+        from utils.pydantic_config_models import (
+            CollectResult,
+            DaqConfigValidator,
+            DaqNodeValidator,
+            NetworkConfigValidator,
+            QuaboUidsValidator,
+            RunStateLedger,
+        )
 
-@pytest.mark.skip(reason="SC-029: requires SIGINT injection during collect_data")
-def test_SC029_stop_killed_between_collect_and_cleanup_leaves_stale_data() -> None:
-    """
-    SC-029: ctrl-C between collect_data (rsync complete) and _cleanup_daq_grpc
-    leaves collect_complete_filename written but PFF files still on DAQ.
-    Next run's cleanup sees stale data from the previous run.
+        # 1. Setup minimal configs
+        head_dir = tmp_path / "data" / "head"
+        run_name = "test_run_SC029.pffd"
+        run_dir = head_dir / run_name
+        run_dir.mkdir(parents=True)
 
-    FAILS RED TODAY: no transactional guarantee around collect + cleanup.
-    Fix: mark cleanup-pending with a sentinel; retry cleanup on next start.
-    """
-    pytest.skip("Requires SIGINT injection mid stop.py via subprocess")
+        daq_config = DaqConfigValidator(
+            head_node_ip_addr=IPv4Address("10.0.1.5"),
+            head_node_data_dir=str(head_dir),
+            daq_nodes=[
+                DaqNodeValidator(ip_addr=IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[1]),
+                DaqNodeValidator(ip_addr=IPv4Address("192.168.0.11"), data_dir="/data", username="root", module_ids=[2]),
+            ],
+        )
+        network_config = NetworkConfigValidator()
+        quabo_uids = QuaboUidsValidator(domes=[])
+
+        # 2. Mock RunStateManager and Ledger
+        mock_mgr = MagicMock()
+        ledger = RunStateLedger(
+            run_name=run_name,
+            status="ACTIVE",
+            start_time="2026-01-01T00:00:00Z",
+        )
+        mock_mgr.load_state.return_value = ledger
+
+        # 3. Mock collect.collect_data to fail for .10
+        mock_collect = MagicMock(return_value=CollectResult(
+            success=False, 
+            failed_ips=["192.168.0.10"],
+            errors=["rsync failed for 192.168.0.10"]
+        ))
+
+        # 4. Mock DaqControlClient to track CleanupData calls
+        mock_client_inst = MagicMock()
+        mock_client_inst.StopDaq.return_value = {"success": True}
+        mock_client_inst.CleanupData.return_value = {"success": True}
+        
+        # Track which IPs were used to create clients
+        created_clients: dict[str, MagicMock] = {}
+        def mock_client_init(host: str, port: int) -> MagicMock:
+            c = MagicMock()
+            c.StopDaq.return_value = {"success": True}
+            c.CleanupData.return_value = {"success": True}
+            created_clients[host] = c
+            return c
+
+        with patch("stop.RunStateManager", return_value=mock_mgr), \
+             patch("utils.util.local_ip", return_value=["10.0.1.5"]), \
+             patch("socket.gethostbyname", return_value="10.0.1.5"), \
+             patch("utils.collect.collect_data", mock_collect), \
+             patch("stop.DaqControlClient", side_effect=mock_client_init), \
+             patch("utils.util.kill_hv_updater"), \
+             patch("utils.util.kill_hk_recorder"), \
+             patch("utils.util.kill_module_temp_monitor"), \
+             patch("utils.util.stop_data_flow"), \
+             patch("utils.util.remove_run_name"):
+
+            success = await stop_module.stop_run(
+                daq_config, network_config, quabo_uids,
+                verbose=True, no_cleanup=False, no_collect=False
+            )
+
+        # ASSERTIONS
+        
+        # collect_data was called
+        assert mock_collect.called
+        
+        # collect_complete marker must NOT exist because collection failed
+        collect_complete = run_dir / "collect_complete"
+        assert not collect_complete.exists(), "collect_complete marker should NOT be written on failure"
+
+        # CleanupData should have been called for .11 but NOT for .10
+        assert "192.168.0.11" in created_clients
+        assert created_clients["192.168.0.11"].CleanupData.called
+        
+        if "192.168.0.10" in created_clients:
+            assert not created_clients["192.168.0.10"].CleanupData.called, \
+                "CleanupData was called for a node that failed collection!"
+        
+        # stop_run should return False because collection failed
+        assert not success
 
 
 # ── SC-030: PH baseline file missing ─────────────────────────────────────────
