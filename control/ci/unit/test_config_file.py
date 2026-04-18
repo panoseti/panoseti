@@ -22,7 +22,7 @@ from utils.config_file import (
     quabo_ip_addr,
     string_to_list,
 )
-from utils.pydantic_config_models import DataConfigValidator
+from utils.pydantic_config_models import DaqConfigValidator, DataConfigValidator
 
 # ===========================================================================
 # ip_addr_to_module_id
@@ -183,7 +183,7 @@ class TestExpandRanges:
 
 class TestModuleIdToDaqNode:
     @pytest.fixture
-    def expanded_config(self) -> dict[str, Any]:
+    def expanded_config(self) -> DaqConfigValidator:
         config: dict[str, Any] = {
             "head_node_data_dir": "/data",
             "head_node_ip_addr": "10.0.0.1",
@@ -203,7 +203,7 @@ class TestModuleIdToDaqNode:
             ]
         }
         expand_ranges(config)
-        return config
+        return DaqConfigValidator(**config)
 
     def test_finds_correct_node_for_first_range(self, expanded_config):
         node = module_id_to_daq_node(expanded_config, 224)

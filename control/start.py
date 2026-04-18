@@ -203,7 +203,7 @@ def start_data_flow(
     quabo_uids: QuaboUidsValidator,
     data_config: DataConfigValidator,
     daq_config: DaqConfigValidator,
-    network_config: NetworkConfigValidator | dict[str, Any]
+    network_config: NetworkConfigValidator
 ) -> None:
     """Initialize data flow from Quabos by configuring networking and modes.
     
@@ -322,19 +322,9 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
             rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
             rcmnd = ';'.join(rcmds)
             logger.info(f'DAQ IP: {ip_addr}')
-            # Need to handle port forwarding from network_config if we want to be fully typed,
-            # but util.attach_daq_config currently mutates the dict.
-            # DaqNodeValidator doesn't have port_forwarding in its schema if it's strict.
-            # Let's check DaqNodeValidator in pydantic_config_models.py
-            # Wait, DaqNodeValidator is BaseStrictModel. It DOES NOT have port_forwarding.
-            # But util.attach_daq_config attaches it! This will fail validation.
-            # I should update DaqNodeValidator to allow port_forwarding.
-            
-            # For now, let's use the node as a dict for SSH logic if it was mutated
-            node_dict = node.model_dump()
-            if 'port_forwarding' in node_dict:
-                real_ip = node_dict['port_forwarding']['gw_ip']
-                port = node_dict['port_forwarding']['port']
+            if node.port_forwarding and node.port_forwarding.status:
+                real_ip = str(node.port_forwarding.gw_ip)
+                port = node.port_forwarding.port
                 cmd = f'ssh -p {port} {username}@{real_ip} "{rcmnd}"'
             else:
                 cmd = f'ssh {username}@{ip_addr} "{rcmnd}"'
@@ -345,7 +335,7 @@ def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
                 raise Exception(f'{cmd} returned {ret}')
 
     # copy config files to DAQ nodes
-    file_xfer.copy_config_files(daq_config.model_dump(), run_name, verbose)
+    file_xfer.copy_config_files(daq_config, run_name, verbose)
 
 
 async def start_recording(
@@ -369,7 +359,7 @@ async def start_recording(
     loop = asyncio.get_running_loop()
 
     # 1. Start local daemons
-    util.start_hk_recorder(daq_config.model_dump(), run_name)
+    util.start_hk_recorder(daq_config, run_name)
     if not no_hv:
         util.start_hv_updater()
         util.start_module_temp_monitor()
@@ -381,8 +371,7 @@ async def start_recording(
     async def start_node(node_validator: DaqNodeValidator) -> None:
         if not node_validator.module_ids:
             return
-        node_dict = node_validator.model_dump()
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
         
         client = DaqControlClient(host=grpc_host, port=grpc_port)
@@ -412,8 +401,7 @@ async def start_recording(
     async def probe_node(node_validator: DaqNodeValidator) -> None:
         if not node_validator.module_ids:
             return
-        node_dict = node_validator.model_dump()
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         client = DaqControlClient(host=grpc_host, port=grpc_port)
         
         # StatusDaq request
@@ -446,7 +434,7 @@ async def start_run(
     daq_config: DaqConfigValidator,
     quabo_uids: QuaboUidsValidator,
     data_config: DataConfigValidator,
-    network_config: NetworkConfigValidator | dict[str, Any],
+    network_config: NetworkConfigValidator,
     no_hv: bool,
     no_redis: bool,
     no_data: bool
@@ -545,8 +533,7 @@ async def start_run(
                 if not node.module_ids:
                     continue
                 try:
-                    node_dict = node.model_dump()
-                    grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+                    grpc_host, grpc_port = util.daq_grpc_endpoint(node)
                     client = DaqControlClient(host=grpc_host, port=grpc_port)
                     # Use asyncio.to_thread for synchronous gRPC calls
                     await asyncio.to_thread(client.StopDaq, {'data_dir': node.data_dir, 'run_dir': run_name})
@@ -589,7 +576,7 @@ async def start_run(
             state_mgr.save_state(ledger)
             
         # Write legacy current_run file for compatibility
-        util.write_run_name(daq_config.model_dump(), run_name)
+        util.write_run_name(daq_config, run_name)
         
         print(f'started run {run_name}')
         return True

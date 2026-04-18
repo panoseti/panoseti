@@ -30,7 +30,6 @@ from typing import Any
 from panoseti_grpc.daq_control.client import DaqControlClient
 
 import config
-from driver import quabo_driver
 from tools.interleave import PID_FILE
 from utils import collect, config_file, pff, util
 from utils.pydantic_config_models import (
@@ -42,7 +41,6 @@ from utils.pydantic_config_models import (
 from utils.run_state import RunStateManager
 from utils.util import (
     collect_complete_filename,
-    get_quabo_ip_port,
     hk_symlink,
     img_symlink,
     now_str,
@@ -113,7 +111,7 @@ def stop_interleave(retry_limit: int = 10) -> None:
                     data_cfg.model_dump(),
                     obs_cfg.model_dump(),
                     daq_cfg.model_dump(),
-                    network_cfg if isinstance(network_cfg, dict) else network_cfg.model_dump(),
+                    network_cfg.model_dump(),
                     verbose=False
                 )
             except Exception as e:
@@ -195,39 +193,6 @@ def log_error(msg: str, run_dir: str | None) -> None:
     with open(log_path, 'a') as f:
         f.write(f'{now_str()}: {msg}\n')
 
-# tell the quabos to stop sending data
-#
-def stop_data_flow(quabo_uids: dict[str, Any], network_config: dict[str, Any]) -> None:
-    """Command all Quabos to cease data transmission.
-    
-    Iterates through all configured Quabos and sends a DAQ_PARAMS packet 
-    with all acquisition modes disabled.
-
-    Args:
-        quabo_uids: Raw or validated Quabo UID configuration.
-        network_config: Raw or validated network routing configuration.
-    """
-    daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
-    for dome in quabo_uids['domes']:
-        for module in dome['modules']:
-            if 'daq_node' not in module:
-                continue
-            base_ip_addr = module['ip_addr']
-            for i in range(4):
-                quabo_uid = module['quabos'][i]
-                if quabo_uid['uid'] == '':
-                    continue
-                ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
-                ip_ports = get_quabo_ip_port(base_ip_addr, i, network_config)
-                real_ip = ip_ports['ip_addr']
-                cmd_port = ip_ports['cmd_port']
-                logger.info(f'Quabo IP: {ip_addr}')
-                logger.info(f'Real IP: {real_ip}')
-                logger.info(f'Cmd Port: {cmd_port}')
-                quabo = quabo_driver.QUABO(real_ip, cmd_port)
-                quabo.send_daq_params(daq_params)
-                quabo.close()
-
 # tell all DAQ nodes to stop recording
 #
 async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, verbose: bool) -> None:
@@ -246,8 +211,7 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
     async def stop_node(node: DaqNodeValidator) -> None:
         if not node.module_ids:
             return
-        node_dict = node.model_dump()
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_dict)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
         if verbose:
             print(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
         
@@ -372,7 +336,7 @@ def _cleanup_daq_grpc(
             if ret:
                 log_error(f'cleanup_daq (local): {cmd} returned {ret}', head_run_dir)
         else:
-            grpc_host, grpc_port = util.daq_grpc_endpoint(node.model_dump())
+            grpc_host, grpc_port = util.daq_grpc_endpoint(node)
             if verbose:
                 print(f'CleanupData via gRPC: {grpc_host}:{grpc_port} run_dir={run} force={force}')
             try:
@@ -390,9 +354,9 @@ def _cleanup_daq_grpc(
 
 
 async def stop_run(
-    daq_config: DaqConfigValidator, 
-    network_config: NetworkConfigValidator | dict[str, Any], 
-    quabo_uids: QuaboUidsValidator, 
+    daq_config: DaqConfigValidator,
+    network_config: NetworkConfigValidator,
+    quabo_uids: QuaboUidsValidator,
     verbose: bool = False, 
     no_cleanup: bool = False, 
     no_collect: bool = False,
@@ -466,7 +430,7 @@ async def stop_run(
             collect_error = ''
             if not no_collect and not complete_file_exists(run_dir, collect_complete_filename):
                 print("collecting data from DAQ nodes...")
-                collect_error = collect.collect_data(daq_config.model_dump(), run, verbose)
+                collect_error = collect.collect_data(daq_config, run, verbose)
                 if collect_error == '':
                     write_complete_file(run_dir, collect_complete_filename)
                 else:

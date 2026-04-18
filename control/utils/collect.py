@@ -9,7 +9,6 @@
 # --verbose
 import os
 import sys
-from typing import Any
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -19,23 +18,20 @@ from utils.pydantic_config_models import DaqConfigValidator
 
 # return '' if data collection was successful, else error msg
 #
-def collect_data(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, verbose: bool = False) -> str:
+def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> str:
     """Aggregate PFF data files from remote DAQ nodes to the local head node.
-    
-    Uses rsync/SCP or local move (if head node is a DAQ node) to centralize 
+
+    Uses rsync/SCP or local move (if head node is a DAQ node) to centralize
     artifacts into the hierarchical run directory structure.
 
     Args:
-        daq_config: Validated DAQ configuration model or dict.
+        daq_config: Validated DAQ configuration model.
         run_dir: Name of the current observation run directory.
         verbose: If True, prints detailed file transfer commands.
 
     Returns:
         An empty string if successful, otherwise a combined error message.
     """
-    if isinstance(daq_config, dict):
-        daq_config = DaqConfigValidator(**daq_config)
-    
     my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config.daq_nodes:
@@ -54,7 +50,7 @@ def collect_data(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, 
                     error_msg += f'command {cmd} failed: {ret}'
             else:
                 error_msg += file_xfer.copy_dir_from_node(
-                    run_dir, daq_config.model_dump(), node.model_dump(), int(module_id), verbose
+                    run_dir, daq_config, node, int(module_id), verbose
                 )
     return error_msg
 
@@ -66,23 +62,20 @@ def collect_data(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, 
 #    data/module_n/run (should be empty dir)
 # return error message or ''
 #
-def cleanup_daq(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, verbose: bool = False) -> str:
+def cleanup_daq(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> str:
     """Remove observation artifacts from DAQ nodes after successful collection.
-    
-    Deletes the run-specific directories in both the root data path and 
+
+    Deletes the run-specific directories in both the root data path and
     per-module subdirectories on each remote node.
 
     Args:
-        daq_config: Validated DAQ configuration model or dict.
+        daq_config: Validated DAQ configuration model.
         run_dir: Name of the run directory to clean up.
         verbose: If True, prints removal commands.
 
     Returns:
         An empty string if successful, otherwise a combined error message.
     """
-    if isinstance(daq_config, dict):
-        daq_config = DaqConfigValidator(**daq_config)
-
     my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config.daq_nodes:
@@ -96,9 +89,8 @@ def cleanup_daq(daq_config: DaqConfigValidator | dict[str, Any], run_dir: str, v
                 error_msg += f'cleanup_daq(): {cmd} returned {ret} '
         else:
             rcmd = f'rm -rf {node.data_dir}/module_*/{run_dir}; rm -rf {node.data_dir}/{run_dir}'
-            node_dict = node.model_dump()
-            if 'port_forwarding' in node_dict:
-                cmd = f"ssh -p {node_dict['port_forwarding']['port']} {node.username}@{node_dict['port_forwarding']['gw_ip']} \"{rcmd}\""
+            if node.port_forwarding and node.port_forwarding.status:
+                cmd = f"ssh -p {node.port_forwarding.port} {node.username}@{node.port_forwarding.gw_ip} \"{rcmd}\""
             else:
                 cmd = f'ssh {node.username}@{ip_addr} "{rcmd}"'
             if verbose:

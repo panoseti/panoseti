@@ -127,7 +127,7 @@ def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) 
     #print(f"This node's IP addr: {util.local_ip()}")
     config_file.show_daq_assignments(quabo_uids.model_dump())
 
-def do_reboot_single_quabo(ip: str, obs_config: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> None:
+def do_reboot_single_quabo(ip: str, obs_config: ObsConfigValidator, network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> None:
     """Reboot a specific Quabo identified by its IP address or module ID.
 
     Args:
@@ -1180,7 +1180,7 @@ def main() -> None:
     elif args.show_ph_baselines:
         do_show_ph_baselines(quabo_uids)
     elif args.reboot_single is not None:
-        do_reboot_single_quabo(args.reboot_single, obs_config.model_dump(), network_config)
+        do_reboot_single_quabo(args.reboot_single, obs_config, network_config)
     elif args.start_interleave:
         do_start_interleave()
     elif args.stop_interleave:

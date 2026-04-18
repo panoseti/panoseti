@@ -31,6 +31,7 @@ try:
     from utils.pydantic_config_models import (
         DaemonConfigValidator,
         DaqConfigValidator,
+        DaqNodeValidator,
         DataConfigValidator,
         NetworkConfigValidator,
         ObsConfigValidator,
@@ -133,15 +134,15 @@ def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
         logger.addHandler(shandler)
 
 
-def daq_grpc_endpoint(node: dict[str, Any]) -> tuple[str, int]:
+def daq_grpc_endpoint(node: DaqNodeValidator) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.
-    Reads port_forwarding from the node dict (attached by attach_daq_config).
+
+    Reads port_forwarding from the node model (attached by attach_daq_config).
     Falls back to direct connection on port 50051.
     """
-    if 'port_forwarding' in node:
-        pf = node['port_forwarding']
-        return str(pf['gw_ip']), int(pf.get('grpc_port', 50051))
-    return str(node['ip_addr']), 50051
+    if node.port_forwarding and node.port_forwarding.status:
+        return str(node.port_forwarding.gw_ip), node.port_forwarding.grpc_port or 50051
+    return str(node.ip_addr), 50051
 
 
 def local_ip() -> list[str]:
@@ -379,8 +380,8 @@ def are_permanent_daemons_running() -> bool:
     return _are_daemons_running(get_permanent_daemons())
 
 
-def start_hk_recorder(daq_config: dict[str, Any], run_name: str) -> None:
-    path = '{}/{}/{}'.format(daq_config['head_node_data_dir'], run_name, hk_file_name)
+def start_hk_recorder(daq_config: DaqConfigValidator, run_name: str) -> None:
+    path = f'{daq_config.head_node_data_dir}/{run_name}/{hk_file_name}'
     try:
         subprocess.Popen([hk_recorder_name, path])
     except OSError:
@@ -413,12 +414,12 @@ def start_module_temp_monitor() -> None:
 
 
 # write run name to a file, and symlink 'run' to the run dir
-def write_run_name(daq_config: dict[str, Any], run_name: str) -> None:
+def write_run_name(daq_config: DaqConfigValidator, run_name: str) -> None:
     with open(run_name_file, 'w') as f:
         f.write(run_name)
     if os.path.lexists(run_symlink):
         os.unlink(run_symlink)
-    run_dir = '{}/{}'.format(daq_config['head_node_data_dir'], run_name)
+    run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
     os.symlink(run_dir, run_symlink, True)
     # record the run name in skymap_info_dir, which will be used by skymap_helper
     shutil.copy(run_name_file, 'tmp/skymap_info_dir')
@@ -665,8 +666,8 @@ DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
 def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidator | dict[str, Any]) -> dict[str, Any]:
     """Determine the effective IP and port for a specific Quabo.
-    
-    Accounts for network port forwarding if configured. If no mapping 
+
+    Accounts for network port forwarding if configured. If no mapping
     is found, it defaults to the standard local subnet layout.
 
     Args:
@@ -679,7 +680,6 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidat
     """
     if isinstance(network_config, dict):
         network_config = NetworkConfigValidator(**network_config)
-
     ip_ports: dict[str, Any] = {}
     x = ip_addr.split('.')
     x[3] = str(int(x[3])+i)
@@ -706,16 +706,16 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidat
 
 def stop_data_flow(
     quabo_uids: QuaboUidsValidator,
-    network_config: NetworkConfigValidator | dict[str, Any]
+    network_config: NetworkConfigValidator,
 ) -> None:
     """Tells all Quabos to stop sending data. Used for rollback and clean shutdown.
-    
-    Sends a DAQ_PARAMS command with all acquisition modes disabled to 
+
+    Sends a DAQ_PARAMS command with all acquisition modes disabled to
     every Quabo listed in the UID cache.
 
     Args:
         quabo_uids: The validated Quabo UID configuration.
-        network_config: The network configuration model or dict.
+        network_config: The validated network configuration model.
     """
     daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     for dome in quabo_uids.domes:
@@ -733,23 +733,18 @@ def stop_data_flow(
 
 
 def attach_daq_config(
-    daq_config: DaqConfigValidator | dict[str, Any],
-    network_config: NetworkConfigValidator | dict[str, Any]
+    daq_config: DaqConfigValidator,
+    network_config: NetworkConfigValidator,
 ) -> None:
     """Merge port forwarding metadata into the DAQ configuration.
-    
-    Iterates through DAQ nodes and attaches corresponding port forwarding 
+
+    Iterates through DAQ nodes and attaches corresponding port forwarding
     details from the network configuration if the IP addresses match.
 
     Args:
-        daq_config: The DAQ configuration model or dict to modify in-place.
-        network_config: The network configuration model or dict.
+        daq_config: The validated DAQ configuration model to modify in-place.
+        network_config: The validated network configuration model.
     """
-    if isinstance(daq_config, dict):
-        daq_config = DaqConfigValidator(**daq_config)
-    if isinstance(network_config, dict):
-        network_config = NetworkConfigValidator(**network_config)
-
     for daq in daq_config.daq_nodes:
         for pdaq in network_config.daq_nodes:
             if str(daq.ip_addr) == str(pdaq.ip_addr) and pdaq.port_forwarding.status:
@@ -757,18 +752,15 @@ def attach_daq_config(
 
 
 
-def get_valid_ip(obs_config: ObsConfigValidator | dict[str, Any]) -> list[str]:
+def get_valid_ip(obs_config: ObsConfigValidator) -> list[str]:
     """Extract all valid Quabo IP addresses from the observatory configuration.
 
     Args:
-        obs_config: The observatory configuration model or dict.
+        obs_config: The validated observatory configuration model.
 
     Returns:
         A list of IP address strings for all quabos in all modules.
     """
-    if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
-
     ips: list[str] = []
     for dome in obs_config.domes:
         for m in dome.modules:

@@ -353,8 +353,8 @@ class NetworkDaqNode(BaseStrictModel):
 
 class NetworkConfigValidator(BaseStrictModel):
     """Global network routing and port-forwarding map (network_config.json)."""
-    modules: list[NetworkModule]
-    daq_nodes: list[NetworkDaqNode]
+    modules: list[NetworkModule] = Field(default_factory=list)
+    daq_nodes: list[NetworkDaqNode] = Field(default_factory=list)
 
 # ----------------------------
 # --- Daemon Config Models ---

@@ -187,11 +187,11 @@ def expand_ranges(daq_config: DaqConfigValidator | dict[str, Any]) -> None:
             elif module_ids is not None:
                 raise TypeError(f"module_ids must be str or list, not {type(module_ids)}")
 
-def module_id_to_daq_node(daq_config: DaqConfigValidator | dict[str, Any], module_id: int) -> DaqNodeValidator:
+def module_id_to_daq_node(daq_config: DaqConfigValidator, module_id: int) -> DaqNodeValidator:
     """Find the DAQ node responsible for handling a specific module ID.
 
     Args:
-        daq_config: The DAQ configuration to search.
+        daq_config: The validated DAQ configuration to search.
         module_id: The ID of the module to locate.
 
     Returns:
@@ -200,9 +200,6 @@ def module_id_to_daq_node(daq_config: DaqConfigValidator | dict[str, Any], modul
     Raises:
         Exception: If no DAQ node is found for the given module ID.
     """
-    if isinstance(daq_config, dict):
-        daq_config = DaqConfigValidator(**daq_config)
-    
     for node in daq_config.daq_nodes:
         # After validation/preprocessing, module_ids is list[int]
         if module_id in node.module_ids:
@@ -261,22 +258,20 @@ def get_data_config(dir: str = '.') -> DataConfigValidator:
     """
     return load_and_validate(DataConfigValidator, data_config_filename, dir, "Data Config")
 
-def get_network_config(dir: str = '.') -> NetworkConfigValidator | dict[str, Any]:
-    """Load and validate the network configuration. 
-    
-    Falls back to an empty dictionary with a warning if the file is missing 
-    or invalid, assuming a flat local network.
+def get_network_config(dir: str = '.') -> NetworkConfigValidator:
+    """Load and validate the network configuration.
+
+    Falls back to an empty NetworkConfigValidator (no port forwarding) with a
+    warning if the file is missing or invalid, assuming a flat local network.
 
     Args:
         dir: The directory containing the config file.
 
     Returns:
-        A validated NetworkConfigValidator model or an empty dict.
+        A validated NetworkConfigValidator model.
     """
     check_config_file(network_config_filename, dir)
     path = f'{dir}/{network_config_filename}'
-    # as the network config file is not designed to the users,
-    # we check it manually, instead of using check_config_file.
     try:
         with open(path) as f:
             s = f.read()
@@ -284,7 +279,7 @@ def get_network_config(dir: str = '.') -> NetworkConfigValidator | dict[str, Any
     except Exception:
         print("***********Warning: No network config file! **************")
         print("******All the devices should be in the same subnet *******")
-        return {}
+        return NetworkConfigValidator()
 
     return load_and_validate(NetworkConfigValidator, network_config_filename, dir, "Network Config")
 
