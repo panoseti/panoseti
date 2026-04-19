@@ -7,11 +7,12 @@ the task name so concurrent streams never mangle each other. Sequential
 tasks (unit, integration) stream without a prefix — the section header is enough.
 
 Usage:
-  python ci/qa.py build
-  python ci/qa.py lint [ruff/mypy args...]
-  python ci/qa.py unit [-j N] [pytest args...]
-  python ci/qa.py integration [pytest args...]
-  python ci/qa.py all [-j N] [pytest args...]
+  pseti test build
+  pseti test lint [ruff/mypy args...]
+  pseti test unit [-j N] [pytest args...]
+  pseti test integration [pytest args...]
+  pseti test chaos [pytest args...]
+  pseti test all [-j N] [pytest args...]
 """
 
 import argparse
@@ -23,6 +24,15 @@ import time
 import tomllib
 from pathlib import Path
 from typing import Any
+
+import typer
+
+app = typer.Typer(
+    help="PANOSETI Quality Assurance & Testing Suite",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 
 
 class C:
@@ -497,51 +507,73 @@ async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
     return ok_lint and ok_unit and ok_int and ok_chaos
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="python ci/qa.py",
-        description="Unified QA Runner. Any unrecognized arguments are passed directly to the underlying tools (pytest, ruff, mypy).",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python ci/qa.py unit -v -k test_logic
-  python ci/qa.py integration --durations=10
-  python ci/qa.py lint --fix
-  python ci/qa.py chaos                          # all TDD-forcing tests
-  python ci/qa.py chaos -k "SC010 or SC031"      # specific exemplars
-"""
-    )
-    sub = parser.add_subparsers(dest="command")
+# ── Typer Commands ─────────────────────────────────────────────────────────────
 
-    sub.add_parser("build", help="Rebuild test images")
-    sub.add_parser("lint", help="Run linters [ruff/mypy args...]")
-
-    p_unit = sub.add_parser("unit", help="Run unit tests [-j N] [pytest args...]")
-    p_unit.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers")
-
-    sub.add_parser("integration", help="Run integration tests [pytest args...]")
-    sub.add_parser("chaos",       help="Run TDD-forcing scenario tests (expected failures on master) [pytest args...]")
-
-    p_all = sub.add_parser("all", help="Run full suite [pytest args...]")
-    p_all.add_argument("-j", "--jobs", type=int, default=None, help="Parallel workers for unit tests")
-
-    args, extra = parser.parse_known_args()
-    if not args.command:
-        parser.print_help()
-        sys.exit(0)
-
-    # Store any extra args for use in the commands
-    args.extra = extra
-
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def build(ctx: typer.Context) -> None:
+    """Rebuild test images."""
     runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(extra=ctx.args)
+    ok = asyncio.run(cmd_build(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
 
-    try:
-        ok = asyncio.run(getattr(sys.modules[__name__], f"cmd_{args.command}")(args, runner))
-    except KeyboardInterrupt:
-        sys.exit(130)
 
-    sys.exit(0 if ok else 1)
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def lint(ctx: typer.Context) -> None:
+    """Run linters [ruff/mypy args...]."""
+    runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(extra=ctx.args)
+    ok = asyncio.run(cmd_lint(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def unit(
+    ctx: typer.Context,
+    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers"),
+) -> None:
+    """Run unit tests [-j N] [pytest args...]."""
+    runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(jobs=jobs, extra=ctx.args)
+    ok = asyncio.run(cmd_unit(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def integration(ctx: typer.Context) -> None:
+    """Run integration tests [pytest args...]."""
+    runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(extra=ctx.args)
+    ok = asyncio.run(cmd_integration(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def chaos(ctx: typer.Context) -> None:
+    """Run TDD-forcing scenario tests (expected failures on master) [pytest args...]."""
+    runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(extra=ctx.args)
+    ok = asyncio.run(cmd_chaos(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@app.command(name="all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def all_tests(
+    ctx: typer.Context,
+    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers for unit tests"),
+) -> None:
+    """Run full suite [pytest args...]."""
+    runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(jobs=jobs, extra=ctx.args)
+    ok = asyncio.run(cmd_all(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
-    main()
+    app()

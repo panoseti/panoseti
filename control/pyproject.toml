@@ -23,6 +23,7 @@ dependencies = [
     "tftpy>=0.8.2",
     "orjson",
     "typing_extensions>=4.5",
+    "typer[all]",
     "panoseti_grpc>=0.4.7",
 ]
 
@@ -42,9 +43,15 @@ dev = [
     "types-paramiko",
 ]
 
+[project.scripts]
+pseti = "pseti:app"
+
+[tool.setuptools]
+py-modules = ["pseti"]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["utils*", "driver*", "daemons*"]
+include = ["utils*", "driver*", "daemons*", "ci*"]
 
 [tool.pytest.ini_options]
 testpaths = ["ci"]
