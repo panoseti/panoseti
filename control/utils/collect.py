@@ -11,7 +11,15 @@ import os
 import shutil
 import subprocess
 import sys
+import warnings
 from glob import glob
+
+warnings.warn(
+    "utils.collect is deprecated. The transfer daemon (utils.transfer.daemon) "
+    "now owns all data collection. Use TransferQueue.enqueue() to schedule transfers.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
