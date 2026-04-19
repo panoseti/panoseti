@@ -46,6 +46,7 @@ from utils.pydantic_config_models import (
     QuaboUidsValidator,
 )
 from utils.run_state import LockError, RunStateManager, ValidationError
+from utils.transfer.queue import TransferQueue
 from utils.util import (
     collect_complete_filename,
     hk_symlink,
@@ -53,7 +54,6 @@ from utils.util import (
     now_str,
     ph_symlink,
     recording_ended_filename,
-    run_complete_filename,
 )
 
 logger = get_logger("PANOSETI.Stop", grpc_enabled=True)
@@ -148,7 +148,6 @@ class StopTransaction:
                     write_complete_file(run_dir, recording_ended_filename)
                 
                 collection_successful = complete_file_exists(run_dir, collect_complete_filename)
-                failed_ips: list[str] = []
 
                 if not self.no_collect and not collection_successful:
                     if self.cancel_event.is_set():
@@ -159,7 +158,6 @@ class StopTransaction:
                         try:
                             # Use asyncio.to_thread for synchronous collect_data
                             collect_result = await asyncio.to_thread(collect.collect_data, self.daq_config, self.run, self.verbose)
-                            failed_ips = collect_result.failed_ips
                             if collect_result.success:
                                 write_complete_file(run_dir, collect_complete_filename)
                                 collection_successful = True
@@ -171,32 +169,29 @@ class StopTransaction:
                             msg = f"collect_data crashed: {e}"
                             logger.exception(msg)
                             self.all_errors.append(msg)
-                            failed_ips = [str(n.ip_addr) for n in self.daq_config.daq_nodes]
 
-                if collection_successful or self.no_collect or failed_ips:
-                    if not self.no_cleanup:
-                        if self.cancel_event.is_set():
-                            logger.warning("Stop process cancelled before cleanup.")
-                            self.all_errors.append("Cleanup cancelled by user.")
-                        else:
-                            logger.info("cleaning up DAQ nodes...")
-                            cleanup_errors = _cleanup_daq_grpc(
-                                self.daq_config, self.run, run_dir, self.verbose, 
-                                force=self.force_cleanup, skip_ips=failed_ips
-                            )
-                            self.all_errors.extend(cleanup_errors)
-                    make_links(run_dir, self.verbose)
-                    write_complete_file(run_dir, run_complete_filename)
-                    logger.info(f'completed run {self.run}')
-                else:
-                    log_error(f"Collection unsuccessful for run {self.run}. Skipping cleanup.", run_dir)
-                
-                # Finalize ledger
-                ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                if ledger:
-                    ledger.status = "COMPLETED" if not self.all_errors else "STOPPED_WITH_ERRORS"
-                    await asyncio.to_thread(self.state_mgr.save_state, ledger)
+                # Enqueue run for background transfer (Phase 2 fast-path).
+                # Transfer, cleanup, and run_complete are handled by the
+                # background TransferWorker — do NOT write run_complete here.
+                daq_nodes = [
+                    {"ip_addr": str(n.ip_addr), "data_dir": str(n.data_dir)}
+                    for n in self.daq_config.daq_nodes
+                ]
+                tq = TransferQueue(base_dir=str(self.state_mgr.base_dir))
+                tq.enqueue(
+                    run_name=self.run,
+                    head_data_dir=data_dir,
+                    daq_nodes=daq_nodes,
+                )
+
+                # Transition ledger to RECORDING_ENDED so the TransferWorker
+                # knows to pick up this run.
+                await asyncio.to_thread(
+                    self.state_mgr.transition,
+                    "RECORDING_ENDED",
+                )
                 util.remove_run_name()
+                logger.info(f'completed run {self.run}')
                 self.success = True
             else:
                 msg = f"Run dir {data_dir}/{self.run} not found; recorded artifacts may be missing."

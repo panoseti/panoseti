@@ -125,6 +125,13 @@ class RunStateManager:
             lines.append(f'pid = {d["pid"]}')
         if d.get("host") is not None:
             lines.append(f'host = {self._escape_toml_str(d["host"])}')
+        lines.append(f'transfer_attempts = {d.get("transfer_attempts", 0)}')
+        if d.get("last_transfer_error") is not None:
+            lines.append(f'last_transfer_error = {self._escape_toml_str(d["last_transfer_error"])}')
+        if d.get("manifest_algorithm") is not None:
+            lines.append(f'manifest_algorithm = {self._escape_toml_str(d["manifest_algorithm"])}')
+        if d.get("next_action_not_before") is not None:
+            lines.append(f'next_action_not_before = "{d["next_action_not_before"]}"')
 
         lines.append("")
         lines.append("[config_metadata]")
@@ -147,6 +154,18 @@ class RunStateManager:
                 lines.append(f'data_dir = {self._escape_toml_str(node["data_dir"])}')
             if node.get("message") is not None:
                 lines.append(f'message = {self._escape_toml_str(node["message"])}')
+            if node.get("manifest_path") is not None:
+                lines.append(f'manifest_path = {self._escape_toml_str(node["manifest_path"])}')
+            if node.get("manifest_bytes") is not None:
+                lines.append(f'manifest_bytes = {node["manifest_bytes"]}')
+            if node.get("rsync_bytes_transferred") is not None:
+                lines.append(f'rsync_bytes_transferred = {node["rsync_bytes_transferred"]}')
+            if node.get("rsync_last_progress_at") is not None:
+                lines.append(f'rsync_last_progress_at = "{node["rsync_last_progress_at"]}"')
+            if node.get("verify_ok") is not None:
+                lines.append(f'verify_ok = {str(node["verify_ok"]).lower()}')
+            if node.get("cleanup_ok") is not None:
+                lines.append(f'cleanup_ok = {str(node["cleanup_ok"]).lower()}')
             lines.append("")
 
         # Atomic write using NamedTemporaryFile and os.replace
@@ -166,6 +185,20 @@ class RunStateManager:
         """Clears the run state ledger."""
         if self.state_path.exists():
             self.state_path.unlink()
+
+    def transition(self, status: str, **fields: Any) -> RunStateLedger | None:
+        """Load current state, update status and any extra fields, save, return new state.
+
+        Returns None if no state exists.
+        """
+        state = self.load_state()
+        if state is None:
+            return None
+        state.status = status  # type: ignore[assignment]
+        for key, value in fields.items():
+            setattr(state, key, value)
+        self.save_state(state)
+        return state
 
     async def update_node_receipt(self, receipt: NodeReceipt) -> None:
         """

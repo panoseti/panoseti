@@ -7,6 +7,7 @@ Centralized Pydantic models for validating PANOSETI configuration files.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import (
@@ -425,6 +426,12 @@ class NodeReceipt(BaseStrictModel):
     hashpipe_pid: int | None = None
     data_dir: str | None = None
     message: str | None = None
+    manifest_path: str | None = None
+    manifest_bytes: int | None = None
+    rsync_bytes_transferred: int | None = None
+    rsync_last_progress_at: datetime | None = Field(default=None)
+    verify_ok: bool | None = None
+    cleanup_ok: bool | None = None
 
 class CollectResult(BaseStrictModel):
     """Result of a data collection attempt from all nodes."""
@@ -436,12 +443,24 @@ class CollectResult(BaseStrictModel):
 class RunStateLedger(BaseStrictModel):
     """The central source of truth for an active observatory run."""
     run_name: str
-    status: Literal["STARTING", "ACTIVE", "ABORTED", "STOPPING", "COMPLETED", "STOPPED_WITH_ERRORS"] = "STARTING"
+    status: Literal[
+        "STARTING", "ACTIVE", "ABORTED", "STOPPING",
+        "RECORDING_ENDED",
+        "MANIFEST_PENDING", "MANIFEST_GENERATING", "MANIFEST_READY",
+        "TRANSFER_PENDING", "TRANSFERRING", "TRANSFER_FAILED",
+        "VERIFYING", "VERIFY_FAILED",
+        "CLEANUP_PENDING", "CLEANING",
+        "ARCHIVED", "COMPLETED", "STOPPED_WITH_ERRORS",
+    ] = "STARTING"
     start_time: str  # ISO 8601
     pid: int | None = None
     host: str | None = None
     config_metadata: dict[str, Any] = Field(default_factory=dict)
     nodes: list[NodeReceipt] = Field(default_factory=list)
+    transfer_attempts: int = 0
+    last_transfer_error: str | None = Field(default=None)
+    manifest_algorithm: str | None = Field(default=None)
+    next_action_not_before: datetime | None = Field(default=None)
 
 
 # ---------------------------
