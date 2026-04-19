@@ -56,3 +56,4 @@ test/
 # IDE settings
 .vscode
 .idea
+.worktrees/

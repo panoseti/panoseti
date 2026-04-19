@@ -43,6 +43,17 @@ def _redis_client() -> Any:
         pytest.skip(f"Redis unavailable: {e}")
 
 
+@pytest.fixture(autouse=True)
+def clear_redis_logs():
+    """Ensure a clean slate for telemetry tests."""
+    rc = _redis_client()
+    if rc:
+        rc.delete("logs:ingress", "logs:processing")
+    yield
+    if rc:
+        rc.delete("logs:ingress", "logs:processing")
+
+
 def _make_log_entry(payload: str, ts: float | None = None) -> str:
     """Return a JSON string in the format storeLoki.py expects (matches LogSchema)."""
     return json.dumps({

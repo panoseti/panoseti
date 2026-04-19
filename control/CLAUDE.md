@@ -53,6 +53,9 @@ def example_function(arg1: int, arg2: str) -> bool:
 - **Advisory Locking**: When debugging control scripts standalone, ensure they acquire the advisory lock on `tmp/panoseti_control.lock` or use `RunStateManager`.
 - **Async Safety**: Use `asyncio.to_thread` for blocking file system or socket I/O within async functions to prevent event loop starvation.
 
+Read control/DEBUGGING.md for more advanced debugging advice for the control/ directory.
+
+
 ### Install (native, without Docker)
 
 ```bash

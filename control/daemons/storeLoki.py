@@ -40,6 +40,7 @@ BATCH_SIZE = 100          # Flush when we have 100 logs
 MAX_BUFFER_SIZE = 2000    # Stop pulling from Redis if we hold this many
 FLUSH_INTERVAL = 2.0      # Flush at least every 2 seconds
 MAX_BACKOFF_SECONDS = 60  # Cap retry wait time
+MAX_FLUSH_SIZE_BYTES = 512 * 1024  # 512 KB compressed limit
 
 
 class LokiPublisher:
@@ -50,6 +51,7 @@ class LokiPublisher:
         self.redis = redis_client
         self.buffer: list[dict] = []
         self.last_flush = time.time()
+        self.current_batch_bytes = 0
 
         # Backoff state
         self.consecutive_errors = 0
@@ -66,15 +68,20 @@ class LokiPublisher:
 
     def add(self, log_entry: dict) -> None:
         self.buffer.append(log_entry)
+        # Conservative estimate of uncompressed size
+        self.current_batch_bytes += len(json.dumps(log_entry))
 
     def should_flush(self) -> bool:
         if not self.buffer:
             return False
         if time.time() < self.next_retry_time:
             return False
+        
+        # Flush if we hit record count, time interval, or raw size threshold
         is_full = len(self.buffer) >= BATCH_SIZE
         is_stale = (time.time() - self.last_flush) > FLUSH_INTERVAL
-        return is_full or is_stale
+        is_oversized = self.current_batch_bytes >= MAX_FLUSH_SIZE_BYTES
+        return is_full or is_stale or is_oversized
 
     def flush(self) -> None:
         """Compress buffer and POST to Loki; preserve buffer on retriable errors."""
@@ -84,22 +91,28 @@ class LokiPublisher:
         payload = self._build_loki_payload()
 
         try:
-            compressed_data = gzip.compress(json.dumps(payload).encode('utf-8'))
+            raw_data = json.dumps(payload).encode('utf-8')
+            compressed_data = gzip.compress(raw_data)
         except (ValueError, OSError) as e:
             logger.error(f"Compression failed: {e}. Dropping batch.")
-            self.buffer.clear()
-            self.redis.delete(PROCESSING_REDIS_KEY)
+            self._clear_batch()
+            return
+
+        # If even a single compressed message exceeds our limit, we must drop it
+        # or it will poison the queue forever.
+        if len(compressed_data) > MAX_FLUSH_SIZE_BYTES and len(self.buffer) == 1:
+            logger.error(f"Single log entry too large ({len(compressed_data)} bytes). Dropping.")
+            self._clear_batch()
             return
 
         try:
             headers = {"Content-Type": "application/json", "Content-Encoding": "gzip"}
-            resp = self.session.post(self.url, data=compressed_data, headers=headers, timeout=5)
+            resp = self.session.post(self.url, data=compressed_data, headers=headers, timeout=10)
 
             if resp.status_code == 204:
                 if self.consecutive_errors > 0:
                     logger.info("Reconnected to Loki.")
-                self.buffer.clear()
-                self.redis.delete(PROCESSING_REDIS_KEY)
+                self._clear_batch()
                 self.last_flush = time.time()
                 self.consecutive_errors = 0
                 self.next_retry_time = 0.0
@@ -110,8 +123,8 @@ class LokiPublisher:
 
             elif 400 <= resp.status_code < 500:
                 logger.error(f"Loki rejected data ({resp.status_code}): {resp.text}")
-                self.buffer.clear()
-                self.redis.delete(PROCESSING_REDIS_KEY)
+                # Irrecoverable client error (e.g. malformed or oversized). Drop to unblock.
+                self._clear_batch()
 
             else:
                 logger.warning(f"Loki server error ({resp.status_code}). Retrying.")
@@ -121,6 +134,11 @@ class LokiPublisher:
             if self.consecutive_errors == 0:
                 logger.error(f"Loki unreachable: {e}")
             self._apply_backoff()
+
+    def _clear_batch(self) -> None:
+        self.buffer.clear()
+        self.current_batch_bytes = 0
+        self.redis.delete(PROCESSING_REDIS_KEY)
 
     def _apply_backoff(self, initial: float = 1.0) -> None:
         self.consecutive_errors += 1
