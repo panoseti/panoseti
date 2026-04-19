@@ -30,12 +30,14 @@ ps -p $(cat tmp/panoseti_control.lock)
 
 ### Ledger left in ACTIVE state
 
-`tmp/run_state.toml` persisting between tests causes `start.py` to refuse with "A run is already in progress." 
+`tmp/run_state.toml` persisting between tests causes `start.py` to refuse with "A run is already in progress."
 - **StartTransaction** and **StopTransaction** manage the status lifecycle.
 - Inspect the ledger for status leaks:
 ```bash
 cat tmp/run_state.toml | grep status
 ```
+
+**Statuses that block a new start**: `STARTING`, `ACTIVE`, `STOPPING`, `RECORDING_ENDED`. Any of these means the prior run has not been fully torn down.
 
 ### Hashpipe process left running after a test
 
@@ -47,7 +49,58 @@ pkill -KILL hashpipe
 
 ---
 
-## 2. Container Log Inspection
+## 2. Transfer Queue Debugging
+
+### Inspecting queue state
+
+```bash
+# What's waiting to be transferred?
+ls -la tmp/transfer_queue/pending/
+
+# What is the daemon actively processing?
+ls -la tmp/transfer_queue/active/
+
+# What failed?
+ls -la tmp/transfer_queue/failed/
+cat tmp/transfer_queue/failed/*.job.toml
+
+# What completed successfully?
+ls -la tmp/transfer_queue/completed/
+```
+
+Each `.job.toml` contains `run_name`, `head_data_dir`, `daq_nodes`, `created_at`, and `attempts`. A job in `failed/` has `attempts >= MAX_ATTEMPTS (3)`.
+
+### Daemon singleton lock
+
+The Transfer Daemon holds `tmp/panoseti_transfer.lock` using `fcntl.LOCK_EX | LOCK_NB`. The lock is kernel-managed and releases automatically when the daemon process exits.
+
+```bash
+# Check which PID holds the transfer lock
+cat tmp/panoseti_transfer.lock
+
+# Verify that process is alive
+ps -p $(cat tmp/panoseti_transfer.lock)
+```
+
+If the daemon has crashed but the lock file exists (the kernel already released the flock), a fresh daemon start will succeed immediately — `flock` contention is only live-process contention, not file-existence contention.
+
+### Manually re-enqueuing a failed job
+
+If a job lands in `failed/` due to a transient error (network outage during rsync), move it back to `pending/` manually:
+
+```bash
+mv tmp/transfer_queue/failed/myrun.pffd.job.toml tmp/transfer_queue/pending/
+```
+
+Then restart the daemon, or wait for the next poll cycle if it's already running.
+
+### run_complete marker missing
+
+If the ledger shows `ARCHIVED` but the `run_complete` file is absent, the daemon may have crashed between writing the ledger and writing the marker. The marker write is the last step — re-enqueue the job and the daemon will write it idempotently (it checks for existence before overwriting).
+
+---
+
+## 3. Container Log Inspection
 
 ### Loki Log Pipeline Debugging
 
@@ -73,7 +126,7 @@ The server writes to `/var/log/panoseti/daq_control_server.log` inside the daqno
 
 ---
 
-## 3. Configuration Validation Debugging
+## 4. Configuration Validation Debugging
 
 ### CI Validation Leniency
 The control plane enforces strict pre-flight validation. In CI environments, we allow leniency for missing hardware/firmware if `head_node_container: true` is set in `daq_config.json`.
@@ -81,7 +134,40 @@ The control plane enforces strict pre-flight validation. In CI environments, we 
 
 ---
 
-## 4. Advanced Insights
+## 5. Test Infrastructure Gotchas
+
+### Integration conftest `create_data_dirs` fixture
+
+`ci/integration/conftest.py` has an `autouse=True` session-scoped fixture that tries to create `/data/head` and `/data/daq`. These paths only exist inside Docker CI. Outside Docker, the fixture now catches the `OSError` silently so in-process integration tests (like the transfer daemon tests) can run natively.
+
+**Symptom**: Tests in `ci/integration/` fail at setup with `OSError: [Errno 30] Read-only file system: '/data'` when run outside Docker.
+
+**Fix**: The fixture guards with `try/except OSError: pass`. If you see this error in a new test, check whether it was added inside `ci/integration/` but should be in `ci/unit/` instead — in-process tests with no Docker dependency belong in the unit folder.
+
+### Patching daemon gRPC imports
+
+`utils/transfer/daemon.py` imports `DaqControlClient` **inside** `_process_job()` (not at module level) to allow the module to load without `panoseti_grpc` installed. This means `patch("utils.transfer.daemon.DaqControlClient", ...)` will fail with `AttributeError`.
+
+**Correct approach**: Inject fake modules via `sys.modules` before calling `_process_job()`:
+```python
+from types import ModuleType
+from unittest.mock import MagicMock
+
+stub = ModuleType("panoseti_grpc.daq_control.client")
+stub.DaqControlClient = MagicMock(return_value=mock_client)
+sys.modules["panoseti_grpc.daq_control.client"] = stub
+# ... run _process_job ...
+# restore sys.modules afterwards
+```
+See `ci/unit/test_transfer_daemon.py::_mock_grpc_modules` for the complete reusable context manager.
+
+### `grpc_error_handler` on async generators
+
+The `grpc_error_handler` decorator in `panoseti_grpc/util/error_handling.py` has special handling for async generator functions (`GetManifest` is server-streaming). It uses `inspect.isasyncgenfunction` to detect generators and wraps them in an `agen_wrapper` that yields items. If you add a new server-streaming RPC, verify the decorator handles it by checking `inspect.isasyncgenfunction(your_handler)`.
+
+---
+
+## 6. Advanced Insights
 
 ### asyncio TaskGroup and Concurrent RPCs
 `start.py` uses `asyncio.TaskGroup` for fail-fast concurrency.
@@ -90,3 +176,6 @@ The control plane enforces strict pre-flight validation. In CI environments, we 
 
 ### Write Ahead Logging (WAL) Pattern
 Always write the node receipt to `run_state.toml` **before** issuing the gRPC call. This ensures that if the process is killed during the RPC, the rollback ladder knows the node was "attempted" and can clean it up.
+
+### TransferQueue idempotency
+`TransferQueue.enqueue()` checks all four subdirs (`pending/`, `active/`, `completed/`, `failed/`) before writing. Double-enqueueing the same run name is a no-op. This is intentional — a crashed `stop.py` that re-runs will not create a duplicate job.

@@ -124,7 +124,7 @@ data_config = get_data_config()
 
 1. `session_start.py` — powers on quabos, runs `get_uids.py` (discovers hardware UIDs), reboots firmware, sets HV, calibrates MAROC registers and PH baselines, starts Redis/InfluxDB daemons
 2. `start.py` — configures quabos for the chosen data mode, tells quabos where to send science packets (DAQ node IPs), creates run directories on head and DAQ nodes, starts Hashpipe on DAQ nodes via gRPC (`DaqControlClient.StartDaq()`) — previously SSH
-3. `stop.py` — kills Hashpipe via gRPC (`DaqControlClient.StopDaq()`), stops housekeeping recording, rsync's PFF files from DAQ nodes to head node
+3. `stop.py` — kills Hashpipe via gRPC (`DaqControlClient.StopDaq()`), stops housekeeping recording, then **enqueues a transfer job** in `tmp/transfer_queue/pending/` and transitions the ledger to `RECORDING_ENDED` in seconds. Bulk I/O (rsync, manifest verify, selective cleanup) is handled by the Transfer Daemon (`daemons/transfer_daemon.py`) running out-of-band.
 
 ### Data flow
 
@@ -209,7 +209,11 @@ async with DaqDataClient(host, port) as client:
 ```
 For local testing without hardware, `panoseti_grpc.daq_data.simulate` generates synthetic image streams.
 
-**DAQ Control service** — replaces the SSH calls in `control/daq_scripts/` with RPCs. Key RPCs: `StartDaq()` (launches Hashpipe subprocess), `StopDaq()` (SIGINT), `StatusDaq()` (PID + disk usage), `CleanupData()`. The server (`python -m panoseti_grpc.daq_control.server`) runs as a systemd service on each DAQ node (port 50051). `control/daq_scripts/start_daq.py`, `stop_daq.py`, `status_daq.py` are **deprecated** in favor of this service.
+**DAQ Control service** — replaces the SSH calls in `control/daq_scripts/` with RPCs. Key RPCs: `StartDaq()` (launches Hashpipe subprocess), `StopDaq()` (SIGINT), `StatusDaq()` (PID + disk usage), `CleanupData()` (full or selective), `GenerateManifest()` (blake3/xxhash checksums of run files), `GetManifest()` (streaming). The server (`python -m panoseti_grpc.daq_control.server`) runs as a systemd service on each DAQ node (port 50051). `control/daq_scripts/start_daq.py`, `stop_daq.py`, `status_daq.py` are **deprecated** in favor of this service.
+
+`CleanupData` supports two modes (set via `mode` field):
+- `CLEANUP_FULL` (default, legacy) — `rmtree` the entire run directory
+- `CLEANUP_SELECTIVE` — delete only files matching `delete_patterns`, preserving those matching `preserve_patterns`; used by the Transfer Daemon to keep `.json`/`.log`/metadata while removing `.pff` science files
 
 **Telemetry service** — consumed by `control/daemons/capture_telemetry_service.py`. Configured via `control/daemons/capture_telemetry_service/telemetry_config.toml`. Supports two storage modes:
 - **Strict** (production): validated Pydantic payloads (e.g., `GnssPayload`, `DewPayload`) → permanent Redis + InfluxDB
@@ -253,7 +257,18 @@ module_id = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
 `control/driver/quabo_driver.py` — UDP socket-based. `QUABO(ip, port)` object sends binary command packets and receives HK packets. `DAQ_PARAMS` encapsulates data acquisition mode bits. The 829-byte serial command encodes MAROC register configuration for the SiPM readout ASICs.
 
 ### SSH to remote nodes
-`control/utils/file_xfer.py` and `control/utils/collect.py` handle SSH/SCP to DAQ nodes. All remote commands should use `subprocess.run(['ssh', f'{user}@{host}', cmd], ...)` (list form, not shell string) to avoid injection.
+`control/utils/file_xfer.py` handles SSH/rsync to DAQ nodes. All remote commands use `subprocess.run(['ssh', f'{user}@{host}', cmd], ...)` (list form, not shell string) to avoid injection. `control/utils/collect.py` is **deprecated** — it prints a deprecation warning at import time. Use `utils/transfer/rsync_worker.py` instead.
+
+### Transfer Daemon
+`control/daemons/transfer_daemon.py` is a long-running daemon started by `session_start.py`. It drains jobs from `tmp/transfer_queue/pending/` and drives them through a 5-stage state machine:
+
+1. **MANIFEST_GENERATING** — `GenerateManifest` RPC per module on each DAQ node (blake3/xxhash checksums)
+2. **TRANSFERRING** — rsync each node's run directory to the head node
+3. **VERIFYING** — rsync exit code trusted; full digest verification is staged for follow-on work
+4. **CLEANING** — `CleanupData(mode=CLEANUP_SELECTIVE, delete_patterns=["*.pff"], preserve_patterns=["*.json","*.log","*.toml"])` per node
+5. **ARCHIVED** — write `run_complete` marker
+
+The daemon holds `tmp/panoseti_transfer.lock` (flock) as a singleton guard. `stop.py` holds only `tmp/panoseti_control.lock` during the hardware teardown phase (seconds), never during bulk I/O.
 
 ### Data config validation constraints
 - `integration_time_usec` must be a multiple of 10 and evenly divide 1,000,000
@@ -269,8 +284,8 @@ module_id = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
 `control/pyproject.toml` sets `requires-python = ">=3.9"`. Target migration to 3.14+ syntax incrementally.
 
 ### Test locations
-- `control/ci/unit/` — hardware-agnostic Python unit tests (460 tests, 10 modules)
-- `control/ci/integration/` — end-to-end Docker integration tests (43 passing, 7 skipped)
+- `control/ci/unit/` — hardware-agnostic Python unit tests (524 tests, 12 modules)
+- `control/ci/integration/` — end-to-end Docker integration tests (65 passing)
 - `control/ci/Dockerfile.ci` — multi-stage image for all test suites
 - `control/ci/run.sh` — unified runner (`unit` or `integration`)
 

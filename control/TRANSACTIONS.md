@@ -1,23 +1,51 @@
 # Observing Run Transactions
 
-This document describes the transactional integrity and rollback mechanisms implemented in the PANOSETI observatory control plane (`start.py` and `stop.py`) using **Context Manager Architecture**.
+This document describes the transactional integrity and rollback mechanisms implemented in the PANOSETI observatory control plane (`start.py` and `stop.py`) using the **Context Manager Architecture**, and the decoupled Transfer Daemon that owns all bulk I/O.
 
 ## Overview
 
-The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is an atomic operation handled by `StartTransaction` and `StopTransaction` classes in `control/utils/run_state.py`.
+The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers in `control/utils/run_state.py`. Since the `stop.py` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by `daemons/transfer_daemon.py`.
 
 ## State Management & Locking
 
-### Advisory Locking
-To prevent concurrent operations, all control processes must acquire an exclusive advisory lock. 
-- **Implementation**: Uses low-level `os.open` with `O_CREAT | os.O_EXCL` on `tmp/panoseti_control.lock`.
-- **Self-Healing**: If lock acquisition fails, the system checks the PID inside the lock file. If the process is dead, the lock is automatically cleared (SC-015/SC-021).
-- **Safety**: Locked for the entire duration of the transaction via `__aenter__` and `__aexit__`.
+### Advisory Lock Hierarchy
+
+Two separate advisory locks prevent concurrent operations at different granularities:
+
+| Lock file | Mechanism | Held by | Duration |
+|---|---|---|---|
+| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `start.py` / `stop.py` | Seconds (hardware I/O only) |
+| `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Full job duration (minutes to hours) |
+
+The control lock uses atomic file creation (`O_CREAT | O_EXCL`). If acquisition fails, the PID inside the file is checked — a dead PID causes a self-healing delete and retry (SC-015/SC-021). The transfer lock uses `flock`, which the kernel releases automatically on process exit.
 
 ### Distributed Ledger
+
 The system state is persisted in a TOML-based ledger (`tmp/run_state.toml`).
-- **Statuses**: `STARTING`, `ACTIVE`, `STOPPING`, `COMPLETED`, `ABORTED`, `STOPPED_WITH_ERRORS`.
-- **Node Receipts**: Track DAQ status (PID, data dir) to guide rollback/teardown.
+
+**Full status vocabulary:**
+
+| Status | Owner | Meaning |
+|---|---|---|
+| `STARTING` | start.py | Hardware bring-up in progress |
+| `ACTIVE` | start.py | Observation recording |
+| `ABORTED` | start.py | Rollback completed after startup failure |
+| `STOPPING` | stop.py | Hardware teardown in progress |
+| `RECORDING_ENDED` | stop.py | Hardware stopped; transfer job enqueued |
+| `MANIFEST_GENERATING` | daemon | DAQ nodes computing checksums |
+| `MANIFEST_READY` | daemon | All manifests generated |
+| `TRANSFER_PENDING` | daemon | Awaiting rsync start |
+| `TRANSFERRING` | daemon | rsync in progress |
+| `TRANSFER_FAILED` | daemon | rsync failed; will retry |
+| `VERIFYING` | daemon | Checking transferred files |
+| `VERIFY_FAILED` | daemon | Digest mismatch detected |
+| `CLEANUP_PENDING` | daemon | Awaiting selective cleanup |
+| `CLEANING` | daemon | Removing .pff files from DAQ nodes |
+| `ARCHIVED` | daemon | run_complete marker written |
+| `COMPLETED` | (legacy) | Synonymous with ARCHIVED in old code |
+| `STOPPED_WITH_ERRORS` | daemon | Archive complete but with errors |
+
+**Node receipts** (`NodeReceipt` in `pydantic_config_models.py`) track per-DAQ-node state including `manifest_path`, `manifest_bytes`, `rsync_bytes_transferred`, `rsync_last_progress_at`, `verify_ok`, and `cleanup_ok`.
 
 ---
 
@@ -26,7 +54,7 @@ The system state is persisted in a TOML-based ledger (`tmp/run_state.toml`).
 Managed via `async with StartTransaction(...) as tx:`.
 
 ### 1. `__aenter__`
-- Acquires the advisory lock.
+- Acquires the control advisory lock.
 - Returns the transaction context.
 
 ### 2. Execution Phase (in `start_run`)
@@ -46,11 +74,11 @@ If an exception occurs (e.g., node timeout), `__aexit__` triggers the rollback:
 ### Start Flow Diagram
 ```mermaid
 flowchart TD
-    A[Start Request] --> B[tx.__aenter__: Acquire Lock]
-    B --> C[Validate & Initialize Ledger]
+    A[Start Request] --> B[tx.__aenter__: Acquire Control Lock]
+    B --> C[Validate & Initialize Ledger: STARTING]
     C --> D[TaskGroup: StartDaq & Heartbeat]
     D -- Success --> E[Update Ledger: ACTIVE]
-    E --> F[tx.__aexit__: Release Lock]
+    E --> F[tx.__aexit__: Release Control Lock]
     D -- Failure / Exception --> G[tx.__aexit__: Rollback Ladder]
     G --> H[Stop DAQs & Quabo Flow]
     H --> I[Kill Daemons & Archive Data]
@@ -65,29 +93,73 @@ flowchart TD
 Managed via `async with StopTransaction(...) as tx:`.
 
 ### 1. `__aenter__`
-- Acquires the advisory lock.
+- Acquires the control advisory lock.
 
 ### 2. `__aexit__` (Teardown sequence)
-Ensures **resilient best-effort shutdown**. All steps execute even if previous ones fail:
-1. **Stop DAQs**: Concurrent `StopDaq` RPCs.
-2. **Kill Daemons**: Terminate local control processes.
+Ensures **resilient best-effort hardware shutdown**. All steps execute even if previous ones fail. Bulk I/O is NOT in this sequence:
+
+1. **Stop DAQs**: Concurrent `StopDaq` RPCs to all DAQ nodes.
+2. **Kill Daemons**: Terminate local control processes (HV updater, HK recorder, etc.).
 3. **Stop Quabos**: Signal hardware to halt data generation.
-4. **Collect Data**: Rsync artifacts with transient error retries.
-5. **Cleanup**: Call `CleanupData` only for nodes where collection succeeded.
-6. **Finalize**: Update ledger (`COMPLETED` or `STOPPED_WITH_ERRORS`) and release lock.
+4. **Enqueue transfer job**: Write `{run_name}.job.toml` to `tmp/transfer_queue/pending/`.
+5. **Update Ledger**: Transition to `RECORDING_ENDED`.
+6. **Release Control Lock** — happens in seconds, not hours.
 
 ### Stop Flow Diagram
 ```mermaid
 flowchart TD
-    A[Stop Request] --> B[tx.__aenter__: Acquire Lock]
+    A[Stop Request] --> B[tx.__aenter__: Acquire Control Lock]
     B --> C[Set Ledger: STOPPING]
-    C --> D[tx.__aexit__: Resilient Teardown]
-    D --> E[Stop Recording & Quabos]
-    E --> F[Collect Data: Rsync]
-    F --> G[Cleanup Successful Nodes]
-    G --> H[Update Ledger: COMPLETED]
-    H --> I[Release Lock]
+    C --> D[tx.__aexit__: Resilient Hardware Teardown]
+    D --> E[Stop DAQs via gRPC + Kill Daemons + Stop Quabos]
+    E --> F[Enqueue transfer job in tmp/transfer_queue/pending/]
+    F --> G[Set Ledger: RECORDING_ENDED]
+    G --> H[Release Control Lock — seconds elapsed]
+    H --> I[Transfer Daemon picks up job asynchronously]
 ```
+
+---
+
+## Transfer Daemon (`daemons/transfer_daemon.py`)
+
+The daemon is a long-running process started by `session_start.py`. It holds `tmp/panoseti_transfer.lock` as a singleton guard. Multiple `stop.py` invocations never contend with it.
+
+### Job Lifecycle
+
+```
+tmp/transfer_queue/
+  pending/    → daemon calls claim() → active/
+  active/     → success → completed/
+  active/     → failure after MAX_ATTEMPTS → failed/
+```
+
+All transitions use `os.rename` (POSIX-atomic).
+
+### State Machine per Job
+
+```mermaid
+flowchart TD
+    RE[RECORDING_ENDED] --> MG[MANIFEST_GENERATING]
+    MG -- all manifests OK --> MR[MANIFEST_READY]
+    MG -- partial failure --> MR
+    MR --> TP[TRANSFER_PENDING]
+    TP --> TF[TRANSFERRING]
+    TF -- rsync OK --> VY[VERIFYING]
+    TF -- rsync error --> TFail[TRANSFER_FAILED]
+    TFail -- retry < MAX_ATTEMPTS --> TP
+    TFail -- exhausted --> SE[STOPPED_WITH_ERRORS]
+    VY -- digest OK --> CP[CLEANUP_PENDING]
+    VY -- mismatch --> VF[VERIFY_FAILED]
+    VF --> SE
+    CP --> CL[CLEANING]
+    CL --> AR[ARCHIVED]
+```
+
+### Selective Cleanup
+
+The daemon calls `CleanupData(mode=CLEANUP_SELECTIVE)` with:
+- `delete_patterns = ["*.pff"]` — science files removed from DAQ nodes
+- `preserve_patterns = ["*.json", "*.log", "*.toml"]` — metadata retained on-DAQ as a permanent catalog
 
 ---
 
@@ -95,18 +167,24 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant Head as Head Node (Context Manager)
+    participant Head as Head Node (stop.py)
+    participant Daemon as Transfer Daemon
     participant DAQ as DAQ Nodes
     participant Quabo as Quabo Boards
 
-    Head->>Head: tx.__aenter__ (Lock)
-    Head->>Quabo: Config Data Dest
-    Head->>DAQ: StartDaq (Concurrent)
-    DAQ-->>Head: Heartbeat OK
-    Note over Head,Quabo: Observation ACTIVE
-    Head->>Head: tx.__aexit__ (Teardown)
-    Head->>DAQ: StopDaq (Concurrent)
+    Head->>Head: tx.__aenter__ (Control Lock)
+    Head->>DAQ: StopDaq (Concurrent gRPC)
     Head->>Quabo: Stop Data Flow
-    Head->>DAQ: Rsync Artifacts
-    Head->>DAQ: CleanupData (Safe)
+    Head->>Head: Enqueue job → tmp/transfer_queue/pending/
+    Head->>Head: Ledger: RECORDING_ENDED
+    Head->>Head: tx.__aexit__ (Release Control Lock)
+
+    Note over Head,Quabo: Control lock released in seconds
+
+    Daemon->>Daemon: Acquire Transfer Lock
+    Daemon->>DAQ: GenerateManifest (per module)
+    Daemon->>DAQ: rsync run directories
+    Daemon->>DAQ: CleanupData SELECTIVE (*.pff only)
+    Daemon->>Head: Write run_complete marker
+    Daemon->>Head: Ledger: ARCHIVED
 ```

@@ -13,7 +13,7 @@ The root CLAUDE.md has some stale entries for the `control/` package:
 - **Python version**: `requires-python = ">=3.14"` (not 3.9)
 - **CI runner**: `python ci/qa.py <cmd>`
 - **Integration test count**: 65 passing
-- **Unit test count**: 460 passing
+- **Unit test count**: 524 passing (12 modules)
 - **Chaos/scenario test count**: 114 tests (91 active, 23 stubs) in `ci/integration/scenarios/`
 
 ---
@@ -35,8 +35,30 @@ All functions and methods must have high-quality docstrings. Preserving legacy c
 ## Transaction Logic
 The observatory uses a **Context Manager Architecture** to manage the lifecycle of an observing run.
 - **StartTransaction**: Handles atomic locking and a multi-step rollback ladder. If any startup step fails, it guarantees all hardware and remote processes are restored to a safe state.
-- **StopTransaction**: Implements a resilient teardown sequence, ensuring that all shutdown tasks (collection, cleanup) execute even if individual steps fail.
-- **Distributed Ledger**: State is persisted in `tmp/run_state.toml`.
+- **StopTransaction**: Implements a resilient teardown sequence for hardware (stop DAQs, kill daemons, stop quabos), then enqueues a transfer job and transitions the ledger to `RECORDING_ENDED`. Bulk I/O is decoupled from the lock.
+- **Transfer Daemon** (`daemons/transfer_daemon.py`): Drains `tmp/transfer_queue/pending/` jobs and drives each through manifest → rsync → verify → selective cleanup → archive. Holds `tmp/panoseti_transfer.lock` (flock singleton).
+- **Distributed Ledger**: State is persisted in `tmp/run_state.toml`. The `RunStateLedger.status` field has 17 possible values covering the full lifecycle from `STARTING` through `ARCHIVED`.
+
+### Lock Hierarchy
+| Lock file | Mechanism | Held by | Duration |
+|---|---|---|---|
+| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `start.py` / `stop.py` | Seconds (hardware I/O only) |
+| `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Job duration (minutes to hours) |
+
+### RunStateLedger Status Vocabulary
+`STARTING → ACTIVE → STOPPING → RECORDING_ENDED → MANIFEST_GENERATING → MANIFEST_READY → TRANSFER_PENDING → TRANSFERRING → VERIFYING → CLEANUP_PENDING → CLEANING → ARCHIVED`
+
+Error exits: `ABORTED` (from start), `TRANSFER_FAILED`, `VERIFY_FAILED`, `STOPPED_WITH_ERRORS`.
+
+### TransferQueue Layout
+```
+tmp/transfer_queue/
+  pending/    {run_name}.job.toml   ← stop.py writes here
+  active/     {run_name}.job.toml   ← daemon moves here on claim()
+  failed/     {run_name}.job.toml   ← daemon moves here after MAX_ATTEMPTS
+  completed/  {run_name}.job.toml   ← daemon moves here on success
+```
+State transitions use `os.rename` (POSIX-atomic). Double-enqueue of the same run is idempotent.
 
 Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules.
 
