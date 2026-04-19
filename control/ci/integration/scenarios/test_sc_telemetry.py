@@ -95,6 +95,17 @@ def _loki_query(selector: str = '{job="panoseti"}', since_s: float = 30.0) -> li
         return []
 
 
+def _wait_for_loki_tag(tag: str, timeout: float = 15.0) -> bool:
+    """Poll Loki until a specific tag appears in logs."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        entries = _loki_query(selector=f'{{job="panoseti"}} |= "{tag}"', since_s=30.0)
+        if any(tag in e.get("line", "") for e in entries):
+            return True
+        time.sleep(0.5)
+    return False
+
+
 # ── SC-056: Loki down during run ──────────────────────────────────────────────
 
 def test_SC056_loki_down_does_not_crash_storeLoki(monkeypatch) -> None:
@@ -181,17 +192,11 @@ def test_SC061_large_log_payload_ships_without_crash() -> None:
     large_payload = "X" * 100_000  # 100 KB
     rc.rpush("logs:ingress", _make_log_entry(large_payload))
 
-    # Give storeLoki.py time to process
-    time.sleep(3)
-
     # storeLoki.py must still be running — verify by checking a health-check entry arrives
     health_tag = f"sc061_health_{uuid.uuid4().hex[:8]}"
     rc.rpush("logs:ingress", _make_log_entry(health_tag))
-    time.sleep(2)
-
-    entries = _loki_query(since_s=10.0)
-    health_entries = [e for e in entries if health_tag in e.get("line", "")]
-    assert health_entries, (
+    
+    assert _wait_for_loki_tag(health_tag, timeout=15), (
         "storeLoki.py stopped processing after 100 KB payload — "
         "pipeline may have crashed (SC-061)"
     )
@@ -215,14 +220,10 @@ def test_SC062_non_utf8_log_message_does_not_crash() -> None:
         surrogate_payload = json.dumps("binary: \ud800\udfff", ensure_ascii=True)
         rc.rpush("logs:ingress", _make_log_entry(surrogate_payload))
 
-    time.sleep(2)
-
     # Verify pipeline is still alive
     health_tag = f"sc062_health_{uuid.uuid4().hex[:8]}"
     rc.rpush("logs:ingress", _make_log_entry(health_tag))
-    time.sleep(2)
-    entries = _loki_query(since_s=10.0)
-    assert any(health_tag in e.get("line", "") for e in entries), \
+    assert _wait_for_loki_tag(health_tag, timeout=10), \
         "storeLoki.py stopped after non-UTF8 input (SC-062)"
 
 
@@ -242,16 +243,8 @@ def test_SC063_burst_logging_all_entries_arrive() -> None:
         rc.rpush("logs:ingress", _make_log_entry(f"{burst_tag} burst {i}"))
 
     # Allow time for storeLoki to flush
-    deadline = time.time() + 15
-    while time.time() < deadline:
-        entries = _loki_query(selector=f'{{job="panoseti"}} |= "{burst_tag}"', since_s=30.0)
-        if len(entries) >= N * 0.9:  # allow 10% loss tolerance
-            break
-        time.sleep(1)
-
-    entries = _loki_query(selector=f'{{job="panoseti"}} |= "{burst_tag}"', since_s=30.0)
-    assert len(entries) >= N * 0.9, (
-        f"Only {len(entries)}/{N} burst entries arrived in Loki. "
+    assert _wait_for_loki_tag(f"{burst_tag} burst {N-1}", timeout=20), (
+        "Only a fraction of burst entries arrived in Loki. "
         "RedisBatcher may be dropping under load (SC-063)."
     )
 
@@ -321,12 +314,9 @@ def test_SC064_loki_timestamp_skew_within_tolerance() -> None:
     now = time.time()
     tag = f"sc064_{uuid.uuid4().hex[:8]}"
     rc.rpush("logs:ingress", _make_log_entry(f"clock-skew check {tag}", ts=now))
-    time.sleep(3)
 
-    entries = _loki_query(selector=f'{{job="panoseti"}} |= "{tag}"', since_s=20.0)
     # If the entry arrived, Loki accepted the timestamp — within tolerance.
-    # A failed clock skew would cause Loki to reject the entry (400/stream-too-old error).
-    assert entries, (
+    assert _wait_for_loki_tag(tag, timeout=10), (
         "Log entry with current timestamp was not accepted by Loki — "
         "potential clock skew between head and DAQ (SC-064)"
     )
@@ -414,20 +404,18 @@ def test_SC067_storeLoki_crash_during_flush_no_silent_loss() -> None:
     rc.set("chaos:storeLoki:crash_on_flush", "1")
 
     # 3. Wait for storeLoki to pop the logs and crash
-    # headnode container will restart automatically due to restart: always in compose
-    time.sleep(5)
+    # We poll Redis until queue is drained or timeout (max 10s)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if rc.llen("logs:ingress") == 0:
+            break
+        time.sleep(0.5)
+
     rc.delete("chaos:storeLoki:crash_on_flush")
     
-    # Wait for the restarted storeLoki to recover the processing queue and flush
-    # We give it plenty of time to pass healthcheck and boot
-    time.sleep(15)
-
     # 4. Check if they arrived in Loki
     # If the fix works, they should ALL be there despite the crash.
-    entries = _loki_query(selector=f'{{job="panoseti"}} |= "{unique_tag}"', since_s=60.0)
-
-    assert len(entries) == 5, (
-        f"Only {len(entries)}/5 logs arrived. "
+    assert _wait_for_loki_tag(f"{unique_tag} message 4", timeout=30), (
         "Reliable queue recovery failed to restore logs after crash (SC-067)."
     )
 

@@ -247,7 +247,7 @@ def main() -> None:
                         log_entry = json.loads(item_str)
                         publisher.add(log_entry)
                     except json.JSONDecodeError:
-                        logger.error(f"Skipping invalid JSON log entry: {item[:100]!r}...")
+                        logger.error(f"Skipping invalid JSON log entry: {item_str[:100]!r}...")
                         r.lpop(PROCESSING_REDIS_KEY) # Remove invalid item
             else:
                 time.sleep(0.5)

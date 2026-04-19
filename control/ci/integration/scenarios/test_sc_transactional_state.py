@@ -823,14 +823,8 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
         await run_start_and_kill("heartbeat OK", timeout=20)
     
     # 2. Verify hashpipe is orphaned and running
-    time.sleep(1)
-    ok, status = daq_control_direct.StatusDaq({
-        "data_dir": "/data",
-        "check_hashpipe_running": True,
-        "check_disk_usage": False,
-        "check_run_dirs": False
-    })
-    assert ok and status.get("hashpipe_running"), "Hashpipe should be orphaned and running on 192.168.0.10"
+    assert wait_hashpipe_running(daq_control_direct, "/data", timeout=10), \
+        "Hashpipe should be orphaned and running on 192.168.0.10"
     
     # 2. Run start.py with --force-reset to self-heal the orphaned hashpipe
     with mock_daq_config_for_headnode():
@@ -1284,6 +1278,7 @@ async def slow_start():
     # Use fixed run name for test
     run_name = "{run_name}"
 
+    print("CONFIGS_LOADED", flush=True)
     # Delay to allow disk modification
     time.sleep(2)
 
@@ -1310,11 +1305,15 @@ if __name__ == "__main__":
 
         proc = subprocess.Popen(["python3", "tmp_slow_start.py"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-        # 1. Give it a moment to load config into memory
-        time.sleep(1)
-
+        # 1. Wait for it to load config into memory
+        deadline = time.monotonic() + 10
+        assert proc.stdout is not None
+        while time.monotonic() < deadline:
+            line = proc.stdout.readline()
+            if "CONFIGS_LOADED" in line:
+                break
         
-        # 2. Modify config on disk while slow_start is in its 2s sleep
+        # 2. Modify config on disk immediately
         modified_data = dict(original_data)
         modified_data["run_type"] = "MODIFIED_MID_FLIGHT"
         with open(data_cfg_path, "w") as f:
@@ -1392,6 +1391,8 @@ async def slow_start():
     net = config_file.get_network_config()
 
     run_name = "{run_name}"
+
+    print("CONFIGS_LOADED", flush=True)
     time.sleep(2)
 
     import unittest.mock
@@ -1416,9 +1417,16 @@ if __name__ == "__main__":
 """)
         
         proc = subprocess.Popen(["python3", wrapper_name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        time.sleep(1)
         
-        # Modify obs_config on disk (Timing mode change)
+        # 1. Wait for marker
+        deadline = time.monotonic() + 10
+        assert proc.stdout is not None
+        while time.monotonic() < deadline:
+            line = proc.stdout.readline()
+            if "CONFIGS_LOADED" in line:
+                break
+        
+        # 2. Modify obs_config on disk (Timing mode change)
         modified_obs = dict(original_obs)
         modified_obs["domes"][0]["modules"][0]["timing_mode"] = "gnss"
         with open(obs_cfg_path, "w") as f:

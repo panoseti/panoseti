@@ -1,0 +1,3 @@
+# Base Firmware Configuration Template
+bga = "firmware_bga_v2.bin"
+qfp = "firmware_qfp_v1.bin"

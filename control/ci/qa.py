@@ -493,7 +493,8 @@ async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
     ok_lint = await cmd_lint(args, runner)
     ok_unit = await cmd_unit(args, runner)
     ok_int  = await cmd_integration(args, runner)
-    return ok_lint and ok_unit and ok_int
+    ok_chaos = await cmd_chaos(args, runner)
+    return ok_lint and ok_unit and ok_int and ok_chaos
 
 
 def main() -> None:

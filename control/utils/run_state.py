@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import fcntl
 import os
 import pathlib
 import tempfile
@@ -62,7 +61,7 @@ class RunStateManager:
             except FileExistsError:
                 # Check if the lock is stale
                 try:
-                    with open(self.lock_path, "r") as f:
+                    with open(self.lock_path) as f:
                         pid = int(f.read().strip())
                     
                     # Check if process is alive

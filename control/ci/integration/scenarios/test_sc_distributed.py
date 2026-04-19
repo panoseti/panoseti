@@ -11,18 +11,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import os
 import pathlib
 import sys
 import time
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 if str(CONTROL_ROOT) not in sys.path:
     sys.path.insert(0, str(CONTROL_ROOT))
+
 
 from panoseti_grpc.daq_control.client import DaqControlClient  # noqa: E402
 
@@ -36,11 +38,10 @@ from ci.integration.conftest import (  # noqa: E402
 from .conftest import _start as grpc_start  # noqa: E402
 
 
-@pytest.mark.parametrize("daqnode_fleet", [4], indirect=True)
 @pytest.mark.asyncio
 async def test_SCN003_partial_start_rollback_4_nodes(
-    daqnode_fleet: Any,
     tmp_path: pathlib.Path,
+    topology_templates: dict[str, Any],
 ) -> None:
     """
     SC-N003: 4-node fleet, Node 2 (192.168.0.32) fails during StartDaq.
@@ -49,44 +50,45 @@ async def test_SCN003_partial_start_rollback_4_nodes(
       - Nodes 0, 1, and 3 (successfully started before/during) receive StopDaq.
       - No hashpipe is left running on any reachable node.
     """
-    import ipaddress
-    import json
     import unittest.mock
-
-    import anyio
 
     import start
     from utils import config_file
 
-    # 1. Setup daq_config.json for the fleet
-    # The Fleet fixture starts the containers. We must point start.py to its config.
-    config_path = tmp_path / "daq_config.json"
+    # 1. Setup 4-node config
     headnode_ip = "10.0.1.5"
-    daqnode_fleet.write_daq_config(config_path, headnode_ip)
+    from utils.pydantic_config_models import DaqConfigValidator
+    
+    daq_raw = copy.deepcopy(topology_templates.get("base_daq", {}))
+    daq_raw["head_node_ip_addr"] = headnode_ip
+    daq_raw["head_node_container"] = True
+    daq_raw["daq_nodes"] = [
+        {"ip_addr": f"192.168.0.{30+i}", "data_dir": "/data", "username": "root", "module_ids": [200+i]}
+        for i in range(4)
+    ]
+    daq_config = DaqConfigValidator(**daq_raw)
 
     # 2. Prepare configurations
     obs_config = config_file.get_obs_config()
-    daq_cfg_raw = json.loads(await anyio.Path(config_path).read_text())
-    daq_config = config_file.DaqConfigValidator(**daq_cfg_raw)
     
-    # Mock quabo_uids to match the fleet's modules (200, 201, 202, 203)
-    from utils.pydantic_config_models import (
-        QuaboUidDome,
-        QuaboUidEntry,
-        QuaboUidModule,
-        QuaboUidsValidator,
-    )
-    quabo_uids = QuaboUidsValidator(domes=[
-        QuaboUidDome(num=0, modules=[
-            QuaboUidModule(id=200, ip_addr=ipaddress.IPv4Address("192.168.0.200"), quabos=[QuaboUidEntry(uid="q00"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-            QuaboUidModule(id=201, ip_addr=ipaddress.IPv4Address("192.168.0.201"), quabos=[QuaboUidEntry(uid="q01"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-            QuaboUidModule(id=202, ip_addr=ipaddress.IPv4Address("192.168.0.202"), quabos=[QuaboUidEntry(uid="q02"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-            QuaboUidModule(id=203, ip_addr=ipaddress.IPv4Address("192.168.0.203"), quabos=[QuaboUidEntry(uid="q03"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-        ])
-    ])
+    # Use template for quabo_uids
+    from utils.pydantic_config_models import QuaboUidsValidator
+    
+    # Construct it cleanly from the fleet spec
+    uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
+    modules_list = cast(list[dict[str, Any]], uids_dict["domes"][0]["modules"])
+    for i in range(4):
+        mid = 200 + i
+        modules_list.append({
+            "id": mid,
+            "ip_addr": f"192.168.3.{mid}",
+            "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
+        })
+    quabo_uids = QuaboUidsValidator(**uids_dict)
     
     data_config = config_file.get_data_config()
     network_config = config_file.get_network_config()
+
     
     # 3. Fault Injection: Monkey-patch StartDaq to fail for Node 2 (.32)
     rollback_results: dict[str, Any] = {"stop_called_ips": set()}
@@ -149,46 +151,43 @@ async def test_SCN003_partial_start_rollback_4_nodes(
 @pytest.mark.asyncio
 async def test_SC069_partial_start_3_nodes_rolls_back(
     tmp_path: pathlib.Path,
+    topology_templates: dict[str, Any],
 ) -> None:
     """
     SC-069: same as SC-002 at scale — failure on node-2 must roll back nodes 0-1.
     """
-    import ipaddress
     import unittest.mock
 
     import start
     from utils import config_file
     from utils.pydantic_config_models import (
         DaqConfigValidator,
-        DaqNodeValidator,
-        QuaboUidDome,
-        QuaboUidEntry,
-        QuaboUidModule,
         QuaboUidsValidator,
     )
     from utils.run_state import RunStateManager
     RunStateManager().clear_state()
 
-    # 1. Setup 3-node config
+    # 1. Setup 3-node config using templates
     headnode_ip = "10.0.1.5"
-    daq_config = DaqConfigValidator(
-        head_node_ip_addr=ipaddress.IPv4Address(headnode_ip),
-        head_node_data_dir="/data/head",
-        head_node_container=True,
-        daq_nodes=[
-            DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[250]),
-            DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.11"), data_dir="/data", username="root", module_ids=[251]),
-            DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.12"), data_dir="/data", username="root", module_ids=[252]),
-        ]
-    )
+    daq_raw = copy.deepcopy(topology_templates.get("base_daq", {}))
+    daq_raw["head_node_ip_addr"] = headnode_ip
+    daq_raw["head_node_container"] = True
+    daq_raw["daq_nodes"] = [
+        {"ip_addr": "192.168.0.10", "data_dir": "/data", "username": "root", "module_ids": [250]},
+        {"ip_addr": "192.168.0.11", "data_dir": "/data", "username": "root", "module_ids": [251]},
+        {"ip_addr": "192.168.0.12", "data_dir": "/data", "username": "root", "module_ids": [252]},
+    ]
+    daq_config = DaqConfigValidator(**daq_raw)
 
-    quabo_uids = QuaboUidsValidator(domes=[
-        QuaboUidDome(num=0, modules=[
-            QuaboUidModule(id=250, ip_addr=ipaddress.IPv4Address("192.168.3.250"), quabos=[QuaboUidEntry(uid="q0"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-            QuaboUidModule(id=251, ip_addr=ipaddress.IPv4Address("192.168.3.251"), quabos=[QuaboUidEntry(uid="q1"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-            QuaboUidModule(id=252, ip_addr=ipaddress.IPv4Address("192.168.3.252"), quabos=[QuaboUidEntry(uid="q2"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
-        ])
-    ])
+    # Construct UIDs for these 3 modules
+    uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
+    modules_list = cast(list[dict[str, Any]], uids_dict["domes"][0]["modules"])
+    for mid in [250, 251, 252]:
+         modules_list.append({
+                "id": mid, "ip_addr": f"192.168.3.{mid}",
+                "quabos": [{"uid": f"q{mid}"}] + [{"uid": ""}]*3
+         })
+    quabo_uids = QuaboUidsValidator(**uids_dict)
 
     obs_config = config_file.get_obs_config()
     data_config = config_file.get_data_config()

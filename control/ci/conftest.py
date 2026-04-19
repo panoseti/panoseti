@@ -8,147 +8,77 @@ We also add control/utils/ for modules that use bare `import pff` style imports
 (e.g. image_quantiles.py).
 """
 
+import copy
 import io
 import json
-import os
+import pathlib
 import struct
-import sys
+import tomllib
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# Stub out system/hardware dependencies imported at module level in util.py
-# but not available (or needed) in the test environment.
+# Declarative Test Topologies (Phase 1)
 # ---------------------------------------------------------------------------
 
-# Allow bare `import pff` as used inside image_quantiles.py
-_utils_dir = os.path.join(os.path.dirname(__file__), "..", "utils")
-if _utils_dir not in sys.path:
-    sys.path.insert(0, _utils_dir)
+@pytest.fixture(scope="session")
+def topology_templates() -> dict[str, dict[str, Any]]:
+    """Loads all TOML topology templates from ci/test_topologies/."""
+    templates = {}
+    template_dir = pathlib.Path(__file__).parent / "test_topologies"
+    if template_dir.exists():
+        for toml_file in template_dir.glob("*.toml"):
+            with open(toml_file, "rb") as f:
+                templates[toml_file.stem] = tomllib.load(f)
+    return templates
 
-
-# ---------------------------------------------------------------------------
-# Minimal valid configuration dictionaries (no disk I/O required)
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
-def minimal_obs_config() -> dict[str, Any]:
+def minimal_obs_config(topology_templates) -> dict[str, Any]:
     """Smallest valid obs_config dict: one dome, one module."""
-    return {
-        "name": "test_obs",
-        "wr_ip_addr": "192.168.1.254",
-        "gps_port": "/dev/ttyUSB0",
-        "detector_overvoltage": 3,
-        "domes": [
-            {
-                "name": "dome0",
-                "obslat": 33.357,
-                "obslon": -116.865,
-                "obsalt": 1706.0,
-                "modules": [
-                    {
-                        "mobo_serialno": "SN001",
-                        "quabo_version": "bga",
-                        "ip_addr": "192.168.3.200",
-                        "wps": "wps",
-                        "timing_mode": "wr",
-                    }
-                ],
-            }
-        ],
-        "wps": {"url": "http://192.168.1.2", "quabo_socket": 1},
-    }
+    return copy.deepcopy(topology_templates.get("base_obs", {}))
 
 
 @pytest.fixture
-def two_dome_obs_config() -> dict[str, Any]:
+def two_dome_obs_config(topology_templates) -> dict[str, Any]:
     """Two-dome obs config for geospatial checks."""
-    return {
-        "name": "two_dome_obs",
-        "wr_ip_addr": "192.168.1.254",
-        "domes": [
+    cfg = copy.deepcopy(topology_templates.get("base_obs", {}))
+    # Add a second dome ~111 m apart — within 2 km baseline
+    cfg["domes"].append({
+        "name": "dome1",
+        "obslat": 33.358,
+        "obslon": -116.866,
+        "obsalt": 1706.0,
+        "modules": [
             {
-                "name": "dome0",
-                "obslat": 33.357,
-                "obslon": -116.865,
-                "obsalt": 1706.0,
-                "modules": [
-                    {
-                        "mobo_serialno": "SN001",
-                        "quabo_version": "bga",
-                        "ip_addr": "192.168.3.200",
-                        "wps": "wps",
-                    }
-                ],
-            },
-            {
-                "name": "dome1",
-                "obslat": 33.358,   # ~111 m apart — within 2 km baseline
-                "obslon": -116.866,
-                "obsalt": 1706.0,
-                "modules": [
-                    {
-                        "mobo_serialno": "SN002",
-                        "quabo_version": "bga",
-                        "ip_addr": "192.168.3.204",
-                        "wps": "wps",
-                    }
-                ],
-            },
-        ],
-        "wps": {"url": "http://192.168.1.2", "quabo_socket": 1},
-    }
-
-
-@pytest.fixture
-def minimal_daq_config() -> dict[str, Any]:
-    """Smallest valid daq_config dict: one DAQ node."""
-    return {
-        "head_node_data_dir": "/data",
-        "head_node_ip_addr": "10.0.0.1",
-        "daq_nodes": [
-            {
-                "username": "panoseti",
-                "data_dir": "/data",
-                "ip_addr": "10.0.0.2",
-                "module_ids": "250, 254",
-                "bindhost": "0.0.0.0",
+                "mobo_serialno": "SN002",
+                "quabo_version": "bga",
+                "ip_addr": "192.168.3.204",
+                "wps": "wps",
             }
         ],
-    }
+    })
+    return cfg
 
 
 @pytest.fixture
-def minimal_data_config() -> dict[str, Any]:
+def minimal_daq_config(topology_templates) -> dict[str, Any]:
+    """Smallest valid daq_config dict: one DAQ node."""
+    return copy.deepcopy(topology_templates.get("base_daq", {}))
+
+
+@pytest.fixture
+def minimal_data_config(topology_templates) -> dict[str, Any]:
     """Smallest valid data_config dict: image mode only."""
-    return {
-        "run_type": "sci",
-        "detector_overvoltage": 3,
-        "image": {
-            "integration_time_usec": 100000,
-            "pe_threshold": 1.0,
-            "quabo_sample_size": 16,
-        },
-    }
-
-
-# @pytest.fixture
-# def ph_only_data_config():
-#     """Pulse-height-only data config (no image)."""
-#     return {
-#         "run_type": "sci",
-#         "pulse_height": {
-#             "pe_threshold": 3.0,
-#         },
-#     }
+    return copy.deepcopy(topology_templates.get("base_data", {}))
 
 
 @pytest.fixture
-def minimal_firmware_config() -> dict[str, Any]:
-    """Firmware config listing the 'bga' hardware variant."""
-    return {"bga": "firmware_bga_v2.bin"}
+def minimal_firmware_config(topology_templates) -> dict[str, Any]:
+    """Firmware config listing hardware variants."""
+    return copy.deepcopy(topology_templates.get("base_firmware", {}))
 
 
 # ---------------------------------------------------------------------------

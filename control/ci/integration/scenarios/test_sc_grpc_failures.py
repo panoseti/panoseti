@@ -89,7 +89,7 @@ async def test_SC001_startdaq_timeout_hangs_forever(
         
         # We expect this to return False because it should timeout and trigger rollback
         # We use a timeout on the test itself to ensure we don't hang the runner if the fix is missing
-        with anyio.fail_after(25):
+        with anyio.fail_after(20):
             success = await start.start_run(
                 obs_config, daq_config, quabo_uids, data_config, network_config,
                 no_hv=True, no_redis=True, no_data=False
@@ -194,37 +194,54 @@ class TestSC006StopDaqPartialFailure:
         daq_control_node2.StartDaq(rp2)
         wait_hashpipe_running(daq_control_node2, DAQ_DATA_DIR, timeout=4)
 
-        # Freeze node-0's hashpipe to simulate a slow exit (StopDaq times out)
-        with process_chaos.freeze_process(DAQNODE_CONTAINER, "hashpipe"):
-            # In the production stop.py, stop_recording loops over nodes.
-            # With node-0 frozen, SIGINT will not be acked → timeout.
-            # Node-1 MUST still receive StopDaq.
-            from ipaddress import IPv4Address
+        from ipaddress import IPv4Address
 
-            import stop as stop_module
-            from utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+        import stop as stop_module
+        from utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
 
-            # Construct a dummy DaqConfigValidator with both nodes
-            daq_config = DaqConfigValidator(
-                head_node_ip_addr=IPv4Address("10.0.1.22"),
-                head_node_data_dir="/data/head",
-                daq_nodes=[
-                    DaqNodeValidator(ip_addr=IPv4Address(rp1["daq_ip_addr"]), data_dir=rp1["data_dir"], username="root", module_ids=rp1["module_id"]),
-                    DaqNodeValidator(ip_addr=IPv4Address(rp2["daq_ip_addr"]), data_dir=rp2["data_dir"], username="root", module_ids=rp2["module_id"])
-                ]
-            )
-            
-            import asyncio
+        # Construct a dummy DaqConfigValidator with both nodes
+        daq_config = DaqConfigValidator(
+            head_node_ip_addr=IPv4Address("10.0.1.22"),
+            head_node_data_dir="/data/head",
+            daq_nodes=[
+                DaqNodeValidator(ip_addr=IPv4Address(rp1["daq_ip_addr"]), data_dir=rp1["data_dir"], username="root", module_ids=rp1["module_id"]),
+                DaqNodeValidator(ip_addr=IPv4Address(rp2["daq_ip_addr"]), data_dir=rp2["data_dir"], username="root", module_ids=rp2["module_id"])
+            ]
+        )
+
+        import asyncio
+        import unittest.mock
+
+        import grpc
+
+        # Inject an immediate Timeout error for node 0's StopDaq instead of freezing the OS process
+        original_stop_daq = DaqControlClient.StopDaq
+        failed_state = [False]
+        def fast_fail_stop_daq(self_client: Any, params: dict[str, Any], **kwargs: Any) -> bool:
+            # We identify the node by checking if it's the first one being called.
+            # We can use the host attribute if it's stored. 
+            # In the Python gRPC client, the target is usually stored on the channel, but we can't easily extract the IP.
+            # We'll just fail the very first call to StopDaq.
+            if not failed_state[0]:
+                failed_state[0] = True
+                exc = grpc.RpcError("RPC Timeout")
+                exc.code = lambda: grpc.StatusCode.DEADLINE_EXCEEDED
+                raise exc
+            return original_stop_daq(self_client, params, **kwargs)
+
+        with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StopDaq", fast_fail_stop_daq), \
+             unittest.mock.patch("subprocess.run", return_value=unittest.mock.MagicMock(returncode=0)):
+
             # Call actual stop_recording
             asyncio.run(stop_module.stop_recording(daq_config, rp1["run_dir"], verbose=False))
-            
-            # Node-1 must still have been stopped despite node-0 failure
-            assert wait_hashpipe_stopped(daq_control_node2, DAQ_DATA_DIR, timeout=4), (
-                "Node-1 was never told to stop because node-0 raised first "
-                "(SC-006 bug: stop_recording is not fault-isolated per node)"
-            )
 
-        # Cleanup
+        # Node-1 must still have been stopped despite node-0 failure
+        assert wait_hashpipe_stopped(daq_control_node2, DAQ_DATA_DIR, timeout=4), (
+            "Node-1 was never told to stop because node-0 raised first "
+            "(SC-006 bug: stop_recording is not fault-isolated per node)"
+        )
+
+        # Cleanup node-0 which we skipped stopping due to the mock
         with contextlib.suppress(Exception):
             daq_control_direct.StopDaq({
                 "data_dir": rp1["data_dir"], "run_dir": rp1["run_dir"]
@@ -243,7 +260,6 @@ class TestSC006StopDaqPartialFailure:
                 "run_dir": rp2["run_dir"],
                 "module_id": rp2["module_id"],
             })
-
 
 def _call_stop_recording_for_two_nodes(
     client1: DaqControlClient,
