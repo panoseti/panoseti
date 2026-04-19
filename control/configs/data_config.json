@@ -1,14 +1,1 @@
-{
-    "run_type": "obs-test",
-    "detector_overvoltage": 2,
-    "gain": 60.0,
-    "pulse_height": {
-        "pe_threshold": 3.5,
-        "two_pixel_trigger": 1,
-        "three_pixel_trigger": 0,
-        "any_trigger": {
-            "group_ph_frames": 0
-        }
-    },
-    "max_file_size_mb": 100.0
-}
+{"run_type": "obs-test", "detector_overvoltage": 2, "gain": 60.0, "pulse_height": {"pe_threshold": 3.5, "two_pixel_trigger": 1, "three_pixel_trigger": 0, "any_trigger": {"group_ph_frames": 0}}, "max_file_size_mb": 100.0}

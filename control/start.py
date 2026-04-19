@@ -34,7 +34,6 @@ import time
 import traceback
 from argparse import ArgumentParser
 from datetime import UTC, datetime
-from glob import glob
 from typing import Any
 
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -269,35 +268,51 @@ def start_data_flow(
             quabo.close()
 
 
-def make_run_dirs(run_name: str, daq_config: DaqConfigValidator) -> None:
-    """Create hierarchical run directories and distribute configuration files.
+def make_run_dirs(
+    run_name: str,
+    obs_config: ObsConfigValidator,
+    daq_config: DaqConfigValidator,
+    quabo_uids: QuaboUidsValidator,
+    data_config: DataConfigValidator,
+    network_config: NetworkConfigValidator
+) -> None:
+    """Create hierarchical run directories and snapshot configuration files.
     
-    Directories are created on the local head node and remote DAQ nodes:
-    - Head Node: data_dir/run_name/ (config files)
-    - Head Node: data_dir/module_n/run_name/ (.pff files)
-    - Remote Node: data_dir/run_name/ (config files)
-    - Remote Node: data_dir/module_n/run_name/ (.pff files)
-
-    Args:
-        run_name: The directory name for the current observation run.
-        daq_config: Validated DAQ configuration detailing storage paths.
-
-    Raises:
-        Exception: If a directory cannot be created locally or over SSH.
+    Snapshotting Contract:
+    - Instead of copying from disk (which can mutate), this method writes the 
+      in-memory Pydantic models back to JSON files in the run directory.
+    - Ensures the run directory is a faithful record of the actual run parameters.
     """
     logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
     run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
     os.mkdir(run_dir)
 
-    # copy config files to run dir on this node
-    for f in config_file.config_file_names:
-        files = glob(f)
-        for file in files:
-            fparts = file.split('/')
-            shutil.copyfile(file, f'{run_dir}/{fparts[-1]}')
+    # 1. Snapshot in-memory config models to head node run dir
+    # This prevents mid-flight disk mutations from leaking into the run records.
+    # Note: we exclude bidirectional links ('modules', 'daq_node') to avoid circular serialization.
+    config_snapshots = {
+        config_file.obs_config_filename: obs_config,
+        config_file.daq_config_filename: daq_config,
+        config_file.data_config_filename: data_config,
+        config_file.network_config_filename: network_config,
+        config_file.quabo_uids_filename: quabo_uids,
+    }
+    
+    for filename, model in config_snapshots.items():
+        base_name = os.path.basename(filename)
+        dest_path = f"{run_dir}/{base_name}"
+        with open(dest_path, "w") as f:
+            # We use model_dump then json.dump to allow fine-grained exclusion
+            data = model.model_dump(exclude={'modules', 'daq_node'})
+            json.dump(data, f, indent=4, default=str)
+            
+    # Copy other transient artifacts (sw_info.json, ph_baseline.json) from disk/tmp
+    for f in [config_file.quabo_ph_baseline_filename, config_file.sw_info_filename]:
+        if os.path.exists(f):
+             shutil.copyfile(f, f'{run_dir}/{os.path.basename(f)}')
 
-    # make module and run directories on DAQ nodes
+    # 2. make module and run directories on DAQ nodes
     for node in daq_config.daq_nodes:
         # Check if this node has any modules assigned
         # DaqNodeValidator has module_ids
@@ -417,7 +432,7 @@ async def start_recording(
                 else:
                     last_err = "StartDaq RPC returned False"
                     break # Hard failure, don't retry
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 last_err = "StartDaq TIMEOUT (15s)"
                 break # Timeout usually means non-transient or black hole
             except grpc.RpcError as e:
@@ -541,6 +556,45 @@ async def start_recording(
             tg.create_task(verify_liveness(n))
 
 
+async def _check_quabo_reachability(
+    quabo_uids: QuaboUidsValidator,
+    network_config: NetworkConfigValidator
+) -> None:
+    """Verify that all configured Quabos are reachable on the network."""
+    logger = logging.getLogger('PANOSETI.Start.reachability')
+    logger.info("Performing Quabo reachability sweep...")
+    
+    tasks = []
+    
+    async def check_one(base_ip: str, index: int) -> None:
+        ip_ports = util.get_quabo_ip_port(base_ip, index, network_config)
+        real_ip = ip_ports['ip_addr']
+        cmd_port = ip_ports['cmd_port']
+        
+        # We use a simple TCP connect check on the command port (60000)
+        # Note: Quabo uses UDP for commands, but we can check if the 
+        # gateway port is open or use a dummy UDP ping if supported.
+        # Actually, let's use the utility method from config_validator.
+        from utils.config_validator import _check_tcp_port
+        
+        loop = asyncio.get_running_loop()
+        # 2s timeout for pre-flight reachability
+        ok, err = await loop.run_in_executor(None, lambda: _check_tcp_port(real_ip, cmd_port, timeout=2.0))
+        if not ok:
+            raise RuntimeError(f"Quabo at {real_ip}:{cmd_port} is UNREACHABLE: {err}")
+
+    for dome in quabo_uids.domes:
+        for module in dome.modules:
+            base_ip = str(module.ip_addr)
+            for i in range(4):
+                if module.quabos[i].uid != '':
+                    tasks.append(check_one(base_ip, i))
+    
+    if tasks:
+        await asyncio.gather(*tasks)
+    logger.info("All configured Quabos are reachable.")
+
+
 async def start_run(
     obs_config: ObsConfigValidator,
     daq_config: DaqConfigValidator,
@@ -550,8 +604,9 @@ async def start_run(
     no_hv: bool,
     no_redis: bool,
     no_data: bool,
-    force_reset: bool = False
-) -> bool:
+    force_reset: bool = False,
+    run_name: str | None = None
+) -> str | None:
     """
     Main transactional run coordinator.
     Implements the Rollback Ladder:
@@ -576,7 +631,7 @@ async def start_run(
         state_mgr.acquire_lock()
     except RuntimeError as e:
         print(e)
-        return False
+        return None
 
     try:
         my_ip = util.local_ip()
@@ -626,11 +681,13 @@ async def start_run(
             return False
 
         if not ph_baseline_file_ok():
-            return False
+            return None
 
         # Initialize Ledger
-        run_name = pff.run_dir_name(obs_config.name, data_config.run_type)
+        if run_name is None:
+            run_name = pff.run_dir_name(obs_config.name, data_config.run_type)
         initial_ledger = RunStateLedger(
+
             run_name=run_name,
             status="STARTING",
             start_time=datetime.now(UTC).isoformat(),
@@ -655,8 +712,11 @@ async def start_run(
             if cancel_event.is_set():
                 raise asyncio.CancelledError()
 
+            if not no_data:
+                await _check_quabo_reachability(quabo_uids, network_config)
+
             print(f'setting up run directories for {run_name}')
-            make_run_dirs(run_name, daq_config)
+            make_run_dirs(run_name, obs_config, daq_config, quabo_uids, data_config, network_config)
             
             if not no_data:
                 if cancel_event.is_set():
@@ -751,7 +811,7 @@ async def start_run(
         util.write_run_name(daq_config, run_name)
         
         print(f'started run {run_name}')
-        return True
+        return run_name
 
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -797,12 +857,15 @@ async def main() -> None:
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
     
-    success = await start_run(
+    success_run_name = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
         network_config, no_hv, no_redis, no_data, force_reset
     )
     
-    if success and nsecs:
+    if not success_run_name:
+        sys.exit(1)
+
+    if success_run_name and nsecs:
         await asyncio.sleep(nsecs)
         await stop.stop_run(
             daq_config, 

@@ -572,8 +572,10 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
     SC-004: A transient UNAVAILABLE error on StartDaq must trigger a retry and
     eventually succeed.
     """
-    import grpc
     import unittest.mock
+
+    import grpc
+
     import start
     from utils import config_file
 
@@ -838,12 +840,12 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     SC-020: When StopDaq RPC times out or fails with UNAVAILABLE, stop.py must
     escalate to a hard-kill via SSH to ensure the node is made safe.
     """
-    import grpc
     import unittest.mock
-    import subprocess
-    import stop
-    from utils import config_file
     from ipaddress import IPv4Address
+
+    import grpc
+
+    import stop
     from utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
 
     # Setup config with one node

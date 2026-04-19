@@ -368,7 +368,6 @@ def test_SC093_firmware_binary_missing_caught_at_validation() -> None:
 
 # ── SC-094: GNSS module configured with WR IP (port collision) ───────────────
 
-@pytest.mark.skip(reason="SC-094: requires global_validator port-collision check for timing modes")
 def test_SC094_gnss_module_with_wr_ip_causes_port_collision() -> None:
     """
     SC-094: A module configured with timing_mode='gnss' but sharing a WR IP

@@ -280,6 +280,30 @@ class GlobalConfigValidator:
                     gw_ports[gw].add(p)
         self.report.add_test("Port Collision", "PASS", "No forwarded port overlaps detected on gateways.")
 
+    def _check_timing_port_collisions(self) -> None:
+        """Ensure WR switches and GNSS modules do not share IPs (UDP port contention)."""
+        if not self.obs_conf:
+            return
+        
+        wr_ips = set()
+        if self.obs_conf.wr_ip_addr:
+            wr_ips.add(str(self.obs_conf.wr_ip_addr))
+            
+        for dome in self.obs_conf.domes:
+            for module in dome.modules:
+                if module.timing_mode == 'gnss':
+                    # Check if GNSS module IP or its explicit wr_ip_addr collides with a WR switch
+                    # (In some configs, gnss modules might have a wr_ip_addr field used for other purposes)
+                    m_ip = str(module.ip_addr)
+                    m_wr_ip = str(module.wr_ip_addr) if hasattr(module, 'wr_ip_addr') and module.wr_ip_addr else None
+                    
+                    if m_ip in wr_ips or (m_wr_ip and m_wr_ip in wr_ips):
+                        self.report.add_test("Timing Port Collision", "ERROR",
+                                             f"Module {m_ip} (GNSS) collides with WR switch IP {wr_ips}. "
+                                             "Contention for UDP timing ports detected.")
+                        return
+        self.report.add_test("Timing Port Collision", "PASS", "No timing IP collisions detected.")
+
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
     def _check_module_id_uniqueness(self) -> None:
         """Ensure every module (physical board) has a unique derived module_id."""
