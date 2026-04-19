@@ -14,6 +14,11 @@ LOCK_FILE = "tmp/panoseti_control.lock"
 STATE_FILE = "tmp/run_state.toml"
 
 
+class ValidationError(Exception):
+    """Raised when configuration or reachability validation fails."""
+    pass
+
+
 class RunStateManager:
     """
     Manages the PANOSETI control plane state ledger and advisory locking.

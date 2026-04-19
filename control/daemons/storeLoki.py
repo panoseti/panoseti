@@ -217,7 +217,7 @@ def main() -> None:
     logger.info(f"Target Loki URL: {loki_url}")
 
     try:
-        r = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=True)
+        r = redis.Redis(host=os.getenv("REDIS_HOST", "localhost"), port=6379, decode_responses=False)
         r.ping()
         
         # Reliable Queue Recovery
@@ -238,7 +238,12 @@ def main() -> None:
                 item = r.blmove(redis_key, PROCESSING_REDIS_KEY, timeout=1, src="RIGHT", dest="LEFT")
                 if isinstance(item, (str, bytes)):
                     try:
-                        log_entry = json.loads(item)
+                        # Ensure we decode bytes with replacement for invalid characters
+                        if isinstance(item, bytes):
+                            item_str = item.decode('utf-8', errors='replace')
+                        else:
+                            item_str = item
+                        log_entry = json.loads(item_str)
                         publisher.add(log_entry)
                     except json.JSONDecodeError:
                         logger.error("Skipping invalid JSON log entry")

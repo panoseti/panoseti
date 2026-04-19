@@ -174,6 +174,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
     daq_config = DaqConfigValidator(
         head_node_ip_addr=ipaddress.IPv4Address(headnode_ip),
         head_node_data_dir="/data/head",
+        head_node_container=True,
         daq_nodes=[
             DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[250]),
             DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.11"), data_dir="/data", username="root", module_ids=[251]),

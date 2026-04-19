@@ -22,10 +22,8 @@ import shutil
 import signal
 import socket
 import sys
-import tempfile
 import time
 from argparse import ArgumentParser
-from datetime import UTC, datetime
 from glob import glob
 from typing import Any
 
@@ -47,7 +45,7 @@ from utils.pydantic_config_models import (
     NetworkConfigValidator,
     QuaboUidsValidator,
 )
-from utils.run_state import RunStateManager
+from utils.run_state import RunStateManager, ValidationError
 from utils.util import (
     collect_complete_filename,
     hk_symlink,
@@ -60,6 +58,157 @@ from utils.util import (
 
 logger = get_logger("PANOSETI.Stop", grpc_enabled=True)
 
+def _print(*args: Any, **kwargs: Any) -> None:
+    """Non-blocking redirect for existing print() calls."""
+    msg = kwargs.get("sep", " ").join(str(a) for a in args)
+    logger.info(msg)
+
+builtins.print = _print
+
+class StopTransaction:
+    """
+    Context manager for a transactional observing run shutdown.
+    Ensures that all teardown steps execute even if one fails.
+    """
+    def __init__(
+        self,
+        state_mgr: RunStateManager,
+        daq_config: DaqConfigValidator,
+        network_config: NetworkConfigValidator,
+        quabo_uids: QuaboUidsValidator,
+        run: str | None,
+        no_collect: bool,
+        no_cleanup: bool,
+        force_cleanup: bool,
+        verbose: bool,
+        cancel_event: asyncio.Event
+    ) -> None:
+        self.state_mgr = state_mgr
+        self.daq_config = daq_config
+        self.network_config = network_config
+        self.quabo_uids = quabo_uids
+        self.run = run
+        self.no_collect = no_collect
+        self.no_cleanup = no_cleanup
+        self.force_cleanup = force_cleanup
+        self.verbose = verbose
+        self.cancel_event = cancel_event
+        self.all_errors: list[str] = []
+        self.success = False
+
+    async def __aenter__(self) -> StopTransaction:
+        self.state_mgr.acquire_lock()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        try:
+            if exc_type is ValidationError:
+                logger.warning(f"Aborting stop due to validation failure: {exc_val}")
+                return True
+
+            if not self.run:
+                self.success = True
+                return False
+
+            # Ensure all shutdown steps execute even if one fails
+            logger.info(f"Initiating teardown ladder for run {self.run}")
+
+            # 1. Stop recording on DAQ nodes
+            try:
+                recording_errors = await stop_recording(self.daq_config, self.run, self.verbose)
+                self.all_errors.extend(recording_errors)
+            except Exception as e:
+                self.all_errors.append(f"stop_recording failed: {e}")
+
+            # 2. Kill local daemons
+            for daemon_name, killer in [
+                ("HV updater", util.kill_hv_updater),
+                ("HK recording", util.kill_hk_recorder),
+                ("Temperature monitor", util.kill_module_temp_monitor)
+            ]:
+                try:
+                    logger.info(f"stopping {daemon_name}")
+                    killer()
+                except Exception as e:
+                    self.all_errors.append(f"{daemon_name} shutdown failed: {e}")
+
+            # 3. Stop Quabo data flow
+            try:
+                logger.info("stopping data generation from quabos")
+                util.stop_data_flow(self.quabo_uids, self.network_config)
+            except Exception as e:
+                self.all_errors.append(f"stop_data_flow failed: {e}")
+
+            # 4. Data Collection & Cleanup
+            data_dir = self.daq_config.head_node_data_dir
+            run_dir = f'{data_dir}/{self.run}'
+            import anyio
+            if await anyio.Path(run_dir).exists():
+                if not complete_file_exists(run_dir, recording_ended_filename):
+                    write_complete_file(run_dir, recording_ended_filename)
+                
+                collection_successful = complete_file_exists(run_dir, collect_complete_filename)
+                failed_ips: list[str] = []
+
+                if not self.no_collect and not collection_successful:
+                    if self.cancel_event.is_set():
+                        logger.warning("Stop process cancelled before collection.")
+                        self.all_errors.append("Collection cancelled by user.")
+                    else:
+                        logger.info("collecting data from DAQ nodes...")
+                        try:
+                            # Use asyncio.to_thread for synchronous collect_data
+                            collect_result = await asyncio.to_thread(collect.collect_data, self.daq_config, self.run, self.verbose)
+                            failed_ips = collect_result.failed_ips
+                            if collect_result.success:
+                                write_complete_file(run_dir, collect_complete_filename)
+                                collection_successful = True
+                            else:
+                                msg = f"Data collection errors occurred: {', '.join(collect_result.errors)}"
+                                logger.error(msg)
+                                self.all_errors.extend(collect_result.errors)
+                        except Exception as e:
+                            msg = f"collect_data crashed: {e}"
+                            logger.exception(msg)
+                            self.all_errors.append(msg)
+                            failed_ips = [str(n.ip_addr) for n in self.daq_config.daq_nodes]
+
+                if collection_successful or self.no_collect or failed_ips:
+                    if not self.no_cleanup:
+                        if self.cancel_event.is_set():
+                            logger.warning("Stop process cancelled before cleanup.")
+                            self.all_errors.append("Cleanup cancelled by user.")
+                        else:
+                            logger.info("cleaning up DAQ nodes...")
+                            cleanup_errors = _cleanup_daq_grpc(
+                                self.daq_config, self.run, run_dir, self.verbose, 
+                                force=self.force_cleanup, skip_ips=failed_ips
+                            )
+                            self.all_errors.extend(cleanup_errors)
+                    make_links(run_dir, self.verbose)
+                    write_complete_file(run_dir, run_complete_filename)
+                    logger.info(f'completed run {self.run}')
+                else:
+                    log_error(f"Collection unsuccessful for run {self.run}. Skipping cleanup.", run_dir)
+                
+                # Finalize ledger
+                ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                if ledger:
+                    ledger.status = "COMPLETED" if not self.all_errors else "STOPPED_WITH_ERRORS"
+                    await asyncio.to_thread(self.state_mgr.save_state, ledger)
+                util.remove_run_name()
+                self.success = True
+            else:
+                msg = f"Run dir {data_dir}/{self.run} not found; recorded artifacts may be missing."
+                logger.error(msg)
+                self.all_errors.append(msg)
+
+            if self.all_errors:
+                logger.error(f"Shutdown completed with {len(self.all_errors)} errors.")
+            return False
+
+        finally:
+            self.state_mgr.release_lock()
 
 def stop_interleave(retry_limit: int = 10) -> None:
     """
@@ -136,63 +285,6 @@ def stop_interleave(retry_limit: int = 10) -> None:
             logger.error(f"Error stopping interleave: {e}")
             if os.path.exists(pid_file):
                 os.remove(pid_file)
-
-
-# =========================
-# Print -> also prepend to UT log file
-# =========================
-
-_ORIG_PRINT = builtins.print
-
-def _ut_human_timestamp() -> str:
-    # Human-readable UTC timestamp
-    return datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UT')
-
-def _ut_yyyymmdd() -> str:
-    return datetime.now(UTC).strftime('%Y%m%d')
-
-def _datarec_log_path() -> str:
-    yyyymmdd = _ut_yyyymmdd()
-    log_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
-    os.makedirs(log_dir, exist_ok=True)
-    return os.path.join(log_dir, f"datarec_{yyyymmdd}.log")
-
-def _prepend_line_to_file(path: str, line: str) -> None:
-    # Prepend efficiently by writing a temp file then replacing.
-    d = os.path.dirname(path)
-    if d:
-        os.makedirs(d, exist_ok=True)
-
-    old = b""
-    try:
-        with open(path, "rb") as f:
-            old = f.read()
-    except FileNotFoundError:
-        old = b""
-
-    new_bytes = (line + "\n").encode("utf-8", errors="replace")
-
-    fd, tmp_path = tempfile.mkstemp(prefix=".tmp_datarec_", dir=d or None)
-    try:
-        with os.fdopen(fd, "wb") as tf:
-            tf.write(new_bytes)
-            tf.write(old)
-        os.replace(tmp_path, path)
-    finally:
-        try:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-        except Exception:
-            pass
-
-def print(*args: Any, **kwargs: Any) -> None:
-    # Console print via telemetry logger + prepend to UT log file with timestamp.
-    msg = " ".join(str(a) for a in args)
-    logger.info(msg)
-    with contextlib.suppress(Exception):
-        _prepend_line_to_file(_datarec_log_path(), f"{_ut_human_timestamp()}: {msg}")
-
-builtins.print = print
 
 # write message to error log
 #
@@ -449,151 +541,45 @@ async def stop_run(
     """
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
-    all_errors: list[str] = []
 
-    # Task 2.3: Signal handlers
+    # Install signal handlers
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: cancel_event.set())
 
-    try:
-        state_mgr.acquire_lock()
-    except RuntimeError as e:
-        logger.error(f"Failed to acquire lock: {e}")
-        return False
-
-    try:
-        # convert head node name to IP address
+    async with StopTransaction(
+        state_mgr, daq_config, network_config, quabo_uids, 
+        run, no_collect, no_cleanup, force_cleanup, verbose, cancel_event
+    ) as tx:
+        # Pre-flight Validation
         head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
         if head_node_ip not in util.local_ip():
-            raise Exception(f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
+            raise ValidationError(f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
 
         # Load from ledger
         ledger = state_mgr.load_state()
-        if not run:
-            run = ledger.run_name if ledger else util.read_run_name()
+        if not tx.run:
+            tx.run = ledger.run_name if ledger else util.read_run_name()
 
-        if not run:
-            print("No run is in progress")
+        if not tx.run:
+            logger.info("No run is in progress")
+            tx.success = True
             return True
 
         # Validation: prevent orphaning the current run
-        if ledger and run != ledger.run_name and not force_cleanup:
-             print(f"Warning: Requested run '{run}' does not match ledger run '{ledger.run_name}'.")
-             print("Use --force-cleanup if you are sure.")
-             return False
+        if ledger and tx.run != ledger.run_name and not force_cleanup:
+             raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-cleanup if you are sure.")
 
         if ledger:
             ledger.status = "STOPPING"
             state_mgr.save_state(ledger)
 
-        data_dir = daq_config.head_node_data_dir
-        run_dir: str | None = f'{data_dir}/{run}'
-        if run_dir is not None and not await asyncio.to_thread(os.path.exists, run_dir):
-            run_dir = None
+        logger.info(f"stopping data recording for run {tx.run}")
 
-        print(f"stopping data recording for run {run}")
-        recording_errors = await stop_recording(daq_config, run, verbose)
-        all_errors.extend(recording_errors)
-
-        try:
-            print("stopping HV updater")
-            util.kill_hv_updater()
-        except Exception as e:
-            all_errors.append(f"kill_hv_updater failed: {e}")
-
-        try:
-            print("stopping HK recording")
-            util.kill_hk_recorder()
-        except Exception as e:
-            all_errors.append(f"kill_hk_recorder failed: {e}")
-
-        try:
-            print("stopping Temperature monitor")
-            util.kill_module_temp_monitor()
-        except Exception as e:
-            all_errors.append(f"kill_module_temp_monitor failed: {e}")
-
-        try:
-            print("stopping data generation from quabos")
-            util.stop_data_flow(quabo_uids, network_config)
-        except Exception as e:
-            all_errors.append(f"stop_data_flow failed: {e}")
-
-        if run_dir:
-            if not complete_file_exists(run_dir, recording_ended_filename):
-                write_complete_file(run_dir, recording_ended_filename)
-            
-            # Initial state: collection is only complete if marker already exists
-            collection_successful = complete_file_exists(run_dir, collect_complete_filename)
-            failed_ips: list[str] = []
-
-            if not no_collect and not collection_successful:
-                if cancel_event.is_set():
-                    print("Stop process cancelled before collection.")
-                    all_errors.append("Collection cancelled by user.")
-                else:
-                    print("collecting data from DAQ nodes...")
-                    try:
-                        collect_result = collect.collect_data(daq_config, run, verbose)
-                        failed_ips = collect_result.failed_ips
-                        if collect_result.success:
-                            write_complete_file(run_dir, collect_complete_filename)
-                            collection_successful = True
-                        else:
-                            msg = f"Data collection errors occurred: {', '.join(collect_result.errors)}"
-                            print(msg)
-                            all_errors.extend(collect_result.errors)
-                    except Exception as e:
-                        msg = f"collect_data crashed: {e}"
-                        all_errors.append(msg)
-                        # Safety: if we crashed, assume all nodes failed collection
-                        failed_ips = [str(n.ip_addr) for n in daq_config.daq_nodes]
-
-            # We proceed to cleanup if:
-            # 1. Collection was already successful (marker exists).
-            # 2. Collection was explicitly skipped via --no_collect.
-            # 3. Collection was attempted and we have a list of failed nodes to skip.
-            if collection_successful or no_collect or failed_ips:
-                if not no_cleanup:
-                    if cancel_event.is_set():
-                        print("Stop process cancelled before cleanup.")
-                        all_errors.append("Cleanup cancelled by user.")
-                    else:
-                        print("cleaning up DAQ nodes...")
-                        cleanup_errors = _cleanup_daq_grpc(
-                            daq_config, run, run_dir, verbose, 
-                            force=force_cleanup, skip_ips=failed_ips
-                        )
-                        all_errors.extend(cleanup_errors)
-                make_links(run_dir, verbose)
-                write_complete_file(run_dir, run_complete_filename)
-                print(f'completed run {run}')
-            else:
-                log_error(f"Collection unsuccessful for run {run} (and no partial results). Skipping cleanup.", run_dir)
-            
-            # Finalize ledger
-            if ledger:
-                ledger.status = "COMPLETED" if not all_errors else "STOPPED_WITH_ERRORS"
-                state_mgr.save_state(ledger)
-            util.remove_run_name()
-        else:
-            msg = f"Run dir {data_dir}/{run} not found; recorded artifacts may be missing."
-            print(msg)
-            all_errors.append(msg)
-
-    except Exception as e:
-        logger.exception(f"Unexpected error in stop_run: {e}")
-        all_errors.append(f"stop_run exception: {e}")
-    finally:
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.remove_signal_handler(sig)
-        state_mgr.release_lock()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.remove_signal_handler(sig)
     
-    if all_errors:
-        logger.error(f"Shutdown completed with {len(all_errors)} errors.")
-        return False
-    return True
+    return len(tx.all_errors) == 0 and tx.success
 
 
 if __name__ == "__main__":
