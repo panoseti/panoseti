@@ -32,7 +32,6 @@ import pytest
 
 import stop
 from utils.pydantic_config_models import (
-    CollectResult,
     DaqConfigValidator,
     NetworkConfigValidator,
     QuaboUidsValidator,
@@ -108,10 +107,6 @@ def state_mgr(tmp_path, run_dir) -> RunStateManager:
     return mgr
 
 
-def _mock_collect() -> CollectResult:
-    return CollectResult(success=True, errors=[], failed_ips=[], transferred_files=0)
-
-
 # ---------------------------------------------------------------------------
 # Context manager that applies all the standard mocks for stop_run()
 # ---------------------------------------------------------------------------
@@ -124,10 +119,8 @@ def _stop_patches(state_mgr: RunStateManager):
     """
     stack = ExitStack()
     stack.enter_context(patch("stop.util.local_ip", return_value=["127.0.0.1"]))
-    # NOTE: After Phase 2 removes collect.collect_data from stop.py's hot path,
-    # this patch may need updating. The test will still catch the RED/GREEN behavior
-    # via the RECORDING_ENDED status and run_complete assertions.
-    stack.enter_context(patch("stop.collect.collect_data", return_value=_mock_collect()))
+    # collect.collect_data is no longer called from stop.py (Phase 2 fast-path:
+    # the TransferWorker daemon owns collection). No patch needed here.
     stack.enter_context(patch("stop.util.kill_hv_updater", return_value=None))
     stack.enter_context(patch("stop.util.kill_hk_recorder", return_value=None))
     stack.enter_context(patch("stop.util.kill_module_temp_monitor", return_value=None))

@@ -38,7 +38,7 @@ except ImportError:
 
 import config
 from tools.interleave import PID_FILE
-from utils import collect, config_file, pff, util
+from utils import config_file, pff, util
 from utils.pydantic_config_models import (
     DaqConfigValidator,
     DaqNodeValidator,
@@ -48,7 +48,6 @@ from utils.pydantic_config_models import (
 from utils.run_state import LockError, RunStateManager, ValidationError
 from utils.transfer.queue import TransferQueue
 from utils.util import (
-    collect_complete_filename,
     hk_symlink,
     img_symlink,
     now_str,
@@ -139,49 +138,29 @@ class StopTransaction:
             except Exception as e:
                 self.all_errors.append(f"stop_data_flow failed: {e}")
 
-            # 4. Data Collection & Cleanup
+            # 4. Enqueue for background transfer and transition ledger
             data_dir = self.daq_config.head_node_data_dir
             run_dir = f'{data_dir}/{self.run}'
             import anyio
             if await anyio.Path(run_dir).exists():
                 if not complete_file_exists(run_dir, recording_ended_filename):
                     write_complete_file(run_dir, recording_ended_filename)
-                
-                collection_successful = complete_file_exists(run_dir, collect_complete_filename)
 
-                if not self.no_collect and not collection_successful:
-                    if self.cancel_event.is_set():
-                        logger.warning("Stop process cancelled before collection.")
-                        self.all_errors.append("Collection cancelled by user.")
-                    else:
-                        logger.info("collecting data from DAQ nodes...")
-                        try:
-                            # Use asyncio.to_thread for synchronous collect_data
-                            collect_result = await asyncio.to_thread(collect.collect_data, self.daq_config, self.run, self.verbose)
-                            if collect_result.success:
-                                write_complete_file(run_dir, collect_complete_filename)
-                                collection_successful = True
-                            else:
-                                msg = f"Data collection errors occurred: {', '.join(collect_result.errors)}"
-                                logger.error(msg)
-                                self.all_errors.extend(collect_result.errors)
-                        except Exception as e:
-                            msg = f"collect_data crashed: {e}"
-                            logger.exception(msg)
-                            self.all_errors.append(msg)
-
-                # Enqueue run for background transfer (Phase 2 fast-path).
-                # Transfer, cleanup, and run_complete are handled by the
-                # background TransferWorker — do NOT write run_complete here.
+                # Enqueue run for background transfer (fast-path).
+                # The TransferWorker daemon owns collection, cleanup, and
+                # run_complete — do NOT call collect_data or write run_complete here.
                 daq_nodes = [
-                    {"ip_addr": str(n.ip_addr), "data_dir": str(n.data_dir)}
+                    {"ip_addr": str(n.ip_addr), "data_dir": str(n.data_dir), "module_ids": n.module_ids}
                     for n in self.daq_config.daq_nodes
+                    if n.module_ids
                 ]
                 tq = TransferQueue(base_dir=str(self.state_mgr.base_dir))
                 tq.enqueue(
                     run_name=self.run,
-                    head_data_dir=data_dir,
+                    head_data_dir=str(data_dir),
                     daq_nodes=daq_nodes,
+                    no_cleanup=self.no_cleanup,
+                    force_cleanup=self.force_cleanup,
                 )
 
                 # Transition ledger to RECORDING_ENDED so the TransferWorker
