@@ -58,6 +58,43 @@ class ValidationReport:
         console.print(table)
 
 
+def validate_all(
+    obs_config: dict[str, Any] | ObsConfigValidator,
+    data_config: dict[str, Any] | DataConfigValidator,
+    daq_config: dict[str, Any] | DaqConfigValidator | None = None,
+    network_config: dict[str, Any] | NetworkConfigValidator | None = None,
+    firmware_config: dict[str, Any] | FirmwareConfigValidator | None = None,
+) -> bool:
+    """Unified entry point for global validation."""
+    from .pydantic_config_models import (
+        DaqConfigValidator,
+        DataConfigValidator,
+        FirmwareConfigValidator,
+        NetworkConfigValidator,
+        ObsConfigValidator,
+    )
+
+    def _ensure_model(cfg: Any, model: Any) -> Any:
+        if cfg is None:
+            return None
+        return cfg if isinstance(cfg, model) else model(**cfg)
+
+    validated_configs = {
+        'obs': _ensure_model(obs_config, ObsConfigValidator),
+        'data': _ensure_model(data_config, DataConfigValidator),
+        'daq': _ensure_model(daq_config, DaqConfigValidator),
+        'network': _ensure_model(network_config, NetworkConfigValidator),
+        'firmware': _ensure_model(firmware_config, FirmwareConfigValidator),
+    }
+
+    validator = GlobalConfigValidator(validated_configs)
+    success = validator.validate_all_rules()
+    if not success:
+        errors = [f"{t['name']}: {t['info']}" for t in validator.report.tests if t['status'] == 'ERROR']
+        raise ValueError(f"Global configuration validation failed: {'; '.join(errors)}")
+    return success
+
+
 class GlobalConfigValidator:
     """Executes cross-configuration validation rules for the observatory.
     
@@ -154,7 +191,7 @@ class GlobalConfigValidator:
             self.report.add_test("Network Tunneling Mapping", "PASS", "All modules accounted for in routing.")
 
     def _check_hardware_firmware(self) -> None:
-        """Verify that firmware binaries exist for all active hardware types (BGA/QFP)."""
+        """Verify that firmware binaries are configured for all active hardware types (BGA/QFP)."""
         if not self.obs_conf or not self.firmware_conf:
             return
         required_hw = set()
@@ -166,12 +203,48 @@ class GlobalConfigValidator:
                 else:
                     required_hw.add(qv)
 
+        # Firmware model has dynamic keys like 'quabo', 'wr', or 'bga' directly
         firmware_keys = set((self.firmware_conf.model_extra or {}).keys())
+        
+        # If 'quabo' and 'wr' are top-level keys, look inside them
+        # (Based on test_sc_config_validation.py's mock structure)
+        extra = self.firmware_conf.model_extra or {}
+        if "quabo" in extra:
+             firmware_keys.update(extra["quabo"].keys())
+
         missing = required_hw - firmware_keys
         if missing:
-            self.report.add_test("Firmware Verification", "ERROR", f"Missing binaries for HW types: {missing}")
+            self.report.add_test("Hardware-Firmware Alignment", "ERROR", f"Missing binary configurations for HW types: {missing}")
         else:
-            self.report.add_test("Firmware Verification", "PASS", "Binaries exist for all active hardware.")
+            self.report.add_test("Hardware-Firmware Alignment", "PASS", "Binary configurations exist for all active hardware.")
+
+    def _check_firmware_filesystem(self) -> None:
+        """Strictly verify that configured firmware files actually exist on disk."""
+        if not self.firmware_conf:
+            return
+        
+        from pathlib import Path
+        extra = self.firmware_conf.model_extra or {}
+        
+        # 1. Check WR firmware path
+        wr_conf = extra.get("wr", {})
+        if wr_conf and "wrpc_filesys" in wr_conf:
+            path = Path(wr_conf["wrpc_filesys"])
+            if not path.exists():
+                self.report.add_test("Firmware Path Check", "ERROR", 
+                                     f"WR firmware path '{path}' does not exist on this host.")
+            else:
+                self.report.add_test("Firmware Path Check", "PASS", "WR firmware path verified.")
+
+        # 2. Check Quabo binary files
+        quabo_conf = extra.get("quabo", {})
+        for hw_type, binary_path in quabo_conf.items():
+            path = Path(binary_path)
+            if not path.is_file() and not (Path(".") / path).is_file():
+                self.report.add_test("Firmware Binary Check", "ERROR", 
+                                     f"Quabo binary file '{binary_path}' (type: {hw_type}) does not exist.")
+            else:
+                self.report.add_test("Firmware Binary Check", "PASS", f"Binary for {hw_type} verified.")
 
     def _check_overvoltage_consensus(self) -> None:
         """Ensure detector overvoltage is consistent across obs and data configs."""
@@ -208,6 +281,23 @@ class GlobalConfigValidator:
         self.report.add_test("Port Collision", "PASS", "No forwarded port overlaps detected on gateways.")
 
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
+    def _check_module_id_uniqueness(self) -> None:
+        """Ensure every module (physical board) has a unique derived module_id."""
+        if not self.obs_conf:
+            return
+        from . import config_file
+        seen_mids: dict[int, str] = {}
+        for dome in self.obs_conf.domes:
+            for module in dome.modules:
+                mid = config_file.ip_addr_to_module_id(str(module.ip_addr))
+                if mid in seen_mids:
+                    self.report.add_test("Module ID Uniqueness", "ERROR",
+                                         f"Module ID {mid} (from {module.ip_addr}) is already assigned in dome '{seen_mids[mid]}'. "
+                                         "This will cause a BOARDLOC collision.")
+                    return
+                seen_mids[mid] = dome.name
+        self.report.add_test("Module ID Uniqueness", "PASS", f"All {len(seen_mids)} modules have unique IDs.")
+
     def _check_daq_assignment_overlap(self) -> None:
         """Ensure a single module ID is not handled by multiple DAQ nodes."""
         if not self.daq_conf:

@@ -195,7 +195,6 @@ class TestInterleaveConstraints:
 
 # ── SC-090: BOARDLOC collision across domes ───────────────────────────────────
 
-@pytest.mark.skip(reason="SC-090: global_validator missing cross-dome BOARDLOC check")
 def test_SC090_boardloc_collision_across_domes_detected() -> None:
     """
     SC-090: Two domes with the same module_id (derived from IP) have colliding
@@ -306,7 +305,6 @@ def test_SC089_duplicate_quabo_ip_in_obs_config_rejected() -> None:
 
 # ── SC-091: module_ids range overlap across daqnodes ─────────────────────────
 
-@pytest.mark.skip(reason="SC-091: global_validator missing cross-daqnode module_id overlap check")
 def test_SC091_module_ids_overlap_across_daqnodes_detected() -> None:
     """
     SC-091: Two DAQ nodes in daq_config.json that claim overlapping module_id
@@ -318,11 +316,11 @@ def test_SC091_module_ids_overlap_across_daqnodes_detected() -> None:
     """
     gv = _load_global_validator()
     daq = {
-        "head_node_ip": "10.0.1.100",
+        "head_node_ip_addr": "10.0.1.100",
         "head_node_data_dir": "/data/head",
         "daq_nodes": [
-            {"ip": "192.168.0.10", "data_dir": "/data", "module_ids": "128-200"},
-            {"ip": "192.168.0.11", "data_dir": "/data", "module_ids": "180-250"},  # overlap 180-200
+            {"ip_addr": "192.168.0.10", "data_dir": "/data", "module_ids": "128-200"},
+            {"ip_addr": "192.168.0.11", "data_dir": "/data", "module_ids": "180-250"},  # overlap 180-200
         ],
     }
     with pytest.raises(Exception, match=r"[Mm]odule|overlap|duplicate"):
@@ -331,7 +329,6 @@ def test_SC091_module_ids_overlap_across_daqnodes_detected() -> None:
 
 # ── SC-092: WR firmware path missing ─────────────────────────────────────────
 
-@pytest.mark.skip(reason="SC-092: requires firmware.json + filesystem check in CI")
 def test_SC092_wr_firmware_path_missing_detected_at_validation() -> None:
     """
     SC-092: If the WR firmware path (wr/wrpc_filesys) listed in firmware.json
@@ -341,12 +338,17 @@ def test_SC092_wr_firmware_path_missing_detected_at_validation() -> None:
     FAILS RED TODAY: no filesystem existence check for firmware paths.
     Fix: add firmware path existence check to global_validator.
     """
-    pytest.skip("Requires firmware.json in CI and filesystem check in global_validator")
+    gv = _load_global_validator()
+    firmware = {
+        "wr": {"wrpc_filesys": "/tmp/nonexistent_wr_path_sc092"},
+        "quabo": {"bga": "quabo_v1.bin"}
+    }
+    with pytest.raises(Exception, match=r"WR|[Ff]irmware|path|exist"):
+        gv.validate_all(obs_config=BASE_OBS, data_config=BASE_DATA, firmware_config=firmware)
 
 
 # ── SC-093: Firmware file listed but binary absent ───────────────────────────
 
-@pytest.mark.skip(reason="SC-093: requires firmware.json with a missing binary in CI")
 def test_SC093_firmware_binary_missing_caught_at_validation() -> None:
     """
     SC-093: firmware.json lists a firmware file, but the binary is absent from
@@ -355,7 +357,13 @@ def test_SC093_firmware_binary_missing_caught_at_validation() -> None:
     FAILS RED TODAY: no file existence check in the firmware loader.
     Fix: check all firmware binary paths at validate_all() time.
     """
-    pytest.skip("Requires firmware.json pointing to a non-existent binary")
+    gv = _load_global_validator()
+    firmware = {
+        "wr": {"wrpc_filesys": "."},
+        "quabo": {"bga": "/tmp/nonexistent_quabo_binary_sc093.bin"}
+    }
+    with pytest.raises(Exception, match=r"binary|file|exist|quabo"):
+        gv.validate_all(obs_config=BASE_OBS, data_config=BASE_DATA, firmware_config=firmware)
 
 
 # ── SC-094: GNSS module configured with WR IP (port collision) ───────────────
