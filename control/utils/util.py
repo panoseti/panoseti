@@ -117,8 +117,10 @@ def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
     try:
         from panoseti_grpc.telemetry.logger import get_logger
         get_logger(tag, log_dir=log_dir, grpc_enabled=True, reset=True)
-    except ImportError:
-        # panoseti_grpc not installed — fall back to standard handlers
+    except Exception as e:
+        # panoseti_grpc not installed or Telemetry service unavailable — fall back to standard handlers
+        if not isinstance(e, ImportError):
+            print(f"Warning: Telemetry logger initialization failed ({e}). Falling back to local logging.", file=sys.stderr)
         logger = logging.getLogger(tag)
         logger.setLevel(logging.DEBUG)
         logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')

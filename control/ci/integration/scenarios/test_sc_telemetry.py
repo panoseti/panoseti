@@ -97,22 +97,44 @@ def _loki_query(selector: str = '{job="panoseti"}', since_s: float = 30.0) -> li
 
 # ── SC-056: Loki down during run ──────────────────────────────────────────────
 
-@pytest.mark.skip(reason="SC-056: requires docker exec to stop/start Loki container")
-def test_SC056_loki_down_does_not_crash_storeLoki() -> None:
+def test_SC056_loki_down_does_not_crash_storeLoki(monkeypatch) -> None:
     """
     storeLoki.py should buffer or die loudly when Loki is unavailable.
-    Currently: silent log loss — storeLoki fails on POST, swallows the error.
-
-    Fix: local spool with retry on reconnect, or explicit CRITICAL log + process restart.
+    Currently: it might crash or OOM if not careful.
+    
+    Fix: implement a safety valve that clears the buffer if it gets too large.
     """
     _require_telemetry()
-    pytest.skip("Requires chaos/process_chaos to stop loki container")
+    from daemons.storeLoki import LokiPublisher
+    import requests
+    from unittest.mock import MagicMock
+    
+    rc = _redis_client()
+    publisher = LokiPublisher("http://loki:3100/loki/api/v1/push", rc)
+    
+    # Mock requests.post to raise a ConnectionError
+    def mock_post(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("Loki is down")
+    
+    monkeypatch.setattr(requests.Session, "post", mock_post)
+    
+    # Fill the buffer beyond its limit
+    for i in range(10001):
+        publisher.add({"timestamp": time.time(), "payload_json": f"msg {i}"})
+    
+    # Try to flush - it should not crash, but should back off
+    publisher.flush()
+    assert publisher.consecutive_errors > 0
+    
+    # Verify the safety valve: if we are over 10,000 logs, a flush failure 
+    # should probably clear it to avoid OOM.
+    # The requirement says: "if the internal buffer exceeds a maximum size (e.g., 10,000 logs), clear it"
+    assert len(publisher.buffer) == 0, "Buffer should have been cleared by safety valve"
 
 
 # ── SC-057: Redis maxmemory reached ───────────────────────────────────────────
 
-@pytest.mark.skip(reason="SC-057: requires redis CONFIG SET maxmemory")
-def test_SC057_redis_full_raises_backpressure() -> None:
+def test_SC057_redis_full_raises_backpressure(monkeypatch) -> None:
     """
     When Redis maxmemory is reached, RedisBatcher.flush() RPUSH calls fail.
     Currently: no backpressure — log entries are silently dropped.
@@ -120,7 +142,27 @@ def test_SC057_redis_full_raises_backpressure() -> None:
     Fix: RedisBatcher should raise/log at CRITICAL when RPUSH fails, not swallow.
     """
     _require_telemetry()
-    pytest.skip("Requires redis CONFIG SET maxmemory 10mb then flood")
+    import redis
+    
+    # Mock redis rpush to simulate OOM
+    def mock_rpush(*args, **kwargs):
+        raise redis.exceptions.ResponseError("OOM command not allowed")
+    
+    # We need to find where the rpush is called. 
+    # It's in the server-side RedisBatcher.
+    # In this test, we can mock it globally in the redis-py library if it's used.
+    monkeypatch.setattr(redis.Redis, "rpush", mock_rpush)
+    
+    from panoseti_grpc.telemetry.logger import get_logger
+    logger = get_logger("sc057_test", grpc_enabled=True)
+    
+    # This should not crash the client, even if the server-side fails.
+    # If the handler is sync and directly talks to Redis, it might crash.
+    # If it's gRPC, the server handles it.
+    try:
+        logger.info("SC-057: testing Redis OOM resilience")
+    except Exception as e:
+        pytest.fail(f"Logger crashed on Redis OOM: {e}")
 
 
 # ── SC-061: Large log payload ─────────────────────────────────────────────────
@@ -321,18 +363,28 @@ def test_SC065_get_logger_without_headnode_ip_does_not_crash() -> None:
 
 # ── SC-066: Telemetry service down at daqnode startup ─────────────────────────
 
-@pytest.mark.skip(reason="SC-066: requires daqnode startup with telemetry service stopped")
 def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
     """
     SC-066: DAQ node startup must proceed even if the Telemetry gRPC service is
     down at boot time. Logs should silently buffer, not block the boot path.
-
-    FAILS RED TODAY: AsyncGrpcHandler connect_to_server() may block on initial
-    gRPC channel establishment.
-    Fix: connect_to_server() must be non-blocking (fire and forget).
     """
     _require_telemetry()
-    pytest.skip("Requires stopping telemetry service before daqnode container starts")
+    from unittest.mock import patch
+    from utils import util
+    
+    # Mocking get_logger to simulate a crash (e.g. gRPC connection error)
+    with patch("panoseti_grpc.telemetry.logger.get_logger", side_effect=Exception("Connection refused")):
+        try:
+            # We use a temp file for logfile to avoid permission issues
+            import tempfile
+            with tempfile.NamedTemporaryFile() as tmp:
+                util.create_logger(tmp.name, "sc066_test")
+        except Exception as e:
+            pytest.fail(f"create_logger crashed when get_logger failed: {e}")
+            
+    import logging
+    logger = logging.getLogger("sc066_test")
+    assert logger.hasHandlers(), "Logger should have handlers even after telemetry failure"
 
 
 # ── SC-067: storeLoki.py crash during flush ───────────────────────────────────

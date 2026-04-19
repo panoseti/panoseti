@@ -1357,6 +1357,7 @@ def test_SC040_obs_config_timing_mode_change_between_session_and_run() -> None:
     import os
     import subprocess
     import time
+
     from utils.run_state import RunStateManager
 
     RunStateManager().clear_state()

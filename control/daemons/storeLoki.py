@@ -37,7 +37,7 @@ DEFAULT_LOKI_URL = "http://localhost:3100/loki/api/v1/push"
 DEFAULT_REDIS_KEY = "logs:ingress"
 PROCESSING_REDIS_KEY = "logs:processing"
 BATCH_SIZE = 100          # Flush when we have 100 logs
-MAX_BUFFER_SIZE = 2000    # Stop pulling from Redis if we hold this many
+MAX_BUFFER_SIZE = 10000   # Safety valve: clear buffer if it reaches this size
 FLUSH_INTERVAL = 2.0      # Flush at least every 2 seconds
 MAX_BACKOFF_SECONDS = 60  # Cap retry wait time
 MAX_FLUSH_SIZE_BYTES = 512 * 1024  # 512 KB compressed limit
@@ -134,6 +134,10 @@ class LokiPublisher:
             if self.consecutive_errors == 0:
                 logger.error(f"Loki unreachable: {e}")
             self._apply_backoff()
+            # Safety Valve: Clear buffer if it gets too large to prevent OOM (SC-056)
+            if len(self.buffer) >= MAX_BUFFER_SIZE:
+                 logger.critical(f"Loki still unreachable and buffer full ({len(self.buffer)}). Dropping batch to prevent OOM.")
+                 self._clear_batch()
 
     def _clear_batch(self) -> None:
         self.buffer.clear()
