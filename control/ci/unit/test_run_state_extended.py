@@ -14,15 +14,13 @@ it must PASS on both the old and new codebase.
 
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pytest
 from pydantic import ValidationError
 
 from utils.pydantic_config_models import NodeReceipt, RunStateLedger
 from utils.run_state import RunStateManager
-
-UTC = timezone.utc
 
 # ---------------------------------------------------------------------------
 # New RunStateLedger status values
@@ -129,7 +127,7 @@ class TestRunStateLedgerNewFields:
         """next_action_not_before must be accepted as a UTC datetime."""
         dt = datetime.now(UTC)
         ledger = RunStateLedger(**self._base(), next_action_not_before=dt)
-        assert ledger.next_action_not_before is not None
+        assert ledger.next_action_not_before == dt
 
 
 # ---------------------------------------------------------------------------

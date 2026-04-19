@@ -23,14 +23,14 @@ even when the run_dir exists).  We keep it as a RED assertion marker.
 
 from __future__ import annotations
 
-import asyncio
-import os
 import pathlib
 import time
+from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import stop
 from utils.pydantic_config_models import (
     CollectResult,
     DaqConfigValidator,
@@ -40,12 +40,12 @@ from utils.pydantic_config_models import (
 )
 from utils.run_state import RunStateManager
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 RUN_NAME = "start_2024-01-01T00:00:00Z.sci"
+FAST_PATH_TIMEOUT_SECS = 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -122,9 +122,6 @@ def _stop_patches(state_mgr: RunStateManager):
     network/hardware calls inside stop.py, redirecting state management
     to the provided RunStateManager.
     """
-    from contextlib import ExitStack
-    from unittest.mock import patch
-
     stack = ExitStack()
     stack.enter_context(patch("stop.util.local_ip", return_value=["127.0.0.1"]))
     # NOTE: After Phase 2 removes collect.collect_data from stop.py's hot path,
@@ -160,11 +157,10 @@ class TestStopFastPath:
     RECORDING_ENDED, NOT write run_complete, and enqueue a transfer job.
     """
 
-    @pytest.mark.asyncio
-    async def test_stop_completes_quickly(self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids):
-        """stop_run() must complete in under 5 s; ledger must end in RECORDING_ENDED."""
-        import stop
-
+    async def test_stop_completes_quickly(
+        self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
+    ):
+        """stop_run() must complete in under 5 s."""
         with _stop_patches(state_mgr):
             t0 = time.monotonic()
             await stop.stop_run(
@@ -177,21 +173,14 @@ class TestStopFastPath:
             )
             elapsed = time.monotonic() - t0
 
-        assert elapsed < 5.0, f"stop_run() took {elapsed:.2f}s — too slow for fast path"
-
-        # Phase 2 assertion: ledger must be RECORDING_ENDED
-        loaded = state_mgr.load_state()
-        assert loaded is not None
-        assert loaded.status == "RECORDING_ENDED", (
-            f"Expected RECORDING_ENDED but got {loaded.status!r}. "
-            "Phase 2 fast-path must not complete the run synchronously."
+        assert elapsed < FAST_PATH_TIMEOUT_SECS, (
+            f"stop_run() took {elapsed:.2f}s — too slow for fast path"
         )
 
-    @pytest.mark.asyncio
-    async def test_stop_does_not_write_run_complete(self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids):
+    async def test_stop_does_not_write_run_complete(
+        self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
+    ):
         """run_complete marker must NOT be written during the fast stop path."""
-        import stop
-
         with _stop_patches(state_mgr):
             await stop.stop_run(
                 daq_config,
@@ -208,11 +197,10 @@ class TestStopFastPath:
             "Transfer ownership moves to the background TransferWorker."
         )
 
-    @pytest.mark.asyncio
-    async def test_stop_enqueues_transfer_job(self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids):
+    async def test_stop_enqueues_transfer_job(
+        self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
+    ):
         """After stop_run(), a pending transfer job must exist in TransferQueue."""
-        import stop
-
         with _stop_patches(state_mgr):
             await stop.stop_run(
                 daq_config,
@@ -229,11 +217,10 @@ class TestStopFastPath:
             "Phase 2 must enqueue the run for background transfer after stop."
         )
 
-    @pytest.mark.asyncio
-    async def test_stop_ledger_recording_ended(self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids):
+    async def test_stop_ledger_recording_ended(
+        self, tmp_path, run_dir, state_mgr, daq_config, network_config, quabo_uids
+    ):
         """Ledger status must be RECORDING_ENDED after the fast stop path."""
-        import stop
-
         with _stop_patches(state_mgr):
             await stop.stop_run(
                 daq_config,
