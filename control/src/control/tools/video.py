@@ -1,0 +1,137 @@
+#! /usr/bin/env python3
+
+# video.py [--module N] [--ph]
+# run (only) while a recording is in progress.
+# Shows recent frames from it.
+#   --module N      show frames from module N (default: first one)
+#   --ph            show pulse height images (default: image mode)
+#
+# It does this by creating a process on the DAQ node that
+# monitors the relevant PFF file and returns frames from the end
+import subprocess
+import sys
+
+import numpy as np
+
+from control.tools import show_pff
+from control.utils import config_file, pff
+from control.utils.pydantic_config_models import QuaboUidsValidator
+
+
+def main(quabo_uids: QuaboUidsValidator, module_id: int, dp: str) -> None:
+    """Monitor and display real-time video frames from an active observation.
+    
+    Creates a remote process on the assigned DAQ node via SSH to stream 
+    recent frames from PFF files. Decodes JSON headers and binary images 
+    for visualization.
+
+    Args:
+        quabo_uids: Validated Quabo UID hardware registry.
+        module_id: ID of the module to monitor. If -1, defaults to the first available.
+        dp: Data product type to display (e.g., 'img16', 'img8', 'ph256', 'ph1024').
+    """
+    if module_id < 0:
+        dome = quabo_uids.domes[0]
+        module = dome.modules[0]
+        module_id = module.id if module.id is not None else -1
+    else:
+        found = False
+        for dome in quabo_uids.domes:
+            for module in dome.modules:
+                if module.id == module_id:
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            print(f'no such module {module_id}')
+            return
+    
+    daq_node = module.daq_node
+    if daq_node is None:
+        print(f"Error: No DAQ node associated with module {module_id}")
+        return
+
+    cmd = f"cd {daq_node.data_dir}; ./video_daq.py --module {module_id} --dp {dp}"
+    print(cmd)
+    process = subprocess.Popen(['ssh',
+        f'{daq_node.username}@{daq_node.ip_addr}',
+        cmd,
+        ],
+
+
+        shell=False, stdout = subprocess.PIPE
+    )
+    ph = False
+    if dp == 'img16' or dp == 'ph1024':
+        image_size = 32
+        bpp = 2
+    elif dp == 'img8':
+        image_size = 32
+        bpp = 1
+    elif dp == 'ph256':
+        image_size = 16
+        bpp = 2
+        ph = True
+    figure, im = show_pff.create_figure(image_size)
+    while True:
+        j = ''
+        if process.stdout is None:
+            break
+        while True:
+            line_bytes = process.stdout.readline()
+            if line_bytes == b'\n' or line_bytes == b'':
+                break
+            j += line_bytes.decode()
+        show_pff.print_json(j, ph, False)
+        #print('got header')
+        raw_img = pff.read_image(process.stdout, image_size, bpp)
+        if raw_img is None:
+            break
+        img = np.array(raw_img)
+        if dp == 'ph256' or dp == 'ph1024':
+            img = img.astype(np.int16)
+        print(f'max: {np.max(img)}, min: {np.min(img)}')
+        #show_pff.image_as_text(img, image_size, bpp, 0, 256)
+        img = img - img.min()
+        if img.max() != 0:
+            img = img/img.max()
+        show_pff.image_as_figure(figure, im, img.reshape(image_size,image_size))
+        if process.poll() is not None:
+            break
+
+i = 1
+module_id = -1
+argv = sys.argv
+ph = 0
+while i<len(argv):
+    if argv[i] == '--module':
+        i += 1
+        module_id = int(argv[i])
+    elif argv[i] == '--ph':
+        i += 1
+        ph = int(argv[i])
+    i += 1
+
+
+    daq_config = config_file.get_daq_config()
+    quabo_uids = config_file.get_quabo_uids()
+    data_config = config_file.get_data_config()
+    config_file.associate(daq_config, quabo_uids)
+    
+    if ph:
+        if data_config.pulse_height is None:
+            raise Exception('no pulse height being recorded')
+        if ph == 1024:
+            dp = 'ph1024'
+        elif ph == 256:
+            dp = 'ph256'
+        else:
+            raise Exception(f'ph{ph} not supported')
+    else:
+        if data_config.image is None:
+            raise Exception('no image data being recorded')
+        bits_pixel = data_config.image.quabo_sample_size
+        dp = 'img16' if bits_pixel == 16 else 'img8'
+
+    main(quabo_uids, module_id, dp)

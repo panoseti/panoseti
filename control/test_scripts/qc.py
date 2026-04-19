@@ -10,13 +10,10 @@
 #
 # See https://github.com/panoseti/panoseti/wiki/Quabo-command-line-interface
 
-import os
 import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from driver import quabo_driver
-from utils import util
+from control.driver import quabo_driver
+from control.utils import util
 
 config_filename = "./config/quabo_config.txt"
 baseline_filename = "./quabo_baseline.csv"

@@ -40,13 +40,13 @@ description = "MyPy static type check"
 # Sequential. {parallel} is substituted from --jobs / settings.default_parallel.
 
 [test.unit]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/unit/ -v -n {parallel} --color=yes {args}"
+command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest src/control/ci/unit/ -v -n {parallel} --color=yes {args}"
 description = "Parallel unit tests (pytest-xdist)"
 
 [test.integration]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T int-tester pytest ci/integration/ -v --color=yes --ignore=ci/integration/scenarios {args}"
+command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T int-tester pytest src/control/ci/integration/ -v --color=yes --ignore=src/control/ci/integration/scenarios {args}"
 description = "E2E integration tests (excludes chaos scenarios)"
 
 [test.chaos]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T -e ENABLE_TELEMETRY_TESTS=1 int-tester pytest ci/integration/scenarios/ -v --color=yes {args}"
+command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T -e ENABLE_TELEMETRY_TESTS=1 int-tester pytest src/control/ci/integration/scenarios/ -v --color=yes {args}"
 description = "Chaos/TDD-forcing scenario tests (expected to fail red on master)"

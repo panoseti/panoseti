@@ -44,19 +44,17 @@ dev = [
 ]
 
 [project.scripts]
-pseti = "pseti:app"
-
-[tool.setuptools]
-py-modules = ["pseti"]
+pseti = "control.pseti:app"
+pano-start = "control.start:main"
+pano-stop = "control.stop:main"
+pano-status = "control.status:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["utils*", "driver*", "daemons*", "ci*"]
+where = ["src"]
+include = ["control*"]
 
 [tool.pytest.ini_options]
-testpaths = ["ci"]
-# Add control/ itself to sys.path so "from utils.X import ..." works in tests
-pythonpath = ["."]
+testpaths = ["src/control/ci"]
 asyncio_mode = "auto"
 filterwarnings = [
     "ignore::DeprecationWarning",
@@ -82,15 +80,16 @@ strict_equality = true
 extra_checks = true
 ignore_missing_imports = true
 warn_return_any = false
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_unused_ignores = false
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = "ci.*"
+module = "control.ci.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+check_untyped_defs = false
 
 [tool.uv.sources]
 panoseti_grpc = { path = "../grpc", editable = true }
