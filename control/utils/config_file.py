@@ -701,9 +701,11 @@ def load_and_validate[T: BaseModel](
             # 'from None' suppresses the double traceback in Python
             raise ValueError(f"Pydantic Validation failed for {config_name}") from None
         else:
+            # If we're not in explicit CLI validation mode, we still want to raise
+            # so that orchestration (start.py) can run its rollback ladder.
             if RAISE_VALIDATION_ERRORS:
                 raise e
-            sys.exit(1)  # Clean exit for normal runs, no traceback
+            raise ValueError(f"Pydantic Validation failed for {config_name}: {e}") from None
     except json.JSONDecodeError as e:
         console.print(f"\n[bold red][FAIL] JSON Parsing Error in {config_name} ({filename}):[/bold red] {e}")
         if IS_CLI_VALIDATION:
@@ -713,7 +715,7 @@ def load_and_validate[T: BaseModel](
             if RAISE_VALIDATION_ERRORS:
                 console.print_exception()
                 raise e
-            sys.exit(1)
+            raise ValueError(f"JSON Parse Error in {filename}: {e}") from None
 
 
 

@@ -346,11 +346,12 @@ class TestLoadAndValidate:
             load_and_validate(DataConfigValidator, "configs/data_config.json",
                               str(tmp_path), "Data Config")
 
-    def test_schema_error_exits_cleanly(self, tmp_path):
-        """Invalid schema causes sys.exit in non-CLI mode (by default)."""
+    def test_schema_error_raises_value_error(self, tmp_path):
+        """Invalid schema causes ValueError in non-CLI mode (by default)."""
         bad_data = {"run_type": "a" * 20}  # Too long — Pydantic will reject
         self._write_json(tmp_path, "configs/data_config.json", bad_data)
-        # Default behaviour is sys.exit(1) on schema error when not in CLI mode
-        with pytest.raises(SystemExit):
+        # Default behaviour is now ValueError on schema error when not in CLI mode
+        # to allow orchestration rollback ladders to run.
+        with pytest.raises(ValueError, match="Pydantic Validation failed"):
             load_and_validate(DataConfigValidator, "configs/data_config.json",
                               str(tmp_path), "Data Config")
