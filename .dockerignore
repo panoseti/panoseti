@@ -1,0 +1,5 @@
+# Exclude everything; reinclude only what the Docker build needs.
+# build context is panoseti-software/ (repo root)
+**
+!control/**
+!grpc/**

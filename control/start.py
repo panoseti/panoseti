@@ -438,7 +438,9 @@ async def start_recording(
             try:
                 ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
                     'data_dir': node_validator.data_dir,
-                    'check_hashpipe_running': True
+                    'check_hashpipe_running': True,
+                    'check_disk_usage': False,
+                    'check_run_dirs': False
                 }))
                 
                 if ok:

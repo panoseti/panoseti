@@ -816,10 +816,11 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
         with open(path, "w") as f:
             json.dump(cfg, f, indent=4)
             
-        await run_start_and_kill("starting recording (Phase 3: Transactional)")
+        # Use a later marker: the heartbeat check must pass for the hashpipe to be "orphaned"
+        await run_start_and_kill("heartbeat OK", timeout=20)
     
     # 2. Verify hashpipe is orphaned and running
-    time.sleep(2)
+    time.sleep(1)
     ok, status = daq_control_direct.StatusDaq({
         "data_dir": "/data",
         "check_hashpipe_running": True,
