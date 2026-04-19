@@ -14,17 +14,6 @@ import pathlib
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Import guard — all tests fail here until the module exists
-# ---------------------------------------------------------------------------
-
-try:
-    from utils.transfer.queue import TransferQueue
-    _IMPORT_OK = True
-except ImportError:
-    _IMPORT_OK = False
-    TransferQueue = None  # type: ignore[assignment,misc]
-
 pytestmark = pytest.mark.skipif(
     False,  # Never skip — let tests fail naturally via ImportError propagation
     reason="TransferQueue not yet implemented"
@@ -161,3 +150,37 @@ class TestTransferQueueComplete:
         failed_dir = tmp_path / "tmp" / "transfer_queue" / "failed"
         assert not (active_dir / "myrun.pffd.job.toml").exists()
         assert (failed_dir / "myrun.pffd.job.toml").exists()
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: complete/fail on unclaimed jobs
+# ---------------------------------------------------------------------------
+
+class TestTransferQueueEdgeCases:
+
+    def test_complete_unclaimed_job_raises_or_noop(self, tmp_path):
+        """complete() on a job that was never claimed must either raise
+        FileNotFoundError (preferred — makes the bug loud) or return
+        silently without corrupting queue state.
+
+        Contract: complete() MUST NOT silently move a non-existent active
+        job to completed/ (i.e., it must not create a completed/ entry from
+        thin air). Either behaviour is acceptable at this stage — document
+        which one Phase 2 chooses here.
+
+        This test will fail RED until TransferQueue is implemented.
+        """
+        q = _tq(tmp_path)
+        # Do NOT enqueue or claim — call complete() on an unknown run_name.
+        try:
+            q.complete("nonexistent.pffd")
+        except FileNotFoundError:
+            # Preferred: loud failure makes the bug obvious.
+            pass
+        except Exception as exc:
+            pytest.fail(f"complete() raised unexpected {type(exc).__name__}: {exc}")
+        # If it returns silently, verify no spurious completed/ entry was created.
+        completed_dir = tmp_path / "tmp" / "transfer_queue" / "completed"
+        assert not (completed_dir / "nonexistent.pffd.job.toml").exists(), (
+            "complete() must not create a completed entry for an unclaimed job"
+        )

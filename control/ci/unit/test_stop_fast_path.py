@@ -29,7 +29,6 @@ import pathlib
 import time
 from unittest.mock import MagicMock, patch
 
-import anyio
 import pytest
 
 from utils.pydantic_config_models import (
@@ -128,6 +127,9 @@ def _stop_patches(state_mgr: RunStateManager):
 
     stack = ExitStack()
     stack.enter_context(patch("stop.util.local_ip", return_value=["127.0.0.1"]))
+    # NOTE: After Phase 2 removes collect.collect_data from stop.py's hot path,
+    # this patch may need updating. The test will still catch the RED/GREEN behavior
+    # via the RECORDING_ENDED status and run_complete assertions.
     stack.enter_context(patch("stop.collect.collect_data", return_value=_mock_collect()))
     stack.enter_context(patch("stop.util.kill_hv_updater", return_value=None))
     stack.enter_context(patch("stop.util.kill_hk_recorder", return_value=None))

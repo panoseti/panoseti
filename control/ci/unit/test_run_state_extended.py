@@ -196,7 +196,7 @@ class TestSaveLoadRoundTripNewFields:
         assert loaded.transfer_attempts == 2
         assert loaded.last_transfer_error == "timeout"
         assert loaded.manifest_algorithm == "blake3"
-        assert loaded.next_action_not_before is not None
+        assert loaded.next_action_not_before == dt  # exact datetime equality
 
 
 # ---------------------------------------------------------------------------
