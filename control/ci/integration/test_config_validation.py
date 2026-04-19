@@ -42,6 +42,13 @@ def _run_validation(variant_dir: pathlib.Path) -> bool:
             if src.exists():
                 shutil.copy(src, configs_dir / fname)
 
+        # Create stub firmware files referenced in firmware.json to satisfy existence checks
+        with open(configs_dir / "firmware.json") as f:
+            fw_data = json.load(f)
+            for val in fw_data.values():
+                if isinstance(val, str) and val.endswith(".bin"):
+                    (pathlib.Path(tmpdir) / val).touch()
+
         # Run validation from the temp workspace
         old_cwd = os.getcwd()
         sys.path.insert(0, str(CONTROL_DIR))

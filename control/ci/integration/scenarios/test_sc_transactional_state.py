@@ -13,6 +13,7 @@ Key exemplars implemented here:
 TDD intent: each TDD-forcing test FAILS RED on current master.
 """
 
+# ruff: noqa
 from __future__ import annotations
 
 import contextlib
@@ -706,6 +707,7 @@ async def run_start_and_kill(marker: str, timeout: float = 15) -> int:
         
         found = False
         deadline = time.time() + timeout
+        assert proc.stdout is not None
         while time.time() < deadline:
             line = proc.stdout.readline()
             if not line:

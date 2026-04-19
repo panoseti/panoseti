@@ -225,6 +225,7 @@ class GlobalConfigValidator:
         
         from pathlib import Path
         extra = self.firmware_conf.model_extra or {}
+        checks_performed = 0
         
         # 1. Check WR firmware path
         wr_conf = extra.get("wr", {})
@@ -235,9 +236,15 @@ class GlobalConfigValidator:
                                      f"WR firmware path '{path}' does not exist on this host.")
             else:
                 self.report.add_test("Firmware Path Check", "PASS", "WR firmware path verified.")
+            checks_performed += 1
 
         # 2. Check Quabo binary files
+        # Support both {"quabo": {"bga": "..."}} and {"bga": "..."}
         quabo_conf = extra.get("quabo", {})
+        if not quabo_conf:
+            # Fallback: assume all top-level keys except 'wr' are quabo hardware types
+            quabo_conf = {k: v for k, v in extra.items() if k != "wr" and isinstance(v, str)}
+
         for hw_type, binary_path in quabo_conf.items():
             path = Path(binary_path)
             if not path.is_file() and not (Path(".") / path).is_file():
@@ -245,6 +252,10 @@ class GlobalConfigValidator:
                                      f"Quabo binary file '{binary_path}' (type: {hw_type}) does not exist.")
             else:
                 self.report.add_test("Firmware Binary Check", "PASS", f"Binary for {hw_type} verified.")
+            checks_performed += 1
+        
+        if checks_performed == 0:
+            self.report.add_test("Firmware Filesystem", "PASS", "No firmware files configured for disk check.")
 
     def _check_overvoltage_consensus(self) -> None:
         """Ensure detector overvoltage is consistent across obs and data configs."""

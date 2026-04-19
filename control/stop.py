@@ -271,7 +271,7 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
                         else:
                             raise RuntimeError(f"ssh pkill failed with code {res.returncode}: {res.stderr}")
                     except Exception as fallback_err:
-                        raise RuntimeError(f"Hard-kill escalation failed for node {node.ip_addr}: {fallback_err}")
+                        raise RuntimeError(f"Hard-kill escalation failed for node {node.ip_addr}: {fallback_err}") from fallback_err
                 else:
                     raise
         except Exception as e:

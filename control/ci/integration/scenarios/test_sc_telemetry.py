@@ -105,9 +105,10 @@ def test_SC056_loki_down_does_not_crash_storeLoki(monkeypatch) -> None:
     Fix: implement a safety valve that clears the buffer if it gets too large.
     """
     _require_telemetry()
-    from daemons.storeLoki import LokiPublisher
+
     import requests
-    from unittest.mock import MagicMock
+
+    from daemons.storeLoki import LokiPublisher
     
     rc = _redis_client()
     publisher = LokiPublisher("http://loki:3100/loki/api/v1/push", rc)
@@ -370,6 +371,7 @@ def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
     """
     _require_telemetry()
     from unittest.mock import patch
+
     from utils import util
     
     # Mocking get_logger to simulate a crash (e.g. gRPC connection error)

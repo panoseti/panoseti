@@ -874,29 +874,27 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
         return unittest.mock.MagicMock(returncode=0)
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StopDaq", side_effect=timeout_stop_daq), \
-         unittest.mock.patch("subprocess.run", side_effect=mocked_run):
+         unittest.mock.patch("subprocess.run", side_effect=mocked_run), \
+         unittest.mock.patch("stop.config_file.get_daq_config", return_value=daq_config), \
+         unittest.mock.patch("stop.config_file.get_quabo_uids"), \
+         unittest.mock.patch("stop.config_file.get_network_config"), \
+         unittest.mock.patch("stop.util.local_ip", return_value=["10.0.1.5", "127.0.0.1"]), \
+         unittest.mock.patch("stop.RunStateManager.load_state", return_value=None), \
+         unittest.mock.patch("stop.util.read_run_name", return_value="test_run.pffd"), \
+         unittest.mock.patch("stop.os.path.exists", return_value=True), \
+         unittest.mock.patch("stop.util.stop_data_flow"), \
+         unittest.mock.patch("stop.util.kill_hv_updater"), \
+         unittest.mock.patch("stop.util.kill_hk_recorder"), \
+         unittest.mock.patch("stop.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("stop.write_complete_file"), \
+         unittest.mock.patch("stop.make_links"), \
+         unittest.mock.patch("stop.util.remove_run_name"):
 
-        # We need to mock other configs that stop_run might try to load
-        with unittest.mock.patch("stop.config_file.get_daq_config", return_value=daq_config), \
-             unittest.mock.patch("stop.config_file.get_quabo_uids"), \
-             unittest.mock.patch("stop.config_file.get_network_config"), \
-             unittest.mock.patch("stop.util.local_ip", return_value=["10.0.1.5", "127.0.0.1"]), \
-             unittest.mock.patch("stop.RunStateManager.load_state", return_value=None), \
-             unittest.mock.patch("stop.util.read_run_name", return_value="test_run.pffd"), \
-             unittest.mock.patch("stop.os.path.exists", return_value=True), \
-             unittest.mock.patch("stop.util.stop_data_flow"), \
-             unittest.mock.patch("stop.util.kill_hv_updater"), \
-             unittest.mock.patch("stop.util.kill_hk_recorder"), \
-             unittest.mock.patch("stop.util.kill_module_temp_monitor"), \
-             unittest.mock.patch("stop.write_complete_file"), \
-             unittest.mock.patch("stop.make_links"), \
-             unittest.mock.patch("stop.util.remove_run_name"):
+        await stop.stop_run(
+            daq_config, unittest.mock.MagicMock(), unittest.mock.MagicMock(),
+            run="test_run.pffd", no_collect=True, no_cleanup=True
+        )
 
-            success = await stop.stop_run(
-                daq_config, unittest.mock.MagicMock(), unittest.mock.MagicMock(),
-                run="test_run.pffd", no_collect=True, no_cleanup=True
-            )
-
-            # success might be False because StopDaq failed, but we verify fallback was called
-            assert fallback_called, "Fallback hard-kill (ssh pkill) was not executed after StopDaq timeout"
+        # success might be False because StopDaq failed, but we verify fallback was called
+        assert fallback_called, "Fallback hard-kill (ssh pkill) was not executed after StopDaq timeout"
 

@@ -30,6 +30,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 import traceback
 from argparse import ArgumentParser
@@ -308,9 +309,9 @@ def make_run_dirs(
             json.dump(data, f, indent=4, default=str)
             
     # Copy other transient artifacts (sw_info.json, ph_baseline.json) from disk/tmp
-    for f in [config_file.quabo_ph_baseline_filename, config_file.sw_info_filename]:
-        if os.path.exists(f):
-             shutil.copyfile(f, f'{run_dir}/{os.path.basename(f)}')
+    for artifact_file in [config_file.quabo_ph_baseline_filename, config_file.sw_info_filename]:
+        if os.path.exists(artifact_file):
+             shutil.copyfile(artifact_file, f'{run_dir}/{os.path.basename(artifact_file)}')
 
     # 2. make module and run directories on DAQ nodes
     for node in daq_config.daq_nodes:
@@ -551,7 +552,7 @@ async def start_recording(
                         status="START_FAILED",
                         message=f"Liveness Check Failed: {e}"
                     ))
-                    raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {e}")
+                    raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {e}") from e
 
             tg.create_task(verify_liveness(n))
 
@@ -638,7 +639,7 @@ async def start_run(
         head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
         if head_node_ip not in my_ip:
             print(f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
-            return False
+            return None
 
         # Task 2.2: Stale ledger self-heal
         existing_state = state_mgr.load_state()
@@ -669,16 +670,16 @@ async def start_run(
             else:
                 print(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status})")
                 print("Run stop.py, then try again, or use --force-reset.")
-                return False
+                return None
 
         if util.is_hk_recorder_running():
             print('The HK recorder is running. Run stop.py, then try again.')
-            return False
+            return None
             
         if not no_redis and not util.are_redis_daemons_running():
             print('Redis daemons are not running. Run config.py --redis_daemons')
             util.show_redis_daemons()
-            return False
+            return None
 
         if not ph_baseline_file_ok():
             return None
@@ -798,7 +799,7 @@ async def start_run(
                     await asyncio.to_thread(shutil.move, s, d)
                 await asyncio.to_thread(os.rmdir, local_run_dir)
 
-            return False
+            return None
         # --- ROLLBACK LADDER END ---
 
         # Mark ACTIVE in ledger
