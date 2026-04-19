@@ -277,8 +277,11 @@ def create_data_dirs() -> None:
     /data/head is referenced by daq_config.json (head_node_data_dir) and must
     exist for global_validator's Headnode Disk Space check to pass.
     """
-    pathlib.Path(HEAD_DATA_DIR).mkdir(parents=True, exist_ok=True)
-    pathlib.Path(DAQ_DATA_DIR).mkdir(parents=True, exist_ok=True)
+    try:
+        pathlib.Path(HEAD_DATA_DIR).mkdir(parents=True, exist_ok=True)
+        pathlib.Path(DAQ_DATA_DIR).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass  # Outside Docker CI these paths don't exist; Docker-dependent tests skip anyway
 
 
 # ---------------------------------------------------------------------------
