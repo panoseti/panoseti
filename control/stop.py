@@ -21,12 +21,14 @@ import os
 import shutil
 import signal
 import socket
+import subprocess
 import sys
 import time
 from argparse import ArgumentParser
 from glob import glob
 from typing import Any
 
+import grpc
 from panoseti_grpc.daq_control.client import DaqControlClient
 
 try:
@@ -141,8 +143,8 @@ class StopTransaction:
             # 4. Enqueue for background transfer and transition ledger
             data_dir = self.daq_config.head_node_data_dir
             run_dir = f'{data_dir}/{self.run}'
-            import anyio
-            if await anyio.Path(run_dir).exists():
+            run_dir_exists = await asyncio.to_thread(os.path.exists, run_dir)
+            if run_dir_exists:
                 if not complete_file_exists(run_dir, recording_ended_filename):
                     write_complete_file(run_dir, recording_ended_filename)
 
@@ -159,6 +161,7 @@ class StopTransaction:
                     run_name=self.run,
                     head_data_dir=str(data_dir),
                     daq_nodes=daq_nodes,
+                    no_collect=self.no_collect,
                     no_cleanup=self.no_cleanup,
                     force_cleanup=self.force_cleanup,
                 )
@@ -303,7 +306,6 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
         try:
             client = DaqControlClient(host=grpc_host, port=grpc_port)
             # Use a strict timeout for the RPC
-            import grpc
             try:
                 ok = await loop.run_in_executor(None, lambda: client.StopDaq({
                     'data_dir': node.data_dir,
@@ -318,7 +320,7 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
                 # Task 2.4: Implement hard-kill escalation
                 if e.code() in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]:
                     logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({e.code()}). Escalating to SSH pkill...")
-                    
+
                     ssh_args = ["ssh"]
                     if node.port_forwarding and node.port_forwarding.status:
                         real_ip = str(node.port_forwarding.gw_ip)
@@ -326,11 +328,10 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
                         ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
                     else:
                         ssh_args.append(f"{node.username}@{node.ip_addr}")
-                    
+
                     ssh_args.append("pkill -9 hashpipe")
-                    
+
                     try:
-                        import subprocess
                         res = await loop.run_in_executor(None, lambda: subprocess.run(ssh_args, capture_output=True, text=True, timeout=15))
                         if res.returncode == 0 or res.returncode == 1: # 0=success, 1=no processes matched (also fine)
                             logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")

@@ -9,6 +9,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+_KNOWN_KEYS = {"run_name", "head_data_dir", "created_at", "attempts", "daq_nodes"}
+
+
 class TransferQueue:
     """Durable job queue for async data transfer using filesystem-atomic renames.
 
@@ -51,7 +54,6 @@ class TransferQueue:
         tmp_dir = path.parent
         fd, tmp_path = tempfile.mkstemp(dir=tmp_dir, suffix=".tmp")
         # Known scalar keys written first; everything else (job_extras) follows.
-        _KNOWN_KEYS = {"run_name", "head_data_dir", "created_at", "attempts", "daq_nodes"}
         try:
             with os.fdopen(fd, "w") as f:
                 f.write(f'run_name = "{content["run_name"]}"\n')
