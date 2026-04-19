@@ -8,7 +8,6 @@ import tomllib
 from datetime import UTC, datetime
 from typing import Any
 
-
 _KNOWN_KEYS = {"run_name", "head_data_dir", "created_at", "attempts", "daq_nodes"}
 
 

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import pathlib
 import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -25,7 +24,6 @@ from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # gRPC stub injection (mirrors test_transfer_daemon.py helper)
@@ -145,7 +143,6 @@ def test_transfer_daemon_unit_integration(tmp_path):
     from utils.pydantic_config_models import RunStateLedger
     from utils.run_state import RunStateManager
     from utils.transfer.daemon import _process_job
-    from utils.transfer.queue import TransferQueue
 
     run_name = "e2e_test.pffd"
     head_data_dir = str(tmp_path / "data")

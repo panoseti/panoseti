@@ -15,7 +15,7 @@ logging.basicConfig(
     format="%(asctime)s %(name)s %(levelname)s %(message)s",
 )
 
-from utils.transfer.daemon import run_daemon
+from utils.transfer.daemon import run_daemon  # noqa: E402
 
 if __name__ == "__main__":
     asyncio.run(run_daemon())

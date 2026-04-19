@@ -72,7 +72,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
        ``CleanupData``.
     6. **ARCHIVED** — write a ``run_complete`` marker and log success.
 
-    ``no_collect`` skips steps 1–4; ``no_cleanup`` skips step 5.
+    ``no_collect`` skips steps 1-4; ``no_cleanup`` skips step 5.
 
     Args:
         job: Parsed job dictionary from ``TransferQueue.claim()``.
@@ -93,14 +93,16 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
         # --- Stage 1: manifest generation ---
         logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
         try:
-            from panoseti_grpc.daq_control.client import DaqControlClient  # type: ignore[import-untyped]
+            from panoseti_grpc.daq_control.client import (
+                DaqControlClient,
+            )
 
             for node in daq_nodes:
                 client = DaqControlClient(host=node["ip_addr"], port=50051)
                 module_ids: list[int] = node.get("module_ids", [])
                 for mid in module_ids:
                     try:
-                        client.GenerateManifest(  # type: ignore[attr-defined]
+                        client.GenerateManifest(
                             {
                                 "data_dir": node["data_dir"],
                                 "run_dir": run_name,
@@ -109,7 +111,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
                                 "include_patterns": ["*.pff"],
                             }
                         )
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception as exc:
                         logger.warning(
                             "GenerateManifest failed for module %s on %s: %s",
                             mid,
@@ -148,12 +150,14 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
     if not no_cleanup:
         logger.info("[%s] Stage: CLEANING", run_name)
         try:
-            from panoseti_grpc.daq_control.client import DaqControlClient  # type: ignore[import-untyped]
+            from panoseti_grpc.daq_control.client import (
+                DaqControlClient,
+            )
 
             for node in daq_nodes:
                 client = DaqControlClient(host=node["ip_addr"], port=50051)
                 try:
-                    client.CleanupData(  # type: ignore[attr-defined]
+                    client.CleanupData(
                         {
                             "data_dir": node["data_dir"],
                             "run_dir": run_name,
@@ -163,7 +167,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
                             "preserve_patterns": ["*.json", "*.log", "*.toml"],
                         }
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning(
                         "CleanupData failed for %s: %s", node["ip_addr"], exc
                     )
@@ -212,14 +216,13 @@ async def run_daemon(
     logger.info("Transfer daemon started (pid=%d)", os.getpid())
     tq = TransferQueue(base_dir=base_dir)
 
+    import contextlib
     try:
         while not shutdown.is_set():
             job = tq.claim()
             if job is None:
-                try:
+                with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
-                except asyncio.TimeoutError:
-                    pass
                 continue
 
             run_name: str = job["run_name"]
@@ -248,7 +251,7 @@ async def run_daemon(
                         job.get("daq_nodes", []),
                         attempts=attempts,
                     )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("Unhandled error processing %s", run_name)
                 tq.fail(run_name)
     finally:

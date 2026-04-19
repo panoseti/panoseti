@@ -11,7 +11,6 @@ provided by pytest's tmp_path fixture.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import pathlib
 import sys
@@ -19,8 +18,6 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from utils.pydantic_config_models import RunStateLedger
 from utils.run_state import RunStateManager
@@ -30,7 +27,6 @@ from utils.transfer.daemon import (
     _release_transfer_lock,
 )
 from utils.transfer.verify import verify_manifest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -309,7 +305,7 @@ async def test_process_job_multiple_nodes(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 8–10. Lock helpers
+# 8-10. Lock helpers
 # ---------------------------------------------------------------------------
 
 
@@ -357,7 +353,7 @@ class TestDaemonSingletonLock:
 
 
 # ---------------------------------------------------------------------------
-# 11–13. verify_manifest
+# 11-13. verify_manifest
 # ---------------------------------------------------------------------------
 
 

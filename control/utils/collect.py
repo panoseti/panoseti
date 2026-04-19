@@ -23,8 +23,8 @@ warnings.warn(
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils import config_file, file_xfer, util
-from utils.pydantic_config_models import CollectResult, DaqConfigValidator
+from utils import config_file, file_xfer, util  # noqa: E402
+from utils.pydantic_config_models import CollectResult, DaqConfigValidator  # noqa: E402
 
 
 # return CollectResult if data collection was successful

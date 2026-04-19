@@ -11,13 +11,19 @@ We also add control/utils/ for modules that use bare `import pff` style imports
 import copy
 import io
 import json
+import os
 import pathlib
 import struct
+import sys
 import tomllib
 from collections.abc import Callable
 from typing import Any
 
 import pytest
+
+# Add control/utils/ for modules that use bare `import pff` style imports
+# (e.g. image_quantiles.py).
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "utils")))
 
 # ---------------------------------------------------------------------------
 # Declarative Test Topologies (Phase 1)

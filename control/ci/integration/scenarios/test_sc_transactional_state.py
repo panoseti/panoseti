@@ -1002,17 +1002,15 @@ class TestSC029FundamentalFailureSkipsCleanup:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
-        Mock collect.collect_data to fail for 192.168.0.10.
-        Verify:
-          - CleanupData NOT called for 192.168.0.10.
-          - collect_complete file NOT written.
+        Verify that a fundamental failure passed to StopTransaction:
+          - Bypasses TransferQueue().enqueue()
+          - Transitions ledger to STOPPED_WITH_ERRORS
         """
         from ipaddress import IPv4Address
         from unittest.mock import MagicMock, patch
         
         import stop as stop_module
         from utils.pydantic_config_models import (
-            CollectResult,
             DaqConfigValidator,
             DaqNodeValidator,
             NetworkConfigValidator,
@@ -1031,7 +1029,6 @@ class TestSC029FundamentalFailureSkipsCleanup:
             head_node_data_dir=str(head_dir),
             daq_nodes=[
                 DaqNodeValidator(ip_addr=IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[1]),
-                DaqNodeValidator(ip_addr=IPv4Address("192.168.0.11"), data_dir="/data", username="root", module_ids=[2]),
             ],
         )
         network_config = NetworkConfigValidator()
@@ -1046,62 +1043,33 @@ class TestSC029FundamentalFailureSkipsCleanup:
         )
         mock_mgr.load_state.return_value = ledger
 
-        # 3. Mock collect.collect_data to fail for .10
-        mock_collect = MagicMock(return_value=CollectResult(
-            success=False, 
-            failed_ips=["192.168.0.10"],
-            errors=["rsync failed for 192.168.0.10"]
-        ))
-
-        # 4. Mock DaqControlClient to track CleanupData calls
-        mock_client_inst = MagicMock()
-        mock_client_inst.StopDaq.return_value = {"success": True}
-        mock_client_inst.CleanupData.return_value = {"success": True}
+        # 3. Mock TransferQueue to verify bypass
+        mock_tq = MagicMock()
         
-        # Track which IPs were used to create clients
-        created_clients: dict[str, MagicMock] = {}
-        def mock_client_init(host: str, port: int) -> MagicMock:
-            c = MagicMock()
-            c.StopDaq.return_value = {"success": True}
-            c.CleanupData.return_value = {"success": True}
-            created_clients[host] = c
-            return c
-
+        # 4. We will simulate a fundamental failure by mocking util.local_ip 
+        # to raise an exception inside the 'with' block of stop_run.
+        
         with patch("stop.RunStateManager", return_value=mock_mgr), \
-             patch("utils.util.local_ip", return_value=["10.0.1.5"]), \
-             patch("socket.gethostbyname", return_value="10.0.1.5"), \
-             patch("utils.collect.collect_data", mock_collect), \
-             patch("stop.DaqControlClient", side_effect=mock_client_init), \
-             patch("utils.util.kill_hv_updater"), \
-             patch("utils.util.kill_hk_recorder"), \
-             patch("utils.util.kill_module_temp_monitor"), \
-             patch("utils.util.stop_data_flow"), \
-             patch("utils.util.remove_run_name"):
+             patch("utils.util.local_ip", side_effect=RuntimeError("Fundamental Failure")), \
+             patch("stop.TransferQueue", return_value=mock_tq), \
+             patch("socket.gethostbyname", return_value="10.0.1.5"):
 
+            # stop_run swallows generic exceptions and returns False
             success = await stop_module.stop_run(
                 daq_config, network_config, quabo_uids,
-                verbose=True, no_cleanup=False, no_collect=False
+                verbose=True, no_cleanup=False, no_collect=False,
+                run=run_name
             )
+            assert success is False
 
         # ASSERTIONS
         
-        # collect_data was called
-        assert mock_collect.called
-        
-        # collect_complete marker must NOT exist because collection failed
-        collect_complete = run_dir / "collect_complete"
-        assert not collect_complete.exists(), "collect_complete marker should NOT be written on failure"
+        # TransferQueue.enqueue must NOT have been called
+        assert not mock_tq.enqueue.called, "TransferQueue.enqueue was called despite fundamental failure!"
 
-        # CleanupData should have been called for .11 but NOT for .10
-        assert "192.168.0.11" in created_clients
-        assert created_clients["192.168.0.11"].CleanupData.called
-        
-        if "192.168.0.10" in created_clients:
-            assert not created_clients["192.168.0.10"].CleanupData.called, \
-                "CleanupData was called for a node that failed collection!"
-        
-        # stop_run should return False because collection failed
-        assert not success
+        # Ledger should have transitioned to STOPPED_WITH_ERRORS
+        mock_mgr.transition.assert_called_with("STOPPED_WITH_ERRORS")
+
 
 
 # ── SC-030: PH baseline file missing ─────────────────────────────────────────
@@ -1341,6 +1309,12 @@ if __name__ == "__main__":
             json.dump(original_data, f)
         if os.path.exists("tmp_slow_start.py"):
             os.remove("tmp_slow_start.py")
+        if 'proc' in locals():
+            try:
+                proc.kill()
+                proc.wait(timeout=2)
+            except Exception:
+                pass
 
 
 def test_SC040_obs_config_timing_mode_change_between_session_and_run() -> None:
@@ -1452,6 +1426,12 @@ if __name__ == "__main__":
             json.dump(original_obs, f)
         if os.path.exists("tmp_slow_start_obs.py"):
             os.remove("tmp_slow_start_obs.py")
+        if 'proc' in locals():
+            try:
+                proc.kill()
+                proc.wait(timeout=2)
+            except Exception:
+                pass
 
 # ── SC-015: Stale ledger self-heal ───────────────────────────────────────────
 

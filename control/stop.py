@@ -107,6 +107,13 @@ class StopTransaction:
                 logger.warning(f"Aborting stop due to validation failure: {exc_val}")
                 return True
 
+            # Ladder Step 0: Check for fundamental failure passed from the 'with' block
+            if exc_type is not None:
+                logger.error(f"[CRITICAL FAILURE] Stop process aborted: {exc_val}")
+                if self.run:
+                    await asyncio.to_thread(self.state_mgr.transition, "STOPPED_WITH_ERRORS")
+                return False # Let the exception bubble
+
             if not self.run:
                 self.success = True
                 return False

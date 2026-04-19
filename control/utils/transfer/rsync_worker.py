@@ -3,7 +3,6 @@ from __future__ import annotations
 import subprocess
 import time
 
-
 _TRANSIENT_CODES = {12, 23, 30, 35, 255}
 _MAX_RETRIES = 3
 _BASE_DELAY = 5
