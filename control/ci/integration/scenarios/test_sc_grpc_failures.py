@@ -46,11 +46,9 @@ from .conftest import (
 
 # ── SC-001: StartDaq timeout ────────────────────────────────────────────────
 
-@pytest.mark.skip(reason="SC-001: requires grpc_proxy fixture + timeout injection")
-def test_SC001_startdaq_timeout_hangs_forever(
+@pytest.mark.asyncio
+async def test_SC001_startdaq_timeout_hangs_forever(
     daq_control_direct: DaqControlClient,
-    run_params: dict[str, Any],
-    fresh_run_state: None,
 ) -> None:
     """
     StartDaq with no timeout hangs forever when daqnode is unresponsive.
@@ -58,9 +56,44 @@ def test_SC001_startdaq_timeout_hangs_forever(
     Current bug (start.py): no deadline on DaqControlClient.StartDaq; hangs forever.
     Fix required: deadline/timeout on all StartDaq calls.
     """
-    # Inject 120s slow response → call should time out, not hang
-    # proxy.set_mode("StartDaq", "slow_response", timeout_s=120)
-    pytest.skip("requires grpc_proxy with slow_response mode")
+    import unittest.mock
+
+    import anyio
+
+    import start
+    from utils import config_file
+
+    # Mock configs to avoid file I/O and point to loopback
+    daq_config = config_file.get_daq_config()
+    obs_config = config_file.get_obs_config()
+    quabo_uids = config_file.get_quabo_uids()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+
+    # Mock StartDaq to hang
+    async def hanging_start_daq(*args: Any, **kwargs: Any) -> bool:
+        await asyncio.sleep(120)  # Non-blocking hang
+        return True
+
+    with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=hanging_start_daq), \
+         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("start.make_run_dirs"), \
+         unittest.mock.patch("start.start_data_flow"), \
+         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("start.util.kill_hk_recorder"), \
+         unittest.mock.patch("start.util.kill_hv_updater"), \
+         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
+        
+        # We expect this to return False because it should timeout and trigger rollback
+        # We use a timeout on the test itself to ensure we don't hang the runner if the fix is missing
+        with anyio.fail_after(25):
+            success = await start.start_run(
+                obs_config, daq_config, quabo_uids, data_config, network_config,
+                no_hv=True, no_redis=True, no_data=False
+            )
+            assert not success, "start_run should have failed due to StartDaq timeout"
 
 
 # ── SC-002: Partial start rolls back ────────────────────────────────────────
@@ -69,19 +102,60 @@ def test_SC001_startdaq_timeout_hangs_forever(
 
 # ── SC-005: Post-start liveness check ───────────────────────────────────────
 
-@pytest.mark.skip(reason="SC-005: requires hashpipe that exits immediately")
-def test_SC005_hashpipe_exits_immediately_not_detected(
+@pytest.mark.asyncio
+async def test_SC005_hashpipe_exits_immediately_not_detected(
     daq_control_direct: DaqControlClient,
-    run_params: dict[str, Any],
-    fresh_run_state: None,
 ) -> None:
     """
-    StartDaq succeeds but hashpipe exits within 1s — control plane doesn't notice.
+    StartDaq succeeds but hashpipe exits within 1s — control plane must detect this.
 
-    Current bug: no post-start liveness check; StatusDaq is never polled by start.py.
-    Fix: poll StatusDaq for 2-5s after StartDaq to confirm hashpipe is still up.
+    Fix: Phase 5 Liveness Probe in start.py after heartbeat.
     """
-    pytest.skip("requires fake hashpipe that exits immediately")
+    import unittest.mock
+
+    import start
+    from utils import config_file
+
+    daq_config = config_file.get_daq_config()
+    obs_config = config_file.get_obs_config()
+    quabo_uids = config_file.get_quabo_uids()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+
+    from utils.run_state import RunStateManager
+    RunStateManager().clear_state()
+
+    # Mock StartDaq to succeed
+    def success_start_daq(*args: Any, **kwargs: Any) -> bool:
+        return True
+
+    # Mock StatusDaq: 
+    # 1. First calls (heartbeat) return running=True
+    # 2. Subsequent call (Phase 5 Liveness Probe) returns running=False
+    status_responses = [
+        (True, {"hashpipe_running": True, "hashpipe_pid": 1234}), # Heartbeat attempt 1
+        (True, {"hashpipe_running": False, "hashpipe_pid": 0}),   # Phase 5 Liveness Probe
+        (True, {"hashpipe_running": False, "hashpipe_pid": 0}),   # Safety
+        (True, {"hashpipe_running": False, "hashpipe_pid": 0}),   # Safety
+    ]
+
+    with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=success_start_daq), \
+         unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", side_effect=status_responses), \
+         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("start.make_run_dirs"), \
+         unittest.mock.patch("start.start_data_flow"), \
+         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("start.util.kill_hk_recorder"), \
+         unittest.mock.patch("start.util.kill_hv_updater"), \
+         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
+        
+        success = await start.start_run(
+            obs_config, daq_config, quabo_uids, data_config, network_config,
+            no_hv=True, no_redis=True, no_data=False, force_reset=True
+        )
+        assert not success, "start_run should have failed due to Phase 5 liveness probe failure"
 
 
 # ── SC-006 (Exemplar C): StopDaq partial failure ─────────────────────────────

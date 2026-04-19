@@ -609,6 +609,7 @@ class TestSC034InterleaveDaemonHardKill:
 def mock_daq_config_for_headnode():
     """Temporarily patch daq_config.json to point to localhost (CI headnode)."""
     import json
+
     from utils import config_file
     
     path = "configs/daq_config.json"
@@ -639,7 +640,7 @@ def mock_daq_config_for_headnode():
         import shutil
         shutil.copyfile(path, backup)
     
-    with open(path, "r") as f:
+    with open(path) as f:
         cfg = json.load(f)
     
     cfg["head_node_ip_addr"] = "10.0.1.5"
@@ -810,7 +811,7 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     with mock_daq_config_for_headnode():
         # Temporarily force the node IP to 192.168.0.10 so StartDaq works
         path = "configs/daq_config.json"
-        with open(path, "r") as f:
+        with open(path) as f:
             cfg = json.load(f)
         cfg["daq_nodes"][0]["ip_addr"] = "192.168.0.10"
         with open(path, "w") as f:

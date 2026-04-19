@@ -399,8 +399,30 @@ async def start_recording(
             'module_id':        node_validator.module_ids,
         }
         
-        # Call gRPC synchronously in thread pool
-        ok = await loop.run_in_executor(None, lambda: client.StartDaq(start_args))
+        # Call gRPC synchronously in thread pool, guarded by a strict timeout
+        try:
+            # Task 2.1: Implement strict timeout on StartDaq
+            # We wrap the executor call in wait_for to handle hangs
+            import grpc
+            ok = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: client.StartDaq(start_args)),
+                timeout=15.0
+            )
+        except TimeoutError:
+            await state_mgr.update_node_receipt(NodeReceipt(
+                ip_addr=node_validator.ip_addr,
+                status="START_FAILED",
+                message="StartDaq TIMEOUT (15s)"
+            ))
+            raise RuntimeError(f'StartDaq TIMEOUT for node {node_validator.ip_addr}')
+        except grpc.RpcError as e:
+            await state_mgr.update_node_receipt(NodeReceipt(
+                ip_addr=node_validator.ip_addr,
+                status="START_FAILED",
+                message=f"StartDaq gRPC Error: {e.code()}"
+            ))
+            raise RuntimeError(f'StartDaq gRPC Error for node {node_validator.ip_addr}: {e}')
+        
         if not ok:
             await state_mgr.update_node_receipt(NodeReceipt(
                 ip_addr=node_validator.ip_addr,
@@ -476,6 +498,42 @@ async def start_recording(
     async with asyncio.TaskGroup() as tg:
         for n in daq_config.daq_nodes:
             tg.create_task(probe_node(n))
+
+    # Phase 5: Post-stabilization Liveness Probe (Early Exit Guard)
+    logger.info("Phase 5: Performing 2s stabilization liveness probe...")
+    await asyncio.sleep(2.0)
+    
+    async with asyncio.TaskGroup() as tg:
+        for n in daq_config.daq_nodes:
+            if not n.module_ids:
+                continue
+            
+            async def verify_liveness(node_validator: DaqNodeValidator) -> None:
+                grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
+                client = DaqControlClient(host=grpc_host, port=grpc_port)
+                
+                try:
+                    ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
+                        'data_dir': node_validator.data_dir,
+                        'check_hashpipe_running': True,
+                        'check_disk_usage': False,
+                        'check_run_dirs': False
+                    }))
+                    
+                    if not ok or not status.get('hashpipe_running'):
+                        err = status.get('message', 'hashpipe exited during stabilization')
+                        raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {err}")
+                    
+                    logger.info(f"Node {node_validator.ip_addr} Phase 5 Liveness OK")
+                except Exception as e:
+                    await state_mgr.update_node_receipt(NodeReceipt(
+                        ip_addr=node_validator.ip_addr,
+                        status="START_FAILED",
+                        message=f"Liveness Check Failed: {e}"
+                    ))
+                    raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {e}")
+
+            tg.create_task(verify_liveness(n))
 
 
 async def start_run(

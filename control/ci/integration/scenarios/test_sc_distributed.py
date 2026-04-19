@@ -146,12 +146,95 @@ async def test_SCN003_partial_start_rollback_4_nodes(
         assert ip in rollback_results["stop_called_ips"], f"Node {ip} was not rolled back (StopDaq not called)"
 
     print(f"\nSC-N003: Successfully verified rollback for IPs: {rollback_results['stop_called_ips']}")
-def test_SC069_partial_start_3_nodes_rolls_back() -> None:
+@pytest.mark.asyncio
+async def test_SC069_partial_start_3_nodes_rolls_back(
+    tmp_path: pathlib.Path,
+) -> None:
     """
     SC-069: same as SC-002 at scale — failure on node-2 must roll back nodes 0-1.
-    Requires dynamic fleet fixture (Pillar 3) for a third container.
     """
-    pytest.skip("Requires daqnode_fleet(n=3) fixture")
+    import ipaddress
+    import unittest.mock
+
+    import start
+    from utils import config_file
+    from utils.pydantic_config_models import (
+        DaqConfigValidator,
+        DaqNodeValidator,
+        QuaboUidDome,
+        QuaboUidEntry,
+        QuaboUidModule,
+        QuaboUidsValidator,
+    )
+    from utils.run_state import RunStateManager
+    RunStateManager().clear_state()
+
+    # 1. Setup 3-node config
+    headnode_ip = "10.0.1.5"
+    daq_config = DaqConfigValidator(
+        head_node_ip_addr=ipaddress.IPv4Address(headnode_ip),
+        head_node_data_dir="/data/head",
+        daq_nodes=[
+            DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[250]),
+            DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.11"), data_dir="/data", username="root", module_ids=[251]),
+            DaqNodeValidator(ip_addr=ipaddress.IPv4Address("192.168.0.12"), data_dir="/data", username="root", module_ids=[252]),
+        ]
+    )
+
+    quabo_uids = QuaboUidsValidator(domes=[
+        QuaboUidDome(num=0, modules=[
+            QuaboUidModule(id=250, ip_addr=ipaddress.IPv4Address("192.168.3.250"), quabos=[QuaboUidEntry(uid="q0"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
+            QuaboUidModule(id=251, ip_addr=ipaddress.IPv4Address("192.168.3.251"), quabos=[QuaboUidEntry(uid="q1"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
+            QuaboUidModule(id=252, ip_addr=ipaddress.IPv4Address("192.168.3.252"), quabos=[QuaboUidEntry(uid="q2"), QuaboUidEntry(uid=""), QuaboUidEntry(uid=""), QuaboUidEntry(uid="")]),
+        ])
+    ])
+
+    obs_config = config_file.get_obs_config()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+
+    # 2. Fault Injection
+    rollback_results: dict[str, Any] = {"stop_called_ips": set()}
+    
+    class MockDaqControlClient:
+        def __init__(self, host: str, port: int) -> None:
+            self._host = host
+
+        def StartDaq(self, params: dict[str, Any], **kwargs: Any) -> bool:
+            if self._host == "192.168.0.12":
+                 time.sleep(0.5)
+                 raise RuntimeError("Node 2 Simulated StartDaq Failure")
+            time.sleep(0.1)
+            return True
+
+        def StopDaq(self, params: dict[str, Any], **kwargs: Any) -> bool:
+            print(f"DEBUG SC069: Caught StopDaq for {self._host}")
+            rollback_results["stop_called_ips"].add(self._host)
+            return True
+
+        def StatusDaq(self, params: dict[str, Any], **kwargs: Any) -> tuple[bool, dict[str, Any]]:
+            return True, {"hashpipe_running": True, "hashpipe_pid": 1234}
+
+    with unittest.mock.patch("start.DaqControlClient", MockDaqControlClient), \
+         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("start.make_run_dirs"), \
+         unittest.mock.patch("start.start_data_flow"), \
+         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("start.util.kill_hk_recorder"), \
+         unittest.mock.patch("start.util.kill_hv_updater"), \
+         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("utils.util.local_ip", return_value=["127.0.0.1", headnode_ip]):
+        
+        success = await start.start_run(
+            obs_config, daq_config, quabo_uids, data_config, network_config,
+            no_hv=True, no_redis=True, no_data=False
+        )
+        assert not success
+
+    # 3. Assert Rollback Ladder: Node 0 and 1 MUST have received StopDaq
+    assert "192.168.0.10" in rollback_results["stop_called_ips"]
+    assert "192.168.0.11" in rollback_results["stop_called_ips"]
 
 
 # ── SC-071: Sequential StartDaq latency ───────────────────────────────────────
