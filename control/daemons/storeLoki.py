@@ -93,8 +93,8 @@ class LokiPublisher:
         try:
             raw_data = json.dumps(payload).encode('utf-8')
             compressed_data = gzip.compress(raw_data)
-        except (ValueError, OSError) as e:
-            logger.error(f"Compression failed: {e}. Dropping batch.")
+        except (UnicodeError, ValueError, OSError) as e:
+            logger.error(f"Encoding or compression failed: {e}. One or more log entries may contain invalid characters. Dropping batch.")
             self._clear_batch()
             return
 

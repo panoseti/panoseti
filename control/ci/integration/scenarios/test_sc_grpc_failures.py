@@ -71,8 +71,9 @@ async def test_SC001_startdaq_timeout_hangs_forever(
     network_config = config_file.get_network_config()
 
     # Mock StartDaq to hang
-    async def hanging_start_daq(*args: Any, **kwargs: Any) -> bool:
-        await asyncio.sleep(120)  # Non-blocking hang
+    def hanging_start_daq(*args: Any, **kwargs: Any) -> bool:
+        import time
+        time.sleep(120)  # Blocking hang in executor thread
         return True
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=hanging_start_daq), \
@@ -563,20 +564,65 @@ def test_SC003_startdaq_bad_run_dir_returns_failure(
 
 # ── SC-004: StartDaq transient UNAVAILABLE, succeeds on retry ────────────────
 
-@pytest.mark.skip(reason="SC-004: requires grpc_proxy fixture for fault injection")
-def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
+@pytest.mark.asyncio
+async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
     daq_control_direct: DaqControlClient,
-    run_params: dict[str, Any],
-    fresh_run_state: None,
 ) -> None:
     """
     SC-004: A transient UNAVAILABLE error on StartDaq must trigger a retry and
-    eventually succeed. No retry layer exists today.
-
-    FAILS RED TODAY: start.py has no retry logic for gRPC UNAVAILABLE.
-    Fix: wrap StartDaq calls in a retry with exponential backoff.
+    eventually succeed.
     """
-    pytest.skip("requires grpc_proxy with transient_unavailable mode")
+    import grpc
+    import unittest.mock
+    import start
+    from utils import config_file
+
+    daq_config = config_file.get_daq_config()
+    obs_config = config_file.get_obs_config()
+    quabo_uids = config_file.get_quabo_uids()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+
+    from utils.run_state import RunStateManager
+    RunStateManager().clear_state()
+
+    # Mock StartDaq: 
+    # 1. First call: raise grpc.RpcError with UNAVAILABLE
+    # 2. Second call: return True (Success)
+    call_count = 0
+    def retry_start_daq(*args: Any, **kwargs: Any) -> bool:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # Create a mock RpcError
+            exc = grpc.RpcError("Transiently unavailable")
+            # Monkey-patch code() method which is what start.py checks
+            exc.code = lambda: grpc.StatusCode.UNAVAILABLE
+            raise exc
+        return True
+
+    # We also need to mock StatusDaq for the heartbeat check
+    def success_status_daq(*args: Any, **kwargs: Any) -> tuple[bool, dict[str, Any]]:
+        return True, {"hashpipe_running": True, "hashpipe_pid": 1234}
+
+    with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=retry_start_daq), \
+         unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", side_effect=success_status_daq), \
+         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("start.make_run_dirs"), \
+         unittest.mock.patch("start.start_data_flow"), \
+         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("start.util.kill_hk_recorder"), \
+         unittest.mock.patch("start.util.kill_hv_updater"), \
+         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
+        
+        success = await start.start_run(
+            obs_config, daq_config, quabo_uids, data_config, network_config,
+            no_hv=True, no_redis=True, no_data=False, force_reset=True
+        )
+        assert success, "start_run should have succeeded after transient retry"
+        assert call_count == 2, f"Expected 2 StartDaq calls, but got {call_count}"
 
 
 # ── SC-008: StopDaq on never-started service (idempotent contract) ───────────
@@ -782,17 +828,73 @@ def test_SC019_cleanup_race_with_startdaq() -> None:
     Fix: server-side advisory lock per run_dir.
     """
     pytest.skip("Requires grpc_proxy to orchestrate concurrent StartDaq + CleanupData timing")
+# ── SC-020: StopDaq timeout → hard-kill escalation ──────────────────────────
 
-
-# ── SC-020: StopDaq timeout → SIGKILL escalation ────────────────────────────
-
-@pytest.mark.skip(reason="SC-020: requires wrapper that ignores SIGINT")
-def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback() -> None:
+@pytest.mark.asyncio
+async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
+    daq_control_direct: DaqControlClient,
+) -> None:
     """
-    SC-020: When StopDaq times out (hashpipe wrapper ignores SIGINT), the server
-    must escalate to SIGKILL.
-
-    FAILS RED TODAY: server sends only SIGINT; no escalation path.
-    Fix: send SIGKILL after configurable timeout (default 30 s).
+    SC-020: When StopDaq RPC times out or fails with UNAVAILABLE, stop.py must
+    escalate to a hard-kill via SSH to ensure the node is made safe.
     """
-    pytest.skip("Requires hashpipe wrapper that ignores SIGINT for 30 s")
+    import grpc
+    import unittest.mock
+    import subprocess
+    import stop
+    from utils import config_file
+    from ipaddress import IPv4Address
+    from utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+
+    # Setup config with one node
+    daq_ip = "192.168.0.10"
+    daq_config = DaqConfigValidator(
+        head_node_ip_addr=IPv4Address("10.0.1.5"),
+        head_node_data_dir="/data/head",
+        daq_nodes=[
+            DaqNodeValidator(ip_addr=IPv4Address(daq_ip), data_dir="/data", username="root", module_ids=[250])
+        ]
+    )
+
+    # Mock StopDaq to raise DeadlineExceeded
+    def timeout_stop_daq(*args: Any, **kwargs: Any) -> bool:
+        exc = grpc.RpcError("RPC Timeout")
+        exc.code = lambda: grpc.StatusCode.DEADLINE_EXCEEDED
+        raise exc
+
+    # Track subprocess calls to verify fallback pkill
+    fallback_called = False
+    def mocked_run(args: list[str], **kwargs: Any) -> Any:
+        nonlocal fallback_called
+        cmd_str = " ".join(args)
+        if "pkill -9 hashpipe" in cmd_str and daq_ip in cmd_str:
+            fallback_called = True
+        return unittest.mock.MagicMock(returncode=0)
+
+    with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StopDaq", side_effect=timeout_stop_daq), \
+         unittest.mock.patch("subprocess.run", side_effect=mocked_run):
+
+        # We need to mock other configs that stop_run might try to load
+        with unittest.mock.patch("stop.config_file.get_daq_config", return_value=daq_config), \
+             unittest.mock.patch("stop.config_file.get_quabo_uids"), \
+             unittest.mock.patch("stop.config_file.get_network_config"), \
+             unittest.mock.patch("stop.util.local_ip", return_value=["10.0.1.5", "127.0.0.1"]), \
+             unittest.mock.patch("stop.RunStateManager.load_state", return_value=None), \
+             unittest.mock.patch("stop.util.read_run_name", return_value="test_run.pffd"), \
+             unittest.mock.patch("stop.os.path.exists", return_value=True), \
+             unittest.mock.patch("stop.util.stop_data_flow"), \
+             unittest.mock.patch("stop.util.kill_hv_updater"), \
+             unittest.mock.patch("stop.util.kill_hk_recorder"), \
+             unittest.mock.patch("stop.util.kill_module_temp_monitor"), \
+             unittest.mock.patch("stop.write_complete_file"), \
+             unittest.mock.patch("stop.make_links"), \
+             unittest.mock.patch("stop.util.remove_run_name"):
+
+            success = await stop.stop_run(
+                daq_config, unittest.mock.MagicMock(), unittest.mock.MagicMock(),
+                run="test_run.pffd", no_collect=True, no_cleanup=True
+            )
+
+            # success might be False because StopDaq failed, but we verify fallback was called
+            assert fallback_called, "Fallback hard-kill (ssh pkill) was not executed after StopDaq timeout"
+

@@ -399,37 +399,42 @@ async def start_recording(
             'module_id':        node_validator.module_ids,
         }
         
-        # Call gRPC synchronously in thread pool, guarded by a strict timeout
-        try:
-            # Task 2.1: Implement strict timeout on StartDaq
-            # We wrap the executor call in wait_for to handle hangs
-            import grpc
-            ok = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: client.StartDaq(start_args)),
-                timeout=15.0
-            )
-        except TimeoutError:
-            await state_mgr.update_node_receipt(NodeReceipt(
-                ip_addr=node_validator.ip_addr,
-                status="START_FAILED",
-                message="StartDaq TIMEOUT (15s)"
-            ))
-            raise RuntimeError(f'StartDaq TIMEOUT for node {node_validator.ip_addr}')
-        except grpc.RpcError as e:
-            await state_mgr.update_node_receipt(NodeReceipt(
-                ip_addr=node_validator.ip_addr,
-                status="START_FAILED",
-                message=f"StartDaq gRPC Error: {e.code()}"
-            ))
-            raise RuntimeError(f'StartDaq gRPC Error for node {node_validator.ip_addr}: {e}')
+        # Call gRPC synchronously in thread pool, guarded by a strict timeout and retries
+        import grpc
+        max_attempts = 3
+        last_err = ""
         
-        if not ok:
-            await state_mgr.update_node_receipt(NodeReceipt(
-                ip_addr=node_validator.ip_addr,
-                status="START_FAILED",
-                message="StartDaq RPC returned False"
-            ))
-            raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}')
+        for attempt in range(1, max_attempts + 1):
+            try:
+                # Task 2.1: Implement strict timeout on StartDaq
+                # We wrap the executor call in wait_for to handle hangs
+                ok = await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: client.StartDaq(start_args)),
+                    timeout=15.0
+                )
+                if ok:
+                    return # Success
+                else:
+                    last_err = "StartDaq RPC returned False"
+                    break # Hard failure, don't retry
+            except (TimeoutError, asyncio.TimeoutError):
+                last_err = "StartDaq TIMEOUT (15s)"
+                break # Timeout usually means non-transient or black hole
+            except grpc.RpcError as e:
+                last_err = f"StartDaq gRPC Error: {e.code()}"
+                if e.code() == grpc.StatusCode.UNAVAILABLE and attempt < max_attempts:
+                    logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{max_attempts})...")
+                    await asyncio.sleep(1.0)
+                    continue
+                break
+        
+        # If we reach here, it's a hard failure or we ran out of retries
+        await state_mgr.update_node_receipt(NodeReceipt(
+            ip_addr=node_validator.ip_addr,
+            status="START_FAILED",
+            message=last_err
+        ))
+        raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}: {last_err}')
 
     # Execute all starts in parallel with TaskGroup for fail-fast behavior
     async with asyncio.TaskGroup() as tg:

@@ -237,15 +237,43 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
         try:
             client = DaqControlClient(host=grpc_host, port=grpc_port)
             # Use a strict timeout for the RPC
-            ok = await loop.run_in_executor(None, lambda: client.StopDaq({
-                'data_dir': node.data_dir,
-                'run_dir':  run_dir,
-            }, timeout=30.0))
+            import grpc
+            try:
+                ok = await loop.run_in_executor(None, lambda: client.StopDaq({
+                    'data_dir': node.data_dir,
+                    'run_dir':  run_dir,
+                }, timeout=30.0))
 
-            if not ok:
-                msg = f"StopDaq returned success=False for node {node.ip_addr}"
-                logger.error(msg)
-                errors.append(msg)
+                if not ok:
+                    msg = f"StopDaq returned success=False for node {node.ip_addr}"
+                    logger.error(msg)
+                    errors.append(msg)
+            except grpc.RpcError as e:
+                # Task 2.4: Implement hard-kill escalation
+                if e.code() in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]:
+                    logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({e.code()}). Escalating to SSH pkill...")
+                    
+                    ssh_args = ["ssh"]
+                    if node.port_forwarding and node.port_forwarding.status:
+                        real_ip = str(node.port_forwarding.gw_ip)
+                        port = str(node.port_forwarding.port)
+                        ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
+                    else:
+                        ssh_args.append(f"{node.username}@{node.ip_addr}")
+                    
+                    ssh_args.append("pkill -9 hashpipe")
+                    
+                    try:
+                        import subprocess
+                        res = await loop.run_in_executor(None, lambda: subprocess.run(ssh_args, capture_output=True, text=True, timeout=15))
+                        if res.returncode == 0 or res.returncode == 1: # 0=success, 1=no processes matched (also fine)
+                            logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
+                        else:
+                            raise RuntimeError(f"ssh pkill failed with code {res.returncode}: {res.stderr}")
+                    except Exception as fallback_err:
+                        raise RuntimeError(f"Hard-kill escalation failed for node {node.ip_addr}: {fallback_err}")
+                else:
+                    raise
         except Exception as e:
             msg = f"Error stopping node {node.ip_addr}: {e}"
             logger.error(msg)
