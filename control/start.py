@@ -60,7 +60,7 @@ from utils.pydantic_config_models import (
     QuaboUidsValidator,
     RunStateLedger,
 )
-from utils.run_state import NodeReceipt, RunStateManager, ValidationError
+from utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
 
 logger = get_logger("PANOSETI.Start", grpc_enabled=True)
 
@@ -700,14 +700,6 @@ async def start_run(
 ) -> str | None:
     """
     Main transactional run coordinator.
-    1. Acquire lock.
-    2. Validate state (no run in progress).
-    3. Initialize Ledger (run_state.toml).
-    4. Pre-flight (Ping sweep, PH baseline).
-    5. Phase 1: Directories.
-    6. Phase 2: Hardware config.
-    7. Phase 3: Start recording (concurrent gRPC + Heartbeat).
-    8. Finalize.
     """
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -720,113 +712,122 @@ async def start_run(
     if run_name is None:
         run_name = pff.run_dir_name(obs_config.name, data_config.run_type)
 
-    async with StartTransaction(state_mgr, run_name, daq_config, quabo_uids, network_config) as tx:
-        # Pre-flight Validation
-        if not config_file.validate_all(check_network=False):
-             msg = "Pre-flight configuration validation failed."
-             if daq_config.head_node_container:
-                 logger.warning(f"{msg} (Non-fatal in container/CI environment)")
-             else:
-                 raise ValidationError(msg)
+    try:
+        async with StartTransaction(state_mgr, run_name, daq_config, quabo_uids, network_config) as tx:
+            # Pre-flight Validation
+            if not config_file.validate_all(check_network=False):
+                 msg = "Pre-flight configuration validation failed."
+                 if daq_config.head_node_container:
+                     logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                 else:
+                     raise ValidationError(msg)
 
-        my_ip = util.local_ip()
-        head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
-        if head_node_ip not in my_ip:
-            raise ValidationError(f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
+            my_ip = util.local_ip()
+            head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
+            if head_node_ip not in my_ip:
+                raise ValidationError(f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
 
-        # Stale ledger self-heal
-        existing_state = state_mgr.load_state()
-        if existing_state and existing_state.status in ["STARTING", "ACTIVE", "STOPPING"]:
-            stale = False
-            if force_reset:
-                logger.info("Force reset requested. Archiving existing ledger.")
-                stale = True
-            elif existing_state.host == socket.gethostname() and existing_state.pid:
-                # Check if PID is alive
-                try:
-                    os.kill(existing_state.pid, 0)
-                except OSError:
-                    logger.info(f"Detected stale ledger from dead PID {existing_state.pid} on this host.")
+            # Stale ledger self-heal
+            existing_state = state_mgr.load_state()
+            if existing_state and existing_state.status in ["STARTING", "ACTIVE", "STOPPING"]:
+                stale = False
+                if force_reset:
+                    logger.info("Force reset requested. Archiving existing ledger.")
                     stale = True
-            
-            if stale:
-                aborted_base = f"{daq_config.head_node_data_dir}/_aborted/{existing_state.run_name}"
-                suffix = 1
-                aborted_dir = aborted_base
-                while await asyncio.to_thread(os.path.exists, aborted_dir):
-                    aborted_dir = f"{aborted_base}_{suffix}"
-                    suffix += 1
+                elif existing_state.host == socket.gethostname() and existing_state.pid:
+                    # Check if PID is alive
+                    try:
+                        os.kill(existing_state.pid, 0)
+                    except OSError:
+                        logger.info(f"Detected stale ledger from dead PID {existing_state.pid} on this host.")
+                        stale = True
                 
-                logger.info(f"Archiving stale ledger to {aborted_dir}")
-                os.makedirs(aborted_dir, exist_ok=True)
-                shutil.move(str(state_mgr.state_path), f"{aborted_dir}/stale_run_state.toml")
-            else:
-                raise ValidationError(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status}). Run stop.py, then try again, or use --force-reset.")
+                if stale:
+                    aborted_base = f"{daq_config.head_node_data_dir}/_aborted/{existing_state.run_name}"
+                    suffix = 1
+                    aborted_dir = aborted_base
+                    while await asyncio.to_thread(os.path.exists, aborted_dir):
+                        aborted_dir = f"{aborted_base}_{suffix}"
+                        suffix += 1
+                    
+                    logger.info(f"Archiving stale ledger to {aborted_dir}")
+                    os.makedirs(aborted_dir, exist_ok=True)
+                    shutil.move(str(state_mgr.state_path), f"{aborted_dir}/stale_run_state.toml")
+                else:
+                    raise ValidationError(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status}). Run stop.py, then try again, or use --force-reset.")
 
-        if util.is_hk_recorder_running():
-            raise ValidationError('The HK recorder is running. Run stop.py, then try again.')
+            if util.is_hk_recorder_running():
+                raise ValidationError('The HK recorder is running. Run stop.py, then try again.')
+                
+            if not no_redis and not util.are_redis_daemons_running():
+                util.show_redis_daemons()
+                raise ValidationError('Redis daemons are not running. Run config.py --redis_daemons')
+
+            if not ph_baseline_file_ok():
+                raise ValidationError('PH baseline file check failed.')
+
+            # Initialize Ledger
+            initial_ledger = RunStateLedger(
+                run_name=run_name,
+                status="STARTING",
+                start_time=datetime.now(UTC).isoformat(),
+                pid=os.getpid(),
+                host=socket.gethostname(),
+                config_metadata={
+                    "obs_name": obs_config.name,
+                    "run_type": data_config.run_type,
+                    "no_hv": no_hv
+                }
+            )
+            state_mgr.save_state(initial_ledger)
+
+            # get git commit info, and write the info into sw_info.json
+            get_sw_info()
             
-        if not no_redis and not util.are_redis_daemons_running():
-            util.show_redis_daemons()
-            raise ValidationError('Redis daemons are not running. Run config.py --redis_daemons')
+            config_file.associate(daq_config, quabo_uids)
+            config_file.show_daq_assignments(quabo_uids)
 
-        if not ph_baseline_file_ok():
-            raise ValidationError('PH baseline file check failed.')
-
-        # Initialize Ledger
-        initial_ledger = RunStateLedger(
-            run_name=run_name,
-            status="STARTING",
-            start_time=datetime.now(UTC).isoformat(),
-            pid=os.getpid(),
-            host=socket.gethostname(),
-            config_metadata={
-                "obs_name": obs_config.name,
-                "run_type": data_config.run_type,
-                "no_hv": no_hv
-            }
-        )
-        state_mgr.save_state(initial_ledger)
-
-        # get git commit info, and write the info into sw_info.json
-        get_sw_info()
-        
-        config_file.associate(daq_config, quabo_uids)
-        config_file.show_daq_assignments(quabo_uids)
-
-        if cancel_event.is_set():
-            raise asyncio.CancelledError()
-
-        if not no_data:
-            await _check_quabo_reachability(quabo_uids, network_config, lenient=daq_config.head_node_container)
-
-        logger.info(f'setting up run directories for {run_name}')
-        make_run_dirs(run_name, obs_config, daq_config, quabo_uids, data_config, network_config)
-        
-        if not no_data:
             if cancel_event.is_set():
                 raise asyncio.CancelledError()
 
-            logger.info('starting data flow from quabos')
-            start_data_flow(quabo_uids, data_config, daq_config, network_config)
-            
-            logger.info('starting recording (Phase 3: Transactional)')
-            await start_recording(obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event)
-        
-        # Mark ACTIVE in ledger
-        ledger = state_mgr.load_state()
-        if ledger:
-            ledger.status = "ACTIVE"
-            state_mgr.save_state(ledger)
-            
-        # Write legacy current_run file for compatibility
-        util.write_run_name(daq_config, run_name)
-        
-        logger.info(f'started run {run_name}')
-        tx.success = True
+            if not no_data:
+                await _check_quabo_reachability(quabo_uids, network_config, lenient=daq_config.head_node_container)
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.remove_signal_handler(sig)
+            logger.info(f'setting up run directories for {run_name}')
+            make_run_dirs(run_name, obs_config, daq_config, quabo_uids, data_config, network_config)
+            
+            if not no_data:
+                if cancel_event.is_set():
+                    raise asyncio.CancelledError()
+
+                logger.info('starting data flow from quabos')
+                start_data_flow(quabo_uids, data_config, daq_config, network_config)
+                
+                logger.info('starting recording (Phase 3: Transactional)')
+                await start_recording(obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event)
+            
+            # Mark ACTIVE in ledger
+            ledger = state_mgr.load_state()
+            if ledger:
+                ledger.status = "ACTIVE"
+                state_mgr.save_state(ledger)
+                
+            # Write legacy current_run file for compatibility
+            util.write_run_name(daq_config, run_name)
+            
+            logger.info(f'started run {run_name}')
+            tx.success = True
+
+    except LockError as e:
+        logger.error(f"FATAL: {e}")
+        return None
+    except Exception as e:
+        # Unexpected errors should already be handled by tx.__aexit__ rollback,
+        # but we catch here to ensure we don't crash the loop.
+        logger.debug(f"start_run caught exception: {e}")
+    finally:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.remove_signal_handler(sig)
     
     return run_name if getattr(tx, 'success', False) else None
 

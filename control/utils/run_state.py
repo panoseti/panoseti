@@ -19,6 +19,11 @@ class ValidationError(Exception):
     pass
 
 
+class LockError(Exception):
+    """Raised when the advisory lock cannot be acquired."""
+    pass
+
+
 class RunStateManager:
     """
     Manages the PANOSETI control plane state ledger and advisory locking.
@@ -36,24 +41,56 @@ class RunStateManager:
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
     def acquire_lock(self) -> None:
-        """Acquires an exclusive advisory lock on the control plane."""
-        # Note: self._lock_fh must stay open for the duration of the lock.
-        # SIM115: ignore because the handle must persist beyond this method.
-        self._lock_fh = open(self.lock_path, "w")  # noqa: SIM115
-        try:
-            fcntl.flock(self._lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            self._lock_fh.close()
-            raise RuntimeError(
-                "Another PANOSETI control process is already running. "
-                "Check for concurrent start.py or stop.py executions."
-            ) from None
+        """
+        Acquires an exclusive advisory lock on the control plane using atomic file creation.
+        Includes stale PID detection for self-healing (SC-015/SC-021).
+        """
+        if self._lock_fh:
+            return
+
+        # Ensure tmp/ exists
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+        for attempt in range(2):
+            try:
+                # O_EXCL ensures that this call creates the file; if it exists, it fails.
+                fd = os.open(str(self.lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+                with os.fdopen(fd, "w") as f:
+                    f.write(str(os.getpid()))
+                self._lock_fh = True
+                return
+            except FileExistsError:
+                # Check if the lock is stale
+                try:
+                    with open(self.lock_path, "r") as f:
+                        pid = int(f.read().strip())
+                    
+                    # Check if process is alive
+                    os.kill(pid, 0)
+                except (OSError, ValueError, ProcessLookupError):
+                    # Process is dead or file is corrupt. Self-heal.
+                    try:
+                        self.lock_path.unlink()
+                        if attempt == 0:
+                            continue # Try creating again
+                    except OSError:
+                        pass
+                
+                raise LockError(
+                    "Another PANOSETI control process is already running. "
+                    "Check for concurrent start.py or stop.py executions."
+                ) from None
+            except OSError as e:
+                raise LockError(f"Failed to create lock file: {e}") from None
 
     def release_lock(self) -> None:
-        """Releases the advisory lock."""
+        """Releases the advisory lock by removing the file."""
         if self._lock_fh:
-            fcntl.flock(self._lock_fh, fcntl.LOCK_UN)
-            self._lock_fh.close()
+            try:
+                if self.lock_path.exists():
+                    self.lock_path.unlink()
+            except OSError:
+                pass
             self._lock_fh = None
 
     def load_state(self) -> RunStateLedger | None:

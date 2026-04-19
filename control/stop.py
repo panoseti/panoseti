@@ -45,7 +45,7 @@ from utils.pydantic_config_models import (
     NetworkConfigValidator,
     QuaboUidsValidator,
 )
-from utils.run_state import RunStateManager, ValidationError
+from utils.run_state import LockError, RunStateManager, ValidationError
 from utils.util import (
     collect_complete_filename,
     hk_symlink,
@@ -530,14 +530,6 @@ async def stop_run(
 ) -> bool:
     """
     Transactional Best-Effort Shutdown.
-    1. Acquire lock.
-    2. Identify run from ledger.
-    3. Aggressive stop of all components (Remote DAQs, Quabos, Daemons).
-    4. Safe data collection (rsync).
-    5. Cleanup.
-    
-    Returns:
-        True if the entire shutdown sequence completed without errors.
     """
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -547,39 +539,46 @@ async def stop_run(
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: cancel_event.set())
 
-    async with StopTransaction(
-        state_mgr, daq_config, network_config, quabo_uids, 
-        run, no_collect, no_cleanup, force_cleanup, verbose, cancel_event
-    ) as tx:
-        # Pre-flight Validation
-        head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
-        if head_node_ip not in util.local_ip():
-            raise ValidationError(f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
+    try:
+        async with StopTransaction(
+            state_mgr, daq_config, network_config, quabo_uids, 
+            run, no_collect, no_cleanup, force_cleanup, verbose, cancel_event
+        ) as tx:
+            # Pre-flight Validation
+            head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
+            if head_node_ip not in util.local_ip():
+                raise ValidationError(f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
 
-        # Load from ledger
-        ledger = state_mgr.load_state()
-        if not tx.run:
-            tx.run = ledger.run_name if ledger else util.read_run_name()
+            # Load from ledger
+            ledger = state_mgr.load_state()
+            if not tx.run:
+                tx.run = ledger.run_name if ledger else util.read_run_name()
 
-        if not tx.run:
-            logger.info("No run is in progress")
-            tx.success = True
-            return True
+            if not tx.run:
+                logger.info("No run is in progress")
+                tx.success = True
+                return True
 
-        # Validation: prevent orphaning the current run
-        if ledger and tx.run != ledger.run_name and not force_cleanup:
-             raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-cleanup if you are sure.")
+            # Validation: prevent orphaning the current run
+            if ledger and tx.run != ledger.run_name and not force_cleanup:
+                 raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-cleanup if you are sure.")
 
-        if ledger:
-            ledger.status = "STOPPING"
-            state_mgr.save_state(ledger)
+            if ledger:
+                ledger.status = "STOPPING"
+                state_mgr.save_state(ledger)
 
-        logger.info(f"stopping data recording for run {tx.run}")
+            logger.info(f"stopping data recording for run {tx.run}")
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.remove_signal_handler(sig)
+    except LockError as e:
+        logger.error(f"FATAL: {e}")
+        return False
+    except Exception as e:
+        logger.debug(f"stop_run caught exception: {e}")
+    finally:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.remove_signal_handler(sig)
     
-    return len(tx.all_errors) == 0 and tx.success
+    return len(getattr(tx, 'all_errors', [])) == 0 and getattr(tx, 'success', False)
 
 
 if __name__ == "__main__":

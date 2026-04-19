@@ -36,9 +36,9 @@ logger = get_logger("storeLoki", grpc_enabled=False)
 DEFAULT_LOKI_URL = "http://localhost:3100/loki/api/v1/push"
 DEFAULT_REDIS_KEY = "logs:ingress"
 PROCESSING_REDIS_KEY = "logs:processing"
-BATCH_SIZE = 100          # Flush when we have 100 logs
+BATCH_SIZE = 10          # Flush when we have 10 logs
 MAX_BUFFER_SIZE = 10000   # Safety valve: clear buffer if it reaches this size
-FLUSH_INTERVAL = 2.0      # Flush at least every 2 seconds
+FLUSH_INTERVAL = 1.0      # Flush at least every 1 second
 MAX_BACKOFF_SECONDS = 60  # Cap retry wait time
 MAX_FLUSH_SIZE_BYTES = 512 * 1024  # 512 KB compressed limit
 
@@ -91,10 +91,11 @@ class LokiPublisher:
         payload = self._build_loki_payload()
 
         try:
-            raw_data = json.dumps(payload).encode('utf-8')
+            # Use errors='replace' to handle surrogate pairs from SC-062
+            raw_data = json.dumps(payload).encode('utf-8', errors='replace')
             compressed_data = gzip.compress(raw_data)
-        except (UnicodeError, ValueError, OSError) as e:
-            logger.error(f"Encoding or compression failed: {e}. One or more log entries may contain invalid characters. Dropping batch.")
+        except (ValueError, OSError) as e:
+            logger.error(f"Compression failed: {e}. Dropping batch.")
             self._clear_batch()
             return
 
@@ -236,17 +237,17 @@ def main() -> None:
             if publisher.can_accept_more():
                 # Atomic reliable pop: ingress -> processing
                 item = r.blmove(redis_key, PROCESSING_REDIS_KEY, timeout=1, src="RIGHT", dest="LEFT")
-                if isinstance(item, (str, bytes)):
+                if item is not None:
                     try:
                         # Ensure we decode bytes with replacement for invalid characters
                         if isinstance(item, bytes):
                             item_str = item.decode('utf-8', errors='replace')
                         else:
-                            item_str = item
+                            item_str = str(item)
                         log_entry = json.loads(item_str)
                         publisher.add(log_entry)
                     except json.JSONDecodeError:
-                        logger.error("Skipping invalid JSON log entry")
+                        logger.error(f"Skipping invalid JSON log entry: {item[:100]!r}...")
                         r.lpop(PROCESSING_REDIS_KEY) # Remove invalid item
             else:
                 time.sleep(0.5)
