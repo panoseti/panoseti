@@ -19,8 +19,26 @@ volumes:
   daq_data:
   daq_data_2:
   mock_quabo_uds:
+  grafana_data:
 
 services:
+
+  grafana:
+    image: grafana/grafana:latest
+    networks:
+      headnode_net:
+    ports:
+      - 3000:3000
+    volumes:
+      - ../../grafana/grafana_provisioning/dashboards:/var/lib/grafana/dashboards:ro
+      - ../../grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../../grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
 
   redis:
     image: redis:7-alpine
@@ -35,9 +53,18 @@ services:
 
   loki:
     image: grafana/loki:3.7.0
+    # user: "10001:10001"
     networks:
       headnode_net:
         ipv4_address: 10.0.1.21
+    # ports:
+    #   - "3100:3100"
+    # mem_limit: 4g
+    # healthcheck:
+    #   test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+    #   interval: 2s
+    #   timeout: 5s
+    #   retries: 10
 
   gateway:
     image: alpine/socat
@@ -81,7 +108,7 @@ services:
         condition: service_started
     command: >
       /bin/sh -c "panoseti-server --config /app/ci/integration/configs/headnode/server.toml &
-      exec python daemons/storeLoki.py"
+      exec python src/control/daemons/storeLoki.py"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
@@ -189,6 +216,7 @@ services:
       quabo_net:
         ipv4_address: 192.168.3.5
     environment:
+      IN_DOCKER_CI:           "1"
       DAQNODE_DIRECT_HOST:    "${DAQNODE_DIRECT_HOST}"
       DAQNODE_GATEWAY_HOST:   "${DAQNODE_GATEWAY_HOST}"
       DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST}"

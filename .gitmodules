@@ -8,3 +8,6 @@
 [submodule "web"]
 	path = web
 	url = https://github.com/panoseti/panoseti_web.git
+[submodule "grafana"]
+	path = grafana
+	url = git@github.com:panoseti/panoseti_grafana.git

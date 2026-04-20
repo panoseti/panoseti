@@ -19,41 +19,59 @@ def main_callback():
 test_app = typer.Typer(help="Testing Suite", no_args_is_help=True)
 app.add_typer(test_app, name="test")
 
-@test_app.command()
-def unit():
+@test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def unit(
+    ctx: typer.Context,
+    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers"),
+):
     """Run parallel unit tests."""
-    from control.ci import qa
-    qa.run_unit()
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa
+    return qa.unit(ctx, jobs)
 
-@test_app.command()
-def integration():
+@test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def integration(ctx: typer.Context):
     """Run end-to-end integration tests."""
-    from control.ci import qa
-    qa.run_integration()
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa
+    return qa.integration(ctx)
 
-@test_app.command()
-def chaos():
+@test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def chaos(ctx: typer.Context):
     """Run TDD-forcing chaos/scenario tests."""
-    from control.ci import qa
-    qa.run_chaos()
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa
+    return qa.chaos(ctx)
 
-@test_app.command()
-def lint():
+@test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def lint(ctx: typer.Context):
     """Run Ruff and MyPy static analysis."""
-    from control.ci import qa
-    qa.run_lint()
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa
+    return qa.lint(ctx)
 
-@test_app.command(name="all")
-def test_all():
+@test_app.command(name="all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def test_all(
+    ctx: typer.Context,
+    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers for unit tests"),
+):
     """Run the full testing suite."""
-    from control.ci import qa
-    qa.run_all()
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa
+    return qa.all_tests(ctx, jobs)
 
-@test_app.command()
-def build():
+@test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def build(ctx: typer.Context):
     """Rebuild the testing Docker images."""
-    from control.ci import qa
-    qa.run_build()
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa
+    return qa.build(ctx)
 
 
 # 2. Config Sub-app

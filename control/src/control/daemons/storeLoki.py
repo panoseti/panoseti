@@ -29,7 +29,7 @@ except ImportError:
     from panoseti_grpc.telemetry.config import TelemetryConfig
     from panoseti_grpc.telemetry.logger import get_logger
 
-logger = get_logger("storeLoki", grpc_enabled=False)
+logger = get_logger("storeLoki", level=10, grpc_enabled=False)
 
 # --- Configuration Constants ---
 DEFAULT_LOKI_URL = "http://localhost:3100/loki/api/v1/push"
@@ -243,6 +243,8 @@ def main() -> None:
                             item_str = item.decode('utf-8', errors='replace')
                         else:
                             item_str = str(item)
+                        
+                        logger.debug(f"Popped log from Redis: {item_str[:200]}...")
                         log_entry = json.loads(item_str)
                         publisher.add(log_entry)
                     except json.JSONDecodeError:
