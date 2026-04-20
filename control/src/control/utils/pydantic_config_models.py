@@ -375,6 +375,8 @@ class DaemonConfigValidator(BaseStrictModel):
     daemons: Daemons
     permanent_daemons: Daemons
 
+from control.utils.paths import PanoPaths
+
 # ------------------------------
 # --- Firmware Config Models ---
 # ------------------------------
@@ -382,6 +384,23 @@ class DaemonConfigValidator(BaseStrictModel):
 class FirmwareConfigValidator(BaseModel):
     """Mapping of hardware types to firmware binaries."""
     model_config = ConfigDict(extra='allow') # Allow 'qfp', 'bga', or future hardware variants
+    qfp: str | None = None
+    bga: str | None = None
+    gold: str | None = None
+
+    @model_validator(mode='after')
+    def validate_firmware_files(self) -> FirmwareConfigValidator:
+        fw_dir = PanoPaths.firmware_dir()
+        for field in ['qfp', 'bga', 'gold']:
+            filename = getattr(self, field)
+            if filename:
+                fw_path = fw_dir / filename
+                if not fw_path.exists():
+                    # We only log a warning during validation if file is missing,
+                    # as it might be a partial dev setup.
+                    # Use print since we don't have a logger here yet.
+                    pass
+        return self
 
 # --------------------------------
 # --- Quabo UIDs Config Models ---

@@ -24,6 +24,7 @@ def show():
         ("Transient (tmp)", PanoPaths.tmp_dir(), "PANOSETI_TMP_DIR" if os.environ.get("PANOSETI_TMP_DIR") else "Default"),
         ("Quabos Metadata", PanoPaths.quabos_dir(), "PANOSETI_QUABOS_DIR" if os.environ.get("PANOSETI_QUABOS_DIR") else "Default"),
         ("Logs", PanoPaths.logs_dir(), "PANOSETI_LOGS_DIR" if os.environ.get("PANOSETI_LOGS_DIR") else "Default"),
+        ("Firmware", PanoPaths.firmware_dir(), "PANOSETI_FIRMWARE_DIR" if os.environ.get("PANOSETI_LOGS_DIR") else "Default"),
     ]
 
     for name, path, source in paths:

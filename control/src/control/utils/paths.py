@@ -12,14 +12,19 @@ class PanoPaths:
     """
 
     @classmethod
+    def software_root_dir(cls) -> pathlib.Path:
+        """The root panoseti-software directory."""
+        # File is at control/src/control/utils/paths.py
+        return pathlib.Path(__file__).parent.parent.parent.parent.parent.resolve()
+
+    @classmethod
     def base_dir(cls) -> pathlib.Path:
-        """The root PANOSETI workspace directory. Defaults to CWD."""
-        override = os.environ.get("PANOSETI_HOME_DIR")
-        base_dir_path = pathlib.Path(__file__).parent.parent.parent.parent
-        with contextlib.suppress(Exception):
-            if override:
-                base_dir_path = pathlib.Path(override).resolve()
-        return base_dir_path
+        """The control package root directory. Defaults to software_root / 'control'."""
+        override = os.environ.get("PANOSETI_HOME")
+        if override:
+            with contextlib.suppress(Exception):
+                return pathlib.Path(override).resolve()
+        return cls.software_root_dir() / "control"
 
     @classmethod
     def config_dir(cls) -> pathlib.Path:
@@ -54,7 +59,34 @@ class PanoPaths:
         return cls.base_dir() / "logs"
 
     @classmethod
+    def firmware_dir(cls) -> pathlib.Path:
+        """Directory containing Quabo firmware binaries."""
+        override = os.environ.get("PANOSETI_FIRMWARE_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.base_dir() / "firmware"
+
+    @classmethod
+    def wr_dir(cls) -> pathlib.Path:
+        """Directory containing White Rabbit configuration and filesystem files."""
+        override = os.environ.get("PANOSETI_WR_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.base_dir() / "wr"
+
+    @classmethod
+    def daq_scripts_dir(cls) -> pathlib.Path:
+        """Directory containing scripts to be deployed to DAQ nodes."""
+        override = os.environ.get("PANOSETI_DAQ_SCRIPTS_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.base_dir() / "src/control/daq_scripts"
+
+    @classmethod
     def ensure_dirs(cls) -> None:
-        """Creates standard workspace directories if they do not exist."""
-        for d in [cls.config_dir(), cls.tmp_dir(), cls.quabos_dir(), cls.logs_dir()]:
+        """Creates transient workspace directories if they do not exist."""
+        for d in [
+            cls.tmp_dir(),
+            cls.logs_dir(),
+        ]:
             d.mkdir(parents=True, exist_ok=True)

@@ -7,23 +7,27 @@
 # --hashpipe            copy hashpipe executable (hashpipe.so) to nodes
 # --get_data run_dir    copy data files in given run dir from daq nodes
 
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
 import time
 from glob import glob
+from pathlib import Path
 
 from control.utils import config_file, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
 
 
 # copy a file to a DAQ node
 #
-def copy_file_to_node(file: str, node: DaqNodeValidator, run_dir: str = '', verbose: bool = False) -> None:
+def copy_file_to_node(file_path: Path | str, node: DaqNodeValidator, run_dir: str = '', verbose: bool = False) -> None:
     """Transfer local files to a remote DAQ node using SCP.
 
     Args:
-        file: Glob pattern or path of files to transfer.
+        file_path: Path object or glob pattern string of files to transfer.
         node: The target DAQ node validator.
         run_dir: Optional subdirectory on the remote node.
         verbose: If True, prints the SCP command.
@@ -36,12 +40,20 @@ def copy_file_to_node(file: str, node: DaqNodeValidator, run_dir: str = '', verb
         dest_path += f'/{run_dir}'
     else:
         dest_path += '/'
-    files = glob(file)
+    
+    # Handle glob patterns if string is provided
+    if isinstance(file_path, str):
+        files = [Path(f) for f in glob(file_path)]
+    else:
+        files = [file_path]
+
     for f in files:
+        f_str = str(f)
         if node.port_forwarding and node.port_forwarding.status:
-            cmd = ["scp", "-q", "-P", str(node.port_forwarding.port), f, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
+            cmd = ["scp", "-q", "-P", str(node.port_forwarding.port), f_str, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
         else:
-            cmd = ["scp", "-q", f, f"{node.username}@{node.ip_addr}:{dest_path}"]
+            cmd = ["scp", "-q", f_str, f"{node.username}@{node.ip_addr}:{dest_path}"]
+        
         if verbose:
             print(" ".join(cmd))
         res = subprocess.run(cmd, capture_output=True, text=True)
@@ -153,9 +165,12 @@ def copy_config_files(daq_config: DaqConfigValidator, run_dir: str, verbose: boo
         run_dir: Name of the target run directory on the remote nodes.
         verbose: If True, prints transfer details.
     """
+    config_dir = PanoPaths.config_dir()
     for node in daq_config.daq_nodes:
-        for f in config_file.config_file_names:
-            copy_file_to_node(f, node, run_dir, verbose)
+        for f_name in config_file.config_file_names:
+            # Note: config_file_names contains some wildcard patterns
+            f_path = config_dir / f_name
+            copy_file_to_node(f_path, node, run_dir, verbose)
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
@@ -169,24 +184,32 @@ def copy_daq_files(daq_config: DaqConfigValidator) -> None:
         daq_config: Validated DAQ configuration model.
     """
     # hashpipe.so may not exist, as we may cross compile it on the daq node
-    hashpipe_so = '../daq/hashpipe.so'
-    if os.path.exists(hashpipe_so):
+    base_dir = PanoPaths.base_dir()
+    hashpipe_so = PanoPaths.software_root_dir() / 'daq/hashpipe.so'
+    
+    if hashpipe_so.exists():
         hashpipe_so_exist = True
     else:
         hashpipe_so_exist = False
         print('**************************************************************************')
-        print('{} does not exist!'.format('hashpipe.so'))
+        print(f'{hashpipe_so} does not exist!')
         print('clone the submodule and compile it, or compile it on the daq node.')
         print('**************************************************************************')
+    
+    scripts_dir = PanoPaths.daq_scripts_dir()
+    util_dir = base_dir / 'src/control/utils'
+
     for node in daq_config.daq_nodes:
         if hashpipe_so_exist:
             copy_file_to_node(hashpipe_so, node)
-        copy_file_to_node('daq_scripts/start_daq.py', node)
-        copy_file_to_node('daq_scripts/stop_daq.py', node)
-        copy_file_to_node('daq_scripts/status_daq.py', node)
-        copy_file_to_node('utils/util.py', node)
-        copy_file_to_node('utils/pff.py', node)
-        copy_file_to_node('daq_scripts/video_daq.py', node)
+        
+        # Use PanoPaths to resolve local script locations
+        copy_file_to_node(scripts_dir / 'start_daq.py', node)
+        copy_file_to_node(scripts_dir / 'stop_daq.py', node)
+        copy_file_to_node(scripts_dir / 'status_daq.py', node)
+        copy_file_to_node(util_dir / 'util.py', node)
+        copy_file_to_node(util_dir / 'pff.py', node)
+        copy_file_to_node(scripts_dir / 'video_daq.py', node)
 
 if __name__ == "__main__":
 

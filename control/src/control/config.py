@@ -178,12 +178,16 @@ def reboot_module(module: ObsModuleConfig | dict[str, Any], quabo_uids: QuaboUid
         x = tftpw(real_ip, reboot_port)
         # check timing mode, and only use it on Quabo0
         if i == 0:
+            wr_dir = PanoPaths.wr_dir()
+            timing_mode = None
             if module.timing_mode == 'gnss':
-                x.put_wrpc_filesys('wr/wrpc_filesys_gnss')
-                logger.info(f'Set Timing Mode to GNSS on Quabo {ip_addr}')
+                wrpc_fs_path = wr_dir / 'wrpc_filesys_gnss'
+                timing_mode = 'GNSS'
             else:
-                x.put_wrpc_filesys('wr/wrpc_filesys')
-                logger.info(f'Set Timing Mode to WR on Quabo {ip_addr}')
+                wrpc_fs_path = wr_dir / 'wrpc_filesys'
+                timing_mode = 'WR'
+            x.put_wrpc_filesys(str(wrpc_fs_path))
+            logger.info(f'Set Timing Mode to {timing_mode} on Quabo {ip_addr}')
         
         x.reboot()
         # wait for a while to let the quabo get rebooted successfully
@@ -272,13 +276,12 @@ def do_loads(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: 
     if isinstance(network_config, dict):
         network_config = NetworkConfigValidator(**network_config)
 
-    # TODO The hard-coded path may not be good
     firmware = config_file.get_firmware_config()
-    # firmware is FirmwareConfigValidator, which allows extra fields
-    # We access them via .model_extra
-    extra = firmware.model_extra or {}
-    firmware_silver_qfp = 'firmware/' + extra.get('qfp', '')
-    firmware_silver_bga = 'firmware/' + extra.get('bga', '')
+    fw_dir = PanoPaths.firmware_dir()
+    
+    fw_silver_qfp = fw_dir / (firmware.qfp or '')
+    fw_silver_bga = fw_dir / (firmware.bga or '')
+
     for module in modules:
         if isinstance(module, dict):
             module = ObsModuleConfig(**module)
@@ -292,15 +295,21 @@ def do_loads(modules: list[ObsModuleConfig] | list[dict[str, Any]], quabo_uids: 
             port = ip_ports['reboot_port']
             logger.info(f'Real IP: {real_ip}')
             logger.info('Reboot Port: %d', port)
+            
             if util.is_quabo_old_version(module.model_dump(), i, quabo_uids.model_dump(), quabo_info):
-                fw = firmware_silver_qfp
                 logger.info(f'Loading firmware: {firmware_silver_qfp}')
+                fw = fw_silver_qfp
             else:
-                fw = firmware_silver_bga
                 logger.info(f'Loading firmware: {firmware_silver_bga}')
+                fw = fw_silver_bga
+            
+            if not fw.exists():
+                logger.error(f"Firmware file not found: {fw}")
+                continue
+
             x = tftpw(real_ip, port)
             logger.info(f'loading {fw} into {ip_addr}')
-            x.put_bin_file(fw)
+            x.put_bin_file(str(fw))
 
 def do_loadg(modules: list[dict[str, Any]]) -> None:
     logger.info("not supported")

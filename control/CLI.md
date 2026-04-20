@@ -1,6 +1,6 @@
 # PANOSETI Control CLI (`pseti`)
 
-The `pseti` command is the unified entry point for the PANOSETI observatory control plane. It provides commands for starting/stopping runs, checking status, configuring hardware, and running tests.
+The `pseti` command is the unified entry point for the PANOSETI observatory control plane. It provides high-performance, snappy access to commands for starting/stopping runs, checking status, configuring hardware, and running tests.
 
 ## Global Options
 
@@ -8,17 +8,17 @@ The `pseti` command is the unified entry point for the PANOSETI observatory cont
 
 ---
 
-## Commands
+## Top-Level Commands
 
 ### `pseti start`
 Start a new recording run.
 
 **Options:**
-- `--no_hv`: Take data without high voltage.
-- `--no_redis`: Skip checking if redis daemons are running.
-- `--no_data`: Set up the run but do not start data flow or recording.
+- `--no-hv`: Take data without high voltage.
+- `--no-redis`: Skip checking if redis daemons are running.
+- `--no-data`: Set up the run but do not start data flow or recording.
 - `--nsecs INTEGER`: Record for N seconds, then stop the run automatically.
-- `--stop_session`: Stop the session at the end of the run (used with `--nsecs`).
+- `--stop-session`: Stop the session at the end of the run (used with `--nsecs`).
 - `--verbose`: Print detailed command output.
 - `--force-reset`: Force reset the state ledger if it appears stale.
 - `-y`, `--yes`: Confirm the action without an interactive prompt.
@@ -29,8 +29,8 @@ Start a new recording run.
 Stop and finish the current recording run.
 
 **Options:**
-- `--no_cleanup`: Do not delete data files from the DAQ nodes.
-- `--no_collect`: Do not collect data files to the head node.
+- `--no-cleanup`: Do not delete data files from the DAQ nodes.
+- `--no-collect`: Do not collect data files to the head node.
 - `--run TEXT`: Stop/Cleanup a specific run name (defaults to the current run in the ledger).
 - `--force-cleanup`: Force cleanup on DAQ nodes even if hashpipe liveness is uncertain.
 - `--verbose`: Print details.
@@ -39,23 +39,35 @@ Stop and finish the current recording run.
 ---
 
 ### `pseti status`
-Query and display the current status of the observatory control plane.
-
-Checks the transactional ledger, local markers, and probes remote DAQ nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
+Show control plane status. Checks the transactional ledger, local markers, and probes remote DAQ nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
 
 ---
 
 ### `pseti session-start`
-Start an observing session. Orchestrates module power-on, UID scanning, reboots, and daemon initialization.
+Start a complete observing session (power, UIDs, HV, calibration). Orchestrates module power-on, UID scanning, reboots, and daemon initialization.
 
 **Options:**
-- `--no_hv`: Turn off High Voltage (HV) when running the session.
+- `--no-hv`: Turn off High Voltage (HV) when running the session.
 - `--stage TEXT`: Start the session from a specific stage (e.g., `poweron`, `get_uids`, `reboot`, etc.).
 
 ---
 
 ### `pseti session-stop`
-Gracefully terminate an observing session. Powers off all modules and stops background Redis daemons.
+Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
+
+---
+
+## Sub-App Commands
+
+### `pseti validate`
+Configuration and topology validation tools.
+
+**Subcommands:**
+- `network`: Validate configs and perform network ping sweep.
+- `graph`: Validate configs and display topology graph.
+- `debug`: Validate configs with verbose debug output.
+- `all`: Run all validation checks (Schema, Global, Network, Graph).
+- **Default**: Running `pseti validate` without a subcommand performs standard schema and global checks.
 
 ---
 
@@ -66,6 +78,16 @@ Control Quabo power via Web Power Switches (WPS).
 - `on`: Turn all configured Quabo power switches ON.
 - `off`: Turn all configured Quabo power switches OFF.
 - `status`: Query the power state of all configured switches.
+
+---
+
+### `pseti path`
+Manage and visualize PANOSETI directory paths.
+
+**Subcommands:**
+- `show`: Display all resolved paths and environment variable overrides.
+- `init`: Create standard workspace directories if they do not exist.
+- `clean`: Remove transient/log directories (requires confirmation).
 
 ---
 
@@ -94,7 +116,6 @@ Configure observatory hardware and daemons.
 - `shutter-open`: Open all module shutters.
 - `shutter-close`: Close all module shutters.
 - `disk-space`: Check disk space on head and DAQ nodes.
-- `validate [MODIFIERS]`: Validate configuration files (Modifiers: `graph`, `network`, `debug`).
 
 ---
 

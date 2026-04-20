@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import socket
-import urllib
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -9,15 +9,23 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.pretty import pprint
 
+from control.utils.pydantic_config_models import (
+    DaqConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+)
+
 console = Console()
 
 # Pydantic Validation
 
 ## Validation graph
-def print_compact_config(config_name: str, config_dict: dict[str, Any]) -> None:
-    """Prints a configuration dictionary but collapses massive lists like module_ids."""
+def print_compact_config(config_name: str, config_obj: Any) -> None:
+    """Prints a configuration object but collapses massive lists like module_ids."""
     import copy
-    compact_dict = copy.deepcopy(config_dict)
+    
+    # Dump model to dict for easier manipulation of the compact view
+    compact_dict = copy.deepcopy(config_obj.model_dump())
 
     if config_name.lower() == 'daq':
         for node in compact_dict.get('daq_nodes', []):
@@ -47,57 +55,62 @@ def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
     # targets: tuple of (Description, Target_IP, Port, Associated_IP_to_Mark_Up)
     targets: set[tuple[str, str, int, str | None]] = set()
 
+    obs_cfg: ObsConfigValidator = validated_configs['obs']
+    daq_cfg: DaqConfigValidator = validated_configs['daq']
+    net_cfg: NetworkConfigValidator = validated_configs['network']
+
     # --- 1. Head Node ---
-    head_ip = validated_configs['daq'].get('head_node_ip_addr')
-    if head_ip and not validated_configs['daq'].get('head_node_container', False):
+    head_ip = str(daq_cfg.head_node_ip_addr)
+    if head_ip and not daq_cfg.head_node_container:
         targets.add(("Head Node", head_ip, 22, None))
 
     # --- 2. WPS Power Strips ---
-    for dome in validated_configs['obs'].get('domes', []):
-        for mod in dome.get('modules', []):
-            wps_name = mod.get('wps')
-            if wps_name and wps_name in validated_configs['obs']:
-                wps_url = validated_configs['obs'][wps_name].get('url', '')
+    # Access wps config through model_extra
+    extra_obs = obs_cfg.model_extra or {}
+    for dome in obs_cfg.domes:
+        for mod in dome.modules:
+            wps_name = mod.wps or 'wps'
+            if wps_name in extra_obs:
+                wps_data = extra_obs[wps_name]
+                wps_url = wps_data.get('url', '')
                 parsed = urllib.parse.urlparse(wps_url)
                 if parsed.hostname:
                     # HTTP standard port is 80
                     targets.add((f"WPS ({wps_name})", parsed.hostname, 80, None))
 
     # --- 3. DAQ Nodes ---
-    pf_daq_map = {d.get('ip_addr'): d.get('port_forwarding', {}) for d in
-                  validated_configs['network'].get('daq_nodes', [])}
-    for daq in validated_configs['daq'].get('daq_nodes', []):
-        ip = daq.get('ip_addr')
-        pf = pf_daq_map.get(ip, {})
+    pf_daq_map = {str(d.ip_addr): d.port_forwarding for d in net_cfg.daq_nodes}
+    for daq in daq_cfg.daq_nodes:
+        ip = str(daq.ip_addr)
+        pf = pf_daq_map.get(ip)
 
-        if pf.get('status') and pf.get('gw_ip'):
+        if pf and pf.status and pf.gw_ip:
             # It's behind a gateway. Check the gateway port specifically forwarded for this DAQ.
-            # If the gateway responds on this port, mark BOTH the gateway and the internal DAQ IP as UP.
-            gw_ip = pf.get('gw_ip')
-            forwarded_port = pf.get('port', 22)
+            gw_ip = str(pf.gw_ip)
+            forwarded_port = pf.port or 22
             targets.add((f"DAQ Node ({ip}) via GW", gw_ip, forwarded_port, ip))
         else:
             # Direct connection
             targets.add((f"DAQ Node ({ip})", ip, 22, None))
 
     # --- 4. Modules/Quabos ---
-    pf_mod_map = {m.get('ip_addr'): m.get('port_forwarding', {}) for m in
-                  validated_configs['network'].get('modules', [])}
-    ip_to_dome = {m.get('ip_addr'): d.get('name', 'Unknown') for d in validated_configs['obs'].get('domes', []) for m in
-                  d.get('modules', [])}
+    pf_mod_map = {str(m.ip_addr): m.port_forwarding for m in net_cfg.modules}
+    
+    for dome in obs_cfg.domes:
+        for mod in dome.modules:
+            ip = str(mod.ip_addr)
+            pf = pf_mod_map.get(ip)
+            dome_name = dome.name
 
-    for ip, dome_name in ip_to_dome.items():
-        pf = pf_mod_map.get(ip, {})
-
-        if pf.get('status') and pf.get('gw_ip'):
-            # Module is behind a gateway. Check the first CMD port on the gateway.
-            gw_ip = pf.get('gw_ip')
-            cmd_ports = pf.get('cmd_port', [60000])
-            first_cmd_port = cmd_ports[0] if cmd_ports else 60000
-            targets.add((f"Module ({dome_name}: {ip}) via GW", gw_ip, first_cmd_port, ip))
-        else:
-            # Direct connection to the module's Quabo 0 CMD port
-            targets.add((f"Module ({dome_name}: {ip})", ip, 60000, None))
+            if pf and pf.status and pf.gw_ip:
+                # Module is behind a gateway. Check the first CMD port on the gateway.
+                gw_ip = str(pf.gw_ip)
+                cmd_ports = pf.cmd_port or [60000]
+                first_cmd_port = cmd_ports[0] if cmd_ports else 60000
+                targets.add((f"Module ({dome_name}: {ip}) via GW", gw_ip, first_cmd_port, ip))
+            else:
+                # Direct connection to the module's Quabo 0 CMD port
+                targets.add((f"Module ({dome_name}: {ip})", ip, 60000, None))
 
     # --- Execute Parallel Sweep ---
     up_hosts = set()
@@ -137,6 +150,3 @@ def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
     if all_passed:
         console.print("[green]All network targets reachable.[/green]\n")
     return all_passed
-
-
-

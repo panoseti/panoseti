@@ -203,21 +203,29 @@ class GlobalConfigValidator:
                 else:
                     required_hw.add(qv)
 
-        # Firmware model has dynamic keys like 'quabo', 'wr', or 'bga' directly
-        firmware_keys = set((self.firmware_conf.model_extra or {}).keys())
-        
+        # Firmware model has explicit fields: qfp, bga, gold
+        firmware_keys = set()
+        if self.firmware_conf.qfp:
+            firmware_keys.add("qfp")
+        if self.firmware_conf.bga:
+            firmware_keys.add("bga")
+        if self.firmware_conf.gold:
+            firmware_keys.add("gold")
+
+        # Plus any dynamic keys in model_extra
+        extra = self.firmware_conf.model_extra or {}
+        firmware_keys.update(extra.keys())
+
         # If 'quabo' and 'wr' are top-level keys, look inside them
         # (Based on test_sc_config_validation.py's mock structure)
-        extra = self.firmware_conf.model_extra or {}
         if "quabo" in extra:
-             firmware_keys.update(extra["quabo"].keys())
+            firmware_keys.update(extra["quabo"].keys())
 
         missing = required_hw - firmware_keys
         if missing:
             self.report.add_test("Hardware-Firmware Alignment", "ERROR", f"Missing binary configurations for HW types: {missing}")
         else:
             self.report.add_test("Hardware-Firmware Alignment", "PASS", "Binary configurations exist for all active hardware.")
-
     def _check_firmware_filesystem(self) -> None:
         """Strictly verify that configured firmware files actually exist on disk."""
         if not self.firmware_conf:
