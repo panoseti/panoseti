@@ -10,15 +10,15 @@ this code resolves.
 See the Hamamatsu datasheet for its MPPC arrays: S13361-3050 series
 for more info about the detector constants used in this script.
 """
-import logging
-import os
 import time
 from typing import Any
 
 import redis
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.driver import quabo_driver
 from control.utils import config_file, redis_utils, util
+from control.utils.paths import PanoPaths
 
 #-------------- CONSTANTS ---------------#
 # HV offset
@@ -35,6 +35,8 @@ MIN_HV = 0
 MAX_HV = 60
 
 #--------- Implementation Globals --------#
+PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
+logger = get_logger(service_name='hv_updater', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
 
 # Get quabo and detector info.
 quabo_info = config_file.get_quabo_info()
@@ -86,7 +88,6 @@ def get_adjusted_detector_hv(det_serial_num: str, temp: float) -> float:
     Raises:
         KeyError: If the detector serial number is not found in the config.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         nominal_hv = detector_info[str(det_serial_num)]
     except KeyError as kerr:
@@ -115,7 +116,6 @@ def update_quabo(quabo_obj: quabo_driver.QUABO,
         rkey: The Redis key representing this Quabo.
         quabo_status: A state dictionary tracking adjustments and metadata.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     adjusted_hv_values = [0] * 4
     # get the metadata from the quabo_status dict
     adjusted_hv = quabo_status[rkey]['adjusted_hv']
@@ -172,7 +172,6 @@ def get_redis_temp(r: redis.Redis, rkey: str) -> float:
     Returns:
         The temperature as a float.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, 'TEMP1')
         if val is None:
@@ -202,7 +201,6 @@ def get_redis_hv(r: redis.Redis, rkey: str, q: int) -> float:
     Returns:
         The monitored HV value (negated to positive) as a float.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, f'HVMON{q}')
         if val is None:
@@ -232,7 +230,6 @@ def get_redis_det_current(r: redis.Redis, rkey: str, q: int) -> float:
     Returns:
         The monitored current as a float.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, f'DETR{q}_CURR')
         if val is None:
@@ -262,7 +259,6 @@ def check_timestamp(r: redis.Redis, rkey: str, quabo_status: dict[str, Any]) -> 
     Returns:
         True if the Computer_UTC timestamp in Redis has increased, False otherwise.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     try:
         val = r.hget(rkey, 'Computer_UTC')
         if val is None:
@@ -307,7 +303,6 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
         r: Active Redis client.
         quabo_status: Persistent state dictionary tracking all Quabos.
     """
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     for dome in quabo_uids.domes:
         for module in dome.modules:
             module_ip_addr = str(module.ip_addr)
@@ -411,7 +406,7 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
 def main() -> None:
     """Makes a call to update_all_quabos every UPDATE_INTERVAL seconds."""
     r = redis_utils.redis_init()
-    print("hv_updater: Running...")
+    logger.info("hv_updater: Running...")
     """
     The dict is used for recording all of the hv status data for each quabo
     It contains the following info:
@@ -429,11 +424,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-    logfile = 'logs/hv_updater.log'
-    util.create_logger(logfile, 'PANOSETI.HVUpdater', 'a')
-    logger = logging.getLogger('PANOSETI.HVUpdater')
     logger.info('************************************')
     if data_config.detector_overvoltage is None:
         logger.warning('detector_overvoltage is not set in data_config.json')

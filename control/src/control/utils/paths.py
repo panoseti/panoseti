@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 
@@ -13,7 +14,12 @@ class PanoPaths:
     @classmethod
     def base_dir(cls) -> pathlib.Path:
         """The root PANOSETI workspace directory. Defaults to CWD."""
-        return pathlib.Path(os.environ.get("PANOSETI_HOME", os.getcwd())).resolve()
+        override = os.environ.get("PANOSETI_HOME_DIR")
+        base_dir_path = pathlib.Path(__file__).parent.parent.parent.parent
+        with contextlib.suppress(Exception):
+            if override:
+                base_dir_path = pathlib.Path(override).resolve()
+        return base_dir_path
 
     @classmethod
     def config_dir(cls) -> pathlib.Path:

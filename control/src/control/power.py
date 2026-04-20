@@ -9,43 +9,18 @@
 #   default is "wps"
 
 import os
-from datetime import UTC, datetime
 from typing import Any
 
+import typer
+from panoseti_grpc.telemetry.logger import get_logger
+
 from control.utils import config_file
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import ObsConfigValidator, WpsConfig
 
-LOG_DIR_ROOT = "/mnt/data11"
-
-# ---------- logging helper (UTC) ----------
-def log_print(msg: str) -> None:
-    now = datetime.now(UTC).replace(tzinfo=None)
-    ts = now.strftime("%Y-%m-%d %H:%M:%S UTC")
-    yyyymmdd = now.strftime("%Y%m%d")
-
-    log_dir = f"{LOG_DIR_ROOT}/data/palomar/L0/{yyyymmdd}/obslogs"
-    os.makedirs(log_dir, exist_ok=True)
-
-    log_file = os.path.join(log_dir, f"datarec_{yyyymmdd}.log")
-
-    line = f"{ts} {msg}"
-    print(line)
-
-    # Prepend the new line at the beginning of the log file
-    old = ""
-    if os.path.exists(log_file):
-        with open(log_file) as f:
-            old = f.read()
-
-    tmp_file = log_file + ".tmp"
-    with open(tmp_file, "w") as f:
-        f.write(line + "\n")
-        if old:
-            f.write(old)
-
-    os.replace(tmp_file, log_file)
-# -----------------------------------------
-
+log_dir = PanoPaths.logs_dir()
+log_dir.mkdir(parents=True, exist_ok=True)
+logger = get_logger("PANOSETI.Power", log_dir=str(log_dir), grpc_enabled=True)
 
 
 # turn power on or off
@@ -119,15 +94,15 @@ def do_wps(name: str, obs_config: ObsConfigValidator, op: str) -> None:
 
     if op == 'query':
         if quabo_power_query(wps):
-            log_print(f"{name}: power is on")
+            logger.info(f"{name}: power is on")
         else:
-            log_print(f"{name}: power is off")
+            logger.info(f"{name}: power is off")
     elif op == 'on':
         quabo_power(wps, True)
-        log_print(f"{name}: turned power on")
+        logger.info(f"{name}: turned power on")
     elif op == 'off':
         quabo_power(wps, False)
-        log_print(f"{name}: turned power off")
+        logger.info(f"{name}: turned power off")
 
 
 def do_all(obs_config: ObsConfigValidator, op: str) -> None:
@@ -143,7 +118,6 @@ def do_all(obs_config: ObsConfigValidator, op: str) -> None:
 
 
 
-import typer
 
 app = typer.Typer(help="Control Quabo power via Web Power Switches (WPS).", no_args_is_help=True, context_settings={"help_option_names": ["-h", "--help"]})
 

@@ -17,12 +17,14 @@
 from __future__ import annotations
 
 import json
-import logging
 import socket
 import time
 from typing import Any
 
+from panoseti_grpc.telemetry.logger import get_logger
+
 from control.utils import util
+from control.utils.paths import PanoPaths
 
 UDP_CMD_PORT= 60000
     # port used on both sides for command packets
@@ -83,15 +85,9 @@ class QUABO:
         self.MAROC_regs: list[list[int]] = []
         for _i in range(4):
             self.MAROC_regs.append([0 for _x in range(104)])
-        # create a logger (uses panoseti_grpc telemetry if available, stdlib fallback)
-        util.create_logger(logfile, 'PANOSETI.Driver', 'a')
-        self.logger = logging.getLogger('PANOSETI.Driver')
-        # prefer the telemetry-backed logger when panoseti_grpc is installed
-        try:
-            from panoseti_grpc.telemetry.logger import get_logger
-            self.logger = get_logger('quabo_driver', grpc_enabled=False, reset=False)
-        except ImportError:
-            pass
+        # create a logger
+        PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
+        self.logger = get_logger(service_name='quabo_driver', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
         # self.logger.info('************************************')
 
     def close(self) -> None:

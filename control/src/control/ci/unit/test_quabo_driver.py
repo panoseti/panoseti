@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import struct
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -84,7 +85,7 @@ def quabo_and_sock(monkeypatch: Any, tmp_path: Any) -> tuple[QUABO, FakeSocket]:
     monkeypatch.setattr("socket.gethostbyname", lambda x: x)
 
     # Suppress log-file creation — tests don't need a real log file
-    monkeypatch.setattr("control.utils.util.create_logger", lambda *a, **kw: None)
+    monkeypatch.setattr("control.driver.quabo_driver.get_logger", lambda *a, **kw: MagicMock())
 
     cfg_file = tmp_path / "quabo_config.txt"
     # Copy the real quabo_config.txt into tmp so send_maroc_params_file() works

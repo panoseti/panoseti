@@ -3,21 +3,19 @@
 # open or close shutter, which is controlled by quabo1.
 # if the ip is not specified, we will open the shutter on all of the used modules.
 
-import logging
-import os
 from argparse import ArgumentParser
+
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.driver import quabo_driver
 from control.utils import config_file, util
+from control.utils.paths import PanoPaths
 
 # check the ip address
 # shutter controller is connected to quabo1
 # 
-if not os.path.exists('logs'):
-        os.makedirs('logs')
-logfile = 'logs/shutter.log'
-util.create_logger(logfile, 'PANOSETI.Shutter', 'a')
-logger = logging.getLogger('PANOSETI.Shutter')
+PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
+logger = get_logger(service_name='shutter', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
 
 def ip_check(ip: str) -> int:
     """Validate that the target IP address corresponds to Quabo 1.

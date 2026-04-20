@@ -1,7 +1,9 @@
 import os
+
 import typer
 from rich.console import Console
 from rich.table import Table
+
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(help="Manage and visualize PANOSETI directory paths.", no_args_is_help=True, context_settings={"help_option_names": ["-h", "--help"]})

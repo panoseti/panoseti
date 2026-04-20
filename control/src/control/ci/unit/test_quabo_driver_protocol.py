@@ -77,7 +77,10 @@ def quabo_and_sock(monkeypatch: Any, tmp_path: Any) -> tuple[QUABO, FakeSocket]:
     fake_sock = FakeSocket()
     monkeypatch.setattr("socket.socket", lambda *a, **kw: fake_sock)
     monkeypatch.setattr("socket.gethostbyname", lambda x: x)
-    monkeypatch.setattr("control.utils.util.create_logger", lambda *a, **kw: None)
+    # mock get_logger to return a logger that doesn't write to disk
+    import logging
+    mock_logger = logging.getLogger("quabo_driver_test")
+    monkeypatch.setattr("control.driver.quabo_driver.get_logger", lambda *a, **kw: mock_logger)
 
     cfg_file = tmp_path / "quabo_config.txt"
     real_cfg = os.path.join(

@@ -12,7 +12,6 @@ import shutil
 import signal
 import socket
 import subprocess
-import sys
 import time
 from typing import Any
 
@@ -101,39 +100,6 @@ def now_str() -> str:
 # so (currently) you can only reboot quabos from this host
 #
 default_hk_dest = '192.168.1.100'
-
-# create logger
-#
-def create_logger(logfile: str, tag: str, mode: str = 'w') -> None:
-    """
-    Configure a named logger, forwarding to the panoseti_grpc Telemetry service
-    when available, with graceful fallback to standard Python logging.
-
-    Backwards-compatible: existing callers use create_logger(logfile, tag) then
-    logging.getLogger(tag) — that pattern continues to work unchanged.
-    """
-    log_dir = os.path.dirname(os.path.abspath(logfile)) if logfile else None
-    try:
-        from panoseti_grpc.telemetry.logger import get_logger
-        get_logger(tag, log_dir=log_dir, grpc_enabled=True, reset=True)
-    except Exception as e:
-        # panoseti_grpc not installed or Telemetry service unavailable — fall back to standard handlers
-        if not isinstance(e, ImportError):
-            print(f"Warning: Telemetry logger initialization failed ({e}). Falling back to local logging.", file=sys.stderr)
-        logger = logging.getLogger(tag)
-        logger.setLevel(logging.DEBUG)
-        logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(name)s - %(message)s')
-        fhandler = logging.FileHandler(logfile, mode=mode)
-        fhandler.setFormatter(logformat)
-        fhandler.setLevel(logging.DEBUG)
-        shandler = logging.StreamHandler()
-        shandler.setFormatter(logformat)
-        shandler.setLevel(logging.WARNING)
-        if logger.handlers:
-            logger.handlers.clear()
-        logger.addHandler(fhandler)
-        logger.addHandler(shandler)
-
 
 def daq_grpc_endpoint(node: DaqNodeValidator) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.

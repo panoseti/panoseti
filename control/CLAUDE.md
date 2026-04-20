@@ -69,7 +69,10 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 - **Integration Tests**: Verify end-to-end flows in `src/control/ci/integration/`. Use `-k` to isolate failures.
 - **Chaos Tests**: Verifies transaction integrity under failure conditions in `src/control/ci/integration/scenarios/`. Run via `pseti test chaos`.
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
-- **Telemetry Integration**: Logs are shipped via non-blocking gRPC handlers to a central Loki instance.
+### Telemetry & Logging
+- **Unified Logger**: Use `panoseti_grpc.telemetry.logger.get_logger`.
+- **Path Resolution**: Use `control.utils.paths.PanoPaths.logs_dir()` for log directory resolution. `get_logger` accepts `log_dir` as a `pathlib.Path` object.
+- **Async & Non-blocking**: Logs are shipped via gRPC to a central Loki instance. Avoid standard `logging.getLogger` and `print` for system events.
 
 Read [DEBUGGING.md](DEBUGGING.md) for advanced troubleshooting techniques and [ci/README.md](ci/README.md) for test architecture details.
 

@@ -10,52 +10,19 @@ import argparse
 import json
 import os
 import struct
-import sys
 from argparse import ArgumentParser
-from datetime import UTC, datetime
 from typing import Any
+
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.driver.quabo_tftp import tftpw
 from control.utils import config_file, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import NetworkConfigValidator, ObsConfigValidator
 
-# =========================
-# Logging / print wrapper
-# =========================
-
-def _ut_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
-
-def _log_paths() -> tuple[str, str]:
-    ut = _ut_now()
-    yyyymmdd = ut.strftime("%Y%m%d")
-    base_dir = f"/mnt/data11/data/palomar/L0/{yyyymmdd}/obslogs"
-    log_file = os.path.join(base_dir, f"datarec_{yyyymmdd}.log")
-    return base_dir, log_file
-
-def print(*args: Any, **kwargs: Any) -> None:
-    msg = " ".join(str(a) for a in args)
-    ut = _ut_now()
-    prefix = ut.strftime("%Y-%m-%d %H:%M:%S UT")
-    line = f"{prefix} {msg}\n"
-
-    base_dir, log_file = _log_paths()
-    os.makedirs(base_dir, exist_ok=True)
-
-    # prepend to log file
-    if os.path.exists(log_file):
-        with open(log_file, encoding="utf-8", errors="ignore") as f:
-            old = f.read()
-    else:
-        old = ""
-
-    with open(log_file, "w", encoding="utf-8") as f:
-        f.write(line)
-        f.write(old)
-
-    if sys.__stdout__ is not None:
-        sys.__stdout__.write(line)
-        sys.__stdout__.flush()
+log_dir = PanoPaths.logs_dir()
+log_dir.mkdir(parents=True, exist_ok=True)
+logger = get_logger("PANOSETI.GetUIDs", log_dir=str(log_dir), grpc_enabled=True)
 
 # return quabo UID as hex string
 #
@@ -115,13 +82,13 @@ def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: Ne
                     ip_addr = config_file.quabo_ip_addr(m_ip, i)
                     real_ip = ip_ports['ip_addr']
                     port = ip_ports['reboot_port']
-                    print("get uid", ip_addr)
+                    logger.info(f"get uid {ip_addr}")
                     # TODO: we need to ping the board before get_uid
                     uid = get_uid(real_ip, port)
                     if len(uid):
-                        print(f"{ip_addr} has UID {uid}")
+                        logger.info(f"{ip_addr} has UID {uid}")
                     else:
-                        print(f"{ip_addr} is offline")
+                        logger.info(f"{ip_addr} is offline")
                     quabo['uid'] = uid
                 else:
                     quabo['uid'] = ''

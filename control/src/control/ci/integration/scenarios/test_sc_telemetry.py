@@ -360,7 +360,7 @@ def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
     _require_telemetry()
     from unittest.mock import patch
 
-    from control.utils import util
+    from panoseti_grpc.telemetry.logger import get_logger
     
     # Mocking get_logger to simulate a crash (e.g. gRPC connection error)
     with patch("panoseti_grpc.telemetry.logger.get_logger", side_effect=Exception("Connection refused")):
@@ -368,9 +368,9 @@ def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
             # We use a temp file for logfile to avoid permission issues
             import tempfile
             with tempfile.NamedTemporaryFile() as tmp:
-                util.create_logger(tmp.name, "sc066_test")
+                get_logger("sc066_test", log_dir=tmp.name)
         except Exception as e:
-            pytest.fail(f"create_logger crashed when get_logger failed: {e}")
+            pytest.fail(f"get_logger crashed when it should have handled the failure: {e}")
             
     import logging
     logger = logging.getLogger("sc066_test")

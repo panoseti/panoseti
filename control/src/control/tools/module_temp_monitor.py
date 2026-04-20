@@ -6,18 +6,18 @@ turns off the corresponding web power switch.
 """
 
 import datetime
-import logging
-import os
 import time
 from typing import Any
 
 import redis
 import redis_utils
+from panoseti_grpc.telemetry.logger import get_logger
 
 import control.power as power
 from control.utils import config_file
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import ObsConfigValidator
-from control.utils.util import are_redis_daemons_running, create_logger
+from control.utils.util import are_redis_daemons_running
 
 # Safe operating temperature ranges (in Celsius)
 MIN_DETECTOR_TEMP = -20
@@ -25,6 +25,9 @@ MAX_DETECTOR_TEMP = 60
 MAX_FPGA_TEMP = 80
 
 UPDATE_INTERVAL = 10  # Seconds between temperature checks
+
+PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
+logger = get_logger(service_name='temp_monitor', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
 
 
 def is_acceptable_temperature(temps: list[float]) -> tuple[bool, bool]:
@@ -58,7 +61,6 @@ def check_all_module_temps(obs_config: ObsConfigValidator | dict[str, Any], wps_
     if isinstance(obs_config, dict):
         obs_config = ObsConfigValidator(**obs_config)
 
-    logger = logging.getLogger('PANOSETI.TempMonitor')
     wps_to_turn_off = set()
     for dome in obs_config.domes:
         for module in dome.modules:
@@ -144,17 +146,11 @@ def update_power(obs_config: ObsConfigValidator | dict[str, Any], wps_to_modules
         try:
             power.do_wps(wps_name, obs_config, 'off')
         except Exception as e:
-            logger = logging.getLogger('PANOSETI.TempMonitor')
             logger.error(f"Failed to turn off WPS {wps_name}: {e}")
 
 
 
 def main() -> None:
-    # create logger
-    logfile = 'logs/temp_monitor.log'
-    os.makedirs(os.path.dirname(logfile), exist_ok=True)
-    create_logger(logfile, 'PANOSETI.TempMonitor', 'a')
-    logger = logging.getLogger('PANOSETI.TempMonitor')
     logger.info('************************************')
     """Makes a call to check_all_module_temps every UPDATE_INTERVAL seconds."""
     obs_config = config_file.get_obs_config()
@@ -163,7 +159,7 @@ def main() -> None:
     if not are_redis_daemons_running():
         logger.info('Please start redis daemons')
         return
-    print("module_temp_monitor: Running...")
+    logger.info("module_temp_monitor: Running...")
     while True:
         time.sleep(UPDATE_INTERVAL)
         wps_to_turn_off = check_all_module_temps(obs_config, wps_to_modules, r)
@@ -175,6 +171,5 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         msg = "module_temp_monitor: {0} \n\tFailed and exited with the error message: {1}"
-        logger = logging.getLogger('PANOSETI.TempMonitor')
         logger.error(msg.format(datetime.datetime.now(), e))
         raise

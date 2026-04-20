@@ -15,10 +15,14 @@
 import time
 from typing import Any
 
+import typer
+from panoseti_grpc.telemetry.logger import get_logger
+
 import control.config as config
 import control.get_uids as get_uids
 import control.power as power
 from control.utils import config_file, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DataConfigValidator,
@@ -26,6 +30,9 @@ from control.utils.pydantic_config_models import (
     ObsConfigValidator,
 )
 
+log_dir = PanoPaths.logs_dir()
+log_dir.mkdir(parents=True, exist_ok=True)
+logger = get_logger("PANOSETI.SessionStart", log_dir=str(log_dir), grpc_enabled=True)
 
 def session_start(
     obs_config: ObsConfigValidator,
@@ -63,48 +70,48 @@ def session_start(
     if stage == 'poweron':
         stage = 'get_uids'
         power.do_all(obs_config, 'on')
-        print('waiting 60 secs for quabos to boot up')
+        logger.info('waiting 60 secs for quabos to boot up')
         time.sleep(60)
 
     if stage == 'get_uids':
         stage = 'reboot'
-        print('getting quabo UIDs')
+        logger.info('getting quabo UIDs')
         get_uids.get_uids(obs_config.model_dump(), network_config if isinstance(network_config, dict) else network_config.model_dump())
 
     if stage == 'reboot':
         stage = 'hk_dest'
         modules = config_file.get_modules(obs_config.model_dump())
-        print('rebooting quabos')
+        logger.info('rebooting quabos')
         quabo_uids = config_file.get_quabo_uids()
         config.do_reboot(modules, quabo_uids.model_dump(), network_config)
-        print('Reboot Successfully.')
+        logger.info('Reboot Successfully.')
 
     if stage == 'hk_dest':
         stage = 'start_redis'
-        print('setting hk dest to this computer')
+        logger.info('setting hk dest to this computer')
         quabo_uids = config_file.get_quabo_uids()
         config.do_hk_dest(modules, quabo_uids, daq_config, network_config)
 
     if stage == 'start_redis':
         stage = 'maroc_config'
-        print('starting Redis daemons')
+        logger.info('starting Redis daemons')
         util.start_redis_daemons()
     
     if stage == 'maroc_config':
         stage = 'mask_config'
-        print('configuring Marocs')
+        logger.info('configuring Marocs')
         quabo_uids = config_file.get_quabo_uids()
         config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
 
     if stage == 'mask_config':
         stage = 'calibrate_ph'
-        print('configuring Masks')
+        logger.info('configuring Masks')
         quabo_uids = config_file.get_quabo_uids()
         config.do_mask_config(modules, data_config, network_config, quabo_uids, True)
     
     if stage == 'calibrate_ph':
         stage = 'open_shutters'
-        print('calibrating PH')
+        logger.info('calibrating PH')
         quabo_uids = config_file.get_quabo_uids()
         config.do_calibrate_ph(modules, quabo_uids, network_config)
         config.do_show_ph_baselines(quabo_uids)
@@ -114,7 +121,6 @@ def session_start(
     #     print('opening shutters')
     #     config.do_shutter("open")
 
-import typer
 
 app = typer.Typer(help="Start an observing session.", no_args_is_help=False, context_settings={"help_option_names": ["-h", "--help"]})
 

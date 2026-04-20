@@ -16,9 +16,10 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 - **Mandate**: NEVER use standard `flock` or `open(..., "w")` for locking as they are unreliable on Docker volumes.
 
 ### 3. Non-Blocking Telemetry
-- **Standard**: All scripts MUST use the asynchronous `panoseti_grpc.telemetry` client via `util.create_logger`.
-- **Logging**: Logs are shipped via gRPC to Loki. `builtins.print` is redirected to `logger.info`.
-- **Mandate**: NEVER use blocking file I/O or synchronous logging handlers.
+- **Standard**: All scripts MUST use the asynchronous `panoseti_grpc.telemetry` client via `panoseti_grpc.telemetry.logger.get_logger`.
+- **Initialization**: Loggers MUST be initialized at the module level using `PanoPaths.logs_dir()` for directory resolution.
+- **Logging**: Logs are shipped via gRPC to Loki. `builtins.print` should only be used for strictly interactive CLI output; all system events MUST use `logger.info`.
+- **Mandate**: NEVER use blocking file I/O or standard `logging.getLogger` without the gRPC handler. Use the unified factory.
 
 ---
 

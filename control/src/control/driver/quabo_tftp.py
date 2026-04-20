@@ -1,34 +1,23 @@
 import contextlib
-import logging
 import os
 import struct
 
 import tftpy
+from panoseti_grpc.telemetry.logger import get_logger
+
+from control.utils.paths import PanoPaths
 
 
 class tftpw:
     def __init__(self, ip: str, port: int = 69) -> None:
         self.ip = ip
         self.client = tftpy.TftpClient(ip, port)
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
-        self.logger = logging.getLogger('PANOSETI.TFTPW')
-        self.logger.setLevel(logging.DEBUG)
-        handler = logging.FileHandler('logs/quabo_tftp.log', mode='w')
-        logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(message)s')
-        handler.setFormatter(logformat)
-        self.logger.addHandler(handler)
+        PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
+        self.logger = get_logger(service_name='quabo_tftp', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
         # deal with the tftpy warning messages
         log_tags = ["tftpy.TftpStates", "tftpy.TftpContext"]
         for tag in log_tags:
-            logger = logging.getLogger(tag)
-            logger.setLevel(logging.DEBUG)
-            handler = logging.FileHandler('logs/tftpy.log', mode='w')
-            logformat = logging.Formatter('%(levelname)s - %(asctime)s - %(message)s')
-            handler.setFormatter(logformat)
-            if logger.handlers:
-                logger.handlers.clear()
-            logger.addHandler(handler)
+            get_logger(service_name=tag, log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
     
     #print help information
     def help(self) -> None:

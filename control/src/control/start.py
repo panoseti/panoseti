@@ -22,7 +22,6 @@
 
 # ---------------- TELEMETRY LOGGING ----------------
 import asyncio
-import builtins
 import json
 import logging
 import os
@@ -36,9 +35,9 @@ import traceback
 from datetime import UTC, datetime
 from typing import Any
 
-# ---------------------------------------------------
 import typer
 
+# ---------------------------------------------------
 # panoseti-grpc imports
 from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.telemetry.logger import get_logger
@@ -71,17 +70,10 @@ app = typer.Typer(
 
 # ---------------------------------------------------
 
-logger = get_logger("PANOSETI.Start", grpc_enabled=True)
+log_dir = PanoPaths.logs_dir()
+log_dir.mkdir(parents=True, exist_ok=True)
+logger = get_logger("PANOSETI.Start", log_dir=str(log_dir), grpc_enabled=True)
 
-_orig_print = builtins.print
-
-def _print(*args: Any, **kwargs: Any) -> None:
-    """Non-blocking redirect for existing print() calls, keeping stdout raw for tests."""
-    msg = kwargs.get("sep", " ").join(str(a) for a in args)
-    _orig_print(msg, **kwargs)
-    logger.info(msg)
-
-builtins.print = _print
 # ---------------------------------------------------
 
 verbose = False
@@ -840,7 +832,6 @@ async def start_run(
     
     return run_name if getattr(tx, 'success', False) else None
 
-import typer
 
 app = typer.Typer(help="Start a PANOSETI recording run.", no_args_is_help=False)
 
@@ -886,12 +877,6 @@ async def async_main_logic(
     verbose: bool,
     force_reset: bool,
 ) -> None:
-    log_dir = PanoPaths.logs_dir()
-    if not await asyncio.to_thread(log_dir.exists):
-        await asyncio.to_thread(log_dir.mkdir, parents=True, exist_ok=True)
-    logfile = str(log_dir / 'start.log')
-    util.create_logger(logfile, 'PANOSETI.Start', 'a')
-    logger = logging.getLogger('PANOSETI.Start')
     logger.info('************************************')
 
     # load config files

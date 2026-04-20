@@ -15,7 +15,6 @@
 #   --run X             clean up run X (default: read from current_run)
 
 import asyncio
-import builtins
 import contextlib
 import os
 import shutil
@@ -28,6 +27,7 @@ from glob import glob
 from typing import Any
 
 import grpc
+import typer
 from panoseti_grpc.daq_control.client import DaqControlClient
 
 try:
@@ -39,6 +39,7 @@ except ImportError:
 import control.config as config
 from control.tools.interleave import PID_FILE
 from control.utils import config_file, pff, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DaqNodeValidator,
@@ -55,14 +56,9 @@ from control.utils.util import (
     recording_ended_filename,
 )
 
-logger = get_logger("PANOSETI.Stop", grpc_enabled=True)
-
-def _print(*args: Any, **kwargs: Any) -> None:
-    """Non-blocking redirect for existing print() calls."""
-    msg = kwargs.get("sep", " ").join(str(a) for a in args)
-    logger.info(msg)
-
-builtins.print = _print
+log_dir = PanoPaths.logs_dir()
+log_dir.mkdir(parents=True, exist_ok=True)
+logger = get_logger("PANOSETI.Stop", log_dir=str(log_dir), grpc_enabled=True)
 
 class StopTransaction:
     """
@@ -561,7 +557,6 @@ async def stop_run(
     return len(getattr(tx, 'all_errors', [])) == 0 and getattr(tx, 'success', False)
 
 
-import typer
 
 app = typer.Typer(help="Stop and finish a PANOSETI recording run.", no_args_is_help=False)
 

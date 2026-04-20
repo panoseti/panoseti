@@ -732,7 +732,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "tftpy", specifier = ">=0.8.2" },
-    { name = "typer", extras = ["all"] },
+    { name = "typer" },
     { name = "types-paramiko", marker = "extra == 'dev'" },
     { name = "types-requests", marker = "extra == 'dev'" },
     { name = "typing-extensions", specifier = ">=4.5" },

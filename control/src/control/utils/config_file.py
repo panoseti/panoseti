@@ -17,9 +17,9 @@ from rich.panel import Panel
 from rich.pretty import pprint
 from rich.tree import Tree
 
-from control.utils.paths import PanoPaths
 from control.utils.config_validator import perform_network_ping_sweep
 from control.utils.global_validator import GlobalConfigValidator
+from control.utils.paths import PanoPaths
 
 # import Pydantic validation models
 from control.utils.pydantic_config_models import (
