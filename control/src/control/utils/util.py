@@ -26,6 +26,7 @@ import __main__
 try:
     from control.driver import quabo_driver
     from control.utils import config_file
+    from control.utils.paths import PanoPaths
     from control.utils.pydantic_config_models import (
         DaemonConfigValidator,
         DaqConfigValidator,
@@ -46,13 +47,13 @@ default_max_file_size_mb = 0        # no limit
 
 #-------------- FILE NAMES ---------------
 
-run_name_file = 'tmp/current_run'
+run_name_file = str(PanoPaths.tmp_dir() / 'current_run')
     # stores the name of the current run
-run_symlink = 'run'
+run_symlink = str(PanoPaths.base_dir() / 'run')
     # name of symlink to current run
-img_symlink = 'img'
-ph_symlink= 'ph'
-hk_symlink= 'hk'
+img_symlink = str(PanoPaths.base_dir() / 'img')
+ph_symlink= str(PanoPaths.base_dir() / 'ph')
+hk_symlink= str(PanoPaths.base_dir() / 'hk')
     # names of symlinks to first img and ph file in current run
 
 hk_file_name = 'hk.pff'

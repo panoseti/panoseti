@@ -7,10 +7,11 @@ import tempfile
 import tomllib
 from typing import Any
 
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger
 
-LOCK_FILE = "tmp/panoseti_control.lock"
-STATE_FILE = "tmp/run_state.toml"
+LOCK_FILE = "panoseti_control.lock"
+STATE_FILE = "run_state.toml"
 
 
 class ValidationError(Exception):
@@ -29,14 +30,21 @@ class RunStateManager:
     Ensures transactional integrity across start/stop operations.
     """
 
-    def __init__(self, base_dir: str = ".") -> None:
-        self.base_dir = pathlib.Path(base_dir)
-        self.lock_path = self.base_dir / LOCK_FILE
-        self.state_path = self.base_dir / STATE_FILE
+    def __init__(self, base_dir: str | None = None) -> None:
+        if base_dir:
+            self.base_dir = pathlib.Path(base_dir)
+            # Legacy/override: assume tmp/ exists under the provided base_dir
+            self.lock_path = self.base_dir / "tmp" / LOCK_FILE
+            self.state_path = self.base_dir / "tmp" / STATE_FILE
+        else:
+            self.base_dir = PanoPaths.tmp_dir()
+            self.lock_path = self.base_dir / LOCK_FILE
+            self.state_path = self.base_dir / STATE_FILE
+
         self._lock_fh: Any | None = None
         self._async_lock = asyncio.Lock()
 
-        # Ensure tmp/ exists
+        # Ensure directory exists
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
     def acquire_lock(self) -> None:

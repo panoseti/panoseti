@@ -1,6 +1,6 @@
 import typer
 
-from control import config, power, session_start, session_stop, start, status, stop
+from control import config, paths_cli, power, session_start, session_stop, start, status, stop
 from control.ci import qa
 
 app = typer.Typer(
@@ -14,6 +14,7 @@ app = typer.Typer(
 app.add_typer(qa.app, name="test")
 app.add_typer(config.app, name="config")
 app.add_typer(power.app, name="power")
+app.add_typer(paths_cli.app, name="paths")
 
 # Register top-level commands
 app.command(name="start")(start.main)

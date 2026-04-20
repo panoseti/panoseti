@@ -48,6 +48,7 @@ import control.stop as stop
 from control.driver import quabo_driver
 from control.tools.sw_info import get_sw_info
 from control.utils import config_file, file_xfer, pff, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DaqNodeValidator,
@@ -885,9 +886,10 @@ async def async_main_logic(
     verbose: bool,
     force_reset: bool,
 ) -> None:
-    if not await asyncio.to_thread(os.path.exists, 'logs'):
-        await asyncio.to_thread(os.makedirs, 'logs')
-    logfile = 'logs/start.log'
+    log_dir = PanoPaths.logs_dir()
+    if not await asyncio.to_thread(log_dir.exists):
+        await asyncio.to_thread(log_dir.mkdir, parents=True, exist_ok=True)
+    logfile = str(log_dir / 'start.log')
     util.create_logger(logfile, 'PANOSETI.Start', 'a')
     logger = logging.getLogger('PANOSETI.Start')
     logger.info('************************************')

@@ -17,6 +17,7 @@ from rich.panel import Panel
 from rich.pretty import pprint
 from rich.tree import Tree
 
+from control.utils.paths import PanoPaths
 from control.utils.config_validator import perform_network_ping_sweep
 from control.utils.global_validator import GlobalConfigValidator
 
@@ -46,22 +47,22 @@ RAISE_VALIDATION_ERRORS = False
 
 # TODO: we need to improve the file path
 # configs file
-obs_config_filename = 'configs/obs_config.json'
-daq_config_filename = 'configs/daq_config.json'
-data_config_filename = 'configs/data_config.json'
-network_config_filename = 'configs/network_config.json'
-daemons_config_filename = 'configs/daemons.json'
-firmware_config_filename = 'configs/firmware.json'
+obs_config_filename = 'obs_config.json'
+daq_config_filename = 'daq_config.json'
+data_config_filename = 'data_config.json'
+network_config_filename = 'network_config.json'
+daemons_config_filename = 'daemons.json'
+firmware_config_filename = 'firmware.json'
 # quabo realted files
-quabo_info_filename = 'quabos/quabo_info.json'
-detector_info_filename = 'quabos/detector_info.json'
-quabo_calib_filename = 'quabos/detovervol_%dv/%s/quabo_calib_%s.json'
+quabo_info_filename = 'quabo_info.json'
+detector_info_filename = 'detector_info.json'
+quabo_calib_filename = 'detovervol_%dv/%s/quabo_calib_%s.json'
 # These files are creatd during the run,
 # and will be copied to the final data dir
-quabo_uids_filename = 'tmp/quabo_uids.json'
-quabo_ph_baseline_filename = 'tmp/quabo_ph_baseline.json'
-sw_info_filename = 'tmp/sw_info.json'
-quabo_config_filename = 'tmp/quabo_config_*.json'
+quabo_uids_filename = 'quabo_uids.json'
+quabo_ph_baseline_filename = 'quabo_ph_baseline.json'
+sw_info_filename = 'sw_info.json'
+quabo_config_filename = 'quabo_config_*.json'
 
 # list of config files copied to data dir
 config_file_names = [
@@ -223,55 +224,58 @@ def check_config_file(name: str, dir: str = '.') -> None:
         sys.exit(1)
 
 
-def get_obs_config(dir: str = '.') -> ObsConfigValidator:
+def get_obs_config(dir: str | None = None) -> ObsConfigValidator:
     """Load and validate the observatory configuration.
 
     Args:
-        dir: The directory containing the config file.
+        dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
         A validated ObsConfigValidator model.
     """
+    config_dir = dir if dir is not None else str(PanoPaths.config_dir())
     # pass assign_numbers so it injects `id` and `num` before validation
-    return load_and_validate(ObsConfigValidator, obs_config_filename, dir, "Obs Config", assign_numbers)
+    return load_and_validate(ObsConfigValidator, obs_config_filename, config_dir, "Obs Config", assign_numbers)
 
-def get_daq_config(dir: str = '.') -> DaqConfigValidator:
+def get_daq_config(dir: str | None = None) -> DaqConfigValidator:
     """Load and validate the DAQ configuration.
 
     Args:
-        dir: The directory containing the config file.
+        dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
         A validated DaqConfigValidator model.
     """
+    config_dir = dir if dir is not None else str(PanoPaths.config_dir())
     # pass expand_ranges so it parses module string ranges before validation
-    return load_and_validate(DaqConfigValidator, daq_config_filename, dir, "DAQ Config", expand_ranges)
+    return load_and_validate(DaqConfigValidator, daq_config_filename, config_dir, "DAQ Config", expand_ranges)
 
-def get_data_config(dir: str = '.') -> DataConfigValidator:
+def get_data_config(dir: str | None = None) -> DataConfigValidator:
     """Load and validate the data (science/engineering) configuration.
 
     Args:
-        dir: The directory containing the config file.
+        dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
         A validated DataConfigValidator model.
     """
-    return load_and_validate(DataConfigValidator, data_config_filename, dir, "Data Config")
+    config_dir = dir if dir is not None else str(PanoPaths.config_dir())
+    return load_and_validate(DataConfigValidator, data_config_filename, config_dir, "Data Config")
 
-def get_network_config(dir: str = '.') -> NetworkConfigValidator:
+def get_network_config(dir: str | None = None) -> NetworkConfigValidator:
     """Load and validate the network configuration.
 
     Falls back to an empty NetworkConfigValidator (no port forwarding) with a
     warning if the file is missing or invalid, assuming a flat local network.
 
     Args:
-        dir: The directory containing the config file.
+        dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
         A validated NetworkConfigValidator model.
     """
-    check_config_file(network_config_filename, dir)
-    path = f'{dir}/{network_config_filename}'
+    config_dir = dir if dir is not None else str(PanoPaths.config_dir())
+    path = os.path.join(config_dir, network_config_filename)
     try:
         with open(path) as f:
             s = f.read()
@@ -281,30 +285,32 @@ def get_network_config(dir: str = '.') -> NetworkConfigValidator:
         print("******All the devices should be in the same subnet *******")
         return NetworkConfigValidator()
 
-    return load_and_validate(NetworkConfigValidator, network_config_filename, dir, "Network Config")
+    return load_and_validate(NetworkConfigValidator, network_config_filename, config_dir, "Network Config")
 
 
-def get_firmware_config(dir: str = '.') -> FirmwareConfigValidator:
+def get_firmware_config(dir: str | None = None) -> FirmwareConfigValidator:
     """Load and validate the firmware configuration.
 
     Args:
-        dir: The directory containing the config file.
+        dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
         A validated FirmwareConfigValidator model.
     """
-    return load_and_validate(FirmwareConfigValidator, firmware_config_filename, dir, "Firmware Config")
+    config_dir = dir if dir is not None else str(PanoPaths.config_dir())
+    return load_and_validate(FirmwareConfigValidator, firmware_config_filename, config_dir, "Firmware Config")
 
-def get_daemons_config(dir: str = '.') -> DaemonConfigValidator:
+def get_daemons_config(dir: str | None = None) -> DaemonConfigValidator:
     """Load and validate the daemons configuration.
 
     Args:
-        dir: The directory containing the config file.
+        dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
         A validated DaemonConfigValidator model.
     """
-    return load_and_validate(DaemonConfigValidator, daemons_config_filename, dir, "Daemons Config")
+    config_dir = dir if dir is not None else str(PanoPaths.config_dir())
+    return load_and_validate(DaemonConfigValidator, daemons_config_filename, config_dir, "Daemons Config")
 
 def get_quabo_uids() -> QuaboUidsValidator:
     """Load and validate the Quabo UIDs from the local cache file.
@@ -312,10 +318,11 @@ def get_quabo_uids() -> QuaboUidsValidator:
     Returns:
         A validated QuaboUidsValidator model.
     """
-    if not os.path.exists(quabo_uids_filename):
-        print(f"{quabo_uids_filename} is missing.  Run get_uids.py")
+    path = PanoPaths.tmp_dir() / quabo_uids_filename
+    if not path.exists():
+        print(f"{path} is missing.  Run get_uids.py")
         sys.exit(1)
-    with open(quabo_uids_filename) as f:
+    with open(path) as f:
         s = f.read()
     quabo_uids_conf: dict[str, Any] = json.loads(s)
     assign_numbers(quabo_uids_conf)
@@ -346,15 +353,20 @@ def get_detector_info() -> dict[str, float]:
     Returns:
         A dictionary mapping detector serial numbers to operating voltages.
     """
-    check_config_file(detector_info_filename)
-    with open(detector_info_filename) as f:
+    check_config_file(detector_info_filename, str(PanoPaths.quabos_dir()))
+    path = PanoPaths.quabos_dir() / detector_info_filename
+    with open(path) as f:
         s = f.read()
     c: list[dict[str, Any]] = json.loads(s)
     d: dict[str, float] = {}
-    with open(obs_config_filename) as f:
+
+    obs_config_path = PanoPaths.config_dir() / obs_config_filename
+    with open(obs_config_path) as f:
         s = f.read()
     json.loads(s)
-    with open(data_config_filename) as f:
+
+    data_config_path = PanoPaths.config_dir() / data_config_filename
+    with open(data_config_path) as f:
         s = f.read()
     data_config: dict[str, Any] = json.loads(s)
     for det in c:
@@ -378,8 +390,9 @@ def get_quabo_info() -> dict[str, Any]:
     Returns:
         A dictionary mapping Quabo UIDs to their metadata objects.
     """
-    check_config_file(quabo_info_filename)
-    with open(quabo_info_filename) as f:
+    check_config_file(quabo_info_filename, str(PanoPaths.quabos_dir()))
+    path = PanoPaths.quabos_dir() / quabo_info_filename
+    with open(path) as f:
         s = f.read()
     c: list[dict[str, Any]] = json.loads(s)
     d: dict[str, Any] = {}
@@ -393,8 +406,9 @@ def get_quabo_ph_baselines() -> dict[str, Any]:
     Returns:
         A dictionary containing the Quabo pulse-height baselines.
     """
-    check_config_file(quabo_ph_baseline_filename)
-    with open(quabo_ph_baseline_filename) as f:
+    check_config_file(quabo_ph_baseline_filename, str(PanoPaths.tmp_dir()))
+    path = PanoPaths.tmp_dir() / quabo_ph_baseline_filename
+    with open(path) as f:
         s = f.read()
     c: dict[str, Any] = json.loads(s)
     return c
@@ -411,7 +425,7 @@ def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]
         A dictionary containing the calibration data.
     """
     #print('reading calib file %s'%serialno)
-    path = quabo_calib_filename%(detovervol, mode, serialno)
+    path = PanoPaths.quabos_dir() / (quabo_calib_filename % (detovervol, mode, serialno))
     with open(path) as f:
         s = f.read()
     return json.loads(s)

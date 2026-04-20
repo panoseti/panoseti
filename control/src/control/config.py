@@ -27,6 +27,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
 from control.utils import config_file, file_xfer, pixel_coords, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DataConfigValidator,
@@ -1053,14 +1054,16 @@ def do_dry_run_interleave() -> None:
 
 
 def setup_logging(name: str = 'PANOSETI.Config'):
-    # if not os.path.exists('logs'):
-    #     os.makedirs('logs')
-    # logfile = 'logs/config.log'
-    # util.create_logger(logfile, name, 'a')
+    log_dir = PanoPaths.logs_dir()
+    if not log_dir.exists():
+        log_dir.mkdir(parents=True, exist_ok=True)
+    logfile = str(log_dir / 'config.log')
+    util.create_logger(logfile, name, 'a')
+
     # logger = logging.getLogger(name)
     logger = get_logger(
         service_name=name,
-        log_dir='logs',
+        log_dir=str(log_dir),
         grpc_enabled=True,
     )
     # logger.info('************************************')
