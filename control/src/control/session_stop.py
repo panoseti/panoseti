@@ -22,8 +22,22 @@ def session_stop(obs_config: ObsConfigValidator) -> None:
         print("You don't have permission to stop the redis daemons. "
               "Try running 'sudo ./config.py --stop_redis_daemons'.")
 
-if __name__ == "__main__":
+import typer
+
+app = typer.Typer(help="Gracefully terminate an observing session.", no_args_is_help=False, context_settings={"help_option_names": ["-h", "--help"]})
+
+@app.command()
+def main() -> None:
+    """
+    Gracefully terminate an observing session.
+    
+    Powers off all modules and stops background Redis daemons.
+    """
     obs_config = config_file.get_obs_config()
     session_stop(obs_config)
+
+
+if __name__ == "__main__":
+    app()
     
 

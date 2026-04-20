@@ -30,7 +30,7 @@ ps -p $(cat tmp/panoseti_control.lock)
 
 ### Ledger left in ACTIVE state
 
-`tmp/run_state.toml` persisting between tests causes `start.py` to refuse with "A run is already in progress."
+`tmp/run_state.toml` persisting between tests causes `pseti start` to refuse with "A run is already in progress."
 - **StartTransaction** and **StopTransaction** manage the status lifecycle.
 - Inspect the ledger for status leaks:
 ```bash
@@ -170,7 +170,7 @@ The `grpc_error_handler` decorator in `panoseti_grpc/util/error_handling.py` has
 ## 6. Advanced Insights
 
 ### asyncio TaskGroup and Concurrent RPCs
-`start.py` uses `asyncio.TaskGroup` for fail-fast concurrency.
+`pseti start` uses `asyncio.TaskGroup` for fail-fast concurrency.
 - **Fail-Fast**: If one `StartDaq` RPC fails, all others are immediately cancelled.
 - **Atomic Rollback**: The `StartTransaction.__aexit__` re-loads the ledger to identify which nodes received a receipt before cancellation and issues `StopDaq` to them in the correct priority order.
 
@@ -178,4 +178,4 @@ The `grpc_error_handler` decorator in `panoseti_grpc/util/error_handling.py` has
 Always write the node receipt to `run_state.toml` **before** issuing the gRPC call. This ensures that if the process is killed during the RPC, the rollback ladder knows the node was "attempted" and can clean it up.
 
 ### TransferQueue idempotency
-`TransferQueue.enqueue()` checks all four subdirs (`pending/`, `active/`, `completed/`, `failed/`) before writing. Double-enqueueing the same run name is a no-op. This is intentional — a crashed `stop.py` that re-runs will not create a duplicate job.
+`TransferQueue.enqueue()` checks all four subdirs (`pending/`, `active/`, `completed/`, `failed/`) before writing. Double-enqueueing the same run name is a no-op. This is intentional — a crashed `pseti stop` that re-runs will not create a duplicate job.

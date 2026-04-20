@@ -12,9 +12,7 @@
 # - start the Redis daemons
 # - copy software to DAQ nodes
 
-import os
 import time
-from argparse import ArgumentParser
 from typing import Any
 
 import control.config as config
@@ -116,26 +114,39 @@ def session_start(
     #     print('opening shutters')
     #     config.do_shutter("open")
 
-def main() -> None:
-    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
-    parser.add_argument('--no_hv', dest='no_hv', action='store_true', default=False,
-                        help='Turn off HV when running `start.py`.')
-    parser.add_argument('--stage', dest='stage', type=str, default='poweron', 
-                        choices=['poweron', 'get_uids', 'reboot', 'hk_dest', 'start_redis',
-                                 'maroc_config', 'mask_config', 'calibrate_ph', 'show_ph_baselines'],
-                        help='The session will start from this stage.')
-    # parse the args
-    args = parser.parse_args()
+import typer
+
+app = typer.Typer(help="Start an observing session.", no_args_is_help=False, context_settings={"help_option_names": ["-h", "--help"]})
+
+@app.command()
+def main(
+    no_hv: bool = typer.Option(False, "--no_hv", help="Turn off HV when running `start.py`."),
+    stage: str = typer.Option("poweron", help="The session will start from this stage: poweron, get_uids, reboot, hk_dest, start_redis, maroc_config, mask_config, calibrate_ph, show_ph_baselines.")
+):
+    """
+    start an \"observing session\":
+    - open domes (TBD)
+    - power on relevant modules
+    - wait for quabos to come up
+    - get quabo UIDs
+    - reboot quabos
+    - turn on HV (using levels from quabo config files)
+    - set gain params of Marocs
+    - do PH baseline calibration
+    - start the Redis daemons
+    - copy software to DAQ nodes
+    """
     # session start
     session_start(
-            config_file.get_obs_config(),
-            config_file.get_quabo_info(),
-            config_file.get_data_config(),
-            config_file.get_daq_config(),
-            config_file.get_network_config(),
-            args.no_hv,
-            args.stage
-        )
+        config_file.get_obs_config(),
+        config_file.get_quabo_info(),
+        config_file.get_data_config(),
+        config_file.get_daq_config(),
+        config_file.get_network_config(),
+        no_hv,
+        stage
+    )
+
 
 if __name__ == "__main__":
-    main()
+    app()

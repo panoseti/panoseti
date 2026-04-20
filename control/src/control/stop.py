@@ -24,7 +24,6 @@ import socket
 import subprocess
 import sys
 import time
-from argparse import ArgumentParser
 from glob import glob
 from typing import Any
 
@@ -562,19 +561,30 @@ async def stop_run(
     return len(getattr(tx, 'all_errors', [])) == 0 and getattr(tx, 'success', False)
 
 
-def main() -> None:
-    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
-    parser.add_argument('--no_cleanup', dest='no_cleanup', action='store_true', default=False,
-                        help='Don\'t clean up the data files on the DAQ nodes.')
-    parser.add_argument('--no_collect', dest='no_collect', action='store_true', default=False,
-                        help='Don\'t collect the data files to the head node.')
-    parser.add_argument('--run', dest='run', type=str, default=None,
-                        help='Stop/Cleanup specific run.')
-    parser.add_argument('--force-cleanup', dest='force_cleanup', action='store_true', default=False,
-                        help='Force cleanup on DAQ nodes even if hashpipe liveness is uncertain.')
-    parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
-                        help='Print commands.')
-    args = parser.parse_args()
+import typer
+
+app = typer.Typer(help="Stop and finish a PANOSETI recording run.", no_args_is_help=False)
+
+@app.command()
+def main(
+    no_cleanup: bool = typer.Option(False, "--no_cleanup", help="Don't clean up the data files on the DAQ nodes."),
+    no_collect: bool = typer.Option(False, "--no_collect", help="Don't collect the data files to the head node."),
+    run: str | None = typer.Option(None, "--run", help="Stop/Cleanup specific run."),
+    force_cleanup: bool = typer.Option(False, "--force-cleanup", help="Force cleanup on DAQ nodes even if hashpipe liveness is uncertain."),
+    verbose: bool = typer.Option(False, "--verbose", help="Print details."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
+):
+    """
+    stop and finish a recording run if one is in progress.
+    stop recording activities whether or not a run is in progress.
+
+    - tell DAQs to stop recording
+    - stop HK recorder process
+    - tell quabos to stop sending data
+    - if a run is in progress, copy data files to head and delete from DAQs
+    """
+    if not yes:
+        typer.confirm("Are you sure you want to stop the recording run?", abort=True)
 
     # Load configurations as Pydantic objects
     daq_config = config_file.get_daq_config()
@@ -591,12 +601,12 @@ def main() -> None:
     # Execute async stop_run
     success = asyncio.run(stop_run(
         daq_config, network_config, quabo_uids, 
-        args.verbose, args.no_cleanup, args.no_collect, args.run, args.force_cleanup
+        verbose, no_cleanup, no_collect, run, force_cleanup
     ))
     sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
-    main()
+    app()
 
 

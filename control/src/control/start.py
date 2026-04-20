@@ -33,9 +33,11 @@ import subprocess
 import sys
 import time
 import traceback
-from argparse import ArgumentParser
 from datetime import UTC, datetime
 from typing import Any
+
+# ---------------------------------------------------
+import typer
 
 # panoseti-grpc imports
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -56,9 +58,6 @@ from control.utils.pydantic_config_models import (
     RunStateLedger,
 )
 from control.utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
-
-# ---------------------------------------------------
-import typer
 
 app = typer.Typer(
     
@@ -840,36 +839,58 @@ async def start_run(
     
     return run_name if getattr(tx, 'success', False) else None
 
-async def async_main() -> None:
+import typer
+
+app = typer.Typer(help="Start a PANOSETI recording run.", no_args_is_help=False)
+
+@app.command()
+def main(
+    no_hv: bool = typer.Option(False, "--no_hv", help="Take data without high voltage."),
+    no_redis: bool = typer.Option(False, "--no_redis", help="OK if redis daemons not running."),
+    no_data: bool = typer.Option(False, "--no_data", help="Set up to record, but don't start data flow or record."),
+    nsecs: int = typer.Option(0, "--nsecs", help="Record for N seconds, then stop run."),
+    stop_session: bool = typer.Option(False, "--stop_session", help="Stop session at end of run (with --nsecs)."),
+    verbose: bool = typer.Option(False, "--verbose", help="print commands."),
+    force_reset: bool = typer.Option(False, "--force-reset", help="Force reset the state ledger if stale."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
+):
+    """
+    start a recording run:
+
+    - figure out association of quabos and DAQ nodes,
+      based on config files
+    - create \"run directories\" on head node, DAQ nodes
+    - start the HK recorder
+    - start the HV updater
+    - start the temperature monitor
+    - start the flow of data: set DAQ mode and dest IP addr of quabos
+    - send commands to DAQ nodes to start hashpipe program
+
+    fail if a recording run is in progress,
+    or if recording activities are active
+    """
+    if not yes:
+        typer.confirm("Are you sure you want to start a new recording run?", abort=True)
+        
+    asyncio.run(async_main_logic(
+        no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset
+    ))
+
+async def async_main_logic(
+    no_hv: bool,
+    no_redis: bool,
+    no_data: bool,
+    nsecs: int,
+    stop_session: bool,
+    verbose: bool,
+    force_reset: bool,
+) -> None:
     if not await asyncio.to_thread(os.path.exists, 'logs'):
         await asyncio.to_thread(os.makedirs, 'logs')
     logfile = 'logs/start.log'
     util.create_logger(logfile, 'PANOSETI.Start', 'a')
     logger = logging.getLogger('PANOSETI.Start')
     logger.info('************************************')
-    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
-    parser.add_argument('--no_hv', dest='no_hv', action='store_true', default=False,
-                        help='Take data without high voltage.')
-    parser.add_argument('--no_redis', dest='no_redis', action='store_true', default=False,
-                        help='OK if redis daemons not running.')
-    parser.add_argument('--no_data', dest='no_data', action='store_true', default=False,
-                        help='Set up to record, but don\'t start data flow or record.')
-    parser.add_argument('--nsecs', dest='nsecs', type=int, default=0,
-                        help='Record for N seconds, then stop run.')
-    parser.add_argument('--stop_session', dest='stop_session', action='store_true', default=False,
-                        help='Stop session at end of run (with --nsecs).')
-    parser.add_argument('--verbose', dest='verbose', action='store_true', default=False,
-                        help='print commands.')
-    parser.add_argument('--force-reset', dest='force_reset', action='store_true', default=False,
-                        help='Force reset the state ledger if stale.')
-    args = parser.parse_args()
-    no_hv = args.no_hv
-    no_redis = args.no_redis
-    no_data = args.no_data
-    nsecs = args.nsecs
-    stop_session = args.stop_session
-    verbose = args.verbose
-    force_reset = args.force_reset
 
     # load config files
     obs_config = config_file.get_obs_config()
@@ -899,9 +920,5 @@ async def async_main() -> None:
             session_stop.session_stop(obs_config)
 
 
-def main() -> None:
-    asyncio.run(async_main())
-
-
 if __name__ == "__main__":
-    main()
+    app()

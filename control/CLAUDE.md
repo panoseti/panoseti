@@ -11,17 +11,17 @@ This file supplements the root-level `../CLAUDE.md`, which covers the full repo 
 The root CLAUDE.md has some stale entries for the `control/` package:
 
 - **Python version**: `requires-python = ">=3.14"` (not 3.9)
-- **CI runner**: `python ci/qa.py <cmd>`
+- **CI runner**: `pseti test <cmd>`
 - **Integration test count**: 65 passing
-- **Unit test count**: 524 passing (12 modules)
-- **Chaos/scenario test count**: 114 tests (91 active, 23 stubs) in `ci/integration/scenarios/`
+- **Unit test count**: 538 passing (12 modules)
+- **Chaos/scenario test count**: 114 tests (91 active, 23 stubs) in `src/control/ci/integration/scenarios/`
 
 ---
 
 ## Verification & Quality Standards
 
 ### Linting and Type Safety
-The project enforces strict linting via Ruff and type checking via MyPy. All new code must pass `python ci/qa.py lint`.
+The project enforces strict linting via Ruff and type checking via MyPy. All new code must pass `pseti test lint`.
 
 - **Pydantic Model Authority**: Instantiated models from `utils/pydantic_config_models.py` must be passed across call boundaries. Polymorphic functions must validate dictionaries into models at the entry point.
 - **Attribute Access**: Always prefer model attribute access (`config.daq_nodes`) over dictionary indexing (`config['daq_nodes']`).
@@ -42,7 +42,7 @@ The observatory uses a **Context Manager Architecture** to manage the lifecycle 
 ### Lock Hierarchy
 | Lock file | Mechanism | Held by | Duration |
 |---|---|---|---|
-| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `start.py` / `stop.py` | Seconds (hardware I/O only) |
+| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
 | `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Job duration (minutes to hours) |
 
 ### RunStateLedger Status Vocabulary
@@ -53,7 +53,7 @@ Error exits: `ABORTED` (from start), `TRANSFER_FAILED`, `VERIFY_FAILED`, `STOPPE
 ### TransferQueue Layout
 ```
 tmp/transfer_queue/
-  pending/    {run_name}.job.toml   ← stop.py writes here
+  pending/    {run_name}.job.toml   ← pseti stop writes here
   active/     {run_name}.job.toml   ← daemon moves here on claim()
   failed/     {run_name}.job.toml   ← daemon moves here after MAX_ATTEMPTS
   completed/  {run_name}.job.toml   ← daemon moves here on success
@@ -65,9 +65,9 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 ---
 
 ## Testing and Debugging
-- **Unit Tests**: Add new cases to `ci/unit/` for every utility function. No hardware or network access is allowed.
-- **Integration Tests**: Verify end-to-end flows in `ci/integration/`. Use `-k` to isolate failures.
-- **Chaos Tests**: Verifies transaction integrity under failure conditions in `ci/integration/scenarios/`. Run via `python ci/qa.py chaos`.
+- **Unit Tests**: Add new cases to `src/control/ci/unit/` for every utility function. No hardware or network access is allowed.
+- **Integration Tests**: Verify end-to-end flows in `src/control/ci/integration/`. Use `-k` to isolate failures.
+- **Chaos Tests**: Verifies transaction integrity under failure conditions in `src/control/ci/integration/scenarios/`. Run via `pseti test chaos`.
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
 - **Telemetry Integration**: Logs are shipped via non-blocking gRPC handlers to a central Loki instance.
 
@@ -78,29 +78,26 @@ Read [DEBUGGING.md](DEBUGGING.md) for advanced troubleshooting techniques and [c
 ## Run tests
 
 ```bash
-# Docker-based (preferred — matches CI exactly)
-python ci/qa.py up           # start persistent background containers once
-python ci/qa.py unit         # Parallel unit tests
-python ci/qa.py integration  # E2E with real hashpipe
-python ci/qa.py chaos        # Chaos/TDD-forcing scenarios
-python ci/qa.py lint         # ruff + mypy concurrently
-python ci/qa.py down         # tear down
+# Standard test suite
+pseti test unit         # Parallel unit tests
+pseti test integration  # E2E with real hashpipe
+pseti test chaos        # Chaos/TDD-forcing scenarios
+pseti test lint         # ruff + mypy concurrently
 
 # Targeted test runs
-python ci/qa.py chaos -k SCN003 -vv    # Verbose scenario debugging
-python ci/qa.py integration -k "real_data"
+pseti test chaos -k SCN003 -vv    # Verbose scenario debugging
+pseti test integration -k "real_data"
 
 # Native (no Docker, unit tests only)
-uv sync --all-extras
-uv run pytest ci/unit/
+pseti test unit --native
 ```
 
-The `chaos` command runs `ci/integration/scenarios/`.
+The `chaos` command runs `src/control/ci/integration/scenarios/`.
 
 ---
 
 ## CI Architecture Notes
-- **Persistent containers**: `python ci/qa.py up` starts containers that are reused across runs to minimize overhead.
+- **Persistent containers**: `pseti test up` starts containers that are reused across runs to minimize overhead.
 - **Live mount**: `control/` is volume-mounted into containers; source edits are visible instantly.
 - **Validation Leniency**: In CI, we bypass strict hardware checks if `daq_config.json` has `head_node_container: true`.
 - **Networking**: `headnode_net` (10.0.1.0/24) hosts telemetry and Loki; `daqnode_net` (192.168.0.0/24) hosts the DAQ fleet.

@@ -1,10 +1,10 @@
 # Observing Run Transactions
 
-This document describes the transactional integrity and rollback mechanisms implemented in the PANOSETI observatory control plane (`start.py` and `stop.py`) using the **Context Manager Architecture**, and the decoupled Transfer Daemon that owns all bulk I/O.
+This document describes the transactional integrity and rollback mechanisms implemented in the PANOSETI observatory control plane (`pseti start` and `pseti stop`) using the **Context Manager Architecture**, and the decoupled Transfer Daemon that owns all bulk I/O.
 
 ## Overview
 
-The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers in `control/utils/run_state.py`. Since the `stop.py` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by `daemons/transfer_daemon.py`.
+The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers in `control/utils/run_state.py`. Since the `pseti stop` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by `daemons/transfer_daemon.py`.
 
 ## State Management & Locking
 
@@ -14,7 +14,7 @@ Two separate advisory locks prevent concurrent operations at different granulari
 
 | Lock file | Mechanism | Held by | Duration |
 |---|---|---|---|
-| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `start.py` / `stop.py` | Seconds (hardware I/O only) |
+| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
 | `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Full job duration (minutes to hours) |
 
 The control lock uses atomic file creation (`O_CREAT | O_EXCL`). If acquisition fails, the PID inside the file is checked — a dead PID causes a self-healing delete and retry (SC-015/SC-021). The transfer lock uses `flock`, which the kernel releases automatically on process exit.
@@ -27,11 +27,11 @@ The system state is persisted in a TOML-based ledger (`tmp/run_state.toml`).
 
 | Status | Owner | Meaning |
 |---|---|---|
-| `STARTING` | start.py | Hardware bring-up in progress |
-| `ACTIVE` | start.py | Observation recording |
-| `ABORTED` | start.py | Rollback completed after startup failure |
-| `STOPPING` | stop.py | Hardware teardown in progress |
-| `RECORDING_ENDED` | stop.py | Hardware stopped; transfer job enqueued |
+| `STARTING` | pseti start | Hardware bring-up in progress |
+| `ACTIVE` | pseti start | Observation recording |
+| `ABORTED` | pseti start | Rollback completed after startup failure |
+| `STOPPING` | pseti stop | Hardware teardown in progress |
+| `RECORDING_ENDED` | pseti stop | Hardware stopped; transfer job enqueued |
 | `MANIFEST_GENERATING` | daemon | DAQ nodes computing checksums |
 | `MANIFEST_READY` | daemon | All manifests generated |
 | `TRANSFER_PENDING` | daemon | Awaiting rsync start |
@@ -122,7 +122,7 @@ flowchart TD
 
 ## Transfer Daemon (`daemons/transfer_daemon.py`)
 
-The daemon is a long-running process started by `session_start.py`. It holds `tmp/panoseti_transfer.lock` as a singleton guard. Multiple `stop.py` invocations never contend with it.
+The daemon is a long-running process started by `session_start.py`. It holds `tmp/panoseti_transfer.lock` as a singleton guard. Multiple `pseti stop` invocations never contend with it.
 
 ### Job Lifecycle
 
@@ -167,7 +167,7 @@ The daemon calls `CleanupData(mode=CLEANUP_SELECTIVE)` with:
 
 ```mermaid
 sequenceDiagram
-    participant Head as Head Node (stop.py)
+    participant Head as Head Node (pseti stop)
     participant Daemon as Transfer Daemon
     participant DAQ as DAQ Nodes
     participant Quabo as Quabo Boards

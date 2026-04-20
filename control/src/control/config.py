@@ -18,9 +18,11 @@ import statistics
 import subprocess
 import sys
 import time
-from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+
+import typer
+from panoseti_grpc.telemetry.logger import get_logger
 
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
@@ -34,13 +36,11 @@ from control.utils.pydantic_config_models import (
     QuaboUidsValidator,
 )
 
-import typer
-
 app = typer.Typer(
     help="config.py alias",
     no_args_is_help=True,
     rich_markup_mode="rich",
-    context_settings={"allow_extra_args": True},
+    context_settings={"allow_extra_args": True, "help_option_names": ["-h", "--help"]},
 )
 
 firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
@@ -1052,83 +1052,152 @@ def do_dry_run_interleave() -> None:
 
 
 
-def main() -> None:
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-    logfile = 'logs/config.log'
-    util.create_logger(logfile, 'PANOSETI.Config', 'a')
-    logger = logging.getLogger('PANOSETI.Config')
-    logger.info('************************************')
-    parser = ArgumentParser(prog=os.path.basename(__file__), allow_abbrev=False)
-    parser.add_argument('--show', dest='show', action='store_true', default=False,
-                        help='Show list of domes/modules/quabos.')
-    parser.add_argument('--ping', dest='ping', action='store_true', default=False,
-                        help='Ping quabos.')
-    parser.add_argument('--reboot', dest='reboot', action='store_true', default=False,
-                        help='Reboot quabos.')
-    parser.add_argument('--reboot_single', dest='reboot_single', type=str, default=None,
-                        help='Reboot a single quabo.')
-    parser.add_argument('--loads', dest='loads', action='store_true', default=False,
-                        help='Load silver firmware in quabos.')
-    parser.add_argument('--init_daq_nodes', dest='init_daq_nodes', action='store_true', default=False,
-                        help='Copy software to daq nodes.')
-    parser.add_argument('--hk_dest', dest='hk_dest', action='store_true', default=False,
-                        help='Set the dest IP for HK packet.')
-    parser.add_argument('--redis_daemons', dest='redis_daemons', action='store_true', default=False,
-                        help='Start daemons to populate Redis with HK/GPS/WR data, and to copy data from Redis to InfluxDB.')
-    parser.add_argument('--stop_redis_daemons', dest='stop_redis_daemons', action='store_true', default=False,
-                        help='Stop the above.')
-    parser.add_argument('--permanent_daemons', dest='permanent_daemons', action='store_true', default=False,
-                        help='Start permanent daemons (permanent_*.py) plus storeInfluxDB.py.')
-    parser.add_argument('--stop_permanent_daemons', dest='stop_permanent_daemons', action='store_true', default=False,
-                        help='Stop the above.')
-    parser.add_argument('--show_permanent_daemons', dest='show_permanent_daemons', action='store_true', default=False,
-                        help='Show permanent daemon status.')
-    parser.add_argument('--hv_on', dest='hv_on', action='store_true', default=False,
-                        help='Enable detectors.')
-    parser.add_argument('--hv_off', dest='hv_off', action='store_true', default=False,
-                        help='Disable detectors.')
-    parser.add_argument('--maroc_config', dest='maroc_config', action='store_true', default=False,
-                        help='Configure MAROCs based on data_config.json and quabo_calib_*.json.')
-    parser.add_argument('--mask_config', dest='mask_config', action='store_true', default=False,
-                        help='Configure masks based on data_config.json.')
-    parser.add_argument('--calibrate_ph', dest='calibrate_ph', action='store_true', default=False,
-                        help='Run PH baseline calibration on quabos and write to file')
-    parser.add_argument('--show_ph_baselines', dest='show_ph_baselines', action='store_true', default=False,
-                        help='Show PH baseline calibration summary statistics')
-    parser.add_argument('--shutter_open', dest='shutter_open', action='store_true', default=False,
-                        help='Open all module shutters')
-    parser.add_argument('--shutter_close', dest='shutter_close', action='store_true', default=False,
-                        help='Close all module shutters')
-    parser.add_argument('--disk_space', dest='disk_space', action='store_true', default=False,
-                        help='Check the disk_space.')
-    parser.add_argument('--start-interleave', action='store_true', help='Start background interleaver')
-    parser.add_argument('--stop-interleave', action='store_true', help='Stop background interleaver')
-    parser.add_argument('--dry-run-interleave', action='store_true',
-                        help='Test the interleave schedule for 2 cycles without hardware commands.')
-    parser.add_argument('--validate', nargs='*', default=None,
-                        help='Validate configs. Modifiers: "graph" (print network routing), "network" (ping IPs), "debug" (print parsed config). Example: --validate graph network')
-    # parser.add_argument('--validate-graph', action='store_true', help='Display the physical/network topology tree.')
-    # we need one option at least
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(1)
-    args = parser.parse_args()
+def setup_logging(name: str = 'PANOSETI.Config'):
+    # if not os.path.exists('logs'):
+    #     os.makedirs('logs')
+    # logfile = 'logs/config.log'
+    # util.create_logger(logfile, name, 'a')
+    # logger = logging.getLogger(name)
+    logger = get_logger(
+        service_name=name,
+        log_dir='logs',
+        grpc_enabled=True,
+    )
+    # logger.info('************************************')
+    return logger
 
-    # Validate arguments before loading config files to check for invalid config before any load attempts
-    if args.validate is not None:
-        modifiers = args.validate
-        debug_mode = 'debug' in modifiers
-        network_mode = 'network' in modifiers
-        graph_mode = 'graph' in modifiers
+@app.command()
+def show():
+    """Show list of domes/modules/quabos."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    quabo_uids = config_file.get_quabo_uids()
+    show_config(obs_config, quabo_uids)
+    util.show_redis_daemons()
 
-        # Run the comprehensive check and exit gracefully!
-        passed = config_file.validate_all(check_network=network_mode, debug=debug_mode, graph=graph_mode)
-        if not passed:
-            sys.exit(1)
-        sys.exit(0)
+@app.command()
+def ping():
+    """Ping quabos."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    network_config = config_file.get_network_config()
+    do_ping(modules, network_config, verbose=True)
 
-    # load config files
+@app.command()
+def reboot():
+    """Reboot quabos."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    daq_config = config_file.get_daq_config()
+    network_config = config_file.get_network_config()
+    util.attach_daq_config(daq_config, network_config)
+    config_file.associate(daq_config, quabo_uids)
+    do_reboot(modules, quabo_uids, network_config)
+    do_hk_dest(modules, quabo_uids, daq_config, network_config)
+
+@app.command()
+def reboot_single(reboot_single: str = typer.Argument(..., help="Reboot a single quabo.")):
+    """Reboot a single quabo."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    network_config = config_file.get_network_config()
+    do_reboot_single_quabo(reboot_single, obs_config, network_config)
+
+@app.command()
+def loads():
+    """Load silver firmware in quabos."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    quabo_info = config_file.get_quabo_info()
+    network_config = config_file.get_network_config()
+    do_loads(modules, quabo_uids, quabo_info, network_config)
+
+@app.command()
+def init_daq_nodes():
+    """Copy software to daq nodes."""
+    logger = setup_logging('PANOSETI.Config.init_daq_nodes')
+    logger.info('Init daq nodes.')
+    daq_config = config_file.get_daq_config()
+    file_xfer.copy_daq_files(daq_config)
+
+@app.command()
+def hk_dest():
+    """Set the dest IP for HK packet."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    daq_config = config_file.get_daq_config()
+    network_config = config_file.get_network_config()
+    util.attach_daq_config(daq_config, network_config)
+    config_file.associate(daq_config, quabo_uids)
+    do_hk_dest(modules, quabo_uids, daq_config, network_config)
+
+@app.command()
+def redis_daemons():
+    """Start daemons to populate Redis with HK/GPS/WR data, and to copy data from Redis to InfluxDB."""
+    logger = setup_logging('PANOSETI.Config.start_redis_daemons')
+    logger.info('Start redis daemons.')
+    util.start_redis_daemons()
+
+@app.command()
+def stop_redis_daemons():
+    """Stop the above."""
+    logger = setup_logging('PANOSETI.Config.stop_redis_daemons')
+    logger.info('Stop redis daemons.')
+    util.stop_redis_daemons()
+
+@app.command()
+def permanent_daemons():
+    """Start permanent daemons (permanent_*.py) plus storeInfluxDB.py."""
+    logger = setup_logging('PANOSETI.Config.start_permanent_daemons')
+    logger.info('Start permanent daemons.')
+    util.start_permanent_daemons()
+
+@app.command()
+def stop_permanent_daemons():
+    """Stop the above."""
+    logger = setup_logging('PANOSETI.Config.stop_permanent_daemons')
+    logger.info('Stop permanent daemons.')
+    util.stop_permanent_daemons()
+
+@app.command()
+def show_permanent_daemons():
+    """Show permanent daemon status."""
+    setup_logging()
+    util.show_permanent_daemons()
+
+@app.command()
+def hv_on():
+    """Enable detectors."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    quabo_info = config_file.get_quabo_info()
+    network_config = config_file.get_network_config()
+    detector_info = config_file.get_detector_info()
+    do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, True)
+
+@app.command()
+def hv_off():
+    """Disable detectors."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    network_config = config_file.get_network_config()
+    do_hv_off(modules, quabo_uids, network_config)
+
+@app.command()
+def maroc_config():
+    """Configure MAROCs based on data_config.json and quabo_calib_*.json."""
+    setup_logging()
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
     quabo_uids = config_file.get_quabo_uids()
@@ -1138,72 +1207,94 @@ def main() -> None:
     util.attach_daq_config(daq_config, network_config)
     config_file.associate(daq_config, quabo_uids)
     data_config = config_file.get_data_config()
+    do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
 
-    # do the tasks
-    if args.reboot:
-        do_reboot(modules, quabo_uids, network_config)
-        do_hk_dest(modules, quabo_uids, daq_config, network_config)
-    elif args.loads:
-        do_loads(modules, quabo_uids, quabo_info, network_config)
-    elif args.ping:
-        do_ping(modules, network_config, verbose=True)
-    elif args.init_daq_nodes:
-        logger = logging.getLogger('PANOSETI.Config.init_daq_nodes')
-        logger.info('Init daq nodes.')
-        file_xfer.copy_daq_files(daq_config)
-    elif args.hk_dest:
-        do_hk_dest(modules, quabo_uids, daq_config, network_config)
-    elif args.redis_daemons:
-        logger = logging.getLogger('PANOSETI.Config.start_redis_daemons')
-        logger.info('Start redis daemons.')
-        util.start_redis_daemons()
-    elif args.stop_redis_daemons:
-        logger = logging.getLogger('PANOSETI.Config.stop_redis_daemons')
-        logger.info('Stop redis daemons.')
-        util.stop_redis_daemons()
-    elif args.permanent_daemons:
-        logger = logging.getLogger('PANOSETI.Config.start_permanent_daemons')
-        logger.info('Start permanent daemons.')
-        util.start_permanent_daemons()
-    elif args.stop_permanent_daemons:
-        logger = logging.getLogger('PANOSETI.Config.stop_permanent_daemons')
-        logger.info('Stop permanent daemons.')
-        util.stop_permanent_daemons()
-    elif args.show_permanent_daemons:
-        util.show_permanent_daemons()
-    elif args.show:
-        show_config(obs_config, quabo_uids)
-        util.show_redis_daemons()
-    elif args.hv_on:
-        detector_info = config_file.get_detector_info()
-        do_hv_on(modules, quabo_uids, quabo_info, detector_info, network_config, True)
-    elif args.hv_off:
-        do_hv_off(modules, quabo_uids, network_config)
-    elif args.maroc_config:
-        do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config, True)
-    elif args.mask_config:
-        do_mask_config(modules, data_config, network_config, quabo_uids, True)
-    elif args.calibrate_ph:
-        do_calibrate_ph(modules, quabo_uids, network_config)
-    elif args.disk_space:
-        do_disk_space(data_config.model_dump(), daq_config.model_dump(), True)
-    elif args.shutter_open:
-        do_shutter("open")
-    elif args.shutter_close:
-        do_shutter("close")
-    elif args.show_ph_baselines:
-        do_show_ph_baselines(quabo_uids)
-    elif args.reboot_single is not None:
-        do_reboot_single_quabo(args.reboot_single, obs_config, network_config)
-    elif args.start_interleave:
-        do_start_interleave()
-    elif args.stop_interleave:
-        do_stop_interleave()
-    elif args.dry_run_interleave:
-        do_dry_run_interleave()
+@app.command()
+def mask_config():
+    """Configure masks based on data_config.json."""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    network_config = config_file.get_network_config()
+    data_config = config_file.get_data_config()
+    do_mask_config(modules, data_config, network_config, quabo_uids, True)
 
+@app.command()
+def calibrate_ph():
+    """Run PH baseline calibration on quabos and write to file"""
+    setup_logging()
+    obs_config = config_file.get_obs_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    network_config = config_file.get_network_config()
+    do_calibrate_ph(modules, quabo_uids, network_config)
 
+@app.command()
+def show_ph_baselines():
+    """Show PH baseline calibration summary statistics"""
+    setup_logging()
+    quabo_uids = config_file.get_quabo_uids()
+    do_show_ph_baselines(quabo_uids)
+
+@app.command()
+def shutter_open():
+    """Open all module shutters"""
+    setup_logging()
+    do_shutter("open")
+
+@app.command()
+def shutter_close():
+    """Close all module shutters"""
+    setup_logging()
+    do_shutter("close")
+
+@app.command()
+def disk_space():
+    """Check the disk_space."""
+    setup_logging()
+    daq_config = config_file.get_daq_config()
+    data_config = config_file.get_data_config()
+    do_disk_space(data_config.model_dump(), daq_config.model_dump(), True)
+
+@app.command()
+def start_interleave():
+    """Start background interleaver"""
+    setup_logging()
+    do_start_interleave()
+
+@app.command()
+def stop_interleave():
+    """Stop background interleaver"""
+    setup_logging()
+    do_stop_interleave()
+
+@app.command()
+def dry_run_interleave():
+    """Test the interleave schedule for 2 cycles without hardware commands."""
+    setup_logging()
+    do_dry_run_interleave()
+
+@app.command()
+def validate(modifiers: list[str] = typer.Argument(None, help='Validate configs. Modifiers: "graph" (print network routing), "network" (ping IPs), "debug" (print parsed config). Example: --validate graph network')):
+    """Validate configs. Modifiers: "graph" (print network routing), "network" (ping IPs), "debug" (print parsed config). Example: --validate graph network"""
+    setup_logging()
+    if modifiers is not None:
+        debug_mode = 'debug' in modifiers
+        network_mode = 'network' in modifiers
+        graph_mode = 'graph' in modifiers
+
+        # Run the comprehensive check and exit gracefully!
+        passed = config_file.validate_all(check_network=network_mode, debug=debug_mode, graph=graph_mode)
+        if not passed:
+            raise typer.Exit(code=1)
+        raise typer.Exit(code=0)
+    else:
+        passed = config_file.validate_all(check_network=False, debug=False, graph=False)
+        if not passed:
+            raise typer.Exit(code=1)
+        raise typer.Exit(code=0)
 
 if __name__ == "__main__":
-    main()
+    app()
 

@@ -45,9 +45,6 @@ dev = [
 
 [project.scripts]
 pseti = "control.pseti:app"
-pano-start = "control.start:main"
-pano-stop = "control.stop:main"
-pano-status = "control.status:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

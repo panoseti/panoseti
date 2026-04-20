@@ -9,7 +9,6 @@
 #   default is "wps"
 
 import os
-import sys
 from datetime import UTC, datetime
 from typing import Any
 
@@ -143,18 +142,29 @@ def do_all(obs_config: ObsConfigValidator, op: str) -> None:
         do_wps(key, obs_config, op)
 
 
-if __name__ == "__main__":
-    op = 'query'
-    wps_name = 'wps'
-    i = 1
-    while i < len(sys.argv):
-        if sys.argv[i] == 'on':
-            op = 'on'
-        elif sys.argv[i] == 'off':
-            op = 'off'
-        else:
-            raise Exception('usage: power.py [on|off]')
-        i += 1
 
+import typer
+
+app = typer.Typer(help="Control Quabo power via Web Power Switches (WPS).", no_args_is_help=True, context_settings={"help_option_names": ["-h", "--help"]})
+
+@app.command()
+def on():
+    """Turn all Quabo power switches ON."""
     c = config_file.get_obs_config()
-    do_all(c, op)
+    do_all(c, 'on')
+
+@app.command()
+def off():
+    """Turn all Quabo power switches OFF."""
+    c = config_file.get_obs_config()
+    do_all(c, 'off')
+
+@app.command()
+def status():
+    """Query the power state of all Quabo switches."""
+    c = config_file.get_obs_config()
+    do_all(c, 'query')
+
+
+if __name__ == "__main__":
+    app()

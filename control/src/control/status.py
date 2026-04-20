@@ -101,9 +101,20 @@ def status() -> None:
             log_print('         free space: %.2fGB' % (vol['free'] / 1e9))
             log_print('         modules:', vol['modules'])
 
+import typer
+
+app = typer.Typer(help="Show the status of a PANOSETI recording run.", no_args_is_help=False)
+
+@app.command()
 def main() -> None:
+    """
+    Query and display the current status of the observatory control plane.
+    
+    Checks the transactional ledger, local markers, and probes remote DAQ 
+    nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
+    """
     status()
 
 if __name__ == "__main__":
-    main()
+    app()
 

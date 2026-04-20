@@ -31,7 +31,7 @@ app = typer.Typer(
     help="Testing Suite",
     no_args_is_help=True,
     rich_markup_mode="rich",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": ["-h", "--help"]},
 )
 
 
