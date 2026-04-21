@@ -256,6 +256,8 @@ def stop_interleave(retry_limit: int = 10) -> None:
                     network_cfg.model_dump(),
                     verbose=False
                 )
+            except SystemExit:
+                logger.warning("obs_config.json not found; skipping MAROC config restore.")
             except Exception as e:
                 logger.error(f"Warning: Failed to restore MAROC registers: {e}")
 

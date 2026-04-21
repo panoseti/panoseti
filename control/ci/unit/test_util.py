@@ -13,6 +13,7 @@ import datetime
 
 import pytest
 
+from control.utils.paths import PanoPaths
 from control.utils.util import (
     get_daemons,
     get_permanent_daemons,
@@ -128,34 +129,34 @@ class TestGetDaemons:
     def test_always_includes_store_influxdb(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config", lambda: {})
         result = get_daemons()
-        assert "daemons/storeInfluxDB.py" in result
+        assert str(PanoPaths.daemons_dir() / "storeInfluxDB.py") in result
 
     def test_enabled_daemon_is_included(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
                             lambda: {"daemons": {"hk": True}})
         result = get_daemons()
-        assert "daemons/capture_hk.py" in result
+        assert str(PanoPaths.daemons_dir() / "capture_hk.py") in result
 
     def test_disabled_daemon_is_excluded(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
                             lambda: {"daemons": {"hk": True, "gps": False}})
         result = get_daemons()
-        assert "daemons/capture_gps.py" not in result
+        assert str(PanoPaths.daemons_dir() / "capture_gps.py") not in result
 
     def test_multiple_enabled_daemons(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
                             lambda: {"daemons": {"hk": True, "gps": True, "wr": True}})
         result = get_daemons()
-        assert "daemons/capture_hk.py" in result
-        assert "daemons/capture_gps.py" in result
-        assert "daemons/capture_wr.py" in result
+        assert str(PanoPaths.daemons_dir() / "capture_hk.py") in result
+        assert str(PanoPaths.daemons_dir() / "capture_gps.py") in result
+        assert str(PanoPaths.daemons_dir() / "capture_wr.py") in result
 
     def test_no_daemons_key_returns_only_base(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
                             lambda: {"permanent_daemons": {"mount": True}})
         result = get_daemons()
         # 'daemons' key absent → only base list
-        assert result == ["daemons/storeInfluxDB.py"]
+        assert result == [str(PanoPaths.daemons_dir() / "storeInfluxDB.py")]
 
     def test_does_not_mutate_base_list(self, monkeypatch) -> None:
         """Calling get_daemons twice returns consistent results (no global mutation)."""
@@ -184,24 +185,24 @@ class TestGetPermanentDaemons:
     def test_always_includes_store_influxdb(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config", lambda: {})
         result = get_permanent_daemons()
-        assert "daemons/storeInfluxDB.py" in result
+        assert str(PanoPaths.daemons_dir() / "storeInfluxDB.py") in result
 
     def test_enabled_permanent_daemon_is_included(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
                             lambda: {"permanent_daemons": {"mount": True}})
         result = get_permanent_daemons()
-        assert "daemons/permanent_mount.py" in result
+        assert str(PanoPaths.daemons_dir() / "permanent_mount.py") in result
 
     def test_disabled_permanent_daemon_excluded(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
                             lambda: {"permanent_daemons": {"mount": False}})
         result = get_permanent_daemons()
-        assert "daemons/permanent_mount.py" not in result
+        assert str(PanoPaths.daemons_dir() / "permanent_mount.py") not in result
 
     def test_empty_config_returns_only_base(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config", lambda: {})
         result = get_permanent_daemons()
-        assert result == ["daemons/storeInfluxDB.py"]
+        assert result == [str(PanoPaths.daemons_dir() / "storeInfluxDB.py")]
 
     def test_multiple_permanent_daemons(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
@@ -209,9 +210,9 @@ class TestGetPermanentDaemons:
                                 "mount": True, "dome": True, "alerts": False
                             }})
         result = get_permanent_daemons()
-        assert "daemons/permanent_mount.py" in result
-        assert "daemons/permanent_dome.py" in result
-        assert "daemons/permanent_alerts.py" not in result
+        assert str(PanoPaths.daemons_dir() / "permanent_mount.py") in result
+        assert str(PanoPaths.daemons_dir() / "permanent_dome.py") in result
+        assert str(PanoPaths.daemons_dir() / "permanent_alerts.py") not in result
 
     def test_does_not_mutate_on_repeated_calls(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",

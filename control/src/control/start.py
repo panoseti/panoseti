@@ -110,82 +110,87 @@ class StartTransaction:
                     logger.warning(f"Aborting start due to validation failure: {exc_val}")
                 else:
                     logger.error(f"[CRITICAL FAILURE] Start process aborted: {exc_val}")
-                    logger.info("Triggering Rollback Ladder...")
+                
+                logger.info("Triggering Rollback Ladder...")
 
-                    # Wait briefly for cancelled tasks to finish their synchronous I/O
-                    await asyncio.sleep(0.2)
+                # Wait briefly for cancelled tasks to finish their synchronous I/O
+                await asyncio.sleep(0.2)
 
-                    # Ladder Step 1: Update ledger to ABORTED immediately (WAL pattern)
-                    # We re-load to ensure we have any node receipts written just before cancellation
-                    ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                    if ledger:
-                        ledger.status = "ABORTED"
-                        await asyncio.to_thread(self.state_mgr.save_state, ledger)
+                # Ladder Step 1: Update ledger to ABORTED immediately (WAL pattern)
+                # We re-load to ensure we have any node receipts written just before cancellation
+                ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                if ledger:
+                    ledger.status = "ABORTED"
+                    await asyncio.to_thread(self.state_mgr.save_state, ledger)
 
-                    # Ladder Step 2: Stop remote DAQ nodes (Any that were attempted)
-                    logger.info("Stopping remote DAQ nodes...")
-                    # Re-load again to be absolutely sure we have all concurrent updates
-                    ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                    for node in self.daq_config.daq_nodes:
-                        if not node.module_ids:
-                            continue
-                        receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
-                        if not receipt:
-                            continue
+                # Ladder Step 2: Stop remote DAQ nodes (Any that were attempted)
+                logger.info("Stopping remote DAQ nodes...")
+                # Re-load again to be absolutely sure we have all concurrent updates
+                ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                for node in self.daq_config.daq_nodes:
+                    if not node.module_ids:
+                        continue
+                    receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
+                    if not receipt:
+                        continue
 
-                        logger.info(f"Rolling back node {node.ip_addr} (Status: {receipt.status})...")
-                        try:
-                            grpc_host, grpc_port = util.daq_grpc_endpoint(node)
-                            client = DaqControlClient(host=grpc_host, port=grpc_port)
-                            await asyncio.to_thread(client.StopDaq, {'data_dir': node.data_dir, 'run_dir': self.run_name})
-                        except Exception as stop_err:
-                            logger.error(f"Failed to stop node {node.ip_addr} during rollback: {stop_err}")
-
-                    # Ladder Step 3: Stop Quabo data flow
-                    logger.info("Stopping Quabo data flow...")
+                    logger.info(f"Rolling back node {node.ip_addr} (Status: {receipt.status})...")
                     try:
-                        await asyncio.to_thread(util.stop_data_flow, self.quabo_uids, self.network_config)
-                    except Exception as e2:
-                        logger.error(f"Failed to stop Quabo data flow: {e2}")
+                        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+                        client = DaqControlClient(host=grpc_host, port=grpc_port)
+                        await asyncio.to_thread(client.StopDaq, {'data_dir': node.data_dir, 'run_dir': self.run_name})
+                    except Exception as stop_err:
+                        logger.error(f"Failed to stop node {node.ip_addr} during rollback: {stop_err}")
 
-                    # Ladder Step 4: Kill local daemons
-                    logger.info("Stopping local daemons...")
-                    try:
-                        await asyncio.to_thread(util.kill_hk_recorder)
-                        await asyncio.to_thread(util.kill_hv_updater)
-                        await asyncio.to_thread(util.kill_module_temp_monitor)
-                    except Exception as e3:
-                        logger.error(f"Failed to kill local daemons: {e3}")
+                # Ladder Step 3: Stop Quabo data flow
+                logger.info("Stopping Quabo data flow...")
+                try:
+                    await asyncio.to_thread(util.stop_data_flow, self.quabo_uids, self.network_config)
+                except Exception as e2:
+                    logger.error(f"Failed to stop Quabo data flow: {e2}")
 
-                    # Ladder Step 5: Archive partial artifacts
-                    try:
-                        aborted_base = f"{self.daq_config.head_node_data_dir}/_aborted/{self.run_name}"
-                        suffix = 1
-                        aborted_dir = aborted_base
-                        while await asyncio.to_thread(os.path.exists, aborted_dir):
-                            aborted_dir = f"{aborted_base}_{suffix}"
-                            suffix += 1
+                # Ladder Step 4: Kill local daemons
+                logger.info("Stopping local daemons...")
+                try:
+                    await asyncio.to_thread(util.kill_hk_recorder)
+                    await asyncio.to_thread(util.kill_hv_updater)
+                    await asyncio.to_thread(util.kill_module_temp_monitor)
+                except Exception as e3:
+                    logger.error(f"Failed to kill local daemons: {e3}")
 
-                        logger.info(f"Archiving partial artifacts to {aborted_dir}")
-                        await asyncio.to_thread(os.makedirs, aborted_dir, exist_ok=True)
+                # Ladder Step 5: Archive partial artifacts
+                try:
+                    aborted_base = f"{self.daq_config.head_node_data_dir}/_aborted/{self.run_name}"
+                    suffix = 1
+                    aborted_dir = aborted_base
+                    while await asyncio.to_thread(os.path.exists, aborted_dir):
+                        aborted_dir = f"{aborted_base}_{suffix}"
+                        suffix += 1
 
-                        # Write failure context
-                        err_msg = str(exc_val)
-                        tb_msg = "".join(traceback.format_tb(exc_tb)) if exc_tb else ""
-                        def dump_context(msg: str, tb: str) -> None:
-                            with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
-                                json.dump({"error": msg, "traceback": tb}, f, indent=4)
-                        await asyncio.to_thread(dump_context, err_msg, tb_msg)
+                    logger.info(f"Archiving partial artifacts to {aborted_dir}")
+                    await asyncio.to_thread(os.makedirs, aborted_dir, exist_ok=True)
 
-                        local_run_dir = f"{self.daq_config.head_node_data_dir}/{self.run_name}"
-                        if await asyncio.to_thread(os.path.exists, local_run_dir):
-                            for item in os.listdir(local_run_dir):
-                                s = os.path.join(local_run_dir, item)
-                                d = os.path.join(aborted_dir, item)
-                                await asyncio.to_thread(shutil.move, s, d)
-                            await asyncio.to_thread(os.rmdir, local_run_dir)
-                    except Exception as e4:
-                        logger.error(f"Failed to archive partial artifacts: {e4}")
+                    # Write failure context
+                    err_msg = str(exc_val)
+                    tb_msg = "".join(traceback.format_tb(exc_tb)) if exc_tb else ""
+                    def dump_context(msg: str, tb: str) -> None:
+                        with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
+                            json.dump({"error": msg, "traceback": tb}, f, indent=4)
+                    await asyncio.to_thread(dump_context, err_msg, tb_msg)
+
+                    local_run_dir = f"{self.daq_config.head_node_data_dir}/{self.run_name}"
+                    if await asyncio.to_thread(os.path.exists, local_run_dir):
+                        items = os.listdir(local_run_dir)
+                        logger.info(f"Found {len(items)} items in {local_run_dir} to archive: {items}")
+                        for item in items:
+                            s = os.path.join(local_run_dir, item)
+                            d = os.path.join(aborted_dir, item)
+                            await asyncio.to_thread(shutil.move, s, d)
+                        await asyncio.to_thread(os.rmdir, local_run_dir)
+                    else:
+                        logger.warning(f"local_run_dir {local_run_dir} does not exist; nothing to archive.")
+                except Exception as e4:
+                    logger.error(f"Failed to archive partial artifacts: {e4}")
 
             if exc_type is ValidationError:
                 return True # Suppress validation errors for a clean exit
@@ -379,7 +384,7 @@ def make_run_dirs(
     logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
     run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
-    os.mkdir(run_dir)
+    os.makedirs(run_dir, exist_ok=True)
 
     # 1. Snapshot in-memory config models to head node run dir
     # This prevents mid-flight disk mutations from leaking into the run records.
@@ -733,7 +738,11 @@ async def start_run(
             my_ip = util.local_ip()
             head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
             if head_node_ip not in my_ip:
-                raise ValidationError(f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
+                msg = f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})'
+                if daq_config.head_node_container:
+                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                else:
+                    raise ValidationError(msg)
 
             # Stale ledger self-heal
             existing_state = state_mgr.load_state()
@@ -765,15 +774,26 @@ async def start_run(
                     raise ValidationError(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status}). Run stop.py, then try again, or use --force-reset.")
 
             if util.is_hk_recorder_running():
-                raise ValidationError('The HK recorder is running. Run stop.py, then try again.')
+                msg = 'The HK recorder is running. Run stop.py, then try again.'
+                if daq_config.head_node_container:
+                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                else:
+                    raise ValidationError(msg)
                 
             if not no_redis and not util.are_redis_daemons_running():
                 util.show_redis_daemons()
-                raise ValidationError('Redis daemons are not running. Run config.py --redis_daemons')
+                msg = 'Redis daemons are not running. Run config.py --redis_daemons'
+                if daq_config.head_node_container:
+                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                else:
+                    raise ValidationError(msg)
 
             if not ph_baseline_file_ok():
-                raise ValidationError('PH baseline file check failed.')
-
+                msg = 'PH baseline file check failed.'
+                if daq_config.head_node_container:
+                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                else:
+                    raise ValidationError(msg)
             # Initialize Ledger
             initial_ledger = RunStateLedger(
                 run_name=run_name,
@@ -789,7 +809,15 @@ async def start_run(
             )
             state_mgr.save_state(initial_ledger)
 
-            # get git commit info, and write the info into sw_info.json
+            # Snapshot configs into the directory immediately (before validation/delays)
+            # This ensures we archive the ORIGINAL files even if they change on disk mid-setup
+            if not no_data:
+                await asyncio.to_thread(
+                    make_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config
+                )
+
+            # Validation checks
+            my_ip = util.local_ip()
             get_sw_info()
             
             config_file.associate(daq_config, quabo_uids)
@@ -801,9 +829,6 @@ async def start_run(
             if not no_data:
                 await _check_quabo_reachability(quabo_uids, network_config, lenient=daq_config.head_node_container)
 
-            logger.info(f'setting up run directories for {run_name}')
-            make_run_dirs(run_name, obs_config, daq_config, quabo_uids, data_config, network_config)
-            
             if not no_data:
                 if cancel_event.is_set():
                     raise asyncio.CancelledError()

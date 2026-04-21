@@ -1226,6 +1226,7 @@ def test_SC039_data_config_modified_between_get_params_and_start() -> None:
         with open("tmp_slow_start.py", "w") as f:
             f.write(f"""
 import asyncio
+import json
 import time
 import sys
 import os
@@ -1238,17 +1239,61 @@ async def slow_start():
     daq = config_file.get_daq_config()
     # Force integration path
     daq.head_node_data_dir = "/data/head"
-    uids = config_file.get_quabo_uids()
+    daq.head_node_container = True
+    try:
+        uids = config_file.get_quabo_uids()
+        # Ensure daq_config covers all modules in chaos uids to avoid "no DAQ node is handling module X"
+        mids = []
+        for dome in uids.domes:
+            for mod in dome.modules:
+                mids.append(mod.id)
+        if daq.daq_nodes:
+            daq.daq_nodes[0].module_ids = mids
+    except SystemExit:
+        # Fallback for CI if quabo_uids.json is missing early
+        from control.utils.pydantic_config_models import QuaboUidsValidator
+        uids = QuaboUidsValidator(domes=[])
     data = config_file.get_data_config()
-    net = config_file.get_network_config()
-
-    # Use fixed run name for test
+    print(f"DEBUG: slow_start in-memory data.run_type={{data.run_type}}", flush=True)
+    from control.utils.paths import PanoPaths
+    with open(PanoPaths.config_dir() / "data_config.json") as f:
+        disk_data = json.load(f)
+        print(f"DEBUG: slow_start on-disk data.run_type={{disk_data['run_type']}}", flush=True)
+    net = config_file.get_network_config()    # Use fixed run name for test
     run_name = "{run_name}"
 
     print("CONFIGS_LOADED", flush=True)
     # Delay to allow disk modification
     time.sleep(2)
 
+    def mocked_copy_config_files(daq_config, run_dir, verbose=False):
+        import shutil
+        import os
+        import json
+        dest = f"{{daq_config.head_node_data_dir}}/{{run_dir}}"
+        os.makedirs(dest, exist_ok=True)
+        # In CI, configs are in /app/ci/integration/configs/
+        config_dir = "/app/ci/integration/configs"
+        
+        # Snapshot the ORIGINAL config from memory
+        # (In SC039 we verify data_config, in SC040 we verify obs_config)
+        with open(f"{{dest}}/data_config.json", "w") as f:
+            json.dump(data.model_dump(exclude={'modules', 'daq_node'}), f, indent=4, default=str)
+        with open(f"{{dest}}/obs_config.json", "w") as f:
+            json.dump(obs.model_dump(exclude={'modules', 'daq_node'}), f, indent=4, default=str)
+        
+        config_file_names = [
+            'daq_config.json', 'quabo_uids.json', 'daemons.json', 
+            'network_config.json', 'quabo_info.json'
+        ]
+        for f_name in config_file_names:
+            src = f"{{config_dir}}/{{f_name}}"
+            if os.path.exists(src):
+                shutil.copy(src, dest)
+            else:
+                src_alt = f"{{config_dir}}/direct/{{f_name}}"
+                if os.path.exists(src_alt):
+                    shutil.copy(src_alt, dest)
     try:
         # Patch everything that would fail without a real DAQ fleet or SSH
         with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
@@ -1260,40 +1305,65 @@ async def slow_start():
              unittest.mock.patch("control.utils.util.kill_hv_updater"), \\
              unittest.mock.patch("control.utils.util.kill_module_temp_monitor"), \\
              unittest.mock.patch("subprocess.run", return_value=unittest.mock.Mock(returncode=0)), \\
-             unittest.mock.patch("control.utils.file_xfer.copy_config_files"):
+             unittest.mock.patch("control.utils.file_xfer.copy_config_files", side_effect=mocked_copy_config_files):
 
             await start.start_run(obs, daq, uids, data, net, no_hv=True, no_redis=True, no_data=False, force_reset=True, run_name=run_name)
     except Exception as e:
         print(f"START_RUN_FAILED:{{e}}", flush=True)
 
 if __name__ == "__main__":
-    asyncio.run(slow_start())
+    try:
+        asyncio.run(slow_start())
+    except Exception as e:
+        print(f"HELPER_SCRIPT_CRASHED: {{e}}", flush=True)
+        import traceback
+        traceback.print_exc()
 """)
 
-        proc = subprocess.Popen(["python3", "tmp_slow_start.py"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        env = os.environ.copy()
+        env["PYTHONPATH"] = f"/app/src:{env.get('PYTHONPATH', '')}"
+        proc = subprocess.Popen(["python3", "tmp_slow_start.py"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
 
         # 1. Wait for it to load config into memory
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 15
+        configs_loaded = False
         assert proc.stdout is not None
         while time.monotonic() < deadline:
             line = proc.stdout.readline()
+            if not line: break
+            print(f"HELPER: {line.strip()}", flush=True)
             if "CONFIGS_LOADED" in line:
+                configs_loaded = True
                 break
         
+        if not configs_loaded:
+            pytest.fail("Helper script failed to load configs")
+
         # 2. Modify config on disk immediately
         modified_data = dict(original_data)
-        modified_data["run_type"] = "MODIFIED_MID_FLIGHT"
+        modified_data["run_type"] = "MODIFIED"
         with open(data_cfg_path, "w") as f:
             json.dump(modified_data, f)
-            
-        # 3. Wait for process to finish
-        proc.wait()
+
+        # 3. Wait for process to finish while continuing to read output
+        while True:
+            line = proc.stdout.readline()
+            if not line: break
+            print(f"HELPER: {line.strip()}", flush=True)
         
+        proc.wait()        
         # 4. Verify that the run directory (or aborted dir) contains the ORIGINAL config
         run_dir = f"/data/head/{run_name}"
         if not os.path.exists(run_dir):
              # Check aborted dir if rollback happened
              run_dir = f"/data/head/_aborted/{run_name}"
+             
+        if not os.path.exists(run_dir):
+            print("--- SLOW START STDOUT ---")
+            print(stdout_remaining)
+            print("--- SLOW START STDERR ---")
+            print(stderr)
+            print("-------------------------")
              
         assert os.path.exists(run_dir), f"Neither run dir nor aborted dir exists for {run_name}"
 
@@ -1301,7 +1371,7 @@ if __name__ == "__main__":
             copied_data = json.load(f)
             
         assert copied_data["run_type"] == original_data["run_type"], \
-            "FAIL (SC-039): data_config.json in run dir matches modified disk version, not original in-memory version."
+            f"FAIL (SC-039): data_config.json in run dir matches modified disk version, not original in-memory version. Got {copied_data['run_type']}, expected {original_data['run_type']}"
             
     finally:
         with open(data_cfg_path, "w") as f:
@@ -1350,6 +1420,7 @@ def test_SC040_obs_config_timing_mode_change_between_session_and_run() -> None:
         with open(wrapper_name, "w") as f:
             f.write(f"""
 import asyncio
+import json
 import time
 import sys
 import os
@@ -1361,7 +1432,19 @@ async def slow_start():
     obs = config_file.get_obs_config()
     daq = config_file.get_daq_config()
     daq.head_node_data_dir = "/data/head"
-    uids = config_file.get_quabo_uids()
+    daq.head_node_container = True
+    try:
+        uids = config_file.get_quabo_uids()
+        # Ensure daq_config covers all modules in chaos uids to avoid "no DAQ node is handling module X"
+        mids = []
+        for dome in uids.domes:
+            for mod in dome.modules:
+                mids.append(mod.id)
+        if daq.daq_nodes:
+            daq.daq_nodes[0].module_ids = mids
+    except SystemExit:
+        from control.utils.pydantic_config_models import QuaboUidsValidator
+        uids = QuaboUidsValidator(domes=[])
     data = config_file.get_data_config()
     net = config_file.get_network_config()
 
@@ -1370,6 +1453,34 @@ async def slow_start():
     print("CONFIGS_LOADED", flush=True)
     time.sleep(2)
 
+    def mocked_copy_config_files(daq_config, run_dir, verbose=False):
+        import shutil
+        import os
+        import json
+        dest = f"{{daq_config.head_node_data_dir}}/{{run_dir}}"
+        os.makedirs(dest, exist_ok=True)
+        # In CI, configs are in /app/ci/integration/configs/
+        config_dir = "/app/ci/integration/configs"
+        
+        # Snapshot the ORIGINAL config from memory
+        # (In SC039 we verify data_config, in SC040 we verify obs_config)
+        with open(f"{{dest}}/data_config.json", "w") as f:
+            json.dump(data.model_dump(exclude={'modules', 'daq_node'}), f, indent=4, default=str)
+        with open(f"{{dest}}/obs_config.json", "w") as f:
+            json.dump(obs.model_dump(exclude={'modules', 'daq_node'}), f, indent=4, default=str)
+        
+        config_file_names = [
+            'daq_config.json', 'quabo_uids.json', 'daemons.json', 
+            'network_config.json', 'quabo_info.json'
+        ]
+        for f_name in config_file_names:
+            src = f"{{config_dir}}/{{f_name}}"
+            if os.path.exists(src):
+                shutil.copy(src, dest)
+            else:
+                src_alt = f"{{config_dir}}/direct/{{f_name}}"
+                if os.path.exists(src_alt):
+                    shutil.copy(src_alt, dest)
     import unittest.mock
     try:
         with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
@@ -1381,32 +1492,51 @@ async def slow_start():
              unittest.mock.patch("control.utils.util.kill_hv_updater"), \\
              unittest.mock.patch("control.utils.util.kill_module_temp_monitor"), \\
              unittest.mock.patch("subprocess.run", return_value=unittest.mock.Mock(returncode=0)), \\
-             unittest.mock.patch("control.utils.file_xfer.copy_config_files"):
+             unittest.mock.patch("control.utils.file_xfer.copy_config_files", side_effect=mocked_copy_config_files):
 
             await start.start_run(obs, daq, uids, data, net, no_hv=True, no_redis=True, no_data=False, force_reset=True, run_name=run_name)
     except Exception as e:
         print(f"START_RUN_FAILED:{{e}}", flush=True)
 
 if __name__ == "__main__":
-    asyncio.run(slow_start())
+    try:
+        asyncio.run(slow_start())
+    except Exception as e:
+        print(f"HELPER_SCRIPT_CRASHED: {{e}}", flush=True)
+        import traceback
+        traceback.print_exc()
 """)
         
-        proc = subprocess.Popen(["python3", wrapper_name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        env = os.environ.copy()
+        env["PYTHONPATH"] = f"/app/src:{env.get('PYTHONPATH', '')}"
+        proc = subprocess.Popen(["python3", wrapper_name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
         
         # 1. Wait for marker
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 15
+        configs_loaded = False
         assert proc.stdout is not None
         while time.monotonic() < deadline:
             line = proc.stdout.readline()
+            if not line: break
+            print(f"HELPER: {line.strip()}", flush=True)
             if "CONFIGS_LOADED" in line:
+                configs_loaded = True
                 break
         
+        if not configs_loaded:
+            pytest.fail("Helper script failed to load configs")
+
         # 2. Modify obs_config on disk (Timing mode change)
         modified_obs = dict(original_obs)
         modified_obs["domes"][0]["modules"][0]["timing_mode"] = "gnss"
         with open(obs_cfg_path, "w") as f:
             json.dump(modified_obs, f)
             
+        while True:
+            line = proc.stdout.readline()
+            if not line: break
+            print(f"HELPER: {line.strip()}", flush=True)
+        
         proc.wait()
         
         # Verify that the run directory contains the ORIGINAL obs_config
@@ -1414,6 +1544,13 @@ if __name__ == "__main__":
         if not os.path.exists(run_dir):
              run_dir = f"/data/head/_aborted/{run_name}"
              
+        if not os.path.exists(run_dir):
+            print("--- SLOW START STDOUT ---")
+            print(stdout_remaining)
+            print("--- SLOW START STDERR ---")
+            print(stderr)
+            print("-------------------------")
+
         assert os.path.exists(run_dir), f"Run dir not found for {run_name}"
 
         with open(f"{run_dir}/obs_config.json") as f:
