@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from control.utils.paths import PanoPaths
-from typing import Literal
 
 
 class PanoPathsTest(PanoPaths):

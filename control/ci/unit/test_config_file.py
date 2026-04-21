@@ -612,10 +612,10 @@ class TestGetConfigs:
 
     def test_get_detector_info(self, tmp_path, monkeypatch) -> None:
         from control.utils.config_file import (
+            data_config_filename,
             detector_info_filename,
             get_detector_info,
             obs_config_filename,
-            data_config_filename
         )
         from control.utils.paths import PanoPaths
         

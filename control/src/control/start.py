@@ -481,17 +481,19 @@ async def start_recording(
     max_file_size_mb = data_config.max_file_size_mb or util.default_max_file_size_mb
     daq_params = get_daq_params(data_config)
 
+    # Pre-write STARTING receipts to ensure rollback ladder catches them if TaskGroup is cancelled early
+    for node_validator in daq_config.daq_nodes:
+        if node_validator.module_ids:
+            await state_mgr.update_node_receipt(NodeReceipt(
+                ip_addr=node_validator.ip_addr,
+                status="STARTING",
+                data_dir=node_validator.data_dir
+            ))
+
     async def start_node(node_validator: DaqNodeValidator) -> None:
         if not node_validator.module_ids:
             return
         
-        # Immediate receipt update (STARTING) before RPC
-        await state_mgr.update_node_receipt(NodeReceipt(
-            ip_addr=node_validator.ip_addr,
-            status="STARTING",
-            data_dir=node_validator.data_dir
-        ))
-
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
         
@@ -528,12 +530,17 @@ async def start_recording(
             except TimeoutError:
                 last_err = "StartDaq TIMEOUT (15s)"
                 break # Timeout usually means non-transient or black hole
-            except grpc.RpcError as e:
-                last_err = f"StartDaq gRPC Error: {e.code()}"
-                if e.code() == grpc.StatusCode.UNAVAILABLE and attempt < max_attempts:
-                    logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{max_attempts})...")
-                    await asyncio.sleep(1.0)
-                    continue
+            except (grpc.RpcError, ConnectionError) as e:
+                # DaqControlClient may wrap grpc.RpcError in ConnectionError
+                original_e = e.__cause__ if isinstance(e, ConnectionError) else e
+                if isinstance(original_e, grpc.RpcError):
+                    last_err = f"StartDaq gRPC Error: {original_e.code()}"
+                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < max_attempts:
+                        logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{max_attempts})...")
+                        await asyncio.sleep(1.0)
+                        continue
+                else:
+                    last_err = f"StartDaq Connection Error: {e}"
                 break
         
         # If we reach here, it's a hard failure or we ran out of retries

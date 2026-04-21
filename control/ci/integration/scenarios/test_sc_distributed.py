@@ -21,17 +21,15 @@ from typing import Any, cast
 import pytest
 
 # CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
+from panoseti_grpc.daq_control.client import DaqControlClient
 
-
-from panoseti_grpc.daq_control.client import DaqControlClient  # noqa: E402
-
-from ci.integration.conftest import (  # noqa: E402
+from ci.integration.conftest import (
     DAQ_DATA_DIR,
     DAQNODE2_HOST,
     DAQNODE_DIRECT_HOST,
     wait_hashpipe_stopped,
 )
-from ci.integration.scenarios.conftest import _start as grpc_start  # noqa: E402
+from ci.integration.scenarios.conftest import _start as grpc_start
 
 
 @pytest.mark.asyncio

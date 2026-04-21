@@ -101,6 +101,16 @@ class PanoPaths:
         return cls.base_dir() / "src/control/daq_scripts"
 
     @classmethod
+    def tools_dir(cls) -> pathlib.Path:
+        """Directory containing control plane utility scripts."""
+        return cls.base_dir() / "src/control/tools"
+
+    @classmethod
+    def daemons_dir(cls) -> pathlib.Path:
+        """Directory containing background service daemons."""
+        return cls.base_dir() / "src/control/daemons"
+
+    @classmethod
     def ensure_dirs(cls) -> None:
         """Creates transient workspace directories if they do not exist."""
         for d in [

@@ -12,6 +12,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import time
 from typing import Any
 
@@ -36,7 +37,19 @@ try:
         QuaboUidsValidator,
     )
 except ImportError:
-    pass
+    # Fallback for DAQ nodes or environments without the full package installed
+    import pathlib
+    class PanoPaths: # type: ignore
+        @classmethod
+        def base_dir(cls): return pathlib.Path('.')
+        @classmethod
+        def tmp_dir(cls): return pathlib.Path('./tmp')
+        @classmethod
+        def tools_dir(cls): return pathlib.Path('./tools')
+        @classmethod
+        def daemons_dir(cls): return pathlib.Path('./daemons')
+        @classmethod
+        def logs_dir(cls): return pathlib.Path('./logs')
 
 import logging
 
@@ -63,11 +76,11 @@ recording_ended_filename = 'recording_ended'
 collect_complete_filename = 'collect_complete'
 run_complete_filename = 'run_complete'
 
-hk_recorder_name = 'tools/store_redis_data.py'
+hk_recorder_name = str(PanoPaths.tools_dir() / 'store_redis_data.py')
 
-hv_updater_name = 'tools/hv_updater.py'
+hv_updater_name = str(PanoPaths.tools_dir() / 'hv_updater.py')
 
-module_temp_monitor_name = 'tools/module_temp_monitor.py'
+module_temp_monitor_name = str(PanoPaths.tools_dir() / 'module_temp_monitor.py')
 
 hashpipe_name = 'hashpipe'
 
@@ -82,7 +95,7 @@ pss_prefix = 'pss_'
 
 # Base daemons (always included in the "capture"/redis daemon set)
 redis_daemons = [
-    'daemons/storeInfluxDB.py',
+    str(PanoPaths.daemons_dir() / 'storeInfluxDB.py'),
     # 'daemons/storeLoki.py'
 ]
 #capture_power.py
@@ -221,7 +234,7 @@ def start_daemon(prog: str) -> None:
         return
     try:
         subprocess.Popen(
-            ['./'+prog], start_new_session=True,
+            [sys.executable, prog], start_new_session=True,
             close_fds=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
@@ -234,17 +247,13 @@ def start_daemon(prog: str) -> None:
 def _stop_daemon(prog: str, sig: int = signal.SIGKILL) -> None:
     """
     Stop a daemon started via start_daemon(prog).
-
-    start_daemon uses ['./'+prog], which typically shows up in cmdline as:
-      [<python interpreter>, "./<prog>"]
     """
-    target = f'./{prog}'
     for p in psutil.process_iter():
         try:
             c = p.cmdline()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-        if len(c) == 2 and c[1] == target:
+        if prog in c:
             with contextlib.suppress(ProcessLookupError):
                 os.kill(p.pid, sig)
             print(f'stopped {prog}')
@@ -285,7 +294,7 @@ def get_daemons() -> list[str]:
     lst: list[str] = list(redis_daemons)  # copy base list; do NOT mutate global
     for k, v in enabled.items():
         if v:
-            lst.append(f'daemons/capture_{k}.py')
+            lst.append(str(PanoPaths.daemons_dir() / f'capture_{k}.py'))
     return lst
 
 
@@ -321,10 +330,10 @@ def get_permanent_daemons() -> list[str]:
     else:
         enabled = daemons_config.get('permanent_daemons', {})
 
-    lst: list[str] = ['daemons/storeInfluxDB.py']
+    lst: list[str] = [str(PanoPaths.daemons_dir() / 'storeInfluxDB.py')]
     for k, v in enabled.items():
         if v:
-            lst.append(f'daemons/permanent_{k}.py')
+            lst.append(str(PanoPaths.daemons_dir() / f'permanent_{k}.py'))
     return lst
 
 
@@ -350,7 +359,7 @@ def are_permanent_daemons_running() -> bool:
 def start_hk_recorder(daq_config: DaqConfigValidator, run_name: str) -> None:
     path = f'{daq_config.head_node_data_dir}/{run_name}/{hk_file_name}'
     try:
-        subprocess.Popen([hk_recorder_name, path])
+        subprocess.Popen([sys.executable, hk_recorder_name, path])
     except OSError:
         print("can't launch HK recorder")
         raise
@@ -362,7 +371,7 @@ def start_hv_updater() -> None:
         print('hv_updater.py is already running')
         return
     try:
-        subprocess.Popen([hv_updater_name])
+        subprocess.Popen([sys.executable, hv_updater_name])
     except OSError:
         print("can't launch HV updater")
         raise
@@ -374,7 +383,7 @@ def start_module_temp_monitor() -> None:
         print('module_temp_monitor.py is already running')
         return
     try:
-        subprocess.Popen([module_temp_monitor_name])
+        subprocess.Popen([sys.executable, module_temp_monitor_name])
     except OSError:
         print("can't launch module temperature monitor")
         raise
