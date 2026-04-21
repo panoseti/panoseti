@@ -11,7 +11,7 @@ import os
 import shutil
 from typing import Any
 
-from haversine import Unit, haversine
+from haversine import Unit, haversine  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.table import Table
 
@@ -434,3 +434,53 @@ class GlobalConfigValidator:
                                  f"Modules reference undefined WPS units: {', '.join(missing_wps)}")
         else:
             self.report.add_test("WPS Reference Map", "PASS", "All referenced WPS units exist in obs_config.")
+
+    def _check_topology_structural_integrity(self) -> None:
+        """Use GraphBuilder and NetworkX to find logical flaws in the fleet topology."""
+        if not self.daq_conf or not self.obs_conf:
+            return
+            
+        import networkx as nx
+
+        from control.topology.graph_builder import GraphBuilder
+
+        # 1. Build the graph
+        from control.utils import config_file
+        quabo_uids = config_file.get_quabo_uids()
+        config_file.associate(self.daq_conf, quabo_uids)
+        
+        builder = GraphBuilder()
+        graph = builder.build_from_configs(self.daq_conf, quabo_uids)
+        
+        # 2. Check for Orphans (unreachable from headnode)
+        head_ip = str(self.daq_conf.head_node_ip_addr)
+        reachable = nx.descendants(graph, head_ip) | {head_ip}
+        all_nodes = set(graph.nodes)
+        orphans = all_nodes - reachable
+        
+        critical_orphans = [n for n in orphans if graph.nodes[n].get("role") in ["quabo", "module"]]
+        if critical_orphans:
+            self.report.add_test("Topology Reachability", "ERROR", 
+                                 f"Hardware nodes unreachable from Head Node: {critical_orphans}")
+        else:
+            self.report.add_test("Topology Reachability", "PASS", "All hardware reachable from Head Node.")
+
+        # 3. Check for DAQ Node Bottlenecks (more than k modules)
+        module_limit = self.daq_conf.daq_node_module_limit or 4
+        daq_nodes = [n for n, d in graph.nodes(data=True) if d.get("role") == "daqnode"]
+        for node_ip in daq_nodes:
+            # find successors with role "module"
+            successors = nx.descendants(graph, node_ip)
+            modules = [n for n in successors if graph.nodes[n].get("role") == "module"]
+            if len(modules) > module_limit:
+                self.report.add_test("DAQ Node Bottleneck", "WARN", 
+                                     f"DAQ Node {node_ip} handles {len(modules)} modules (> {module_limit} limit). Processing may be delayed.")
+            else:
+                self.report.add_test("DAQ Node Bottleneck", "PASS", f"DAQ Node {node_ip} load balanced.")
+
+        # 4. Check for Control Loops (Must be a DAG)
+        if not nx.is_directed_acyclic_graph(graph):
+            cycles = list(nx.simple_cycles(graph))
+            self.report.add_test("Control Loop Check", "ERROR", f"Infinite control loops detected: {cycles}")
+        else:
+            self.report.add_test("Control Loop Check", "PASS", "No control loops detected.")

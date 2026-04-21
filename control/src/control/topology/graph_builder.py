@@ -6,18 +6,17 @@ NetworkX-based topology generator for the PANOSETI DAQ fleet.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
+
 import networkx as nx
 
+from control.utils import config_file
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
+    NetworkConfigValidator,
     ObsConfigValidator,
     QuaboUidsValidator,
-    NetworkConfigValidator,
-    DaqNodeValidator,
-    ObsModuleConfig,
 )
-from control.utils import config_file
 
 
 class GraphBuilder:

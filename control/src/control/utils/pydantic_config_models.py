@@ -327,6 +327,7 @@ class DaqConfigValidator(BaseStrictModel):
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
     head_node_container: bool | None = Field(False)
+    daq_node_module_limit: int | None = Field(4, description="Maximum number of modules per DAQ node (structural limit)")
     daq_nodes: list[DaqNodeValidator]
 
     @model_validator(mode='after')
