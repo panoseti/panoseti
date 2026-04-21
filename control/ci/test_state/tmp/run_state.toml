@@ -1,8 +1,0 @@
-run_name = "stale_run_to_be_archived.pffd"
-status = "ACTIVE"
-start_time = "2026-04-20T05:00:45.576276+00:00"
-pid = 99999
-host = "3c82899b1585"
-transfer_attempts = 0
-
-[config_metadata]

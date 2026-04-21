@@ -19,7 +19,7 @@ def show():
     table.add_column("Source", style="magenta")
 
     paths = [
-        ("Base (PANOSETI_HOME)", PanoPaths.base_dir(), "PANOSETI_HOME" if os.environ.get("PANOSETI_HOME") else "Default (CWD)"),
+        ("Base (PANOSETI_CONTROL_ROOT)", PanoPaths.base_dir(), "PANOSETI_CONTROL_ROOT" if os.environ.get("PANOSETI_CONTROL_ROOT") else "Default (CWD)"),
         ("Configs", PanoPaths.config_dir(), "PANOSETI_CONFIG_DIR" if os.environ.get("PANOSETI_CONFIG_DIR") else "Default"),
         ("Transient (tmp)", PanoPaths.tmp_dir(), "PANOSETI_TMP_DIR" if os.environ.get("PANOSETI_TMP_DIR") else "Default"),
         ("Quabos Metadata", PanoPaths.quabos_dir(), "PANOSETI_QUABOS_DIR" if os.environ.get("PANOSETI_QUABOS_DIR") else "Default"),

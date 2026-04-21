@@ -145,36 +145,95 @@ class TestStringToList:
 # ===========================================================================
 
 class TestExpandRanges:
+    def make_valid_daq_config(self, nodes: list[dict[str, Any]]) -> dict[str, Any]:
+        """Helper to create a DAQ config with all required Pydantic fields."""
+        valid_nodes = []
+        for i, node in enumerate(nodes):
+            full_node = {
+                "username": "root",
+                "data_dir": "/data",
+                "ip_addr": f"192.168.0.{10+i}",
+                **node
+            }
+            valid_nodes.append(full_node)
+            
+        return {
+            "head_node_data_dir": "/data/head",
+            "head_node_ip_addr": "10.0.1.5",
+            "daq_nodes": valid_nodes
+        }
+
     def test_string_range_becomes_list(self) -> None:
-        config: dict[str, Any] = {"daq_nodes": [{"module_ids": "224-225"}]}
+        config = self.make_valid_daq_config([{"module_ids": "224-225"}])
         expand_ranges(config)
         assert config["daq_nodes"][0]["module_ids"] == [224, 225]
 
     def test_single_value_string(self) -> None:
-        config: dict[str, Any] = {"daq_nodes": [{"module_ids": "0"}]}
+        config = self.make_valid_daq_config([{"module_ids": "0"}])
         expand_ranges(config)
         assert config["daq_nodes"][0]["module_ids"] == [0]
 
     def test_already_list_is_preserved(self) -> None:
-        config: dict[str, Any] = {"daq_nodes": [{"module_ids": [0, 1, 2]}]}
+        config = self.make_valid_daq_config([{"module_ids": [0, 1, 2]}])
         expand_ranges(config)
         assert set(config["daq_nodes"][0]["module_ids"]) == {0, 1, 2}
 
     def test_multiple_nodes(self) -> None:
-        config: dict[str, Any] = {
-            "daq_nodes": [
-                {"module_ids": "0-1"},
-                {"module_ids": "128-129"},
-            ]
-        }
+        config = self.make_valid_daq_config([
+            {"module_ids": "0-1"},
+            {"module_ids": "128-129"},
+        ])
         expand_ranges(config)
         assert config["daq_nodes"][0]["module_ids"] == [0, 1]
         assert config["daq_nodes"][1]["module_ids"] == [128, 129]
 
     def test_invalid_type_raises(self) -> None:
-        config: dict[str, Any] = {"daq_nodes": [{"module_ids": 42}]}
+        # Pydantic validation will catch this during the expand_ranges call
+        config = self.make_valid_daq_config([{"module_ids": 42.5}])
         with pytest.raises((ValueError, TypeError)):
             expand_ranges(config)
+
+
+class TestExpandRangesModel:
+    def make_valid_daq_model(self, nodes: list[dict[str, Any]]) -> DaqConfigValidator:
+        """Helper to create a DaqConfigValidator model with all required fields."""
+        valid_nodes = []
+        for i, node in enumerate(nodes):
+            full_node = {
+                "username": "root",
+                "data_dir": "/data",
+                "ip_addr": f"192.168.0.{10+i}",
+                **node
+            }
+            valid_nodes.append(full_node)
+            
+        config_dict = {
+            "head_node_data_dir": "/data/head",
+            "head_node_ip_addr": "10.0.1.5",
+            "daq_nodes": valid_nodes
+        }
+        return DaqConfigValidator(**config_dict)
+
+    def test_model_string_range_becomes_list(self) -> None:
+        # Note: DaqConfigValidator's own field_validator also performs expansion.
+        # This test ensures expand_ranges is compatible with the model type.
+        model = self.make_valid_daq_model([{"module_ids": "224-225"}])
+        expand_ranges(model)
+        assert model.daq_nodes[0].module_ids == [224, 225]
+
+    def test_model_multiple_nodes(self) -> None:
+        model = self.make_valid_daq_model([
+            {"module_ids": "0-1"},
+            {"module_ids": "128-129"},
+        ])
+        expand_ranges(model)
+        assert model.daq_nodes[0].module_ids == [0, 1]
+        assert model.daq_nodes[1].module_ids == [128, 129]
+
+    def test_model_already_expanded_is_preserved(self) -> None:
+        model = self.make_valid_daq_model([{"module_ids": [10, 20]}])
+        expand_ranges(model)
+        assert set(model.daq_nodes[0].module_ids) == {10, 20}
 
 
 # ===========================================================================
@@ -355,3 +414,221 @@ class TestLoadAndValidate:
         with pytest.raises(ValueError, match="Pydantic Validation failed"):
             load_and_validate(DataConfigValidator, "configs/data_config.json",
                               str(tmp_path), "Data Config")
+
+
+# ===========================================================================
+# associate
+# ===========================================================================
+
+class TestAssociate:
+    def test_associate_links_modules_and_nodes(self) -> None:
+        daq_config_dict = {
+            "head_node_data_dir": "/data/head",
+            "head_node_ip_addr": "10.0.1.5",
+            "daq_nodes": [
+                {
+                    "username": "root",
+                    "data_dir": "/data",
+                    "ip_addr": "10.0.1.10",
+                    "module_ids": [1, 2]
+                }
+            ]
+        }
+        daq_config = DaqConfigValidator(**daq_config_dict)
+        
+        quabo_uids_dict = {
+            "domes": [
+                {
+                    "modules": [
+                        {
+                            "ip_addr": "192.168.0.4", # module_id = 1
+                            "quabos": [{"uid": "a"}, {"uid": "b"}, {"uid": "c"}, {"uid": "d"}]
+                        }
+                    ]
+                }
+            ]
+        }
+        # assign_numbers injects 'id' which is needed by associate -> module_id_to_daq_node
+        assign_numbers(quabo_uids_dict)
+        from control.utils.pydantic_config_models import QuaboUidsValidator
+        quabo_uids = QuaboUidsValidator(**quabo_uids_dict)
+        
+        from control.utils.config_file import associate
+        associate(daq_config, quabo_uids)
+        
+        # Check node -> modules link
+        assert len(daq_config.daq_nodes[0].modules) == 1
+        assert str(daq_config.daq_nodes[0].modules[0].ip_addr) == "192.168.0.4"
+        
+        # Check module -> node link
+        assert quabo_uids.domes[0].modules[0].daq_node == daq_config.daq_nodes[0]
+
+# ===========================================================================
+# get_module_quabo_uids_from_dict
+# ===========================================================================
+
+class TestGetModuleQuaboUidsFromDict:
+    def test_get_mapping(self) -> None:
+        from control.utils.config_file import get_module_quabo_uids_from_dict
+        uids_dict = {
+            "domes": [
+                {
+                    "modules": [
+                        {
+                            "ip_addr": "192.168.0.4",
+                            "quabos": [{"uid": "u1"}, {"uid": "u2"}, {"uid": "u3"}, {"uid": "u4"}]
+                        }
+                    ]
+                }
+            ]
+        }
+        res = get_module_quabo_uids_from_dict(uids_dict)
+        assert res == {"192.168.0.4": ["u1", "u2", "u3", "u4"]}
+
+# ===========================================================================
+# check_config_file
+# ===========================================================================
+
+class TestCheckConfigFile:
+    def test_missing_file_exits(self, tmp_path) -> None:
+        from control.utils.config_file import check_config_file
+        with pytest.raises(SystemExit) as pytest_wrapped_e:
+            check_config_file("nonexistent.json", tmp_path)
+        assert pytest_wrapped_e.type is SystemExit
+        assert pytest_wrapped_e.value.code == 1
+
+    def test_existing_file_passes(self, tmp_path) -> None:
+        from control.utils.config_file import check_config_file
+        p = tmp_path / "exists.json"
+        p.write_text("{}")
+        # Should not raise
+        check_config_file("exists.json", tmp_path)
+
+# ===========================================================================
+# Configuration Loaders (get_obs_config, get_daq_config, etc.)
+# ===========================================================================
+
+class TestGetConfigs:
+    def _write_json(self, tmp_path, filename, data):
+        p = tmp_path / filename
+        p.write_text(json.dumps(data))
+        return str(tmp_path)
+
+    def test_get_obs_config(self, tmp_path, minimal_obs_config) -> None:
+        from control.utils.config_file import get_obs_config
+        base = self._write_json(tmp_path, "obs_config.json", minimal_obs_config)
+        config = get_obs_config(base)
+        assert config.name == minimal_obs_config["name"]
+
+    def test_get_daq_config(self, tmp_path, minimal_daq_config) -> None:
+        from control.utils.config_file import get_daq_config
+        base = self._write_json(tmp_path, "daq_config.json", minimal_daq_config)
+        config = get_daq_config(base)
+        assert str(config.head_node_ip_addr) == minimal_daq_config["head_node_ip_addr"]
+
+    def test_get_data_config(self, tmp_path, minimal_data_config) -> None:
+        from control.utils.config_file import get_data_config
+        base = self._write_json(tmp_path, "data_config.json", minimal_data_config)
+        config = get_data_config(base)
+        assert config.run_type == minimal_data_config["run_type"]
+
+    def test_get_network_config(self, tmp_path) -> None:
+        from control.utils.config_file import get_network_config
+        net_data = {"modules": [], "daq_nodes": []}
+        base = self._write_json(tmp_path, "network_config.json", net_data)
+        config = get_network_config(base)
+        assert len(config.modules) == 0
+
+    def test_get_firmware_config(self, tmp_path, minimal_firmware_config) -> None:
+        from control.utils.config_file import get_firmware_config
+        base = self._write_json(tmp_path, "firmware.json", minimal_firmware_config)
+        config = get_firmware_config(base)
+        assert config.qfp == minimal_firmware_config["qfp"]
+
+    def test_get_daemons_config(self, tmp_path) -> None:
+        from control.utils.config_file import get_daemons_config
+        daemons_data = {
+            "daemons": {"hk": True},
+            "permanent_daemons": {"influx": True}
+        }
+        base = self._write_json(tmp_path, "daemons.json", daemons_data)
+        config = get_daemons_config(base)
+        assert config.daemons.model_extra["hk"] is True
+
+    def test_get_quabo_uids(self, tmp_path, monkeypatch) -> None:
+        from control.utils.config_file import get_quabo_uids, quabo_uids_filename
+        from control.utils.paths import PanoPaths
+        
+        uids_data = {
+            "domes": [
+                {
+                    "modules": [
+                        {
+                            "ip_addr": "192.168.0.4",
+                            "quabos": [{"uid": "u1"}, {"uid": "u2"}, {"uid": "u3"}, {"uid": "u4"}]
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Mock PanoPaths.tmp_dir to use our tmp_path
+        monkeypatch.setattr(PanoPaths, "tmp_dir", lambda: tmp_path)
+        p = tmp_path / quabo_uids_filename
+        p.write_text(json.dumps(uids_data))
+        
+        config = get_quabo_uids()
+        assert str(config.domes[0].modules[0].ip_addr) == "192.168.0.4"
+
+    def test_get_quabo_info(self, tmp_path, monkeypatch) -> None:
+        from control.utils.config_file import get_quabo_info, quabo_info_filename
+        from control.utils.paths import PanoPaths
+        
+        info_data = [
+            {"uid": "u1", "rev": "1"},
+            {"uid": "u2", "rev": "2"}
+        ]
+        
+        monkeypatch.setattr(PanoPaths, "quabos_dir", lambda: tmp_path)
+        p = tmp_path / quabo_info_filename
+        p.write_text(json.dumps(info_data))
+        
+        info = get_quabo_info()
+        assert info["u1"]["rev"] == "1"
+        assert info["u2"]["rev"] == "2"
+
+    def test_get_quabo_ph_baselines(self, tmp_path, monkeypatch) -> None:
+        from control.utils.config_file import get_quabo_ph_baselines, quabo_ph_baseline_filename
+        from control.utils.paths import PanoPaths
+        
+        baseline_data = {"u1": [100, 101]}
+        
+        monkeypatch.setattr(PanoPaths, "tmp_dir", lambda: tmp_path)
+        p = tmp_path / quabo_ph_baseline_filename
+        p.write_text(json.dumps(baseline_data))
+        
+        baselines = get_quabo_ph_baselines()
+        assert baselines["u1"] == [100, 101]
+
+    def test_get_detector_info(self, tmp_path, monkeypatch) -> None:
+        from control.utils.config_file import (
+            detector_info_filename,
+            get_detector_info,
+            obs_config_filename,
+            data_config_filename
+        )
+        from control.utils.paths import PanoPaths
+        
+        det_data = [{"serialno": "d1", "operating_voltage": 75.0}]
+        obs_data = {"name": "test", "domes": []}
+        data_data = {"run_type": "sci", "detector_overvoltage": 3}
+        
+        monkeypatch.setattr(PanoPaths, "quabos_dir", lambda: tmp_path)
+        monkeypatch.setattr(PanoPaths, "config_dir", lambda: tmp_path)
+        
+        (tmp_path / detector_info_filename).write_text(json.dumps(det_data))
+        (tmp_path / obs_config_filename).write_text(json.dumps(obs_data))
+        (tmp_path / data_config_filename).write_text(json.dumps(data_data))
+        
+        info = get_detector_info()
+        assert info["d1"] == 75.0

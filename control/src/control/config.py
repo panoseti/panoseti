@@ -80,7 +80,7 @@ def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) 
                 logger.info(f'      quabo {i}')
                 logger.info(f'         IP addr: {quabo_ip}')
     #logger.info(f"This node's IP addr: {util.local_ip()}")
-    config_file.show_daq_assignments(quabo_uids.model_dump())
+    config_file.show_daq_assignments(quabo_uids)
 
 def do_reboot_single_quabo(ip: str, obs_config: ObsConfigValidator, network_config: NetworkConfigValidator | dict[str, Any], timeout: int = 60) -> None:
     """Reboot a specific Quabo identified by its IP address or module ID.

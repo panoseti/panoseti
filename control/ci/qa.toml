@@ -6,47 +6,47 @@ default_parallel = 4
 # ── Infrastructure tasks ──────────────────────────────────────────────────────
 
 [infra.up_unit]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit up -d"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit up -d"
 description = "Start unit/lint test stack"
 
 [infra.down_unit]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit down -v"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit down -v"
 description = "Tear down unit/lint stack and volumes"
 
 [infra.up_integration]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml up -d"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml up -d"
 description = "Start integration test stack"
 
 [infra.down_integration]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml down -v"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml down -v"
 description = "Tear down integration stack and volumes"
 
 [infra.build]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit build && docker compose --env-file .env -f ci/docker-compose.integration.yml build"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit build && docker compose --env-file .env.ci -f ci/docker-compose.integration.yml build"
 description = "Rebuild all test images"
 
 # ── Lint tasks ───────────────────────────────────────────────────────────────
 # All lint tasks run concurrently. Output lines are prefixed with the task name.
 
 [lint.ruff]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run ruff check . --fix --color=always"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run ruff check . --fix --color=always"
 description = "Ruff lint + autofix"
 
 [lint.mypy]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run mypy . --explicit-package-bases --color-output"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run mypy . --explicit-package-bases --color-output"
 description = "MyPy static type check"
 
 # ── Test tasks ────────────────────────────────────────────────────────────────
 # Sequential. {parallel} is substituted from --jobs / settings.default_parallel.
 
 [test.unit]
-command     = "docker compose --env-file .env -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/unit/ -v -n {parallel} --color=yes {args}"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/unit/ -v -n {parallel} --color=yes {args}"
 description = "Parallel unit tests (pytest-xdist)"
 
 [test.integration]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T int-tester pytest ci/integration/ -v --color=yes --ignore=ci/integration/scenarios {args}"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml exec -T int-tester pytest ci/integration/ -v --color=yes --ignore=ci/integration/scenarios {args}"
 description = "E2E integration tests (excludes chaos scenarios)"
 
 [test.chaos]
-command     = "docker compose --env-file .env -f ci/docker-compose.integration.yml exec -T -e ENABLE_TELEMETRY_TESTS=1 int-tester pytest ci/integration/scenarios/ -v --color=yes {args}"
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml exec -T -e ENABLE_TELEMETRY_TESTS=1 int-tester pytest ci/integration/scenarios/ -v --color=yes {args}"
 description = "Chaos/TDD-forcing scenario tests (expected to fail red on master)"

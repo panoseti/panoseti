@@ -7,7 +7,7 @@ import json
 # CWD CONTRACT: all relative paths in this file are relative to the control/ directory.
 # Scripts must be launched from control/ (e.g. `cd control && python start.py`).
 import os
-import pathlib
+from pathlib import Path
 import sys
 from typing import Any
 
@@ -38,7 +38,7 @@ console = Console()
 
 # Resolved root of the control/ package (useful for tests and tooling).
 # Do NOT use this for runtime hardware paths — use CWD-relative strings instead.
-_CONTROL_BASE = pathlib.Path(__file__).parent.parent.resolve()
+_CONTROL_BASE = Path(__file__).parent.parent.resolve()
 
 # Globals to control console verbosity
 IS_CLI_VALIDATION = False
@@ -167,26 +167,29 @@ def expand_ranges(daq_config: DaqConfigValidator | dict[str, Any]) -> None:
     Raises:
         TypeError: If module_ids is not a string or a list.
     """
-    if hasattr(daq_config, "daq_nodes"):
-        # Implementation for model
-        # MyPy needs help knowing daq_config is a model here if isinstance check fails it
-        for node in daq_config.daq_nodes: 
-            if isinstance(node.module_ids, str):
-                node.module_ids = string_to_list(node.module_ids)
-            elif isinstance(node.module_ids, list):
-                node.module_ids = list(set(int(x) for x in node.module_ids))
-            elif node.module_ids is not None:
-                raise TypeError(f"module_ids must be str or list, not {type(node.module_ids)}")
-    else:
-        # Implementation for dict
-        for node in daq_config.get('daq_nodes', []): 
-            module_ids = node.get('module_ids')
+    if isinstance(daq_config, dict):
+        # Validate that the dict is a valid DaqConfig
+        DaqConfigValidator(**daq_config)
+        # Mutate the dictionary in-place
+        for node in daq_config.get("daq_nodes", []):
+            module_ids = node.get("module_ids")
             if isinstance(module_ids, str):
-                node['module_ids'] = string_to_list(module_ids)
+                node["module_ids"] = string_to_list(module_ids)
             elif isinstance(module_ids, list):
-                node['module_ids'] = list(set(int(x) for x in module_ids))
+                node["module_ids"] = list(set(int(x) for x in module_ids))
             elif module_ids is not None:
                 raise TypeError(f"module_ids must be str or list, not {type(module_ids)}")
+        return
+
+    # Implementation for model
+    for node in daq_config.daq_nodes: 
+        if isinstance(node.module_ids, str):
+            node.module_ids = string_to_list(node.module_ids)
+        elif isinstance(node.module_ids, list):
+            node.module_ids = list(set(int(x) for x in node.module_ids))
+        elif node.module_ids is not None:
+            raise TypeError(f"module_ids must be str or list, not {type(node.module_ids)}")
+
 
 def module_id_to_daq_node(daq_config: DaqConfigValidator, module_id: int) -> DaqNodeValidator:
     """Find the DAQ node responsible for handling a specific module ID.
@@ -207,14 +210,14 @@ def module_id_to_daq_node(daq_config: DaqConfigValidator, module_id: int) -> Daq
             return node
     raise Exception(f"no DAQ node is handling module {module_id}")
 
-def check_config_file(name: str, dir: str = '.') -> None:
+def check_config_file(name: str, config_dir: Path = PanoPaths.config_dir()) -> None:
     """Verify that a configuration file exists. Exits the program if missing.
 
     Args:
         name: The filename to check.
         dir: The directory containing the file.
     """
-    path = os.path.join(dir, name)
+    path = config_dir / name
     if not os.path.isfile(path):
     # if not os.path.exists('%s/%s'%(dir, name)):
         print(f"The config file '{name}' doesn't exist.")
@@ -353,7 +356,7 @@ def get_detector_info() -> dict[str, float]:
     Returns:
         A dictionary mapping detector serial numbers to operating voltages.
     """
-    check_config_file(detector_info_filename, str(PanoPaths.quabos_dir()))
+    check_config_file(detector_info_filename, PanoPaths.quabos_dir())
     path = PanoPaths.quabos_dir() / detector_info_filename
     with open(path) as f:
         s = f.read()
@@ -390,7 +393,7 @@ def get_quabo_info() -> dict[str, Any]:
     Returns:
         A dictionary mapping Quabo UIDs to their metadata objects.
     """
-    check_config_file(quabo_info_filename, str(PanoPaths.quabos_dir()))
+    check_config_file(quabo_info_filename, PanoPaths.quabos_dir())
     path = PanoPaths.quabos_dir() / quabo_info_filename
     with open(path) as f:
         s = f.read()
@@ -406,7 +409,7 @@ def get_quabo_ph_baselines() -> dict[str, Any]:
     Returns:
         A dictionary containing the Quabo pulse-height baselines.
     """
-    check_config_file(quabo_ph_baseline_filename, str(PanoPaths.tmp_dir()))
+    check_config_file(quabo_ph_baseline_filename, PanoPaths.tmp_dir())
     path = PanoPaths.tmp_dir() / quabo_ph_baseline_filename
     with open(path) as f:
         s = f.read()

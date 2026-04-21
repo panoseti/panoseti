@@ -126,4 +126,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
 
 # Unified gRPC server: daq_data + daq_control on a single port (50051).
-CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci/integration/configs/daqnode/server.toml"]
+CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]

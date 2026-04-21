@@ -6,7 +6,7 @@
 # to the CI headnode Telemetry service via gRPC.
 #
 # Usage:
-#   panoseti-server --config /app/ci/integration/configs/daqnode/server.toml
+#   panoseti-server --config /app/ci/integration/configs/grpc/daqnode/server.toml
 #
 # Required env vars (set by docker-compose.integration.yml):
 #   BINDHOST=lo               — loopback interface for hashpipe (Docker CI requirement)

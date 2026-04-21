@@ -107,7 +107,7 @@ services:
       loki:
         condition: service_started
     command: >
-      /bin/sh -c "panoseti-server --config /app/ci/integration/configs/headnode/server.toml &
+      /bin/sh -c "panoseti-server --config /app/ci/integration/configs/grpc/headnode/server.toml &
       exec python src/control/daemons/storeLoki.py"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]

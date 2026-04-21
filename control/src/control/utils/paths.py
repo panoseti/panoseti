@@ -15,12 +15,12 @@ class PanoPaths:
     def software_root_dir(cls) -> pathlib.Path:
         """The root panoseti-software directory."""
         # 1. Respect environment override
-        override = os.environ.get("PANOSETI_SOFTWARE_DIR")
+        override = os.environ.get("PANOSETI_SOFTWARE_REPO_ROOT")
         if override:
             return pathlib.Path(override).resolve()
 
-        # 2. If PANOSETI_HOME is /app (Docker), root is /
-        home = os.environ.get("PANOSETI_HOME")
+        # 2. If PANOSETI_CONTROL_ROOT is /app (Docker), root is /
+        home = os.environ.get("PANOSETI_CONTROL_ROOT")
         if home == "/app":
             return pathlib.Path("/")
 
@@ -31,7 +31,7 @@ class PanoPaths:
     @classmethod
     def base_dir(cls) -> pathlib.Path:
         """The control package root directory. Defaults to software_root / 'control'."""
-        override = os.environ.get("PANOSETI_HOME")
+        override = os.environ.get("PANOSETI_CONTROL_ROOT")
         if override:
             with contextlib.suppress(Exception):
                 return pathlib.Path(override).resolve()

@@ -326,7 +326,7 @@ class DaqConfigValidator(BaseStrictModel):
     comment: str | None = None
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
-    head_node_container: bool = Field(False)
+    head_node_container: bool | None = Field(False)
     daq_nodes: list[DaqNodeValidator]
 
     @model_validator(mode='after')

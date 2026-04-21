@@ -3,4 +3,5 @@ hk
 run
 panoseti_control.egg-info
 <MagicMock*
+tmp*
 

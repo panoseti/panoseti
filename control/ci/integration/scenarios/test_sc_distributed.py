@@ -20,7 +20,7 @@ from typing import Any, cast
 
 import pytest
 
-CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
+# CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 
 
 from panoseti_grpc.daq_control.client import DaqControlClient  # noqa: E402
