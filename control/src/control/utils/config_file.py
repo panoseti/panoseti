@@ -208,7 +208,7 @@ def module_id_to_daq_node(daq_config: DaqConfigValidator, module_id: int) -> Daq
         # After validation/preprocessing, module_ids is list[int]
         if module_id in node.module_ids:
             return node
-    raise Exception(f"no DAQ node is handling module {module_id}")
+    raise ValueError(f"no DAQ node is handling module {module_id}")
 
 def check_config_file(name: str, config_dir: Path = PanoPaths.config_dir()) -> None:
     """Verify that a configuration file exists. Exits the program if missing.
@@ -569,7 +569,11 @@ def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf
     # 2. Modern Graph Engine (NetworkX)
     try:
         from control.topology.graph_builder import GraphBuilder
-        from control.topology.visualizer import save_topology_image, export_topology_json
+        from control.topology.visualizer import (
+            export_interactive_html,
+            export_topology_json,
+            save_topology_image,
+        )
         
         # We need quabo_uids for the full graph
         try:
@@ -583,12 +587,15 @@ def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf
             # Export to tmp directory
             img_path = PanoPaths.tmp_dir() / "topology.png"
             json_path = PanoPaths.tmp_dir() / "topology.json"
+            html_path = PanoPaths.tmp_dir() / "topology.html"
             
             save_topology_image(graph, img_path)
             export_topology_json(graph, json_path)
+            export_interactive_html(graph, html_path)
             
-            console.print(f"\n[green]✔ Topology graph exported to {img_path}[/green]")
+            console.print(f"\n[green]✔ Topology graph image exported to {img_path}[/green]")
             console.print(f"[green]✔ Cytoscape JSON exported to {json_path}[/green]")
+            console.print(f"[green]✔ Interactive HTML exported to {html_path}[/green]")
         except Exception as e:
              console.print(f"\n[yellow]⚠ Could not generate visual graph: {e}[/yellow]")
     except ImportError:

@@ -4,4 +4,7 @@ run
 panoseti_control.egg-info
 <MagicMock*
 tmp*
+*.png
+*.html
+topology_*.json
 

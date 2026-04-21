@@ -6,10 +6,11 @@ Integration tests for the pseti CLI commands, focusing on validation and topolog
 
 from __future__ import annotations
 
-import pytest
+from unittest.mock import MagicMock, patch
+
 from typer.testing import CliRunner
+
 from control.pseti import app
-from unittest.mock import patch, MagicMock
 
 runner = CliRunner()
 
@@ -56,9 +57,9 @@ def test_structural_integrity_integrated_in_validate():
          patch("control.utils.config_file.get_daemons_config"), \
          patch("control.utils.config_file.get_network_config"), \
          patch("control.utils.config_file.get_data_config"), \
-         patch("control.utils.global_validator.GlobalConfigValidator._check_topology_structural_integrity") as mock_struct:
+         patch("control.utils.global_validator.GlobalConfigValidator._check_topology_structural_integrity"):
          
-        result = runner.invoke(app, ["validate"])
+        runner.invoke(app, ["validate"])
         # Tier-1 might fail if mock_daq/obs are empty, but we check if mock_struct was called if it got to Tier-2
         # To be sure it gets to Tier-2, we can just patch the whole rule execution
         pass

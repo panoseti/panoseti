@@ -484,3 +484,39 @@ class GlobalConfigValidator:
             self.report.add_test("Control Loop Check", "ERROR", f"Infinite control loops detected: {cycles}")
         else:
             self.report.add_test("Control Loop Check", "PASS", "No control loops detected.")
+
+    def _check_daq_module_subnet_coherence(self) -> None:
+        """
+        Verify that DAQ nodes and the modules they service are in the same subnet.
+        At high data rates, going through a router (gateway) between DAQ and Quabo is invalid.
+        """
+        if not self.daq_conf or not self.net_conf:
+            return
+
+        # Map IPs to their Gateway IPs from the network config
+        daq_gw_map = {str(n.ip_addr): (str(n.port_forwarding.gw_ip) if n.port_forwarding and n.port_forwarding.status else None) 
+                      for n in self.net_conf.daq_nodes}
+        mod_gw_map = {str(m.ip_addr): (str(m.port_forwarding.gw_ip) if m.port_forwarding and m.port_forwarding.status else None) 
+                      for m in self.net_conf.modules}
+
+        errors = []
+        for daq in self.daq_conf.daq_nodes:
+            daq_ip = str(daq.ip_addr)
+            daq_gw = daq_gw_map.get(daq_ip)
+            
+            for mid in daq.module_ids:
+                # Find the module's physical IP in obs_config
+                module = next((m for d in self.obs_conf.domes for m in d.modules if m.id == mid), None)
+                if not module:
+                    continue
+                
+                mod_ip = str(module.ip_addr)
+                mod_gw = mod_gw_map.get(mod_ip)
+                
+                if daq_gw != mod_gw:
+                    errors.append(f"DAQ {daq_ip} (GW: {daq_gw}) cannot handle Module {mid} at {mod_ip} (GW: {mod_gw}). Subnet mismatch.")
+
+        if errors:
+            self.report.add_test("Subnet Coherence", "ERROR", f"DAQ/Quabo subnet mismatches detected: {errors}")
+        else:
+            self.report.add_test("Subnet Coherence", "PASS", "All DAQ nodes and Quabos reside in coherent subnets.")

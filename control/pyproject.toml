@@ -25,6 +25,8 @@ dependencies = [
     "typing_extensions>=4.5",
     "typer",
     "networkx",
+    "pyvis",
+    "jsonpickle",
     "panoseti_grpc>=0.4.7",
 ]
 

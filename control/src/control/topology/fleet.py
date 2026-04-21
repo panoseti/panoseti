@@ -6,27 +6,17 @@ Utilities to programmatically generate n-node PANOSETI fleet configurations.
 
 from __future__ import annotations
 
+import random
 from ipaddress import IPv4Address
 
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DaqNodeValidator,
-    QuaboUidDome,
-    QuaboUidEntry,
-    QuaboUidModule,
-    QuaboUidsValidator,
-)
-
-
-import random
-from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DaqNodeValidator,
-    QuaboUidsValidator,
-    QuaboUidDome,
-    QuaboUidModule,
-    QuaboUidEntry,
     PortForwarding,
+    QuaboUidDome,
+    QuaboUidEntry,
+    QuaboUidModule,
+    QuaboUidsValidator,
 )
 
 

@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import pathlib
 import tempfile
-import networkx as nx
-import os
 
-from control.topology.visualizer import save_topology_image, export_topology_json
+import networkx as nx
+
+from control.topology.visualizer import export_topology_json, save_topology_image
 
 
 def test_save_topology_image():

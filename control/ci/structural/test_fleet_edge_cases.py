@@ -6,7 +6,6 @@ Edge case testing for programmatic fleet generation.
 
 from __future__ import annotations
 
-import pytest
 from control.topology.fleet import generate_fleet_configs
 
 

@@ -103,7 +103,8 @@ def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
     if net_cfg and hasattr(net_cfg, 'daq_nodes') and daq_cfg and hasattr(daq_cfg, 'daq_nodes'):
         pf_daq_map = {str(d.ip_addr): d.port_forwarding for d in net_cfg.daq_nodes if hasattr(d, 'ip_addr')}
         for daq in daq_cfg.daq_nodes:
-            if not hasattr(daq, 'ip_addr'): continue
+            if not hasattr(daq, 'ip_addr'):
+                continue
             ip = str(daq.ip_addr)
             pf = pf_daq_map.get(ip)
 
@@ -125,7 +126,8 @@ def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
             for mod in dome.modules:
                 ip = str(mod.ip_addr)
                 
-                if not ip: continue
+                if not ip:
+                    continue
                 pf = pf_mod_map.get(str(ip))
 
                 if pf and getattr(pf, 'status', False) and getattr(pf, 'gw_ip', None):

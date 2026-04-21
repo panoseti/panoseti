@@ -45,6 +45,7 @@ class GraphBuilder:
             head_ip,
             role="headnode",
             ip=head_ip,
+            layer=0,
             data_dir=daq_config.head_node_data_dir,
             label=f"Head Node\n({head_ip})"
         )
@@ -58,6 +59,7 @@ class GraphBuilder:
                 daq_ip,
                 role="daqnode",
                 ip=daq_ip,
+                layer=1,
                 username=node.username,
                 data_dir=node.data_dir,
                 label=f"DAQ Node\n({daq_ip})"
@@ -73,10 +75,9 @@ class GraphBuilder:
                     gw_ip,
                     role="gateway",
                     ip=gw_ip,
+                    layer=2,
                     label=f"Gateway\n({gw_ip})"
                 )
-                # If it's a gateway, the DAQ node is "behind" it or reaches Quabos through it
-                # In our topology, DAQ Node -> Gateway -> Quabos
                 self.graph.add_edge(daq_ip, gw_ip, type="network", label="ssh-tunnel")
                 upstream_for_quabos = gw_ip
             else:
@@ -111,6 +112,7 @@ class GraphBuilder:
             ip=module_ip,
             module_id=module_id,
             dome=dome_num,
+            layer=3,
             label=f"Module {module_id}\n({module_ip})"
         )
         
@@ -130,6 +132,7 @@ class GraphBuilder:
                 ip=q_ip,
                 uid=q_uid,
                 index=i,
+                layer=4,
                 label=f"Quabo {i}\n({q_uid})"
             )
             self.graph.add_edge(module_node_id, q_node_id, type="logical")

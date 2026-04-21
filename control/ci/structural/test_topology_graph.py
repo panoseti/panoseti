@@ -6,21 +6,20 @@ Unit tests for the NetworkX topology graph builder.
 
 from __future__ import annotations
 
-import pytest
-import networkx as nx
 from ipaddress import IPv4Address
+
+import pytest
 
 from control.topology.graph_builder import GraphBuilder
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DaqNodeValidator,
-    QuaboUidsValidator,
-    QuaboUidDome,
-    QuaboUidModule,
-    QuaboUidEntry,
     PortForwarding,
+    QuaboUidDome,
+    QuaboUidEntry,
+    QuaboUidModule,
+    QuaboUidsValidator,
 )
-from control.utils import config_file
 
 
 @pytest.fixture
@@ -73,7 +72,7 @@ def test_build_direct_topology(mock_quabo_uids: QuaboUidsValidator):
     assert graph.edges["10.0.1.5", "192.168.0.10"]["type"] == "control"
 
     # Check Module and Quabos
-    module_node = [n for n, d in graph.nodes(data=True) if d.get("role") == "module"][0]
+    module_node = next(n for n, d in graph.nodes(data=True) if d.get("role") == "module")
     assert "192.168.3.248" in module_node
     assert graph.has_edge("192.168.0.10", module_node)
     
@@ -114,5 +113,5 @@ def test_build_gateway_topology(mock_quabo_uids: QuaboUidsValidator):
     assert graph.has_edge("10.0.1.5", "192.168.0.10") # Control path
     assert graph.has_edge("192.168.0.10", "10.0.1.10") # Network path (tunnel)
     
-    module_node = [n for n, d in graph.nodes(data=True) if d.get("role") == "module"][0]
+    module_node = next(n for n, d in graph.nodes(data=True) if d.get("role") == "module")
     assert graph.has_edge("10.0.1.10", module_node), "Module should be downstream of Gateway"
