@@ -116,9 +116,10 @@ def test_n_node_fleet_topology():
     graph = builder.build_from_configs(daq_config, quabo_uids)
 
     # Assertions
-    # 1 HeadNode + 10 DAQNodes + (10 * 2) Modules + (10 * 2 * 4) Quabos
+    # 1 HeadNode + 10 DAQNodes + m Gateways + (10 * 2) Modules + (10 * 2 * 4) Quabos
+    gateways = [n for n, d in graph.nodes(data=True) if d.get("role") == "gateway"]
     expected_nodes = (
-        1 + num_nodes + (num_nodes * mods_per_node) + (num_nodes * mods_per_node * 4)
+        1 + num_nodes + len(gateways) + (num_nodes * mods_per_node) + (num_nodes * mods_per_node * 4)
     )
     assert len(graph.nodes) == expected_nodes
 

@@ -565,6 +565,35 @@ def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf
                 mod_node.add(f"[bold yellow] Q{q} [/bold yellow]({q_ip}) -> {real_ip}:{real_port}")
 
     console.print(root)
+    
+    # 2. Modern Graph Engine (NetworkX)
+    try:
+        from control.topology.graph_builder import GraphBuilder
+        from control.topology.visualizer import save_topology_image, export_topology_json
+        
+        # We need quabo_uids for the full graph
+        try:
+            quabo_uids = get_quabo_uids()
+            # Ensure associate is called to link the IDs
+            associate(daq_conf, quabo_uids)
+            
+            builder = GraphBuilder()
+            graph = builder.build_from_configs(daq_conf, quabo_uids)
+            
+            # Export to tmp directory
+            img_path = PanoPaths.tmp_dir() / "topology.png"
+            json_path = PanoPaths.tmp_dir() / "topology.json"
+            
+            save_topology_image(graph, img_path)
+            export_topology_json(graph, json_path)
+            
+            console.print(f"\n[green]✔ Topology graph exported to {img_path}[/green]")
+            console.print(f"[green]✔ Cytoscape JSON exported to {json_path}[/green]")
+        except Exception as e:
+             console.print(f"\n[yellow]⚠ Could not generate visual graph: {e}[/yellow]")
+    except ImportError:
+        console.print("\n[yellow]⚠ NetworkX or Matplotlib not installed. Skipping visual graph generation.[/yellow]")
+
     print("\n")
 
 

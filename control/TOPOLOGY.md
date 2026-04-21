@@ -48,9 +48,20 @@ save_topology_image(graph, "topology.png")
 ```python
 from control.topology.fleet import generate_fleet_configs
 
-# Create a 10-node fleet with 2 modules per node
-daq_config, quabo_uids = generate_fleet_configs(num_daq_nodes=10, modules_per_node=2)
+# Create a 10-node fleet with 2 modules per node and 50% subnet probability
+daq_config, quabo_uids = generate_fleet_configs(
+    num_daq_nodes=10, 
+    modules_per_node=2,
+    subnet_probability=0.5
+)
 ```
+
+## 🧪 Structural Simulations
+
+The parameterized simulation suite (`ci/structural/test_observatory_simulation.py`) allows testing against complex, randomized topologies. These tests verify:
+- **Graph Completeness:** Every logical node (Quabo) has a physical parent.
+- **Reachability:** The Head Node has a valid command propagation path to every DAQ node and Quabo.
+- **Subnet Integrity:** Nodes behind gateways maintain their downstream hardware links.
 
 ## 🛡️ Structural Validation
 
