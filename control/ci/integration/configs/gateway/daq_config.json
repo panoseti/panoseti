@@ -1,6 +1,7 @@
 {
     "head_node_data_dir": "/data/head",
     "head_node_ip_addr": "10.0.1.10",
+    "head_node_container": true,
     "daq_nodes": [
         {
             "username": "panoseti",

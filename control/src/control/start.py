@@ -35,6 +35,7 @@ import traceback
 from datetime import UTC, datetime
 from typing import Any
 
+import grpc
 import typer
 
 # ---------------------------------------------------
@@ -515,7 +516,6 @@ async def start_recording(
         }
         
         # Call gRPC synchronously in thread pool, guarded by a strict timeout and retries
-        import grpc
         max_attempts = 3
         last_err = ""
         
@@ -535,17 +535,18 @@ async def start_recording(
             except TimeoutError:
                 last_err = "StartDaq TIMEOUT (15s)"
                 break # Timeout usually means non-transient or black hole
-            except (grpc.RpcError, ConnectionError) as e:
-                # DaqControlClient may wrap grpc.RpcError in ConnectionError
+            except (grpc.RpcError, ConnectionError) as e:  # type: ignore[attr-defined]
+                # DaqControlClient wraps grpc.RpcError in ConnectionError
+                # We need to reach into .__cause__ to get the original RpcError
                 original_e = e.__cause__ if isinstance(e, ConnectionError) else e
-                if isinstance(original_e, grpc.RpcError):
-                    last_err = f"StartDaq gRPC Error: {original_e.code()}"
-                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < max_attempts:
+                if isinstance(original_e, grpc.RpcError):  # type: ignore[attr-defined]
+                    last_err = f"gRPC {original_e.code()}: {original_e.details()}"
+                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < max_attempts:  # type: ignore[attr-defined]
                         logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{max_attempts})...")
                         await asyncio.sleep(1.0)
                         continue
                 else:
-                    last_err = f"StartDaq Connection Error: {e}"
+                    last_err = f"StartDaq Error: {e}"
                 break
         
         # If we reach here, it's a hard failure or we ran out of retries
@@ -812,6 +813,7 @@ async def start_run(
             # Snapshot configs into the directory immediately (before validation/delays)
             # This ensures we archive the ORIGINAL files even if they change on disk mid-setup
             if not no_data:
+                logger.info(f'setting up run directories for {run_name}')
                 await asyncio.to_thread(
                     make_run_dirs, run_name, obs_config, daq_config, quabo_uids, data_config, network_config
                 )
@@ -827,7 +829,9 @@ async def start_run(
                 raise asyncio.CancelledError()
 
             if not no_data:
-                await _check_quabo_reachability(quabo_uids, network_config, lenient=daq_config.head_node_container)
+                await _check_quabo_reachability(
+                    quabo_uids, network_config, lenient=bool(daq_config.head_node_container)
+                )
 
             if not no_data:
                 if cancel_event.is_set():
@@ -850,6 +854,7 @@ async def start_run(
             
             logger.info(f'started run {run_name}')
             tx.success = True
+            return run_name
 
     except LockError as e:
         logger.error(f"FATAL: {e}")

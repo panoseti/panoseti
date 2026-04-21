@@ -60,17 +60,18 @@ def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
     # targets: tuple of (Description, Target_IP, Port, Associated_IP_to_Mark_Up)
     targets: set[tuple[str, str, int, str | None]] = set()
 
+    from pydantic import BaseModel
     # Strictly enforce that incoming data perfectly matches the schema
-    def _strict_validate(key: str, model_class: type) -> Any:
+    def _strict_validate(key: str, model_type: type[BaseModel]) -> Any:
         cfg = validated_configs.get(key)
         if cfg is None:
             return None
         if isinstance(cfg, dict):
             # This will raise ValidationError if the dictionary is incomplete or invalid
-            return model_class.model_validate(cfg)
+            return model_type.model_validate(cfg)
         # If it's already a model, it must be an instance of the expected class
-        if not isinstance(cfg, model_class):
-            raise TypeError(f"Expected {model_class.__name__} for '{key}', got {type(cfg)}")
+        if not isinstance(cfg, model_type):
+            raise TypeError(f"Expected {model_type.__name__} for '{key}', got {type(cfg)}")
         return cfg
 
     obs_cfg: ObsConfigValidator | None = _strict_validate('obs', ObsConfigValidator)

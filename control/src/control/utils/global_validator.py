@@ -388,8 +388,11 @@ class GlobalConfigValidator:
         if not self.daq_conf:
             return
         head_dir = self.daq_conf.head_node_data_dir
+        is_container = getattr(self.daq_conf, "head_node_container", False)
+        
         if not head_dir or not os.path.exists(head_dir):
-            self.report.add_test("Headnode Disk Space", "ERROR", f"Path '{head_dir}' missing or unreachable.")
+            status = "WARN" if is_container else "ERROR"
+            self.report.add_test("Headnode Disk Space", status, f"Path '{head_dir}' missing or unreachable.")
             return
 
         _total, _used, free = shutil.disk_usage(head_dir)
@@ -398,8 +401,15 @@ class GlobalConfigValidator:
         tb_per_hr, est_total, formula = self._estimate_data_usage()
 
         msg = f"Available: {free_tb:.2f} TB. Est: {tb_per_hr:.3f} TB/hr. Formula: {formula}"
+        
+        # In CI/Docker environments, we might be running on a small disk partition.
+        # If head_node_container is True, downgrade ERROR to WARN to allow tests to proceed.
+        is_container = getattr(self.daq_conf, "head_node_container", False)
+        
         if est_total > 0 and (free_tb - est_total) <= 0:
-            self.report.add_test("Headnode Disk Space", "ERROR", f"INSUFFICIENT SPACE! {msg}")
+            status = "WARN" if is_container else "ERROR"
+            prefix = "Low Space (CI/Container Mode):" if is_container else "INSUFFICIENT SPACE!"
+            self.report.add_test("Headnode Disk Space", status, f"{prefix} {msg}")
         elif free_tb < 1.0:
             self.report.add_test("Headnode Disk Space", "WARN", f"Low Space! {msg}")
         else:

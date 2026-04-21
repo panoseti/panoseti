@@ -28,7 +28,7 @@ def unit(
     import pathlib
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
-    import qa
+    import qa  # type: ignore[import-untyped]
     return qa.unit(ctx, jobs)
 
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -37,7 +37,7 @@ def integration(ctx: typer.Context):
     import pathlib
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
-    import qa
+    import qa  # type: ignore[import-untyped]
     return qa.integration(ctx)
 
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -46,7 +46,7 @@ def chaos(ctx: typer.Context):
     import pathlib
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
-    import qa
+    import qa  # type: ignore[import-untyped]
     return qa.chaos(ctx)
 
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -55,7 +55,7 @@ def lint(ctx: typer.Context):
     import pathlib
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
-    import qa
+    import qa  # type: ignore[import-untyped]
     return qa.lint(ctx)
 
 @test_app.command(name="all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -67,7 +67,7 @@ def test_all(
     import pathlib
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
-    import qa
+    import qa  # type: ignore[import-untyped]
     return qa.all_tests(ctx, jobs)
 
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
@@ -76,7 +76,7 @@ def build(ctx: typer.Context):
     import pathlib
     import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
-    import qa
+    import qa  # type: ignore[import-untyped]
     return qa.build(ctx)
 
 
@@ -256,8 +256,8 @@ def status():
 path_app = typer.Typer(help="Manage and visualize PANOSETI directory paths.", no_args_is_help=True)
 app.add_typer(path_app, name="path")
 
-@path_app.command()
-def show():
+@path_app.command(name="show")
+def show_paths():
     """Display all resolved paths and environment overrides."""
     from control import paths_cli
     paths_cli.show()

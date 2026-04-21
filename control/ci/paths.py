@@ -33,7 +33,12 @@ class PanoPathsTest(PanoPaths):
         return cls.integration_configs_root() / variant
 
     @classmethod
+    def configs_root(cls) -> Path:
+        """Production configs directory."""
+        return cls.base_dir() / "configs"
+
+    @classmethod
     def grpc_server_configs(cls, variant: Literal["headnode", "daqnode"]) -> Path:
         """Path to specific grpc server config variant (e.g. 'headnode', 'daqnode')."""
-        return cls.integration-configs_root() / "grpc" / variant
+        return cls.integration_configs_root() / "grpc" / variant
 

@@ -1,1 +1,1 @@
-{"run_type": "citest", "detector_overvoltage": 3, "image": {"integration_time_usec": 100000, "pe_threshold": 1.0, "quabo_sample_size": 16}}
+{"run_type": "citest", "detector_overvoltage": 3, "image": {"integration_time_usec": 1000, "pe_threshold": 1.0, "quabo_sample_size": 16}}

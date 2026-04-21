@@ -319,9 +319,9 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
                     msg = f"StopDaq returned success=False for node {node.ip_addr}"
                     logger.error(msg)
                     errors.append(msg)
-            except grpc.RpcError as e:
+            except grpc.RpcError as e: # type: ignore[attr-defined]
                 # Task 2.4: Implement hard-kill escalation
-                if e.code() in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]:
+                if e.code() in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]: # type: ignore[attr-defined]
                     logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({e.code()}). Escalating to SSH pkill...")
 
                     ssh_args = ["ssh"]

@@ -639,9 +639,10 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
             exc = grpc.RpcError("Transiently unavailable")
             # Monkey-patch code() method which is what start.py checks
             exc.code = lambda: grpc.StatusCode.UNAVAILABLE
-            raise exc
+            exc.details = lambda: "Transiently unavailable"
+            # start.py expects ConnectionError with __cause__ being the RpcError
+            raise ConnectionError("gRPC failed: Transiently unavailable") from exc
         return True
-
     # We also need to mock StatusDaq for the heartbeat check
     def success_status_daq(*args: Any, **kwargs: Any) -> tuple[bool, dict[str, Any]]:
         return True, {"hashpipe_running": True, "hashpipe_pid": 1234}
