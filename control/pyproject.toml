@@ -24,6 +24,7 @@ dependencies = [
     "orjson",
     "typing_extensions>=4.5",
     "typer",
+    "networkx",
     "panoseti_grpc>=0.4.7",
 ]
 
