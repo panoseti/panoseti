@@ -21,6 +21,11 @@ from typing import Any
 import pytest
 
 from ci.paths import PanoPathsTest
+from control.utils.pydantic_config_models import (
+    DaqConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+)
 
 
 def pytest_configure(config: Any) -> None:
@@ -103,11 +108,6 @@ def minimal_data_config(topology_templates) -> dict[str, Any]:
     return copy.deepcopy(topology_templates.get("base_data", {}))
 
 
-from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
-)
 
 
 @pytest.fixture

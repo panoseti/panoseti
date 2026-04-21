@@ -494,21 +494,35 @@ async def cmd_chaos(args: argparse.Namespace, runner: QARunner) -> bool:
             runner.infra_task("down_integration"),
             {"infra.down_integration": runner.infra_description("down_integration")},
         )
-
     runner._summary(results)
+    return all(r.ok for r in results)
 
-    # Surface expected-failures note in the summary footer
-    if results and not all(r.ok for r in results):
-        s = results[0].stats
-        failed = s.get("failed", 0) + s.get("error", 0)
-        print(
-            C.yellow(
-                f"  ↳ {failed} failure(s) expected on master (TDD-forcing). "
-                "Fix the production code to make them green."
-            ),
-            flush=True,
-        )
 
+async def cmd_structural(args: argparse.Namespace, runner: QARunner) -> bool:
+    """
+
+    Args:
+        args (argparse.Namespace): _description_
+        runner (QARunner): _description_
+
+    Returns:
+        bool: _description_
+    """
+    await runner.check_docker()
+    
+    # SETUP
+    await runner.run_sequential("SETUP", runner.infra_task("up_unit"), {"infra.up_unit": runner.infra_description("up_unit")})
+    
+    results: list[Result] = []
+    try:
+        tasks   = runner.test_tasks("structural", extra_args=args.extra)
+        descs   = {"test.structural": runner.test_description("structural")}
+        results = await runner.run_sequential("STRUCTURAL / TOPOLOGY", tasks, descs)
+    finally:
+        # CLEANUP
+        await runner.run_sequential("CLEANUP", runner.infra_task("down_unit"), {"infra.down_unit": runner.infra_description("down_unit")})
+    
+    runner._summary(results)
     return all(r.ok for r in results)
 
 
@@ -518,7 +532,8 @@ async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
     ok_unit = await cmd_unit(args, runner)
     ok_int  = await cmd_integration(args, runner)
     ok_chaos = await cmd_chaos(args, runner)
-    return ok_lint and ok_unit and ok_int and ok_chaos
+    ok_structural = await cmd_structural(args, runner)
+    return ok_lint and ok_unit and ok_int and ok_chaos and ok_structural
 
 
 # ── Typer Commands ─────────────────────────────────────────────────────────────
@@ -574,6 +589,16 @@ def chaos(ctx: typer.Context) -> None:
     ok = asyncio.run(cmd_chaos(args, runner))
     if not ok:
         raise typer.Exit(code=1)
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def structural(ctx: typer.Context) -> None:
+    """Run structural tests [pytest args...]"""
+    runner = QARunner(QA_TOML_PATH)
+    args = argparse.Namespace(extra=ctx.args)
+    ok = asyncio.run(cmd_structural(args, runner))
+    if not ok:
+        raise typer.Exit(code=1)
+
 
 
 @app.command(name="all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

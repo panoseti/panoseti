@@ -21,6 +21,8 @@ from pydantic import (
 )
 from rich.console import Console
 
+from control.utils.paths import PanoPaths
+
 console = Console()
 
 # Global restrictions
@@ -376,7 +378,6 @@ class DaemonConfigValidator(BaseStrictModel):
     daemons: Daemons
     permanent_daemons: Daemons
 
-from control.utils.paths import PanoPaths
 
 # ------------------------------
 # --- Firmware Config Models ---

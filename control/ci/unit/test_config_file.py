@@ -534,7 +534,7 @@ class TestGetConfigs:
 
     def test_get_network_config(self, tmp_path) -> None:
         from control.utils.config_file import get_network_config
-        net_data = {"modules": [], "daq_nodes": []}
+        net_data: dict[str, Any] = {"modules": [], "daq_nodes": []}
         base = self._write_json(tmp_path, "network_config.json", net_data)
         config = get_network_config(base)
         assert len(config.modules) == 0

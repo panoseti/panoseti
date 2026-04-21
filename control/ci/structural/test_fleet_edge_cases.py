@@ -11,7 +11,7 @@ from control.topology.fleet import generate_fleet_configs
 
 def test_fleet_100_percent_subnet():
     """Verify fleet generation when every node is in a subnet."""
-    daq, uids = generate_fleet_configs(num_daq_nodes=5, subnet_probability=1.0)
+    daq, _uids = generate_fleet_configs(num_daq_nodes=5, subnet_probability=1.0)
     for node in daq.daq_nodes:
         assert node.port_forwarding is not None
         assert node.port_forwarding.status is True
@@ -19,7 +19,7 @@ def test_fleet_100_percent_subnet():
 
 def test_fleet_0_percent_subnet():
     """Verify fleet generation when no nodes are in a subnet."""
-    daq, uids = generate_fleet_configs(num_daq_nodes=5, subnet_probability=0.0)
+    daq, _uids = generate_fleet_configs(num_daq_nodes=5, subnet_probability=0.0)
     for node in daq.daq_nodes:
         assert node.port_forwarding is None
 

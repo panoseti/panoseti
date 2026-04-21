@@ -33,6 +33,8 @@ import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.daq_data.client import DaqDataClient
 
+from ci.paths import PanoPathsTest
+
 # ---------------------------------------------------------------------------
 # Environment / connection parameters
 # ---------------------------------------------------------------------------
@@ -52,7 +54,6 @@ HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
 DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
 BINDHOST             = os.getenv("BINDHOST", "lo")
 
-from ci.paths import PanoPathsTest
 
 CONTROL_DIR = PanoPathsTest.base_dir()
 CONFIG_DIR = PanoPathsTest.integration_configs_root()

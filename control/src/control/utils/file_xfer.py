@@ -42,10 +42,7 @@ def copy_file_to_node(file_path: Path | str, node: DaqNodeValidator, run_dir: st
         dest_path += '/'
     
     # Handle glob patterns if string is provided
-    if isinstance(file_path, str):
-        files = [Path(f) for f in glob(file_path)]
-    else:
-        files = [file_path]
+    files = [Path(f) for f in glob(file_path)] if isinstance(file_path, str) else [file_path]
 
     for f in files:
         f_str = str(f)

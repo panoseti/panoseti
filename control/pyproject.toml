@@ -38,6 +38,7 @@ dev = [
     "fakeredis>=2.26",
     "mypy>=1.9",
     "ruff>=0.4",
+    "matplotlib",
     "numpy>=1.24",
     "docker>=7.0",
     "pytest-timeout>=2.0",
@@ -70,6 +71,13 @@ ignore = [
     "E501",   # line too long – handled separately
     "B008",   # function calls in default args (common in Pydantic)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = [
+	"E501",
+	"E402",
+	"F401"
+] # Add rule codes you want to ignore here
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]

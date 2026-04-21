@@ -41,6 +41,16 @@ def integration(ctx: typer.Context):
     return qa.integration(ctx)
 
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def structural(ctx: typer.Context):
+    """Run structural/topology tests."""
+    import pathlib
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
+    import qa  # type: ignore[import-untyped]
+    return qa.structural(ctx)
+
+
+@test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def chaos(ctx: typer.Context):
     """Run TDD-forcing chaos/scenario tests."""
     import pathlib

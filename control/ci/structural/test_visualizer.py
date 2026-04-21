@@ -17,8 +17,9 @@ from control.topology.visualizer import export_topology_json, save_topology_imag
 def test_save_topology_image():
     """Verify that save_topology_image creates a file."""
     graph = nx.DiGraph()
-    graph.add_node("head", role="headnode", label="Head")
-    graph.add_node("daq", role="daqnode", label="DAQ")
+    graph.add_node("head", role="headnode", layer=0, label="Head")
+    graph.add_node("daq", role="daqnode", layer=0, label="DAQ")
+    graph.add_node("daq", role="daqnode-2", layer=1, label="DAQ-2")
     graph.add_edge("head", "daq", type="control")
     
     with tempfile.TemporaryDirectory() as tmp_dir:

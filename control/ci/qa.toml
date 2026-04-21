@@ -43,6 +43,10 @@ description = "MyPy static type check"
 command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/unit/ -v -n {parallel} --color=yes {args}"
 description = "Parallel unit tests (pytest-xdist)"
 
+[test.structural]
+command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/structural/ -v --color=yes {args}"
+description = "Logical topology and network engine simulations"
+
 [test.integration]
 command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml exec -T -e PANOSETI_CONFIG_DIR=/app/ci/integration/configs/direct -e PANOSETI_TMP_DIR=/app/ci/test_state/tmp -e PANOSETI_QUABOS_DIR=/app/ci/integration/configs -e PANOSETI_LOGS_DIR=/app/ci/test_state/logs int-tester /bin/sh -c 'mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json && pytest ci/integration/ -v --color=yes --ignore=ci/integration/scenarios {args}'"
 description = "E2E integration tests (excludes chaos scenarios)"
