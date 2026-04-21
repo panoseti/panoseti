@@ -142,15 +142,15 @@ class TestSC002PartialStartRollback:
             )
             raise RuntimeError("Simulated node-1 StartDaq failure — SC-002 rollback test")
 
-        with unittest.mock.patch("start.start_recording", mock_start_recording), \
-             unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-             unittest.mock.patch("start.start_data_flow"), \
-             unittest.mock.patch("start.make_run_dirs"), \
-             unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
-             unittest.mock.patch("start.util.kill_hk_recorder"), \
-             unittest.mock.patch("start.util.kill_hv_updater"), \
-             unittest.mock.patch("start.util.kill_module_temp_monitor"), \
-             unittest.mock.patch("start.util.stop_data_flow"):
+        with unittest.mock.patch("control.start.start_recording", mock_start_recording), \
+             unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+             unittest.mock.patch("control.start.start_data_flow"), \
+             unittest.mock.patch("control.start.make_run_dirs"), \
+             unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
+             unittest.mock.patch("control.start.util.kill_hk_recorder"), \
+             unittest.mock.patch("control.start.util.kill_hv_updater"), \
+             unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
+             unittest.mock.patch("control.start.util.stop_data_flow"):
             success = await start.start_run(
                 obs_config, daq_config, quabo_uids, data_config, network_config,
                 no_hv=True, no_redis=True, no_data=False, force_reset=True,
@@ -203,7 +203,7 @@ class TestSC024ConcurrentStart:
         import subprocess
 
         # Ensure no run is active and clean up any leaked state from previous tests
-        subprocess.run(["python3", "stop.py", "--no_collect"], capture_output=True)
+        subprocess.run(["python3", "-m", "control.stop", "--no_collect"], capture_output=True)
         if os.path.exists("tmp/run_state.toml"):
             os.remove("tmp/run_state.toml")
         if os.path.exists("tmp/panoseti_control.lock"):
@@ -229,12 +229,12 @@ async def main():
 
     from control.utils.pydantic_config_models import CollectResult
     with patch("control.utils.util.local_ip", return_value=["10.200.146.1", "127.0.0.1", "10.0.1.5"]), \\
-         patch("start.ph_baseline_file_ok", return_value=True), \\
-         patch("start.make_run_dirs", return_value=None), \\
-         patch("stop.stop_run", return_value=None), \\
-         patch("control.utils.collect.collect_data", return_value=CollectResult(success=True)), \\
-         patch("control.utils.config_file.get_daq_config", side_effect=mock_get_daq_config), \\
-         patch("start.start_recording", side_effect=lambda *args: asyncio.run(asyncio.sleep(3))):
+         patch("control.start.ph_baseline_file_ok", return_value=True), \
+         patch("control.start.make_run_dirs", return_value=None), \
+         patch("control.stop.stop_run", return_value=None), \
+         patch("control.utils.collect.collect_data", return_value=CollectResult(success=True)), \
+         patch("control.utils.config_file.get_daq_config", side_effect=mock_get_daq_config), \
+         patch("control.start.start_recording", side_effect=lambda *args: asyncio.run(asyncio.sleep(3))):
         await start.main()
 if __name__ == "__main__":
     asyncio.run(main())
@@ -274,7 +274,7 @@ if __name__ == "__main__":
         finally:
             os.remove("tmp_start_wrapper.py")
             # Cleanup
-            subprocess.run(["python3", "stop.py", "--no_collect"], capture_output=True)
+            subprocess.run(["python3", "-m", "control.stop", "--no_collect"], capture_output=True)
 
     @pytest.mark.asyncio
     async def test_SC024_async_concurrent_start_only_one_wins(
@@ -350,7 +350,7 @@ class TestSC031PHBaslineStaleness:
         try:
             from control.start import ph_baseline_file_ok
         except ImportError:
-            pytest.skip("Could not import start.ph_baseline_file_ok — check sys.path")
+            pytest.skip("Could not import control.start as start.ph_baseline_file_ok — check sys.path")
 
         is_ok = ph_baseline_file_ok(str(ph_file))
         assert not is_ok, (
@@ -369,7 +369,7 @@ class TestSC031PHBaslineStaleness:
         try:
             from control.start import ph_baseline_file_ok
         except ImportError:
-            pytest.skip("Could not import start.ph_baseline_file_ok")
+            pytest.skip("Could not import control.start as start.ph_baseline_file_ok")
 
         assert ph_baseline_file_ok(str(ph_file)), \
             "A 23-hour-old PH baseline file must be accepted"
@@ -379,7 +379,7 @@ class TestSC031PHBaslineStaleness:
         try:
             from control.start import ph_baseline_file_ok
         except ImportError:
-            pytest.skip("Could not import start.ph_baseline_file_ok")
+            pytest.skip("Could not import control.start as start.ph_baseline_file_ok")
 
         non_existent = str(tmp_path / "no_such_file.json")
         result = ph_baseline_file_ok(non_existent)
@@ -395,7 +395,7 @@ class TestSC031PHBaslineStaleness:
         try:
             from control.start import ph_baseline_file_ok
         except ImportError:
-            pytest.skip("Could not import start.ph_baseline_file_ok")
+            pytest.skip("Could not import control.start as start.ph_baseline_file_ok")
 
         result = ph_baseline_file_ok(str(ph_file))
         assert not result, (
@@ -750,7 +750,7 @@ async def test_SC021_killed_after_make_run_dirs_leaves_orphan_dirs(
         env = os.environ.copy()
         env["PATH"] = f"{os.getcwd()}/tmp/fake_bin:{env['PATH']}"
         result = subprocess.run(
-            ["python3", "start.py", "--no_hv", "--no_redis", "--no_data"],
+            ["python3", "-m", "control.start", "--no_hv", "--no_redis", "--no_data"],
             capture_output=True, text=True, env=env
         )
     assert result.returncode == 0, f"Next start.py failed to self-heal: {result.stderr}"
@@ -777,7 +777,7 @@ async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
         env = os.environ.copy()
         env["PATH"] = f"{os.getcwd()}/tmp/fake_bin:{env['PATH']}"
         result = subprocess.run(
-            ["python3", "stop.py", "--no_collect", "--no_cleanup"],
+            ["python3", "-m", "control.stop", "--no_collect", "--no_cleanup"],
             capture_output=True, text=True, env=env
         )
     assert result.returncode == 0, f"stop.py failed after SC-022: {result.stderr}"
@@ -805,8 +805,9 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     # I should use 192.168.0.10 for SC-023 so it actually starts a hashpipe.
     
     with mock_daq_config_for_headnode():
+        from control.utils.paths import PanoPaths
         # Temporarily force the node IP to 192.168.0.10 so StartDaq works
-        path = "configs/daq_config.json"
+        path = PanoPaths.config_dir() / "daq_config.json"
         with open(path) as f:
             cfg = json.load(f)
         cfg["daq_nodes"][0]["ip_addr"] = "192.168.0.10"
@@ -826,7 +827,7 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
         env = os.environ.copy()
         env["PATH"] = f"{os.getcwd()}/tmp/fake_bin:{env['PATH']}"
         result = subprocess.run(
-            ["python3", "start.py", "--no_hv", "--no_redis", "--no_data", "--force-reset"],
+            ["python3", "-m", "control.start", "--no_hv", "--no_redis", "--no_data", "--force-reset"],
             capture_output=True, text=True, env=env
         )
     assert result.returncode == 0, f"Next start.py failed to self-heal orphaned hashpipe: {result.stderr}"
@@ -836,7 +837,7 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     
     # Cleanup
     with mock_daq_config_for_headnode():
-        subprocess.run(["python3", "stop.py", "--no_collect", "--no_cleanup"], capture_output=True, env=env)
+        subprocess.run(["python3", "-m", "control.stop", "--no_collect", "--no_cleanup"], capture_output=True, env=env)
 
 
 # ── SC-026: stop.py with no run in progress ──────────────────────────────────
@@ -910,10 +911,10 @@ class TestSC027StopRunMismatch:
 
         mock_stop_rec = AsyncMock()
 
-        with patch("stop.RunStateManager", return_value=mock_mgr), \
+        with patch("control.stop.RunStateManager", return_value=mock_mgr), \
              patch("socket.gethostbyname", return_value="10.0.1.5"), \
              patch("control.utils.util.local_ip", return_value=["10.0.1.5"]), \
-             patch("stop.stop_recording", mock_stop_rec):
+             patch("control.stop.stop_recording", mock_stop_rec):
 
             asyncio.run(stop_module.stop_run(
                 daq_config, network_config, quabo_uids,
@@ -960,10 +961,10 @@ class TestSC027StopRunMismatch:
 
         mock_stop_rec = AsyncMock()
 
-        with patch("stop.RunStateManager", return_value=mock_mgr), \
+        with patch("control.stop.RunStateManager", return_value=mock_mgr), \
              patch("socket.gethostbyname", return_value="10.0.1.5"), \
              patch("control.utils.util.local_ip", return_value=["10.0.1.5"]), \
-             patch("stop.stop_recording", mock_stop_rec), \
+             patch("control.stop.stop_recording", mock_stop_rec), \
              patch("control.utils.util.kill_hv_updater"), \
              patch("control.utils.util.kill_hk_recorder"), \
              patch("control.utils.util.kill_module_temp_monitor"), \
@@ -1043,9 +1044,9 @@ class TestSC029FundamentalFailureSkipsCleanup:
         # 4. We will simulate a fundamental failure by mocking util.local_ip 
         # to raise an exception inside the 'with' block of stop_run.
         
-        with patch("stop.RunStateManager", return_value=mock_mgr), \
+        with patch("control.stop.RunStateManager", return_value=mock_mgr), \
              patch("control.utils.util.local_ip", side_effect=RuntimeError("Fundamental Failure")), \
-             patch("stop.TransferQueue", return_value=mock_tq), \
+             patch("control.stop.TransferQueue", return_value=mock_tq), \
              patch("socket.gethostbyname", return_value="10.0.1.5"):
 
             # stop_run swallows generic exceptions and returns False
@@ -1078,7 +1079,7 @@ def test_SC030_missing_ph_baseline_file_is_rejected(
     try:
         from control.start import ph_baseline_file_ok
     except ImportError:
-        pytest.skip("Could not import start.ph_baseline_file_ok — check sys.path")
+        pytest.skip("Could not import control.start as start.ph_baseline_file_ok — check sys.path")
 
     non_existent = str(tmp_path / "no_such_file.json")
     result = ph_baseline_file_ok(non_existent)
@@ -1106,7 +1107,8 @@ def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
     RunStateManager().clear_state()
     
     # 1. Inject a Quabo UID that points to a non-existent IP but valid module_id range
-    uids_path = "tmp/quabo_uids.json"
+    from control.utils.paths import PanoPaths
+    uids_path = PanoPaths.tmp_dir() / "quabo_uids.json"
     with open(uids_path) as f:
         uids = json.load(f)
     
@@ -1124,9 +1126,10 @@ def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
         # 2. Run start.py — it must fail because 192.168.250.250 is unreachable
         # and it's listed in our UID map.
         result = subprocess.run(
-            ["python3", "start.py", "--no_hv", "--no_redis", "--no_data"],
+            ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data"],
             capture_output=True, text=True
         )
+
         assert result.returncode != 0, "start.py must fail when a configured Quabo is unreachable"
         assert "unreachable" in result.stdout.lower() or "timeout" in result.stdout.lower() or "failed" in result.stdout.lower()
     finally:
@@ -1207,9 +1210,11 @@ def test_SC039_data_config_modified_between_get_params_and_start() -> None:
     # To make this reliable, we need start.py to pause or we need to be very fast.
     # Actually, a better way is to verify that the config files COPIED to the
     # run directory match the models LOADED at the start, not the files on disk.
-    
-    data_cfg_path = "configs/data_config.json"
+
+    from control.utils.paths import PanoPaths
+    data_cfg_path = PanoPaths.config_dir() / "data_config.json"
     with open(data_cfg_path) as f:
+
         original_data = json.load(f)
     
     # 1. Start a long-running start.py process (mocked or with delay)
@@ -1246,10 +1251,10 @@ async def slow_start():
 
     try:
         # Patch everything that would fail without a real DAQ fleet or SSH
-        with unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \\
-             unittest.mock.patch("start._check_quabo_reachability"), \\
-             unittest.mock.patch("start.start_data_flow"), \\
-             unittest.mock.patch("start.start_recording"), \\
+        with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+             unittest.mock.patch("control.start._check_quabo_reachability"), \
+             unittest.mock.patch("control.start.start_data_flow"), \
+             unittest.mock.patch("control.start.start_recording"), \
              unittest.mock.patch("control.utils.util.start_hk_recorder"), \\
              unittest.mock.patch("control.utils.util.kill_hk_recorder"), \\
              unittest.mock.patch("control.utils.util.kill_hv_updater"), \\
@@ -1330,9 +1335,11 @@ def test_SC040_obs_config_timing_mode_change_between_session_and_run() -> None:
     from control.utils.run_state import RunStateManager
 
     RunStateManager().clear_state()
-    
-    obs_cfg_path = "configs/obs_config.json"
+
+    from control.utils.paths import PanoPaths
+    obs_cfg_path = PanoPaths.config_dir() / "obs_config.json"
     with open(obs_cfg_path) as f:
+
         original_obs = json.load(f)
     
     run_name = "sc040_test_fixed_run.pffd"
@@ -1365,10 +1372,10 @@ async def slow_start():
 
     import unittest.mock
     try:
-        with unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \\
-             unittest.mock.patch("start._check_quabo_reachability"), \\
-             unittest.mock.patch("start.start_data_flow"), \\
-             unittest.mock.patch("start.start_recording"), \\
+        with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+             unittest.mock.patch("control.start._check_quabo_reachability"), \
+             unittest.mock.patch("control.start.start_data_flow"), \
+             unittest.mock.patch("control.start.start_recording"), \
              unittest.mock.patch("control.utils.util.start_hk_recorder"), \\
              unittest.mock.patch("control.utils.util.kill_hk_recorder"), \\
              unittest.mock.patch("control.utils.util.kill_hv_updater"), \\
@@ -1487,10 +1494,10 @@ async def test_SC015_stale_ledger_self_heal(
     util.attach_daq_config(daq_config, network_config)
 
     import unittest.mock
-    with unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-         unittest.mock.patch("start.make_run_dirs"), \
-         unittest.mock.patch("start.start_data_flow"), \
-         unittest.mock.patch("start.start_recording"), \
+    with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start._check_quabo_reachability"), \
+         unittest.mock.patch("control.start.start_data_flow"), \
+         unittest.mock.patch("control.start.start_recording"), \
          unittest.mock.patch("control.utils.config_file.associate"), \
          unittest.mock.patch("control.utils.config_file.show_daq_assignments"):
         # We expect this to succeed now because self-heal logic is in start.py

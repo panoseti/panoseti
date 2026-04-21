@@ -25,7 +25,8 @@ def unit(
     jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers"),
 ):
     """Run parallel unit tests."""
-    import sys, pathlib
+    import pathlib
+    import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
     import qa
     return qa.unit(ctx, jobs)
@@ -33,7 +34,8 @@ def unit(
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def integration(ctx: typer.Context):
     """Run end-to-end integration tests."""
-    import sys, pathlib
+    import pathlib
+    import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
     import qa
     return qa.integration(ctx)
@@ -41,7 +43,8 @@ def integration(ctx: typer.Context):
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def chaos(ctx: typer.Context):
     """Run TDD-forcing chaos/scenario tests."""
-    import sys, pathlib
+    import pathlib
+    import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
     import qa
     return qa.chaos(ctx)
@@ -49,7 +52,8 @@ def chaos(ctx: typer.Context):
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def lint(ctx: typer.Context):
     """Run Ruff and MyPy static analysis."""
-    import sys, pathlib
+    import pathlib
+    import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
     import qa
     return qa.lint(ctx)
@@ -60,7 +64,8 @@ def test_all(
     jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers for unit tests"),
 ):
     """Run the full testing suite."""
-    import sys, pathlib
+    import pathlib
+    import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
     import qa
     return qa.all_tests(ctx, jobs)
@@ -68,7 +73,8 @@ def test_all(
 @test_app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def build(ctx: typer.Context):
     """Rebuild the testing Docker images."""
-    import sys, pathlib
+    import pathlib
+    import sys
     sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent / "ci"))
     import qa
     return qa.build(ctx)

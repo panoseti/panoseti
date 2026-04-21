@@ -76,14 +76,14 @@ async def test_SC001_startdaq_timeout_hangs_forever(
         return True
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=hanging_start_daq), \
-         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-         unittest.mock.patch("start.make_run_dirs"), \
-         unittest.mock.patch("start.start_data_flow"), \
-         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
-         unittest.mock.patch("start.util.kill_hk_recorder"), \
-         unittest.mock.patch("start.util.kill_hv_updater"), \
-         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
-         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start.make_run_dirs"), \
+         unittest.mock.patch("control.start.start_data_flow"), \
+         unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("control.start.util.kill_hk_recorder"), \
+         unittest.mock.patch("control.start.util.kill_hv_updater"), \
+         unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
         
         # We expect this to return False because it should timeout and trigger rollback
@@ -141,14 +141,14 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=success_start_daq), \
          unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", side_effect=status_responses), \
-         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-         unittest.mock.patch("start.make_run_dirs"), \
-         unittest.mock.patch("start.start_data_flow"), \
-         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
-         unittest.mock.patch("start.util.kill_hk_recorder"), \
-         unittest.mock.patch("start.util.kill_hv_updater"), \
-         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
-         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start.make_run_dirs"), \
+         unittest.mock.patch("control.start.start_data_flow"), \
+         unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("control.start.util.kill_hk_recorder"), \
+         unittest.mock.patch("control.start.util.kill_hv_updater"), \
+         unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
         
         success = await start.start_run(
@@ -624,14 +624,14 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=retry_start_daq), \
          unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", side_effect=success_status_daq), \
-         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-         unittest.mock.patch("start.make_run_dirs"), \
-         unittest.mock.patch("start.start_data_flow"), \
-         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
-         unittest.mock.patch("start.util.kill_hk_recorder"), \
-         unittest.mock.patch("start.util.kill_hv_updater"), \
-         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
-         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start.make_run_dirs"), \
+         unittest.mock.patch("control.start.start_data_flow"), \
+         unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("control.start.util.kill_hk_recorder"), \
+         unittest.mock.patch("control.start.util.kill_hv_updater"), \
+         unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
         
         success = await start.start_run(
@@ -890,20 +890,20 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StopDaq", side_effect=timeout_stop_daq), \
          unittest.mock.patch("subprocess.run", side_effect=mocked_run), \
-         unittest.mock.patch("stop.config_file.get_daq_config", return_value=daq_config), \
-         unittest.mock.patch("stop.config_file.get_quabo_uids"), \
-         unittest.mock.patch("stop.config_file.get_network_config"), \
-         unittest.mock.patch("stop.util.local_ip", return_value=["10.0.1.5", "127.0.0.1"]), \
-         unittest.mock.patch("stop.RunStateManager.load_state", return_value=None), \
-         unittest.mock.patch("stop.util.read_run_name", return_value="test_run.pffd"), \
-         unittest.mock.patch("stop.os.path.exists", return_value=True), \
-         unittest.mock.patch("stop.util.stop_data_flow"), \
-         unittest.mock.patch("stop.util.kill_hv_updater"), \
-         unittest.mock.patch("stop.util.kill_hk_recorder"), \
-         unittest.mock.patch("stop.util.kill_module_temp_monitor"), \
-         unittest.mock.patch("stop.write_complete_file"), \
-         unittest.mock.patch("stop.make_links"), \
-         unittest.mock.patch("stop.util.remove_run_name"):
+         unittest.mock.patch("control.stop.config_file.get_daq_config", return_value=daq_config), \
+         unittest.mock.patch("control.stop.config_file.get_quabo_uids"), \
+         unittest.mock.patch("control.stop.config_file.get_network_config"), \
+         unittest.mock.patch("control.stop.util.local_ip", return_value=["10.0.1.5", "127.0.0.1"]), \
+         unittest.mock.patch("control.stop.RunStateManager.load_state", return_value=None), \
+         unittest.mock.patch("control.stop.util.read_run_name", return_value="test_run.pffd"), \
+         unittest.mock.patch("control.stop.os.path.exists", return_value=True), \
+         unittest.mock.patch("control.stop.util.stop_data_flow"), \
+         unittest.mock.patch("control.stop.util.kill_hv_updater"), \
+         unittest.mock.patch("control.stop.util.kill_hk_recorder"), \
+         unittest.mock.patch("control.stop.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("control.stop.write_complete_file"), \
+         unittest.mock.patch("control.stop.make_links"), \
+         unittest.mock.patch("control.stop.util.remove_run_name"):
 
         await stop.stop_run(
             daq_config, unittest.mock.MagicMock(), unittest.mock.MagicMock(),

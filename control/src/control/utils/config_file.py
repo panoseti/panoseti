@@ -7,8 +7,8 @@ import json
 # CWD CONTRACT: all relative paths in this file are relative to the control/ directory.
 # Scripts must be launched from control/ (e.g. `cd control && python start.py`).
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ValidationError

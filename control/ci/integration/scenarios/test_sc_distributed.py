@@ -115,16 +115,16 @@ async def test_SCN003_partial_start_rollback_4_nodes(
          unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", mocked_start_daq), \
          unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StopDaq", mocked_stop_daq), \
          unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", mocked_status_daq), \
-         unittest.mock.patch("start.config_file.get_daq_config", return_value=daq_config), \
-         unittest.mock.patch("start.config_file.get_quabo_uids", return_value=quabo_uids), \
-         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-         unittest.mock.patch("start.make_run_dirs"), \
-         unittest.mock.patch("start.start_data_flow"), \
-         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
-         unittest.mock.patch("start.util.kill_hk_recorder"), \
-         unittest.mock.patch("start.util.kill_hv_updater"), \
-         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
-         unittest.mock.patch("start.util.stop_data_flow"), \
+         unittest.mock.patch("control.start.config_file.get_daq_config", return_value=daq_config), \
+         unittest.mock.patch("control.start.config_file.get_quabo_uids", return_value=quabo_uids), \
+         unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start.make_run_dirs"), \
+         unittest.mock.patch("control.start.start_data_flow"), \
+         unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("control.start.util.kill_hk_recorder"), \
+         unittest.mock.patch("control.start.util.kill_hv_updater"), \
+         unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=[headnode_ip, "127.0.0.1"]):
         
         success = await start.start_run(
@@ -211,15 +211,15 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
         def StatusDaq(self, params: dict[str, Any], **kwargs: Any) -> tuple[bool, dict[str, Any]]:
             return True, {"hashpipe_running": True, "hashpipe_pid": 1234}
 
-    with unittest.mock.patch("start.DaqControlClient", MockDaqControlClient), \
-         unittest.mock.patch("start.ph_baseline_file_ok", return_value=True), \
-         unittest.mock.patch("start.make_run_dirs"), \
-         unittest.mock.patch("start.start_data_flow"), \
-         unittest.mock.patch("start.util.is_hk_recorder_running", return_value=False), \
-         unittest.mock.patch("start.util.kill_hk_recorder"), \
-         unittest.mock.patch("start.util.kill_hv_updater"), \
-         unittest.mock.patch("start.util.kill_module_temp_monitor"), \
-         unittest.mock.patch("start.util.stop_data_flow"), \
+    with unittest.mock.patch("control.start.DaqControlClient", MockDaqControlClient), \
+         unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start.make_run_dirs"), \
+         unittest.mock.patch("control.start.start_data_flow"), \
+         unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
+         unittest.mock.patch("control.start.util.kill_hk_recorder"), \
+         unittest.mock.patch("control.start.util.kill_hv_updater"), \
+         unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
+         unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=["127.0.0.1", headnode_ip]):
         
         success = await start.start_run(
