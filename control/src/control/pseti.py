@@ -286,7 +286,7 @@ def clean():
 
 
 # 5. Validate Sub-app
-validate_app = typer.Typer(help="Configuration and topology validation tools.", no_args_is_help=True)
+validate_app = typer.Typer(help="Configuration and topology validation tools.", no_args_is_help=False)
 app.add_typer(validate_app, name="validate")
 
 @validate_app.callback(invoke_without_command=True)
@@ -297,7 +297,7 @@ def validate_main(ctx: typer.Context):
     """
     if ctx.invoked_subcommand is None:
         from control.utils import config_file
-        passed = config_file.validate_all(check_network=False, debug=False, graph=False)
+        passed = config_file.validate_all(check_network=False, debug=False, graph=True)
         if not passed:
             raise typer.Exit(code=1)
 
@@ -310,10 +310,10 @@ def network():
         raise typer.Exit(code=1)
 
 @validate_app.command()
-def graph():
+def no_graph():
     """Validate configs and display topology graph."""
     from control.utils import config_file
-    passed = config_file.validate_all(graph=True)
+    passed = config_file.validate_all(graph=False)
     if not passed:
         raise typer.Exit(code=1)
 

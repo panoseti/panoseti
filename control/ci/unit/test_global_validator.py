@@ -534,3 +534,55 @@ class TestValidateAllRules:
         v.validate_all_rules()
         # At minimum, each check method should have added something
         assert len(v.report.tests) >= len(check_methods)
+
+
+    def test_reports_errors_with_valid_config(self, tmp_path) -> None:
+        """Each _check_* method contributes at least one row to the report."""
+        daq = {
+            "head_node_data_dir": str(tmp_path), 
+            "head_node_ip_addr": "10.0.0.1", 
+            "daq_nodes": [
+                {
+                    "ip_addr": "192.168.0.10",
+                    "data_dir": "/data",
+                    "username": "root",
+                    "module_ids": "1",
+                    "bindhost": "lo"
+                },
+            ]
+        }
+        obs = {
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
+            "wps": {"url": "http://x", "quabo_socket": 1},
+        }
+        v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
+        check_methods = [m for m in dir(v) if m.startswith("_check_")]
+        v.validate_all_rules()
+        # At minimum, each check method should have added something
+        assert v.report.has_errors
+
+    def test_reports_no_errors_with_invalid_config(self, tmp_path) -> None:
+        """Each _check_* method contributes at least one row to the report."""
+        daq = {
+            "head_node_data_dir": str(tmp_path), 
+            "head_node_ip_addr": "10.0.0.1", 
+            "daq_nodes": [
+                {
+                    "ip_addr": "192.168.0.10",
+                    "data_dir": "/data",
+                    "username": "root",
+                    "module_ids": "1-255",
+                    "bindhost": "lo"
+                },
+            ]
+        }
+        obs = {
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
+            "wps": {"url": "http://x", "quabo_socket": 1},
+        }
+        v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
+        v.validate_all_rules()
+        # At minimum, each check method should have added something
+        assert not v.report.has_errors

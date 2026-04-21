@@ -605,7 +605,7 @@ def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf
 
 
 
-def validate_all(check_network: bool = True, debug: bool = False, graph: bool = False) -> bool:
+def validate_all(check_network: bool = False, debug: bool = False, graph: bool = False) -> bool:
     """
     Master validation orchestrator.
     Batches Tier-1 errors, supports Global Tier-2 validation, and topology graphing.

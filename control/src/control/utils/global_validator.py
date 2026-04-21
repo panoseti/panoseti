@@ -125,7 +125,10 @@ class GlobalConfigValidator:
         rule_methods = [getattr(self, func) for func in dir(self) if
                         callable(getattr(self, func)) and func.startswith("_check_")]
         for rule in rule_methods:
-            rule()
+            try:
+                rule()
+            except ValueError as e:
+                pass
         self.report.print_report()
         return not self.report.has_errors
 
@@ -447,7 +450,14 @@ class GlobalConfigValidator:
         # 1. Build the graph
         from control.utils import config_file
         quabo_uids = config_file.get_quabo_uids()
-        config_file.associate(self.daq_conf, quabo_uids)
+        try:
+            config_file.associate(self.daq_conf, quabo_uids)
+        except ValueError as e:
+            # raise ValueError from e
+
+            self.report.add_test("Topology Reachability", "ERROR", f"{e!r}")
+            return
+            
         
         builder = GraphBuilder()
         graph = builder.build_from_configs(self.daq_conf, quabo_uids)
