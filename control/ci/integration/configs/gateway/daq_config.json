@@ -7,7 +7,7 @@
             "username": "panoseti",
             "data_dir": "/data",
             "ip_addr": "192.168.0.10",
-            "module_ids": "200-200",
+            "module_ids": "200",
             "bindhost": "0.0.0.0"
         }
     ]

@@ -26,6 +26,7 @@ from control.utils.pydantic_config_models import (
 console = Console()
 
 MAX_DOME_BASELINE_KM = 2
+MAX_MODULES_PER_DAQ_NODE = 4
 
 class ValidationReport:
     """Aggregates tests for a unified pre-flight report."""
@@ -476,7 +477,7 @@ class GlobalConfigValidator:
             self.report.add_test("Topology Reachability", "PASS", "All hardware reachable from Head Node.")
 
         # 3. Check for DAQ Node Bottlenecks (more than k modules)
-        module_limit = self.daq_conf.daq_node_module_limit or 4
+        module_limit = self.daq_conf.daq_node_module_limit or MAX_MODULES_PER_DAQ_NODE
         daq_nodes = [n for n, d in graph.nodes(data=True) if d.get("role") == "daqnode"]
         for node_ip in daq_nodes:
             # find successors with role "module"
@@ -500,7 +501,7 @@ class GlobalConfigValidator:
         Verify that DAQ nodes and the modules they service are in the same subnet.
         At high data rates, going through a router (gateway) between DAQ and Quabo is invalid.
         """
-        if not self.daq_conf or not self.net_conf:
+        if not self.daq_conf or not self.net_conf or not self.obs_conf:
             return
 
         # Map IPs to their Gateway IPs from the network config

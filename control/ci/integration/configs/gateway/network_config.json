@@ -1,6 +1,10 @@
 {
     "modules": [
         {
+            "ip_addr": "192.168.3.32",
+            "port_forwarding": { "status": true, "gw_ip": "10.0.1.254" }
+        },
+        {
             "ip_addr": "192.168.3.200",
             "port_forwarding": { "status": true, "gw_ip": "10.0.1.254" }
         },

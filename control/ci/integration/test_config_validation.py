@@ -37,7 +37,7 @@ def _run_validation(variant_dir: pathlib.Path) -> bool:
             shutil.copy(INTEGRATION_CONFIGS / fname, configs_dir / fname)
 
         # Copy variant-specific configs
-        for fname in ["daq_config.json", "network_config.json"]:
+        for fname in ["daq_config.json", "network_config.json", "obs_config.json"]:
             src = variant_dir / fname
             if src.exists():
                 shutil.copy(src, configs_dir / fname)
@@ -54,15 +54,40 @@ def _run_validation(variant_dir: pathlib.Path) -> bool:
                     if isinstance(val, str) and val.endswith(".bin"):
                         (tmp_path / val).touch()
 
+        # Generate a dummy quabo_uids.json in tmp_path based on obs_config.json
+        # This prevents the test from using the environment's global tmp dir.
+        from control.utils import config_file
+        with open(configs_dir / "obs_config.json") as f:
+            obs_data = json.load(f)
+        
+        quabo_uids = {"domes": []}
+        for dome in obs_data.get("domes", []):
+            uids_dome = {"modules": []}
+            for module in dome.get("modules", []):
+                uids_module = {
+                    "ip_addr": module["ip_addr"],
+                    "quabos": [{"uid": f"DUMMY_UID_{module['ip_addr']}_{i}"} for i in range(4)]
+                }
+                uids_dome["modules"].append(uids_module)
+            quabo_uids["domes"].append(uids_dome)
+        
+        with open(tmp_path / "quabo_uids.json", "w") as f:
+            json.dump(quabo_uids, f)
+
         # Run validation with environment overrides
         old_env = os.environ.copy()
         os.environ["PANOSETI_CONFIG_DIR"] = str(configs_dir)
         # We need to tell it where firmware files are (they are in tmpdir root in this test)
         os.environ["PANOSETI_FIRMWARE_DIR"] = str(tmp_path)
+        # Isolate tmp dir so we don't see chaos UIDs or locks
+        os.environ["PANOSETI_TMP_DIR"] = str(tmp_path)
         
         try:
             from control.utils import config_file
-            passed = config_file.validate_all(check_network=False)
+            # Reload modules if necessary or just call the function.
+            # config_file cache might be an issue, but in pytest it's usually fresh enough
+            # unless it's already imported.
+            passed = config_file.validate_all(check_network=False, debug=True)
         finally:
             os.environ.clear()
             os.environ.update(old_env)
