@@ -6,11 +6,9 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import argparse
 import json
 import os
 import struct
-from argparse import ArgumentParser
 from typing import Any
 
 from panoseti_grpc.telemetry.logger import get_logger

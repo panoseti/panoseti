@@ -25,10 +25,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    networks:
-      headnode_net:
-    ports:
-      - 3000:3000
+    network_mode: "service:influxdb"
     volumes:
       - ../../grafana/grafana_provisioning/dashboards:/var/lib/grafana/dashboards:ro
       - ../../grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -39,6 +36,22 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  influxdb:
+    image: influxdb:1.8-alpine
+    networks:
+      headnode_net:
+        ipv4_address: ${HEADNODE_HOST}
+    ports:
+      - 3000:3000
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -91,9 +104,7 @@ services:
       dockerfile: control/ci/Dockerfile.ci
       target: integration-headnode
     restart: always
-    networks:
-      headnode_net:
-        ipv4_address: ${HEADNODE_HOST}
+    network_mode: "service:influxdb"
     volumes:
       - ..:/app
       - ../../grpc:/grpc
@@ -106,8 +117,11 @@ services:
         condition: service_started
       loki:
         condition: service_started
+      influxdb:
+        condition: service_healthy
     command: >
       /bin/sh -c "panoseti-server --config /app/ci/integration/configs/grpc/headnode/server.toml &
+      python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
@@ -248,6 +262,8 @@ services:
         condition: service_healthy
       loki:
         condition: service_started
+      influxdb:
+        condition: service_healthy
       headnode:
         condition: service_healthy
       mock-quabo:
