@@ -68,7 +68,9 @@ class GraphBuilder:
             )
             
             # Control Path Edge
-            upstream_ips = [daq_ip]
+            upstream_ips = {
+                'daq': daq_ip
+            }
 
             # Check for Gateway (via Port Forwarding)
             if node.port_forwarding and node.port_forwarding.status:
@@ -85,11 +87,11 @@ class GraphBuilder:
                 self.graph.add_edge(head_ip, gw_ip, type="network", label="gRPC/SSH")
                 # Gateway -> Daqnode
                 self.graph.add_edge(gw_ip, daq_ip, type="network", label="gRPC/SSH")
-                upstream_ips.append(gw_ip)
+                upstream_ips['control'] = gw_ip
             else:
                 # Headnode -> Daqnode
-                self.graph.add_edge(head_ip, daq_ip, type="control", label="gRPC/SSH")
-                upstream_ips.append(head_ip)
+                self.graph.add_edge(head_ip, daq_ip, type="network", label="gRPC/SSH")
+                upstream_ips['control'] = head_ip
                 
 
             # 3. Add Quabos (linked to this DAQ node)
@@ -109,7 +111,7 @@ class GraphBuilder:
         
         return self.graph
 
-    def _add_module_to_graph(self, module: Any, dome_num: int | None, upstream_ips: list[str]):
+    def _add_module_to_graph(self, module: Any, dome_num: int | None, upstream_ips: dict[str, str]):
         """Helper to add module and its 4 quabos to the graph."""
         module_ip = str(module.ip_addr)
         module_id = getattr(module, 'id', 'unknown')
@@ -126,8 +128,11 @@ class GraphBuilder:
         )
         
         # Edge from Upstream (DAQ Node or Gateway) to Module
-        for u_ip in upstream_ips:
-            self.graph.add_edge(u_ip, module_node_id, type="data", label="UDP")
+        for node_type, ip in upstream_ips.items():
+            if node_type == 'daq':
+                self.graph.add_edge(ip, module_node_id, type="data", label="UDP")
+            elif node_type == 'control':
+                self.graph.add_edge(ip, module_node_id, type="control", label="UDP")
 
         # Add 4 Quabos
         for i, q_entry in enumerate(module.quabos):

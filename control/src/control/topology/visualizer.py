@@ -149,6 +149,7 @@ def export_interactive_html(graph: nx.DiGraph, path: str | pathlib.Path) -> None
         label = data.get("label", "")
         # dashed edges for data
         dashed = (e_type == "data" or e_type == "logical")
-        net.add_edge(u, v, title=e_type, label=label, dashed=dashed)
+        arrows = 'to;from' if (e_type != 'data') else 'from'
+        net.add_edge(u, v, title=e_type, label=label, dashed=dashed, arrows=arrows)
 
     net.write_html(str(path))
