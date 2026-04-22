@@ -68,10 +68,10 @@ class GraphBuilder:
             )
             
             # Control Path Edge
+            upstream_ips = [daq_ip]
 
             # Check for Gateway (via Port Forwarding)
             if node.port_forwarding and node.port_forwarding.status:
-                # print(f"{node.port_forwarding=} and {node.port_forwarding.status=}")
                 gw_ip = str(node.port_forwarding.gw_ip)
                 self.graph.add_node(
                     gw_ip,
@@ -81,11 +81,16 @@ class GraphBuilder:
                     label=f"Gateway\n({gw_ip})"
                 )
 
-                # Headnode -> Gateway -> Daqnode
+                # Headnode -> Gateway
                 self.graph.add_edge(head_ip, gw_ip, type="network", label="gRPC/SSH")
+                # Gateway -> Daqnode
                 self.graph.add_edge(gw_ip, daq_ip, type="network", label="gRPC/SSH")
+                upstream_ips.append(gw_ip)
             else:
+                # Headnode -> Daqnode
                 self.graph.add_edge(head_ip, daq_ip, type="control", label="gRPC/SSH")
+                upstream_ips.append(head_ip)
+                
 
             # 3. Add Quabos (linked to this DAQ node)
             # We need to find which modules are assigned to this node.
@@ -100,11 +105,11 @@ class GraphBuilder:
                     # or we match by ID.
                     mid = getattr(module, 'id', None)
                     if mid is not None and mid in node.module_ids:
-                        self._add_module_to_graph(module, dome.num, daq_ip)
+                        self._add_module_to_graph(module, dome.num, upstream_ips)
         
         return self.graph
 
-    def _add_module_to_graph(self, module: Any, dome_num: int | None, upstream_ip: str):
+    def _add_module_to_graph(self, module: Any, dome_num: int | None, upstream_ips: list[str]):
         """Helper to add module and its 4 quabos to the graph."""
         module_ip = str(module.ip_addr)
         module_id = getattr(module, 'id', 'unknown')
@@ -121,7 +126,8 @@ class GraphBuilder:
         )
         
         # Edge from Upstream (DAQ Node or Gateway) to Module
-        self.graph.add_edge(upstream_ip, module_node_id, type="data", label="UDP")
+        for u_ip in upstream_ips:
+            self.graph.add_edge(u_ip, module_node_id, type="data", label="UDP")
 
         # Add 4 Quabos
         for i, q_entry in enumerate(module.quabos):
