@@ -96,7 +96,8 @@ def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: Ne
 
             dome['modules'].append(module)
         quabo_uids['domes'].append(dome)
-    with open(config_file.quabo_uids_filename, "w", encoding="utf-8") as f:
+    quabo_uids_path = PanoPaths.tmp_dir() / config_file.quabo_uids_filename
+    with open(quabo_uids_path, "w", encoding="utf-8") as f:
         json.dump(quabo_uids, f, ensure_ascii=False, indent=4)
 
 def check_range(val: str) -> int:

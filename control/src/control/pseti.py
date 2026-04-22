@@ -334,6 +334,20 @@ def validate_all_modes():
         raise typer.Exit(code=1)
 
 
+# 6. Get UIDs Sub-app
+# get_uids_app = typer.Typer(help="get_uids.py alias", no_args_is_help=True)
+# app.add_typer(get_uids_app, name="get_uids")
+
+# @get_uids_app.callback(invoke_without_command=True)
+# def get_uids_main(ctx: typer.Context):
+#     """_summary_
+
+#     Args:
+#         ctx (typer.Context): _description_
+#     """
+#     from control.get_uids import 
+
+
 # --- Top-Level Commands with Lazy Loading ---
 
 @app.command(name="start")
