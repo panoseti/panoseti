@@ -7,10 +7,9 @@ NetworkX-based topology generator for the PANOSETI DAQ fleet.
 from __future__ import annotations
 
 from typing import Any
-
 import networkx as nx
 
-from control.utils import config_file
+from control.utils import config_file, util
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     NetworkConfigValidator,
@@ -38,6 +37,8 @@ class GraphBuilder:
         Builds the graph from Pydantic configuration models.
         """
         self.graph.clear()
+        if network_config is not None:
+            util.attach_daq_config(daq_config, network_config)
 
         # 1. Add Head Node
         head_ip = str(daq_config.head_node_ip_addr)
@@ -59,29 +60,31 @@ class GraphBuilder:
                 daq_ip,
                 role="daqnode",
                 ip=daq_ip,
-                layer=1,
+                layer=2,
                 username=node.username,
                 data_dir=node.data_dir,
                 label=f"DAQ Node\n({daq_ip})"
             )
             
             # Control Path Edge
-            self.graph.add_edge(head_ip, daq_ip, type="control", label="gRPC")
 
             # Check for Gateway (via Port Forwarding)
             if node.port_forwarding and node.port_forwarding.status:
+                # print(f"{node.port_forwarding=} and {node.port_forwarding.status=}")
                 gw_ip = str(node.port_forwarding.gw_ip)
                 self.graph.add_node(
                     gw_ip,
                     role="gateway",
                     ip=gw_ip,
-                    layer=2,
+                    layer=1,
                     label=f"Gateway\n({gw_ip})"
                 )
-                self.graph.add_edge(daq_ip, gw_ip, type="network", label="ssh-tunnel")
-                upstream_for_quabos = gw_ip
+
+                # Headnode -> Gateway -> Daqnode
+                self.graph.add_edge(head_ip, gw_ip, type="network", label="gRPC/SSH")
+                self.graph.add_edge(gw_ip, daq_ip, type="network", label="gRPC/SSH")
             else:
-                upstream_for_quabos = daq_ip
+                self.graph.add_edge(head_ip, daq_ip, type="control", label="gRPC/SSH")
 
             # 3. Add Quabos (linked to this DAQ node)
             # We need to find which modules are assigned to this node.
@@ -96,7 +99,7 @@ class GraphBuilder:
                     # or we match by ID.
                     mid = getattr(module, 'id', None)
                     if mid is not None and mid in node.module_ids:
-                        self._add_module_to_graph(module, dome.num, upstream_for_quabos)
+                        self._add_module_to_graph(module, dome.num, daq_ip)
         
         return self.graph
 
@@ -117,11 +120,11 @@ class GraphBuilder:
         )
         
         # Edge from Upstream (DAQ Node or Gateway) to Module
-        self.graph.add_edge(upstream_ip, module_node_id, type="data", label="udp-stream")
+        self.graph.add_edge(upstream_ip, module_node_id, type="data", label="UDP")
 
         # Add 4 Quabos
         for i, q_entry in enumerate(module.quabos):
-            q_uid = q_entry.uid if q_entry.uid else f"offline_{module_id}_{i}"
+            q_uid = q_entry.uid if q_entry.uid else f"{module_id}_{i}"
             # Quabo IP is derived from module base IP
             q_ip = config_file.quabo_ip_addr(module_ip, i)
             
@@ -133,6 +136,6 @@ class GraphBuilder:
                 uid=q_uid,
                 index=i,
                 layer=4,
-                label=f"Quabo {i}\n({q_uid})"
+                label=f"Q{i}\n({q_uid})"
             )
             self.graph.add_edge(module_node_id, q_node_id, type="logical")

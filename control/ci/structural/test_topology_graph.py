@@ -110,8 +110,9 @@ def test_build_gateway_topology(mock_quabo_uids: QuaboUidsValidator):
     assert graph.nodes["10.0.1.10"]["role"] == "gateway"
 
     # Check edge sequence: Head -> DAQ -> Gateway -> Module
-    assert graph.has_edge("10.0.1.5", "192.168.0.10") # Control path
-    assert graph.has_edge("192.168.0.10", "10.0.1.10") # Network path (tunnel)
+    # Check edge sequence: Head -> Gateway --> DAQ -> Module
+    assert graph.has_edge("10.0.1.5", "10.0.1.10") # Control path
+    assert graph.has_edge("10.0.1.10", "192.168.0.10") # Network path (tunnel)
     
     module_node = next(n for n, d in graph.nodes(data=True) if d.get("role") == "module")
-    assert graph.has_edge("10.0.1.10", module_node), "Module should be downstream of Gateway"
+    assert graph.has_edge("192.168.0.10", module_node), "Module should be downstream of Gateway"

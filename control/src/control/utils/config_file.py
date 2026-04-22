@@ -585,15 +585,15 @@ def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf
             graph = builder.build_from_configs(daq_conf, quabo_uids)
             
             # Export to tmp directory
-            img_path = PanoPaths.tmp_dir() / "topology.png"
+            # img_path = PanoPaths.tmp_dir() / "topology.png"
             json_path = PanoPaths.tmp_dir() / "topology.json"
             html_path = PanoPaths.tmp_dir() / "topology.html"
             
-            save_topology_image(graph, img_path)
+            # save_topology_image(graph, img_path)
             export_topology_json(graph, json_path)
             export_interactive_html(graph, html_path)
             
-            console.print(f"\n[green]✔ Topology graph image exported to {img_path}[/green]")
+            # console.print(f"\n[green]✔ Topology graph image exported to {img_path}[/green]")
             console.print(f"[green]✔ Cytoscape JSON exported to {json_path}[/green]")
             console.print(f"[green]✔ Interactive HTML exported to {html_path}[/green]")
         except Exception as e:
@@ -680,6 +680,8 @@ def validate_all(check_network: bool = False, debug: bool = False, graph: bool =
             "\n[bold red]❌ VALIDATION FAILED.[/bold red] Please review the errors above before observing.")
 
     return all_passed
+
+
 def load_and_validate[T: BaseModel](
     validator_class: type[T],
     filename: str,
@@ -731,7 +733,7 @@ def load_and_validate[T: BaseModel](
         validated = validator_class(**raw_data)
 
         if IS_CLI_VALIDATION:
-            console.print("[bold green][OK][/bold green] Passed validation (0 Errors, 0 Warnings).")
+            console.print("[bold green][OK][/bold green]")
 
         if IS_CLI_VALIDATION and DEBUG_VALIDATION:
             console.print("\n[dim]Validated Configuration Structure:[/dim]")

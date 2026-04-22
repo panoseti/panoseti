@@ -80,7 +80,7 @@ async def test_SC001_startdaq_timeout_hangs_forever(
     # Mock StartDaq to hang
     def hanging_start_daq(*args: Any, **kwargs: Any) -> bool:
         import time
-        time.sleep(120)  # Blocking hang in executor thread
+        time.sleep(3)  # Blocking hang in executor thread
         return True
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=hanging_start_daq), \
@@ -96,7 +96,7 @@ async def test_SC001_startdaq_timeout_hangs_forever(
         
         # We expect this to return False because it should timeout and trigger rollback
         # We use a timeout on the test itself to ensure we don't hang the runner if the fix is missing
-        with anyio.fail_after(20):
+        with anyio.fail_after(15):
             success = await start.start_run(
                 obs_config, daq_config, quabo_uids, data_config, network_config,
                 no_hv=True, no_redis=True, no_data=False
@@ -123,6 +123,10 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
 
     import control.start as start
     from control.utils import config_file
+
+    async def fast_sleep(delay: float, result: Any = None) -> Any:
+        import asyncio
+        return await asyncio.sleep(0, result=result)
 
     daq_config = config_file.get_daq_config()
     obs_config = config_file.get_obs_config()
@@ -157,6 +161,7 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
 
     with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", side_effect=success_start_daq), \
          unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", side_effect=status_responses), \
+         unittest.mock.patch("asyncio.sleep", side_effect=fast_sleep), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \

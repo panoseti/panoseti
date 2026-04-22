@@ -579,7 +579,7 @@ async def test_SCN006_telemetry_volume_scales_with_n_nodes(
         if ok:
             started.append((client, rp))
 
-    await asyncio.sleep(3)  # Let logs accumulate
+    await asyncio.sleep(0.5)  # Let logs accumulate
 
     depth_after = await typing.cast(Any, rc.llen("logs:ingress"))
 

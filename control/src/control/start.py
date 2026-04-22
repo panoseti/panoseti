@@ -29,11 +29,12 @@ import shutil
 import signal
 import socket
 import subprocess
+import functools
 import sys
 import time
 import traceback
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import grpc
 import typer
@@ -61,7 +62,6 @@ from control.utils.pydantic_config_models import (
 from control.utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
 
 app = typer.Typer(
-    
     help="PANOSETI Quality Assurance & Testing Suite",
     no_args_is_help=True,
     rich_markup_mode="rich",
@@ -73,7 +73,12 @@ app = typer.Typer(
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
-logger = get_logger("PANOSETI.Start", log_dir=str(log_dir), grpc_enabled=True)
+logger = get_logger(
+    "PANOSETI.Start",
+    log_dir=log_dir,
+    grpc_enabled=True,
+    reset=True
+)
 
 # ---------------------------------------------------
 
@@ -319,7 +324,7 @@ def start_data_flow(
         daq_config: DAQ node and head node networking details.
         network_config: Network routing and port forwarding settings.
     """
-    logger = logging.getLogger('PANOSETI.Start.start_data_flow')
+    # logger = logging.getLogger('PANOSETI.Start.start_data_flow')
     daq_params = get_daq_params(data_config)
     for dome in quabo_uids.domes:
         for module in dome.modules:
@@ -382,7 +387,7 @@ def make_run_dirs(
       in-memory Pydantic models back to JSON files in the run directory.
     - Ensures the run directory is a faithful record of the actual run parameters.
     """
-    logger = logging.getLogger('PANOSETI.Start')
+    # logger = logging.getLogger('PANOSETI.Start')
     my_ip = util.local_ip()
     run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
     os.makedirs(run_dir, exist_ok=True)
@@ -462,7 +467,9 @@ async def start_recording(
     run_name: str,
     no_hv: bool,
     state_mgr: RunStateManager,
-    cancel_event: asyncio.Event
+    cancel_event: asyncio.Event,
+    startdaq_timeout: float = 10.0,
+    startdaq_retries: int = 3
 ) -> None:
     """
     Asynchronously starts recording on DAQ nodes and performs heartbeat liveness checks.
@@ -474,7 +481,7 @@ async def start_recording(
     - Upgrades to START_SUCCESS after heartbeat.
     - Raises Exception on ANY failure or cancellation to trigger the parent rollback ladder.
     """
-    logger = logging.getLogger('PANOSETI.Start.start_recording')
+    # logger = logging.getLogger('PANOSETI.Start.start_recording')
     loop = asyncio.get_running_loop()
 
     # 1. Start local daemons
@@ -516,16 +523,15 @@ async def start_recording(
         }
         
         # Call gRPC synchronously in thread pool, guarded by a strict timeout and retries
-        max_attempts = 3
         last_err = ""
         
-        for attempt in range(1, max_attempts + 1):
+        for attempt in range(1, startdaq_retries + 1):
             try:
                 # Task 2.1: Implement strict timeout on StartDaq
                 # We wrap the executor call in wait_for to handle hangs
                 ok = await asyncio.wait_for(
-                    loop.run_in_executor(None, lambda: client.StartDaq(start_args)),
-                    timeout=15.0
+                    loop.run_in_executor(None, lambda: client.StartDaq(start_args, timeout=startdaq_timeout)),
+                    timeout=startdaq_timeout + 5
                 )
                 if ok:
                     return # Success
@@ -533,7 +539,7 @@ async def start_recording(
                     last_err = "StartDaq RPC returned False"
                     break # Hard failure, don't retry
             except TimeoutError:
-                last_err = "StartDaq TIMEOUT (15s)"
+                last_err = f"StartDaq TIMEOUT ({startdaq_timeout})"
                 break # Timeout usually means non-transient or black hole
             except (grpc.RpcError, ConnectionError) as e:  # type: ignore[attr-defined]
                 # DaqControlClient wraps grpc.RpcError in ConnectionError
@@ -541,8 +547,8 @@ async def start_recording(
                 original_e = e.__cause__ if isinstance(e, ConnectionError) else e
                 if isinstance(original_e, grpc.RpcError):  # type: ignore[attr-defined]
                     last_err = f"gRPC {original_e.code()}: {original_e.details()}"
-                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < max_attempts:  # type: ignore[attr-defined]
-                        logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{max_attempts})...")
+                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:  # type: ignore[attr-defined]
+                        logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")
                         await asyncio.sleep(1.0)
                         continue
                 else:
@@ -712,20 +718,51 @@ async def start_run(
     force_reset: bool = False,
     run_name: str | None = None
 ) -> str | None:
+    """Main transactional run coordinator.
+
+    Args:
+        obs_config (ObsConfigValidator): _description_
+        daq_config (DaqConfigValidator): _description_
+        quabo_uids (QuaboUidsValidator): _description_
+        data_config (DataConfigValidator): _description_
+        network_config (NetworkConfigValidator): _description_
+        no_hv (bool): _description_
+        no_redis (bool): _description_
+        no_data (bool): _description_
+        force_reset (bool, optional): _description_. Defaults to False.
+        run_name (str | None, optional): _description_. Defaults to None.
+
+    Raises:
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        asyncio.CancelledError: _description_
+        asyncio.CancelledError: _description_
+
+    Returns:
+        str | None: _description_
     """
-    Main transactional run coordinator.
-    """
+    
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
+    
+    def signal_handler(signal: signal.Signals):
+        logger.critical(f"start.py received the signal {signal!r}")
+        cancel_event.set()
+         
 
     # Install signal handlers
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: cancel_event.set())
+        loop.add_signal_handler(sig, functools.partial(signal_handler, sig))
     
     if run_name is None:
         run_name = pff.run_dir_name(obs_config.name, data_config.run_type)
 
+    tx = None
     try:
         async with StartTransaction(state_mgr, run_name, daq_config, quabo_uids, network_config) as tx:
             # Pre-flight Validation
@@ -841,7 +878,10 @@ async def start_run(
                 start_data_flow(quabo_uids, data_config, daq_config, network_config)
                 
                 logger.info('starting recording (Phase 3: Transactional)')
-                await start_recording(obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event)
+                await start_recording(
+                    obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event,
+                    startdaq_timeout=10.0, startdaq_retries=3
+                )
             
             # Mark ACTIVE in ledger
             ledger = state_mgr.load_state()
@@ -914,7 +954,6 @@ async def async_main_logic(
     verbose: bool,
     force_reset: bool,
 ) -> None:
-    logger.info('************************************')
 
     # load config files
     obs_config = config_file.get_obs_config()

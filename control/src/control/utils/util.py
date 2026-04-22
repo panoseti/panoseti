@@ -710,7 +710,7 @@ def stop_data_flow(
 
 def attach_daq_config(
     daq_config: DaqConfigValidator,
-    network_config: NetworkConfigValidator,
+    network_config: NetworkConfigValidator | None,
 ) -> None:
     """Merge port forwarding metadata into the DAQ configuration.
 
@@ -721,10 +721,11 @@ def attach_daq_config(
         daq_config: The validated DAQ configuration model to modify in-place.
         network_config: The validated network configuration model.
     """
-    for daq in daq_config.daq_nodes:
-        for pdaq in network_config.daq_nodes:
-            if str(daq.ip_addr) == str(pdaq.ip_addr) and pdaq.port_forwarding.status:
-                daq.port_forwarding = pdaq.port_forwarding
+    if network_config is not None:
+        for daq in daq_config.daq_nodes:
+            for pdaq in network_config.daq_nodes:
+                if str(daq.ip_addr) == str(pdaq.ip_addr) and pdaq.port_forwarding.status:
+                    daq.port_forwarding = pdaq.port_forwarding
 
 
 

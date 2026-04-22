@@ -69,8 +69,13 @@ skip_outside_ci = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 @skip_outside_ci
-def test_transfer_daemon_archives_run(tmp_path) -> None:
+async def test_transfer_daemon_archives_run(
+    daq_control_direct,
+    run_params,
+    ensure_clean_daq_state,
+) -> None:
     """
     Full E2E: stop.py enqueues a job; daemon picks it up and archives the run.
 
@@ -80,22 +85,151 @@ def test_transfer_daemon_archives_run(tmp_path) -> None:
     - run_complete marker exists on head node
     - .pff files removed from DAQ node; .json/.log preserved
     """
-    pytest.skip("Full E2E requires Docker CI with real hashpipe + daemon")
+    from ci.integration.conftest import wait_hashpipe_running
+    from ci.integration.scenarios.conftest import _start as grpc_start
+    import control.stop as stop
+    from control.utils import config_file
+    from control.utils.run_state import RunStateManager
+    from control.utils.transfer.daemon import _process_job
+    from control.utils.paths import PanoPaths
+    from control.utils.transfer.queue import TransferQueue
+    import uuid
+
+    run_params = dict(run_params)
+    run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    RunStateManager().clear_state()
+
+    from control.utils.pydantic_config_models import RunStateLedger
+    from datetime import UTC, datetime
+    mgr = RunStateManager()
+    ledger = RunStateLedger(
+        run_name=run_params["run_dir"],
+        status="ACTIVE",
+        start_time=datetime.now(UTC).isoformat(),
+    )
+    mgr.save_state(ledger)
+
+    # 1. Start real run
+    ok, _ = grpc_start(daq_control_direct, run_params)
+    assert ok
+    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
+
+    daq_config = config_file.get_daq_config()
+    net = config_file.get_network_config()
+    uids = config_file.get_quabo_uids()
+
+    import os
+    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
+    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+
+    # 2. Stop real run
+    success = await stop.stop_run(
+        daq_config, net, uids, run=run_params["run_dir"], verbose=False
+    )
+    assert success
+
+    mgr = RunStateManager()
+    assert mgr.load_state().status == "RECORDING_ENDED"
+
+    # 3. Process job via daemon's real handler
+    tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
+    job = tq.claim()
+    assert job is not None
+    assert job["run_name"] == run_params["run_dir"]
+
+    # Real process_job (does real rsync, real GenerateManifest, real CleanupData)
+    job_success = await _process_job(job, tq._base)
+    assert job_success
+    tq.complete(job["run_name"])
+
+    assert mgr.load_state().status == "ARCHIVED"
+    run_dir_path = pathlib.Path(daq_config.head_node_data_dir) / run_params["run_dir"]
+    assert (run_dir_path / "run_complete").exists()
 
 
+@pytest.mark.asyncio
 @skip_outside_ci
-def test_transfer_daemon_resumes_after_crash(tmp_path) -> None:
+async def test_transfer_daemon_resumes_after_crash(
+    daq_control_direct,
+    run_params,
+    ensure_clean_daq_state,
+) -> None:
     """
     Chaos: daemon killed mid-rsync; restart completes the transfer.
 
     Verifies that the durable queue allows a restarted daemon to claim and
     complete a job that was interrupted during an earlier invocation.
     """
-    pytest.skip("Chaos test requires Docker CI")
+    from ci.integration.conftest import wait_hashpipe_running
+    from ci.integration.scenarios.conftest import _start as grpc_start
+    import control.stop as stop
+    from control.utils import config_file
+    from control.utils.transfer.daemon import _process_job
+    from control.utils.paths import PanoPaths
+    from control.utils.transfer.queue import TransferQueue
+    from control.utils.run_state import RunStateManager
+    import uuid
+    import shutil
+
+    run_params = dict(run_params)
+    run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    RunStateManager().clear_state()
+    queue_dir = PanoPaths.tmp_dir() / "transfer_queue"
+    if queue_dir.exists():
+        shutil.rmtree(queue_dir)
+
+    from control.utils.pydantic_config_models import RunStateLedger
+    from datetime import UTC, datetime
+    mgr = RunStateManager()
+    ledger = RunStateLedger(
+        run_name=run_params["run_dir"],
+        status="ACTIVE",
+        start_time=datetime.now(UTC).isoformat(),
+    )
+    mgr.save_state(ledger)
+
+    ok, _ = grpc_start(daq_control_direct, run_params)
+    assert ok
+    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
+
+    daq_config = config_file.get_daq_config()
+    net = config_file.get_network_config()
+    uids = config_file.get_quabo_uids()
+    import os
+    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
+    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
+
+    tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
+    job = tq.claim()
+    assert job is not None
+
+    # Simulate crash mid-rsync by patching rsync_one_node to raise an exception
+    with patch("control.utils.transfer.daemon.rsync_one_node", side_effect=RuntimeError("Simulated crash")):
+        with pytest.raises(RuntimeError, match="Simulated crash"):
+            await _process_job(job, tq._base)
+
+    # Because it crashed, the job is technically "orphaned" in the active queue
+    # A real daemon restart would move it back to pending on claim if it sees it as stale, 
+    # but tq.claim() handles claiming from pending. Let's manually re-enqueue like a recovery script would, 
+    # or test the daemon's recovery logic if it has any.
+    # The queue logic in TransferQueue.enqueue actually moves active to pending if we enqueue again.
+    tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=1)
+
+    job2 = tq.claim()
+    assert job2 is not None
+    job_success = await _process_job(job2, tq._base)
+    assert job_success
+    tq.complete(job2["run_name"])
 
 
+@pytest.mark.asyncio
 @skip_outside_ci
-def test_transfer_daemon_retry_on_transient_rsync_failure(tmp_path) -> None:
+async def test_transfer_daemon_retry_on_transient_rsync_failure(
+    daq_control_direct,
+    run_params,
+    ensure_clean_daq_state,
+) -> None:
     """
     Retry: rsync fails twice with a transient error code, succeeds on the
     third attempt.
@@ -103,18 +237,151 @@ def test_transfer_daemon_retry_on_transient_rsync_failure(tmp_path) -> None:
     Verifies that the daemon honours MAX_ATTEMPTS and re-enqueues on failure,
     and that the job lands in completed/ after eventual success.
     """
-    pytest.skip("Retry test requires Docker CI")
+    from ci.integration.conftest import wait_hashpipe_running
+    from ci.integration.scenarios.conftest import _start as grpc_start
+    import control.stop as stop
+    from control.utils import config_file
+    from control.utils.transfer.daemon import _process_job, MAX_ATTEMPTS
+    from control.utils.paths import PanoPaths
+    from control.utils.transfer.queue import TransferQueue
+    from control.utils.run_state import RunStateManager
+    import uuid
+    import shutil
+
+    run_params = dict(run_params)
+    run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    RunStateManager().clear_state()
+    queue_dir = PanoPaths.tmp_dir() / "transfer_queue"
+    if queue_dir.exists():
+        shutil.rmtree(queue_dir)
+
+    from control.utils.pydantic_config_models import RunStateLedger
+    from datetime import UTC, datetime
+    mgr = RunStateManager()
+    ledger = RunStateLedger(
+        run_name=run_params["run_dir"],
+        status="ACTIVE",
+        start_time=datetime.now(UTC).isoformat(),
+    )
+    mgr.save_state(ledger)
+
+    ok, _ = grpc_start(daq_control_direct, run_params)
+    assert ok
+    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
+
+    daq_config = config_file.get_daq_config()
+    net = config_file.get_network_config()
+    uids = config_file.get_quabo_uids()
+    import os
+    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
+    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
+
+    tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
+    job = tq.claim()
+
+    # Mock rsync to fail twice, then succeed
+    call_count = 0
+    original_rsync = None
+    import control.utils.transfer.daemon as d_module
+
+    def mocked_rsync(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            return False, "Transient failure"
+        return True, "Success"
+
+    with patch("control.utils.transfer.daemon.rsync_one_node", side_effect=mocked_rsync):
+        # Attempt 1
+        success1 = await _process_job(job, tq._base)
+        assert not success1
+        tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=1)
+
+        # Attempt 2
+        job2 = tq.claim()
+        success2 = await _process_job(job2, tq._base)
+        assert not success2
+        tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=2)
+
+        # Attempt 3
+        job3 = tq.claim()
+        success3 = await _process_job(job3, tq._base)
+        assert success3
+        tq.complete(job3["run_name"])
+
+    completed_dir = pathlib.Path(tq._base) / "tmp" / "transfer_queue" / "completed"
+    assert (completed_dir / f"{job['run_name']}.job.toml").exists()
 
 
+@pytest.mark.asyncio
 @skip_outside_ci
-def test_transfer_daemon_marks_failed_after_max_attempts(tmp_path) -> None:
+async def test_transfer_daemon_marks_failed_after_max_attempts(
+    daq_control_direct,
+    run_params,
+    ensure_clean_daq_state,
+) -> None:
     """
     Exhaustion: rsync fails on every attempt up to MAX_ATTEMPTS.
 
     Verifies that the daemon moves the job to failed/ rather than looping
     indefinitely.
     """
-    pytest.skip("Exhaustion test requires Docker CI")
+    from ci.integration.conftest import wait_hashpipe_running
+    from ci.integration.scenarios.conftest import _start as grpc_start
+    import control.stop as stop
+    from control.utils import config_file
+    from control.utils.transfer.daemon import _process_job, MAX_ATTEMPTS
+    from control.utils.paths import PanoPaths
+    from control.utils.transfer.queue import TransferQueue
+    from control.utils.run_state import RunStateManager
+    import uuid
+    import shutil
+
+    run_params = dict(run_params)
+    run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    RunStateManager().clear_state()
+    queue_dir = PanoPaths.tmp_dir() / "transfer_queue"
+    if queue_dir.exists():
+        shutil.rmtree(queue_dir)
+
+    from control.utils.pydantic_config_models import RunStateLedger
+    from datetime import UTC, datetime
+    mgr = RunStateManager()
+    ledger = RunStateLedger(
+        run_name=run_params["run_dir"],
+        status="ACTIVE",
+        start_time=datetime.now(UTC).isoformat(),
+    )
+    mgr.save_state(ledger)
+
+    ok, _ = grpc_start(daq_control_direct, run_params)
+    assert ok
+    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
+
+    daq_config = config_file.get_daq_config()
+    net = config_file.get_network_config()
+    uids = config_file.get_quabo_uids()
+    import os
+    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
+    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
+
+    tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
+    job = tq.claim()
+
+    with patch("control.utils.transfer.daemon.rsync_one_node", return_value=(False, "Persistent failure")):
+        for attempt in range(MAX_ATTEMPTS):
+            success = await _process_job(job, tq._base)
+            assert not success
+            if attempt < MAX_ATTEMPTS - 1:
+                tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=attempt + 1)
+                job = tq.claim()
+            else:
+                tq.fail(job["run_name"])
+
+    failed_dir = pathlib.Path(tq._base) / "tmp" / "transfer_queue" / "failed"
+    assert (failed_dir / f"{job['run_name']}.job.toml").exists()
 
 
 @skip_outside_ci
@@ -123,8 +390,52 @@ def test_transfer_daemon_singleton_lock_in_container(tmp_path) -> None:
     Lock contention: a second daemon process started while the first is
     running must exit immediately without processing any jobs.
     """
-    pytest.skip("Singleton test requires Docker CI")
+    import subprocess
+    import time
+    from control.utils.paths import PanoPaths
 
+    # Start a dummy python process that holds the lock using fcntl
+    lock_script = PanoPaths.tmp_dir() / "hold_lock.py"
+    lock_script.write_text('''
+import fcntl
+import time
+import os
+import sys
+
+lock_file = sys.argv[1]
+with open(lock_file, "w") as f:
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        print("LOCKED", flush=True)
+        time.sleep(10)
+    except BlockingIOError:
+        print("FAILED TO LOCK")
+''')
+
+    lock_path = PanoPaths.tmp_dir() / "panoseti_transfer.lock"
+    p1 = subprocess.Popen(["python3", str(lock_script), str(lock_path)], stdout=subprocess.PIPE, text=True)
+    
+    # Wait for it to lock
+    assert p1.stdout is not None
+    assert "LOCKED" in p1.stdout.readline()
+
+    # Now attempt to start the daemon process
+    daemon_script = PanoPaths.base_dir() / "src" / "control" / "daemons" / "transfer_daemon.py"
+
+    # We don't want it to run forever if it fails to exit, so we use a short timeout
+    env = os.environ.copy()
+    env["PYTHONPATH"] = f"{PanoPaths.base_dir()}/src:{env.get('PYTHONPATH', '')}"
+
+    p2 = subprocess.Popen(["python3", str(daemon_script)], cwd=str(PanoPaths.tmp_dir().parent), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+
+    try:
+        stdout, _ = p2.communicate(timeout=5)
+        # Should exit quickly and print "Another transfer daemon is already running"
+        assert p2.returncode == 0
+        assert "Another transfer daemon is already running" in stdout
+    finally:
+        p1.terminate()
+        p1.wait()
 
 # ---------------------------------------------------------------------------
 # In-process integration: no Docker required

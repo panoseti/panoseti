@@ -162,7 +162,9 @@ def test_control_loop_detection(base_quabo_uids):
     )
 
     builder = GraphBuilder()
-    graph = builder.build_from_configs(daq_config, base_quabo_uids)
+    graph = builder.build_from_configs(
+        daq_config, base_quabo_uids, obs_config=None, network_config=None
+        )
 
     # Intentionally add a loop: DAQ -> Head
     graph.add_edge("192.168.0.10", "10.0.1.5", type="invalid")

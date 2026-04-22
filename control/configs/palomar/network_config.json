@@ -22,7 +22,7 @@
     ],
     "daq_nodes": [
         {
-            "ip_addr": "192.168.0.6",
+            "ip_addr": "192.168.0.10",
             "port_forwarding": {
                 "status": true,
                 "gw_ip": "10.200.146.12",

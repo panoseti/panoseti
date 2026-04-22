@@ -22,11 +22,12 @@ from control.utils.pydantic_config_models import (
     NetworkConfigValidator,
     ObsConfigValidator,
 )
+from control.utils import util
 
 console = Console()
 
 MAX_DOME_BASELINE_KM = 2
-MAX_MODULES_PER_DAQ_NODE = 4
+MAX_MODULES_PER_DAQ_NODE = 3
 
 class ValidationReport:
     """Aggregates tests for a unified pre-flight report."""
@@ -116,6 +117,7 @@ class GlobalConfigValidator:
         self.net_conf: NetworkConfigValidator = validated_configs.get('network') # type: ignore
         self.firmware_conf: FirmwareConfigValidator = validated_configs.get('firmware') # type: ignore
         self.report = ValidationReport()
+        util.attach_daq_config(self.daq_conf, self.net_conf)
 
     def validate_all_rules(self) -> bool:
         """Execute all validation methods prefixed with '_check_'.
@@ -461,7 +463,7 @@ class GlobalConfigValidator:
             
         
         builder = GraphBuilder()
-        graph = builder.build_from_configs(self.daq_conf, quabo_uids)
+        graph = builder.build_from_configs(self.daq_conf, quabo_uids, self.obs_conf, self.net_conf)
         
         # 2. Check for Orphans (unreachable from headnode)
         head_ip = str(self.daq_conf.head_node_ip_addr)

@@ -106,7 +106,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
                             {
                                 "data_dir": node["data_dir"],
                                 "run_dir": run_name,
-                                "module_id": [mid],
+                                "module_id": mid,
                                 "algorithm": "blake3",
                                 "include_patterns": ["*.pff"],
                             }
