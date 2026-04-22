@@ -100,20 +100,24 @@ def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: Ne
     with open(quabo_uids_path, "w", encoding="utf-8") as f:
         json.dump(quabo_uids, f, ensure_ascii=False, indent=4)
 
-def check_range(val: str) -> int:
-    """Validate that a command-line argument is a valid Quabo index (0-3)."""
-    ivalue = int(val)
-    if ivalue < 0 or ivalue > 3:
-        raise argparse.ArgumentTypeError(f"{val} is out of allowed range [0-3]")
-    return ivalue
-          
-if __name__ == "__main__":
-    parser = ArgumentParser(description="Usage for get_uids.py.")
-    parser.add_argument('-e','--exclude', dest='exclude', type=check_range, nargs='+', help='List of excluded Quabos')
-    args = parser.parse_args()
+import typer
+
+app = typer.Typer(help="Scan and cache Quabo hardware UIDs.", no_args_is_help=False)
+
+@app.command()
+def main(
+    exclude: list[int] = typer.Option(None, "--exclude", "-e", help="Quabo indices (0-3) to skip in every module.")
+):
+    """
+    Scan possible quabo IP addrs.
+    If they respond to ping, get their UID
+    write these to quabo_uids.json
+    """
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
-    exclude = [] if args.exclude is None else args.exclude
     get_uids(obs_config, network_config, exclude)
     if os.path.exists('flashuid'):
         os.remove('flashuid')
+
+if __name__ == "__main__":
+    app()

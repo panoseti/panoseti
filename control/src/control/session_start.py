@@ -129,19 +129,7 @@ def main(
     no_hv: bool = typer.Option(False, "--no_hv", help="Turn off HV when running `start.py`."),
     stage: str = typer.Option("poweron", help="The session will start from this stage: poweron, get_uids, reboot, hk_dest, start_redis, maroc_config, mask_config, calibrate_ph, show_ph_baselines.")
 ):
-    """
-    start an \"observing session\":
-    - open domes (TBD)
-    - power on relevant modules
-    - wait for quabos to come up
-    - get quabo UIDs
-    - reboot quabos
-    - turn on HV (using levels from quabo config files)
-    - set gain params of Marocs
-    - do PH baseline calibration
-    - start the Redis daemons
-    - copy software to DAQ nodes
-    """
+    """Initialize hardware, power, and calibration for an observing session."""
     # session start
     session_start(
         config_file.get_obs_config(),

@@ -8,3 +8,8 @@ tmp*
 *.html
 topology_*.json
 
+# js and css 
+lib/
+lib/*.js
+lib/*.css
+

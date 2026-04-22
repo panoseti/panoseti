@@ -1,6 +1,6 @@
 # PANOSETI Control CLI (`pseti`)
 
-The `pseti` command is the unified entry point for the PANOSETI observatory control plane. It provides high-performance, snappy access to commands for starting/stopping runs, checking status, configuring hardware, and running tests.
+The `pseti` command is the unified entry point for the PANOSETI observatory control plane. It uses a **lazy-loading proxy architecture** to provide high-performance, snappy access to commands while keeping the code DRY (Don't Repeat Yourself).
 
 ## Global Options
 
@@ -14,11 +14,11 @@ The `pseti` command is the unified entry point for the PANOSETI observatory cont
 Start a new recording run.
 
 **Options:**
-- `--no-hv`: Take data without high voltage.
-- `--no-redis`: Skip checking if redis daemons are running.
-- `--no-data`: Set up the run but do not start data flow or recording.
+- `--no_hv`: Take data without high voltage.
+- `--no_redis`: Skip checking if redis daemons are running.
+- `--no_data`: Set up the run but do not start data flow or recording.
 - `--nsecs INTEGER`: Record for N seconds, then stop the run automatically.
-- `--stop-session`: Stop the session at the end of the run (used with `--nsecs`).
+- `--stop_session`: Stop the session at the end of the run (used with `--nsecs`).
 - `--verbose`: Print detailed command output.
 - `--force-reset`: Force reset the state ledger if it appears stale.
 - `-y`, `--yes`: Confirm the action without an interactive prompt.
@@ -29,8 +29,8 @@ Start a new recording run.
 Stop and finish the current recording run.
 
 **Options:**
-- `--no-cleanup`: Do not delete data files from the DAQ nodes.
-- `--no-collect`: Do not collect data files to the head node.
+- `--no_cleanup`: Do not delete data files from the DAQ nodes.
+- `--no_collect`: Do not collect data files to the head node.
 - `--run TEXT`: Stop/Cleanup a specific run name (defaults to the current run in the ledger).
 - `--force-cleanup`: Force cleanup on DAQ nodes even if hashpipe liveness is uncertain.
 - `--verbose`: Print details.
@@ -44,16 +44,24 @@ Show control plane status. Checks the transactional ledger, local markers, and p
 ---
 
 ### `pseti session-start`
-Start a complete observing session (power, UIDs, HV, calibration). Orchestrates module power-on, UID scanning, reboots, and daemon initialization.
+Initialize hardware, power, and calibration for an observing session.
 
 **Options:**
-- `--no-hv`: Turn off High Voltage (HV) when running the session.
+- `--no_hv`: Turn off High Voltage (HV) when running the session.
 - `--stage TEXT`: Start the session from a specific stage (e.g., `poweron`, `get_uids`, `reboot`, etc.).
 
 ---
 
 ### `pseti session-stop`
 Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
+
+---
+
+### `pseti get-uids`
+Scan possible quabo IP addrs. If they respond to ping, get their UID and write to `quabo_uids.json`.
+
+**Options:**
+- `-e`, `--exclude INTEGER`: Quabo indices (0-3) to skip in every module.
 
 ---
 
@@ -95,7 +103,7 @@ Manage and visualize PANOSETI directory paths.
 Configure observatory hardware and daemons.
 
 **Subcommands:**
-- `show`: Show list of domes/modules/quabos and redis daemon status.
+- `show`: Show list of domes/modules/quabos.
 - `ping`: Ping all configured quabos.
 - `reboot`: Reboot all configured quabos.
 - `reboot-single <IP>`: Reboot a single quabo.
@@ -129,3 +137,37 @@ Quality Assurance and Testing Suite.
 - `lint`: Run Ruff and MyPy static analysis.
 - `all`: Run the full testing suite.
 - `build`: Rebuild the testing Docker images.
+
+---
+
+## Developer Guide: Adding & Editing Commands
+
+The `pseti` CLI implements a **Lazy Proxy Pattern** via the `PanoLazyGroup` class in `control/src/control/pseti.py`. This means you **never** need to duplicate command signatures or help text in `pseti.py`.
+
+### 1. Modifying Existing Commands
+To change options or behavior for a command like `start`, edit the corresponding implementation file directly (e.g., `control/src/control/start.py`). `pseti` will automatically reflect these changes in its `--help` output.
+
+### 2. Adding a New Command
+1.  **Implement the command** in its own module using `typer.Typer`.
+    ```python
+    # src/control/new_tool.py
+    import typer
+    app = typer.Typer()
+    @app.command()
+    def main(name: str):
+        print(f"Hello {name}")
+    ```
+2.  **Register it** in `control/src/control/pseti.py` inside the `self.lazy_mapping` dictionary:
+    ```python
+    self.lazy_mapping = {
+        ...,
+        "new-tool": "control.new_tool",
+    }
+    ```
+    If your command is a sub-app (an attribute other than `app`), use a tuple:
+    ```python
+    "validate": ("control.config", "validate_app")
+    ```
+
+### 3. The "Unwrap" Pattern
+If a module's Typer app contains only one command (usually named `main` or `@app.command()`), `PanoLazyGroup` automatically "unwraps" it. This allows `pseti my-tool --option` instead of forcing `pseti my-tool main --option`.
