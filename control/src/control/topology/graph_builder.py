@@ -84,13 +84,13 @@ class GraphBuilder:
                 )
 
                 # Headnode -> Gateway
-                self.graph.add_edge(head_ip, gw_ip, type="network", label="gRPC/SSH")
+                self.graph.add_edge(head_ip, gw_ip, type="network", label="")
                 # Gateway -> Daqnode
-                self.graph.add_edge(gw_ip, daq_ip, type="network", label="gRPC/SSH")
+                self.graph.add_edge(gw_ip, daq_ip, type="network", label="")
                 upstream_ips['control'] = gw_ip
             else:
                 # Headnode -> Daqnode
-                self.graph.add_edge(head_ip, daq_ip, type="network", label="gRPC/SSH")
+                self.graph.add_edge(head_ip, daq_ip, type="network", label="")
                 upstream_ips['control'] = head_ip
                 
 
@@ -136,7 +136,7 @@ class GraphBuilder:
 
         # Add 4 Quabos
         for i, q_entry in enumerate(module.quabos):
-            q_uid = q_entry.uid if q_entry.uid else f"{module_id}_{i}"
+            q_uid = q_entry.uid[:7] if q_entry.uid else f"{module_id}_{i}"
             # Quabo IP is derived from module base IP
             q_ip = config_file.quabo_ip_addr(module_ip, i)
             
