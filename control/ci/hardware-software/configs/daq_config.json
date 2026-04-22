@@ -1,0 +1,15 @@
+{
+    "comment": "Physical HITL DAQ config",
+    "head_node_data_dir": "/mnt/panoseti/test-hw/data/",
+    "head_node_ip_addr": "192.168.88.103",
+    "head_node_container": true,
+    "daq_nodes": [
+        {
+            "username": "panoseti",
+            "data_dir": "/mnt/panoseti/test-hw/data/",
+            "ip_addr": "192.168.0.228",
+            "module_ids": "0-255",
+            "bindhost": "enp3s0"
+        }
+    ]
+}

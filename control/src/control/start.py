@@ -29,7 +29,6 @@ import shutil
 import signal
 import socket
 import subprocess
-import sys
 import time
 import traceback
 from datetime import UTC, datetime
@@ -59,14 +58,6 @@ from control.utils.pydantic_config_models import (
     RunStateLedger,
 )
 from control.utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
-
-app = typer.Typer(
-    help="PANOSETI Quality Assurance & Testing Suite",
-    no_args_is_help=True,
-    rich_markup_mode="rich",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-
 
 # ---------------------------------------------------
 
@@ -918,7 +909,7 @@ def main(
     no_data: bool = typer.Option(False, "--no_data", help="Set up to record, but don't start data flow or record."),
     nsecs: int = typer.Option(0, "--nsecs", help="Record for N seconds, then stop run."),
     stop_session: bool = typer.Option(False, "--stop_session", help="Stop session at end of run (with --nsecs)."),
-    verbose: bool = typer.Option(False, "--verbose", help="print commands."),
+    verbose_opt: bool = typer.Option(False, "--verbose", help="print commands."),
     force_reset: bool = typer.Option(False, "--force-reset", help="Force reset the state ledger if stale."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ):
@@ -937,12 +928,17 @@ def main(
     fail if a recording run is in progress,
     or if recording activities are active
     """
+    global verbose
+    verbose = verbose_opt
+    
     if not yes:
         typer.confirm("Are you sure you want to start a new recording run?", abort=True)
         
-    asyncio.run(async_main_logic(
+    success = asyncio.run(async_main_logic(
         no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset
     ))
+    if not success:
+        raise typer.Exit(code=1)
 
 async def async_main_logic(
     no_hv: bool,
@@ -952,7 +948,7 @@ async def async_main_logic(
     stop_session: bool,
     verbose: bool,
     force_reset: bool,
-) -> None:
+) -> bool:
 
     # load config files
     obs_config = config_file.get_obs_config()
@@ -968,7 +964,7 @@ async def async_main_logic(
     )
     
     if not success_run_name:
-        sys.exit(1)
+        return False
 
     if success_run_name and nsecs:
         await asyncio.sleep(nsecs)
@@ -980,6 +976,8 @@ async def async_main_logic(
         )
         if stop_session:
             session_stop.session_stop(obs_config)
+    
+    return True
 
 
 if __name__ == "__main__":

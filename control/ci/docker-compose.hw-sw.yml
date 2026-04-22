@@ -1,0 +1,98 @@
+services:
+  # ── Head Node Profile ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  influxdb:
+    image: influxdb:1.8
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.7.0
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["headnode"]
+    network_mode: host
+    volumes:
+      - ../../grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../../grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    restart: always
+
+  headnode-server:
+    build:
+      context: ../../
+      dockerfile: control/ci/Dockerfile.ci
+      target: integration-headnode
+    profiles: ["headnode"]
+    network_mode: host
+    volumes:
+      - ..:/app
+      - ../../grpc:/grpc
+      - /mnt/panoseti/test-hw/data/:/mnt/panoseti/test-hw/data/
+      - ../firmware:/app/firmware:ro
+      - ../quabos:/app/quabos:ro
+    environment:
+      REDIS_HOST: "127.0.0.1"
+      LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
+      PANOSETI_CONFIG_DIR: "/app/ci/hardware-software/configs"
+      PANOSETI_QUABOS_DIR: "/app/quabos"
+      PANOSETI_FIRMWARE_DIR: "/app/firmware"
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: >
+      /bin/sh -c "panoseti-server --profile headnode &
+      python src/control/daemons/storeInfluxDB.py &
+      exec python src/control/daemons/storeLoki.py"
+    restart: always
+
+  # ── DAQ Node Profile ───────────────────────────────────────────────────────
+  daqnode-server:
+    build:
+      context: ../../
+      dockerfile: control/ci/Dockerfile.ci
+      target: integration-daqnode
+    profiles: ["daqnode"]
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
+    volumes:
+      - ..:/app
+      - ../../grpc:/grpc
+      - /mnt/panoseti/test-hw/data/:/mnt/panoseti/test-hw/data/
+      - ../firmware:/app/firmware:ro
+      - ../quabos:/app/quabos:ro
+    environment:
+      HEADNODE_IP: "192.168.88.103"
+      GRPC_PORT: "50051"
+      PANOSETI_CONFIG_DIR: "/app/ci/hardware-software/configs"
+      PANOSETI_QUABOS_DIR: "/app/quabos"
+      PANOSETI_FIRMWARE_DIR: "/app/firmware"
+      PYTHONDONTWRITEBYTECODE: "1"
+    command: "panoseti-server --profile daq_node"
+    restart: always

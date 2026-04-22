@@ -1,0 +1,29 @@
+{
+    "name": "HW-SW_Lab",
+    "comment": "Physical HITL test environment",
+    "wr_ip_addr": "192.168.1.254",
+    "dome_controller_ip_addr": "192.168.88.103",
+    "gps_port": "/dev/ttyUSB0",
+    "detector_overvoltage": 3,
+    "domes": [
+        {
+            "name": "HITL Dome",
+            "obslat": 37.3414,
+            "obslon": -121.6429,
+            "obsalt": 1283,
+            "modules": [
+                {
+                    "mobo_serialno": "M001",
+                    "quabo_version": "bga",
+                    "ip_addr": "192.168.3.248",
+                    "wps": "wps-1",
+                    "timing_mode": "wr"
+                }
+            ]
+        }
+    ],
+    "wps-1": {
+        "url": "http://admin:1234@192.168.88.152:60080",
+        "quabo_socket": 1
+    }
+}

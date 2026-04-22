@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import tomllib
@@ -397,6 +398,86 @@ def all_tests(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs"
         ok = asyncio.run(ctx.obj.run_suite(s, jobs=jobs, extra_args=ctx.args))
         success = success and ok
     if not success: raise typer.Exit(code=1)
+
+# ── HW-SW Test Runner ──────────────────────────────────────────────────────────
+
+test_hw_app = typer.Typer(help="Hardware-Software (HITL) tests", no_args_is_help=True)
+
+HW_DATA_DIR = "/mnt/panoseti/test-hw/data/"
+DAQ_NODE_IP = "192.168.0.228"
+DAQ_NODE_USER = "panoseti"
+HW_COMPOSE_FILE = "ci/docker-compose.hw-sw.yml"
+
+@test_hw_app.command()
+def build(ctx: typer.Context):
+    """Build required Docker images locally."""
+    runner: TestRunner = ctx.obj
+    cmd = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} build"
+    asyncio.run(runner._run_cmd(cmd))
+
+@test_hw_app.command()
+def check_env(
+    ctx: typer.Context, 
+    min_gb: int = typer.Option(10, "--min-gb", help="Minimum required free space in GB.")
+):
+    """Verify environment and disk space."""
+    print(C.dim(f"Checking {HW_DATA_DIR}..."))
+    if not os.path.exists(HW_DATA_DIR):
+        print(C.red(f"Error: {HW_DATA_DIR} does not exist."))
+        raise typer.Exit(code=1)
+    
+    usage = shutil.disk_usage(HW_DATA_DIR)
+    free_gb = usage.free / (2**30)
+    if free_gb < min_gb:
+        print(C.red(f"Error: Not enough disk space. {free_gb:.1f}GB free, {min_gb}GB required."))
+        raise typer.Exit(code=1)
+    
+    print(C.green(f"Environment OK. {free_gb:.1f}GB free space available."))
+
+@test_hw_app.command()
+def deploy(ctx: typer.Context):
+    """Initialize containers on head node and remote DAQ node."""
+    runner: TestRunner = ctx.obj
+    
+    # Local Headnode
+    print(C.cyan("Deploying Headnode profile locally..."))
+    head_cmd = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode up -d"
+    asyncio.run(runner._run_cmd(head_cmd))
+    
+    # Remote DAQnode
+    print(C.cyan(f"Deploying DAQnode profile to {DAQ_NODE_IP}..."))
+    ssh_host = f"ssh://{DAQ_NODE_USER}@{DAQ_NODE_IP}"
+    daq_cmd = f"DOCKER_HOST={ssh_host} docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode up -d"
+    asyncio.run(runner._run_cmd(daq_cmd))
+
+@test_hw_app.command()
+def clean(ctx: typer.Context):
+    """Tear down containers and wipe physical data directory."""
+    runner: TestRunner = ctx.obj
+    
+    print(C.yellow("Tearing down Headnode profile..."))
+    head_down = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode down -v"
+    asyncio.run(runner._run_cmd(head_down))
+    
+    print(C.yellow(f"Tearing down DAQnode profile on {DAQ_NODE_IP}..."))
+    ssh_host = f"ssh://{DAQ_NODE_USER}@{DAQ_NODE_IP}"
+    daq_down = f"DOCKER_HOST={ssh_host} docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode down -v"
+    asyncio.run(runner._run_cmd(daq_down))
+    
+    print(C.red(f"Wiping {HW_DATA_DIR} locally..."))
+    if os.path.exists(HW_DATA_DIR):
+        asyncio.run(runner._run_cmd(f"sudo rm -rf {HW_DATA_DIR}/*"))
+    
+    print(C.red(f"Wiping {HW_DATA_DIR} on {DAQ_NODE_IP}..."))
+    wipe_remote = f"ssh {DAQ_NODE_USER}@{DAQ_NODE_IP} 'sudo rm -rf {HW_DATA_DIR}/*'"
+    asyncio.run(runner._run_cmd(wipe_remote))
+
+@test_hw_app.command()
+def run(ctx: typer.Context):
+    """[Placeholder] Run the HW-SW pytest suite."""
+    print(C.yellow("HW-SW test suite placeholder. Implementation pending."))
+
+app.add_typer(test_hw_app, name="test-hw")
 
 if __name__ == "__main__":
     app()

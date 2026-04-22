@@ -21,7 +21,6 @@ import shutil
 import signal
 import socket
 import subprocess
-import sys
 import time
 from glob import glob
 from typing import Any
@@ -600,7 +599,8 @@ def main(
         daq_config, network_config, quabo_uids, 
         verbose, no_cleanup, no_collect, run, force_cleanup
     ))
-    sys.exit(0 if success else 1)
+    if not success:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
