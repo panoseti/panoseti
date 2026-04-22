@@ -12,6 +12,7 @@ import os
 import pathlib
 import shutil
 import tempfile
+from typing import Any
 
 from ci.paths import PanoPathsTest
 
@@ -60,9 +61,9 @@ def _run_validation(variant_dir: pathlib.Path) -> bool:
         with open(configs_dir / "obs_config.json") as f:
             obs_data = json.load(f)
         
-        quabo_uids = {"domes": []}
+        quabo_uids: dict[str, list[dict[str, Any]]] = {"domes": []}
         for dome in obs_data.get("domes", []):
-            uids_dome = {"modules": []}
+            uids_dome: dict[str, list[dict[str, Any]]] = {"modules": []}
             for module in dome.get("modules", []):
                 uids_module = {
                     "ip_addr": module["ip_addr"],

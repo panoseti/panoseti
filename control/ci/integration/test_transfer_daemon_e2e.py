@@ -20,9 +20,11 @@ import os
 import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
+import anyio
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -85,22 +87,24 @@ async def test_transfer_daemon_archives_run(
     - run_complete marker exists on head node
     - .pff files removed from DAQ node; .json/.log preserved
     """
+    import uuid
+
+    import control.stop as stop
     from ci.integration.conftest import wait_hashpipe_running
     from ci.integration.scenarios.conftest import _start as grpc_start
-    import control.stop as stop
     from control.utils import config_file
+    from control.utils.paths import PanoPaths
     from control.utils.run_state import RunStateManager
     from control.utils.transfer.daemon import _process_job
-    from control.utils.paths import PanoPaths
     from control.utils.transfer.queue import TransferQueue
-    import uuid
 
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     RunStateManager().clear_state()
 
-    from control.utils.pydantic_config_models import RunStateLedger
     from datetime import UTC, datetime
+
+    from control.utils.pydantic_config_models import RunStateLedger
     mgr = RunStateManager()
     ledger = RunStateLedger(
         run_name=run_params["run_dir"],
@@ -120,7 +124,7 @@ async def test_transfer_daemon_archives_run(
 
     import os
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    assert anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
 
     # 2. Stop real run
     success = await stop.stop_run(
@@ -129,7 +133,9 @@ async def test_transfer_daemon_archives_run(
     assert success
 
     mgr = RunStateManager()
-    assert mgr.load_state().status == "RECORDING_ENDED"
+    curr_run_state = mgr.load_state()
+    assert curr_run_state is not None
+    assert curr_run_state == "RECORDING_ENDED"
 
     # 3. Process job via daemon's real handler
     tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
@@ -142,8 +148,9 @@ async def test_transfer_daemon_archives_run(
     assert job_success
     tq.complete(job["run_name"])
 
-    assert mgr.load_state().status == "ARCHIVED"
-    run_dir_path = pathlib.Path(daq_config.head_node_data_dir) / run_params["run_dir"]
+    curr_run_state = mgr.load_state()
+    assert curr_run_state and curr_run_state == "ARCHIVED"
+    run_dir_path = Path(daq_config.head_node_data_dir) / run_params["run_dir"]
     assert (run_dir_path / "run_complete").exists()
 
 
@@ -160,16 +167,17 @@ async def test_transfer_daemon_resumes_after_crash(
     Verifies that the durable queue allows a restarted daemon to claim and
     complete a job that was interrupted during an earlier invocation.
     """
+    import shutil
+    import uuid
+
+    import control.stop as stop
     from ci.integration.conftest import wait_hashpipe_running
     from ci.integration.scenarios.conftest import _start as grpc_start
-    import control.stop as stop
     from control.utils import config_file
-    from control.utils.transfer.daemon import _process_job
     from control.utils.paths import PanoPaths
-    from control.utils.transfer.queue import TransferQueue
     from control.utils.run_state import RunStateManager
-    import uuid
-    import shutil
+    from control.utils.transfer.daemon import _process_job
+    from control.utils.transfer.queue import TransferQueue
 
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
@@ -178,8 +186,9 @@ async def test_transfer_daemon_resumes_after_crash(
     if queue_dir.exists():
         shutil.rmtree(queue_dir)
 
-    from control.utils.pydantic_config_models import RunStateLedger
     from datetime import UTC, datetime
+
+    from control.utils.pydantic_config_models import RunStateLedger
     mgr = RunStateManager()
     ledger = RunStateLedger(
         run_name=run_params["run_dir"],
@@ -197,7 +206,7 @@ async def test_transfer_daemon_resumes_after_crash(
     uids = config_file.get_quabo_uids()
     import os
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    assert anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
@@ -205,8 +214,8 @@ async def test_transfer_daemon_resumes_after_crash(
     assert job is not None
 
     # Simulate crash mid-rsync by patching rsync_one_node to raise an exception
-    with patch("control.utils.transfer.daemon.rsync_one_node", side_effect=RuntimeError("Simulated crash")):
-        with pytest.raises(RuntimeError, match="Simulated crash"):
+    with patch("control.utils.transfer.daemon.rsync_one_node", side_effect=RuntimeError("Simulated crash")), \
+        pytest.raises(RuntimeError, match="Simulated crash"):
             await _process_job(job, tq._base)
 
     # Because it crashed, the job is technically "orphaned" in the active queue
@@ -237,16 +246,17 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     Verifies that the daemon honours MAX_ATTEMPTS and re-enqueues on failure,
     and that the job lands in completed/ after eventual success.
     """
+    import shutil
+    import uuid
+
+    import control.stop as stop
     from ci.integration.conftest import wait_hashpipe_running
     from ci.integration.scenarios.conftest import _start as grpc_start
-    import control.stop as stop
     from control.utils import config_file
-    from control.utils.transfer.daemon import _process_job, MAX_ATTEMPTS
     from control.utils.paths import PanoPaths
-    from control.utils.transfer.queue import TransferQueue
     from control.utils.run_state import RunStateManager
-    import uuid
-    import shutil
+    from control.utils.transfer.daemon import _process_job
+    from control.utils.transfer.queue import TransferQueue
 
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
@@ -255,8 +265,9 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     if queue_dir.exists():
         shutil.rmtree(queue_dir)
 
-    from control.utils.pydantic_config_models import RunStateLedger
     from datetime import UTC, datetime
+
+    from control.utils.pydantic_config_models import RunStateLedger
     mgr = RunStateManager()
     ledger = RunStateLedger(
         run_name=run_params["run_dir"],
@@ -274,16 +285,15 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     uids = config_file.get_quabo_uids()
     import os
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    assert await anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
     job = tq.claim()
+    assert job is not None
 
     # Mock rsync to fail twice, then succeed
     call_count = 0
-    original_rsync = None
-    import control.utils.transfer.daemon as d_module
 
     def mocked_rsync(*args, **kwargs):
         nonlocal call_count
@@ -300,17 +310,19 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
 
         # Attempt 2
         job2 = tq.claim()
+        assert job2 is not None
         success2 = await _process_job(job2, tq._base)
         assert not success2
         tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=2)
 
         # Attempt 3
         job3 = tq.claim()
+        assert job3 is not None
         success3 = await _process_job(job3, tq._base)
         assert success3
         tq.complete(job3["run_name"])
 
-    completed_dir = pathlib.Path(tq._base) / "tmp" / "transfer_queue" / "completed"
+    completed_dir = Path(tq._base) / "tmp" / "transfer_queue" / "completed"
     assert (completed_dir / f"{job['run_name']}.job.toml").exists()
 
 
@@ -327,16 +339,17 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     Verifies that the daemon moves the job to failed/ rather than looping
     indefinitely.
     """
+    import shutil
+    import uuid
+
+    import control.stop as stop
     from ci.integration.conftest import wait_hashpipe_running
     from ci.integration.scenarios.conftest import _start as grpc_start
-    import control.stop as stop
     from control.utils import config_file
-    from control.utils.transfer.daemon import _process_job, MAX_ATTEMPTS
     from control.utils.paths import PanoPaths
-    from control.utils.transfer.queue import TransferQueue
     from control.utils.run_state import RunStateManager
-    import uuid
-    import shutil
+    from control.utils.transfer.daemon import MAX_ATTEMPTS, _process_job
+    from control.utils.transfer.queue import TransferQueue
 
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
@@ -345,8 +358,9 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     if queue_dir.exists():
         shutil.rmtree(queue_dir)
 
-    from control.utils.pydantic_config_models import RunStateLedger
     from datetime import UTC, datetime
+
+    from control.utils.pydantic_config_models import RunStateLedger
     mgr = RunStateManager()
     ledger = RunStateLedger(
         run_name=run_params["run_dir"],
@@ -364,7 +378,8 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     uids = config_file.get_quabo_uids()
     import os
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    assert os.path.exists(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}"), "Failed to create run_dir"
+    run_dir_path = anyio.Path(daq_config.head_node_data_dir) / run_params['run_dir']
+    assert await run_dir_path.exists(), "Failed to create run_dir"
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
@@ -380,7 +395,7 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
             else:
                 tq.fail(job["run_name"])
 
-    failed_dir = pathlib.Path(tq._base) / "tmp" / "transfer_queue" / "failed"
+    failed_dir = Path(tq._base) / "tmp" / "transfer_queue" / "failed"
     assert (failed_dir / f"{job['run_name']}.job.toml").exists()
 
 
@@ -391,7 +406,7 @@ def test_transfer_daemon_singleton_lock_in_container(tmp_path) -> None:
     running must exit immediately without processing any jobs.
     """
     import subprocess
-    import time
+
     from control.utils.paths import PanoPaths
 
     # Start a dummy python process that holds the lock using fcntl

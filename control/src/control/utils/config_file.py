@@ -572,7 +572,6 @@ def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf
         from control.topology.visualizer import (
             export_interactive_html,
             export_topology_json,
-            save_topology_image,
         )
         
         # We need quabo_uids for the full graph

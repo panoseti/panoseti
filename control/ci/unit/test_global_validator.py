@@ -557,7 +557,6 @@ class TestValidateAllRules:
             "wps": {"url": "http://x", "quabo_socket": 1},
         }
         v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
-        check_methods = [m for m in dir(v) if m.startswith("_check_")]
         v.validate_all_rules()
         # At minimum, each check method should have added something
         assert v.report.has_errors

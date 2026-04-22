@@ -22,19 +22,18 @@
 
 # ---------------- TELEMETRY LOGGING ----------------
 import asyncio
+import functools
 import json
-import logging
 import os
 import shutil
 import signal
 import socket
 import subprocess
-import functools
 import sys
 import time
 import traceback
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any
 
 import grpc
 import typer

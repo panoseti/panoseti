@@ -7,6 +7,7 @@ NetworkX-based topology generator for the PANOSETI DAQ fleet.
 from __future__ import annotations
 
 from typing import Any
+
 import networkx as nx
 
 from control.utils import config_file, util

@@ -7,6 +7,7 @@ and hardware states are cohesive across the entire PanoSETI observatory.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 from typing import Any
@@ -15,6 +16,7 @@ from haversine import Unit, haversine  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.table import Table
 
+from control.utils import util
 from control.utils.pydantic_config_models import (
     DaqConfigValidator,
     DataConfigValidator,
@@ -22,7 +24,6 @@ from control.utils.pydantic_config_models import (
     NetworkConfigValidator,
     ObsConfigValidator,
 )
-from control.utils import util
 
 console = Console()
 
@@ -128,10 +129,8 @@ class GlobalConfigValidator:
         rule_methods = [getattr(self, func) for func in dir(self) if
                         callable(getattr(self, func)) and func.startswith("_check_")]
         for rule in rule_methods:
-            try:
+            with contextlib.suppress(ValueError):
                 rule()
-            except ValueError as e:
-                pass
         self.report.print_report()
         return not self.report.has_errors
 
