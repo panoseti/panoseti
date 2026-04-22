@@ -1185,7 +1185,7 @@ def validate_main(ctx: typer.Context):
     Use subcommands for extended checks like network pings or topology graphs.
     """
     if ctx.invoked_subcommand is None:
-        passed = config_file.validate_all(check_network=False, debug=False, graph=False)
+        passed = config_file.validate_all(check_network=False, debug=False, graph=True)
         if not passed:
             raise typer.Exit(code=1)
 

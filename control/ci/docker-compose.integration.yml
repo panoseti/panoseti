@@ -41,7 +41,7 @@ services:
         condition: service_healthy
 
   influxdb:
-    image: influxdb:1.8-alpine
+    image: influxdb:1.8
     networks:
       headnode_net:
         ipv4_address: ${HEADNODE_HOST}

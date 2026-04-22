@@ -1,43 +1,27 @@
 #!/usr/bin/env python3
 """
-qa.py — PANOSETI Control Unified QA Runner
+qa.py — PANOSETI Control Unified QA Runner (Modernized)
 
-Output streams in real time. Parallel tasks (lint) prefix every line with
-the task name so concurrent streams never mangle each other. Sequential
-tasks (unit, integration) stream without a prefix — the section header is enough.
-
-Usage:
-  pseti test build
-  pseti test lint [ruff/mypy args...]
-  pseti test unit [-j N] [pytest args...]
-  pseti test integration [pytest args...]
-  pseti test chaos [pytest args...]
-  pseti test all [-j N] [pytest args...]
+This runner provides modular, isolated, and strongly-typed test execution.
+It uses Pydantic to validate test suite configurations defined in qa.toml.
 """
 
-import argparse
 import asyncio
 import json
+import os
 import re
 import sys
 import time
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import typer
+from pydantic import BaseModel, Field, field_validator
 
-app = typer.Typer(
-    help="Testing Suite",
-    no_args_is_help=True,
-    rich_markup_mode="rich",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True, "help_option_names": ["-h", "--help"]},
-)
-
+# ── ANSI Colors ──────────────────────────────────────────────────────────────
 
 class C:
-    """ANSI colour helpers."""
-
     _GREEN  = "\033[92m"
     _RED    = "\033[91m"
     _YELLOW = "\033[93m"
@@ -61,8 +45,6 @@ class C:
     @staticmethod
     def paint(s: str, code: str) -> str: return f"{code}{s}{C._RESET}"
 
-
-# Colorwheel used to assign a distinct hue to each parallel task.
 PALETTE = [
     "\033[38;5;81m",   # sky blue
     "\033[38;5;118m",  # lime green
@@ -72,179 +54,241 @@ PALETTE = [
     "\033[38;5;43m",   # teal
 ]
 
+# ── Configuration Models ──────────────────────────────────────────────────────
+
+class SuiteConfig(BaseModel):
+    name: str = ""
+    description: str = ""
+    type: Literal["test", "lint"] = "test"
+    requires_docker: bool = False
+    compose_file: str | None = None
+    profiles: list[str] = Field(default_factory=list)
+    service: str | None = None
+    test_dir: str | None = None
+    parallel: bool = False
+    pytest_args: list[str] = Field(default_factory=list)
+    pre_run: str | None = None
+    tasks: dict[str, str] = Field(default_factory=dict)
+    env: dict[str, str] = Field(default_factory=dict)
+
+class QAConfig(BaseModel):
+    settings: dict[str, Any] = Field(default_factory=dict)
+    suites: dict[str, SuiteConfig]
+
+    @field_validator("suites", mode="before")
+    @classmethod
+    def inject_names(cls, v: Any) -> Any:
+        if isinstance(v, dict):
+            for name, config in v.items():
+                if isinstance(config, dict) and "name" not in config:
+                    config["name"] = name
+        return v
+
+# ── Core Types ────────────────────────────────────────────────────────────────
 
 class Result:
-    """Outcome of a single QA task."""
-
     __slots__ = ("code", "elapsed", "name", "stats")
-
     def __init__(self, name: str, code: int, elapsed: float, stats: dict[str, int] | None = None) -> None:
         self.name    = name
         self.code    = code
         self.elapsed = elapsed
         self.stats   = stats or {}
-
     @property
-    def ok(self) -> bool:
-        return self.code == 0
+    def ok(self) -> bool: return self.code == 0
 
-
-# control/ci/qa.py -> control/
 CONTROL_ROOT = Path(__file__).parent.parent.resolve()
 QA_TOML_PATH = CONTROL_ROOT / "ci" / "qa.toml"
+ENV_CI_PATH  = CONTROL_ROOT / "ci" / ".env.ci"
 
+# ── Runner Implementation ─────────────────────────────────────────────────────
 
-class QARunner:
-    """Loads qa.toml and drives linting / testing tasks."""
-
-    def __init__(self, config_path: Path) -> None:
+class TestRunner:
+    def __init__(self, config_path: Path):
         try:
             with open(config_path, "rb") as fh:
-                self._cfg: dict[str, Any] = tomllib.load(fh)
-        except FileNotFoundError:
-            print(C.red(f"Error: {config_path} not found."), file=sys.stderr)
+                raw_cfg = tomllib.load(fh)
+                self.cfg = QAConfig.model_validate(raw_cfg)
+        except Exception as e:
+            print(C.red(f"Error loading {config_path}: {e}"), file=sys.stderr)
             sys.exit(1)
-        self._settings: dict[str, Any] = self._cfg.get("settings", {})
+        
+        self.no_teardown = False
+        self.default_parallel = self.cfg.settings.get("default_parallel", 4)
+        self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
 
-    def _fix_cmd(self, cmd: str) -> str:
-        """Inject absolute paths into commands to handle src-layout migration."""
-        # Fix .env reference to use the CI-specific env file
-        env_path = CONTROL_ROOT / "ci" / ".env"
-        cmd = cmd.replace("--env-file .env", f"--env-file {env_path}")
-        # Fix ci/ references
-        ci_root = CONTROL_ROOT / "ci"
-        cmd = cmd.replace("-f ci/", f"-f {ci_root}/")
-        return cmd
+    async def run_suite(self, suite_name: str, jobs: int | None = None, extra_args: list[str] | None = None) -> bool:
+        if suite_name not in self.cfg.suites:
+            print(C.red(f"Unknown suite: {suite_name}"), file=sys.stderr)
+            return False
+        
+        suite = self.cfg.suites[suite_name]
+        project_name = f"{self.project_prefix}-{suite.name}"
+        
+        results: list[Result] = []
+        try:
+            if suite.requires_docker:
+                await self._setup_docker(suite, project_name)
+            
+            if suite.type == "test":
+                results = await self._run_test_suite(suite, project_name, jobs, extra_args)
+            elif suite.type == "lint":
+                results = await self._run_lint_suite(suite, project_name, extra_args)
+                
+        finally:
+            if suite.requires_docker and not self.no_teardown:
+                await self._teardown_docker(suite, project_name)
+        
+        self._print_summary(results)
+        return all(r.ok for r in results)
 
-    @property
-    def default_parallel(self) -> int:
-        return int(self._settings.get("default_parallel", 4))
+    async def cleanup_all(self):
+        self._header("GLOBAL CLEANUP")
+        for name, suite in self.cfg.suites.items():
+            if suite.requires_docker:
+                project_name = f"{self.project_prefix}-{suite.name}"
+                print(C.dim(f"Cleaning up {project_name}..."))
+                await self._teardown_docker(suite, project_name, quiet=True)
+        print(C.green("Cleanup complete."))
 
-    def infra_task(self, kind: str) -> dict[str, str]:
-        cfg: dict[str, Any] = self._cfg.get("infra", {})
-        if kind not in cfg:
-            return {}
-        cmd = self._fix_cmd(str(cfg[kind]["command"]))
-        return {f"infra.{kind}": cmd}
+    async def build_all(self):
+        self._header("REBUILDING IMAGES")
+        processed_files = set()
+        for suite in self.cfg.suites.values():
+            if suite.requires_docker and suite.compose_file not in processed_files:
+                project_name = f"{self.project_prefix}-build"
+                cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} build"
+                await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
+                processed_files.add(suite.compose_file)
 
-    def infra_description(self, kind: str) -> str:
-        cfg: dict[str, Any] = self._cfg.get("infra", {})
-        return str(cfg.get(kind, {}).get("description", ""))
+    # ── Internal Helpers ──────────────────────────────────────────────────────
 
-    def lint_tasks(self) -> dict[str, str]:
-        cfg: dict[str, Any] = self._cfg.get("lint", {})
-        return {f"lint.{k}": self._fix_cmd(str(v["command"])) for k, v in cfg.items()}
+    async def _setup_docker(self, suite: SuiteConfig, project_name: str):
+        self._header(f"SETUP: {suite.name.upper()}")
+        profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
+        cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} up -d"
+        res = await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
+        if not res.ok:
+            print(C.red(f"Failed to start Docker stack for {suite.name}"), file=sys.stderr)
+            sys.exit(1)
+            
+        if suite.pre_run:
+            print(C.dim(f"Running pre-run command for {suite.name}..."))
+            pre_cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {suite.service} /bin/sh -c '{suite.pre_run}'"
+            await self._run_cmd(pre_cmd, env={"COMPOSE_PROJECT_NAME": project_name})
 
-    def lint_descriptions(self) -> dict[str, str]:
-        cfg: dict[str, Any] = self._cfg.get("lint", {})
-        return {f"lint.{k}": str(v.get("description", "")) for k, v in cfg.items()}
+    async def _teardown_docker(self, suite: SuiteConfig, project_name: str, quiet: bool = False):
+        if not quiet:
+            self._header(f"TEARDOWN: {suite.name.upper()}")
+        profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
+        cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} down -v --remove-orphans"
+        await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name}, quiet=quiet)
 
-    def test_tasks(self, kind: str, parallel: int | None = None, extra_args: list[str] | None = None) -> dict[str, str]:
-        cfg: dict[str, Any] = self._cfg.get("test", {})
-        if kind not in cfg:
-            print(C.red(f"Unknown test kind: {kind!r}"), file=sys.stderr)
-            return {}
-        p   = parallel if parallel is not None else self.default_parallel
-        args_str = " ".join(extra_args) if extra_args else ""
-        raw_cmd = str(cfg[kind]["command"]).format(parallel=p, args=args_str)
-        cmd = self._fix_cmd(raw_cmd)
-        return {f"test.{kind}": cmd}
+    async def _run_test_suite(self, suite: SuiteConfig, project_name: str, jobs: int | None, extra_args: list[str] | None) -> list[Result]:
+        self._header(f"TESTING: {suite.name.upper()}")
+        
+        p = jobs or self.default_parallel
+        args = suite.pytest_args + (extra_args or [])
+        args_str = " ".join(args)
+        
+        pytest_cmd = f"pytest {suite.test_dir} -v --color=yes"
+        if suite.parallel:
+            pytest_cmd += f" -n {p}"
+        if args_str:
+            pytest_cmd += f" {args_str}"
+            
+        env_str = " ".join([f"-e {k}={v}" for k, v in suite.env.items()])
+        profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
+        
+        cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
+        
+        lock = asyncio.Lock()
+        res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
+        return [res]
 
-    def test_description(self, kind: str) -> str:
-        test_cfg: dict[str, Any] = self._cfg.get("test", {})
-        entry: dict[str, Any]    = test_cfg.get(kind, {})
-        return str(entry.get("description", ""))
+    async def _run_lint_suite(self, suite: SuiteConfig, project_name: str, extra_args: list[str] | None) -> list[Result]:
+        self._header(f"LINTING: {suite.name.upper()}")
+        
+        extra_str = " ".join(extra_args or [])
+        task_colors = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(suite.tasks)}
+        profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
+        
+        lock = asyncio.Lock()
+        
+        async def run_task(name: str, task_cmd: str):
+            cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
+            return await self._stream(f"lint.{name}", cmd, lock, tag=C.paint(f"[{name}]", task_colors[name]) + " ", env={"COMPOSE_PROJECT_NAME": project_name})
 
-    async def check_docker(self) -> None:
-        # Simple check for running containers — erroring if Docker is down.
+        results = await asyncio.gather(*[run_task(n, c) for n, c in suite.tasks.items()])
+        return list(results)
+
+    async def _run_cmd(self, cmd: str, env: dict[str, str] | None = None, quiet: bool = False) -> Result:
+        start = time.monotonic()
+        full_env = os.environ.copy()
+        if env:
+            full_env.update(env)
+            
         proc = await asyncio.create_subprocess_shell(
-            "docker ps",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            cmd,
+            stdout=asyncio.subprocess.DEVNULL if quiet else None,
+            stderr=asyncio.subprocess.DEVNULL if quiet else None,
+            env=full_env
         )
         await proc.wait()
-        if proc.returncode != 0:
-            print(C.bold(C.red("⚠  Docker is not running.")))
-            sys.exit(1)
+        return Result("cmd", proc.returncode or 0, time.monotonic() - start)
 
-    @staticmethod
-    async def _stream(
-        name: str,
-        cmd: str,
-        lock: asyncio.Lock,
-        tag: str = "",
-    ) -> Result:
+    async def _stream(self, name: str, cmd: str, lock: asyncio.Lock, tag: str = "", env: dict[str, str] | None = None) -> Result:
         start = time.monotonic()
+        full_env = os.environ.copy()
+        if env:
+            full_env.update(env)
+            
         proc  = await asyncio.create_subprocess_shell(
             cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=full_env
         )
         assert proc.stdout is not None
 
-        # worker_colors maps [gw0], [gw1], etc. to distinct PALETTE entries.
         worker_colors: dict[str, str] = {}
         stats = {"passed": 0, "failed": 0, "skipped": 0, "error": 0}
         is_parallel = "-n" in cmd
         has_json_metrics = False
-        
-        # Regex to strip ANSI color escape codes
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
         async for raw in proc.stdout:
             line = raw.decode("utf-8", errors="replace").rstrip()
-            
-            # Strip color for robust keyword detection
             plain_line = ansi_escape.sub('', line)
             
-            # 1. Check for machine-readable summary (pytest-native hook in conftest.py)
             if "TEST_METRICS_JSON: " in plain_line:
                 try:
                     json_str = plain_line.split("TEST_METRICS_JSON: ")[1]
                     summary = json.loads(json_str)
-                    # Use JSON summary as the source of truth
                     stats["passed"] = summary.get("passed", 0) + summary.get("xpass", 0)
                     stats["failed"] = summary.get("failed", 0)
                     stats["skipped"] = summary.get("skipped", 0) + summary.get("xfail", 0)
                     stats["error"] = summary.get("error", 0)
                     has_json_metrics = True
-                except (json.JSONDecodeError, IndexError):
-                    pass
+                except: pass
 
             upper_line = plain_line.upper()
-            
-            # Identify actual test result lines (Fallback/Incremental tracking)
             if not has_json_metrics:
-                is_parallel_result = plain_line.startswith("[gw") and any(kw in upper_line for kw in [" PASSED", " FAILED", " SKIPPED", " ERROR", " XFAIL", " XPASS"])
-                is_sequential_result = "::" in plain_line and any(upper_line.endswith(kw) or f"{kw} [" in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"])
-                
-                if is_parallel_result or is_sequential_result:
-                    if "PASSED" in upper_line or "XPASS" in upper_line:
-                        stats["passed"] += 1
-                    elif "FAILED" in upper_line:
-                        stats["failed"] += 1
-                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line:
-                        stats["skipped"] += 1
-                    elif "ERROR" in upper_line:
-                        stats["error"] += 1
+                is_result = (plain_line.startswith("[gw") and any(kw in upper_line for kw in [" PASSED", " FAILED", " SKIPPED", " ERROR", " XFAIL", " XPASS"])) or \
+                            ("::" in plain_line and any(upper_line.endswith(kw) or f"{kw} [" in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]))
+                if is_result:
+                    if "PASSED" in upper_line or "XPASS" in upper_line: stats["passed"] += 1
+                    elif "FAILED" in upper_line: stats["failed"] += 1
+                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line: stats["skipped"] += 1
+                    elif "ERROR" in upper_line: stats["error"] += 1
 
-            # Detect pytest-xdist worker prefixes like [gw0]
             if line.startswith("[gw"):
-                end_bracket = line.find("]")
-                if end_bracket != -1:
-                    worker_id = line[:end_bracket + 1]
-                    rest = line[end_bracket + 1:]
-                    
-                    if worker_id not in worker_colors:
-                        worker_colors[worker_id] = PALETTE[len(worker_colors) % len(PALETTE)]
-                    
-                    line = f"{C.paint(worker_id, worker_colors[worker_id])}{rest}"
-            
-            # Suppress redundant "starting test" declarations ONLY in parallel mode.
+                end = line.find("]")
+                if end != -1:
+                    wid = line[:end+1]
+                    if wid not in worker_colors: worker_colors[wid] = PALETTE[len(worker_colors) % len(PALETTE)]
+                    line = f"{C.paint(wid, worker_colors[wid])}{line[end+1:]}"
             elif is_parallel and "::" in plain_line and not plain_line.startswith("["):
-                is_result_line = any(kw in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"])
-                if not is_result_line:
-                    continue
+                if not any(kw in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]): continue
 
             async with lock:
                 print(f"{tag}{line}", flush=True)
@@ -252,367 +296,107 @@ class QARunner:
         await proc.wait()
         return Result(name, proc.returncode or 0, time.monotonic() - start, stats)
 
-    @staticmethod
-    def _header(title: str) -> None:
+    def _header(self, title: str):
         bar = "─" * 60
-        print(f"\n{C.bold(C.yellow(bar))}", flush=True)
-        print(f"{C.bold(C.yellow(f'  {title}'))}", flush=True)
-        print(f"{C.bold(C.yellow(bar))}", flush=True)
+        print(f"\n{C.bold(C.yellow(bar))}\n{C.bold(C.yellow(f'  {title}'))}\n{C.bold(C.yellow(bar))}", flush=True)
 
-    @staticmethod
-    def _task_line(name: str, desc: str, cmd: str) -> None:
-        print(f"  {C.cyan(f'[{name}]')}  {desc}", flush=True)
-        print(f"  {C.dim(cmd)}", flush=True)
-
-    @staticmethod
-    def _summary(
-        results: list[Result],
-        colors: dict[str, str] | None = None,
-    ) -> None:
-        if not results:
-            return
-        
-        # 1. Individual Task Status
+    def _print_summary(self, results: list[Result]):
+        if not results: return
         width = max(len(r.name) for r in results)
-        print(f"\n{C.bold('Execution Summary')}", flush=True)
+        print(f"\n{C.bold('Execution Summary')}")
         for r in results:
-            icon   = C.green("✓") if r.ok else C.red("✗")
+            icon = C.green("✓") if r.ok else C.red("✗")
             status = C.green("passed") if r.ok else C.red("FAILED")
-            code   = (colors or {}).get(r.name, C._CYAN)
-            name   = C.paint(r.name.ljust(width), code)
-            print(f"  {icon}  {name}  {status}  {C.dim(f'{r.elapsed:.1f}s')}", flush=True)
+            print(f"  {icon}  {C.cyan(r.name.ljust(width))}  {status}  {C.dim(f'{r.elapsed:.1f}s')}")
+        
+        test_res = [r for r in results if r.name.startswith("test.") and any(r.stats.values())]
+        if test_res:
+            self._print_metrics(test_res)
 
-        # 2. Test Stats Table (if any test tasks were run)
-        test_results = [r for r in results if r.name.startswith("test.") and any(r.stats.values())]
-        if test_results:
-            print(f"\n{C.bold('Test Metrics')}", flush=True)
-            header = f"  {'Suite':<20} {'Passed':>8} {'Failed':>8} {'Skipped':>8} {'Error':>8} {'Total':>8}"
-            bar = "  " + "─" * (len(header) - 2)
-            print(C.dim(bar))
-            print(C.bold(C.yellow(header)))
-            print(C.dim(bar))
+    def _print_metrics(self, test_results: list[Result]):
+        print(f"\n{C.bold('Test Metrics')}")
+        header = f"  {'Suite':<20} {'Passed':>8} {'Failed':>8} {'Skipped':>8} {'Error':>8} {'Total':>8}"
+        bar = "  " + "─" * (len(header) - 2)
+        print(C.dim(bar))
+        print(C.bold(C.yellow(header)))
+        print(C.dim(bar))
+        totals = {"p": 0, "f": 0, "s": 0, "e": 0, "t": 0}
+        for r in test_results:
+            s = r.stats
+            p, f, sk, e = s.get("passed", 0), s.get("failed", 0), s.get("skipped", 0), s.get("error", 0)
+            t = p + f + sk + e
+            print(f"  {r.name:<20} {C.green(str(p).rjust(8)) if p else str(p).rjust(8)} {C.red(str(f).rjust(8)) if f else str(f).rjust(8)} {C.yellow(str(sk).rjust(8)) if sk else str(sk).rjust(8)} {C.red(str(e).rjust(8)) if e else str(e).rjust(8)} {str(t).rjust(8)}")
+            totals["p"] += p; totals["f"] += f; totals["s"] += sk; totals["e"] += e; totals["t"] += t
+        print(C.dim(bar))
+        print(f"  {'Total':<20} {C.green(str(totals['p']).rjust(8)) if totals['p'] else str(totals['p']).rjust(8)} {C.red(str(totals['f']).rjust(8)) if totals['f'] else str(totals['f']).rjust(8)} {C.yellow(str(totals['s']).rjust(8)) if totals['s'] else str(totals['s']).rjust(8)} {C.red(str(totals['e']).rjust(8)) if totals['e'] else str(totals['e']).rjust(8)} {str(totals['t']).rjust(8)}\n")
 
-            totals = {"passed": 0, "failed": 0, "skipped": 0, "error": 0, "total": 0}
+# ── Typer CLI ─────────────────────────────────────────────────────────────────
 
-            for r in test_results:
-                s = r.stats
-                passed = s.get("passed", 0)
-                failed = s.get("failed", 0)
-                skipped = s.get("skipped", 0)
-                error = s.get("error", 0)
-                total = passed + failed + skipped + error
-                
-                p_val = str(passed).rjust(8)
-                f_val = str(failed).rjust(8)
-                s_val = str(skipped).rjust(8)
-                e_val = str(error).rjust(8)
-                t_val = str(total).rjust(8)
+app = typer.Typer(
+    help="PANOSETI Quality Assurance & Testing Suite",
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+)
 
-                p_str = C.green(p_val) if passed > 0 else p_val
-                f_str = C.red(f_val) if failed > 0 else f_val
-                s_str = C.yellow(s_val) if skipped > 0 else s_val
-                e_str = C.red(e_val) if error > 0 else e_val
-
-                print(f"  {r.name:<20} {p_str} {f_str} {s_str} {e_str} {t_val}")
-                
-                totals["passed"] += passed
-                totals["failed"] += failed
-                totals["skipped"] += skipped
-                totals["error"] += error
-                totals["total"] += total
-
-            print(C.dim(bar))
-            p_tot = C.green(str(totals["passed"]).rjust(8)) if totals["passed"] > 0 else str(totals["passed"]).rjust(8)
-            f_tot = C.red(str(totals["failed"]).rjust(8)) if totals["failed"] > 0 else str(totals["failed"]).rjust(8)
-            s_tot = C.yellow(str(totals["skipped"]).rjust(8)) if totals["skipped"] > 0 else str(totals["skipped"]).rjust(8)
-            e_tot = C.red(str(totals["error"]).rjust(8)) if totals["error"] > 0 else str(totals["error"]).rjust(8)
-            
-            print(f"  {'Total':<20} {p_tot} {f_tot} {s_tot} {e_tot} {str(totals['total']).rjust(8)}")
-            print(C.dim(bar) + "\n")
-
-    async def run_parallel(
-        self,
-        title: str,
-        tasks: dict[str, str],
-        descriptions: dict[str, str] | None = None,
-    ) -> list[Result]:
-        self._header(title)
-        if not tasks:
-            return []
-
-        task_colors = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(tasks)}
-        descs = descriptions or {}
-        for name, _cmd in tasks.items():
-            colored_name = C.paint(f"[{name}]", task_colors[name])
-            print(f"  {colored_name}  {descs.get(name, '')}", flush=True)
-        print(flush=True)
-
-        lock = asyncio.Lock()
-        results = list(await asyncio.gather(
-            *[
-                self._stream(n, c, lock, tag=C.paint(f"[{n}]", task_colors[n]) + " ")
-                for n, c in tasks.items()
-            ]
-        ))
-        return results
-
-    async def run_sequential(
-        self,
-        title: str,
-        tasks: dict[str, str],
-        descriptions: dict[str, str] | None = None,
-    ) -> list[Result]:
-        self._header(title)
-        if not tasks:
-            return []
-
-        descs   = descriptions or {}
-        lock    = asyncio.Lock()
-        results: list[Result] = []
-
-        for name, cmd in tasks.items():
-            self._task_line(name, descs.get(name, ""), cmd)
-            print(flush=True)
-            result = await self._stream(name, cmd, lock)
-            results.append(result)
-            icon = C.green("✓ passed") if result.ok else C.red("✗ FAILED")
-            print(f"\n{C.cyan(f'[{name}]')} {icon}  {C.dim(f'{result.elapsed:.1f}s')}", flush=True)
-
-        return results
-
-
-# ── Command handlers ───────────────────────────────────────────────────────────
-
-async def cmd_build(args: argparse.Namespace, runner: QARunner) -> bool:
-    tasks   = runner.infra_task("build")
-    descs   = {"infra.build": runner.infra_description("build")}
-    results = await runner.run_sequential("BUILD", tasks, descs)
-    runner._summary(results)
-    return all(r.ok for r in results)
-
-
-async def cmd_lint(args: argparse.Namespace, runner: QARunner) -> bool:
-    await runner.check_docker()
-    
-    # SETUP
-    await runner.run_sequential("SETUP", runner.infra_task("up_unit"), {"infra.up_unit": runner.infra_description("up_unit")})
-    
-    results: list[Result] = []
-    try:
-        # Pass extra args to both ruff and mypy
-        extra_str = " ".join(args.extra) if args.extra else ""
-        tasks = runner.lint_tasks()
-        if extra_str:
-            tasks = {k: f"{v} {extra_str}" for k, v in tasks.items()}
-            
-        descs   = runner.lint_descriptions()
-        results = await runner.run_parallel("LINTING", tasks, descs)
-    finally:
-        # CLEANUP
-        await runner.run_sequential("CLEANUP", runner.infra_task("down_unit"), {"infra.down_unit": runner.infra_description("down_unit")})
-    
-    runner._summary(results)
-    return all(r.ok for r in results)
-
-
-async def cmd_unit(args: argparse.Namespace, runner: QARunner) -> bool:
-    await runner.check_docker()
-    
-    # SETUP
-    await runner.run_sequential("SETUP", runner.infra_task("up_unit"), {"infra.up_unit": runner.infra_description("up_unit")})
-    
-    results: list[Result] = []
-    try:
-        jobs    = getattr(args, "jobs", None)
-        tasks   = runner.test_tasks("unit", jobs, args.extra)
-        descs   = {"test.unit": runner.test_description("unit")}
-        results = await runner.run_sequential("UNIT TESTS", tasks, descs)
-    finally:
-        # CLEANUP
-        await runner.run_sequential("CLEANUP", runner.infra_task("down_unit"), {"infra.down_unit": runner.infra_description("down_unit")})
-    
-    runner._summary(results)
-    return all(r.ok for r in results)
-
-
-async def cmd_integration(args: argparse.Namespace, runner: QARunner) -> bool:
-    await runner.check_docker()
-    
-    # SETUP
-    await runner.run_sequential("SETUP", runner.infra_task("up_integration"), {"infra.up_integration": runner.infra_description("up_integration")})
-    
-    results: list[Result] = []
-    try:
-        tasks   = runner.test_tasks("integration", extra_args=args.extra)
-        descs   = {"test.integration": runner.test_description("integration")}
-        results = await runner.run_sequential("INTEGRATION TESTS", tasks, descs)
-    finally:
-        # CLEANUP
-        await runner.run_sequential("CLEANUP", runner.infra_task("down_integration"), {"infra.down_integration": runner.infra_description("down_integration")})
-    
-    runner._summary(results)
-    return all(r.ok for r in results)
-
-
-async def cmd_chaos(args: argparse.Namespace, runner: QARunner) -> bool:
-    """
-    Run TDD-forcing chaos/scenario tests against the integration stack.
-
-    These tests are DESIGNED to fail on master — each failure documents a known
-    bug that needs a production-code fix. The command exits 1 when tests fail
-    (so CI marks the suite red), but prints a note explaining this is expected.
-
-    Pass --allow-pass to suppress the expected-failure warning (used when the
-    production fixes have been merged and the suite should be green).
-    """
-    await runner.check_docker()
-
-    # SETUP — same stack as integration
-    await runner.run_sequential(
-        "SETUP",
-        runner.infra_task("up_integration"),
-        {"infra.up_integration": runner.infra_description("up_integration")},
-    )
-
-    results: list[Result] = []
-    try:
-        tasks = runner.test_tasks("chaos", extra_args=args.extra)
-        descs = {"test.chaos": runner.test_description("chaos")}
-
-        print(
-            f"\n{C.bold(C.yellow('NOTE:'))} Chaos tests are TDD-forcing — "
-            "failures on master are expected and document known bugs.\n"
-            "Each failure = one production-code fix required.\n",
-            flush=True,
-        )
-
-        results = await runner.run_sequential("CHAOS / SCENARIO TESTS", tasks, descs)
-    finally:
-        # Always tear down so the stack doesn't leak between runs
-        await runner.run_sequential(
-            "CLEANUP",
-            runner.infra_task("down_integration"),
-            {"infra.down_integration": runner.infra_description("down_integration")},
-        )
-    runner._summary(results)
-    return all(r.ok for r in results)
-
-
-async def cmd_structural(args: argparse.Namespace, runner: QARunner) -> bool:
-    """
-
-    Args:
-        args (argparse.Namespace): _description_
-        runner (QARunner): _description_
-
-    Returns:
-        bool: _description_
-    """
-    await runner.check_docker()
-    
-    # SETUP
-    await runner.run_sequential("SETUP", runner.infra_task("up_unit"), {"infra.up_unit": runner.infra_description("up_unit")})
-    
-    results: list[Result] = []
-    try:
-        tasks   = runner.test_tasks("structural", extra_args=args.extra)
-        descs   = {"test.structural": runner.test_description("structural")}
-        results = await runner.run_sequential("STRUCTURAL / TOPOLOGY", tasks, descs)
-    finally:
-        # CLEANUP
-        await runner.run_sequential("CLEANUP", runner.infra_task("down_unit"), {"infra.down_unit": runner.infra_description("down_unit")})
-    
-    runner._summary(results)
-    return all(r.ok for r in results)
-
-
-async def cmd_all(args: argparse.Namespace, runner: QARunner) -> bool:
-    # 'all' will run each sub-command, which handle their own setup/teardown.
-    ok_lint = await cmd_lint(args, runner)
-    ok_unit = await cmd_unit(args, runner)
-    ok_int  = await cmd_integration(args, runner)
-    ok_chaos = await cmd_chaos(args, runner)
-    ok_structural = await cmd_structural(args, runner)
-    return ok_lint and ok_unit and ok_int and ok_chaos and ok_structural
-
-
-# ── Typer Commands ─────────────────────────────────────────────────────────────
-
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def build(ctx: typer.Context) -> None:
-    """Rebuild test images"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(extra=ctx.args)
-    ok = asyncio.run(cmd_build(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def lint(ctx: typer.Context) -> None:
-    """Run linters [ruff/mypy args...]"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(extra=ctx.args)
-    ok = asyncio.run(cmd_lint(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
-
-
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def unit(
+@app.callback()
+def main(
     ctx: typer.Context,
-    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers"),
-) -> None:
+    debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass Docker teardown for debugging.")
+):
+    ctx.obj = TestRunner(QA_TOML_PATH)
+    ctx.obj.no_teardown = debug
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def lint(ctx: typer.Context):
+    """Run linters [ruff/mypy args...]"""
+    ok = asyncio.run(ctx.obj.run_suite("lint", extra_args=ctx.args))
+    if not ok: raise typer.Exit(code=1)
+
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def unit(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs", "-j")):
     """Run unit tests [-j N] [pytest args...]"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(jobs=jobs, extra=ctx.args)
-    ok = asyncio.run(cmd_unit(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
-
+    ok = asyncio.run(ctx.obj.run_suite("unit", jobs=jobs, extra_args=ctx.args))
+    if not ok: raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def integration(ctx: typer.Context) -> None:
+def integration(ctx: typer.Context):
     """Run integration tests [pytest args...]"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(extra=ctx.args)
-    ok = asyncio.run(cmd_integration(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
-
+    ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
+    if not ok: raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def chaos(ctx: typer.Context) -> None:
-    """Run TDD-forcing scenario tests (expected failures on master) [pytest args...]"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(extra=ctx.args)
-    ok = asyncio.run(cmd_chaos(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
+def chaos(ctx: typer.Context):
+    """Run chaos scenario tests [pytest args...]"""
+    ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
+    if not ok: raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def structural(ctx: typer.Context) -> None:
+def structural(ctx: typer.Context):
     """Run structural tests [pytest args...]"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(extra=ctx.args)
-    ok = asyncio.run(cmd_structural(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
+    ok = asyncio.run(ctx.obj.run_suite("structural", extra_args=ctx.args))
+    if not ok: raise typer.Exit(code=1)
 
+@app.command()
+def build():
+    """Rebuild all test images"""
+    runner = TestRunner(QA_TOML_PATH)
+    asyncio.run(runner.build_all())
 
+@app.command()
+def cleanup():
+    """Tear down all test containers and volumes"""
+    runner = TestRunner(QA_TOML_PATH)
+    asyncio.run(runner.cleanup_all())
 
 @app.command(name="all", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def all_tests(
-    ctx: typer.Context,
-    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel workers for unit tests"),
-) -> None:
-    """Run full suite [pytest args...]"""
-    runner = QARunner(QA_TOML_PATH)
-    args = argparse.Namespace(jobs=jobs, extra=ctx.args)
-    ok = asyncio.run(cmd_all(args, runner))
-    if not ok:
-        raise typer.Exit(code=1)
-
+def all_tests(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs", "-j")):
+    """Run the full testing suite"""
+    suites = ["lint", "unit", "structural", "integration", "chaos"]
+    success = True
+    for s in suites:
+        ok = asyncio.run(ctx.obj.run_suite(s, jobs=jobs, extra_args=ctx.args))
+        success = success and ok
+    if not success: raise typer.Exit(code=1)
 
 if __name__ == "__main__":
     app()

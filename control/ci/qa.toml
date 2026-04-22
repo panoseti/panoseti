@@ -2,55 +2,55 @@
 
 [settings]
 default_parallel = 4
+project_prefix = "pseti"
 
-# ── Infrastructure tasks ──────────────────────────────────────────────────────
+# ── Test Suites ──────────────────────────────────────────────────────────────
 
-[infra.up_unit]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit up -d"
-description = "Start unit/lint test stack"
+[suites.lint]
+description = "Static analysis (Ruff + MyPy)"
+type = "lint"
+requires_docker = true
+compose_file = "ci/docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+tasks = { ruff = "uv run ruff check . --fix --color=always", mypy = "uv run mypy . --explicit-package-bases --color-output" }
 
-[infra.down_unit]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit down -v"
-description = "Tear down unit/lint stack and volumes"
+[suites.unit]
+description = "Parallel unit tests"
+type = "test"
+requires_docker = true
+compose_file = "ci/docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+test_dir = "ci/unit/"
+parallel = true
 
-[infra.up_integration]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml up -d"
-description = "Start integration test stack"
-
-[infra.down_integration]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml down -v"
-description = "Tear down integration stack and volumes"
-
-[infra.build]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit build && docker compose --env-file .env.ci -f ci/docker-compose.integration.yml build"
-description = "Rebuild all test images"
-
-# ── Lint tasks ───────────────────────────────────────────────────────────────
-# All lint tasks run concurrently. Output lines are prefixed with the task name.
-
-[lint.ruff]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run ruff check . --fix --color=always"
-description = "Ruff lint + autofix"
-
-[lint.mypy]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner uv run mypy . --explicit-package-bases --color-output"
-description = "MyPy static type check"
-
-# ── Test tasks ────────────────────────────────────────────────────────────────
-# Sequential. {parallel} is substituted from --jobs / settings.default_parallel.
-
-[test.unit]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/unit/ -v -n {parallel} --color=yes {args}"
-description = "Parallel unit tests (pytest-xdist)"
-
-[test.structural]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.unit.yml --profile unit exec -T unit-test-runner pytest ci/structural/ -v --color=yes {args}"
+[suites.structural]
 description = "Logical topology and network engine simulations"
+type = "test"
+requires_docker = true
+compose_file = "ci/docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+test_dir = "ci/structural/"
 
-[test.integration]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml exec -T -e PANOSETI_CONFIG_DIR=/app/ci/integration/configs/direct -e PANOSETI_TMP_DIR=/app/ci/test_state/tmp -e PANOSETI_QUABOS_DIR=/app/ci/integration/configs -e PANOSETI_LOGS_DIR=/app/ci/test_state/logs int-tester /bin/sh -c 'mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json && pytest ci/integration/ -v --color=yes --ignore=ci/integration/scenarios {args}'"
+[suites.integration]
 description = "E2E integration tests (excludes chaos scenarios)"
+type = "test"
+requires_docker = true
+compose_file = "ci/docker-compose.integration.yml"
+service = "int-tester"
+test_dir = "ci/integration/"
+pytest_args = ["--ignore=ci/integration/scenarios"]
+env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PANOSETI_CONFIG_DIR = "/app/ci/integration/configs/direct", PANOSETI_TMP_DIR = "/app/ci/test_state/tmp", PANOSETI_QUABOS_DIR = "/app/ci/integration/configs", PANOSETI_LOGS_DIR = "/app/ci/test_state/logs" }
+pre_run = "mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json"
 
-[test.chaos]
-command     = "docker compose --env-file .env.ci -f ci/docker-compose.integration.yml exec -T -e ENABLE_TELEMETRY_TESTS=1 -e PANOSETI_CONFIG_DIR=/app/ci/integration/configs/direct -e PANOSETI_TMP_DIR=/app/ci/test_state/tmp -e PANOSETI_QUABOS_DIR=/app/ci/integration/configs -e PANOSETI_LOGS_DIR=/app/ci/test_state/logs int-tester /bin/sh -c 'mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json && pytest ci/integration/scenarios/ -v --color=yes {args}'"
+[suites.chaos]
 description = "Chaos/TDD-forcing scenario tests (expected to fail red on master)"
+type = "test"
+requires_docker = true
+compose_file = "ci/docker-compose.integration.yml"
+service = "int-tester"
+test_dir = "ci/integration/scenarios/"
+env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-chaos-daqnode-1", PANOSETI_CONFIG_DIR = "/app/ci/integration/configs/direct", PANOSETI_TMP_DIR = "/app/ci/test_state/tmp", PANOSETI_QUABOS_DIR = "/app/ci/integration/configs", PANOSETI_LOGS_DIR = "/app/ci/test_state/logs" }
+pre_run = "mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json"
