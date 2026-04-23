@@ -1,21 +1,22 @@
 import os
-import time
 import shutil
-import pytest
-import socket
+import time
+
 import grpc
-from pathlib import Path
+import pytest
+
 from control.pseti import app
+from control.utils import util
 
 # ── Tests ───────────────────────────────────────────────────────────────────
 
 def test_headnode_and_daq_space(daq_config, min_disk_gb):
     """
-    Verify that the data directories specified in daq_config.json 
-    exist and have sufficient free space on the physical SSD.
+    Verify that the data directories specified in daq_config exist 
+    and have sufficient free space on the physical SSD.
     """
     # Head Node
-    head_dir = daq_config["head_node_data_dir"]
+    head_dir = daq_config.head_node_data_dir
     print(f"Checking head node space: {head_dir}")
     assert os.path.exists(head_dir), f"Head node data dir {head_dir} does not exist!"
     
@@ -23,76 +24,86 @@ def test_headnode_and_daq_space(daq_config, min_disk_gb):
     free_gb = usage.free / (2**30)
     assert free_gb >= min_disk_gb, f"Head node disk space low: {free_gb:.1f}GB < {min_disk_gb}GB"
 
-    # DAQ Node
-    # Note: In HITL, the DAQ node is remote but mounts the same /mnt/panoseti path locally or via NFS.
-    # We assume the test runner has visibility or we verify the path mapping.
-    for node in daq_config["daq_nodes"]:
-        daq_dir = node["data_dir"]
-        print(f"Checking DAQ node ({node['ip_addr']}) space: {daq_dir}")
-        # If the DAQ node is the same as headnode (IP check), we already checked it.
-        # Otherwise, for physical HITL, we assume the path is locally mounted for verification
-        # or we rely on 'pseti config disk-space' in a real scenario.
-        # For this test, we verify the path exists on the machine running the tests.
+    # DAQ Nodes
+    for node in daq_config.daq_nodes:
+        daq_dir = node.data_dir
+        ip_addr = str(node.ip_addr)
+        print(f"Checking DAQ node ({ip_addr}) space: {daq_dir}")
+        
+        # In this HITL setup, we verify paths visible to the test runner machine.
+        # This typically means these are network mounts or the test is running on the headnode.
         assert os.path.exists(daq_dir), f"DAQ node data dir {daq_dir} does not exist!"
         usage = shutil.disk_usage(daq_dir)
         free_gb = usage.free / (2**30)
-        assert free_gb >= min_disk_gb, f"DAQ node {node['ip_addr']} disk space low: {free_gb:.1f}GB"
+        assert free_gb >= min_disk_gb, f"DAQ node {ip_addr} disk space low: {free_gb:.1f}GB"
 
 def test_validate_commands(runner):
     """Ensure pseti validate passes schema and global checks."""
     result = runner.invoke(app, ["validate", "--yes"])
     assert result.exit_code == 0
-    assert "Validation successful" in result.stdout
+    assert "✅ ALL VALIDATION CHECKS PASSED" in result.stdout
 
-def test_network_ping_sweep(runner):
+def test_network_ping_sweep(runner, daq_config, obs_config):
     """
     Verify physical network topology. 
-    DAQ node must be up; Quabos must be down (initial state).
+    DAQ nodes must be up; Quabos must be down (initial state).
     """
     result = runner.invoke(app, ["validate", "network", "--yes"])
     assert result.exit_code == 0
     
-    # Assert DAQ node is reachable
-    # Expected output contains status of nodes
-    assert "192.168.0.228" in result.stdout
-    assert "UP" in result.stdout.upper()
-    
-    # Assert Quabos are down (assuming they were powered off by safety net or initial state)
-    # 192.168.3.248-251
-    for i in range(248, 252):
-        ip = f"192.168.3.{i}"
-        # The network validate output should show them as DOWN
-        # pseti validate network output usually lists IPs and their status
+    # Assert DAQ nodes are reachable
+    for node in daq_config.daq_nodes:
+        ip = str(node.ip_addr)
         assert ip in result.stdout
-        # We expect them to be down initially
-        # Finding the line for this IP and checking status
-        for line in result.stdout.splitlines():
-            if ip in line:
-                assert "DOWN" in line.upper()
+        assert f"{ip:<40} is UP" in result.stdout
 
-def test_grpc_liveness():
+    # Assert Quabos are down (assuming they were powered off by safety net or initial state)
+    # We get all valid Quabo IPs from the obs_config
+    for dome in obs_config.domes:
+        for module in dome.modules:
+            base_ip = str(module.ip_addr)
+            for i in range(4):
+                # Resolve the quabo IP (might be base or PF-based)
+                # But 'pseti validate network' reports them by their physical IP if not GW.
+                # Actually, validate_network reports "Module (Dome: IP)"
+                ip_parts = base_ip.split('.')
+                quabo_ip = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{int(ip_parts[3]) + i}"
+                assert quabo_ip in result.stdout
+                # We expect them to be down initially
+                assert f"{quabo_ip} is DOWN" in result.stdout
+
+def test_grpc_liveness(daq_config, network_config):
     """Verify panoseti-server is responding on Head and DAQ nodes."""
-    nodes = ["192.168.88.103", "192.168.0.228"]
-    port = 50051
+    # 1. Head Node Check
+    head_ip = str(daq_config.head_node_ip_addr)
+    head_port = 50051 # Default for headnode
     
-    for ip in nodes:
-        print(f"Checking gRPC liveness for {ip}:{port}")
-        # Basic socket check for the port first
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(2)
-            assert s.connect_ex((ip, port)) == 0, f"gRPC port {port} not open on {ip}"
+    print(f"Checking Head Node gRPC: {head_ip}:{head_port}")
+    channel = grpc.insecure_channel(f"{head_ip}:{head_port}")
+    try:
+        grpc.channel_ready_future(channel).result(timeout=5)
+    except grpc.FutureTimeoutError:
+        pytest.fail(f"Head Node gRPC server on {head_ip}:{head_port} is not responding!")
+    finally:
+        channel.close()
+
+    # 2. DAQ Node Checks
+    # Attach network config to resolve endpoints with port forwarding if necessary
+    util.attach_daq_config(daq_config, network_config)
+    
+    for node in daq_config.daq_nodes:
+        host, port = util.daq_grpc_endpoint(node)
+        print(f"Checking DAQ Node gRPC: {host}:{port} (Physical: {node.ip_addr})")
         
-        # Actual gRPC connection attempt (generic channel check)
-        channel = grpc.insecure_channel(f"{ip}:{port}")
+        channel = grpc.insecure_channel(f"{host}:{port}")
         try:
-            # We use a 5s timeout to ensure the server is actually responding
             grpc.channel_ready_future(channel).result(timeout=5)
         except grpc.FutureTimeoutError:
-            pytest.fail(f"gRPC server on {ip}:{port} is not responding!")
+            pytest.fail(f"DAQ Node gRPC server on {host}:{port} is not responding!")
         finally:
             channel.close()
 
-def test_quabo_power_cycle(runner, boot_wait_time):
+def test_quabo_power_cycle(runner, obs_config, boot_wait_time):
     """
     Verify physical power control and boot sequence.
     1. Power On -> 2. Wait -> 3. Verify Ping -> 4. Power Off
@@ -108,12 +119,13 @@ def test_quabo_power_cycle(runner, boot_wait_time):
     res_ping = runner.invoke(app, ["validate", "network", "--yes"])
     assert res_ping.exit_code == 0
     
-    for i in range(248, 252):
-        ip = f"192.168.3.{i}"
-        assert ip in res_ping.stdout
-        for line in res_ping.stdout.splitlines():
-            if ip in line:
-                assert "UP" in line.upper()
+    for dome in obs_config.domes:
+        for module in dome.modules:
+            base_ip = str(module.ip_addr)
+            for i in range(4):
+                ip_parts = base_ip.split('.')
+                quabo_ip = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{int(ip_parts[3]) + i}"
+                assert f"{quabo_ip} is UP" in res_ping.stdout
 
     print("Powering OFF Quabos...")
     res_off = runner.invoke(app, ["power", "off", "--yes"])

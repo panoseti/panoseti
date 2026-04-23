@@ -11,6 +11,7 @@ import os
 import struct
 from typing import Any
 
+import typer
 from panoseti_grpc.telemetry.logger import get_logger
 
 from control.driver.quabo_tftp import tftpw
@@ -98,7 +99,6 @@ def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: Ne
     with open(quabo_uids_path, "w", encoding="utf-8") as f:
         json.dump(quabo_uids, f, ensure_ascii=False, indent=4)
 
-import typer
 
 app = typer.Typer(help="Scan and cache Quabo hardware UIDs.", no_args_is_help=False)
 

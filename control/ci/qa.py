@@ -145,7 +145,7 @@ class TestRunner:
 
     async def cleanup_all(self):
         self._header("GLOBAL CLEANUP")
-        for name, suite in self.cfg.suites.items():
+        for _name, suite in self.cfg.suites.items():
             if suite.requires_docker:
                 project_name = f"{self.project_prefix}-{suite.name}"
                 print(C.dim(f"Cleaning up {project_name}..."))
@@ -271,26 +271,33 @@ class TestRunner:
                     stats["skipped"] = summary.get("skipped", 0) + summary.get("xfail", 0)
                     stats["error"] = summary.get("error", 0)
                     has_json_metrics = True
-                except: pass
+                except Exception:
+                    pass
 
             upper_line = plain_line.upper()
             if not has_json_metrics:
                 is_result = (plain_line.startswith("[gw") and any(kw in upper_line for kw in [" PASSED", " FAILED", " SKIPPED", " ERROR", " XFAIL", " XPASS"])) or \
                             ("::" in plain_line and any(upper_line.endswith(kw) or f"{kw} [" in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]))
                 if is_result:
-                    if "PASSED" in upper_line or "XPASS" in upper_line: stats["passed"] += 1
-                    elif "FAILED" in upper_line: stats["failed"] += 1
-                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line: stats["skipped"] += 1
-                    elif "ERROR" in upper_line: stats["error"] += 1
+                    if "PASSED" in upper_line or "XPASS" in upper_line:
+                        stats["passed"] += 1
+                    elif "FAILED" in upper_line:
+                        stats["failed"] += 1
+                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line:
+                        stats["skipped"] += 1
+                    elif "ERROR" in upper_line:
+                        stats["error"] += 1
 
             if line.startswith("[gw"):
                 end = line.find("]")
                 if end != -1:
                     wid = line[:end+1]
-                    if wid not in worker_colors: worker_colors[wid] = PALETTE[len(worker_colors) % len(PALETTE)]
+                    if wid not in worker_colors:
+                        worker_colors[wid] = PALETTE[len(worker_colors) % len(PALETTE)]
                     line = f"{C.paint(wid, worker_colors[wid])}{line[end+1:]}"
             elif is_parallel and "::" in plain_line and not plain_line.startswith("["):
-                if not any(kw in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]): continue
+                if not any(kw in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]):
+                    continue
 
             async with lock:
                 print(f"{tag}{line}", flush=True)
@@ -303,7 +310,8 @@ class TestRunner:
         print(f"\n{C.bold(C.yellow(bar))}\n{C.bold(C.yellow(f'  {title}'))}\n{C.bold(C.yellow(bar))}", flush=True)
 
     def _print_summary(self, results: list[Result]):
-        if not results: return
+        if not results:
+            return
         width = max(len(r.name) for r in results)
         print(f"\n{C.bold('Execution Summary')}")
         for r in results:
@@ -328,7 +336,11 @@ class TestRunner:
             p, f, sk, e = s.get("passed", 0), s.get("failed", 0), s.get("skipped", 0), s.get("error", 0)
             t = p + f + sk + e
             print(f"  {r.name:<20} {C.green(str(p).rjust(8)) if p else str(p).rjust(8)} {C.red(str(f).rjust(8)) if f else str(f).rjust(8)} {C.yellow(str(sk).rjust(8)) if sk else str(sk).rjust(8)} {C.red(str(e).rjust(8)) if e else str(e).rjust(8)} {str(t).rjust(8)}")
-            totals["p"] += p; totals["f"] += f; totals["s"] += sk; totals["e"] += e; totals["t"] += t
+            totals["p"] += p
+            totals["f"] += f
+            totals["s"] += sk
+            totals["e"] += e
+            totals["t"] += t
         print(C.dim(bar))
         print(f"  {'Total':<20} {C.green(str(totals['p']).rjust(8)) if totals['p'] else str(totals['p']).rjust(8)} {C.red(str(totals['f']).rjust(8)) if totals['f'] else str(totals['f']).rjust(8)} {C.yellow(str(totals['s']).rjust(8)) if totals['s'] else str(totals['s']).rjust(8)} {C.red(str(totals['e']).rjust(8)) if totals['e'] else str(totals['e']).rjust(8)} {str(totals['t']).rjust(8)}\n")
 
@@ -354,34 +366,39 @@ def main(
 def lint(ctx: typer.Context):
     """Run linters [ruff/mypy args...]"""
     ok = asyncio.run(ctx.obj.run_suite("lint", extra_args=ctx.args))
-    if not ok: raise typer.Exit(code=1)
+    if not ok:
+        raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def unit(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs", "-j")):
     """Run unit tests [-j N] [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("unit", jobs=jobs, extra_args=ctx.args))
-    if not ok: raise typer.Exit(code=1)
+    if not ok:
+        raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def integration(ctx: typer.Context):
     """Run integration tests [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
-    if not ok: raise typer.Exit(code=1)
+    if not ok:
+        raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def chaos(ctx: typer.Context):
     """Run chaos scenario tests [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
-    if not ok: raise typer.Exit(code=1)
+    if not ok:
+        raise typer.Exit(code=1)
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def structural(ctx: typer.Context):
     """Run structural tests [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("structural", extra_args=ctx.args))
-    if not ok: raise typer.Exit(code=1)
+    if not ok:
+        raise typer.Exit(code=1)
 
-@app.command()
-def build():
+@app.command(name="build")
+def build_images():
     """Rebuild all test images"""
     runner = TestRunner(QA_TOML_PATH)
     asyncio.run(runner.build_all())
@@ -400,7 +417,8 @@ def all_tests(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs"
     for s in suites:
         ok = asyncio.run(ctx.obj.run_suite(s, jobs=jobs, extra_args=ctx.args))
         success = success and ok
-    if not success: raise typer.Exit(code=1)
+    if not success:
+        raise typer.Exit(code=1)
 
 # ── HW-SW Test Runner ──────────────────────────────────────────────────────────
 
@@ -420,13 +438,13 @@ def hw_test_main(
     ctx.obj.container_tool = tool
 
 
-HW_DATA_DIR = "/mnt/panoseti/test-hw/data/"
+HW_DATA_DIR = "/mnt/panoseti/"
 DAQ_NODE_IP = "192.168.0.228"
 DAQ_NODE_USER = "panoseti"
 HW_COMPOSE_FILE = "ci/docker-compose.hw-sw.yml"
 
-@test_hw_app.command()
-def build(ctx: typer.Context):
+@test_hw_app.command(name="build")
+def hw_build(ctx: typer.Context):
     """Build required container images locally."""
     runner: TestRunner = ctx.obj
     tool = runner.container_tool
@@ -458,7 +476,7 @@ def check_env(
         # Check if socket is active (required for compose)
         res = asyncio.run(runner._run_cmd("systemctl --user is-active podman.socket", quiet=True))
         if not res.ok:
-            print(C.yellow(f"Warning: podman.socket is not active. Attempting to start..."))
+            print(C.yellow("Warning: podman.socket is not active. Attempting to start..."))
             asyncio.run(runner._run_cmd("systemctl --user start podman.socket"))
 
     print(C.dim(f"Checking storage {HW_DATA_DIR}..."))

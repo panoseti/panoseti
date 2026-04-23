@@ -1,20 +1,15 @@
 import os
-import time
+
 import pytest
-import json
-import shutil
-from pathlib import Path
 from typer.testing import CliRunner
+
 from control.pseti import app
-from control.utils.paths import PanoPaths
+from control.utils import config_file
 
 # ── Configurable Environment Variables ───────────────────────────────────────
 
 BOOT_WAIT = int(os.environ.get("HW_TEST_QUABO_BOOT_WAIT", 60))
 MIN_DISK_GB = int(os.environ.get("HW_TEST_MIN_DISK_GB", 50))
-HEADNODE_IP = "192.168.88.103"
-DAQ_NODE_IP = "192.168.0.228"
-GRPC_PORT = 50051
 
 @pytest.fixture(scope="session")
 def runner():
@@ -29,6 +24,7 @@ def hw_safety_net(runner):
     """
     # ── Setup ────────────────────────────────────────────────────────────────
     print("\n[SAFETY NET] Validating HITL configurations...")
+    # We use the CLI to validate, which checks all files.
     result = runner.invoke(app, ["validate", "--yes"])
     if result.exit_code != 0:
         pytest.exit(f"Configuration validation failed: {result.stdout}")
@@ -61,12 +57,25 @@ def hw_safety_net(runner):
 
     print("[SAFETY NET] Teardown complete.")
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def daq_config():
-    """Load the current DAQ configuration."""
-    cfg_path = PanoPaths.config_dir() / "daq_config.json"
-    with open(cfg_path, "r") as f:
-        return json.load(f)
+    """Load the validated DAQ configuration model."""
+    return config_file.get_daq_config()
+
+@pytest.fixture(scope="session")
+def obs_config():
+    """Load the validated Observatory configuration model."""
+    return config_file.get_obs_config()
+
+@pytest.fixture(scope="session")
+def network_config():
+    """Load the validated Network configuration model."""
+    return config_file.get_network_config()
+
+@pytest.fixture(scope="session")
+def quabo_uids():
+    """Load the validated Quabo UIDs model."""
+    return config_file.get_quabo_uids()
 
 @pytest.fixture
 def boot_wait_time():

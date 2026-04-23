@@ -52,7 +52,7 @@ services:
     volumes:
       - ..:/app
       - ../../grpc:/grpc
-      - /mnt/panoseti/test-hw/data/:/mnt/panoseti/test-hw/data/
+      - /mnt/panoseti/:/mnt/panoseti/
       - ../firmware:/app/firmware:ro
       - ../quabos:/app/quabos:ro
     environment:
@@ -85,7 +85,7 @@ services:
     volumes:
       - ..:/app
       - ../../grpc:/grpc
-      - /mnt/panoseti/test-hw/data/:/mnt/panoseti/test-hw/data/
+      - /mnt/panoseti/:/mnt/panoseti/
       - ../firmware:/app/firmware:ro
       - ../quabos:/app/quabos:ro
     environment:

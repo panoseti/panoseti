@@ -61,10 +61,7 @@ class PanoLazyGroup(typer.core.TyperGroup):
                 
                 # Get the Click command/group from the Typer app
                 obj = getattr(mod, attr_name)
-                if isinstance(obj, typer.Typer):
-                    click_cmd = typer.main.get_command(obj)
-                else:
-                    click_cmd = obj
+                click_cmd = typer.main.get_command(obj) if isinstance(obj, typer.Typer) else obj
                 
                 # Unwrap: If the module app has exactly one command (e.g., 'main' in start.py),
                 # promote it so 'pseti start --help' works directly instead of 'pseti start main --help'.
