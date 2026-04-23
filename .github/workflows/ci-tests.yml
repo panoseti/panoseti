@@ -28,7 +28,6 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          workspaces: control
 
       - name: Install host dependencies
         run: uv sync --all-extras
@@ -64,7 +63,6 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          workspaces: control
 
       - name: Install host dependencies
         run: uv sync --all-extras
@@ -113,7 +111,6 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          workspaces: control
 
       - name: Install host dependencies
         run: uv sync --all-extras

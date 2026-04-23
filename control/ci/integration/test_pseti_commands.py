@@ -6,7 +6,6 @@ Integration tests for the pseti CLI commands, focusing on validation and topolog
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
