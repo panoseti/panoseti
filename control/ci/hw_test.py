@@ -86,11 +86,10 @@ async def resolve_remote_podman_uri(runner: TestRunner, ssh_host_uri: str) -> st
     """
     ssh_args = get_raw_ssh_args(ssh_host_uri)
     
-    # 1. Ensure the socket is active (also triggers systemd user manager if needed)
-    await runner._run_cmd(f"ssh {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
+    # 1. Ensure the socket is active (BatchMode=yes ensures we don't hang on password)
+    await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
     
     # 2. Query remote UID and socket existence
-    # We check for the rootless socket first, then fall back to the root socket.
     remote_cmd = (
         "id -u && "
         "if [ -S /run/user/$(id -u)/podman/podman.sock ]; then echo /run/user/$(id -u)/podman/podman.sock; "
@@ -98,15 +97,13 @@ async def resolve_remote_podman_uri(runner: TestRunner, ssh_host_uri: str) -> st
         "else echo AUTO; fi"
     )
     
-    res = await runner._run_cmd(f"ssh {ssh_args} '{remote_cmd}'", capture=True)
+    res = await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} '{remote_cmd}'", capture=True)
     if res.ok and res.stdout:
         lines = res.stdout.strip().splitlines()
         if len(lines) >= 2:
             _uid = lines[0]
             path = lines[1]
             if path != "AUTO":
-                # Construct URI with path. 
-                # Docker/Podman URI format: ssh://user@host[:port]/path/to/socket
                 return f"{ssh_host_uri}{path}"
                 
     return ssh_host_uri
@@ -121,12 +118,15 @@ def hw_build(ctx: typer.Context):
     _suite, env_cfg = get_hw_suite_and_env(ctx)
     tool = runner.container_tool
     
+    # Suppress ambient capability warnings in rootless Podman
+    env = {"BUILDAH_ISOLATION": "chroot"} if tool == "podman" else {}
+    
     if tool == "podman":
         console.print("[dim]Ensuring local Podman socket is active...[/dim]")
         asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
     
     cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode --profile daqnode build"
-    asyncio.run(runner._run_cmd(cmd))
+    asyncio.run(runner._run_cmd(cmd, env=env))
 
 @app.command()
 def check_env(
@@ -166,24 +166,33 @@ def check_env(
         console.print(f"[red]Error: Low Headnode space. {free_gb:.1f}GB free, {min_gb}GB required.[/red]")
         raise typer.Exit(code=1)
 
-    # Check DAQnode storage
+    # Check remote connectivity and DAQnode storage
     for node in daq_cfg.daq_nodes:
+        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
+            continue
+
+        console.print(f"[dim]Checking SSH credentials for {node.ip_addr}...[/dim]")
+        ssh_args = get_raw_ssh_args(get_ssh_host(node))
+        # BatchMode=yes forces failure if password is required
+        res = asyncio.run(runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} 'true'", quiet=True))
+        if not res.ok:
+             console.print(f"[red]Error: SSH key-based authentication failed for {node.ip_addr}.[/red]")
+             console.print(f"[yellow]Try: ssh-copy-id {ssh_args.replace('-p ', '-p')}[/yellow]")
+             raise typer.Exit(code=1)
+
         console.print(f"[dim]Checking DAQnode ({node.ip_addr}) storage {node.data_dir}...[/dim]")
-        
-        # Check if remote
-        if str(node.ip_addr) != str(daq_cfg.head_node_ip_addr):
-            # Remote SSH check
-            ssh_args = get_raw_ssh_args(get_ssh_host(node))
-            # Use df to get free space in bytes
-            df_cmd = f"ssh {ssh_args} 'df -B1 --output=avail {node.data_dir} | tail -n 1'"
-            res = asyncio.run(runner._run_cmd(df_cmd))
-            if not res.ok:
-                 console.print(f"[red]Error: Could not reach DAQnode {node.ip_addr} via SSH.[/red]")
-                 raise typer.Exit(code=1)
-        else:
-            # Local path already checked or check again if different path
-            if not os.path.exists(node.data_dir):
-                console.print(f"[red]Error: {node.data_dir} does not exist.[/red]")
+        # Use df to get free space in bytes
+        df_cmd = f"ssh {ssh_args} 'df -B1 --output=avail {node.data_dir} | tail -n 1'"
+        res = asyncio.run(runner._run_cmd(df_cmd, capture=True))
+        if res.ok and res.stdout:
+            try:
+                free_bytes = int(res.stdout.strip())
+                node_free_gb = free_bytes / (2**30)
+                if node_free_gb < min_gb:
+                    console.print(f"[red]Error: Low space on {node.ip_addr}. {node_free_gb:.1f}GB free.[/red]")
+                    raise typer.Exit(code=1)
+            except ValueError:
+                console.print(f"[red]Error: Could not parse disk space from {node.ip_addr}.[/red]")
                 raise typer.Exit(code=1)
 
     console.print(f"[green]Environment OK. {tool} is ready and space is sufficient.[/green]")
