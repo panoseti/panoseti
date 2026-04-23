@@ -124,6 +124,7 @@ jobs:
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
+            --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load
 
