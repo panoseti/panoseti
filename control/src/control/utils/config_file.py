@@ -119,19 +119,19 @@ def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
     return boardloc
 
 
-def assign_numbers(c: dict[str, Any]) -> None:
+def assign_numbers(c: ObsConfigValidator | QuaboUidsValidator) -> None:
     """Assign sequential numbers to domes and IDs to modules within a config.
     
     This function injects 'num' into each dome object and 'id' (derived from 
-    IP address) into each module object. This is a pre-validation step.
+    IP address) into each module object.
 
     Args:
-        c: The configuration dictionary to modify in-place.
+        c: The configuration model (ObsConfig or QuaboUids) to modify in-place.
     """
-    for ndome, dome in enumerate(c['domes']):
-        dome['num'] = ndome
-        for module in dome['modules']:
-            module['id'] = ip_addr_to_module_id(module['ip_addr'])
+    for ndome, dome in enumerate(c.domes):
+        dome.num = ndome
+        for module in dome.modules:
+            module.id = ip_addr_to_module_id(str(module.ip_addr))
 
 def string_to_list(s: str) -> list[int]:
     """Parse a range string like '0-2, 5-6' into a list of integers.
@@ -155,33 +155,15 @@ def string_to_list(s: str) -> list[int]:
             out.append(int(nums[0]))
     return out
 
-def expand_ranges(daq_config: DaqConfigValidator | dict[str, Any]) -> None:
+def expand_ranges(daq_config: DaqConfigValidator) -> None:
     """Expand module range strings to lists of module numbers in DAQ node objects.
     
-    Mutates the input dictionary or model by converting 'module_ids' 
-    string ranges into actual lists of integers.
+    This is largely handled by Pydantic validators, but ensures the model 
+    state is consistent.
 
     Args:
-        daq_config: The DAQ configuration to process, either as a model or a dict.
-
-    Raises:
-        TypeError: If module_ids is not a string or a list.
+        daq_config: The validated DAQ configuration model.
     """
-    if isinstance(daq_config, dict):
-        # Validate that the dict is a valid DaqConfig
-        DaqConfigValidator(**daq_config)
-        # Mutate the dictionary in-place
-        for node in daq_config.get("daq_nodes", []):
-            module_ids = node.get("module_ids")
-            if isinstance(module_ids, str):
-                node["module_ids"] = string_to_list(module_ids)
-            elif isinstance(module_ids, list):
-                node["module_ids"] = list(set(int(x) for x in module_ids))
-            elif module_ids is not None:
-                raise TypeError(f"module_ids must be str or list, not {type(module_ids)}")
-        return
-
-    # Implementation for model
     for node in daq_config.daq_nodes: 
         if isinstance(node.module_ids, str):
             node.module_ids = string_to_list(node.module_ids)
@@ -328,21 +310,21 @@ def get_quabo_uids() -> QuaboUidsValidator:
     with open(path) as f:
         s = f.read()
     quabo_uids_conf: dict[str, Any] = json.loads(s)
-    assign_numbers(quabo_uids_conf)
-    return QuaboUidsValidator(**quabo_uids_conf)
+    validated = QuaboUidsValidator(**quabo_uids_conf)
+    assign_numbers(validated)
+    return validated
 
-def get_module_quabo_uids_from_dict(uids_dict: dict[str, Any]) -> dict[str, list[str]]:
-    """Validate a raw dictionary of UIDs and return a simplified mapping.
+def get_module_quabo_uids(quabo_uids: QuaboUidsValidator) -> dict[str, list[str]]:
+    """Return a simplified mapping of module IP addresses to lists of Quabo UIDs.
 
     Args:
-        uids_dict: Raw dictionary containing Quabo UID information.
+        quabo_uids: The validated Quabo UID configuration model.
 
     Returns:
         A dictionary mapping module IP addresses to lists of Quabo UIDs.
     """
-    validated = QuaboUidsValidator(**uids_dict)
     res = {}
-    for dome in validated.domes:
+    for dome in quabo_uids.domes:
         for module in dome.modules:
             res[str(module.ip_addr)] = [q.uid for q in module.quabos]
     return res
@@ -433,7 +415,7 @@ def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]
         s = f.read()
     return json.loads(s)
 
-def get_modules(c: ObsConfigValidator | dict[str, Any]) -> list[ObsModuleConfig]:
+def get_modules(c: ObsConfigValidator) -> list[ObsModuleConfig]:
     """Extract a flat list of modules from an observatory configuration.
 
     Args:
@@ -442,15 +424,13 @@ def get_modules(c: ObsConfigValidator | dict[str, Any]) -> list[ObsModuleConfig]
     Returns:
         A list of ObsModuleConfig objects.
     """
-    if isinstance(c, dict):
-        c = ObsConfigValidator(**c)
     modules: list[ObsModuleConfig] = []
     for dome in c.domes:
         for module in dome.modules:
             modules.append(module)
     return modules
 
-def associate(daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any]) -> None:
+def associate(daq_config: DaqConfigValidator, quabo_uids: QuaboUidsValidator) -> None:
     """Link modules to their corresponding DAQ nodes.
     
     Injects back-references between DAQ nodes and the modules they handle.
@@ -458,14 +438,9 @@ def associate(daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: Quabo
     - Adds a 'daq_node' link to each module object.
 
     Args:
-        daq_config: The DAQ configuration model or dict.
-        quabo_uids: The Quabo UIDs configuration model or dict.
+        daq_config: The DAQ configuration model.
+        quabo_uids: The Quabo UIDs configuration model.
     """
-    if isinstance(daq_config, dict):
-        daq_config = DaqConfigValidator(**daq_config)
-    if isinstance(quabo_uids, dict):
-        quabo_uids = QuaboUidsValidator(**quabo_uids)
-
     for node in daq_config.daq_nodes:
         node.modules = []
 
@@ -475,15 +450,12 @@ def associate(daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: Quabo
             daq_node.modules.append(module)
             module.daq_node = daq_node
 
-def show_daq_assignments(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> None:
+def show_daq_assignments(quabo_uids: QuaboUidsValidator) -> None:
     """Print the assignment of Quabos to DAQ nodes to the console.
 
     Args:
-        quabo_uids: The Quabo UIDs configuration model or dict.
+        quabo_uids: The Quabo UIDs configuration model.
     """
-    if isinstance(quabo_uids, dict):
-        quabo_uids = QuaboUidsValidator(**quabo_uids)
-
     for dome in quabo_uids.domes:
         for module in dome.modules:
             ip_addr = str(module.ip_addr)
@@ -497,14 +469,7 @@ def show_daq_assignments(quabo_uids: QuaboUidsValidator | dict[str, Any]) -> Non
 ## Apply global validation
 
 
-def print_topology_graph(obs_conf: ObsConfigValidator | dict[str, Any], daq_conf: DaqConfigValidator | dict[str, Any], net_conf: NetworkConfigValidator | dict[str, Any]) -> None:
-    if isinstance(obs_conf, dict):
-        obs_conf = ObsConfigValidator(**obs_conf)
-    if isinstance(daq_conf, dict):
-        daq_conf = DaqConfigValidator(**daq_conf)
-    if isinstance(net_conf, dict):
-        net_conf = NetworkConfigValidator(**net_conf)
-
+def print_topology_graph(obs_conf: ObsConfigValidator, daq_conf: DaqConfigValidator, net_conf: NetworkConfigValidator) -> None:
     console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
 
     obs_name = obs_conf.name
@@ -686,7 +651,7 @@ def load_and_validate[T: BaseModel](
     filename: str,
     dir: str,
     config_name: str,
-    preprocessor: Callable[[dict[str, Any]], None] | None = None
+    preprocessor: Callable[[T], None] | None = None
 ) -> T:
     """
     Unified loader: reads JSON, applies runtime preprocessing, validates against Pydantic models.
@@ -723,13 +688,13 @@ def load_and_validate[T: BaseModel](
             raise e
         raise ValueError(f"JSON Parse Error in {filename}") from None
 
-    # 2. Preprocess (e.g. assign_numbers, expand_ranges)
-    if preprocessor:
-        preprocessor(raw_data)
-
-    # 3. Validate
+    # 2. Validate
     try:
         validated = validator_class(**raw_data)
+
+        # 3. Post-process (e.g. assign_numbers, expand_ranges)
+        if preprocessor:
+            preprocessor(validated)
 
         if IS_CLI_VALIDATION:
             console.print("[bold green][OK][/bold green]")

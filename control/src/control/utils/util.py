@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
+import logging
 
 # control script utilities
 # CWD CONTRACT: relative paths in this module are relative to the control/ directory.
@@ -23,35 +24,19 @@ import __main__
 # this script will be copied to daq nodes,
 # but the quabo_driver and config_file won't be copied to daq nodes
 # TODO: we may need to improve this
-try:
-    from control.driver import quabo_driver
-    from control.utils import config_file
-    from control.utils.paths import PanoPaths
-    from control.utils.pydantic_config_models import (
-        DaemonConfigValidator,
-        DaqConfigValidator,
-        DaqNodeValidator,
-        DataConfigValidator,
-        NetworkConfigValidator,
-        ObsConfigValidator,
-        QuaboUidsValidator,
-    )
-except ImportError:
-    # Fallback for DAQ nodes or environments without the full package installed
-    import pathlib
-    class PanoPaths: # type: ignore
-        @classmethod
-        def base_dir(cls): return pathlib.Path('.')
-        @classmethod
-        def tmp_dir(cls): return pathlib.Path('./tmp')
-        @classmethod
-        def tools_dir(cls): return pathlib.Path('./tools')
-        @classmethod
-        def daemons_dir(cls): return pathlib.Path('./daemons')
-        @classmethod
-        def logs_dir(cls): return pathlib.Path('./logs')
-
-import logging
+from control.driver import quabo_driver
+from control.utils import config_file
+from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import (
+    DaemonConfigValidator,
+    DaqConfigValidator,
+    DaqNodeValidator,
+    DataConfigValidator,
+    NetworkConfigValidator,
+    ObsConfigValidator,
+    ObsModuleConfig,
+    QuaboUidsValidator,
+)
 
 #-------------- DEFAULTS ---------------
 
@@ -186,54 +171,38 @@ def print_binary(data: bytes) -> None:
 
 # get the UID of quabo i in a given module
 #
-def quabo_uid(module: dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], i: int) -> str:
+def quabo_uid(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, i: int) -> str:
     """Retrieve the hardware UID for a specific Quabo.
 
     Args:
-        module: A dictionary describing the module (must contain 'ip_addr').
-        quabo_uids: The validated Quabo UID configuration or its dict representation.
+        module: A configuration model describing the module.
+        quabo_uids: The validated Quabo UID configuration.
         i: The index of the Quabo within the module (0-3).
 
     Returns:
         The UID string.
     """
-    if isinstance(quabo_uids, dict):
-        quabo_uids = QuaboUidsValidator(**quabo_uids)
-
+    m_ip_str = str(module.ip_addr)
     for dome in quabo_uids.domes:
         for m in dome.modules:
-            if str(m.ip_addr) == module['ip_addr']:
+            if str(m.ip_addr) == m_ip_str:
                 q = m.quabos[i]
                 return q.uid
-    raise Exception("no module {} found; run get_uids.py".format(module['ip_addr']))
+    raise Exception(f"no module {m_ip_str} found; run get_uids.py")
 
 
 # see if quabo is alive by seeing if we got its UID
 #
-def is_quabo_alive(module: dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], i: int) -> bool:
+def is_quabo_alive(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, i: int) -> bool:
     return quabo_uid(module, quabo_uids, i) != ''
 
 
 # is quabo new or old hardware version, as specified in obs_config?
 # can be specified as either string or array of 4 strings
 #
-'''
-def is_quabo_old_version(module, i):
-    v = module['quabo_version']
-    if isinstance(v, list):
-        v = v[i]
-    return v == 'qfp'
-'''
-def is_quabo_old_version(module: dict[str, Any], i: int, quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any]) -> bool | None:
+def is_quabo_old_version(module: ObsModuleConfig, i: int, quabo_uids: QuaboUidsValidator, quabo_info: dict[str, Any]) -> bool | None:
     """Check if a Quabo is an older hardware version (qfp)."""
-    if isinstance(quabo_uids, dict):
-        quabo_uids = QuaboUidsValidator(**quabo_uids)
-
-    uid = ""
-    for dome in quabo_uids.domes:
-        for m in dome.modules:
-            if str(m.ip_addr) == module['ip_addr']:
-                uid = m.quabos[i].uid
+    uid = quabo_uid(module, quabo_uids, i)
 
     try:
         v = quabo_info[uid]['board_version']
@@ -286,12 +255,12 @@ def _are_daemons_running(progs: list[str]) -> bool:
     return all(is_script_running(prog) for prog in progs)
 
 
-def _safe_get_daemons_config() -> DaemonConfigValidator | dict[str, Any]:
+def _safe_get_daemons_config() -> DaemonConfigValidator | None:
     # Handle "util.py copied to daq nodes" case (config_file may not exist).
     try:
         return config_file.get_daemons_config()
     except Exception:
-        return {}
+        return None
 
 
 def get_daemons() -> list[str]:
@@ -302,10 +271,7 @@ def get_daemons() -> list[str]:
     - Adds daemons/capture_<k>.py for enabled items in daemons_config['daemons'].
     """
     daemons_config = _safe_get_daemons_config()
-    if isinstance(daemons_config, DaemonConfigValidator):
-        enabled = daemons_config.daemons.model_dump()
-    else:
-        enabled = daemons_config.get('daemons', {})
+    enabled = daemons_config.daemons.model_dump() if daemons_config else {}
 
     lst: list[str] = list(redis_daemons)  # copy base list; do NOT mutate global
     for k, v in enabled.items():
@@ -341,10 +307,7 @@ def are_redis_daemons_running() -> bool:
 
 def get_permanent_daemons() -> list[str]:
     daemons_config = _safe_get_daemons_config()
-    if isinstance(daemons_config, DaemonConfigValidator):
-        enabled = daemons_config.permanent_daemons.model_dump()
-    else:
-        enabled = daemons_config.get('permanent_daemons', {})
+    enabled = daemons_config.permanent_daemons.model_dump() if daemons_config else {}
 
     lst: list[str] = [str(PanoPaths.daemons_dir() / 'storeInfluxDB.py')]
     for k, v in enabled.items():
@@ -544,21 +507,18 @@ def free_space(path: str) -> int:
 
 
 # estimate bytes per second per module for a given data config
-def daq_bytes_per_sec_per_module(data_config: DataConfigValidator | dict[str, Any]) -> float:
+def daq_bytes_per_sec_per_module(data_config: DataConfigValidator) -> float:
     """Estimate the data generation rate (bytes per second) per module.
     
     This calculation includes overhead for housekeeping (hk.pff), 
     image mode data (if enabled), and pulse-height mode events.
 
     Args:
-        data_config: The science/engineering configuration model or dict.
+        data_config: The science/engineering configuration model.
 
     Returns:
         Estimated data rate in bytes per second per module.
     """
-    if isinstance(data_config, dict):
-        data_config = DataConfigValidator(**data_config)
-
     img_json_header_size = 600
     ph_json_header_size = 150
     x = 0.0
@@ -578,11 +538,11 @@ def daq_bytes_per_sec_per_module(data_config: DataConfigValidator | dict[str, An
     return x
 
 
-def get_daq_node_status(node: DaqNodeValidator | dict[str, Any]) -> dict[str, Any]:
+def get_daq_node_status(node: DaqNodeValidator) -> dict[str, Any]:
     """Retrieve the DAQ status from a remote node via SSH.
 
     Args:
-        node: A dictionary or validator describing the DAQ node (username, ip_addr, data_dir).
+        node: A validator describing the DAQ node (username, ip_addr, data_dir).
 
     Returns:
         A dictionary containing the parsed JSON status from the remote node.
@@ -590,9 +550,6 @@ def get_daq_node_status(node: DaqNodeValidator | dict[str, Any]) -> dict[str, An
     Raises:
         Exception: If the remote node cannot be reached.
     """
-    if isinstance(node, dict):
-        node = DaqNodeValidator(**node)
-
     # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
         f'{node.username}@{node.ip_addr}',
@@ -620,35 +577,29 @@ def daq_get_run_name() -> str | None:
 
 #-------------- WR and GPS---------------
 
-def get_wr_ip_addr(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
+def get_wr_ip_addr(obs_config: ObsConfigValidator) -> str:
     """Retrieve the White Rabbit switch IP address from the configuration.
 
     Args:
-        obs_config: The observatory configuration model or dict.
+        obs_config: The observatory configuration model.
 
     Returns:
         The White Rabbit IP address string (defaults to 192.168.1.254).
     """
-    if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
-    
     if obs_config.wr_ip_addr:
         return str(obs_config.wr_ip_addr)
     return '192.168.1.254'
 
 
-def get_gps_port(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
+def get_gps_port(obs_config: ObsConfigValidator) -> str:
     """Retrieve the TTY device path for the GPS receiver.
 
     Args:
-        obs_config: The observatory configuration model or dict.
+        obs_config: The observatory configuration model.
 
     Returns:
         The GPS port string (defaults to /dev/ttyUSB0).
     """
-    if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
-    
     if obs_config.gps_port:
         return str(obs_config.gps_port)
     return '/dev/ttyUSB0'
@@ -659,7 +610,7 @@ def get_gps_port(obs_config: ObsConfigValidator | dict[str, Any]) -> str:
 #
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
-def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidator | dict[str, Any]) -> dict[str, Any]:
+def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidator) -> dict[str, Any]:
     """Determine the effective IP and port for a specific Quabo.
 
     Accounts for network port forwarding if configured. If no mapping
@@ -668,14 +619,11 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidat
     Args:
         ip_addr: The base IP address of the module.
         i: The index of the Quabo within the module (0-3).
-        network_config: The network configuration model or dict.
+        network_config: The network configuration model.
 
     Returns:
         A dictionary containing 'ip_addr', 'reboot_port', and 'cmd_port'.
     """
-    if isinstance(network_config, dict):
-        network_config = NetworkConfigValidator(**network_config)
-
     ip_ports: dict[str, Any] = {}
     x = ip_addr.split('.')
     x[3] = str(int(x[3])+i)

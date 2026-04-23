@@ -516,12 +516,14 @@ def test_SC050_quabo_slot0_absent_empty_uid_handled() -> None:
     }
     # The config loader must not raise on an empty UID
     try:
-        result = config_file.get_module_quabo_uids_from_dict(uids)
+        from control.utils.pydantic_config_models import QuaboUidsValidator
+        validated = QuaboUidsValidator(**uids)
+        result = config_file.get_module_quabo_uids(validated)
         # An empty UID must appear as empty string or None, not cause a crash
         first_module: list[str] = next(iter(result.values()), [])
         assert len(first_module) == 4, "Must return all 4 quabo UID slots"
-    except AttributeError:
-        pytest.skip("config_file.get_module_quabo_uids_from_dict not found — check API")
+    except (AttributeError, ImportError):
+        pytest.skip("config_file.get_module_quabo_uids not found — check API")
     except Exception as exc:
         pytest.fail(f"Empty quabo UID must not crash config loader: {exc}")
 

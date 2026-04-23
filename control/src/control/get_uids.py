@@ -6,10 +6,8 @@
 #
 # --exclude N    exclude quabo N (0..3) from each module
 
-import json
 import os
 import struct
-from typing import Any
 
 import typer
 from panoseti_grpc.telemetry.logger import get_logger
@@ -17,7 +15,14 @@ from panoseti_grpc.telemetry.logger import get_logger
 from control.driver.quabo_tftp import tftpw
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import NetworkConfigValidator, ObsConfigValidator
+from control.utils.pydantic_config_models import (
+    NetworkConfigValidator,
+    ObsConfigValidator,
+    QuaboUidDome,
+    QuaboUidEntry,
+    QuaboUidModule,
+    QuaboUidsValidator,
+)
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -45,59 +50,53 @@ def get_uid(ip_addr: str, port: int) -> str:
         return ""
 
 
-def get_uids(obs_config: ObsConfigValidator | dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any], exclude: list[int] | None = None) -> None:
-    """Scan the observatory for Quabos and cache their unique hardware IDs.
-    
-    Iterates through all modules defined in the configuration, attempts to 
-    contact each Quabo, and writes the resulting UID map to quabo_uids.json.
-
-    Args:
-        obs_config: Physical observatory configuration model or dict.
-        network_config: Network routing configuration model or dict.
-        exclude: Optional list of Quabo indices (0-3) to skip in every module.
-    """
-    if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
-    if isinstance(network_config, dict):
-        network_config = NetworkConfigValidator(**network_config)
-
+def get_uids(obs_config: ObsConfigValidator, network_config: NetworkConfigValidator, exclude: list[int] | None = None) -> None:
+    """Scan the observatory for Quabos and cache their unique hardware IDs."""
     if exclude is None:
         exclude = []
 
-    quabo_uids: dict[str, Any] = {}
-    quabo_uids['domes'] = []
+    dome_uids: list[QuaboUidDome] = []
+    
     for d in obs_config.domes:
-        dome: dict[str, Any] = {}
-        dome['modules'] = []
+        module_uids: list[QuaboUidModule] = []
         for m in d.modules:
-            module: dict[str, Any] = {}
             m_ip = str(m.ip_addr)
-            module['ip_addr'] = m_ip
-            module['quabos'] = []
+            quabo_entries: list[QuaboUidEntry] = []
+            
             for i in range(4):
-                quabo: dict[str, Any] = {}
                 if i not in exclude:
                     ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-                    ip_addr = config_file.quabo_ip_addr(m_ip, i)
                     real_ip = ip_ports['ip_addr']
                     port = ip_ports['reboot_port']
-                    logger.info(f"get uid {ip_addr}")
-                    # TODO: we need to ping the board before get_uid
+                    
+                    logger.info(f"get uid for {m_ip}:{i} (real_ip: {real_ip})")
+                    
+                    try:
+                        from control.driver import quabo_driver
+                        q = quabo_driver.QUABO(real_ip, ip_ports['cmd_port'])
+                        q.data_packet_destination('192.168.1.1')
+                        q.close()
+                    except Exception as e:
+                        logger.debug(f"Ping failed: {e}")
+                        
                     uid = get_uid(real_ip, port)
-                    if len(uid):
-                        logger.info(f"{ip_addr} has UID {uid}")
-                    else:
-                        logger.info(f"{ip_addr} is offline")
-                    quabo['uid'] = uid
+                    quabo_entries.append(QuaboUidEntry(uid=uid))
                 else:
-                    quabo['uid'] = ''
-                module['quabos'].append(quabo)
+                    quabo_entries.append(QuaboUidEntry(uid=''))
+            
+            module_uids.append(QuaboUidModule(
+                ip_addr=m.ip_addr,
+                quabos=quabo_entries,
+                id=m.id,
+                daq_node=m.daq_node
+            ))
+        dome_uids.append(QuaboUidDome(modules=module_uids, num=d.num))
 
-            dome['modules'].append(module)
-        quabo_uids['domes'].append(dome)
+    quabo_uids = QuaboUidsValidator(domes=dome_uids)
+    
     quabo_uids_path = PanoPaths.tmp_dir() / config_file.quabo_uids_filename
     with open(quabo_uids_path, "w", encoding="utf-8") as f:
-        json.dump(quabo_uids, f, ensure_ascii=False, indent=4)
+        f.write(quabo_uids.model_dump_json(indent=4))
 
 
 app = typer.Typer(help="Scan and cache Quabo hardware UIDs.", no_args_is_help=False)
