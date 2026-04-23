@@ -1318,8 +1318,9 @@ async def slow_start():
         import json
         dest = f"{{daq_config.head_node_data_dir}}/{{run_dir}}"
         os.makedirs(dest, exist_ok=True)
-        # In CI, configs are in /app/ci/integration/configs/
-        config_dir = "/app/ci/integration/configs"
+        # In CI, configs are in the current config directory
+        from control.utils.paths import PanoPaths
+        config_dir = str(PanoPaths.config_dir())
         
         # Snapshot the ORIGINAL config from memory
         # (In SC039 we verify data_config, in SC040 we verify obs_config)
@@ -1367,7 +1368,7 @@ if __name__ == "__main__":
 """)
 
         env = os.environ.copy()
-        env["PYTHONPATH"] = f"/app/src:{env.get('PYTHONPATH', '')}"
+        env["PYTHONPATH"] = f"{PanoPaths.base_dir() / 'src'}:{env.get('PYTHONPATH', '')}"
         proc = subprocess.Popen(["python3", "tmp_slow_start.py"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
 
         # 1. Wait for it to load config into memory
@@ -1502,8 +1503,9 @@ async def slow_start():
         import json
         dest = f"{{daq_config.head_node_data_dir}}/{{run_dir}}"
         os.makedirs(dest, exist_ok=True)
-        # In CI, configs are in /app/ci/integration/configs/
-        config_dir = "/app/ci/integration/configs"
+        # In CI, configs are in the current config directory
+        from control.utils.paths import PanoPaths
+        config_dir = str(PanoPaths.config_dir())
         
         # Snapshot the ORIGINAL config from memory
         # (In SC039 we verify data_config, in SC040 we verify obs_config)
@@ -1551,7 +1553,7 @@ if __name__ == "__main__":
 """)
         
         env = os.environ.copy()
-        env["PYTHONPATH"] = f"/app/src:{env.get('PYTHONPATH', '')}"
+        env["PYTHONPATH"] = f"{PanoPaths.base_dir() / 'src'}:{env.get('PYTHONPATH', '')}"
         proc = subprocess.Popen(["python3", wrapper_name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
         
         # 1. Wait for marker

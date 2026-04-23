@@ -214,7 +214,7 @@ class RunStateManager:
         Concurrency-safe via asyncio.Lock.
         """
         async with self._async_lock:
-            state = self.load_state()
+            state = await asyncio.to_thread(self.load_state)
             if not state:
                 return
 
@@ -226,7 +226,7 @@ class RunStateManager:
             else:
                 state.nodes.append(receipt)
 
-            self.save_state(state)
+            await asyncio.to_thread(self.save_state, state)
 
 
 def get_current_run_name() -> str | None:

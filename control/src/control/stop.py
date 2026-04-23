@@ -91,7 +91,7 @@ class StopTransaction:
         self.success = False
 
     async def __aenter__(self) -> StopTransaction:
-        self.state_mgr.acquire_lock()
+        await asyncio.to_thread(self.state_mgr.acquire_lock)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
@@ -129,14 +129,14 @@ class StopTransaction:
             ]:
                 try:
                     logger.info(f"stopping {daemon_name}")
-                    killer()
+                    await asyncio.to_thread(killer)
                 except Exception as e:
                     self.all_errors.append(f"{daemon_name} shutdown failed: {e}")
 
             # 3. Stop Quabo data flow
             try:
                 logger.info("stopping data generation from quabos")
-                util.stop_data_flow(self.quabo_uids, self.network_config)
+                await asyncio.to_thread(util.stop_data_flow, self.quabo_uids, self.network_config)
             except Exception as e:
                 self.all_errors.append(f"stop_data_flow failed: {e}")
 
@@ -145,8 +145,8 @@ class StopTransaction:
             run_dir = f'{data_dir}/{self.run}'
             run_dir_exists = await asyncio.to_thread(os.path.exists, run_dir)
             if run_dir_exists:
-                if not complete_file_exists(run_dir, recording_ended_filename):
-                    write_complete_file(run_dir, recording_ended_filename)
+                if not await asyncio.to_thread(complete_file_exists, run_dir, recording_ended_filename):
+                    await asyncio.to_thread(write_complete_file, run_dir, recording_ended_filename)
 
                 # Enqueue run for background transfer (fast-path).
                 # The TransferWorker daemon owns collection, cleanup, and
@@ -157,7 +157,8 @@ class StopTransaction:
                     if n.module_ids
                 ]
                 tq = TransferQueue(base_dir=str(self.state_mgr.base_dir))
-                tq.enqueue(
+                await asyncio.to_thread(
+                    tq.enqueue,
                     run_name=self.run,
                     head_data_dir=str(data_dir),
                     daq_nodes=daq_nodes,
@@ -172,7 +173,7 @@ class StopTransaction:
                     self.state_mgr.transition,
                     "RECORDING_ENDED",
                 )
-                util.remove_run_name()
+                await asyncio.to_thread(util.remove_run_name)
                 logger.info(f'completed run {self.run}')
                 self.success = True
             else:
@@ -185,7 +186,7 @@ class StopTransaction:
             return False
 
         finally:
-            self.state_mgr.release_lock()
+            await asyncio.to_thread(self.state_mgr.release_lock)
 
 def stop_interleave(retry_limit: int = 10) -> None:
     """

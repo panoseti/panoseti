@@ -95,7 +95,7 @@ class StartTransaction:
         self.success = False
 
     async def __aenter__(self) -> StartTransaction:
-        self.state_mgr.acquire_lock()
+        await asyncio.to_thread(self.state_mgr.acquire_lock)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
@@ -197,7 +197,7 @@ class StartTransaction:
             return False
 
         finally:
-            self.state_mgr.release_lock()
+            await asyncio.to_thread(self.state_mgr.release_lock)
 
 verbose = False
 
@@ -801,22 +801,22 @@ async def start_run(
                 else:
                     raise ValidationError(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status}). Run stop.py, then try again, or use --force-reset.")
 
-            if util.is_hk_recorder_running():
+            if await asyncio.to_thread(util.is_hk_recorder_running):
                 msg = 'The HK recorder is running. Run stop.py, then try again.'
                 if daq_config.head_node_container:
                     logger.warning(f"{msg} (Non-fatal in container/CI environment)")
                 else:
                     raise ValidationError(msg)
                 
-            if not no_redis and not util.are_redis_daemons_running():
-                util.show_redis_daemons()
+            if not no_redis and not await asyncio.to_thread(util.are_redis_daemons_running):
+                await asyncio.to_thread(util.show_redis_daemons)
                 msg = 'Redis daemons are not running. Run config.py --redis_daemons'
                 if daq_config.head_node_container:
                     logger.warning(f"{msg} (Non-fatal in container/CI environment)")
                 else:
                     raise ValidationError(msg)
 
-            if not ph_baseline_file_ok():
+            if not await asyncio.to_thread(ph_baseline_file_ok):
                 msg = 'PH baseline file check failed.'
                 if daq_config.head_node_container:
                     logger.warning(f"{msg} (Non-fatal in container/CI environment)")
@@ -835,7 +835,7 @@ async def start_run(
                     "no_hv": no_hv
                 }
             )
-            state_mgr.save_state(initial_ledger)
+            await asyncio.to_thread(state_mgr.save_state, initial_ledger)
 
             # Snapshot configs into the directory immediately (before validation/delays)
             # This ensures we archive the ORIGINAL files even if they change on disk mid-setup

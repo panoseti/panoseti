@@ -9,6 +9,8 @@ import signal
 import time
 from typing import Any
 
+import anyio
+
 from control.utils.transfer.queue import TransferQueue
 from control.utils.transfer.rsync_worker import rsync_one_node
 
@@ -102,7 +104,8 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
                 module_ids: list[int] = node.get("module_ids", [])
                 for mid in module_ids:
                     try:
-                        client.GenerateManifest(
+                        await asyncio.to_thread(
+                            client.GenerateManifest,
                             {
                                 "data_dir": node["data_dir"],
                                 "run_dir": run_name,
@@ -157,7 +160,8 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
             for node in daq_nodes:
                 client = DaqControlClient(host=node["ip_addr"], port=50051)
                 try:
-                    client.CleanupData(
+                    await asyncio.to_thread(
+                        client.CleanupData,
                         {
                             "data_dir": node["data_dir"],
                             "run_dir": run_name,
@@ -176,11 +180,11 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
 
     # --- Stage 5: archive ---
     logger.info("[%s] Stage: ARCHIVED", run_name)
-    head_run_dir = pathlib.Path(head_data_dir) / run_name
+    head_run_dir = anyio.Path(head_data_dir) / run_name
     run_complete_path = head_run_dir / "run_complete"
-    if not run_complete_path.exists():
-        head_run_dir.mkdir(parents=True, exist_ok=True)
-        run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
+    if not await run_complete_path.exists():
+        await head_run_dir.mkdir(parents=True, exist_ok=True)
+        await run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
 
     logger.info("Run %s archived successfully", run_name)
     return True

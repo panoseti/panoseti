@@ -124,7 +124,7 @@ async def test_transfer_daemon_archives_run(
 
     import os
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    assert anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
+    assert await anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
 
     # 2. Stop real run
     success = await stop.stop_run(
@@ -206,7 +206,7 @@ async def test_transfer_daemon_resumes_after_crash(
     uids = config_file.get_quabo_uids()
     import os
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    assert anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
+    assert await anyio.Path(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}").exists(), "Failed to create run_dir"
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
