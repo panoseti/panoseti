@@ -403,6 +403,18 @@ def all_tests(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs"
 
 test_hw_app = typer.Typer(help="Hardware-Software (HITL) tests", no_args_is_help=True)
 
+@test_hw_app.callback()
+def hw_test_main(
+    ctx: typer.Context,
+    debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass Docker teardown for debugging.")
+):
+    """
+    Hardware-Software (HITL) tests.
+    Sets up the TestRunner context.
+    """
+    ctx.obj = TestRunner(QA_TOML_PATH)
+    ctx.obj.no_teardown = debug
+
 HW_DATA_DIR = "/mnt/panoseti/test-hw/data/"
 DAQ_NODE_IP = "192.168.0.228"
 DAQ_NODE_USER = "panoseti"
@@ -412,7 +424,7 @@ HW_COMPOSE_FILE = "ci/docker-compose.hw-sw.yml"
 def build(ctx: typer.Context):
     """Build required Docker images locally."""
     runner: TestRunner = ctx.obj
-    cmd = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} build"
+    cmd = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode --profile daqnode build"
     asyncio.run(runner._run_cmd(cmd))
 
 @test_hw_app.command()
@@ -477,7 +489,7 @@ def run(ctx: typer.Context):
     """[Placeholder] Run the HW-SW pytest suite."""
     print(C.yellow("HW-SW test suite placeholder. Implementation pending."))
 
-app.add_typer(test_hw_app, name="test-hw")
+# app.add_typer(test_hw_app, name="test-hw")
 
 if __name__ == "__main__":
     app()

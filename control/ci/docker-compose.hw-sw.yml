@@ -63,7 +63,7 @@ services:
       PANOSETI_FIRMWARE_DIR: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
     command: >
-      /bin/sh -c "panoseti-server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml
+      /bin/sh -c "panoseti-server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     restart: always
@@ -86,6 +86,8 @@ services:
       - ..:/app
       - ../../grpc:/grpc
       - /mnt/panoseti/test-hw/data/:/mnt/panoseti/test-hw/data/
+      - ../firmware:/app/firmware:ro
+      - ../quabos:/app/quabos:ro
     environment:
       HEADNODE_IP: "192.168.88.103"
       GRPC_PORT: "50051"
@@ -94,6 +96,5 @@ services:
       PANOSETI_QUABOS_DIR: "/app/quabos"
       PANOSETI_FIRMWARE_DIR: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
-    command: >
-      /bin/sh -c "panoseti-server --config /app/ci/integration/configs/grpc/headnode/server.toml
+    command: "panoseti-server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
     restart: always

@@ -25,7 +25,8 @@ class PanoLazyGroup(typer.core.TyperGroup):
             "config": "control.config",
             "power": "control.power",
             "path": "control.paths_cli",
-            "test": "qa",  # Special case: in ci/ directory
+            "sw-test": "qa",  # Software QA suite (Unit, Integration, Chaos)
+            "hw-test": ("qa", "test_hw_app"), # Hardware-Software HITL tests
             "validate": ("control.config", "validate_app"), # Sub-app within config.py
         }
 
@@ -47,8 +48,8 @@ class PanoLazyGroup(typer.core.TyperGroup):
             else:
                 module_path, attr_name = entry, "app"
             
-            # Special handling for 'test' which lives in control/ci/
-            if name == "test":
+            # Special handling for QA suites which live in control/ci/
+            if name in ["sw-test", "hw-test"]:
                 ci_path = str(Path(__file__).parent.parent.parent / "ci")
                 if ci_path not in sys.path:
                     sys.path.insert(0, ci_path)
