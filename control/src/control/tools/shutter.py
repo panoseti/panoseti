@@ -73,10 +73,9 @@ def main() -> None:
     network_config = config_file.get_network_config()
     for dome in obs_config.domes:
         for m in dome.modules:
-            m_ip = str(m.ip_addr)
-            ip_ports = util.get_quabo_ip_port(m_ip, 1, network_config)
-            real_ip = ip_ports['ip_addr']
-            real_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(m.ip_addr, 1, network_config)
+            real_ip = ip_ports.ip_addr
+            real_port = ip_ports.cmd_port
             logger.debug(f'Quabo IP: {real_ip}')
             logger.debug(f'Real IP: {real_port}')
             shutterop(real_ip, real_port, op)

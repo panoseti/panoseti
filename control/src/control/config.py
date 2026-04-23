@@ -101,9 +101,9 @@ def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: Netwo
     else:
         logger.info(f'Rebooting {ip_addr}...')
         ip_ports = util.get_quabo_ip_port(ip_base, index, network_config)
-        real_ip = ip_ports['ip_addr']
-        cmd_port = ip_ports['cmd_port']
-        reboot_port = ip_ports['reboot_port']
+        real_ip = ip_ports.ip_addr
+        cmd_port = ip_ports.cmd_port
+        reboot_port = ip_ports.reboot_port
         logger.info(f'Quabo IP: {ip_addr}')
         logger.info(f'Real IP: {real_ip}')
         logger.info(f'Reboot port: {reboot_port}')
@@ -146,7 +146,7 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config
     m_ip = str(module.ip_addr)
     
     for i in range(4):
-        if not util.is_quabo_alive(module.model_dump(), quabo_uids, i):
+        if not util.is_quabo_alive(module, quabo_uids, i):
             continue
         ip_addr = config_file.quabo_ip_addr(m_ip, i)
         if i == 0:
@@ -160,10 +160,10 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config
                 logger.info('*******************************************************')
         
         logger.info(f'rebooting quabo at {ip_addr}')
-        ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-        real_ip = ip_ports['ip_addr']
-        cmd_port = ip_ports['cmd_port']
-        reboot_port = ip_ports['reboot_port']
+        ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+        real_ip = ip_ports.ip_addr
+        cmd_port = ip_ports.cmd_port
+        reboot_port = ip_ports.reboot_port
         logger.info(f'Quabo IP: {ip_addr}')
         logger.info(f'Real IP: {real_ip}')
         logger.info(f'Reboot port: {reboot_port}')
@@ -267,16 +267,16 @@ def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
     for module in modules:
         m_ip = str(module.ip_addr)
         for i in range(4):
-            if not util.is_quabo_alive(module.model_dump(), quabo_uids, i):
+            if not util.is_quabo_alive(module, quabo_uids, i):
                 continue
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            port = ip_ports['reboot_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            port = ip_ports.reboot_port
             logger.info(f'Real IP: {real_ip}')
             logger.info('Reboot Port: %d', port)
             
-            if util.is_quabo_old_version(module.model_dump(), i, quabo_uids, quabo_info):
+            if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
                 logger.info(f'Loading firmware: {firmware_silver_qfp}')
                 fw = fw_silver_qfp
             else:
@@ -313,10 +313,10 @@ def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfig, verbo
     for module in modules:
         m_ip = str(module.ip_addr)
         for i in range(4):
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
-            real_ip = ip_ports['ip_addr']
-            port = ip_ports['cmd_port']
+            real_ip = ip_ports.ip_addr
+            port = ip_ports.cmd_port
             logger.info(f'Real IP: {real_ip}')
             logger.info('Cmd Port: %d', port)
             if util.ping(real_ip, port):
@@ -350,9 +350,9 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config
             if uid == '':
                 continue
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
             logger.info(f'Cmd Port: {cmd_port}')
@@ -387,9 +387,9 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
                 # DAC LSB is 0.0011324717, instead of 0.00114
                 v[j] = int(op_voltage/0.0011324717)
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
             logger.info(f'Cmd Port: {cmd_port}')
@@ -415,9 +415,9 @@ def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_con
                 continue
             v = [0]*4
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
             logger.info(f'Cmd Port: {cmd_port}')
@@ -551,9 +551,9 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
             if verbose:
                 logger.info('{}: {} = {}'.format(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             if do_log:
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
@@ -637,9 +637,9 @@ def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, netw
                 if verbose:
                     logger.info(f'{ip_addr}: {tag} = 0x{qc_dict_int[tag]:x}')
             # send MASK params to the quabo
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             if do_log:
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
@@ -671,9 +671,9 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, netwo
             if uid == '':
                 continue
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
-            ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             logger.info(f'Quabo IP: {ip_addr}')
             logger.info(f'Real IP: {real_ip}')
             logger.info(f'Cmd Port: {cmd_port}')

@@ -39,7 +39,7 @@ def session_start(
     quabo_info: dict[str, Any],
     data_config: DataConfig,
     daq_config: DaqConfig,
-    network_config: NetworkConfig | dict[str, Any],
+    network_config: NetworkConfig,
     no_hv: bool,
     stage: str
 ) -> None:
@@ -65,7 +65,7 @@ def session_start(
         stage: The starting phase of the sequence (e.g., 'poweron').
     """
 
-    modules = config_file.get_modules(obs_config.model_dump())
+    modules = config_file.get_modules(obs_config)
     # power on the telescopes
     if stage == 'poweron':
         stage = 'get_uids'
@@ -76,14 +76,14 @@ def session_start(
     if stage == 'get_uids':
         stage = 'reboot'
         logger.info('getting quabo UIDs')
-        get_uids.get_uids(obs_config.model_dump(), network_config if isinstance(network_config, dict) else network_config.model_dump())
+        get_uids.get_uids(obs_config, network_config)
 
     if stage == 'reboot':
         stage = 'hk_dest'
-        modules = config_file.get_modules(obs_config.model_dump())
+        modules = config_file.get_modules(obs_config)
         logger.info('rebooting quabos')
         quabo_uids = config_file.get_quabo_uids()
-        config.do_reboot(modules, quabo_uids.model_dump(), network_config)
+        config.do_reboot(modules, quabo_uids, network_config)
         logger.info('Reboot Successfully.')
 
     if stage == 'hk_dest':

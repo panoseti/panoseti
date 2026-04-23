@@ -15,9 +15,11 @@ import socket
 import subprocess
 import sys
 import time
+from ipaddress import ip_address
 from typing import Any
 
 import psutil
+from pydantic import IPvAnyAddress
 
 import __main__
 
@@ -35,6 +37,7 @@ from control.utils.pydantic_config_models import (
     NetworkConfig,
     ObsConfig,
     ObsModuleConfig,
+    QuaboIpPorts,
     QuaboUids,
 )
 
@@ -125,7 +128,8 @@ def local_ip() -> list[str]:
     
     return ips
 
-def ip_addr_str_to_bytes(ip_addr_str: str) -> bytearray:
+def ip_addr_str_to_bytes(ip_addr: IPvAnyAddress) -> bytearray:
+    ip_addr_str = str(ip_addr)
     pieces = ip_addr_str.strip().split('.')
     if len(pieces) != 4:
         raise Exception(f'bad IP addr {ip_addr_str}')
@@ -140,17 +144,18 @@ def ip_addr_str_to_bytes(ip_addr_str: str) -> bytearray:
 
 # return true if can ping IP addr
 #
-def ping(ip_addr: str, cmd_port: int) -> bool:
+def ping(ip_addr: IPvAnyAddress, cmd_port: int) -> bool:
+    ip_addr_str = str(ip_addr)
     logging.getLogger('PANOSETI.Config.util.ping')
     #return not subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr], capture_output=True).returncode
     # TODO: implement the qping cmd in the firmware
     # For now, we just use the data_packet_destination to see if we can talk to Quabo
-    s = subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr], capture_output=True).returncode
+    s = subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr_str], capture_output=True).returncode
     if not s:
         return True
     else:
         quabo = quabo_driver.QUABO(ip_addr, cmd_port)
-        return quabo.data_packet_destination('192.168.1.1')
+        return quabo.data_packet_destination(ip_address('192.168.1.1'))
 
 
 def mac_addr_str(b: bytes) -> str:
@@ -610,7 +615,7 @@ def get_gps_port(obs_config: ObsConfig) -> str:
 #
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
-def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfig) -> dict[str, Any]:
+def get_quabo_ip_port(ip_addr: IPvAnyAddress, i: int, network_config: NetworkConfig) -> QuaboIpPorts:
     """Determine the effective IP and port for a specific Quabo.
 
     Accounts for network port forwarding if configured. If no mapping
@@ -622,29 +627,33 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfig) -> di
         network_config: The network configuration model.
 
     Returns:
-        A dictionary containing 'ip_addr', 'reboot_port', and 'cmd_port'.
+        A QuaboIpPorts model containing 'ip_addr', 'reboot_port', and 'cmd_port'.
     """
-    ip_ports: dict[str, Any] = {}
-    x = ip_addr.split('.')
+    ip_addr_str = str(ip_addr)
+    x = ip_addr_str.split('.')
     x[3] = str(int(x[3])+i)
     quabo_ip =  '.'.join(x)
 
     # these are the default config
-    ip_ports['ip_addr'] = quabo_ip
-    ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT
-    ip_ports['cmd_port'] = DEFAULT_CMD_PORT
+    real_ip = quabo_ip
+    reboot_port = DEFAULT_REBOOT_PORT
+    cmd_port = DEFAULT_CMD_PORT
 
     for m in network_config.modules:
-        if ip_addr == str(m.ip_addr):
+        if ip_addr_str == str(m.ip_addr):
             p = m.port_forwarding
             if p and p.status:
-                ip_ports['ip_addr'] = str(p.gw_ip)
+                real_ip = str(p.gw_ip)
                 if p.reboot_port:
-                    ip_ports['reboot_port'] = p.reboot_port[i]
+                    reboot_port = p.reboot_port[i]
                 if p.cmd_port:
-                    ip_ports['cmd_port'] = p.cmd_port[i]
+                    cmd_port = p.cmd_port[i]
             break
-    return ip_ports
+    return QuaboIpPorts(
+        ip_addr=ip_address(real_ip),
+        reboot_port=reboot_port,
+        cmd_port=cmd_port
+    )
 
 
 def stop_data_flow(
@@ -663,13 +672,12 @@ def stop_data_flow(
     daq_params = quabo_driver.DAQ_PARAMS(False, 0, False, False, False)
     for dome in quabo_uids.domes:
         for module in dome.modules:
-            base_ip_addr = str(module.ip_addr)
             for i in range(4):
                 if module.quabos[i].uid == '':
                     continue
-                ip_ports = get_quabo_ip_port(base_ip_addr, i, network_config)
-                real_ip = ip_ports['ip_addr']
-                cmd_port = ip_ports['cmd_port']
+                ip_ports = get_quabo_ip_port(module.ip_addr, i, network_config)
+                real_ip = ip_ports.ip_addr
+                cmd_port = ip_ports.cmd_port
                 quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 quabo.send_daq_params(daq_params)
                 quabo.close()

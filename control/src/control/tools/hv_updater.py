@@ -345,9 +345,9 @@ def update_all_quabos(r: redis.Redis, quabo_status: dict[str, Any]) -> None:
                         quabo_status[rkey]['monitored_det_cur'] = monitored_det_cur
                     # Get quabo object
                     q_ip_addr = config_file.quabo_ip_addr(module_ip_addr, quabo_index)
-                    ip_port = util.get_quabo_ip_port(module_ip_addr, quabo_index, network_config)
-                    real_ip = ip_port['ip_addr']
-                    port = ip_port['cmd_port']
+                    ip_port = util.get_quabo_ip_port(module.ip_addr, quabo_index, network_config)
+                    real_ip = ip_port.ip_addr
+                    port = ip_port.cmd_port
                     logger.debug('-------------------------')
                     logger.debug(f'{rkey}({q_ip_addr}):')
                     logger.debug(f'Port forwarding: {real_ip}:{port}')

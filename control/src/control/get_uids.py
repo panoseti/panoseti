@@ -11,6 +11,7 @@ import struct
 
 import typer
 from panoseti_grpc.telemetry.logger import get_logger
+from pydantic import IPvAnyAddress
 
 from control.driver.quabo_tftp import tftpw
 from control.utils import config_file, util
@@ -30,7 +31,7 @@ logger = get_logger("PSETI.GetUIDs", log_dir=str(log_dir), grpc_enabled=True)
 
 # return quabo UID as hex string
 #
-def get_uid(ip_addr: str, port: int) -> str:
+def get_uid(ip_addr: IPvAnyAddress, port: int) -> str:
     """Retrieve the unique hardware ID (UID) from a Quabo via TFTP.
 
     Args:
@@ -60,16 +61,15 @@ def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list
     for d in obs_config.domes:
         module_uids: list[QuaboUidModule] = []
         for m in d.modules:
-            m_ip = str(m.ip_addr)
             quabo_entries: list[QuaboUidEntry] = []
             
             for i in range(4):
                 if i not in exclude:
-                    ip_ports = util.get_quabo_ip_port(m_ip, i, network_config)
-                    real_ip = ip_ports['ip_addr']
-                    port = ip_ports['reboot_port']
+                    ip_ports = util.get_quabo_ip_port(m.ip_addr, i, network_config)
+                    real_ip = ip_ports.ip_addr
+                    port = ip_ports.reboot_port
                     
-                    logger.info(f"get uid for {m_ip}:{i} (real_ip: {real_ip})")
+                    logger.info(f"get uid for {m.ip_addr}:{i} (real_ip: {real_ip})")
                     uid = get_uid(real_ip, port)
                     quabo_entries.append(QuaboUidEntry(uid=uid))
                 else:

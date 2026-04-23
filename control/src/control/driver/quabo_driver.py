@@ -19,9 +19,11 @@ from __future__ import annotations
 import json
 import socket
 import time
+from ipaddress import ip_address
 from typing import Any
 
 from panoseti_grpc.telemetry.logger import get_logger
+from pydantic import IPvAnyAddress
 
 from control.utils import util
 from control.utils.paths import PanoPaths
@@ -69,10 +71,11 @@ class DAQ_PARAMS:
         self.stim_level = level
 
 class QUABO:
-    def __init__(self, ip_addr: str, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt', logfile: str = 'logs/quabo_driver.log') -> None:
-        self.ip_addr = ip_addr
+    def __init__(self, ip_addr: IPvAnyAddress, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt', logfile: str = 'logs/quabo_driver.log') -> None:
+        self.ip_addr = str(ip_addr)
         self.port = port
         self.config_file_path = config_file_path
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(0.5)
         self.have_hk_sock = False
@@ -165,7 +168,7 @@ class QUABO:
         daq_stop = DAQ_PARAMS(False, 0, False, False, True)
         # This IP is not important, so I put a static IP here.
         # It's just for generating a ph packet
-        ip_addr = '192.168.1.1'
+        ip_addr = ip_address('192.168.1.1')
         self.data_packet_destination(ip_addr)
         self.send_daq_params(daq_start)
         #time.sleep(1)
@@ -426,11 +429,12 @@ class QUABO:
 
     # set destination IP addr for both PH and image packets
     #
-    def data_packet_destination(self, ip_addr_str: str) -> bool:
+    def data_packet_destination(self, ip_addr: IPvAnyAddress) -> bool:
+        ip_addr_str = str(ip_addr)
         self.logger.info(f'data_packet_destination: {ip_addr_str}')
         # get the IP address from hostname
         ip_addr_str = socket.gethostbyname(ip_addr_str)
-        ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
+        ip_addr_bytes = util.ip_addr_str_to_bytes(ip_address(ip_addr_str))
         cmd = self.make_cmd(0x0a)
         for i in range(4):
             cmd[i+1] = ip_addr_bytes[i]
@@ -446,11 +450,12 @@ class QUABO:
             count = 0
         return count == 12
 
-    def hk_packet_destination(self, ip_addr_str: str) -> None:
+    def hk_packet_destination(self, ip_addr: IPvAnyAddress) -> None:
+        ip_addr_str = str(ip_addr)
         self.logger.info(f'hk_packet_destination: {ip_addr_str}')
         # get the IP address from hostname
         ip_addr_str = socket.gethostbyname(ip_addr_str)
-        ip_addr_bytes = util.ip_addr_str_to_bytes(ip_addr_str)
+        ip_addr_bytes = util.ip_addr_str_to_bytes(ip_address(ip_addr_str))
         cmd = self.make_cmd(0x0b)
         for i in range(4):
             cmd[i+1] = ip_addr_bytes[i]
@@ -886,7 +891,7 @@ def reverse_bits(data_in: int, width: int) -> int:
 
 # write maroc config cmd to a file
 def write_maroc_config_cmd() -> None:
-    q = QUABO('1.1.1.1')
+    q = QUABO(ip_address('1.1.1.1'))
     config = parse_quabo_config_file('quabo_config.txt')
     cmd = bytearray(492)
     q.make_maroc_cmd(config, cmd)

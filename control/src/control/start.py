@@ -339,9 +339,9 @@ def start_data_flow(
                 if module.quabos[i].uid == '':
                     continue
                 ip_addr = config_file.quabo_ip_addr(base_ip_addr, i)
-                ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
-                real_ip = ip_ports['ip_addr']
-                cmd_port = ip_ports['cmd_port']
+                ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+                real_ip = ip_ports.ip_addr
+                cmd_port = ip_ports.cmd_port
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
                 logger.info(f'Cmd Port: {cmd_port}')
@@ -359,9 +359,9 @@ def start_data_flow(
             # send software 1PPS
             time.sleep(0.5)
             logger.info(f'Send software 1PPS to {base_ip_addr}')
-            ip_ports = util.get_quabo_ip_port(base_ip_addr, 0, network_config)
-            real_ip = ip_ports['ip_addr']
-            cmd_port = ip_ports['cmd_port']
+            ip_ports = util.get_quabo_ip_port(module.ip_addr, 0, network_config)
+            real_ip = ip_ports.ip_addr
+            cmd_port = ip_ports.cmd_port
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.swpps()
             quabo.close()
@@ -674,9 +674,9 @@ async def _check_quabo_reachability(
     tasks = []
     
     async def check_one(base_ip: str, index: int) -> None:
-        ip_ports = util.get_quabo_ip_port(base_ip, index, network_config)
-        real_ip = ip_ports['ip_addr']
-        cmd_port = ip_ports['cmd_port']
+        ip_ports = util.get_quabo_ip_port(module.ip_addr, index, network_config)
+        real_ip = ip_ports.ip_addr
+        cmd_port = ip_ports.cmd_port
         
         from control.utils.config_validator import _check_tcp_port
         

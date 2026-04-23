@@ -54,7 +54,7 @@ def status() -> None:
     daq_config = config_file.get_daq_config()
     quabo_uids = config_file.get_quabo_uids()
     config_file.get_data_config()
-    config_file.associate(daq_config.model_dump(), quabo_uids.model_dump())
+    config_file.associate(daq_config, quabo_uids)
     util.local_ip()
 
     for node in daq_config.daq_nodes:
@@ -62,7 +62,7 @@ def status() -> None:
             continue
         ip_addr = str(node.ip_addr)
         logger.info(f'status on DAQ node {ip_addr}:')
-        j = util.get_daq_node_status(node.model_dump())
+        j = util.get_daq_node_status(node)
 
         if j['hashpipe_running']:
             logger.info('   hashpipe is running')

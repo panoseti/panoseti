@@ -46,9 +46,9 @@ class InterleaveController:
     (MAROC and FPGA registers) at every state transition.
     """
     MAX_THREADS = 8
-    def __init__(self, data_config: DataConfig | dict[str, Any], obs_config: ObsConfig | dict[str, Any],
-                 daq_config: DaqConfig | dict[str, Any], quabo_uids: QuaboUids | dict[str, Any],
-                 quabo_info: dict[str, Any], network_config: NetworkConfig | dict[str, Any],
+    def __init__(self, data_config: DataConfig, obs_config: ObsConfig,
+                 daq_config: DaqConfig, quabo_uids: QuaboUids,
+                 quabo_info: dict[str, Any], network_config: NetworkConfig,
                  dry_run: bool = False, max_cycles: int | None = None) -> None:
         """Initialize the Interleave Controller and verify system state.
 
@@ -62,17 +62,6 @@ class InterleaveController:
             dry_run: If True, simulate hardware commands without sending them.
             max_cycles: Optional limit on the number of observing cycles to run.
         """
-
-        if isinstance(data_config, dict):
-            data_config = DataConfig(**data_config)
-        if isinstance(obs_config, dict):
-            obs_config = ObsConfig(**obs_config)
-        if isinstance(daq_config, dict):
-            daq_config = DaqConfig(**daq_config)
-        if isinstance(quabo_uids, dict):
-            quabo_uids = QuaboUids(**quabo_uids)
-        if isinstance(network_config, dict):
-            network_config = NetworkConfig(**network_config)
 
         self.keep_running = True
         self.dry_run = dry_run
@@ -106,16 +95,15 @@ class InterleaveController:
         self.modules = config_file.get_modules(obs_config)
         self.quabos: dict[int, list[quabo_driver.QUABO]] = {}  # map module_id to quabo_driver instances
         for module in self.modules:
-            base_ip_addr = str(module.ip_addr)
             module_id = module.id if module.id is not None else -1
             self.quabos[module_id] = []
             for i in range(4):
-                uid = util.quabo_uid(module.model_dump(), quabo_uids.model_dump(), i)
+                uid = util.quabo_uid(module, self.quabo_uids, i)
                 if not uid:
                     continue
-                ip_ports = util.get_quabo_ip_port(base_ip_addr, i, network_config)
-                real_ip = ip_ports['ip_addr']
-                cmd_port = ip_ports['cmd_port']
+                ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
+                real_ip = ip_ports.ip_addr
+                cmd_port = ip_ports.cmd_port
                 q = quabo_driver.QUABO(real_ip, cmd_port)
                 self.quabos[module_id].append(q) # use a list to retain sequential ordering
 
@@ -203,15 +191,15 @@ class InterleaveController:
 
         def reconfig_modules(modules: list[ObsModuleConfig]) -> None:
             pano_config.do_maroc_config(
-                [m.model_dump() for m in modules], self.quabo_uids.model_dump(), self.quabo_info,
-                next_state_data_config.model_dump(), self.obs_config.model_dump(), self.daq_config.model_dump(),
+                modules, self.quabo_uids, self.quabo_info,
+                next_state_data_config, self.obs_config, self.daq_config,
                 self.network_config, 
                 verbose=False, write_config=False, do_log=False
             )
             pano_config.do_mask_config(
-                [m.model_dump() for m in modules], next_state_data_config.model_dump(), 
+                modules, next_state_data_config, 
                 self.network_config,
-                self.quabo_uids.model_dump(), verbose=False, write_config=False, do_flush_rx_buf=False, do_log=False
+                self.quabo_uids, verbose=False, write_config=False, do_flush_rx_buf=False, do_log=False
             )
 
         reconfig_modules(self.modules)

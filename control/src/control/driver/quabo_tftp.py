@@ -4,14 +4,15 @@ import struct
 
 import tftpy
 from panoseti_grpc.telemetry.logger import get_logger
+from pydantic import IPvAnyAddress
 
 from control.utils.paths import PanoPaths
 
 
 class tftpw:
-    def __init__(self, ip: str, port: int = 69) -> None:
-        self.ip = ip
-        self.client = tftpy.TftpClient(ip, port)
+    def __init__(self, ip: IPvAnyAddress, port: int = 69) -> None:
+        self.ip = str(ip)
+        self.client = tftpy.TftpClient(self.ip, port)
         PanoPaths.logs_dir().mkdir(parents=True, exist_ok=True)
         self.logger = get_logger(service_name='quabo_tftp', log_dir=str(PanoPaths.logs_dir()), grpc_enabled=True)
         # deal with the tftpy warning messages

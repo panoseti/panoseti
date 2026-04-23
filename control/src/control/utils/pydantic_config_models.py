@@ -276,6 +276,13 @@ class PortForwarding(BaseStrictModel):
     grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
 
 
+class QuaboIpPorts(BaseStrictModel):
+    """Network connection details for a specific Quabo board (resolved IP and ports)."""
+    ip_addr: IPvAnyAddress
+    reboot_port: int
+    cmd_port: int
+
+
 class DaqNode(BaseModel):
     """Configuration for a single remote Data Acquisition (DAQ) node."""
     model_config = ConfigDict(extra='allow')
