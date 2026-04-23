@@ -1,7 +1,7 @@
 {
-    "name": "HW-SW_Lab",
-    "comment": "Physical HITL test environment",
-    "wr_ip_addr": "192.168.1.254",
+    "name": "UCB_Hardware-Software_Github_Runner",
+    "comment": "Physical HITL test environment: radio astronomy lab, 425 Campbell",
+    "wr_ip_addr": "10.0.1.36",
     "dome_controller_ip_addr": "192.168.88.103",
     "gps_port": "/dev/ttyUSB0",
     "detector_overvoltage": 2,
