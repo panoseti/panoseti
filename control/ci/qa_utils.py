@@ -66,12 +66,13 @@ class QAConfig(BaseModel):
 # ── Core Types ────────────────────────────────────────────────────────────────
 
 class Result:
-    __slots__ = ("code", "elapsed", "name", "stats")
-    def __init__(self, name: str, code: int, elapsed: float, stats: dict[str, int] | None = None) -> None:
+    __slots__ = ("code", "elapsed", "name", "stats", "stdout")
+    def __init__(self, name: str, code: int, elapsed: float, stats: dict[str, int] | None = None, stdout: str = "") -> None:
         self.name    = name
         self.code    = code
         self.elapsed = elapsed
         self.stats   = stats or {}
+        self.stdout  = stdout
     @property
     def ok(self) -> bool: return self.code == 0
 
@@ -241,20 +242,29 @@ class TestRunner:
         results = await asyncio.gather(*[run_task(n, c) for n, c in suite.tasks.items()])
         return list(results)
 
-    async def _run_cmd(self, cmd: str, env: dict[str, str] | None = None, quiet: bool = False) -> Result:
+    async def _run_cmd(self, cmd: str, env: dict[str, str] | None = None, quiet: bool = False, capture: bool = False) -> Result:
         start = time.monotonic()
         full_env = os.environ.copy()
         if env:
             full_env.update(env)
             
+        stdout_dest = asyncio.subprocess.PIPE if capture else (asyncio.subprocess.DEVNULL if quiet else None)
+        
         proc = await asyncio.create_subprocess_shell(
             cmd,
-            stdout=asyncio.subprocess.DEVNULL if quiet else None,
+            stdout=stdout_dest,
             stderr=asyncio.subprocess.DEVNULL if quiet else None,
             env=full_env
         )
-        await proc.wait()
-        return Result("cmd", proc.returncode or 0, time.monotonic() - start)
+        
+        stdout_data = ""
+        if capture:
+            stdout_bytes, _ = await proc.communicate()
+            stdout_data = stdout_bytes.decode("utf-8", errors="replace")
+        else:
+            await proc.wait()
+            
+        return Result("cmd", proc.returncode or 0, time.monotonic() - start, stdout=stdout_data)
 
     async def _stream(self, name: str, cmd: str, lock: asyncio.Lock, tag: str = "", env: dict[str, str] | None = None) -> Result:
         start = time.monotonic()

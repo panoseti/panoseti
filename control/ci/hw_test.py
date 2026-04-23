@@ -79,6 +79,38 @@ def get_raw_ssh_args(ssh_host_uri: str) -> str:
         return f"-p {port} {target}"
     return uri
 
+async def resolve_remote_podman_uri(runner: TestRunner, ssh_host_uri: str) -> str:
+    """
+    Connects to the remote host to find the correct rootless Podman socket path.
+    Returns a full URI like ssh://user@host:port/run/user/UID/podman/podman.sock
+    """
+    ssh_args = get_raw_ssh_args(ssh_host_uri)
+    
+    # 1. Ensure the socket is active (also triggers systemd user manager if needed)
+    await runner._run_cmd(f"ssh {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
+    
+    # 2. Query remote UID and socket existence
+    # We check for the rootless socket first, then fall back to the root socket.
+    remote_cmd = (
+        "id -u && "
+        "if [ -S /run/user/$(id -u)/podman/podman.sock ]; then echo /run/user/$(id -u)/podman/podman.sock; "
+        "elif [ -S /run/podman/podman.sock ]; then echo /run/podman/podman.sock; "
+        "else echo AUTO; fi"
+    )
+    
+    res = await runner._run_cmd(f"ssh {ssh_args} '{remote_cmd}'", capture=True)
+    if res.ok and res.stdout:
+        lines = res.stdout.strip().splitlines()
+        if len(lines) >= 2:
+            _uid = lines[0]
+            path = lines[1]
+            if path != "AUTO":
+                # Construct URI with path. 
+                # Docker/Podman URI format: ssh://user@host[:port]/path/to/socket
+                return f"{ssh_host_uri}{path}"
+                
+    return ssh_host_uri
+
 @app.command(name="build")
 def hw_build(ctx: typer.Context):
     """Build required container images locally."""
@@ -183,12 +215,12 @@ def deploy(ctx: typer.Context):
         ssh_host = get_ssh_host(node)
         console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via {ssh_host}...[/cyan]")
         
-        # Ensure remote socket is active if using podman
+        # Determine remote URI (handle podman socket path)
         if tool == "podman":
-            ssh_args = get_raw_ssh_args(ssh_host)
-            remote_init = f"ssh {ssh_args} 'systemctl --user start podman.socket || true'"
-            asyncio.run(runner._run_cmd(remote_init))
-            env = {"CONTAINER_HOST": ssh_host, "DOCKER_HOST": ssh_host}
+            resolved_uri = asyncio.run(resolve_remote_podman_uri(runner, ssh_host))
+            if resolved_uri != ssh_host:
+                console.print(f"[dim]Resolved remote Podman socket: {resolved_uri}[/dim]")
+            env = {"CONTAINER_HOST": resolved_uri, "DOCKER_HOST": resolved_uri}
         else:
             env = {"DOCKER_HOST": ssh_host}
             
@@ -217,7 +249,12 @@ def clean(ctx: typer.Context):
             
         ssh_host = get_ssh_host(node)
         console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} with {tool}...[/yellow]")
-        env = {"CONTAINER_HOST": ssh_host, "DOCKER_HOST": ssh_host} if tool == "podman" else {"DOCKER_HOST": ssh_host}
+        
+        if tool == "podman":
+             resolved_uri = asyncio.run(resolve_remote_podman_uri(runner, ssh_host))
+             env = {"CONTAINER_HOST": resolved_uri, "DOCKER_HOST": resolved_uri}
+        else:
+             env = {"DOCKER_HOST": ssh_host}
         
         daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
         asyncio.run(runner._run_cmd(daq_down, env=env))
