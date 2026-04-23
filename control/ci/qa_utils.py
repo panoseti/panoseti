@@ -139,6 +139,7 @@ class TestRunner:
             sys.exit(1)
         
         self.no_teardown = False
+        self.no_build = False
         self.container_tool = "docker"
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
@@ -207,7 +208,8 @@ class TestRunner:
              Console().print(f"[red]Error: No compose file defined for suite {suite.name}[/red]")
              sys.exit(1)
 
-        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} up -d"
+        build_flag = " --no-build" if self.no_build else ""
+        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} up -d{build_flag}"
         res = await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
         if not res.ok:
             from rich.console import Console

@@ -9,18 +9,29 @@ class PanoPaths:
     """
     Central utility for PANOSETI directory resolution.
     Supports environment variable overrides for custom workspace layouts.
+    
+    Overrideable Variables:
+      PSETI_ROOT:        Root of the panoseti-software repository.
+      PSETI_CONTROL:     Root of the control package (default: PSETI_ROOT/control).
+      PSETI_CONFIG:      Directory for JSON configs (default: PSETI_CONTROL/configs).
+      PSETI_TMP:         Directory for transient files (default: PSETI_CONTROL/tmp).
+      PSETI_QUABOS:      Directory for Quabo metadata (default: PSETI_CONTROL/quabos).
+      PSETI_LOGS:        Directory for system logs (default: PSETI_CONTROL/logs).
+      PSETI_FIRMWARE:    Directory for firmware binaries (default: PSETI_CONTROL/firmware).
+      PSETI_WR:          Directory for White Rabbit files (default: PSETI_CONTROL/wr).
+      PSETI_DAQ_SCRIPTS: Directory for DAQ deployment scripts.
     """
 
     @classmethod
     def software_root_dir(cls) -> pathlib.Path:
         """The root panoseti-software directory."""
         # 1. Respect environment override
-        override = os.environ.get("PANOSETI_SOFTWARE_REPO_ROOT")
+        override = os.environ.get("PSETI_ROOT")
         if override:
             return pathlib.Path(override).resolve()
 
-        # 2. If PANOSETI_CONTROL_ROOT is /app (Docker), root is /
-        home = os.environ.get("PANOSETI_CONTROL_ROOT")
+        # 2. If PSETI_CONTROL is /app (Docker), root is /
+        home = os.environ.get("PSETI_CONTROL")
         if home == "/app":
             return pathlib.Path("/")
 
@@ -31,7 +42,7 @@ class PanoPaths:
     @classmethod
     def base_dir(cls) -> pathlib.Path:
         """The control package root directory. Defaults to software_root / 'control'."""
-        override = os.environ.get("PANOSETI_CONTROL_ROOT")
+        override = os.environ.get("PSETI_CONTROL")
         if override:
             with contextlib.suppress(Exception):
                 return pathlib.Path(override).resolve()
@@ -47,7 +58,7 @@ class PanoPaths:
     @classmethod
     def config_dir(cls) -> pathlib.Path:
         """Directory containing observatory/daq/data JSON configs."""
-        override = os.environ.get("PANOSETI_CONFIG_DIR")
+        override = os.environ.get("PSETI_CONFIG")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "configs"
@@ -55,7 +66,7 @@ class PanoPaths:
     @classmethod
     def tmp_dir(cls) -> pathlib.Path:
         """Directory for transient files (locks, run state, UIDs)."""
-        override = os.environ.get("PANOSETI_TMP_DIR")
+        override = os.environ.get("PSETI_TMP")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "tmp"
@@ -63,7 +74,7 @@ class PanoPaths:
     @classmethod
     def quabos_dir(cls) -> pathlib.Path:
         """Directory for hardware-specific metadata (quabo_info, detector_info)."""
-        override = os.environ.get("PANOSETI_QUABOS_DIR")
+        override = os.environ.get("PSETI_QUABOS")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "quabos"
@@ -71,7 +82,7 @@ class PanoPaths:
     @classmethod
     def logs_dir(cls) -> pathlib.Path:
         """Directory for system log files."""
-        override = os.environ.get("PANOSETI_LOGS_DIR")
+        override = os.environ.get("PSETI_LOGS")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "logs"
@@ -79,7 +90,7 @@ class PanoPaths:
     @classmethod
     def firmware_dir(cls) -> pathlib.Path:
         """Directory containing Quabo firmware binaries."""
-        override = os.environ.get("PANOSETI_FIRMWARE_DIR")
+        override = os.environ.get("PSETI_FIRMWARE")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "firmware"
@@ -87,7 +98,7 @@ class PanoPaths:
     @classmethod
     def wr_dir(cls) -> pathlib.Path:
         """Directory containing White Rabbit configuration and filesystem files."""
-        override = os.environ.get("PANOSETI_WR_DIR")
+        override = os.environ.get("PSETI_WR")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "wr"
@@ -95,7 +106,7 @@ class PanoPaths:
     @classmethod
     def daq_scripts_dir(cls) -> pathlib.Path:
         """Directory containing scripts to be deployed to DAQ nodes."""
-        override = os.environ.get("PANOSETI_DAQ_SCRIPTS_DIR")
+        override = os.environ.get("PSETI_DAQ_SCRIPTS")
         if override:
             return pathlib.Path(override).resolve()
         return cls.base_dir() / "src/control/daq_scripts"

@@ -801,7 +801,7 @@ async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
         import subprocess
         env = os.environ.copy()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
-        env["PANOSETI_HEAD_NODE_CONTAINER"] = "1"
+        env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
             ["python3", "-m", "control.stop", "--yes", "--no_collect", "--no_cleanup"],
             capture_output=True, text=True, env=env
@@ -856,7 +856,7 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
         import subprocess
         env = os.environ.copy()
         env["PATH"] = f"{os.getcwd()}/tmp/fake_bin:{env['PATH']}"
-        env["PANOSETI_HEAD_NODE_CONTAINER"] = "1"
+        env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
             ["python3", "-m", "control.start", "--yes", "--force-reset", "--no_hv", "--no_redis", "--no_data"],
             capture_output=True, text=True, env=env
@@ -1166,7 +1166,7 @@ def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
         # 2. Run start.py — it must fail because 192.168.250.250 is unreachable
         # and it's listed in our UID map.
         env = os.environ.copy()
-        env["PANOSETI_HEAD_NODE_CONTAINER"] = "0"
+        env["PSETI_IS_CONTAINER"] = "0"
         result = subprocess.run(
             ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data"],
             capture_output=True, text=True, env=env

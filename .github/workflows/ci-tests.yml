@@ -7,38 +7,24 @@ on:
       - 'control/**'
       - '.github/workflows/ci.yml'
   pull_request:
-    branches: [master, dev, test-hw-sw, mount-metadata, claude-refactor, phase-2-robustness-and-driver-tests, add-linting]
+    branches: [master, dev]
     paths:
       - 'control/**'
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  # Global BuildKit cache configuration for Compose
-  DOCKER_BUILDKIT: 1
-  COMPOSE_DOCKER_CLI_BUILD: 1
-
 jobs:
-  # 1. Warm up the base cache.
+  # 1. Warm up the base cache and pre-bake test images.
   prepare-base:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Initialize required submodules
-        run: |
-          git submodule update --init grpc grafana
 
-      - name: Load .env.ci into GitHub environment
-        run: |
-          grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+      - name: Initialize required submodules
+        run: git submodule update --init grpc grafana
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build and Cache Base Stages
+      - name: Build and Cache Base and Test Images
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -49,8 +35,19 @@ jobs:
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
 
-  # 2. Run Lint and Unit tests together.
-  lint-and-unit:
+      - name: Pre-bake Test Runner
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: control/ci/Dockerfile.ci
+          target: test-runner
+          push: false
+          load: true
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=test-runner
+
+  # 2. Run Unit and Lint tests sequentially in the same job/container.
+  unit-and-lint:
     needs: prepare-base
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -58,13 +55,11 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Initialize required submodules
-        run: |
-          git submodule update --init grpc grafana
+        run: git submodule update --init grpc grafana
 
       - name: Load .env.ci into GitHub environment
-        run: |
-          grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
-      
+        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+
       - name: Install uv and sync host dependencies
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -75,35 +70,25 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      # Explicitly set context and dockerfile to avoid resolution issues with parent-dir contexts
-      - name: Build unit-test image
-        run: |
-          docker buildx bake \
-            -f control/ci/docker-compose.unit.yml \
-            --set *.context=. \
-            --set *.dockerfile=control/ci/Dockerfile.ci \
-            --set *.cache-from=type=gha,scope=base \
-            --set *.cache-to=type=gha,mode=max,scope=unit \
-            --load \
-            unit-test-runner
-
-      - name: Run Linting
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test lint
-        working-directory: control
+      - name: Restore Test Runner
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: control/ci/Dockerfile.ci
+          target: test-runner
+          push: false
+          load: true
+          cache-from: type=gha,scope=test-runner
 
       - name: Run Unit Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test unit
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build unit
         working-directory: control
 
-      - name: Upload coverage artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-pytest-cache
-          path: control/.pytest_cache/
-          if-no-files-found: ignore
+      - name: Run Linting
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build lint
+        working-directory: control
 
-  # 3. Integration tests
+  # 3. Integration Tests
   integration-tests:
     needs: prepare-base
     runs-on: ubuntu-24.04
@@ -112,12 +97,10 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Initialize required submodules
-        run: |
-          git submodule update --init grpc grafana
+        run: git submodule update --init grpc grafana
 
       - name: Load .env.ci into GitHub environment
-        run: |
-          grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
 
       - name: Install uv and sync host dependencies
         run: |
@@ -129,21 +112,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Explicitly set context and dockerfile
-      - name: Build Integration Stack
-        run: |
-          docker buildx bake \
-            -f control/ci/docker-compose.integration.yml \
-            --set *.context=. \
-            --set *.dockerfile=control/ci/Dockerfile.ci \
-            --set *.cache-from=type=gha,scope=base \
-            --set *.cache-to=type=gha,mode=max,scope=integration \
-            --load
+      - name: Restore Test Runner
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: control/ci/Dockerfile.ci
+          target: test-runner
+          push: false
+          load: true
+          cache-from: type=gha,scope=test-runner
+
+      - name: Pre-bake DAQ Node
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: control/ci/Dockerfile.ci
+          target: integration-daqnode
+          push: false
+          load: true
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=daqnode
 
       - name: Run Integration Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test integration
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build integration
         working-directory: control
-
 
       - name: Upload artifacts
         if: always()

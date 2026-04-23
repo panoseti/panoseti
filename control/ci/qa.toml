@@ -47,7 +47,7 @@ compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
 test_dir = "ci/integration/"
 pytest_args = ["--ignore=ci/integration/scenarios"]
-env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PANOSETI_CONFIG_DIR = "/app/ci/integration/configs/direct", PANOSETI_TMP_DIR = "/app/ci/test_state/tmp", PANOSETI_QUABOS_DIR = "/app/ci/integration/configs", PANOSETI_LOGS_DIR = "/app/ci/test_state/logs" }
+env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/app/ci/integration/configs/direct", PSETI_TMP = "/app/ci/test_state/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/app/ci/test_state/logs" }
 pre_run = "mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json"
 
 [suites.chaos]
@@ -57,7 +57,7 @@ requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
 test_dir = "ci/integration/scenarios/"
-env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-chaos-daqnode-1", PANOSETI_CONFIG_DIR = "/app/ci/integration/configs/direct", PANOSETI_TMP_DIR = "/app/ci/test_state/tmp", PANOSETI_QUABOS_DIR = "/app/ci/integration/configs", PANOSETI_LOGS_DIR = "/app/ci/test_state/logs" }
+env = { ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-chaos-daqnode-1", PSETI_CONFIG = "/app/ci/integration/configs/direct", PSETI_TMP = "/app/ci/test_state/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/app/ci/test_state/logs" }
 pre_run = "mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json"
 
 [suites.test-hw]
@@ -68,4 +68,4 @@ requires_docker = true
 profiles = ["headnode", "daqnode"]
 service = "headnode-server"
 test_dir = "ci/hardware-software/"
-env = { PANOSETI_CONFIG_DIR = "/app/ci/hardware-software/configs", PANOSETI_QUABOS_DIR = "/app/quabos", PANOSETI_FIRMWARE_DIR = "/app/firmware", PANOSETI_TMP_DIR = "/app/ci/test_state/tmp", PANOSETI_LOGS_DIR = "/app/ci/test_state/logs" }
+env = { PSETI_CONFIG = "/app/ci/hardware-software/configs", PSETI_QUABOS = "/app/quabos", PSETI_FIRMWARE = "/app/firmware", PSETI_TMP = "/app/ci/test_state/tmp", PSETI_LOGS = "/app/ci/test_state/logs" }

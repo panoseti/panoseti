@@ -77,11 +77,11 @@ def _run_validation(variant_dir: pathlib.Path) -> bool:
 
         # Run validation with environment overrides
         old_env = os.environ.copy()
-        os.environ["PANOSETI_CONFIG_DIR"] = str(configs_dir)
+        os.environ["PSETI_CONFIG"] = str(configs_dir)
         # We need to tell it where firmware files are (they are in tmpdir root in this test)
-        os.environ["PANOSETI_FIRMWARE_DIR"] = str(tmp_path)
+        os.environ["PSETI_FIRMWARE"] = str(tmp_path)
         # Isolate tmp dir so we don't see chaos UIDs or locks
-        os.environ["PANOSETI_TMP_DIR"] = str(tmp_path)
+        os.environ["PSETI_TMP"] = str(tmp_path)
         
         try:
             from control.utils import config_file

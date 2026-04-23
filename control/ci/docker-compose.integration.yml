@@ -102,7 +102,7 @@ services:
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
-      target: integration-headnode
+      target: test-runner
     restart: always
     network_mode: "service:influxdb"
     volumes:
@@ -221,7 +221,7 @@ services:
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
-      target: integration-headnode
+      target: test-runner
     networks:
       headnode_net:
         ipv4_address: 10.0.1.5

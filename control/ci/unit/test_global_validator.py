@@ -8,6 +8,7 @@ No hardware or network access required.
 """
 
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 
@@ -18,6 +19,7 @@ from control.utils.pydantic_config_models import (
     FirmwareConfigValidator,
     NetworkConfigValidator,
     ObsConfigValidator,
+    QuaboUidsValidator,
 )
 
 # ---------------------------------------------------------------------------
@@ -507,6 +509,13 @@ class TestHeadnodeDiskSpace:
 # ===========================================================================
 
 class TestValidateAllRules:
+    @pytest.fixture(autouse=True)
+    def mock_quabo_uids(self):
+        """Mock get_quabo_uids to avoid requiring the physical JSON file in CI."""
+        with patch("control.utils.config_file.get_quabo_uids") as mock_get:
+            mock_get.return_value = QuaboUidsValidator(domes=[])
+            yield mock_get
+
     def test_runs_without_error_on_minimal_config(self, tmp_path) -> None:
         """All _check_* methods can run on a minimal config without raising."""
         daq = {"head_node_data_dir": str(tmp_path), "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
@@ -537,7 +546,38 @@ class TestValidateAllRules:
 
 
     def test_reports_errors_with_valid_config(self, tmp_path) -> None:
-        """Each _check_* method contributes at least one row to the report."""
+        """Verify that validation fails when there are overlapping module IDs."""
+        daq = {
+            "head_node_data_dir": str(tmp_path), 
+            "head_node_ip_addr": "10.0.0.1", 
+            "daq_nodes": [
+                {
+                    "ip_addr": "192.168.0.10",
+                    "data_dir": "/data",
+                    "username": "root",
+                    "module_ids": "1",
+                    "bindhost": "lo"
+                },
+                {
+                    "ip_addr": "192.168.0.11",
+                    "data_dir": "/data",
+                    "username": "root",
+                    "module_ids": "1",
+                    "bindhost": "lo"
+                },
+            ]
+        }
+        obs = {
+            "name": "test",
+            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
+            "wps": {"url": "http://x", "quabo_socket": 1},
+        }
+        v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
+        v.validate_all_rules()
+        assert v.report.has_errors
+
+    def test_reports_no_errors_with_invalid_config(self, tmp_path) -> None:
+        """Verify that a valid minimal config passes all rules."""
         daq = {
             "head_node_data_dir": str(tmp_path), 
             "head_node_ip_addr": "10.0.0.1", 
@@ -558,30 +598,4 @@ class TestValidateAllRules:
         }
         v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
         v.validate_all_rules()
-        # At minimum, each check method should have added something
-        assert v.report.has_errors
-
-    def test_reports_no_errors_with_invalid_config(self, tmp_path) -> None:
-        """Each _check_* method contributes at least one row to the report."""
-        daq = {
-            "head_node_data_dir": str(tmp_path), 
-            "head_node_ip_addr": "10.0.0.1", 
-            "daq_nodes": [
-                {
-                    "ip_addr": "192.168.0.10",
-                    "data_dir": "/data",
-                    "username": "root",
-                    "module_ids": "1-255",
-                    "bindhost": "lo"
-                },
-            ]
-        }
-        obs = {
-            "name": "test",
-            "domes": [{"name": "d", "obslat": 0, "obslon": 0, "obsalt": 0, "modules": [{"mobo_serialno": "s", "quabo_version": "bga", "ip_addr": "192.168.3.200", "wps": "wps"}]}],
-            "wps": {"url": "http://x", "quabo_socket": 1},
-        }
-        v = _make_validator(obs=obs, daq=daq, firmware={"bga": "fw.bin"})
-        v.validate_all_rules()
-        # At minimum, each check method should have added something
         assert not v.report.has_errors

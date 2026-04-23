@@ -13,10 +13,12 @@ app = typer.Typer(
 def main(
     ctx: typer.Context,
     debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass container teardown for debugging."),
+    no_build: bool = typer.Option(False, "--no-build", help="Do not attempt to build images, use existing ones."),
     tool: str = typer.Option("docker", "--tool", help="Container tool to use (docker or podman).")
 ):
     ctx.obj = TestRunner(QA_TOML_PATH)
     ctx.obj.no_teardown = debug
+    ctx.obj.no_build = no_build
     ctx.obj.container_tool = tool
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

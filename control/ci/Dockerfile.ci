@@ -21,10 +21,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # Dependency Caching Layer
-# BuildKit cache mount keeps uv cache between builds → fast re-installs.
-# If pyproject.toml or uv.lock change, this layer rebuilds.
-# grpc/ is copied first so that the [tool.uv.sources] local path ../grpc
-# resolves correctly to /grpc/ during uv sync.
 COPY grpc/ /grpc/
 COPY control/pyproject.toml control/uv.lock* ./
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -32,8 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: hashpipe-builder
-# Compiles hashpipe from source. Both daq-data-hashpipe and daq-control
-# COPY from this stage, so hashpipe is built exactly once.
+# Compiles hashpipe from source. 
 # ═══════════════════════════════════════════════════════════════════════════
 FROM python:3.14-slim AS hashpipe-builder
 
@@ -53,38 +48,23 @@ RUN autoreconf -is && \
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: hashpipe-plugin-builder
-# Clones panoseti_daq and compiles it with the daq_data_hashpipe Makefile.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM hashpipe-builder AS hashpipe-plugin-builder
 
-ENV PANOSETI_DAQ_BRANCH="dev"
+ENV PSETI_DAQ_BRANCH="dev"
 
 WORKDIR /build
-RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
+RUN git clone --depth 1 --branch ${PSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
 COPY control/ci/integration/build/Makefile .
 COPY control/ci/integration/build/databuf.h .
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage: unit-test-runner
-# Runs standard hardware-agnostic Python unit tests.
+# Stage: test-runner
+# Unified runner for lint, unit, structural, and integration tests.
 # ═══════════════════════════════════════════════════════════════════════════
-FROM base AS unit-test-runner
-COPY control/ .
-# Install project as editable link after COPY . . completes
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --all-extras
-
-# Keep alive as a background daemon for instant QA test execution
-CMD ["sleep", "infinity"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Stage: integration-headnode (Test Runner)
-# Acts as the headnode running the pytest integration suite.
-# ═══════════════════════════════════════════════════════════════════════════
-FROM base AS integration-headnode
+FROM base AS test-runner
 RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io \
     && rm -rf /var/lib/apt/lists/*
@@ -92,28 +72,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY control/ .
 RUN mkdir -p /data /data/head
 
-# Install project as editable link after COPY . . completes
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
 
-# Keep alive as a background daemon for instant QA test execution
 CMD ["sleep", "infinity"]
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: integration-daqnode
-# The DAQ node simulation.
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
     socat tcpreplay procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy core hashpipe binaries and libraries from builder
 COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN ldconfig
 
-# Copy the panoseti_daq plugin
 RUN mkdir -p /data
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
@@ -121,9 +96,7 @@ COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/l
 WORKDIR /app
 COPY control/ .
 
-# Install project as editable link after COPY . . completes
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
 
-# Unified gRPC server: daq_data + daq_control on a single port (50051).
 CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]

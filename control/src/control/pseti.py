@@ -24,7 +24,7 @@ class PanoLazyGroup(typer.core.TyperGroup):
             "get-uids": ("control.get_uids", "app", "Scan and record Quabo hardware UIDs."),
             "config": ("control.config", "app", "Configure observatory hardware and daemons."),
             "power": ("control.power", "app", "Control Quabo power via WPS."),
-            "path": ("control.paths_cli", "app", "Manage PANOSETI directory paths."),
+            "path": ("control.tools.paths_cli", "app", "Manage PANOSETI directory paths."),
             "sw-test": ("sw_test", "app", "Software Quality Assurance & Testing Suite."),
             "hw-test": ("hw_test", "app", "Hardware-Software (HITL) tests."),
             "validate": ("control.config", "validate_app", "Configuration and topology validation tools."),

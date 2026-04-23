@@ -20,6 +20,7 @@ app = typer.Typer(help="Hardware-Software (HITL) tests", no_args_is_help=True)
 def main(
     ctx: typer.Context,
     debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass container teardown for debugging."),
+    no_build: bool = typer.Option(False, "--no-build", help="Do not attempt to build images, use existing ones."),
     tool: str = typer.Option("podman", "--tool", help="Container tool to use (docker or podman).")
 ):
     """
@@ -28,6 +29,7 @@ def main(
     """
     ctx.obj = TestRunner(QA_TOML_PATH)
     ctx.obj.no_teardown = debug
+    ctx.obj.no_build = no_build
     ctx.obj.container_tool = tool
 
 def get_hw_suite_and_env(ctx: typer.Context) -> tuple[SuiteConfig, EnvironmentConfig]:

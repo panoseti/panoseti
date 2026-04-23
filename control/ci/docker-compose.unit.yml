@@ -13,7 +13,7 @@ services:
     build:
       context: ../..
       dockerfile: control/ci/Dockerfile.ci
-      target: unit-test-runner
+      target: test-runner
     depends_on:
       redis:
         condition: service_started
