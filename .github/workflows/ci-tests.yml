@@ -37,16 +37,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build and Cache Base Stage
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: control/ci/Dockerfile.ci
-          target: base
-          push: false
-          load: true
-          cache-from: type=gha,scope=pseti-ci
-          cache-to: type=gha,mode=max,scope=pseti-ci
+      - name: Pre-build and Cache All Test Images
+        run: |
+          docker buildx bake \
+            -f control/ci/docker-compose.integration.yml \
+            --set *.cache-from=type=gha,scope=pseti-ci \
+            --set *.cache-to=type=gha,mode=max,scope=pseti-ci
 
   # 2. Run Unit, Structural, and Lint tests together in a single job/container.
   fast-validation:
@@ -56,21 +52,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # - name: Initialize required submodules
-      #   run: git submodule update --init grpc grafana
+      - name: Initialize required submodules
+        run: git submodule update --init grpc grafana
 
-      # - name: Load .env.ci into GitHub environment
-      #   run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+      - name: Load .env.ci into GitHub environment
+        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
 
-      # - name: Set up uv
-      #   uses: astral-sh/setup-uv@v5
-      #   with:
-      #     enable-cache: true
-      #     workspaces: control
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          workspaces: control
 
-      # - name: Install host dependencies
-      #   run: uv sync --all-extras
-      #   working-directory: control
+      - name: Install host dependencies
+        run: uv sync --all-extras
+        working-directory: control
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -79,8 +75,6 @@ jobs:
         run: |
           docker buildx bake \
             -f control/ci/docker-compose.unit.yml \
-            --set *.context=. \
-            --set *.dockerfile=control/ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load \
             unit-test-runner
@@ -105,21 +99,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # - name: Initialize required submodules
-      #   run: git submodule update --init grpc grafana
+      - name: Initialize required submodules
+        run: git submodule update --init grpc grafana
 
-      # - name: Load .env.ci into GitHub environment
-      #   run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+      - name: Load .env.ci into GitHub environment
+        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
 
-      # - name: Set up uv
-      #   uses: astral-sh/setup-uv@v5
-      #   with:
-      #     enable-cache: true
-      #     workspaces: control
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          workspaces: control
 
-      # - name: Install host dependencies
-      #   run: uv sync --all-extras
-      #   working-directory: control
+      - name: Install host dependencies
+        run: uv sync --all-extras
+        working-directory: control
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -128,8 +122,6 @@ jobs:
         run: |
           docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
-            --set *.context=. \
-            --set *.dockerfile=control/ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load
 
