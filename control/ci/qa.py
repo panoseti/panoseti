@@ -114,6 +114,7 @@ class TestRunner:
             sys.exit(1)
         
         self.no_teardown = False
+        self.container_tool = "docker"
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
 
@@ -157,7 +158,7 @@ class TestRunner:
         for suite in self.cfg.suites.values():
             if suite.requires_docker and suite.compose_file not in processed_files:
                 project_name = f"{self.project_prefix}-build"
-                cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} build"
+                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} build"
                 await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
                 processed_files.add(suite.compose_file)
 
@@ -166,22 +167,22 @@ class TestRunner:
     async def _setup_docker(self, suite: SuiteConfig, project_name: str):
         self._header(f"SETUP: {suite.name.upper()}")
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
-        cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} up -d"
+        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} up -d"
         res = await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
         if not res.ok:
-            print(C.red(f"Failed to start Docker stack for {suite.name}"), file=sys.stderr)
+            print(C.red(f"Failed to start container stack for {suite.name}"), file=sys.stderr)
             sys.exit(1)
             
         if suite.pre_run:
             print(C.dim(f"Running pre-run command for {suite.name}..."))
-            pre_cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {suite.service} /bin/sh -c '{suite.pre_run}'"
+            pre_cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {suite.service} /bin/sh -c '{suite.pre_run}'"
             await self._run_cmd(pre_cmd, env={"COMPOSE_PROJECT_NAME": project_name})
 
     async def _teardown_docker(self, suite: SuiteConfig, project_name: str, quiet: bool = False):
         if not quiet:
             self._header(f"TEARDOWN: {suite.name.upper()}")
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
-        cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} down -v --remove-orphans"
+        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} down -v --remove-orphans"
         await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name}, quiet=quiet)
 
     async def _run_test_suite(self, suite: SuiteConfig, project_name: str, jobs: int | None, extra_args: list[str] | None) -> list[Result]:
@@ -200,7 +201,7 @@ class TestRunner:
         env_str = " ".join([f"-e {k}={v}" for k, v in suite.env.items()])
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
         
-        cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
+        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
         
         lock = asyncio.Lock()
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
@@ -216,7 +217,7 @@ class TestRunner:
         lock = asyncio.Lock()
         
         async def run_task(name: str, task_cmd: str):
-            cmd = f"docker compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
+            cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
             return await self._stream(f"lint.{name}", cmd, lock, tag=C.paint(f"[{name}]", task_colors[name]) + " ", env={"COMPOSE_PROJECT_NAME": project_name})
 
         results = await asyncio.gather(*[run_task(n, c) for n, c in suite.tasks.items()])
@@ -342,10 +343,12 @@ app = typer.Typer(
 @app.callback()
 def main(
     ctx: typer.Context,
-    debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass Docker teardown for debugging.")
+    debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass container teardown for debugging."),
+    tool: str = typer.Option("docker", "--tool", help="Container tool to use (docker or podman).")
 ):
     ctx.obj = TestRunner(QA_TOML_PATH)
     ctx.obj.no_teardown = debug
+    ctx.obj.container_tool = tool
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def lint(ctx: typer.Context):
@@ -402,18 +405,20 @@ def all_tests(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs"
 # ── HW-SW Test Runner ──────────────────────────────────────────────────────────
 
 test_hw_app = typer.Typer(help="Hardware-Software (HITL) tests", no_args_is_help=True)
-
 @test_hw_app.callback()
 def hw_test_main(
     ctx: typer.Context,
-    debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass Docker teardown for debugging.")
+    debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass container teardown for debugging."),
+    tool: str = typer.Option("podman", "--tool", help="Container tool to use (docker or podman).")
 ):
     """
     Hardware-Software (HITL) tests.
-    Sets up the TestRunner context.
+    Sets up the TestRunner context and container tool.
     """
     ctx.obj = TestRunner(QA_TOML_PATH)
     ctx.obj.no_teardown = debug
+    ctx.obj.container_tool = tool
+
 
 HW_DATA_DIR = "/mnt/panoseti/test-hw/data/"
 DAQ_NODE_IP = "192.168.0.228"
@@ -422,9 +427,9 @@ HW_COMPOSE_FILE = "ci/docker-compose.hw-sw.yml"
 
 @test_hw_app.command()
 def build(ctx: typer.Context):
-    """Build required Docker images locally."""
+    """Build required container images locally."""
     runner: TestRunner = ctx.obj
-    cmd = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode --profile daqnode build"
+    cmd = f"{runner.container_tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode --profile daqnode build"
     asyncio.run(runner._run_cmd(cmd))
 
 @test_hw_app.command()
@@ -450,30 +455,34 @@ def check_env(
 def deploy(ctx: typer.Context):
     """Initialize containers on head node and remote DAQ node."""
     runner: TestRunner = ctx.obj
+    tool = runner.container_tool
+    remote_host_var = "DOCKER_HOST" if tool == "docker" else "CONTAINER_HOST"
     
     # Local Headnode
-    print(C.cyan("Deploying Headnode profile locally..."))
-    head_cmd = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode up -d"
+    print(C.cyan(f"Deploying Headnode profile locally with {tool}..."))
+    head_cmd = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode up -d"
     asyncio.run(runner._run_cmd(head_cmd))
     
     # Remote DAQnode
-    print(C.cyan(f"Deploying DAQnode profile to {DAQ_NODE_IP}..."))
+    print(C.cyan(f"Deploying DAQnode profile to {DAQ_NODE_IP} with {tool}..."))
     ssh_host = f"ssh://{DAQ_NODE_USER}@{DAQ_NODE_IP}"
-    daq_cmd = f"DOCKER_HOST={ssh_host} docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode up -d"
+    daq_cmd = f"{remote_host_var}={ssh_host} {tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode up -d"
     asyncio.run(runner._run_cmd(daq_cmd))
 
 @test_hw_app.command()
 def clean(ctx: typer.Context):
     """Tear down containers and wipe physical data directory."""
     runner: TestRunner = ctx.obj
+    tool = runner.container_tool
+    remote_host_var = "DOCKER_HOST" if tool == "docker" else "CONTAINER_HOST"
     
-    print(C.yellow("Tearing down Headnode profile..."))
-    head_down = f"docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode down -v"
+    print(C.yellow(f"Tearing down Headnode profile with {tool}..."))
+    head_down = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode down -v"
     asyncio.run(runner._run_cmd(head_down))
     
-    print(C.yellow(f"Tearing down DAQnode profile on {DAQ_NODE_IP}..."))
+    print(C.yellow(f"Tearing down DAQnode profile on {DAQ_NODE_IP} with {tool}..."))
     ssh_host = f"ssh://{DAQ_NODE_USER}@{DAQ_NODE_IP}"
-    daq_down = f"DOCKER_HOST={ssh_host} docker compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode down -v"
+    daq_down = f"{remote_host_var}={ssh_host} {tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode down -v"
     asyncio.run(runner._run_cmd(daq_down))
     
     print(C.red(f"Wiping {HW_DATA_DIR} locally..."))
