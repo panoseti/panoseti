@@ -27,8 +27,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init grpc grafana
+
+      - name: Load .env.ci into GitHub environment
+        run: |
+          grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
@@ -39,6 +45,7 @@ jobs:
           file: control/ci/Dockerfile.ci
           target: base
           push: false
+          load: true
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
 
@@ -49,8 +56,22 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init grpc grafana
+
+      - name: Load .env.ci into GitHub environment
+        run: |
+          grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+      
+      - name: Install uv and sync host dependencies
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          uv sync --all-extras
+        working-directory: control
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
@@ -63,14 +84,15 @@ jobs:
             --set *.dockerfile=control/ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=base \
             --set *.cache-to=type=gha,mode=max,scope=unit \
+            --load \
             unit-test-runner
 
       - name: Run Linting
-        run: PYTHONPATH=src python3 -m control.pseti sw-test lint
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test lint
         working-directory: control
 
       - name: Run Unit Tests
-        run: PYTHONPATH=src python3 -m control.pseti sw-test unit
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test unit
         working-directory: control
 
       - name: Upload coverage artifacts
@@ -88,8 +110,22 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      
+      - name: Initialize required submodules
+        run: |
+          git submodule update --init grpc grafana
+
+      - name: Load .env.ci into GitHub environment
+        run: |
+          grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+
+      - name: Install uv and sync host dependencies
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          uv sync --all-extras
+        working-directory: control
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -101,11 +137,13 @@ jobs:
             --set *.context=. \
             --set *.dockerfile=control/ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=base \
-            --set *.cache-to=type=gha,mode=max,scope=integration
+            --set *.cache-to=type=gha,mode=max,scope=integration \
+            --load
 
       - name: Run Integration Tests
-        run: PYTHONPATH=src python3 -m control.pseti sw-test integration
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test integration
         working-directory: control
+
 
       - name: Upload artifacts
         if: always()

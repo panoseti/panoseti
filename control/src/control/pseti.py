@@ -50,8 +50,10 @@ class PanoLazyGroup(typer.core.TyperGroup):
             # - We are explicitly asked for help for THIS command (pseti cmd --help)
             # - We are executing THIS command (pseti cmd ...)
             # - Click is in resilient parsing mode (completion)
+            # - We are NOT in help mode (programmatic/test usage)
+            is_help_mode = any(arg in sys.argv for arg in ["--help", "-h"])
             is_targeting_this = (name in sys.argv)
-            if not is_targeting_this and not getattr(ctx, "resilient_parsing", False):
+            if is_help_mode and not is_targeting_this and not getattr(ctx, "resilient_parsing", False):
                 return click.Command(name, help=help_str)
 
             # Special handling for QA suites which live in control/ci/

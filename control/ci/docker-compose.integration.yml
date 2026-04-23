@@ -44,7 +44,7 @@ services:
     image: influxdb:1.8
     networks:
       headnode_net:
-        ipv4_address: ${HEADNODE_HOST}
+        ipv4_address: ${HEADNODE_HOST:-10.0.1.22}
     ports:
       - 3000:3000
     healthcheck:
@@ -92,7 +92,7 @@ services:
     environment:
       DAQNODE_IP: "${DAQNODE_DIRECT_HOST}"
     healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${GRPC_PORT} || exit 1"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${GRPC_PORT:-50051} || exit 1"]
       interval: 3s
       timeout: 2s
       retries: 5
@@ -124,7 +124,7 @@ services:
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -151,12 +151,12 @@ services:
       - ..:/app
       - ../../grpc:/grpc
     environment:
-      GRPC_PORT:          "${GRPC_PORT}"
+      GRPC_PORT:          "${GRPC_PORT:-50051}"
       BINDHOST:           "${BINDHOST}"
-      HEADNODE_IP:        "${HEADNODE_HOST}"
-      HEADNODE_GRPC_PORT: "${GRPC_PORT}"
+      HEADNODE_IP:        "${HEADNODE_HOST:-10.0.1.5}"
+      HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -183,12 +183,12 @@ services:
       - ..:/app
       - ../../grpc:/grpc
     environment:
-      GRPC_PORT:          "${GRPC_PORT}"
+      GRPC_PORT:          "${GRPC_PORT:-50051}"
       BINDHOST:           "${BINDHOST}"
-      HEADNODE_IP:        "${HEADNODE_HOST}"
-      HEADNODE_GRPC_PORT: "${GRPC_PORT}"
+      HEADNODE_IP:        "${HEADNODE_HOST:-10.0.1.5}"
+      HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT})); s.close()\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -235,9 +235,9 @@ services:
       DAQNODE_GATEWAY_HOST:   "${DAQNODE_GATEWAY_HOST}"
       DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST}"
       DAQNODE2_HOST:          "${DAQNODE2_HOST}"
-      HEADNODE_HOST:          "${HEADNODE_HOST}"
+      HEADNODE_HOST:          "${HEADNODE_HOST:-10.0.1.22}"
       BINDHOST:               "${BINDHOST}"
-      GRPC_PORT:              "${GRPC_PORT}"
+      GRPC_PORT:              "${GRPC_PORT:-50051}"
       LOKI_URL:               "${LOKI_URL}"
       REDIS_HOST:             "${REDIS_HOST}"
       DAQ_DATA_DIR:           "/data"

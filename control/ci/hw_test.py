@@ -5,7 +5,14 @@ import shutil
 import typer
 
 # Heavy imports are moved inside functions to keep pseti startup fast.
-from qa_utils import CONTROL_ROOT, QA_TOML_PATH, EnvironmentConfig, SuiteConfig, TestRunner
+from qa_utils import (
+    CONTROL_ROOT,
+    QA_TOML_PATH,
+    EnvironmentConfig,
+    SSHTunnel,
+    SuiteConfig,
+    TestRunner,
+)
 
 app = typer.Typer(help="Hardware-Software (HITL) tests", no_args_is_help=True)
 
@@ -179,7 +186,7 @@ def check_env(
                     raise typer.Exit(code=1)
             except ValueError:
                 console.print(f"[red]Error: Could not parse disk space from {node.ip_addr}.[/red]")
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from None
 
     console.print(f"[green]Environment OK. {tool} is ready and space is sufficient.[/green]")
 

@@ -57,3 +57,6 @@ test/
 .vscode
 .idea
 .worktrees/
+
+# ignore javascript and css library
+lib/
