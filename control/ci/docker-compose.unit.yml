@@ -10,6 +10,7 @@ services:
       retries: 5
 
   unit-test-runner:
+    image: pseti-test-runner:latest
     build:
       context: ../..
       dockerfile: control/ci/Dockerfile.ci

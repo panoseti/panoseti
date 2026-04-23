@@ -99,6 +99,7 @@ services:
       start_period: 2s
 
   headnode:
+    image: pseti-test-runner:latest
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
@@ -131,6 +132,7 @@ services:
       start_period: 10s
 
   daqnode:
+    image: pseti-daqnode:latest
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
@@ -163,6 +165,7 @@ services:
       start_period: 10s
 
   daqnode-2:
+    image: pseti-daqnode:latest
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
@@ -195,6 +198,7 @@ services:
       start_period: 10s
 
   mock-quabo:
+    image: pseti-mock-quabo:latest
     build:
       context: ../../
       dockerfile: control/ci/mock_quabo/Dockerfile
@@ -218,6 +222,7 @@ services:
       start_period: 5s
 
   int-tester:
+    image: pseti-test-runner:latest
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
