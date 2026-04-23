@@ -27,6 +27,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
@@ -47,6 +49,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
@@ -84,6 +88,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

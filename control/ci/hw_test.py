@@ -71,9 +71,6 @@ def get_ssh_host(node) -> str:
         return f"ssh://{node.username}@{node.port_forwarding.gw_ip}:{port}"
     return f"ssh://{node.username}@{node.ip_addr}"
 
-# SSH Multiplexing options to reuse authenticated connections
-MUX_OPTS = "-o ControlMaster=auto -o ControlPath=/tmp/pseti_ssh_%h_%p_%r -o ControlPersist=60s"
-
 def get_raw_ssh_args(ssh_host_uri: str) -> str:
     """Convert a ssh:// URI into raw ssh command arguments (e.g., '-p port target')."""
     uri = ssh_host_uri.replace("ssh://", "")
@@ -82,35 +79,20 @@ def get_raw_ssh_args(ssh_host_uri: str) -> str:
         return f"-p {port} {target}"
     return uri
 
-async def resolve_remote_podman_uri(runner: TestRunner, ssh_host_uri: str) -> str:
-    """
-    Connects to the remote host to find the correct rootless Podman socket path.
-    Returns a full URI like ssh://user@host:port/run/user/UID/podman/podman.sock
-    """
-    ssh_args = get_raw_ssh_args(ssh_host_uri)
+async def resolve_remote_socket_path(runner: TestRunner, ssh_args: str) -> str:
+    """Query remote host to find the correct rootless Podman socket path."""
+    # 1. Ensure the socket is active (BatchMode=yes avoids hanging)
+    await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
     
-    # 1. Ensure the socket is active and establish a Master connection for multiplexing
-    # This call will prompt for a password ONCE if needed, and subsequent calls will reuse it.
-    await runner._run_cmd(f"ssh {MUX_OPTS} {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
-    
-    # 2. Query remote UID and socket existence (BatchMode=yes confirms multiplexing is working)
+    # 2. Query remote socket path
     remote_cmd = (
-        "id -u && "
         "if [ -S /run/user/$(id -u)/podman/podman.sock ]; then echo /run/user/$(id -u)/podman/podman.sock; "
         "elif [ -S /run/podman/podman.sock ]; then echo /run/podman/podman.sock; "
-        "else echo AUTO; fi"
+        "else echo /run/podman/podman.sock; fi"
     )
     
-    res = await runner._run_cmd(f"ssh -o BatchMode=yes {MUX_OPTS} {ssh_args} '{remote_cmd}'", capture=True)
-    if res.ok and res.stdout:
-        lines = res.stdout.strip().splitlines()
-        if len(lines) >= 2:
-            _uid = lines[0]
-            path = lines[1]
-            if path != "AUTO":
-                return f"{ssh_host_uri}{path}"
-                
-    return ssh_host_uri
+    res = await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} '{remote_cmd}'", capture=True)
+    return res.stdout.strip() if res.ok and res.stdout else "/run/podman/podman.sock"
 
 @app.command(name="build")
 def hw_build(ctx: typer.Context):
@@ -225,28 +207,22 @@ def deploy(ctx: typer.Context):
         if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
             continue
             
-        ssh_host = get_ssh_host(node)
-        console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via {ssh_host}...[/cyan]")
+        ssh_host_uri = get_ssh_host(node)
+        ssh_args = get_raw_ssh_args(ssh_host_uri)
+        console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via tunnel to {ssh_host_uri}...[/cyan]")
         
-        # Determine remote URI (handle podman socket path)
-        if tool == "podman":
-            resolved_uri = asyncio.run(resolve_remote_podman_uri(runner, ssh_host))
-            if resolved_uri != ssh_host:
-                console.print(f"[dim]Resolved remote Podman socket: {resolved_uri}[/dim]")
-            # Podman and docker-compose both respect DOCKER_SSH_COMMAND for multiplexing
+        # Resolve remote socket path
+        remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
+        
+        # Create tunnel and deploy
+        with SSHTunnel(ssh_args, remote_sock) as local_sock:
+            console.print(f"[dim]Tunnel established: {local_sock} -> {remote_sock}[/dim]")
             env = {
-                "CONTAINER_HOST": resolved_uri, 
-                "DOCKER_HOST": resolved_uri,
-                "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
+                "CONTAINER_HOST": f"unix://{local_sock}", 
+                "DOCKER_HOST": f"unix://{local_sock}"
             }
-        else:
-            env = {
-                "DOCKER_HOST": ssh_host,
-                "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
-            }
-            
-        daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
-        asyncio.run(runner._run_cmd(daq_cmd, env=env))
+            daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
+            asyncio.run(runner._run_cmd(daq_cmd, env=env))
 
 @app.command()
 def clean(ctx: typer.Context):
@@ -268,24 +244,19 @@ def clean(ctx: typer.Context):
         if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
             continue
             
-        ssh_host = get_ssh_host(node)
-        console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} with {tool}...[/yellow]")
+        ssh_host_uri = get_ssh_host(node)
+        ssh_args = get_raw_ssh_args(ssh_host_uri)
+        console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} via tunnel...[/yellow]")
         
-        if tool == "podman":
-             resolved_uri = asyncio.run(resolve_remote_podman_uri(runner, ssh_host))
-             env = {
-                 "CONTAINER_HOST": resolved_uri, 
-                 "DOCKER_HOST": resolved_uri,
-                 "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
-             }
-        else:
-             env = {
-                 "DOCKER_HOST": ssh_host,
-                 "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
-             }
+        remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
         
-        daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
-        asyncio.run(runner._run_cmd(daq_down, env=env))
+        with SSHTunnel(ssh_args, remote_sock) as local_sock:
+            env = {
+                "CONTAINER_HOST": f"unix://{local_sock}", 
+                "DOCKER_HOST": f"unix://{local_sock}"
+            }
+            daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
+            asyncio.run(runner._run_cmd(daq_down, env=env))
     
     # console.print(f"[red]Wiping Headnode data {daq_cfg.head_node_data_dir}...[/red]")
     # if os.path.exists(daq_cfg.head_node_data_dir):

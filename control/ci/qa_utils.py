@@ -76,6 +76,51 @@ class Result:
     @property
     def ok(self) -> bool: return self.code == 0
 
+class SSHTunnel:
+    """Manages a background SSH tunnel for Unix Domain Sockets."""
+    def __init__(self, ssh_args: str, remote_socket: str, local_socket: str = "/tmp/pseti_tunnel.sock"):
+        self.ssh_args = ssh_args
+        self.remote_socket = remote_socket
+        self.local_socket = local_socket
+        self.proc: Any | None = None
+
+    def __enter__(self):
+        import subprocess
+        # Remove stale local socket
+        if os.path.exists(self.local_socket):
+            os.unlink(self.local_socket)
+        
+        # Start tunnel in background: -n (no stdin), -N (no command), -L (local forward)
+        cmd = ["ssh", "-n", "-N", "-L", f"{self.local_socket}:{self.remote_socket}"]
+        import shlex
+        cmd.extend(shlex.split(self.ssh_args))
+        
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Wait for socket to appear
+        start = time.monotonic()
+        while time.monotonic() - start < 5:
+            if os.path.exists(self.local_socket):
+                return self.local_socket
+            time.sleep(0.1)
+        
+        self.stop()
+        raise TimeoutError(f"SSH Tunnel to {self.remote_socket} failed to establish.")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+    def stop(self):
+        import contextlib
+        if self.proc:
+            self.proc.terminate()
+            with contextlib.suppress(Exception):
+                self.proc.wait(timeout=1)
+            self.proc = None
+        if os.path.exists(self.local_socket):
+            with contextlib.suppress(Exception):
+                os.unlink(self.local_socket)
+
 CONTROL_ROOT = Path(__file__).parent.parent.resolve()
 QA_TOML_PATH = CONTROL_ROOT / "ci" / "qa.toml"
 ENV_CI_PATH  = CONTROL_ROOT / "ci" / ".env.ci"
