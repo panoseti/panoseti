@@ -39,6 +39,7 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
     restart: always
 
   headnode-server:
@@ -62,7 +63,7 @@ services:
       PANOSETI_FIRMWARE_DIR: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
     command: >
-      /bin/sh -c "panoseti-server --profile headnode &
+      /bin/sh -c "panoseti-server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     restart: always
@@ -85,14 +86,14 @@ services:
       - ..:/app
       - ../../grpc:/grpc
       - /mnt/panoseti/test-hw/data/:/mnt/panoseti/test-hw/data/
-      - ../firmware:/app/firmware:ro
-      - ../quabos:/app/quabos:ro
     environment:
       HEADNODE_IP: "192.168.88.103"
       GRPC_PORT: "50051"
+      HEADNODE_GRPC_PORT: "50051"
       PANOSETI_CONFIG_DIR: "/app/ci/hardware-software/configs"
       PANOSETI_QUABOS_DIR: "/app/quabos"
       PANOSETI_FIRMWARE_DIR: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
-    command: "panoseti-server --profile daq_node"
+    command: >
+      /bin/sh -c "panoseti-server --config /app/ci/integration/configs/grpc/headnode/server.toml
     restart: always
