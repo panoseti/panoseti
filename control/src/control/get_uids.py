@@ -57,24 +57,30 @@ def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list
         exclude = []
 
     dome_uids: list[QuaboUidDome] = []
-    
+
     for d in obs_config.domes:
         module_uids: list[QuaboUidModule] = []
         for m in d.modules:
             quabo_entries: list[QuaboUidEntry] = []
-            
+
             for i in range(4):
+                ip_addr = config_file.quabo_ip_addr(str(m.ip_addr), i)
                 if i not in exclude:
                     ip_ports = util.get_quabo_ip_port(m.ip_addr, i, network_config)
                     real_ip = ip_ports.ip_addr
                     port = ip_ports.reboot_port
-                    
-                    logger.info(f"get uid for {m.ip_addr}:{i} (real_ip: {real_ip})")
+
+                    logger.info(f"get uid {ip_addr}")
                     uid = get_uid(real_ip, port)
+
+                    if len(uid):
+                        logger.info(f"{ip_addr} has UID {uid}")
+                    else:
+                        logger.info(f"{ip_addr} is offline")
                     quabo_entries.append(QuaboUidEntry(uid=uid))
                 else:
                     quabo_entries.append(QuaboUidEntry(uid=''))
-            
+
             module_uids.append(QuaboUidModule(
                 ip_addr=m.ip_addr,
                 quabos=quabo_entries,
@@ -84,10 +90,11 @@ def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list
         dome_uids.append(QuaboUidDome(modules=module_uids, num=d.num))
 
     quabo_uids = QuaboUids(domes=dome_uids)
-    
+
     quabo_uids_path = PanoPaths.tmp_dir() / config_file.quabo_uids_filename
     with open(quabo_uids_path, "w", encoding="utf-8") as f:
         f.write(quabo_uids.model_dump_json(indent=4))
+
 
 
 app = typer.Typer(help="Scan and cache Quabo hardware UIDs.", no_args_is_help=False)

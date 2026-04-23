@@ -14,10 +14,10 @@
             "modules": [
                 {
                     "mobo_serialno": "M001",
-                    "quabo_version": "bga",
+                    "quabo_version": "qfp",
                     "ip_addr": "192.168.3.248",
                     "wps": "wps-gh-runner",
-                    "timing_mode": "wr"
+                    "timing_mode": "gnss"
                 }
             ]
         }
