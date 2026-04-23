@@ -1,18 +1,29 @@
-import os
+from __future__ import annotations
 
-import click
+import os
+from typing import Annotated
+
 import typer
+from panoseti_grpc.util.cli import display_tree_callback
 from rich.console import Console
 from rich.table import Table
-from rich.tree import Tree
 
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(help="Inspect and visualize PSETI system state.", no_args_is_help=True)
 
 
+@app.callback()
+def show_callback(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for system inspection.", callback=display_tree_callback)] = False
+) -> None:
+    """Inspect and visualize system state."""
+    pass
+
+
 @app.command(name="paths")
-def show_paths():
+def show_paths() -> None:
     """
     Display the current resolved paths for all key directories.
     
@@ -50,42 +61,16 @@ def show_paths():
     console.print("\n[dim]Tip: Overriding PSETI_ROOT or PSETI_CONTROL will shift the default locations of all sub-directories.[/dim]")
 
 
-def _walk_commands(node: click.Group | click.Command, tree: Tree):
-    """Recursively walk click commands and add them to the rich tree."""
-    if isinstance(node, click.Group):
-        # Sort subcommands for consistent output
-        for cmd_name in sorted(node.list_commands(click.Context(node))):
-            # get_command handles our lazy-loading logic automatically
-            cmd = node.get_command(click.Context(node), cmd_name)
-            if cmd:
-                help_text = cmd.help.split("\n")[0] if cmd.help else ""
-                # Truncate help text if too long
-                if len(help_text) > 60:
-                    help_text = help_text[:57] + "..."
-                
-                branch = tree.add(f"[bold cyan]{cmd_name}[/] [dim]— {help_text}[/]")
-                _walk_commands(cmd, branch)
-
-
 @app.command(name="commands")
-def show_commands(ctx: typer.Context):
+def show_commands(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree.", callback=display_tree_callback)] = True
+) -> None:
     """
     Display a tree-like view of all available PSETI commands and subcommands.
     """
-    console = Console()
-    
-    # We need to find the root app. In Typer, it's accessible via ctx.parent
-    root_ctx: click.Context | None = ctx
-    while root_ctx and root_ctx.parent:
-        root_ctx = root_ctx.parent
-        
-    if not root_ctx:
-        return
-
-    root_tree = Tree("[bold reverse] PSETI CLI Structure [/]")
-    _walk_commands(root_ctx.command, root_tree)
-    
-    console.print("\n", root_tree, "\n")
+    # This command is now just an alias for -t at this level
+    pass
 
 
 if __name__ == "__main__":

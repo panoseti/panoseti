@@ -10,10 +10,12 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
+import click
 import typer
-
+import typer.core
+from panoseti_grpc.util.cli import BaseLazyGroup, display_tree_callback
 from qa_utils import (
     CONTROL_ROOT,
     QA_TOML_PATH,
@@ -22,6 +24,47 @@ from qa_utils import (
     SuiteConfig,
     TestRunner,
 )
+
+
+class GrpcTestLazyGroup(BaseLazyGroup):
+    """
+    Lazy-loading group for gRPC service layer tests.
+    Unwraps the tests.qa app from the grpc/ directory.
+    """
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        import importlib
+        root = Path(__file__).parent.parent.parent
+        grpc_tests = str(root / "grpc")
+        if Path(grpc_tests).exists() and grpc_tests not in sys.path:
+            sys.path.insert(0, grpc_tests)
+        try:
+            mod = importlib.import_module("tests.qa")
+            test_app = mod.app
+            click_group = typer.main.get_command(test_app)
+            return click_group.list_commands(ctx)
+        except Exception:
+            return []
+
+    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
+        import importlib
+        root = Path(__file__).parent.parent.parent
+        grpc_tests = str(root / "grpc")
+        if Path(grpc_tests).exists() and grpc_tests not in sys.path:
+            sys.path.insert(0, grpc_tests)
+            
+        try:
+            mod = importlib.import_module("tests.qa")
+            test_app = mod.app
+            click_group = typer.main.get_command(test_app)
+            cmd = click_group.get_command(ctx, name)
+            if cmd:
+                cmd.name = name
+                return cmd
+            return None
+        except Exception as e:
+            click.secho(f"Error loading gRPC test command '{name}': {e}", fg="red", err=True)
+            return None
+
 
 app = typer.Typer(
     help="PSETI Quality Assurance & Testing Suite.",
@@ -33,10 +76,21 @@ app = typer.Typer(
 sw_app = typer.Typer(help="Software QA tests (Docker-based CI simulations)", no_args_is_help=True)
 hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
 lint_app = typer.Typer(help="Static analysis and linting (Ruff, MyPy)", no_args_is_help=True)
+# The grpc sub-app uses a special lazy group to map to tests.qa:app
+grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
 
 app.add_typer(sw_app, name="sw")
 app.add_typer(hw_app, name="hw")
 app.add_typer(lint_app, name="lint")
+app.add_typer(grpc_app, name="grpc")
+
+@grpc_app.callback()
+def grpc_main(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for gRPC tests.", callback=display_tree_callback)] = False
+) -> None:
+    """gRPC service layer tests"""
+    pass
 
 # ---------------------------------------------------------------------------
 # Global Setup
@@ -47,8 +101,9 @@ def main(
     ctx: typer.Context,
     debug: bool = typer.Option(False, "--debug", "--no-teardown", help="Bypass container teardown for debugging."),
     no_build: bool = typer.Option(False, "--no-build", help="Do not attempt to build images, use existing ones."),
-    tool: str = typer.Option("docker", "--tool", help="Container tool to use (docker or podman).")
-):
+    tool: str = typer.Option("docker", "--tool", help="Container tool to use (docker or podman)."),
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for PSETI testing.", callback=display_tree_callback)] = False
+) -> None:
     """
     PSETI Testing Suite.
     """
@@ -57,6 +112,21 @@ def main(
     ctx.obj.no_build = no_build
     ctx.obj.container_tool = tool
 
+@sw_app.callback()
+def sw_main(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for software tests.", callback=display_tree_callback)] = False
+) -> None:
+    """Software QA tests (Docker-based CI simulations)"""
+    pass
+
+@hw_app.callback()
+def hw_main(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for hardware tests.", callback=display_tree_callback)] = False
+) -> None:
+    """Hardware-in-the-Loop (HITL) physical lab tests"""
+    pass
 
 # ---------------------------------------------------------------------------
 # LINT Subcommands
@@ -66,9 +136,10 @@ def main(
 def lint_main(
     ctx: typer.Context,
     targets: Annotated[str, typer.Argument(help="Scope to lint: 'ruff', 'mypy', or 'all'")] = "all",
-):
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for linting.", callback=display_tree_callback)] = False
+) -> None:
     """Run linters [ruff/mypy args...]"""
-    if ctx.invoked_subcommand is not None:
+    if tree or ctx.invoked_subcommand is not None:
         return
     ok = asyncio.run(ctx.obj.run_suite("lint", target=targets, extra_args=ctx.args))
     if not ok:
@@ -80,35 +151,35 @@ def lint_main(
 # ---------------------------------------------------------------------------
 
 @sw_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_unit(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel jobs")):
+def sw_unit(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel jobs")) -> None:
     """Run unit tests [-j N] [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("unit", jobs=jobs, extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_integration(ctx: typer.Context):
+def sw_integration(ctx: typer.Context) -> None:
     """Run integration tests [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="structural", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_structural(ctx: typer.Context):
+def sw_structural(ctx: typer.Context) -> None:
     """Run structural/topology tests [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("structural", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_chaos(ctx: typer.Context):
+def sw_chaos(ctx: typer.Context) -> None:
     """Run chaos scenario tests [pytest args...]"""
     ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="all")
-def sw_all(ctx: typer.Context):
+def sw_all(ctx: typer.Context) -> None:
     """Run the full software testing suite (unit, structural, integration)"""
     suites = ["unit", "structural", "integration"]
     success = True
@@ -119,12 +190,12 @@ def sw_all(ctx: typer.Context):
         raise typer.Exit(code=1)
 
 @sw_app.command(name="build")
-def sw_build(ctx: typer.Context):
+def sw_build(ctx: typer.Context) -> None:
     """Rebuild all test images"""
     asyncio.run(ctx.obj.build_all())
 
 @sw_app.command(name="cleanup")
-def sw_cleanup(ctx: typer.Context):
+def sw_cleanup(ctx: typer.Context) -> None:
     """Tear down all test containers and volumes"""
     asyncio.run(ctx.obj.cleanup_all())
 
@@ -193,7 +264,7 @@ async def resolve_remote_socket_path(runner: TestRunner, ssh_args: str) -> str:
     return res.stdout.strip() if res.ok and res.stdout else "/run/podman/podman.sock"
 
 @hw_app.command(name="build")
-def hw_build(ctx: typer.Context):
+def hw_build(ctx: typer.Context) -> None:
     """Build required container images locally."""
     from rich.console import Console
     console = Console()
@@ -211,7 +282,7 @@ def hw_build(ctx: typer.Context):
 def hw_check_env(
     ctx: typer.Context, 
     min_gb: int = typer.Option(10, "--min-gb", help="Minimum required free space in GB.")
-):
+) -> None:
     """Verify environment, disk space, and container engine."""
     from rich.console import Console
     console = Console()
@@ -273,7 +344,7 @@ def hw_check_env(
     console.print(f"[green]Environment OK. {tool} is ready and space is sufficient.[/green]")
 
 @hw_app.command(name="deploy")
-def hw_deploy(ctx: typer.Context):
+def hw_deploy(ctx: typer.Context) -> None:
     """Initialize containers on head node and remote DAQ node."""
     from rich.console import Console
     console = Console()
@@ -304,7 +375,7 @@ def hw_deploy(ctx: typer.Context):
             asyncio.run(runner._run_cmd(daq_cmd, env=env))
 
 @hw_app.command(name="clean")
-def hw_clean(ctx: typer.Context):
+def hw_clean(ctx: typer.Context) -> None:
     """Tear down containers and wipe physical data directory."""
     from rich.console import Console
     console = Console()
@@ -328,10 +399,10 @@ def hw_clean(ctx: typer.Context):
             env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
             daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
             asyncio.run(runner._run_cmd(daq_down, env=env))
-    console.print(f"[yellow]Placeholder: Data wiping skipped.[/yellow]")
+    console.print("[yellow]Placeholder: Data wiping skipped.[/yellow]")
 
 @hw_app.command(name="run")
-def hw_run(ctx: typer.Context):
+def hw_run(ctx: typer.Context) -> None:
     """[Placeholder] Run the HW-SW pytest suite."""
     from rich.console import Console
     Console().print("[yellow]HW-SW test suite placeholder. Implementation pending.[/yellow]")
