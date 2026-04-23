@@ -429,7 +429,13 @@ HW_COMPOSE_FILE = "ci/docker-compose.hw-sw.yml"
 def build(ctx: typer.Context):
     """Build required container images locally."""
     runner: TestRunner = ctx.obj
-    cmd = f"{runner.container_tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode --profile daqnode build"
+    tool = runner.container_tool
+    
+    if tool == "podman":
+        print(C.dim("Ensuring local Podman socket is active..."))
+        asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
+    
+    cmd = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode --profile daqnode build"
     asyncio.run(runner._run_cmd(cmd))
 
 @test_hw_app.command()
@@ -437,8 +443,25 @@ def check_env(
     ctx: typer.Context, 
     min_gb: int = typer.Option(10, "--min-gb", help="Minimum required free space in GB.")
 ):
-    """Verify environment and disk space."""
-    print(C.dim(f"Checking {HW_DATA_DIR}..."))
+    """Verify environment, disk space, and container engine."""
+    runner: TestRunner = ctx.obj
+    tool = runner.container_tool
+    
+    print(C.dim(f"Checking container engine ({tool})..."))
+    # Check if tool is responsive
+    res = asyncio.run(runner._run_cmd(f"{tool} version", quiet=True))
+    if not res.ok:
+        print(C.red(f"Error: {tool} is not installed or responsive."))
+        raise typer.Exit(code=1)
+        
+    if tool == "podman":
+        # Check if socket is active (required for compose)
+        res = asyncio.run(runner._run_cmd("systemctl --user is-active podman.socket", quiet=True))
+        if not res.ok:
+            print(C.yellow(f"Warning: podman.socket is not active. Attempting to start..."))
+            asyncio.run(runner._run_cmd("systemctl --user start podman.socket"))
+
+    print(C.dim(f"Checking storage {HW_DATA_DIR}..."))
     if not os.path.exists(HW_DATA_DIR):
         print(C.red(f"Error: {HW_DATA_DIR} does not exist."))
         raise typer.Exit(code=1)
@@ -449,32 +472,44 @@ def check_env(
         print(C.red(f"Error: Not enough disk space. {free_gb:.1f}GB free, {min_gb}GB required."))
         raise typer.Exit(code=1)
     
-    print(C.green(f"Environment OK. {free_gb:.1f}GB free space available."))
+    print(C.green(f"Environment OK. {tool} is ready and {free_gb:.1f}GB space available."))
 
 @test_hw_app.command()
 def deploy(ctx: typer.Context):
     """Initialize containers on head node and remote DAQ node."""
     runner: TestRunner = ctx.obj
     tool = runner.container_tool
-    remote_host_var = "DOCKER_HOST" if tool == "docker" else "CONTAINER_HOST"
     
     # Local Headnode
     print(C.cyan(f"Deploying Headnode profile locally with {tool}..."))
+    if tool == "podman":
+        asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
+    
     head_cmd = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode up -d"
     asyncio.run(runner._run_cmd(head_cmd))
     
     # Remote DAQnode
     print(C.cyan(f"Deploying DAQnode profile to {DAQ_NODE_IP} with {tool}..."))
     ssh_host = f"ssh://{DAQ_NODE_USER}@{DAQ_NODE_IP}"
-    daq_cmd = f"{remote_host_var}={ssh_host} {tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode up -d"
-    asyncio.run(runner._run_cmd(daq_cmd))
+    
+    # Ensure remote socket is active if using podman
+    if tool == "podman":
+        print(C.dim(f"Ensuring Podman socket is active on {DAQ_NODE_IP}..."))
+        remote_init = f"ssh {DAQ_NODE_USER}@{DAQ_NODE_IP} 'systemctl --user start podman.socket || true'"
+        asyncio.run(runner._run_cmd(remote_init))
+        # Set both variables for maximum compose compatibility
+        env = {"CONTAINER_HOST": ssh_host, "DOCKER_HOST": ssh_host}
+    else:
+        env = {"DOCKER_HOST": ssh_host}
+        
+    daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode up -d"
+    asyncio.run(runner._run_cmd(daq_cmd, env=env))
 
 @test_hw_app.command()
 def clean(ctx: typer.Context):
     """Tear down containers and wipe physical data directory."""
     runner: TestRunner = ctx.obj
     tool = runner.container_tool
-    remote_host_var = "DOCKER_HOST" if tool == "docker" else "CONTAINER_HOST"
     
     print(C.yellow(f"Tearing down Headnode profile with {tool}..."))
     head_down = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile headnode down -v"
@@ -482,8 +517,10 @@ def clean(ctx: typer.Context):
     
     print(C.yellow(f"Tearing down DAQnode profile on {DAQ_NODE_IP} with {tool}..."))
     ssh_host = f"ssh://{DAQ_NODE_USER}@{DAQ_NODE_IP}"
-    daq_down = f"{remote_host_var}={ssh_host} {tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode down -v"
-    asyncio.run(runner._run_cmd(daq_down))
+    env = {"CONTAINER_HOST": ssh_host, "DOCKER_HOST": ssh_host} if tool == "podman" else {"DOCKER_HOST": ssh_host}
+    
+    daq_down = f"{tool} compose -f {CONTROL_ROOT}/{HW_COMPOSE_FILE} --profile daqnode down -v"
+    asyncio.run(runner._run_cmd(daq_down, env=env))
     
     print(C.red(f"Wiping {HW_DATA_DIR} locally..."))
     if os.path.exists(HW_DATA_DIR):
