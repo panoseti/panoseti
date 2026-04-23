@@ -594,7 +594,7 @@ Tests numbered `HW-###`.
 - HITL runs nightly via cron on observatory head node.
 - Results posted to Loki + Slack channel.
 - Deploy tag `rN.N` requires 7 consecutive clean nightly HITL runs.
-- Mountain engineer can kick ad-hoc HITL via `pseti-cli hitl run --suite full`.
+- Mountain engineer can kick ad-hoc HITL via `pseti grpc status`.
 
 ---
 

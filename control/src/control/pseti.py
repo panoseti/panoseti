@@ -28,6 +28,7 @@ class PanoLazyGroup(typer.core.TyperGroup):
             "sw-test": ("sw_test", "app", "Software Quality Assurance & Testing Suite."),
             "hw-test": ("hw_test", "app", "Hardware-Software (HITL) tests."),
             "validate": ("control.config", "validate_app", "Configuration and topology validation tools."),
+            "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
         }
 
     def list_commands(self, ctx: click.Context) -> list[str]:
@@ -61,6 +62,12 @@ class PanoLazyGroup(typer.core.TyperGroup):
                 ci_path = str(Path(__file__).parent.parent.parent / "ci")
                 if ci_path not in sys.path:
                     sys.path.insert(0, ci_path)
+            
+            # Support dev environments where panoseti_grpc is adjacent
+            if name == "grpc":
+                grpc_path = str(Path(__file__).parent.parent.parent.parent / "grpc" / "src")
+                if Path(grpc_path).exists() and grpc_path not in sys.path:
+                    sys.path.insert(0, grpc_path)
             
             try:
                 mod = importlib.import_module(module_path)
