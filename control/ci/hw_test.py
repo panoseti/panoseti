@@ -64,10 +64,20 @@ def load_hitl_configs(env_cfg: EnvironmentConfig):
 def get_ssh_host(node) -> str:
     """Construct ssh:// URI for a node, handling port forwarding gateway."""
     if node.port_forwarding and node.port_forwarding.status:
-        # Use gateway IP and custom SSH port
         port = node.port_forwarding.port or 22
+        # Omit port 22 to avoid Docker Compose URI parsing bugs
+        if port == 22:
+            return f"ssh://{node.username}@{node.port_forwarding.gw_ip}"
         return f"ssh://{node.username}@{node.port_forwarding.gw_ip}:{port}"
     return f"ssh://{node.username}@{node.ip_addr}"
+
+def get_raw_ssh_args(ssh_host_uri: str) -> str:
+    """Convert a ssh:// URI into raw ssh command arguments (e.g., '-p port target')."""
+    uri = ssh_host_uri.replace("ssh://", "")
+    if ":" in uri:
+        target, port = uri.split(":")
+        return f"-p {port} {target}"
+    return uri
 
 @app.command(name="build")
 def hw_build(ctx: typer.Context):
@@ -131,9 +141,9 @@ def check_env(
         # Check if remote
         if str(node.ip_addr) != str(daq_cfg.head_node_ip_addr):
             # Remote SSH check
-            ssh_host = get_ssh_host(node).replace("ssh://", "") # Convert to standard ssh target
+            ssh_args = get_raw_ssh_args(get_ssh_host(node))
             # Use df to get free space in bytes
-            df_cmd = f"ssh {ssh_host} 'df -B1 --output=avail {node.data_dir} | tail -n 1'"
+            df_cmd = f"ssh {ssh_args} 'df -B1 --output=avail {node.data_dir} | tail -n 1'"
             res = asyncio.run(runner._run_cmd(df_cmd))
             if not res.ok:
                  console.print(f"[red]Error: Could not reach DAQnode {node.ip_addr} via SSH.[/red]")
@@ -175,8 +185,8 @@ def deploy(ctx: typer.Context):
         
         # Ensure remote socket is active if using podman
         if tool == "podman":
-            standard_ssh = ssh_host.replace("ssh://", "")
-            remote_init = f"ssh {standard_ssh} 'systemctl --user start podman.socket || true'"
+            ssh_args = get_raw_ssh_args(ssh_host)
+            remote_init = f"ssh {ssh_args} 'systemctl --user start podman.socket || true'"
             asyncio.run(runner._run_cmd(remote_init))
             env = {"CONTAINER_HOST": ssh_host, "DOCKER_HOST": ssh_host}
         else:
@@ -212,16 +222,18 @@ def clean(ctx: typer.Context):
         daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
         asyncio.run(runner._run_cmd(daq_down, env=env))
     
-    console.print(f"[red]Wiping Headnode data {daq_cfg.head_node_data_dir}...[/red]")
-    if os.path.exists(daq_cfg.head_node_data_dir):
-        asyncio.run(runner._run_cmd(f"sudo rm -rf {daq_cfg.head_node_data_dir}/*"))
+    # console.print(f"[red]Wiping Headnode data {daq_cfg.head_node_data_dir}...[/red]")
+    # if os.path.exists(daq_cfg.head_node_data_dir):
+    #     asyncio.run(runner._run_cmd(f"rm -rf {daq_cfg.head_node_data_dir}/*"))
+    console.print(f"[yellow]Placeholder: Headnode data wiping skipped for {daq_cfg.head_node_data_dir}[/yellow]")
     
     for node in daq_cfg.daq_nodes:
         if str(node.ip_addr) != str(daq_cfg.head_node_ip_addr):
-             standard_ssh = get_ssh_host(node).replace("ssh://", "")
-             console.print(f"[red]Wiping remote data on {node.ip_addr}: {node.data_dir}...[/red]")
-             wipe_remote = f"ssh {standard_ssh} 'sudo rm -rf {node.data_dir}/*'"
-             asyncio.run(runner._run_cmd(wipe_remote))
+             # ssh_args = get_raw_ssh_args(get_ssh_host(node))
+             # console.print(f"[red]Wiping remote data on {node.ip_addr}: {node.data_dir}...[/red]")
+             # wipe_remote = f"ssh {ssh_args} 'rm -rf {node.data_dir}/*'"
+             # asyncio.run(runner._run_cmd(wipe_remote))
+             console.print(f"[yellow]Placeholder: Remote data wiping skipped for {node.ip_addr}:{node.data_dir}[/yellow]")
 
 @app.command()
 def run(ctx: typer.Context):
