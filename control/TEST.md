@@ -3,7 +3,7 @@
 All tests live under `control/ci/` and run inside Docker via a single multi-stage `Dockerfile.ci` using `uv` for high-performance builds.
 
 **Current status:** 524 unit tests passing · integration suite: 65 tests passing
-
+ 
 ---
 
 ## Quick Start
