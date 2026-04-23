@@ -39,7 +39,7 @@ jobs:
       
       - name: Pre-build and Cache All Test Images
         run: |
-          docker buildx bake \
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --set *.cache-to=type=gha,mode=max,scope=pseti-ci
@@ -73,7 +73,7 @@ jobs:
       
       - name: Build and Load Test Runner
         run: |
-          docker buildx bake \
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.unit.yml \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load \
@@ -120,7 +120,7 @@ jobs:
 
       - name: Build and Load Integration Stack
         run: |
-          docker buildx bake \
+          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load
