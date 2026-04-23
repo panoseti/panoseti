@@ -73,7 +73,7 @@ def test_network_ping_sweep(runner, daq_config, obs_config):
                 assert f"{quabo_ip} is DOWN" in result.stdout
 
 def test_grpc_liveness(daq_config, network_config):
-    """Verify panoseti-server is responding on Head and DAQ nodes."""
+    """Verify pseti-grpc server is responding on Head and DAQ nodes."""
     # 1. Head Node Check
     head_ip = str(daq_config.head_node_ip_addr)
     head_port = 50051 # Default for headnode

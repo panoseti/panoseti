@@ -616,7 +616,7 @@ def validate_all(check_network: bool = False, debug: bool = False, graph: bool =
     all_passed = True
     validated_configs: dict[str, Any] = {}
 
-    console.print(Panel.fit("[bold cyan]Starting PANOSETI Configuration Validation[/bold cyan]"))
+    console.print(Panel.fit("[bold cyan]Starting PSETI Configuration Validation[/bold cyan]"))
 
     # 1. Tier 1: Strict File Validation (Batched)
     console.print("\n[bold cyan]Running Tier-1 File Syntax & Schema Checks...[/bold cyan]")

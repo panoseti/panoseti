@@ -20,7 +20,7 @@ from control.utils.pydantic_config_models import ObsConfigValidator, WpsConfig
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
-logger = get_logger("PANOSETI.Power", log_dir=str(log_dir), grpc_enabled=True)
+logger = get_logger("PSETI.Power", log_dir=str(log_dir), grpc_enabled=True)
 
 
 # turn power on or off

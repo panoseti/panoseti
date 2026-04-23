@@ -23,7 +23,7 @@ def ut_date_str() -> str:
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
-logger = get_logger("PANOSETI.Status", log_dir=str(log_dir), grpc_enabled=True)
+logger = get_logger("PSETI.Status", log_dir=str(log_dir), grpc_enabled=True)
 
 # ---------- main logic ----------
 def status() -> None:
@@ -87,7 +87,7 @@ def status() -> None:
             logger.info(f'         modules: {vol["modules"]}')
 
 
-app = typer.Typer(help="Show the status of a PANOSETI recording run.", no_args_is_help=False)
+app = typer.Typer(help="Show the status of a PSETI recording run.", no_args_is_help=False)
 
 @app.command()
 def main() -> None:

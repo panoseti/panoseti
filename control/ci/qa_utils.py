@@ -144,7 +144,7 @@ class TestRunner:
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
 
-    async def run_suite(self, suite_name: str, jobs: int | None = None, extra_args: list[str] | None = None) -> bool:
+    async def run_suite(self, suite_name: str, jobs: int | None = None, target: str | None = None, extra_args: list[str] | None = None) -> bool:
         if suite_name not in self.cfg.suites:
             from rich.console import Console
             Console().print(f"[red]Unknown suite: {suite_name}[/red]")
@@ -161,7 +161,7 @@ class TestRunner:
             if suite.type == "test":
                 results = await self._run_test_suite(suite, project_name, jobs, extra_args)
             elif suite.type == "lint":
-                results = await self._run_lint_suite(suite, project_name, extra_args)
+                results = await self._run_lint_suite(suite, project_name, target, extra_args)
                 
         finally:
             if suite.requires_docker and not self.no_teardown:
@@ -267,12 +267,12 @@ class TestRunner:
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
         return [res]
 
-    async def _run_lint_suite(self, suite: SuiteConfig, project_name: str, extra_args: list[str] | None) -> list[Result]:
+    async def _run_lint_suite(self, suite: SuiteConfig, project_name: str, target: str | None, extra_args: list[str] | None) -> list[Result]:
         self._header(f"LINTING: {suite.name.upper()}")
-        
+
         extra_str = " ".join(extra_args or [])
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
-        
+
         compose_file = suite.compose_file
         if not compose_file and suite.environment:
             env_cfg = self.cfg.environments.get(suite.environment)
@@ -280,15 +280,23 @@ class TestRunner:
                 compose_file = env_cfg.compose_file
 
         lock = asyncio.Lock()
-        
+
         async def run_task(name: str, task_cmd: str):
             cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
             tag_text = f"[{name}] "
             return await self._stream(f"lint.{name}", cmd, lock, tag=tag_text, env={"COMPOSE_PROJECT_NAME": project_name})
 
-        results = await asyncio.gather(*[run_task(n, c) for n, c in suite.tasks.items()])
-        return list(results)
+        # Filter tasks if target is specified
+        filtered_tasks = suite.tasks
+        if target and target != "all":
+            filtered_tasks = {n: c for n, c in suite.tasks.items() if target in n}
+            if not filtered_tasks:
+                 from rich.console import Console
+                 Console().print(f"[yellow]No lint tasks matching '{target}' found.[/yellow]")
+                 return []
 
+        results = await asyncio.gather(*[run_task(n, c) for n, c in filtered_tasks.items()])
+        return list(results)
     async def _run_cmd(self, cmd: str, env: dict[str, str] | None = None, quiet: bool = False, capture: bool = False) -> Result:
         start = time.monotonic()
         full_env = os.environ.copy()

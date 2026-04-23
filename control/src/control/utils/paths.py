@@ -7,7 +7,7 @@ import pathlib
 
 class PanoPaths:
     """
-    Central utility for PANOSETI directory resolution.
+    Central utility for PSETI directory resolution.
     Supports environment variable overrides for custom workspace layouts.
     
     Overrideable Variables:

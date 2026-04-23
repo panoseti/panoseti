@@ -21,7 +21,7 @@ from control.utils.pydantic_config_models import NetworkConfigValidator, ObsConf
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
-logger = get_logger("PANOSETI.GetUIDs", log_dir=str(log_dir), grpc_enabled=True)
+logger = get_logger("PSETI.GetUIDs", log_dir=str(log_dir), grpc_enabled=True)
 
 # return quabo UID as hex string
 #

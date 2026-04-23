@@ -46,7 +46,7 @@ firmware_gold = 'quabo_GOLD_23BD5DA4.bin'
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
-logger = get_logger("PANOSETI.Config", log_dir=str(log_dir), grpc_enabled=True)
+logger = get_logger("PSETI.Config", log_dir=str(log_dir), grpc_enabled=True)
 
 def ask_use_default_calibration(ip_addr: str) -> bool:
     while True:

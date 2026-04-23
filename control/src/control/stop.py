@@ -57,7 +57,7 @@ from control.utils.util import (
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
-logger = get_logger("PANOSETI.Stop", log_dir=str(log_dir), grpc_enabled=True)
+logger = get_logger("PSETI.Stop", log_dir=str(log_dir), grpc_enabled=True)
 
 class StopTransaction:
     """
@@ -565,7 +565,7 @@ async def stop_run(
 
 
 
-app = typer.Typer(help="Stop and finish a PANOSETI recording run.", no_args_is_help=False)
+app = typer.Typer(help="Stop and finish a PSETI recording run.", no_args_is_help=False)
 
 @app.command()
 def main(

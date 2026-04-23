@@ -1031,7 +1031,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.8"
+version = "0.4.9"
 source = { editable = "../grpc" }
 dependencies = [
     { name = "anyio" },
@@ -1052,6 +1052,7 @@ dependencies = [
     { name = "redis" },
     { name = "requests" },
     { name = "rich" },
+    { name = "typer" },
     { name = "wheel" },
 ]
 
@@ -1085,6 +1086,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15" },
     { name = "sphinx", marker = "extra == 'docs'" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'" },
+    { name = "typer" },
     { name = "types-protobuf", marker = "extra == 'dev'" },
     { name = "wheel" },
 ]

@@ -63,7 +63,7 @@ services:
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
     command: >
-      /bin/sh -c "panoseti-server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
+      /bin/sh -c "pseti-grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     restart: always
@@ -96,5 +96,5 @@ services:
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
-    command: "panoseti-server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
+    command: "pseti-grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
     restart: always

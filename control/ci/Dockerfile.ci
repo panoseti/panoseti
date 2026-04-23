@@ -86,4 +86,4 @@ WORKDIR /app
 COPY control/ .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
-CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]
+CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec pseti-grpc server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]

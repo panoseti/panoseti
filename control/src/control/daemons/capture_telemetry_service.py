@@ -2,7 +2,7 @@
 """
 capture_telemetry_service.py — Headnode Telemetry gRPC daemon.
 
-Runs the Telemetry gRPC service via the unified panoseti-server framework.
+Runs the Telemetry gRPC service via the unified pseti-grpc server framework.
 DAQ nodes configured with grpc_logging=true forward their log records here;
 the Telemetry service batches them into Redis (logs:ingress), from which
 storeLoki.py ships them to Loki.

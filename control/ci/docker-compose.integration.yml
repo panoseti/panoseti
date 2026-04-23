@@ -121,7 +121,7 @@ services:
       influxdb:
         condition: service_healthy
     command: >
-      /bin/sh -c "panoseti-server --config /app/ci/integration/configs/grpc/headnode/server.toml &
+      /bin/sh -c "pseti-grpc server --config /app/ci/integration/configs/grpc/headnode/server.toml &
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     healthcheck:

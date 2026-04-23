@@ -64,7 +64,7 @@ from control.utils.run_state import LockError, NodeReceipt, RunStateManager, Val
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger(
-    "PANOSETI.Start",
+    "PSETI.Start",
     log_dir=log_dir,
     grpc_enabled=True,
     reset=True
@@ -319,7 +319,7 @@ def start_data_flow(
         daq_config: DAQ node and head node networking details.
         network_config: Network routing and port forwarding settings.
     """
-    # logger = logging.getLogger('PANOSETI.Start.start_data_flow')
+    # logger = logging.getLogger('PSETI.Start.start_data_flow')
     daq_params = get_daq_params(data_config)
     for dome in quabo_uids.domes:
         for module in dome.modules:
@@ -382,7 +382,7 @@ def make_run_dirs(
       in-memory Pydantic models back to JSON files in the run directory.
     - Ensures the run directory is a faithful record of the actual run parameters.
     """
-    # logger = logging.getLogger('PANOSETI.Start')
+    # logger = logging.getLogger('PSETI.Start')
     my_ip = util.local_ip()
     run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
     os.makedirs(run_dir, exist_ok=True)
@@ -476,7 +476,7 @@ async def start_recording(
     - Upgrades to START_SUCCESS after heartbeat.
     - Raises Exception on ANY failure or cancellation to trigger the parent rollback ladder.
     """
-    # logger = logging.getLogger('PANOSETI.Start.start_recording')
+    # logger = logging.getLogger('PSETI.Start.start_recording')
     loop = asyncio.get_running_loop()
 
     # 1. Start local daemons
@@ -905,7 +905,7 @@ async def start_run(
     return run_name if getattr(tx, 'success', False) else None
 
 
-app = typer.Typer(help="Start a PANOSETI recording run.", no_args_is_help=False)
+app = typer.Typer(help="Start a PSETI recording run.", no_args_is_help=False)
 
 @app.command()
 def main(

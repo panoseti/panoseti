@@ -24,11 +24,12 @@ class PanoLazyGroup(typer.core.TyperGroup):
             "get-uids": ("control.get_uids", "app", "Scan and record Quabo hardware UIDs."),
             "config": ("control.config", "app", "Configure observatory hardware and daemons."),
             "power": ("control.power", "app", "Control Quabo power via WPS."),
-            "path": ("control.tools.paths_cli", "app", "Manage PANOSETI directory paths."),
-            "sw-test": ("sw_test", "app", "Software Quality Assurance & Testing Suite."),
+            "path": ("control.tools.paths_cli", "app", "Manage transient directory files (init, clean)."),
+            "sw-test": ("sw_test", "app", "PSETI Quality Assurance & Testing Suite."),
             "hw-test": ("hw_test", "app", "Hardware-Software (HITL) tests."),
             "validate": ("control.config", "validate_app", "Configuration and topology validation tools."),
             "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
+            "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
         }
 
     def list_commands(self, ctx: click.Context) -> list[str]:
@@ -104,7 +105,7 @@ class PanoLazyGroup(typer.core.TyperGroup):
 
 app = typer.Typer(
     cls=PanoLazyGroup,
-    help="PANOSETI Observatory Control CLI",
+    help="PSETI Observatory Control CLI",
     no_args_is_help=True,
     rich_markup_mode="rich",
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -112,7 +113,7 @@ app = typer.Typer(
 
 @app.callback()
 def main_callback():
-    """PANOSETI Control Plane."""
+    """PSETI Control Plane."""
     pass
 
 if __name__ == "__main__":

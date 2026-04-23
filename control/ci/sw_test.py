@@ -1,10 +1,12 @@
 import asyncio
+from typing import Annotated
 
 import typer
 from qa_utils import QA_TOML_PATH, TestRunner
 
 app = typer.Typer(
-    help="PANOSETI Quality Assurance & Testing Suite",
+    help="PSETI Quality Assurance & Testing Suite",
+
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
@@ -22,9 +24,12 @@ def main(
     ctx.obj.container_tool = tool
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def lint(ctx: typer.Context):
+def lint(
+    ctx: typer.Context,
+    targets: Annotated[str, typer.Argument(help="Scope to lint: 'ruff', 'mypy', or 'all'")] = "all",
+):
     """Run linters [ruff/mypy args...]"""
-    ok = asyncio.run(ctx.obj.run_suite("lint", extra_args=ctx.args))
+    ok = asyncio.run(ctx.obj.run_suite("lint", target=targets, extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
