@@ -14,7 +14,8 @@ on:
 jobs:
   # 1. Warm up the base cache.
   prepare-base:
-    runs-on: ubuntu-24.04
+    # runs-on: ubuntu-24.04
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
