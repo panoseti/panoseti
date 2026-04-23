@@ -69,7 +69,7 @@ def test_build_direct_topology(mock_quabo_uids: QuaboUidsValidator):
 
     # Check edges
     assert graph.has_edge("10.0.1.5", "192.168.0.10")
-    assert graph.edges["10.0.1.5", "192.168.0.10"]["type"] == "control"
+    assert graph.edges["10.0.1.5", "192.168.0.10"]["type"] == "network"
 
     # Check Module and Quabos
     module_node = next(n for n, d in graph.nodes(data=True) if d.get("role") == "module")

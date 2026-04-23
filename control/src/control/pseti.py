@@ -14,20 +14,20 @@ class PanoLazyGroup(typer.core.TyperGroup):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Mapping of command/group name to (module_path, optional_attr_name)
+        # Mapping of command/group name to (module_path, optional_attr_name, help_string)
         self.lazy_mapping = {
-            "start": "control.start",
-            "stop": "control.stop",
-            "status": "control.status",
-            "session-start": "control.session_start",
-            "session-stop": "control.session_stop",
-            "get-uids": "control.get_uids",
-            "config": "control.config",
-            "power": "control.power",
-            "path": "control.paths_cli",
-            "sw-test": "qa",  # Software QA suite (Unit, Integration, Chaos)
-            "hw-test": ("qa", "test_hw_app"), # Hardware-Software HITL tests
-            "validate": ("control.config", "validate_app"), # Sub-app within config.py
+            "start": ("control.start", "app", "Start a new recording run."),
+            "stop": ("control.stop", "app", "Stop and finish the current recording run."),
+            "status": ("control.status", "app", "Show control plane status."),
+            "session-start": ("control.session_start", "app", "Initialize hardware/power for an observing session."),
+            "session-stop": ("control.session_stop", "app", "Gracefully terminate a session."),
+            "get-uids": ("control.get_uids", "app", "Scan and record Quabo hardware UIDs."),
+            "config": ("control.config", "app", "Configure observatory hardware and daemons."),
+            "power": ("control.power", "app", "Control Quabo power via WPS."),
+            "path": ("control.paths_cli", "app", "Manage PANOSETI directory paths."),
+            "sw-test": ("sw_test", "app", "Software Quality Assurance & Testing Suite."),
+            "hw-test": ("hw_test", "app", "Hardware-Software (HITL) tests."),
+            "validate": ("control.config", "validate_app", "Configuration and topology validation tools."),
         }
 
     def list_commands(self, ctx: click.Context) -> list[str]:
@@ -42,12 +42,18 @@ class PanoLazyGroup(typer.core.TyperGroup):
         
         # 2. Try to get lazy command
         if name in self.lazy_mapping:
-            entry = self.lazy_mapping[name]
-            if isinstance(entry, tuple):
-                module_path, attr_name = entry
-            else:
-                module_path, attr_name = entry, "app"
+            module_path, attr_name, help_str = self.lazy_mapping[name]
             
+            # Optimization: If we are likely just listing commands for the parent's --help,
+            # return a dummy command with the help string to avoid loading the module.
+            # We load the module only if:
+            # - We are explicitly asked for help for THIS command (pseti cmd --help)
+            # - We are executing THIS command (pseti cmd ...)
+            # - Click is in resilient parsing mode (completion)
+            is_targeting_this = (name in sys.argv)
+            if not is_targeting_this and not getattr(ctx, "resilient_parsing", False):
+                return click.Command(name, help=help_str)
+
             # Special handling for QA suites which live in control/ci/
             if name in ["sw-test", "hw-test"]:
                 ci_path = str(Path(__file__).parent.parent.parent / "ci")
@@ -77,6 +83,9 @@ class PanoLazyGroup(typer.core.TyperGroup):
                             return actual_cmd
                 
                 click_cmd.name = name
+                # Ensure the help string matches our mapping if not provided by the command
+                if not click_cmd.help:
+                    click_cmd.help = help_str
                 return click_cmd
             except Exception as e:
                 # We don't want to crash the whole CLI if one module is broken

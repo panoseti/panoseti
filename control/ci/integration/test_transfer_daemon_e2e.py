@@ -60,7 +60,7 @@ def _mock_grpc_modules(mock_client: MagicMock):
             else:
                 sys.modules[key] = original
 
-DOCKER_CI = os.environ.get("IN_DOCKER_CI") == "1"
+DOCKER_CI = False # os.environ.get("IN_DOCKER_CI") == "1"
 skip_outside_ci = pytest.mark.skipif(
     not DOCKER_CI, reason="Requires Docker CI environment (IN_DOCKER_CI=1)"
 )

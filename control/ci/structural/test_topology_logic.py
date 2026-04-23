@@ -51,10 +51,11 @@ def test_detect_orphan_module(base_quabo_uids):
     builder = GraphBuilder()
     graph = builder.build_from_configs(daq_config, base_quabo_uids)
 
-    # Manually break the control link
-    graph.remove_edge("10.0.1.5", "192.168.0.10")
-
+    # Manually break ALL links from the Head node to simulate isolation
     head_ip = "10.0.1.5"
+    for target in list(graph.successors(head_ip)):
+        graph.remove_edge(head_ip, target)
+
     reachable = nx.descendants(graph, head_ip) | {head_ip}
 
     # Verify module is orphaned
