@@ -19,11 +19,11 @@ from rich.table import Table
 
 from control.utils import util
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DataConfigValidator,
-    FirmwareConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaqConfig,
+    DataConfig,
+    FirmwareConfig,
+    NetworkConfig,
+    ObsConfig,
 )
 
 console = Console()
@@ -65,19 +65,19 @@ class ValidationReport:
 T = TypeVar("T", bound=BaseModel)
 
 def validate_all(
-    obs_config: dict[str, Any] | ObsConfigValidator,
-    data_config: dict[str, Any] | DataConfigValidator,
-    daq_config: dict[str, Any] | DaqConfigValidator | None = None,
-    network_config: dict[str, Any] | NetworkConfigValidator | None = None,
-    firmware_config: dict[str, Any] | FirmwareConfigValidator | None = None,
+    obs_config: dict[str, Any] | ObsConfig,
+    data_config: dict[str, Any] | DataConfig,
+    daq_config: dict[str, Any] | DaqConfig | None = None,
+    network_config: dict[str, Any] | NetworkConfig | None = None,
+    firmware_config: dict[str, Any] | FirmwareConfig | None = None,
 ) -> bool:
     """Unified entry point for global validation."""
     from control.utils.pydantic_config_models import (
-        DaqConfigValidator,
-        DataConfigValidator,
-        FirmwareConfigValidator,
-        NetworkConfigValidator,
-        ObsConfigValidator,
+        DaqConfig,
+        DataConfig,
+        FirmwareConfig,
+        NetworkConfig,
+        ObsConfig,
     )
 
     def _ensure_model(cfg: dict[str, Any] | T | None, model: type[T]) -> T | None:
@@ -88,11 +88,11 @@ def validate_all(
         return model(**cast(dict[str, Any], cfg))
 
     validated_configs: dict[str, BaseModel | None] = {
-        'obs': _ensure_model(obs_config, ObsConfigValidator),
-        'data': _ensure_model(data_config, DataConfigValidator),
-        'daq': _ensure_model(daq_config, DaqConfigValidator),
-        'network': _ensure_model(network_config, NetworkConfigValidator),
-        'firmware': _ensure_model(firmware_config, FirmwareConfigValidator),
+        'obs': _ensure_model(obs_config, ObsConfig),
+        'data': _ensure_model(data_config, DataConfig),
+        'daq': _ensure_model(daq_config, DaqConfig),
+        'network': _ensure_model(network_config, NetworkConfig),
+        'firmware': _ensure_model(firmware_config, FirmwareConfig),
     }
 
     validator = GlobalConfigValidator(validated_configs)
@@ -117,11 +117,11 @@ class GlobalConfigValidator:
             validated_configs: Dictionary containing Pydantic model instances 
                                for each configuration type.
         """
-        self.obs_conf = cast(ObsConfigValidator, validated_configs.get('obs'))
-        self.data_conf = cast(DataConfigValidator, validated_configs.get('data'))
-        self.daq_conf = cast(DaqConfigValidator, validated_configs.get('daq'))
-        self.net_conf = cast(NetworkConfigValidator, validated_configs.get('network'))
-        self.firmware_conf = cast(FirmwareConfigValidator, validated_configs.get('firmware'))
+        self.obs_conf = cast(ObsConfig, validated_configs.get('obs'))
+        self.data_conf = cast(DataConfig, validated_configs.get('data'))
+        self.daq_conf = cast(DaqConfig, validated_configs.get('daq'))
+        self.net_conf = cast(NetworkConfig, validated_configs.get('network'))
+        self.firmware_conf = cast(FirmwareConfig, validated_configs.get('firmware'))
         self.report = ValidationReport()
         util.attach_daq_config(self.daq_conf, self.net_conf)
 

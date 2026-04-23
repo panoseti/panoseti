@@ -404,7 +404,7 @@ def test_SC047_movie_mode_with_trigger_in_same_state_is_rejected() -> None:
         },
     }
     with pytest.raises(Exception): # noqa: B017
-        m.DataConfigValidator(**typing.cast(Any, cfg))
+        m.DataConfig(**typing.cast(Any, cfg))
 
 
 # ── SC-048 / SC-048b: Interleave state references undefined/null config key ───
@@ -415,7 +415,7 @@ def test_SC048_interleave_undefined_key_error_names_the_key() -> None:
     must produce a helpful error that names the missing key, not a bare KeyError.
 
     FAILS RED TODAY: the Pydantic model raises a bare KeyError on missing key.
-    Fix: add explicit cross-reference validation in DataConfigValidator.
+    Fix: add explicit cross-reference validation in DataConfig.
     """
     try:
         from control.utils import pydantic_config_models as m
@@ -436,7 +436,7 @@ def test_SC048_interleave_undefined_key_error_names_the_key() -> None:
         },
     }
     with pytest.raises(Exception) as exc_info:
-        m.DataConfigValidator(**typing.cast(Any, cfg))
+        m.DataConfig(**typing.cast(Any, cfg))
     # The error MUST name the missing key
     assert "image_MISSING" in str(exc_info.value) or "not found" in str(exc_info.value).lower(), (
         "FAIL (SC-048): Validation error for missing interleave key does not name "
@@ -469,7 +469,7 @@ def test_SC048b_interleave_both_configs_null_rejected() -> None:
         },
     }
     with pytest.raises(Exception): # noqa: B017
-        m.DataConfigValidator(**typing.cast(Any, cfg))
+        m.DataConfig(**typing.cast(Any, cfg))
 
 
 # ── SC-049: max_file_size_mb rollover during interleave transition ────────────
@@ -516,8 +516,8 @@ def test_SC050_quabo_slot0_absent_empty_uid_handled() -> None:
     }
     # The config loader must not raise on an empty UID
     try:
-        from control.utils.pydantic_config_models import QuaboUidsValidator
-        validated = QuaboUidsValidator(**uids)
+        from control.utils.pydantic_config_models import QuaboUids
+        validated = QuaboUids(**uids)
         result = config_file.get_module_quabo_uids(validated)
         # An empty UID must appear as empty string or None, not cause a crash
         first_module: list[str] = next(iter(result.values()), [])

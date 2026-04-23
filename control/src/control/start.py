@@ -49,12 +49,12 @@ from control.tools.sw_info import get_sw_info
 from control.utils import config_file, file_xfer, pff, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DaqNodeValidator,
-    DataConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
-    QuaboUidsValidator,
+    DaqConfig,
+    DaqNode,
+    DataConfig,
+    NetworkConfig,
+    ObsConfig,
+    QuaboUids,
     RunStateLedger,
 )
 from control.utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
@@ -83,9 +83,9 @@ class StartTransaction:
         self, 
         state_mgr: RunStateManager, 
         run_name: str, 
-        daq_config: DaqConfigValidator, 
-        quabo_uids: QuaboUidsValidator, 
-        network_config: NetworkConfigValidator
+        daq_config: DaqConfig, 
+        quabo_uids: QuaboUids, 
+        network_config: NetworkConfig
     ) -> None:
         self.state_mgr = state_mgr
         self.run_name = run_name
@@ -256,7 +256,7 @@ def check_img_params(image_8bit: bool, image_usec: int) -> None:
 
 # parse the data config file to get DAQ params for quabos
 #
-def get_daq_params(data_config: DataConfigValidator) -> quabo_driver.DAQ_PARAMS:
+def get_daq_params(data_config: DataConfig) -> quabo_driver.DAQ_PARAMS:
     """Translate the high-level data configuration into Quabo-level DAQ parameters.
     
     Parses image mode settings (integration time, sample size), pulse-height 
@@ -300,10 +300,10 @@ def get_daq_params(data_config: DataConfigValidator) -> quabo_driver.DAQ_PARAMS:
     return daq_params
 
 def start_data_flow(
-    quabo_uids: QuaboUidsValidator,
-    data_config: DataConfigValidator,
-    daq_config: DaqConfigValidator,
-    network_config: NetworkConfigValidator
+    quabo_uids: QuaboUids,
+    data_config: DataConfig,
+    daq_config: DaqConfig,
+    network_config: NetworkConfig
 ) -> None:
     """Initialize data flow from Quabos by configuring networking and modes.
     
@@ -369,11 +369,11 @@ def start_data_flow(
 
 def make_run_dirs(
     run_name: str,
-    obs_config: ObsConfigValidator,
-    daq_config: DaqConfigValidator,
-    quabo_uids: QuaboUidsValidator,
-    data_config: DataConfigValidator,
-    network_config: NetworkConfigValidator
+    obs_config: ObsConfig,
+    daq_config: DaqConfig,
+    quabo_uids: QuaboUids,
+    data_config: DataConfig,
+    network_config: NetworkConfig
 ) -> None:
     """Create hierarchical run directories and snapshot configuration files.
     
@@ -414,7 +414,7 @@ def make_run_dirs(
     # 2. make module and run directories on DAQ nodes
     for node in daq_config.daq_nodes:
         # Check if this node has any modules assigned
-        # DaqNodeValidator has module_ids
+        # DaqNode has module_ids
         if not node.module_ids:
             continue
         ip_addr = str(node.ip_addr)
@@ -456,9 +456,9 @@ def make_run_dirs(
 
 
 async def start_recording(
-    obs_config: ObsConfigValidator,
-    data_config: DataConfigValidator,
-    daq_config: DaqConfigValidator,
+    obs_config: ObsConfig,
+    data_config: DataConfig,
+    daq_config: DaqConfig,
     run_name: str,
     no_hv: bool,
     state_mgr: RunStateManager,
@@ -498,7 +498,7 @@ async def start_recording(
                 data_dir=node_validator.data_dir
             ))
 
-    async def start_node(node_validator: DaqNodeValidator) -> None:
+    async def start_node(node_validator: DaqNode) -> None:
         if not node_validator.module_ids:
             return
         
@@ -569,7 +569,7 @@ async def start_recording(
     # 3. Liveness Probe (Heartbeat) with retry loop
     logger.info("Waiting for Hashpipe stabilization heartbeat...")
     
-    async def probe_node(node_validator: DaqNodeValidator) -> None:
+    async def probe_node(node_validator: DaqNode) -> None:
         if not node_validator.module_ids:
             return
         
@@ -635,7 +635,7 @@ async def start_recording(
             if not n.module_ids:
                 continue
             
-            async def verify_liveness(node_validator: DaqNodeValidator) -> None:
+            async def verify_liveness(node_validator: DaqNode) -> None:
                 grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
                 client = DaqControlClient(host=grpc_host, port=grpc_port)
                 
@@ -664,8 +664,8 @@ async def start_recording(
 
 
 async def _check_quabo_reachability(
-    quabo_uids: QuaboUidsValidator,
-    network_config: NetworkConfigValidator,
+    quabo_uids: QuaboUids,
+    network_config: NetworkConfig,
     lenient: bool = False
 ) -> None:
     """Verify that all configured Quabos are reachable on the network."""
@@ -702,11 +702,11 @@ async def _check_quabo_reachability(
 
 
 async def start_run(
-    obs_config: ObsConfigValidator,
-    daq_config: DaqConfigValidator,
-    quabo_uids: QuaboUidsValidator,
-    data_config: DataConfigValidator,
-    network_config: NetworkConfigValidator,
+    obs_config: ObsConfig,
+    daq_config: DaqConfig,
+    quabo_uids: QuaboUids,
+    data_config: DataConfig,
+    network_config: NetworkConfig,
     no_hv: bool,
     no_redis: bool,
     no_data: bool,
@@ -716,11 +716,11 @@ async def start_run(
     """Main transactional run coordinator.
 
     Args:
-        obs_config (ObsConfigValidator): _description_
-        daq_config (DaqConfigValidator): _description_
-        quabo_uids (QuaboUidsValidator): _description_
-        data_config (DataConfigValidator): _description_
-        network_config (NetworkConfigValidator): _description_
+        obs_config (ObsConfig): _description_
+        daq_config (DaqConfig): _description_
+        quabo_uids (QuaboUids): _description_
+        data_config (DataConfig): _description_
+        network_config (NetworkConfig): _description_
         no_hv (bool): _description_
         no_redis (bool): _description_
         no_data (bool): _description_

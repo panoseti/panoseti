@@ -15,10 +15,10 @@ import numpy as np
 
 from control.tools import show_pff
 from control.utils import config_file, pff
-from control.utils.pydantic_config_models import QuaboUidsValidator
+from control.utils.pydantic_config_models import QuaboUids
 
 
-def main(quabo_uids: QuaboUidsValidator, module_id: int, dp: str) -> None:
+def main(quabo_uids: QuaboUids, module_id: int, dp: str) -> None:
     """Monitor and display real-time video frames from an active observation.
     
     Creates a remote process on the assigned DAQ node via SSH to stream 

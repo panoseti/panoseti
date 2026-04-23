@@ -14,35 +14,35 @@ import pytest
 from control.topology.fleet import generate_fleet_configs
 from control.topology.graph_builder import GraphBuilder
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DaqNodeValidator,
+    DaqConfig,
+    DaqNode,
     PortForwarding,
     QuaboUidDome,
     QuaboUidEntry,
     QuaboUidModule,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 
 @pytest.fixture
-def base_quabo_uids() -> QuaboUidsValidator:
+def base_quabo_uids() -> QuaboUids:
     module = QuaboUidModule(
         ip_addr=IPv4Address("192.168.3.248"),
         quabos=[QuaboUidEntry(uid=f"uid_{i}") for i in range(4)],
         id=254,
     )
-    return QuaboUidsValidator(domes=[QuaboUidDome(num=0, modules=[module])])
+    return QuaboUids(domes=[QuaboUidDome(num=0, modules=[module])])
 
 
 def test_detect_orphan_module(base_quabo_uids):
     """If a DAQ node exists but has no edge from Head, its modules are orphans."""
-    daq_node = DaqNodeValidator(
+    daq_node = DaqNode(
         username="root",
         data_dir="/data",
         ip_addr=IPv4Address("192.168.0.10"),
         module_ids=[254],
     )
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=IPv4Address("10.0.1.5"),
         daq_nodes=[daq_node],
@@ -77,17 +77,17 @@ def test_gateway_bottleneck_detection(base_quabo_uids):
         quabos=[QuaboUidEntry(uid=f"u2_{i}") for i in range(4)],
         id=202,
     )
-    uids = QuaboUidsValidator(domes=[QuaboUidDome(num=0, modules=[m1, m2])])
+    uids = QuaboUids(domes=[QuaboUidDome(num=0, modules=[m1, m2])])
 
     pf = PortForwarding(status=True, gw_ip=IPv4Address("10.0.1.10"))
-    daq_node = DaqNodeValidator(
+    daq_node = DaqNode(
         username="root",
         data_dir="/data",
         ip_addr=IPv4Address("192.168.0.10"),
         module_ids=[201, 202],
         port_forwarding=pf,
     )
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=IPv4Address("10.0.1.5"),
         daq_nodes=[daq_node],
@@ -150,13 +150,13 @@ def test_bottleneck_with_module_limit():
 
 def test_control_loop_detection(base_quabo_uids):
     """Verify that we can detect non-DAG structures."""
-    daq_node = DaqNodeValidator(
+    daq_node = DaqNode(
         username="root",
         data_dir="/data",
         ip_addr=IPv4Address("192.168.0.10"),
         module_ids=[254],
     )
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=IPv4Address("10.0.1.5"),
         daq_nodes=[daq_node],

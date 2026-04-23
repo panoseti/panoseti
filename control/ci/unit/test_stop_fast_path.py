@@ -32,9 +32,9 @@ import pytest
 
 import control.stop as stop
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    NetworkConfigValidator,
-    QuaboUidsValidator,
+    DaqConfig,
+    NetworkConfig,
+    QuaboUids,
     RunStateLedger,
 )
 from control.utils.run_state import RunStateManager
@@ -52,12 +52,12 @@ FAST_PATH_TIMEOUT_SECS = 5.0
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def daq_config(tmp_path) -> DaqConfigValidator:
+def daq_config(tmp_path) -> DaqConfig:
     """
-    Minimal DaqConfigValidator whose data_dir points to tmp_path so the run_dir
+    Minimal DaqConfig whose data_dir points to tmp_path so the run_dir
     computed inside StopTransaction matches the one we create on disk.
     """
-    return DaqConfigValidator(
+    return DaqConfig(
         head_node_data_dir=str(tmp_path),
         head_node_ip_addr="127.0.0.1",
         head_node_container=True,
@@ -74,13 +74,13 @@ def daq_config(tmp_path) -> DaqConfigValidator:
 
 
 @pytest.fixture
-def network_config() -> NetworkConfigValidator:
-    return NetworkConfigValidator()
+def network_config() -> NetworkConfig:
+    return NetworkConfig()
 
 
 @pytest.fixture
-def quabo_uids() -> QuaboUidsValidator:
-    return QuaboUidsValidator(domes=[])
+def quabo_uids() -> QuaboUids:
+    return QuaboUids(domes=[])
 
 
 @pytest.fixture

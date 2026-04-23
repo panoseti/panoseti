@@ -40,10 +40,10 @@ from control.tools.interleave import PID_FILE
 from control.utils import config_file, pff, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DaqNodeValidator,
-    NetworkConfigValidator,
-    QuaboUidsValidator,
+    DaqConfig,
+    DaqNode,
+    NetworkConfig,
+    QuaboUids,
 )
 from control.utils.run_state import LockError, RunStateManager, ValidationError
 from control.utils.transfer.queue import TransferQueue
@@ -67,9 +67,9 @@ class StopTransaction:
     def __init__(
         self,
         state_mgr: RunStateManager,
-        daq_config: DaqConfigValidator,
-        network_config: NetworkConfigValidator,
-        quabo_uids: QuaboUidsValidator,
+        daq_config: DaqConfig,
+        network_config: NetworkConfig,
+        quabo_uids: QuaboUids,
         run: str | None,
         no_collect: bool,
         no_cleanup: bool,
@@ -287,7 +287,7 @@ def log_error(msg: str, run_dir: str | None) -> None:
 
 # tell all DAQ nodes to stop recording
 #
-async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, verbose: bool) -> list[str]:
+async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bool) -> list[str]:
     """Best-effort stop of all remote DAQ nodes. 
     
     Concurrently issues StopDaq gRPC commands to all active DAQ nodes. 
@@ -304,7 +304,7 @@ async def stop_recording(daq_config: DaqConfigValidator, run_dir: str | None, ve
     loop = asyncio.get_running_loop()
     errors: list[str] = []
 
-    async def stop_node(node: DaqNodeValidator) -> None:
+    async def stop_node(node: DaqNode) -> None:
         if not node.module_ids:
             return
         grpc_host, grpc_port = util.daq_grpc_endpoint(node)
@@ -441,7 +441,7 @@ def make_links(run_dir: str, verbose: bool) -> None:
 
 
 def _cleanup_daq_grpc(
-    daq_config: DaqConfigValidator, 
+    daq_config: DaqConfig, 
     run: str, 
     head_run_dir: str | None, 
     verbose: bool,
@@ -502,9 +502,9 @@ def _cleanup_daq_grpc(
 
 
 async def stop_run(
-    daq_config: DaqConfigValidator,
-    network_config: NetworkConfigValidator,
-    quabo_uids: QuaboUidsValidator,
+    daq_config: DaqConfig,
+    network_config: NetworkConfig,
+    quabo_uids: QuaboUids,
     verbose: bool = False, 
     no_cleanup: bool = False, 
     no_collect: bool = False,

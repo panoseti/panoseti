@@ -217,15 +217,15 @@ class TestSC006StopDaqPartialFailure:
         from ipaddress import IPv4Address
 
         import control.stop as stop_module
-        from control.utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+        from control.utils.pydantic_config_models import DaqConfig, DaqNode
 
-        # Construct a dummy DaqConfigValidator with both nodes
-        daq_config = DaqConfigValidator(
+        # Construct a dummy DaqConfig with both nodes
+        daq_config = DaqConfig(
             head_node_ip_addr=IPv4Address("10.0.1.22"),
             head_node_data_dir="/data/head",
             daq_nodes=[
-                DaqNodeValidator(ip_addr=IPv4Address(rp1["daq_ip_addr"]), data_dir=rp1["data_dir"], username="root", module_ids=rp1["module_id"]),
-                DaqNodeValidator(ip_addr=IPv4Address(rp2["daq_ip_addr"]), data_dir=rp2["data_dir"], username="root", module_ids=rp2["module_id"])
+                DaqNode(ip_addr=IPv4Address(rp1["daq_ip_addr"]), data_dir=rp1["data_dir"], username="root", module_ids=rp1["module_id"]),
+                DaqNode(ip_addr=IPv4Address(rp2["daq_ip_addr"]), data_dir=rp2["data_dir"], username="root", module_ids=rp2["module_id"])
             ]
         )
 
@@ -756,14 +756,14 @@ def test_SC012_cleanup_with_full_head_disk_does_not_retry(
     from unittest.mock import MagicMock, patch
 
     from control.utils import collect
-    from control.utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+    from control.utils.pydantic_config_models import DaqConfig, DaqNode
 
     # Construct a real-ish config for the collect_data call
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_ip_addr=IPv4Address("127.0.0.1"),
         head_node_data_dir="/tmp/head_data",
         daq_nodes=[
-            DaqNodeValidator(
+            DaqNode(
                 ip_addr=IPv4Address(run_params["daq_ip_addr"]),
                 data_dir=run_params["data_dir"],
                 username="root",
@@ -858,7 +858,7 @@ def test_SC017_daq_control_disabled_returns_unimplemented() -> None:
     UNIMPLEMENTED for all DAQ Control RPCs.
 
     FAILS RED TODAY: server profile is not tested with daq_control disabled.
-    Fix: test with a separate integration-headnode profile container.
+    Fix: test with a separate headnode profile container.
     """
     pytest.skip("Requires a second container with daq_control=false profile")
 
@@ -891,15 +891,15 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     import grpc
 
     import control.stop as stop
-    from control.utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+    from control.utils.pydantic_config_models import DaqConfig, DaqNode
 
     # Setup config with one node
     daq_ip = "192.168.0.10"
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_ip_addr=IPv4Address("10.0.1.5"),
         head_node_data_dir="/data/head",
         daq_nodes=[
-            DaqNodeValidator(ip_addr=IPv4Address(daq_ip), data_dir="/data", username="root", module_ids=[250])
+            DaqNode(ip_addr=IPv4Address(daq_ip), data_dir="/data", username="root", module_ids=[250])
         ]
     )
 

@@ -12,10 +12,10 @@ import networkx as nx
 
 from control.utils import config_file, util
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
-    QuaboUidsValidator,
+    DaqConfig,
+    NetworkConfig,
+    ObsConfig,
+    QuaboUids,
 )
 
 
@@ -29,10 +29,10 @@ class GraphBuilder:
 
     def build_from_configs(
         self,
-        daq_config: DaqConfigValidator,
-        quabo_uids: QuaboUidsValidator,
-        obs_config: ObsConfigValidator | None = None,
-        network_config: NetworkConfigValidator | None = None,
+        daq_config: DaqConfig,
+        quabo_uids: QuaboUids,
+        obs_config: ObsConfig | None = None,
+        network_config: NetworkConfig | None = None,
     ) -> nx.DiGraph:
         """
         Builds the graph from Pydantic configuration models.
@@ -97,7 +97,7 @@ class GraphBuilder:
             # 3. Add Quabos (linked to this DAQ node)
             # We need to find which modules are assigned to this node.
             # This information is often injected by config_file.associate() 
-            # but we can also derive it from module_ids in DaqNodeValidator.
+            # but we can also derive it from module_ids in DaqNode.
             
             # Find modules in quabo_uids that match this node's module_ids
             for dome in quabo_uids.domes:

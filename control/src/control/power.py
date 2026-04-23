@@ -16,7 +16,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 
 from control.utils import config_file
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import ObsConfigValidator, WpsConfig
+from control.utils.pydantic_config_models import ObsConfig, WpsConfig
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -75,7 +75,7 @@ def quabo_power_query(wps: WpsConfig | dict[str, Any]) -> str | None:
     return None
 
 
-def do_wps(name: str, obs_config: ObsConfigValidator, op: str) -> None:
+def do_wps(name: str, obs_config: ObsConfig, op: str) -> None:
     """Perform a power operation (on/off/query) on a named WPS unit.
 
     Args:
@@ -105,7 +105,7 @@ def do_wps(name: str, obs_config: ObsConfigValidator, op: str) -> None:
         logger.info(f"{name}: turned power off")
 
 
-def do_all(obs_config: ObsConfigValidator, op: str) -> None:
+def do_all(obs_config: ObsConfig, op: str) -> None:
     """Perform a power operation on all WPS units defined in the configuration.
 
     Args:

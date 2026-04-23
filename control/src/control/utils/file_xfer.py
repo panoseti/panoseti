@@ -18,12 +18,12 @@ from pathlib import Path
 
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import DaqConfigValidator, DaqNodeValidator
+from control.utils.pydantic_config_models import DaqConfig, DaqNode
 
 
 # copy a file to a DAQ node
 #
-def copy_file_to_node(file_path: Path | str, node: DaqNodeValidator, run_dir: str = '', verbose: bool = False) -> None:
+def copy_file_to_node(file_path: Path | str, node: DaqNode, run_dir: str = '', verbose: bool = False) -> None:
     """Transfer local files to a remote DAQ node using SCP.
 
     Args:
@@ -87,7 +87,7 @@ def _run_rsync_with_retry(cmd: list[str], verbose: bool = False) -> str:
 #
 # return error message, or '' on success
 #
-def copy_dir_from_node(run_name: str, daq_config: DaqConfigValidator, node: DaqNodeValidator, module_id: int, verbose: bool = False) -> str:
+def copy_dir_from_node(run_name: str, daq_config: DaqConfig, node: DaqNode, module_id: int, verbose: bool = False) -> str:
     """Synchronize observation data from a remote module directory to the head node.
 
     Uses rsync to pull Hashpipe output, process snapshots, and PFF data files.
@@ -135,7 +135,7 @@ def copy_dir_from_node(run_name: str, daq_config: DaqConfigValidator, node: DaqN
 
 # create a directory on DAQ nodes
 #
-def make_remote_dirs(daq_config: DaqConfigValidator, dirname: str) -> None:
+def make_remote_dirs(daq_config: DaqConfig, dirname: str) -> None:
     """Create a directory on all configured remote DAQ nodes via SSH.
 
     Args:
@@ -154,7 +154,7 @@ def make_remote_dirs(daq_config: DaqConfigValidator, dirname: str) -> None:
 
 # copy config files to run dirs on DAQ nodes
 #
-def copy_config_files(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> None:
+def copy_config_files(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> None:
     """Distribute all observatory configuration files to remote DAQ nodes.
 
     Args:
@@ -171,7 +171,7 @@ def copy_config_files(daq_config: DaqConfigValidator, run_dir: str, verbose: boo
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #
-def copy_daq_files(daq_config: DaqConfigValidator) -> None:
+def copy_daq_files(daq_config: DaqConfig) -> None:
     """Bootstrap remote DAQ nodes with essential software and scripts.
 
     Copies the Hashpipe binary (if present) and support scripts required

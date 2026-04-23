@@ -22,9 +22,9 @@ import pytest
 
 from ci.paths import PanoPathsTest
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaqConfig,
+    NetworkConfig,
+    ObsConfig,
 )
 
 
@@ -110,7 +110,7 @@ def minimal_firmware_config(topology_templates) -> dict[str, Any]:
     return copy.deepcopy(topology_templates.get("base_firmware", {}))
 
 @pytest.fixture
-def mock_daq_config() -> DaqConfigValidator:
+def mock_daq_config() -> DaqConfig:
     """Fully valid Pydantic model for DAQ configuration."""
     baseline = {
         "head_node_data_dir": "/data/head",
@@ -126,10 +126,10 @@ def mock_daq_config() -> DaqConfigValidator:
             }
         ]
     }
-    return DaqConfigValidator(**baseline)
+    return DaqConfig(**baseline)
 
 @pytest.fixture
-def mock_network_config() -> NetworkConfigValidator:
+def mock_network_config() -> NetworkConfig:
     """Fully valid Pydantic model for network configuration."""
     baseline = {
         "modules": [
@@ -154,10 +154,10 @@ def mock_network_config() -> NetworkConfigValidator:
             }
         ]
     }
-    return NetworkConfigValidator(**baseline)
+    return NetworkConfig(**baseline)
 
 @pytest.fixture
-def mock_obs_config() -> ObsConfigValidator:
+def mock_obs_config() -> ObsConfig:
     """Fully valid Pydantic model for observatory configuration."""
     baseline = {
         "name": "test_obs",
@@ -190,7 +190,7 @@ def mock_obs_config() -> ObsConfigValidator:
             }
         ]
     }
-    return ObsConfigValidator(**baseline)
+    return ObsConfig(**baseline)
 
 
 # ---------------------------------------------------------------------------

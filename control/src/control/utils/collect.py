@@ -22,12 +22,12 @@ warnings.warn(
 
 
 from control.utils import config_file, file_xfer, util  # noqa: E402
-from control.utils.pydantic_config_models import CollectResult, DaqConfigValidator  # noqa: E402
+from control.utils.pydantic_config_models import CollectResult, DaqConfig  # noqa: E402
 
 
 # return CollectResult if data collection was successful
 #
-def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> CollectResult:
+def collect_data(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> CollectResult:
     """Aggregate PFF data files from remote DAQ nodes to the local head node.
 
     Uses rsync/SCP or local move (if head node is a DAQ node) to centralize
@@ -84,7 +84,7 @@ def collect_data(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = F
 #    data/module_n/run (should be empty dir)
 # return error message or ''
 #
-def cleanup_daq(daq_config: DaqConfigValidator, run_dir: str, verbose: bool = False) -> str:
+def cleanup_daq(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> str:
     """Remove observation artifacts from DAQ nodes after successful collection.
 
     Deletes the run-specific directories in both the root data path and

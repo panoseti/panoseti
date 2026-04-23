@@ -14,12 +14,12 @@ import pytest
 
 from control.utils.global_validator import GlobalConfigValidator
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DataConfigValidator,
-    FirmwareConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
-    QuaboUidsValidator,
+    DaqConfig,
+    DataConfig,
+    FirmwareConfig,
+    NetworkConfig,
+    ObsConfig,
+    QuaboUids,
 )
 
 # ---------------------------------------------------------------------------
@@ -66,11 +66,11 @@ def _make_validator(
     fw_dict: dict[str, Any] = firmware or {}
 
     return GlobalConfigValidator({
-        "obs":      ObsConfigValidator(**obs_dict),
-        "data":     DataConfigValidator(**data_dict),
-        "daq":      DaqConfigValidator(**daq_dict),
-        "network":  NetworkConfigValidator(**net_dict),
-        "firmware": FirmwareConfigValidator(**fw_dict),
+        "obs":      ObsConfig(**obs_dict),
+        "data":     DataConfig(**data_dict),
+        "daq":      DaqConfig(**daq_dict),
+        "network":  NetworkConfig(**net_dict),
+        "firmware": FirmwareConfig(**fw_dict),
     })
 
 
@@ -513,7 +513,7 @@ class TestValidateAllRules:
     def mock_quabo_uids(self):
         """Mock get_quabo_uids to avoid requiring the physical JSON file in CI."""
         with patch("control.utils.config_file.get_quabo_uids") as mock_get:
-            mock_get.return_value = QuaboUidsValidator(domes=[])
+            mock_get.return_value = QuaboUids(domes=[])
             yield mock_get
 
     def test_runs_without_error_on_minimal_config(self, tmp_path) -> None:

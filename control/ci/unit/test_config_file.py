@@ -24,10 +24,10 @@ from control.utils.config_file import (
     string_to_list,
 )
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DataConfigValidator,
-    ObsConfigValidator,
-    QuaboUidsValidator,
+    DaqConfig,
+    DataConfig,
+    ObsConfig,
+    QuaboUids,
 )
 
 # ===========================================================================
@@ -151,8 +151,8 @@ class TestStringToList:
 # ===========================================================================
 
 class TestExpandRanges:
-    def make_valid_daq_model(self, nodes: list[dict[str, Any]]) -> DaqConfigValidator:
-        """Helper to create a DaqConfigValidator model with all required fields."""
+    def make_valid_daq_model(self, nodes: list[dict[str, Any]]) -> DaqConfig:
+        """Helper to create a DaqConfig model with all required fields."""
         valid_nodes = []
         for i, node in enumerate(nodes):
             full_node = {
@@ -168,7 +168,7 @@ class TestExpandRanges:
             "head_node_ip_addr": "10.0.1.5",
             "daq_nodes": valid_nodes
         }
-        return DaqConfigValidator(**config_dict)
+        return DaqConfig(**config_dict)
 
     def test_string_range_becomes_list(self) -> None:
         model = self.make_valid_daq_model([{"module_ids": "224-225"}])
@@ -206,7 +206,7 @@ class TestExpandRanges:
 
 class TestModuleIdToDaqNode:
     @pytest.fixture
-    def expanded_config(self) -> DaqConfigValidator:
+    def expanded_config(self) -> DaqConfig:
         config_dict: dict[str, Any] = {
             "head_node_data_dir": "/data",
             "head_node_ip_addr": "10.0.0.1",
@@ -226,7 +226,7 @@ class TestModuleIdToDaqNode:
             ]
         }
         # Model handles expansion automatically via validators
-        return DaqConfigValidator(**config_dict)
+        return DaqConfig(**config_dict)
 
     def test_finds_correct_node_for_first_range(self, expanded_config) -> None:
         node = module_id_to_daq_node(expanded_config, 224)
@@ -251,7 +251,7 @@ class TestModuleIdToDaqNode:
 # ===========================================================================
 
 class TestAssignNumbers:
-    def make_valid_obs_config(self, domes_data: list[dict[str, Any]]) -> ObsConfigValidator:
+    def make_valid_obs_config(self, domes_data: list[dict[str, Any]]) -> ObsConfig:
         domes = []
         for i, d in enumerate(domes_data):
             modules = []
@@ -273,7 +273,7 @@ class TestAssignNumbers:
             }
             dome_dict["modules"] = modules
             domes.append(dome_dict)
-        return ObsConfigValidator(name="Palomar", domes=domes)
+        return ObsConfig(name="Palomar", domes=domes)
 
     def test_dome_num_starts_at_zero(self) -> None:
         model = self.make_valid_obs_config([
@@ -309,7 +309,7 @@ class TestAssignNumbers:
         assert model.domes[0].modules[0].position_angle == 45.0
 
     def test_assign_numbers_no_domes(self) -> None:
-        model = ObsConfigValidator(name="test", domes=[])
+        model = ObsConfig(name="test", domes=[])
         assign_numbers(model)
         assert len(model.domes) == 0
 
@@ -336,8 +336,8 @@ class TestGetModules:
                 },
             ]
         }
-        from control.utils.pydantic_config_models import ObsConfigValidator
-        obs_config = ObsConfigValidator(**obs_config_dict)
+        from control.utils.pydantic_config_models import ObsConfig
+        obs_config = ObsConfig(**obs_config_dict)
         modules = get_modules(obs_config)
         assert len(modules) == 3
         ips = [str(m.ip_addr) for m in modules]
@@ -354,13 +354,13 @@ class TestGetModules:
                 }
             ]
         }
-        from control.utils.pydantic_config_models import ObsConfigValidator
-        obs_config = ObsConfigValidator(**obs_config_dict)
+        from control.utils.pydantic_config_models import ObsConfig
+        obs_config = ObsConfig(**obs_config_dict)
         assert len(get_modules(obs_config)) == 1
 
     def test_empty_domes(self) -> None:
-        from control.utils.pydantic_config_models import ObsConfigValidator
-        assert get_modules(ObsConfigValidator(name="test", domes=[])) == []
+        from control.utils.pydantic_config_models import ObsConfig
+        assert get_modules(ObsConfig(name="test", domes=[])) == []
 
 
 
@@ -378,12 +378,12 @@ class TestLoadAndValidate:
 
     def test_loads_valid_data_config(self, tmp_path, minimal_data_config) -> None:
         base = self._write_json(tmp_path, "configs/data_config.json", minimal_data_config)
-        result = load_and_validate(DataConfigValidator, "configs/data_config.json", base, "Data Config")
+        result = load_and_validate(DataConfig, "configs/data_config.json", base, "Data Config")
         assert result.run_type == "sci"
 
     def test_missing_file_raises_value_error(self, tmp_path) -> None:
         with pytest.raises(ValueError, match="Missing file"):
-            load_and_validate(DataConfigValidator, "configs/data_config.json",
+            load_and_validate(DataConfig, "configs/data_config.json",
                               str(tmp_path), "Data Config")
 
     def test_invalid_json_raises_value_error(self, tmp_path) -> None:
@@ -391,7 +391,7 @@ class TestLoadAndValidate:
         p.mkdir()
         (p / "data_config.json").write_text("{ not valid json }")
         with pytest.raises(ValueError, match="JSON Parse Error"):
-            load_and_validate(DataConfigValidator, "configs/data_config.json",
+            load_and_validate(DataConfig, "configs/data_config.json",
                               str(tmp_path), "Data Config")
 
     def test_schema_error_raises_value_error(self, tmp_path) -> None:
@@ -401,7 +401,7 @@ class TestLoadAndValidate:
         # Default behaviour is now ValueError on schema error when not in CLI mode
         # to allow orchestration rollback ladders to run.
         with pytest.raises(ValueError, match="Pydantic Validation failed"):
-            load_and_validate(DataConfigValidator, "configs/data_config.json",
+            load_and_validate(DataConfig, "configs/data_config.json",
                               str(tmp_path), "Data Config")
 
 
@@ -423,7 +423,7 @@ class TestAssociate:
                 }
             ]
         }
-        daq_config = DaqConfigValidator(**daq_config_dict)
+        daq_config = DaqConfig(**daq_config_dict)
         
         quabo_uids_dict = {
             "domes": [
@@ -437,7 +437,7 @@ class TestAssociate:
                 }
             ]
         }
-        quabo_uids = QuaboUidsValidator(**quabo_uids_dict)
+        quabo_uids = QuaboUids(**quabo_uids_dict)
 
         # assign_numbers injects 'id' which is needed by associate -> module_id_to_daq_node
         from control.utils.config_file import assign_numbers, associate
@@ -471,7 +471,7 @@ class TestGetModuleQuaboUids:
                 }
             ]
         }
-        quabo_uids = QuaboUidsValidator(**uids_dict)
+        quabo_uids = QuaboUids(**uids_dict)
         res = get_module_quabo_uids(quabo_uids)
         assert res == {"192.168.0.4": ["u1", "u2", "u3", "u4"]}
 

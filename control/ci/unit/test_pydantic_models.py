@@ -15,19 +15,19 @@ from pydantic import ValidationError
 
 from control.utils.pydantic_config_models import (
     AnyTriggerConfig,
-    DaqConfigValidator,
-    DaqNodeValidator,
-    DataConfigValidator,
-    FirmwareConfigValidator,
+    DaqConfig,
+    DaqNode,
+    DataConfig,
+    FirmwareConfig,
     FlashParams,
     ImageMode,
     InterleaveState,
-    ObsConfigValidator,
+    ObsConfig,
     ObsDomeConfig,
     ObsModuleConfig,
     PortForwarding,
     PulseHeightMode,
-    QuaboUidsValidator,
+    QuaboUids,
     StimParams,
 )
 
@@ -121,42 +121,42 @@ class TestPulseHeightMode:
 
 
 # ===========================================================================
-# DataConfigValidator
+# DataConfig
 # ===========================================================================
 
-class TestDataConfigValidator:
+class TestDataConfig:
     def test_valid_minimal_data_config(self, minimal_data_config) -> None:
-        v = DataConfigValidator(**minimal_data_config)
+        v = DataConfig(**minimal_data_config)
         assert v.run_type == "sci"
 
     def test_run_type_max_length(self) -> None:
         """run_type must be <= 14 characters."""
-        DataConfigValidator(run_type="a" * 14)
+        DataConfig(run_type="a" * 14)
 
     def test_run_type_too_long(self) -> None:
         with pytest.raises(ValidationError):
-            DataConfigValidator(run_type="a" * 15)
+            DataConfig(run_type="a" * 15)
 
     @pytest.mark.parametrize("bad_char", [".", "_", " "])
     def test_run_type_invalid_chars(self, bad_char) -> None:
         with pytest.raises(ValidationError, match="invalid character"):
-            DataConfigValidator(run_type=f"sci{bad_char}run")
+            DataConfig(run_type=f"sci{bad_char}run")
 
     def test_run_type_valid_alphanumeric(self) -> None:
-        DataConfigValidator(run_type="scicalib01")
+        DataConfig(run_type="scicalib01")
 
     def test_detector_overvoltage_valid(self) -> None:
         """Only 2 and 3 are valid overvoltage values."""
-        DataConfigValidator(run_type="sci", detector_overvoltage=2)
-        DataConfigValidator(run_type="sci", detector_overvoltage=3)
+        DataConfig(run_type="sci", detector_overvoltage=2)
+        DataConfig(run_type="sci", detector_overvoltage=3)
 
     def test_detector_overvoltage_invalid(self) -> None:
         with pytest.raises(ValidationError):
-            DataConfigValidator(run_type="sci", detector_overvoltage=5)  # type: ignore
+            DataConfig(run_type="sci", detector_overvoltage=5)  # type: ignore
 
     def test_image_and_ph_without_trigger_ok(self) -> None:
         """Image + PH with no multi-pixel trigger is valid."""
-        DataConfigValidator(**{  # type: ignore
+        DataConfig(**{  # type: ignore
             "run_type": "sci",
             "image": {"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
             "pulse_height": {"pe_threshold": 3.0},
@@ -165,7 +165,7 @@ class TestDataConfigValidator:
     def test_image_and_ph_with_two_pixel_trigger_raises(self) -> None:
         """image + PH with two_pixel_trigger violates hardware constraint."""
         with pytest.raises(ValidationError, match="Hardware Constraint"):
-            DataConfigValidator(**{  # type: ignore
+            DataConfig(**{  # type: ignore
                 "run_type": "sci",
                 "image": {"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
                 "pulse_height": {"pe_threshold": 3.0, "two_pixel_trigger": 1},
@@ -173,7 +173,7 @@ class TestDataConfigValidator:
 
     def test_image_and_ph_with_three_pixel_trigger_raises(self) -> None:
         with pytest.raises(ValidationError, match="Hardware Constraint"):
-            DataConfigValidator(**{  # type: ignore
+            DataConfig(**{  # type: ignore
                 "run_type": "sci",
                 "image": {"integration_time_usec": 100_000, "pe_threshold": 1.0, "quabo_sample_size": 16},
                 "pulse_height": {"pe_threshold": 3.0, "three_pixel_trigger": 1},
@@ -181,21 +181,21 @@ class TestDataConfigValidator:
 
     def test_dynamic_image_key_valid(self) -> None:
         """Keys prefixed 'image_' must be valid ImageMode objects."""
-        DataConfigValidator(**{  # type: ignore
+        DataConfig(**{  # type: ignore
             "run_type": "sci",
             "image_8bit": {"integration_time_usec": 200_000, "pe_threshold": 1.0, "quabo_sample_size": 8},
         })
 
     def test_dynamic_image_key_invalid_fields(self) -> None:
         with pytest.raises(ValidationError, match="Invalid fields in dynamic mode"):
-            DataConfigValidator(**{  # type: ignore
+            DataConfig(**{  # type: ignore
                 "run_type": "sci",
                 "image_8bit": {"integration_time_usec": 7, "pe_threshold": 1.0, "quabo_sample_size": 8},
             })
 
     def test_dynamic_ph_key_valid(self) -> None:
         """Keys prefixed 'pulse_height_' must be valid PulseHeightMode objects."""
-        DataConfigValidator(**{  # type: ignore
+        DataConfig(**{  # type: ignore
             "run_type": "sci",
             "pulse_height_uhe": {"pe_threshold": 5.0},
         })
@@ -203,14 +203,14 @@ class TestDataConfigValidator:
     def test_unrecognized_top_level_key_raises(self) -> None:
         """Keys that are neither image_* nor pulse_height_* must be rejected."""
         with pytest.raises(ValidationError, match="Unrecognized configuration key"):
-            DataConfigValidator(**{"run_type": "sci", "foobar": {"x": 1}})  # type: ignore
+            DataConfig(**{"run_type": "sci", "foobar": {"x": 1}})  # type: ignore
 
     def test_max_file_size_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
-            DataConfigValidator(run_type="sci", max_file_size_mb=0)
+            DataConfig(run_type="sci", max_file_size_mb=0)
 
     def test_max_file_size_valid(self) -> None:
-        DataConfigValidator(run_type="sci", max_file_size_mb=500)
+        DataConfig(run_type="sci", max_file_size_mb=500)
 
 
 # ===========================================================================
@@ -246,7 +246,7 @@ class TestInterleaveState:
 
 
 class TestInterleaveValidation:
-    """Integration: DataConfigValidator with interleave block."""
+    """Integration: DataConfig with interleave block."""
 
     def _make_config(self, states, extra_modes=None):
         cfg = {
@@ -264,14 +264,14 @@ class TestInterleaveValidation:
             {"state_name": "movie", "duration_seconds": 30.0, "movie_mode_config": "image"},
             {"state_name": "ph", "duration_seconds": 10.0, "pulse_height_mode_config": "pulse_height"},
         ])
-        DataConfigValidator(**cfg)
+        DataConfig(**cfg)
 
     def test_interleave_references_missing_image_mode(self) -> None:
         cfg = self._make_config([
             {"state_name": "movie", "duration_seconds": 30.0, "movie_mode_config": "image_nonexistent"},
         ])
         with pytest.raises(ValidationError, match="references missing movie mode"):
-            DataConfigValidator(**cfg)
+            DataConfig(**cfg)
 
     def test_interleave_references_missing_ph_mode(self) -> None:
         cfg = self._make_config([
@@ -279,7 +279,7 @@ class TestInterleaveValidation:
              "pulse_height_mode_config": "pulse_height_nonexistent"},
         ])
         with pytest.raises(ValidationError, match="references missing pulse height mode"):
-            DataConfigValidator(**cfg)
+            DataConfig(**cfg)
 
     def test_interleave_state_movie_plus_two_pixel_trigger_raises(self) -> None:
         """Hardware constraint: movie + two_pixel_trigger PH in same state."""
@@ -297,7 +297,7 @@ class TestInterleaveValidation:
             },
         )
         with pytest.raises(ValidationError, match="Hardware Constraint Violation"):
-            DataConfigValidator(**cfg)
+            DataConfig(**cfg)
 
     def test_interleave_state_movie_plus_three_pixel_trigger_raises(self) -> None:
         cfg = self._make_config(
@@ -314,7 +314,7 @@ class TestInterleaveValidation:
             },
         )
         with pytest.raises(ValidationError, match="Hardware Constraint Violation"):
-            DataConfigValidator(**cfg)
+            DataConfig(**cfg)
 
     def test_interleave_references_dynamic_image_mode(self) -> None:
         """States can reference dynamic image_* modes."""
@@ -326,7 +326,7 @@ class TestInterleaveValidation:
                 "image_8bit": {"integration_time_usec": 200_000, "pe_threshold": 1.0, "quabo_sample_size": 8}
             },
         )
-        DataConfigValidator(**cfg)
+        DataConfig(**cfg)
 
     def test_interleave_disabled_with_no_states(self) -> None:
         """Disabled interleave with empty states is valid."""
@@ -334,44 +334,44 @@ class TestInterleaveValidation:
             "run_type": "sci",
             "interleave": {"enable": False, "states": []},
         }
-        DataConfigValidator(**cfg)
+        DataConfig(**cfg)
 
 
 # ===========================================================================
-# ObsConfigValidator
+# ObsConfig
 # ===========================================================================
 
-class TestObsConfigValidator:
+class TestObsConfig:
     def test_valid_obs_config(self, minimal_obs_config) -> None:
-        v = ObsConfigValidator(**minimal_obs_config)
+        v = ObsConfig(**minimal_obs_config)
         assert v.name == "test_obs"
 
     def test_missing_name_raises(self) -> None:
         with pytest.raises(ValidationError):
-            ObsConfigValidator(domes=[])  # type: ignore
+            ObsConfig(domes=[])  # type: ignore
 
     def test_invalid_wr_ip_addr(self) -> None:
         with pytest.raises(ValidationError):
-            ObsConfigValidator(name="x", domes=[], wr_ip_addr="not.an.ip")  # type: ignore
+            ObsConfig(name="x", domes=[], wr_ip_addr="not.an.ip")  # type: ignore
 
     def test_invalid_wps_extra_key(self, minimal_obs_config) -> None:
         """Only 'wps' prefixed extra keys are allowed."""
         cfg = dict(minimal_obs_config)
         cfg["notawps_key"] = {"url": "x", "quabo_socket": 1}
         with pytest.raises(ValidationError, match="not allowed"):
-            ObsConfigValidator(**cfg)  # type: ignore
+            ObsConfig(**cfg)  # type: ignore
 
     def test_valid_wps_extra_key(self, minimal_obs_config) -> None:
         """Keys starting with 'wps' (e.g. wps1) are allowed."""
         cfg = dict(minimal_obs_config)
         cfg["wps1"] = {"url": "http://192.168.1.3", "quabo_socket": 2}
-        ObsConfigValidator(**cfg)  # type: ignore
+        ObsConfig(**cfg)  # type: ignore
 
     def test_invalid_wps_format_raises(self, minimal_obs_config) -> None:
         cfg = dict(minimal_obs_config)
         cfg["wps1"] = {"url": "http://192.168.1.3"}  # missing quabo_socket
         with pytest.raises(ValidationError, match="Invalid format"):
-            ObsConfigValidator(**cfg)  # type: ignore
+            ObsConfig(**cfg)  # type: ignore
 
 
 class TestObsDomeConfig:
@@ -434,59 +434,59 @@ class TestObsModuleConfig:
 
 
 # ===========================================================================
-# DaqNodeValidator & DaqConfigValidator
+# DaqNode & DaqConfig
 # ===========================================================================
 
-class TestDaqNodeValidator:
+class TestDaqNode:
     def test_valid_range_string(self) -> None:
-        n = DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="128-255")
+        n = DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="128-255")
         assert n.module_ids == list(range(128, 256))
 
     def test_valid_list_of_ints(self) -> None:
-        n = DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2",
+        n = DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2",
                              module_ids=[0, 1, 2, 5])
         assert n.module_ids == [0, 1, 2, 5]
 
     def test_range_string_start_greater_than_end_raises(self) -> None:
         with pytest.raises(ValidationError, match="must be <="):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="10-5")  # type: ignore
+            DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids="10-5")  # type: ignore
 
     def test_module_ids_empty_list_raises(self) -> None:
         with pytest.raises(ValidationError, match="non-empty"):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[])  # type: ignore
+            DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[])  # type: ignore
 
     def test_module_ids_negative_raises(self) -> None:
         with pytest.raises(ValidationError, match="non-negative"):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[-1, 0])  # type: ignore
+            DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2", module_ids=[-1, 0])  # type: ignore
 
     def test_module_ids_duplicates_raise(self) -> None:
         with pytest.raises(ValidationError, match="unique"):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2",
+            DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2",
                              module_ids=[1, 2, 1])
 
     def test_invalid_module_ids_format(self) -> None:
         with pytest.raises(ValidationError, match="format"):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="10.0.0.2",
+            DaqNode(username="p", data_dir="/d", ip_addr="10.0.0.2",
                              module_ids="notarange")
 
     def test_invalid_ip_addr(self) -> None:
         with pytest.raises(ValidationError):
-            DaqNodeValidator(username="p", data_dir="/d", ip_addr="999.0.0.1", module_ids="0-10")  # type: ignore
+            DaqNode(username="p", data_dir="/d", ip_addr="999.0.0.1", module_ids="0-10")  # type: ignore
 
 
-class TestDaqConfigValidator:
+class TestDaqConfig:
     def test_valid_daq_config(self, minimal_daq_config) -> None:
-        v = DaqConfigValidator(**minimal_daq_config)
+        v = DaqConfig(**minimal_daq_config)
         assert v.head_node_ip_addr is not None
 
     def test_head_node_data_dir_required(self) -> None:
         with pytest.raises(ValidationError):
-            DaqConfigValidator(head_node_ip_addr="10.0.0.1", daq_nodes=[])
+            DaqConfig(head_node_ip_addr="10.0.0.1", daq_nodes=[])
 
     def test_head_node_matches_daq_node_data_dir_must_match(self) -> None:
         """When DAQ node IP == head node IP, data_dirs must match."""
         with pytest.raises(ValidationError, match="differs from"):
-            DaqConfigValidator(
+            DaqConfig(
                 head_node_data_dir="/data",
                 head_node_ip_addr="10.0.0.1",
                 daq_nodes=[{
@@ -496,7 +496,7 @@ class TestDaqConfigValidator:
             )
 
     def test_head_node_same_ip_matching_data_dir_ok(self) -> None:
-        DaqConfigValidator(
+        DaqConfig(
             head_node_data_dir="/data",
             head_node_ip_addr="10.0.0.1",
             daq_nodes=[{
@@ -507,7 +507,7 @@ class TestDaqConfigValidator:
 
     def test_extra_fields_forbidden(self) -> None:
         with pytest.raises(ValidationError):
-            DaqConfigValidator(
+            DaqConfig(
                 head_node_data_dir="/data",
                 head_node_ip_addr="10.0.0.1",
                 daq_nodes=[],
@@ -556,7 +556,7 @@ class TestStimParams:
 # QuaboUids validators
 # ===========================================================================
 
-class TestQuaboUidsValidator:
+class TestQuaboUids:
     def _make_module(self):
         return {
             "ip_addr": "192.168.3.200",
@@ -564,15 +564,15 @@ class TestQuaboUidsValidator:
         }
 
     def test_valid_quabo_uids(self) -> None:
-        QuaboUidsValidator(domes=[{"modules": [self._make_module()]}])
+        QuaboUids(domes=[{"modules": [self._make_module()]}])
 
     def test_module_must_have_four_quabos(self) -> None:
         with pytest.raises(ValidationError):
-            QuaboUidsValidator(domes=[{"modules": [{"ip_addr": "1.1.1.1", "quabos": [{"uid": "X"}]}]}])
+            QuaboUids(domes=[{"modules": [{"ip_addr": "1.1.1.1", "quabos": [{"uid": "X"}]}]}])
 
     def test_module_cannot_have_three_quabos(self) -> None:
         with pytest.raises(ValidationError):
-            QuaboUidsValidator(domes=[{"modules": [{"ip_addr": "1.1.1.1", "quabos": [
+            QuaboUids(domes=[{"modules": [{"ip_addr": "1.1.1.1", "quabos": [
                 {"uid": "A"}, {"uid": "B"}, {"uid": "C"}
             ]}]}])
 
@@ -582,20 +582,20 @@ class TestQuaboUidsValidator:
             "ip_addr": "192.168.3.200",
             "quabos": [{"uid": ""}, {"uid": ""}, {"uid": ""}, {"uid": ""}]
         }
-        QuaboUidsValidator(domes=[{"modules": [mod]}])
+        QuaboUids(domes=[{"modules": [mod]}])
 
 
 # ===========================================================================
-# FirmwareConfigValidator (extra='allow')
+# FirmwareConfig (extra='allow')
 # ===========================================================================
 
-class TestFirmwareConfigValidator:
+class TestFirmwareConfig:
     def test_arbitrary_hw_keys_allowed(self) -> None:
         """Firmware config accepts any hardware variant keys."""
-        FirmwareConfigValidator(bga="fw_bga_v2.bin", qfp="fw_qfp_v1.bin")  # type: ignore
+        FirmwareConfig(bga="fw_bga_v2.bin", qfp="fw_qfp_v1.bin")  # type: ignore
 
     def test_empty_firmware_config_ok(self) -> None:
-        FirmwareConfigValidator()  # type: ignore
+        FirmwareConfig()  # type: ignore
 
 
 # ===========================================================================

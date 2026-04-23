@@ -15,7 +15,7 @@ import pytest
 
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
-    DaemonConfigValidator,
+    DaemonConfig,
 )
 from control.utils.util import (
     get_daemons,
@@ -136,7 +136,7 @@ class TestGetDaemons:
 
     def test_enabled_daemon_is_included(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={"hk": True},
                                 permanent_daemons={}
                             ))
@@ -145,7 +145,7 @@ class TestGetDaemons:
 
     def test_disabled_daemon_is_excluded(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={"hk": True, "gps": False},
                                 permanent_daemons={}
                             ))
@@ -154,7 +154,7 @@ class TestGetDaemons:
 
     def test_multiple_enabled_daemons(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={"hk": True, "gps": True, "wr": True},
                                 permanent_daemons={}
                             ))
@@ -165,7 +165,7 @@ class TestGetDaemons:
 
     def test_no_daemons_key_returns_only_base(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={},
                                 permanent_daemons={"mount": True}
                             ))
@@ -176,7 +176,7 @@ class TestGetDaemons:
     def test_does_not_mutate_base_list(self, monkeypatch) -> None:
         """Calling get_daemons twice returns consistent results (no global mutation)."""
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={"hk": True},
                                 permanent_daemons={}
                             ))
@@ -190,7 +190,7 @@ class TestGetDaemons:
 
     def test_all_entries_are_strings(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={"hk": True, "gps": True},
                                 permanent_daemons={}
                             ))
@@ -210,7 +210,7 @@ class TestGetPermanentDaemons:
 
     def test_enabled_permanent_daemon_is_included(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={},
                                 permanent_daemons={"mount": True}
                             ))
@@ -219,7 +219,7 @@ class TestGetPermanentDaemons:
 
     def test_disabled_permanent_daemon_excluded(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={},
                                 permanent_daemons={"mount": False}
                             ))
@@ -233,7 +233,7 @@ class TestGetPermanentDaemons:
 
     def test_multiple_permanent_daemons(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={},
                                 permanent_daemons={
                                     "mount": True, "dome": True, "alerts": False
@@ -246,7 +246,7 @@ class TestGetPermanentDaemons:
 
     def test_does_not_mutate_on_repeated_calls(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",
-                            lambda: DaemonConfigValidator(
+                            lambda: DaemonConfig(
                                 daemons={},
                                 permanent_daemons={"mount": True}
                             ))

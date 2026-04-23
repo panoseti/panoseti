@@ -23,15 +23,15 @@ from control.utils.paths import PanoPaths
 
 # import Pydantic validation models
 from control.utils.pydantic_config_models import (
-    DaemonConfigValidator,
-    DaqConfigValidator,
-    DaqNodeValidator,
-    DataConfigValidator,
-    FirmwareConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaemonConfig,
+    DaqConfig,
+    DaqNode,
+    DataConfig,
+    FirmwareConfig,
+    NetworkConfig,
+    ObsConfig,
     ObsModuleConfig,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 console = Console()
@@ -119,7 +119,7 @@ def get_boardloc(module_ip_addr: str, quabo_index: int) -> int:
     return boardloc
 
 
-def assign_numbers(c: ObsConfigValidator | QuaboUidsValidator) -> None:
+def assign_numbers(c: ObsConfig | QuaboUids) -> None:
     """Assign sequential numbers to domes and IDs to modules within a config.
     
     This function injects 'num' into each dome object and 'id' (derived from 
@@ -155,7 +155,7 @@ def string_to_list(s: str) -> list[int]:
             out.append(int(nums[0]))
     return out
 
-def expand_ranges(daq_config: DaqConfigValidator) -> None:
+def expand_ranges(daq_config: DaqConfig) -> None:
     """Expand module range strings to lists of module numbers in DAQ node objects.
     
     This is largely handled by Pydantic validators, but ensures the model 
@@ -173,7 +173,7 @@ def expand_ranges(daq_config: DaqConfigValidator) -> None:
             raise TypeError(f"module_ids must be str or list, not {type(node.module_ids)}")
 
 
-def module_id_to_daq_node(daq_config: DaqConfigValidator, module_id: int) -> DaqNodeValidator:
+def module_id_to_daq_node(daq_config: DaqConfig, module_id: int) -> DaqNode:
     """Find the DAQ node responsible for handling a specific module ID.
 
     Args:
@@ -181,7 +181,7 @@ def module_id_to_daq_node(daq_config: DaqConfigValidator, module_id: int) -> Daq
         module_id: The ID of the module to locate.
 
     Returns:
-        The DaqNodeValidator object handling the module.
+        The DaqNode object handling the module.
 
     Raises:
         Exception: If no DAQ node is found for the given module ID.
@@ -209,55 +209,55 @@ def check_config_file(name: str, config_dir: Path = PanoPaths.config_dir()) -> N
         sys.exit(1)
 
 
-def get_obs_config(dir: str | None = None) -> ObsConfigValidator:
+def get_obs_config(dir: str | None = None) -> ObsConfig:
     """Load and validate the observatory configuration.
 
     Args:
         dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
-        A validated ObsConfigValidator model.
+        A validated ObsConfig model.
     """
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
     # pass assign_numbers so it injects `id` and `num` before validation
-    return load_and_validate(ObsConfigValidator, obs_config_filename, config_dir, "Obs Config", assign_numbers)
+    return load_and_validate(ObsConfig, obs_config_filename, config_dir, "Obs Config", assign_numbers)
 
-def get_daq_config(dir: str | None = None) -> DaqConfigValidator:
+def get_daq_config(dir: str | None = None) -> DaqConfig:
     """Load and validate the DAQ configuration.
 
     Args:
         dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
-        A validated DaqConfigValidator model.
+        A validated DaqConfig model.
     """
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
     # pass expand_ranges so it parses module string ranges before validation
-    return load_and_validate(DaqConfigValidator, daq_config_filename, config_dir, "DAQ Config", expand_ranges)
+    return load_and_validate(DaqConfig, daq_config_filename, config_dir, "DAQ Config", expand_ranges)
 
-def get_data_config(dir: str | None = None) -> DataConfigValidator:
+def get_data_config(dir: str | None = None) -> DataConfig:
     """Load and validate the data (science/engineering) configuration.
 
     Args:
         dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
-        A validated DataConfigValidator model.
+        A validated DataConfig model.
     """
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
-    return load_and_validate(DataConfigValidator, data_config_filename, config_dir, "Data Config")
+    return load_and_validate(DataConfig, data_config_filename, config_dir, "Data Config")
 
-def get_network_config(dir: str | None = None) -> NetworkConfigValidator:
+def get_network_config(dir: str | None = None) -> NetworkConfig:
     """Load and validate the network configuration.
 
-    Falls back to an empty NetworkConfigValidator (no port forwarding) with a
+    Falls back to an empty NetworkConfig (no port forwarding) with a
     warning if the file is missing or invalid, assuming a flat local network.
 
     Args:
         dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
-        A validated NetworkConfigValidator model.
+        A validated NetworkConfig model.
     """
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
     path = os.path.join(config_dir, network_config_filename)
@@ -268,40 +268,40 @@ def get_network_config(dir: str | None = None) -> NetworkConfigValidator:
     except Exception:
         print("***********Warning: No network config file! **************")
         print("******All the devices should be in the same subnet *******")
-        return NetworkConfigValidator()
+        return NetworkConfig()
 
-    return load_and_validate(NetworkConfigValidator, network_config_filename, config_dir, "Network Config")
+    return load_and_validate(NetworkConfig, network_config_filename, config_dir, "Network Config")
 
 
-def get_firmware_config(dir: str | None = None) -> FirmwareConfigValidator:
+def get_firmware_config(dir: str | None = None) -> FirmwareConfig:
     """Load and validate the firmware configuration.
 
     Args:
         dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
-        A validated FirmwareConfigValidator model.
+        A validated FirmwareConfig model.
     """
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
-    return load_and_validate(FirmwareConfigValidator, firmware_config_filename, config_dir, "Firmware Config")
+    return load_and_validate(FirmwareConfig, firmware_config_filename, config_dir, "Firmware Config")
 
-def get_daemons_config(dir: str | None = None) -> DaemonConfigValidator:
+def get_daemons_config(dir: str | None = None) -> DaemonConfig:
     """Load and validate the daemons configuration.
 
     Args:
         dir: The directory containing the config file. Defaults to PanoPaths.config_dir().
 
     Returns:
-        A validated DaemonConfigValidator model.
+        A validated DaemonConfig model.
     """
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
-    return load_and_validate(DaemonConfigValidator, daemons_config_filename, config_dir, "Daemons Config")
+    return load_and_validate(DaemonConfig, daemons_config_filename, config_dir, "Daemons Config")
 
-def get_quabo_uids() -> QuaboUidsValidator:
+def get_quabo_uids() -> QuaboUids:
     """Load and validate the Quabo UIDs from the local cache file.
 
     Returns:
-        A validated QuaboUidsValidator model.
+        A validated QuaboUids model.
     """
     path = PanoPaths.tmp_dir() / quabo_uids_filename
     if not path.exists():
@@ -310,11 +310,11 @@ def get_quabo_uids() -> QuaboUidsValidator:
     with open(path) as f:
         s = f.read()
     quabo_uids_conf: dict[str, Any] = json.loads(s)
-    validated = QuaboUidsValidator(**quabo_uids_conf)
+    validated = QuaboUids(**quabo_uids_conf)
     assign_numbers(validated)
     return validated
 
-def get_module_quabo_uids(quabo_uids: QuaboUidsValidator) -> dict[str, list[str]]:
+def get_module_quabo_uids(quabo_uids: QuaboUids) -> dict[str, list[str]]:
     """Return a simplified mapping of module IP addresses to lists of Quabo UIDs.
 
     Args:
@@ -415,7 +415,7 @@ def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]
         s = f.read()
     return json.loads(s)
 
-def get_modules(c: ObsConfigValidator) -> list[ObsModuleConfig]:
+def get_modules(c: ObsConfig) -> list[ObsModuleConfig]:
     """Extract a flat list of modules from an observatory configuration.
 
     Args:
@@ -430,7 +430,7 @@ def get_modules(c: ObsConfigValidator) -> list[ObsModuleConfig]:
             modules.append(module)
     return modules
 
-def associate(daq_config: DaqConfigValidator, quabo_uids: QuaboUidsValidator) -> None:
+def associate(daq_config: DaqConfig, quabo_uids: QuaboUids) -> None:
     """Link modules to their corresponding DAQ nodes.
     
     Injects back-references between DAQ nodes and the modules they handle.
@@ -450,7 +450,7 @@ def associate(daq_config: DaqConfigValidator, quabo_uids: QuaboUidsValidator) ->
             daq_node.modules.append(module)
             module.daq_node = daq_node
 
-def show_daq_assignments(quabo_uids: QuaboUidsValidator) -> None:
+def show_daq_assignments(quabo_uids: QuaboUids) -> None:
     """Print the assignment of Quabos to DAQ nodes to the console.
 
     Args:
@@ -469,7 +469,7 @@ def show_daq_assignments(quabo_uids: QuaboUidsValidator) -> None:
 ## Apply global validation
 
 
-def print_topology_graph(obs_conf: ObsConfigValidator, daq_conf: DaqConfigValidator, net_conf: NetworkConfigValidator) -> None:
+def print_topology_graph(obs_conf: ObsConfig, daq_conf: DaqConfig, net_conf: NetworkConfig) -> None:
     console.print(Panel("[bold cyan]Observatory Topology & Routing Graph[/bold cyan]"))
 
     obs_name = obs_conf.name
@@ -627,9 +627,9 @@ def validate_all(check_network: bool = False, debug: bool = False, graph: bool =
 
     # 3. Visual Topology Graph
     if graph:
-        obs_cfg: ObsConfigValidator = validated_configs['obs']
-        daq_cfg: DaqConfigValidator = validated_configs['daq']
-        net_cfg: NetworkConfigValidator = validated_configs['network']
+        obs_cfg: ObsConfig = validated_configs['obs']
+        daq_cfg: DaqConfig = validated_configs['daq']
+        net_cfg: NetworkConfig = validated_configs['network']
         print_topology_graph(obs_cfg, daq_cfg, net_cfg)
 
     # 4. Network Ping Checks

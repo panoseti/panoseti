@@ -110,7 +110,7 @@ class InterleaveConfig(BaseStrictModel):
     states: list[InterleaveState] = Field([])
 
 ## data_config: global validator
-class DataConfigValidator(BaseModel):
+class DataConfig(BaseModel):
     """Science and engineering acquisition parameters (data_config.json)."""
     # We must use extra='allow' so Pydantic parses them, but we will
     # strictly validate the extra keys dynamically in mode='after'.
@@ -134,7 +134,7 @@ class DataConfigValidator(BaseModel):
         return v
 
     @model_validator(mode='after')
-    def validate_dynamic_modes_and_interleave(self) -> DataConfigValidator:
+    def validate_dynamic_modes_and_interleave(self) -> DataConfig:
         dynamic_keys: list[str] = []
         ph_modes_dict: dict[str, PulseHeightMode] = {}
 
@@ -236,7 +236,7 @@ class ObsDomeConfig(BaseStrictModel):
     num: int | None = None
 
 
-class ObsConfigValidator(BaseModel):
+class ObsConfig(BaseModel):
     """Physical observatory setup and device mapping (obs_config.json)."""
     name: str
     comment: str | None = None
@@ -249,7 +249,7 @@ class ObsConfigValidator(BaseModel):
     model_config = ConfigDict(extra='allow')
 
     @model_validator(mode='after')
-    def validate_wps_extras(self) -> ObsConfigValidator:
+    def validate_wps_extras(self) -> ObsConfig:
         """Ensures that dynamic 'wps-' keys match the WpsConfig schema."""
         extra_data = self.model_extra or {}
         for key, val in extra_data.items():
@@ -276,7 +276,7 @@ class PortForwarding(BaseStrictModel):
     grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
 
 
-class DaqNodeValidator(BaseModel):
+class DaqNode(BaseModel):
     """Configuration for a single remote Data Acquisition (DAQ) node."""
     model_config = ConfigDict(extra='allow')
     username: str
@@ -323,17 +323,17 @@ class DaqNodeValidator(BaseModel):
             raise ValueError(f"Unexpected type for 'module_ids': '{type(v)=}'")
 
 
-class DaqConfigValidator(BaseStrictModel):
+class DaqConfig(BaseStrictModel):
     """DAQ node networking and storage configuration (daq_config.json)."""
     comment: str | None = None
     head_node_data_dir: str
     head_node_ip_addr: IPvAnyAddress
     head_node_container: bool | None = Field(False)
     daq_node_module_limit: int | None = Field(4, description="Maximum number of modules per DAQ node (structural limit)")
-    daq_nodes: list[DaqNodeValidator]
+    daq_nodes: list[DaqNode]
 
     @model_validator(mode='after')
-    def check_head_node_data_dir_match(self) -> DaqConfigValidator:
+    def check_head_node_data_dir_match(self) -> DaqConfig:
         # If the head node and the DAQ node are the same machine, data_dir must match.
         head_ip = str(self.head_node_ip_addr)
         for node in self.daq_nodes:
@@ -359,7 +359,7 @@ class NetworkDaqNode(BaseStrictModel):
     ip_addr: IPvAnyAddress
     port_forwarding: PortForwarding
 
-class NetworkConfigValidator(BaseStrictModel):
+class NetworkConfig(BaseStrictModel):
     """Global network routing and port-forwarding map (network_config.json)."""
     modules: list[NetworkModule] = Field(default_factory=list)
     daq_nodes: list[NetworkDaqNode] = Field(default_factory=list)
@@ -373,7 +373,7 @@ class Daemons(BaseModel):
     model_config = ConfigDict(extra='allow') # Allow dynamic casper_xx keys
 
 
-class DaemonConfigValidator(BaseStrictModel):
+class DaemonConfig(BaseStrictModel):
     """Configuration for observatory background processes (daemons.json)."""
     daemons: Daemons
     permanent_daemons: Daemons
@@ -383,7 +383,7 @@ class DaemonConfigValidator(BaseStrictModel):
 # --- Firmware Config Models ---
 # ------------------------------
 
-class FirmwareConfigValidator(BaseModel):
+class FirmwareConfig(BaseModel):
     """Mapping of hardware types to firmware binaries."""
     model_config = ConfigDict(extra='allow') # Allow 'qfp', 'bga', or future hardware variants
     qfp: str | None = None
@@ -391,7 +391,7 @@ class FirmwareConfigValidator(BaseModel):
     gold: str | None = None
 
     @model_validator(mode='after')
-    def validate_firmware_files(self) -> FirmwareConfigValidator:
+    def validate_firmware_files(self) -> FirmwareConfig:
         fw_dir = PanoPaths.firmware_dir()
         for field in ['qfp', 'bga', 'gold']:
             filename = getattr(self, field)
@@ -431,7 +431,7 @@ class QuaboUidDome(BaseStrictModel):
     modules: list[QuaboUidModule]
     num: int | None = None
 
-class QuaboUidsValidator(BaseStrictModel):
+class QuaboUids(BaseStrictModel):
     """Local cache of unique hardware IDs for all observatory Quabos."""
     domes: list[QuaboUidDome]
 

@@ -51,7 +51,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
 
     # 1. Setup 4-node config
     headnode_ip = "10.0.1.5"
-    from control.utils.pydantic_config_models import DaqConfigValidator
+    from control.utils.pydantic_config_models import DaqConfig
     
     daq_raw = copy.deepcopy(topology_templates.get("base_daq", {}))
     daq_raw["head_node_ip_addr"] = headnode_ip
@@ -60,13 +60,13 @@ async def test_SCN003_partial_start_rollback_4_nodes(
         {"ip_addr": f"192.168.0.{30+i}", "data_dir": "/data", "username": "root", "module_ids": [200+i]}
         for i in range(4)
     ]
-    daq_config = DaqConfigValidator(**daq_raw)
+    daq_config = DaqConfig(**daq_raw)
 
     # 2. Prepare configurations
     obs_config = config_file.get_obs_config()
     
     # Use template for quabo_uids
-    from control.utils.pydantic_config_models import QuaboUidsValidator
+    from control.utils.pydantic_config_models import QuaboUids
     
     # Construct it cleanly from the fleet spec
     uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
@@ -78,7 +78,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
             "ip_addr": f"192.168.3.{mid}",
             "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
         })
-    quabo_uids = QuaboUidsValidator(**uids_dict)
+    quabo_uids = QuaboUids(**uids_dict)
     
     data_config = config_file.get_data_config()
     network_config = config_file.get_network_config()
@@ -155,8 +155,8 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
     import control.start as start
     from control.utils import config_file
     from control.utils.pydantic_config_models import (
-        DaqConfigValidator,
-        QuaboUidsValidator,
+        DaqConfig,
+        QuaboUids,
     )
     from control.utils.run_state import RunStateManager
     RunStateManager().clear_state()
@@ -171,7 +171,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
         {"ip_addr": "192.168.0.11", "data_dir": "/data", "username": "root", "module_ids": [251]},
         {"ip_addr": "192.168.0.12", "data_dir": "/data", "username": "root", "module_ids": [252]},
     ]
-    daq_config = DaqConfigValidator(**daq_raw)
+    daq_config = DaqConfig(**daq_raw)
 
     # Construct UIDs for these 3 modules
     uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
@@ -181,7 +181,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
                 "id": mid, "ip_addr": f"192.168.3.{mid}",
                 "quabos": [{"uid": f"q{mid}"}] + [{"uid": ""}]*3
          })
-    quabo_uids = QuaboUidsValidator(**uids_dict)
+    quabo_uids = QuaboUids(**uids_dict)
 
     obs_config = config_file.get_obs_config()
     data_config = config_file.get_data_config()

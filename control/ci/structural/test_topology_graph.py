@@ -12,18 +12,18 @@ import pytest
 
 from control.topology.graph_builder import GraphBuilder
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DaqNodeValidator,
+    DaqConfig,
+    DaqNode,
     PortForwarding,
     QuaboUidDome,
     QuaboUidEntry,
     QuaboUidModule,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 
 @pytest.fixture
-def mock_quabo_uids() -> QuaboUidsValidator:
+def mock_quabo_uids() -> QuaboUids:
     """Creates a basic Quabo UID configuration with one module (ID 254)."""
     module = QuaboUidModule(
         ip_addr=IPv4Address("192.168.3.248"),
@@ -36,18 +36,18 @@ def mock_quabo_uids() -> QuaboUidsValidator:
         id=254
     )
     dome = QuaboUidDome(num=0, modules=[module])
-    return QuaboUidsValidator(domes=[dome])
+    return QuaboUids(domes=[dome])
 
 
-def test_build_direct_topology(mock_quabo_uids: QuaboUidsValidator):
+def test_build_direct_topology(mock_quabo_uids: QuaboUids):
     """Verify graph structure for a direct-connection topology."""
-    daq_node = DaqNodeValidator(
+    daq_node = DaqNode(
         username="root",
         data_dir="/data",
         ip_addr=IPv4Address("192.168.0.10"),
         module_ids=[254]
     )
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=IPv4Address("10.0.1.5"),
         daq_nodes=[daq_node]
@@ -82,21 +82,21 @@ def test_build_direct_topology(mock_quabo_uids: QuaboUidsValidator):
         assert graph.has_edge(module_node, q)
 
 
-def test_build_gateway_topology(mock_quabo_uids: QuaboUidsValidator):
+def test_build_gateway_topology(mock_quabo_uids: QuaboUids):
     """Verify graph structure for a gateway/port-forwarding topology."""
     pf = PortForwarding(
         status=True,
         gw_ip=IPv4Address("10.0.1.10"),
         grpc_port=50051
     )
-    daq_node = DaqNodeValidator(
+    daq_node = DaqNode(
         username="root",
         data_dir="/data",
         ip_addr=IPv4Address("192.168.0.10"),
         module_ids=[254],
         port_forwarding=pf
     )
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=IPv4Address("10.0.1.5"),
         daq_nodes=[daq_node]

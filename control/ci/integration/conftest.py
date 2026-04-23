@@ -256,13 +256,13 @@ def get_daq_and_network_config(kind: str = "direct") -> tuple[dict[str, Any], di
             cfg_dir = GATEWAY_CONFIG
             with open(cfg_dir / "network_config.json", 'rb') as f:
                 net_cfg_raw = json.load(f)
-                net_cfg = config_file.NetworkConfigValidator(**net_cfg_raw).model_dump(mode='json', exclude_unset=True)
+                net_cfg = config_file.NetworkConfig(**net_cfg_raw).model_dump(mode='json', exclude_unset=True)
         case _:
             raise ValueError(f"Invalid {kind=}. Must be 'direct' or 'gateway'")
 
     with open(cfg_dir / "daq_config.json", 'rb') as f:
         daq_cfg_raw = json.load(f)
-        daq_cfg = config_file.DaqConfigValidator(**daq_cfg_raw).model_dump(mode='json', exclude_unset=True)
+        daq_cfg = config_file.DaqConfig(**daq_cfg_raw).model_dump(mode='json', exclude_unset=True)
     return daq_cfg, net_cfg
 
 

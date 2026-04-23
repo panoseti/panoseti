@@ -32,11 +32,11 @@ Tasks are grouped into four waves. Each wave must be green before the next begin
 
 | # | Task | Critical files | Agent | Depends on |
 |---|---|---|---|---|
-| 1.1 | Change `util.daq_grpc_endpoint` to accept `DaqNodeValidator`; remove every `node.model_dump()` at call sites in `start.py`, `stop.py`, `collect.py`. | `utils/util.py:136`, `start.py:384,416,548`, `stop.py:250,375` | Gemini Pro 3.1 | — |
+| 1.1 | Change `util.daq_grpc_endpoint` to accept `DaqNode`; remove every `node.model_dump()` at call sites in `start.py`, `stop.py`, `collect.py`. | `utils/util.py:136`, `start.py:384,416,548`, `stop.py:250,375` | Gemini Pro 3.1 | — |
 | 1.2 | Change `util.write_run_name`, `util.start_hk_recorder`, `file_xfer.copy_config_files`, `file_xfer.copy_dir_from_node` to accept validators, not dicts. | `utils/util.py:416`, `utils/file_xfer.py`, `start.py:348,372,592` | Gemini Pro 3.1 | — |
-| 1.3 | Change `stop.py::stop_data_flow` and `util.stop_data_flow` to accept `QuaboUidsValidator` only (not dict); remove `dome['modules']` indexing at `stop.py:211-228`. | `stop.py:200`, `utils/util.py:707` | Gemini Pro 3.1 | — |
-| 1.4 | Remove `DaqConfigValidator \| dict[str, Any]` unions from signatures. Validation happens once at `config_file.get_*`; every downstream function is strict. | `utils/collect.py:22,69`, `utils/config_file.py:157,190`, `utils/util.py:735,760` | Sonnet 4.6 | 1.1–1.3 |
-| 1.5 | Treat `PortForwarding` as a first-class attribute (already in `DaqNodeValidator`). Delete `model_dump() + 'port_forwarding' in node_dict` checks in `start.py:334-340` and `utils/collect.py:99-103`. | `utils/pydantic_config_models.py:276`, `start.py:334`, `utils/collect.py:99` | Gemini Flash 3.1 | 1.4 |
+| 1.3 | Change `stop.py::stop_data_flow` and `util.stop_data_flow` to accept `QuaboUids` only (not dict); remove `dome['modules']` indexing at `stop.py:211-228`. | `stop.py:200`, `utils/util.py:707` | Gemini Pro 3.1 | — |
+| 1.4 | Remove `DaqConfig \| dict[str, Any]` unions from signatures. Validation happens once at `config_file.get_*`; every downstream function is strict. | `utils/collect.py:22,69`, `utils/config_file.py:157,190`, `utils/util.py:735,760` | Sonnet 4.6 | 1.1–1.3 |
+| 1.5 | Treat `PortForwarding` as a first-class attribute (already in `DaqNode`). Delete `model_dump() + 'port_forwarding' in node_dict` checks in `start.py:334-340` and `utils/collect.py:99-103`. | `utils/pydantic_config_models.py:276`, `start.py:334`, `utils/collect.py:99` | Gemini Flash 3.1 | 1.4 |
 | 1.6 | Run `python ci/qa.py lint`; resolve every MyPy error. No new `type: ignore`. | repo-wide | Sonnet 4.6 | 1.1–1.5 |
 
 ### Wave 2 — Transactional hardening

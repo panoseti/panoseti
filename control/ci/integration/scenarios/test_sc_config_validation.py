@@ -56,21 +56,21 @@ class TestIntegrationTimeConstraints:
         cfg = base_data
         cfg["image"]["integration_time_usec"] = 7
         with pytest.raises(Exception): # noqa: B017
-            m.DataConfigValidator(**cfg)
+            m.DataConfig(**cfg)
 
     def test_SC082_does_not_divide_1e6_rejected(self, base_data) -> None:
         m = _load_pydantic_models()
         cfg = base_data
         cfg["image"]["integration_time_usec"] = 7000
         with pytest.raises(Exception): # noqa: B017
-            m.DataConfigValidator(**cfg)
+            m.DataConfig(**cfg)
 
     def test_valid_integration_time_accepted(self, base_data) -> None:
         m = _load_pydantic_models()
         cfg = base_data
         cfg["image"]["integration_time_usec"] = 100000
         # Should not raise
-        m.DataConfigValidator(**cfg)
+        m.DataConfig(**cfg)
 
 
 # ── SC-083 / SC-084: run_type constraints ─────────────────────────────────────
@@ -80,18 +80,18 @@ class TestRunTypeConstraints:
         m = _load_pydantic_models()
         base_data["run_type"] = "my run"
         with pytest.raises(Exception): # noqa: B017
-            m.DataConfigValidator(**base_data)
+            m.DataConfig(**base_data)
 
     def test_SC084_run_type_too_long_rejected(self, base_data) -> None:
         m = _load_pydantic_models()
         base_data["run_type"] = "verylongrunname01"
         with pytest.raises(Exception): # noqa: B017
-            m.DataConfigValidator(**base_data)
+            m.DataConfig(**base_data)
 
     def test_valid_run_type_accepted(self, base_data) -> None:
         m = _load_pydantic_models()
         base_data["run_type"] = "science"
-        m.DataConfigValidator(**base_data)
+        m.DataConfig(**base_data)
 
 
 # ── SC-087: Interleave state with movie mode + multi-pixel trigger ────────────
@@ -139,7 +139,7 @@ class TestInterleaveConstraints:
         # This test pins the contract; if no exception is raised, the validator is missing
         import contextlib
         with contextlib.suppress(Exception):
-            m.DataConfigValidator(**cfg)
+            m.DataConfig(**cfg)
             # If no exception, note whether the constraint is enforced
 
     def test_SC087b_both_configs_null_rejected(self) -> None:
@@ -156,7 +156,7 @@ class TestInterleaveConstraints:
         }
         cfg = self._make_data_config_with_interleave(state)
         with pytest.raises(Exception): # noqa: B017
-            m.DataConfigValidator(**cfg)
+            m.DataConfig(**cfg)
 
     def test_SC088_interleave_references_undefined_key_detected(self) -> None:
         """
@@ -180,7 +180,7 @@ class TestInterleaveConstraints:
             "interleave": {"enable": True, "states": [state]},
         }
         with pytest.raises(Exception) as exc_info:
-            m.DataConfigValidator(**cfg)
+            m.DataConfig(**cfg)
         # The error must name the missing key
         assert "image_DOES_NOT_EXIST" in str(exc_info.value) or "not found" in str(exc_info.value).lower(), (
             "FAIL (SC-088): Validation error for missing interleave key does not name "
@@ -224,7 +224,7 @@ def test_SC086_pe_threshold_too_low_rejected(base_data) -> None:
         "any_trigger": {"two_pixel_trigger": 0},
     }
     with pytest.raises(Exception): # noqa: B017
-        m.DataConfigValidator(**base_data)
+        m.DataConfig(**base_data)
 
 
 # ── SC-088b: Top-level mode key must have proper prefix ──────────────────────
@@ -243,7 +243,7 @@ def test_SC088b_top_level_key_without_prefix_rejected(base_data) -> None:
     }
     import contextlib
     with contextlib.suppress(Exception):
-        m.DataConfigValidator(**base_data)
+        m.DataConfig(**base_data)
 
 
 # ── SC-089: Two quabos with the same IP ──────────────────────────────────────

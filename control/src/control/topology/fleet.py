@@ -10,13 +10,13 @@ import random
 from ipaddress import IPv4Address
 
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DaqNodeValidator,
+    DaqConfig,
+    DaqNode,
     PortForwarding,
     QuaboUidDome,
     QuaboUidEntry,
     QuaboUidModule,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 
@@ -28,7 +28,7 @@ def generate_fleet_configs(
     daq_base_ip: str = "192.168.0.100",
     module_base_ip: str = "192.168.3.10",
     module_limit: int = 4
-) -> tuple[DaqConfigValidator, QuaboUidsValidator]:
+) -> tuple[DaqConfig, QuaboUids]:
     """
     Programmatically creates a set of configurations for an n-node fleet.
 
@@ -77,7 +77,7 @@ def generate_fleet_configs(
             managed_module_ids.append(current_module_id)
             current_module_id += 1
 
-        daq_node = DaqNodeValidator(
+        daq_node = DaqNode(
             username="panoseti",
             data_dir="/data",
             ip_addr=IPv4Address(node_ip),
@@ -87,7 +87,7 @@ def generate_fleet_configs(
         )
         daq_nodes.append(daq_node)
 
-    daq_config = DaqConfigValidator(
+    daq_config = DaqConfig(
         head_node_data_dir="/data/head",
         head_node_ip_addr=head_ip_obj,
         head_node_container=False,
@@ -95,7 +95,7 @@ def generate_fleet_configs(
         daq_nodes=daq_nodes
     )
 
-    quabo_uids = QuaboUidsValidator(
+    quabo_uids = QuaboUids(
         domes=[QuaboUidDome(num=0, modules=all_modules)]
     )
 

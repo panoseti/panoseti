@@ -8,13 +8,13 @@ from panoseti_grpc.telemetry.logger import get_logger
 import control.power as power
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import ObsConfigValidator
+from control.utils.pydantic_config_models import ObsConfig
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger("PSETI.SessionStop", log_dir=str(log_dir), grpc_enabled=True)
 
-def session_stop(obs_config: ObsConfigValidator) -> None:
+def session_stop(obs_config: ObsConfig) -> None:
     """Gracefully terminate an observing session.
     
     Powers off all modules and stops background Redis daemons.

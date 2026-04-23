@@ -149,7 +149,7 @@ def test_expand_ranges():
 def test_load_and_validate_bad_json(tmp_path):
     (tmp_path / "bad.json").write_text("{invalid}")
     with pytest.raises(ValueError, match="JSON Parse Error"):
-        load_and_validate(DataConfigValidator, "bad.json", str(tmp_path), "Test")
+        load_and_validate(DataConfig, "bad.json", str(tmp_path), "Test")
 ```
 
 **Tier 3 — GlobalConfigValidator** (`test_global_validator.py`): Business rule regressions.

@@ -25,12 +25,12 @@ from control.driver.quabo_tftp import tftpw
 from control.utils import config_file, file_xfer, pixel_coords, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DataConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaqConfig,
+    DataConfig,
+    NetworkConfig,
+    ObsConfig,
     ObsModuleConfig,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 app = typer.Typer(
@@ -60,7 +60,7 @@ def ask_use_default_calibration(ip_addr: str) -> bool:
 
 # print summary of obs and daq config files
 #
-def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) -> None:
+def show_config(obs_config: ObsConfig, quabo_uids: QuaboUids) -> None:
     """Print a human-readable summary of the observatory and hardware configuration.
     
     Args:
@@ -82,7 +82,7 @@ def show_config(obs_config: ObsConfigValidator, quabo_uids: QuaboUidsValidator) 
     #logger.info(f"This node's IP addr: {util.local_ip()}")
     config_file.show_daq_assignments(quabo_uids)
 
-def do_reboot_single_quabo(ip: str, obs_config: ObsConfigValidator, network_config: NetworkConfigValidator, timeout: int = 60) -> None:
+def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: NetworkConfig, timeout: int = 60) -> None:
     """Reboot a specific Quabo identified by its IP address or module ID.
 
     Args:
@@ -127,7 +127,7 @@ def do_reboot_single_quabo(ip: str, obs_config: ObsConfigValidator, network_conf
 
 # Reboot one module
 #
-def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, network_config: NetworkConfigValidator, timeout: int = 60) -> list[dict[str, bool]]:
+def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config: NetworkConfig, timeout: int = 60) -> list[dict[str, bool]]:
     """Reboot all four Quabos within a specific module sequentially.
     
     Configures timing mode (WR/GNSS) on Quabo 0 before rebooting.
@@ -203,7 +203,7 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, netwo
             logger.error(f'Quabo ({ip_addr}) is failed to rebooted.')
     return reboot_status
 
-def do_reboot(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, network_config: NetworkConfigValidator) -> None:
+def do_reboot(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
     """Reboot multiple modules in parallel across the observatory.
     
     Reboots occur in lockstep (all Q0s, then all Q1s, etc.) to optimize 
@@ -247,7 +247,7 @@ def do_reboot(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, ne
     logger.info(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
     logger.info('*******************************************************')
 
-def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, quabo_info: dict[str, Any], network_config: NetworkConfigValidator) -> None:
+def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], network_config: NetworkConfig) -> None:
     """Load firmware binaries onto multiple modules via TFTP.
     
     Automatically selects the correct binary (BGA/QFP) based on Quabo hardware version.
@@ -295,7 +295,7 @@ def do_loadg(modules: list[dict[str, Any]]) -> None:
     logger.info("not supported")
     #x.put_bin_file(firmware_gold, 0x0)
 
-def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfigValidator, verbose: bool = False) -> dict[str, list[str]]:
+def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfig, verbose: bool = False) -> dict[str, list[str]]:
     """Check network reachability for all Quabos in the specified modules.
 
     Args:
@@ -330,7 +330,7 @@ def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfigValidat
             logger.info(f"can't ping {ip}")
     return ping_record
 
-def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, daq_config: DaqConfigValidator, network_config: NetworkConfigValidator) -> None:
+def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config: DaqConfig, network_config: NetworkConfig) -> None:
     """Configure Housekeeping (HK) packet destination for multiple modules.
     
     Points all Quabos to the head node IP address for telemetry reporting.
@@ -360,7 +360,7 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, d
             quabo.hk_packet_destination(headnode_ip_addr)
             quabo.close()
 
-def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfigValidator, verbose: bool = False) -> None:
+def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfig, verbose: bool = False) -> None:
     """Enable high voltage (HV) for all detectors in multiple modules.
     
     Calculates DAC values based on per-detector operating voltages.
@@ -399,7 +399,7 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, qua
             if verbose:
                 logger.info(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
 
-def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, network_config: NetworkConfigValidator) -> None:
+def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
     """Disable high voltage (HV) for all detectors in multiple modules.
 
     Args:
@@ -432,7 +432,7 @@ MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(
     str(pathlib.Path(__file__).parent / 'driver/quabo_config.txt')
 )
 cal_cache: dict[tuple[Any, ...], Any] = {}
-def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, quabo_info: dict[str, Any], data_config: DataConfigValidator, obs_config: ObsConfigValidator, daq_config: DaqConfigValidator, network_config: NetworkConfigValidator, verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
+def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], data_config: DataConfig, obs_config: ObsConfig, daq_config: DaqConfig, network_config: NetworkConfig, verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
     """Configure MAROC ASIC registers for multiple modules.
     
     This includes setting gains and discriminator thresholds (DAC1/DAC2) 
@@ -592,7 +592,7 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidat
 MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(
     str(pathlib.Path(__file__).parent / 'driver/quabo_config.txt')
 ) # load once to avoid redundant I/O
-def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfigValidator, network_config: NetworkConfigValidator, quabo_uids: QuaboUidsValidator, verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
+def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, network_config: NetworkConfig, quabo_uids: QuaboUids, verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
     """Configure channel trigger masks and geometric coincidence masks.
 
     Args:
@@ -653,7 +653,7 @@ def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfigValida
                 quabo.write_goe_mask_config(qc_dict_int, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
 
-def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidator, network_config: NetworkConfigValidator) -> None:
+def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
     """Trigger pulse-height (PH) baseline calibration on multiple modules.
     
     Results are saved to the local PH baseline cache file.
@@ -695,7 +695,7 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUidsValidat
 
 
 # show summary statistics for the PH baseline calibrations of each quabo
-def do_show_ph_baselines(quabo_uids: QuaboUidsValidator) -> None:
+def do_show_ph_baselines(quabo_uids: QuaboUids) -> None:
     """Print summary statistics for the cached PH baseline calibrations.
 
     Args:
@@ -732,7 +732,7 @@ def do_show_ph_baselines(quabo_uids: QuaboUidsValidator) -> None:
 # compute available recording time, given data config and free disk space.
 # If verbose, show details
 #
-def do_disk_space(data_config: DataConfigValidator, daq_config: DaqConfigValidator, verbose: bool = False) -> float:
+def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool = False) -> float:
     """Estimate remaining recording time based on available disk space.
 
     Args:

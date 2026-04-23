@@ -23,13 +23,13 @@ import control.config as pano_config
 from control.driver import quabo_driver
 from control.utils import config_file, util
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    DataConfigValidator,
+    DaqConfig,
+    DataConfig,
     InterleaveConfig,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    NetworkConfig,
+    ObsConfig,
     ObsModuleConfig,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 PID_FILE = "tmp/interleave.pid"
@@ -46,9 +46,9 @@ class InterleaveController:
     (MAROC and FPGA registers) at every state transition.
     """
     MAX_THREADS = 8
-    def __init__(self, data_config: DataConfigValidator | dict[str, Any], obs_config: ObsConfigValidator | dict[str, Any],
-                 daq_config: DaqConfigValidator | dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any],
-                 quabo_info: dict[str, Any], network_config: NetworkConfigValidator | dict[str, Any],
+    def __init__(self, data_config: DataConfig | dict[str, Any], obs_config: ObsConfig | dict[str, Any],
+                 daq_config: DaqConfig | dict[str, Any], quabo_uids: QuaboUids | dict[str, Any],
+                 quabo_info: dict[str, Any], network_config: NetworkConfig | dict[str, Any],
                  dry_run: bool = False, max_cycles: int | None = None) -> None:
         """Initialize the Interleave Controller and verify system state.
 
@@ -64,15 +64,15 @@ class InterleaveController:
         """
 
         if isinstance(data_config, dict):
-            data_config = DataConfigValidator(**data_config)
+            data_config = DataConfig(**data_config)
         if isinstance(obs_config, dict):
-            obs_config = ObsConfigValidator(**obs_config)
+            obs_config = ObsConfig(**obs_config)
         if isinstance(daq_config, dict):
-            daq_config = DaqConfigValidator(**daq_config)
+            daq_config = DaqConfig(**daq_config)
         if isinstance(quabo_uids, dict):
-            quabo_uids = QuaboUidsValidator(**quabo_uids)
+            quabo_uids = QuaboUids(**quabo_uids)
         if isinstance(network_config, dict):
-            network_config = NetworkConfigValidator(**network_config)
+            network_config = NetworkConfig(**network_config)
 
         self.keep_running = True
         self.dry_run = dry_run
@@ -192,7 +192,7 @@ class InterleaveController:
         #for f in as_completed(futures):
         #    f.result()
 
-    def _reconfigure_quabos(self, next_state_data_config: DataConfigValidator) -> None:
+    def _reconfigure_quabos(self, next_state_data_config: DataConfig) -> None:
         """Reconfigure MAROC and FPGA registers for a specific observing mode.
 
         Args:
@@ -218,7 +218,7 @@ class InterleaveController:
         #futures = [self.executor.submit(reconfig_module, module) for module in self.modules]
         #for f in as_completed(futures): f.result()
 
-    def generate_state_config(self, movie_key: str | None, ph_key: str | None) -> DataConfigValidator:
+    def generate_state_config(self, movie_key: str | None, ph_key: str | None) -> DataConfig:
         """Generate a mode-specific data configuration for a target interleave state.
         
         Merges mode overrides into the base configuration.
@@ -228,7 +228,7 @@ class InterleaveController:
             ph_key: Key in model_extra or 'pulse_height' to use for PH mode.
 
         Returns:
-            A new DataConfigValidator reflecting the target observing mode.
+            A new DataConfig reflecting the target observing mode.
         """
         temp_dict = self.data_config.model_dump()
         temp_dict.pop('image', None)
@@ -248,7 +248,7 @@ class InterleaveController:
             else:
                 temp_dict['pulse_height'] = extra.get(ph_key)
         
-        return DataConfigValidator(**temp_dict)
+        return DataConfig(**temp_dict)
 
     def _sleep_until(self, target_time: float, spin_wait_threshold: float = 0.005) -> None:
         """High-precision sleep that uses hybrid sleep/spin logic.

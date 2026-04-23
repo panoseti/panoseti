@@ -130,7 +130,7 @@ The server writes to `/var/log/panoseti/daq_control_server.log` inside the daqno
 
 ### CI Validation Leniency
 The control plane enforces strict pre-flight validation. In CI environments, we allow leniency for missing hardware/firmware if `head_node_container: true` is set in `daq_config.json`.
-- If a test fails with "Pre-flight configuration validation failed," ensure the test's `DaqConfigValidator` instance has `head_node_container=True`.
+- If a test fails with "Pre-flight configuration validation failed," ensure the test's `DaqConfig` instance has `head_node_container=True`.
 
 ---
 

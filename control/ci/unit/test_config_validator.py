@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, patch
 
 from control.utils.config_validator import perform_network_ping_sweep, print_compact_config
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaqConfig,
+    NetworkConfig,
+    ObsConfig,
 )
 
 # ===========================================================================
@@ -22,7 +22,7 @@ from control.utils.pydantic_config_models import (
 # ===========================================================================
 
 class TestPrintCompactConfig:
-    def test_daq_with_many_module_ids_compressed(self, capsys, mock_daq_config: DaqConfigValidator) -> None:
+    def test_daq_with_many_module_ids_compressed(self, capsys, mock_daq_config: DaqConfig) -> None:
         """DAQ config with 256 module IDs should print a compressed summary."""
         mock_daq_config.daq_nodes[0].module_ids = list(range(256))
         
@@ -32,7 +32,7 @@ class TestPrintCompactConfig:
         # The condensed form should show "total IDs" rather than all 256 numbers
         assert "total" in captured.out or "256" in captured.out
 
-    def test_daq_with_few_module_ids_not_compressed(self, capsys, mock_daq_config: DaqConfigValidator) -> None:
+    def test_daq_with_few_module_ids_not_compressed(self, capsys, mock_daq_config: DaqConfig) -> None:
         """DAQ config with 3 module IDs should not be compressed."""
         mock_daq_config.daq_nodes[0].module_ids = [0, 1, 2]
         print_compact_config("daq", mock_daq_config)
@@ -40,7 +40,7 @@ class TestPrintCompactConfig:
         # All three IDs should appear verbatim
         assert "0" in captured.out
 
-    def test_non_daq_config_printed(self, capsys, mock_obs_config: ObsConfigValidator) -> None:
+    def test_non_daq_config_printed(self, capsys, mock_obs_config: ObsConfig) -> None:
         """Non-DAQ configs should be printed as-is."""
         print_compact_config("obs", mock_obs_config)
         captured = capsys.readouterr()
@@ -71,7 +71,7 @@ def _patch_tcp_check(up_hosts: set):
 
 
 class TestPerformNetworkPingSweep:
-    def test_all_hosts_up_returns_true(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_all_hosts_up_returns_true(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """All targets reachable → returns True."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         all_ips = {"10.0.0.1", "10.0.0.2", "192.168.3.200", "192.168.1.2"}
@@ -79,7 +79,7 @@ class TestPerformNetworkPingSweep:
             result = perform_network_ping_sweep(cfg)
         assert result is True
 
-    def test_one_host_down_returns_false(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_one_host_down_returns_false(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Any target unreachable → returns False."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         # Head node is down (10.0.0.1 not in up_hosts)
@@ -87,7 +87,7 @@ class TestPerformNetworkPingSweep:
             result = perform_network_ping_sweep(cfg)
         assert result is False
 
-    def test_head_node_is_checked(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_head_node_is_checked(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Head node IP is included in the ping sweep."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
@@ -101,7 +101,7 @@ class TestPerformNetworkPingSweep:
 
         assert "10.0.0.1" in checked_ips
 
-    def test_head_node_container_skips_head_check(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_head_node_container_skips_head_check(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """head_node_container=True → head node not directly checked."""
         mock_daq_config.head_node_container = True
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
@@ -117,7 +117,7 @@ class TestPerformNetworkPingSweep:
 
         assert "10.0.0.1" not in checked_ips
 
-    def test_wps_url_is_checked(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_wps_url_is_checked(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """WPS URL hostname is extracted and pinged."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
@@ -131,7 +131,7 @@ class TestPerformNetworkPingSweep:
 
         assert "192.168.1.2" in checked_ips
 
-    def test_module_ip_is_checked(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_module_ip_is_checked(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Module IP (quabo CMD port) is included in the sweep."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
@@ -145,7 +145,7 @@ class TestPerformNetworkPingSweep:
 
         assert "192.168.3.200" in checked_ips
 
-    def test_no_modules_or_wps_still_returns(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_no_modules_or_wps_still_returns(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Empty obs config (no modules) → sweep runs without crash."""
         mock_obs_config.domes = []
         mock_daq_config.head_node_container = True
@@ -159,7 +159,7 @@ class TestPerformNetworkPingSweep:
         # No targets → all_passed stays True (vacuously)
         assert result is True
 
-    def test_gateway_forwarded_module_uses_gw_ip(self, mock_obs_config: ObsConfigValidator, mock_daq_config: DaqConfigValidator, mock_network_config: NetworkConfigValidator) -> None:
+    def test_gateway_forwarded_module_uses_gw_ip(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Module behind gateway → gateway IP is checked, not module IP directly."""
         mock_network_config.modules[0].port_forwarding.status = True
         mock_network_config.modules[0].port_forwarding.gw_ip = "203.0.113.1"

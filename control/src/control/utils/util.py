@@ -28,14 +28,14 @@ from control.driver import quabo_driver
 from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
-    DaemonConfigValidator,
-    DaqConfigValidator,
-    DaqNodeValidator,
-    DataConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaemonConfig,
+    DaqConfig,
+    DaqNode,
+    DataConfig,
+    NetworkConfig,
+    ObsConfig,
     ObsModuleConfig,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 #-------------- DEFAULTS ---------------
@@ -99,7 +99,7 @@ def now_str() -> str:
 #
 default_hk_dest = '192.168.1.100'
 
-def daq_grpc_endpoint(node: DaqNodeValidator) -> tuple[str, int]:
+def daq_grpc_endpoint(node: DaqNode) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.
 
     Reads port_forwarding from the node model (attached by attach_daq_config).
@@ -171,7 +171,7 @@ def print_binary(data: bytes) -> None:
 
 # get the UID of quabo i in a given module
 #
-def quabo_uid(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, i: int) -> str:
+def quabo_uid(module: ObsModuleConfig, quabo_uids: QuaboUids, i: int) -> str:
     """Retrieve the hardware UID for a specific Quabo.
 
     Args:
@@ -193,14 +193,14 @@ def quabo_uid(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, i: int) -
 
 # see if quabo is alive by seeing if we got its UID
 #
-def is_quabo_alive(module: ObsModuleConfig, quabo_uids: QuaboUidsValidator, i: int) -> bool:
+def is_quabo_alive(module: ObsModuleConfig, quabo_uids: QuaboUids, i: int) -> bool:
     return quabo_uid(module, quabo_uids, i) != ''
 
 
 # is quabo new or old hardware version, as specified in obs_config?
 # can be specified as either string or array of 4 strings
 #
-def is_quabo_old_version(module: ObsModuleConfig, i: int, quabo_uids: QuaboUidsValidator, quabo_info: dict[str, Any]) -> bool | None:
+def is_quabo_old_version(module: ObsModuleConfig, i: int, quabo_uids: QuaboUids, quabo_info: dict[str, Any]) -> bool | None:
     """Check if a Quabo is an older hardware version (qfp)."""
     uid = quabo_uid(module, quabo_uids, i)
 
@@ -255,7 +255,7 @@ def _are_daemons_running(progs: list[str]) -> bool:
     return all(is_script_running(prog) for prog in progs)
 
 
-def _safe_get_daemons_config() -> DaemonConfigValidator | None:
+def _safe_get_daemons_config() -> DaemonConfig | None:
     # Handle "util.py copied to daq nodes" case (config_file may not exist).
     try:
         return config_file.get_daemons_config()
@@ -335,7 +335,7 @@ def are_permanent_daemons_running() -> bool:
     return _are_daemons_running(get_permanent_daemons())
 
 
-def start_hk_recorder(daq_config: DaqConfigValidator, run_name: str) -> None:
+def start_hk_recorder(daq_config: DaqConfig, run_name: str) -> None:
     path = f'{daq_config.head_node_data_dir}/{run_name}/{hk_file_name}'
     try:
         subprocess.Popen([sys.executable, hk_recorder_name, path])
@@ -369,7 +369,7 @@ def start_module_temp_monitor() -> None:
 
 
 # write run name to a file, and symlink 'run' to the run dir
-def write_run_name(daq_config: DaqConfigValidator, run_name: str) -> None:
+def write_run_name(daq_config: DaqConfig, run_name: str) -> None:
     with open(run_name_file, 'w') as f:
         f.write(run_name)
     if os.path.lexists(run_symlink):
@@ -507,7 +507,7 @@ def free_space(path: str) -> int:
 
 
 # estimate bytes per second per module for a given data config
-def daq_bytes_per_sec_per_module(data_config: DataConfigValidator) -> float:
+def daq_bytes_per_sec_per_module(data_config: DataConfig) -> float:
     """Estimate the data generation rate (bytes per second) per module.
     
     This calculation includes overhead for housekeeping (hk.pff), 
@@ -538,7 +538,7 @@ def daq_bytes_per_sec_per_module(data_config: DataConfigValidator) -> float:
     return x
 
 
-def get_daq_node_status(node: DaqNodeValidator) -> dict[str, Any]:
+def get_daq_node_status(node: DaqNode) -> dict[str, Any]:
     """Retrieve the DAQ status from a remote node via SSH.
 
     Args:
@@ -577,7 +577,7 @@ def daq_get_run_name() -> str | None:
 
 #-------------- WR and GPS---------------
 
-def get_wr_ip_addr(obs_config: ObsConfigValidator) -> str:
+def get_wr_ip_addr(obs_config: ObsConfig) -> str:
     """Retrieve the White Rabbit switch IP address from the configuration.
 
     Args:
@@ -591,7 +591,7 @@ def get_wr_ip_addr(obs_config: ObsConfigValidator) -> str:
     return '192.168.1.254'
 
 
-def get_gps_port(obs_config: ObsConfigValidator) -> str:
+def get_gps_port(obs_config: ObsConfig) -> str:
     """Retrieve the TTY device path for the GPS receiver.
 
     Args:
@@ -610,7 +610,7 @@ def get_gps_port(obs_config: ObsConfigValidator) -> str:
 #
 DEFAULT_CMD_PORT=60000
 DEFAULT_REBOOT_PORT=69
-def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidator) -> dict[str, Any]:
+def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfig) -> dict[str, Any]:
     """Determine the effective IP and port for a specific Quabo.
 
     Accounts for network port forwarding if configured. If no mapping
@@ -648,8 +648,8 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidat
 
 
 def stop_data_flow(
-    quabo_uids: QuaboUidsValidator,
-    network_config: NetworkConfigValidator,
+    quabo_uids: QuaboUids,
+    network_config: NetworkConfig,
 ) -> None:
     """Tells all Quabos to stop sending data. Used for rollback and clean shutdown.
 
@@ -676,8 +676,8 @@ def stop_data_flow(
 
 
 def attach_daq_config(
-    daq_config: DaqConfigValidator,
-    network_config: NetworkConfigValidator | None,
+    daq_config: DaqConfig,
+    network_config: NetworkConfig | None,
 ) -> None:
     """Merge port forwarding metadata into the DAQ configuration.
 
@@ -696,7 +696,7 @@ def attach_daq_config(
 
 
 
-def get_valid_ip(obs_config: ObsConfigValidator) -> list[str]:
+def get_valid_ip(obs_config: ObsConfig) -> list[str]:
     """Extract all valid Quabo IP addresses from the observatory configuration.
 
     Args:

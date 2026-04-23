@@ -16,12 +16,12 @@ from control.driver.quabo_tftp import tftpw
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    NetworkConfig,
+    ObsConfig,
     QuaboUidDome,
     QuaboUidEntry,
     QuaboUidModule,
-    QuaboUidsValidator,
+    QuaboUids,
 )
 
 log_dir = PanoPaths.logs_dir()
@@ -50,7 +50,7 @@ def get_uid(ip_addr: str, port: int) -> str:
         return ""
 
 
-def get_uids(obs_config: ObsConfigValidator, network_config: NetworkConfigValidator, exclude: list[int] | None = None) -> None:
+def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list[int] | None = None) -> None:
     """Scan the observatory for Quabos and cache their unique hardware IDs."""
     if exclude is None:
         exclude = []
@@ -70,15 +70,6 @@ def get_uids(obs_config: ObsConfigValidator, network_config: NetworkConfigValida
                     port = ip_ports['reboot_port']
                     
                     logger.info(f"get uid for {m_ip}:{i} (real_ip: {real_ip})")
-                    
-                    try:
-                        from control.driver import quabo_driver
-                        q = quabo_driver.QUABO(real_ip, ip_ports['cmd_port'])
-                        q.data_packet_destination('192.168.1.1')
-                        q.close()
-                    except Exception as e:
-                        logger.debug(f"Ping failed: {e}")
-                        
                     uid = get_uid(real_ip, port)
                     quabo_entries.append(QuaboUidEntry(uid=uid))
                 else:
@@ -92,7 +83,7 @@ def get_uids(obs_config: ObsConfigValidator, network_config: NetworkConfigValida
             ))
         dome_uids.append(QuaboUidDome(modules=module_uids, num=d.num))
 
-    quabo_uids = QuaboUidsValidator(domes=dome_uids)
+    quabo_uids = QuaboUids(domes=dome_uids)
     
     quabo_uids_path = PanoPaths.tmp_dir() / config_file.quabo_uids_filename
     with open(quabo_uids_path, "w", encoding="utf-8") as f:

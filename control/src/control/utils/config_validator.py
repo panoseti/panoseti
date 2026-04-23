@@ -10,9 +10,9 @@ from rich.panel import Panel
 from rich.pretty import pprint
 
 from control.utils.pydantic_config_models import (
-    DaqConfigValidator,
-    NetworkConfigValidator,
-    ObsConfigValidator,
+    DaqConfig,
+    NetworkConfig,
+    ObsConfig,
 )
 
 console = Console()
@@ -74,9 +74,9 @@ def perform_network_ping_sweep(validated_configs: dict[str, Any]) -> bool:
             raise TypeError(f"Expected {model_type.__name__} for '{key}', got {type(cfg)}")
         return cfg
 
-    obs_cfg: ObsConfigValidator | None = _strict_validate('obs', ObsConfigValidator)
-    daq_cfg: DaqConfigValidator | None = _strict_validate('daq', DaqConfigValidator)
-    net_cfg: NetworkConfigValidator | None = _strict_validate('network', NetworkConfigValidator)
+    obs_cfg: ObsConfig | None = _strict_validate('obs', ObsConfig)
+    daq_cfg: DaqConfig | None = _strict_validate('daq', DaqConfig)
+    net_cfg: NetworkConfig | None = _strict_validate('network', NetworkConfig)
 
     # --- 1. Head Node ---
     if daq_cfg and hasattr(daq_cfg, 'head_node_ip_addr'):

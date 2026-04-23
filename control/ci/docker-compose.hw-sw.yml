@@ -46,7 +46,7 @@ services:
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
-      target: integration-headnode
+      target: headnode
     profiles: ["headnode"]
     network_mode: host
     volumes:

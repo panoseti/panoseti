@@ -174,7 +174,7 @@ WantedBy=multi-user.target
 { "daq_nodes": [{ "ip_addr": "...", "grpc_port": 50051, ... }] }
 ```
 
-3. **Update `DaqNodeValidator`** in `pydantic_config_models.py` to allow optional `grpc_port: int = 50051`.
+3. **Update `DaqNode`** in `pydantic_config_models.py` to allow optional `grpc_port: int = 50051`.
 
 ### Code changes
 
@@ -262,7 +262,7 @@ bash run-ci/run-unit-tests.sh
 | `control/start.py` | Modify | Replace SSH with `DaqControlClient.StartDaq()` |
 | `control/stop.py` | Modify | Replace SSH with `DaqControlClient.StopDaq()` |
 | `control/status.py` | Modify | Replace SSH with `DaqControlClient.StatusDaq()` |
-| `control/utils/pydantic_config_models.py` | Modify | Add `grpc_port: int = 50051` to `DaqNodeValidator` |
+| `control/utils/pydantic_config_models.py` | Modify | Add `grpc_port: int = 50051` to `DaqNode` |
 | `control/utils/util.py` | Modify | Add type annotations; modernize subprocess calls |
 | `control/daq_scripts/{start,stop,status}_daq.py` | Deprecate | Replaced by gRPC server |
 | `docs/plan/control-upgrade-plan.md` | **NEW** | This document |
@@ -278,7 +278,7 @@ bash run-ci/run-unit-tests.sh
 | `DaqControlClient` | `panoseti_grpc.daq_control.client` | `start.py`, `stop.py`, `status.py` |
 | `ip_addr_to_module_id()` | `panoseti_grpc.panoseti_util.config_file` | gRPC server configs (already re-exported) |
 | `expand_ranges()` | `control/utils/config_file.py:108` | Global validator, tests |
-| `DataConfigValidator` | `control/utils/pydantic_config_models.py:97` | All config loading, all tests |
+| `DataConfig` | `control/utils/pydantic_config_models.py:97` | All config loading, all tests |
 
 ---
 

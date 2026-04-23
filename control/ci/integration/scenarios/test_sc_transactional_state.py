@@ -86,7 +86,7 @@ class TestSC002PartialStartRollback:
         import control.start as start
         from control.utils import config_file
         from control.utils import util as _util
-        from control.utils.pydantic_config_models import DaqNodeValidator
+        from control.utils.pydantic_config_models import DaqNode
         from control.utils.run_state import NodeReceipt, RunStateManager
 
         # Clear any stale lock/ledger from a previous test run.
@@ -102,7 +102,7 @@ class TestSC002PartialStartRollback:
 
         # Add a second node that will be made to fail.
         daq_config.daq_nodes.append(
-            DaqNodeValidator(
+            DaqNode(
                 ip_addr=IPv4Address("192.168.0.20"),
                 data_dir="/data",
                 username="root",
@@ -918,19 +918,19 @@ class TestSC027StopRunMismatch:
 
         import control.stop as stop_module
         from control.utils.pydantic_config_models import (
-            DaqConfigValidator,
-            NetworkConfigValidator,
-            QuaboUidsValidator,
+            DaqConfig,
+            NetworkConfig,
+            QuaboUids,
             RunStateLedger,
         )
 
-        daq_config = DaqConfigValidator(
+        daq_config = DaqConfig(
             head_node_ip_addr=IPv4Address("10.0.1.5"),
             head_node_data_dir="/data/head",
             daq_nodes=[],
         )
-        network_config = NetworkConfigValidator()
-        quabo_uids = QuaboUidsValidator(domes=[])
+        network_config = NetworkConfig()
+        quabo_uids = QuaboUids(domes=[])
 
         mock_mgr = MagicMock()
         ledger = RunStateLedger(
@@ -968,19 +968,19 @@ class TestSC027StopRunMismatch:
 
         import control.stop as stop_module
         from control.utils.pydantic_config_models import (
-            DaqConfigValidator,
-            NetworkConfigValidator,
-            QuaboUidsValidator,
+            DaqConfig,
+            NetworkConfig,
+            QuaboUids,
             RunStateLedger,
         )
 
-        daq_config = DaqConfigValidator(
+        daq_config = DaqConfig(
             head_node_ip_addr=IPv4Address("10.0.1.5"),
             head_node_data_dir="/data/head",
             daq_nodes=[],
         )
-        network_config = NetworkConfigValidator()
-        quabo_uids = QuaboUidsValidator(domes=[])
+        network_config = NetworkConfig()
+        quabo_uids = QuaboUids(domes=[])
 
         mock_mgr = MagicMock()
         ledger = RunStateLedger(
@@ -1037,10 +1037,10 @@ class TestSC029FundamentalFailureSkipsCleanup:
         
         import control.stop as stop_module
         from control.utils.pydantic_config_models import (
-            DaqConfigValidator,
-            DaqNodeValidator,
-            NetworkConfigValidator,
-            QuaboUidsValidator,
+            DaqConfig,
+            DaqNode,
+            NetworkConfig,
+            QuaboUids,
             RunStateLedger,
         )
 
@@ -1050,15 +1050,15 @@ class TestSC029FundamentalFailureSkipsCleanup:
         run_dir = head_dir / run_name
         run_dir.mkdir(parents=True)
 
-        daq_config = DaqConfigValidator(
+        daq_config = DaqConfig(
             head_node_ip_addr=IPv4Address("10.0.1.5"),
             head_node_data_dir=str(head_dir),
             daq_nodes=[
-                DaqNodeValidator(ip_addr=IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[1]),
+                DaqNode(ip_addr=IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[1]),
             ],
         )
-        network_config = NetworkConfigValidator()
-        quabo_uids = QuaboUidsValidator(domes=[])
+        network_config = NetworkConfig()
+        quabo_uids = QuaboUids(domes=[])
 
         # 2. Mock RunStateManager and Ledger
         mock_mgr = MagicMock()
@@ -1297,8 +1297,8 @@ async def slow_start():
             daq.daq_nodes[0].module_ids = mids
     except SystemExit:
         # Fallback for CI if quabo_uids.json is missing early
-        from control.utils.pydantic_config_models import QuaboUidsValidator
-        uids = QuaboUidsValidator(domes=[])
+        from control.utils.pydantic_config_models import QuaboUids
+        uids = QuaboUids(domes=[])
     data = config_file.get_data_config()
     print(f"DEBUG: slow_start in-memory data.run_type={{data.run_type}}", flush=True)
     from control.utils.paths import PanoPaths
@@ -1487,8 +1487,8 @@ async def slow_start():
         if daq.daq_nodes:
             daq.daq_nodes[0].module_ids = mids
     except SystemExit:
-        from control.utils.pydantic_config_models import QuaboUidsValidator
-        uids = QuaboUidsValidator(domes=[])
+        from control.utils.pydantic_config_models import QuaboUids
+        uids = QuaboUids(domes=[])
     data = config_file.get_data_config()
     net = config_file.get_network_config()
 

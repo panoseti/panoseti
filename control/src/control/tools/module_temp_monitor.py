@@ -16,7 +16,7 @@ from panoseti_grpc.telemetry.logger import get_logger
 import control.power as power
 from control.utils import config_file
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import ObsConfigValidator
+from control.utils.pydantic_config_models import ObsConfig
 from control.utils.util import are_redis_daemons_running
 
 # Safe operating temperature ranges (in Celsius)
@@ -44,7 +44,7 @@ def is_acceptable_temperature(temps: list[float]) -> tuple[bool, bool]:
     return detector_temp_ok, fpga_temp_ok
 
 
-def check_all_module_temps(obs_config: ObsConfigValidator | dict[str, Any], wps_to_modules: dict[str, set[str]], r: redis.Redis) -> set[str]:
+def check_all_module_temps(obs_config: ObsConfig | dict[str, Any], wps_to_modules: dict[str, set[str]], r: redis.Redis) -> set[str]:
     """Inspect the temperatures of all active Quabos in the observatory.
     
     Reads current temperatures from Redis and identifies modules that 
@@ -59,7 +59,7 @@ def check_all_module_temps(obs_config: ObsConfigValidator | dict[str, Any], wps_
         A set of WPS names that should be turned off to protect hardware.
     """
     if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
+        obs_config = ObsConfig(**obs_config)
 
     wps_to_turn_off = set()
     for dome in obs_config.domes:
@@ -107,7 +107,7 @@ def check_all_module_temps(obs_config: ObsConfigValidator | dict[str, Any], wps_
     return wps_to_turn_off
 
 
-def get_wps_to_modules(obs_config: ObsConfigValidator | dict[str, Any]) -> dict[str, set[str]]:
+def get_wps_to_modules(obs_config: ObsConfig | dict[str, Any]) -> dict[str, set[str]]:
     """Build a mapping of Web Power Switches to their connected modules.
 
     Args:
@@ -117,7 +117,7 @@ def get_wps_to_modules(obs_config: ObsConfigValidator | dict[str, Any]) -> dict[
         A dictionary mapping WPS unit names (e.g. 'wps', 'wps1') to sets of module IPs.
     """
     if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
+        obs_config = ObsConfig(**obs_config)
 
     wps_to_modules: dict[str, set[str]] = dict()
     for dome in obs_config.domes:
@@ -131,7 +131,7 @@ def get_wps_to_modules(obs_config: ObsConfigValidator | dict[str, Any]) -> dict[
     return wps_to_modules
 
 
-def update_power(obs_config: ObsConfigValidator | dict[str, Any], wps_to_modules: dict[str, set[str]], wps_to_turn_off: set[str]) -> None:
+def update_power(obs_config: ObsConfig | dict[str, Any], wps_to_modules: dict[str, set[str]], wps_to_turn_off: set[str]) -> None:
     """Execute power-off commands for modules that have exceeded safe temperatures.
 
     Args:
@@ -140,7 +140,7 @@ def update_power(obs_config: ObsConfigValidator | dict[str, Any], wps_to_modules
         wps_to_turn_off: Set of WPS names identified as needing shutdown.
     """
     if isinstance(obs_config, dict):
-        obs_config = ObsConfigValidator(**obs_config)
+        obs_config = ObsConfig(**obs_config)
 
     for wps_name in wps_to_turn_off:
         try:
