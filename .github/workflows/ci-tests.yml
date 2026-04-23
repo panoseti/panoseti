@@ -73,15 +73,15 @@ jobs:
             unit-test-runner
 
       - name: Run Unit Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build unit
+        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build sw unit
         working-directory: control
 
       - name: Run Structural Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build structural
+        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build sw structural
         working-directory: control
 
       - name: Run Linting
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build lint
+        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build lint
         working-directory: control
 
   # 3. Integration Tests
@@ -121,7 +121,7 @@ jobs:
             --load
 
       - name: Run Integration Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build integration
+        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build sw integration
         working-directory: control
 
       - name: Upload artifacts

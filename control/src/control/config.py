@@ -1175,7 +1175,6 @@ def dry_run_interleave():
     do_dry_run_interleave()
 
 validate_app = typer.Typer(help="Configuration and topology validation tools.", context_settings={"help_option_names": ["-h", "--help"]})
-app.add_typer(validate_app, name="validate")
 
 @validate_app.callback(invoke_without_command=True)
 def validate_main(ctx: typer.Context):

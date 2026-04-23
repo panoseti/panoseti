@@ -69,7 +69,7 @@ Add `ci/integration/chaos/` with helpers:
 | `netem.py` | wraps `tc qdisc add dev <iface> root netem` to add loss/latency/duplicate. Requires `cap_add: NET_ADMIN` (already present on daqnode containers). |
 | `iptables.py` | blackhole specific dst IPs or ports (`iptables -A OUTPUT -d 192.168.3.250 -j DROP`). |
 | `grpc_proxy.py` | pytest fixture that spawns a `grpcwebproxy`-style interceptor between `int-tester` and the target DAQ node. Modes: `timeout`, `unavailable`, `success_then_fail`, `slow_response`, `partial_response`, `reset_stream`. |
-| `process_chaos.py` | `docker exec` helpers to `SIGKILL`, `SIGSTOP`, `SIGTSTP` a named process by `pidof` inside a container (hashpipe, panoseti-server, interleave). |
+| `process_chaos.py` | `docker exec` helpers to `SIGKILL`, `SIGSTOP`, `SIGTSTP` a named process by `pidof` inside a container (hashpipe, pseti-grpc server, interleave). |
 | `disk_chaos.py` | `dd if=/dev/zero of=/data/.fill bs=1M count=N` to force ENOSPC on a specific volume. Teardown unlinks the file. |
 | `clock_chaos.py` | `date -s` inside a container (needs `SYS_TIME` cap) or monkey-patches `time.time` in-process to skew WR/GNSS vs NTP by N ms. |
 
@@ -148,7 +148,7 @@ Tests are numbered `SC-###` (Software Chaos). Each case name is also its pytest 
 | SC-014 | gRPC channel gets `RST_STREAM` mid-`StartDaq` | yes | unclear handling; test pins behavior. |
 | SC-015 | Daqnode reboots during recording | yes | head node keeps `current_run`; next `start.py` refuses because "run in progress." |
 | SC-016 | `DaqControlClient` created with wrong port | yes | silent timeout, no clear error to operator. |
-| SC-017 | Unified server `daq_control` toggle off on daqnode | yes | `panoseti-server --profile daq_node` without `daq_control=true` → UNIMPLEMENTED. |
+| SC-017 | Unified server `daq_control` toggle off on daqnode | yes | `pseti-grpc server --profile daq_node` without `daq_control=true` → UNIMPLEMENTED. |
 | SC-018 | Concurrent `StartDaq` to same daqnode | no | server must enforce single-hashpipe-per-node; test documents it. |
 | SC-019 | `CleanupData` while second `StartDaq` races with `StopDaq` | yes | no server-side mutex between cleanup and start. |
 | SC-020 | gRPC deadline exceeded on `StopDaq`, SIGKILL fallback | yes | current code has no SIGKILL escalation when SIGINT is ignored. |
@@ -234,7 +234,7 @@ Tests are numbered `SC-###` (Software Chaos). Each case name is also its pytest 
 | SC-077 | Two domes, different obs coords, same module IDs | yes — BOARDLOC uniqueness? |
 | SC-078 | Port forwarding on some nodes, direct on others | yes — mixed topology code path |
 | SC-079 | `module.config` write race between daqnode-1 and daqnode-2 (shared volume) | yes — already mitigated by `daq_data_2` volume; pin it as a regression test |
-| SC-080 | `panoseti-server` unified server SIGHUP reload | yes — config reload behavior untested |
+| SC-080 | `pseti-grpc server` unified server SIGHUP reload | yes — config reload behavior untested |
 
 #### Storage topology (SC-S001 → SC-S010)
 
