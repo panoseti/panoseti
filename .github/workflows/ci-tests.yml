@@ -33,7 +33,7 @@ jobs:
       - name: Build and Cache Base Stages
         uses: docker/build-push-action@v5
         with:
-          context: control
+          context: .
           file: control/ci/Dockerfile.ci
           target: base
           push: false
@@ -55,8 +55,8 @@ jobs:
         run: |
           docker buildx bake \
             -f control/ci/docker-compose.unit.yml \
-            --set *.context=control \
-            --set *.dockerfile=ci/Dockerfile.ci \
+            --set *.context=. \
+            --set *.dockerfile=control/ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=base \
             --set *.cache-to=type=gha,mode=max,scope=unit \
             unit-test-runner
@@ -92,8 +92,8 @@ jobs:
         run: |
           docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
-            --set *.context=control \
-            --set *.dockerfile=ci/Dockerfile.ci \
+            --set *.context=. \
+            --set *.dockerfile=control/ci/Dockerfile.ci \
             --set *.cache-from=type=gha,scope=base \
             --set *.cache-to=type=gha,mode=max,scope=integration
 

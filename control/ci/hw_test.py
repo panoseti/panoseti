@@ -71,6 +71,9 @@ def get_ssh_host(node) -> str:
         return f"ssh://{node.username}@{node.port_forwarding.gw_ip}:{port}"
     return f"ssh://{node.username}@{node.ip_addr}"
 
+# SSH Multiplexing options to reuse authenticated connections
+MUX_OPTS = "-o ControlMaster=auto -o ControlPath=/tmp/pseti_ssh_%h_%p_%r -o ControlPersist=60s"
+
 def get_raw_ssh_args(ssh_host_uri: str) -> str:
     """Convert a ssh:// URI into raw ssh command arguments (e.g., '-p port target')."""
     uri = ssh_host_uri.replace("ssh://", "")
@@ -86,10 +89,11 @@ async def resolve_remote_podman_uri(runner: TestRunner, ssh_host_uri: str) -> st
     """
     ssh_args = get_raw_ssh_args(ssh_host_uri)
     
-    # 1. Ensure the socket is active (BatchMode=yes ensures we don't hang on password)
-    await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
+    # 1. Ensure the socket is active and establish a Master connection for multiplexing
+    # This call will prompt for a password ONCE if needed, and subsequent calls will reuse it.
+    await runner._run_cmd(f"ssh {MUX_OPTS} {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
     
-    # 2. Query remote UID and socket existence
+    # 2. Query remote UID and socket existence (BatchMode=yes confirms multiplexing is working)
     remote_cmd = (
         "id -u && "
         "if [ -S /run/user/$(id -u)/podman/podman.sock ]; then echo /run/user/$(id -u)/podman/podman.sock; "
@@ -97,7 +101,7 @@ async def resolve_remote_podman_uri(runner: TestRunner, ssh_host_uri: str) -> st
         "else echo AUTO; fi"
     )
     
-    res = await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} '{remote_cmd}'", capture=True)
+    res = await runner._run_cmd(f"ssh -o BatchMode=yes {MUX_OPTS} {ssh_args} '{remote_cmd}'", capture=True)
     if res.ok and res.stdout:
         lines = res.stdout.strip().splitlines()
         if len(lines) >= 2:
@@ -229,9 +233,17 @@ def deploy(ctx: typer.Context):
             resolved_uri = asyncio.run(resolve_remote_podman_uri(runner, ssh_host))
             if resolved_uri != ssh_host:
                 console.print(f"[dim]Resolved remote Podman socket: {resolved_uri}[/dim]")
-            env = {"CONTAINER_HOST": resolved_uri, "DOCKER_HOST": resolved_uri}
+            # Podman and docker-compose both respect DOCKER_SSH_COMMAND for multiplexing
+            env = {
+                "CONTAINER_HOST": resolved_uri, 
+                "DOCKER_HOST": resolved_uri,
+                "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
+            }
         else:
-            env = {"DOCKER_HOST": ssh_host}
+            env = {
+                "DOCKER_HOST": ssh_host,
+                "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
+            }
             
         daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
         asyncio.run(runner._run_cmd(daq_cmd, env=env))
@@ -261,9 +273,16 @@ def clean(ctx: typer.Context):
         
         if tool == "podman":
              resolved_uri = asyncio.run(resolve_remote_podman_uri(runner, ssh_host))
-             env = {"CONTAINER_HOST": resolved_uri, "DOCKER_HOST": resolved_uri}
+             env = {
+                 "CONTAINER_HOST": resolved_uri, 
+                 "DOCKER_HOST": resolved_uri,
+                 "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
+             }
         else:
-             env = {"DOCKER_HOST": ssh_host}
+             env = {
+                 "DOCKER_HOST": ssh_host,
+                 "DOCKER_SSH_COMMAND": f"ssh {MUX_OPTS}"
+             }
         
         daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
         asyncio.run(runner._run_cmd(daq_down, env=env))
