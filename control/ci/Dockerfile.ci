@@ -27,10 +27,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-install-project --all-extras
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage: test-runner
+# Stage: headnode
 # Unified runner for lint, unit, structural, and integration tests.
 # ═══════════════════════════════════════════════════════════════════════════
-FROM base AS test-runner
+FROM base AS headnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io \
     && rm -rf /var/lib/apt/lists/*
@@ -43,6 +43,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
 
 CMD ["sleep", "infinity"]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: test-runner (alias of headnode)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM headnode AS test-runner
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Stage: hashpipe-builder (needed for integration)

@@ -17,7 +17,7 @@ class ObsLazyGroup(BaseLazyGroup):
             "status": ("control.status", "app", "Show observatory health and acquisition status."),
             "session-start": ("control.session_start", "app", "Initialize hardware/power for an observing session."),
             "session-stop": ("control.session_stop", "app", "Gracefully power down and terminate a session."),
-            "uids": ("control.get_uids", "app", "Scan and record Quabo hardware UIDs."),
+            "get-uids": ("control.get_uids", "app", "Scan and record Quabo hardware UIDs."),
             "config": ("control.config", "app", "Configure observatory hardware and daemons."),
             "power": ("control.power", "app", "Control Quabo power via WPS."),
             "val": ("control.config", "validate_app", "Configuration and topology validation tools."),

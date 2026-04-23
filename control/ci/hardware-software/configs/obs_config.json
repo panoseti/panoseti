@@ -22,8 +22,8 @@
             ]
         }
     ],
-    "wps-1": {
-        "url": "http://admin:1234@192.168.88.152:60080",
-        "quabo_socket": 1
+    "wps-gh-runner": {
+        "url": "http://admin:1234@192.168.88.100",
+        "quabo_socket": 6
     }
 }
