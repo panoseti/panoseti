@@ -38,7 +38,7 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 ## 🧪 Testing & Validation
 
 ### Chaos-Forced Green
-- All transaction-related changes MUST be verified via the chaos suite: `pseti test chaos`.
+- All transaction-related changes MUST be verified via the chaos suite: `pseti test sw chaos`.
 - **Mandate**: A change is considered broken if it passes on localhost but fails in the 4-node Docker fleet simulation.
 
 ### CI Environment Detection

@@ -9,13 +9,13 @@ The HITL environment consists of a physical head node, a dedicated router, a DAQ
 ```mermaid
 graph TD
     subgraph "Head Node (Beelink PC) - 192.168.88.103"
-        HN_S[panoseti-server]
-        HN_D[Redis, Loki, InfluxDB, Grafana]
+        HN_S[telemetry_service, loki, power, hk, wr]
         GHR[GitHub Runner]
     end
 
     subgraph "Network Core"
-        R[Router - 192.168.88.152]
+        R[Router Gateway - 192.168.88.152]
+        WPS[wps-1: :60080]
     end
 
     subgraph "DAQ Node - 192.168.0.228"
@@ -28,13 +28,18 @@ graph TD
         Q2[Quabo 192.168.3.249]
         Q3[Quabo 192.168.3.250]
         Q4[Quabo 192.168.3.251]
+        WR[White Rabbit - 192.168.1.254]
     end
 
     GHR --> HN_S
-    HN_S -- gRPC --> R
-    R -- Port Forwarding --> DN_S
-    DN_S -- Control --> HP
-    Q1 & Q2 & Q3 & Q4 -- Fiber --> HP
+    HN_S -- "SSH (Port 22)" --> R
+    R -- "Port Forwarding" --> DN_S
+    HN_S -- "Control (60000-60007)" --> R
+    R -- "Port Forwarding" --> Q1
+    HN_S -- "HTTP" --> WPS
+    DN_S -- "Control" --> HP
+    Q1 & Q2 & Q3 & Q4 -- "Fiber" --> HP
+    WPS -- "Socket 1" --> Q1
 ```
 
 ## 🛠️ Deployment Strategy: Compose-over-SSH
@@ -57,39 +62,39 @@ The DAQ node container uses `network_mode: "host"`. This ensures the Hashpipe pr
 The `pseti` CLI provides the `hw-test` top-level command group for orchestration.
 
 ### Configuration
-By default, `pseti hw-test` uses **Podman**. To switch to Docker, use the `--tool` option:
+By default, `pseti test hw` uses **Podman**. To switch to Docker, use the `--tool` option:
 ```bash
-pseti hw-test --tool docker build
+pseti test hw --tool docker build
 ```
 
 ### 1. Build Images
 Build the local images required for the test stack.
 ```bash
-pseti hw-test build
+pseti test hw build
 ```
 
 ### 2. Check Environment
 Verify that the environment is ready and there is sufficient disk space (default 10GB) on the SSD mount.
 ```bash
-pseti hw-test check-env --min-gb 20
+pseti test hw check-env --min-gb 20
 ```
 
 ### 3. Deploy Stack
 Initialize containers on both the local head node and the remote DAQ node.
 ```bash
-pseti hw-test deploy
+pseti test hw deploy
 ```
 
 ### 4. Run Tests
 Execute the HW-SW test suite.
 ```bash
-pseti hw-test run
+pseti test hw run
 ```
 
 ### 5. Cleanup
 Tear down the stack and wipe the physical data directory to prevent disk exhaustion.
 ```bash
-pseti hw-test clean
+pseti test hw clean
 ```
 
 ## 📁 Configuration Details
@@ -103,6 +108,6 @@ Gold-standard configurations for the HITL environment are located in `control/ci
 
 ## 🧪 Safety & Stability
 
-- **Disk Exhaustion:** Always run `pseti hw-test clean` after a run. It explicitly executes `rm -rf` on both local and remote data directories.
+- **Disk Exhaustion:** Always run `pseti test hw clean` after a run. It explicitly executes `rm -rf` on both local and remote data directories.
 - **Network Isolation:** The DAQ node is isolated behind the router; all communication from the head node goes through the specified `gw_ip`.
 - **No-HV:** All HW-SW tests should be initialized with the `--no_hv` flag (handled by the test runner) to protect the physical detectors during automated testing.

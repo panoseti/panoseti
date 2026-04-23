@@ -6,6 +6,7 @@ Integration tests for the pseti CLI commands, focusing on validation and topolog
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,22 +16,23 @@ from control.pseti import app
 
 runner = CliRunner()
 
-# def test_pseti_validate_basic():
-#     """Verify that pseti validate runs without crashing on current configs."""
-#     # The callback in pseti.py calls config_file.validate_all
-#     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-#         result = runner.invoke(app, ["validate"])
-#         # Typer might exit with 0 if callback succeeds
-#         assert result.exit_code == 0
-#         mock_val.assert_called()
+def test_pseti_validate_basic():
+    """Verify that pseti validate runs without crashing on current configs."""
+    # The callback in pseti.py calls config_file.validate_all
+    with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
+        result = runner.invoke(app, ["obs val"])
+        print(os.system("pseti obs val"))
+        # Typer might exit with 0 if callback succeeds
+        assert result.exit_code == 0
+        mock_val.assert_called()
 
 
 def test_pseti_validate_graph():
     """Verify that pseti validate triggers the network engine with graph=True."""
     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["validate"])
-        assert result.exit_code == 0
-        mock_val.assert_called_once_with(check_network=False, debug=False, graph=True)
+        result = runner.invoke(app, ["obs", "val", "graph"])
+        assert result.exit_code == 0, f"{result=}"
+        mock_val.assert_called_once_with(graph=True)
 
 
 def test_pseti_validate_all_modes():

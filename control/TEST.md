@@ -12,20 +12,20 @@ The PANOSETI QA runner (`pseti test`) manages isolated Docker environments for d
 
 ```bash
 # 1. Run suites (automated setup/teardown)
-pseti test unit           # Parallel unit tests
-pseti test integration    # E2E integration tests
-pseti test chaos          # Chaos/TDD-forcing scenarios
+pseti test sw unit        # Parallel unit tests
+pseti test sw integration # E2E integration tests
+pseti test sw chaos       # Chaos/TDD-forcing scenarios
 pseti test lint           # Ruff & MyPy (concurrent)
 
 # 2. Targeted debugging (bypass teardown to inspect containers)
-pseti test integration --debug -k TestDaqLifecycle
+pseti test sw integration --debug -k TestDaqLifecycle
 # Now you can: docker exec -it pseti-integration-int-tester bash
 
 # 3. Global Cleanup (if containers are left running by --debug)
-pseti test cleanup
+pseti test sw cleanup
 
 # 4. Image management
-pseti test build          # Rebuild images (uv cached)
+pseti test sw build       # Rebuild images (uv cached)
 ```
 
 ---

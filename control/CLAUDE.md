@@ -82,17 +82,17 @@ Read [DEBUGGING.md](DEBUGGING.md) for advanced troubleshooting techniques and [c
 
 ```bash
 # Standard test suite
-pseti test unit         # Parallel unit tests
-pseti test integration  # E2E with real hashpipe
-pseti test chaos        # Chaos/TDD-forcing scenarios
+pseti test sw unit      # Parallel unit tests
+pseti test sw integration # E2E with real hashpipe
+pseti test sw chaos     # Chaos/TDD-forcing scenarios
 pseti test lint         # ruff + mypy concurrently
 
 # Targeted test runs
-pseti test chaos -k SCN003 -vv    # Verbose scenario debugging
-pseti test integration -k "real_data"
+pseti test sw chaos -k SCN003 -vv    # Verbose scenario debugging
+pseti test sw integration -k "real_data"
 
 # Native (no Docker, unit tests only)
-pseti test unit --native
+pseti test sw unit --native
 ```
 
 The `chaos` command runs `src/control/ci/integration/scenarios/`.

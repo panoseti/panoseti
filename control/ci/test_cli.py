@@ -41,7 +41,7 @@ class GrpcTestLazyGroup(BaseLazyGroup):
             mod = importlib.import_module("tests.qa")
             test_app = mod.app
             click_group = typer.main.get_command(test_app)
-            return click_group.list_commands(ctx)
+            return click_group.list_commands(ctx)  # type: ignore[attr-defined]
         except Exception:
             return []
 
@@ -56,7 +56,7 @@ class GrpcTestLazyGroup(BaseLazyGroup):
             mod = importlib.import_module("tests.qa")
             test_app = mod.app
             click_group = typer.main.get_command(test_app)
-            cmd = click_group.get_command(ctx, name)
+            cmd = click_group.get_command(ctx, name)  # type: ignore[attr-defined]
             if cmd:
                 cmd.name = name
                 return cmd
@@ -75,13 +75,13 @@ app = typer.Typer(
 # Sub-apps for organization
 sw_app = typer.Typer(help="Software QA tests (Docker-based CI simulations)", no_args_is_help=True)
 hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
-lint_app = typer.Typer(help="Static analysis and linting (Ruff, MyPy)", no_args_is_help=True)
+# lint_app was removed
 # The grpc sub-app uses a special lazy group to map to tests.qa:app
 grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
 
 app.add_typer(sw_app, name="sw")
 app.add_typer(hw_app, name="hw")
-app.add_typer(lint_app, name="lint")
+# app.add_typer(lint_app, name="lint") removed
 app.add_typer(grpc_app, name="grpc")
 
 @grpc_app.callback()
@@ -132,14 +132,14 @@ def hw_main(
 # LINT Subcommands
 # ---------------------------------------------------------------------------
 
-@lint_app.callback(invoke_without_command=True)
+@app.command(name="lint", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def lint_main(
     ctx: typer.Context,
     targets: Annotated[str, typer.Argument(help="Scope to lint: 'ruff', 'mypy', or 'all'")] = "all",
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for linting.", callback=display_tree_callback)] = False
 ) -> None:
-    """Run linters [ruff/mypy args...]"""
-    if tree or ctx.invoked_subcommand is not None:
+    """Static analysis and linting (Ruff, MyPy)"""
+    if tree:
         return
     ok = asyncio.run(ctx.obj.run_suite("lint", target=targets, extra_args=ctx.args))
     if not ok:
@@ -358,7 +358,8 @@ def hw_deploy(ctx: typer.Context) -> None:
         asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
     
     head_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode up -d"
-    if runner.no_build: head_cmd += " --no-build"
+    if runner.no_build:
+        head_cmd += " --no-build"
     asyncio.run(runner._run_cmd(head_cmd))
     
     for node in daq_cfg.daq_nodes:
@@ -371,7 +372,8 @@ def hw_deploy(ctx: typer.Context) -> None:
         with SSHTunnel(ssh_args, remote_sock) as local_sock:
             env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
             daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
-            if runner.no_build: daq_cmd += " --no-build"
+            if runner.no_build:
+                daq_cmd += " --no-build"
             asyncio.run(runner._run_cmd(daq_cmd, env=env))
 
 @hw_app.command(name="clean")
