@@ -41,6 +41,7 @@ jobs:
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
+            --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --set *.cache-to=type=gha,mode=max,scope=pseti-ci
@@ -76,6 +77,7 @@ jobs:
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.unit.yml \
+            --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load \
@@ -124,6 +126,7 @@ jobs:
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/ci/docker-compose.integration.yml \
+            --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load

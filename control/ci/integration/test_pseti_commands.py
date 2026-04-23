@@ -20,9 +20,7 @@ def test_pseti_validate_basic():
     """Verify that pseti validate runs without crashing on current configs."""
     # The callback in pseti.py calls config_file.validate_all
     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["obs val"])
-        print(os.system("pseti obs val"))
-        # Typer might exit with 0 if callback succeeds
+        result = runner.invoke(app, ["obs", "val"])
         assert result.exit_code == 0
         mock_val.assert_called()
 
@@ -38,7 +36,7 @@ def test_pseti_validate_graph():
 def test_pseti_validate_all_modes():
     """Verify pseti validate all enables everything."""
     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["validate", "all"])
+        result = runner.invoke(app, ["obs", "val", "all"])
         assert result.exit_code == 0
         mock_val.assert_called_once_with(check_network=True, debug=True, graph=True)
 
