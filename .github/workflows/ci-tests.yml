@@ -12,7 +12,7 @@ on:
       - 'control/**'
 
 jobs:
-  # 1. Warm up the base cache and pre-bake test images.
+  # 1. Warm up the base cache.
   prepare-base:
     runs-on: ubuntu-24.04
     steps:
@@ -24,7 +24,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build and Cache Base and Test Images
+      - name: Build and Cache Base Stage
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -35,19 +35,9 @@ jobs:
           cache-from: type=gha,scope=base
           cache-to: type=gha,mode=max,scope=base
 
-      - name: Pre-bake Test Runner
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: control/ci/Dockerfile.ci
-          target: test-runner
-          push: false
-          load: true
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=test-runner
-
-  # 2. Run Unit and Lint tests sequentially in the same job/container.
-  unit-and-lint:
+  # 2. Run Unit, Structural, and Lint tests together in a single job/container.
+  # This is much faster than spinning up 3 separate environments.
+  fast-validation:
     needs: prepare-base
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -70,18 +60,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Restore Test Runner
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: control/ci/Dockerfile.ci
-          target: test-runner
-          push: false
-          load: true
-          cache-from: type=gha,scope=test-runner
+      - name: Build Test Runner
+        run: |
+          docker buildx bake \
+            -f control/ci/docker-compose.unit.yml \
+            --set *.context=. \
+            --set *.dockerfile=control/ci/Dockerfile.ci \
+            --set *.cache-from=type=gha,scope=base \
+            --load \
+            unit-test-runner
 
       - name: Run Unit Tests
         run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build unit
+        working-directory: control
+
+      - name: Run Structural Tests
+        run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build structural
         working-directory: control
 
       - name: Run Linting
@@ -112,26 +106,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Restore Test Runner
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: control/ci/Dockerfile.ci
-          target: test-runner
-          push: false
-          load: true
-          cache-from: type=gha,scope=test-runner
-
-      - name: Pre-bake DAQ Node
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: control/ci/Dockerfile.ci
-          target: integration-daqnode
-          push: false
-          load: true
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=daqnode
+      - name: Build Integration Stack
+        run: |
+          docker buildx bake \
+            -f control/ci/docker-compose.integration.yml \
+            --set *.context=. \
+            --set *.dockerfile=control/ci/Dockerfile.ci \
+            --set *.cache-from=type=gha,scope=base \
+            --load
 
       - name: Run Integration Tests
         run: PYTHONPATH=src uv run python3 -m control.pseti sw-test --no-build integration

@@ -7,7 +7,7 @@ import os
 import pathlib
 import signal
 import time
-from typing import Any
+from typing import IO, Any
 
 import anyio
 
@@ -21,7 +21,7 @@ POLL_INTERVAL_SEC = 5.0
 MAX_ATTEMPTS = 3
 
 
-def _acquire_transfer_lock(base_dir: pathlib.Path) -> Any | None:
+def _acquire_transfer_lock(base_dir: pathlib.Path) -> IO[str] | None:
     """Try to acquire the exclusive transfer daemon lock file.
 
     Uses a non-blocking ``flock`` so that only one transfer daemon runs at a
@@ -48,7 +48,7 @@ def _acquire_transfer_lock(base_dir: pathlib.Path) -> Any | None:
         return None
 
 
-def _release_transfer_lock(fh: Any) -> None:
+def _release_transfer_lock(fh: IO[str] | None) -> None:
     """Release the exclusive lock obtained by ``_acquire_transfer_lock``.
 
     Args:

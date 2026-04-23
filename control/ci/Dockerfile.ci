@@ -27,40 +27,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --no-install-project --all-extras
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Stage: hashpipe-builder
-# Compiles hashpipe from source. 
-# ═══════════════════════════════════════════════════════════════════════════
-FROM python:3.14-slim AS hashpipe-builder
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential git autoconf automake libtool g++ make \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
-WORKDIR /build/hashpipe/src
-RUN autoreconf -is && \
-    ./configure --prefix=/usr/local && \
-    make && \
-    make install
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Stage: hashpipe-plugin-builder
-# ═══════════════════════════════════════════════════════════════════════════
-FROM hashpipe-builder AS hashpipe-plugin-builder
-
-ENV PSETI_DAQ_BRANCH="dev"
-
-WORKDIR /build
-RUN git clone --depth 1 --branch ${PSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
-WORKDIR /build/panoseti_daq
-COPY control/ci/integration/build/Makefile .
-COPY control/ci/integration/build/databuf.h .
-RUN make
-
-# ═══════════════════════════════════════════════════════════════════════════
 # Stage: test-runner
 # Unified runner for lint, unit, structural, and integration tests.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -69,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy source code (this layer invalidates if control/ changes)
 COPY control/ .
 RUN mkdir -p /data /data/head
 
@@ -78,25 +45,45 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 CMD ["sleep", "infinity"]
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-builder (needed for integration)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM python:3.14-slim AS hashpipe-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential git autoconf automake libtool g++ make \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN git clone --depth 1 https://github.com/david-macmahon/hashpipe.git hashpipe
+WORKDIR /build/hashpipe/src
+RUN autoreconf -is && ./configure --prefix=/usr/local && make && make install
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage: hashpipe-plugin-builder (needed for integration)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM hashpipe-builder AS hashpipe-plugin-builder
+ENV PSETI_DAQ_BRANCH="dev"
+WORKDIR /build
+RUN git clone --depth 1 --branch ${PSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
+WORKDIR /build/panoseti_daq
+COPY control/ci/integration/build/Makefile .
+COPY control/ci/integration/build/databuf.h .
+RUN make
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Stage: integration-daqnode
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
     socat tcpreplay procps \
     && rm -rf /var/lib/apt/lists/*
-
 COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN ldconfig
-
 RUN mkdir -p /data
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
-
 WORKDIR /app
 COPY control/ .
-
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
-
 CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec panoseti-server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]

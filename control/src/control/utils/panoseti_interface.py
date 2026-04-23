@@ -187,20 +187,17 @@ class PFFSequence:
         self._open_mmaps.clear()
         self._open_files.clear()
 
-    def _parse_filename(self, fname: str) -> dict[str, Any]:
-        meta: dict[str, Any] = {}
+    def _parse_filename(self, fname: str) -> dict[str, str | int]:
+        meta: dict[str, str | int] = {}
         clean_name = fname.split('.pff')[0]
         parts = clean_name.split('.')
         for part in parts:
             if '_' in part:
                 k, v_str = part.split('_', 1)
-                v: Any = v_str
-                try:
-                    if v_str.isdigit():
-                        v = int(v_str)
-                except (ValueError, TypeError):
-                    pass
-                meta[k] = v
+                if v_str.isdigit():
+                    meta[k] = int(v_str)
+                else:
+                    meta[k] = v_str
         return meta
 
     def _analyze_structure(self) -> None:
@@ -332,7 +329,7 @@ class PFFSequence:
 
         return file_idx, local_idx
 
-    def get_frame(self, idx: int) -> tuple[QuaboHeader | ModuleHeader | dict[str, Any], np.ndarray]:
+    def get_frame(self, idx: int) -> tuple[QuaboHeader | ModuleHeader | dict[str, Any], np.ndarray[Any, Any]]:
         """
         Retrieves a fully parsed header and image array for a single frame.
 

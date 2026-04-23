@@ -186,18 +186,31 @@ def print_binary(data: bytes) -> None:
 
 # get the UID of quabo i in a given module
 #
-def quabo_uid(module: dict[str, Any], quabo_uids: dict[str, Any], i: int) -> str:
-    for dome in quabo_uids['domes']:
-        for m in dome['modules']:
-            if m['ip_addr'] == module['ip_addr']:
-                q = m['quabos'][i]
-                return q['uid']
+def quabo_uid(module: dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], i: int) -> str:
+    """Retrieve the hardware UID for a specific Quabo.
+
+    Args:
+        module: A dictionary describing the module (must contain 'ip_addr').
+        quabo_uids: The validated Quabo UID configuration or its dict representation.
+        i: The index of the Quabo within the module (0-3).
+
+    Returns:
+        The UID string.
+    """
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+
+    for dome in quabo_uids.domes:
+        for m in dome.modules:
+            if str(m.ip_addr) == module['ip_addr']:
+                q = m.quabos[i]
+                return q.uid
     raise Exception("no module {} found; run get_uids.py".format(module['ip_addr']))
 
 
 # see if quabo is alive by seeing if we got its UID
 #
-def is_quabo_alive(module: dict[str, Any], quabo_uids: dict[str, Any], i: int) -> bool:
+def is_quabo_alive(module: dict[str, Any], quabo_uids: QuaboUidsValidator | dict[str, Any], i: int) -> bool:
     return quabo_uid(module, quabo_uids, i) != ''
 
 
@@ -211,14 +224,17 @@ def is_quabo_old_version(module, i):
         v = v[i]
     return v == 'qfp'
 '''
-def is_quabo_old_version(module: dict[str, Any], i: int, quabo_uids: dict[str, Any], quabo_info: dict[str, Any]) -> bool | None:
-    domes = quabo_uids['domes']
+def is_quabo_old_version(module: dict[str, Any], i: int, quabo_uids: QuaboUidsValidator | dict[str, Any], quabo_info: dict[str, Any]) -> bool | None:
+    """Check if a Quabo is an older hardware version (qfp)."""
+    if isinstance(quabo_uids, dict):
+        quabo_uids = QuaboUidsValidator(**quabo_uids)
+
     uid = ""
-    for dome in domes:
-        modules = dome['modules']
-        for m in modules:
-            if m['ip_addr'] == module['ip_addr']:
-                uid = m['quabos'][i]['uid']
+    for dome in quabo_uids.domes:
+        for m in dome.modules:
+            if str(m.ip_addr) == module['ip_addr']:
+                uid = m.quabos[i].uid
+
     try:
         v = quabo_info[uid]['board_version']
     except (KeyError, TypeError):
@@ -562,11 +578,11 @@ def daq_bytes_per_sec_per_module(data_config: DataConfigValidator | dict[str, An
     return x
 
 
-def get_daq_node_status(node: dict[str, Any]) -> dict[str, Any]:
+def get_daq_node_status(node: DaqNodeValidator | dict[str, Any]) -> dict[str, Any]:
     """Retrieve the DAQ status from a remote node via SSH.
 
     Args:
-        node: A dictionary describing the DAQ node (username, ip_addr, data_dir).
+        node: A dictionary or validator describing the DAQ node (username, ip_addr, data_dir).
 
     Returns:
         A dictionary containing the parsed JSON status from the remote node.
@@ -574,10 +590,13 @@ def get_daq_node_status(node: dict[str, Any]) -> dict[str, Any]:
     Raises:
         Exception: If the remote node cannot be reached.
     """
+    if isinstance(node, dict):
+        node = DaqNodeValidator(**node)
+
     # TODO: add port forwarding code here
     x = subprocess.run(['ssh',
-        '{}@{}'.format(node['username'], node['ip_addr']),
-        'cd {}; ./status_daq.py'.format(node['data_dir']),
+        f'{node.username}@{node.ip_addr}',
+        f'cd {node.data_dir}; ./status_daq.py',
         ],
         stdout = subprocess.PIPE
     )
@@ -656,21 +675,21 @@ def get_quabo_ip_port(ip_addr: str, i: int, network_config: NetworkConfigValidat
     """
     if isinstance(network_config, dict):
         network_config = NetworkConfigValidator(**network_config)
+
     ip_ports: dict[str, Any] = {}
     x = ip_addr.split('.')
     x[3] = str(int(x[3])+i)
     quabo_ip =  '.'.join(x)
+
     # these are the default config
     ip_ports['ip_addr'] = quabo_ip
     ip_ports['reboot_port'] = DEFAULT_REBOOT_PORT
     ip_ports['cmd_port'] = DEFAULT_CMD_PORT
-    # if we can't find the setting for the Quabo in the network_config
-    # we will use the default config
-    
+
     for m in network_config.modules:
         if ip_addr == str(m.ip_addr):
             p = m.port_forwarding
-            if p.status:
+            if p and p.status:
                 ip_ports['ip_addr'] = str(p.gw_ip)
                 if p.reboot_port:
                     ip_ports['reboot_port'] = p.reboot_port[i]

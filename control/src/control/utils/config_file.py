@@ -1,4 +1,3 @@
-#! /usr/bin/env python3
 from __future__ import annotations
 
 import json
@@ -8,6 +7,7 @@ import json
 # Scripts must be launched from control/ (e.g. `cd control && python start.py`).
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -686,7 +686,7 @@ def load_and_validate[T: BaseModel](
     filename: str,
     dir: str,
     config_name: str,
-    preprocessor: Any = None
+    preprocessor: Callable[[dict[str, Any]], None] | None = None
 ) -> T:
     """
     Unified loader: reads JSON, applies runtime preprocessing, validates against Pydantic models.

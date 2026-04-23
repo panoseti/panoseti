@@ -98,7 +98,12 @@ class StartTransaction:
         await asyncio.to_thread(self.state_mgr.acquire_lock)
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> bool:
         try:
             if exc_type is not None:
                 # Ladder Step 0: Identify the failure

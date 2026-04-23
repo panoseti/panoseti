@@ -10,9 +10,10 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from haversine import Unit, haversine  # type: ignore[import-untyped]
+from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
 
@@ -61,6 +62,8 @@ class ValidationReport:
         console.print(table)
 
 
+T = TypeVar("T", bound=BaseModel)
+
 def validate_all(
     obs_config: dict[str, Any] | ObsConfigValidator,
     data_config: dict[str, Any] | DataConfigValidator,
@@ -77,12 +80,14 @@ def validate_all(
         ObsConfigValidator,
     )
 
-    def _ensure_model(cfg: Any, model: Any) -> Any:
+    def _ensure_model(cfg: dict[str, Any] | T | None, model: type[T]) -> T | None:
         if cfg is None:
             return None
-        return cfg if isinstance(cfg, model) else model(**cfg)
+        if isinstance(cfg, model):
+            return cfg
+        return model(**cast(dict[str, Any], cfg))
 
-    validated_configs = {
+    validated_configs: dict[str, BaseModel | None] = {
         'obs': _ensure_model(obs_config, ObsConfigValidator),
         'data': _ensure_model(data_config, DataConfigValidator),
         'daq': _ensure_model(daq_config, DaqConfigValidator),
@@ -105,18 +110,18 @@ class GlobalConfigValidator:
     daq, network, firmware) are mutually consistent and physically plausible.
     """
 
-    def __init__(self, validated_configs: dict[str, Any]):
+    def __init__(self, validated_configs: dict[str, BaseModel | None]):
         """Initialize the validator with validated configuration models.
 
         Args:
             validated_configs: Dictionary containing Pydantic model instances 
                                for each configuration type.
         """
-        self.obs_conf: ObsConfigValidator = validated_configs.get('obs') # type: ignore
-        self.data_conf: DataConfigValidator = validated_configs.get('data') # type: ignore
-        self.daq_conf: DaqConfigValidator = validated_configs.get('daq') # type: ignore
-        self.net_conf: NetworkConfigValidator = validated_configs.get('network') # type: ignore
-        self.firmware_conf: FirmwareConfigValidator = validated_configs.get('firmware') # type: ignore
+        self.obs_conf = cast(ObsConfigValidator, validated_configs.get('obs'))
+        self.data_conf = cast(DataConfigValidator, validated_configs.get('data'))
+        self.daq_conf = cast(DaqConfigValidator, validated_configs.get('daq'))
+        self.net_conf = cast(NetworkConfigValidator, validated_configs.get('network'))
+        self.firmware_conf = cast(FirmwareConfigValidator, validated_configs.get('firmware'))
         self.report = ValidationReport()
         util.attach_daq_config(self.daq_conf, self.net_conf)
 

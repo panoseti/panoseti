@@ -16,7 +16,7 @@ import numpy as np
 
 # returns the string (doesn't parse it)
 #
-def read_json(f: Any) -> str | None:
+def read_json(f: BinaryIO) -> str | None:
     c = f.read(1)
     if c ==b'':
         return None
@@ -38,9 +38,9 @@ def read_json(f: Any) -> str | None:
 # returns the image as a list of N numbers
 # see https://docs.python.org/3/library/struct.html
 #
-def read_image(f: Any, img_size: int, bytes_per_pixel: int) -> list[int] | None:
+def read_image(f: BinaryIO, img_size: int, bytes_per_pixel: int) -> list[int] | None:
     c = f.read(1)
-    if c == '':
+    if c == b'':
         return None
     if c != b'*':
         raise Exception('bad type code')
@@ -61,11 +61,11 @@ def read_image(f: Any, img_size: int, bytes_per_pixel: int) -> list[int] | None:
     else:
         raise Exception("bad image size")
 
-def skip_image(f: Any, img_size: int, bytes_per_pixel: int) -> None:
+def skip_image(f: BinaryIO, img_size: int, bytes_per_pixel: int) -> None:
     f.seek(img_size*img_size*bytes_per_pixel+1, os.SEEK_CUR)
     
 # write an image; image is a list
-def write_image_1D(f: Any, img: list[int], img_size: int, bytes_per_pixel: int) -> None:
+def write_image_1D(f: BinaryIO, img: list[int], img_size: int, bytes_per_pixel: int) -> None:
     f.write(b'*')
     if img_size == 32:
         if bytes_per_pixel == 1:
@@ -77,7 +77,7 @@ def write_image_1D(f: Any, img: list[int], img_size: int, bytes_per_pixel: int) 
     raise Exception('bad params')
 
 # same, image is NxN array
-def write_image_2D(f: Any, img: list[list[int]], img_size: int, bytes_per_pixel: int) -> None:
+def write_image_2D(f: BinaryIO, img: list[list[int]], img_size: int, bytes_per_pixel: int) -> None:
     f.write(b'*')
     if img_size == 32 and bytes_per_pixel == 2:
         for i in range(32):
@@ -162,7 +162,7 @@ def img_header_time(h: dict[str, Any]) -> float:
         t = pkt_header_time(h)
     return t
 
-def img_frame_size(f: Any, bytes_per_image: int) -> int:
+def img_frame_size(f: BinaryIO, bytes_per_image: int) -> int:
     json_str = read_json(f)
     if json_str:
         json.loads(json_str)
@@ -179,7 +179,7 @@ def img_frame_size(f: Any, bytes_per_image: int) -> int:
 #   first_t
 #   last_t
 #
-def img_info(f: Any, bytes_per_image: int) -> tuple[int, int, float, float]:
+def img_info(f: BinaryIO, bytes_per_image: int) -> tuple[int, int, float, float]:
     json_str = read_json(f)
     if json_str is None:
         return (0, 0, 0.0, 0.0)
@@ -208,7 +208,7 @@ def img_info(f: Any, bytes_per_image: int) -> tuple[int, int, float, float]:
 
 # return time of given frame
 #
-def img_frame_time(f: Any, frame: int, frame_size: int) -> float:
+def img_frame_time(f: BinaryIO, frame: int, frame_size: int) -> float:
     f.seek(frame*frame_size)
     json_str = read_json(f)
     if json_str:
