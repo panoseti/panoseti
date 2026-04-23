@@ -35,7 +35,6 @@ from panoseti_grpc.daq_data.client import DaqDataClient
 
 from ci.paths import PanoPathsTest
 
-
 # ---------------------------------------------------------------------------
 # Environment / connection parameters
 # ---------------------------------------------------------------------------
