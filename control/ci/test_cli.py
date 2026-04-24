@@ -90,7 +90,13 @@ def grpc_main(
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for gRPC tests.", callback=display_tree_callback)] = False
 ) -> None:
     """gRPC service layer tests"""
-    pass
+    if tree:
+        return
+    # Ensure we are running from grpc/tests so that relative paths in qa.toml resolve
+    root = Path(__file__).parent.parent.parent
+    grpc_tests = root / "grpc" / "tests"
+    if grpc_tests.exists():
+        os.chdir(grpc_tests)
 
 # ---------------------------------------------------------------------------
 # Global Setup
