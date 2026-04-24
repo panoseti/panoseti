@@ -133,18 +133,22 @@ def main(
 @sw_app.callback()
 def sw_main(
     ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman)."),
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for software tests.", callback=display_tree_callback)] = False
 ) -> None:
     """Software QA tests (Docker-based CI simulations)"""
-    pass
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
 
 @hw_app.callback()
 def hw_main(
     ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman)."),
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for hardware tests.", callback=display_tree_callback)] = False
 ) -> None:
     """Hardware-in-the-Loop (HITL) physical lab tests"""
-    pass
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
 
 # ---------------------------------------------------------------------------
 # LINT Subcommands
@@ -169,29 +173,50 @@ def lint_main(
 # ---------------------------------------------------------------------------
 
 @sw_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_unit(ctx: typer.Context, jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel jobs")) -> None:
+def sw_unit(
+    ctx: typer.Context, 
+    jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel jobs"),
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+) -> None:
     """Run unit tests [-j N] [pytest args...]"""
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("unit", jobs=jobs, extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_integration(ctx: typer.Context) -> None:
+def sw_integration(
+    ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+) -> None:
     """Run integration tests [pytest args...]"""
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="structural", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_structural(ctx: typer.Context) -> None:
+def sw_structural(
+    ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+) -> None:
     """Run structural/topology tests [pytest args...]"""
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("structural", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
 @sw_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_chaos(ctx: typer.Context) -> None:
+def sw_chaos(
+    ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+) -> None:
     """Run chaos scenario tests [pytest args...]"""
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
@@ -458,8 +483,13 @@ def hw_attach(ctx: typer.Context) -> None:
     os.system(cmd)
 
 @hw_app.command(name="run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def hw_run(ctx: typer.Context) -> None:
+def hw_run(
+    ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+) -> None:
     """Run the physical hardware-software (HITL) test suite."""
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("test-hw", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
