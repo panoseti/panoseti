@@ -25,7 +25,8 @@ import uuid
 from typing import Any
 
 import pytest
-from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient, DaqControlClient
+from unittest.mock import AsyncMock, MagicMock
 
 from ci.integration.conftest import (  # noqa: E402
     DAQ_DATA_DIR,
@@ -81,7 +82,7 @@ class TestSC002PartialStartRollback:
         from ipaddress import IPv4Address
         from typing import Any as AnyT
 
-        from panoseti_grpc.daq_control.client import DaqControlClient as _DaqClient
+        from panoseti_grpc.daq_control.client import AsyncDaqControlClient as _DaqClient
 
         import control.start as start
         from control.utils import config_file
@@ -118,22 +119,23 @@ class TestSC002PartialStartRollback:
             no_hv: bool,
             state_mgr_arg: AnyT,
             cancel_ev: AnyT,
+            **kwargs: AnyT
         ) -> None:
             """Actually start hashpipe on node-0, write receipt, then fail for node-1."""
             grpc_host, grpc_port = _util.daq_grpc_endpoint(daq_cfg.daq_nodes[0])
-            loop = _asyncio.get_running_loop()
-            client = _DaqClient(host=grpc_host, port=grpc_port)
-            start_args = {
-                "data_dir": daq_cfg.daq_nodes[0].data_dir,
-                "daq_ip_addr": str(daq_cfg.daq_nodes[0].ip_addr),
-                "bindhost": "lo",
-                "max_file_size_mb": 1,
-                "group_ph_frames": True,
-                "run_dir": run_nm,
-                "obs": obs_cfg.name,
-                "module_id": daq_cfg.daq_nodes[0].module_ids,
-            }
-            await loop.run_in_executor(None, lambda: client.StartDaq(start_args))
+            async with _DaqClient(host=grpc_host, port=grpc_port) as client:
+                start_args = {
+                    "data_dir": daq_cfg.daq_nodes[0].data_dir,
+                    "daq_ip_addr": str(daq_cfg.daq_nodes[0].ip_addr),
+                    "bindhost": "lo",
+                    "max_file_size_mb": 1,
+                    "group_ph_frames": True,
+                    "run_dir": run_nm,
+                    "obs": obs_cfg.name,
+                    "module_id": daq_cfg.daq_nodes[0].module_ids,
+                }
+                await client.StartDaq(start_args)
+
             await state_mgr_arg.update_node_receipt(
                 NodeReceipt(
                     ip_addr=daq_cfg.daq_nodes[0].ip_addr,

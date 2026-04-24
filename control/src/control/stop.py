@@ -252,13 +252,13 @@ def stop_interleave(retry_limit: int = 10) -> None:
                 quabo_info = config_file.get_quabo_info()
                 network_cfg = config_file.get_network_config()
                 config.do_maroc_config(
-                    config_file.get_modules(obs_cfg.model_dump()),
-                    quabo_uids.model_dump(),
+                    config_file.get_modules(obs_cfg),
+                    quabo_uids,
                     quabo_info,
-                    data_cfg.model_dump(),
-                    obs_cfg.model_dump(),
-                    daq_cfg.model_dump(),
-                    network_cfg.model_dump(),
+                    data_cfg,
+                    obs_cfg,
+                    daq_cfg,
+                    network_cfg,
                     verbose=False
                 )
             except SystemExit:
@@ -333,26 +333,26 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
                     if code in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]:
                         logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({code}). Escalating to SSH pkill...")
 
-                    ssh_args = ["ssh"]
-                    if node.port_forwarding and node.port_forwarding.status:
-                        real_ip = str(node.port_forwarding.gw_ip)
-                        port = str(node.port_forwarding.port)
-                        ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
-                    else:
-                        ssh_args.append(f"{node.username}@{node.ip_addr}")
-
-                    ssh_args.append("pkill -9 hashpipe")
-
-                    try:
-                        res = await loop.run_in_executor(None, lambda: subprocess.run(ssh_args, capture_output=True, text=True, timeout=15))
-                        if res.returncode == 0 or res.returncode == 1: # 0=success, 1=no processes matched (also fine)
-                            logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
+                        ssh_args = ["ssh"]
+                        if node.port_forwarding and node.port_forwarding.status:
+                            real_ip = str(node.port_forwarding.gw_ip)
+                            port = str(node.port_forwarding.port)
+                            ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
                         else:
-                            raise RuntimeError(f"ssh pkill failed with code {res.returncode}: {res.stderr}")
-                    except Exception as fallback_err:
-                        raise RuntimeError(f"Hard-kill escalation failed for node {node.ip_addr}: {fallback_err}") from fallback_err
-                else:
-                    raise
+                            ssh_args.append(f"{node.username}@{node.ip_addr}")
+
+                        ssh_args.append("pkill -9 hashpipe")
+
+                        try:
+                            res = await loop.run_in_executor(None, lambda: subprocess.run(ssh_args, capture_output=True, text=True, timeout=15))
+                            if res.returncode == 0 or res.returncode == 1: # 0=success, 1=no processes matched (also fine)
+                                logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
+                            else:
+                                raise RuntimeError(f"ssh pkill failed with code {res.returncode}: {res.stderr}")
+                        except Exception as fallback_err:
+                            raise RuntimeError(f"Hard-kill escalation failed for node {node.ip_addr}: {fallback_err}") from fallback_err
+                    else:
+                        raise
         except Exception as e:
             msg = f"Error stopping node {node.ip_addr}: {e}"
             logger.error(msg)
@@ -621,5 +621,3 @@ def main(
 
 if __name__ == "__main__":
     app()
-
-

@@ -154,20 +154,48 @@ def make_remote_dirs(daq_config: DaqConfig, dirname: str) -> None:
 
 # copy config files to run dirs on DAQ nodes
 #
-def copy_config_files(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> None:
+def copy_config_files(daq_config: DaqConfig, run_name: str, verbose: bool = False) -> None:
     """Distribute all observatory configuration files to remote DAQ nodes.
 
     Args:
         daq_config: Validated DAQ configuration.
-        run_dir: Name of the target run directory on the remote nodes.
+        run_name: Name of the target run directory on the remote nodes.
         verbose: If True, prints transfer details.
     """
+    head_run_dir = Path(daq_config.head_node_data_dir) / run_name
     config_dir = PanoPaths.config_dir()
+    
+    # 1. Distribute files that were snapshotted to the head run dir.
+    # These are the definitive records of the current run's configuration.
+    snapshotted_files = [
+        config_file.obs_config_filename, 
+        config_file.daq_config_filename, 
+        config_file.data_config_filename,
+        config_file.quabo_uids_filename, 
+        config_file.quabo_ph_baseline_filename, 
+        config_file.sw_info_filename,
+        config_file.network_config_filename
+    ]
+    
+    # 2. Distribute board-specific calibration config files from the config dir.
+    # Note: These use wildcard patterns.
+    global_config_files = [config_file.quabo_config_filename]
+
     for node in daq_config.daq_nodes:
-        for f_name in config_file.config_file_names:
-            # Note: config_file_names contains some wildcard patterns
+        if not node.module_ids:
+            continue
+            
+        # Copy snapshotted files from head node run dir
+        for f_name in snapshotted_files:
+            f_path = head_run_dir / f_name
+            if f_path.exists():
+                copy_file_to_node(f_path, node, run_name, verbose)
+        
+        # Copy global config files (like quabo_config_*.json) from config dir
+        for f_name in global_config_files:
             f_path = config_dir / f_name
-            copy_file_to_node(f_path, node, run_dir, verbose)
+            # Handle globs if any (quabo_config_filename contains '*')
+            copy_file_to_node(str(f_path), node, run_name, verbose)
 
 # copy hashpipe binary and scripts to data dirs on DAQ nodes
 #

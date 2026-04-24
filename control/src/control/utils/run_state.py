@@ -30,12 +30,17 @@ class RunStateManager:
     Ensures transactional integrity across start/stop operations.
     """
 
-    def __init__(self, base_dir: str | None = None) -> None:
+    def __init__(self, base_dir: str | pathlib.Path | None = None) -> None:
         if base_dir:
             self.base_dir = pathlib.Path(base_dir)
-            # Legacy/override: assume tmp/ exists under the provided base_dir
-            self.lock_path = self.base_dir / "tmp" / LOCK_FILE
-            self.state_path = self.base_dir / "tmp" / STATE_FILE
+            if self.base_dir.name == "tmp":
+                # Provided base_dir is already the tmp directory
+                self.lock_path = self.base_dir / LOCK_FILE
+                self.state_path = self.base_dir / STATE_FILE
+            else:
+                # Legacy/override: assume tmp/ exists under the provided base_dir
+                self.lock_path = self.base_dir / "tmp" / LOCK_FILE
+                self.state_path = self.base_dir / "tmp" / STATE_FILE
         else:
             self.base_dir = PanoPaths.tmp_dir()
             self.lock_path = self.base_dir / LOCK_FILE

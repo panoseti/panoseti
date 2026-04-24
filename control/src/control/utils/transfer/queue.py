@@ -20,14 +20,18 @@ class TransferQueue:
 
     QUEUE_ROOT = pathlib.Path("tmp") / "transfer_queue"
 
-    def __init__(self, base_dir: str = ".") -> None:
+    def __init__(self, base_dir: str | pathlib.Path = ".") -> None:
         """Initialize the TransferQueue, creating queue subdirectories as needed.
 
         Args:
             base_dir: Root directory under which the queue lives.
         """
         self._base = pathlib.Path(base_dir)
-        self._queue = self._base / self.QUEUE_ROOT
+        if self._base.name == "tmp":
+            self._queue = self._base / "transfer_queue"
+        else:
+            self._queue = self._base / self.QUEUE_ROOT
+
         for sub in ("pending", "active", "completed", "failed"):
             (self._queue / sub).mkdir(parents=True, exist_ok=True)
 
@@ -164,6 +168,24 @@ class TransferQueue:
         src = self._job_path("active", run_name)
         dst = self._job_path("failed", run_name)
         os.rename(src, dst)
+
+    def retry(self, run_name: str, attempts: int) -> None:
+        """Move job from active/ back to pending/ with updated attempt count.
+
+        Args:
+            run_name: The run identifier.
+            attempts: The new total attempt count.
+        """
+        src = self._job_path("active", run_name)
+        with open(src, "rb") as f:
+            content = tomllib.load(f)
+        
+        content["attempts"] = attempts
+        
+        target = self._job_path("pending", run_name)
+        # Write to temp in pending dir then rename
+        self._write_job_toml(target, content)
+        os.unlink(src)
 
     def list_pending(self) -> list[str]:
         """Return list of pending run_names (without .job.toml suffix).

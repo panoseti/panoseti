@@ -406,10 +406,17 @@ def make_run_dirs(
             data = model.model_dump(exclude={'modules', 'daq_node'})
             json.dump(data, f, indent=4, default=str)
             
-    # Copy other transient artifacts (sw_info.json, ph_baseline.json) from disk/tmp
-    for artifact_file in [config_file.quabo_ph_baseline_filename, config_file.sw_info_filename]:
-        if os.path.exists(artifact_file):
-             shutil.copyfile(artifact_file, f'{run_dir}/{os.path.basename(artifact_file)}')
+    # Copy other transient artifacts (sw_info.json, ph_baseline.json) from their respective locations
+    # to the head node run dir.
+    artifact_map = {
+        config_file.quabo_ph_baseline_filename: PanoPaths.tmp_dir() / config_file.quabo_ph_baseline_filename,
+        config_file.sw_info_filename: PanoPaths.software_root_dir() / config_file.sw_info_filename,
+    }
+    for base_name, src_path in artifact_map.items():
+        if src_path.exists():
+             shutil.copyfile(src_path, f'{run_dir}/{base_name}')
+        else:
+             logger.debug(f"Artifact {src_path} not found; skipping snapshot.")
 
     # 2. make module and run directories on DAQ nodes
     for node in daq_config.daq_nodes:

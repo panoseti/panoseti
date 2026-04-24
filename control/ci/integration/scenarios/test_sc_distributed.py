@@ -17,11 +17,12 @@ import pathlib
 import time
 import uuid
 from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 # CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
-from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient, DaqControlClient
 
 from ci.integration.conftest import (
     DAQ_DATA_DIR,
@@ -84,35 +85,42 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     network_config = config_file.get_network_config()
 
     
-    # 3. Fault Injection: Monkey-patch StartDaq to fail for Node 2 (.32)
+    # 3. Fault Injection: Mock AsyncDaqControlClient
     rollback_results: dict[str, Any] = {"stop_called_ips": set()}
     
-    def mocked_client_init(self: Any, host: str, port: int) -> None:
-        self._mock_host = host
-        # We don't need a real channel for these mocks
+    async def mocked_start_daq(params: dict[str, Any], **kwargs: Any) -> bool:
+        # We need a way to get the host from the mock_client context
+        # but since we are patching the return_value of the constructor,
+        # we can use a closure.
+        return True
 
-    def mocked_start_daq(self: Any, params: dict[str, Any], **kwargs: Any) -> bool:
-        host = self._mock_host
-        if host == "192.168.0.32":
-             print(f"DEBUG: Failing StartDaq for {host}")
-             raise RuntimeError("Node 2 Simulated StartDaq Failure (SC-N003)")
-        print(f"DEBUG: Success StartDaq for {host}")
-        return True # Simulate success for others to ensure they need rollback
+    async def mocked_stop_daq(params: dict[str, Any], **kwargs: Any) -> bool:
+        return True
 
-    def mocked_stop_daq(self: Any, params: dict[str, Any], **kwargs: Any) -> bool:
-        host = self._mock_host
-        print(f"DEBUG: Caught StopDaq for {host}")
-        rollback_results["stop_called_ips"].add(host)
-        return True # Simulate successful stop
-
-    def mocked_status_daq(self: Any, params: dict[str, Any], **kwargs: Any) -> tuple[bool, dict[str, Any]]:
-        return True, {"hashpipe_running": True, "hashpipe_pid": 1234}
+    def create_mock_client(host: str, port: int):
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        
+        async def _start(params, **kw):
+            if host == "192.168.0.32":
+                 print(f"DEBUG: Failing StartDaq for {host}")
+                 raise RuntimeError("Node 2 Simulated StartDaq Failure (SC-N003)")
+            print(f"DEBUG: Success StartDaq for {host}")
+            return True
+            
+        async def _stop(params, **kw):
+            print(f"DEBUG: Caught StopDaq for {host}")
+            rollback_results["stop_called_ips"].add(host)
+            return True
+            
+        mock_client.StartDaq = AsyncMock(side_effect=_start)
+        mock_client.StopDaq = AsyncMock(side_effect=_stop)
+        mock_client.StatusDaq = AsyncMock(return_value=(True, {"hashpipe_running": True, "hashpipe_pid": 1234}))
+        return mock_client
 
     # 4. Run start_run and observe rollback
-    with unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.__init__", mocked_client_init), \
-         unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StartDaq", mocked_start_daq), \
-         unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StopDaq", mocked_stop_daq), \
-         unittest.mock.patch("panoseti_grpc.daq_control.client.DaqControlClient.StatusDaq", mocked_status_daq), \
+    with unittest.mock.patch("control.start.AsyncDaqControlClient", side_effect=create_mock_client), \
          unittest.mock.patch("control.start.config_file.get_daq_config", return_value=daq_config), \
          unittest.mock.patch("control.start.config_file.get_quabo_uids", return_value=quabo_uids), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
@@ -190,26 +198,29 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
     # 2. Fault Injection
     rollback_results: dict[str, Any] = {"stop_called_ips": set()}
     
-    class MockDaqControlClient:
-        def __init__(self, host: str, port: int) -> None:
-            self._host = host
-
-        def StartDaq(self, params: dict[str, Any], **kwargs: Any) -> bool:
-            if self._host == "192.168.0.12":
-                 time.sleep(0.5)
+    def create_mock_client(host: str, port: int):
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        
+        async def _start(params, **kw):
+            if host == "192.168.0.12":
+                 await asyncio.sleep(0.5)
                  raise RuntimeError("Node 2 Simulated StartDaq Failure")
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
             return True
-
-        def StopDaq(self, params: dict[str, Any], **kwargs: Any) -> bool:
-            print(f"DEBUG SC069: Caught StopDaq for {self._host}")
-            rollback_results["stop_called_ips"].add(self._host)
+            
+        async def _stop(params, **kw):
+            print(f"DEBUG SC069: Caught StopDaq for {host}")
+            rollback_results["stop_called_ips"].add(host)
             return True
+            
+        mock_client.StartDaq = AsyncMock(side_effect=_start)
+        mock_client.StopDaq = AsyncMock(side_effect=_stop)
+        mock_client.StatusDaq = AsyncMock(return_value=(True, {"hashpipe_running": True, "hashpipe_pid": 1234}))
+        return mock_client
 
-        def StatusDaq(self, params: dict[str, Any], **kwargs: Any) -> tuple[bool, dict[str, Any]]:
-            return True, {"hashpipe_running": True, "hashpipe_pid": 1234}
-
-    with unittest.mock.patch("control.start.DaqControlClient", MockDaqControlClient), \
+    with unittest.mock.patch("control.start.AsyncDaqControlClient", side_effect=create_mock_client), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \

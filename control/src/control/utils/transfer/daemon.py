@@ -89,11 +89,15 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
     no_collect: bool = job.get("no_collect", False)
     no_cleanup: bool = job.get("no_cleanup", False)
 
+    from control.utils.run_state import RunStateManager
+    state_mgr = RunStateManager(base_dir=str(base_dir))
+
     logger.info("Processing transfer job for run: %s", run_name)
 
     if not no_collect:
         # --- Stage 1: manifest generation ---
         logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
+        state_mgr.transition("MANIFEST_GENERATING")
         try:
             from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
@@ -124,6 +128,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
 
         # --- Stage 2: rsync ---
         logger.info("[%s] Stage: TRANSFERRING", run_name)
+        state_mgr.transition("TRANSFERRING")
         transfer_errors: list[str] = []
         for node in daq_nodes:
             pf: dict[str, Any] | None = node.get("port_forwarding")
@@ -142,14 +147,17 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
 
         if transfer_errors:
             logger.error("[%s] Transfer failed: %s", run_name, "; ".join(transfer_errors))
+            state_mgr.transition("TRANSFER_FAILED")
             return False
 
         # --- Stage 3: verify (rsync exit code trusted; full digest verify is a follow-on) ---
         logger.info("[%s] Stage: VERIFYING (trusting rsync exit code)", run_name)
+        state_mgr.transition("VERIFYING")
 
     # --- Stage 4: selective cleanup ---
     if not no_cleanup:
         logger.info("[%s] Stage: CLEANING", run_name)
+        state_mgr.transition("CLEANING")
         try:
             from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
@@ -184,6 +192,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
         await head_run_dir.mkdir(parents=True, exist_ok=True)
         await run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
 
+    state_mgr.transition("ARCHIVED")
     logger.info("Run %s archived successfully", run_name)
     return True
 
@@ -247,12 +256,7 @@ async def run_daemon(
                         run_name,
                         attempts,
                     )
-                    tq.enqueue(
-                        run_name,
-                        job["head_data_dir"],
-                        job.get("daq_nodes", []),
-                        attempts=attempts,
-                    )
+                    tq.retry(run_name, attempts)
             except Exception:
                 logger.exception("Unhandled error processing %s", run_name)
                 tq.fail(run_name)

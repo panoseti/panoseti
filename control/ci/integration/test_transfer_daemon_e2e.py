@@ -22,10 +22,11 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 import pytest
+from ci.integration.conftest import copy_run_dir
 
 # ---------------------------------------------------------------------------
 # gRPC stub injection (mirrors test_transfer_daemon.py helper)
@@ -38,7 +39,10 @@ def _mock_grpc_modules(mock_client: MagicMock):
     stub_root = ModuleType("panoseti_grpc")
     stub_daq = ModuleType("panoseti_grpc.daq_control")
     stub_client_mod = ModuleType("panoseti_grpc.daq_control.client")
-    stub_client_mod.DaqControlClient = MagicMock(return_value=mock_client)  # type: ignore[attr-defined]
+
+    # AsyncDaqControlClient constructor returns mock_client regardless of args.
+    stub_client_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client)
+    
     stub_root.daq_control = stub_daq  # type: ignore[attr-defined]
     stub_daq.client = stub_client_mod  # type: ignore[attr-defined]
 
@@ -52,7 +56,7 @@ def _mock_grpc_modules(mock_client: MagicMock):
         prev[key] = sys.modules.get(key)
         sys.modules[key] = mod
     try:
-        yield stub_client_mod.DaqControlClient
+        yield stub_client_mod.AsyncDaqControlClient
     finally:
         for key, original in prev.items():
             if original is None:
@@ -60,7 +64,7 @@ def _mock_grpc_modules(mock_client: MagicMock):
             else:
                 sys.modules[key] = original
 
-DOCKER_CI = False # os.environ.get("IN_DOCKER_CI") == "1"
+DOCKER_CI = os.environ.get("IN_DOCKER_CI") == "1"
 skip_outside_ci = pytest.mark.skipif(
     not DOCKER_CI, reason="Requires Docker CI environment (IN_DOCKER_CI=1)"
 )
@@ -77,6 +81,7 @@ async def test_transfer_daemon_archives_run(
     daq_control_direct,
     run_params,
     ensure_clean_daq_state,
+    head_data_dir,
 ) -> None:
     """
     Full E2E: stop.py enqueues a job; daemon picks it up and archives the run.
@@ -133,9 +138,9 @@ async def test_transfer_daemon_archives_run(
     assert success
 
     mgr = RunStateManager()
-    curr_run_state = mgr.load_state()
-    assert curr_run_state is not None
-    assert curr_run_state == "RECORDING_ENDED"
+    ledger = mgr.load_state()
+    assert ledger is not None
+    assert ledger.status == "RECORDING_ENDED"
 
     # 3. Process job via daemon's real handler
     tq = TransferQueue(base_dir=str(PanoPaths.tmp_dir()))
@@ -143,13 +148,21 @@ async def test_transfer_daemon_archives_run(
     assert job is not None
     assert job["run_name"] == run_params["run_dir"]
 
-    # Real process_job (does real rsync, real GenerateManifest, real CleanupData)
-    job_success = await _process_job(job, tq._base)
-    assert job_success
+    # Real process_job (does real GenerateManifest, real CleanupData)
+    # But mock rsync to use our local copy simulator since SSH is not set up in CI
+    def mocked_rsync(node_ip, node_data_dir, run_name, head_data_dir, *args, **kwargs):
+        ok = copy_run_dir(run_params, Path(head_data_dir))
+        return ok, "" if ok else "Simulated copy failed"
+
+    with patch("control.utils.transfer.daemon.rsync_one_node", side_effect=mocked_rsync):
+        job_success = await _process_job(job, tq._base)
+        assert job_success
+
+    
     tq.complete(job["run_name"])
 
-    curr_run_state = mgr.load_state()
-    assert curr_run_state and curr_run_state == "ARCHIVED"
+    ledger = mgr.load_state()
+    assert ledger and ledger.status == "ARCHIVED"
     run_dir_path = Path(daq_config.head_node_data_dir) / run_params["run_dir"]
     assert (run_dir_path / "run_complete").exists()
 
@@ -222,13 +235,20 @@ async def test_transfer_daemon_resumes_after_crash(
     # A real daemon restart would move it back to pending on claim if it sees it as stale, 
     # but tq.claim() handles claiming from pending. Let's manually re-enqueue like a recovery script would, 
     # or test the daemon's recovery logic if it has any.
-    # The queue logic in TransferQueue.enqueue actually moves active to pending if we enqueue again.
-    tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=1)
+    tq.retry(job["run_name"], attempts=1)
 
     job2 = tq.claim()
     assert job2 is not None
-    job_success = await _process_job(job2, tq._base)
-    assert job_success
+    
+    # Real process_job (does real GenerateManifest, real CleanupData)
+    # But mock rsync to use our local copy simulator since SSH is not set up in CI
+    def mocked_rsync(node_ip, node_data_dir, run_name, head_data_dir, *args, **kwargs):
+        ok = copy_run_dir(run_params, Path(head_data_dir))
+        return ok, "" if ok else "Simulated copy failed"
+
+    with patch("control.utils.transfer.daemon.rsync_one_node", side_effect=mocked_rsync):
+        job_success = await _process_job(job2, tq._base)
+        assert job_success
     tq.complete(job2["run_name"])
 
 
@@ -306,14 +326,14 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
         # Attempt 1
         success1 = await _process_job(job, tq._base)
         assert not success1
-        tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=1)
+        tq.retry(job["run_name"], attempts=1)
 
         # Attempt 2
         job2 = tq.claim()
         assert job2 is not None
         success2 = await _process_job(job2, tq._base)
         assert not success2
-        tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=2)
+        tq.retry(job["run_name"], attempts=2)
 
         # Attempt 3
         job3 = tq.claim()
@@ -322,7 +342,7 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
         assert success3
         tq.complete(job3["run_name"])
 
-    completed_dir = Path(tq._base) / "tmp" / "transfer_queue" / "completed"
+    completed_dir = tq._queue / "completed"
     assert (completed_dir / f"{job['run_name']}.job.toml").exists()
 
 
@@ -390,12 +410,12 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
             success = await _process_job(job, tq._base)
             assert not success
             if attempt < MAX_ATTEMPTS - 1:
-                tq.enqueue(job["run_name"], job["head_data_dir"], job["daq_nodes"], attempts=attempt + 1)
+                tq.retry(job["run_name"], attempts=attempt + 1)
                 job = tq.claim()
             else:
                 tq.fail(job["run_name"])
 
-    failed_dir = Path(tq._base) / "tmp" / "transfer_queue" / "failed"
+    failed_dir = tq._queue / "failed"
     assert (failed_dir / f"{job['run_name']}.job.toml").exists()
 
 
@@ -494,8 +514,10 @@ def test_transfer_daemon_unit_integration(tmp_path) -> None:
     }
 
     mock_client = MagicMock()
-    mock_client.GenerateManifest.return_value = {"success": True, "file_count": 0}
-    mock_client.CleanupData.return_value = {"success": True, "deleted_count": 0}
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.GenerateManifest = AsyncMock(return_value={"success": True, "file_count": 0})
+    mock_client.CleanupData = AsyncMock(return_value={"success": True, "deleted_count": 0})
 
     with _mock_grpc_modules(mock_client), \
          patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")):
@@ -545,8 +567,11 @@ def test_transfer_queue_enqueue_then_process(tmp_path) -> None:
     assert job["run_name"] == run_name
 
     mock_client = MagicMock()
-    mock_client.GenerateManifest.return_value = {"success": True, "file_count": 0}
-    mock_client.CleanupData.return_value = {"success": True, "deleted_count": 0}
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.GenerateManifest = AsyncMock(return_value={"success": True, "file_count": 0})
+    mock_client.CleanupData = AsyncMock(return_value={"success": True, "deleted_count": 0})
+
     with _mock_grpc_modules(mock_client), \
          patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")):
         success = asyncio.run(_process_job(job, tmp_path))
@@ -593,8 +618,10 @@ def test_transfer_daemon_no_collect_integration(tmp_path) -> None:
 
     mock_rsync = MagicMock()
     mock_client = MagicMock()
-    mock_client.GenerateManifest.return_value = {"success": True, "file_count": 0}
-    mock_client.CleanupData.return_value = {"success": True, "deleted_count": 0}
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.GenerateManifest = AsyncMock(return_value={"success": True, "file_count": 0})
+    mock_client.CleanupData = AsyncMock(return_value={"success": True, "deleted_count": 0})
 
     with _mock_grpc_modules(mock_client), \
          patch("control.utils.transfer.daemon.rsync_one_node", mock_rsync):
