@@ -678,10 +678,10 @@ async def _check_quabo_reachability(
         real_ip = ip_ports.ip_addr
         cmd_port = ip_ports.cmd_port
         
-        from control.utils.config_validator import _check_tcp_port
+        from control.utils.config_validator import _check_reachability
         
         loop = asyncio.get_running_loop()
-        ok, err = await loop.run_in_executor(None, lambda: _check_tcp_port(real_ip, cmd_port, timeout=2.0))
+        ok, err = await loop.run_in_executor(None, lambda: _check_reachability(str(real_ip), cmd_port, target_type="quabo", timeout=2.0))
         if not ok:
             msg = f"Quabo at {real_ip}:{cmd_port} is UNREACHABLE: {err}"
             if lenient:
