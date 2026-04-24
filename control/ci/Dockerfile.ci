@@ -34,8 +34,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS headnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    rsync openssh-client docker.io \
+    rsync openssh-client docker.io curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy software version info from repo root
+COPY sw_info.json /sw_info.json
 
 # Copy source code (this layer invalidates if control/ changes)
 COPY control/ .
@@ -43,6 +46,9 @@ RUN mkdir -p /data /data/head
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
+
+# Install shell completion for pseti
+RUN SHELL=/bin/bash /opt/venv/bin/pseti --install-completion bash || true
 
 CMD ["sleep", "infinity"]
 

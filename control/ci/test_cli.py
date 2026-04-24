@@ -250,8 +250,9 @@ def load_hitl_configs(env_cfg: EnvironmentConfig):
     config_dir = CONTROL_ROOT / env_cfg.config_dir
     daq_cfg = config_file.get_daq_config(dir=str(config_dir))
     net_cfg = config_file.get_network_config(dir=str(config_dir))
+    obs_cfg = config_file.get_obs_config(dir=str(config_dir))
     util.attach_daq_config(daq_cfg, net_cfg)
-    return daq_cfg, net_cfg
+    return daq_cfg, net_cfg, obs_cfg
 
 def get_ssh_host(node: Any) -> str:
     """Construct ssh:// URI for a node, handling port forwarding gateway."""
@@ -306,7 +307,7 @@ def hw_check_env(
     console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg = load_hitl_configs(env_cfg)
+    daq_cfg, _net_cfg, obs_cfg = load_hitl_configs(env_cfg)
     tool = runner.container_tool
     
     console.print(f"[dim]Checking container engine ({tool})...[/dim]")
@@ -332,6 +333,22 @@ def hw_check_env(
     if free_gb < min_gb:
         console.print(f"[red]Error: Low Headnode space. {free_gb:.1f}GB free, {min_gb}GB required.[/red]")
         raise typer.Exit(code=1)
+
+    # Check WPS reachability
+    console.print("[dim]Checking WPS power supplies reachability...[/dim]")
+    extra_data = obs_cfg.model_extra or {}
+    for key, val in extra_data.items():
+        if key.startswith("wps"):
+            url = val.get("url")
+            if url:
+                console.print(f"[dim]Checking WPS {key} at {url}...[/dim]")
+                # Use a short timeout for the reachability check
+                cmd = f"curl -s --connect-timeout 2 --head {url}"
+                res = asyncio.run(runner._run_cmd(cmd, quiet=True))
+                if res.ok:
+                    console.print(f"[green]✔ WPS {key} is reachable.[/green]")
+                else:
+                    console.print(f"[yellow]⚠ WPS {key} is NOT reachable (url={url}).[/yellow]")
 
     # Check remote connectivity and DAQnode storage
     for node in daq_cfg.daq_nodes:
@@ -368,7 +385,7 @@ def hw_deploy(ctx: typer.Context) -> None:
     console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg = load_hitl_configs(env_cfg)
+    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
     tool = runner.container_tool
     
     console.print(f"[cyan]Deploying Headnode profile locally with {tool}...[/cyan]")
@@ -401,7 +418,7 @@ def hw_clean(ctx: typer.Context) -> None:
     console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg = load_hitl_configs(env_cfg)
+    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
     tool = runner.container_tool
     
     console.print(f"[yellow]Tearing down Headnode profile with {tool}...[/yellow]")
@@ -420,6 +437,19 @@ def hw_clean(ctx: typer.Context) -> None:
             daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
             asyncio.run(runner._run_cmd(daq_down, env=env))
     console.print("[yellow]Placeholder: Data wiping skipped.[/yellow]")
+
+@hw_app.command(name="attach")
+def hw_attach(ctx: typer.Context) -> None:
+    """Enter the headnode container shell for debugging."""
+    from rich.console import Console
+    console = Console()
+    runner: TestRunner = ctx.obj
+    _suite, env_cfg = get_hw_suite_and_env(ctx)
+    tool = runner.container_tool
+    
+    cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode exec headnode-server /bin/bash"
+    console.print(f"[cyan]Attaching to headnode-server...[/cyan]")
+    os.system(cmd)
 
 @hw_app.command(name="run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def hw_run(ctx: typer.Context) -> None:
