@@ -95,32 +95,30 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
         # --- Stage 1: manifest generation ---
         logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
         try:
-            from panoseti_grpc.daq_control.client import (
-                DaqControlClient,
-            )
+            from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-            for node in daq_nodes:
-                client = DaqControlClient(host=node["ip_addr"], port=50051)
+            async def gen_manifest(node: dict[str, Any]) -> None:
                 module_ids: list[int] = node.get("module_ids", [])
-                for mid in module_ids:
-                    try:
-                        await asyncio.to_thread(
-                            client.GenerateManifest,
-                            {
+                async with AsyncDaqControlClient(host=node["ip_addr"], port=50051) as client:
+                    for mid in module_ids:
+                        try:
+                            await client.GenerateManifest({
                                 "data_dir": node["data_dir"],
                                 "run_dir": run_name,
                                 "module_id": mid,
                                 "algorithm": "blake3",
                                 "include_patterns": ["*.pff"],
-                            }
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "GenerateManifest failed for module %s on %s: %s",
-                            mid,
-                            node["ip_addr"],
-                            exc,
-                        )
+                            })
+                        except Exception as exc:
+                            logger.warning(
+                                "GenerateManifest failed for module %s on %s: %s",
+                                mid, node["ip_addr"], exc
+                            )
+
+            async with asyncio.TaskGroup() as tg:
+                for node in daq_nodes:
+                    tg.create_task(gen_manifest(node))
+
         except ImportError:
             logger.warning("panoseti_grpc not available; skipping manifest generation")
 
@@ -153,28 +151,28 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
     if not no_cleanup:
         logger.info("[%s] Stage: CLEANING", run_name)
         try:
-            from panoseti_grpc.daq_control.client import (
-                DaqControlClient,
-            )
+            from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-            for node in daq_nodes:
-                client = DaqControlClient(host=node["ip_addr"], port=50051)
-                try:
-                    await asyncio.to_thread(
-                        client.CleanupData,
-                        {
+            async def cleanup_node(node: dict[str, Any]) -> None:
+                async with AsyncDaqControlClient(host=node["ip_addr"], port=50051) as client:
+                    try:
+                        await client.CleanupData({
                             "data_dir": node["data_dir"],
                             "run_dir": run_name,
                             "module_id": node.get("module_ids", []),
                             "mode": "CLEANUP_SELECTIVE",
                             "delete_patterns": ["*.pff"],
                             "preserve_patterns": ["*.json", "*.log", "*.toml"],
-                        }
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "CleanupData failed for %s: %s", node["ip_addr"], exc
-                    )
+                        })
+                    except Exception as exc:
+                        logger.warning(
+                            "CleanupData failed for %s: %s", node["ip_addr"], exc
+                        )
+
+            async with asyncio.TaskGroup() as tg:
+                for node in daq_nodes:
+                    tg.create_task(cleanup_node(node))
+
         except ImportError:
             logger.warning("panoseti_grpc not available; skipping cleanup")
 

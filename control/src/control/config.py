@@ -690,7 +690,8 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, netwo
     x['date'] = d.isoformat()
     x['quabos'] = quabos
     baseline_file = config_file.quabo_ph_baseline_filename
-    os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
+    if os.path.dirname(baseline_file):
+        os.makedirs(os.path.dirname(baseline_file), exist_ok=True)
     with open(baseline_file, "w") as f:
         f.write(json.dumps(x, indent=4))
 

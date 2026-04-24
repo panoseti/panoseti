@@ -26,7 +26,7 @@ from __future__ import annotations
 import pathlib
 import time
 from contextlib import ExitStack
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -127,13 +127,18 @@ def _stop_patches(state_mgr: RunStateManager):
     stack.enter_context(patch("control.stop.util.stop_data_flow", return_value=None))
     stack.enter_context(patch("control.stop.util.remove_run_name", return_value=None))
     stack.enter_context(patch("control.stop.util.read_run_name", return_value=RUN_NAME))
+
+    # Mock AsyncDaqControlClient
+    mock_async_client = MagicMock()
+    mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+    mock_async_client.__aexit__ = AsyncMock(return_value=None)
+    mock_async_client.StopDaq = AsyncMock(return_value=True)
+    mock_async_client.CleanupData = AsyncMock(return_value={"success": True})
     stack.enter_context(patch(
-        "control.stop.DaqControlClient",
-        return_value=MagicMock(
-            StopDaq=MagicMock(return_value=True),
-            CleanupData=MagicMock(return_value={"success": True}),
-        ),
+        "control.stop.AsyncDaqControlClient",
+        return_value=mock_async_client,
     ))
+
     stack.enter_context(patch("control.stop.make_links", return_value=None))
     # Redirect RunStateManager to our tmp_path-based instance
     stack.enter_context(patch("control.stop.RunStateManager", return_value=state_mgr))

@@ -39,7 +39,7 @@ import typer
 
 # ---------------------------------------------------
 # panoseti-grpc imports
-from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 from panoseti_grpc.telemetry.logger import get_logger
 
 import control.session_stop as session_stop
@@ -138,8 +138,8 @@ class StartTransaction:
                     logger.info(f"Rolling back node {node.ip_addr} (Status: {receipt.status})...")
                     try:
                         grpc_host, grpc_port = util.daq_grpc_endpoint(node)
-                        client = DaqControlClient(host=grpc_host, port=grpc_port)
-                        await asyncio.to_thread(client.StopDaq, {'data_dir': node.data_dir, 'run_dir': self.run_name})
+                        async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                            await client.StopDaq({'data_dir': node.data_dir, 'run_dir': self.run_name})
                     except Exception as stop_err:
                         logger.error(f"Failed to stop node {node.ip_addr} during rollback: {stop_err}")
 
@@ -505,7 +505,6 @@ async def start_recording(
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
         logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
         
-        client = DaqControlClient(host=grpc_host, port=grpc_port)
         start_args = {
             'data_dir':         node_validator.data_dir,
             'daq_ip_addr':      str(node_validator.ip_addr),
@@ -517,17 +516,15 @@ async def start_recording(
             'module_id':        node_validator.module_ids,
         }
         
-        # Call gRPC synchronously in thread pool, guarded by a strict timeout and retries
         last_err = ""
         
         for attempt in range(1, startdaq_retries + 1):
             try:
-                # Task 2.1: Implement strict timeout on StartDaq
-                # We wrap the executor call in wait_for to handle hangs
-                ok = await asyncio.wait_for(
-                    loop.run_in_executor(None, lambda: client.StartDaq(start_args, timeout=startdaq_timeout)),
-                    timeout=startdaq_timeout + 5
-                )
+                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                    ok = await asyncio.wait_for(
+                        client.StartDaq(start_args, timeout=startdaq_timeout),
+                        timeout=startdaq_timeout + 5
+                    )
                 if ok:
                     return # Success
                 else:
@@ -536,13 +533,12 @@ async def start_recording(
             except TimeoutError:
                 last_err = f"StartDaq TIMEOUT ({startdaq_timeout})"
                 break # Timeout usually means non-transient or black hole
-            except (grpc.RpcError, ConnectionError) as e:  # type: ignore[attr-defined]
-                # DaqControlClient wraps grpc.RpcError in ConnectionError
+            except (grpc.RpcError, ConnectionError) as e:
                 # We need to reach into .__cause__ to get the original RpcError
                 original_e = e.__cause__ if isinstance(e, ConnectionError) else e
-                if isinstance(original_e, grpc.RpcError):  # type: ignore[attr-defined]
+                if isinstance(original_e, grpc.RpcError):
                     last_err = f"gRPC {original_e.code()}: {original_e.details()}"
-                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:  # type: ignore[attr-defined]
+                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:
                         logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")
                         await asyncio.sleep(1.0)
                         continue
@@ -574,7 +570,6 @@ async def start_recording(
             return
         
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
-        client = DaqControlClient(host=grpc_host, port=grpc_port)
         
         # Retry loop: 5 attempts, 1s backoff
         last_err = ""
@@ -585,12 +580,13 @@ async def start_recording(
             await asyncio.sleep(1.0) # 1s between attempts
             
             try:
-                ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
-                    'data_dir': node_validator.data_dir,
-                    'check_hashpipe_running': True,
-                    'check_disk_usage': False,
-                    'check_run_dirs': False
-                }))
+                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                    ok, status = await client.StatusDaq({
+                        'data_dir': node_validator.data_dir,
+                        'check_hashpipe_running': True,
+                        'check_disk_usage': False,
+                        'check_run_dirs': False
+                    })
                 
                 if ok:
                     if status.get('hashpipe_running'):
@@ -637,15 +633,15 @@ async def start_recording(
             
             async def verify_liveness(node_validator: DaqNode) -> None:
                 grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
-                client = DaqControlClient(host=grpc_host, port=grpc_port)
                 
                 try:
-                    ok, status = await loop.run_in_executor(None, lambda: client.StatusDaq({
-                        'data_dir': node_validator.data_dir,
-                        'check_hashpipe_running': True,
-                        'check_disk_usage': False,
-                        'check_run_dirs': False
-                    }))
+                    async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                        ok, status = await client.StatusDaq({
+                            'data_dir': node_validator.data_dir,
+                            'check_hashpipe_running': True,
+                            'check_disk_usage': False,
+                            'check_run_dirs': False
+                        })
                     
                     if not ok or not status.get('hashpipe_running'):
                         err = status.get('message', 'hashpipe exited during stabilization')

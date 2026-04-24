@@ -17,7 +17,7 @@ import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from control.utils.pydantic_config_models import RunStateLedger
 from control.utils.run_state import RunStateManager
@@ -79,10 +79,12 @@ def _make_run_dir(tmp_path: pathlib.Path, run_name: str = "myrun.pffd") -> pathl
 
 
 def _mock_grpc_client() -> MagicMock:
-    """Return a MagicMock that mimics DaqControlClient."""
+    """Return a MagicMock that mimics AsyncDaqControlClient."""
     client = MagicMock()
-    client.GenerateManifest.return_value = {"success": True, "file_count": 0}
-    client.CleanupData.return_value = {"success": True, "deleted_count": 0}
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    client.GenerateManifest = AsyncMock(return_value={"success": True, "file_count": 0})
+    client.CleanupData = AsyncMock(return_value={"success": True, "deleted_count": 0})
     return client
 
 
@@ -92,19 +94,16 @@ def _mock_grpc_modules(mock_client: MagicMock):
     local import inside _process_job() resolves to our mock.
 
     The daemon does:
-        from panoseti_grpc.daq_control.client import DaqControlClient
+        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     inside the function body, which bypasses normal module-level patching.
     We must pre-populate sys.modules with stub module objects.
     """
     stub_root = ModuleType("panoseti_grpc")
     stub_daq = ModuleType("panoseti_grpc.daq_control")
     stub_client_mod = ModuleType("panoseti_grpc.daq_control.client")
-    stub_client_mod.DaqControlClient = type(
-        "DaqControlClient", (), {"__init__": lambda self, **kw: None}
-    )
 
-    # DaqControlClient constructor returns mock_client regardless of args.
-    stub_client_mod.DaqControlClient = MagicMock(return_value=mock_client)
+    # AsyncDaqControlClient constructor returns mock_client regardless of args.
+    stub_client_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client)
 
     stub_root.daq_control = stub_daq  # type: ignore[attr-defined]
     stub_daq.client = stub_client_mod  # type: ignore[attr-defined]
@@ -121,7 +120,7 @@ def _mock_grpc_modules(mock_client: MagicMock):
         prev[key] = sys.modules.get(key)
         sys.modules[key] = mod
     try:
-        yield stub_client_mod.DaqControlClient
+        yield stub_client_mod.AsyncDaqControlClient
     finally:
         for key, original in prev.items():
             if original is None:

@@ -27,7 +27,7 @@ from typing import Any
 
 import grpc
 import typer
-from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
 try:
     from panoseti_grpc.telemetry.logger import get_logger
@@ -312,22 +312,26 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
             logger.info(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
         
         try:
-            client = DaqControlClient(host=grpc_host, port=grpc_port)
-            # Use a strict timeout for the RPC
-            try:
-                ok = await loop.run_in_executor(None, lambda: client.StopDaq({
-                    'data_dir': node.data_dir,
-                    'run_dir':  run_dir,
-                }, timeout=30.0))
+            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                # Use a strict timeout for the RPC
+                try:
+                    ok = await client.StopDaq({
+                        'data_dir': node.data_dir,
+                        'run_dir':  run_dir,
+                    }, timeout=30.0)
 
-                if not ok:
-                    msg = f"StopDaq returned success=False for node {node.ip_addr}"
-                    logger.error(msg)
-                    errors.append(msg)
-            except grpc.RpcError as e: # type: ignore[attr-defined]
-                # Task 2.4: Implement hard-kill escalation
-                if e.code() in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]: # type: ignore[attr-defined]
-                    logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({e.code()}). Escalating to SSH pkill...")
+                    if not ok:
+                        msg = f"StopDaq returned success=False for node {node.ip_addr}"
+                        logger.error(msg)
+                        errors.append(msg)
+                except (grpc.RpcError, ConnectionError) as e:
+                    # Task 2.4: Implement hard-kill escalation
+                    # Unwrap ConnectionError if necessary
+                    original_e = e.__cause__ if isinstance(e, ConnectionError) else e
+                    code = original_e.code() if isinstance(original_e, grpc.RpcError) else None
+
+                    if code in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]:
+                        logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({code}). Escalating to SSH pkill...")
 
                     ssh_args = ["ssh"]
                     if node.port_forwarding and node.port_forwarding.status:
@@ -440,7 +444,7 @@ def make_links(run_dir: str, verbose: bool) -> None:
 
 
 
-def _cleanup_daq_grpc(
+async def _cleanup_daq_grpc(
     daq_config: DaqConfig, 
     run: str, 
     head_run_dir: str | None, 
@@ -458,13 +462,11 @@ def _cleanup_daq_grpc(
     errors: list[str] = []
     skip_set = set(skip_ips) if skip_ips else set()
 
-    for node in daq_config.daq_nodes:
-        if not node.module_ids:
-            continue
+    async def cleanup_node(node: DaqNode) -> None:
         ip_addr = str(node.ip_addr)
         if ip_addr in skip_set:
             logger.warning(f"Skipping cleanup for node {ip_addr} due to collection failure.")
-            continue
+            return
             
         if ip_addr in my_ip:
             # Head node is also DAQ node: local rm -rf
@@ -483,21 +485,29 @@ def _cleanup_daq_grpc(
             if verbose:
                 logger.info(f'CleanupData via gRPC: {grpc_host}:{grpc_port} run_dir={run} force={force}')
             try:
-                client = DaqControlClient(host=grpc_host, port=grpc_port)
-                cleanup_resp = client.CleanupData({
-                    'data_dir':  node.data_dir,
-                    'run_dir':   run,
-                    'module_id': node.module_ids,
-                    'force':     force
-                }, timeout=30.0)
-                if not cleanup_resp['success']:
-                    msg = f'CleanupData failed for node {ip_addr}: {cleanup_resp.get("message")}'
-                    log_error(msg, head_run_dir) 
-                    errors.append(msg)
+                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                    cleanup_resp = await client.CleanupData({
+                        'data_dir':  node.data_dir,
+                        'run_dir':   run,
+                        'module_id': node.module_ids,
+                        'force':     force
+                    }, timeout=30.0)
+
+                    if not cleanup_resp['success']:
+                        msg = f'CleanupData failed for node {ip_addr}: {cleanup_resp.get("message")}'
+                        log_error(msg, head_run_dir) 
+                        errors.append(msg)
             except Exception as e:
                 msg = f'CleanupData error for node {ip_addr}: {e}'
                 log_error(msg, head_run_dir)
                 errors.append(msg)
+
+    async with asyncio.TaskGroup() as tg:
+        for node in daq_config.daq_nodes:
+            if not node.module_ids:
+                continue
+            tg.create_task(cleanup_node(node))
+
     return errors
 
 
