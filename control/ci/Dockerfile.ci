@@ -103,6 +103,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras
 
 # Install shell completion for pseti
-RUN SHELL=/bin/bash  --install-completion bash || true
+RUN SHELL=/bin/bash /opt/venv/bin/pseti --install-completion bash || true
 
 CMD ["/bin/sh", "-c", "cp /usr/local/lib/panoseti_hashpipe.so /data/hashpipe.so && exec pseti-grpc server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]

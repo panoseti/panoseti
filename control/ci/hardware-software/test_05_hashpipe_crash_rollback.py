@@ -14,15 +14,15 @@ Entry point: pseti test hw run -k HW_04
 
 from __future__ import annotations
 
+import os
 import socket
 import time
-import os
 
-import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app
-from control.utils import config_file, util
+from control.utils import util
+from control.utils.pydantic_config_models import DaqConfig, NetworkConfig, ObsConfig
 from control.utils.run_state import RunStateManager
 
 DAQ_DATA_DIR = os.getenv("DAQ_DATA_DIR", "/data")
@@ -37,7 +37,7 @@ def _quabo_emitting(quabo_ip: str, listen_sec: float = 5.0) -> bool:
         try:
             s.recvfrom(4096)
             return True
-        except socket.timeout:
+        except TimeoutError:
             return False
 
 
@@ -51,12 +51,25 @@ class TestHW04HashpipeCrashRollback:
         time.sleep(5)  # let hashpipe stabilize
 
     def test_HW_04_kill_hashpipe_via_ssh(
-        self, daq_config: object, network_config: object
+        self, daq_config: DaqConfig, network_config: NetworkConfig
     ) -> None:
         """SIGKILL hashpipe on the first DAQ node to simulate a crash."""
         import subprocess
 
         util.attach_daq_config(daq_config, network_config)
+        node = daq_config.daq_nodes[0]
+        host, _ = util.daq_grpc_endpoint(node)
+
+        result = subprocess.run(
+            ["ssh", *util.ssh_options, f"{node.username}@{host}", "pkill -9 hashpipe"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        # returncode 1 means no process matched — also acceptable if already dead
+        assert result.returncode in (0, 1), (
+            f"ssh pkill failed ({result.returncode}): {result.stderr}"
+        )
         node = daq_config.daq_nodes[0]
         host, _ = util.daq_grpc_endpoint(node)
 
@@ -76,7 +89,7 @@ class TestHW04HashpipeCrashRollback:
         result = runner.invoke(app, ["stop", "--yes", "--force-cleanup"])
         assert result.exit_code == 0, f"pseti stop --force-cleanup failed:\n{result.stdout}"
 
-    def test_HW_04_quabos_silent_after_stop(self, obs_config: object) -> None:
+    def test_HW_04_quabos_silent_after_stop(self, obs_config: ObsConfig) -> None:
         """Quabos must not emit science data 5 s after stop."""
         for dome in obs_config.domes:
             for module in dome.modules:

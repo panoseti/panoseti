@@ -15,7 +15,6 @@ import os
 import pathlib
 import time
 
-import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app

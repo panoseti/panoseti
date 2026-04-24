@@ -22,38 +22,26 @@ Run: pseti test sw chaos -k SC_TX
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import hashlib
 import os
 import pathlib
-import signal
-import subprocess
-import time
 import uuid
 from typing import Any
 
 import pytest
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient, DaqControlClient
+from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
 
-from ci.integration.chaos import netem, process_chaos
 from ci.integration.conftest import (
-    DAQ_DATA_DIR,
-    DAQNODE_CONTAINER,
     DAQNODE_DIRECT_HOST,
     GRPC_PORT,
-    HEAD_DATA_DIR,
     wait_hashpipe_stopped,
 )
 from ci.integration.scenarios.conftest import (
-    _cleanup,
     _start,
     _stop,
     make_run_params,
-    CleanupRefusedPreserveData,
-    StartRunFailed,
-    StopPartialFailure,
 )
 from ci.integration.state_probe import StateProbe
 
@@ -153,7 +141,7 @@ class TestSCTX002HeadCrashMidStart:
     """
 
     def test_SC_TX_002_stale_lock_self_heals(self, tmp_path: pathlib.Path) -> None:
-        from control.utils.run_state import RunStateLedger, RunStateManager
+        from control.utils.run_state import RunStateManager
 
         tmp_lock = tmp_path / "tmp"
         tmp_lock.mkdir()
@@ -227,7 +215,7 @@ class TestSCTX004ManifestMismatch:
     async def test_SC_TX_004_corrupted_file_triggers_verify_failed(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from unittest.mock import patch, AsyncMock
+        from unittest.mock import patch
 
         head_run = tmp_path / "head" / "sc_tx_004"
         head_run.mkdir(parents=True)
@@ -242,8 +230,8 @@ class TestSCTX004ManifestMismatch:
         # Now corrupt the file so verify_manifest fails
         pff_file.write_bytes(b"corrupted!")
 
-        from control.utils.transfer.queue import TransferQueue
         from control.utils.transfer.daemon import _process_job
+        from control.utils.transfer.queue import TransferQueue
 
         tq = TransferQueue(base_dir=str(tmp_path))
         run_name = "sc_tx_004"
@@ -343,11 +331,10 @@ class TestSCTX007CleanupRefusedWrongDigest:
     async def test_SC_TX_007_cleanup_refused_wrong_digest(
         self, run_params: dict[str, Any]
     ) -> None:
-        from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError, PanosetiRpcError
-        import grpc
+        from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError
 
         # Start a real hashpipe so run_dir exists and cleanup is meaningful
-        ok, _ = _start(None, run_params)  # type: ignore[arg-type]
+        _ok, _ = _start(None, run_params)  # type: ignore[arg-type]
         # Use the sync client directly for this test
         client = DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
         _start(client, run_params)
@@ -368,7 +355,7 @@ class TestSCTX007CleanupRefusedWrongDigest:
                 "preserve_patterns": ["*.json", "*.log"],
                 "manifest_digest": wrong_digest,
             })
-        except (FailedPreconditionError, PanosetiRpcError) as exc:
+        except (FailedPreconditionError, PanosetiRpcError):
             # Expected: server rejected due to digest mismatch (or no manifest found)
             raised = True
         except Exception:

@@ -463,6 +463,19 @@ wheels = [
 ]
 
 [[package]]
+name = "grpcio-health-checking"
+version = "1.78.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "grpcio" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8e/ac/8eb871f4e47b11abfe45497e6187a582ec680ccd7232706d228474a8c7a5/grpcio_health_checking-1.78.0.tar.gz", hash = "sha256:78526d5c60b9b99fd18954b89f86d70033c702e96ad6ccc9749baf16136979b3", size = 17008, upload-time = "2026-02-06T10:01:47.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/30/dbaf47e2210697e2923b49eb62a6a2c07d5ee55bb40cff1e6cc0c5bb22e1/grpcio_health_checking-1.78.0-py3-none-any.whl", hash = "sha256:309798c098c5de72a9bff7172d788fdf309d246d231db9955b32e7c1c773fbeb", size = 19010, upload-time = "2026-02-06T10:01:37.949Z" },
+]
+
+[[package]]
 name = "grpcio-reflection"
 version = "1.78.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1031,7 +1044,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.9"
+version = "0.4.10"
 source = { editable = "../grpc" }
 dependencies = [
     { name = "anyio" },
@@ -1039,6 +1052,7 @@ dependencies = [
     { name = "cython" },
     { name = "gitpython" },
     { name = "grpcio" },
+    { name = "grpcio-health-checking" },
     { name = "grpcio-reflection" },
     { name = "grpcio-tools" },
     { name = "json5" },
@@ -1063,6 +1077,7 @@ requires-dist = [
     { name = "cython" },
     { name = "gitpython" },
     { name = "grpcio", specifier = "==1.78.0" },
+    { name = "grpcio-health-checking" },
     { name = "grpcio-reflection", specifier = "==1.78.0" },
     { name = "grpcio-tools", specifier = "==1.78.0" },
     { name = "ipython", marker = "extra == 'dev'" },

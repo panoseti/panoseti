@@ -216,7 +216,7 @@ What we do clean up: move `TelemetryClient` off `threading.Thread` + `queue.Queu
 1. Promote `RotatingFileHandler` to the primary shipping source; ensure JSONL formatter emits all fields today carried over gRPC (`service`, `git_commit`, `hostname`, `pid`, `thread`).
 2. Deploy Alloy on each node (systemd on DAQ nodes, container on head node), add to existing Loki compose.
 3. **Shadow period (2 weeks / 2 observing cycles):** run both paths in parallel. Instrument both with a counter of log lines emitted / queryable in Loki. Any divergence > 0.1% blocks cutover.
-4. Cutover: flip `telemetry.log_backend` config from `"grpc"` to `"promtail"`; stop `storeLoki.py`; delete `telemetry.Log` RPC, `AsyncGrpcHandler`, `RedisBatcher`.
+4. Cutover: flip `telemetry.log_backend` config from `"grpc"` to `"alloy"`; stop `storeLoki.py`; delete `telemetry.Log` RPC, `AsyncGrpcHandler`, `RedisBatcher`.
 5. Keep the local `RichHandler` (console) and `RotatingFileHandler` (disk) paths intact — operator UX is unchanged; `less /var/log/panoseti/daq_control.jsonl` still works.
 
 ---

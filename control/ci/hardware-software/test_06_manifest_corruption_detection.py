@@ -63,7 +63,6 @@ class TestHW05ManifestCorruptionDetection:
         Flip one byte in a real PFF file on the head node (in a temp copy),
         then verify_manifest must detect the mismatch and name the exact file.
         """
-        import hashlib
         import shutil
 
         run_dir = self._find_archived_run()

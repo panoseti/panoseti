@@ -16,16 +16,14 @@ Entry point: pseti test hw run -k HW_01
 
 from __future__ import annotations
 
-import hashlib
+import os
 import pathlib
 import time
-import os
 
-import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app
-from control.utils import config_file, util
+from control.utils.pydantic_config_models import DaqConfig
 from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
@@ -48,7 +46,7 @@ class TestHW01FullRunArchive:
         result = runner.invoke(app, ["session-start", "--yes"])
         assert result.exit_code == 0, f"session-start failed:\n{result.stdout}"
 
-    def test_HW_01_start_30s_run(self, runner: CliRunner, daq_config: object) -> None:
+    def test_HW_01_start_30s_run(self, runner: CliRunner, daq_config: DaqConfig) -> None:
         """Start a 30-second test run and verify it reaches ACTIVE state."""
         result = runner.invoke(app, ["start", "--run-type", "test", "--yes"])
         assert result.exit_code == 0, f"pseti start failed:\n{result.stdout}"
@@ -77,7 +75,7 @@ class TestHW01FullRunArchive:
             f"Run did not reach ARCHIVED within {ARCHIVE_TIMEOUT}s. Final status: {status}"
         )
 
-    def test_HW_01_pff_on_head_node(self, daq_config: object) -> None:
+    def test_HW_01_pff_on_head_node(self, daq_config: DaqConfig) -> None:
         """PFF files must be present on the head node after transfer."""
         mgr = RunStateManager()
         ledger = mgr.get_state()
@@ -95,22 +93,20 @@ class TestHW01FullRunArchive:
         """run_complete marker must be written by the Transfer Daemon."""
         mgr = RunStateManager()
         ledger = mgr.get_state()
+        assert ledger, "No ledger state found"
         run_name = ledger["run_name"]
         marker = HEAD_DATA_DIR / run_name / "run_complete"
         assert marker.exists(), f"run_complete marker missing: {marker}"
 
-    def test_HW_01_manifest_digest_matches(self, daq_config: object) -> None:
+    def test_HW_01_manifest_digest_matches(self, daq_config: DaqConfig) -> None:
         """
         Manifest root digest on the head node must match what the DAQ node wrote.
-
-        The Transfer Daemon rsyncs manifest.blake3 alongside PFF files. We
-        verify the head-side copy is internally consistent: every entry's
-        digest matches the corresponding file on the head node.
         """
         from control.utils.transfer.verify import verify_manifest
 
         mgr = RunStateManager()
         ledger = mgr.get_state()
+        assert ledger, "No ledger state found"
         run_name = ledger["run_name"]
         run_dir = HEAD_DATA_DIR / run_name
 
@@ -124,7 +120,7 @@ class TestHW01FullRunArchive:
                 + "; ".join(errors)
             )
 
-    def test_HW_01_daq_pff_removed_metadata_preserved(self, daq_config: object) -> None:
+    def test_HW_01_daq_pff_removed_metadata_preserved(self, daq_config: DaqConfig) -> None:
         """
         After selective cleanup:
           - .pff files must be gone from DAQ nodes.
@@ -134,6 +130,7 @@ class TestHW01FullRunArchive:
 
         mgr = RunStateManager()
         ledger = mgr.get_state()
+        assert ledger, "No ledger state found"
         run_name = ledger["run_name"]
 
         for node in daq_config.daq_nodes:

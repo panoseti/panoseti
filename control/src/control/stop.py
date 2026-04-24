@@ -20,7 +20,6 @@ import os
 import shutil
 import signal
 import socket
-import subprocess
 import time
 from glob import glob
 from typing import Any
@@ -301,7 +300,6 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
     Returns:
         A list of error messages from nodes that failed to stop.
     """
-    loop = asyncio.get_running_loop()
     errors: list[str] = []
 
     async def stop_node(node: DaqNode) -> None:

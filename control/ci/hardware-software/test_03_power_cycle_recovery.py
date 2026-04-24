@@ -12,10 +12,10 @@ from __future__ import annotations
 import socket
 import time
 
-import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app
+from control.utils.pydantic_config_models import ObsConfig
 
 BOOT_WAIT_DEFAULT = 60
 
@@ -23,12 +23,12 @@ BOOT_WAIT_DEFAULT = 60
 class TestHW02PowerCycleRecovery:
     """Power cycle a single module and confirm full recovery."""
 
-    def test_HW_02_power_off_module(self, runner: CliRunner, obs_config: object) -> None:
+    def test_HW_02_power_off_module(self, runner: CliRunner, obs_config: ObsConfig) -> None:
         """Power off all Quabos."""
         result = runner.invoke(app, ["power", "off", "--yes"])
         assert result.exit_code == 0, f"power off failed:\n{result.stdout}"
 
-    def test_HW_02_quabos_unreachable_after_off(self, obs_config: object) -> None:
+    def test_HW_02_quabos_unreachable_after_off(self, obs_config: ObsConfig) -> None:
         """Quabos must be unreachable after power-off (UDP command port)."""
         time.sleep(5)  # brief stabilization
         for dome in obs_config.domes:
