@@ -65,6 +65,7 @@ description = "Physical Hardware-Software (HITL) tests"
 type = "test"
 environment = "ucb"
 requires_docker = true
+container_tool = "podman"
 profiles = ["headnode", "daqnode"]
 service = "headnode-server"
 test_dir = "ci/hardware-software/"

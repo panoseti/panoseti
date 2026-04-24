@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     iputils-ping \
     gcc build-essential \
-    libhiredis-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -91,9 +90,7 @@ FROM base AS integration-daqnode
 RUN apt-get update && apt-get install -y --no-install-recommends \
     socat tcpreplay procps \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
-COPY --from=hashpipe-builder /usr/local/lib/libhashpipe.so* /usr/local/lib/
-COPY --from=hashpipe-builder /usr/local/include/hashpipe* /usr/local/include/
+COPY --from=hashpipe-builder /usr/local /usr/local
 RUN ldconfig
 ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 RUN mkdir -p /data
