@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 # CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient, DaqControlClient
+from panoseti_grpc.daq_control.client import DaqControlClient
 
 from ci.integration.conftest import (
     DAQ_DATA_DIR,

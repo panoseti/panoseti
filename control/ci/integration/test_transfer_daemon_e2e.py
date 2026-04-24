@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 import pytest
+
 from ci.integration.conftest import copy_run_dir
 
 # ---------------------------------------------------------------------------

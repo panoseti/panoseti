@@ -56,8 +56,9 @@ async def test_SC001_startdaq_timeout_hangs_forever(
     Current bug (start.py): no deadline on DaqControlClient.StartDaq; hangs forever.
     Fix required: deadline/timeout on all StartDaq calls.
     """
-    import unittest.mock
     import asyncio
+    import unittest.mock
+
     import anyio
 
     import control.start as start

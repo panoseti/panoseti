@@ -484,7 +484,7 @@ async def start_recording(
     - Raises Exception on ANY failure or cancellation to trigger the parent rollback ladder.
     """
     # logger = logging.getLogger('PSETI.Start.start_recording')
-    loop = asyncio.get_running_loop()
+    # loop = asyncio.get_running_loop()
 
     # 1. Start local daemons
     util.start_hk_recorder(daq_config, run_name)
