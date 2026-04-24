@@ -50,7 +50,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Install shell completion for pseti
 RUN SHELL=/bin/bash pseti --install-completion bash || true
-RUN pseti --show-completion bash >> /etc/bash.bashrc
+RUN echo 'if [ -f /root/.bash_completions/pseti.sh ]; then source /root/.bash_completions/pseti.sh; fi' >> /etc/bash.bashrc
 
 CMD ["sleep", "infinity"]
 
@@ -93,7 +93,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=hashpipe-builder /usr/local /usr/local
 RUN ldconfig
-ENV LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
+ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH:-}"
 RUN mkdir -p /data
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
@@ -106,6 +106,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Install shell completion for pseti
 RUN SHELL=/bin/bash /opt/venv/bin/pseti --install-completion bash || true
-RUN /opt/venv/bin/pseti --show-completion bash >> /etc/bash.bashrc
+RUN echo 'if [ -f /root/.bash_completions/pseti.sh ]; then source /root/.bash_completions/pseti.sh; fi' >> /etc/bash.bashrc
 
 CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec pseti-grpc server --config /app/ci/integration/configs/grpc/daqnode/server.toml"]
