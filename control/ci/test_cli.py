@@ -403,11 +403,12 @@ def hw_clean(ctx: typer.Context) -> None:
             asyncio.run(runner._run_cmd(daq_down, env=env))
     console.print("[yellow]Placeholder: Data wiping skipped.[/yellow]")
 
-@hw_app.command(name="run")
+@hw_app.command(name="run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def hw_run(ctx: typer.Context) -> None:
-    """[Placeholder] Run the HW-SW pytest suite."""
-    from rich.console import Console
-    Console().print("[yellow]HW-SW test suite placeholder. Implementation pending.[/yellow]")
+    """Run the physical hardware-software (HITL) test suite."""
+    ok = asyncio.run(ctx.obj.run_suite("test-hw", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
 
 if __name__ == "__main__":
     app()
