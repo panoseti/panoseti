@@ -81,7 +81,6 @@ services:
       target: integration-daqnode
     profiles: ["daqnode"]
     network_mode: host
-    ipc: host
     cap_add:
       - NET_RAW
       - NET_ADMIN
