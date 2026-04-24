@@ -4,7 +4,7 @@ This document describes the transactional integrity and rollback mechanisms impl
 
 ## Overview
 
-The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers in `control/utils/run_state.py`. Since the `pseti stop` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by `daemons/transfer_daemon.py`.
+The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers — implemented in `control/src/control/start.py` (class `StartTransaction`, line ~77) and `control/src/control/stop.py` (class `StopTransaction`, line ~62) respectively. Since the `pseti stop` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by `daemons/transfer_daemon.py`.
 
 ## State Management & Locking
 

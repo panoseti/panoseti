@@ -253,6 +253,17 @@ async def run_daemon(
     logger.info("Transfer daemon started (pid=%d)", os.getpid())
     tq = TransferQueue(base_dir=base_dir)
 
+    # Recover jobs stranded in active/ from a prior daemon crash (SC-TX-005).
+    active_dir = base / tq.QUEUE_ROOT / "active"
+    for stale in sorted(active_dir.glob("*.job.toml")):
+        run_name_stale = stale.stem.removesuffix(".job")
+        pending_path = base / tq.QUEUE_ROOT / "pending" / stale.name
+        try:
+            os.rename(stale, pending_path)
+            logger.warning("Recovered stranded job from active/: %s", run_name_stale)
+        except OSError as exc:
+            logger.error("Failed to recover stranded job %s: %s", run_name_stale, exc)
+
     import contextlib
     try:
         while not shutdown.is_set():

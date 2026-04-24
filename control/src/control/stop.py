@@ -344,11 +344,17 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
                         ssh_args.append("pkill -9 hashpipe")
 
                         try:
-                            res = await loop.run_in_executor(None, lambda: subprocess.run(ssh_args, capture_output=True, text=True, timeout=15))
-                            if res.returncode == 0 or res.returncode == 1: # 0=success, 1=no processes matched (also fine)
+                            proc = await asyncio.create_subprocess_exec(
+                                *ssh_args,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
+                            )
+                            _, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=15)
+                            stderr_text = stderr_bytes.decode(errors="replace") if stderr_bytes else ""
+                            if proc.returncode in (0, 1):  # 0=success, 1=no processes matched (also fine)
                                 logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
                             else:
-                                raise RuntimeError(f"ssh pkill failed with code {res.returncode}: {res.stderr}")
+                                raise RuntimeError(f"ssh pkill failed with code {proc.returncode}: {stderr_text}")
                         except Exception as fallback_err:
                             raise RuntimeError(f"Hard-kill escalation failed for node {node.ip_addr}: {fallback_err}") from fallback_err
                     else:
