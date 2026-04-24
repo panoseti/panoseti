@@ -52,13 +52,20 @@ class RunStateManager:
         # Ensure directory exists
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def acquire_lock(self) -> None:
-        """
-        Acquires an exclusive advisory lock on the control plane using atomic file creation.
-        Includes stale PID detection for self-healing (SC-015/SC-021).
+    def acquire_lock(self) -> bool:
+        """Acquire the exclusive advisory control-plane lock.
+
+        Uses atomic ``O_EXCL`` file creation with stale-PID healing
+        (SC-015/SC-021).
+
+        Returns:
+            ``True`` when the lock is acquired successfully.
+
+        Raises:
+            LockError: If another live process already holds the lock.
         """
         if self._lock_fh:
-            return
+            return True
 
         # Ensure tmp/ exists
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -70,7 +77,7 @@ class RunStateManager:
                 with os.fdopen(fd, "w") as f:
                     f.write(str(os.getpid()))
                 self._lock_fh = True
-                return
+                return True
             except FileExistsError:
                 # Check if the lock is stale
                 try:

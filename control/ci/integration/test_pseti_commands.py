@@ -69,10 +69,10 @@ def test_structural_integrity_integrated_in_validate():
     assert hasattr(validator, "_check_topology_structural_integrity")
 
 
-@pytest.mark.skip(reason="invalid unless in proper test environment")
-def test_pseti_start_validation_trigger():
-    """Verify pseti start triggers validation (logical check)."""
-    with patch("control.start.main") as mock_start:
-        result = runner.invoke(app, ["start", "-y"])
-        assert result.exit_code == 0
-        mock_start.assert_called_once()
+# # @pytest.mark.skip(reason="invalid unless in proper test environment")
+# def test_pseti_start_validation_trigger():
+#     """Verify pseti start triggers validation (logical check)."""
+#     with patch("control.start.main") as mock_start:
+#         result = runner.invoke(app, ["start", "-y"])
+#         assert result.exit_code == 0
+#         mock_start.assert_called_once()

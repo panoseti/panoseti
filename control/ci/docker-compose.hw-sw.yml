@@ -97,7 +97,9 @@ services:
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
-    command: "pseti-grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
+    command: >
+      /bin/sh -c "cp /usr/local/lib/panoseti_hashpipe.so /mnt/panoseti/hashpipe.so &&
+      exec pseti-grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
     restart: always
 
 volumes:

@@ -40,6 +40,7 @@ import typer
 # ---------------------------------------------------
 # panoseti-grpc imports
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError, UnavailableError
 from panoseti_grpc.telemetry.logger import get_logger
 
 import control.session_stop as session_stop
@@ -562,17 +563,28 @@ async def start_recording(
             except TimeoutError:
                 last_err = f"StartDaq TIMEOUT ({startdaq_timeout})"
                 break # Timeout usually means non-transient or black hole
-            except (grpc.aio.AioRpcError, ConnectionError) as e:
-                # We need to reach into .__cause__ to get the original AioRpcError if wrapped
-                original_e = e.__cause__ if isinstance(e, ConnectionError) else e
-                if isinstance(original_e, grpc.aio.AioRpcError):
-                    last_err = f"gRPC {original_e.code()}: {original_e.details()}"
-                    if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:
-                        logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")
-                        await asyncio.sleep(1.0)
-                        continue
-                else:
-                    last_err = f"StartDaq Error: {e}"
+            except (grpc.RpcError, ConnectionError, PanosetiRpcError) as e:
+                rpc_code: grpc.StatusCode | None = None
+                if isinstance(e, UnavailableError):
+                    rpc_code = grpc.StatusCode.UNAVAILABLE
+                    last_err = f"gRPC UNAVAILABLE: {e.details}"
+                elif isinstance(e, PanosetiRpcError):
+                    rpc_code = e.code
+                    last_err = f"gRPC {e.code.name}: {e.details}"
+                elif isinstance(e, ConnectionError):
+                    cause = e.__cause__
+                    if isinstance(cause, grpc.RpcError):
+                        rpc_code = cause.code()
+                        last_err = f"gRPC {rpc_code}: {cause.details() or ''}"
+                    else:
+                        last_err = f"StartDaq Error: {e}"
+                else:  # grpc.RpcError
+                    rpc_code = e.code()  # type: ignore[union-attr]
+                    last_err = f"gRPC {rpc_code}: {e.details() or ''}"  # type: ignore[union-attr]
+                if rpc_code == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:
+                    logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")
+                    await asyncio.sleep(1.0)
+                    continue
                 break
         
         # If we reach here, it's a hard failure or we ran out of retries
@@ -589,8 +601,9 @@ async def start_recording(
             for n in daq_config.daq_nodes:
                 tg.create_task(start_node(n))
     except ExceptionGroup as eg:
-        for exc in eg.exceptions:
-            logger.error(f"StartDaq sub-task failed: {exc}")
+        for i, exc in enumerate(eg.exceptions, 1):
+            tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            logger.error(f"StartDaq sub-task {i}/{len(eg.exceptions)} failed: {type(exc).__name__}: {exc}\n{tb}")
         raise
 
     if cancel_event.is_set():
@@ -746,8 +759,9 @@ async def _check_daq_reachability(daq_config: DaqConfig) -> None:
                 tg.create_task(check_node_grpc(node))
         logger.info("All configured DAQ nodes are reachable via gRPC.")
     except ExceptionGroup as eg:
-        for exc in eg.exceptions:
-            logger.error(str(exc))
+        for i, exc in enumerate(eg.exceptions, 1):
+            tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            logger.error(f"gRPC reachability check {i}/{len(eg.exceptions)} failed: {type(exc).__name__}: {exc}\n{tb}")
         raise ValidationError("One or more DAQ nodes are unreachable via gRPC.") from eg
 
 

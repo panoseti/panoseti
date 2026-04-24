@@ -934,17 +934,21 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     mock_client.__aexit__ = AsyncMock(return_value=None)
     mock_client.StopDaq = AsyncMock(side_effect=timeout_stop_daq)
 
-    # Track subprocess calls to verify fallback pkill
+    # Track asyncio.create_subprocess_exec calls to verify fallback pkill
     fallback_called = False
-    def mocked_run(args: list[str], **kwargs: Any) -> Any:
+
+    async def mocked_create_subprocess_exec(*args: Any, **kwargs: Any) -> Any:
         nonlocal fallback_called
-        cmd_str = " ".join(args)
+        cmd_str = " ".join(str(a) for a in args)
         if "pkill -9 hashpipe" in cmd_str and daq_ip in cmd_str:
             fallback_called = True
-        return unittest.mock.MagicMock(returncode=0)
+        mock_proc = unittest.mock.MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(None, b""))
+        return mock_proc
 
     with unittest.mock.patch("control.stop.AsyncDaqControlClient", return_value=mock_client), \
-         unittest.mock.patch("subprocess.run", side_effect=mocked_run), \
+         unittest.mock.patch("asyncio.create_subprocess_exec", side_effect=mocked_create_subprocess_exec), \
          unittest.mock.patch("control.stop.config_file.get_daq_config", return_value=daq_config), \
          unittest.mock.patch("control.stop.config_file.get_quabo_uids"), \
          unittest.mock.patch("control.stop.config_file.get_network_config"), \

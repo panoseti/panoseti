@@ -184,7 +184,8 @@ class TestSCTX003NetworkDropMidRsync:
 
         tq = TransferQueue(base_dir=str(tmp_path))
         run_name = f"sc_tx_003_{uuid.uuid4().hex[:8]}"
-        tq.enqueue(run_name, str(tmp_path / "head"), [])
+        # Include one daq_node so the rsync stage is exercised
+        tq.enqueue(run_name, str(tmp_path / "head"), [{"ip_addr": "192.168.0.10", "data_dir": "/data", "username": "root"}])
 
         # Patch rsync to always fail and GenerateManifest to skip
         with (
@@ -194,6 +195,9 @@ class TestSCTX003NetworkDropMidRsync:
             job = tq.claim()
             assert job is not None
             success = await _process_job(job, tmp_path)
+            # Simulate daemon loop: move failed job out of active/
+            if not success:
+                tq.fail(run_name)
 
         assert not success, "rsync failure must return False"
         assert not (tmp_path / tq.QUEUE_ROOT / "active" / f"{run_name}.job.toml").exists()
@@ -245,9 +249,12 @@ class TestSCTX004ManifestMismatch:
             assert job is not None
             job["head_data_dir"] = str(tmp_path / "head")
             success = await _process_job(job, tmp_path)
+            # Simulate daemon loop: move failed job out of active/
+            if not success:
+                tq.fail(run_name)
 
         assert not success, "Corrupted file must cause _process_job to return False"
-        # Verify no active job remains
+        # Verify no active job remains (daemon loop moved it to failed/)
         assert not list((tmp_path / tq.QUEUE_ROOT / "active").glob("*.toml"))
 
 

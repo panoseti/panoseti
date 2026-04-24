@@ -8,7 +8,7 @@
             "username": "panoseti",
             "data_dir": "/mnt/panoseti/",
             "ip_addr": "192.168.0.228",
-            "module_ids": "0-255",
+            "module_ids": "254",
             "bindhost": "enp171s0"
         }
     ]

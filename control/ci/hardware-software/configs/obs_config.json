@@ -1,5 +1,5 @@
 {
-    "name": "UCB_Hardware-Software_Github_Runner",
+    "name": "sw-hw-gh-ucb",
     "comment": "Physical HITL test environment: radio astronomy lab, 425 Campbell",
     "wr_ip_addr": "10.0.1.36",
     "dome_controller_ip_addr": "192.168.88.103",
