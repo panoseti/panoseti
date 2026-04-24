@@ -4,6 +4,48 @@ import hashlib
 import pathlib
 
 
+def _compute_digest(data: bytes, algo: str) -> str:
+    """Compute the hex digest of *data* using *algo*.
+
+    Args:
+        data: Raw file bytes.
+        algo: One of ``"blake3"``, ``"xxh3_128"``, or ``"sha256"``.
+
+    Returns:
+        Lowercase hex digest string.
+    """
+    if algo == "blake3":
+        try:
+            import blake3 as _blake3
+            return str(_blake3.blake3(data).hexdigest())
+        except ImportError:
+            pass
+    if algo in ("xxh3_128", "xxhash"):
+        try:
+            import xxhash
+            return str(xxhash.xxh3_128(data).hexdigest())
+        except ImportError:
+            pass
+    return hashlib.sha256(data).hexdigest()
+
+
+def _algo_from_path(manifest_path: pathlib.Path) -> str:
+    """Infer the hash algorithm from the manifest file suffix.
+
+    The manifest server writes files named ``manifest.<algo>`` (e.g.
+    ``manifest.blake3``, ``manifest.xxh3_128``, ``manifest.sha256``).
+
+    Args:
+        manifest_path: Path to the manifest file.
+
+    Returns:
+        Algorithm name string suitable for ``_compute_digest``.
+    """
+    suffix = manifest_path.suffix.lstrip(".")
+    known = {"blake3", "xxh3_128", "sha256"}
+    return suffix if suffix in known else "sha256"
+
+
 def verify_manifest(
     manifest_path: pathlib.Path,
     data_dir: pathlib.Path,
@@ -19,10 +61,8 @@ def verify_manifest(
         <digest>  <size>  <relpath>
 
     and recomputes each file's digest, comparing it against the recorded
-    value.  The hashing algorithm is inferred from the digest length: a
-    32-character hex string triggers xxhash XXH3-128 (when ``xxhash`` is
-    available), and a 64-character string triggers SHA-256.  Unknown lengths
-    fall back to SHA-256.
+    value.  The hashing algorithm is inferred from the manifest file suffix
+    (e.g. ``manifest.blake3`` → blake3, ``manifest.sha256`` → SHA-256).
 
     Args:
         manifest_path: Path to the manifest file to read.
@@ -38,6 +78,8 @@ def verify_manifest(
     if not manifest_path.exists():
         return False, [f"Manifest not found: {manifest_path}"]
 
+    algo = _algo_from_path(manifest_path)
+
     with open(manifest_path) as f:
         for line in f:
             line = line.strip()
@@ -49,7 +91,6 @@ def verify_manifest(
             elif len(parts) == 3:
                 expected_digest, _size_str, relpath = parts
             else:
-                # Unrecognised format — skip silently (forward-compatibility).
                 continue
 
             filepath = data_dir / relpath
@@ -58,16 +99,7 @@ def verify_manifest(
                 continue
 
             raw = filepath.read_bytes()
-            if len(expected_digest) == 32:
-                # Attempt XXH3-128 first; fall back to SHA-256 if unavailable.
-                try:
-                    import xxhash
-
-                    actual = xxhash.xxh3_128(raw).hexdigest()
-                except ImportError:
-                    actual = hashlib.sha256(raw).hexdigest()
-            else:
-                actual = hashlib.sha256(raw).hexdigest()
+            actual = _compute_digest(raw, algo)
 
             if actual != expected_digest:
                 errors.append(f"Digest mismatch: {relpath}")

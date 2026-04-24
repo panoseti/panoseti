@@ -1,17 +1,1 @@
-{
-    "head_node_data_dir": "/tmp/tmpykyrkg7x",
-    "head_node_ip_addr": "10.0.2.5",
-    "daq_nodes": [
-        {
-            "ip_addr": "192.168.1.10",
-            "data_dir": "/data",
-            "username": "root",
-            "module_ids": [
-                254,
-                201
-            ],
-            "bindhost": "lo"
-        }
-    ],
-    "head_node_container": true
-}
+{"head_node_data_dir": "/tmp/tmpkk_ovlcp", "head_node_ip_addr": "10.0.2.5", "daq_nodes": [{"ip_addr": "192.168.1.10", "data_dir": "/data", "username": "root", "module_ids": [254, 201], "bindhost": "lo"}], "head_node_container": true}

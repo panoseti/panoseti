@@ -13,12 +13,16 @@ import anyio
 
 from control.utils.transfer.queue import TransferQueue
 from control.utils.transfer.rsync_worker import rsync_one_node
+from control.utils.transfer.verify import verify_manifest
 
 logger = logging.getLogger("panoseti.transfer_daemon")
 
 TRANSFER_LOCK_FILE = "tmp/panoseti_transfer.lock"
 POLL_INTERVAL_SEC = 5.0
 MAX_ATTEMPTS = 3
+# Exponential backoff delays between transfer retries: attempt 1→2 waits 5 s,
+# attempt 2→3 waits 30 s.  A 3rd failure is final (→ failed/).
+_RETRY_BACKOFF_SEC = [5.0, 30.0]
 
 
 def _acquire_transfer_lock(base_dir: pathlib.Path) -> IO[str] | None:
@@ -150,9 +154,31 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
             state_mgr.transition("TRANSFER_FAILED")
             return False
 
-        # --- Stage 3: verify (rsync exit code trusted; full digest verify is a follow-on) ---
-        logger.info("[%s] Stage: VERIFYING (trusting rsync exit code)", run_name)
+        # --- Stage 3: verify manifest digests on head node ---
+        logger.info("[%s] Stage: VERIFYING", run_name)
         state_mgr.transition("VERIFYING")
+        verify_errors: list[str] = []
+        head_run_path = pathlib.Path(head_data_dir) / run_name
+        for algo_suffix in ("blake3", "xxh3_128", "sha256"):
+            candidate = head_run_path / f"manifest.{algo_suffix}"
+            if candidate.exists():
+                ok, errs = await asyncio.to_thread(verify_manifest, candidate, head_run_path)
+                if not ok:
+                    verify_errors.extend(errs)
+                    logger.error(
+                        "[%s] Manifest verification failed (%s): %s",
+                        run_name, candidate.name, "; ".join(errs),
+                    )
+                else:
+                    logger.info("[%s] Manifest OK: %s", run_name, candidate.name)
+        if verify_errors:
+            state_mgr.transition("VERIFY_FAILED")
+            logger.error(
+                "[%s] Verification failed — skipping cleanup to preserve DAQ-side data. "
+                "Manual recovery required.",
+                run_name,
+            )
+            return False
 
     # --- Stage 4: selective cleanup ---
     if not no_cleanup:
@@ -251,12 +277,16 @@ async def run_daemon(
                     )
                     tq.fail(run_name)
                 else:
+                    backoff = _RETRY_BACKOFF_SEC[min(attempts - 1, len(_RETRY_BACKOFF_SEC) - 1)]
                     logger.warning(
-                        "Run %s attempt %d failed. Re-enqueueing.",
+                        "Run %s attempt %d/%d failed. Retrying in %.0f s.",
                         run_name,
                         attempts,
+                        MAX_ATTEMPTS,
+                        backoff,
                     )
                     tq.retry(run_name, attempts)
+                    await asyncio.sleep(backoff)
             except Exception:
                 logger.exception("Unhandled error processing %s", run_name)
                 tq.fail(run_name)

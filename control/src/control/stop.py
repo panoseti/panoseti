@@ -358,7 +358,9 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
             logger.error(msg)
             errors.append(msg)
 
-    await asyncio.gather(*(stop_node(n) for n in daq_config.daq_nodes))
+    async with asyncio.TaskGroup() as tg:
+        for n in daq_config.daq_nodes:
+            tg.create_task(stop_node(n))
     return errors
 
 

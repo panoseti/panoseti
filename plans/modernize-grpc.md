@@ -21,13 +21,13 @@ Create `src/panoseti_grpc/grpc_utils/` inside the grpc submodule. It holds *clie
 
 | Module | Responsibility | Replaces |
 |---|---|---|
-| `channel.py` | `AsyncChannelFactory` + `MultiHostChannelManager` — owns channel creation, keepalives, per-host stub cache, async `__aenter__`/`__aexit__` with TaskGroup-based fan-in, and a single `service_config` JSON applying method-level retry/hedging. | Duplicated `self.hosts = {h: {"channel","stub"}}` pattern in `daq_data/client.py:160-198` and `ublox_control/client.py:42-59`, plus the commented-out retry block in `telemetry/client.py:56-75`. |
+| `channel.py` | `AsyncChannelFactory` + `MultiHostChannelManager` — owns channel creation, keepalives, per-host stub cache, async `__aenter__`/`__aexit__` with TaskGroup-based fan-in, and a single `service_config` JSON applying method-level retry/hedging. | Duplicated `self.hosts = {h: {"channel","stub"}}` pattern in `daq_data/client.py:160-198`, plus the commented-out retry block in `telemetry/client.py:56-75`. |
 | `exceptions.py` | `PanosetiRpcError` base + typed subclasses (`UnavailableError`, `DeadlineExceededError`, `ResourceExhaustedError`, `FailedPreconditionError`, …). Preserves original `grpc.RpcError`, `.code()`, `.details()`, target host, and request_id. | 12+ hand-written `except grpc.RpcError: raise ConnectionError(f"gRPC failed: {e.details()}") from e` blocks in `daq_control/client.py` alone. Callers (`start.py:567`, `stop.py:330`) stop unwrapping `e.__cause__`. |
 | `decorators.py` | `@rpc_method` (async + sync variants) — validates input via an accompanying Pydantic model, auto-injects deadline and request_id, maps `grpc.RpcError → PanosetiRpcError`, emits structured telemetry. Pairs with the existing server-side `util/error_handling.py::grpc_error_handler`. | Per-method sync/async duplication in `daq_control/client.py:59-355` (~500 LOC collapses to ~150). |
 | `interceptors.py` | Client interceptors (`LoggingInterceptor`, `DeadlineInterceptor`, `MetadataInterceptor`); server interceptors (`ExceptionInterceptor` replacing per-RPC `@grpc_error_handler`, `AccessLogInterceptor`). | No interceptors exist today (zero grep hits). |
 | `retries.py` | Builder for the gRPC `service_config` retry policy JSON (declarative, transport-level). Wired once in `channel.py`. | Hand-rolled retry loop in `start.py:550-576` (`UNAVAILABLE`-only, fixed 1 s sleep). |
-| `health.py` | Thin wrapper over `grpc_health.v1` — `register_health(server, services)` on the server side, `HealthClient.check(service, timeout)` / `watch()` on the client side. | `daq_data.Ping` RPC (`daq_data_pb2_grpc.py:80`, `server.py:247`), `ublox_control.channel.channel_ready()` probes (`client.py:46,136`), `daq_control`'s ad-hoc reuse of `StatusDaq` as a liveness probe (`start.py:594-647`). |
-| `clients/` | Thin generated-stub wrappers living here rather than under each service. Service-specific business methods stay in `<service>/client.py`; channel management and RPC wrapping do not. | Channel + error-wrapping boilerplate across all four services. |
+| `health.py` | Thin wrapper over `grpc_health.v1` — `register_health(server, services)` on the server side, `HealthClient.check(service, timeout)` / `watch()` on the client side. | `daq_data.Ping` RPC (`daq_data_pb2_grpc.py:80`, `server.py:247`), `daq_control`'s ad-hoc reuse of `StatusDaq` as a liveness probe (`start.py:594-647`). |
+| `clients/` | Thin generated-stub wrappers living here rather than under each service. Service-specific business methods stay in `<service>/client.py`; channel management and RPC wrapping do not. | Channel + error-wrapping boilerplate across `daq_data`, `daq_control`, and `telemetry`. (`ublox_control` excluded from this refactor.) |
 
 **Placement rule:** `grpc_utils/` depends on `generated/`, `panoseti_util/`, and nothing else. It is importable from `control/` so the orchestrator can share the same `MultiHostChannelManager`.
 
@@ -42,14 +42,13 @@ TaskGroup is already the dominant pattern (`start.py:163, 587, 650, 658, 743`; `
 | `stop.py:361` | `asyncio.gather(*(stop_node(n) for n in daq_nodes))` without `return_exceptions` | Each `stop_node` wraps its body in `try/except` returning a `NodeOutcome(host, ok, error)`; driver uses `TaskGroup` and reduces over outcomes. | Current code intends best-effort ("Best-effort stop of all remote DAQ nodes") but one failure cancels siblings. |
 | `start.py:725` | `asyncio.gather(*tasks)` for Quabo reachability | Same outcome-collection pattern under `TaskGroup`. | Same reason. |
 | `AioDaqDataClient.__aexit__` (`daq_data/client.py:635-644`) | Suppresses `asyncio.CancelledError`, returns `True` | Re-raise `CancelledError`; convert only `grpc.RpcError` to `PanosetiRpcError`. | Breaks cooperative cancellation contract; masks shutdown hangs. |
-| `UbloxControlClient.__aexit__` (`ublox_control/client.py:151`) | Same bug | Same fix | Same reason. |
 | `stop.py:347` | `loop.run_in_executor(None, lambda: subprocess.run(...))` | `await asyncio.create_subprocess_exec(...)` (matches `start.py:154`) | The subprocess pattern is already correct elsewhere. |
 | `telemetry/client.py` (sync + `threading.Thread` + `queue.Queue`) | Mixed threading model | `grpc.aio` + bounded `asyncio.Queue` | Only threaded code left in the stack. Blocked until the Telemetry Log-path decision in §2.2 is resolved. |
 
 **Decision framework** (document in `grpc_utils/README.md`):
 - **`TaskGroup`** → all-or-nothing fan-outs (startup sequence, teardown rollback ladder, manifest generation, stream merge on failure). First raise cancels siblings; `ExceptionGroup` surfaces at `__aexit__`.
 - **Outcome-collection + `TaskGroup`** → best-effort fan-outs (status probes, cleanup attempts, rollback stop-all). Each task captures its own exception; driver sees no raises and reduces.
-- **Never** `asyncio.gather(..., return_exceptions=True)` as an error-swallower (current use at `daq_data/client.py:864`, `ublox_control/client.py:223` discards the exception). If you need it for channel cleanup, log the exceptions.
+- **Never** `asyncio.gather(..., return_exceptions=True)` as an error-swallower (current use at `daq_data/client.py:864` discards the exception). If you need it for channel cleanup, log the exceptions.
 
 ### 1.3 Health checks — adopt `grpc.health.v1`
 
@@ -65,7 +64,6 @@ Register one `HealthServicer` on the unified `PanosetiServer`. For each register
 2. Implement `grpc_utils.health.register_health(server, toggles)` in PanosetiServer's `serve()`.
 3. Add client-side `HealthClient` in `grpc_utils/health.py`.
 4. Convert `daq_data`'s custom `Ping` RPC: leave the generated stub in place for one release with a `DeprecationWarning`; after the CLI and tests migrate, remove the proto RPC.
-5. Remove `channel.channel_ready()` readiness probes in `ublox_control/client.py:46,136` — use `HealthClient.check`.
 
 ---
 
@@ -333,8 +331,8 @@ Output: one CSV of `file, test_name, current_label, reviewer_label, status` comm
 | `grpc/tests/telemetry/` | ~50 | ~10 | ~10 (rewrite to Alloy E2E) | ~20 (RedisBatcher, AsyncGrpcHandler, Log-stub pytest fixtures) | ~10 |
 | `grpc/tests/daq_data/` | ~60 | ~15 (Ping → Health; `__aexit__` cancellation tests) | ~5 | ~2 | ~38 |
 | `grpc/tests/daq_control/` | ~70 | ~25 (client_models propagation, typed exceptions, CleanupData manifest_digest precondition) | ~3 | ~2 | ~40 |
-| `grpc/tests/ublox_control/` | ~20 | ~8 (channel_ready → Health) | ~1 | ~0 | ~11 |
-| **Total** | **~903** | **~141 (~16%)** | **~35 (~4%)** | **~36 (~4%)** | **~691 (~76%)** |
+| `grpc/tests/ublox_control/` | ~20 | 0 (excluded) | 0 | 0 | ~20 |
+| **Total** | **~903** | **~133 (~15%)** | **~34 (~4%)** | **~36 (~4%)** | **~700 (~78%)** |
 
 Only ~4% of tests get deleted outright. The rest are either unchanged (76%) or mechanical updates (16%).
 
@@ -404,13 +402,13 @@ New code:
 - `control/src/control/ci/hardware-software/test_02_*..test_06_*.py` (HW-01..05)
 
 Modified code:
-- `grpc/src/panoseti_grpc/{daq_data,daq_control,telemetry,ublox_control}/client.py` — thin down to service-specific methods using `grpc_utils`
+- `grpc/src/panoseti_grpc/{daq_data,daq_control,telemetry}/client.py` — thin down to service-specific methods using `grpc_utils` (`ublox_control` excluded)
 - `grpc/src/panoseti_grpc/server.py` — register `HealthServicer`
 - `grpc/protos/daq_control.proto` — add `manifest_digest` to `CleanupDataRequest`
 - `grpc/src/panoseti_grpc/daq_control/server.py::CleanupData` — enforce precondition
 - `control/src/control/utils/transfer/daemon.py` — wire `verify.py::verify_manifest` into Stage 3; add exponential backoff; resume `active/` jobs on restart
 - `control/src/control/stop.py:361`, `control/src/control/start.py:725` — replace `asyncio.gather` with outcome-collection under `TaskGroup`
-- `grpc/src/panoseti_grpc/daq_data/client.py:635-644`, `ublox_control/client.py:151` — stop swallowing `CancelledError`
+- `grpc/src/panoseti_grpc/daq_data/client.py:635-644` — stop swallowing `CancelledError`
 - `control/TRANSACTIONS.md` — correct `StartTransaction`/`StopTransaction` location
 
 Files to remove (after soak, Phase 2.2):
@@ -477,7 +475,7 @@ Success criteria:
 Doing this in one PR is suicide. Doing it in the wrong order causes cascade failures. Suggested order (each is independently mergeable):
 
 1. **`grpc_utils/exceptions.py` + `@rpc_method` decorator** — landing typed exceptions first unlocks mechanical codemods for all the `except ConnectionError` sites. Test impact: ~40 UPDATE.
-2. **`grpc_utils/channel.py` + `MultiHostChannelManager`** — extract channel lifecycle; migrate `daq_data`, `ublox_control`, then orchestrator. Test impact: ~20 UPDATE.
+2. **`grpc_utils/channel.py` + `MultiHostChannelManager`** — extract channel lifecycle; migrate `daq_data` then orchestrator. Test impact: ~20 UPDATE.
 3. **`grpc_utils/health.py` + `HealthServicer` adoption** — add behind flag; keep `Ping` until consumers migrate. Test impact: ~15 UPDATE.
 4. **`daq_control/client.py` sync/async consolidation + `client_models` propagation** — landlocks Pydantic models across the boundary. Test impact: ~45 UPDATE.
 5. **Transaction fixes: `TaskGroup` migration + `__aexit__` cancel bug + manifest VERIFYING wiring + `CleanupData` precondition** — the correctness fixes. Ship the 7 chaos tests in the same PR. Test impact: ~13 UPDATE + 7 new.
@@ -485,6 +483,7 @@ Doing this in one PR is suicide. Doing it in the wrong order causes cascade fail
 7. **Alloy cutover** — flip feature flag; monitor.
 8. **Delete old log path** — remove `AsyncGrpcHandler`, `RedisBatcher`, `storeLoki.py`, `telemetry.Log` RPC. Delete ~30 tests in the same PR. Test impact: ~12 REFACTOR + ~30 DELETE.
 9. **Delete `daq_data.Ping` RPC after one release deprecation window.** Test impact: ~4 DELETE.
+   Note: `ublox_control` service is explicitly out of scope for this refactor — its `channel.channel_ready()` probes, `__aexit__` cancel suppression, and test suite are left untouched.
 10. **HW tests HW-01..05 + `pseti test hw run` integration**. Test impact: 5 new.
 
 Risk-weighted cost: steps 1–4 are pure refactor (low risk, high LOC churn). Step 5 is the correctness fix (medium risk, needs all 7 chaos tests green before merge). Steps 6–8 carry the operational risk (shadow soak gates this). Steps 9–10 are cleanup.

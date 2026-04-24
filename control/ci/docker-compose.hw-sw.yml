@@ -43,6 +43,7 @@ services:
     restart: always
 
   headnode-server:
+    image: pseti-headnode:hitl
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci
@@ -73,6 +74,7 @@ services:
 
   # ── DAQ Node Profile ───────────────────────────────────────────────────────
   daqnode-server:
+    image: pseti-daqnode:hitl
     build:
       context: ../../
       dockerfile: control/ci/Dockerfile.ci

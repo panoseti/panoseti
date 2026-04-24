@@ -584,9 +584,14 @@ async def start_recording(
         raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}: {last_err}')
 
     # Execute all starts in parallel with TaskGroup for fail-fast behavior
-    async with asyncio.TaskGroup() as tg:
-        for n in daq_config.daq_nodes:
-            tg.create_task(start_node(n))
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for n in daq_config.daq_nodes:
+                tg.create_task(start_node(n))
+    except ExceptionGroup as eg:
+        for exc in eg.exceptions:
+            logger.error(f"StartDaq sub-task failed: {exc}")
+        raise
 
     if cancel_event.is_set():
         raise asyncio.CancelledError("Start process cancelled by user")
@@ -695,9 +700,7 @@ async def _check_quabo_reachability(
 ) -> None:
     """Verify that all configured Quabos are reachable on the network."""
     logger.info("Performing Quabo reachability sweep...")
-    
-    tasks = []
-    
+
     async def check_one(base_ip: str, index: int) -> None:
         ip_ports = util.get_quabo_ip_port(module.ip_addr, index, network_config)
         real_ip = ip_ports.ip_addr
@@ -714,15 +717,13 @@ async def _check_quabo_reachability(
                  return
             raise ValidationError(msg)
 
-    for dome in quabo_uids.domes:
-        for module in dome.modules:
-            base_ip = str(module.ip_addr)
-            for i in range(4):
-                if module.quabos[i].uid != '':
-                    tasks.append(check_one(base_ip, i))
-    
-    if tasks:
-        await asyncio.gather(*tasks)
+    async with asyncio.TaskGroup() as tg:
+        for dome in quabo_uids.domes:
+            for module in dome.modules:
+                base_ip = str(module.ip_addr)
+                for i in range(4):
+                    if module.quabos[i].uid != '':
+                        tg.create_task(check_one(base_ip, i))
     logger.info("All configured Quabos are reachable.")
 
 

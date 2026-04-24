@@ -406,6 +406,12 @@ def hw_deploy(ctx: typer.Context) -> None:
         remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
         with SSHTunnel(ssh_args, remote_sock) as local_sock:
             env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
+            
+            if not runner.no_build:
+                console.print(f"[cyan]Transferring pseti-daqnode:hitl image to {node.ip_addr}...[/cyan]")
+                transfer_cmd = f"{tool} save pseti-daqnode:hitl | env DOCKER_HOST=unix://{local_sock} CONTAINER_HOST=unix://{local_sock} {tool} load"
+                os.system(transfer_cmd)
+                
             daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
             if runner.no_build:
                 daq_cmd += " --no-build"
