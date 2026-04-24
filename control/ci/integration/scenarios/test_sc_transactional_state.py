@@ -147,6 +147,7 @@ class TestSC002PartialStartRollback:
 
         with unittest.mock.patch("control.start.start_recording", mock_start_recording), \
              unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+             unittest.mock.patch("control.start._check_daq_reachability"), \
              unittest.mock.patch("control.start.start_data_flow"), \
              unittest.mock.patch("control.start.make_run_dirs"), \
              unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
@@ -243,7 +244,7 @@ async def main():
         # Call the logic directly to avoid asyncio.run() collision in start.main()
         await start.async_main_logic(
             no_hv=True, no_redis=True, no_data=True, 
-            nsecs=0, stop_session=False, verbose=False, force_reset=False
+            nsecs=0, stop_session=False, verbose=False, force_reset=False, no_check_daq=True
         )
 if __name__ == "__main__":
     asyncio.run(main())
@@ -655,15 +656,17 @@ def mock_daq_config_for_headnode():
     # Note: this leak is okay in CI, but better would be a global fixture
     tmp_data_dir = tempfile.mkdtemp()
     
-    cfg["head_node_ip_addr"] = "10.0.1.5"
+    tester_ip = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
+    cfg["head_node_ip_addr"] = tester_ip
     cfg["head_node_data_dir"] = tmp_data_dir
     cfg["head_node_container"] = True
     # Assign ALL modules to the single available CI node
-    # Use the reachable daqnode IP (192.168.0.10) for gRPC success.
+    # Use the reachable daqnode IP from the environment for gRPC success.
     # SSH/SCP are handled by fake_bin in run_start_and_kill.
+    daqnode_ip = os.environ.get("DAQNODE_DIRECT_HOST", "192.168.0.10")
     cfg["daq_nodes"] = [
         {
-            "ip_addr": "192.168.0.10",
+            "ip_addr": daqnode_ip,
             "data_dir": "/data",
             "username": "root",
             "module_ids": module_ids,
@@ -704,7 +707,7 @@ async def run_start_and_kill(marker: str, timeout: float = 15) -> int:
         "python3", "-m", "control.start",
         "--yes",
         "--no_hv", "--no_redis",
-        "--verbose"
+        "--verbose", "--no-check-daq"
     ]    
     with mock_daq_config_for_headnode():
         # We run from control/ directory as per the qa.py context
@@ -774,7 +777,7 @@ async def test_SC021_killed_after_make_run_dirs_leaves_orphan_dirs(
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         result = subprocess.run(
-            ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data"],
+            ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
             capture_output=True, text=True, env=env
         )
     assert result.returncode == 0, f"Next start.py failed to self-heal: {result.stderr}"
@@ -860,7 +863,7 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
         env["PATH"] = f"{os.getcwd()}/tmp/fake_bin:{env['PATH']}"
         env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
-            ["python3", "-m", "control.start", "--yes", "--force-reset", "--no_hv", "--no_redis", "--no_data"],
+            ["python3", "-m", "control.start", "--yes", "--force-reset", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
             capture_output=True, text=True, env=env
         )
     assert result.returncode == 0, f"Next start.py failed to self-heal orphaned hashpipe: {result.stderr}"
@@ -1170,7 +1173,7 @@ def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
         env = os.environ.copy()
         env["PSETI_IS_CONTAINER"] = "0"
         result = subprocess.run(
-            ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data"],
+            ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
             capture_output=True, text=True, env=env
         )
 
@@ -1347,6 +1350,7 @@ async def slow_start():
         # Patch everything that would fail without a real DAQ fleet or SSH
         with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
              unittest.mock.patch("control.start._check_quabo_reachability"), \
+             unittest.mock.patch("control.start._check_daq_reachability"), \
              unittest.mock.patch("control.start.start_data_flow"), \
              unittest.mock.patch("control.start.start_recording"), \
              unittest.mock.patch("control.utils.util.start_hk_recorder"), \\
@@ -1532,6 +1536,7 @@ async def slow_start():
     try:
         with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
              unittest.mock.patch("control.start._check_quabo_reachability"), \
+             unittest.mock.patch("control.start._check_daq_reachability"), \
              unittest.mock.patch("control.start.start_data_flow"), \
              unittest.mock.patch("control.start.start_recording"), \
              unittest.mock.patch("control.utils.util.start_hk_recorder"), \\
@@ -1677,6 +1682,7 @@ async def test_SC015_stale_ledger_self_heal(
     import unittest.mock
     with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
          unittest.mock.patch("control.start._check_quabo_reachability"), \
+         unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.start_data_flow"), \
          unittest.mock.patch("control.start.start_recording"), \
          unittest.mock.patch("control.start.make_run_dirs"), \

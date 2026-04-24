@@ -91,6 +91,7 @@ async def test_SC001_startdaq_timeout_hangs_forever(
 
     with unittest.mock.patch("control.start.AsyncDaqControlClient", return_value=mock_client), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \
          unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
@@ -174,6 +175,7 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
     with unittest.mock.patch("control.start.AsyncDaqControlClient", return_value=mock_client), \
          unittest.mock.patch("asyncio.sleep", side_effect=fast_sleep), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \
          unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
@@ -671,6 +673,7 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
 
     with unittest.mock.patch("control.start.AsyncDaqControlClient", return_value=mock_client), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \
          unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \

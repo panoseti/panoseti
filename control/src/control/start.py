@@ -726,47 +726,8 @@ async def _check_quabo_reachability(
     logger.info("All configured Quabos are reachable.")
 
 
-async def start_run(
-    obs_config: ObsConfig,
-    daq_config: DaqConfig,
-    quabo_uids: QuaboUids,
-    data_config: DataConfig,
-    network_config: NetworkConfig,
-    no_hv: bool,
-    no_redis: bool,
-    no_data: bool,
-    force_reset: bool = False,
-    run_name: str | None = None
-) -> str | None:
-    """Main transactional run coordinator.
-
-    Args:
-        obs_config (ObsConfig): _description_
-        daq_config (DaqConfig): _description_
-        quabo_uids (QuaboUids): _description_
-        data_config (DataConfig): _description_
-        network_config (NetworkConfig): _description_
-        no_hv (bool): _description_
-        no_redis (bool): _description_
-        no_data (bool): _description_
-        force_reset (bool, optional): _description_. Defaults to False.
-        run_name (str | None, optional): _description_. Defaults to None.
-
-    Raises:
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        ValidationError: _description_
-        asyncio.CancelledError: _description_
-        asyncio.CancelledError: _description_
-
-    Returns:
-        str | None: _description_
-    """
-    
-    # --- Pre-flight: DAQ gRPC reachability sweep ---
+async def _check_daq_reachability(daq_config: DaqConfig) -> None:
+    """Verify that all configured DAQ nodes are responding via gRPC."""
     logger.info("Performing DAQ node gRPC reachability sweep...")
     async def check_node_grpc(node: DaqNode) -> None:
         if not node.module_ids:
@@ -787,6 +748,53 @@ async def start_run(
         for exc in eg.exceptions:
             logger.error(str(exc))
         raise ValidationError("One or more DAQ nodes are unreachable via gRPC.") from eg
+
+
+async def start_run(
+    obs_config: ObsConfig,
+    daq_config: DaqConfig,
+    quabo_uids: QuaboUids,
+    data_config: DataConfig,
+    network_config: NetworkConfig,
+    no_hv: bool,
+    no_redis: bool,
+    no_data: bool,
+    force_reset: bool = False,
+    run_name: str | None = None,
+    no_check_daq: bool = False,
+) -> str | None:
+    """Main transactional run coordinator.
+
+    Args:
+        obs_config (ObsConfig): _description_
+        daq_config (DaqConfig): _description_
+        quabo_uids (QuaboUids): _description_
+        data_config (DataConfig): _description_
+        network_config (NetworkConfig): _description_
+        no_hv (bool): _description_
+        no_redis (bool): _description_
+        no_data (bool): _description_
+        force_reset (bool, optional): _description_. Defaults to False.
+        run_name (str | None, optional): _description_. Defaults to None.
+        no_check_daq (bool, optional): Skip DAQ reachability check. Defaults to False.
+
+    Raises:
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        ValidationError: _description_
+        asyncio.CancelledError: _description_
+        asyncio.CancelledError: _description_
+
+    Returns:
+        str | None: _description_
+    """
+    
+    # --- Pre-flight: DAQ gRPC reachability sweep ---
+    if not no_check_daq:
+        await _check_daq_reachability(daq_config)
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -963,6 +971,7 @@ def main(
     stop_session: bool = typer.Option(False, "--stop_session", help="Stop session at end of run (with --nsecs)."),
     verbose_opt: bool = typer.Option(False, "--verbose", help="print commands."),
     force_reset: bool = typer.Option(False, "--force-reset", help="Force reset the state ledger if stale."),
+    no_check_daq: bool = typer.Option(False, "--no-check-daq", help="Skip the pre-flight gRPC reachability sweep."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ):
     """
@@ -987,7 +996,7 @@ def main(
         typer.confirm("Are you sure you want to start a new recording run?", abort=True)
         
     success = asyncio.run(async_main_logic(
-        no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset
+        no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq
     ))
     if not success:
         raise typer.Exit(code=1)
@@ -1000,6 +1009,7 @@ async def async_main_logic(
     stop_session: bool,
     verbose: bool,
     force_reset: bool,
+    no_check_daq: bool = False,
 ) -> bool:
 
     # load config files
@@ -1012,7 +1022,7 @@ async def async_main_logic(
     
     success_run_name = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
-        network_config, no_hv, no_redis, no_data, force_reset
+        network_config, no_hv, no_redis, no_data, force_reset, no_check_daq=no_check_daq
     )
     
     if not success_run_name:

@@ -153,7 +153,7 @@ services:
     environment:
       GRPC_PORT:          "${GRPC_PORT:-50051}"
       BINDHOST:           "${BINDHOST}"
-      HEADNODE_IP:        "${HEADNODE_HOST:-${HEAD_NET_PREFIX:-10.0.1}.5}"
+      HEADNODE_IP:        "${HEADNODE_HOST:-${HEAD_NET_PREFIX:-10.0.1}.22}"
       HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
@@ -186,7 +186,7 @@ services:
     environment:
       GRPC_PORT:          "${GRPC_PORT:-50051}"
       BINDHOST:           "${BINDHOST}"
-      HEADNODE_IP:        "${HEADNODE_HOST:-${HEAD_NET_PREFIX:-10.0.1}.5}"
+      HEADNODE_IP:        "${HEADNODE_HOST:-${HEAD_NET_PREFIX:-10.0.1}.22}"
       HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]

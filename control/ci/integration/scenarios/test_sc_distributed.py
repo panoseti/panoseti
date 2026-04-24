@@ -124,6 +124,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
          unittest.mock.patch("control.start.config_file.get_daq_config", return_value=daq_config), \
          unittest.mock.patch("control.start.config_file.get_quabo_uids", return_value=quabo_uids), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \
          unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \
@@ -222,6 +223,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
 
     with unittest.mock.patch("control.start.AsyncDaqControlClient", side_effect=create_mock_client), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
+         unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.make_run_dirs"), \
          unittest.mock.patch("control.start.start_data_flow"), \
          unittest.mock.patch("control.start.util.is_hk_recorder_running", return_value=False), \

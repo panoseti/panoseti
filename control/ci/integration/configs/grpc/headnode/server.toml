@@ -26,7 +26,7 @@ daq_control = false
 # Redis is the CI redis container at 10.0.1.20
 # -------------------------------------------------------
 [telemetry]
-redis_host = "10.0.1.20"
+redis_host = "redis"
 redis_port = 6379
 redis_db   = 0
 shutdown_grace_period = 5.0
