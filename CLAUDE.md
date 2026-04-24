@@ -22,55 +22,48 @@ pip install -r control/packages/requirements.txt
 
 # Development (tests, lint, type-check)
 cd control && pip install -e ".[dev]"
+
+# gRPC submodule
+cd grpc && pip install -e ".[dev]"
 ```
 
-### Config validation (no hardware required)
+### Observing run lifecycle (CLI)
 ```bash
-cd control
-python start.py --validate-only    # validate all configs without touching hardware
-```
-
-### Observing run lifecycle
-```bash
-cd control
-python session_start.py            # power on, get UIDs, calibrate, start daemons
-python start.py                    # configure quabos, start DAQ recording
-python status.py                   # check recording status and disk usage
-python stop.py                     # stop recording, collect data
-python session_stop.py             # power off, stop daemons
+pseti session-start     # power on, get UIDs, calibrate, start daemons
+pseti start             # configure quabos, start DAQ recording
+pseti status            # check recording status and disk usage
+pseti stop              # stop recording; enqueues transfer job
+pseti session-stop      # power off, stop daemons
 ```
 
 ### Run tests
 ```bash
-cd control
-pip install -e ".[dev]"
+# Unit tests (538 tests, no hardware required)
+pseti test sw unit
 
-# Unit tests (460 tests, no hardware required)
-pytest ci/unit/ -v --tb=short
+# Integration tests (Docker CI)
+pseti test sw integration
 
-# With coverage report
-pytest ci/unit/ --cov=utils --cov-report=term-missing
+# Chaos / transactional-integrity scenarios
+pseti test sw chaos
 
-# Via Docker CI — unit suite (parallel with -n auto, ~10s)
-bash ci/run.sh unit
+# Lint (Ruff + MyPy)
+pseti test lint
 
-# Via Docker CI — full integration suite (43 passing, 7 skipped)
-bash ci/run.sh integration
+# Hardware-in-the-loop tests (real Quabos + DAQ node required)
+pseti test hw check-env   # verify connectivity
+pseti test hw run         # full HW suite (HW-01 … HW-05)
+pseti test hw run -k HW_01   # single scenario
 
-# Integration: single test group
-bash ci/run.sh integration -- -k "TestDaqLifecycle"
-
-# Enable Loki/Redis telemetry tests
-ENABLE_TELEMETRY_TESTS=1 bash ci/run.sh integration
-
-# Real hashpipe + tcpreplay tests (requires RUN_REAL_DATA_TESTS=1)
-RUN_REAL_DATA_TESTS=1 bash ci/run.sh integration -- -k "real_data"
+# gRPC service layer tests
+pseti test grpc all
 ```
 
 ### Lint and type-check
 ```bash
-ruff check control/utils/ control/driver/
-mypy control/utils/config_file.py --ignore-missing-imports
+cd control
+ruff check src/control/
+mypy src/control/utils/config_file.py --ignore-missing-imports
 ```
 
 ---
@@ -184,19 +177,21 @@ cd ../panoseti_grpc
 bash scripts/run-ci/run-daq-data-ci-test.sh
 ```
 
-**The four services:**
+**The services (all hosted on one unified server):**
 
-| Service | Module | Default port | Purpose |
-|---------|--------|-------------|---------|
-| DAQ Data | `panoseti_grpc.daq_data` | 50051 | Streams real-time science images from Hashpipe shared memory |
-| DAQ Control | `panoseti_grpc.daq_control` | 50051 | Start/stop/status Hashpipe on DAQ nodes, clean up run data |
-| U-blox Control | `panoseti_grpc.ublox_control` | 50051 | Configure ZED-F9T GNSS timing receivers, stream UBX messages |
-| Telemetry | `panoseti_grpc.telemetry` | 50051 | Centralized health/metadata: logs → Loki, status → Redis/InfluxDB |
+| Service | Module | Status | Purpose |
+|---------|--------|--------|---------|
+| DAQ Data | `panoseti_grpc.daq_data` | Production | Streams real-time science images from Hashpipe shared memory |
+| DAQ Control | `panoseti_grpc.daq_control` | Production | Start/stop/status Hashpipe on DAQ nodes, generate manifests, clean up run data |
+| Telemetry | `panoseti_grpc.telemetry` | Beta | Device status → Redis/InfluxDB; log shipping via Grafana Alloy → Loki |
+| U-blox Control | `panoseti_grpc.ublox_control` | 🔴 Deprecated | GNSS chip control — disabled by default; use `Telemetry.ReportStatus` with `GnssPayload` instead |
 
-All servers follow the same launch pattern:
+All three active services are hosted on a single port via the unified server:
 ```bash
-python -m panoseti_grpc.<service>.server   # e.g., panoseti_grpc.daq_data.server
-GRPC_PORT=50052 python -m panoseti_grpc.telemetry.server
+panoseti-server                          # all enabled services
+panoseti-server --profile daq_node       # daq_data + daq_control
+panoseti-server --profile headnode       # telemetry only
+panoseti-server --list-services          # show registered services (with [DEPRECATED] tags)
 ```
 
 **DAQ Data service** — the most actively used service. Streams `PanoImage` objects from Hashpipe shared memory to any subscriber. Client usage:
@@ -213,18 +208,25 @@ For local testing without hardware, `panoseti_grpc.daq_data.simulate` generates 
 
 `CleanupData` supports two modes (set via `mode` field):
 - `CLEANUP_FULL` (default, legacy) — `rmtree` the entire run directory
-- `CLEANUP_SELECTIVE` — delete only files matching `delete_patterns`, preserving those matching `preserve_patterns`; used by the Transfer Daemon to keep `.json`/`.log`/metadata while removing `.pff` science files
+- `CLEANUP_SELECTIVE` — delete only files matching `delete_patterns`, preserving those matching `preserve_patterns`; used by the Transfer Daemon. When called with `mode=CLEANUP_SELECTIVE`, the server **requires** a `manifest_digest` field (SHA-256 of the manifest file content) and refuses with `FAILED_PRECONDITION` if it doesn't match — guaranteeing no DAQ data is deleted without head-node integrity confirmation.
 
-**Telemetry service** — consumed by `control/daemons/capture_telemetry_service.py`. Configured via `control/daemons/capture_telemetry_service/telemetry_config.toml`. Supports two storage modes:
-- **Strict** (production): validated Pydantic payloads (e.g., `GnssPayload`, `DewPayload`) → permanent Redis + InfluxDB
-- **Flexible** (dev): arbitrary JSON under `DEV_`-prefixed keys → 24 h TTL in Redis only
+**Telemetry service** — consumed by `control/daemons/capture_telemetry_service.py`. Supports two storage paths:
+- **Device status** (`ReportStatus` RPC): validated Pydantic payloads (e.g., `GnssPayload`, `DewPayload`) → permanent Redis HASH (hot) + InfluxDB (cold) → Grafana dashboards. Production devices use strict Pydantic schemas; `DEV_`-prefixed keys get a 24 h TTL in Redis only.
+- **Log shipping** (shadow period): logs are written to `{service}.jsonl` files (structured JSON, one record per line) under `$PANOSETI_LOG_DIR/` by `get_logger()`, then shipped to Loki by **Grafana Alloy** (`alloy/config.alloy`). The legacy gRPC `Log` RPC continues running in parallel during the migration window.
 
-To get a structured logger that forwards to the Telemetry service:
+To get a structured logger:
 ```python
 from panoseti_grpc.telemetry.logger import get_logger
-logger = get_logger("my_service")  # injects git commit, PID, hostname, thread
-logger.info("message")
+logger = get_logger("my_service", log_dir="/var/log/panoseti")
+# writes {service}.log (plain text) + {service}.jsonl (Alloy → Loki) + gRPC
+logger.info("message", extra={"git_commit": "abc1234", "run_id": "run_001"})
 ```
+
+**Shared gRPC machinery (`grpc_utils`)** — all three active services share:
+- `grpc_utils.exceptions` — typed `PanosetiRpcError` subclasses (`UnavailableError`, `DeadlineExceededError`, `FailedPreconditionError`, …)
+- `grpc_utils.decorators` — `@grpc_call` wraps async/sync/generator methods, maps `grpc.RpcError → PanosetiRpcError`, never suppresses `asyncio.CancelledError`
+- `grpc_utils.health` — `register_health()` (auto-called by unified server) + `HealthClient` wrapping `grpc.health.v1`; replaces the old `daq_data.Ping` RPC
+- `grpc_utils.retries` — `build_retry_service_config()` for declarative transport-level retry policy
 
 **Proto files** live in `../panoseti_grpc/protos/`. The `panoseti_util/` sub-package inside `panoseti_grpc` re-exports PFF reading/writing (`pff.py`) and config utilities (`config_file.py`) for use within the gRPC servers — prefer these over duplicating logic.
 
@@ -262,11 +264,13 @@ module_id = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
 ### Transfer Daemon
 `control/daemons/transfer_daemon.py` is a long-running daemon started by `session_start.py`. It drains jobs from `tmp/transfer_queue/pending/` and drives them through a 5-stage state machine:
 
-1. **MANIFEST_GENERATING** — `GenerateManifest` RPC per module on each DAQ node (blake3/xxhash checksums)
-2. **TRANSFERRING** — rsync each node's run directory to the head node
-3. **VERIFYING** — rsync exit code trusted; full digest verification is staged for follow-on work
-4. **CLEANING** — `CleanupData(mode=CLEANUP_SELECTIVE, delete_patterns=["*.pff"], preserve_patterns=["*.json","*.log","*.toml"])` per node
+1. **MANIFEST_GENERATING** — `GenerateManifest` RPC per module on each DAQ node (blake3 checksums via `asyncio.TaskGroup`)
+2. **TRANSFERRING** — rsync each node's run directory to the head node (up to 3 attempts with exponential backoff: 5 s, 30 s)
+3. **VERIFYING** — calls `verify_manifest()` on every `manifest.{blake3,xxh3_128,sha256}` file on the head node; any digest mismatch → `VERIFY_FAILED`; cleanup is **skipped** to preserve DAQ-side data for manual recovery
+4. **CLEANING** — `CleanupData(mode=CLEANUP_SELECTIVE, delete_patterns=["*.pff"], preserve_patterns=["*.json","*.log","*.toml"])` per node; the server enforces a `manifest_digest` precondition and refuses deletion if the digest doesn't match
 5. **ARCHIVED** — write `run_complete` marker
+
+On startup the daemon sweeps `active/` for jobs stranded by a prior crash (SC-TX-005) and moves them back to `pending/` before entering the main loop.
 
 The daemon holds `tmp/panoseti_transfer.lock` (flock) as a singleton guard. `stop.py` holds only `tmp/panoseti_control.lock` during the hardware teardown phase (seconds), never during bulk I/O.
 
@@ -281,13 +285,15 @@ The daemon holds `tmp/panoseti_transfer.lock` (flock) as a singleton guard. `sto
 ## Testing Infrastructure
 
 ### Python version requirement
-`control/pyproject.toml` sets `requires-python = ">=3.9"`. Target migration to 3.14+ syntax incrementally.
+`control/pyproject.toml` sets `requires-python = ">=3.14"`.
 
 ### Test locations
-- `control/ci/unit/` — hardware-agnostic Python unit tests (524 tests, 12 modules)
+- `control/ci/unit/` — hardware-agnostic Python unit tests (538 tests, 12 modules)
 - `control/ci/integration/` — end-to-end Docker integration tests (65 passing)
+- `control/ci/integration/scenarios/` — chaos / transactional-integrity tests (114 tests)
+- `control/ci/hardware-software/` — hardware-in-the-loop tests (HW-01 … HW-05, requires real Quabos)
 - `control/ci/Dockerfile.ci` — multi-stage image for all test suites
-- `control/ci/run.sh` — unified runner (`unit` or `integration`)
+- `control/ci/test_cli.py` — unified `pseti test` CLI (invoked via `pseti test sw/hw/grpc/lint`)
 
 ### Integration test topology
 

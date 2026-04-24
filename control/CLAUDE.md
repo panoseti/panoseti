@@ -6,15 +6,14 @@ This file supplements the root-level `../CLAUDE.md`, which covers the full repo 
 
 ---
 
-## Corrections to root CLAUDE.md
+## Test Counts & Runner
 
-The root CLAUDE.md has some stale entries for the `control/` package:
-
-- **Python version**: `requires-python = ">=3.14"` (not 3.9)
-- **CI runner**: `pseti test <cmd>`
-- **Integration test count**: 65 passing
-- **Unit test count**: 538 passing (12 modules)
-- **Chaos/scenario test count**: 114 tests (91 active, 23 stubs) in `src/control/ci/integration/scenarios/`
+- **Python version**: `requires-python = ">=3.14"`
+- **CI runner**: `pseti test <cmd>` (not `bash ci/run.sh`)
+- **Unit tests**: 538 passing (12 modules) — `pseti test sw unit`
+- **Integration tests**: 65 passing — `pseti test sw integration`
+- **Chaos/scenario tests**: 114 tests (91 active, 23 stubs) — `pseti test sw chaos`
+- **HW-in-the-loop tests**: HW-01 … HW-05 in `ci/hardware-software/` — `pseti test hw run`
 
 ---
 
@@ -46,9 +45,11 @@ The observatory uses a **Context Manager Architecture** to manage the lifecycle 
 | `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Job duration (minutes to hours) |
 
 ### RunStateLedger Status Vocabulary
-`STARTING → ACTIVE → STOPPING → RECORDING_ENDED → MANIFEST_GENERATING → MANIFEST_READY → TRANSFER_PENDING → TRANSFERRING → VERIFYING → CLEANUP_PENDING → CLEANING → ARCHIVED`
+`STARTING → ACTIVE → STOPPING → RECORDING_ENDED → MANIFEST_GENERATING → TRANSFERRING → VERIFYING → CLEANING → ARCHIVED`
 
 Error exits: `ABORTED` (from start), `TRANSFER_FAILED`, `VERIFY_FAILED`, `STOPPED_WITH_ERRORS`.
+
+The VERIFYING stage calls `utils/transfer/verify.py::verify_manifest()` on head-node manifest files.  Any digest mismatch → `VERIFY_FAILED`; cleanup is skipped.  The CLEANING stage passes `manifest_digest` to `CleanupData`; the server rejects deletion with `FAILED_PRECONDITION` if digests don't match.
 
 ### TransferQueue Layout
 ```
@@ -70,9 +71,12 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 - **Chaos Tests**: Verifies transaction integrity under failure conditions in `src/control/ci/integration/scenarios/`. Run via `pseti test chaos`.
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
 ### Telemetry & Logging
-- **Unified Logger**: Use `panoseti_grpc.telemetry.logger.get_logger`.
-- **Path Resolution**: Use `control.utils.paths.PanoPaths.logs_dir()` for log directory resolution. `get_logger` accepts `log_dir` as a `pathlib.Path` object.
-- **Async & Non-blocking**: Logs are shipped via gRPC to a central Loki instance. Avoid standard `logging.getLogger` and `print` for system events.
+- **Unified Logger**: Use `panoseti_grpc.telemetry.logger.get_logger(service_name, log_dir=...)`.
+- **Path Resolution**: Use `control.utils.paths.PanoPaths.logs_dir()` for `log_dir`. `get_logger` accepts a `pathlib.Path`.
+- **Four output paths**: console (Rich), `{service}.log` (plain text), `{service}.jsonl` (structured JSON for Grafana Alloy → Loki), and the legacy gRPC `Log` RPC (shadow period — all four run simultaneously during migration).
+- **JSONL format**: one JSON object per line; fields: `timestamp`, `service`, `level`, `message`, `hostname`, `pid`, `thread`, plus any `extra` fields passed to the logger call (`git_commit`, `run_id`, etc.).
+- **Alloy**: `alloy/config.alloy` ships `.jsonl` files to Loki. `alloy/docker-compose.yml` runs the Alloy agent.
+- Avoid `logging.getLogger` and `print` for system events.
 
 Read [DEBUGGING.md](DEBUGGING.md) for advanced troubleshooting techniques and [ci/README.md](ci/README.md) for test architecture details.
 

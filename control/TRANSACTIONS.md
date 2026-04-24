@@ -149,26 +149,44 @@ All transitions use `os.rename` (POSIX-atomic).
 ```mermaid
 flowchart TD
     RE[RECORDING_ENDED] --> MG[MANIFEST_GENERATING]
-    MG -- all manifests OK --> MR[MANIFEST_READY]
-    MG -- partial failure --> MR
-    MR --> TP[TRANSFER_PENDING]
-    TP --> TF[TRANSFERRING]
-    TF -- rsync OK --> VY[VERIFYING]
-    TF -- rsync error --> TFail[TRANSFER_FAILED]
-    TFail -- retry < MAX_ATTEMPTS --> TP
+    MG -- all manifests OK --> TR[TRANSFERRING]
+    MG -- partial failure --> TR
+    TR -- rsync OK --> VY[VERIFYING]
+    TR -- rsync error --> TFail[TRANSFER_FAILED]
+    TFail -- retry < MAX_ATTEMPTS\nbackoff 5s / 30s --> TR
     TFail -- exhausted --> SE[STOPPED_WITH_ERRORS]
-    VY -- digest OK --> CP[CLEANUP_PENDING]
-    VY -- mismatch --> VF[VERIFY_FAILED]
+    VY -- all digests match --> CL[CLEANING]
+    VY -- any mismatch --> VF[VERIFY_FAILED]
     VF --> SE
-    CP --> CL[CLEANING]
-    CL --> AR[ARCHIVED]
+    CL -- manifest_digest accepted --> AR[ARCHIVED]
+    CL -- FAILED_PRECONDITION --> VF
 ```
+
+### Integrity Invariant — No Deletion Without Verified Integrity
+
+The VERIFYING stage calls `verify_manifest()` (`utils/transfer/verify.py`) on every manifest file found on the head node (`manifest.blake3`, `manifest.xxh3_128`, `manifest.sha256`).  Each file listed in the manifest is re-hashed and compared against the recorded digest.  On any mismatch the daemon transitions to `VERIFY_FAILED`, logs the exact file paths, and **skips cleanup** — DAQ-side `.pff` files are preserved for manual recovery.
+
+The CLEANING stage passes `manifest_digest` (SHA-256 of the manifest file content) to `CleanupData(mode=CLEANUP_SELECTIVE)`.  The DAQ Control server recomputes the digest of its local manifest and refuses the RPC with `FAILED_PRECONDITION` if the values differ.  This closes the loop: the head node must prove it verified the same manifest the DAQ node generated, or deletion is impossible.
 
 ### Selective Cleanup
 
-The daemon calls `CleanupData(mode=CLEANUP_SELECTIVE)` with:
+The daemon calls `CleanupData(mode=CLEANUP_SELECTIVE, manifest_digest=<sha256_of_manifest>)` with:
 - `delete_patterns = ["*.pff"]` — science files removed from DAQ nodes
 - `preserve_patterns = ["*.json", "*.log", "*.toml"]` — metadata retained on-DAQ as a permanent catalog
+
+### Retry Ladder
+
+Transfer failures use exponential backoff before re-queuing to `pending/`:
+
+| Attempt | Backoff before next attempt |
+|---|---|
+| 1 → 2 | 5 s |
+| 2 → 3 | 30 s |
+| 3 (MAX) | → `failed/` queue, no retry |
+
+### Daemon Crash Recovery
+
+On startup the daemon sweeps `active/` for jobs left behind by a prior crash.  Each stranded job is renamed back to `pending/` (POSIX-atomic) before the main poll loop begins, ensuring no run is silently dropped (SC-TX-005).
 
 ---
 
@@ -191,9 +209,12 @@ sequenceDiagram
     Note over Head,Quabo: Control lock released in seconds
 
     Daemon->>Daemon: Acquire Transfer Lock
-    Daemon->>DAQ: GenerateManifest (per module)
-    Daemon->>DAQ: rsync run directories
-    Daemon->>DAQ: CleanupData SELECTIVE (*.pff only)
+    Daemon->>Daemon: Recover stranded active/ jobs → pending/
+    Daemon->>DAQ: GenerateManifest (per module, blake3)
+    Daemon->>DAQ: rsync run directories (up to 3 attempts, backoff 5s/30s)
+    Daemon->>Head: verify_manifest() — re-hash every file in manifest
+    Note over Daemon,Head: VERIFY_FAILED → skip cleanup, preserve DAQ data
+    Daemon->>DAQ: CleanupData SELECTIVE (*.pff only, manifest_digest required)
     Daemon->>Head: Write run_complete marker
     Daemon->>Head: Ledger: ARCHIVED
 ```
