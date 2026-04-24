@@ -66,7 +66,7 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
     command: >
-      /bin/sh -c "pseti grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
+      /bin/sh -c "pseti-grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     restart: always
@@ -86,11 +86,7 @@ services:
       - SYS_NICE
     shm_size: '2gb'
     volumes:
-      - ..:/app
-      - ../../grpc:/grpc
       - /mnt/panoseti/:/mnt/panoseti/
-      - ../firmware:/app/firmware:ro
-      - ../quabos:/app/quabos:ro
     environment:
       HEADNODE_IP: "192.168.88.103"
       GRPC_PORT: "50051"
@@ -99,5 +95,5 @@ services:
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
-    command: "pseti grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
+    command: "pseti-grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
     restart: always
