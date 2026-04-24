@@ -904,6 +904,7 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     SC-020: When StopDaq RPC times out or fails with UNAVAILABLE, stop.py must
     escalate to a hard-kill via SSH to ensure the node is made safe.
     """
+    import os
     import unittest.mock
     from ipaddress import IPv4Address
 
@@ -915,7 +916,7 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     # Setup config with one node
     daq_ip = "192.168.0.10"
     daq_config = DaqConfig(
-        head_node_ip_addr=IPv4Address("10.0.1.5"),
+        head_node_ip_addr=IPv4Address(os.environ.get("HEADNODE_TESTER_HOST", f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5')),
         head_node_data_dir="/data/head",
         daq_nodes=[
             DaqNode(ip_addr=IPv4Address(daq_ip), data_dir="/data", username="root", module_ids=[250])
@@ -947,7 +948,7 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
          unittest.mock.patch("control.stop.config_file.get_daq_config", return_value=daq_config), \
          unittest.mock.patch("control.stop.config_file.get_quabo_uids"), \
          unittest.mock.patch("control.stop.config_file.get_network_config"), \
-         unittest.mock.patch("control.stop.util.local_ip", return_value=["10.0.1.5", "127.0.0.1"]), \
+         unittest.mock.patch("control.stop.util.local_ip", return_value=[os.environ.get("HEADNODE_TESTER_HOST", f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'), "127.0.0.1"]), \
          unittest.mock.patch("control.stop.RunStateManager.load_state", return_value=None), \
          unittest.mock.patch("control.stop.util.read_run_name", return_value="test_run.pffd"), \
          unittest.mock.patch("control.stop.os.path.exists", return_value=True), \

@@ -562,10 +562,10 @@ async def start_recording(
             except TimeoutError:
                 last_err = f"StartDaq TIMEOUT ({startdaq_timeout})"
                 break # Timeout usually means non-transient or black hole
-            except (grpc.RpcError, ConnectionError) as e:
-                # We need to reach into .__cause__ to get the original RpcError
+            except (grpc.aio.AioRpcError, ConnectionError) as e:
+                # We need to reach into .__cause__ to get the original AioRpcError if wrapped
                 original_e = e.__cause__ if isinstance(e, ConnectionError) else e
-                if isinstance(original_e, grpc.RpcError):
+                if isinstance(original_e, grpc.aio.AioRpcError):
                     last_err = f"gRPC {original_e.code()}: {original_e.details()}"
                     if original_e.code() == grpc.StatusCode.UNAVAILABLE and attempt < startdaq_retries:
                         logger.warning(f"Node {node_validator.ip_addr} transiently unavailable. Retrying ({attempt}/{startdaq_retries})...")

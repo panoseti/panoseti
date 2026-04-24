@@ -95,7 +95,7 @@ class TestSC002PartialStartRollback:
 
         obs_config = config_file.get_obs_config()
         daq_config = config_file.get_daq_config()
-        daq_config.head_node_ip_addr = IPv4Address("10.0.1.5")
+        daq_config.head_node_ip_addr = IPv4Address(f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5')
         daq_config.head_node_data_dir = "/data/head"
         quabo_uids = config_file.get_quabo_uids()
         data_config = config_file.get_data_config()
@@ -216,6 +216,7 @@ class TestSC024ConcurrentStart:
 
         wrapper_script = """
 import sys
+import os
 import asyncio
 from unittest.mock import patch
 
@@ -229,12 +230,12 @@ async def main():
     def mock_get_daq_config():
         cfg = original_get_daq_config()
         cfg.head_node_data_dir = "/data/head"
-        cfg.head_node_ip_addr = "10.0.1.5"
+        cfg.head_node_ip_addr = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
         cfg.head_node_container = True
         return cfg
 
     from control.utils.pydantic_config_models import CollectResult
-    with patch("control.utils.util.local_ip", return_value=["10.200.146.1", "127.0.0.1", "10.0.1.5"]), \\
+    with patch("control.utils.util.local_ip", return_value=["10.200.146.1", "127.0.0.1", f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5']), \\
          patch("control.start.ph_baseline_file_ok", return_value=True), \
          patch("control.start.make_run_dirs", return_value=None), \
          patch("control.stop.stop_run", return_value=None), \
@@ -930,7 +931,7 @@ class TestSC027StopRunMismatch:
         )
 
         daq_config = DaqConfig(
-            head_node_ip_addr=IPv4Address("10.0.1.5"),
+            head_node_ip_addr=IPv4Address(f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'),
             head_node_data_dir="/data/head",
             daq_nodes=[],
         )
@@ -948,8 +949,8 @@ class TestSC027StopRunMismatch:
         mock_stop_rec = AsyncMock()
 
         with patch("control.stop.RunStateManager", return_value=mock_mgr), \
-             patch("socket.gethostbyname", return_value="10.0.1.5"), \
-             patch("control.utils.util.local_ip", return_value=["10.0.1.5"]), \
+             patch("socket.gethostbyname", return_value=f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'), \
+             patch("control.utils.util.local_ip", return_value=[f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5']), \
              patch("control.stop.stop_recording", mock_stop_rec):
 
             asyncio.run(stop_module.stop_run(
@@ -980,7 +981,7 @@ class TestSC027StopRunMismatch:
         )
 
         daq_config = DaqConfig(
-            head_node_ip_addr=IPv4Address("10.0.1.5"),
+            head_node_ip_addr=IPv4Address(f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'),
             head_node_data_dir="/data/head",
             daq_nodes=[],
         )
@@ -998,8 +999,8 @@ class TestSC027StopRunMismatch:
         mock_stop_rec = AsyncMock()
 
         with patch("control.stop.RunStateManager", return_value=mock_mgr), \
-             patch("socket.gethostbyname", return_value="10.0.1.5"), \
-             patch("control.utils.util.local_ip", return_value=["10.0.1.5"]), \
+             patch("socket.gethostbyname", return_value=f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'), \
+             patch("control.utils.util.local_ip", return_value=[f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5']), \
              patch("control.stop.stop_recording", mock_stop_rec), \
              patch("control.utils.util.kill_hv_updater"), \
              patch("control.utils.util.kill_hk_recorder"), \
@@ -1056,7 +1057,7 @@ class TestSC029FundamentalFailureSkipsCleanup:
         run_dir.mkdir(parents=True)
 
         daq_config = DaqConfig(
-            head_node_ip_addr=IPv4Address("10.0.1.5"),
+            head_node_ip_addr=IPv4Address(f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'),
             head_node_data_dir=str(head_dir),
             daq_nodes=[
                 DaqNode(ip_addr=IPv4Address("192.168.0.10"), data_dir="/data", username="root", module_ids=[1]),
@@ -1083,7 +1084,7 @@ class TestSC029FundamentalFailureSkipsCleanup:
         with patch("control.stop.RunStateManager", return_value=mock_mgr), \
              patch("control.utils.util.local_ip", side_effect=RuntimeError("Fundamental Failure")), \
              patch("control.stop.TransferQueue", return_value=mock_tq), \
-             patch("socket.gethostbyname", return_value="10.0.1.5"):
+             patch("socket.gethostbyname", return_value=f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'):
 
             # stop_run swallows generic exceptions and returns False
             success = await stop_module.stop_run(
@@ -1667,7 +1668,7 @@ async def test_SC015_stale_ledger_self_heal(
     daq_config = config_file.get_daq_config()
     # Mock head node IP to match this container
     from ipaddress import IPv4Address
-    daq_config.head_node_ip_addr = IPv4Address("10.0.1.5")
+    daq_config.head_node_ip_addr = IPv4Address(f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5')
     daq_config.head_node_data_dir = "/data/head"
     
     # Filter for nodes that actually exist in integration
