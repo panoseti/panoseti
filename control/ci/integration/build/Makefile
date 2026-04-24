@@ -5,8 +5,7 @@ CCFLAGS     = -g -O3 -fPIC -shared -lstdc++ \
     -I ./util \
     -L. -L/usr/local/lib \
     -lhashpipe -lrt -lm \
-    -ldl \
-    -Wl,-rpath
+    -ldl
 TARGET   = hashpipe.so
 SOURCES  = net_thread.c \
     compute_thread.c \

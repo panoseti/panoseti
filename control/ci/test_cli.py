@@ -309,18 +309,42 @@ async def resolve_remote_socket_path(runner: TestRunner, ssh_args: str) -> str:
 
 @hw_app.command(name="build")
 def hw_build(ctx: typer.Context) -> None:
-    """Build required container images locally."""
+    """Build required container images locally (and remotely if via context)."""
     from rich.console import Console
     console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
+    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
     tool = runner.container_tool
+    
+    # 1. Build Headnode Locally
+    console.print(f"[cyan]Building Headnode profile locally with {tool}...[/cyan]")
     env = {"BUILDAH_ISOLATION": "chroot"} if tool == "podman" else {}
     if tool == "podman":
         console.print("[dim]Ensuring local Podman socket is active...[/dim]")
         asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
-    cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode --profile daqnode build"
-    asyncio.run(runner._run_cmd(cmd, env=env))
+    
+    head_build = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode build"
+    asyncio.run(runner._run_cmd(head_build, env=env))
+    
+    # 2. Build DAQnode (Locally or Remotely)
+    for node in daq_cfg.daq_nodes:
+        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
+            # Already handled by headnode build if they are the same node
+            continue
+            
+        ssh_host_uri = get_ssh_host(node)
+        if tool == "docker":
+            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
+            console.print(f"[cyan]Building DAQnode profile on {node.ip_addr} via context {context_name}...[/cyan]")
+            asyncio.run(ensure_docker_context(runner, context_name, ssh_host_uri))
+            daq_build = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode build"
+            asyncio.run(runner._run_cmd(daq_build))
+        else:
+            # Podman: build locally and we'll transfer later in deploy
+            console.print(f"[cyan]Building DAQnode profile locally for {node.ip_addr} with {tool}...[/cyan]")
+            daq_build = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode build"
+            asyncio.run(runner._run_cmd(daq_build, env=env))
 
 @hw_app.command(name="check-env")
 def hw_check_env(
@@ -403,6 +427,14 @@ def hw_check_env(
 
     console.print(f"[green]Environment OK. {tool} is ready and space is sufficient.[/green]")
 
+async def ensure_docker_context(runner: TestRunner, name: str, ssh_host_uri: str) -> None:
+    """Ensure a Docker context exists for a remote host."""
+    res = await runner._run_cmd(f"docker context inspect {name}", quiet=True)
+    if not res.ok:
+        # Context doesn't exist, create it
+        create_cmd = f"docker context create {name} --docker \"host={ssh_host_uri}\""
+        await runner._run_cmd(create_cmd)
+
 @hw_app.command(name="deploy")
 def hw_deploy(ctx: typer.Context) -> None:
     """Initialize containers on head node and remote DAQ node."""
@@ -425,22 +457,35 @@ def hw_deploy(ctx: typer.Context) -> None:
     for node in daq_cfg.daq_nodes:
         if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
             continue
+        
         ssh_host_uri = get_ssh_host(node)
-        ssh_args = get_raw_ssh_args(ssh_host_uri)
-        console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via tunnel...[/cyan]")
-        remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
-        with SSHTunnel(ssh_args, remote_sock) as local_sock:
-            env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
+        
+        if tool == "docker":
+            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
+            console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via Docker context {context_name}...[/cyan]")
+            asyncio.run(ensure_docker_context(runner, context_name, ssh_host_uri))
             
-            if not runner.no_build:
-                console.print(f"[cyan]Transferring pseti-daqnode:hitl image to {node.ip_addr}...[/cyan]")
-                transfer_cmd = f"{tool} save pseti-daqnode:hitl | env DOCKER_HOST=unix://{local_sock} CONTAINER_HOST=unix://{local_sock} {tool} load"
-                os.system(transfer_cmd)
-                
-            daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
+            daq_cmd = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
             if runner.no_build:
                 daq_cmd += " --no-build"
-            asyncio.run(runner._run_cmd(daq_cmd, env=env))
+            asyncio.run(runner._run_cmd(daq_cmd))
+        else:
+            # Podman path using SSHTunnel
+            ssh_args = get_raw_ssh_args(ssh_host_uri)
+            console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via tunnel...[/cyan]")
+            remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
+            with SSHTunnel(ssh_args, remote_sock) as local_sock:
+                env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
+                
+                if not runner.no_build:
+                    console.print(f"[cyan]Transferring pseti-daqnode:hitl image to {node.ip_addr}...[/cyan]")
+                    transfer_cmd = f"{tool} save pseti-daqnode:hitl | env DOCKER_HOST=unix://{local_sock} CONTAINER_HOST=unix://{local_sock} {tool} load"
+                    os.system(transfer_cmd)
+                    
+                daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
+                if runner.no_build:
+                    daq_cmd += " --no-build"
+                asyncio.run(runner._run_cmd(daq_cmd, env=env))
 
 @hw_app.command(name="clean")
 def hw_clean(ctx: typer.Context) -> None:
@@ -460,13 +505,20 @@ def hw_clean(ctx: typer.Context) -> None:
         if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
             continue
         ssh_host_uri = get_ssh_host(node)
-        ssh_args = get_raw_ssh_args(ssh_host_uri)
-        console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} via tunnel...[/yellow]")
-        remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
-        with SSHTunnel(ssh_args, remote_sock) as local_sock:
-            env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
-            daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
-            asyncio.run(runner._run_cmd(daq_down, env=env))
+        
+        if tool == "docker":
+            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
+            console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} via context {context_name}...[/yellow]")
+            daq_down = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
+            asyncio.run(runner._run_cmd(daq_down))
+        else:
+            ssh_args = get_raw_ssh_args(ssh_host_uri)
+            console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} via tunnel...[/yellow]")
+            remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
+            with SSHTunnel(ssh_args, remote_sock) as local_sock:
+                env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
+                daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
+                asyncio.run(runner._run_cmd(daq_down, env=env))
     console.print("[yellow]Placeholder: Data wiping skipped.[/yellow]")
 
 @hw_app.command(name="attach")
