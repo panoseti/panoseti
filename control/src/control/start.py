@@ -128,20 +128,42 @@ class StartTransaction:
                 logger.info("Stopping remote DAQ nodes...")
                 # Re-load again to be absolutely sure we have all concurrent updates
                 ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                for node in self.daq_config.daq_nodes:
-                    if not node.module_ids:
-                        continue
+                
+                async def rollback_node(node: DaqNode) -> None:
                     receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
                     if not receipt:
-                        continue
+                        return
 
                     logger.info(f"Rolling back node {node.ip_addr} (Status: {receipt.status})...")
                     try:
                         grpc_host, grpc_port = util.daq_grpc_endpoint(node)
                         async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                            await client.StopDaq({'data_dir': node.data_dir, 'run_dir': self.run_name})
+                            await client.StopDaq({'data_dir': node.data_dir, 'run_dir': self.run_name}, timeout=15.0)
                     except Exception as stop_err:
-                        logger.error(f"Failed to stop node {node.ip_addr} during rollback: {stop_err}")
+                        logger.warning(f"StopDaq RPC failed for {node.ip_addr} during rollback ({stop_err}). Escalating to SSH pkill...")
+                        try:
+                            ssh_args = ["ssh", "-o", "BatchMode=yes"]
+                            if node.port_forwarding and node.port_forwarding.status:
+                                real_ip = str(node.port_forwarding.gw_ip)
+                                port = str(node.port_forwarding.port)
+                                ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
+                            else:
+                                ssh_args.append(f"{node.username}@{node.ip_addr}")
+
+                            ssh_args.append("pkill -9 hashpipe")
+                            res = await asyncio.create_subprocess_exec(*ssh_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            await res.wait()
+                            if res.returncode in [0, 1]:
+                                logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
+                            else:
+                                logger.error(f"Hard-kill escalation failed for node {node.ip_addr} (rc={res.returncode})")
+                        except Exception as ssh_err:
+                            logger.error(f"Failed to stop node {node.ip_addr} even with SSH escalation: {ssh_err}")
+
+                async with asyncio.TaskGroup() as tg:
+                    for node in self.daq_config.daq_nodes:
+                        if node.module_ids:
+                            tg.create_task(rollback_node(node))
 
                 # Ladder Step 3: Stop Quabo data flow
                 logger.info("Stopping Quabo data flow...")
@@ -744,6 +766,28 @@ async def start_run(
         str | None: _description_
     """
     
+    # --- Pre-flight: DAQ gRPC reachability sweep ---
+    logger.info("Performing DAQ node gRPC reachability sweep...")
+    async def check_node_grpc(node: DaqNode) -> None:
+        if not node.module_ids:
+            return
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        try:
+            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                await client.StatusDaq({"data_dir": node.data_dir}, timeout=5.0)
+        except Exception as e:
+            raise ValidationError(f"DAQ node {node.ip_addr} gRPC is unreachable at {grpc_host}:{grpc_port}: {e}") from e
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for node in daq_config.daq_nodes:
+                tg.create_task(check_node_grpc(node))
+        logger.info("All configured DAQ nodes are reachable via gRPC.")
+    except ExceptionGroup as eg:
+        for exc in eg.exceptions:
+            logger.error(str(exc))
+        raise ValidationError("One or more DAQ nodes are unreachable via gRPC.") from eg
+
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
     

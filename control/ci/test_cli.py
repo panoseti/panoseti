@@ -448,7 +448,7 @@ def hw_attach(ctx: typer.Context) -> None:
     tool = runner.container_tool
     
     cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode exec headnode-server /bin/bash"
-    console.print(f"[cyan]Attaching to headnode-server...[/cyan]")
+    console.print("[cyan]Attaching to headnode-server...[/cyan]")
     os.system(cmd)
 
 @hw_app.command(name="run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

@@ -3,6 +3,7 @@
 **
 !control/**
 !grpc/**
+!sw_info.json
 
 # Ignore dev environments and caches inside included directories
 **/.venv
