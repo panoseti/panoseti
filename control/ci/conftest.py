@@ -13,9 +13,10 @@ import io
 import json
 import os
 import pathlib
+import shutil
 import struct
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -35,17 +36,84 @@ def pytest_configure(config: Any) -> None:
     production code directories, preventing state leakage.
     """
     # 1. Route configs to the integration test configs (default to direct for unit tests)
-    os.environ["PSETI_CONFIG"] = str(PanoPathsTest.integration_configs("direct"))
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(PanoPathsTest.integration_configs("direct"))
 
-    # 2. Route state to isolated test directories
-    os.environ["PSETI_TMP"] = str(PanoPathsTest.test_state_root() / "tmp")
-    os.environ["PSETI_LOGS"] = str(PanoPathsTest.test_state_root() / "logs")
-    os.environ["PSETI_QUABOS"] = str(PanoPathsTest.test_state_root() / "quabos")
+    # 2. Route state to isolated test directories (fallback defaults)
+    if "PSETI_TMP" not in os.environ:
+        os.environ["PSETI_TMP"] = "/tmp/pseti_test/tmp"
+    if "PSETI_LOGS" not in os.environ:
+        os.environ["PSETI_LOGS"] = "/tmp/pseti_test/logs"
+    if "PSETI_QUABOS" not in os.environ:
+        os.environ["PSETI_QUABOS"] = "/tmp/pseti_test/quabos"
 
     # 3. Ensure directories exist
     os.makedirs(os.environ["PSETI_TMP"], exist_ok=True)
     os.makedirs(os.environ["PSETI_LOGS"], exist_ok=True)
     os.makedirs(os.environ["PSETI_QUABOS"], exist_ok=True)
+
+
+@pytest.fixture(autouse=True)
+def isolated_workspace(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[pathlib.Path]:
+    """
+    Autouse fixture that provides per-test isolation for configs and transient state.
+    
+    - Copies current PSETI_CONFIG to a fresh temp dir.
+    - Redirects PSETI_TMP, PSETI_LOGS, and PSETI_QUABOS to subdirs in tmp_path.
+    - Guarantees that any 'sed -i' or ledger writes stay within the test's scope.
+    """
+    # 1. Setup isolated directories inside tmp_path
+    cfg_tmp = tmp_path / "configs"
+    tmp_tmp = tmp_path / "tmp"
+    log_tmp = tmp_path / "logs"
+    q_tmp = tmp_path / "quabos"
+    
+    for d in [cfg_tmp, tmp_tmp, log_tmp, q_tmp]:
+        d.mkdir(parents=True, exist_ok=True)
+        
+    # 2. Populate configs from current PSETI_CONFIG
+    src_cfg = os.environ.get("PSETI_CONFIG")
+    if src_cfg and os.path.exists(src_cfg):
+        for item in pathlib.Path(src_cfg).iterdir():
+            try:
+                if item.is_file():
+                    # copy2 follows symlinks and preserves metadata
+                    shutil.copy2(item, cfg_tmp)
+                elif item.is_dir():
+                    shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
+            except Exception:
+                # Skip broken symlinks or permission errors in templates
+                pass
+    
+    # 3. Apply overrides for the duration of the test
+    monkeypatch.setenv("PSETI_CONFIG", str(cfg_tmp))
+    monkeypatch.setenv("PSETI_TMP", str(tmp_tmp))
+    monkeypatch.setenv("PSETI_LOGS", str(log_tmp))
+    monkeypatch.setenv("PSETI_QUABOS", str(q_tmp))
+    
+    # 4. Handle quabo_uids.json (essential for most integration tests)
+    # We look in the isolated config dir, then the pre-test PSETI_TMP, 
+    # then fallback to the known chaos template.
+    possible_uids = [
+        cfg_tmp / "quabo_uids.json",
+        pathlib.Path(os.environ.get("PSETI_TMP", "")) / "quabo_uids.json",
+        PanoPathsTest.integration_configs_root() / "quabo_uids_chaos.json"
+    ]
+    for p in possible_uids:
+        try:
+            if p.exists():
+                shutil.copy2(p, tmp_tmp / "quabo_uids.json")
+                break
+        except Exception:
+            continue
+    
+    # 5. Ensure PanoPaths and RunStateManager are fresh
+    from control.utils.paths import PanoPaths
+    from control.utils.run_state import RunStateManager
+    PanoPaths.ensure_dirs()
+    RunStateManager().clear_state()
+    
+    yield tmp_path
 
 
 # ---------------------------------------------------------------------------

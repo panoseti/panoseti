@@ -106,7 +106,11 @@ async def test_transfer_daemon_archives_run(
 
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    import shutil
     RunStateManager().clear_state()
+    queue_dir = PanoPaths.tmp_dir() / "transfer_queue"
+    if queue_dir.exists():
+        shutil.rmtree(queue_dir)
 
     from datetime import UTC, datetime
 

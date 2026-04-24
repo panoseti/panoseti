@@ -55,7 +55,6 @@ def status() -> None:
     quabo_uids = config_file.get_quabo_uids()
     config_file.get_data_config()
     config_file.associate(daq_config, quabo_uids)
-    util.local_ip()
 
     for node in daq_config.daq_nodes:
         if not node.module_ids:

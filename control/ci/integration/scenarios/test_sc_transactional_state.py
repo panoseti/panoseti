@@ -232,8 +232,19 @@ async def main():
         cfg.head_node_data_dir = "/data/head"
         cfg.head_node_ip_addr = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
         cfg.head_node_container = True
+        # Ensure coherence by assigning all modules in obs_config to the first DAQ node
+        try:
+            obs = config_file.get_obs_config()
+            from control.utils.config_file import ip_addr_to_module_id
+            mids = []
+            for dome in obs.domes:
+                for mod in dome.modules:
+                    mids.append(ip_addr_to_module_id(str(mod.ip_addr)))
+            if cfg.daq_nodes:
+                cfg.daq_nodes[0].module_ids = mids
+        except Exception:
+            pass
         return cfg
-
     from control.utils.pydantic_config_models import CollectResult
     with patch("control.utils.util.local_ip", return_value=["10.200.146.1", "127.0.0.1", f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5']), \\
          patch("control.start.ph_baseline_file_ok", return_value=True), \

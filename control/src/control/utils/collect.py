@@ -41,7 +41,6 @@ def collect_data(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> 
     Returns:
         A CollectResult object containing success status and error messages.
     """
-    my_ip = util.local_ip()
     errors = []
     failed_ips = set()
     for node in daq_config.daq_nodes:
@@ -49,7 +48,7 @@ def collect_data(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> 
             continue
         # We need to know which module IDs are on this node
         for module_id in node.module_ids:
-            if str(node.ip_addr) in my_ip:
+            if util.is_local(node.ip_addr, daq_config):
                 # head node is also a DAQ node — move files locally.
                 src_pattern = f"{node.data_dir}/module_{module_id}/{run_dir}/*"
                 dst = f"{daq_config.head_node_data_dir}/{run_dir}"
@@ -98,11 +97,10 @@ def cleanup_daq(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> s
     Returns:
         An empty string if successful, otherwise a combined error message.
     """
-    my_ip = util.local_ip()
     error_msg = ''
     for node in daq_config.daq_nodes:
         ip_addr = str(node.ip_addr)
-        if ip_addr in my_ip:
+        if util.is_local(node.ip_addr, daq_config):
             path = f'{node.data_dir}/module_*/{run_dir}'
             cmd = f'rm -rf {path}'
             if verbose:

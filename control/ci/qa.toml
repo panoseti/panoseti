@@ -47,8 +47,8 @@ compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
 test_dir = "ci/integration/"
 pytest_args = ["--ignore=ci/integration/scenarios"]
-env = { HEAD_NET_PREFIX = "10.0.1", DAQ_NET_PREFIX = "192.168.0", QUABO_NET_PREFIX = "192.168.3", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/app/ci/integration/configs/direct", PSETI_TMP = "/app/ci/test_state/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/app/ci/test_state/logs" }
-pre_run = "mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/test_state/tmp/quabo_uids.json"
+env = { HEAD_NET_PREFIX = "10.0.1", DAQ_NET_PREFIX = "192.168.0", QUABO_NET_PREFIX = "192.168.3", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/tmp/pseti_test/logs" }
+pre_run = "mkdir -p /tmp/pseti_test/integration_configs /tmp/pseti_test/tmp /tmp/pseti_test/logs && cp -rL /app/ci/integration/configs/direct/*.json /tmp/pseti_test/integration_configs/ && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /tmp/pseti_test/tmp/quabo_uids.json"
 
 [suites.chaos]
 description = "Chaos/TDD-forcing scenario tests (expected to fail red on master)"
@@ -57,8 +57,8 @@ requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
 test_dir = "ci/integration/scenarios/"
-env = { HEAD_NET_PREFIX = "10.0.2", DAQ_NET_PREFIX = "192.168.1", QUABO_NET_PREFIX = "192.168.4", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-chaos-daqnode-1", PSETI_CONFIG = "/app/ci/integration/configs/chaos", PSETI_TMP = "/app/ci/test_state/tmp", PSETI_QUABOS = "/app/ci/integration/configs/chaos", PSETI_LOGS = "/app/ci/test_state/logs" }
-pre_run = "mkdir -p /app/ci/integration/configs/chaos && for f in /app/ci/integration/configs/direct/*.json; do cp \"$f\" \"/app/ci/integration/configs/chaos/$(basename \"$f\")\"; done && sed -i 's/10\\.0\\.1/10.0.2/g' /app/ci/integration/configs/chaos/*.json && sed -i 's/192\\.168\\.0/192.168.1/g' /app/ci/integration/configs/chaos/*.json && sed -i 's/192\\.168\\.3/192.168.4/g' /app/ci/integration/configs/chaos/*.json && cp /app/ci/integration/configs/quabo_uids_chaos.json /app/ci/integration/configs/chaos/quabo_uids.json && sed -i 's/192\\.168\\.3/192.168.4/g' /app/ci/integration/configs/chaos/quabo_uids.json && mkdir -p /app/ci/test_state/tmp && ln -sf /app/ci/integration/configs/chaos/quabo_uids.json /app/ci/test_state/tmp/quabo_uids.json"
+env = { HEAD_NET_PREFIX = "10.0.2", DAQ_NET_PREFIX = "192.168.1", QUABO_NET_PREFIX = "192.168.4", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-chaos-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/chaos_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/tmp/pseti_test/chaos_configs", PSETI_LOGS = "/tmp/pseti_test/logs" }
+pre_run = "mkdir -p /tmp/pseti_test/chaos_configs /tmp/pseti_test/tmp /tmp/pseti_test/logs && cp -rL /app/ci/integration/configs/direct/*.json /tmp/pseti_test/chaos_configs/ && sed -i 's/10\\.0\\.1/10.0.2/g' /tmp/pseti_test/chaos_configs/*.json && sed -i 's/192\\.168\\.0/192.168.1/g' /tmp/pseti_test/chaos_configs/*.json && sed -i 's/192\\.168\\.3/192.168.4/g' /tmp/pseti_test/chaos_configs/*.json && cp /app/ci/integration/configs/quabo_uids_chaos.json /tmp/pseti_test/chaos_configs/quabo_uids.json && sed -i 's/192\\.168\\.3/192.168.4/g' /tmp/pseti_test/chaos_configs/quabo_uids.json && ln -sf /tmp/pseti_test/chaos_configs/quabo_uids.json /tmp/pseti_test/tmp/quabo_uids.json"
 
 [suites.test-hw]
 description = "Physical Hardware-Software (HITL) tests"

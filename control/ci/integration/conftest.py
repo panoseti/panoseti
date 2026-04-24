@@ -233,8 +233,22 @@ def wait_grpc_reachable(client: DaqControlClient, data_dir: str, *, timeout: flo
 # ---------------------------------------------------------------------------
 # Portforwarding fixtures
 # ---------------------------------------------------------------------------
-DIRECT_CONFIG = CONFIG_DIR / "direct"
-GATEWAY_CONFIG = CONFIG_DIR / "gateway"
+
+@pytest.fixture
+def direct_config_dir() -> pathlib.Path:
+    """Returns the isolated directory for direct-connect configs."""
+    # In CI, PSETI_CONFIG already points to the isolated variant dir (direct or chaos)
+    return pathlib.Path(os.environ["PSETI_CONFIG"])
+
+@pytest.fixture
+def gateway_config_dir() -> pathlib.Path:
+    """Returns the isolated directory for gateway configs."""
+    # If we are in chaos mode, we use the current isolated PSETI_CONFIG.
+    # Otherwise, fallback to the gateway template root (but this shouldn't happen often)
+    p = pathlib.Path(os.environ["PSETI_CONFIG"])
+    if (p / "network_config.json").exists():
+        return p
+    return PanoPathsTest.integration_configs("gateway")
 
 # 1. Point sys.path to the root 'control' directory, NOT the 'utils' directory.
 # 'conftest.py' is in control/ci/integration/, so we go up two levels.
@@ -250,10 +264,15 @@ def get_daq_and_network_config(kind: str = "direct") -> tuple[dict[str, Any], di
     """
     match kind:
         case "direct": 
-            cfg_dir = DIRECT_CONFIG
+            cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
             net_cfg = None
         case "gateway": 
-            cfg_dir = GATEWAY_CONFIG
+            cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
+            # If network_config.json is missing (not in chaos mode), 
+            # fallback to gateway template
+            if not (cfg_dir / "network_config.json").exists():
+                cfg_dir = PanoPathsTest.integration_configs("gateway")
+                
             with open(cfg_dir / "network_config.json", 'rb') as f:
                 net_cfg_raw = json.load(f)
                 net_cfg = config_file.NetworkConfig(**net_cfg_raw).model_dump(mode='json', exclude_unset=True)

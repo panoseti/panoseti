@@ -371,10 +371,10 @@ class TestGetModules:
 class TestLoadAndValidate:
     def _write_json(self, tmp_path, relpath, data):
         """Write JSON to a subdirectory of tmp_path matching the expected config path."""
-        full = tmp_path / relpath
+        full = tmp_path / "unit_test_configs" / relpath
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_text(json.dumps(data))
-        return str(tmp_path)
+        return str(tmp_path / "unit_test_configs")
 
     def test_loads_valid_data_config(self, tmp_path, minimal_data_config) -> None:
         base = self._write_json(tmp_path, "configs/data_config.json", minimal_data_config)
@@ -382,27 +382,30 @@ class TestLoadAndValidate:
         assert result.run_type == "sci"
 
     def test_missing_file_raises_value_error(self, tmp_path) -> None:
+        # Use a path that is definitely empty
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
         with pytest.raises(ValueError, match="Missing file"):
             load_and_validate(DataConfig, "configs/data_config.json",
-                              str(tmp_path), "Data Config")
+                              str(empty_dir), "Data Config")
 
     def test_invalid_json_raises_value_error(self, tmp_path) -> None:
-        p = tmp_path / "configs"
-        p.mkdir()
+        p = tmp_path / "unit_test_configs" / "configs"
+        p.mkdir(parents=True, exist_ok=True)
         (p / "data_config.json").write_text("{ not valid json }")
         with pytest.raises(ValueError, match="JSON Parse Error"):
             load_and_validate(DataConfig, "configs/data_config.json",
-                              str(tmp_path), "Data Config")
+                              str(tmp_path / "unit_test_configs"), "Data Config")
 
     def test_schema_error_raises_value_error(self, tmp_path) -> None:
         """Invalid schema causes ValueError in non-CLI mode (by default)."""
         bad_data = {"run_type": "a" * 20}  # Too long — Pydantic will reject
-        self._write_json(tmp_path, "configs/data_config.json", bad_data)
+        base = self._write_json(tmp_path, "configs/data_config.json", bad_data)
         # Default behaviour is now ValueError on schema error when not in CLI mode
         # to allow orchestration rollback ladders to run.
         with pytest.raises(ValueError, match="Pydantic Validation failed"):
             load_and_validate(DataConfig, "configs/data_config.json",
-                              str(tmp_path), "Data Config")
+                              base, "Data Config")
 
 
 # ===========================================================================

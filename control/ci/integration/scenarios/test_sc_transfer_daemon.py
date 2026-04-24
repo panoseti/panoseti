@@ -144,8 +144,7 @@ class TestSCTX002HeadCrashMidStart:
         from control.utils.run_state import RunStateManager
 
         tmp_lock = tmp_path / "tmp"
-        tmp_lock.mkdir()
-
+        tmp_lock.mkdir(exist_ok=True)
         mgr = RunStateManager(base_dir=str(tmp_path))
         lock_path = tmp_path / "tmp" / "panoseti_control.lock"
 

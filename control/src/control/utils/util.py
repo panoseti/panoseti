@@ -136,6 +136,22 @@ def local_ip() -> list[str]:
     
     return ips
 
+
+def is_local(ip_addr: str | IPvAnyAddress, daq_config: DaqConfig) -> bool:
+    """Return True if the IP address refers to the local machine.
+    
+    In CI/containerized environments (head_node_container=True), the 
+    specified head_node_ip_addr is always treated as local even if 
+    the container's dynamic IP doesn't match it.
+    """
+    ip_str = str(ip_addr)
+    try:
+        if ip_str in local_ip():
+            return True
+    except OSError:
+        pass
+    return bool(daq_config.head_node_container and ip_str == str(daq_config.head_node_ip_addr))
+
 def ip_addr_str_to_bytes(ip_addr: IPvAnyAddress) -> bytearray:
     ip_addr_str = str(ip_addr)
     pieces = ip_addr_str.strip().split('.')

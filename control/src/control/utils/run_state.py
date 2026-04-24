@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import pathlib
 import tempfile
@@ -77,17 +78,21 @@ class RunStateManager:
                 with os.fdopen(fd, "w") as f:
                     f.write(str(os.getpid()))
                 self._lock_fh = True
+                # print(f"DEBUG: Lock acquired by PID {os.getpid()} at {self.lock_path}")
                 return True
             except FileExistsError:
                 # Check if the lock is stale
                 try:
                     with open(self.lock_path) as f:
-                        pid = int(f.read().strip())
+                        pid_str = f.read().strip()
+                        pid = int(pid_str)
                     
                     # Check if process is alive
                     os.kill(pid, 0)
+                    # print(f"DEBUG: Lock held by LIVE PID {pid} at {self.lock_path}")
                 except (OSError, ValueError, ProcessLookupError):
                     # Process is dead or file is corrupt. Self-heal.
+                    # print(f"DEBUG: Lock stale (PID {pid_str}) at {self.lock_path}. Unlinking.")
                     try:
                         self.lock_path.unlink()
                         if attempt == 0:
@@ -96,11 +101,13 @@ class RunStateManager:
                         pass
                 
                 raise LockError(
-                    "Another PANOSETI control process is already running. "
-                    "Check for concurrent start.py or stop.py executions."
+                    f"Another PANOSETI control process (PID {pid}) is already running. "
+                    f"Check for concurrent start.py or stop.py executions. Lock file: {self.lock_path}"
                 ) from None
             except OSError as e:
                 raise LockError(f"Failed to create lock file: {e}") from None
+        
+        return False
 
     def release_lock(self) -> None:
         """Releases the advisory lock by removing the file."""
@@ -202,9 +209,13 @@ class RunStateManager:
             raise
 
     def clear_state(self) -> None:
-        """Clears the run state ledger."""
+        """Clears the run state ledger and advisory lock."""
         if self.state_path.exists():
             self.state_path.unlink()
+        if self.lock_path.exists():
+            with contextlib.suppress(OSError):
+                self.lock_path.unlink()
+        self._lock_fh = None
 
     def transition(self, status: str, **fields: Any) -> RunStateLedger | None:
         """Load current state, update status and any extra fields, save, return new state.

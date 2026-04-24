@@ -406,7 +406,6 @@ def make_run_dirs(
     - Ensures the run directory is a faithful record of the actual run parameters.
     """
     # logger = logging.getLogger('PSETI.Start')
-    my_ip = util.local_ip()
     run_dir = f'{daq_config.head_node_data_dir}/{run_name}'
     os.makedirs(run_dir, exist_ok=True)
 
@@ -447,8 +446,7 @@ def make_run_dirs(
         # DaqNode has module_ids
         if not node.module_ids:
             continue
-        ip_addr = str(node.ip_addr)
-        if ip_addr in my_ip:
+        if util.is_local(node.ip_addr, daq_config):
             # We need to know which module IDs are on this node to create module_N dirs
             # node.module_ids is a list of ints or a range string (preprocessed to list[int])
             for mid in node.module_ids:
@@ -457,6 +455,7 @@ def make_run_dirs(
                     print(f"mkdir -p {path}")
                 os.makedirs(path, exist_ok=True)
         else:
+            ip_addr = str(node.ip_addr)
             username = node.username
             data_dir = node.data_dir
             rcmds = [f'mkdir {data_dir}/{run_name}']
@@ -838,10 +837,9 @@ async def start_run(
                  else:
                      raise ValidationError(msg)
 
-            my_ip = util.local_ip()
-            head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
-            if head_node_ip not in my_ip:
-                msg = f'This node ({my_ip}) is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})'
+            # Validation checks
+            if not util.is_local(daq_config.head_node_ip_addr, daq_config):
+                msg = f'This node is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})'
                 if daq_config.head_node_container:
                     logger.warning(f"{msg} (Non-fatal in container/CI environment)")
                 else:
@@ -921,7 +919,6 @@ async def start_run(
                 )
 
             # Validation checks
-            my_ip = util.local_ip()
             get_sw_info()
             
             config_file.associate(daq_config, quabo_uids)

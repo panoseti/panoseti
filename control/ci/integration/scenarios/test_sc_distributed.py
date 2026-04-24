@@ -49,6 +49,8 @@ async def test_SCN003_partial_start_rollback_4_nodes(
 
     import control.start as start
     from control.utils import config_file
+    from control.utils.run_state import RunStateManager
+    RunStateManager().clear_state()
 
     # 1. Setup 4-node config
     headnode_ip = "10.0.1.5"

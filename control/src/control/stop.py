@@ -19,7 +19,6 @@ import contextlib
 import os
 import shutil
 import signal
-import socket
 import time
 from glob import glob
 from typing import Any
@@ -464,7 +463,6 @@ async def _cleanup_daq_grpc(
     Returns:
         A list of error messages from nodes that failed cleanup.
     """
-    my_ip = util.local_ip()
     errors: list[str] = []
     skip_set = set(skip_ips) if skip_ips else set()
 
@@ -474,7 +472,7 @@ async def _cleanup_daq_grpc(
             logger.warning(f"Skipping cleanup for node {ip_addr} due to collection failure.")
             return
             
-        if ip_addr in my_ip:
+        if util.is_local(node.ip_addr, daq_config):
             # Head node is also DAQ node: local rm -rf
             module_dirs = glob(f'{node.data_dir}/module_*/{run}')
             if verbose:
@@ -544,9 +542,12 @@ async def stop_run(
             run, no_collect, no_cleanup, force_cleanup, verbose, cancel_event
         ) as tx:
             # Pre-flight Validation
-            head_node_ip = socket.gethostbyname(str(daq_config.head_node_ip_addr))
-            if head_node_ip not in util.local_ip():
-                raise ValidationError(f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})')
+            if not util.is_local(daq_config.head_node_ip_addr, daq_config):
+                msg = f'This computer is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})'
+                if daq_config.head_node_container:
+                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                else:
+                    raise ValidationError(msg)
 
             # Load from ledger
             ledger = state_mgr.load_state()
