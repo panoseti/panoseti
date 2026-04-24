@@ -209,8 +209,14 @@ class TestRunner:
              sys.exit(1)
 
         build_flag = " --no-build" if self.no_build else ""
+        
+        # Merge suite env into process env for compose up
+        full_env = os.environ.copy()
+        full_env.update(suite.env)
+        full_env["COMPOSE_PROJECT_NAME"] = project_name
+
         cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} up -d{build_flag}"
-        res = await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
+        res = await self._run_cmd(cmd, env=full_env)
         if not res.ok:
             from rich.console import Console
             Console().print(f"[red]Failed to start container stack for {suite.name}[/red]")
@@ -236,8 +242,13 @@ class TestRunner:
         if not compose_file:
             return
 
+        # Merge suite env into process env for compose down
+        full_env = os.environ.copy()
+        full_env.update(suite.env)
+        full_env["COMPOSE_PROJECT_NAME"] = project_name
+
         cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} down -v --remove-orphans"
-        await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name}, quiet=quiet)
+        await self._run_cmd(cmd, env=full_env, quiet=quiet)
 
     async def _run_test_suite(self, suite: SuiteConfig, project_name: str, jobs: int | None, extra_args: list[str] | None) -> list[Result]:
         self._header(f"TESTING: {suite.name.upper()}")

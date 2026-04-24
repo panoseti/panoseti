@@ -333,7 +333,7 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
                     if code in [grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE]:
                         logger.warning(f"StopDaq RPC failed for {node.ip_addr} ({code}). Escalating to SSH pkill...")
 
-                        ssh_args = ["ssh"]
+                        ssh_args = ["ssh", *util.ssh_options]
                         if node.port_forwarding and node.port_forwarding.status:
                             real_ip = str(node.port_forwarding.gw_ip)
                             port = str(node.port_forwarding.port)

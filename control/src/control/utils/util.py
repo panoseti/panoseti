@@ -45,6 +45,14 @@ from control.utils.pydantic_config_models import (
 
 default_max_file_size_mb = 0        # no limit
 
+# SSH options for automation (BatchMode skips passwords, No checking avoids prompt)
+ssh_options = [
+    "-o", "BatchMode=yes",
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "ConnectTimeout=5"
+]
+
 #-------------- FILE NAMES ---------------
 
 run_name_file = str(PanoPaths.tmp_dir() / 'current_run')
@@ -556,7 +564,7 @@ def get_daq_node_status(node: DaqNode) -> dict[str, Any]:
         Exception: If the remote node cannot be reached.
     """
     # TODO: add port forwarding code here
-    x = subprocess.run(['ssh',
+    x = subprocess.run(['ssh', *ssh_options,
         f'{node.username}@{node.ip_addr}',
         f'cd {node.data_dir}; ./status_daq.py',
         ],

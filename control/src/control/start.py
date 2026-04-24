@@ -142,7 +142,7 @@ class StartTransaction:
                     except Exception as stop_err:
                         logger.warning(f"StopDaq RPC failed for {node.ip_addr} during rollback ({stop_err}). Escalating to SSH pkill...")
                         try:
-                            ssh_args = ["ssh", "-o", "BatchMode=yes"]
+                            ssh_args = ["ssh", *util.ssh_options]
                             if node.port_forwarding and node.port_forwarding.status:
                                 real_ip = str(node.port_forwarding.gw_ip)
                                 port = str(node.port_forwarding.port)
@@ -465,7 +465,7 @@ def make_run_dirs(
             rcmds.append(f'cd {data_dir}/{run_name}; ps -ux > pss_{ip_addr}.log')
             rcmnd = ';'.join(rcmds)
             logger.info(f'DAQ IP: {ip_addr}')
-            ssh_args = ["ssh"]
+            ssh_args = ["ssh", *util.ssh_options]
             if node.port_forwarding and node.port_forwarding.status:
                 real_ip = str(node.port_forwarding.gw_ip)
                 port = str(node.port_forwarding.port)

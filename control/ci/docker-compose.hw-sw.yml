@@ -55,6 +55,8 @@ services:
       - /mnt/panoseti/:/mnt/panoseti/
       - ../firmware:/app/firmware:ro
       - ../quabos:/app/quabos:ro
+      - ~/.ssh:/root/.ssh:ro
+      - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
     environment:
       REDIS_HOST: "127.0.0.1"
       LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
@@ -62,6 +64,7 @@ services:
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
+      SSH_AUTH_SOCK: "/run/host-ssh-agent"
     command: >
       /bin/sh -c "pseti grpc server --config /app/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
       python src/control/daemons/storeInfluxDB.py &

@@ -47,9 +47,9 @@ def copy_file_to_node(file_path: Path | str, node: DaqNode, run_dir: str = '', v
     for f in files:
         f_str = str(f)
         if node.port_forwarding and node.port_forwarding.status:
-            cmd = ["scp", "-q", "-P", str(node.port_forwarding.port), f_str, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
+            cmd = ["scp", "-q", *util.ssh_options, "-P", str(node.port_forwarding.port), f_str, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
         else:
-            cmd = ["scp", "-q", f_str, f"{node.username}@{node.ip_addr}:{dest_path}"]
+            cmd = ["scp", "-q", *util.ssh_options, f_str, f"{node.username}@{node.ip_addr}:{dest_path}"]
         
         if verbose:
             print(" ".join(cmd))
@@ -146,11 +146,22 @@ def make_remote_dirs(daq_config: DaqConfig, dirname: str) -> None:
         Exception: If the SSH command fails on any node.
     """
     for node in daq_config.daq_nodes:
-        cmd = ["ssh", f"{node.username}@{node.ip_addr}", f"cd {node.data_dir}; mkdir {dirname}"]
-        print(" ".join(cmd))
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        if not node.module_ids:
+            continue
+        
+        ssh_cmd = ["ssh", *util.ssh_options]
+        if node.port_forwarding and node.port_forwarding.status:
+             real_ip = str(node.port_forwarding.gw_ip)
+             port = str(node.port_forwarding.port)
+             ssh_cmd.extend(["-p", port, f"{node.username}@{real_ip}"])
+        else:
+             ssh_cmd.append(f"{node.username}@{node.ip_addr}")
+        
+        ssh_cmd.append(f"cd {node.data_dir}; mkdir {dirname}")
+        print(" ".join(ssh_cmd))
+        res = subprocess.run(ssh_cmd, capture_output=True, text=True)
         if res.returncode != 0:
-            raise RuntimeError(f'{" ".join(cmd)} returned {res.returncode}: {res.stderr}')
+            raise RuntimeError(f'{" ".join(ssh_cmd)} returned {res.returncode}: {res.stderr}')
 
 # copy config files to run dirs on DAQ nodes
 #
