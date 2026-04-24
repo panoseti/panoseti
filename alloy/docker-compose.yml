@@ -1,0 +1,9 @@
+services:
+  alloy:
+    image: grafana/alloy:latest
+    network_mode: host
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - /var/log/panoseti/:/var/log/panoseti/:ro
+    command: run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    restart: always
