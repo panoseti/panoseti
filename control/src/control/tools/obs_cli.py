@@ -22,7 +22,8 @@ class ObsLazyGroup(BaseLazyGroup):
             "power": ("control.power", "app", "Control Quabo power via WPS."),
             "val": ("control.config", "validate_app", "Configuration and topology validation tools."),
         }
-        super().__init__(*args, lazy_mapping=lazy_mapping, **kwargs)
+        command_order = ["power", "get-uids", "config", "val", "start", "status", "stop", "session-start", "session-stop"]
+        super().__init__(*args, lazy_mapping=lazy_mapping, command_order=command_order, **kwargs)
 
 app = typer.Typer(
     cls=ObsLazyGroup,

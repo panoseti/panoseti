@@ -68,6 +68,7 @@ def show_config(obs_config: ObsConfig, quabo_uids: QuaboUids) -> None:
         quabo_uids: Validated Quabo UID registry model.
     """
     logger.info('Show config')
+
     for dome in obs_config.domes:
         logger.info(f'dome {dome.name}')
         for module in dome.modules:

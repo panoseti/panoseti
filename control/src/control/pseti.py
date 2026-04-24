@@ -24,16 +24,26 @@ def pseti_path_injector(name: str) -> None:
 class PanoLazyGroup(BaseLazyGroup):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         lazy_mapping = {
-            "obs": ("control.tools.obs_cli", "app", "Observatory operations (Start/Stop, Power, Config)."),
-            "test": ("test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
-            "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
-            "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
             # Root aliases for high-frequency commands
             "start": ("control.start", "app", "Alias for 'pseti obs start'."),
             "stop": ("control.stop", "app", "Alias for 'pseti obs stop'."),
             "status": ("control.status", "app", "Alias for 'pseti obs status'."),
+            # Primary command groups
+            "obs": ("control.tools.obs_cli", "app", "Observatory operations (Start/Stop, Power, Config)."),
+            "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
+            # Maintenance and diagnostics
+            "test": ("test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
+            "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
         }
-        super().__init__(*args, lazy_mapping=lazy_mapping, path_injector=pseti_path_injector, **kwargs)
+        # Explicit order to ensure consistent UX regardless of mapping insertion order
+        command_order = ["obs", "grpc",  "start", "stop", "status", "show", "test"]
+        super().__init__(
+            *args, 
+            lazy_mapping=lazy_mapping, 
+            command_order=command_order,
+            path_injector=pseti_path_injector, 
+            **kwargs
+        )
 
 
 app = typer.Typer(
