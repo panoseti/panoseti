@@ -52,21 +52,17 @@ class TestPrintCompactConfig:
 # ===========================================================================
 
 @contextmanager
-def _patch_tcp_check(up_hosts: set):
+def _patch_reachability(up_hosts: set):
     """
-    Patch socket.create_connection so that connections to IPs in up_hosts
-    succeed and all others raise OSError (connection refused).
+    Patch _check_reachability so that connections to IPs in up_hosts
+    succeed and all others return False.
     """
-    def fake_create_connection(addr, timeout=None):
-        ip, _port = addr
-        if ip in up_hosts:
-            m = MagicMock()
-            m.__enter__ = lambda s: s
-            m.__exit__ = MagicMock(return_value=False)
-            return m
-        raise OSError("Connection refused")
+    def fake_check_reachability(target_ip, port, target_type="tcp", timeout=2.0):
+        if target_ip in up_hosts:
+            return True, ""
+        return False, "Connection refused"
 
-    with patch("socket.create_connection", side_effect=fake_create_connection):
+    with patch("control.utils.config_validator._check_reachability", side_effect=fake_check_reachability):
         yield
 
 
@@ -74,8 +70,11 @@ class TestPerformNetworkPingSweep:
     def test_all_hosts_up_returns_true(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """All targets reachable → returns True."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
-        all_ips = {"10.0.0.1", "10.0.0.2", "192.168.3.200", "192.168.1.2"}
-        with _patch_tcp_check(all_ips):
+        all_ips = {
+            "10.0.0.1", "10.0.0.2", "192.168.1.2",
+            "192.168.3.200", "192.168.3.201", "192.168.3.202", "192.168.3.203"
+        }
+        with _patch_reachability(all_ips):
             result = perform_network_ping_sweep(cfg)
         assert result is True
 
@@ -83,20 +82,20 @@ class TestPerformNetworkPingSweep:
         """Any target unreachable → returns False."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         # Head node is down (10.0.0.1 not in up_hosts)
-        with _patch_tcp_check(set()):
+        with _patch_reachability(set()):
             result = perform_network_ping_sweep(cfg)
         assert result is False
 
     def test_head_node_is_checked(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
-        """Head node IP is included in the ping sweep."""
+        """Head node IP is included in the reachability sweep."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
 
-        def capture_connection(addr, timeout=None):
-            checked_ips.append(addr[0])
-            raise OSError("refused")
+        def capture_reachability(target_ip, port, target_type="tcp", timeout=2.0):
+            checked_ips.append(target_ip)
+            return False, "refused"
 
-        with patch("socket.create_connection", side_effect=capture_connection):
+        with patch("control.utils.config_validator._check_reachability", side_effect=capture_reachability):
             perform_network_ping_sweep(cfg)
 
         assert "10.0.0.1" in checked_ips
@@ -108,42 +107,44 @@ class TestPerformNetworkPingSweep:
 
         checked_ips = []
 
-        def capture_connection(addr, timeout=None):
-            checked_ips.append(addr[0])
-            raise OSError("refused")
+        def capture_reachability(target_ip, port, target_type="tcp", timeout=2.0):
+            checked_ips.append(target_ip)
+            return False, "refused"
 
-        with patch("socket.create_connection", side_effect=capture_connection):
+        with patch("control.utils.config_validator._check_reachability", side_effect=capture_reachability):
             perform_network_ping_sweep(cfg)
 
         assert "10.0.0.1" not in checked_ips
 
     def test_wps_url_is_checked(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
-        """WPS URL hostname is extracted and pinged."""
+        """WPS URL hostname is extracted and checked."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
 
-        def capture_connection(addr, timeout=None):
-            checked_ips.append(addr[0])
-            raise OSError("refused")
+        def capture_reachability(target_ip, port, target_type="tcp", timeout=2.0):
+            checked_ips.append(target_ip)
+            return False, "refused"
 
-        with patch("socket.create_connection", side_effect=capture_connection):
+        with patch("control.utils.config_validator._check_reachability", side_effect=capture_reachability):
             perform_network_ping_sweep(cfg)
 
         assert "192.168.1.2" in checked_ips
 
     def test_module_ip_is_checked(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
-        """Module IP (quabo CMD port) is included in the sweep."""
+        """Module IPs (quabo UDP ports) are included in the sweep."""
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
 
-        def capture_connection(addr, timeout=None):
-            checked_ips.append(addr[0])
-            raise OSError("refused")
+        def capture_reachability(target_ip, port, target_type="tcp", timeout=2.0):
+            checked_ips.append(target_ip)
+            return False, "refused"
 
-        with patch("socket.create_connection", side_effect=capture_connection):
+        with patch("control.utils.config_validator._check_reachability", side_effect=capture_reachability):
             perform_network_ping_sweep(cfg)
 
-        assert "192.168.3.200" in checked_ips
+        # All 4 quabos should be checked
+        for i in range(4):
+            assert f"192.168.3.{200+i}" in checked_ips
 
     def test_no_modules_or_wps_still_returns(self, mock_obs_config: ObsConfig, mock_daq_config: DaqConfig, mock_network_config: NetworkConfig) -> None:
         """Empty obs config (no modules) → sweep runs without crash."""
@@ -154,7 +155,7 @@ class TestPerformNetworkPingSweep:
         mock_network_config.daq_nodes = []
 
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
-        with _patch_tcp_check(set()):
+        with _patch_reachability(set()):
             result = perform_network_ping_sweep(cfg)
         # No targets → all_passed stays True (vacuously)
         assert result is True
@@ -166,11 +167,11 @@ class TestPerformNetworkPingSweep:
         cfg = {"obs": mock_obs_config, "daq": mock_daq_config, "network": mock_network_config}
         checked_ips = []
 
-        def capture_connection(addr, timeout=None):
-            checked_ips.append(addr[0])
-            raise OSError("refused")
+        def capture_reachability(target_ip, port, target_type="tcp", timeout=2.0):
+            checked_ips.append(target_ip)
+            return False, "refused"
 
-        with patch("socket.create_connection", side_effect=capture_connection):
+        with patch("control.utils.config_validator._check_reachability", side_effect=capture_reachability):
             perform_network_ping_sweep(cfg)
 
         # Gateway should be checked, not the internal module IP directly
