@@ -11,3 +11,6 @@
 [submodule "grafana"]
 	path = grafana
 	url = https://github.com/panoseti/panoseti_grafana.git
+[submodule "wiki_docs"]
+	path = wiki_docs
+	url = https://github.com/panoseti/panoseti.wiki.git

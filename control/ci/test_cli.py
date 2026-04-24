@@ -97,6 +97,18 @@ def grpc_main(
     grpc_tests = root / "grpc" / "tests"
     if grpc_tests.exists():
         os.chdir(grpc_tests)
+        if str(grpc_tests) not in sys.path:
+            sys.path.insert(0, str(grpc_tests))
+        
+        # Override TestRunner for gRPC context
+        from grpc_qa_utils import QA_TOML_PATH as GRPC_QA_TOML
+        from grpc_qa_utils import TestRunner as GrpcTestRunner
+        old_runner = ctx.obj
+        ctx.obj = GrpcTestRunner(GRPC_QA_TOML)
+        if old_runner:
+            ctx.obj.no_teardown = old_runner.no_teardown
+            ctx.obj.no_build = old_runner.no_build
+            ctx.obj.container_tool = old_runner.container_tool
 
 # ---------------------------------------------------------------------------
 # Global Setup
