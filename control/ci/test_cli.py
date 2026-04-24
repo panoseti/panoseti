@@ -187,7 +187,7 @@ def sw_chaos(ctx: typer.Context) -> None:
 @sw_app.command(name="all")
 def sw_all(ctx: typer.Context) -> None:
     """Run the full software testing suite (unit, structural, integration)"""
-    suites = ["unit", "structural", "integration"]
+    suites = ["lint", "unit", "structural", "integration", "chaos"]
     success = True
     for s in suites:
         ok = asyncio.run(ctx.obj.run_suite(s))

@@ -45,8 +45,6 @@ services:
     networks:
       headnode_net:
         ipv4_address: ${HEADNODE_HOST:-10.0.1.22}
-    ports:
-      - 3000:3000
     healthcheck:
       test: ["CMD", "influx", "-execute", "show databases"]
       interval: 1s
@@ -202,7 +200,6 @@ services:
     build:
       context: ../../
       dockerfile: control/ci/mock_quabo/Dockerfile
-    container_name: ctl-int-mock-quabo-1
     networks:
       quabo_net:
         ipv4_address: 192.168.3.32

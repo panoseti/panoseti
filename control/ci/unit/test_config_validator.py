@@ -8,7 +8,7 @@ Unit tests for control/utils/config_validator.py:
 from __future__ import annotations
 
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from control.utils.config_validator import perform_network_ping_sweep, print_compact_config
 from control.utils.pydantic_config_models import (
