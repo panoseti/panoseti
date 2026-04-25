@@ -1,12 +1,11 @@
 import asyncio
 import json
 import os
+import random
 import re
 import sys
-import tempfile
 import time
 import tomllib
-import random
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -187,7 +186,10 @@ class TestRunner:
         suites_to_build = [self.cfg.suites[suite_name]] if suite_name else self.cfg.suites.values()
         
         for suite in suites_to_build:
+            from rich.console import Console
+            c = Console()
             if not suite.requires_docker:
+                c.print(f"[dim]Skipping suite {suite.name} (no docker)[/dim]")
                 continue
                 
             compose_file = suite.compose_file
@@ -195,10 +197,17 @@ class TestRunner:
                 env_cfg = self.cfg.environments.get(suite.environment)
                 if env_cfg:
                     compose_file = env_cfg.compose_file
+                else:
+                    c.print(f"[yellow]Warning: environment {suite.environment} not found for suite {suite.name}[/yellow]")
             
-            if not compose_file or compose_file in processed_files:
+            if not compose_file:
+                c.print(f"[yellow]Warning: no compose file found for suite {suite.name}[/yellow]")
                 continue
 
+            if compose_file in processed_files:
+                continue
+
+            c.print(f"[dim]Processing compose file for build: {compose_file}[/dim]")
             project_name = f"{self.project_prefix}-build"
             
             # Use 'compose config' to find all services in this file
@@ -417,7 +426,6 @@ class TestRunner:
         assert proc.stdout is not None
 
         stats = {"passed": 0, "failed": 0, "skipped": 0, "error": 0}
-        is_parallel = "-n" in cmd
         has_json_metrics = False
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
@@ -439,9 +447,12 @@ class TestRunner:
 
             upper_line = plain_line.upper()
             if not has_json_metrics:
-                if " PASSED " in upper_line or " . " in upper_line: stats["passed"] += 1
-                if " FAILED " in upper_line or " F " in upper_line: stats["failed"] += 1
-                if " ERROR " in upper_line: stats["error"] += 1
+                if " PASSED " in upper_line or " . " in upper_line:
+                    stats["passed"] += 1
+                if " FAILED " in upper_line or " F " in upper_line:
+                    stats["failed"] += 1
+                if " ERROR " in upper_line:
+                    stats["error"] += 1
 
             async with lock:
                 from rich.console import Console

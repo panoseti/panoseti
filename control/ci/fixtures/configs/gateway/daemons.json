@@ -1,0 +1,24 @@
+{
+    "daemons": {
+        "hk": false,
+        "gps": false,
+        "telemetry_service": true,
+        "loki": true,
+        "guider": false,
+        "power": false,
+        "datarecweb": false,
+        "guider_im": false,
+        "webhk": false,
+        "wr": false
+    },
+    "permanent_daemons": {
+        "mount_ssh": false,
+        "palomar_webcam": false,
+        "weather2": false,
+        "webcam": false,
+        "power_switches": false,
+        "dome": false,
+        "cond_overall": false,
+        "alerts_forecast": false
+    }
+}

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import random
 from ipaddress import IPv4Address
-from typing import Any
 
 from control.utils.pydantic_config_models import (
     DaqConfig,

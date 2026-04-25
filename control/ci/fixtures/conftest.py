@@ -7,15 +7,15 @@ Includes the mandatory auto_isolate fixture.
 
 from __future__ import annotations
 
-import os
 import pathlib
-import shutil
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 import pytest
 
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
+
 
 @pytest.fixture(scope="session")
 def worker_id(request: Any) -> str:
@@ -64,8 +64,9 @@ def auto_isolate(
     yield tmp_path
 
 # Import factories as fixtures
-from .factories import make_transfer_job, simulate_daq_filesystem, make_mock_daq_config
+from .factories import make_mock_daq_config, make_transfer_job, simulate_daq_filesystem
 from .state_probe import StateProbe
+
 
 @pytest.fixture
 def probe():

@@ -79,8 +79,8 @@ ENV PANOSETI_DAQ_BRANCH="dev"
 WORKDIR /build
 RUN git clone --depth 1 --branch ${PANOSETI_DAQ_BRANCH} https://github.com/panoseti/panoseti_daq.git panoseti_daq
 WORKDIR /build/panoseti_daq
-COPY control/ci/integration/build/Makefile .
-COPY control/ci/integration/build/databuf.h .
+COPY control/ci/fixtures/build/Makefile .
+COPY control/ci/fixtures/build/databuf.h .
 RUN make
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -110,4 +110,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN mkdir -p /etc/bash_completion.d && \
     /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
-CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/ci/integration/configs/grpc/daqnode/server.toml}"]
+CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/ci/fixtures/configs/grpc/daqnode/server.toml}"]

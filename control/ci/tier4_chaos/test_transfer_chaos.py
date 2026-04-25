@@ -16,9 +16,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ci.fixtures.mocks import MockDaqNode
 from control.transfer.daemon import run_daemon
 from control.transfer.queue import TransferQueue
-from ci.fixtures.mocks import MockDaqNode
 
 # ---------------------------------------------------------------------------
 # CI guard

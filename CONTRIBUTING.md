@@ -7,11 +7,12 @@ We prioritize empirical verification and transactional integrity.
 
 1. **Reproduction First**: For bug fixes, you MUST reproduce the failure with a new test case before applying the fix.
 2. **Tiered Validation**:
-   - **Tier 1 (Unit)**: Zero-dependency logic and parsing.
-   - **Tier 2 (Logic)**: Mocked gRPC with real filesystem state. MUST use `PSETI_STATE` isolation.
-   - **Tier 3 (Fleet)**: Full E2E Docker fleet simulation.
-3. **Chaos-Forced Green**: Transactional changes are considered broken if they pass on localhost but fail in the chaos suite (`pseti test sw chaos`).
-4. **State Isolation**: ALL integration tests must isolate their state by redirecting `PSETI_STATE` to a unique temporary directory.
+   - **Tier 1 (Unit)**: `ci/tier1_unit/`. Pure logic, math, and Pydantic validation. No I/O.
+   - **Tier 2 (Logic)**: `ci/tier2_logic/`. Subsystem logic and orchestration using isolated filesystems and software mocks.
+   - **Tier 3 (Fleet)**: `ci/tier3_fleet/`. End-to-end distributed flows using dynamic `Fleet` containers.
+   - **Tier 4 (Chaos)**: `ci/tier4_chaos/`. Fault tolerance and recovery validation via active failure injection.
+3. **State Isolation**: ALL Tier 2+ tests must isolate their state via the `auto_isolate` fixture.
+4. **Naming Standards**: Use BDD-style signatures: `test_when_[action]_then_[expectation]`.
 
 ## 📏 Code Style & Formatting
 We use **Python 3.14+**, **uv**, **Ruff**, and **MyPy**.

@@ -7,9 +7,9 @@ Verifies that generated matrices satisfy Pydantic strictness and reflect real si
 
 from __future__ import annotations
 
-import pytest
 from control.topology.fleet import generate_fleet_configs, generate_palomar_topology
-from control.utils.pydantic_config_models import DaqConfig, QuaboUids, NetworkConfig, ObsConfig
+from control.utils.pydantic_config_models import DaqConfig, NetworkConfig, ObsConfig, QuaboUids
+
 
 def test_when_fleet_generated_then_models_are_valid():
     """

@@ -85,7 +85,7 @@ services:
       daqnode_net:
         ipv4_address: ${DAQ_NET_PREFIX:-192.168.0}.254
     volumes:
-      - ./integration/build/gateway_setup.sh:/gateway_setup.sh:ro
+      - ./fixtures/build/gateway_setup.sh:/gateway_setup.sh:ro
     entrypoint: ["sh", "/gateway_setup.sh"]
     environment:
       DAQNODE_IP: "${DAQNODE_DIRECT_HOST:-${DAQ_NET_PREFIX:-192.168.0}.10}"
@@ -119,7 +119,7 @@ services:
       influxdb:
         condition: service_healthy
     command: >
-      /bin/sh -c "pseti-grpc server --config /app/ci/integration/configs/grpc/headnode/server.toml &
+      /bin/sh -c "pseti-grpc server --config /app/ci/fixtures/configs/grpc/headnode/server.toml &
       python src/control/daemons/storeInfluxDB.py &
       exec python src/control/daemons/storeLoki.py"
     healthcheck:

@@ -8,8 +8,10 @@ Verifies cross-file invariants (BOARDLOC uniqueness, IP collisions, module-to-no
 from __future__ import annotations
 
 import pytest
-from control.utils.global_validator import GlobalConfigValidator
+
 from control.topology.fleet import generate_palomar_topology
+from control.utils.global_validator import GlobalConfigValidator
+
 
 @pytest.fixture
 def palomar_setup():

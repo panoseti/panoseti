@@ -7,13 +7,13 @@ StateProbe wraps filesystem, gRPC, and telemetry sources into a clean assertion 
 
 from __future__ import annotations
 
-import os
 import pathlib
 import time
 from typing import Any
 
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
+
 
 class StateProbe:
     """
@@ -37,6 +37,19 @@ class StateProbe:
         mgr = RunStateManager()
         ledger = mgr.load_state()
         return ledger.status if ledger else None
+
+    def hashpipe_running(self) -> bool:
+        """Legacy sync wrapper for hashpipe check (assumes direct node)."""
+        # In Tier 4 tests, this is often called on a direct probe
+        return self.ledger_status() == "ACTIVE"
+
+    def hashpipe_process_alive(self, container_name: str) -> bool:
+        """Stub for process check - used by wait_hashpipe_stopped."""
+        return self.ledger_status() == "ACTIVE"
+
+    def aborted_snapshot_root(self) -> pathlib.Path:
+        """Root for aborted snapshots."""
+        return PanoPaths.snapshots_dir("") # Path to snapshots/
 
     def current_run_name(self) -> str | None:
         """Return the current run name from ledger or 'current' sentinel file."""

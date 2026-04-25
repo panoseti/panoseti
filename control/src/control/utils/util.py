@@ -90,11 +90,12 @@ pss_prefix = 'pss_'
     # process snapshot file is pss_prefix_ipaddr
 
 # Base daemons (always included in the "capture"/redis daemon set)
+# We store filenames and resolve them lazily to absolute paths via PanoPaths
+# to ensure they respect environment overrides (e.g. in Tier 2 isolated tests).
 redis_daemons = [
-    str(PanoPaths.daemons_dir() / 'storeInfluxDB.py'),
-    # 'daemons/storeLoki.py'
+    'storeInfluxDB.py',
+    # 'storeLoki.py'
 ]
-#capture_power.py
 
 #-------------- TIME ---------------
 
@@ -316,7 +317,10 @@ def get_daemons() -> list[str]:
     daemons_config = _safe_get_daemons_config()
     enabled = daemons_config.daemons.model_dump() if daemons_config else {}
 
-    lst: list[str] = list(redis_daemons)  # copy base list; do NOT mutate global
+    # Copy base list and resolve to absolute paths
+    lst: list[str] = [
+        str(PanoPaths.daemons_dir() / d) for d in redis_daemons
+    ]
     for k, v in enabled.items():
         if v:
             lst.append(str(PanoPaths.daemons_dir() / f'capture_{k}.py'))

@@ -145,6 +145,7 @@ from ci.fixtures.factories import (
     simulate_daq_filesystem,
 )
 
+
 @pytest.fixture
 def transfer_job_factory():
     """Factory for creating valid TransferJob models."""

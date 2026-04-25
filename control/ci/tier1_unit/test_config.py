@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from control.utils.pydantic_config_models import DataConfig, DaqConfig, ObsConfig
+
 from control.topology.fleet import generate_palomar_topology
+from control.utils.pydantic_config_models import DaqConfig, DataConfig, ObsConfig
 
 # ---------------------------------------------------------------------------
 # DataConfig Constraints

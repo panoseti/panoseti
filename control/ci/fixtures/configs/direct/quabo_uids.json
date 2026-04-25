@@ -1,0 +1,1 @@
+{"domes": [{"modules": [{"ip_addr": "192.168.3.248", "quabos": [{"uid": ""}, {"uid": "nonexistent_quabo_sc035"}, {"uid": "DEADBEEF00000003"}, {"uid": "DEADBEEF00000004"}]}, {"ip_addr": "192.168.3.36", "quabos": [{"uid": "DEADBEEF00000005"}, {"uid": "DEADBEEF00000006"}, {"uid": "DEADBEEF00000007"}, {"uid": "DEADBEEF00000008"}]}]}]}

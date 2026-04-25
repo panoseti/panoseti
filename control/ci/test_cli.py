@@ -25,6 +25,9 @@ from qa_utils import (
     SuiteConfig,
     TestRunner,
 )
+from rich.console import Console
+
+console = Console()
 
 
 class GrpcTestLazyGroup(BaseLazyGroup):
@@ -63,7 +66,8 @@ class GrpcTestLazyGroup(BaseLazyGroup):
                 return cmd
             return None
         except Exception as e:
-            click.secho(f"Error loading gRPC test command '{name}': {e}", fg="red", err=True)
+            error_console = Console(stderr=True)
+            error_console.print(f"[red]Error loading gRPC test command '{name}': {e}[/red]")
             return None
 
 
@@ -76,13 +80,10 @@ app = typer.Typer(
 # Sub-apps for organization
 sw_app = typer.Typer(help="Software QA tests (Docker-based CI simulations)", no_args_is_help=True)
 hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
-# lint_app was removed
-# The grpc sub-app uses a special lazy group to map to tests.qa:app
 grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
 
 app.add_typer(sw_app, name="sw")
 app.add_typer(hw_app, name="hw")
-# app.add_typer(lint_app, name="lint") removed
 app.add_typer(grpc_app, name="grpc")
 
 @grpc_app.callback()
@@ -179,34 +180,34 @@ def sw_unit(
     jobs: int | None = typer.Option(None, "--jobs", "-j", help="Parallel jobs"),
     tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
 ) -> None:
-    """Run unit tests [-j N] [pytest args...]"""
+    """Tier 1: Parallel unit tests (Logic & Parsing)"""
     if tool and hasattr(ctx, "obj") and ctx.obj:
         ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("unit", jobs=jobs, extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
-@sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_integration(
+@sw_app.command(name="logic", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_logic(
     ctx: typer.Context,
     tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
 ) -> None:
-    """Run integration tests [pytest args...]"""
+    """Tier 2: Subsystem logic (Isolated State, Mocked gRPC)"""
     if tool and hasattr(ctx, "obj") and ctx.obj:
         ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
+    ok = asyncio.run(ctx.obj.run_suite("logic", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
-@sw_app.command(name="structural", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def sw_structural(
+@sw_app.command(name="fleet", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_fleet(
     ctx: typer.Context,
     tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
 ) -> None:
-    """Run structural/topology tests [pytest args...]"""
+    """Tier 3: Distributed flows (Dynamic Fleets, Real gRPC)"""
     if tool and hasattr(ctx, "obj") and ctx.obj:
         ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("structural", extra_args=ctx.args))
+    ok = asyncio.run(ctx.obj.run_suite("fleet", extra_args=ctx.args))
     if not ok:
         raise typer.Exit(code=1)
 
@@ -215,7 +216,7 @@ def sw_chaos(
     ctx: typer.Context,
     tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
 ) -> None:
-    """Run chaos scenario tests [pytest args...]"""
+    """Tier 4: Fault injection (Active failure scenarios)"""
     if tool and hasattr(ctx, "obj") and ctx.obj:
         ctx.obj.container_tool = tool
     ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
@@ -224,8 +225,8 @@ def sw_chaos(
 
 @sw_app.command(name="all")
 def sw_all(ctx: typer.Context) -> None:
-    """Run the full software testing suite (unit, structural, integration)"""
-    suites = ["lint", "unit", "structural", "integration", "chaos"]
+    """Run the full software testing suite (Tiers 1-4)"""
+    suites = ["lint", "unit", "logic", "fleet", "chaos"]
     success = True
     for s in suites:
         ok = asyncio.run(ctx.obj.run_suite(s))
@@ -236,12 +237,13 @@ def sw_all(ctx: typer.Context) -> None:
 @sw_app.command(name="build")
 def sw_build(ctx: typer.Context) -> None:
     """Rebuild all test images"""
-    asyncio.run(ctx.obj.build_all())
+    asyncio.run(ctx.obj.build_images())
 
 @sw_app.command(name="cleanup")
 def sw_cleanup(ctx: typer.Context) -> None:
     """Tear down all test containers and volumes"""
-    asyncio.run(ctx.obj.cleanup_all())
+    # TestRunner cleanup logic needed in qa_utils.py
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -250,9 +252,6 @@ def sw_cleanup(ctx: typer.Context) -> None:
 
 def get_hw_suite_and_env(ctx: typer.Context) -> tuple[SuiteConfig, EnvironmentConfig]:
     """Helper to resolve the hardware suite and its environment configuration."""
-    from rich.console import Console
-    console = Console()
-    
     runner: TestRunner = ctx.obj
     suite_name = "test-hw"
     if suite_name not in runner.cfg.suites:
@@ -311,8 +310,6 @@ async def resolve_remote_socket_path(runner: TestRunner, ssh_args: str) -> str:
 @hw_app.command(name="build")
 def hw_build(ctx: typer.Context) -> None:
     """Build required container images locally."""
-    from rich.console import Console
-    console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
     tool = runner.container_tool
@@ -335,8 +332,6 @@ def hw_check_env(
     min_gb: int = typer.Option(10, "--min-gb", help="Minimum required free space in GB.")
 ) -> None:
     """Verify environment, disk space, and container engine."""
-    from rich.console import Console
-    console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
     daq_cfg, _net_cfg, obs_cfg = load_hitl_configs(env_cfg)
@@ -432,8 +427,6 @@ async def ensure_docker_context(runner: TestRunner, name: str, ssh_host_uri: str
 @hw_app.command(name="deploy")
 def hw_deploy(ctx: typer.Context) -> None:
     """Initialize containers on head node and remote DAQ node."""
-    from rich.console import Console
-    console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
     daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
@@ -490,8 +483,6 @@ def hw_deploy(ctx: typer.Context) -> None:
 @hw_app.command(name="clean")
 def hw_clean(ctx: typer.Context) -> None:
     """Tear down containers and wipe physical data directory."""
-    from rich.console import Console
-    console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
     daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
@@ -524,8 +515,6 @@ def hw_clean(ctx: typer.Context) -> None:
 @hw_app.command(name="attach")
 def hw_attach(ctx: typer.Context) -> None:
     """Enter the headnode container shell for debugging."""
-    from rich.console import Console
-    console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
     tool = runner.container_tool

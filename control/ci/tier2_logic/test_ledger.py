@@ -10,9 +10,12 @@ from __future__ import annotations
 import pathlib
 import socket
 from datetime import UTC, datetime
+
 import pytest
-from control.utils.run_state import RunStateManager, LockError
+
 from control.utils.pydantic_config_models import RunStateLedger
+from control.utils.run_state import LockError, RunStateManager
+
 
 def test_when_lock_stale_then_self_heals(tmp_path: pathlib.Path) -> None:
     """

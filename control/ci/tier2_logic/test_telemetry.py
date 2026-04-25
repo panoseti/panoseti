@@ -10,10 +10,11 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
+import pytest
 from panoseti_grpc.telemetry.logger import get_logger
+
 
 def test_when_logger_called_then_jsonl_output_is_valid(tmp_path: pathlib.Path) -> None:
     """

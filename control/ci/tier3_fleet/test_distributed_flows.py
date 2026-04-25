@@ -8,16 +8,15 @@ Verifies that start/stop commands propagate correctly across N nodes.
 from __future__ import annotations
 
 import os
-from ipaddress import IPv4Address
-from unittest.mock import patch
 
 import pytest
 
+from ci.fixtures.fleet import make_fleet
+from ci.fixtures.state_probe import StateProbe
 from control.start import start_run
 from control.stop import stop_run
 from control.utils import config_file
-from ci.integration.fleet import make_fleet
-from ci.fixtures.state_probe import StateProbe
+
 
 def is_in_ci() -> bool:
     return os.path.exists("/.dockerenv")

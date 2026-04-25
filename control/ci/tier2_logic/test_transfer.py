@@ -7,14 +7,14 @@ Logic tests for the transfer pipeline using isolated state and mocked gRPC.
 from __future__ import annotations
 
 import pathlib
-import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ci.fixtures.mocks import MockDaqNode
 from control.transfer.daemon import _process_job, _sweep_stranded_jobs
 from control.transfer.queue import TransferQueue
-from ci.fixtures.mocks import MockDaqNode
+
 
 @pytest.mark.asyncio
 async def test_when_transfer_job_processed_then_reaches_archived(
@@ -41,10 +41,11 @@ async def test_when_transfer_job_processed_then_reaches_archived(
     mock_daq = MockDaqNode("192.168.0.10")
     
     # Inject mock into the daemon's gRPC client factory
-    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client):
-        # 3. Mock rsync (subprocess.run)
-        with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
-            success = await _process_job(job)
+    with (
+        patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
+        patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0))
+    ):
+        success = await _process_job(job)
             
     assert success is True
     
@@ -67,12 +68,14 @@ async def test_when_manifest_fails_then_transfer_aborts(
     mock_daq = MockDaqNode("192.168.0.10")
     mock_daq.set_manifest_failure("Disk full on DAQ")
     
-    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client):
-        with patch("control.transfer.daemon.subprocess.run") as mock_rsync:
-            success = await _process_job(job)
+    with (
+        patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
+        patch("control.transfer.daemon.subprocess.run") as mock_rsync
+    ):
+        success = await _process_job(job)
             
-            assert success is False
-            mock_rsync.assert_not_called()
+        assert success is False
+        mock_rsync.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_when_rsync_fails_then_job_returns_false(
@@ -89,9 +92,11 @@ async def test_when_rsync_fails_then_job_returns_false(
     
     mock_daq = MockDaqNode("192.168.0.10")
     
-    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client):
-        with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="network loss")):
-            success = await _process_job(job)
+    with (
+        patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
+        patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="network loss"))
+    ):
+        success = await _process_job(job)
             
     assert success is False
 
@@ -124,9 +129,11 @@ async def test_when_file_corrupted_then_verify_fails(
     job = transfer_job_factory(run_name=run_name, head_data_dir=head_root)
     mock_daq = MockDaqNode("192.168.0.10")
     
-    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client):
-        with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
-            success = await _process_job(job)
+    with (
+        patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
+        patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0))
+    ):
+        success = await _process_job(job)
             
     assert success is False
     # Verify cleanup was bypassed (mock cleanup never called)

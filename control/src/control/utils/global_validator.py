@@ -71,6 +71,7 @@ def validate_all(
     daq_config: dict[str, Any] | DaqConfig | None = None,
     network_config: dict[str, Any] | NetworkConfig | None = None,
     firmware_config: dict[str, Any] | FirmwareConfig | None = None,
+    quabo_uids: dict[str, Any] | QuaboUids | None = None,
 ) -> bool:
     """Unified entry point for global validation."""
     from control.utils.pydantic_config_models import (

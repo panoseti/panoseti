@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import pytest
 from panoseti_grpc.daq_control.client_models import (
+    CleanupDataParameters,
     GenerateManifestParameters,
-    CleanupDataParameters
 )
+
 from ci.fixtures.mocks import MockDaqNode
+
 
 @pytest.mark.asyncio
 async def test_when_daq_mock_called_then_params_match_grpc_schema():
@@ -33,16 +35,17 @@ async def test_when_daq_mock_called_then_params_match_grpc_schema():
     # Verify the schema validation passes for these params
     # This prevents 'mock drift' where we change the production code 
     # but forget to update the mocks.
-    GenerateManifestParameters(**params)
+    GenerateManifestParameters.model_validate(params)
     
     # Simulate a cleanup call
     cleanup_params = {
         "data_dir": "/data",
         "run_dir": "test_run.pffd",
         "module_id": [200],
-        "mode": "CLEANUP_SELECTIVE"
+        "mode": "CLEANUP_SELECTIVE",
+        "delete_patterns": ["*.pff"]
     }
-    CleanupDataParameters(**cleanup_params)
+    CleanupDataParameters.model_validate(cleanup_params)
     
     # Execute call on mock to ensure it doesn't crash
     resp = await mock_node.client.GenerateManifest(params)

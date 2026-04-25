@@ -7,15 +7,15 @@ Verifies the 'Rollback Ladder' and post-mortem snapshot integrity.
 
 from __future__ import annotations
 
-import asyncio
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from control.start import start_run
 from ci.fixtures.mocks import MockDaqNode
 from ci.fixtures.state_probe import StateProbe
+from control.start import start_run
+
 
 def is_in_ci() -> bool:
     return os.path.exists("/.dockerenv")
@@ -46,14 +46,17 @@ async def test_when_one_node_fails_during_start_then_all_nodes_rolled_back(
     
     # Map IPs to our mock clients
     def mock_client_factory(host, port):
-        if host == "192.168.0.10": return mock_daq0.client
-        if host == "192.168.0.20": return mock_daq1.client
+        if host == "192.168.0.10":
+            return mock_daq0.client
+        if host == "192.168.0.20":
+            return mock_daq1.client
         return MagicMock()
 
-    with patch("control.start.AsyncDaqControlClient", side_effect=mock_client_factory), \
-         patch("control.start.ph_baseline_file_ok", return_value=True), \
-         patch("control.start._check_daq_reachability"):
-        
+    with (
+        patch("control.start.AsyncDaqControlClient", side_effect=mock_client_factory),
+        patch("control.start.ph_baseline_file_ok", return_value=True),
+        patch("control.start._check_daq_reachability")
+    ):
         # 2. Execute start_run - this should raise due to Node 1 failure
         with pytest.raises(Exception, match="Node 1 Hardware Failure"):
             await start_run(daq_config, run_name=run_name, no_hv=True)

@@ -20,7 +20,7 @@ class PanoPathsTest(PanoPaths):
     @classmethod
     def integration_configs_root(cls) -> Path:
         """Root for all integration test configurations."""
-        return cls.ci_root() / "integration" / "configs"
+        return cls.ci_root() / "fixtures" / "configs"
 
     @classmethod
     def test_state_root(cls) -> Path:

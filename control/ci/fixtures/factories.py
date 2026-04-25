@@ -10,10 +10,10 @@ import datetime
 import os
 import pathlib
 import uuid
-from typing import Any
 
 from control.transfer.models import TransferJob, TransferNodeSpec
-from control.utils.pydantic_config_models import DaqConfig, NetworkConfig, ObsConfig
+from control.utils.pydantic_config_models import DaqConfig
+
 
 def make_transfer_job(
     run_name: str | None = None,

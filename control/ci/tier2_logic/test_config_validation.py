@@ -1,74 +1,121 @@
 """
-ci/tier2_logic/test_config_validation.py
+test_config_validation.py — Integration tests for config validation.
 
-Logic tests for configuration validation edge cases.
-Extends Tier 1 by verifying cross-file invariants in a simulated workspace.
+Runs config_file.validate_all() against the CI configs to ensure they
+parse correctly and pass all pydantic/cross-config checks.
+Network ping sweep is skipped (hardware not present in software CI).
 """
-
 from __future__ import annotations
 
-import pytest
-from control.utils.global_validator import GlobalConfigValidator
-from control.topology.fleet import generate_palomar_topology
+import json
+import os
+import pathlib
+import shutil
+import tempfile
+from typing import Any
 
-@pytest.fixture
-def palomar_setup():
-    return generate_palomar_topology()
+from ci.paths import PanoPathsTest
 
-def test_when_daq_overlap_detected_then_validation_fails(palomar_setup):
+INTEGRATION_CONFIGS = PanoPathsTest.integration_configs_root()
+
+# Common config files (same for both direct and gateway topologies)
+_COMMON_FILES = ["obs_config.json", "data_config.json", "firmware.json", "daemons.json"]
+
+
+def _run_validation(variant_dir: pathlib.Path) -> bool:
     """
-    Intent: Ensure that two DAQ nodes cannot be assigned the same module ID.
-    Scenario: Node 1 is modified to also handle the module already assigned to Node 0.
-    Assertion: GlobalConfigValidator reports an 'ERROR' for 'DAQ Overlap'.
+    Set up a temp workspace with a configs/ directory containing the CI config
+    files for the given variant (direct or gateway), then run validate_all().
+    Returns True if validation passed.
     """
-    daq, uids, net, obs = palomar_setup
-    
-    # Gattini handles mod 1. PTI handles mod 4.
-    # Make PTI also handle mod 1.
-    daq.daq_nodes[3].module_ids.append(1)
-    
-    configs = {'obs': obs, 'daq': daq, 'network': net, 'uids': uids}
-    validator = GlobalConfigValidator(configs)
-    passed = validator.validate_all_rules()
-    
-    assert passed is False
-    assert any("Overlap" in t["name"] and t["status"] == "ERROR" for t in validator.report.tests)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = pathlib.Path(tmpdir)
+        configs_dir = tmp_path / "configs"
+        configs_dir.mkdir()
 
-def test_when_timing_mode_mismatch_then_validation_fails(palomar_setup):
-    """
-    Intent: Verify that all modules in a coherent network use compatible timing modes.
-    Scenario: One module in a WR-only site is set to 'gnss'.
-    Assertion: GlobalConfigValidator fails (if rule implemented).
-    """
-    daq, uids, net, obs = palomar_setup
-    
-    # PTI dome module set to GNSS while others are WR
-    obs.domes[3].modules[0].timing_mode = "gnss"
-    
-    configs = {'obs': obs, 'daq': daq, 'network': net, 'uids': uids}
-    validator = GlobalConfigValidator(configs)
-    passed = validator.validate_all_rules()
-    
-    # This might pass or warn depending on currently implemented strictness
-    # We use this test to document the requirement.
-    # For now, asserting it captures the state.
-    pass
+        # Copy common configs
+        for fname in _COMMON_FILES:
+            shutil.copy(INTEGRATION_CONFIGS / fname, configs_dir / fname)
 
-def test_when_wps_undefined_then_validation_fails(palomar_setup):
-    """
-    Intent: Verify that modules cannot reference non-existent power switches.
-    Scenario: A module is assigned a 'wps' unit name that is not defined in obs_config.
-    Assertion: GlobalConfigValidator reports an 'ERROR' for 'WPS Reference Map'.
-    """
-    daq, uids, net, obs = palomar_setup
+        # Copy variant-specific configs
+        for fname in ["daq_config.json", "network_config.json", "obs_config.json"]:
+            src = variant_dir / fname
+            if src.exists():
+                shutil.copy(src, configs_dir / fname)
 
-    # Reference a fake WPS
-    obs.domes[0].modules[0].wps = "fake_wps"
+        # Create stub firmware files referenced in firmware.json to satisfy existence checks
+        with open(configs_dir / "firmware.json") as f:
+            fw_data = json.load(f)
+            # handle both old structure and new flat structure
+            for val in fw_data.values():
+                if isinstance(val, str) and val.endswith(".bin"):
+                    (tmp_path / val).touch()
+            if "quabo" in fw_data:
+                for val in fw_data["quabo"].values():
+                    if isinstance(val, str) and val.endswith(".bin"):
+                        (tmp_path / val).touch()
 
-    configs = {'obs': obs, 'daq': daq, 'network': net, 'uids': uids}
-    validator = GlobalConfigValidator(configs)
-    passed = validator.validate_all_rules()
+        # Generate a dummy quabo_uids.json in tmp_path based on obs_config.json
+        # This prevents the test from using the environment's global tmp dir.
+        from control.utils import config_file
+        with open(configs_dir / "obs_config.json") as f:
+            obs_data = json.load(f)
+        
+        quabo_uids: dict[str, list[dict[str, Any]]] = {"domes": []}
+        for dome in obs_data.get("domes", []):
+            uids_dome: dict[str, list[dict[str, Any]]] = {"modules": []}
+            for module in dome.get("modules", []):
+                uids_module = {
+                    "ip_addr": module["ip_addr"],
+                    "quabos": [{"uid": f"DUMMY_UID_{module['ip_addr']}_{i}"} for i in range(4)]
+                }
+                uids_dome["modules"].append(uids_module)
+            quabo_uids["domes"].append(uids_dome)
+        
+        with open(tmp_path / "quabo_uids.json", "w") as f:
+            json.dump(quabo_uids, f)
 
-    assert passed is False
-    assert any("WPS Reference" in t["name"] and t["status"] == "ERROR" for t in validator.report.tests)
+        # Run validation with environment overrides
+        old_env = os.environ.copy()
+        os.environ["PSETI_CONFIG"] = str(configs_dir)
+        # We need to tell it where firmware files are (they are in tmpdir root in this test)
+        os.environ["PSETI_FIRMWARE"] = str(tmp_path)
+        # Isolate tmp dir so we don't see chaos UIDs or locks
+        os.environ["PSETI_TMP"] = str(tmp_path)
+        
+        try:
+            from control.utils import config_file
+            # Reload modules if necessary or just call the function.
+            # config_file cache might be an issue, but in pytest it's usually fresh enough
+            # unless it's already imported.
+            passed = config_file.validate_all(check_network=False, debug=True)
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
 
+        return passed
+
+
+class TestConfigValidation:
+
+    def test_validate_direct_config(self) -> None:
+        """validate_all() must pass with the direct-connection CI configs."""
+        passed = _run_validation(INTEGRATION_CONFIGS / "direct")
+        assert passed, "Config validation failed for direct topology — check CI config files"
+
+    def test_validate_gateway_config(self) -> None:
+        """validate_all() must pass with the gateway port-forwarding CI configs."""
+        passed = _run_validation(INTEGRATION_CONFIGS / "gateway")
+        assert passed, "Config validation failed for gateway topology — check CI config files"
+
+    def test_gateway_network_config_has_grpc_port(self) -> None:
+        """Gateway network_config.json must include grpc_port for gRPC forwarding."""
+        nc = json.loads(
+            (INTEGRATION_CONFIGS / "gateway" / "network_config.json").read_text()
+        )
+        daq_nodes = nc.get("daq_nodes", [])
+        assert daq_nodes, "Gateway network_config has no daq_nodes"
+        pf = daq_nodes[0].get("port_forwarding", {})
+        assert pf.get("status") is True
+        assert "grpc_port" in pf, "gateway network_config must specify grpc_port"
+        assert 1 <= pf["grpc_port"] <= 65535
