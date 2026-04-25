@@ -9,17 +9,23 @@ class PanoPaths:
     """
     Central utility for PSETI directory resolution.
     Supports environment variable overrides for custom workspace layouts.
-    
+
     Overrideable Variables:
       PSETI_ROOT:        Root of the panoseti-software repository.
       PSETI_CONTROL:     Root of the control package (default: PSETI_ROOT/control).
       PSETI_CONFIG:      Directory for JSON configs (default: PSETI_CONTROL/configs).
       PSETI_TMP:         Directory for transient files (default: PSETI_CONTROL/tmp).
+      PSETI_STATE:       Directory for state/ tree (default: PSETI_CONTROL/state).
       PSETI_QUABOS:      Directory for Quabo metadata (default: PSETI_CONTROL/quabos).
       PSETI_LOGS:        Directory for system logs (default: PSETI_CONTROL/logs).
       PSETI_FIRMWARE:    Directory for firmware binaries (default: PSETI_CONTROL/firmware).
       PSETI_WR:          Directory for White Rabbit files (default: PSETI_CONTROL/wr).
       PSETI_DAQ_SCRIPTS: Directory for DAQ deployment scripts.
+      PSETI_LOCKS_DIR:   Directory for lock files (default: PSETI_STATE/locks).
+      PSETI_RUNS_DIR:    Directory for run state (default: PSETI_STATE/runs).
+      PSETI_TQ_DIR:      Directory for transfer queue (default: PSETI_STATE/transfer/queue).
+      PSETI_TM_DIR:      Directory for transfer manifests (default: PSETI_STATE/transfer/manifests).
+      PSETI_CALIB_DIR:   Directory for calibration artifacts (default: PSETI_STATE/calibration).
     """
 
     @classmethod
@@ -122,6 +128,86 @@ class PanoPaths:
         return cls.base_dir() / "src/control/daemons"
 
     @classmethod
+    def state_dir(cls) -> pathlib.Path:
+        """Directory for state/ tree (locks, runs, transfer, calibration)."""
+        override = os.environ.get("PSETI_STATE")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.base_dir() / "state"
+
+    @classmethod
+    def locks_dir(cls) -> pathlib.Path:
+        """Directory for lock files."""
+        override = os.environ.get("PSETI_LOCKS_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.state_dir() / "locks"
+
+    @classmethod
+    def runs_dir(cls) -> pathlib.Path:
+        """Directory for run state files."""
+        override = os.environ.get("PSETI_RUNS_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.state_dir() / "runs"
+
+    @classmethod
+    def transfer_queue_dir(cls) -> pathlib.Path:
+        """Directory for transfer queue (pending, active, completed, failed)."""
+        override = os.environ.get("PSETI_TQ_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.state_dir() / "transfer" / "queue"
+
+    @classmethod
+    def transfer_manifests_dir(cls) -> pathlib.Path:
+        """Directory for transfer manifests."""
+        override = os.environ.get("PSETI_TM_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.state_dir() / "transfer" / "manifests"
+
+    @classmethod
+    def calibration_dir(cls) -> pathlib.Path:
+        """Directory for calibration artifacts."""
+        override = os.environ.get("PSETI_CALIB_DIR")
+        if override:
+            return pathlib.Path(override).resolve()
+        return cls.state_dir() / "calibration"
+
+    @classmethod
+    def snapshots_dir(cls, run_name: str) -> pathlib.Path:
+        """Directory for run-specific snapshots (e.g., config/hk snapshots)."""
+        return cls.state_dir() / "snapshots" / run_name
+
+    @classmethod
+    def daemon_logs_dir(cls, name: str) -> pathlib.Path:
+        """Directory for a specific daemon's logs."""
+        return cls.state_dir() / "logs" / name
+
+    @classmethod
+    def calibration_file(cls, filename: str) -> pathlib.Path:
+        """Return a fully-qualified Path for a calibration artifact."""
+        return cls.calibration_dir() / filename
+
+    @classmethod
+    def ensure_state_dirs(cls) -> None:
+        """Creates all state/ subdirectories."""
+        for d in [
+            cls.locks_dir(),
+            cls.runs_dir(),
+            cls.transfer_queue_dir() / "pending",
+            cls.transfer_queue_dir() / "active",
+            cls.transfer_queue_dir() / "completed",
+            cls.transfer_queue_dir() / "failed",
+            cls.transfer_manifests_dir(),
+            cls.calibration_dir(),
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+        # Create snapshots parent
+        (cls.state_dir() / "snapshots").mkdir(parents=True, exist_ok=True)
+
+    @classmethod
     def ensure_dirs(cls) -> None:
         """Creates transient workspace directories if they do not exist."""
         for d in [
@@ -129,3 +215,4 @@ class PanoPaths:
             cls.logs_dir(),
         ]:
             d.mkdir(parents=True, exist_ok=True)
+        cls.ensure_state_dirs()
