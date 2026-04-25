@@ -28,7 +28,7 @@ dependencies = [
     "networkx",
     "pyvis",
     "jsonpickle",
-    "panoseti_grpc>=0.4.9",
+    "panoseti_grpc>=0.4.10",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,7 @@
 
 This document describes the Hardware-in-the-Loop (HITL) testing infrastructure for PANOSETI. These tests bridge the gap between pure simulations and production deployments by orchestrating real hardware components across a physical network.
 
-## 🌌 Lab Topology
+## 🌌 HW-SW System Topology
 
 The HITL environment consists of a physical head node, a dedicated router, a DAQ node, and a module containing 4 physical Quabos.
 
@@ -15,31 +15,40 @@ graph TD
 
     subgraph "Network Core"
         R[Router Gateway - 192.168.88.152]
-        WPS[wps-1: :60080]
+        WPS[wps-gh-runner]
+        WR[White Rabbit - 192.168.1.254]
+        GNSS[U-blox F9T + Antenna]
     end
 
     subgraph "DAQ Node - 192.168.0.228"
-        DN_S[panoseti-server]
+        DN_S["
+        pseti-grpc server
+        - daq_control
+        - daq_data
+        "]
         HP[Hashpipe]
     end
 
-    subgraph "Observatory Module"
-        Q1[Quabo 192.168.3.248]
-        Q2[Quabo 192.168.3.249]
-        Q3[Quabo 192.168.3.250]
-        Q4[Quabo 192.168.3.251]
-        WR[White Rabbit - 192.168.1.254]
+    subgraph "Module 254" 
+        Q0[Quabo 192.168.3.248]
+        Q1[Quabo 192.168.3.249]
+        Q2[Quabo 192.168.3.250]
+        Q3[Quabo 192.168.3.251]
     end
+
+    WR --> Q0
 
     GHR --> HN_S
     HN_S -- "SSH (Port 22)" --> R
     R -- "Port Forwarding" --> DN_S
-    HN_S -- "Control (60000-60007)" --> R
-    R -- "Port Forwarding" --> Q1
+    HN_S -- "Daq Control (60000-60007)" --> R
+    R <-- "Port Forwarding" --> Q0
     HN_S -- "HTTP" --> WPS
-    DN_S -- "Control" --> HP
-    Q1 & Q2 & Q3 & Q4 -- "Fiber" --> HP
-    WPS -- "Socket 1" --> Q1
+    DN_S <-- "Pipe" --> HP
+    DN_S <-- "UDS" --> HP
+    Q0 & Q1 & Q2 & Q3 --> HP
+    WPS -- "Socket 6" --> Q0
+    GNSS -- "SMA" --> Q0
 ```
 
 ## 🛠️ Deployment Strategy: Compose-over-SSH
