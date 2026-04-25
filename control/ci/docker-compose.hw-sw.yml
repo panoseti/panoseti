@@ -88,8 +88,6 @@ services:
       - IPC_LOCK
       - SYS_NICE
     shm_size: '2gb'
-    command: >
-      /bin/bash -c "pseti --install-completion"
     volumes:
       - panoseti_mnt:/mnt/panoseti/
     environment:
@@ -101,6 +99,7 @@ services:
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
       DAQ_DATA_DIR: "/mnt/panoseti"
+      GRPC_SERVER_CONFIG: "/app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
     restart: always
 
 volumes:

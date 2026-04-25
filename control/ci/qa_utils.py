@@ -184,6 +184,9 @@ class TestRunner:
     async def build_all(self):
         self._header("REBUILDING IMAGES")
         processed_files = set()
+        
+        # We build services one by one to avoid overwhelming system resources 
+        # (RPC EOF errors) during the export/compression phase.
         for suite in self.cfg.suites.values():
             if not suite.requires_docker:
                 continue
@@ -194,14 +197,28 @@ class TestRunner:
                 if env_cfg:
                     compose_file = env_cfg.compose_file
             
-            if not compose_file:
+            if not compose_file or compose_file in processed_files:
                 continue
 
-            if compose_file not in processed_files:
-                project_name = f"{self.project_prefix}-build"
-                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} build"
+            project_name = f"{self.project_prefix}-build"
+            
+            # Use 'compose config' to find all services in this file
+            config_cmd = f"{self.container_tool} compose -f {CONTROL_ROOT}/{compose_file} config --services"
+            res = await self._run_cmd(config_cmd, env={"COMPOSE_PROJECT_NAME": project_name}, capture=True)
+            
+            if res.ok and res.stdout:
+                services = res.stdout.strip().split("\n")
+                for service in services:
+                    from rich.console import Console
+                    Console().print(f"[cyan]Building service: {service} (from {compose_file})...[/cyan]")
+                    cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} build {service}"
+                    await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
+            else:
+                # Fallback to full build if services couldn't be parsed
+                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} build"
                 await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
-                processed_files.add(compose_file)
+                
+            processed_files.add(compose_file)
 
     # ── Internal Helpers ──────────────────────────────────────────────────────
 

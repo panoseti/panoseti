@@ -323,8 +323,11 @@ def hw_build(ctx: typer.Context) -> None:
         console.print("[dim]Ensuring local Podman socket is active...[/dim]")
         asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
     
-    build_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode --profile daqnode build"
-    asyncio.run(runner._run_cmd(build_cmd, env=env))
+    # Build profiles one by one to avoid resource exhaustion and RPC timeouts during export
+    for profile in ["headnode", "daqnode"]:
+        console.print(f"[cyan]Building profile: {profile}...[/cyan]")
+        build_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile {profile} build"
+        asyncio.run(runner._run_cmd(build_cmd, env=env))
 
 @hw_app.command(name="check-env")
 def hw_check_env(
