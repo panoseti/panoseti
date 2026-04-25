@@ -491,6 +491,33 @@ class RunStateLedger(BaseStrictModel):
     next_action_not_before: datetime | None = Field(default=None)
 
 
+# ---------------------------------
+# --- Transfer Queue Job Models ---
+# ---------------------------------
+
+class TransferNodeSpec(BaseStrictModel):
+    """Per-DAQ-node spec serialized into a transfer queue job."""
+    ip_addr: IPvAnyAddress
+    username: str
+    data_dir: str
+    module_ids: list[int]
+    port_forwarding: PortForwarding | None = None
+
+
+class TransferJob(BaseStrictModel):
+    """Typed schema for a job in the transfer queue (replaces raw dict)."""
+    schema_version: Literal[1] = 1
+    run_name: str
+    head_data_dir: str
+    head_node_username: str
+    created_at: datetime
+    attempts: int = 0
+    no_cleanup: bool = False
+    no_collect: bool = False
+    skip_verify: bool = False
+    daq_nodes: list[TransferNodeSpec]
+
+
 # ---------------------------
 # --- PFF Metadata Models ---
 # ---------------------------
