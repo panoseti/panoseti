@@ -16,7 +16,6 @@ without SSH — equivalent to a real rsync in the shared-network case.
 from __future__ import annotations
 
 import contextlib
-import os
 import pathlib
 import time
 
@@ -122,10 +121,6 @@ class TestDataCollectionTransaction:
             "run_dir":  run_params["run_dir"],
         })
 
-    @pytest.mark.skipif(
-        not os.getenv("IN_DOCKER_CI"),
-        reason="Requires shared /data Docker volume (Docker CI stack only)",
-    )
     def test_cleanup_not_called_if_copy_fails(
         self, daq_control_direct, run_params, ensure_clean_daq_state
     ) -> None:

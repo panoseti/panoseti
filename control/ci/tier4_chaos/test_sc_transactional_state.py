@@ -647,10 +647,12 @@ def mock_daq_config_for_headnode():
         cfg = json.load(f)
     
     import tempfile
-    # Create a real temporary directory for the run dirs
-    # Note: this leak is okay in CI, but better would be a global fixture
-    tmp_data_dir = tempfile.mkdtemp()
-    
+    # Prefer the isolated HEAD_DATA_DIR set by auto_isolate so the subprocess
+    # env and the daq_config.json written here share the same path.  Fall back
+    # to a fresh tempdir only when running outside the pytest harness.
+    tmp_data_dir = os.environ.get("HEAD_DATA_DIR") or tempfile.mkdtemp()
+    os.makedirs(tmp_data_dir, exist_ok=True)
+
     tester_ip = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
     cfg["head_node_ip_addr"] = tester_ip
     cfg["head_node_data_dir"] = tmp_data_dir

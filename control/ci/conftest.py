@@ -129,6 +129,12 @@ def auto_isolate(
     monkeypatch.setenv("PSETI_STATE", str(state_tmp))
     monkeypatch.setenv("PSETI_CONTROL", str(ctl_tmp))
     monkeypatch.setenv("PSETI_TMP", str(tmp_tmp))
+
+    # Expose isolated data dirs so subprocesses (e.g. start.py) and fixtures
+    # (e.g. head_data_dir) resolve to tmp_path instead of the hardcoded /data/head.
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     
     # 4. Telemetry and Database Isolation
     # Assign unique Redis DBs and Loki Tenant IDs based on xdist worker_id

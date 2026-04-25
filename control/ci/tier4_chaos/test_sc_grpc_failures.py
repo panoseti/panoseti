@@ -634,18 +634,21 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
     data_config = config_file.get_data_config()
     network_config = config_file.get_network_config()
 
-    # Ensure daq_config handles all modules in the chaos quabo_uids to avoid validation errors
+    # Concentrate all modules on node 0 and silence remaining nodes so exactly
+    # 2 StartDaq calls are expected: 1 UNAVAILABLE + 1 retry success.
     mids = []
     for dome in quabo_uids.domes:
         for mod in dome.modules:
             mids.append(mod.id)
     daq_config.daq_nodes[0].module_ids = mids
+    for node in daq_config.daq_nodes[1:]:
+        node.module_ids = []
     daq_config.head_node_container = True
 
     from control.utils.run_state import RunStateManager
     RunStateManager().clear_state()
 
-    # Mock StartDaq: 
+    # Mock StartDaq:
     # 1. First call: raise grpc.RpcError with UNAVAILABLE
     # 2. Second call: return True (Success)
     call_count = 0

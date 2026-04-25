@@ -418,16 +418,15 @@ def daq_data_dir() -> pathlib.Path:
 
 
 @pytest.fixture
-def head_data_dir() -> pathlib.Path:
-    """Head node data directory (where collected data lands)."""
-    p = pathlib.Path(HEAD_DATA_DIR)
-    try:
-        p.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pytest.skip(
-            f"Cannot create head data dir {p} — requires the Docker CI stack "
-            "(DAQ volume mounted at /data)"
-        )
+def head_data_dir(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Head node data directory (where collected data lands).
+
+    Uses tmp_path so tests run on any host without a mounted /data volume.
+    In Docker CI with shared volumes the auto_isolate HEAD_DATA_DIR env var
+    points here too, keeping subprocesses and gRPC assertions consistent.
+    """
+    p = tmp_path / "head_data"
+    p.mkdir(parents=True, exist_ok=True)
     return p
 
 
