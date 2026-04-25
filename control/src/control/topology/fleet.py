@@ -1,17 +1,23 @@
 """
 fleet.py
 
-Utilities to programmatically generate n-node PANOSETI fleet configurations.
+Utilities to programmatically generate n-node PANOSETI fleet configurations, 
+supporting both synthetic scaling tests and realistic multi-site (Palomar) topologies.
 """
 
 from __future__ import annotations
 
 import random
 from ipaddress import IPv4Address
+from typing import Any
 
 from control.utils.pydantic_config_models import (
     DaqConfig,
     DaqNode,
+    NetworkConfig,
+    ObsConfig,
+    ObsDomeConfig,
+    ObsModuleConfig,
     PortForwarding,
     QuaboUidDome,
     QuaboUidEntry,
@@ -28,21 +34,18 @@ def generate_fleet_configs(
     daq_base_ip: str = "192.168.0.100",
     module_base_ip: str = "192.168.3.10",
     module_limit: int = 4
-) -> tuple[DaqConfig, QuaboUids]:
+) -> tuple[DaqConfig, QuaboUids, NetworkConfig, ObsConfig]:
     """
-    Programmatically creates a set of configurations for an n-node fleet.
+    Programmatically creates a complete set of configurations for an n-node fleet.
 
-    Args:
-        num_daq_nodes: Number of DAQ nodes in the fleet.
-        modules_per_node: How many modules each node should manage.
-        subnet_probability: Probability (0-1) that a node is in a subnet (requires port forwarding).
-        head_node_ip: IP address of the head node.
-        daq_base_ip: Base IP for DAQ nodes (increments from here).
-        module_base_ip: Base IP for modules (increments from here).
-        module_limit: Bottleneck threshold for the structural validator.
+    Returns:
+        (DaqConfig, QuaboUids, NetworkConfig, ObsConfig)
     """
     daq_nodes = []
-    all_modules = []
+    quabo_uid_modules = []
+    network_modules = []
+    network_daq_nodes = []
+    obs_modules = []
 
     head_ip_obj = IPv4Address(head_node_ip)
     daq_start = int(IPv4Address(daq_base_ip))
@@ -51,9 +54,10 @@ def generate_fleet_configs(
     current_module_id = 1
 
     for i in range(num_daq_nodes):
-        node_ip = str(IPv4Address(daq_start + i))
+        node_ip_str = str(IPv4Address(daq_start + i))
+        node_ip = IPv4Address(node_ip_str)
 
-        # Decide if this node is in a subnet
+        # Decide if this node is in a subnet (requires port forwarding)
         pf = None
         if random.random() < subnet_probability:
             # Create a gateway IP in a different range
@@ -61,26 +65,57 @@ def generate_fleet_configs(
             pf = PortForwarding(
                 status=True,
                 gw_ip=IPv4Address(gw_ip),
+                port=22, # SSH/rsync
                 grpc_port=50051 + i
             )
+            network_daq_nodes.append({
+                "ip_addr": node_ip,
+                "port_forwarding": pf.model_dump()
+            })
 
         managed_module_ids = []
         for _j in range(modules_per_node):
-            mod_ip = str(IPv4Address(module_start + (current_module_id - 1) * 4))
+            mod_ip_str = str(IPv4Address(module_start + (current_module_id - 1) * 4))
+            mod_ip = IPv4Address(mod_ip_str)
 
-            module = QuaboUidModule(
-                ip_addr=IPv4Address(mod_ip),
+            # 1. QuaboUids Module
+            quabo_module = QuaboUidModule(
+                ip_addr=mod_ip,
                 quabos=[QuaboUidEntry(uid=f"q_{current_module_id}_{k}") for k in range(4)],
                 id=current_module_id
             )
-            all_modules.append(module)
+            quabo_uid_modules.append(quabo_module)
+            
+            # 2. NetworkConfig Module (Port Forwarding for Quabos)
+            if pf:
+                # Realistic reboot/cmd ports
+                network_modules.append({
+                    "ip_addr": mod_ip,
+                    "port_forwarding": {
+                        "status": True,
+                        "gw_ip": pf.gw_ip,
+                        "reboot_port": [69, 60004, 60005, 60006],
+                        "cmd_port": [60000, 60001, 60002, 60003]
+                    }
+                })
+
+            # 3. ObsConfig Module
+            obs_module = ObsModuleConfig(
+                mobo_serialno=f"M{current_module_id:02d}",
+                quabo_version="qfp",
+                ip_addr=mod_ip,
+                timing_mode="wr",
+                id=current_module_id
+            )
+            obs_modules.append(obs_module)
+
             managed_module_ids.append(current_module_id)
             current_module_id += 1
 
         daq_node = DaqNode(
             username="panoseti",
             data_dir="/data",
-            ip_addr=IPv4Address(node_ip),
+            ip_addr=node_ip,
             module_ids=managed_module_ids,
             bindhost="0.0.0.0",
             port_forwarding=pf
@@ -96,8 +131,119 @@ def generate_fleet_configs(
     )
 
     quabo_uids = QuaboUids(
-        domes=[QuaboUidDome(num=0, modules=all_modules)]
+        domes=[QuaboUidDome(num=0, modules=quabo_uid_modules)]
     )
 
-    return daq_config, quabo_uids
+    network_config = NetworkConfig(
+        modules=network_modules,
+        daq_nodes=network_daq_nodes
+    )
 
+    obs_config = ObsConfig(
+        name="synthetic_fleet",
+        domes=[ObsDomeConfig(
+            name="dome0",
+            obslat=37.3425,
+            obslon=-121.6377,
+            obsalt=1283.0,
+            modules=obs_modules
+        )]
+    )
+
+    return daq_config, quabo_uids, network_config, obs_config
+
+
+def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, ObsConfig]:
+    """
+    Generates a realistic 4-site Palomar topology as described in documentation.
+    Sites: Gattini, Winter, Fern, PTI.
+    Head Node: 10.200.146.1
+    """
+    sites = [
+        {"name": "Gattini", "gw_ip": "10.200.146.11", "node_ip": "192.168.0.4", "mod_ip": "192.168.3.248"},
+        {"name": "Winter",  "gw_ip": "10.200.146.12", "node_ip": "192.168.0.6", "mod_ip": "192.168.3.244"},
+        {"name": "Fern",    "gw_ip": "10.200.146.13", "node_ip": "192.168.0.9", "mod_ip": "192.168.3.240"},
+        {"name": "PTI",     "gw_ip": "10.200.146.14", "node_ip": "192.168.0.8", "mod_ip": "192.168.3.232"},
+    ]
+    
+    daq_nodes = []
+    quabo_uid_modules = []
+    network_modules = []
+    network_daq_nodes = []
+    obs_domes = []
+    
+    for i, site in enumerate(sites):
+        node_ip = IPv4Address(site["node_ip"])
+        gw_ip = IPv4Address(site["gw_ip"])
+        mod_ip = IPv4Address(site["mod_ip"])
+        
+        pf = PortForwarding(
+            status=True,
+            gw_ip=gw_ip,
+            port=22,
+            grpc_port=50051
+        )
+        
+        module_id = i + 1
+        
+        # Daq Node
+        daq_nodes.append(DaqNode(
+            username="panoseti",
+            data_dir="/data",
+            ip_addr=node_ip,
+            module_ids=[module_id],
+            port_forwarding=pf
+        ))
+        
+        # Network DAQ Node
+        network_daq_nodes.append({
+            "ip_addr": node_ip,
+            "port_forwarding": pf.model_dump()
+        })
+        
+        # Network Module
+        network_modules.append({
+            "ip_addr": mod_ip,
+            "port_forwarding": {
+                "status": True,
+                "gw_ip": gw_ip,
+                "reboot_port": [69, 60004, 60005, 60006],
+                "cmd_port": [60000, 60001, 60002, 60003]
+            }
+        })
+        
+        # Quabo UIDs
+        quabo_uid_modules.append(QuaboUidModule(
+            ip_addr=mod_ip,
+            quabos=[QuaboUidEntry(uid=f"q_palomar_{module_id}_{k}") for k in range(4)],
+            id=module_id
+        ))
+        
+        # Obs Dome
+        obs_domes.append(ObsDomeConfig(
+            name=f"dome_{site['name']}",
+            obslat=33.3533, # Palomar approx
+            obslon=-116.8622,
+            obsalt=1700.0,
+            modules=[ObsModuleConfig(
+                mobo_serialno=f"SN_PAL_{module_id}",
+                quabo_version="qfp",
+                ip_addr=mod_ip,
+                timing_mode="wr",
+                id=module_id
+            )],
+            num=i
+        ))
+
+    daq_config = DaqConfig(
+        head_node_data_dir="/data/head",
+        head_node_ip_addr=IPv4Address("10.200.146.1"),
+        head_node_container=True,
+        daq_nodes=daq_nodes
+    )
+    
+    quabo_uids = QuaboUids(domes=[QuaboUidDome(num=0, modules=quabo_uid_modules)])
+    network_config = NetworkConfig(modules=network_modules, daq_nodes=network_daq_nodes)
+    obs_config = ObsConfig(name="Palomar_Full", domes=obs_domes)
+    
+    return daq_config, quabo_uids, network_config, obs_config

@@ -125,6 +125,9 @@ Every test class or function must strictly document:
    - **Status**: Core logic isolation is active via `control/ci/fixtures/conftest.py`.
    - **Infrastructure**: Introduced `MockDaqNode`, `make_transfer_job`, and `simulate_daq_fs` factories in `control/ci/fixtures/`.
    - **Contract Verification**: Tier 2 logic tests now include `test_contract_mocks.py` to prevent drift against production gRPC models.
-2. **Phase 2**: Refine the topology generation utilities (`ci/test/topologies`) to output multi-site mock configurations matching the Palomar architecture.
+2. **Phase 2 (COMPLETED)**: Refine topology generation utilities.
+   - **Status**: `control/src/control/topology/fleet.py` updated to generate realistic multi-site matrices.
+   - **Features**: Added `generate_palomar_topology()` reflecting Gattini, Winter, Fern, and PTI sites with valid port forwarding and internal subnets.
+   - **Verification**: Tier 1 unit tests (`test_topology_gen.py`) verify model consistency and documentation parity.
 3. **Phase 3**: Migrate remaining legacy integration/chaos scenarios into the Domain-Driven Tier 2 and Tier 4 structures.
 4. **Phase 4**: Add `testcontainers-python` to `pyproject.toml` and migrate `fleet.py` to support dynamic Tier 3 fleet orchestration.
