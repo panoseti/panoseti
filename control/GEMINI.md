@@ -11,7 +11,7 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 - **Mandate**: NEVER implement procedural rollback or collection logic. Use the context managers and let the `TransferWorker` daemon handle post-run processing.
 
 ### 2. Atomic Advisory Locking
-- **Standard**: Mutual exclusion is enforced via low-level `os.O_EXCL` file creation on `tmp/panoseti_control.lock`.
+- **Standard**: Mutual exclusion is enforced via low-level `os.O_EXCL` file creation on `state/locks/control.lock` (and `state/locks/transfer.lock` for the transfer daemon).
 - **Self-Healing**: Lock acquisition MUST check for stale PIDs. If the PID file exists but the process is dead, the lock is cleared automatically.
 - **Mandate**: NEVER use standard `flock` or `open(..., "w")` for locking as they are unreliable on Docker volumes.
 
@@ -30,7 +30,7 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 - **Mandate**: Pass models across function boundaries. Signatures MUST use strictly-typed Pydantic models (e.g., `IPvAnyAddress`, `QuaboIpPorts`). Avoid `dict[str, Any]` fallbacks.
 
 ### Distributed Rollback Contract
-- **Receipts**: Node receipts MUST be written to `tmp/run_state.toml` **BEFORE** issuing a `StartDaq` gRPC call (WAL pattern).
+- **Receipts**: Node receipts MUST be written to `state/runs/ledger.toml` **BEFORE** issuing a `StartDaq` gRPC call (WAL pattern).
 - **Fail-Fast**: Use `asyncio.TaskGroup` for parallel RPCs. If one node fails, the group cancels all others, triggering the `StartTransaction` rollback.
 
 ---
@@ -52,7 +52,13 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 
 ---
 
-## 📁 Critical Documentation
-- **Transactions**: Read [TRANSACTIONS.md](TRANSACTIONS.md) for rollback ladder sequence.
-- **Debugging**: Read [DEBUGGING.md](DEBUGGING.md) for lock and Loki pipeline troubleshooting.
-- **CI Architecture**: Read [ci/README.md](ci/README.md) for network and isolation details.
+## 📁 Critical Documentation Routing
+
+| Document | Description |
+|---|---|
+| [TRANSACTIONS.md](TRANSACTIONS.md) | Rollback ladder sequence, atomic locking, and run state transitions. |
+| [DEBUGGING.md](DEBUGGING.md) | Core debugging principles, lock and Loki pipeline troubleshooting, state isolation. |
+| [TEST.md](TEST.md) | Test suite architecture, Docker runner usage, and isolation mandates (`PSETI_STATE`). |
+| [WISHLIST.md](WISHLIST.md) | Strategic roadmap for upcoming test refactoring and known friction points. |
+| [ci/README.md](ci/README.md) | CI network topology and isolation details. |
+

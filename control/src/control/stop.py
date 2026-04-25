@@ -216,8 +216,7 @@ class StopTransaction:
                             if n.module_ids
                         ],
                     )
-                    queue_dir = pathlib.Path(self.state_mgr.base_dir) / "state" / "transfer" / "queue"
-                    tq = TransferQueue(queue_dir=queue_dir)
+                    tq = TransferQueue()
                     await asyncio.to_thread(tq.enqueue, job)
 
                 # Transition ledger to RECORDING_ENDED so the TransferWorker

@@ -34,24 +34,21 @@ class RunStateManager:
     def __init__(self, base_dir: str | pathlib.Path | None = None) -> None:
         if base_dir:
             self.base_dir = pathlib.Path(base_dir)
-            if self.base_dir.name == "tmp":
-                # Provided base_dir is already the tmp directory
-                self.lock_path = self.base_dir / LOCK_FILE
-                self.state_path = self.base_dir / STATE_FILE
-            else:
-                # Legacy/override: assume tmp/ exists under the provided base_dir
-                self.lock_path = self.base_dir / "tmp" / LOCK_FILE
-                self.state_path = self.base_dir / "tmp" / STATE_FILE
+            # Legacy/override support: if provided base_dir looks like a state root
+            self.lock_path = self.base_dir / "locks" / LOCK_FILE
+            self.state_path = self.base_dir / "runs" / STATE_FILE
+            # Ensure they exist if possible, but PanoPaths handles defaults better
         else:
-            self.base_dir = PanoPaths.tmp_dir()
-            self.lock_path = self.base_dir / LOCK_FILE
-            self.state_path = self.base_dir / STATE_FILE
+            self.base_dir = PanoPaths.state_dir()
+            self.lock_path = PanoPaths.locks_dir() / LOCK_FILE
+            self.state_path = PanoPaths.runs_dir() / STATE_FILE
 
         self._lock_fh: Any | None = None
         self._async_lock = asyncio.Lock()
 
         # Ensure directory exists
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
 
     def acquire_lock(self) -> bool:
         """Acquire the exclusive advisory control-plane lock.

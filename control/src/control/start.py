@@ -232,20 +232,23 @@ verbose = False
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
-def ph_baseline_file_ok(path: pathlib.Path | None = None) -> bool:
+def ph_baseline_file_ok(path: pathlib.Path | str | None = None) -> bool:
     """Verify that the Pulse Height calibration file is valid.
 
     Checks that the file exists, is not empty, and is at most 24 hours old.
     Stale or missing calibration data can lead to incorrect PH measurements.
 
     Args:
-        path: Optional Path to the baseline file. Defaults to PanoPaths.calibration_file().
+        path: Optional Path (or str) to the baseline file. Defaults to PanoPaths.calibration_file().
 
     Returns:
         True if the file is valid, False otherwise.
     """
     if path is None:
         path = PanoPaths.calibration_file(config_file.quabo_ph_baseline_filename)
+    else:
+        path = pathlib.Path(path)
+    assert isinstance(path, pathlib.Path)
     if not path.exists():
         print(f'{path} not found.  Run config.py --calibrate_ph')
         return False

@@ -36,40 +36,58 @@ def _transfer_state_dir() -> pathlib.Path:
     return d
 
 
-def _acquire_transfer_lock() -> IO[str] | None:
+def _acquire_transfer_lock() -> pathlib.Path | None:
     """Try to acquire the exclusive transfer daemon lock file.
 
-    Uses a non-blocking ``flock`` so that only one transfer daemon runs at a
-    time.  The lock is automatically released when the process exits (the
-    kernel drops it).
+    Uses atomic ``O_EXCL`` file creation with stale-PID healing (SC-TX-001).
+    This ensures only one transfer daemon runs at a time, even on Docker
+    volumes where ``flock`` may be unreliable.
 
     Returns:
-        An open file handle holding the lock, or ``None`` if another process
+        The Path to the lock file if acquired, or ``None`` if another process
         already holds it.
     """
     lock_path = PanoPaths.locks_dir() / "transfer.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fh = open(lock_path, "w")  # noqa: SIM115
-    try:
-        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        fh.write(str(os.getpid()))
-        fh.flush()
-        return fh
-    except BlockingIOError:
-        fh.close()
-        return None
+    
+    for attempt in range(2):
+        try:
+            # O_EXCL ensures that this call creates the file; if it exists, it fails.
+            fd = os.open(str(lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+            with os.fdopen(fd, "w") as f:
+                f.write(str(os.getpid()))
+            return lock_path
+        except FileExistsError:
+            # Check if the lock is stale
+            try:
+                with open(lock_path) as f:
+                    pid_str = f.read().strip()
+                    pid = int(pid_str)
+                # Check if process is alive (signal 0 is a no-op that checks existence)
+                os.kill(pid, 0)
+                return None
+            except (OSError, ValueError, ProcessLookupError):
+                # Process is dead or file is corrupt. Self-heal.
+                with contextlib.suppress(OSError):
+                    lock_path.unlink()
+                if attempt == 0:
+                    continue
+                return None
+        except OSError:
+            return None
+    return None
 
 
-def _release_transfer_lock(fh: IO[str] | None) -> None:
-    """Release the exclusive lock obtained by ``_acquire_transfer_lock``.
+def _release_transfer_lock(lock_path: pathlib.Path | None) -> None:
+    """Release the exclusive lock by unlinking the lock file.
 
     Args:
-        fh: File handle returned by ``_acquire_transfer_lock``.  A ``None``
+        lock_path: Path returned by ``_acquire_transfer_lock``. A ``None``
             value is accepted safely (no-op).
     """
-    if fh:
-        fcntl.flock(fh, fcntl.LOCK_UN)
-        fh.close()
+    if lock_path:
+        with contextlib.suppress(OSError):
+            lock_path.unlink()
 
 
 async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -> None:
@@ -118,7 +136,7 @@ async def _process_job(job: TransferJob) -> bool:
     no_cleanup = job.no_cleanup
 
     from control.utils.run_state import RunStateManager
-    state_mgr = RunStateManager(base_dir=str(PanoPaths.base_dir()))
+    state_mgr = RunStateManager()
 
     logger.info("Processing transfer job for run: %s", run_name)
 
@@ -126,6 +144,7 @@ async def _process_job(job: TransferJob) -> bool:
         # --- Stage 1: manifest generation ---
         logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
         state_mgr.transition("MANIFEST_GENERATING")
+        manifest_errors: list[str] = []
         try:
             from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
@@ -136,18 +155,21 @@ async def _process_job(job: TransferJob) -> bool:
                 async with AsyncDaqControlClient(host=str(node.ip_addr), port=50051) as client:
                     for mid in module_ids:
                         try:
-                            await client.GenerateManifest({
+                            resp = await client.GenerateManifest({
                                 "data_dir": node.data_dir,
                                 "run_dir": run_name,
                                 "module_id": mid,
                                 "algorithm": "blake3",
                                 "include_patterns": ["*.pff"],
                             })
+                            if not resp.get("success", True):
+                                err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {resp.get('message', 'unknown error')}"
+                                manifest_errors.append(err)
+                                logger.warning(err)
                         except Exception as exc:
-                            logger.warning(
-                                "GenerateManifest failed for module %s on %s: %s",
-                                mid, node.ip_addr, exc
-                            )
+                            err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {exc}"
+                            manifest_errors.append(err)
+                            logger.warning(err)
 
             async with asyncio.TaskGroup() as tg:
                 for node in daq_nodes:
@@ -155,6 +177,11 @@ async def _process_job(job: TransferJob) -> bool:
 
         except ImportError:
             logger.warning("panoseti_grpc not available; skipping manifest generation")
+
+        if manifest_errors:
+            logger.error("[%s] Manifest generation failed: %s", run_name, "; ".join(manifest_errors))
+            state_mgr.transition("TRANSFER_FAILED")
+            return False
 
         # --- Stage 2: rsync ---
         logger.info("[%s] Stage: TRANSFERRING", run_name)
@@ -206,6 +233,7 @@ async def _process_job(job: TransferJob) -> bool:
     if not no_cleanup:
         logger.info("[%s] Stage: CLEANING", run_name)
         state_mgr.transition("CLEANING")
+        cleanup_errors: list[str] = []
         try:
             from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
@@ -214,7 +242,7 @@ async def _process_job(job: TransferJob) -> bool:
                 assert isinstance(node, _TNS)
                 async with AsyncDaqControlClient(host=str(node.ip_addr), port=50051) as client:
                     try:
-                        await client.CleanupData({
+                        resp = await client.CleanupData({
                             "data_dir": node.data_dir,
                             "run_dir": run_name,
                             "module_id": node.module_ids,
@@ -222,10 +250,14 @@ async def _process_job(job: TransferJob) -> bool:
                             "delete_patterns": ["*.pff"],
                             "preserve_patterns": ["*.json", "*.log", "*.toml"],
                         })
+                        if not resp.get("success", True):
+                            err = f"CleanupData failed for {node.ip_addr}: {resp.get('message', 'unknown error')}"
+                            cleanup_errors.append(err)
+                            logger.warning(err)
                     except Exception as exc:
-                        logger.warning(
-                            "CleanupData failed for %s: %s", node.ip_addr, exc
-                        )
+                        err = f"CleanupData failed for {node.ip_addr}: {exc}"
+                        cleanup_errors.append(err)
+                        logger.warning(err)
 
             async with asyncio.TaskGroup() as tg:
                 for node in daq_nodes:
@@ -233,6 +265,11 @@ async def _process_job(job: TransferJob) -> bool:
 
         except ImportError:
             logger.warning("panoseti_grpc not available; skipping cleanup")
+
+        if cleanup_errors:
+            logger.error("[%s] Cleanup failed: %s", run_name, "; ".join(cleanup_errors))
+            state_mgr.transition("VERIFY_FAILED")
+            return False
 
     # --- Stage 5: archive ---
     logger.info("[%s] Stage: ARCHIVED", run_name)
@@ -280,8 +317,8 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
         poll_interval: Seconds to wait between queue polls when no job is
             pending.
     """
-    lock_fh = _acquire_transfer_lock()
-    if lock_fh is None:
+    lock_path = _acquire_transfer_lock()
+    if lock_path is None:
         logger.info("Another transfer daemon is already running. Exiting.")
         return
 
@@ -353,7 +390,7 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
         await asyncio.gather(hb_task, return_exceptions=True)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
-        _release_transfer_lock(lock_fh)
+        _release_transfer_lock(lock_path)
         with contextlib.suppress(OSError):
             pid_path.unlink()
         logger.info("Transfer daemon stopped")

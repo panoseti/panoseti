@@ -18,8 +18,8 @@ import pathlib
 
 import pytest
 
+from control.transfer.verify import verify_manifest
 from control.utils.run_state import RunStateManager
-from control.utils.transfer.verify import verify_manifest
 
 HEAD_DATA_DIR = pathlib.Path(os.getenv("HEAD_DATA_DIR", "/data/head"))
 

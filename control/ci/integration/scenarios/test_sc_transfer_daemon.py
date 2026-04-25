@@ -27,7 +27,9 @@ import hashlib
 import os
 import pathlib
 import uuid
+from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
@@ -44,6 +46,7 @@ from ci.integration.scenarios.conftest import (
     make_run_params,
 )
 from ci.integration.state_probe import StateProbe
+from control.transfer.models import TransferJob, TransferNodeSpec
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -178,28 +181,42 @@ class TestSCTX003NetworkDropMidRsync:
     ) -> None:
         from unittest.mock import patch
 
-        from control.utils.transfer.daemon import _process_job
-        from control.utils.transfer.queue import TransferQueue
+        from control.transfer.daemon import _process_job
+        from control.transfer.queue import TransferQueue
 
-        tq = TransferQueue(base_dir=str(tmp_path))
+        tq = TransferQueue(queue_dir=tmp_path / "tmp" / "transfer_queue")
         run_name = f"sc_tx_003_{uuid.uuid4().hex[:8]}"
-        # Include one daq_node so the rsync stage is exercised
-        tq.enqueue(run_name, str(tmp_path / "head"), [{"ip_addr": "192.168.0.10", "data_dir": "/data", "username": "root"}])
+        
+        job_spec = TransferJob(
+            run_name=run_name,
+            head_data_dir=str(tmp_path / "head"),
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[
+                TransferNodeSpec(
+                    ip_addr="192.168.0.10",
+                    username="root",
+                    data_dir="/data",
+                    module_ids=[250]
+                )
+            ]
+        )
+        tq.enqueue(job_spec)
 
         # Patch rsync to always fail and GenerateManifest to skip
         with (
-            patch("control.utils.transfer.daemon.rsync_one_node", return_value=(False, "simulated loss")),
-            patch("control.utils.transfer.daemon.verify_manifest", return_value=(True, [])),
+            patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="simulated loss")),
+            patch("control.transfer.daemon.verify_manifest", return_value=(True, [])),
         ):
             job = tq.claim()
             assert job is not None
-            success = await _process_job(job, tmp_path)
+            success = await _process_job(job)
             # Simulate daemon loop: move failed job out of active/
             if not success:
                 tq.fail(run_name)
 
         assert not success, "rsync failure must return False"
-        assert not (tmp_path / tq.QUEUE_ROOT / "active" / f"{run_name}.job.toml").exists()
+        assert not (tq._queue / "active" / f"{run_name}.job.toml").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -233,28 +250,41 @@ class TestSCTX004ManifestMismatch:
         # Now corrupt the file so verify_manifest fails
         pff_file.write_bytes(b"corrupted!")
 
-        from control.utils.transfer.daemon import _process_job
-        from control.utils.transfer.queue import TransferQueue
+        from control.transfer.daemon import _process_job
+        from control.transfer.queue import TransferQueue
 
-        tq = TransferQueue(base_dir=str(tmp_path))
+        tq = TransferQueue(queue_dir=tmp_path / "transfer_queue")
         run_name = "sc_tx_004"
-        tq.enqueue(run_name, str(tmp_path / "head"), [])
+        job_spec = TransferJob(
+            run_name=run_name,
+            head_data_dir=str(tmp_path / "head"),
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[
+                TransferNodeSpec(
+                    ip_addr="192.168.0.10",
+                    username="root",
+                    data_dir="/data",
+                    module_ids=[250]
+                )
+            ]
+        )
+        tq.enqueue(job_spec)
 
         # No rsync needed (skip), go straight to verify
         with (
-            patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")),
+            patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)),
         ):
             job = tq.claim()
             assert job is not None
-            job["head_data_dir"] = str(tmp_path / "head")
-            success = await _process_job(job, tmp_path)
+            success = await _process_job(job)
             # Simulate daemon loop: move failed job out of active/
             if not success:
                 tq.fail(run_name)
 
         assert not success, "Corrupted file must cause _process_job to return False"
         # Verify no active job remains (daemon loop moved it to failed/)
-        assert not list((tmp_path / tq.QUEUE_ROOT / "active").glob("*.toml"))
+        assert not list((tq._queue / "active").glob("*.toml"))
 
 
 # ---------------------------------------------------------------------------
@@ -273,26 +303,33 @@ class TestSCTX005DaemonCrashResume:
     async def test_SC_TX_005_active_job_recovered_on_restart(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from control.utils.transfer.queue import TransferQueue
+        from control.transfer.queue import TransferQueue
 
-        tq = TransferQueue(base_dir=str(tmp_path))
+        tq = TransferQueue(queue_dir=tmp_path / "transfer_queue")
         run_name = f"sc_tx_005_{uuid.uuid4().hex[:8]}"
-        tq.enqueue(run_name, str(tmp_path / "head"), [])
+        job_spec = TransferJob(
+            run_name=run_name,
+            head_data_dir=str(tmp_path / "head"),
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[]
+        )
+        tq.enqueue(job_spec)
 
         # Simulate: daemon crashed while job was in active/
         job = tq.claim()
         assert job is not None
-        active_path = tmp_path / tq.QUEUE_ROOT / "active" / f"{run_name}.job.toml"
+        active_path = tq._queue / "active" / f"{run_name}.job.toml"
         assert active_path.exists(), "Job must be in active/ after claim"
 
         # Simulate daemon restart: the startup sweep in run_daemon moves it back
-        pending_path = tmp_path / tq.QUEUE_ROOT / "pending" / f"{run_name}.job.toml"
+        pending_path = tq._queue / "pending" / f"{run_name}.job.toml"
         os.rename(active_path, pending_path)
 
         # Now the job must be claimable again
         recovered = tq.claim()
         assert recovered is not None, "Recovered job must be claimable from pending/"
-        assert recovered["run_name"] == run_name
+        assert recovered.run_name == run_name
 
 
 # ---------------------------------------------------------------------------
@@ -309,17 +346,25 @@ class TestSCTX006ConcurrentStop:
     def test_SC_TX_006_double_enqueue_is_idempotent(
         self, tmp_path: pathlib.Path
     ) -> None:
-        from control.utils.transfer.queue import TransferQueue
+        from control.transfer.queue import TransferQueue
 
-        tq = TransferQueue(base_dir=str(tmp_path))
+        tq = TransferQueue(queue_dir=tmp_path / "transfer_queue")
         run_name = "sc_tx_006"
+        job_spec = TransferJob(
+            run_name=run_name,
+            head_data_dir="/head",
+            head_node_username="panoseti",
+            created_at=datetime.now(UTC),
+            daq_nodes=[]
+        )
 
-        path1 = tq.enqueue(run_name, "/head", [])
-        path2 = tq.enqueue(run_name, "/head", [])
+        res1 = tq.enqueue(job_spec)
+        res2 = tq.enqueue(job_spec)
 
-        assert path1 == path2, "Double enqueue must return same path"
+        assert res1 is True
+        assert res2 is False, "Second enqueue of same run_name must return False"
 
-        pending = list((tmp_path / tq.QUEUE_ROOT / "pending").glob("*.toml"))
+        pending = list((tq._queue / "pending").glob("*.toml"))
         assert len(pending) == 1, f"Exactly one job must exist, got {len(pending)}"
 
 

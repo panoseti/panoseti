@@ -162,19 +162,49 @@ class TestCHTX01RsyncRetry:
         run_dir: pathlib.Path,
         make_job,
     ) -> None:
+        import asyncio
+        import contextlib
+        import time
+
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
+        monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
+        from control.transfer.daemon import run_daemon
+        from control.transfer.queue import TransferQueue
+
         client = _grpc_ok()
         # First call fails, second succeeds
         responses = [_rsync_fail(), _rsync_ok()]
 
-        with _mock_grpc(client), \
-             patch("control.transfer.daemon.subprocess") as mock_sub:
-            mock_sub.run.side_effect = responses
-            result = await _process_job(make_job())
+        tq = TransferQueue()
+        tq.enqueue(make_job())
 
-        assert result is True, "Job must succeed after one retry"
+        with _mock_grpc(client), \
+             patch("control.transfer.daemon.subprocess") as mock_sub, \
+             patch("control.transfer.daemon._RETRY_BACKOFF_SEC", [0.01, 0.01]):
+            mock_sub.run.side_effect = responses
+
+            # Run daemon until it completes the job or times out
+            daemon_task = asyncio.create_task(run_daemon(poll_interval=0.01))
+
+            # Wait for job to reach completed/
+            start_t = time.time()
+            success = False
+            while time.time() - start_t < 10:
+                if (tq._queue / "completed" / f"{run_name}.job.toml").exists():
+                    success = True
+                    break
+                if daemon_task.done():
+                    break
+                await asyncio.sleep(0.05)
+
+            daemon_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await daemon_task
+
+        assert success, "Job must reach completed/ after retry"
         assert (run_dir / "run_complete").exists()
+        assert mock_sub.run.call_count == 2
         monkeypatch.undo()
 
 
@@ -198,9 +228,8 @@ class TestCHTX02RsyncExhausted:
 
         with _mock_grpc(client), \
              patch("control.transfer.daemon.subprocess") as mock_sub, \
-             patch("control.transfer.daemon.asyncio") as mock_asyncio:
+             patch("control.transfer.daemon.asyncio.sleep", new_callable=AsyncMock):
             mock_sub.run.return_value = _rsync_fail()
-            mock_asyncio.sleep = AsyncMock()
             result = await _process_job(make_job())
 
         assert result is False, "All retries exhausted must return False"

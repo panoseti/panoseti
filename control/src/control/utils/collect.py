@@ -14,7 +14,7 @@ import warnings
 from glob import glob
 
 warnings.warn(
-    "utils.collect is deprecated. The transfer daemon (utils.transfer.daemon) "
+    "utils.collect is deprecated. The transfer daemon (control.transfer.daemon) "
     "now owns all data collection. Use TransferQueue.enqueue() to schedule transfers.",
     DeprecationWarning,
     stacklevel=2,

@@ -35,25 +35,25 @@ All functions and methods must have high-quality docstrings. Preserving legacy c
 The observatory uses a **Context Manager Architecture** to manage the lifecycle of an observing run.
 - **StartTransaction**: Handles atomic locking and a multi-step rollback ladder. If any startup step fails, it guarantees all hardware and remote processes are restored to a safe state.
 - **StopTransaction**: Implements a resilient teardown sequence for hardware (stop DAQs, kill daemons, stop quabos), then enqueues a transfer job and transitions the ledger to `RECORDING_ENDED`. Bulk I/O is decoupled from the lock.
-- **Transfer Daemon** (`daemons/transfer_daemon.py`): Drains `tmp/transfer_queue/pending/` jobs and drives each through manifest → rsync → verify → selective cleanup → archive. Holds `tmp/panoseti_transfer.lock` (flock singleton).
-- **Distributed Ledger**: State is persisted in `tmp/run_state.toml`. The `RunStateLedger.status` field has 17 possible values covering the full lifecycle from `STARTING` through `ARCHIVED`.
+- **Transfer Daemon** (`transfer/daemon.py`): Drains `state/transfer/queue/pending/` jobs and drives each through manifest → rsync → verify → selective cleanup → archive. Holds `state/locks/transfer.lock` (flock singleton).
+- **Distributed Ledger**: State is persisted in `state/runs/ledger.toml`. The `RunStateLedger.status` field has 17 possible values covering the full lifecycle from `STARTING` through `ARCHIVED`.
 
 ### Lock Hierarchy
 | Lock file | Mechanism | Held by | Duration |
 |---|---|---|---|
-| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
-| `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Job duration (minutes to hours) |
+| `state/locks/control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
+| `state/locks/transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Job duration (minutes to hours) |
 
 ### RunStateLedger Status Vocabulary
 `STARTING → ACTIVE → STOPPING → RECORDING_ENDED → MANIFEST_GENERATING → TRANSFERRING → VERIFYING → CLEANING → ARCHIVED`
 
 Error exits: `ABORTED` (from start), `TRANSFER_FAILED`, `VERIFY_FAILED`, `STOPPED_WITH_ERRORS`.
 
-The VERIFYING stage calls `utils/transfer/verify.py::verify_manifest()` on head-node manifest files.  Any digest mismatch → `VERIFY_FAILED`; cleanup is skipped.  The CLEANING stage passes `manifest_digest` to `CleanupData`; the server rejects deletion with `FAILED_PRECONDITION` if digests don't match.
+The VERIFYING stage calls `transfer/verify.py::verify_manifest()` on head-node manifest files.  Any digest mismatch → `VERIFY_FAILED`; cleanup is skipped.  The CLEANING stage passes `manifest_digest` to `CleanupData`; the server rejects deletion with `FAILED_PRECONDITION` if digests don't match.
 
 ### TransferQueue Layout
 ```
-tmp/transfer_queue/
+state/transfer/queue/
   pending/    {run_name}.job.toml   ← pseti stop writes here
   active/     {run_name}.job.toml   ← daemon moves here on claim()
   failed/     {run_name}.job.toml   ← daemon moves here after MAX_ATTEMPTS
@@ -70,6 +70,8 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 - **Integration Tests**: Verify end-to-end flows in `src/control/ci/integration/`. Use `-k` to isolate failures.
 - **Chaos Tests**: Verifies transaction integrity under failure conditions in `src/control/ci/integration/scenarios/`. Run via `pseti test chaos`.
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
+- **State Isolation**: ALL integration tests MUST isolate their state using `PSETI_STATE` redirected to a temporary directory.
+
 ### Telemetry & Logging
 - **Unified Logger**: Use `panoseti_grpc.telemetry.logger.get_logger(service_name, log_dir=...)`.
 - **Path Resolution**: Use `control.utils.paths.PanoPaths.logs_dir()` for `log_dir`. `get_logger` accepts a `pathlib.Path`.
@@ -78,7 +80,17 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 - **Alloy**: `alloy/config.alloy` ships `.jsonl` files to Loki. `alloy/docker-compose.yml` runs the Alloy agent.
 - Avoid `logging.getLogger` and `print` for system events.
 
-Read [DEBUGGING.md](DEBUGGING.md) for advanced troubleshooting techniques and [ci/README.md](ci/README.md) for test architecture details.
+---
+
+## 📁 Critical Documentation Routing
+
+| Document | Description |
+|---|---|
+| [TRANSACTIONS.md](TRANSACTIONS.md) | Rollback ladder sequence, atomic locking, and run state transitions. |
+| [DEBUGGING.md](DEBUGGING.md) | Core debugging principles, lock and Loki pipeline troubleshooting, state isolation. |
+| [TEST.md](TEST.md) | Test suite architecture, Docker runner usage, and isolation mandates (`PSETI_STATE`). |
+| [WISHLIST.md](WISHLIST.md) | Strategic roadmap for upcoming test refactoring and known friction points. |
+| [ci/README.md](ci/README.md) | CI network topology and isolation details. |
 
 ---
 

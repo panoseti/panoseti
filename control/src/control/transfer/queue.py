@@ -23,7 +23,7 @@ class TransferQueue:
     ``PSETI_TQ_DIR`` environment variable.
     """
 
-    def __init__(self, queue_dir: pathlib.Path | None = None) -> None:
+    def __init__(self, queue_dir: pathlib.Path | str | None = None) -> None:
         """Initialize the TransferQueue, creating queue subdirectories as needed.
 
         Args:
@@ -31,9 +31,10 @@ class TransferQueue:
                 ``PanoPaths.transfer_queue_dir()`` is used (which itself
                 respects the ``PSETI_TQ_DIR`` environment variable).
         """
-        self._queue: pathlib.Path = (
+        raw_queue = (
             queue_dir if queue_dir is not None else PanoPaths.transfer_queue_dir()
         )
+        self._queue: pathlib.Path = pathlib.Path(raw_queue)
         for sub in ("pending", "active", "completed", "failed"):
             (self._queue / sub).mkdir(parents=True, exist_ok=True)
 
@@ -88,8 +89,12 @@ class TransferQueue:
                     if k in _skip_keys:
                         continue
                     f.write(f"{k} = {self._toml_scalar(v)}\n")
+                
                 # [[daq_nodes]] array-of-tables
-                for node in data.get("daq_nodes", []):
+                daq_nodes = data.get("daq_nodes", [])
+                if not daq_nodes:
+                    f.write("\ndaq_nodes = []\n")
+                for node in daq_nodes:
                     f.write("\n[[daq_nodes]]\n")
                     pf_data: dict[str, Any] | None = node.pop("port_forwarding", None)
                     for k, v in node.items():

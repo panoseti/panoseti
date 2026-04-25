@@ -102,7 +102,7 @@ class TestHW01FullRunArchive:
         """
         Manifest root digest on the head node must match what the DAQ node wrote.
         """
-        from control.utils.transfer.verify import verify_manifest
+        from control.transfer.verify import verify_manifest
 
         mgr = RunStateManager()
         ledger = mgr.get_state()
