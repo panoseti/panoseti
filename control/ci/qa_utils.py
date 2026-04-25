@@ -185,11 +185,23 @@ class TestRunner:
         self._header("REBUILDING IMAGES")
         processed_files = set()
         for suite in self.cfg.suites.values():
-            if suite.requires_docker and suite.compose_file not in processed_files:
+            if not suite.requires_docker:
+                continue
+                
+            compose_file = suite.compose_file
+            if not compose_file and suite.environment:
+                env_cfg = self.cfg.environments.get(suite.environment)
+                if env_cfg:
+                    compose_file = env_cfg.compose_file
+            
+            if not compose_file:
+                continue
+
+            if compose_file not in processed_files:
                 project_name = f"{self.project_prefix}-build"
-                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} build"
+                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} build"
                 await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
-                processed_files.add(suite.compose_file)
+                processed_files.add(compose_file)
 
     # ── Internal Helpers ──────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ Provides subcommands for Linting, Software (Docker CI), and Hardware (HITL) test
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import sys
@@ -309,42 +310,21 @@ async def resolve_remote_socket_path(runner: TestRunner, ssh_args: str) -> str:
 
 @hw_app.command(name="build")
 def hw_build(ctx: typer.Context) -> None:
-    """Build required container images locally (and remotely if via context)."""
+    """Build required container images locally."""
     from rich.console import Console
     console = Console()
     runner: TestRunner = ctx.obj
     _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
     tool = runner.container_tool
     
-    # 1. Build Headnode Locally
-    console.print(f"[cyan]Building Headnode profile locally with {tool}...[/cyan]")
+    console.print(f"[cyan]Building HITL images locally with {tool}...[/cyan]")
     env = {"BUILDAH_ISOLATION": "chroot"} if tool == "podman" else {}
     if tool == "podman":
         console.print("[dim]Ensuring local Podman socket is active...[/dim]")
         asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
     
-    head_build = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode build"
-    asyncio.run(runner._run_cmd(head_build, env=env))
-    
-    # 2. Build DAQnode (Locally or Remotely)
-    for node in daq_cfg.daq_nodes:
-        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
-            # Already handled by headnode build if they are the same node
-            continue
-            
-        ssh_host_uri = get_ssh_host(node)
-        if tool == "docker":
-            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
-            console.print(f"[cyan]Building DAQnode profile on {node.ip_addr} via context {context_name}...[/cyan]")
-            asyncio.run(ensure_docker_context(runner, context_name, ssh_host_uri))
-            daq_build = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode build"
-            asyncio.run(runner._run_cmd(daq_build))
-        else:
-            # Podman: build locally and we'll transfer later in deploy
-            console.print(f"[cyan]Building DAQnode profile locally for {node.ip_addr} with {tool}...[/cyan]")
-            daq_build = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode build"
-            asyncio.run(runner._run_cmd(daq_build, env=env))
+    build_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode --profile daqnode build"
+    asyncio.run(runner._run_cmd(build_cmd, env=env))
 
 @hw_app.command(name="check-env")
 def hw_check_env(
@@ -428,12 +408,23 @@ def hw_check_env(
     console.print(f"[green]Environment OK. {tool} is ready and space is sufficient.[/green]")
 
 async def ensure_docker_context(runner: TestRunner, name: str, ssh_host_uri: str) -> None:
-    """Ensure a Docker context exists for a remote host."""
-    res = await runner._run_cmd(f"docker context inspect {name}", quiet=True)
+    """Ensure a Docker context exists and points to the correct host."""
+    res = await runner._run_cmd(f"docker context inspect {name}", quiet=True, capture=True)
     if not res.ok:
         # Context doesn't exist, create it
         create_cmd = f"docker context create {name} --docker \"host={ssh_host_uri}\""
         await runner._run_cmd(create_cmd)
+    else:
+        # Context exists, verify the host matches (in case IPs/ports changed)
+        try:
+            inspect_data = json.loads(res.stdout)
+            current_host = inspect_data[0].get("Endpoints", {}).get("docker", {}).get("Host", "")
+            if current_host != ssh_host_uri:
+                # Update context
+                update_cmd = f"docker context update {name} --docker \"host={ssh_host_uri}\""
+                await runner._run_cmd(update_cmd)
+        except (IndexError, KeyError, json.JSONDecodeError):
+            pass
 
 @hw_app.command(name="deploy")
 def hw_deploy(ctx: typer.Context) -> None:
@@ -462,9 +453,15 @@ def hw_deploy(ctx: typer.Context) -> None:
         
         if tool == "docker":
             context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
-            console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via Docker context {context_name}...[/cyan]")
+            console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via context {context_name}...[/cyan]")
             asyncio.run(ensure_docker_context(runner, context_name, ssh_host_uri))
             
+            if not runner.no_build:
+                console.print(f"[cyan]Transferring images to {node.ip_addr} via context...[/cyan]")
+                # Use --context for BOTH save and load to be explicit, though save is usually local
+                transfer_cmd = f"docker save pseti-daqnode:hitl | docker --context {context_name} load"
+                os.system(transfer_cmd)
+                
             daq_cmd = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
             if runner.no_build:
                 daq_cmd += " --no-build"
@@ -478,7 +475,7 @@ def hw_deploy(ctx: typer.Context) -> None:
                 env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
                 
                 if not runner.no_build:
-                    console.print(f"[cyan]Transferring pseti-daqnode:hitl image to {node.ip_addr}...[/cyan]")
+                    console.print(f"[cyan]Transferring images to {node.ip_addr} via tunnel...[/cyan]")
                     transfer_cmd = f"{tool} save pseti-daqnode:hitl | env DOCKER_HOST=unix://{local_sock} CONTAINER_HOST=unix://{local_sock} {tool} load"
                     os.system(transfer_cmd)
                     
