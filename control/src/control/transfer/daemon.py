@@ -247,6 +247,26 @@ async def _process_job(job: TransferJob) -> bool:
     return True
 
 
+def _sweep_stranded_jobs(tq: "TransferQueue") -> None:
+    """Move jobs stranded in ``active/`` back to ``pending/`` (SC-TX-005).
+
+    Called at daemon startup to recover jobs left behind by a prior crash.
+    Each rename is POSIX-atomic; failures are logged but do not abort startup.
+
+    Args:
+        tq: The active :class:`TransferQueue` instance.
+    """
+    active_dir = tq._queue / "active"
+    for stale in sorted(active_dir.glob("*.job.toml")):
+        run_name_stale = stale.stem.removesuffix(".job")
+        pending_path = tq._queue / "pending" / stale.name
+        try:
+            os.rename(stale, pending_path)
+            logger.warning("Recovered stranded job from active/: %s", run_name_stale)
+        except OSError as exc:
+            logger.error("Failed to recover stranded job %s: %s", run_name_stale, exc)
+
+
 async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
     """Main daemon loop: acquire lock, write pid/heartbeat, poll for jobs, process them.
 
@@ -281,15 +301,7 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
     tq = TransferQueue()
 
     # Recover jobs stranded in active/ from a prior daemon crash (SC-TX-005).
-    active_dir = tq._queue / "active"
-    for stale in sorted(active_dir.glob("*.job.toml")):
-        run_name_stale = stale.stem.removesuffix(".job")
-        pending_path = tq._queue / "pending" / stale.name
-        try:
-            os.rename(stale, pending_path)
-            logger.warning("Recovered stranded job from active/: %s", run_name_stale)
-        except OSError as exc:
-            logger.error("Failed to recover stranded job %s: %s", run_name_stale, exc)
+    _sweep_stranded_jobs(tq)
 
     hb_task = asyncio.create_task(_heartbeat_loop(heartbeat_path))
 
