@@ -57,6 +57,13 @@ def pytest_configure(config: Any) -> None:
     os.makedirs(os.environ["PSETI_LOGS"], exist_ok=True)
     os.makedirs(os.environ["PSETI_QUABOS"], exist_ok=True)
 
+    # 4. Give each xdist worker its own testcontainers Ryuk session so parallel
+    #    workers don't collide on the shared TC_SESSION_ID (409 Conflict).
+    if "TC_SESSION_ID" not in os.environ and hasattr(config, "workerinput"):
+        wid = config.workerinput.get("workerid", "")
+        if wid:
+            os.environ["TC_SESSION_ID"] = f"tc-session-{wid}"
+
 
 @pytest.fixture(scope="session")
 def worker_id(request: Any) -> str:
@@ -98,22 +105,25 @@ def auto_isolate(
     if src_cfg and os.path.exists(src_cfg):
         for item in pathlib.Path(src_cfg).iterdir():
             try:
-                if item.is_file() and item.suffix == ".json":
-                    content = item.read_text()
-                    if head_prefix != "10.0.1":
-                        content = content.replace("10.0.1", head_prefix)
-                    if daq_prefix != "192.168.0":
-                        content = content.replace("192.168.0", daq_prefix)
-                    if quabo_prefix != "192.168.3":
-                        content = content.replace("192.168.3", quabo_prefix)
-                    (cfg_tmp / item.name).write_text(content)
-                elif item.is_file():
-                    shutil.copy2(item, cfg_tmp)
-                elif item.is_dir():
-                    shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
+                # Copy everything EXCEPT the topological configs we are about to overwrite
+                if item.name not in ["daq_config.json", "obs_config.json", "network_config.json", "quabo_uids.json"]:
+                    if item.is_file():
+                        shutil.copy2(item, cfg_tmp)
+                    elif item.is_dir():
+                        shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
             except Exception:
                 pass
+                
+    # 2.5 Generate Pristine Topological Configs
+    from control.topology.fleet import generate_ci_topology
+    daq_cfg, quabo_uids, net_cfg, obs_cfg = generate_ci_topology(head_prefix, daq_prefix, quabo_prefix)
     
+    (cfg_tmp / "daq_config.json").write_text(daq_cfg.model_dump_json(indent=2))
+    (cfg_tmp / "obs_config.json").write_text(obs_cfg.model_dump_json(indent=2))
+    (cfg_tmp / "network_config.json").write_text(net_cfg.model_dump_json(indent=2))
+    (cfg_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
+    (tmp_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2)) # Chaos legacy
+
     # 3. Apply overrides for the duration of the test
     monkeypatch.setenv("PSETI_CONFIG", str(cfg_tmp))
     monkeypatch.setenv("PSETI_STATE", str(state_tmp))
@@ -130,20 +140,7 @@ def auto_isolate(
     monkeypatch.setenv("REDIS_DB", str(db_index))
     monkeypatch.setenv("LOKI_TENANT_ID", f"test_tenant_{db_index}")
     
-    # 5. Handle quabo_uids.json (essential for most integration tests)
-    possible_uids = [
-        cfg_tmp / "quabo_uids.json",
-        PanoPathsTest.integration_configs_root() / "quabo_uids_chaos.json"
-    ]
-    for p in possible_uids:
-        try:
-            if p.exists():
-                shutil.copy2(p, tmp_tmp / "quabo_uids.json")
-                break
-        except Exception:
-            continue
-    
-    # 6. Ensure PanoPaths and RunStateManager are fresh
+    # 5. Ensure PanoPaths and RunStateManager are fresh
     from control.utils.paths import PanoPaths
     from control.utils.run_state import RunStateManager
     PanoPaths.ensure_state_dirs()

@@ -44,7 +44,7 @@ services:
     image: influxdb:1.8
     networks:
       headnode_net:
-        ipv4_address: ${HEADNODE_HOST:-${HEAD_NET_HEADNODE:-10.0.1.22}}
+        ipv4_address: ${HEAD_NET_HEADNODE:-10.0.1.22}
     healthcheck:
       test: ["CMD", "influx", "-execute", "show databases"]
       interval: 1s
@@ -72,14 +72,14 @@ services:
     image: alpine/socat
     networks:
       headnode_net:
-        ipv4_address: ${DAQNODE_GATEWAY_HOST:-${HEAD_NET_GATEWAY:-10.0.1.254}}
+        ipv4_address: ${HEAD_NET_GATEWAY:-10.0.1.254}
       daqnode_net:
         ipv4_address: ${DAQ_NET_GATEWAY:-192.168.0.254}
     volumes:
       - ./fixtures/build/gateway_setup.sh:/gateway_setup.sh:ro
     entrypoint: ["sh", "/gateway_setup.sh"]
     environment:
-      DAQNODE_IP: "${DAQNODE_DIRECT_HOST:-${DAQ_NET_DAQNODE_1:-192.168.0.10}}"
+      DAQNODE_IP: "${DAQ_NET_DAQNODE_1:-192.168.0.10}"
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 ${GRPC_PORT:-50051} || exit 1"]
       interval: 3s
@@ -99,8 +99,8 @@ services:
       - ..:/app
       - ../../grpc:/grpc
     environment:
-      REDIS_HOST: "${REDIS_HOST:-${HEAD_NET_REDIS:-10.0.1.20}}"
-      LOKI_URL:   "${LOKI_URL:-http://${HEAD_NET_LOKI:-10.0.1.21}:3100}"
+      REDIS_HOST: "${HEAD_NET_REDIS:-10.0.1.20}"
+      LOKI_URL:   "http://${HEAD_NET_LOKI:-10.0.1.21}:3100"
       PYTHONDONTWRITEBYTECODE: "1"
     depends_on:
       redis:
@@ -130,7 +130,7 @@ services:
       headnode_net:
         ipv4_address: ${HEAD_NET_DAQNODE_1:-10.0.1.10}
       daqnode_net:
-        ipv4_address: ${DAQNODE_DIRECT_HOST:-${DAQ_NET_DAQNODE_1:-192.168.0.10}}
+        ipv4_address: ${DAQ_NET_DAQNODE_1:-192.168.0.10}
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -143,8 +143,8 @@ services:
       - ../../grpc:/grpc
     environment:
       GRPC_PORT:          "${GRPC_PORT:-50051}"
-      BINDHOST:           "${BINDHOST}"
-      HEADNODE_IP:        "${HEADNODE_HOST:-${HEAD_NET_HEADNODE:-10.0.1.22}}"
+      BINDHOST:           "${BINDHOST:-lo}"
+      HEADNODE_IP:        "${HEAD_NET_HEADNODE:-10.0.1.22}"
       HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
@@ -163,7 +163,7 @@ services:
       headnode_net:
         ipv4_address: ${HEAD_NET_DAQNODE_2:-10.0.1.11}
       daqnode_net:
-        ipv4_address: ${DAQNODE2_HOST:-${DAQ_NET_DAQNODE_2:-192.168.0.20}}
+        ipv4_address: ${DAQ_NET_DAQNODE_2:-192.168.0.20}
     cap_add:
       - NET_RAW
       - NET_ADMIN
@@ -171,13 +171,13 @@ services:
       - SYS_NICE
     shm_size: '2gb'
     volumes:
-      - daq_data_2:/data
+      - daq_data:/data
       - ..:/app
       - ../../grpc:/grpc
     environment:
       GRPC_PORT:          "${GRPC_PORT:-50051}"
-      BINDHOST:           "${BINDHOST}"
-      HEADNODE_IP:        "${HEADNODE_HOST:-${HEAD_NET_HEADNODE:-10.0.1.22}}"
+      BINDHOST:           "${BINDHOST:-lo}"
+      HEADNODE_IP:        "${HEAD_NET_HEADNODE:-10.0.1.22}"
       HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
@@ -224,15 +224,15 @@ services:
         ipv4_address: ${QUABO_NET_TESTER:-192.168.3.5}
     environment:
       IN_DOCKER_CI:           "1"
-      DAQNODE_DIRECT_HOST:    "${DAQNODE_DIRECT_HOST:-${DAQ_NET_DAQNODE_1:-192.168.0.10}}"
-      DAQNODE_GATEWAY_HOST:   "${DAQNODE_GATEWAY_HOST:-${HEAD_NET_GATEWAY:-10.0.1.254}}"
-      DAQNODE_DATA_HOST:      "${DAQNODE_DATA_HOST:-${DAQ_NET_DAQNODE_1:-192.168.0.10}}"
-      DAQNODE2_HOST:          "${DAQNODE2_HOST:-${DAQ_NET_DAQNODE_2:-192.168.0.20}}"
-      HEADNODE_HOST:          "${HEADNODE_HOST:-${HEAD_NET_HEADNODE:-10.0.1.22}}"
-      BINDHOST:               "${BINDHOST}"
+      DAQNODE_DIRECT_HOST:    "${DAQ_NET_DAQNODE_1:-192.168.0.10}"
+      DAQNODE_GATEWAY_HOST:   "${HEAD_NET_GATEWAY:-10.0.1.254}"
+      DAQNODE_DATA_HOST:      "${DAQ_NET_DAQNODE_1:-192.168.0.10}"
+      DAQNODE2_HOST:          "${DAQ_NET_DAQNODE_2:-192.168.0.20}"
+      HEADNODE_HOST:          "${HEAD_NET_HEADNODE:-10.0.1.22}"
+      BINDHOST:               "${BINDHOST:-lo}"
       GRPC_PORT:              "${GRPC_PORT:-50051}"
-      LOKI_URL:               "${LOKI_URL:-http://${HEAD_NET_LOKI:-10.0.1.21}:3100}"
-      REDIS_HOST:             "${REDIS_HOST:-${HEAD_NET_REDIS:-10.0.1.20}}"
+      LOKI_URL:               "http://${HEAD_NET_LOKI:-10.0.1.21}:3100"
+      REDIS_HOST:             "${HEAD_NET_REDIS:-10.0.1.20}"
       DAQ_DATA_DIR:           "/data"
       HEAD_DATA_DIR:          "/data/head"
       DAQNODE_CONTAINER_NAME: "${DAQNODE_CONTAINER_NAME:-ctl-int-daqnode-1}"

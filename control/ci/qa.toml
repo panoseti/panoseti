@@ -47,7 +47,7 @@ requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
 test_dir = "ci/tier3_fleet/"
-env = { DAQNODE_DIRECT_HOST = "${DAQ_NET_PREFIX}.10", DAQNODE2_HOST = "${DAQ_NET_PREFIX}.11", HEADNODE_HOST = "${HEAD_NET_PREFIX}.5", REDIS_HOST = "${HEAD_NET_PREFIX}.20", DAQNODE_GATEWAY_HOST = "${HEAD_NET_PREFIX}.254" }
+env = { DAQNODE_DIRECT_HOST = "${DAQ_NET_PREFIX}.10", DAQNODE2_HOST = "${DAQ_NET_PREFIX}.20", HEADNODE_HOST = "${HEAD_NET_PREFIX}.22", REDIS_HOST = "${HEAD_NET_PREFIX}.20", DAQNODE_GATEWAY_HOST = "${HEAD_NET_PREFIX}.254" }
 
 [suites.chaos]
 description = "Tier 4: Fault injection (Active failure scenarios)"
@@ -56,7 +56,7 @@ requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
 test_dir = "ci/tier4_chaos/"
-env = { ENABLE_TELEMETRY_TESTS = "1", DAQNODE_DIRECT_HOST = "${DAQ_NET_PREFIX}.10", DAQNODE2_HOST = "${DAQ_NET_PREFIX}.11", HEADNODE_HOST = "${HEAD_NET_PREFIX}.5", REDIS_HOST = "${HEAD_NET_PREFIX}.20", DAQNODE_GATEWAY_HOST = "${HEAD_NET_PREFIX}.254" }
+env = { ENABLE_TELEMETRY_TESTS = "1", DAQNODE_DIRECT_HOST = "${DAQ_NET_PREFIX}.10", DAQNODE2_HOST = "${DAQ_NET_PREFIX}.20", HEADNODE_HOST = "${HEAD_NET_PREFIX}.22", REDIS_HOST = "${HEAD_NET_PREFIX}.20", DAQNODE_GATEWAY_HOST = "${HEAD_NET_PREFIX}.254" }
 
 [suites.test-hw]
 description = "Physical Hardware-Software (HITL) tests"

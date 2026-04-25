@@ -21,8 +21,6 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 from ci.tier3_fleet.conftest import (
     BINDHOST,
     DAQ_DATA_DIR,
-    DAQNODE_DIRECT_HOST,
-    GRPC_PORT,
     wait_hashpipe_running,
     wait_hashpipe_stopped,
 )
@@ -34,11 +32,12 @@ from ci.tier3_fleet.conftest import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def run_params_conc() -> dict[str, Any]:
+def run_params_conc(session_fleet) -> dict[str, Any]:
     """Run parameters for concurrent tests — unique per test invocation."""
+    fleet, _ = session_fleet
     return {
         "data_dir":         DAQ_DATA_DIR,
-        "daq_ip_addr":      DAQNODE_DIRECT_HOST,
+        "daq_ip_addr":      fleet.node_ip(0),
         "bindhost":         BINDHOST,
         "max_file_size_mb": 1,
         "group_ph_frames":  False,
@@ -69,7 +68,7 @@ class TestConcurrentDaqOperations:
     """Server must serialise concurrent StartDaq requests (asyncio event loop)."""
 
     def test_concurrent_start_only_one_wins(
-        self, daq_control_direct, run_params_conc, ensure_clean_daq_state_conc
+        self, daq_control_direct, run_params_conc, ensure_clean_daq_state_conc, session_fleet
     ) -> None:
         """Three simultaneous StartDaq calls: exactly one returns True, rest raise ValueError.
 
@@ -79,10 +78,14 @@ class TestConcurrentDaqOperations:
         which the client converts to ValueError.
         """
         rp = run_params_conc
+        fleet, _ = session_fleet
+        spec = fleet.specs[0]
 
         def attempt():
-            # Each thread needs its own gRPC channel to actually be concurrent
-            client = DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
+            # Each thread needs its own gRPC channel to actually be concurrent.
+            # Use the fleet's dynamic host/port (not DAQNODE_DIRECT_HOST which
+            # is only set in the Docker CI environment).
+            client = DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
             try:
                 return client.StartDaq(rp)   # True on success
             except ValueError:

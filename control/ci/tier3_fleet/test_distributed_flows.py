@@ -27,14 +27,14 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.asyncio
 async def test_when_distributed_run_started_then_all_nodes_recording(
-    tmp_path,
-    probe: StateProbe
+    tmp_path
 ) -> None:
     """
     Intent: Verify distributed gRPC orchestration for a multi-node run.
     Scenario: Dynamic 2-node fleet. 
     Assertion: Both nodes report 'hashpipe_running': True after start_run().
     """
+    probe = StateProbe()
     # 1. Spin up dynamic fleet
     fleet = make_fleet(n=2)
     fleet.start()
@@ -60,14 +60,14 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
 
 @pytest.mark.asyncio
 async def test_when_distributed_run_stopped_then_all_nodes_halted(
-    tmp_path,
-    probe: StateProbe
+    tmp_path
 ) -> None:
     """
     Intent: Verify clean teardown of a distributed observing run.
     Scenario: Dynamic 2-node fleet with an active run.
     Assertion: Hashpipe is stopped on all nodes and ledger reaches RECORDING_ENDED.
     """
+    probe = StateProbe()
     fleet = make_fleet(n=2)
     fleet.start()
     try:

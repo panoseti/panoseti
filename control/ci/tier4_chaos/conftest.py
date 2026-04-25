@@ -188,6 +188,9 @@ def daqnode_fleet(request: Any, docker_client: Any) -> Iterator[Any]:
         yield fleet
     finally:
         fleet.tear_down()
+
+
+@pytest.fixture(scope="session")
 def daq_control_direct() -> DaqControlClient:
     return DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
 

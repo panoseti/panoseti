@@ -29,6 +29,7 @@ dependencies = [
     "pyvis",
     "jsonpickle",
     "panoseti_grpc>=0.4.10",
+    "testcontainers>=4.14.2",
 ]
 
 [project.optional-dependencies]
