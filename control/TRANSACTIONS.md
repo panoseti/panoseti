@@ -4,7 +4,7 @@ This document describes the transactional integrity and rollback mechanisms impl
 
 ## Overview
 
-The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers — implemented in `control/src/control/start.py` (class `StartTransaction`, line ~77) and `control/src/control/stop.py` (class `StopTransaction`, line ~62) respectively. Since the `pseti stop` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by `daemons/transfer_daemon.py`.
+The observatory control plane manages a distributed system (Head node, DAQ nodes, Quabo detectors). Starting or stopping an observation is handled atomically by `StartTransaction` and `StopTransaction` context managers — implemented in `control/src/control/start.py` (class `StartTransaction`, line ~77) and `control/src/control/stop.py` (class `StopTransaction`, line ~62) respectively. Since the `pseti stop` refactor, bulk data transfer (rsync, manifest generation, selective cleanup) is decoupled from the advisory lock and executed by the Transfer Daemon (`control/src/control/transfer/daemon.py`).
 
 ## State Management & Locking
 
@@ -14,8 +14,8 @@ Two separate advisory locks prevent concurrent operations at different granulari
 
 | Lock file | Mechanism | Held by | Duration |
 |---|---|---|---|
-| `tmp/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
-| `tmp/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Full job duration (minutes to hours) |
+| `state/locks/panoseti_control.lock` | `os.O_EXCL` + stale-PID healing | `pseti start` / `pseti stop` | Seconds (hardware I/O only) |
+| `state/locks/panoseti_transfer.lock` | `fcntl.LOCK_EX \| LOCK_NB` | Transfer Daemon | Full job duration (minutes to hours) |
 
 The control lock uses atomic file creation (`O_CREAT | O_EXCL`). If acquisition fails, the PID inside the file is checked — a dead PID causes a self-healing delete and retry (SC-015/SC-021). The transfer lock uses `flock`, which the kernel releases automatically on process exit.
 
@@ -30,7 +30,7 @@ Starting with Phase 4 of the architectural modernization, the control plane uses
 
 ### Distributed Ledger
 
-The system state is persisted in a TOML-based ledger (`tmp/run_state.toml`).
+The system state is persisted in a TOML-based ledger (`state/runs/ledger.toml`).
 
 **Full status vocabulary:**
 
@@ -110,9 +110,38 @@ Ensures **resilient best-effort hardware shutdown**. All steps execute even if p
 1. **Stop DAQs**: Concurrent `StopDaq` RPCs to all DAQ nodes.
 2. **Kill Daemons**: Terminate local control processes (HV updater, HK recorder, etc.).
 3. **Stop Quabos**: Signal hardware to halt data generation.
-4. **Enqueue transfer job**: Write `{run_name}.job.toml` to `tmp/transfer_queue/pending/`.
+4. **Enqueue transfer job**: Build a `TransferJob` (see schema below) and write `{run_name}.job.toml` to `state/transfer/queue/pending/`. Skipped if `--no-transfer`.
 5. **Update Ledger**: Transition to `RECORDING_ENDED`.
 6. **Release Control Lock** — happens in seconds, not hours.
+
+### TransferJob schema — the stop→daemon contract
+
+`pseti stop` constructs a `TransferJob` (defined in `control/src/control/utils/pydantic_config_models.py`) and serializes it as TOML into the pending queue. The daemon parses it with `TransferJob.model_validate(toml.load(f))`. All fields round-trip exactly, including `port_forwarding`.
+
+```toml
+schema_version = 1
+run_name = "start_2024-01-01T00:00:00Z.sci"
+head_data_dir = "/data/panoseti"
+head_node_username = "panoseti"
+created_at = "2024-01-01T00:00:00+00:00"
+attempts = 0
+no_cleanup = false
+no_collect = false
+skip_verify = false
+
+[[daq_nodes]]
+ip_addr = "192.168.0.10"
+username = "panoseti"
+data_dir = "/data"
+module_ids = [250, 251]
+
+[daq_nodes.port_forwarding]
+status = true
+gw_ip = "10.0.1.254"
+port = 2200
+```
+
+**Key invariant**: the `port_forwarding` block is preserved from `daq_config.json` through `TransferNodeSpec` into the TOML. Prior to this refactor, the field was silently dropped, causing rsync to fail over the physical router when the observatory uses a VPN gateway.
 
 ### Stop Flow Diagram
 ```mermaid
@@ -121,28 +150,60 @@ flowchart TD
     B --> C[Set Ledger: STOPPING]
     C --> D[tx.__aexit__: Resilient Hardware Teardown]
     D --> E[Stop DAQs via gRPC + Kill Daemons + Stop Quabos]
-    E --> F[Enqueue transfer job in tmp/transfer_queue/pending/]
-    F --> G[Set Ledger: RECORDING_ENDED]
-    G --> H[Release Control Lock — seconds elapsed]
-    H --> I[Transfer Daemon picks up job asynchronously]
+    E --> F{--no-transfer?}
+    F -- No --> G[Build TransferJob + enqueue to state/transfer/queue/pending/]
+    F -- Yes --> H[Skip enqueue — log WARNING]
+    G --> I[Set Ledger: RECORDING_ENDED]
+    H --> I
+    I --> J[Release Control Lock — seconds elapsed]
+    J --> K[Transfer Daemon picks up job asynchronously]
 ```
+
+### pseti stop flags
+
+| Flag | Effect |
+|---|---|
+| `--no-transfer` | Skip enqueue entirely; data stays on DAQ nodes. |
+| `--keep-daq-data` | Sets `no_cleanup=True` on the job (.pff files preserved after archive). |
+| `--skip-verify` | Sets `skip_verify=True` on the job (manifest re-hash skipped). Discouraged — CLI prints a warning. |
+| `--force-cleanup` | Force cleanup even if hashpipe liveness is uncertain. |
+| `--yes / -y` | Auto-confirm safety prompts including daemon-down warning. |
+
+**Daemon-down warning**: before enqueuing, `pseti stop` checks the heartbeat at `state/transfer/daemon.heartbeat`. If the daemon is stale (>30 s since last write):
+- Interactive TTY: prompts the operator to confirm before enqueuing.
+- Non-interactive / `--yes`: enqueues and emits a WARNING log.
 
 ---
 
-## Transfer Daemon (`daemons/transfer_daemon.py`)
+## Transfer Daemon (`control/transfer/daemon.py`)
 
-The daemon is a long-running process started by `session_start.py`. It holds `tmp/panoseti_transfer.lock` as a singleton guard. Multiple `pseti stop` invocations never contend with it.
+### Lifecycle
+
+The daemon is started by `session_start.py` via `util.start_daemon(["python", "-m", "control.transfer"])` after Redis daemons. It writes its PID to `state/transfer/daemon.pid` and updates a heartbeat at `state/transfer/daemon.heartbeat` every 5 seconds.
+
+`session_stop.py` sends SIGTERM and waits up to 30 seconds for the daemon to finish its current processing step before escalating to SIGKILL. An in-flight rsync is always allowed to complete its current attempt before the daemon exits.
+
+On receipt of SIGTERM/SIGINT the daemon: finishes the current stage, moves any active job back to `pending/` (crash recovery), then releases the flock and exits cleanly.
+
+### Queue Layout
+
+```
+state/transfer/queue/
+  pending/    {run_name}.job.toml   ← pseti stop writes here
+  active/     {run_name}.job.toml   ← daemon moves here on claim()
+  failed/     {run_name}.job.toml   ← daemon moves here after MAX_ATTEMPTS
+  completed/  {run_name}.job.toml   ← daemon moves here on success
+```
+
+All transitions use `os.rename` (POSIX-atomic). Double-enqueue of the same run is idempotent.
 
 ### Job Lifecycle
 
 ```
-tmp/transfer_queue/
-  pending/    → daemon calls claim() → active/
-  active/     → success → completed/
-  active/     → failure after MAX_ATTEMPTS → failed/
+pending/ → daemon calls claim() → active/
+active/  → success              → completed/
+active/  → failure MAX_ATTEMPTS → failed/
 ```
-
-All transitions use `os.rename` (POSIX-atomic).
 
 ### State Machine per Job
 
@@ -164,7 +225,7 @@ flowchart TD
 
 ### Integrity Invariant — No Deletion Without Verified Integrity
 
-The VERIFYING stage calls `verify_manifest()` (`utils/transfer/verify.py`) on every manifest file found on the head node (`manifest.blake3`, `manifest.xxh3_128`, `manifest.sha256`).  Each file listed in the manifest is re-hashed and compared against the recorded digest.  On any mismatch the daemon transitions to `VERIFY_FAILED`, logs the exact file paths, and **skips cleanup** — DAQ-side `.pff` files are preserved for manual recovery.
+The VERIFYING stage calls `verify_manifest()` (`transfer/verify.py`) on every manifest file found on the head node (`manifest.blake3`, `manifest.xxh3_128`, `manifest.sha256`).  Each file listed in the manifest is re-hashed and compared against the recorded digest.  On any mismatch the daemon transitions to `VERIFY_FAILED`, logs the exact file paths, and **skips cleanup** — DAQ-side `.pff` files are preserved for manual recovery.
 
 The CLEANING stage passes `manifest_digest` (SHA-256 of the manifest file content) to `CleanupData(mode=CLEANUP_SELECTIVE)`.  The DAQ Control server recomputes the digest of its local manifest and refuses the RPC with `FAILED_PRECONDITION` if the values differ.  This closes the loop: the head node must prove it verified the same manifest the DAQ node generated, or deletion is impossible.
 
@@ -190,6 +251,49 @@ On startup the daemon sweeps `active/` for jobs left behind by a prior crash.  E
 
 ---
 
+## Operator Recovery (`pseti obs transfer`)
+
+Use the `pseti obs transfer` sub-commands to inspect the queue and recover from failures.
+
+| Command | Purpose |
+|---|---|
+| `pseti obs transfer status` | Daemon health (heartbeat age, pid) + per-bucket job counts. |
+| `pseti obs transfer status <run>` | Show which bucket a specific run is in. |
+| `pseti obs transfer queue [pending\|active\|completed\|failed]` | List jobs in a bucket. |
+| `pseti obs transfer retry <run>` | Move a failed job back to pending/ (resets attempts). |
+| `pseti obs transfer start` | Start the daemon (idempotent; no-op if already running). |
+| `pseti obs transfer stop` | SIGTERM the daemon; wait up to 60 s for graceful exit. |
+| `pseti obs transfer tail [-f] [-n N]` | Tail `state/logs/transfer_daemon/current.log`. |
+| `pseti obs transfer verify <run>` | Run manifest verification standalone (no state transitions). |
+
+**Common recovery flows:**
+
+*Transfer daemon was down when `pseti stop` ran:*
+```bash
+pseti obs transfer status          # confirm daemon is down
+pseti obs transfer start           # restart it
+# daemon auto-picks up the pending job
+pseti obs transfer status <run>    # confirm it moved to active/
+```
+
+*rsync failed and exhausted retries:*
+```bash
+pseti obs transfer queue failed    # confirm run is in failed/
+# investigate root cause (disk space, network, SSH keys)
+pseti obs transfer retry <run>     # move back to pending/
+pseti obs transfer start           # ensure daemon is running
+```
+
+*Manifest digest mismatch (VERIFY_FAILED):*
+```bash
+pseti obs transfer verify <run>    # re-run verification to confirm which files differ
+# DAQ data is preserved — do NOT run CleanupData manually
+# Fix the head-side issue (re-rsync the specific file), then:
+pseti obs transfer retry <run>
+```
+
+---
+
 ## Network Interaction
 
 ```mermaid
@@ -202,7 +306,7 @@ sequenceDiagram
     Head->>Head: tx.__aenter__ (Control Lock)
     Head->>DAQ: StopDaq (Concurrent gRPC)
     Head->>Quabo: Stop Data Flow
-    Head->>Head: Enqueue job → tmp/transfer_queue/pending/
+    Head->>Head: Enqueue TransferJob → state/transfer/queue/pending/
     Head->>Head: Ledger: RECORDING_ENDED
     Head->>Head: tx.__aexit__ (Release Control Lock)
 

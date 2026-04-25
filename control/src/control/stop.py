@@ -20,6 +20,7 @@ import os
 import pathlib
 import shutil
 import signal
+import sys
 import time
 from datetime import UTC, datetime
 from glob import glob
@@ -60,6 +61,28 @@ log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger("PSETI.Stop", log_dir=str(log_dir), grpc_enabled=True)
 
+def _transfer_daemon_healthy(stale_secs: float = 30.0) -> bool:
+    """Return True if the transfer daemon heartbeat is fresher than *stale_secs*.
+
+    Reads ``state/transfer/daemon.heartbeat`` (written by the daemon every 5 s).
+    Returns False if the file is absent, unreadable, or older than *stale_secs*.
+
+    Args:
+        stale_secs: Age threshold in seconds above which the daemon is considered down.
+
+    Returns:
+        True if the daemon appears healthy, False otherwise.
+    """
+    heartbeat = PanoPaths.state_dir() / "transfer" / "daemon.heartbeat"
+    if not heartbeat.exists():
+        return False
+    try:
+        ts = float(heartbeat.read_text().strip())
+        return (time.time() - ts) < stale_secs
+    except (ValueError, OSError):
+        return False
+
+
 class StopTransaction:
     """
     Context manager for a transactional observing run shutdown.
@@ -74,6 +97,8 @@ class StopTransaction:
         run: str | None,
         no_collect: bool,
         no_cleanup: bool,
+        no_transfer: bool,
+        skip_verify: bool,
         force_cleanup: bool,
         verbose: bool,
         cancel_event: asyncio.Event
@@ -85,6 +110,8 @@ class StopTransaction:
         self.run = run
         self.no_collect = no_collect
         self.no_cleanup = no_cleanup
+        self.no_transfer = no_transfer
+        self.skip_verify = skip_verify
         self.force_cleanup = force_cleanup
         self.verbose = verbose
         self.cancel_event = cancel_event
@@ -154,34 +181,44 @@ class StopTransaction:
                 if not await asyncio.to_thread(complete_file_exists, run_dir, recording_ended_filename):
                     await asyncio.to_thread(write_complete_file, run_dir, recording_ended_filename)
 
-                # Enqueue run for background transfer (fast-path).
-                # The TransferWorker daemon owns collection, cleanup, and
-                # run_complete — do NOT call collect_data or write run_complete here.
-                job = TransferJob(
-                    run_name=self.run,
-                    head_data_dir=str(data_dir),
-                    head_node_username=(
-                        self.daq_config.daq_nodes[0].username
-                        if self.daq_config.daq_nodes else "panoseti"
-                    ),
-                    created_at=datetime.now(UTC),
-                    no_collect=self.no_collect,
-                    no_cleanup=self.no_cleanup,
-                    daq_nodes=[
-                        TransferNodeSpec(
-                            ip_addr=n.ip_addr,
-                            username=n.username,
-                            data_dir=str(n.data_dir),
-                            module_ids=n.module_ids,
-                            port_forwarding=n.port_forwarding,
-                        )
-                        for n in self.daq_config.daq_nodes
-                        if n.module_ids
-                    ],
-                )
-                queue_dir = pathlib.Path(self.state_mgr.base_dir) / "state" / "transfer" / "queue"
-                tq = TransferQueue(queue_dir=queue_dir)
-                await asyncio.to_thread(tq.enqueue, job)
+                if self.no_transfer:
+                    # Operator explicitly skipped transfer — skip enqueue.
+                    logger.warning(
+                        "Transfer skipped (--no-transfer). "
+                        "DAQ data will NOT be collected. "
+                        "Run `pseti obs transfer retry %s` to recover.",
+                        self.run,
+                    )
+                else:
+                    # Enqueue run for background transfer (fast-path).
+                    # The TransferWorker daemon owns collection, cleanup, and
+                    # run_complete — do NOT call collect_data or write run_complete here.
+                    job = TransferJob(
+                        run_name=self.run,
+                        head_data_dir=str(data_dir),
+                        head_node_username=(
+                            self.daq_config.daq_nodes[0].username
+                            if self.daq_config.daq_nodes else "panoseti"
+                        ),
+                        created_at=datetime.now(UTC),
+                        no_collect=self.no_collect,
+                        no_cleanup=self.no_cleanup,
+                        skip_verify=self.skip_verify,
+                        daq_nodes=[
+                            TransferNodeSpec(
+                                ip_addr=n.ip_addr,
+                                username=n.username,
+                                data_dir=str(n.data_dir),
+                                module_ids=n.module_ids,
+                                port_forwarding=n.port_forwarding,
+                            )
+                            for n in self.daq_config.daq_nodes
+                            if n.module_ids
+                        ],
+                    )
+                    queue_dir = pathlib.Path(self.state_mgr.base_dir) / "state" / "transfer" / "queue"
+                    tq = TransferQueue(queue_dir=queue_dir)
+                    await asyncio.to_thread(tq.enqueue, job)
 
                 # Transition ledger to RECORDING_ENDED so the TransferWorker
                 # knows to pick up this run.
@@ -532,14 +569,34 @@ async def stop_run(
     daq_config: DaqConfig,
     network_config: NetworkConfig,
     quabo_uids: QuaboUids,
-    verbose: bool = False, 
-    no_cleanup: bool = False, 
+    verbose: bool = False,
+    no_cleanup: bool = False,
     no_collect: bool = False,
     run: str | None = None,
-    force_cleanup: bool = False
+    force_cleanup: bool = False,
+    no_transfer: bool = False,
+    skip_verify: bool = False,
 ) -> bool:
-    """
-    Transactional Best-Effort Shutdown.
+    """Transactional best-effort shutdown.
+
+    Stops hardware, enqueues a background transfer job, and transitions the
+    ledger to ``RECORDING_ENDED``.  Bulk I/O (rsync, verify, cleanup) is
+    owned by the Transfer Daemon.
+
+    Args:
+        daq_config: Validated DAQ node configuration.
+        network_config: Network routing configuration.
+        quabo_uids: Known Quabo UIDs.
+        verbose: Log extra details.
+        no_cleanup: Keep DAQ ``.pff`` files after transfer (sets job flag).
+        no_collect: Skip rsync to head node (sets job flag).
+        run: Run name to stop; defaults to the current run from ledger.
+        force_cleanup: Force cleanup even on uncertain hashpipe state.
+        no_transfer: Skip enqueueing entirely (data stays on DAQ nodes).
+        skip_verify: Skip manifest digest verification (job flag).
+
+    Returns:
+        True if stop completed without errors, False otherwise.
     """
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -551,8 +608,9 @@ async def stop_run(
 
     try:
         async with StopTransaction(
-            state_mgr, daq_config, network_config, quabo_uids, 
-            run, no_collect, no_cleanup, force_cleanup, verbose, cancel_event
+            state_mgr, daq_config, network_config, quabo_uids,
+            run, no_collect, no_cleanup, no_transfer, skip_verify,
+            force_cleanup, verbose, cancel_event
         ) as tx:
             # Pre-flight Validation
             if not util.is_local(daq_config.head_node_ip_addr, daq_config):
@@ -599,22 +657,27 @@ app = typer.Typer(help="Stop and finish a PSETI recording run.", no_args_is_help
 
 @app.command()
 def main(
-    no_cleanup: bool = typer.Option(False, "--no_cleanup", help="Don't clean up the data files on the DAQ nodes."),
-    no_collect: bool = typer.Option(False, "--no_collect", help="Don't collect the data files to the head node."),
+    no_cleanup: bool = typer.Option(False, "--no_cleanup", help="(Legacy) Keep .pff files on DAQ nodes after transfer."),
+    no_collect: bool = typer.Option(False, "--no_collect", help="(Legacy) Skip rsync to head node."),
+    keep_daq_data: bool = typer.Option(False, "--keep-daq-data", help="Keep .pff files on DAQ nodes after transfer (alias for --no_cleanup)."),
+    no_transfer: bool = typer.Option(False, "--no-transfer", help="Skip transfer entirely; data stays on DAQ nodes until manually recovered."),
+    skip_verify: bool = typer.Option(False, "--skip-verify", help="[Discouraged] Skip manifest digest verification during transfer."),
     run: str | None = typer.Option(None, "--run", help="Stop/Cleanup specific run."),
     force_cleanup: bool = typer.Option(False, "--force-cleanup", help="Force cleanup on DAQ nodes even if hashpipe liveness is uncertain."),
     verbose: bool = typer.Option(False, "--verbose", help="Print details."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ):
-    """
-    stop and finish a recording run if one is in progress.
-    stop recording activities whether or not a run is in progress.
+    """Stop an in-progress recording run and enqueue it for background transfer.
 
-    - tell DAQs to stop recording
-    - stop HK recorder process
-    - tell quabos to stop sending data
-    - if a run is in progress, copy data files to head and delete from DAQs
+    Hardware teardown completes in seconds. The Transfer Daemon handles rsync,
+    manifest verification, and selective cleanup out-of-band.
     """
+    if skip_verify:
+        logger.warning(
+            "--skip-verify is discouraged: manifest integrity will NOT be confirmed "
+            "before DAQ data is deleted."
+        )
+
     if not yes:
         typer.confirm("Are you sure you want to stop the recording run?", abort=True)
 
@@ -623,7 +686,22 @@ def main(
     quabo_uids = config_file.get_quabo_uids()
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
-    
+
+    # Merge --keep-daq-data into no_cleanup
+    effective_no_cleanup = no_cleanup or keep_daq_data
+
+    # Daemon-down warning (skip if --no-transfer since we won't enqueue anyway)
+    if not no_transfer and not _transfer_daemon_healthy():
+        msg = (
+            "Transfer daemon appears down (heartbeat stale or absent). "
+            "The job will be queued but no transfer will occur until you run "
+            "`pseti obs transfer start`."
+        )
+        if sys.stdin.isatty() and not yes:
+            typer.confirm(f"WARNING: {msg}\nContinue?", abort=True)
+        else:
+            logger.warning(msg)
+
     # Pre-stop interleave
     try:
         stop_interleave(retry_limit=10)
@@ -632,8 +710,10 @@ def main(
 
     # Execute async stop_run
     success = asyncio.run(stop_run(
-        daq_config, network_config, quabo_uids, 
-        verbose, no_cleanup, no_collect, run, force_cleanup
+        daq_config, network_config, quabo_uids,
+        verbose, effective_no_cleanup, no_collect, run, force_cleanup,
+        no_transfer=no_transfer,
+        skip_verify=skip_verify,
     ))
     if not success:
         raise typer.Exit(code=1)
