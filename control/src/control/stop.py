@@ -17,7 +17,6 @@
 import asyncio
 import contextlib
 import os
-import pathlib
 import shutil
 import signal
 import sys

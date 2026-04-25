@@ -9,25 +9,22 @@ These tests require the full Docker stack to verify the interaction between:
 4.  daq_control_server (manifest/cleanup RPCs)
 """
 
-import asyncio
 import os
-import pathlib
 import subprocess
-import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import anyio
 import pytest
 
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
+from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
-from control.utils import config_file
+
 
 # Helpers for skipping tests when not in Docker CI
 def is_in_ci() -> bool:
@@ -240,8 +237,6 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     Retry: rsync fails twice, succeeds on third attempt.
     """
     import control.stop as stop
-    from ci.integration.conftest import wait_hashpipe_running
-    from ci.integration.scenarios.conftest import _start as grpc_start
 
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
@@ -445,8 +440,8 @@ async def test_transfer_daemon_unit_integration(tmp_path) -> None:
     )
 
     # Mock gRPC client module
-    from types import ModuleType
     import sys
+    from types import ModuleType
     
     mock_client = MagicMock()
     mock_client.__aenter__ = AsyncMock(return_value=mock_client)

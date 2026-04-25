@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import fcntl
 import logging
 import os
 import pathlib
 import signal
 import subprocess
 import time
-from typing import IO
 
 import anyio
 

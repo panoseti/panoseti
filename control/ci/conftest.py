@@ -53,22 +53,34 @@ def pytest_configure(config: Any) -> None:
     os.makedirs(os.environ["PSETI_QUABOS"], exist_ok=True)
 
 
+@pytest.fixture(scope="session")
+def worker_id(request: Any) -> str:
+    """Returns the xdist worker ID or 'master' if not running in parallel."""
+    if hasattr(request.config, "workerinput"):
+        return request.config.workerinput["workerid"]
+    return "master"
+
+
 @pytest.fixture(autouse=True)
-def isolated_workspace(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[pathlib.Path]:
+def auto_isolate(
+    tmp_path: pathlib.Path, 
+    monkeypatch: pytest.MonkeyPatch,
+    worker_id: str
+) -> Iterator[pathlib.Path]:
     """
-    Autouse fixture that provides per-test isolation for configs and transient state.
+    Autouse fixture that provides per-test isolation for configs, transient state,
+    and telemetry databases.
     
-    - Copies current PSETI_CONFIG to a fresh temp dir.
-    - Redirects PSETI_TMP, PSETI_LOGS, and PSETI_QUABOS to subdirs in tmp_path.
+    - Redirects PSETI_STATE, PSETI_CONTROL, and PSETI_CONFIG to subdirs in tmp_path.
+    - Assigns unique Redis DB indices and Loki Tenant IDs based on worker_id.
     - Guarantees that any 'sed -i' or ledger writes stay within the test's scope.
     """
     # 1. Setup isolated directories inside tmp_path
     cfg_tmp = tmp_path / "configs"
-    tmp_tmp = tmp_path / "tmp"
-    log_tmp = tmp_path / "logs"
-    q_tmp = tmp_path / "quabos"
+    state_tmp = tmp_path / "state"
+    ctl_tmp = tmp_path / "control"
     
-    for d in [cfg_tmp, tmp_tmp, log_tmp, q_tmp]:
+    for d in [cfg_tmp, state_tmp, ctl_tmp]:
         d.mkdir(parents=True, exist_ok=True)
         
     # 2. Populate configs from current PSETI_CONFIG
@@ -77,23 +89,29 @@ def isolated_workspace(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) 
         for item in pathlib.Path(src_cfg).iterdir():
             try:
                 if item.is_file():
-                    # copy2 follows symlinks and preserves metadata
                     shutil.copy2(item, cfg_tmp)
                 elif item.is_dir():
                     shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
             except Exception:
-                # Skip broken symlinks or permission errors in templates
                 pass
     
     # 3. Apply overrides for the duration of the test
     monkeypatch.setenv("PSETI_CONFIG", str(cfg_tmp))
-    monkeypatch.setenv("PSETI_TMP", str(tmp_tmp))
-    monkeypatch.setenv("PSETI_LOGS", str(log_tmp))
-    monkeypatch.setenv("PSETI_QUABOS", str(q_tmp))
+    monkeypatch.setenv("PSETI_STATE", str(state_tmp))
+    monkeypatch.setenv("PSETI_CONTROL", str(ctl_tmp))
     
-    # 4. Handle quabo_uids.json (essential for most integration tests)
-    # We look in the isolated config dir, then the pre-test PSETI_TMP, 
-    # then fallback to the known chaos template.
+    # 4. Telemetry and Database Isolation
+    # Assign unique Redis DBs and Loki Tenant IDs based on xdist worker_id
+    # worker_id is 'gw0', 'gw1', etc. Extract the digit.
+    try:
+        db_index = int("".join(filter(str.isdigit, worker_id))) if worker_id != "master" else 0
+    except ValueError:
+        db_index = 0
+        
+    monkeypatch.setenv("REDIS_DB", str(db_index))
+    monkeypatch.setenv("LOKI_TENANT_ID", f"test_tenant_{db_index}")
+    
+    # 5. Handle quabo_uids.json (essential for most integration tests)
     possible_uids = [
         cfg_tmp / "quabo_uids.json",
         pathlib.Path(os.environ.get("PSETI_TMP", "")) / "quabo_uids.json",
@@ -102,18 +120,45 @@ def isolated_workspace(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) 
     for p in possible_uids:
         try:
             if p.exists():
-                shutil.copy2(p, tmp_tmp / "quabo_uids.json")
+                # In new state hierarchy, quabo_uids goes to calibration/ or similar
+                # But for now, ensuring it exists in the state root is safest for legacy
+                shutil.copy2(p, state_tmp / "quabo_uids.json")
                 break
         except Exception:
             continue
     
-    # 5. Ensure PanoPaths and RunStateManager are fresh
+    # 6. Ensure PanoPaths and RunStateManager are fresh
     from control.utils.paths import PanoPaths
     from control.utils.run_state import RunStateManager
-    PanoPaths.ensure_dirs()
+    PanoPaths.ensure_state_dirs()
     RunStateManager().clear_state()
     
     yield tmp_path
+
+# ---------------------------------------------------------------------------
+# Shared Factories & Mocks (Tier 2-4 Infrastructure)
+# ---------------------------------------------------------------------------
+
+from ci.fixtures.factories import (
+    make_mock_daq_config,
+    make_transfer_job,
+    simulate_daq_filesystem,
+)
+
+@pytest.fixture
+def transfer_job_factory():
+    """Factory for creating valid TransferJob models."""
+    return make_transfer_job
+
+@pytest.fixture
+def daq_fs_simulator():
+    """Helper to populate a mock DAQ filesystem structure."""
+    return simulate_daq_filesystem
+
+@pytest.fixture
+def daq_config_factory():
+    """Factory for creating valid DaqConfig models."""
+    return make_mock_daq_config
 
 
 # ---------------------------------------------------------------------------
