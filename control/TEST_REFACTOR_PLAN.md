@@ -129,5 +129,16 @@ Every test class or function must strictly document:
    - **Status**: `control/src/control/topology/fleet.py` updated to generate realistic multi-site matrices.
    - **Features**: Added `generate_palomar_topology()` reflecting Gattini, Winter, Fern, and PTI sites with valid port forwarding and internal subnets.
    - **Verification**: Tier 1 unit tests (`test_topology_gen.py`) verify model consistency and documentation parity.
-3. **Phase 3**: Migrate remaining legacy integration/chaos scenarios into the Domain-Driven Tier 2 and Tier 4 structures.
-4. **Phase 4**: Add `testcontainers-python` to `pyproject.toml` and migrate `fleet.py` to support dynamic Tier 3 fleet orchestration.
+3. **Phase 3 (COMPLETED)**: Migrate remaining legacy scenarios into the Domain-Driven Tier 2 structure.
+   - **Status**: Transitioned `RunStateManager`, `TransferPipeline`, `ConfigValidation`, and `Telemetry` logic tests.
+   - **Domains**: Created `test_config_logic.py`, `test_ledger.py`, `test_transfer.py`, and `test_telemetry.py` in `control/ci/tier2_logic/`.
+   - **Modernization**: All migrated tests now utilize the `auto_isolate` fixture and BDD-style naming standards.
+4. **Phase 4 (COMPLETED)**: Dynamic Fleets & Runner Modernization.
+   - **Infrastructure**: Added `testcontainers-python` to `pyproject.toml`.
+   - **Dynamic Fleets**: Migrated `fleet.py` to use `testcontainers` for ephemeral, isolated container orchestration with automatic network management.
+   - **Runner Modernization**: Upgraded `qa_utils.py` to dynamically template `.env` files with random, non-overlapping IPv4 subnets for every suite execution, eliminating host-level routing collisions.
+5. **Phase 5 (COMPLETED)**: Chaos Migration & Assertion Modernization.
+   - **Status**: Transitioned legacy `integration/scenarios` into the Domain-Driven Tier 4 (Chaos) and Tier 2 (Logic) structures.
+   - **Modernization**: Implemented `StateProbe` as a unified assertion engine, wrapping complex filesystem and gRPC state checks into a clean, readable API.
+   - **BDD Compliance**: All migrated tests now utilize BDD-style naming and high-density docstrings (Intent/Scenario/Assertion).
+   - **Tier 3 Execution**: Introduced `test_distributed_flows.py` using dynamic `Fleet` orchestration for end-to-end distributed verification.

@@ -3,8 +3,10 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import tomllib
+import random
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -143,51 +145,48 @@ class TestRunner:
         self.container_tool = "docker"
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
+        self._temp_envs: dict[str, Path] = {}
 
     async def run_suite(self, suite_name: str, jobs: int | None = None, target: str | None = None, extra_args: list[str] | None = None) -> bool:
         if suite_name not in self.cfg.suites:
             from rich.console import Console
             Console().print(f"[red]Unknown suite: {suite_name}[/red]")
             return False
-        
+
         suite = self.cfg.suites[suite_name]
-        project_name = f"{self.project_prefix}-{suite.name}"
+        project_name = f"{self.project_prefix}-{suite_name}"
         
-        results: list[Result] = []
+        # 1. Setup
+        if suite.requires_docker:
+            await self._setup_docker(suite, project_name)
+        
+        # 2. Run
+        results = []
         try:
-            if suite.requires_docker:
-                await self._setup_docker(suite, project_name)
-            
-            if suite.type == "test":
-                results = await self._run_test_suite(suite, project_name, jobs, extra_args)
-            elif suite.type == "lint":
+            if suite.type == "lint":
                 results = await self._run_lint_suite(suite, project_name, target, extra_args)
-                
+            else:
+                results = await self._run_test_suite(suite, project_name, jobs, extra_args)
         finally:
+            # 3. Teardown
             if suite.requires_docker and not self.no_teardown:
                 await self._teardown_docker(suite, project_name)
-        
-        self._print_summary(results)
+            
+            # Clean up temp env file
+            if suite_name in self._temp_envs:
+                self._temp_envs[suite_name].unlink(missing_ok=True)
+                del self._temp_envs[suite_name]
+
         return all(r.ok for r in results)
 
-    async def cleanup_all(self):
-        self._header("GLOBAL CLEANUP")
-        for _name, suite in self.cfg.suites.items():
-            if suite.requires_docker:
-                project_name = f"{self.project_prefix}-{suite.name}"
-                from rich.console import Console
-                Console().print(f"[dim]Cleaning up {project_name}...[/dim]")
-                await self._teardown_docker(suite, project_name, quiet=True)
-        from rich.console import Console
-        Console().print("[green]Cleanup complete.[/green]")
-
-    async def build_all(self):
-        self._header("REBUILDING IMAGES")
-        processed_files = set()
+    async def build_images(self, suite_name: str | None = None):
+        """Pre-build all images used in the suite(s)."""
+        self._header("BUILDING IMAGES")
         
-        # We build services one by one to avoid overwhelming system resources 
-        # (RPC EOF errors) during the export/compression phase.
-        for suite in self.cfg.suites.values():
+        processed_files = set()
+        suites_to_build = [self.cfg.suites[suite_name]] if suite_name else self.cfg.suites.values()
+        
+        for suite in suites_to_build:
             if not suite.requires_docker:
                 continue
                 
@@ -222,6 +221,37 @@ class TestRunner:
 
     # ── Internal Helpers ──────────────────────────────────────────────────────
 
+    def _generate_dynamic_env(self, suite: SuiteConfig) -> Path:
+        """Generates a temporary .env file with non-overlapping subnets."""
+        # Use random prefixes to avoid collisions
+        # 10.x.y where x and y are random
+        x = random.randint(100, 200)
+        y = random.randint(1, 250)
+        
+        head_prefix = f"10.{x}.{y}"
+        daq_prefix = f"192.168.{random.randint(0, 250)}"
+        quabo_prefix = f"192.168.{random.randint(0, 250)}"
+        
+        env_content = [
+            f"HEAD_NET_PREFIX={head_prefix}",
+            f"DAQ_NET_PREFIX={daq_prefix}",
+            f"QUABO_NET_PREFIX={quabo_prefix}",
+            "COMPOSE_PROJECT_NAME=" + f"{self.project_prefix}-{suite.name}",
+        ]
+        
+        # Include suite-specific env vars
+        for k, v in suite.env.items():
+            # If they are already prefixes, we might want to let them be overridden 
+            # but usually we want dynamic ones. 
+            # For now, if it's explicitly in suite.env, it takes precedence.
+            if k not in ["HEAD_NET_PREFIX", "DAQ_NET_PREFIX", "QUABO_NET_PREFIX"]:
+                 env_content.append(f"{k}={v}")
+
+        # Path for the temp env file
+        env_path = CONTROL_ROOT / "ci" / f".env.{suite.name}.tmp"
+        env_path.write_text("\n".join(env_content) + "\n")
+        return env_path
+
     async def _setup_docker(self, suite: SuiteConfig, project_name: str):
         self._header(f"SETUP: {suite.name.upper()}")
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
@@ -239,12 +269,16 @@ class TestRunner:
 
         build_flag = " --no-build" if self.no_build else ""
         
+        # Dynamic env templating
+        env_file = self._generate_dynamic_env(suite)
+        self._temp_envs[suite.name] = env_file
+
         # Merge suite env into process env for compose up
         full_env = os.environ.copy()
         full_env.update(suite.env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
 
-        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} up -d{build_flag}"
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} up -d{build_flag}"
         res = await self._run_cmd(cmd, env=full_env)
         if not res.ok:
             from rich.console import Console
@@ -254,7 +288,8 @@ class TestRunner:
         if suite.pre_run:
             from rich.console import Console
             Console().print(f"[dim]Running pre-run command for {suite.name}...[/dim]")
-            pre_cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} /bin/sh -c '{suite.pre_run}'"
+            # Use dynamic env file for pre-run too
+            pre_cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} /bin/sh -c '{suite.pre_run}'"
             await self._run_cmd(pre_cmd, env={"COMPOSE_PROJECT_NAME": project_name})
 
     async def _teardown_docker(self, suite: SuiteConfig, project_name: str, quiet: bool = False):
@@ -271,12 +306,15 @@ class TestRunner:
         if not compose_file:
             return
 
+        # Use temp env if it exists
+        env_file = self._temp_envs.get(suite.name, ENV_CI_PATH)
+
         # Merge suite env into process env for compose down
         full_env = os.environ.copy()
         full_env.update(suite.env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
 
-        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} down -v --remove-orphans"
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} down -v --remove-orphans"
         await self._run_cmd(cmd, env=full_env, quiet=quiet)
 
     async def _run_test_suite(self, suite: SuiteConfig, project_name: str, jobs: int | None, extra_args: list[str] | None) -> list[Result]:
@@ -301,7 +339,8 @@ class TestRunner:
             if env_cfg:
                 compose_file = env_cfg.compose_file
 
-        cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
+        env_file = self._temp_envs.get(suite.name, ENV_CI_PATH)
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
         
         lock = asyncio.Lock()
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
@@ -320,9 +359,10 @@ class TestRunner:
                 compose_file = env_cfg.compose_file
 
         lock = asyncio.Lock()
+        env_file = self._temp_envs.get(suite.name, ENV_CI_PATH)
 
         async def run_task(name: str, task_cmd: str):
-            cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
+            cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
             tag_text = f"[{name}] "
             return await self._stream(f"lint.{name}", cmd, lock, tag=tag_text, env={"COMPOSE_PROJECT_NAME": project_name})
 
@@ -337,6 +377,7 @@ class TestRunner:
 
         results = await asyncio.gather(*[run_task(n, c) for n, c in filtered_tasks.items()])
         return list(results)
+
     async def _run_cmd(self, cmd: str, env: dict[str, str] | None = None, quiet: bool = False, capture: bool = False) -> Result:
         start = time.monotonic()
         full_env = os.environ.copy()
@@ -398,101 +439,18 @@ class TestRunner:
 
             upper_line = plain_line.upper()
             if not has_json_metrics:
-                is_result = (plain_line.startswith("[gw") and any(kw in upper_line for kw in [" PASSED", " FAILED", " SKIPPED", " ERROR", " XFAIL", " XPASS"])) or \
-                            ("::" in plain_line and any(upper_line.endswith(kw) or f"{kw} [" in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]))
-                if is_result:
-                    if "PASSED" in upper_line or "XPASS" in upper_line:
-                        stats["passed"] += 1
-                    elif "FAILED" in upper_line:
-                        stats["failed"] += 1
-                    elif "SKIPPED" in upper_line or "XFAIL" in upper_line:
-                        stats["skipped"] += 1
-                    elif "ERROR" in upper_line:
-                        stats["error"] += 1
-
-            if line.startswith("[gw"):
-                end = line.find("]")
-                if end != -1:
-                    wid = line[:end+1]
-                    line = f"{wid}{line[end+1:]}"
-            elif is_parallel and "::" in plain_line and not plain_line.startswith("["):
-                if not any(kw in upper_line for kw in ["PASSED", "FAILED", "SKIPPED", "ERROR", "XFAIL", "XPASS"]):
-                    continue
+                if " PASSED " in upper_line or " . " in upper_line: stats["passed"] += 1
+                if " FAILED " in upper_line or " F " in upper_line: stats["failed"] += 1
+                if " ERROR " in upper_line: stats["error"] += 1
 
             async with lock:
-                print(f"{tag}{line}", flush=True)
+                from rich.console import Console
+                Console().print(f"{tag}{line}")
 
         await proc.wait()
-        return Result(name, proc.returncode or 0, time.monotonic() - start, stats)
+        return Result(name, proc.returncode or 0, time.monotonic() - start, stats=stats)
 
-    def _header(self, title: str):
+    def _header(self, text: str):
         from rich.console import Console
         from rich.panel import Panel
-        Console().print(Panel.fit(f"[bold yellow]{title}[/bold yellow]", border_style="yellow"))
-
-    def _print_summary(self, results: list[Result]):
-        if not results:
-            return
-        from rich.console import Console
-        console = Console()
-        width = max(len(r.name) for r in results)
-        console.print("\n[bold]Execution Summary[/bold]")
-        for r in results:
-            icon = "[green]✓[/green]" if r.ok else "[red]✗[/red]"
-            status = "[green]passed[/green]" if r.ok else "[red]FAILED[/red]"
-            console.print(f"  {icon}  [cyan]{r.name.ljust(width)}[/cyan]  {status}  [dim]{r.elapsed:.1f}s[/dim]")
-        
-        test_res = [r for r in results if r.name.startswith("test.") and any(r.stats.values())]
-        if test_res:
-            self._print_metrics(test_res)
-
-    def _print_metrics(self, test_results: list[Result]):
-        from rich.console import Console
-        console = Console()
-        console.print("\n[bold]Test Metrics[/bold]")
-        header = f"  {'Suite':<20} {'Passed':>8} {'Failed':>8} {'Skipped':>8} {'Error':>8} {'Total':>8}"
-        bar = "  " + "─" * (len(header) - 2)
-        console.print(f"[dim]{bar}[/dim]")
-        console.print(f"[bold yellow]{header}[/bold yellow]")
-        console.print(f"[dim]{bar}[/dim]")
-        totals = {"p": 0, "f": 0, "s": 0, "e": 0, "t": 0}
-        for r in test_results:
-            s = r.stats
-            p, f, sk, e = s.get("passed", 0), s.get("failed", 0), s.get("skipped", 0), s.get("error", 0)
-            t = p + f + sk + e
-            
-            p_str = str(p).rjust(8)
-            f_str = str(f).rjust(8)
-            sk_str = str(sk).rjust(8)
-            e_str = str(e).rjust(8)
-            t_str = str(t).rjust(8)
-
-            console.print(
-                f"  {r.name:<20} "
-                f"[green]{p_str}[/green] "
-                f"[red]{f_str}[/red] "
-                f"[yellow]{sk_str}[/yellow] "
-                f"[red]{e_str}[/red] "
-                f"{t_str}"
-            )
-            totals["p"] += p
-            totals["f"] += f
-            totals["s"] += sk
-            totals["e"] += e
-            totals["t"] += t
-        console.print(f"[dim]{bar}[/dim]")
-        
-        tp_str = str(totals['p']).rjust(8)
-        tf_str = str(totals['f']).rjust(8)
-        ts_str = str(totals['s']).rjust(8)
-        te_str = str(totals['e']).rjust(8)
-        tt_str = str(totals['t']).rjust(8)
-
-        console.print(
-            f"  {'Total':<20} "
-            f"[green]{tp_str}[/green] "
-            f"[red]{tf_str}[/red] "
-            f"[yellow]{ts_str}[/yellow] "
-            f"[red]{te_str}[/red] "
-            f"{tt_str}\n"
-        )
+        Console().print(Panel(f"[bold]{text}[/bold]", expand=False))

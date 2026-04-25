@@ -244,6 +244,12 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
     
     quabo_uids = QuaboUids(domes=[QuaboUidDome(num=0, modules=quabo_uid_modules)])
     network_config = NetworkConfig(modules=network_modules, daq_nodes=network_daq_nodes)
-    obs_config = ObsConfig(name="Palomar_Full", domes=obs_domes)
+    
+    obs_config = ObsConfig(
+        name="Palomar_Full",
+        domes=obs_domes,
+        # Add required WPS definition
+        **{"wps": {"url": "http://admin:1234@10.200.146.100", "quabo_socket": 4}}
+    )
     
     return daq_config, quabo_uids, network_config, obs_config

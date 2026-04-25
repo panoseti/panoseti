@@ -24,6 +24,7 @@ from control.utils.pydantic_config_models import (
     FirmwareConfig,
     NetworkConfig,
     ObsConfig,
+    QuaboUids,
 )
 
 console = Console()
@@ -93,6 +94,7 @@ def validate_all(
         'daq': _ensure_model(daq_config, DaqConfig),
         'network': _ensure_model(network_config, NetworkConfig),
         'firmware': _ensure_model(firmware_config, FirmwareConfig),
+        'uids': _ensure_model(quabo_uids, QuaboUids),
     }
 
     validator = GlobalConfigValidator(validated_configs)
@@ -122,6 +124,7 @@ class GlobalConfigValidator:
         self.daq_conf = cast(DaqConfig, validated_configs.get('daq'))
         self.net_conf = cast(NetworkConfig, validated_configs.get('network'))
         self.firmware_conf = cast(FirmwareConfig, validated_configs.get('firmware'))
+        self.uids = cast(QuaboUids, validated_configs.get('uids'))
         self.report = ValidationReport()
         util.attach_daq_config(self.daq_conf, self.net_conf)
 
@@ -456,7 +459,7 @@ class GlobalConfigValidator:
 
         # 1. Build the graph
         from control.utils import config_file
-        quabo_uids = config_file.get_quabo_uids()
+        quabo_uids = self.uids or config_file.get_quabo_uids()
         try:
             config_file.associate(self.daq_conf, quabo_uids)
         except ValueError as e:

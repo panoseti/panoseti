@@ -21,44 +21,41 @@ service = "unit-test-runner"
 tasks = { ruff = "uv run ruff check . --fix --color=always", mypy = "uv run mypy . --explicit-package-bases --color-output" }
 
 [suites.unit]
-description = "Parallel unit tests"
+description = "Tier 1: Parallel unit tests (Logic & Parsing)"
 type = "test"
 requires_docker = true
 compose_file = "ci/docker-compose.unit.yml"
 profiles = ["unit"]
 service = "unit-test-runner"
-test_dir = "ci/unit/"
+test_dir = "ci/tier1_unit/"
 parallel = true
 
-[suites.structural]
-description = "Logical topology and network engine simulations"
+[suites.logic]
+description = "Tier 2: Subsystem logic (Isolated State, Mocked gRPC)"
 type = "test"
 requires_docker = true
 compose_file = "ci/docker-compose.unit.yml"
 profiles = ["unit"]
 service = "unit-test-runner"
-test_dir = "ci/structural/"
+test_dir = "ci/tier2_logic/"
+parallel = true
 
-[suites.integration]
-description = "E2E integration tests (excludes chaos scenarios)"
+[suites.fleet]
+description = "Tier 3: Distributed flows (Dynamic Fleets, Real gRPC)"
 type = "test"
 requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
-test_dir = "ci/integration/"
-pytest_args = ["--ignore=ci/integration/scenarios"]
-env = { HEAD_NET_PREFIX = "10.0.1", DAQ_NET_PREFIX = "192.168.0", QUABO_NET_PREFIX = "192.168.3", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/tmp/pseti_test/logs" }
-pre_run = "mkdir -p /tmp/pseti_test/integration_configs /tmp/pseti_test/tmp /tmp/pseti_test/logs && cp -rL /app/ci/integration/configs/direct/*.json /tmp/pseti_test/integration_configs/ && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /tmp/pseti_test/tmp/quabo_uids.json"
+test_dir = "ci/tier3_fleet/"
 
 [suites.chaos]
-description = "Chaos/TDD-forcing scenario tests (expected to fail red on master)"
+description = "Tier 4: Fault injection (Active failure scenarios)"
 type = "test"
 requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 service = "int-tester"
-test_dir = "ci/integration/scenarios/"
-env = { HEAD_NET_PREFIX = "10.0.2", DAQ_NET_PREFIX = "192.168.1", QUABO_NET_PREFIX = "192.168.4", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-chaos-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/chaos_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/tmp/pseti_test/chaos_configs", PSETI_LOGS = "/tmp/pseti_test/logs" }
-pre_run = "mkdir -p /tmp/pseti_test/chaos_configs /tmp/pseti_test/tmp /tmp/pseti_test/logs && cp -rL /app/ci/integration/configs/direct/*.json /tmp/pseti_test/chaos_configs/ && sed -i 's/10\\.0\\.1/10.0.2/g' /tmp/pseti_test/chaos_configs/*.json && sed -i 's/192\\.168\\.0/192.168.1/g' /tmp/pseti_test/chaos_configs/*.json && sed -i 's/192\\.168\\.3/192.168.4/g' /tmp/pseti_test/chaos_configs/*.json && cp /app/ci/integration/configs/quabo_uids_chaos.json /tmp/pseti_test/chaos_configs/quabo_uids.json && sed -i 's/192\\.168\\.3/192.168.4/g' /tmp/pseti_test/chaos_configs/quabo_uids.json && ln -sf /tmp/pseti_test/chaos_configs/quabo_uids.json /tmp/pseti_test/tmp/quabo_uids.json"
+test_dir = "ci/tier4_chaos/"
+env = { ENABLE_TELEMETRY_TESTS = "1" }
 
 [suites.test-hw]
 description = "Physical Hardware-Software (HITL) tests"

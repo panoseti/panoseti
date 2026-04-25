@@ -65,6 +65,12 @@ def auto_isolate(
 
 # Import factories as fixtures
 from .factories import make_transfer_job, simulate_daq_filesystem, make_mock_daq_config
+from .state_probe import StateProbe
+
+@pytest.fixture
+def probe():
+    """StateProbe fixture for making compact assertions about CI state."""
+    return StateProbe()
 
 @pytest.fixture
 def transfer_job_factory():
