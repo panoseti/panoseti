@@ -17,9 +17,11 @@
 import asyncio
 import contextlib
 import os
+import pathlib
 import shutil
 import signal
 import time
+from datetime import UTC, datetime
 from glob import glob
 from typing import Any
 
@@ -44,7 +46,8 @@ from control.utils.pydantic_config_models import (
     QuaboUids,
 )
 from control.utils.run_state import LockError, RunStateManager, ValidationError
-from control.utils.transfer.queue import TransferQueue
+from control.transfer.queue import TransferQueue
+from control.transfer.models import TransferJob, TransferNodeSpec
 from control.utils.util import (
     hk_symlink,
     img_symlink,
@@ -154,21 +157,31 @@ class StopTransaction:
                 # Enqueue run for background transfer (fast-path).
                 # The TransferWorker daemon owns collection, cleanup, and
                 # run_complete — do NOT call collect_data or write run_complete here.
-                daq_nodes = [
-                    {"ip_addr": str(n.ip_addr), "data_dir": str(n.data_dir), "module_ids": n.module_ids}
-                    for n in self.daq_config.daq_nodes
-                    if n.module_ids
-                ]
-                tq = TransferQueue(base_dir=str(self.state_mgr.base_dir))
-                await asyncio.to_thread(
-                    tq.enqueue,
+                job = TransferJob(
                     run_name=self.run,
                     head_data_dir=str(data_dir),
-                    daq_nodes=daq_nodes,
+                    head_node_username=(
+                        self.daq_config.daq_nodes[0].username
+                        if self.daq_config.daq_nodes else "panoseti"
+                    ),
+                    created_at=datetime.now(UTC),
                     no_collect=self.no_collect,
                     no_cleanup=self.no_cleanup,
-                    force_cleanup=self.force_cleanup,
+                    daq_nodes=[
+                        TransferNodeSpec(
+                            ip_addr=n.ip_addr,
+                            username=n.username,
+                            data_dir=str(n.data_dir),
+                            module_ids=n.module_ids,
+                            port_forwarding=n.port_forwarding,
+                        )
+                        for n in self.daq_config.daq_nodes
+                        if n.module_ids
+                    ],
                 )
+                queue_dir = pathlib.Path(self.state_mgr.base_dir) / "state" / "transfer" / "queue"
+                tq = TransferQueue(queue_dir=queue_dir)
+                await asyncio.to_thread(tq.enqueue, job)
 
                 # Transition ledger to RECORDING_ENDED so the TransferWorker
                 # knows to pick up this run.

@@ -689,8 +689,8 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, netwo
     d = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
     x['date'] = d.isoformat()
     x['quabos'] = quabos
-    baseline_file = PanoPaths.tmp_dir() / config_file.quabo_ph_baseline_filename
-    baseline_file.parent.mkdir(parents=True, exist_ok=True)
+    PanoPaths.ensure_state_dirs()
+    baseline_file = PanoPaths.calibration_file(config_file.quabo_ph_baseline_filename)
     with open(baseline_file, "w") as f:
         f.write(json.dumps(x, indent=4))
 

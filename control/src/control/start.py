@@ -25,6 +25,7 @@ import asyncio
 import functools
 import json
 import os
+import pathlib
 import shutil
 import signal
 import socket
@@ -231,29 +232,29 @@ verbose = False
 
 # check that PH calibration file is present, nonempty, and at most 24 hours old
 #
-def ph_baseline_file_ok(filename: str | None = None) -> bool:
+def ph_baseline_file_ok(path: pathlib.Path | None = None) -> bool:
     """Verify that the Pulse Height calibration file is valid.
-    
+
     Checks that the file exists, is not empty, and is at most 24 hours old.
     Stale or missing calibration data can lead to incorrect PH measurements.
 
     Args:
-        filename: Optional path to the baseline file. Defaults to config_file.quabo_ph_baseline_filename.
+        path: Optional Path to the baseline file. Defaults to PanoPaths.calibration_file().
 
     Returns:
         True if the file is valid, False otherwise.
     """
-    if filename is None:
-        filename = config_file.quabo_ph_baseline_filename
-    if not os.path.exists(filename):
-        print(f'{filename} not found.  Run config.py --calibrate_ph')
+    if path is None:
+        path = PanoPaths.calibration_file(config_file.quabo_ph_baseline_filename)
+    if not path.exists():
+        print(f'{path} not found.  Run config.py --calibrate_ph')
         return False
-    if os.path.getsize(filename) == 0:
-        print(f'{filename} is empty.  Run config.py --calibrate_ph')
+    if path.stat().st_size == 0:
+        print(f'{path} is empty.  Run config.py --calibrate_ph')
         return False
     # Fix SC-031: 24 hours is 3600*24, not 86400*24
-    if os.path.getmtime(filename) < time.time() - 86400:
-        print(f'{filename} is too old (>24h).  Run config.py --calibrate_ph')
+    if path.stat().st_mtime < time.time() - 86400:
+        print(f'{path} is too old (>24h).  Run config.py --calibrate_ph')
         return False
     return True
 

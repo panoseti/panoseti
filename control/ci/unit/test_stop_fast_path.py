@@ -209,10 +209,10 @@ class TestStopFastPath:
                 no_cleanup=True,
             )
 
-        pending_job = tmp_path / "tmp" / "transfer_queue" / "pending" / f"{RUN_NAME}.job.toml"
+        pending_job = tmp_path / "state" / "transfer" / "queue" / "pending" / f"{RUN_NAME}.job.toml"
         assert pending_job.exists(), (
             f"Expected pending transfer job at {pending_job}.\n"
-            "Phase 2 must enqueue the run for background transfer after stop."
+            "stop_run() must enqueue the run for background transfer after hardware teardown."
         )
 
     async def test_stop_ledger_recording_ended(

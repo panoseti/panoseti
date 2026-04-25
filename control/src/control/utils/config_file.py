@@ -386,17 +386,29 @@ def get_quabo_info() -> dict[str, Any]:
     return d
 
 def get_quabo_ph_baselines() -> dict[str, Any]:
-    """Retrieve Quabo pulse-height baselines from the local cache file.
+    """Load Pulse Height baselines, searching calibration_dir then tmp_dir then config_dir.
 
     Returns:
         A dictionary containing the Quabo pulse-height baselines.
+
+    Raises:
+        FileNotFoundError: If the file is not found in any of the search paths.
     """
-    check_config_file(quabo_ph_baseline_filename, PanoPaths.tmp_dir())
-    path = PanoPaths.tmp_dir() / quabo_ph_baseline_filename
-    with open(path) as f:
-        s = f.read()
-    c: dict[str, Any] = json.loads(s)
-    return c
+    for search_dir in [
+        PanoPaths.calibration_dir(),
+        PanoPaths.tmp_dir(),
+        PanoPaths.config_dir(),
+    ]:
+        path = search_dir / quabo_ph_baseline_filename
+        if path.exists():
+            with open(path) as f:
+                s = f.read()
+            c: dict[str, Any] = json.loads(s)
+            return c
+    raise FileNotFoundError(
+        f"{quabo_ph_baseline_filename} not found in calibration_dir, tmp_dir, or config_dir. "
+        "Run: pseti obs config calibrate-ph"
+    )
 
 def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]:
     """Load Quabo calibration data for a specific detector and mode.

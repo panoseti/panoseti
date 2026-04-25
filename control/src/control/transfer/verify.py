@@ -1,3 +1,4 @@
+"""Manifest verification for transferred run data."""
 from __future__ import annotations
 
 import hashlib
@@ -62,7 +63,7 @@ def verify_manifest(
 
     and recomputes each file's digest, comparing it against the recorded
     value.  The hashing algorithm is inferred from the manifest file suffix
-    (e.g. ``manifest.blake3`` → blake3, ``manifest.sha256`` → SHA-256).
+    (e.g. ``manifest.blake3`` -> blake3, ``manifest.sha256`` -> SHA-256).
 
     Args:
         manifest_path: Path to the manifest file to read.

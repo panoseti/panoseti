@@ -1,45 +1,53 @@
+"""Transfer daemon: drains the transfer queue through the full state machine."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import logging
 import os
 import pathlib
 import signal
+import subprocess
 import time
-from typing import IO, Any
+from typing import IO
 
 import anyio
 
-from control.utils.transfer.queue import TransferQueue
-from control.utils.transfer.rsync_worker import rsync_one_node
-from control.utils.transfer.verify import verify_manifest
+from control.transfer.models import TransferJob
+from control.transfer.queue import TransferQueue
+from control.transfer.rsync import build_rsync_cmd
+from control.transfer.verify import verify_manifest
+from control.utils.paths import PanoPaths
 
 logger = logging.getLogger("panoseti.transfer_daemon")
 
-TRANSFER_LOCK_FILE = "tmp/panoseti_transfer.lock"
 POLL_INTERVAL_SEC = 5.0
 MAX_ATTEMPTS = 3
-# Exponential backoff delays between transfer retries: attempt 1→2 waits 5 s,
-# attempt 2→3 waits 30 s.  A 3rd failure is final (→ failed/).
+# Exponential backoff delays between transfer retries: attempt 1->2 waits 5 s,
+# attempt 2->3 waits 30 s.  A 3rd failure is final (-> failed/).
 _RETRY_BACKOFF_SEC = [5.0, 30.0]
 
 
-def _acquire_transfer_lock(base_dir: pathlib.Path) -> IO[str] | None:
+def _transfer_state_dir() -> pathlib.Path:
+    """Return the transfer daemon state subdirectory, creating it if needed."""
+    d = PanoPaths.state_dir() / "transfer"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _acquire_transfer_lock() -> IO[str] | None:
     """Try to acquire the exclusive transfer daemon lock file.
 
     Uses a non-blocking ``flock`` so that only one transfer daemon runs at a
-    time.  The lock is automatically released when the process exits (kernel
-    drops it).
-
-    Args:
-        base_dir: Directory that contains the ``tmp/`` subdirectory.
+    time.  The lock is automatically released when the process exits (the
+    kernel drops it).
 
     Returns:
         An open file handle holding the lock, or ``None`` if another process
         already holds it.
     """
-    lock_path = base_dir / TRANSFER_LOCK_FILE
+    lock_path = PanoPaths.locks_dir() / "transfer.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fh = open(lock_path, "w")  # noqa: SIM115
     try:
@@ -64,37 +72,53 @@ def _release_transfer_lock(fh: IO[str] | None) -> None:
         fh.close()
 
 
-async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
+async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -> None:
+    """Write the current timestamp to *heartbeat_path* every *interval* seconds.
+
+    Runs until cancelled.  Silently swallows ``asyncio.CancelledError`` on
+    exit so the caller need not catch it.
+
+    Args:
+        heartbeat_path: Path to the heartbeat file.
+        interval: Seconds between heartbeat writes.
+    """
+    try:
+        while True:
+            heartbeat_path.write_text(str(time.time()))
+            await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+
+
+async def _process_job(job: TransferJob) -> bool:
     """Drive a single transfer job through the full state machine.
 
     The state machine advances through these stages in order:
 
     1. **MANIFEST_GENERATING** — ask each DAQ node's gRPC server to produce a
        content manifest for the run's PFF files.
-    2. **MANIFEST_READY** — manifests have been generated.
-    3. **TRANSFERRING** — rsync each DAQ node's run directory to the head node.
-    4. **VERIFYING** — placeholder; rsync exit code is trusted for now.
-    5. **CLEANING** — selectively delete PFF files from DAQ nodes via gRPC
+    2. **TRANSFERRING** — rsync each DAQ node's run directory to the head node.
+    3. **VERIFYING** — verify manifest digests on the head node.
+    4. **CLEANING** — selectively delete PFF files from DAQ nodes via gRPC
        ``CleanupData``.
-    6. **ARCHIVED** — write a ``run_complete`` marker and log success.
+    5. **ARCHIVED** — write a ``run_complete`` marker and log success.
 
-    ``no_collect`` skips steps 1-4; ``no_cleanup`` skips step 5.
+    ``no_collect`` skips stages 1-3; ``no_cleanup`` skips stage 4.
 
     Args:
-        job: Parsed job dictionary from ``TransferQueue.claim()``.
-        base_dir: Filesystem root used to locate ``RunStateManager`` state.
+        job: The ``TransferJob`` to process.
 
     Returns:
-        ``True`` when the job reaches ``ARCHIVED``; ``False`` on any failure.
+        ``True`` when the job reaches ARCHIVED; ``False`` on any failure.
     """
-    run_name: str = job["run_name"]
-    head_data_dir: str = job["head_data_dir"]
-    daq_nodes: list[dict[str, Any]] = job.get("daq_nodes", [])
-    no_collect: bool = job.get("no_collect", False)
-    no_cleanup: bool = job.get("no_cleanup", False)
+    run_name = job.run_name
+    head_data_dir = job.head_data_dir
+    daq_nodes = job.daq_nodes
+    no_collect = job.no_collect
+    no_cleanup = job.no_cleanup
 
     from control.utils.run_state import RunStateManager
-    state_mgr = RunStateManager(base_dir=str(base_dir))
+    state_mgr = RunStateManager(base_dir=str(PanoPaths.base_dir()))
 
     logger.info("Processing transfer job for run: %s", run_name)
 
@@ -105,13 +129,15 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
         try:
             from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-            async def gen_manifest(node: dict[str, Any]) -> None:
-                module_ids: list[int] = node.get("module_ids", [])
-                async with AsyncDaqControlClient(host=node["ip_addr"], port=50051) as client:
+            async def gen_manifest(node: object) -> None:
+                from control.transfer.models import TransferNodeSpec as _TNS
+                assert isinstance(node, _TNS)
+                module_ids: list[int] = node.module_ids
+                async with AsyncDaqControlClient(host=str(node.ip_addr), port=50051) as client:
                     for mid in module_ids:
                         try:
                             await client.GenerateManifest({
-                                "data_dir": node["data_dir"],
+                                "data_dir": node.data_dir,
                                 "run_dir": run_name,
                                 "module_id": mid,
                                 "algorithm": "blake3",
@@ -120,7 +146,7 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
                         except Exception as exc:
                             logger.warning(
                                 "GenerateManifest failed for module %s on %s: %s",
-                                mid, node["ip_addr"], exc
+                                mid, node.ip_addr, exc
                             )
 
             async with asyncio.TaskGroup() as tg:
@@ -135,19 +161,15 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
         state_mgr.transition("TRANSFERRING")
         transfer_errors: list[str] = []
         for node in daq_nodes:
-            pf: dict[str, Any] | None = node.get("port_forwarding")
-            ok, err = await asyncio.to_thread(
-                rsync_one_node,
-                node["ip_addr"],
-                node["data_dir"],
-                run_name,
-                head_data_dir,
-                node.get("username", "panoseti"),
-                pf,
+            head_run_dir = pathlib.Path(head_data_dir) / run_name
+            cmd = build_rsync_cmd(node, run_name, head_run_dir)
+            result = await asyncio.to_thread(
+                subprocess.run, cmd, capture_output=True, text=True
             )
-            if not ok:
+            if result.returncode != 0:
+                err = f"rsync failed for {node.ip_addr}: {result.stderr}"
                 transfer_errors.append(err)
-                logger.error("Rsync failed for %s: %s", node["ip_addr"], err)
+                logger.error("Rsync failed for %s: %s", node.ip_addr, result.stderr)
 
         if transfer_errors:
             logger.error("[%s] Transfer failed: %s", run_name, "; ".join(transfer_errors))
@@ -187,20 +209,22 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
         try:
             from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-            async def cleanup_node(node: dict[str, Any]) -> None:
-                async with AsyncDaqControlClient(host=node["ip_addr"], port=50051) as client:
+            async def cleanup_node(node: object) -> None:
+                from control.transfer.models import TransferNodeSpec as _TNS
+                assert isinstance(node, _TNS)
+                async with AsyncDaqControlClient(host=str(node.ip_addr), port=50051) as client:
                     try:
                         await client.CleanupData({
-                            "data_dir": node["data_dir"],
+                            "data_dir": node.data_dir,
                             "run_dir": run_name,
-                            "module_id": node.get("module_ids", []),
+                            "module_id": node.module_ids,
                             "mode": "CLEANUP_SELECTIVE",
                             "delete_patterns": ["*.pff"],
                             "preserve_patterns": ["*.json", "*.log", "*.toml"],
                         })
                     except Exception as exc:
                         logger.warning(
-                            "CleanupData failed for %s: %s", node["ip_addr"], exc
+                            "CleanupData failed for %s: %s", node.ip_addr, exc
                         )
 
             async with asyncio.TaskGroup() as tg:
@@ -212,10 +236,10 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
 
     # --- Stage 5: archive ---
     logger.info("[%s] Stage: ARCHIVED", run_name)
-    head_run_dir = anyio.Path(head_data_dir) / run_name
-    run_complete_path = head_run_dir / "run_complete"
+    head_run_dir_anyio = anyio.Path(head_data_dir) / run_name
+    run_complete_path = head_run_dir_anyio / "run_complete"
     if not await run_complete_path.exists():
-        await head_run_dir.mkdir(parents=True, exist_ok=True)
+        await head_run_dir_anyio.mkdir(parents=True, exist_ok=True)
         await run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
 
     state_mgr.transition("ARCHIVED")
@@ -223,27 +247,29 @@ async def _process_job(job: dict[str, Any], base_dir: pathlib.Path) -> bool:
     return True
 
 
-async def run_daemon(
-    base_dir: str = ".",
-    poll_interval: float = POLL_INTERVAL_SEC,
-) -> None:
-    """Main daemon loop: acquire lock, poll for jobs, process them.
+async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
+    """Main daemon loop: acquire lock, write pid/heartbeat, poll for jobs, process them.
 
-    Acquires an exclusive flock on ``tmp/panoseti_transfer.lock``.  If another
-    daemon already holds the lock the function returns immediately.  Handles
-    ``SIGTERM``/``SIGINT`` gracefully: finishes the current processing step,
-    re-enqueues the job (if in progress), then releases the lock.
+    Acquires an exclusive flock on the transfer lock file.  If another daemon
+    already holds the lock the function returns immediately.  On startup,
+    sweeps ``active/`` for jobs stranded by a prior crash and moves them back
+    to ``pending/``.  Handles ``SIGTERM``/``SIGINT`` gracefully: finishes the
+    current processing step, then releases the lock.
 
     Args:
-        base_dir: Filesystem root for the queue and lock file.
         poll_interval: Seconds to wait between queue polls when no job is
             pending.
     """
-    base = pathlib.Path(base_dir)
-    lock_fh = _acquire_transfer_lock(base)
+    lock_fh = _acquire_transfer_lock()
     if lock_fh is None:
         logger.info("Another transfer daemon is already running. Exiting.")
         return
+
+    state_d = _transfer_state_dir()
+    pid_path = state_d / "daemon.pid"
+    heartbeat_path = state_d / "daemon.heartbeat"
+
+    pid_path.write_text(str(os.getpid()))
 
     shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -251,20 +277,22 @@ async def run_daemon(
         loop.add_signal_handler(sig, shutdown.set)
 
     logger.info("Transfer daemon started (pid=%d)", os.getpid())
-    tq = TransferQueue(base_dir=base_dir)
+
+    tq = TransferQueue()
 
     # Recover jobs stranded in active/ from a prior daemon crash (SC-TX-005).
-    active_dir = base / tq.QUEUE_ROOT / "active"
+    active_dir = tq._queue / "active"
     for stale in sorted(active_dir.glob("*.job.toml")):
         run_name_stale = stale.stem.removesuffix(".job")
-        pending_path = base / tq.QUEUE_ROOT / "pending" / stale.name
+        pending_path = tq._queue / "pending" / stale.name
         try:
             os.rename(stale, pending_path)
             logger.warning("Recovered stranded job from active/: %s", run_name_stale)
         except OSError as exc:
             logger.error("Failed to recover stranded job %s: %s", run_name_stale, exc)
 
-    import contextlib
+    hb_task = asyncio.create_task(_heartbeat_loop(heartbeat_path))
+
     try:
         while not shutdown.is_set():
             job = tq.claim()
@@ -273,11 +301,11 @@ async def run_daemon(
                     await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
                 continue
 
-            run_name: str = job["run_name"]
-            attempts: int = job.get("attempts", 0) + 1
+            run_name = job.run_name
+            attempts: int = job.attempts + 1
 
             try:
-                success = await _process_job(job, base)
+                success = await _process_job(job)
                 if success:
                     tq.complete(run_name)
                 elif attempts >= MAX_ATTEMPTS:
@@ -296,13 +324,24 @@ async def run_daemon(
                         MAX_ATTEMPTS,
                         backoff,
                     )
-                    tq.retry(run_name, attempts)
+                    # Re-enqueue with incremented attempt count by claiming and
+                    # writing back to pending.
+                    updated_job = job.model_copy(update={"attempts": attempts})
+                    updated_job_path = tq._queue / "active" / f"{run_name}.job.toml"
+                    if not updated_job_path.exists():
+                        # Write back so retry logic can pick it up
+                        tq._write_job(updated_job_path, updated_job)
+                    os.rename(updated_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
                     await asyncio.sleep(backoff)
             except Exception:
                 logger.exception("Unhandled error processing %s", run_name)
                 tq.fail(run_name)
     finally:
+        hb_task.cancel()
+        await asyncio.gather(hb_task, return_exceptions=True)
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
         _release_transfer_lock(lock_fh)
+        with contextlib.suppress(OSError):
+            pid_path.unlink()
         logger.info("Transfer daemon stopped")
