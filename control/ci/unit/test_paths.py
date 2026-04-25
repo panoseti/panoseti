@@ -11,10 +11,7 @@ import pathlib
 import tempfile
 from unittest import mock
 
-import pytest
-
 from control.utils.paths import PanoPaths
-
 
 # ===========================================================================
 # Basic Accessor Return Types
@@ -253,34 +250,33 @@ class TestEnsureStateDirs:
 
     def test_ensure_state_dirs_creates_subdirs(self) -> None:
         """Integration test: create all state dirs in a temp location."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {
-                "PSETI_STATE": tmpdir,
-                "PSETI_LOCKS_DIR": "",  # Clear to use state default
-                "PSETI_RUNS_DIR": "",
-                "PSETI_TQ_DIR": "",
-                "PSETI_TM_DIR": "",
-                "PSETI_CALIB_DIR": "",
-            }):
-                # Clear the env vars that shouldn't override
-                os.environ.pop("PSETI_LOCKS_DIR", None)
-                os.environ.pop("PSETI_RUNS_DIR", None)
-                os.environ.pop("PSETI_TQ_DIR", None)
-                os.environ.pop("PSETI_TM_DIR", None)
-                os.environ.pop("PSETI_CALIB_DIR", None)
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch.dict(os.environ, {
+            "PSETI_STATE": tmpdir,
+            "PSETI_LOCKS_DIR": "",  # Clear to use state default
+            "PSETI_RUNS_DIR": "",
+            "PSETI_TQ_DIR": "",
+            "PSETI_TM_DIR": "",
+            "PSETI_CALIB_DIR": "",
+        }):
+            # Clear the env vars that shouldn't override
+            os.environ.pop("PSETI_LOCKS_DIR", None)
+            os.environ.pop("PSETI_RUNS_DIR", None)
+            os.environ.pop("PSETI_TQ_DIR", None)
+            os.environ.pop("PSETI_TM_DIR", None)
+            os.environ.pop("PSETI_CALIB_DIR", None)
 
-                PanoPaths.ensure_state_dirs()
+            PanoPaths.ensure_state_dirs()
 
-                # Check that all expected directories exist
-                assert PanoPaths.locks_dir().exists()
-                assert PanoPaths.runs_dir().exists()
-                assert (PanoPaths.transfer_queue_dir() / "pending").exists()
-                assert (PanoPaths.transfer_queue_dir() / "active").exists()
-                assert (PanoPaths.transfer_queue_dir() / "completed").exists()
-                assert (PanoPaths.transfer_queue_dir() / "failed").exists()
-                assert PanoPaths.transfer_manifests_dir().exists()
-                assert PanoPaths.calibration_dir().exists()
-                assert (PanoPaths.state_dir() / "snapshots").exists()
+            # Check that all expected directories exist
+            assert PanoPaths.locks_dir().exists()
+            assert PanoPaths.runs_dir().exists()
+            assert (PanoPaths.transfer_queue_dir() / "pending").exists()
+            assert (PanoPaths.transfer_queue_dir() / "active").exists()
+            assert (PanoPaths.transfer_queue_dir() / "completed").exists()
+            assert (PanoPaths.transfer_queue_dir() / "failed").exists()
+            assert PanoPaths.transfer_manifests_dir().exists()
+            assert PanoPaths.calibration_dir().exists()
+            assert (PanoPaths.state_dir() / "snapshots").exists()
 
     def test_ensure_state_dirs_idempotent(self) -> None:
         """Calling ensure_state_dirs() twice should not raise."""

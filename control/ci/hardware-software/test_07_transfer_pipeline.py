@@ -22,7 +22,6 @@ import pathlib
 import time
 import tomllib
 
-import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app

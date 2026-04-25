@@ -13,14 +13,11 @@ from __future__ import annotations
 
 import hashlib
 import pathlib
-import subprocess
 import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 from control.transfer.daemon import (
     _acquire_transfer_lock,

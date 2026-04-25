@@ -38,6 +38,8 @@ except ImportError:
 
 import control.config as config
 from control.tools.interleave import PID_FILE
+from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.queue import TransferQueue
 from control.utils import config_file, pff, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
@@ -47,8 +49,6 @@ from control.utils.pydantic_config_models import (
     QuaboUids,
 )
 from control.utils.run_state import LockError, RunStateManager, ValidationError
-from control.transfer.queue import TransferQueue
-from control.transfer.models import TransferJob, TransferNodeSpec
 from control.utils.util import (
     hk_symlink,
     img_symlink,

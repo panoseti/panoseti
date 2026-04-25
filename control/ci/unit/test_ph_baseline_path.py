@@ -1,8 +1,6 @@
 """Tests for ph_baseline_file_ok path resolution fix."""
 import json
-import pathlib
 import time
-from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -13,6 +11,7 @@ def test_ph_baseline_file_ok_uses_calibration_dir(tmp_path, monkeypatch):
 
     # Reload modules to pick up the environment variable
     import importlib
+
     import control.start as start_mod
     importlib.reload(start_mod)
     from control.utils import config_file
@@ -39,6 +38,7 @@ def test_ph_baseline_file_not_found_in_cwd(tmp_path, monkeypatch):
     monkeypatch.setenv("PSETI_CALIB_DIR", str(calib_dir))
 
     import importlib
+
     import control.start as start_mod
     importlib.reload(start_mod)
     from control.utils import config_file
@@ -60,6 +60,7 @@ def test_ph_baseline_file_ok_checks_empty(tmp_path, monkeypatch):
     monkeypatch.setenv("PSETI_CALIB_DIR", str(tmp_path))
 
     import importlib
+
     import control.start as start_mod
     importlib.reload(start_mod)
     from control.utils import config_file
@@ -77,6 +78,7 @@ def test_ph_baseline_file_ok_checks_age(tmp_path, monkeypatch):
     monkeypatch.setenv("PSETI_CALIB_DIR", str(tmp_path))
 
     import importlib
+
     import control.start as start_mod
     importlib.reload(start_mod)
     from control.utils import config_file
@@ -98,6 +100,7 @@ def test_ph_baseline_file_ok_checks_age(tmp_path, monkeypatch):
 def test_ph_baseline_file_ok_accepts_path_argument(tmp_path):
     """ph_baseline_file_ok() should accept an explicit Path argument."""
     import importlib
+
     import control.start as start_mod
     importlib.reload(start_mod)
 

@@ -247,7 +247,7 @@ async def _process_job(job: TransferJob) -> bool:
     return True
 
 
-def _sweep_stranded_jobs(tq: "TransferQueue") -> None:
+def _sweep_stranded_jobs(tq: TransferQueue) -> None:
     """Move jobs stranded in ``active/`` back to ``pending/`` (SC-TX-005).
 
     Called at daemon startup to recover jobs left behind by a prior crash.

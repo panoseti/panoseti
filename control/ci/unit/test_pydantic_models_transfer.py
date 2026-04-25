@@ -4,7 +4,7 @@ test_pydantic_models_transfer.py
 Unit tests for TransferNodeSpec and TransferJob Pydantic models.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -72,7 +72,7 @@ class TestTransferJob:
 
     def test_valid_transfer_job_with_multiple_nodes(self):
         """TransferJob validates with a list of TransferNodeSpec."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         nodes = [
             TransferNodeSpec(
                 ip_addr="192.168.0.10",
@@ -103,7 +103,7 @@ class TestTransferJob:
 
     def test_port_forwarding_round_trip(self):
         """Port-forwarding round-trip: serialize and deserialize preserves data."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         pf = PortForwarding(
             status=True,
             gw_ip="10.0.1.254",
@@ -138,7 +138,7 @@ class TestTransferJob:
 
     def test_transfer_job_rejects_extra_fields(self):
         """TransferJob rejects extra fields (BaseStrictModel)."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         nodes = [
             TransferNodeSpec(
                 ip_addr="192.168.0.10",
@@ -160,7 +160,7 @@ class TestTransferJob:
 
     def test_transfer_job_defaults(self):
         """TransferJob uses correct default values."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         nodes = [
             TransferNodeSpec(
                 ip_addr="192.168.0.10",

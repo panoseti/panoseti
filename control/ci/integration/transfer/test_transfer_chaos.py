@@ -23,7 +23,6 @@ Scenarios covered:
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import pathlib
@@ -32,16 +31,13 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from grpc import RpcError, StatusCode  # type: ignore[import]
 
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
-from control.utils.pydantic_config_models import RunStateLedger
-from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # CI guard
