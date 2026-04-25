@@ -203,7 +203,8 @@ class TestConcurrentStartLocking:
         from control.utils.run_state import RunStateManager
 
         # Ensure no run is active and clean up any leaked state from previous tests
-        subprocess.run(["python3", "-m", "control.stop", "--yes", "--no_collect"], capture_output=True)
+        env = os.environ.copy()
+        subprocess.run(["python3", "-m", "control.stop", "--yes", "--no_collect"], capture_output=True, env=env)
         mgr = RunStateManager()
         mgr.clear_state()
         if mgr.lock_path.exists():
@@ -262,8 +263,8 @@ if __name__ == "__main__":
             f.write(wrapper_script)
         try:
             # Launch two concurrent start.py processes.
-            p1 = subprocess.Popen(["python3", "tmp_start_wrapper.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            p2 = subprocess.Popen(["python3", "tmp_start_wrapper.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            p1 = subprocess.Popen(["python3", "tmp_start_wrapper.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+            p2 = subprocess.Popen(["python3", "tmp_start_wrapper.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
 
             p1.wait(timeout=15)
             p2.wait(timeout=15)
@@ -291,7 +292,7 @@ if __name__ == "__main__":
             if os.path.exists("tmp_start_wrapper.py"):
                 os.remove("tmp_start_wrapper.py")
             # Cleanup
-            subprocess.run(["python3", "-m", "control.stop", "--yes", "--no_collect"], capture_output=True)
+            subprocess.run(["python3", "-m", "control.stop", "--yes", "--no_collect"], capture_output=True, env=env)
             mgr.clear_state()
             mgr.release_lock()
 
@@ -660,7 +661,7 @@ def mock_daq_config_for_headnode():
     # Assign ALL modules to the single available CI node
     # Use the reachable daqnode IP from the environment for gRPC success.
     # SSH/SCP are handled by fake_bin in run_start_and_kill.
-    daqnode_ip = os.environ.get("DAQNODE_DIRECT_HOST", "192.168.0.10")
+    daqnode_ip = os.environ.get("DAQNODE_DIRECT_HOST", "192.168.100.10")
     cfg["daq_nodes"] = [
         {
             "ip_addr": daqnode_ip,
@@ -766,7 +767,7 @@ async def test_SC021_killed_after_make_run_dirs_leaves_orphan_dirs(
     mgr = RunStateManager()
     assert mgr.lock_path.exists(), f"Lock {mgr.lock_path} should remain after SIGKILL"
     
-    # 2. Run start.py again — it should self-heal (SC-015 logic)
+        # 2. Run start.py again — it should self-heal (SC-015 logic)
     with mock_daq_config_for_headnode():
         import subprocess
         # Inject fake tools here too
@@ -857,7 +858,8 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     with mock_daq_config_for_headnode():
         import subprocess
         env = os.environ.copy()
-        env["PATH"] = f"{os.getcwd()}/tmp/fake_bin:{env['PATH']}"
+        env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
+        env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
             ["python3", "-m", "control.start", "--yes", "--force-reset", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
@@ -1168,6 +1170,8 @@ def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
         # 2. Run start.py — it must fail because 192.168.250.250 is unreachable
         # and it's listed in our UID map.
         env = os.environ.copy()
+        env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
+        env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         env["PSETI_IS_CONTAINER"] = "0"
         result = subprocess.run(
             ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],

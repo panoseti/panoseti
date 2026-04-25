@@ -28,10 +28,6 @@ from ci.fixtures.chaos import process_chaos  # noqa: E402
 from ci.fixtures.state_probe import StateProbe  # noqa: E402
 from ci.tier3_fleet.conftest import (  # noqa: E402
     DAQ_DATA_DIR,
-    DAQNODE2_HOST,
-    DAQNODE_CONTAINER,
-    DAQNODE_DIRECT_HOST,
-    GRPC_PORT,
     wait_hashpipe_stopped,
 )
 
@@ -108,12 +104,12 @@ def _cleanup(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, st
 
 def make_run_params(
     data_dir: str = DAQ_DATA_DIR,
-    daq_ip_addr: str = DAQNODE_DIRECT_HOST,
+    daq_ip_addr: str | None = None,
     module_ids: list[int] | None = None,
 ) -> dict[str, Any]:
     return {
         "data_dir": data_dir,
-        "daq_ip_addr": daq_ip_addr,
+        "daq_ip_addr": daq_ip_addr or "192.168.100.10",
         "bindhost": "lo",
         "max_file_size_mb": 1,
         "group_ph_frames": True,
@@ -190,30 +186,23 @@ def daqnode_fleet(request: Any, docker_client: Any) -> Iterator[Any]:
         fleet.tear_down()
 
 
-@pytest.fixture(scope="session")
-def daq_control_direct() -> DaqControlClient:
-    return DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
-
-
-@pytest.fixture(scope="session")
-def daq_control_node2() -> DaqControlClient:
-    return DaqControlClient(host=DAQNODE2_HOST, port=GRPC_PORT)
-
-
-@pytest.fixture(scope="session")
-def daqnode_container() -> Any:
-    """Docker container handle for the primary daqnode. Skips if unavailable."""
-    try:
-        import docker
-        client = docker.from_env()
-        return client.containers.get(DAQNODE_CONTAINER)
-    except Exception as e:
-        pytest.skip(f"Docker SDK unavailable or container not found: {e}")
+@pytest.fixture
+def daqnode_ip(session_fleet) -> str:
+    """Placeholder IP of the first fleet node."""
+    fleet, _ = session_fleet
+    return fleet.node_ip(0)
 
 
 @pytest.fixture
-def run_params() -> dict[str, Any]:
-    return make_run_params()
+def daqnode2_ip(session_fleet) -> str:
+    """Placeholder IP of the second fleet node."""
+    fleet, _ = session_fleet
+    return fleet.node_ip(1)
+
+
+@pytest.fixture
+def run_params(daqnode_ip) -> dict[str, Any]:
+    return make_run_params(daq_ip_addr=daqnode_ip)
 
 
 @pytest.fixture
@@ -287,8 +276,10 @@ def kill_hashpipe(daqnode_container: Any) -> Any:
     timers: list[Any] = []
 
     def _kill(signal: str = "KILL", delay: float = 0.0) -> None:
+        # Get the actual container name from the testcontainers handle
+        container_name = daqnode_container.name
         t = process_chaos.spawn_killer(
-            DAQNODE_CONTAINER, "hashpipe", delay_s=delay, sig=signal
+            container_name, "hashpipe", delay_s=delay, sig=signal
         )
         timers.append(t)
 

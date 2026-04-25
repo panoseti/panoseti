@@ -34,6 +34,14 @@ from control.utils.pydantic_config_models import (
 )
 
 
+def pytest_configure_node(node: Any) -> None:
+    """Called by xdist controller to configure each worker before it starts."""
+    if not hasattr(node.config, "_tc_run_uuid"):
+        import uuid as _uuid
+        node.config._tc_run_uuid = _uuid.uuid4().hex[:8]
+    node.workerinput["tc_run_uuid"] = node.config._tc_run_uuid
+
+
 def pytest_configure(config: Any) -> None:
     """
     Set environment variable overrides to isolate the test environment.
@@ -59,10 +67,27 @@ def pytest_configure(config: Any) -> None:
 
     # 4. Give each xdist worker its own testcontainers Ryuk session so parallel
     #    workers don't collide on the shared TC_SESSION_ID (409 Conflict).
-    if "TC_SESSION_ID" not in os.environ and hasattr(config, "workerinput"):
-        wid = config.workerinput.get("workerid", "")
-        if wid:
-            os.environ["TC_SESSION_ID"] = f"tc-session-{wid}"
+    import uuid as _uuid
+    if hasattr(config, "workerinput"):
+        # xdist worker process
+        worker_id = config.workerinput.get("workerid", "master")
+        run_uuid = config.workerinput.get("tc_run_uuid", _uuid.uuid4().hex[:8])
+    else:
+        # single-process run (fleet/chaos suites run without xdist)
+        worker_id = "solo"
+        run_uuid = _uuid.uuid4().hex[:8]
+
+    os.environ["TC_SESSION_ID"] = f"tc-{worker_id}-{run_uuid}"
+
+    # Ensure testcontainers internal state is updated
+    try:
+        import testcontainers.core.utils
+        if hasattr(testcontainers.core.utils, "setup_default_session_id"):
+            testcontainers.core.utils.setup_default_session_id()
+        else:
+            testcontainers.core.utils.SESSION_ID = os.environ["TC_SESSION_ID"]
+    except (ImportError, AttributeError):
+        pass
 
 
 @pytest.fixture(scope="session")
@@ -132,9 +157,15 @@ def auto_isolate(
 
     # Expose isolated data dirs so subprocesses (e.g. start.py) and fixtures
     # (e.g. head_data_dir) resolve to tmp_path instead of the hardcoded /data/head.
-    head_data_tmp = tmp_path / "head_data"
-    head_data_tmp.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
+    if "HEAD_DATA_DIR" not in os.environ:
+        head_data_tmp = tmp_path / "head_data"
+        head_data_tmp.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
+    
+    if "DAQ_DATA_DIR" not in os.environ:
+        daq_data_tmp = tmp_path / "daq_data"
+        daq_data_tmp.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setenv("DAQ_DATA_DIR", str(daq_data_tmp))
     
     # 4. Telemetry and Database Isolation
     # Assign unique Redis DBs and Loki Tenant IDs based on xdist worker_id

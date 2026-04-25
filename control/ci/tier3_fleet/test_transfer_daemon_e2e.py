@@ -26,15 +26,9 @@ from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
 
-
-# Helpers for skipping tests when not in Docker CI
-def is_in_ci() -> bool:
-    return os.path.exists("/.dockerenv")
-
-skip_outside_ci = pytest.mark.skipif(
-    not is_in_ci(), reason="This test requires the Docker CI environment"
-)
-
+# ---------------------------------------------------------------------------
+# Docker-based Integration Tests
+# ---------------------------------------------------------------------------
 
 def copy_run_dir(run_params: dict, head_data_dir: Path) -> bool:
     """Mock rsync by manually copying files from /data to /data/head."""
@@ -58,12 +52,7 @@ def copy_run_dir(run_params: dict, head_data_dir: Path) -> bool:
     return success
 
 
-# ---------------------------------------------------------------------------
-# Docker-based Integration Tests
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
-@skip_outside_ci
 async def test_transfer_daemon_archives_run(
     daq_control_direct: Any,
     run_params: dict[str, Any],
@@ -78,11 +67,13 @@ async def test_transfer_daemon_archives_run(
     from ci.tier3_fleet.conftest import wait_hashpipe_running
     from ci.tier4_chaos.conftest import _start as grpc_start
 
-    # Isolate state
+    # Isolate state and data
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
-
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     RunStateManager().clear_state()
@@ -98,9 +89,10 @@ async def test_transfer_daemon_archives_run(
 
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
-    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
-
+    wait_hashpipe_running(daq_control_direct, run_params["data_dir"], timeout=5)
     daq_config = config_file.get_daq_config()
+    daq_config.head_node_data_dir = str(head_data_tmp)
+
     net = config_file.get_network_config()
     uids = config_file.get_quabo_uids()
 
@@ -151,7 +143,6 @@ async def test_transfer_daemon_archives_run(
 
 
 @pytest.mark.asyncio
-@skip_outside_ci
 async def test_transfer_daemon_resumes_after_crash(
     daq_control_direct: Any,
     run_params: dict[str, Any],
@@ -165,10 +156,13 @@ async def test_transfer_daemon_resumes_after_crash(
     from ci.tier3_fleet.conftest import wait_hashpipe_running
     from ci.tier4_chaos.conftest import _start as grpc_start
 
+    # Isolate state and data
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
-
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     RunStateManager().clear_state()
@@ -177,9 +171,10 @@ async def test_transfer_daemon_resumes_after_crash(
     
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
-    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
-
+    wait_hashpipe_running(daq_control_direct, run_params["data_dir"], timeout=5)
     daq_config = config_file.get_daq_config()
+    daq_config.head_node_data_dir = str(head_data_tmp)
+
     net = config_file.get_network_config()
     uids = config_file.get_quabo_uids()
 
@@ -221,7 +216,6 @@ async def test_transfer_daemon_resumes_after_crash(
 
 
 @pytest.mark.asyncio
-@skip_outside_ci
 async def test_transfer_daemon_retry_on_transient_rsync_failure(
     daq_control_direct: Any,
     run_params: dict[str, Any],
@@ -233,16 +227,21 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     """
     import control.stop as stop
 
+    # Isolate state and data
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
-
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     RunStateManager().clear_state()
 
     daq_config = config_file.get_daq_config()
+    daq_config.head_node_data_dir = str(head_data_tmp)
     net = config_file.get_network_config()
+
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
@@ -293,7 +292,6 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
 
 
 @pytest.mark.asyncio
-@skip_outside_ci
 async def test_transfer_daemon_marks_failed_after_max_attempts(
     daq_control_direct: Any,
     run_params: dict[str, Any],
@@ -306,16 +304,21 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     import control.stop as stop
     from control.transfer.daemon import MAX_ATTEMPTS
 
+    # Isolate state and data
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
-
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     RunStateManager().clear_state()
 
     daq_config = config_file.get_daq_config()
+    daq_config.head_node_data_dir = str(head_data_tmp)
     net = config_file.get_network_config()
+
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
@@ -349,17 +352,19 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     monkeypatch.undo()
 
 
-@skip_outside_ci
-def test_transfer_daemon_singleton_lock_in_container(tmp_path: Path) -> None:
+async def test_transfer_daemon_singleton_lock_in_container(tmp_path: Path) -> None:
     """
     Lock contention: second daemon must exit.
     """
     from control.utils.paths import PanoPaths
 
+    # Isolate state and data
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
-
     lock_script = tmp_path / "hold_lock.py"
     lock_script.write_text('''
 import os
@@ -408,10 +413,13 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
     """
     Test _process_job with mocked gRPC and rsync.
     """
+    # Isolate state and data
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    head_data_tmp = tmp_path / "head_data"
+    head_data_tmp.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
-
     run_name = "unit_int_run.pffd"
     job = TransferJob(
         schema_version=1,

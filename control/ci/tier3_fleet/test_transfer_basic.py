@@ -39,14 +39,8 @@ from control.utils.pydantic_config_models import RunStateLedger
 from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
-# CI guard
+# Constants
 # ---------------------------------------------------------------------------
-
-IN_DOCKER_CI = os.environ.get("IN_DOCKER_CI") == "1"
-pytestmark = pytest.mark.skipif(
-    not IN_DOCKER_CI,
-    reason="Requires Docker CI stack (IN_DOCKER_CI=1)",
-)
 
 DAQNODE_IP = os.environ.get("DAQNODE_DIRECT_HOST", "192.168.0.10")
 HEAD_DATA_DIR = pathlib.Path(os.environ.get("HEAD_DATA_DIR", "/data/head"))
@@ -101,10 +95,11 @@ def run_name() -> str:
 
 
 @pytest.fixture
-def run_dir(run_name: str) -> pathlib.Path:
+def run_dir(run_name: str, head_data_dir: pathlib.Path) -> pathlib.Path:
     """Create a head-node run dir with synthetic PFF and manifest files."""
-    d = HEAD_DATA_DIR / run_name
+    d = head_data_dir / run_name
     d.mkdir(parents=True, exist_ok=True)
+
     # Write two synthetic files
     for i in range(2):
         fname = f"start_2024.dp_ph256.module_200.seqno_{i}.pff"
@@ -136,10 +131,10 @@ def state_mgr(tmp_path: pathlib.Path, run_name: str) -> RunStateManager:
 
 
 @pytest.fixture
-def transfer_job(run_name: str, run_dir: pathlib.Path) -> TransferJob:
+def transfer_job(run_name: str, run_dir: pathlib.Path, head_data_dir: pathlib.Path) -> TransferJob:
     return TransferJob(schema_version=1, 
         run_name=run_name,
-        head_data_dir=str(HEAD_DATA_DIR),
+        head_data_dir=str(head_data_dir),
         head_node_username="panoseti",
         created_at=datetime.now(UTC),
         no_collect=True,   # skip rsync in basic suite; filesystem already has files

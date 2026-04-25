@@ -7,7 +7,6 @@ Includes the mandatory auto_isolate fixture.
 
 from __future__ import annotations
 
-import os
 import pathlib
 from collections.abc import Iterator
 from typing import Any
@@ -51,11 +50,6 @@ def auto_isolate(
     monkeypatch.setenv("PSETI_CONTROL", str(ctl_tmp))
     monkeypatch.setenv("PSETI_CONFIG", str(cfg_tmp))
     
-    # 3. Ryuk concurrency isolation: each xdist worker must own a distinct Ryuk
-    #    container so parallel workers don't race on the shared TC_SESSION_ID
-    #    and generate 409 Conflict errors.
-    os.environ["TC_SESSION_ID"] = f"tc-session-{worker_id}"
-
     # 4. Telemetry and Database Isolation
     # Assign unique Redis DBs and Loki Tenant IDs based on xdist worker_id
     try:

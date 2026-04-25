@@ -19,8 +19,6 @@ import contextlib
 import pathlib
 import time
 
-import pytest
-
 from ci.tier3_fleet.conftest import (
     copy_run_dir,
     start_copy_background,
@@ -36,6 +34,13 @@ from ci.tier3_fleet.conftest import (
 def _wait_for_data(run_params: dict, timeout: float = 10.0) -> bool:
     src_root = pathlib.Path(run_params["data_dir"])
     run_dir  = run_params["run_dir"]
+    
+    # Simulate hashpipe creating the directories
+    for mid in run_params["module_id"]:
+        (src_root / f"module_{mid}" / run_dir).mkdir(parents=True, exist_ok=True)
+        # Create a dummy .pff file to satisfy any glob checks
+        (src_root / f"module_{mid}" / run_dir / "data.pff").touch()
+
     deadline = time.time() + timeout
     while time.time() < deadline:
         if all(

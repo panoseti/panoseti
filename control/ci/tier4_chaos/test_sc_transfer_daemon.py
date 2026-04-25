@@ -52,14 +52,15 @@ from control.transfer.models import TransferJob, TransferNodeSpec
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def client() -> DaqControlClient:
-    return DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
+@pytest.fixture(scope="session")
+def client(daqnode_ip) -> DaqControlClient:
+    return DaqControlClient(host=daqnode_ip, port=GRPC_PORT)
 
 
 @pytest.fixture
-def run_params() -> dict[str, Any]:
-    return make_run_params()
+def run_params(daqnode_ip) -> dict[str, Any]:
+    return make_run_params(daq_ip_addr=daqnode_ip)
+
 
 
 @pytest.fixture

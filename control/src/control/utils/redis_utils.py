@@ -9,7 +9,11 @@ import redis
 
 
 def redis_init() -> redis.Redis:
-    return redis.Redis(host='localhost', port=6379, db=0)
+    import os
+    host = os.environ.get('REDIS_HOST', 'localhost')
+    port = int(os.environ.get('REDIS_PORT', 6379))
+    db = int(os.environ.get('REDIS_DB', 0))
+    return redis.Redis(host=host, port=port, db=db)
 
 
 def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict) -> None:

@@ -57,8 +57,9 @@ where = ["src"]
 include = ["control*"]
 
 [tool.pytest.ini_options]
-testpaths = ["src/control/ci"]
+testpaths = ["ci"]
 asyncio_mode = "auto"
+timeout = 30
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]

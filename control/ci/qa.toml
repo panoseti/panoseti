@@ -43,20 +43,16 @@ parallel = true
 [suites.fleet]
 description = "Tier 3: Distributed flows (Dynamic Fleets, Real gRPC)"
 type = "test"
-requires_docker = true
-compose_file = "ci/docker-compose.integration.yml"
-service = "int-tester"
+requires_docker = false
 test_dir = "ci/tier3_fleet/"
-env = { DAQNODE_DIRECT_HOST = "${DAQ_NET_PREFIX}.10", DAQNODE2_HOST = "${DAQ_NET_PREFIX}.20", HEADNODE_HOST = "${HEAD_NET_PREFIX}.22", REDIS_HOST = "${HEAD_NET_PREFIX}.20", DAQNODE_GATEWAY_HOST = "${HEAD_NET_PREFIX}.254" }
+parallel = true
 
 [suites.chaos]
 description = "Tier 4: Fault injection (Active failure scenarios)"
 type = "test"
-requires_docker = true
-compose_file = "ci/docker-compose.integration.yml"
-service = "int-tester"
+requires_docker = false
 test_dir = "ci/tier4_chaos/"
-env = { ENABLE_TELEMETRY_TESTS = "1", DAQNODE_DIRECT_HOST = "${DAQ_NET_PREFIX}.10", DAQNODE2_HOST = "${DAQ_NET_PREFIX}.20", HEADNODE_HOST = "${HEAD_NET_PREFIX}.22", REDIS_HOST = "${HEAD_NET_PREFIX}.20", DAQNODE_GATEWAY_HOST = "${HEAD_NET_PREFIX}.254" }
+env = { ENABLE_TELEMETRY_TESTS = "1" }
 
 [suites.test-hw]
 description = "Physical Hardware-Software (HITL) tests"

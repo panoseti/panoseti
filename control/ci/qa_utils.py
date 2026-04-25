@@ -359,8 +359,21 @@ class TestRunner:
         if suite.name in self._temp_envs:
             env_file, expanded_env = self._temp_envs[suite.name]
         else:
-            env_file, expanded_env = ENV_CI_PATH, suite.env
+            # For host-based suites, we still want to generate a dynamic env 
+            # to ensure non-overlapping networking if multiple suites run.
+            env_file, expanded_env = self._generate_dynamic_env(suite)
+            self._temp_envs[suite.name] = (env_file, expanded_env)
 
+        lock = asyncio.Lock()
+        
+        if not suite.requires_docker:
+            # Host-based execution (testcontainers)
+            # Use the project root as CWD so paths in configs resolve correctly
+            cmd = pytest_cmd
+            res = await self._stream(f"test.{suite.name}", cmd, lock, env=expanded_env)
+            return [res]
+
+        # Container-based execution (Docker Compose exec)
         env_str = " ".join([f"-e {k}={v}" for k, v in expanded_env.items()])
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
 
@@ -371,7 +384,6 @@ class TestRunner:
                 compose_file = env_cfg.compose_file
 
         cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
-        lock = asyncio.Lock()
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
         return [res]
 

@@ -259,16 +259,13 @@ class Fleet:
 
     def tear_down(self) -> None:
         """Stop all containers and remove the Docker network."""
+        import contextlib
         for container in self._containers:
-            try:
+            with contextlib.suppress(Exception):
                 container.stop()
-            except Exception:
-                pass
         self._containers.clear()
-        try:
+        with contextlib.suppress(Exception):
             self._network.remove()
-        except Exception:
-            pass
 
     # ------------------------------------------------------------------
     # Topology helpers
@@ -337,9 +334,13 @@ def make_fleet(n: int, **kwargs: Any) -> Fleet:
             f"n={n} exceeds the default limit of {MAX_DEFAULT_FLEET_N}. "
             "Set RUN_LARGE_FLEET=1 to override."
         )
+    
+    # 409 Conflict mitigation: use TC_SESSION_ID (from xdist worker) to make names unique
+    tc_id = os.environ.get("TC_SESSION_ID", "solo")
+    
     specs = [
         DaqnodeSpec(
-            name=f"pseti-daqnode-fleet-{i}",
+            name=f"pseti-daqnode-{tc_id}-{i}",
             module_ids=module_id_slice(i, n),
         )
         for i in range(n)

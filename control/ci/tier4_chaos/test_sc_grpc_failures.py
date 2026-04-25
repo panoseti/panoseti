@@ -25,8 +25,6 @@ from ci.fixtures.chaos import process_chaos
 from ci.fixtures.state_probe import StateProbe
 from ci.tier3_fleet.conftest import (
     DAQ_DATA_DIR,
-    DAQNODE_CONTAINER,
-    DAQNODE_DIRECT_HOST,
     wait_hashpipe_running,
     wait_hashpipe_stopped,
 )
@@ -409,9 +407,9 @@ class TestSC010OrphanedHashpipe:
             "hashpipe did not start"
 
         # Simulate crash: SIGKILL bypasses StopDaq
-        process_chaos.kill_process(DAQNODE_CONTAINER, "hashpipe", sig="KILL")
+        process_chaos.kill_process(daqnode_container.name, "hashpipe", sig="KILL")
         assert process_chaos.wait_for_process_death(
-            DAQNODE_CONTAINER, "hashpipe", timeout=5
+            daqnode_container.name, "hashpipe", timeout=5
         ), "hashpipe did not die after SIGKILL"
 
         # The server still has hashpipe_pid > 0 in memory.
@@ -446,8 +444,8 @@ class TestSC010OrphanedHashpipe:
         daq_control_direct.StartDaq(run_params)
         assert wait_hashpipe_running(daq_control_direct, DAQ_DATA_DIR, timeout=4)
 
-        process_chaos.kill_process(DAQNODE_CONTAINER, "hashpipe", sig="KILL")
-        process_chaos.wait_for_process_death(DAQNODE_CONTAINER, "hashpipe", timeout=5)
+        process_chaos.kill_process(daqnode_container.name, "hashpipe", sig="KILL")
+        process_chaos.wait_for_process_death(daqnode_container.name, "hashpipe", timeout=5)
 
         # force=True override: allowed to delete orphaned run data
         ok, _resp = grpc_cleanup(daq_control_direct, {
@@ -847,7 +845,7 @@ def test_SC015_daqnode_reboot_during_run_makes_head_aware() -> None:
 
 # ── SC-016: DaqControlClient with wrong port → clear error ──────────────────
 
-def test_SC016_wrong_port_gives_clear_error() -> None:
+def test_SC016_wrong_port_gives_clear_error(daqnode_ip) -> None:
     """
     SC-016: DaqControlClient constructed with a wrong port must raise or return
     a clear connection error within a reasonable timeout, not hang forever.
@@ -856,7 +854,7 @@ def test_SC016_wrong_port_gives_clear_error() -> None:
     """
     import grpc
 
-    bad_client = DaqControlClient(host=DAQNODE_DIRECT_HOST, port=9)  # port 9 = discard
+    bad_client = DaqControlClient(host=daqnode_ip, port=9)  # port 9 = discard
     try:
         ok, resp = bad_client.StatusDaq({
             "data_dir": DAQ_DATA_DIR,

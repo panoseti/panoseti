@@ -37,17 +37,12 @@ from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.transfer.rsync import build_rsync_cmd
+from control.utils import config_file
 from control.utils.pydantic_config_models import PortForwarding
 
 # ---------------------------------------------------------------------------
-# CI guard
+# Constants
 # ---------------------------------------------------------------------------
-
-IN_DOCKER_CI = os.environ.get("IN_DOCKER_CI") == "1"
-pytestmark = pytest.mark.skipif(
-    not IN_DOCKER_CI,
-    reason="Requires Docker CI stack (IN_DOCKER_CI=1)",
-)
 
 DAQNODE_IP = os.environ.get("DAQNODE_DIRECT_HOST", "192.168.0.10")
 GATEWAY_IP = os.environ.get("DAQNODE_GATEWAY_HOST", "10.0.1.254")
@@ -120,8 +115,8 @@ def run_name() -> str:
 
 
 @pytest.fixture
-def run_dir(run_name: str) -> pathlib.Path:
-    d = HEAD_DATA_DIR / run_name
+def run_dir(run_name: str, head_data_dir: pathlib.Path) -> pathlib.Path:
+    d = head_data_dir / run_name
     d.mkdir(parents=True, exist_ok=True)
     yield d
     import shutil
@@ -129,10 +124,10 @@ def run_dir(run_name: str) -> pathlib.Path:
 
 
 @pytest.fixture
-def pf_job(run_name: str, pf_node: TransferNodeSpec) -> TransferJob:
+def pf_job(run_name: str, pf_node: TransferNodeSpec, head_data_dir: pathlib.Path) -> TransferJob:
     return TransferJob(schema_version=1, 
         run_name=run_name,
-        head_data_dir=str(HEAD_DATA_DIR),
+        head_data_dir=str(head_data_dir),
         head_node_username="panoseti",
         created_at=datetime.now(UTC),
         no_collect=False,
@@ -275,10 +270,15 @@ class TestProcessJobWithPortForwarding:
         run_name: str,
         run_dir: pathlib.Path,
         pf_job: TransferJob,
+        head_data_dir: pathlib.Path,
     ) -> None:
         """subprocess.run is called with the gateway address, not the daqnode IP."""
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
+        # Ensure head_node_data_dir in daq_config matches our isolated path
+        # so validator passes.
+        daq_cfg = config_file.get_daq_config()
+        daq_cfg.head_node_data_dir = str(head_data_dir)
         client = _grpc_client_ok()
         rsync_calls: list[list[str]] = []
 

@@ -29,11 +29,12 @@ from ci.tier3_fleet.conftest import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def run_params_node2() -> dict[str, Any]:
+def run_params_node2(session_fleet) -> dict[str, Any]:
     """Fresh run parameters for node-2 — distinct run_dir and module_id."""
+    fleet, _ = session_fleet
     return {
         "data_dir":         DAQ_DATA_DIR,
-        "daq_ip_addr":      "192.168.0.20",
+        "daq_ip_addr":      fleet.node_ip(1),
         "bindhost":         BINDHOST,
         "max_file_size_mb": 1,
         "group_ph_frames":  True,
@@ -90,12 +91,12 @@ class TestTwoNodeDirect:
     """Two DAQ nodes can be managed completely independently."""
 
     def test_node1_starts(self, daq_control_direct, run_params) -> None:
-        """Node 1 (192.168.0.10) starts hashpipe successfully."""
+        """Node 1 starts hashpipe successfully."""
         ok = daq_control_direct.StartDaq(run_params)
         assert ok is True
 
     def test_node2_starts(self, daq_control_node2, run_params_node2) -> None:
-        """Node 2 (192.168.0.20) starts hashpipe successfully."""
+        """Node 2 starts hashpipe successfully."""
         ok = daq_control_node2.StartDaq(run_params_node2)
         assert ok is True
     
@@ -120,8 +121,10 @@ class TestTwoNodeDirect:
             "hashpipe did not start within timeout"
         )
         assert wait_hashpipe_running(daq_control_node2, run_params_node2["data_dir"]), (
-            "hashpipe did not start within timeout"
+            "hashpipe-2 did not start within timeout"
         )
+
+
         _, s1 = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
@@ -202,8 +205,10 @@ class TestTwoNodeDirect:
             "hashpipe did not start within timeout"
         )
         assert wait_hashpipe_running(daq_control_node2, run_params_node2["data_dir"]), (
-            "hashpipe did not start within timeout"
+            "hashpipe-2 did not start within timeout"
         )
+
+
 
         _, s1 = daq_control_direct.StatusDaq({
             "data_dir":               run_params["data_dir"],

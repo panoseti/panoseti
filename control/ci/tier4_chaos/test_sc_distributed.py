@@ -26,8 +26,6 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 
 from ci.tier3_fleet.conftest import (
     DAQ_DATA_DIR,
-    DAQNODE2_HOST,
-    DAQNODE_DIRECT_HOST,
     wait_hashpipe_stopped,
 )
 from ci.tier4_chaos.conftest import _start as grpc_start
@@ -60,7 +58,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     daq_raw["head_node_ip_addr"] = headnode_ip
     daq_raw["head_node_container"] = True
     daq_raw["daq_nodes"] = [
-        {"ip_addr": f"192.168.0.{30+i}", "data_dir": "/data", "username": "root", "module_ids": [200+i]}
+        {"ip_addr": f"192.168.100.{30+i}", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [200+i]}
         for i in range(4)
     ]
     daq_config = DaqConfig(**daq_raw)
@@ -178,9 +176,9 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
     daq_raw["head_node_ip_addr"] = headnode_ip
     daq_raw["head_node_container"] = True
     daq_raw["daq_nodes"] = [
-        {"ip_addr": "192.168.0.10", "data_dir": "/data", "username": "root", "module_ids": [250]},
-        {"ip_addr": "192.168.0.11", "data_dir": "/data", "username": "root", "module_ids": [251]},
-        {"ip_addr": "192.168.0.12", "data_dir": "/data", "username": "root", "module_ids": [252]},
+        {"ip_addr": "192.168.100.10", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [250]},
+        {"ip_addr": "192.168.100.11", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [251]},
+        {"ip_addr": "192.168.100.12", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [252]},
     ]
     daq_config = DaqConfig(**daq_raw)
 
@@ -283,6 +281,8 @@ def test_SCN001_sequential_start_latency_scales_linearly(
     n_nodes: int,
     daq_control_direct: DaqControlClient,
     daq_control_node2: DaqControlClient,
+    daqnode_ip: str,
+    daqnode2_ip: str,
 ) -> None:
     """
     SC-N001: Measure total wall time for sequential StartDaq to N nodes.
@@ -300,7 +300,7 @@ def test_SCN001_sequential_start_latency_scales_linearly(
         for i, (client, run_dir) in enumerate(zip(clients, run_dirs, strict=True)):
             rp = {
                 "data_dir": DAQ_DATA_DIR,
-                "daq_ip_addr": DAQNODE_DIRECT_HOST if i == 0 else DAQNODE2_HOST,
+                "daq_ip_addr": daqnode_ip if i == 0 else daqnode2_ip,
                 "bindhost": "lo",
                 "max_file_size_mb": 1,
                 "group_ph_frames": True,
@@ -334,6 +334,8 @@ def test_SCN002_parallel_start_is_faster_than_sequential(
     n_nodes: int,
     daq_control_direct: DaqControlClient,
     daq_control_node2: DaqControlClient,
+    daqnode_ip: str,
+    daqnode2_ip: str,
 ) -> None:
     """
     SC-N002: asyncio.gather StartDaq to N nodes should be ~fastest-node,
@@ -355,7 +357,7 @@ def test_SCN002_parallel_start_is_faster_than_sequential(
         params_list = [
             {
                 "data_dir": DAQ_DATA_DIR,
-                "daq_ip_addr": DAQNODE_DIRECT_HOST if i == 0 else DAQNODE2_HOST,
+                "daq_ip_addr": daqnode_ip if i == 0 else daqnode2_ip,
                 "bindhost": "lo",
                 "max_file_size_mb": 1,
                 "group_ph_frames": True,
@@ -555,6 +557,8 @@ async def test_SCN006_telemetry_volume_scales_with_n_nodes(
     n_nodes: int,
     daq_control_direct: DaqControlClient,
     daq_control_node2: DaqControlClient,
+    daqnode_ip: str,
+    daqnode2_ip: str,
 ) -> None:
     """
     SC-N006: Compare Redis log queue depth after N-node run.
@@ -582,7 +586,7 @@ async def test_SCN006_telemetry_volume_scales_with_n_nodes(
     for i, (client, run_dir) in enumerate(zip(clients, run_dirs, strict=True)):
         rp = {
             "data_dir": DAQ_DATA_DIR,
-            "daq_ip_addr": DAQNODE_DIRECT_HOST if i == 0 else DAQNODE2_HOST,
+            "daq_ip_addr": daqnode_ip if i == 0 else daqnode2_ip,
             "bindhost": "lo",
             "max_file_size_mb": 1,
             "group_ph_frames": True,
