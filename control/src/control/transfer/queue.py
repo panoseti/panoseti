@@ -6,8 +6,7 @@ import os
 import pathlib
 import tempfile
 import tomllib
-
-import tomli_w
+from typing import Any
 
 from control.transfer.models import TransferJob
 from control.utils.paths import PanoPaths
@@ -50,27 +49,66 @@ class TransferQueue:
         """
         return self._queue / subdir / f"{run_name}.job.toml"
 
+    @staticmethod
+    def _toml_scalar(value: Any) -> str:
+        """Render a scalar value as a TOML literal string fragment.
+
+        Args:
+            value: A bool, int, float, or str-convertible value.
+
+        Returns:
+            TOML-formatted string (e.g. ``"true"``, ``42``, ``"hello"``).
+        """
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        return f'"{value}"'
+
     def _write_job(self, path: pathlib.Path, job: TransferJob) -> None:
         """Serialize *job* to TOML atomically via a temp file and ``os.replace``.
+
+        Uses manual TOML serialization (no third-party dependency) to keep the
+        package lean.  The format mirrors the legacy ``utils/transfer/queue.py``
+        style so existing tooling continues to work.
 
         Args:
             path: Destination path for the TOML file.
             job: The ``TransferJob`` Pydantic model to serialize.
         """
+        # model_dump(mode="json") converts IPvAnyAddress -> str, datetime -> str
+        data = job.model_dump(mode="json")
         tmp_dir = path.parent
         fd, tmp_path = tempfile.mkstemp(dir=tmp_dir, suffix=".tmp")
+        _skip_keys = {"daq_nodes"}
         try:
-            data = job.model_dump(mode="json")
-            # Flatten IPvAnyAddress objects to plain strings for tomli_w
-            for node in data.get("daq_nodes", []):
-                if "ip_addr" in node:
-                    node["ip_addr"] = str(node["ip_addr"])
-                pf = node.get("port_forwarding")
-                if pf and "gw_ip" in pf:
-                    pf["gw_ip"] = str(pf["gw_ip"])
-            # created_at: tomli_w handles datetime objects natively
-            with os.fdopen(fd, "wb") as f:
-                f.write(tomli_w.dumps(data).encode())
+            with os.fdopen(fd, "w") as f:
+                # Top-level scalar fields first
+                for k, v in data.items():
+                    if k in _skip_keys:
+                        continue
+                    f.write(f"{k} = {self._toml_scalar(v)}\n")
+                # [[daq_nodes]] array-of-tables
+                for node in data.get("daq_nodes", []):
+                    f.write("\n[[daq_nodes]]\n")
+                    pf_data: dict[str, Any] | None = node.pop("port_forwarding", None)
+                    for k, v in node.items():
+                        if isinstance(v, list):
+                            # module_ids is a list of ints
+                            f.write(f"{k} = [{', '.join(str(i) for i in v)}]\n")
+                        else:
+                            f.write(f"{k} = {self._toml_scalar(v)}\n")
+                    if pf_data is not None:
+                        f.write("\n[daq_nodes.port_forwarding]\n")
+                        for k, v in pf_data.items():
+                            if v is None:
+                                continue
+                            if isinstance(v, list):
+                                # reboot_port / cmd_port may be lists
+                                non_null = [str(i) for i in v if i is not None]
+                                f.write(f"{k} = [{', '.join(non_null)}]\n")
+                            else:
+                                f.write(f"{k} = {self._toml_scalar(v)}\n")
             os.replace(tmp_path, path)
         except Exception:
             with contextlib.suppress(OSError):

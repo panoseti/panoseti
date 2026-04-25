@@ -2,203 +2,264 @@
 """
 test_transfer_queue.py
 
-Phase 2 RED tests for the TransferQueue class (control/utils/transfer/queue.py).
+Unit tests for control/transfer/queue.py (TransferQueue).
 
-All tests in this file should FAIL on the current codebase with ImportError or
-AttributeError, and pass only after Phase 2 is implemented.
+All tests use tmp_path and monkeypatch PSETI_TQ_DIR to isolate queue state.
 """
-
 from __future__ import annotations
 
 import pathlib
-import tomllib
+from datetime import UTC, datetime
 
 import pytest
 
-try:
-    from control.utils.transfer.queue import TransferQueue
-except ImportError:
-    TransferQueue = None  # type: ignore[assignment,misc]
-
-# ---------------------------------------------------------------------------
-# Module-level constants
-# ---------------------------------------------------------------------------
-
-RUN_NAME = "myrun.pffd"
-RUN_ALPHA = "run_alpha"
-RUN_BETA = "run_beta"
-
+from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.queue import TransferQueue
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _queue_subdir(base: pathlib.Path, subdir: str) -> pathlib.Path:
-    return base / "tmp" / "transfer_queue" / subdir
+_NOW = datetime(2024, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
-def _tq(tmp_path: pathlib.Path) -> TransferQueue:
-    """Return a TransferQueue rooted at tmp_path, or raise ImportError if not yet implemented."""
-    if TransferQueue is None:
-        raise ImportError("utils.transfer.queue.TransferQueue is not yet implemented")
-    return TransferQueue(base_dir=str(tmp_path))
+def _make_job(run_name: str = "test_run_001", **kwargs) -> TransferJob:
+    """Construct a minimal valid TransferJob for testing."""
+    defaults: dict = dict(
+        run_name=run_name,
+        head_data_dir="/data/head",
+        head_node_username="panoseti",
+        created_at=_NOW,
+        attempts=0,
+        daq_nodes=[
+            TransferNodeSpec(
+                ip_addr="192.168.0.10",
+                username="panoseti",
+                data_dir="/data",
+                module_ids=[0, 1],
+            )
+        ],
+    )
+    defaults.update(kwargs)
+    return TransferJob(**defaults)
+
+
+def _make_job_with_pf(run_name: str = "pf_run_001") -> TransferJob:
+    """Construct a TransferJob with port-forwarding configured."""
+    from control.utils.pydantic_config_models import PortForwarding
+
+    return TransferJob(
+        run_name=run_name,
+        head_data_dir="/data/head",
+        head_node_username="panoseti",
+        created_at=_NOW,
+        daq_nodes=[
+            TransferNodeSpec(
+                ip_addr="192.168.0.10",
+                username="panoseti",
+                data_dir="/data",
+                module_ids=[5],
+                port_forwarding=PortForwarding(
+                    status=True,
+                    gw_ip="10.0.1.254",
+                    port=2222,
+                ),
+            )
+        ],
+    )
+
+
+@pytest.fixture()
+def tq(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> TransferQueue:
+    """Return a TransferQueue isolated to tmp_path via PSETI_TQ_DIR."""
+    queue_dir = tmp_path / "queue"
+    monkeypatch.setenv("PSETI_TQ_DIR", str(queue_dir))
+    return TransferQueue()
 
 
 # ---------------------------------------------------------------------------
-# Import sanity
+# 1. enqueue() creates pending/{run_name}.job.toml
 # ---------------------------------------------------------------------------
 
-class TestTransferQueueImport:
-    """Basic import sanity test — fails RED until the module exists."""
+class TestEnqueue:
+    def test_enqueue_creates_pending_file(self, tq: TransferQueue) -> None:
+        """enqueue() must create a TOML file in pending/."""
+        job = _make_job("run_001")
+        result = tq.enqueue(job)
+        assert result is True
+        pending = tq._queue / "pending" / "run_001.job.toml"
+        assert pending.exists()
 
-    def test_import_transfer_queue(self) -> None:
-        """Importing TransferQueue from utils.transfer.queue must succeed."""
-        if TransferQueue is None:
-            raise ImportError("utils.transfer.queue.TransferQueue is not yet implemented")
-        assert TransferQueue is not None
+    def test_enqueue_idempotent_returns_false_second_time(self, tq: TransferQueue) -> None:
+        """Calling enqueue() twice for the same run must return False the second time."""
+        job = _make_job("run_002")
+        first = tq.enqueue(job)
+        second = tq.enqueue(job)
+        assert first is True
+        assert second is False
 
-
-# ---------------------------------------------------------------------------
-# Enqueue
-# ---------------------------------------------------------------------------
-
-class TestTransferQueueEnqueue:
-
-    def test_enqueue_creates_pending_job(self, tmp_path) -> None:
-        """enqueue() must create a TOML file in tmp/transfer_queue/pending/."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
-        pending_dir = _queue_subdir(tmp_path, "pending")
-        assert (pending_dir / f"{RUN_NAME}.job.toml").exists()
-
-    def test_enqueue_idempotent(self, tmp_path) -> None:
-        """enqueue() called twice for the same run must produce exactly one file."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
-        pending_dir = _queue_subdir(tmp_path, "pending")
+    def test_enqueue_idempotent_only_one_file(self, tq: TransferQueue) -> None:
+        """After two enqueue() calls, only one .job.toml should exist in pending/."""
+        job = _make_job("run_003")
+        tq.enqueue(job)
+        tq.enqueue(job)
+        pending_dir = tq._queue / "pending"
         toml_files = list(pending_dir.glob("*.job.toml"))
         assert len(toml_files) == 1
 
-    def test_list_pending(self, tmp_path) -> None:
-        """list_pending() must return all enqueued run_names."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_ALPHA, "/data", [{"ip": "1.2.3.4"}])
-        q.enqueue(RUN_BETA, "/data", [{"ip": "5.6.7.8"}])
-        pending = q.list_pending()
-        assert sorted(pending) == [RUN_ALPHA, RUN_BETA]
-
-    def test_job_toml_contains_required_fields(self, tmp_path) -> None:
-        """The generated TOML file must contain run_name, head_data_dir, daq_nodes, created_at."""
-        q = _tq(tmp_path)
-        job_path = q.enqueue(RUN_NAME, "/data/head", [{"ip": "1.2.3.4"}])
-        with open(job_path, "rb") as f:
-            data = tomllib.load(f)
-
-        assert "run_name" in data
-        assert "head_data_dir" in data
-        assert "daq_nodes" in data
-        assert "created_at" in data
-        assert data["run_name"] == RUN_NAME
-        assert data["head_data_dir"] == "/data/head"
-
 
 # ---------------------------------------------------------------------------
-# Claim
+# 2. claim() moves pending->active, returns TransferJob
 # ---------------------------------------------------------------------------
 
-class TestTransferQueueClaim:
-
-    def test_claim_moves_to_active(self, tmp_path) -> None:
+class TestClaim:
+    def test_claim_moves_to_active(self, tq: TransferQueue) -> None:
         """claim() must atomically move the job from pending/ to active/."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
+        job = _make_job("run_004")
+        tq.enqueue(job)
+        claimed = tq.claim()
+        assert claimed is not None
+        assert claimed.run_name == "run_004"
+        assert not (tq._queue / "pending" / "run_004.job.toml").exists()
+        assert (tq._queue / "active" / "run_004.job.toml").exists()
 
-        job = q.claim()
-        assert job is not None
-        assert job["run_name"] == RUN_NAME
-
-        pending_dir = _queue_subdir(tmp_path, "pending")
-        active_dir = _queue_subdir(tmp_path, "active")
-        assert not (pending_dir / f"{RUN_NAME}.job.toml").exists()
-        assert (active_dir / f"{RUN_NAME}.job.toml").exists()
-
-    def test_claim_returns_none_when_empty(self, tmp_path) -> None:
+    def test_claim_returns_none_when_empty(self, tq: TransferQueue) -> None:
         """claim() on an empty queue must return None."""
-        q = _tq(tmp_path)
-        result = q.claim()
+        result = tq.claim()
         assert result is None
 
-    def test_double_claim_is_none(self, tmp_path) -> None:
-        """After claiming the only pending job, a second claim must return None."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
-        first = q.claim()
-        assert first is not None
-        second = q.claim()
-        assert second is None
+    def test_claim_returns_transferjob_instance(self, tq: TransferQueue) -> None:
+        """claim() must return a TransferJob model instance."""
+        tq.enqueue(_make_job("run_005"))
+        claimed = tq.claim()
+        assert isinstance(claimed, TransferJob)
 
 
 # ---------------------------------------------------------------------------
-# Complete / Fail
+# 3. complete() moves active->completed
 # ---------------------------------------------------------------------------
 
-class TestTransferQueueComplete:
-
-    def test_complete_moves_to_completed(self, tmp_path) -> None:
+class TestComplete:
+    def test_complete_moves_to_completed(self, tq: TransferQueue) -> None:
         """complete() must move the job from active/ to completed/."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
-        q.claim()
-        q.complete(RUN_NAME)
+        tq.enqueue(_make_job("run_006"))
+        tq.claim()
+        tq.complete("run_006")
+        assert not (tq._queue / "active" / "run_006.job.toml").exists()
+        assert (tq._queue / "completed" / "run_006.job.toml").exists()
 
-        active_dir = _queue_subdir(tmp_path, "active")
-        completed_dir = _queue_subdir(tmp_path, "completed")
-        assert not (active_dir / f"{RUN_NAME}.job.toml").exists()
-        assert (completed_dir / f"{RUN_NAME}.job.toml").exists()
+    def test_complete_nonexistent_raises(self, tq: TransferQueue) -> None:
+        """complete() on a non-existent active job must raise FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            tq.complete("nonexistent_run")
 
-    def test_fail_moves_to_failed(self, tmp_path) -> None:
+
+# ---------------------------------------------------------------------------
+# 4. fail() moves active->failed
+# ---------------------------------------------------------------------------
+
+class TestFail:
+    def test_fail_moves_to_failed(self, tq: TransferQueue) -> None:
         """fail() must move the job from active/ to failed/."""
-        q = _tq(tmp_path)
-        q.enqueue(RUN_NAME, "/data", [{"ip": "1.2.3.4"}])
-        q.claim()
-        q.fail(RUN_NAME)
+        tq.enqueue(_make_job("run_007"))
+        tq.claim()
+        tq.fail("run_007")
+        assert not (tq._queue / "active" / "run_007.job.toml").exists()
+        assert (tq._queue / "failed" / "run_007.job.toml").exists()
 
-        active_dir = _queue_subdir(tmp_path, "active")
-        failed_dir = _queue_subdir(tmp_path, "failed")
-        assert not (active_dir / f"{RUN_NAME}.job.toml").exists()
-        assert (failed_dir / f"{RUN_NAME}.job.toml").exists()
+    def test_fail_nonexistent_raises(self, tq: TransferQueue) -> None:
+        """fail() on a non-existent active job must raise FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            tq.fail("nonexistent_run")
 
 
 # ---------------------------------------------------------------------------
-# Edge cases: complete/fail on unclaimed jobs
+# 5. retry() moves failed->pending, resets attempts
 # ---------------------------------------------------------------------------
 
-class TestTransferQueueEdgeCases:
+class TestRetry:
+    def test_retry_moves_failed_to_pending(self, tq: TransferQueue) -> None:
+        """retry() must move the job from failed/ to pending/."""
+        job = _make_job("run_008", attempts=2)
+        tq.enqueue(job)
+        tq.claim()
+        tq.fail("run_008")
+        result = tq.retry("run_008")
+        assert result is True
+        assert not (tq._queue / "failed" / "run_008.job.toml").exists()
+        assert (tq._queue / "pending" / "run_008.job.toml").exists()
 
-    def test_complete_unclaimed_job_raises_or_noop(self, tmp_path) -> None:
-        """complete() on a job that was never claimed must either raise
-        FileNotFoundError (preferred — makes the bug loud) or return
-        silently without corrupting queue state.
+    def test_retry_resets_attempts_to_zero(self, tq: TransferQueue) -> None:
+        """retry() must reset the attempts counter to 0 in the job file."""
+        job = _make_job("run_009", attempts=2)
+        tq.enqueue(job)
+        tq.claim()
+        tq.fail("run_009")
+        tq.retry("run_009")
+        reclaimed = tq.claim()
+        assert reclaimed is not None
+        assert reclaimed.attempts == 0
 
-        Contract: complete() MUST NOT silently move a non-existent active
-        job to completed/ (i.e., it must not create a completed/ entry from
-        thin air). Either behaviour is acceptable at this stage — document
-        which one Phase 2 chooses here.
+    def test_retry_nonexistent_returns_false(self, tq: TransferQueue) -> None:
+        """retry() on a non-existent failed job must return False."""
+        result = tq.retry("no_such_run")
+        assert result is False
 
-        This test will fail RED until TransferQueue is implemented.
-        """
-        q = _tq(tmp_path)
-        # Do NOT enqueue or claim — call complete() on an unknown run_name.
-        try:
-            q.complete("nonexistent.pffd")
-        except FileNotFoundError:
-            # Preferred: loud failure makes the bug obvious.
-            pass
-        except Exception as exc:
-            pytest.fail(f"complete() raised unexpected {type(exc).__name__}: {exc}")
-        # If it returns silently, verify no spurious completed/ entry was created.
-        completed_dir = _queue_subdir(tmp_path, "completed")
-        assert not (completed_dir / "nonexistent.pffd.job.toml").exists(), (
-            "complete() must not create a completed entry for an unclaimed job"
-        )
+
+# ---------------------------------------------------------------------------
+# 6. list_jobs() returns correct run names
+# ---------------------------------------------------------------------------
+
+class TestListJobs:
+    def test_list_jobs_pending(self, tq: TransferQueue) -> None:
+        """list_jobs('pending') must return all enqueued run names."""
+        tq.enqueue(_make_job("alpha"))
+        tq.enqueue(_make_job("beta"))
+        names = tq.list_jobs("pending")
+        assert sorted(names) == ["alpha", "beta"]
+
+    def test_list_jobs_empty_bucket(self, tq: TransferQueue) -> None:
+        """list_jobs() on an empty bucket must return an empty list."""
+        assert tq.list_jobs("completed") == []
+
+    def test_list_jobs_active_after_claim(self, tq: TransferQueue) -> None:
+        """After claim(), the run name must appear in active, not pending."""
+        tq.enqueue(_make_job("gamma"))
+        tq.claim()
+        assert tq.list_jobs("pending") == []
+        assert tq.list_jobs("active") == ["gamma"]
+
+
+# ---------------------------------------------------------------------------
+# 7. TransferJob round-trip with port_forwarding
+# ---------------------------------------------------------------------------
+
+class TestRoundTrip:
+    def test_roundtrip_all_fields(self, tq: TransferQueue) -> None:
+        """Enqueue a job, claim it, verify all fields match including port_forwarding."""
+        original = _make_job_with_pf("pf_run_999")
+        tq.enqueue(original)
+        claimed = tq.claim()
+        assert claimed is not None
+        assert claimed.run_name == original.run_name
+        assert claimed.head_data_dir == original.head_data_dir
+        assert claimed.head_node_username == original.head_node_username
+        assert len(claimed.daq_nodes) == 1
+        node = claimed.daq_nodes[0]
+        orig_node = original.daq_nodes[0]
+        assert str(node.ip_addr) == str(orig_node.ip_addr)
+        assert node.username == orig_node.username
+        assert node.data_dir == orig_node.data_dir
+        assert node.module_ids == orig_node.module_ids
+        assert node.port_forwarding is not None
+        assert node.port_forwarding.status is True
+        assert str(node.port_forwarding.gw_ip) == str(orig_node.port_forwarding.gw_ip)  # type: ignore[union-attr]
+        assert node.port_forwarding.port == 2222
+
+    def test_roundtrip_no_portforwarding(self, tq: TransferQueue) -> None:
+        """Jobs without port_forwarding survive a round-trip cleanly."""
+        original = _make_job("plain_run")
+        tq.enqueue(original)
+        claimed = tq.claim()
+        assert claimed is not None
+        assert claimed.daq_nodes[0].port_forwarding is None

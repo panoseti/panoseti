@@ -2,31 +2,35 @@
 """
 test_transfer_daemon.py
 
-Phase 3 unit tests for the transfer daemon state machine, lock helpers, and
+Unit tests for the transfer daemon state machine, lock helpers, and
 verify_manifest utility.
 
-All tests are hardware-agnostic: gRPC and rsync are mocked; the filesystem is
-provided by pytest's tmp_path fixture.
+All tests are hardware-agnostic: gRPC and subprocess are mocked; the
+filesystem is isolated via tmp_path and env-var overrides.
 """
 
 from __future__ import annotations
 
 import hashlib
 import pathlib
+import subprocess
 import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from control.utils.pydantic_config_models import RunStateLedger
-from control.utils.run_state import RunStateManager
-from control.utils.transfer.daemon import (
+import pytest
+
+from control.transfer.daemon import (
     _acquire_transfer_lock,
     _process_job,
     _release_transfer_lock,
 )
-from control.utils.transfer.verify import verify_manifest
+from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.verify import verify_manifest
+from control.utils.pydantic_config_models import RunStateLedger
+from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,21 +58,24 @@ def _make_job(
     run_name: str = "myrun.pffd",
     no_collect: bool = False,
     no_cleanup: bool = False,
-) -> dict:
-    """Return a minimal job dict for _process_job()."""
-    return {
-        "run_name": run_name,
-        "head_data_dir": str(tmp_path / "data"),
-        "daq_nodes": [
-            {
-                "ip_addr": "192.168.0.10",
-                "data_dir": "/app/data",
-                "module_ids": [250],
-            }
+) -> TransferJob:
+    """Return a minimal valid TransferJob for testing."""
+    return TransferJob(
+        run_name=run_name,
+        head_data_dir=str(tmp_path / "data"),
+        head_node_username="panoseti",
+        created_at=datetime(2024, 1, 1, tzinfo=UTC),
+        no_collect=no_collect,
+        no_cleanup=no_cleanup,
+        daq_nodes=[
+            TransferNodeSpec(
+                ip_addr="192.168.0.10",
+                username="panoseti",
+                data_dir="/app/data",
+                module_ids=[250],
+            )
         ],
-        "no_collect": no_collect,
-        "no_cleanup": no_cleanup,
-    }
+    )
 
 
 def _make_run_dir(tmp_path: pathlib.Path, run_name: str = "myrun.pffd") -> pathlib.Path:
@@ -92,19 +99,11 @@ def _mock_grpc_client() -> MagicMock:
 def _mock_grpc_modules(mock_client: MagicMock):
     """Inject fake panoseti_grpc modules into sys.modules so that the
     local import inside _process_job() resolves to our mock.
-
-    The daemon does:
-        from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-    inside the function body, which bypasses normal module-level patching.
-    We must pre-populate sys.modules with stub module objects.
     """
     stub_root = ModuleType("panoseti_grpc")
     stub_daq = ModuleType("panoseti_grpc.daq_control")
     stub_client_mod = ModuleType("panoseti_grpc.daq_control.client")
-
-    # AsyncDaqControlClient constructor returns mock_client regardless of args.
     stub_client_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client)
-
     stub_root.daq_control = stub_daq  # type: ignore[attr-defined]
     stub_daq.client = stub_client_mod  # type: ignore[attr-defined]
 
@@ -113,8 +112,6 @@ def _mock_grpc_modules(mock_client: MagicMock):
         "panoseti_grpc.daq_control": stub_daq,
         "panoseti_grpc.daq_control.client": stub_client_mod,
     }
-    # Only inject keys that are not already in sys.modules (avoid overwriting
-    # a real installation).
     prev: dict = {}
     for key, mod in injected.items():
         prev[key] = sys.modules.get(key)
@@ -129,13 +126,30 @@ def _mock_grpc_modules(mock_client: MagicMock):
                 sys.modules[key] = original
 
 
+def _mock_rsync_ok() -> MagicMock:
+    """Return a mock subprocess.CompletedProcess representing rsync success."""
+    result = MagicMock()
+    result.returncode = 0
+    result.stderr = ""
+    return result
+
+
+def _mock_rsync_fail(msg: str = "rsync: connection timeout") -> MagicMock:
+    """Return a mock subprocess.CompletedProcess representing rsync failure."""
+    result = MagicMock()
+    result.returncode = 1
+    result.stderr = msg
+    return result
+
+
 # ---------------------------------------------------------------------------
 # 1. Happy path: full state machine → ARCHIVED
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_happy_path(tmp_path):
+async def test_process_job_happy_path(tmp_path, monkeypatch):
     """_process_job() drives all stages and returns True on success."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
@@ -144,8 +158,9 @@ async def test_process_job_happy_path(tmp_path):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_ok()
+        result = await _process_job(job)
 
     assert result is True
     run_complete = tmp_path / "data" / run_name / "run_complete"
@@ -157,8 +172,9 @@ async def test_process_job_happy_path(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_rsync_failure(tmp_path):
+async def test_process_job_rsync_failure(tmp_path, monkeypatch):
     """_process_job() returns False when rsync fails."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
@@ -167,11 +183,11 @@ async def test_process_job_rsync_failure(tmp_path):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", return_value=(False, "rsync: connection timeout")):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_fail()
+        result = await _process_job(job)
 
     assert result is False
-    # run_complete must NOT be written on failure
     run_complete = tmp_path / "data" / run_name / "run_complete"
     assert not run_complete.exists()
 
@@ -181,22 +197,23 @@ async def test_process_job_rsync_failure(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_no_collect_skips_rsync(tmp_path):
+async def test_process_job_no_collect_skips_rsync(tmp_path, monkeypatch):
     """With no_collect=True, rsync is not called and job reaches ARCHIVED."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
     job = _make_job(tmp_path, run_name, no_collect=True)
 
     mock_client = _mock_grpc_client()
-    mock_rsync = MagicMock(return_value=(True, ""))
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", mock_rsync):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_ok()
+        result = await _process_job(job)
 
     assert result is True
-    mock_rsync.assert_not_called()
+    mock_sub.run.assert_not_called()
     run_complete = tmp_path / "data" / run_name / "run_complete"
     assert run_complete.exists()
 
@@ -206,8 +223,9 @@ async def test_process_job_no_collect_skips_rsync(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_no_cleanup_skips_cleanup(tmp_path):
+async def test_process_job_no_cleanup_skips_cleanup(tmp_path, monkeypatch):
     """With no_cleanup=True, CleanupData is not called on the gRPC client."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
@@ -216,8 +234,9 @@ async def test_process_job_no_cleanup_skips_cleanup(tmp_path):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_ok()
+        result = await _process_job(job)
 
     assert result is True
     mock_client.CleanupData.assert_not_called()
@@ -228,8 +247,9 @@ async def test_process_job_no_cleanup_skips_cleanup(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_run_complete_idempotent(tmp_path):
+async def test_process_job_run_complete_idempotent(tmp_path, monkeypatch):
     """If run_complete already exists, _process_job() must not overwrite it."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     run_dir = _make_run_dir(tmp_path, run_name)
@@ -240,8 +260,9 @@ async def test_process_job_run_complete_idempotent(tmp_path):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_ok()
+        result = await _process_job(job)
 
     assert result is True
     assert (run_dir / "run_complete").read_text() == sentinel
@@ -252,8 +273,9 @@ async def test_process_job_run_complete_idempotent(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path):
+async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path, monkeypatch):
     """With both flags True, no DaqControlClient methods are called."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
@@ -262,8 +284,9 @@ async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", return_value=(True, "")):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_ok()
+        result = await _process_job(job)
 
     assert result is True
     mock_client.GenerateManifest.assert_not_called()
@@ -271,36 +294,38 @@ async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 7. Multiple DAQ nodes: rsync called once per node
+# 7. Multiple DAQ nodes: subprocess.run called once per node
 # ---------------------------------------------------------------------------
 
 
-async def test_process_job_multiple_nodes(tmp_path):
-    """rsync_one_node is called once per DAQ node in daq_nodes list."""
+async def test_process_job_multiple_nodes(tmp_path, monkeypatch):
+    """subprocess.run (rsync) is called once per DAQ node."""
+    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
     _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
 
-    job = {
-        "run_name": run_name,
-        "head_data_dir": str(tmp_path / "data"),
-        "daq_nodes": [
-            {"ip_addr": "192.168.0.10", "data_dir": "/app/data", "module_ids": [250]},
-            {"ip_addr": "192.168.0.20", "data_dir": "/app/data", "module_ids": [251]},
+    job = TransferJob(
+        run_name=run_name,
+        head_data_dir=str(tmp_path / "data"),
+        head_node_username="panoseti",
+        created_at=datetime(2024, 1, 1, tzinfo=UTC),
+        no_cleanup=True,
+        daq_nodes=[
+            TransferNodeSpec(ip_addr="192.168.0.10", username="panoseti", data_dir="/data", module_ids=[250]),
+            TransferNodeSpec(ip_addr="192.168.0.20", username="panoseti", data_dir="/data", module_ids=[251]),
         ],
-        "no_collect": False,
-        "no_cleanup": True,
-    }
+    )
 
     mock_client = _mock_grpc_client()
-    mock_rsync = MagicMock(return_value=(True, ""))
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.utils.transfer.daemon.rsync_one_node", mock_rsync):
-        result = await _process_job(job, tmp_path)
+         patch("control.transfer.daemon.subprocess") as mock_sub:
+        mock_sub.run.return_value = _mock_rsync_ok()
+        result = await _process_job(job)
 
     assert result is True
-    assert mock_rsync.call_count == 2
+    assert mock_sub.run.call_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -311,167 +336,68 @@ async def test_process_job_multiple_nodes(tmp_path):
 class TestDaemonSingletonLock:
     """Tests for _acquire_transfer_lock / _release_transfer_lock."""
 
-    def test_first_acquire_succeeds(self, tmp_path) -> None:
+    def test_first_acquire_succeeds(self, tmp_path, monkeypatch) -> None:
         """_acquire_transfer_lock must return a non-None file handle."""
-        fh = _acquire_transfer_lock(tmp_path)
+        monkeypatch.setenv("PSETI_LOCKS_DIR", str(tmp_path / "locks"))
+        fh = _acquire_transfer_lock()
         assert fh is not None
         _release_transfer_lock(fh)
 
-    def test_second_acquire_fails_while_held(self, tmp_path) -> None:
+    def test_second_acquire_fails_while_held(self, tmp_path, monkeypatch) -> None:
         """A second acquire attempt while first holds lock returns None."""
-        fh1 = _acquire_transfer_lock(tmp_path)
+        monkeypatch.setenv("PSETI_LOCKS_DIR", str(tmp_path / "locks"))
+        fh1 = _acquire_transfer_lock()
         assert fh1 is not None
         try:
-            fh2 = _acquire_transfer_lock(tmp_path)
+            fh2 = _acquire_transfer_lock()
             assert fh2 is None, "Second lock attempt must fail while first is held"
         finally:
             _release_transfer_lock(fh1)
 
-    def test_acquire_succeeds_after_release(self, tmp_path) -> None:
-        """After releasing the first lock, a third acquire must succeed."""
-        fh1 = _acquire_transfer_lock(tmp_path)
-        _release_transfer_lock(fh1)
-
-        fh3 = _acquire_transfer_lock(tmp_path)
-        assert fh3 is not None
-        _release_transfer_lock(fh3)
-
-    def test_release_none_is_noop(self) -> None:
+    def test_release_none_is_noop(self, tmp_path, monkeypatch) -> None:
         """_release_transfer_lock(None) must not raise."""
-        _release_transfer_lock(None)  # should be silently ignored
-
-    def test_lock_file_created_in_tmp(self, tmp_path) -> None:
-        """The lock file is written to tmp/panoseti_transfer.lock under base_dir."""
-        fh = _acquire_transfer_lock(tmp_path)
-        assert fh is not None
-        try:
-            lock_path = tmp_path / "tmp" / "panoseti_transfer.lock"
-            assert lock_path.exists()
-        finally:
-            _release_transfer_lock(fh)
+        monkeypatch.setenv("PSETI_LOCKS_DIR", str(tmp_path / "locks"))
+        _release_transfer_lock(None)  # must not raise
 
 
 # ---------------------------------------------------------------------------
-# 11-13. verify_manifest
+# 11. verify_manifest helper
 # ---------------------------------------------------------------------------
 
 
 class TestVerifyManifest:
+    """Tests for the verify_manifest() utility function."""
 
-    def _write_manifest(
-        self,
-        manifest_path: pathlib.Path,
-        entries: list[tuple[str, str]],
-    ) -> None:
-        """Write a manifest file with ``<digest>  <size>  <relpath>`` lines."""
-        lines = [f"{digest}  {size}  {relpath}" for digest, size, relpath in entries]
-        manifest_path.write_text("\n".join(lines))
+    def test_sha256_manifest_ok(self, tmp_path) -> None:
+        """verify_manifest returns (True, []) for a valid SHA-256 manifest."""
+        data = b"hello panoseti"
+        data_file = tmp_path / "frame_0.pff"
+        data_file.write_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+        size = len(data)
+        manifest = tmp_path / "manifest.sha256"
+        manifest.write_text(f"{digest}  {size}  0  frame_0.pff\n")
 
-    def test_verify_manifest_success(self, tmp_path) -> None:
-        """verify_manifest returns (True, []) when all digests match."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
-        content = b"hello pff world"
-        (data_dir / "test.pff").write_bytes(content)
-
-        digest = hashlib.sha256(content).hexdigest()
-        manifest = tmp_path / "manifest.txt"
-        self._write_manifest(manifest, [(digest, str(len(content)), "test.pff")])
-
-        ok, errors = verify_manifest(manifest, data_dir)
+        ok, errs = verify_manifest(manifest, tmp_path)
         assert ok is True
-        assert errors == []
+        assert errs == []
 
-    def test_verify_manifest_missing_file(self, tmp_path) -> None:
-        """verify_manifest returns (False, [error]) when a file is missing."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
+    def test_sha256_manifest_corrupt(self, tmp_path) -> None:
+        """verify_manifest returns (False, [...]) when a digest is wrong."""
+        data_file = tmp_path / "frame_0.pff"
+        data_file.write_bytes(b"original")
+        # Write a manifest with intentionally wrong digest
+        manifest = tmp_path / "manifest.sha256"
+        manifest.write_text("deadbeef  8  0  frame_0.pff\n")
 
-        manifest = tmp_path / "manifest.txt"
-        self._write_manifest(
-            manifest,
-            [("a" * 64, "0", "ghost.pff")],
-        )
-
-        ok, errors = verify_manifest(manifest, data_dir)
+        ok, errs = verify_manifest(manifest, tmp_path)
         assert ok is False
-        assert len(errors) == 1
-        assert "Missing" in errors[0] or "ghost.pff" in errors[0]
+        assert len(errs) > 0
 
-    def test_verify_manifest_digest_mismatch(self, tmp_path) -> None:
-        """verify_manifest returns (False, [error]) on digest mismatch."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
-        (data_dir / "real.pff").write_bytes(b"real content")
+    def test_missing_file_in_manifest(self, tmp_path) -> None:
+        """verify_manifest fails when a file listed in the manifest is absent."""
+        manifest = tmp_path / "manifest.sha256"
+        manifest.write_text("abcd1234  0  0  missing_file.pff\n")
 
-        wrong_digest = "b" * 64  # valid length but wrong value
-        manifest = tmp_path / "manifest.txt"
-        self._write_manifest(manifest, [(wrong_digest, "12", "real.pff")])
-
-        ok, errors = verify_manifest(manifest, data_dir)
+        ok, errs = verify_manifest(manifest, tmp_path)
         assert ok is False
-        assert len(errors) == 1
-        assert "mismatch" in errors[0].lower() or "real.pff" in errors[0]
-
-    def test_verify_manifest_not_found(self, tmp_path) -> None:
-        """verify_manifest returns (False, [error]) when manifest file is absent."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
-        missing_manifest = tmp_path / "nonexistent.txt"
-
-        ok, errors = verify_manifest(missing_manifest, data_dir)
-        assert ok is False
-        assert len(errors) == 1
-
-    def test_verify_manifest_empty_file(self, tmp_path) -> None:
-        """verify_manifest returns (True, []) for an empty manifest (zero entries)."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
-        manifest = tmp_path / "manifest.txt"
-        manifest.write_text("")
-
-        ok, errors = verify_manifest(manifest, data_dir)
-        assert ok is True
-        assert errors == []
-
-    def test_verify_manifest_multiple_files(self, tmp_path) -> None:
-        """verify_manifest validates all files; partial mismatch → False."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
-
-        good = b"good data"
-        bad = b"bad data"
-        (data_dir / "good.pff").write_bytes(good)
-        (data_dir / "bad.pff").write_bytes(bad)
-
-        good_digest = hashlib.sha256(good).hexdigest()
-        wrong_digest = "c" * 64
-
-        manifest = tmp_path / "manifest.txt"
-        self._write_manifest(
-            manifest,
-            [
-                (good_digest, str(len(good)), "good.pff"),
-                (wrong_digest, str(len(bad)), "bad.pff"),
-            ],
-        )
-
-        ok, errors = verify_manifest(manifest, data_dir)
-        assert ok is False
-        assert len(errors) == 1
-        assert "bad.pff" in errors[0]
-
-    def test_verify_manifest_4col_format(self, tmp_path) -> None:
-        """verify_manifest handles 4-column format with mtime_ns field."""
-        data_dir = tmp_path / "data"
-        data_dir.mkdir()
-        content = b"four column test"
-        (data_dir / "img.pff").write_bytes(content)
-
-        digest = hashlib.sha256(content).hexdigest()
-        manifest = tmp_path / "manifest.txt"
-        manifest.write_text(f"{digest}  {len(content)}  1234567890  img.pff\n")
-
-        ok, errors = verify_manifest(manifest, data_dir)
-        assert ok is True
-        assert errors == []

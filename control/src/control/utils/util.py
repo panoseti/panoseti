@@ -242,20 +242,34 @@ def is_quabo_old_version(module: ObsModuleConfig, i: int, quabo_uids: QuaboUids,
 
 #-------------- RECORDING ---------------
 
-def start_daemon(prog: str) -> None:
-    if is_script_running(prog):
-        print(f'{prog} is already running')
+def start_daemon(prog: str | list[str]) -> None:
+    """Launch a daemon process in a new session, detached from the caller.
+
+    Args:
+        prog: Either a path to a Python script (str) or a full command list
+            such as ``["python", "-m", "control.transfer"]``.  When a str is
+            given the daemon is launched as ``[sys.executable, prog]``.  When a
+            list is given it is used verbatim, enabling module-style invocation.
+    """
+    if isinstance(prog, list):
+        cmd = prog
+        prog_label = " ".join(prog)
+    else:
+        cmd = [sys.executable, prog]
+        prog_label = prog
+    if is_script_running(prog_label):
+        print(f'{prog_label} is already running')
         return
     try:
         subprocess.Popen(
-            [sys.executable, prog], start_new_session=True,
+            cmd, start_new_session=True,
             close_fds=True, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
     except OSError:
-        print(f"can't launch {prog}")
+        print(f"can't launch {prog_label}")
         return
-    print(f'started {prog}')
+    print(f'started {prog_label}')
 
 
 def _stop_daemon(prog: str, sig: int = signal.SIGKILL) -> None:
