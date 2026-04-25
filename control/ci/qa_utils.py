@@ -144,7 +144,7 @@ class TestRunner:
         self.container_tool = "docker"
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
-        self._temp_envs: dict[str, Path] = {}
+        self._temp_envs: dict[str, tuple[Path, dict[str, str]]] = {}
 
     async def run_suite(self, suite_name: str, jobs: int | None = None, target: str | None = None, extra_args: list[str] | None = None) -> bool:
         if suite_name not in self.cfg.suites:
@@ -173,7 +173,7 @@ class TestRunner:
             
             # Clean up temp env file
             if suite_name in self._temp_envs:
-                self._temp_envs[suite_name].unlink(missing_ok=True)
+                self._temp_envs[suite_name][0].unlink(missing_ok=True)
                 del self._temp_envs[suite_name]
 
         return all(r.ok for r in results)
@@ -230,7 +230,7 @@ class TestRunner:
 
     # ── Internal Helpers ──────────────────────────────────────────────────────
 
-    def _generate_dynamic_env(self, suite: SuiteConfig) -> Path:
+    def _generate_dynamic_env(self, suite: SuiteConfig) -> tuple[Path, dict[str, str]]:
         """Generates a temporary .env file with non-overlapping subnets."""
         # Use random prefixes to avoid collisions
         # 10.x.y where x and y are random
@@ -241,25 +241,39 @@ class TestRunner:
         daq_prefix = f"192.168.{random.randint(0, 250)}"
         quabo_prefix = f"192.168.{random.randint(0, 250)}"
         
-        env_content = [
-            f"HEAD_NET_PREFIX={head_prefix}",
-            f"DAQ_NET_PREFIX={daq_prefix}",
-            f"QUABO_NET_PREFIX={quabo_prefix}",
-            "COMPOSE_PROJECT_NAME=" + f"{self.project_prefix}-{suite.name}",
-        ]
-        
+        expanded_env = {
+            "HEAD_NET_PREFIX": head_prefix,
+            "DAQ_NET_PREFIX": daq_prefix,
+            "QUABO_NET_PREFIX": quabo_prefix,
+            "HEAD_NET_HEADNODE": f"{head_prefix}.22",
+            "HEAD_NET_REDIS": f"{head_prefix}.20",
+            "HEAD_NET_LOKI": f"{head_prefix}.21",
+            "HEAD_NET_GATEWAY": f"{head_prefix}.254",
+            "HEAD_NET_TESTER": f"{head_prefix}.5",
+            "HEAD_NET_DAQNODE_1": f"{head_prefix}.10",
+            "HEAD_NET_DAQNODE_2": f"{head_prefix}.11",
+            "DAQ_NET_DAQNODE_1": f"{daq_prefix}.10",
+            "DAQ_NET_DAQNODE_2": f"{daq_prefix}.20",
+            "DAQ_NET_GATEWAY": f"{daq_prefix}.254",
+            "DAQ_NET_TESTER": f"{daq_prefix}.5",
+            "QUABO_NET_MOCK": f"{quabo_prefix}.32",
+            "QUABO_NET_TESTER": f"{quabo_prefix}.5",
+            "COMPOSE_PROJECT_NAME": f"{self.project_prefix}-{suite.name}"
+        }
+
         # Include suite-specific env vars
+        # Manually expand ${HEAD_NET_PREFIX} and ${DAQ_NET_PREFIX} if they appear in suite.env
+        # because Docker Compose doesn't support nested expansion in .env files.
         for k, v in suite.env.items():
-            # If they are already prefixes, we might want to let them be overridden 
-            # but usually we want dynamic ones. 
-            # For now, if it's explicitly in suite.env, it takes precedence.
-            if k not in ["HEAD_NET_PREFIX", "DAQ_NET_PREFIX", "QUABO_NET_PREFIX"]:
-                 env_content.append(f"{k}={v}")
+            val = v.replace("${HEAD_NET_PREFIX}", head_prefix).replace("${DAQ_NET_PREFIX}", daq_prefix).replace("${QUABO_NET_PREFIX}", quabo_prefix)
+            expanded_env[k] = val
+
+        env_content = [f"{k}={v}" for k, v in expanded_env.items()]
 
         # Path for the temp env file
         env_path = CONTROL_ROOT / "ci" / f".env.{suite.name}.tmp"
         env_path.write_text("\n".join(env_content) + "\n")
-        return env_path
+        return env_path, expanded_env
 
     async def _setup_docker(self, suite: SuiteConfig, project_name: str):
         self._header(f"SETUP: {suite.name.upper()}")
@@ -279,12 +293,12 @@ class TestRunner:
         build_flag = " --no-build" if self.no_build else ""
         
         # Dynamic env templating
-        env_file = self._generate_dynamic_env(suite)
-        self._temp_envs[suite.name] = env_file
+        env_file, expanded_env = self._generate_dynamic_env(suite)
+        self._temp_envs[suite.name] = (env_file, expanded_env)
 
         # Merge suite env into process env for compose up
         full_env = os.environ.copy()
-        full_env.update(suite.env)
+        full_env.update(expanded_env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
 
         cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} up -d{build_flag}"
@@ -316,11 +330,14 @@ class TestRunner:
             return
 
         # Use temp env if it exists
-        env_file = self._temp_envs.get(suite.name, ENV_CI_PATH)
+        if suite.name in self._temp_envs:
+            env_file, expanded_env = self._temp_envs[suite.name]
+        else:
+            env_file, expanded_env = ENV_CI_PATH, suite.env
 
         # Merge suite env into process env for compose down
         full_env = os.environ.copy()
-        full_env.update(suite.env)
+        full_env.update(expanded_env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
 
         cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} down -v --remove-orphans"
@@ -333,24 +350,27 @@ class TestRunner:
         args = suite.pytest_args + (extra_args or [])
         args_str = " ".join(args)
         
-        pytest_cmd = f"pytest {suite.test_dir} -v --color=yes"
+        pytest_cmd = f"pytest {suite.test_dir} -v --color=no"
         if suite.parallel:
             pytest_cmd += f" -n {p}"
         if args_str:
             pytest_cmd += f" {args_str}"
             
-        env_str = " ".join([f"-e {k}={v}" for k, v in suite.env.items()])
+        if suite.name in self._temp_envs:
+            env_file, expanded_env = self._temp_envs[suite.name]
+        else:
+            env_file, expanded_env = ENV_CI_PATH, suite.env
+
+        env_str = " ".join([f"-e {k}={v}" for k, v in expanded_env.items()])
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
-        
+
         compose_file = suite.compose_file
         if not compose_file and suite.environment:
             env_cfg = self.cfg.environments.get(suite.environment)
             if env_cfg:
                 compose_file = env_cfg.compose_file
 
-        env_file = self._temp_envs.get(suite.name, ENV_CI_PATH)
         cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
-        
         lock = asyncio.Lock()
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
         return [res]
@@ -368,7 +388,10 @@ class TestRunner:
                 compose_file = env_cfg.compose_file
 
         lock = asyncio.Lock()
-        env_file = self._temp_envs.get(suite.name, ENV_CI_PATH)
+        if suite.name in self._temp_envs:
+            env_file, expanded_env = self._temp_envs[suite.name]
+        else:
+            env_file, expanded_env = ENV_CI_PATH, suite.env
 
         async def run_task(name: str, task_cmd: str):
             cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
@@ -456,7 +479,17 @@ class TestRunner:
 
             async with lock:
                 from rich.console import Console
-                Console().print(f"{tag}{line}")
+                # Colorize test statuses for better readability without pytest's native ANSI
+                formatted_line = plain_line
+                if "PASSED" in formatted_line:
+                    formatted_line = formatted_line.replace("PASSED", "[green]PASSED[/green]")
+                elif "FAILED" in formatted_line:
+                    formatted_line = formatted_line.replace("FAILED", "[red]FAILED[/red]")
+                elif "ERROR" in formatted_line:
+                    formatted_line = formatted_line.replace("ERROR", "[red]ERROR[/red]")
+                
+                stream_console = Console(highlight=False, force_terminal=True)
+                stream_console.print(f"{tag}{formatted_line}")
 
         await proc.wait()
         return Result(name, proc.returncode or 0, time.monotonic() - start, stats=stats)

@@ -31,7 +31,7 @@ def test_when_palomar_topology_generated_then_matches_site_docs():
     Intent: Verify the Palomar generator reflects the documentation (4 sites, port forwarding).
     Assertion: 4 DAQ nodes, all with port forwarding enabled.
     """
-    daq, uids, net, obs = generate_palomar_topology()
+    daq, _uids, net, _obs = generate_palomar_topology()
     
     assert str(daq.head_node_ip_addr) == "10.200.146.1"
     assert len(daq.daq_nodes) == 4
@@ -51,7 +51,7 @@ def test_when_large_fleet_generated_then_ids_are_unique():
     Intent: Validate ID assignment logic for high-node-count simulations.
     Assertion: All module IDs across all nodes are unique and sequential.
     """
-    daq, uids, net, obs = generate_fleet_configs(num_daq_nodes=10, modules_per_node=1)
+    daq, _uids, _net, _obs = generate_fleet_configs(num_daq_nodes=10, modules_per_node=1)
     
     all_mids = []
     for node in daq.daq_nodes:

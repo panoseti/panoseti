@@ -1,6 +1,7 @@
 """Transfer queue CLI — `pseti obs transfer`."""
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import time
@@ -151,10 +152,8 @@ def stop_daemon(
             return
         time.sleep(1.0)
     typer.echo(f"Daemon still running after {timeout:.0f}s; sending SIGKILL.")
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 @app.command()
@@ -177,14 +176,13 @@ def verify(run_name: Annotated[str, typer.Argument(help="Run name to verify")]) 
     """Run manifest verification on a completed run (no state changes)."""
     from control.transfer.verify import verify_manifest
 
-    daq_config_path = None
     try:
         from control.utils import config_file
         daq_config = config_file.get_daq_config()
         head_data_dir = daq_config.head_node_data_dir
     except Exception:
         typer.echo("Could not load daq_config.json; pass data dir manually.", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     import pathlib
     run_dir = pathlib.Path(head_data_dir) / run_name

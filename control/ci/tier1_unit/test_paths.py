@@ -164,21 +164,21 @@ class TestStateEnvOverride:
     """Test PSETI_STATE env var override."""
 
     def test_state_dir_respects_env_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}):
                 result = PanoPaths.state_dir()
                 assert result == pathlib.Path(tmpdir).resolve()
 
     def test_locks_dir_inherits_state_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}):
                 locks = PanoPaths.locks_dir()
                 expected = pathlib.Path(tmpdir).resolve() / "locks"
                 assert locks == expected
 
     def test_runs_dir_inherits_state_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}):
                 runs = PanoPaths.runs_dir()
                 expected = pathlib.Path(tmpdir).resolve() / "runs"
                 assert runs == expected
@@ -188,8 +188,8 @@ class TestLocksEnvOverride:
     """Test PSETI_LOCKS_DIR env var override."""
 
     def test_locks_dir_respects_env_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_LOCKS_DIR": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_LOCKS_DIR": tmpdir}):
                 result = PanoPaths.locks_dir()
                 assert result == pathlib.Path(tmpdir).resolve()
 
@@ -198,8 +198,8 @@ class TestRunsEnvOverride:
     """Test PSETI_RUNS_DIR env var override."""
 
     def test_runs_dir_respects_env_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_RUNS_DIR": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_RUNS_DIR": tmpdir}):
                 result = PanoPaths.runs_dir()
                 assert result == pathlib.Path(tmpdir).resolve()
 
@@ -208,8 +208,8 @@ class TestTransferQueueEnvOverride:
     """Test PSETI_TQ_DIR env var override."""
 
     def test_transfer_queue_dir_respects_env_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_TQ_DIR": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_TQ_DIR": tmpdir}):
                 result = PanoPaths.transfer_queue_dir()
                 assert result == pathlib.Path(tmpdir).resolve()
 
@@ -218,8 +218,8 @@ class TestTransferManifestsEnvOverride:
     """Test PSETI_TM_DIR env var override."""
 
     def test_transfer_manifests_dir_respects_env_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_TM_DIR": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_TM_DIR": tmpdir}):
                 result = PanoPaths.transfer_manifests_dir()
                 assert result == pathlib.Path(tmpdir).resolve()
 
@@ -228,14 +228,14 @@ class TestCalibrationEnvOverride:
     """Test PSETI_CALIB_DIR env var override."""
 
     def test_calibration_dir_respects_env_override(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_CALIB_DIR": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_CALIB_DIR": tmpdir}):
                 result = PanoPaths.calibration_dir()
                 assert result == pathlib.Path(tmpdir).resolve()
 
     def test_calibration_file_uses_overridden_dir(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_CALIB_DIR": tmpdir}):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_CALIB_DIR": tmpdir}):
                 result = PanoPaths.calibration_file("test.json")
                 expected = pathlib.Path(tmpdir).resolve() / "test.json"
                 assert result == expected
@@ -280,15 +280,15 @@ class TestEnsureStateDirs:
 
     def test_ensure_state_dirs_idempotent(self) -> None:
         """Calling ensure_state_dirs() twice should not raise."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}, clear=False):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}, clear=False):
                 PanoPaths.ensure_state_dirs()
                 PanoPaths.ensure_state_dirs()  # Should not raise
 
     def test_ensure_dirs_calls_ensure_state_dirs(self) -> None:
         """Test that ensure_dirs() calls ensure_state_dirs()."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}, clear=False):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             mock.patch.dict(os.environ, {"PSETI_STATE": tmpdir}, clear=False):
                 PanoPaths.ensure_dirs()
 
                 # Check that state dirs were created
@@ -305,7 +305,7 @@ class TestPathConsistency:
 
     def test_all_paths_under_base_dir(self) -> None:
         """State paths should live under base_dir()."""
-        base = PanoPaths.base_dir()
+        PanoPaths.base_dir()
         state = PanoPaths.state_dir()
         # state_dir might use env overrides, but it should be absolute
         assert isinstance(state, pathlib.Path)

@@ -39,20 +39,19 @@ from ci.paths import PanoPathsTest
 # Environment / connection parameters
 # ---------------------------------------------------------------------------
 
-DAQNODE_DIRECT_HOST  = os.getenv("DAQNODE_DIRECT_HOST",  "localhost")
-DAQNODE_GATEWAY_HOST = os.getenv("DAQNODE_GATEWAY_HOST", "localhost")
-# Unified server: daq_data + daq_control share the same port on the same IP.
-# DAQNODE_DATA_HOST defaults to DAQNODE_DIRECT_HOST (no separate container needed).
-DAQNODE_DATA_HOST    = os.getenv("DAQNODE_DATA_HOST", DAQNODE_DIRECT_HOST)
-DAQNODE2_HOST        = os.getenv("DAQNODE2_HOST",        "localhost")
-HEADNODE_HOST        = os.getenv("HEADNODE_HOST",        "localhost")
-GRPC_PORT            = int(os.getenv("GRPC_PORT", "50051"))
-LOKI_URL             = os.getenv("LOKI_URL",   "http://localhost:3100")
-REDIS_HOST           = os.getenv("REDIS_HOST", "10.0.1.20")
-DAQ_DATA_DIR         = os.getenv("DAQ_DATA_DIR", "/data")
-HEAD_DATA_DIR        = os.getenv("HEAD_DATA_DIR", "/data/head")
-DAQNODE_CONTAINER    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
-BINDHOST             = os.getenv("BINDHOST") or "lo"
+DAQNODE_DIRECT_HOST: str  = os.getenv("DAQNODE_DIRECT_HOST") or ""
+DAQNODE_GATEWAY_HOST: str = os.getenv("DAQNODE_GATEWAY_HOST") or ""
+DAQNODE_DATA_HOST: str    = os.getenv("DAQNODE_DATA_HOST", DAQNODE_DIRECT_HOST) or ""
+DAQNODE2_HOST: str        = os.getenv("DAQNODE2_HOST") or ""
+HEADNODE_HOST: str        = os.getenv("HEADNODE_HOST") or ""
+REDIS_HOST: str           = os.getenv("REDIS_HOST") or ""
+GRPC_PORT: int            = int(os.getenv("GRPC_PORT", "50051"))
+
+LOKI_URL: str             = os.getenv("LOKI_URL",   "http://localhost:3100")
+DAQ_DATA_DIR: str         = os.getenv("DAQ_DATA_DIR", "/data")
+HEAD_DATA_DIR: str        = os.getenv("HEAD_DATA_DIR", "/data/head")
+DAQNODE_CONTAINER: str    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
+BINDHOST: str             = os.getenv("BINDHOST") or "lo"
 
 
 CONTROL_DIR = PanoPathsTest.base_dir()

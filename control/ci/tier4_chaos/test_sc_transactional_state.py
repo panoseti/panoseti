@@ -49,19 +49,14 @@ PH_BASELINE_FILE = PanoPaths.config_dir() / "quabo_ph_baseline.json"
 
 # ── SC-002 (Exemplar B): Partial start rolls back ────────────────────────────
 
-class TestSC002PartialStartRollback:
+class TestPartialStartRollback:
     """
-    SC-002 / Exemplar B: when StartDaq succeeds on node-0 but fails on node-1,
-    start.py has no rollback — node-0 is left in a streaming state.
-
-    FAILS RED TODAY: start.py calls start_data_flow() *before* start_recording(),
-    so when StartDaq fails on node-1, quabos on node-0 are already streaming
-    but no rollback (no stop_data_flow, no kill_hv_updater, no cleanup of
-    partial run dirs, no post-mortem snapshot).
+    Validates the 'Rollback Ladder' architectural invariant when a multi-node 
+    start operation fails partially.
     """
 
     @pytest.mark.asyncio
-    async def test_SC002_partial_start_must_leave_no_active_hashpipe(
+    async def test_when_one_node_fails_during_start_then_all_nodes_halted(
         self,
         daq_control_direct: DaqControlClient,
         daq_control_node2: DaqControlClient,
@@ -69,13 +64,11 @@ class TestSC002PartialStartRollback:
         state_probe: StateProbe,
     ) -> None:
         """
-        With one failing node: no hashpipe should remain running on any node,
-        current_run must be unset, and a post-mortem snapshot must exist.
-
-        Strategy: mock start_recording so it (a) actually starts hashpipe on
-        node-0 via gRPC and writes a STARTING receipt, then (b) raises to
-        simulate node-1 failure.  The rollback ladder must stop node-0 and
-        write _aborted/<run_name>/start_failure_context.json.
+        Intent: Ensure that a single node failure doesn't leave the rest of the 
+               observatory in an inconsistent 'orphaned' state.
+        Scenario: Start succeeds on node-0 but fails on node-1.
+        Assertion: Rollback is triggered; node-0 is stopped, all run directories 
+                   are cleaned up, and a post-mortem snapshot is written to state/snapshots/.
         """
         import asyncio as _asyncio
         import unittest.mock

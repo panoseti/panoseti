@@ -14,6 +14,7 @@ import subprocess
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -64,10 +65,10 @@ def copy_run_dir(run_params: dict, head_data_dir: Path) -> bool:
 @pytest.mark.asyncio
 @skip_outside_ci
 async def test_transfer_daemon_archives_run(
-    daq_control_direct,
-    run_params,
-    ensure_clean_daq_state,
-    tmp_path,
+    daq_control_direct: Any,
+    run_params: dict[str, Any],
+    ensure_clean_daq_state: Any,
+    tmp_path: Path,
 ) -> None:
     """
     E2E happy path: enqueue job → daemon processes all 5 stages → job lands
@@ -87,7 +88,7 @@ async def test_transfer_daemon_archives_run(
     RunStateManager().clear_state()
 
     from control.utils.pydantic_config_models import RunStateLedger
-    _mgr = RunStateManager()
+    mgr = RunStateManager()
     ledger = RunStateLedger(
         run_name=run_params["run_dir"],
         status="ACTIVE",
@@ -110,10 +111,8 @@ async def test_transfer_daemon_archives_run(
     for node in daq_config.daq_nodes:
         for mid in node.module_ids:
             module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            print(f"DEBUG: creating module_dir={module_dir}")
             module_dir.mkdir(parents=True, exist_ok=True)
             (module_dir / "data.pff").write_bytes(b"synthetic data")
-            assert module_dir.exists(), f"Failed to create {module_dir}"
     
     # Also create the root run dir because the GenerateManifestModel validator expects it!
     root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
@@ -154,10 +153,10 @@ async def test_transfer_daemon_archives_run(
 @pytest.mark.asyncio
 @skip_outside_ci
 async def test_transfer_daemon_resumes_after_crash(
-    daq_control_direct,
-    run_params,
-    ensure_clean_daq_state,
-    tmp_path,
+    daq_control_direct: Any,
+    run_params: dict[str, Any],
+    ensure_clean_daq_state: Any,
+    tmp_path: Path,
 ) -> None:
     """
     Chaos: daemon killed mid-rsync; restart completes the transfer.
@@ -174,7 +173,7 @@ async def test_transfer_daemon_resumes_after_crash(
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     RunStateManager().clear_state()
 
-    _mgr = RunStateManager()
+    RunStateManager()
     
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
@@ -185,19 +184,16 @@ async def test_transfer_daemon_resumes_after_crash(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    # Ensure daqnode dirs exist for manifest generation (shared volume)
     for node in daq_config.daq_nodes:
         for mid in node.module_ids:
             module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            print(f"DEBUG: creating module_dir={module_dir}")
             module_dir.mkdir(parents=True, exist_ok=True)
             (module_dir / "data.pff").write_bytes(b"synthetic data")
-            assert module_dir.exists(), f"Failed to create {module_dir}"
     
     # Also create the root run dir because the GenerateManifestModel validator expects it!
     root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
     root_run_dir.mkdir(parents=True, exist_ok=True)
-    
+
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()
@@ -206,10 +202,9 @@ async def test_transfer_daemon_resumes_after_crash(
 
     # Simulate crash mid-rsync (Stage 2)
     # We must ensure Stage 1 (Manifest) passes first!
-    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")):
-        with pytest.raises(RuntimeError, match="Simulated crash"):
-            await _process_job(job)
-
+    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")), \
+         pytest.raises(RuntimeError, match="Simulated crash"):
+        await _process_job(job)
     # Orphaned in active/. Move back to pending/
     os.rename(tq._queue / "active" / f"{job.run_name}.job.toml", tq._queue / "pending" / f"{job.run_name}.job.toml")
 
@@ -228,10 +223,10 @@ async def test_transfer_daemon_resumes_after_crash(
 @pytest.mark.asyncio
 @skip_outside_ci
 async def test_transfer_daemon_retry_on_transient_rsync_failure(
-    daq_control_direct,
-    run_params,
-    ensure_clean_daq_state,
-    tmp_path,
+    daq_control_direct: Any,
+    run_params: dict[str, Any],
+    ensure_clean_daq_state: Any,
+    tmp_path: Path,
 ) -> None:
     """
     Retry: rsync fails twice, succeeds on third attempt.
@@ -251,15 +246,12 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    # Ensure daqnode dirs exist for manifest generation (shared volume)
     for node in daq_config.daq_nodes:
         for mid in node.module_ids:
             module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            print(f"DEBUG: creating module_dir={module_dir}")
             module_dir.mkdir(parents=True, exist_ok=True)
             (module_dir / "data.pff").write_bytes(b"synthetic data")
-            assert module_dir.exists(), f"Failed to create {module_dir}"
-    
+
     # Also create the root run dir because the GenerateManifestModel validator expects it!
     root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
     root_run_dir.mkdir(parents=True, exist_ok=True)
@@ -303,10 +295,10 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
 @pytest.mark.asyncio
 @skip_outside_ci
 async def test_transfer_daemon_marks_failed_after_max_attempts(
-    daq_control_direct,
-    run_params,
-    ensure_clean_daq_state,
-    tmp_path,
+    daq_control_direct: Any,
+    run_params: dict[str, Any],
+    ensure_clean_daq_state: Any,
+    tmp_path: Path,
 ) -> None:
     """
     Exhaustion: rsync fails up to MAX_ATTEMPTS.
@@ -327,15 +319,12 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    # Ensure daqnode dirs exist for manifest generation (shared volume)
     for node in daq_config.daq_nodes:
         for mid in node.module_ids:
             module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            print(f"DEBUG: creating module_dir={module_dir}")
             module_dir.mkdir(parents=True, exist_ok=True)
             (module_dir / "data.pff").write_bytes(b"synthetic data")
-            assert module_dir.exists(), f"Failed to create {module_dir}"
-    
+
     # Also create the root run dir because the GenerateManifestModel validator expects it!
     root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
     root_run_dir.mkdir(parents=True, exist_ok=True)
@@ -361,7 +350,7 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
 
 
 @skip_outside_ci
-def test_transfer_daemon_singleton_lock_in_container(tmp_path) -> None:
+def test_transfer_daemon_singleton_lock_in_container(tmp_path: Path) -> None:
     """
     Lock contention: second daemon must exit.
     """
@@ -415,7 +404,7 @@ except FileExistsError:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_transfer_daemon_unit_integration(tmp_path) -> None:
+async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
     """
     Test _process_job with mocked gRPC and rsync.
     """
@@ -425,6 +414,7 @@ async def test_transfer_daemon_unit_integration(tmp_path) -> None:
 
     run_name = "unit_int_run.pffd"
     job = TransferJob(
+        schema_version=1,
         run_name=run_name,
         head_data_dir=str(tmp_path / "head"),
         head_node_username="panoseti",
@@ -450,7 +440,7 @@ async def test_transfer_daemon_unit_integration(tmp_path) -> None:
     mock_client.CleanupData = AsyncMock(return_value={"success": True})
 
     stub_mod = ModuleType("panoseti_grpc.daq_control.client")
-    stub_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client)
+    stub_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client) # type: ignore
     
     orig_mod = sys.modules.get("panoseti_grpc.daq_control.client")
     sys.modules["panoseti_grpc.daq_control.client"] = stub_mod

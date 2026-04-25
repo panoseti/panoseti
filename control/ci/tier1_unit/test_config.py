@@ -91,7 +91,7 @@ def test_when_palomar_generated_then_valid_topology():
     """
     Intent: Ensure the realistic Palomar topology generator produces valid models.
     """
-    daq, uids, net, obs = generate_palomar_topology()
+    daq, _uids, _net, obs = generate_palomar_topology()
     
     # These should all pass internal Pydantic validation
     assert isinstance(daq, DaqConfig)

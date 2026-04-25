@@ -396,5 +396,5 @@ class TestVerifyManifest:
         manifest = tmp_path / "manifest.sha256"
         manifest.write_text("abcd1234  0  0  missing_file.pff\n")
 
-        ok, errs = verify_manifest(manifest, tmp_path)
+        ok, _errs = verify_manifest(manifest, tmp_path)
         assert ok is False

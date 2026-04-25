@@ -7,6 +7,7 @@ Unit tests for TransferNodeSpec and TransferJob Pydantic models.
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 
 from control.utils.pydantic_config_models import (
     PortForwarding,
@@ -56,7 +57,7 @@ class TestTransferNodeSpec:
 
     def test_node_spec_rejects_extra_fields(self):
         """TransferNodeSpec rejects extra fields (BaseStrictModel)."""
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):  # Pydantic validation error
             TransferNodeSpec(
                 ip_addr="192.168.0.10",
                 username="daq_user",
@@ -147,7 +148,7 @@ class TestTransferJob:
                 module_ids=[0, 1],
             ),
         ]
-        with pytest.raises(Exception):  # Pydantic validation error
+        with pytest.raises(ValidationError):  # Pydantic validation error
             TransferJob(
                 schema_version=1,
                 run_name="test_run",

@@ -98,9 +98,10 @@ async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -
         heartbeat_path: Path to the heartbeat file.
         interval: Seconds between heartbeat writes.
     """
+    import anyio
     try:
         while True:
-            heartbeat_path.write_text(str(time.time()))
+            await anyio.Path(heartbeat_path).write_text(str(time.time()))
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
         pass

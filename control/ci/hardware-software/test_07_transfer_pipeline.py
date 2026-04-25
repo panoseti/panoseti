@@ -110,7 +110,7 @@ class TestHW07TransferPipeline:
                     data = tomllib.load(f)
                 job = TransferJob.model_validate(data)
                 # Regression: port_forwarding must round-trip
-                for job_node, cfg_node in zip(job.daq_nodes, daq_config.daq_nodes):
+                for job_node, cfg_node in zip(job.daq_nodes, daq_config.daq_nodes, strict=False):
                     has_pf = cfg_node.port_forwarding is not None and cfg_node.port_forwarding.status
                     if has_pf:
                         assert job_node.port_forwarding is not None, (

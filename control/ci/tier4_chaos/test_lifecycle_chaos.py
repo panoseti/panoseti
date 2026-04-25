@@ -55,11 +55,11 @@ async def test_when_one_node_fails_during_start_then_all_nodes_rolled_back(
     with (
         patch("control.start.AsyncDaqControlClient", side_effect=mock_client_factory),
         patch("control.start.ph_baseline_file_ok", return_value=True),
-        patch("control.start._check_daq_reachability")
+        patch("control.start._check_daq_reachability"),
+        pytest.raises(Exception, match="Node 1 Hardware Failure")
     ):
         # 2. Execute start_run - this should raise due to Node 1 failure
-        with pytest.raises(Exception, match="Node 1 Hardware Failure"):
-            await start_run(daq_config, run_name=run_name, no_hv=True)
+        await start_run(daq_config, run_name=run_name, no_hv=True)
             
     # 3. Verify Rollback Assertion: Node 0 must have received a StopDaq call
     # even though its StartDaq succeeded.

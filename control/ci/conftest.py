@@ -21,6 +21,11 @@ from typing import Any
 
 import pytest
 
+from ci.fixtures.factories import (
+    make_mock_daq_config,
+    make_transfer_job,
+    simulate_daq_filesystem,
+)
 from ci.paths import PanoPathsTest
 from control.utils.pydantic_config_models import (
     DaqConfig,
@@ -71,7 +76,7 @@ def auto_isolate(
     Autouse fixture that provides per-test isolation for configs, transient state,
     and telemetry databases.
     
-    - Redirects PSETI_STATE, PSETI_CONTROL, and PSETI_CONFIG to subdirs in tmp_path.
+    - Redirects PSETI_STATE, PSETI_CONTROL, PSETI_CONFIG, and PSETI_TMP to subdirs in tmp_path.
     - Assigns unique Redis DB indices and Loki Tenant IDs based on worker_id.
     - Guarantees that any 'sed -i' or ledger writes stay within the test's scope.
     """
@@ -79,16 +84,30 @@ def auto_isolate(
     cfg_tmp = tmp_path / "configs"
     state_tmp = tmp_path / "state"
     ctl_tmp = tmp_path / "control"
+    tmp_tmp = tmp_path / "tmp"
     
-    for d in [cfg_tmp, state_tmp, ctl_tmp]:
+    for d in [cfg_tmp, state_tmp, ctl_tmp, tmp_tmp]:
         d.mkdir(parents=True, exist_ok=True)
         
     # 2. Populate configs from current PSETI_CONFIG
     src_cfg = os.environ.get("PSETI_CONFIG")
+    head_prefix = os.environ.get("HEAD_NET_PREFIX", "10.0.1")
+    daq_prefix = os.environ.get("DAQ_NET_PREFIX", "192.168.0")
+    quabo_prefix = os.environ.get("QUABO_NET_PREFIX", "192.168.3")
+
     if src_cfg and os.path.exists(src_cfg):
         for item in pathlib.Path(src_cfg).iterdir():
             try:
-                if item.is_file():
+                if item.is_file() and item.suffix == ".json":
+                    content = item.read_text()
+                    if head_prefix != "10.0.1":
+                        content = content.replace("10.0.1", head_prefix)
+                    if daq_prefix != "192.168.0":
+                        content = content.replace("192.168.0", daq_prefix)
+                    if quabo_prefix != "192.168.3":
+                        content = content.replace("192.168.3", quabo_prefix)
+                    (cfg_tmp / item.name).write_text(content)
+                elif item.is_file():
                     shutil.copy2(item, cfg_tmp)
                 elif item.is_dir():
                     shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
@@ -99,10 +118,10 @@ def auto_isolate(
     monkeypatch.setenv("PSETI_CONFIG", str(cfg_tmp))
     monkeypatch.setenv("PSETI_STATE", str(state_tmp))
     monkeypatch.setenv("PSETI_CONTROL", str(ctl_tmp))
+    monkeypatch.setenv("PSETI_TMP", str(tmp_tmp))
     
     # 4. Telemetry and Database Isolation
     # Assign unique Redis DBs and Loki Tenant IDs based on xdist worker_id
-    # worker_id is 'gw0', 'gw1', etc. Extract the digit.
     try:
         db_index = int("".join(filter(str.isdigit, worker_id))) if worker_id != "master" else 0
     except ValueError:
@@ -114,15 +133,12 @@ def auto_isolate(
     # 5. Handle quabo_uids.json (essential for most integration tests)
     possible_uids = [
         cfg_tmp / "quabo_uids.json",
-        pathlib.Path(os.environ.get("PSETI_TMP", "")) / "quabo_uids.json",
         PanoPathsTest.integration_configs_root() / "quabo_uids_chaos.json"
     ]
     for p in possible_uids:
         try:
             if p.exists():
-                # In new state hierarchy, quabo_uids goes to calibration/ or similar
-                # But for now, ensuring it exists in the state root is safest for legacy
-                shutil.copy2(p, state_tmp / "quabo_uids.json")
+                shutil.copy2(p, tmp_tmp / "quabo_uids.json")
                 break
         except Exception:
             continue
@@ -139,13 +155,6 @@ def auto_isolate(
 # Shared Factories & Mocks (Tier 2-4 Infrastructure)
 # ---------------------------------------------------------------------------
 
-from ci.fixtures.factories import (
-    make_mock_daq_config,
-    make_transfer_job,
-    simulate_daq_filesystem,
-)
-
-
 @pytest.fixture
 def transfer_job_factory():
     """Factory for creating valid TransferJob models."""
@@ -160,11 +169,6 @@ def daq_fs_simulator():
 def daq_config_factory():
     """Factory for creating valid DaqConfig models."""
     return make_mock_daq_config
-
-
-# ---------------------------------------------------------------------------
-# Declarative Test Topologies (Phase 1)
-# ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
 def topology_templates() -> dict[str, dict[str, Any]]:

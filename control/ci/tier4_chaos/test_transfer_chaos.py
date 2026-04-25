@@ -83,6 +83,31 @@ async def test_when_rsync_fails_then_retries_until_success(
     assert mock_sub.call_count == 2
 
 @pytest.mark.asyncio
+async def test_when_rsync_exhausts_retries_then_job_fails(
+    tmp_path: pathlib.Path,
+    transfer_job_factory
+) -> None:
+    """
+    Intent: Verify that the job lands in 'failed/' bucket when all retries are exhausted.
+    Scenario: rsync returns exit code 1 persistently across all MAX_ATTEMPTS.
+    Assertion: _process_job returns False and 'run_complete' is NOT written.
+    """
+    from control.transfer.daemon import _process_job
+    head_root = tmp_path / "head"
+    run_name = "exhaustion_test.pffd"
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_root)
+    
+    mock_daq = MockDaqNode("192.168.0.10")
+    
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client), \
+         patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="persistent error")):
+        
+        success = await _process_job(job)
+        
+    assert success is False
+    assert not (head_root / run_name / "run_complete").exists()
+
+@pytest.mark.asyncio
 async def test_when_cleanup_precondition_fails_then_pff_preserved(
     tmp_path: pathlib.Path,
     transfer_job_factory

@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import contextlib
 import os
 import signal
 import time
@@ -48,10 +49,8 @@ def _stop_transfer_daemon(timeout: float = 30.0) -> None:
             return
         time.sleep(1.0)
     logger.warning("Transfer daemon did not exit after %.0fs; sending SIGKILL.", timeout)
-    try:
+    with contextlib.suppress(ProcessLookupError):
         os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 def session_stop(obs_config: ObsConfig) -> None:
