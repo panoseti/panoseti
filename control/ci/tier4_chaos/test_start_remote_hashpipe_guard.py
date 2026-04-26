@@ -111,13 +111,12 @@ class TestCheckNoRemoteHashpipe:
 
 class TestStartDataFlowNotCalledOnAbort:
     @pytest.mark.asyncio
-    async def test_start_data_flow_not_called_when_hashpipe_running(
+    async def test_data_flow_started_false_before_preflight(
         self, tmp_path: pathlib.Path
     ) -> None:
-        """start_data_flow must NOT be called if the hashpipe pre-flight aborts.
-
-        If start_data_flow ran before the abort, it would mutate Quabo UDP
-        configuration, which could disrupt an already-running observation.
+        """data_flow_started must be False before the hashpipe pre-flight runs,
+        ensuring that if the pre-flight raises, the rollback ladder will NOT
+        call stop_data_flow (which would disrupt an already-running observation).
         """
         state_mgr = RunStateManager(base_dir=str(tmp_path))
         cfg = _make_daq_config(tmp_path)
@@ -128,21 +127,34 @@ class TestStartDataFlowNotCalledOnAbort:
             cfg, MagicMock(), MagicMock()
         )
 
+        # Pre-flight raises — data_flow_started was never set to True.
         with (
             patch("control.start.AsyncDaqControlClient", return_value=client_instance),
-            patch("control.utils.util.start_data_flow") as mock_sdf,
-            patch("control.start.start_data_flow") as mock_sdf2,
+            pytest.raises(ValidationError),
         ):
-            # Simulate the pre-flight: calling _check_no_remote_hashpipe raises.
+            await _check_no_remote_hashpipe(cfg, force_restart=False)
+
+        assert tx.data_flow_started is False, (
+            "data_flow_started must remain False when pre-flight aborts before "
+            "start_data_flow is called"
+        )
+
+    @pytest.mark.asyncio
+    async def test_start_data_flow_not_called_on_preflight_abort(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """start_data_flow (defined in start.py) must not be called when the
+        remote-hashpipe pre-flight check aborts the transaction."""
+        cfg = _make_daq_config(tmp_path)
+        client_instance = _mock_client(hashpipe_running=True)
+
+        with (
+            patch("control.start.AsyncDaqControlClient", return_value=client_instance),
+            patch("control.start.start_data_flow") as mock_sdf,
+        ):
             with pytest.raises(ValidationError):
                 await _check_no_remote_hashpipe(cfg, force_restart=False)
-
-            # start_data_flow must not have been called.
             mock_sdf.assert_not_called()
-            mock_sdf2.assert_not_called()
-
-        # data_flow_started flag must remain False.
-        assert tx.data_flow_started is False
 
 
 # ---------------------------------------------------------------------------

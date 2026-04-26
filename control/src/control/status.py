@@ -213,6 +213,30 @@ def main(
         status(remote=remote)
 
 
+@app.command("remote")
+def remote_cmd(
+    watch: Annotated[bool, typer.Option("--watch", help="Refresh continuously.")] = False,
+    interval: Annotated[float, typer.Option("--interval", help="Refresh interval in seconds.")] = 5.0,
+) -> None:
+    """Query each DAQ node via gRPC (auto-resolves port-forwarding)."""
+    if watch:
+        try:
+            while True:
+                local = _local_summary()
+                remote_lines = asyncio.run(_remote_summary())
+                output = _render(local, remote_lines, None)
+                import os
+                os.system("clear")
+                typer.echo(output)
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            pass
+    else:
+        local = _local_summary()
+        remote_lines = asyncio.run(_remote_summary())
+        typer.echo(_render(local, remote_lines, None))
+
+
 @app.command("sweep")
 def sweep_cmd() -> None:
     """Full network reachability sweep (Quabo ping + DAQ gRPC). Read-only."""

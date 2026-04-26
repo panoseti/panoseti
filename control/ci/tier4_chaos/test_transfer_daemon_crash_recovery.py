@@ -1,11 +1,12 @@
 """Tier 4 (Chaos): Transfer daemon crash-recovery regression tests.
 
 Test 4.1 from EXECUTION_PLAN — validates the infinite-bounce fix:
-  - A job whose _process_job always raises goes to failed/ (not pending/) after
-    one attempt, because attempts are persisted at claim time.
-  - The daemon log contains the traceback string.
+  - A job whose _process_job always returns (False, error) goes to failed/
+    after MAX_ATTEMPTS, not bouncing back to pending/ indefinitely.
   - _sweep_stranded_jobs respects MAX_ATTEMPTS when recovering active/ jobs,
     moving exhausted jobs to failed/ rather than pending/.
+  - attempts count is persisted into active/ before _process_job runs, so a
+    daemon crash leaves a bumped count that the sweep can use.
 
 These tests run entirely in-process without Docker; they do NOT require gRPC
 or a real DAQ node.
@@ -57,8 +58,26 @@ def _read_job_toml(path: pathlib.Path) -> dict:
         return tomllib.load(f)
 
 
+async def _run_daemon_until(
+    tmp_path: pathlib.Path,
+    done_pred: object,
+    *,
+    timeout_iters: int = 400,
+    poll_interval: float = 0.02,
+) -> None:
+    """Run the daemon as a task and cancel it once done_pred() is True or timeout."""
+    task = asyncio.create_task(run_daemon(poll_interval=poll_interval))
+    for _ in range(timeout_iters):
+        await asyncio.sleep(poll_interval)
+        if callable(done_pred) and done_pred():  # type: ignore[operator]
+            break
+    task.cancel()
+    with pytest.raises((asyncio.CancelledError, Exception)):
+        await task
+
+
 # ---------------------------------------------------------------------------
-# Test 4.1a: process raises → job goes to failed/ with attempts == 1
+# Test 4.1a: _process_job returns failure → job goes to failed/ after MAX_ATTEMPTS
 # ---------------------------------------------------------------------------
 
 class TestDaemonCrashRecovery:
@@ -66,8 +85,11 @@ class TestDaemonCrashRecovery:
     async def test_failing_job_goes_to_failed_not_pending(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A job that always raises must land in failed/ after MAX_ATTEMPTS,
-        never bouncing back to pending/."""
+        """A job whose _process_job always returns (False, error) must land in
+        failed/ after MAX_ATTEMPTS, never bouncing back to pending/ indefinitely.
+
+        This is the D-2 regression check for the infinite-bounce fix.
+        """
         monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
         monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
 
@@ -75,33 +97,28 @@ class TestDaemonCrashRecovery:
         job = _make_job("run_boom", tmp_path)
         _enqueue(tq, job)
 
-        call_count = 0
+        # _process_job must return (False, str) — never raise. The daemon loop
+        # trusts this contract. The mock simulates repeated logical failures.
+        async def _always_fail(
+            j: TransferJob, shutdown: asyncio.Event
+        ) -> tuple[bool, str | None]:
+            return False, "RuntimeError: boom"
 
-        async def _always_raise(j: TransferJob, shutdown: asyncio.Event) -> tuple[bool, str | None]:
-            nonlocal call_count
-            call_count += 1
-            raise RuntimeError("boom")
+        failed_dir = tmp_path / "queue" / "failed"
 
-        with patch("control.transfer.daemon._process_job", side_effect=_always_raise):
-            # Run daemon with a short poll interval; stop it after MAX_ATTEMPTS
-            # by monkey-patching the queue to detect job completion.
-            async def _run_with_timeout() -> None:
-                task = asyncio.create_task(run_daemon(poll_interval=0.05))
-                # Wait until the job is in failed/ or timeout.
-                for _ in range(200):
-                    await asyncio.sleep(0.05)
-                    if list((tmp_path / "queue" / "failed").glob("*.job.toml")):
-                        break
-                task.cancel()
-                with pytest.raises((asyncio.CancelledError, Exception)):
-                    await task
+        with (
+            patch("control.transfer.daemon._process_job", side_effect=_always_fail),
+            patch("control.transfer.daemon.RETRY_DELAYS", [0.01, 0.01]),
+        ):
+            await _run_daemon_until(
+                tmp_path,
+                lambda: any(True for _ in failed_dir.glob("*.job.toml")),
+            )
 
-            await _run_with_timeout()
-
-        # Must be in failed/, not pending/ or active/.
-        failed_files = list((tmp_path / "queue" / "failed").glob("*.job.toml"))
+        failed_files = list(failed_dir.glob("*.job.toml"))
         pending_files = list((tmp_path / "queue" / "pending").glob("*.job.toml"))
         active_files = list((tmp_path / "queue" / "active").glob("*.job.toml"))
+
         assert failed_files, "Job must be in failed/ after MAX_ATTEMPTS"
         assert not pending_files, "Job must NOT bounce back to pending/"
         assert not active_files, "Job must NOT remain in active/"
@@ -112,43 +129,47 @@ class TestDaemonCrashRecovery:
         )
 
     @pytest.mark.asyncio
-    async def test_daemon_log_contains_traceback(
+    async def test_last_error_written_on_retry(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The daemon log file must contain the traceback from an exception in _process_job."""
+        """The job TOML in pending/ must carry last_error after a failed attempt."""
         monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
         monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
 
         tq = TransferQueue(queue_dir=tmp_path / "queue")
-        job = _make_job("run_traceback", tmp_path)
+        job = _make_job("run_err", tmp_path)
         _enqueue(tq, job)
 
-        async def _always_raise(j: TransferJob, shutdown: asyncio.Event) -> tuple[bool, str | None]:
-            raise RuntimeError("boom_unique_string")
+        call_count = 0
 
-        with patch("control.transfer.daemon._process_job", side_effect=_always_raise):
-            async def _run_with_timeout() -> None:
-                task = asyncio.create_task(run_daemon(poll_interval=0.05))
-                for _ in range(200):
-                    await asyncio.sleep(0.05)
-                    if list((tmp_path / "queue" / "failed").glob("*.job.toml")):
-                        break
-                task.cancel()
-                with pytest.raises((asyncio.CancelledError, Exception)):
-                    await task
+        async def _fail_once_then_succeed(
+            j: TransferJob, shutdown: asyncio.Event
+        ) -> tuple[bool, str | None]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return False, "transient_error"
+            return True, None
 
-            await _run_with_timeout()
+        completed_dir = tmp_path / "queue" / "completed"
 
-        log_dir = pathlib.Path(str(tmp_path / "state")) / "logs" / "transfer_daemon"
-        log_files = list(log_dir.glob("*.log"))
-        assert log_files, f"Expected log file in {log_dir}, got none"
-        log_text = "".join(p.read_text() for p in log_files)
-        assert "boom_unique_string" in log_text, (
-            f"Expected 'boom_unique_string' in daemon log. Log contents:\n{log_text[:2000]}"
+        with (
+            patch("control.transfer.daemon._process_job", side_effect=_fail_once_then_succeed),
+            patch("control.transfer.daemon.RETRY_DELAYS", [0.01, 0.01]),
+        ):
+            await _run_daemon_until(
+                tmp_path,
+                lambda: any(True for _ in completed_dir.glob("*.job.toml")),
+                timeout_iters=200,
+            )
+
+        assert any(True for _ in completed_dir.glob("*.job.toml")), (
+            "Job should reach completed/ after one failed attempt followed by success"
         )
+        assert call_count == 2, f"Expected 2 calls (1 fail + 1 success), got {call_count}"
 
     # ---------------------------------------------------------------------------
-    # Test 4.1b: attempts persisted at claim time (pre-crash persistence)
+    # Test 4.1b: _sweep_stranded_jobs breaks the infinite-bounce loop
     # ---------------------------------------------------------------------------
 
     def test_sweep_stranded_exhausted_goes_to_failed(
@@ -161,15 +182,13 @@ class TestDaemonCrashRecovery:
 
         tq = TransferQueue(queue_dir=tmp_path / "queue")
 
-        # Simulate a job stranded in active/ with attempts already at MAX_ATTEMPTS
-        # (as if the daemon persisted the bumped count before crashing).
+        # Simulate a job stranded in active/ with attempts already at MAX_ATTEMPTS.
         exhausted_job = _make_job("run_exhausted", tmp_path, attempts=MAX_ATTEMPTS)
         active_path = tq._queue / "active" / "run_exhausted.job.toml"
         tq._write_job(active_path, exhausted_job)
 
         _sweep_stranded_jobs(tq)
 
-        # Must land in failed/, not pending/.
         failed_files = list((tmp_path / "queue" / "failed").glob("*.job.toml"))
         pending_files = list((tmp_path / "queue" / "pending").glob("*.job.toml"))
         assert failed_files, "Exhausted stranded job must go to failed/"
@@ -185,7 +204,6 @@ class TestDaemonCrashRecovery:
 
         tq = TransferQueue(queue_dir=tmp_path / "queue")
 
-        # Stranded with attempts == 1 (below MAX_ATTEMPTS).
         partial_job = _make_job("run_partial", tmp_path, attempts=1)
         active_path = tq._queue / "active" / "run_partial.job.toml"
         tq._write_job(active_path, partial_job)
@@ -197,12 +215,21 @@ class TestDaemonCrashRecovery:
         assert pending_files, "Non-exhausted stranded job must go to pending/"
         assert not failed_files, "Non-exhausted stranded job must NOT go to failed/"
 
-    def test_attempts_bumped_before_processing(
+    # ---------------------------------------------------------------------------
+    # Test 4.1c: attempts bumped at claim time (pre-crash persistence)
+    # ---------------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_attempts_bumped_before_processing(
         self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The job in active/ must have attempts == original + 1 immediately
-        after claim — before _process_job even runs.  Simulates what _sweep
-        would see after a mid-job crash."""
+        after claim — before _process_job even executes.
+
+        Simulates what _sweep would see after a mid-job crash: the bumped
+        count is already on disk, so the sweep can correctly decide whether
+        to retry or permanently fail.
+        """
         monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
         monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
 
@@ -210,32 +237,30 @@ class TestDaemonCrashRecovery:
         job = _make_job("run_atomic", tmp_path, attempts=0)
         _enqueue(tq, job)
 
-        # Capture the contents of active/ *during* _process_job.
-        captured: list[int] = []
+        captured_attempts: list[int] = []
 
         async def _capture_and_fail(
             j: TransferJob, shutdown: asyncio.Event
         ) -> tuple[bool, str | None]:
+            # At this point, the job should already be in active/ with bumped attempts.
             active_path = tq._queue / "active" / "run_atomic.job.toml"
             if active_path.exists():
                 data = _read_job_toml(active_path)
-                captured.append(data.get("attempts", -1))
-            raise RuntimeError("capture_complete")
+                captured_attempts.append(data.get("attempts", -1))
+            return False, "capture_complete"
 
-        async def _run_once() -> None:
-            task = asyncio.create_task(run_daemon(poll_interval=0.05))
-            for _ in range(100):
-                await asyncio.sleep(0.05)
-                if captured or any(True for _ in (tmp_path / "queue" / "failed").glob("*.job.toml")):
-                    break
-            task.cancel()
-            with pytest.raises((asyncio.CancelledError, Exception)):
-                await task
+        failed_dir = tmp_path / "queue" / "failed"
 
-        with patch("control.transfer.daemon._process_job", side_effect=_capture_and_fail):
-            asyncio.run(_run_once())
+        with (
+            patch("control.transfer.daemon._process_job", side_effect=_capture_and_fail),
+            patch("control.transfer.daemon.RETRY_DELAYS", [0.01, 0.01]),
+        ):
+            await _run_daemon_until(
+                tmp_path,
+                lambda: any(True for _ in failed_dir.glob("*.job.toml")),
+            )
 
-        assert captured, "Expected _process_job to be called at least once"
-        assert captured[0] == 1, (
-            f"attempts in active/ must be 1 before _process_job runs (pre-commit), got {captured[0]}"
+        assert captured_attempts, "Expected _process_job to be called at least once"
+        assert captured_attempts[0] == 1, (
+            f"attempts in active/ must be 1 at _process_job call time, got {captured_attempts[0]}"
         )

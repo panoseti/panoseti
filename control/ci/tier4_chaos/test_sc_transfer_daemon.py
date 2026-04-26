@@ -22,12 +22,12 @@ Run: pseti test sw chaos -k SC_TX
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import hashlib
 import os
 import pathlib
 import uuid
-import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
