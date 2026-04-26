@@ -11,7 +11,6 @@ These tests require the full Docker stack to verify the interaction between:
 
 import asyncio
 import os
-import pathlib
 import subprocess
 import uuid
 from datetime import UTC, datetime
@@ -21,6 +20,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# ---------------------------------------------------------------------------
+# Docker-based Integration Tests
+# ---------------------------------------------------------------------------
+from ci.fixtures.fleet import Fleet
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
@@ -28,64 +31,52 @@ from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
 
-# ---------------------------------------------------------------------------
-# Docker-based Integration Tests
-# ---------------------------------------------------------------------------
 
-def _prepare_host_dirs(daq_config: Any, run_dir: str) -> None:
-    """
-    Split-Brain Data Injection:
-    Create dummy files on the host using DAQ_DATA_DIR so the container-side
-    server can see them in its /data mount.
-    """
-    host_data_root = os.environ.get("DAQ_DATA_DIR")
-    if not host_data_root:
-        return
-    host_root = pathlib.Path(host_data_root)
-    
-    for node in daq_config.daq_nodes:
-        for mid in node.module_ids:
-            mod_root = host_root / f"module_{mid}"
-            module_dir = mod_root / run_dir
-            module_dir.mkdir(parents=True, exist_ok=True)
-            f_path = module_dir / "data.pff"
-            f_path.write_bytes(b"synthetic data")
-            
-            # Recursive chmod 0o777
-            for root, dirs, files in os.walk(mod_root):
-                os.chmod(root, 0o777)
-                for d in dirs:
-                    os.chmod(os.path.join(root, d), 0o777)
-                for f in files:
-                    os.chmod(os.path.join(root, f), 0o777)
-            
-    # Root run dir for validator
-    root_dir = host_root / run_dir
-    root_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(root_dir, 0o777)
-
-
-def copy_run_dir(run_params: dict, head_data_dir: Path) -> bool:
-    """Mock rsync by manually copying files from host DAQ_DATA_DIR to /data/head."""
-    run_dir = run_params["run_dir"]
-    host_data_root = os.environ.get("DAQ_DATA_DIR")
-    if not host_data_root:
-        return False
+def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
+    """Create data directories in the ephemeral temp dirs used by containers."""
+    for i, temp_dir in enumerate(fleet._temp_dirs):
+        host_root = Path(temp_dir)
+        spec = fleet.specs[i]
         
-    daq_data = Path(host_data_root)
+        # Root run dir (e.g. /data/ci_run_xxx.pffd/)
+        main_run_dir = host_root / run_dir
+        main_run_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(main_run_dir, 0o777)
+        
+        # Module subdirs (e.g. /data/module_250/ci_run_xxx.pffd/)
+        for mid in spec.module_ids:
+            mod_root = host_root / f"module_{mid}"
+            mod_root.mkdir(parents=True, exist_ok=True)
+            os.chmod(mod_root, 0o777)
+            
+            mod_run_dir = mod_root / run_dir
+            mod_run_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(mod_run_dir, 0o777)
+            
+            # Dummy data
+            f_path = mod_run_dir / f"data.module_{mid}.pff"
+            f_path.write_bytes(b"synthetic data")
+            os.chmod(f_path, 0o666)
+
+
+def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:
+    """Mock rsync by copying from all isolated container volumes to head node."""
     dest_run = head_data_dir / run_dir
     dest_run.mkdir(parents=True, exist_ok=True)
     
     success = False
-    for mid in run_params["module_id"]:
-        src = daq_data / f"module_{mid}" / run_dir
-        if src.exists():
-            import shutil
-            dest_mod = dest_run / f"module_{mid}"
-            if dest_mod.exists():
-                shutil.rmtree(dest_mod)
-            shutil.copytree(src, dest_mod)
-            success = True
+    import shutil
+    for temp_dir in fleet._temp_dirs:
+        host_root = Path(temp_dir)
+        for mod_dir in host_root.glob("module_*"):
+            src = mod_dir / run_dir
+            if src.is_dir():
+                mid = mod_dir.name.split("_")[1]
+                dest_mod = dest_run / f"module_{mid}"
+                if dest_mod.exists():
+                    shutil.rmtree(dest_mod)
+                shutil.copytree(src, dest_mod)
+                success = True
     return success
 
 
@@ -141,22 +132,8 @@ async def test_transfer_daemon_archives_run(
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
 
     # Prepare host directories
-    _prepare_host_dirs(daq_config, run_params["run_dir"])
-    
-    # DIAGNOSTIC: check visibility from inside the container
     fleet, _ = session_fleet
-    for container in fleet._containers:
-        raw_container = container.get_wrapped_container()
-        res = raw_container.exec_run("ls -R /data")
-        print(f"DIAGNOSTIC: ls -R /data in {raw_container.name}:\n{res.output.decode()}")
-    
-    # Verification: check host directory existence directly
-    host_data_root = os.environ.get("DAQ_DATA_DIR")
-    if host_data_root:
-        for node in daq_config.daq_nodes:
-            for mid in node.module_ids:
-                p = Path(host_data_root) / f"module_{mid}" / run_params["run_dir"]
-                assert p.is_dir(), f"Host directory {p} was not created!"
+    _prepare_container_dirs(fleet, run_params["run_dir"])
 
     # 2. Stop real run (enqueues job)
     success = await stop.stop_run(
@@ -174,9 +151,8 @@ async def test_transfer_daemon_archives_run(
     assert job is not None
 
     def mocked_rsync(*args, **kwargs):
-        ok = copy_run_dir(run_params, Path(job.head_data_dir))
+        ok = copy_run_dir_from_fleet(fleet, run_params["run_dir"], Path(job.head_data_dir))
         return MagicMock(returncode=0 if ok else 1, stderr="Simulated copy failed")
-
     # Use fully qualified path for patching
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     
@@ -207,6 +183,7 @@ async def test_transfer_daemon_resumes_after_crash(
     run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
     tmp_path: Path,
+    session_fleet: Any,
 ) -> None:
     """
     Chaos: daemon killed mid-rsync; restart completes the transfer.
@@ -239,8 +216,8 @@ async def test_transfer_daemon_resumes_after_crash(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    _prepare_host_dirs(daq_config, run_params["run_dir"])
-
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()
@@ -284,6 +261,7 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
     tmp_path: Path,
+    session_fleet: Any,
 ) -> None:
     """
     Retry: rsync fails twice, succeeds on third attempt.
@@ -310,8 +288,8 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    _prepare_host_dirs(daq_config, run_params["run_dir"])
-
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()
@@ -365,6 +343,7 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
     tmp_path: Path,
+    session_fleet: Any,
 ) -> None:
     """
     Exhaustion: rsync fails up to MAX_ATTEMPTS.
@@ -392,8 +371,8 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    _prepare_host_dirs(daq_config, run_params["run_dir"])
-
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()

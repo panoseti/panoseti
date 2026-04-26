@@ -42,9 +42,30 @@ from ipaddress import IPv4Address
 from typing import Any
 
 from testcontainers.core.container import DockerContainer
-from testcontainers.core.network import Network
 
 from control.utils.pydantic_config_models import DaqConfig, DaqNode, PortForwarding
+
+
+class SharedNetwork:
+    """A testcontainers-compatible Network wrapper that uses a persistent backbone."""
+    def __init__(self, name: str = "pseti-shared-net"):
+        self.name = name
+        self._network = None
+
+    def create(self) -> None:
+        import contextlib
+
+        import docker
+        client = docker.from_env()
+        try:
+            self._network = client.networks.get(self.name)
+        except docker.errors.NotFound:
+            with contextlib.suppress(Exception):
+                self._network = client.networks.create(self.name, check_duplicate=True)
+
+    def remove(self) -> None:
+        # Persistence Fix: We never remove the shared backbone during tests.
+        pass
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -125,7 +146,7 @@ class Fleet:
         fleet.start()          # creates containers, discovers mapped ports
         fleet.wait_healthy()   # blocks until gRPC servers accept TCP
         …
-        fleet.tear_down()      # stops containers, removes network
+        fleet.tear_down()      # stops containers
     """
 
     def __init__(
@@ -145,7 +166,9 @@ class Fleet:
         self._containers: list[DockerContainer] = []
         self._redis_container: DockerContainer | None = None
         self._loki_container: DockerContainer | None = None
-        self._network = Network()
+        self._temp_dirs: list[str] = []
+        # Use the persistent backbone wrapper
+        self._network = SharedNetwork("pseti-shared-net")
 
     # ------------------------------------------------------------------
     # Properties
@@ -187,9 +210,12 @@ class Fleet:
 
     def start(self) -> None:
         """Start all daqnode containers.  Fills spec.mapped_port for each."""
+        import tempfile
+        import uuid
         setup_docker_host()
+        # Shared Backbone Fix: Ensure the persistent network exists.
         self._network.create()
-
+        
         # Start sidecars if telemetry enabled
         if os.getenv("ENABLE_TELEMETRY_TESTS") == "1":
             tc_id = os.environ.get("TC_SESSION_ID", "solo")
@@ -206,7 +232,6 @@ class Fleet:
             self._loki_container.with_exposed_ports(3100)
             self._loki_container.start()
 
-        daq_data_dir = os.environ.get("DAQ_DATA_DIR")
         # Support architectural fixes by mounting local gRPC source code
         # Path is relative to control/ (the CWD of the test runner)
         grpc_source = pathlib.Path("../grpc/src/panoseti_grpc").resolve()
@@ -215,8 +240,14 @@ class Fleet:
             container = DockerContainer(self.image)
             container.with_name(spec.name)
             container.with_network(self._network)
-            if daq_data_dir:
-                container.with_volume_mapping(daq_data_dir, "/data", "rw")
+            
+            # Isolate the Container Volumes
+            # Every single container must get a unique physical path.
+            unique_data_dir = tempfile.mkdtemp(prefix=f"daq_data_{uuid.uuid4().hex[:8]}_")
+            # Recursive chmod 0o777 to ensure container root can write/delete
+            os.chmod(unique_data_dir, 0o777)
+            self._temp_dirs.append(unique_data_dir)
+            container.with_volume_mapping(unique_data_dir, "/data", "rw")
             
             if grpc_source.exists():
                 container.with_volume_mapping(str(grpc_source), "/grpc/src/panoseti_grpc", "rw")
@@ -312,11 +343,19 @@ class Fleet:
         for container in all_containers:
             with contextlib.suppress(Exception):
                 container.stop()
+        
+        # Cleanup isolated volumes
+        import shutil
+        for d in self._temp_dirs:
+            with contextlib.suppress(Exception):
+                shutil.rmtree(d)
+        self._temp_dirs.clear()
+
         self._containers.clear()
         self._redis_container = None
         self._loki_container = None
-        with contextlib.suppress(Exception):
-            self._network.remove()
+        # We NO LONGER remove the network here as it's shared across xdist workers.
+        # It should be pruned by the developer or a final 'cleanup' script.
 
     # ------------------------------------------------------------------
     # Topology helpers
