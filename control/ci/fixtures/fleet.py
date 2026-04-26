@@ -53,6 +53,8 @@ from control.utils.pydantic_config_models import DaqConfig, DaqNode, PortForward
 MAX_DEFAULT_FLEET_N = 4
 DAQNODE_SHM_BYTES = 2 * 1024**3   # 2 GB shm for hashpipe
 DAQNODE_IMAGE = "pseti-daqnode:latest"
+REDIS_IMAGE = "redis:alpine"
+LOKI_IMAGE = "grafana/loki:latest"
 GRPC_CONTAINER_PORT = 50051
 GRPC_HEALTHCHECK_TIMEOUT = 90.0   # seconds to wait for server to accept TCP
 
@@ -141,11 +143,25 @@ class Fleet:
         self.headnode_ip = headnode_ip
         self.headnode_grpc_port = headnode_grpc_port
         self._containers: list[DockerContainer] = []
+        self._redis_container: DockerContainer | None = None
+        self._loki_container: DockerContainer | None = None
         self._network = Network()
 
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
+
+    @property
+    def redis_port(self) -> int:
+        if self._redis_container is None:
+            return 6379
+        return int(self._redis_container.get_exposed_port(6379))
+
+    @property
+    def loki_port(self) -> int:
+        if self._loki_container is None:
+            return 3100
+        return int(self._loki_container.get_exposed_port(3100))
 
     @property
     def n_nodes(self) -> int:
@@ -173,6 +189,23 @@ class Fleet:
         """Start all daqnode containers.  Fills spec.mapped_port for each."""
         setup_docker_host()
         self._network.create()
+
+        # Start sidecars if telemetry enabled
+        if os.getenv("ENABLE_TELEMETRY_TESTS") == "1":
+            tc_id = os.environ.get("TC_SESSION_ID", "solo")
+            
+            self._redis_container = DockerContainer(REDIS_IMAGE)
+            self._redis_container.with_name(f"pseti-redis-{tc_id}")
+            self._redis_container.with_network(self._network)
+            self._redis_container.with_exposed_ports(6379)
+            self._redis_container.start()
+
+            self._loki_container = DockerContainer(LOKI_IMAGE)
+            self._loki_container.with_name(f"pseti-loki-{tc_id}")
+            self._loki_container.with_network(self._network)
+            self._loki_container.with_exposed_ports(3100)
+            self._loki_container.start()
+
         daq_data_dir = os.environ.get("DAQ_DATA_DIR")
         # Support architectural fixes by mounting local gRPC source code
         # Path is relative to control/ (the CWD of the test runner)
@@ -270,10 +303,18 @@ class Fleet:
     def tear_down(self) -> None:
         """Stop all containers and remove the Docker network."""
         import contextlib
-        for container in self._containers:
+        all_containers = self._containers.copy()
+        if self._redis_container:
+            all_containers.append(self._redis_container)
+        if self._loki_container:
+            all_containers.append(self._loki_container)
+
+        for container in all_containers:
             with contextlib.suppress(Exception):
                 container.stop()
         self._containers.clear()
+        self._redis_container = None
+        self._loki_container = None
         with contextlib.suppress(Exception):
             self._network.remove()
 

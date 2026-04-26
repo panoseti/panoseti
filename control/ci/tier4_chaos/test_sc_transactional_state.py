@@ -42,6 +42,8 @@ from ci.tier4_chaos.conftest import (  # noqa: E402
     _stop as grpc_stop,
 )
 
+from ci.qa_utils import get_isolated_env
+
 from control.utils.paths import PanoPaths
 INTERLEAVE_PID_FILE = PanoPaths.tmp_dir() / "interleave.pid"
 PH_BASELINE_FILE = PanoPaths.config_dir() / "quabo_ph_baseline.json"
@@ -203,7 +205,7 @@ class TestConcurrentStartLocking:
         from control.utils.run_state import RunStateManager
 
         # Ensure no run is active and clean up any leaked state from previous tests
-        env = os.environ.copy()
+        env = get_isolated_env()
         subprocess.run(["python3", "-m", "control.stop", "--yes", "--no_collect"], capture_output=True, env=env)
         mgr = RunStateManager()
         mgr.clear_state()
@@ -699,7 +701,7 @@ async def run_start_and_kill(marker: str, timeout: float = 15) -> int:
             f.write("#!/usr/bin/env sh\nexit 0\n")
         os.chmod(tool_path, 0o755)
 
-    env = os.environ.copy()
+    env = get_isolated_env()
     env["PATH"] = f"{fake_bin_dir.resolve()}:{env['PATH']}"
     env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
 
@@ -773,7 +775,7 @@ async def test_SC021_killed_after_make_run_dirs_leaves_orphan_dirs(
     with mock_daq_config_for_headnode():
         import subprocess
         # Inject fake tools here too
-        env = os.environ.copy()
+        env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         result = subprocess.run(
@@ -804,7 +806,7 @@ async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
     # 2. Verify we can stop it
     with mock_daq_config_for_headnode():
         import subprocess
-        env = os.environ.copy()
+        env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
@@ -859,7 +861,7 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     # 2. Run start.py with --force-reset to self-heal the orphaned hashpipe
     with mock_daq_config_for_headnode():
         import subprocess
-        env = os.environ.copy()
+        env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         env["PSETI_IS_CONTAINER"] = "1"
@@ -1376,7 +1378,7 @@ if __name__ == "__main__":
         traceback.print_exc()
 """)
 
-        env = os.environ.copy()
+        env = get_isolated_env()
         env["PYTHONPATH"] = f"{PanoPaths.base_dir() / 'src'}:{env.get('PYTHONPATH', '')}"
         proc = subprocess.Popen(["python3", "tmp_slow_start.py"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
 
@@ -1563,7 +1565,7 @@ if __name__ == "__main__":
         traceback.print_exc()
 """)
         
-        env = os.environ.copy()
+        env = get_isolated_env()
         env["PYTHONPATH"] = f"{PanoPaths.base_dir() / 'src'}:{env.get('PYTHONPATH', '')}"
         proc = subprocess.Popen(["python3", wrapper_name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
         

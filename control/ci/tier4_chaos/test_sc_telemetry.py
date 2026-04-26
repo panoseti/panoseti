@@ -23,9 +23,10 @@ import pytest
 
 CONTROL_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
 
-LOKI_URL  = os.getenv("LOKI_URL",   "http://10.0.1.21:3100")
-REDIS_HOST = os.getenv("REDIS_HOST", "10.0.1.20")
+LOKI_URL  = os.getenv("LOKI_URL",   "http://localhost:3100")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 ENABLE_TELEMETRY_TESTS = os.getenv("ENABLE_TELEMETRY_TESTS", "").strip() == "1"
+
 
 
 def _require_telemetry() -> None:

@@ -570,7 +570,11 @@ async def test_SCN006_telemetry_volume_scales_with_n_nodes(
 
     try:
         import redis.asyncio as redis
-        rc = redis.Redis(host=os.getenv("REDIS_HOST", "10.0.1.20"), decode_responses=False)
+        rc = redis.Redis(
+            host=os.getenv("REDIS_HOST", "localhost"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            decode_responses=False
+        )
     except Exception as e:
         pytest.skip(f"Redis unavailable: {e}")
 

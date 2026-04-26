@@ -166,22 +166,25 @@ def auto_isolate(
         head_data_tmp = tmp_path / "head_data"
         head_data_tmp.mkdir(parents=True, exist_ok=True)
         os.environ["HEAD_DATA_DIR"] = str(head_data_tmp)
-    
+        # Ensure it is writable by container
+        os.chmod(str(head_data_tmp), 0o777)
+
     if "DAQ_DATA_DIR" not in os.environ:
         daq_data_tmp = tmp_path / "daq_data"
         daq_data_tmp.mkdir(parents=True, exist_ok=True)
         os.environ["DAQ_DATA_DIR"] = str(daq_data_tmp)
+        # Ensure it is writable by container
+        os.chmod(str(daq_data_tmp), 0o777)
 
-    # BROAD PERMISSIONS for Docker volume mapping
-    for d in [cfg_tmp, state_tmp, ctl_tmp, tmp_tmp, 
-              pathlib.Path(os.environ["HEAD_DATA_DIR"]), 
-              pathlib.Path(os.environ["DAQ_DATA_DIR"])]:
-        try:
-            os.chmod(str(d), 0o777)
-        except OSError:
-            pass
-    
-    # Refresh Pydantic's perspective of the environment
+    # 4. Provide quabo_uids.json for Chaos tests
+    # Link to the chaos config which has the mock modules
+    uids_src = pathlib.Path(__file__).parent / "fixtures" / "configs" / "quabo_uids_chaos.json"
+    uids_dst = tmp_tmp / "quabo_uids.json"
+    if uids_src.exists():
+        shutil.copy(uids_src, uids_dst)
+        os.chmod(uids_dst, 0o666)
+
+    # 5. Refresh Pydantic's perspective of the environment
     import importlib
 
     from control.utils import config_file
@@ -509,6 +512,11 @@ def session_fleet(auto_isolate) -> Iterator[Any]:
     cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
     daq_config_path = cfg_dir / "daq_config.json"
     fleet.write_daq_config(daq_config_path)
+
+    # 4. Export environment variables for the session
+    os.environ["REDIS_HOST"] = "localhost"
+    os.environ["REDIS_PORT"] = str(fleet.redis_port)
+    os.environ["LOKI_URL"] = f"http://localhost:{fleet.loki_port}"
 
     yield fleet, daq_cfg
 

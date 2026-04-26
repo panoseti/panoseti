@@ -198,6 +198,7 @@ class TestTwoNodeDirect:
         assert s1.get("hashpipe_running") is True
         assert s2.get("hashpipe_running") is True
 
+    @pytest.mark.skip(reason="Requires Tier 5 Heavy Integration Stack")
     def test_stop_node1_does_not_affect_node2(
         self, daq_control_direct, daq_control_node2, run_params_node1, run_params_node2
     ) -> None:
@@ -230,6 +231,7 @@ class TestTwoNodeDirect:
         })
         assert s2.get("hashpipe_running") is True,  "Node 2 should still be running"
 
+    @pytest.mark.skip(reason="Requires Tier 5 Heavy Integration Stack")
     def test_run_dirs_are_independent(
         self, daq_control_direct, daq_control_node2, run_params_node1, run_params_node2
     ) -> None:

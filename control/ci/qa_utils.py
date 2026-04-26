@@ -510,3 +510,30 @@ class TestRunner:
         from rich.console import Console
         from rich.panel import Panel
         Console().print(Panel(f"[bold]{text}[/bold]", expand=False))
+
+def get_isolated_env() -> dict[str, str]:
+    """
+    Returns a dictionary of environment variables necessary to propagate 
+    the isolated test environment (PSETI_CONFIG, PSETI_STATE, etc.) 
+    to subprocesses.
+    """
+    import os
+    env = os.environ.copy()
+    
+    # Core isolation vars
+    for var in ["PSETI_CONFIG", "PSETI_STATE", "PSETI_CONTROL", "PSETI_TMP", 
+                "PSETI_LOGS", "PSETI_QUABOS", "PSETI_TQ_DIR",
+                "DAQ_DATA_DIR", "HEAD_DATA_DIR", 
+                "REDIS_HOST", "REDIS_PORT", "REDIS_DB",
+                "LOKI_URL", "LOKI_TENANT_ID"]:
+        if var in os.environ:
+            env[var] = os.environ[var]
+            
+    # Python path to ensure src/ is importable
+    if "PYTHONPATH" not in env:
+        env["PYTHONPATH"] = "src"
+    else:
+        if "src" not in env["PYTHONPATH"]:
+            env["PYTHONPATH"] = f"src:{env['PYTHONPATH']}"
+            
+    return env
