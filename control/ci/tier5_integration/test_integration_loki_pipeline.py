@@ -1,15 +1,12 @@
 """
-test_loki_pipeline.py — Integration tests for the storeLoki.py Redis→Loki pipeline.
+test_integration_loki_pipeline.py — Tier 5 Integration tests for the storeLoki.py pipeline.
 
-storeLoki.py sits between Redis (logs:ingress) and Loki:
-    [gRPC Telemetry] → (RPUSH) → [Redis: logs:ingress] → [storeLoki] → [Loki]
-
-These tests inject a log entry directly into Redis and verify that storeLoki
-ships it to Loki within the expected time window (≤ FLUSH_INTERVAL + network).
+Connects to the STATIC Docker Compose stack.
 """
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any
 
@@ -17,7 +14,9 @@ import pytest
 import redis
 import requests
 
-from ci.tier3_fleet.conftest import LOKI_URL, REDIS_HOST
+# Use static values or env vars if provided
+LOKI_URL = os.getenv("LOKI_URL", "http://localhost:3100")
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 
 
 def _loki_query(query: str, limit: int = 50) -> list[Any]:
@@ -41,10 +40,10 @@ def redis_client() -> redis.Redis:
         r.ping()
         return r
     except Exception as e:
-        pytest.skip(f"Redis unavailable: {e}")
+        pytest.skip(f"Redis unavailable at {REDIS_HOST}: {e}")
 
 
-class TestLokiPipeline:
+class TestIntegrationLokiPipeline:
 
     def test_log_entry_ships_to_loki(self, redis_client) -> None:
         """storeLoki ships a Redis log entry to Loki within 15s."""
@@ -70,7 +69,7 @@ class TestLokiPipeline:
         pytest.fail(f"Log with service={service!r} did not appear in Loki within 15s")
 
     def test_multiple_entries_all_arrive(self, redis_client) -> None:
-        """All entries from a batch arrive in Loki (batch ≤ BATCH_SIZE=100)."""
+        """All entries from a batch arrive in Loki."""
         service = f"ci_batch_test_{int(time.time())}"
         n_entries = 5
         for i in range(n_entries):
@@ -86,7 +85,6 @@ class TestLokiPipeline:
             }
             redis_client.rpush("logs:ingress", json.dumps(entry))
 
-        # Wait for all to arrive
         deadline = time.time() + 15
         while time.time() < deadline:
             results = _loki_query(f'{{service="{service}"}}', limit=n_entries + 5)
@@ -94,29 +92,20 @@ class TestLokiPipeline:
             if total >= n_entries:
                 return
             time.sleep(0.2)
-        pytest.fail(
-            f"Expected {n_entries} entries for service={service!r} in Loki, "
-            f"but pipeline did not deliver them within 15s"
-        )
+        pytest.fail(f"Expected {n_entries} entries in Loki within 15s")
 
     def test_invalid_json_does_not_crash_pipeline(self, redis_client) -> None:
         """Pushing invalid JSON to Redis should not crash storeLoki."""
         service = f"ci_after_invalid_{int(time.time())}"
-
-        # Push garbage
         redis_client.rpush("logs:ingress", "this is not json {{{")
-        time.sleep(1)  # let storeLoki process the bad entry
+        time.sleep(1)
 
-        # Push a valid entry — storeLoki should still be running
         entry = {
             "service_name":  service,
             "payload_json":  '{"msg": "post-invalid check"}',
             "timestamp":     time.time(),
             "host":          "test-runner",
             "severity":      2,
-            "function_name": "test_invalid_json_does_not_crash_pipeline",
-            "git_branch":    "ci",
-            "git_commit":    "unknown",
         }
         redis_client.rpush("logs:ingress", json.dumps(entry))
 
@@ -125,16 +114,11 @@ class TestLokiPipeline:
             if _loki_query(f'{{service="{service}"}}'):
                 return
             time.sleep(0.2)
-        pytest.fail("storeLoki did not recover after invalid JSON — pipeline may have crashed")
+        pytest.fail("storeLoki did not recover after invalid JSON")
 
     def test_log_severity_levels_distinct(self, redis_client) -> None:
-        """DEBUG, INFO, WARNING, ERROR entries ship to Loki with distinct severity labels.
-
-        storeLoki maps the integer severity field to a Loki label so that
-        Loki's label-based filtering works correctly.
-        """
+        """DEBUG, INFO, WARNING, ERROR entries ship to Loki with distinct severity labels."""
         service = f"ci_sev_{int(time.time())}"
-        # severity: 0=DEBUG, 1=INFO, 2=WARNING, 3=ERROR (per storeLoki convention)
         for sev in range(4):
             entry = {
                 "service_name":  service,
@@ -142,13 +126,9 @@ class TestLokiPipeline:
                 "timestamp":     time.time(),
                 "host":          "test-runner",
                 "severity":      sev,
-                "function_name": "test_log_severity_levels_distinct",
-                "git_branch":    "ci",
-                "git_commit":    "unknown",
             }
             redis_client.rpush("logs:ingress", json.dumps(entry))
 
-        # All four entries must appear under the same service label
         deadline = time.time() + 20
         while time.time() < deadline:
             results = _loki_query(f'{{service="{service}"}}', limit=20)
@@ -156,9 +136,7 @@ class TestLokiPipeline:
             if total >= 4:
                 return
             time.sleep(0.2)
-        pytest.fail(
-            f"Expected ≥4 severity-labeled entries for service={service!r} in Loki within 20s"
-        )
+        pytest.fail(f"Expected ≥4 severity entries for service={service!r} in Loki")
 
     def test_large_payload_ships_without_truncation(self, redis_client) -> None:
         """A 5000-character message payload arrives in Loki without truncation."""
@@ -170,9 +148,6 @@ class TestLokiPipeline:
             "timestamp":     time.time(),
             "host":          "test-runner",
             "severity":      1,
-            "function_name": "test_large_payload_ships_without_truncation",
-            "git_branch":    "ci",
-            "git_commit":    "unknown",
         }
         redis_client.rpush("logs:ingress", json.dumps(entry))
 
@@ -181,14 +156,10 @@ class TestLokiPipeline:
             results = _loki_query(f'{{service="{service}"}}', limit=5)
             for stream in results:
                 for _, line in stream.get("values", []):
-                    if large_msg in line:
-                        return   # full payload present
-                    if len(line) > 4900:
-                        return   # close enough — Loki may JSON-encode the outer wrapper
+                    if large_msg in line or len(line) > 4900:
+                        return
             time.sleep(0.2)
-        pytest.fail(
-            "Large 5000-char payload did not appear (or was truncated) in Loki within 20s"
-        )
+        pytest.fail("Large 5000-char payload did not appear in Loki")
 
     def test_burst_logging_all_entries_arrive(self, redis_client) -> None:
         """50 rapid log pushes all arrive in Loki within 30s."""
@@ -201,9 +172,6 @@ class TestLokiPipeline:
                 "timestamp":     time.time(),
                 "host":          "test-runner",
                 "severity":      1,
-                "function_name": "test_burst_logging_all_entries_arrive",
-                "git_branch":    "ci",
-                "git_commit":    "unknown",
             }
             redis_client.rpush("logs:ingress", json.dumps(entry))
 
@@ -214,9 +182,7 @@ class TestLokiPipeline:
             if total >= n:
                 return
             time.sleep(0.2)
-        pytest.fail(
-            f"Expected {n} burst entries for service={service!r} in Loki within 30s"
-        )
+        pytest.fail(f"Expected {n} burst entries in Loki")
 
     def test_log_entry_metadata_fields_present(self, redis_client) -> None:
         """Loki label set includes the service field derived from the log entry."""
@@ -227,9 +193,6 @@ class TestLokiPipeline:
             "timestamp":     time.time(),
             "host":          "test-runner",
             "severity":      1,
-            "function_name": "test_log_entry_metadata_fields_present",
-            "git_branch":    "ci",
-            "git_commit":    "abc1234",
         }
         redis_client.rpush("logs:ingress", json.dumps(entry))
 
@@ -237,13 +200,8 @@ class TestLokiPipeline:
         while time.time() < deadline:
             results = _loki_query(f'{{service="{service}"}}', limit=5)
             if results:
-                # The stream label "service" must match what we pushed
                 labels = results[0].get("stream", {})
-                assert labels.get("service") == service, (
-                    f"Expected stream label service={service!r}, got labels={labels}"
-                )
+                assert labels.get("service") == service
                 return
             time.sleep(0.2)
-        pytest.fail(
-            f"Log entry for service={service!r} did not appear in Loki within 20s"
-        )
+        pytest.fail(f"Log entry for service={service!r} missing metadata in Loki")
