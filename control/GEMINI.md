@@ -34,15 +34,22 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 - **Fail-Fast**: Use `asyncio.TaskGroup` for parallel RPCs. If one node fails, the group cancels all others, triggering the `StartTransaction` rollback.
 
 ---
-
 ## 🧪 Testing & Validation
 
 ### Tiered Validation
-- **Phase 1 (Schema)**: Pydantic model validation.
-- **Phase 2 (Coherence)**: Subnet and topology consistency checks via `GlobalValidator`.
-- **Phase 3 (Reachability)**: Network sweep via `config_validator.perform_network_ping_sweep`. Quabos MUST be verified via UDP-based `util.ping` (not TCP).
+- **Tier 1 (Unit)**: Pure logic, no external dependencies. `ci/tier1_unit/`.
+- **Tier 2 (Logic)**: State logic with mocked gRPC. `ci/tier2_logic/`.
+- **Tier 3 (Fleet)**: Dynamic multi-node with testcontainers. `ci/tier3_fleet/`.
+- **Tier 4 (Chaos)**: Fail-fast and resilience tests. `ci/tier4_chaos/`.
+- **Tier 5 (Integration)**: Static stack HW-SW simulation. `ci/tier5_integration/`.
+
+### 🛡️ Resilience Mandates
+- **Idempotent Cleanup**: `CleanupData` MUST be idempotent. Requests to clean missing/already-deleted directories must return `ok=True`.
+- **Split-Brain Isolation**: Host-side test preparation MUST use isolated `tmp_path` directories. Every dynamic container MUST receive a unique host directory for its `/data` volume.
+- **Permission Boundary**: Host-side prepared directories MUST be recursively `chmod 777` to allow container root access.
 
 ### Chaos-Forced Green
+...
 - All transaction-related changes MUST be verified via the chaos suite: `pseti test sw chaos`.
 - **Mandate**: A change is considered broken if it passes on localhost but fails in the 4-node Docker fleet simulation.
 
@@ -59,6 +66,5 @@ Every observing run lifecycle event (Start/Stop) MUST be managed by a context ma
 | [TRANSACTIONS.md](TRANSACTIONS.md) | Rollback ladder sequence, atomic locking, and run state transitions. |
 | [DEBUGGING.md](DEBUGGING.md) | Core debugging principles, lock and Loki pipeline troubleshooting, state isolation. |
 | [TEST.md](TEST.md) | Test suite architecture, Docker runner usage, and isolation mandates (`PSETI_STATE`). |
-| [WISHLIST.md](WISHLIST.md) | Strategic roadmap for upcoming test refactoring and known friction points. |
 | [ci/README.md](ci/README.md) | CI network topology and isolation details. |
 

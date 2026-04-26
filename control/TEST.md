@@ -1,70 +1,110 @@
 # PANOSETI Control — CI Test Suite
 
-All tests live under `control/ci/` and run inside Docker via a single multi-stage `Dockerfile.ci` using `uv` for high-performance builds.
-
-**Current status:** 524 unit tests passing · 109 integration tests passing · 98 chaos tests passing
- 
----
-
-## Quick Start
-
-The PANOSETI QA runner (`pseti test`) manages isolated Docker environments for different test suites. Setup and teardown are automated per-command.
-
-```bash
-# 1. Run suites (automated setup/teardown)
-pseti test sw unit        # Parallel unit tests (no Docker)
-pseti test sw integration # E2E integration tests (Docker)
-pseti test sw chaos       # Chaos/TDD scenarios (Docker)
-pseti test lint           # Ruff & MyPy (concurrent)
-
-# 2. Targeted debugging (bypass teardown to inspect containers)
-pseti test sw integration --debug -k test_transfer_daemon_archives_run
-# Now you can: docker exec -it pseti-integration-int-tester bash
-
-# 3. Global Cleanup (if containers are left running by --debug)
-pseti test sw cleanup
-```
-
----
-
-## 🛠️ Testing Principles
-
-### State Isolation (Mandatory)
-Integration tests must use `PSETI_STATE` and `PSETI_CONTROL` redirected to `tmp_path` to avoid collisions on shared ledgers and locks.
-```python
-def test_my_feature(tmp_path, monkeypatch):
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
-    PanoPaths.ensure_state_dirs()
-    # Now all state is isolated to this test run
-```
-
-### Async Mocking
-When mocking `asyncio` logic, never patch the `asyncio` module directly. Instead, patch specific functions like `subprocess.run` or use `AsyncMock` for `asyncio.sleep`.
+The PANOSETI control plane uses a **5-Tier Tiered Testing Architecture** to balance speed, isolation, and high-fidelity simulation. All tests live under `control/ci/`.
 
 ---
 
 ## 📋 Test Hierarchy
 
-| Tier | Directory | Purpose |
-|---|---|---|
-| **Tier 1 (Unit)** | `ci/unit/` | Zero-dependency logic, parsing, and math. |
-| **Tier 2 (Logic)** | `ci/integration/transfer/` | Distributed control logic using mocked gRPC but real filesystem state. |
-| **Tier 3 (Fleet)** | `ci/integration/` | Full E2E with Docker containers, real gRPC servers, and shared volumes. |
-
-### Chaos Suite (`ci/integration/scenarios/`)
-These tests use `mock-quabo` to simulate hardware failures, network latency, and gRPC timeouts. They are the "TDD source of truth" for the control plane.
+| Tier | Directory | Purpose | Infrastructure |
+|---|---|---|---|
+| **Tier 1 (Unit)** | `ci/tier1_unit/` | Pure logic, parsing, and math. | Native (Parallel) |
+| **Tier 2 (Logic)** | `ci/tier2_logic/` | Subsystem logic with mocked gRPC. | Native + Isolated State |
+| **Tier 3 (Fleet)** | `ci/tier3_fleet/` | Distributed flows with dynamic nodes. | `testcontainers` + Mocks |
+| **Tier 4 (Chaos)** | `ci/tier4_chaos/` | Fault injection & resilience tests. | `testcontainers` + Failure Injection |
+| **Tier 5 (Integration)** | `ci/tier5_integration/` | Heavy realistic SW simulation with tcpreplay -> Hashpipe and panoseti gRPC. | Static Docker Compose |
 
 ---
 
-## Local Development (without Docker)
+## 🚀 Quick Start
+
+The PANOSETI QA runner (`pseti test`) manages isolated environments for different suites.
 
 ```bash
-# Sync environment
-uv sync --all-extras
+# 1. Standard commands
+pseti test sw unit         # Tier 1: Fast unit tests
+pseti test sw logic        # Tier 2: State logic tests
+pseti test sw fleet        # Tier 3: Multi-node dynamic tests
+pseti test sw chaos        # Tier 4: Distributed resilience
+pseti test sw integration  # Tier 5: Heavy stack (Hashpipe/PCAP)
+pseti test lint            # Ruff & MyPy verification
 
-# Run unit tests natively
-uv run pytest ci/unit/
-
-# Run specific integration tests natively (those tagged not skip_outside_ci)
-uv run pytest ci/integration/transfer/test_transfer_chaos.py
+# 2. Comprehensive run
+pseti test sw all          # Run Tiers 1 through 5 sequentially
 ```
+
+---
+
+## 🛠️ Key Fixtures & Utilities
+
+### `auto_isolate` (The Split-Brain Pattern)
+Every test uses the `auto_isolate` fixture to redirect `PSETI_STATE`, `PSETI_CONFIG`, and `PSETI_LOGS` to a unique `tmp_path`. 
+*   **Host Perspective:** Tests prepare mock data in the isolated `tmp_path`.
+*   **Container Perspective:** Fleet containers mount these paths and see them as `/data`.
+
+### `session_fleet` (Dynamic Orchestration)
+Tiers 3 and 4 use `testcontainers` to spin up a dynamic fleet of DAQ nodes.
+*   **Shared Backbone:** All nodes attach to a persistent `pseti-shared-net` to avoid subnet exhaustion.
+*   **Isolated Volumes:** Every container is assigned a unique host directory for its `/data` volume to prevent parallel state collisions.
+
+### `daq_control_direct` / `daq_data_client`
+Standard gRPC clients connected to the first node in the current test's fleet (via dynamic port mapping).
+
+---
+
+## 🏗️ Architecture Diagrams
+
+### Testcontainer Lifecycle (Tier 3/4)
+```mermaid
+sequenceDiagram
+    participant P as Pytest (Host)
+    participant N as Shared Network
+    participant C as DAQ Container
+    participant V as Isolated Volume
+
+    P->>N: Ensure pseti-shared-net exists
+    P->>V: Create unique host tmp dir (chmod 777)
+    P->>C: Boot with volume V and network N
+    C->>P: Report mapped gRPC port
+    P->>C: Execute gRPC Status/Start/Stop
+    P->>V: Verify/Inject synthetic data
+    P->>C: Stop & Remove
+    P->>V: Cleanup host temp dir
+```
+
+### Heavy Integration Stack (Tier 5)
+Tier 5 uses a **static** Docker Compose stack because real software (Hashpipe) requires shared memory, network capabilities, and PCAP replay that are too "heavy" for ephemeral containers.
+
+```mermaid
+graph TD
+    subgraph "Docker Compose (Integration)"
+        T[int-tester] --> G[gateway]
+        G --> D1[daqnode-1]
+        G --> D2[daqnode-2]
+        D1 --> H1[fake-hashpipe]
+        MQ[mock-quabo] --> D1
+        MQ --> D2
+    end
+    subgraph "Shared Resources"
+        VOL[(/data volume)]
+        NET[[172.25.x.x shifted net]]
+    end
+    T -- gRPC --> G
+    D1 -- UDS --> VOL
+    D2 -- UDS --> VOL
+```
+
+---
+
+## 💡 Adding New Tests
+
+1.  **Which Tier?**
+    *   Can you test it with just a function call? → **Tier 1**.
+    *   Does it involve the `TransferQueue` or ledger transitions? → **Tier 2**.
+    *   Does it require real gRPC servers communicating between nodes? → **Tier 3**.
+    *   Are you testing how the system handles a killed process or timeout? → **Tier 4**.
+    *   Does it require a real `hashpipe.so` binary or `tcpreplay`? → **Tier 5**.
+
+2.  **Volume Boundaries:** Remember the **Permission Paradox**. Containers run as `root`. Host-side test code MUST call `os.chmod(path, 0o777)` recursively on any directories it creates for containers to use.
+
+3.  **Subnet Shifting:** If you add a new static environment, use `qa.toml` to shift subnets (e.g., to the `50` block) to ensure it never collides with the persistent Tier 3 backbone.

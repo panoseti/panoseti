@@ -11,7 +11,6 @@ These tests require the full Docker stack to verify the interaction between:
 
 import asyncio
 import os
-import subprocess
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -233,10 +232,10 @@ async def test_transfer_daemon_resumes_after_crash(
 
     # Simulate crash mid-rsync (Stage 2)
     # We must ensure Stage 1 (Manifest) passes first!
-    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")):
-        with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-            with pytest.raises(RuntimeError, match="Simulated crash"):
-                await _process_job(job)
+    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client), \
+         pytest.raises(RuntimeError, match="Simulated crash"):
+        await _process_job(job)
                 
     # Orphaned in active/. Move back to pending/
     os.rename(tq._queue / "active" / f"{job.run_name}.job.toml", tq._queue / "pending" / f"{job.run_name}.job.toml")
@@ -435,21 +434,31 @@ except FileExistsError:
     env["PSETI_STATE"] = str(tmp_path)
     env["PYTHONPATH"] = f"{PanoPaths.base_dir()}/src:{env.get('PYTHONPATH', '')}"
 
-    p1 = subprocess.Popen(["python3", str(lock_script), str(lock_path)], stdout=subprocess.PIPE, text=True, env=env)
+    p1 = await asyncio.create_subprocess_exec(
+        "python3", str(lock_script), str(lock_path),
+        stdout=asyncio.subprocess.PIPE, env=env
+    )
     
     assert p1.stdout is not None
-    line = p1.stdout.readline()
+    line = (await p1.stdout.readline()).decode()
     assert "LOCKED" in line
 
-    p2 = subprocess.Popen(["python3", "-m", "control.transfer"], cwd=str(PanoPaths.base_dir()), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    p2 = await asyncio.create_subprocess_exec(
+        "python3", "-m", "control.transfer",
+        cwd=str(PanoPaths.base_dir()),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        env=env
+    )
     
     try:
-        stdout, _ = p2.communicate(timeout=5)
+        stdout_bytes, _ = await asyncio.wait_for(p2.communicate(), timeout=5)
+        stdout = stdout_bytes.decode()
         assert p2.returncode == 0
         assert "Another transfer daemon is already running" in stdout
     finally:
         p1.terminate()
-        p1.wait()
+        await p1.wait()
     monkeypatch.undo()
 
 

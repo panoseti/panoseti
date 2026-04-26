@@ -28,15 +28,16 @@ Show control plane status. Checks the transactional ledger, local markers, and p
 Observatory operations (Start/Stop, Power, Config, Validation).
 
 **Subcommands:**
-- `start`: Start a new recording run.
-- `stop`: Stop and finish the current recording run.
-- `status`: Show observatory health and acquisition status.
-- `session-start`: Initialize hardware, power, and calibration for an observing session.
-- `session-stop`: Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
-- `uids`: Scan possible quabo IP addrs to get UIDs.
 - `power`: Control Quabo power via Web Power Switches (WPS) (`on`, `off`, `status`).
+- `get-uids`: Fetch quabo IP addrs based on the current obs_config.json to get UIDs.
 - `config`: Configure observatory hardware and daemons (e.g., `ping`, `reboot`, `hv-on`, `maroc-config`).
 - `val`: Configuration and topology validation tools (`all`, `network`, `graph`, `debug`).
+- `start`: Start a new recording run.
+- `status`: Show observatory health and acquisition status.
+- `stop`: Stop and finish the current recording run.
+- `transfer`: Manage the file transfer daemon. 
+- `session-start`: Initialize hardware, power, and calibration for an observing session.
+- `session-stop`: Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
 
 ---
 
@@ -47,9 +48,10 @@ Quality Assurance and Testing Suite.
 - `lint`: Static analysis and linting (Ruff, MyPy).
 - `sw`: Software QA tests (Docker-based CI simulations).
   - `unit`: Run parallel unit tests.
-  - `integration`: Run end-to-end integration tests.
+  - `logic`: Run mocked grpc tests.
+  - `fleet`: Run mocked distributed system nodes.
   - `chaos`: Run TDD-forcing chaos/scenario tests.
-  - `structural`: Run structural/topology tests.
+  - `integration`: Run structural/topology tests.
   - `all`: Run the full software testing suite.
   - `build`: Rebuild the testing Docker images.
   - `cleanup`: Tear down all test containers and volumes.
@@ -104,6 +106,7 @@ To change options or behavior for a command like `start`, edit the corresponding
         "new-tool": ("control.new_tool", "app", "Description of tool."),
     }
     ```
+3. **Order it**: the `command_order` argument allows you to specify an explicit command ordering to ensure consistent and intuitive UX.
 
 ### 3. The "Unwrap" Pattern
 If a module's Typer app contains only one command (usually named `main` or `@app.command()`), the lazy loader automatically "unwraps" it. This allows `pseti my-tool --option` instead of forcing `pseti my-tool main --option`.

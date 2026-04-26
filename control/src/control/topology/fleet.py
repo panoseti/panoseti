@@ -162,7 +162,6 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     """
     import os
     head_data_dir = os.environ.get("HEAD_DATA_DIR", "/data/head")
-    daq_data_dir = os.environ.get("DAQ_DATA_DIR", "/data")
 
     # ── Node 1: Direct Connection (No Gateway) ──
     node1_ip = IPv4Address(f"{daq_prefix}.10")

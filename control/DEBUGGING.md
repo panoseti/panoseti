@@ -9,6 +9,8 @@ This document captures hard-won debugging strategies and core principles for the
 2. **Path Totality**: Never use bare strings for paths (e.g. `open("data.json")`). Always use `PanoPaths` accessors. Construction of a path outside of `PanoPaths` is an architectural defect.
 3. **Explicit Success Validation**: gRPC responses often return `success: bool`. Never assume a response without an exception is a success. Always check `resp.success` and log `resp.message`.
 4. **State Isolation**: When debugging tests, always set `PSETI_STATE` to a unique temporary directory via `monkeypatch` to prevent pollution of the global `/app/state`.
+5. **The Permission Paradox**: Docker containers run as `root`, but host-side tests prepare their data directories. You MUST call `os.chmod(path, 0o777)` recursively on any host directories created for container use, or the container will fail to write/delete due to UID/GID boundaries.
+6. **Subnet Shifting**: To isolate static CI environments from persistent backbones, shift the third octet (e.g., to the `50` block). This is the correct way to avoid Docker network overlaps without pruning the entire host.
 
 ---
 

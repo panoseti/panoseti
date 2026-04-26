@@ -4,18 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This file supplements the root-level `../CLAUDE.md`, which covers the full repo architecture, hardware topology, config system, and observing run lifecycle. Read that first for context.
 
----
-
-## Test Counts & Runner
-
-- **Python version**: `requires-python = ">=3.14"`
-- **CI runner**: `pseti test <cmd>` (not `bash ci/run.sh`)
-- **Unit tests**: 538 passing (12 modules) — `pseti test sw unit`
-- **Integration tests**: 65 passing — `pseti test sw integration`
-- **Chaos/scenario tests**: 114 tests (91 active, 23 stubs) — `pseti test sw chaos`
-- **HW-in-the-loop tests**: HW-01 … HW-05 in `ci/hardware-software/` — `pseti test hw run`
-
----
 
 ## Verification & Quality Standards
 
@@ -66,9 +54,11 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 ---
 
 ## Testing and Debugging
-- **Unit Tests**: Add new cases to `src/control/ci/unit/` for every utility function. No hardware or network access is allowed.
-- **Integration Tests**: Verify end-to-end flows in `src/control/ci/integration/`. Use `-k` to isolate failures.
-- **Chaos Tests**: Verifies transaction integrity under failure conditions in `src/control/ci/integration/scenarios/`. Run via `pseti test chaos`.
+- **Tier 1 (Unit)**: `src/control/ci/tier1_unit/`. Zero-dependency logic and parsing.
+- **Tier 2 (Logic)**: `src/control/ci/tier2_logic/`. Subsystem logic with mocked gRPC.
+- **Tier 3 (Fleet)**: `src/control/ci/tier3_fleet/`. Multi-node E2E with testcontainers.
+- **Tier 4 (Chaos)**: `src/control/ci/tier4_chaos/`. Fault injection and TDD-forcing failure scenarios.
+- **Tier 5 (Integration)**: `src/control/ci/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis).
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
 - **State Isolation**: ALL integration tests MUST isolate their state using `PSETI_STATE` redirected to a temporary directory.
 
@@ -86,11 +76,11 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 
 | Document | Description |
 |---|---|
+| [CLI.md](CLI.md) | Main command-line interface `pseti` |
 | [TRANSACTIONS.md](TRANSACTIONS.md) | Rollback ladder sequence, atomic locking, and run state transitions. |
 | [DEBUGGING.md](DEBUGGING.md) | Core debugging principles, lock and Loki pipeline troubleshooting, state isolation. |
 | [TEST.md](TEST.md) | Test suite architecture, Docker runner usage, and isolation mandates (`PSETI_STATE`). |
-| [WISHLIST.md](WISHLIST.md) | Strategic roadmap for upcoming test refactoring and known friction points. |
-| [ci/README.md](ci/README.md) | CI network topology and isolation details. |
+| [TEST-HW-SW.md](TEST-HW-SW.md) | UC Berkeley Hardware-Software system architecture and description |
 
 ---
 
@@ -98,20 +88,17 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 
 ```bash
 # Standard test suite
-pseti test sw unit      # Parallel unit tests
-pseti test sw integration # E2E with real hashpipe
-pseti test sw chaos     # Chaos/TDD-forcing scenarios
-pseti test lint         # ruff + mypy concurrently
+pseti test sw unit         # Tier 1: Fast logic tests
+pseti test sw logic        # Tier 2: State logic tests
+pseti test sw fleet        # Tier 3: Dynamic node tests
+pseti test sw chaos        # Tier 4: Fault injection
+pseti test sw integration  # Tier 5: Heavy stack tests
+pseti test lint            # ruff + mypy concurrently
 
 # Targeted test runs
 pseti test sw chaos -k SCN003 -vv    # Verbose scenario debugging
 pseti test sw integration -k "real_data"
-
-# Native (no Docker, unit tests only)
-pseti test sw unit --native
 ```
-
-The `chaos` command runs `src/control/ci/integration/scenarios/`.
 
 ---
 

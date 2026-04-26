@@ -407,9 +407,9 @@ class TestRunner:
 
         lock = asyncio.Lock()
         if suite.name in self._temp_envs:
-            env_file, expanded_env = self._temp_envs[suite.name]
+            env_file, _ = self._temp_envs[suite.name]
         else:
-            env_file, expanded_env = ENV_CI_PATH, suite.env
+            env_file, _ = ENV_CI_PATH, suite.env
 
         async def run_task(name: str, task_cmd: str):
             cmd = f"{self.container_tool} compose --env-file {env_file} -f {CONTROL_ROOT}/{compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
