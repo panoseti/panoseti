@@ -97,6 +97,67 @@ flowchart TD
 
 ---
 
+## Pre-flight Checks & Strictness Mode
+
+`pseti start` runs a series of pre-flight checks before issuing any hardware commands.  Whether a failing check aborts the transaction or merely warns the operator depends on the **strictness mode**.
+
+### Strictness Resolution Order
+
+1. **CLI flag** (highest priority): `--strict` or `--no-strict` passed at the command line.
+2. **Environment variable**: `PSETI_STRICT=1` (strict) or `PSETI_STRICT=0` (lenient).
+3. **Tier-aware default** (lowest priority):
+   - **Lenient** (`strict=False`): when `daq_config.json` has `head_node_container: true` **AND** `PSETI_TEST_TIER` is one of `tier3_fleet`, `tier4_chaos`, or `tier5_integration`.  This allows pure software CI to bypass hardware checks.
+   - **Strict** (`strict=True`): all other cases — bare-metal deployments, hardware-in-the-loop (HITL) containers, or any container environment without a recognized CI tier.
+
+The helper `_resolve_strict_mode(strict_flag, daq_config)` in `start.py` encodes this logic.
+
+### Pre-flight Check Inventory
+
+| # | Check | Strict mode | Lenient mode |
+|---|---|---|---|
+| 1 | Config file validation (pydantic + cross-config rules) | **Abort** | **Abort** (always enforced) |
+| 2 | Head-node identity (`socket.gethostname()` matches config) | Abort | Warn + continue |
+| 3 | Ledger freshness (no stale `ACTIVE` ledger) | Abort | Warn + continue |
+| 4 | HK recorder not running (would conflict with new run) | Abort | Warn + continue |
+| 5 | Redis daemons reachable | Abort | Warn + continue |
+| 6 | PH baseline file age (< 24 h) | Abort | Warn + continue |
+| 7 | Quabo reachability (UDP ping each configured Quabo) | Abort | Warn + continue |
+| 8 | **Remote Hashpipe not running** (gRPC `StatusDaq` per DAQ node) | **Abort** | Warn + continue |
+
+Check #8 is the most critical: it prevents a `pseti start` from issuing UDP reconfiguration to Quabos while an existing observation is in progress on the same hardware.
+
+### Remote Hashpipe Pre-flight (Check #8)
+
+The helper `_check_no_remote_hashpipe(daq_config, force_restart=False)` queries every DAQ node via `StatusDaq(check_hashpipe_running=True)`.  If any node reports `hashpipe_running=True`:
+
+- **`force_restart=False`** (default): raises `ValidationError("Hashpipe already running on {ip}")`.  The `StartTransaction.__aexit__` rollback ladder is triggered — but because `start_data_flow` has not yet been called, the `data_flow_started` flag is `False` and `stop_data_flow` is **not** called.  The pre-existing observation continues unharmed.
+- **`force_restart=True`** (`--force-restart` CLI flag): calls `StopDaq` on each offending node, then continues.  Use only when the operator knows the orphaned Hashpipe is not part of a valid active observation.
+
+### `data_flow_started` Safety Invariant
+
+`StartTransaction` tracks whether `start_data_flow()` (which sends UDP configuration commands to Quabos) has actually been called, via `self.data_flow_started: bool`.
+
+```
+data_flow_started = False   (initial)
+     ↓
+_check_no_remote_hashpipe()   ← abort here: data_flow_started stays False
+     ↓
+tx.data_flow_started = True   ← set immediately before call
+     ↓
+start_data_flow(...)          ← UDP commands sent to Quabos
+```
+
+In `__aexit__` (rollback ladder, Step 3):
+
+```python
+if self.data_flow_started:
+    stop_data_flow(...)   # only undo what THIS transaction started
+```
+
+**This invariant guarantees:** a failed `pseti start` that aborts before issuing UDP commands will never call `stop_data_flow` — which would otherwise halt data flow for any co-existing valid observation on the same Quabos.
+
+---
+
 ## Stop Transaction (`StopTransaction`)
 
 Managed via `async with StopTransaction(...) as tx:`.
@@ -247,7 +308,12 @@ Transfer failures use exponential backoff before re-queuing to `pending/`:
 
 ### Daemon Crash Recovery
 
-On startup the daemon sweeps `active/` for jobs left behind by a prior crash.  Each stranded job is renamed back to `pending/` (POSIX-atomic) before the main poll loop begins, ensuring no run is silently dropped (SC-TX-005).
+On startup the daemon sweeps `active/` for jobs left behind by a prior crash (SC-TX-005).  The `_sweep_stranded_jobs()` function:
+
+- **Below `MAX_ATTEMPTS`**: renames the stranded job back to `pending/` so the next poll iteration retries it.
+- **At or above `MAX_ATTEMPTS`**: moves the job directly to `failed/` with a sentinel `last_transfer_error`.  This breaks the **infinite-bounce** failure mode where a daemon that crashes every attempt would cycle the job through `active/ → pending/ → active/ → …` indefinitely without incrementing the persisted attempt count.
+
+**Why the bounce is now impossible:** the daemon persists the incremented `attempts` count into `active/` **before** calling `_process_job` (pre-commit on claim).  If the daemon process dies mid-job, `_sweep_stranded_jobs` finds the job with the bumped count already on disk and uses it to decide whether to retry or permanently fail.  There is no window where a crashed daemon leaves an unincremented count.
 
 ---
 
@@ -263,7 +329,7 @@ Use the `pseti obs transfer` sub-commands to inspect the queue and recover from 
 | `pseti obs transfer retry <run>` | Move a failed job back to pending/ (resets attempts). |
 | `pseti obs transfer start` | Start the daemon (idempotent; no-op if already running). |
 | `pseti obs transfer stop` | SIGTERM the daemon; wait up to 60 s for graceful exit. |
-| `pseti obs transfer tail [-f] [-n N]` | Tail `state/logs/transfer_daemon/current.log`. |
+| `pseti obs transfer tail [-f] [-n N]` | Tail `state/logs/transfer_daemon/transfer_daemon.log`. |
 | `pseti obs transfer verify <run>` | Run manifest verification standalone (no state transitions). |
 
 **Common recovery flows:**

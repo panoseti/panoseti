@@ -2,7 +2,10 @@
 
 # show the status of a recording run
 
+import asyncio
+import time
 from datetime import UTC, datetime
+from typing import Annotated
 
 import typer
 from panoseti_grpc.telemetry.logger import get_logger
@@ -17,87 +20,205 @@ def ut_now_str() -> str:
     """Return the current time as a formatted UTC string."""
     return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-def ut_date_str() -> str:
-    """Return the current date as a YYYYMMDD string."""
-    return datetime.now(UTC).strftime("%Y%m%d")
 
 log_dir = PanoPaths.logs_dir()
 log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger("PSETI.Status", log_dir=str(log_dir), grpc_enabled=True)
 
-# ---------- main logic ----------
-def status() -> None:
-    """Query and display the current status of the observatory control plane.
-    
-    Checks the transactional ledger, local markers, and probes remote DAQ 
-    nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
-    """
+
+# ---------- helpers ----------
+
+def _transfer_daemon_age() -> float | None:
+    hb = PanoPaths.state_dir() / "transfer" / "daemon.heartbeat"
+    if not hb.exists():
+        return None
+    try:
+        return time.time() - float(hb.read_text().strip())
+    except (ValueError, OSError):
+        return None
+
+
+def _queue_counts() -> dict[str, int]:
+    from control.transfer.queue import TransferQueue
+    try:
+        tq = TransferQueue()
+        return {b: len(tq.list_jobs(b)) for b in ("pending", "active", "completed", "failed")}
+    except Exception:
+        return {}
+
+
+def _local_summary() -> list[str]:
+    lines: list[str] = []
     state_mgr = RunStateManager()
     ledger = state_mgr.load_state()
-    
+
     if ledger:
-        logger.info(f'Run in ledger: {ledger.run_name} (Status: {ledger.status}, Started: {ledger.start_time})')
+        lines.append(f"Run:     {ledger.run_name}")
+        lines.append(f"Status:  {ledger.status}")
+        lines.append(f"Started: {ledger.start_time}")
     else:
         run_name = util.read_run_name()
-        if run_name:
-            logger.info(f'Run in legacy marker: {run_name}')
-        else:
-            logger.info("No run is in progress")
+        lines.append(f"Run:     {run_name or '(none)'}")
+        lines.append("Status:  (no active ledger)")
 
-    if util.is_hk_recorder_running():
-        logger.info('HK recorder is running')
+    lines.append(f"HK rec:  {'running' if util.is_hk_recorder_running() else 'stopped'}")
+
+    age = _transfer_daemon_age()
+    if age is None:
+        lines.append("Daemon:  not running (no heartbeat)")
+    elif age < 30:
+        lines.append(f"Daemon:  RUNNING  (heartbeat {age:.0f}s ago)")
     else:
-        logger.info('HK recorder is not running')
+        lines.append(f"Daemon:  STALE    (heartbeat {age:.0f}s ago)")
 
-    # in theory should use config files in run dir
-    config_file.get_obs_config()
-    daq_config = config_file.get_daq_config()
-    quabo_uids = config_file.get_quabo_uids()
-    config_file.get_data_config()
-    config_file.associate(daq_config, quabo_uids)
+    counts = _queue_counts()
+    if counts:
+        q_str = "  ".join(f"{k}={v}" for k, v in counts.items())
+        lines.append(f"Queue:   {q_str}")
 
-    for node in daq_config.daq_nodes:
+    return lines
+
+
+async def _remote_summary() -> list[str]:
+    """Query each DAQ node via gRPC and return one row per node."""
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+    lines: list[str] = []
+    try:
+        daq_config = config_file.get_daq_config()
+        network_config = config_file.get_network_config()
+        util.attach_daq_config(daq_config, network_config)
+    except Exception as e:
+        return [f"ERROR loading daq_config: {e}"]
+
+    async def probe(node: object) -> str:
+        from control.utils.pydantic_config_models import DaqNode
+        assert isinstance(node, DaqNode)
         if not node.module_ids:
-            continue
-        ip_addr = str(node.ip_addr)
-        logger.info(f'status on DAQ node {ip_addr}:')
-        j = util.get_daq_node_status(node)
+            return f"  {node.ip_addr}  (no modules)"
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        try:
+            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                ok, status = await asyncio.wait_for(
+                    client.StatusDaq({
+                        "data_dir": node.data_dir,
+                        "check_hashpipe_running": True,
+                        "check_disk_usage": True,
+                        "check_run_dirs": False,
+                    }),
+                    timeout=5.0,
+                )
+            if not ok:
+                return f"  {node.ip_addr}  gRPC returned not-ok"
+            hp = "hashpipe=RUNNING" if status.get("hashpipe_running") else "hashpipe=stopped"
+            pid = f"pid={status.get('hashpipe_pid', '?')}" if status.get("hashpipe_running") else ""
+            vols = status.get("vols", {})
+            free_strs = [
+                f"{name}:{v.get('free', 0) / 1e9:.1f}GB"
+                for name, v in vols.items()
+            ] if vols else []
+            disk = "  disk=" + ",".join(free_strs) if free_strs else ""
+            return f"  {node.ip_addr}:{grpc_port}  {hp} {pid}{disk}".strip()
+        except Exception as exc:
+            return f"  {node.ip_addr}  UNREACHABLE: {exc}"
 
-        if j['hashpipe_running']:
-            logger.info('   hashpipe is running')
-        else:
-            logger.info('   hashpipe is not running')
-
-        if 'current_run' in j:
-            logger.info(f'   current run: {j["current_run"]}')
-            if 'current_run_disk' in j:
-                logger.info(f'   disk usage: {j["current_run_disk"]}')
-            else:
-                logger.info("   run dir doesn't exist")
-        else:
-            logger.info('   no current run')
-
-        vols = j['vols']
-        logger.info('   volumes:')
-        for name in vols:
-            vol = vols[name]
-            logger.info(f'      name: {name}')
-            logger.info('         free space: %.2fGB' % (vol['free'] / 1e9))
-            logger.info(f'         modules: {vol["modules"]}')
+    tasks = [probe(n) for n in daq_config.daq_nodes]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for r in results:
+        lines.append(str(r))
+    return lines
 
 
-app = typer.Typer(help="Show the status of a PSETI recording run.", no_args_is_help=False)
+async def _sweep_summary() -> list[str]:
+    """Full reachability sweep: Quabo ping + gRPC checks. Read-only."""
+    from control.start import _check_daq_reachability, _check_quabo_reachability
+    from control.utils.run_state import ValidationError
 
-@app.command()
-def main() -> None:
-    """
-    Query and display the current status of the observatory control plane.
-    
-    Checks the transactional ledger, local markers, and probes remote DAQ 
-    nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
-    """
-    status()
+    lines: list[str] = ["=== Network Sweep ==="]
+    try:
+        daq_config = config_file.get_daq_config()
+        quabo_uids = config_file.get_quabo_uids()
+        network_config = config_file.get_network_config()
+        util.attach_daq_config(daq_config, network_config)
+    except Exception as e:
+        return [f"ERROR loading config: {e}"]
+
+    # DAQ gRPC
+    try:
+        await _check_daq_reachability(daq_config)
+        lines.append("DAQ gRPC:  OK — all nodes reachable")
+    except Exception as e:
+        lines.append(f"DAQ gRPC:  FAILED — {e}")
+
+    # Quabo reachability (always lenient in this context — just report, don't abort)
+    try:
+        await _check_quabo_reachability(quabo_uids, network_config, lenient=True)
+        lines.append("Quabos:    OK — all configured Quabos reachable")
+    except ValidationError as e:
+        lines.append(f"Quabos:    WARNING — {e}")
+    except Exception as e:
+        lines.append(f"Quabos:    ERROR — {e}")
+
+    return lines
+
+
+def _render(local: list[str], remote: list[str] | None, sweep: list[str] | None) -> str:
+    parts = [f"[{ut_now_str()}]", "--- Head Node ---", *local]
+    if remote is not None:
+        parts += ["", "--- DAQ Nodes ---", *remote]
+    if sweep is not None:
+        parts += ["", *sweep]
+    return "\n".join(parts)
+
+
+def status(remote: bool = False, sweep_mode: bool = False) -> None:
+    """Synchronous single-shot status render."""
+    local = _local_summary()
+    remote_lines = asyncio.run(_remote_summary()) if remote else None
+    sweep_lines = asyncio.run(_sweep_summary()) if sweep_mode else None
+    typer.echo(_render(local, remote_lines, sweep_lines))
+
+
+app = typer.Typer(
+    help="Show the status of a PSETI recording run.",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    remote: Annotated[bool, typer.Option("--remote", help="Also query DAQ nodes via gRPC.")] = False,
+    watch: Annotated[bool, typer.Option("--watch", help="Refresh continuously.")] = False,
+    interval: Annotated[float, typer.Option("--interval", help="Refresh interval in seconds (--watch).")] = 5.0,
+) -> None:
+    """Query and display the current status of the observatory control plane."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if watch:
+        try:
+            while True:
+                local = _local_summary()
+                remote_lines = asyncio.run(_remote_summary()) if remote else None
+                output = _render(local, remote_lines, None)
+                import os
+                os.system("clear")
+                typer.echo(output)
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            pass
+    else:
+        status(remote=remote)
+
+
+@app.command("sweep")
+def sweep_cmd() -> None:
+    """Full network reachability sweep (Quabo ping + DAQ gRPC). Read-only."""
+    lines = asyncio.run(_sweep_summary())
+    typer.echo("\n".join(lines))
+
 
 if __name__ == "__main__":
     app()
-

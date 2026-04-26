@@ -3,28 +3,28 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 import os
 import pathlib
 import signal
 import subprocess
 import time
+from datetime import UTC, datetime
 
 import anyio
+from panoseti_grpc.telemetry.logger import get_logger
 
+from control.transfer.lifecycle import MAX_ATTEMPTS, RETRY_DELAYS
 from control.transfer.models import TransferJob
 from control.transfer.queue import TransferQueue
 from control.transfer.rsync import build_rsync_cmd
 from control.transfer.verify import verify_manifest
 from control.utils.paths import PanoPaths
 
-logger = logging.getLogger("panoseti.transfer_daemon")
-
 POLL_INTERVAL_SEC = 5.0
-MAX_ATTEMPTS = 3
-# Exponential backoff delays between transfer retries: attempt 1->2 waits 5 s,
-# attempt 2->3 waits 30 s.  A 3rd failure is final (-> failed/).
-_RETRY_BACKOFF_SEC = [5.0, 30.0]
+
+_log_dir = PanoPaths.daemon_logs_dir("transfer_daemon")
+_log_dir.mkdir(parents=True, exist_ok=True)
+logger = get_logger("transfer_daemon", log_dir=_log_dir, grpc_enabled=False)
 
 
 def _transfer_state_dir() -> pathlib.Path:
@@ -47,25 +47,20 @@ def _acquire_transfer_lock() -> pathlib.Path | None:
     """
     lock_path = PanoPaths.locks_dir() / "transfer.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     for attempt in range(2):
         try:
-            # O_EXCL ensures that this call creates the file; if it exists, it fails.
             fd = os.open(str(lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
             with os.fdopen(fd, "w") as f:
                 f.write(str(os.getpid()))
             return lock_path
         except FileExistsError:
-            # Check if the lock is stale
             try:
                 with open(lock_path) as f:
-                    pid_str = f.read().strip()
-                    pid = int(pid_str)
-                # Check if process is alive (signal 0 is a no-op that checks existence)
+                    pid = int(f.read().strip())
                 os.kill(pid, 0)
                 return None
             except (OSError, ValueError, ProcessLookupError):
-                # Process is dead or file is corrupt. Self-heal.
                 with contextlib.suppress(OSError):
                     lock_path.unlink()
                 if attempt == 0:
@@ -91,14 +86,10 @@ def _release_transfer_lock(lock_path: pathlib.Path | None) -> None:
 async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -> None:
     """Write the current timestamp to *heartbeat_path* every *interval* seconds.
 
-    Runs until cancelled.  Silently swallows ``asyncio.CancelledError`` on
-    exit so the caller need not catch it.
-
     Args:
         heartbeat_path: Path to the heartbeat file.
         interval: Seconds between heartbeat writes.
     """
-    import anyio
     try:
         while True:
             await anyio.Path(heartbeat_path).write_text(str(time.time()))
@@ -107,26 +98,20 @@ async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -
         pass
 
 
-async def _process_job(job: TransferJob) -> bool:
+async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool, str | None]:
     """Drive a single transfer job through the full state machine.
 
-    The state machine advances through these stages in order:
-
-    1. **MANIFEST_GENERATING** — ask each DAQ node's gRPC server to produce a
-       content manifest for the run's PFF files.
-    2. **TRANSFERRING** — rsync each DAQ node's run directory to the head node.
-    3. **VERIFYING** — verify manifest digests on the head node.
-    4. **CLEANING** — selectively delete PFF files from DAQ nodes via gRPC
-       ``CleanupData``.
-    5. **ARCHIVED** — write a ``run_complete`` marker and log success.
-
-    ``no_collect`` skips stages 1-3; ``no_cleanup`` skips stage 4.
+    All exceptions are caught internally. The caller receives ``(False, error)``
+    on any failure so the daemon loop always remains alive.
 
     Args:
         job: The ``TransferJob`` to process.
+        shutdown: Set when the daemon is shutting down. Checked between stages;
+            an in-progress job will return ``(False, "DAEMON_SHUTDOWN")`` so it
+            can be re-enqueued for the next daemon run.
 
     Returns:
-        ``True`` when the job reaches ARCHIVED; ``False`` on any failure.
+        ``(True, None)`` on success; ``(False, error_message)`` on any failure.
     """
     run_name = job.run_name
     head_data_dir = job.head_data_dir
@@ -139,176 +124,215 @@ async def _process_job(job: TransferJob) -> bool:
 
     logger.info("Processing transfer job for run: %s", run_name)
 
-    if not no_collect:
-        # --- Stage 1: manifest generation ---
-        logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
-        state_mgr.transition("MANIFEST_GENERATING")
-        manifest_errors: list[str] = []
-        try:
-            from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    try:
+        if not no_collect:
+            # --- Stage 1: manifest generation ---
+            if shutdown.is_set():
+                return False, "DAEMON_SHUTDOWN"
 
-            async def gen_manifest(node: object) -> None:
-                from control.transfer.models import TransferNodeSpec as _TNS
-                assert isinstance(node, _TNS)
-                module_ids: list[int] = node.module_ids
-                
-                host = str(node.ip_addr)
-                port = 50051
-                if node.port_forwarding and node.port_forwarding.status:
-                    host = str(node.port_forwarding.gw_ip)
-                    port = node.port_forwarding.grpc_port
+            logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
+            state_mgr.transition("MANIFEST_GENERATING")
+            manifest_errors: list[str] = []
 
-                async with AsyncDaqControlClient(host=host, port=port) as client:
-                    for mid in module_ids:
-                        try:
-                            # Bump timeout for CI stability
-                            resp = await asyncio.wait_for(
-                                client.GenerateManifest({
-                                    "data_dir": node.data_dir,
-                                    "run_dir": run_name,
-                                    "module_id": mid,
-                                    "algorithm": "blake3",
-                                    "include_patterns": ["*.pff"],
-                                }),
-                                timeout=15.0
-                            )
-                            if not resp.get("success", True):
-                                err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {resp.get('message', 'unknown error')}"
+            try:
+                from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+                async def gen_manifest(node: object) -> None:
+                    from control.transfer.models import TransferNodeSpec as _TNS
+                    assert isinstance(node, _TNS)
+                    module_ids: list[int] = node.module_ids
+
+                    host = str(node.ip_addr)
+                    port = 50051
+                    if node.port_forwarding and node.port_forwarding.status:
+                        host = str(node.port_forwarding.gw_ip)
+                        port = node.port_forwarding.grpc_port
+
+                    async with AsyncDaqControlClient(host=host, port=port) as client:
+                        for mid in module_ids:
+                            try:
+                                resp = await asyncio.wait_for(
+                                    client.GenerateManifest({
+                                        "data_dir": node.data_dir,
+                                        "run_dir": run_name,
+                                        "module_id": mid,
+                                        "algorithm": "blake3",
+                                        "include_patterns": ["*.pff"],
+                                    }),
+                                    timeout=15.0,
+                                )
+                                if not resp.get("success", True):
+                                    err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {resp.get('message', 'unknown error')}"
+                                    manifest_errors.append(err)
+                                    logger.warning(err)
+                            except Exception as exc:
+                                err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {exc}"
                                 manifest_errors.append(err)
                                 logger.warning(err)
-                        except Exception as exc:
-                            err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {exc}"
-                            manifest_errors.append(err)
-                            logger.warning(err)
 
-            async with asyncio.TaskGroup() as tg:
-                for node in daq_nodes:
-                    tg.create_task(gen_manifest(node))
+                # Wrap TaskGroup so an ExceptionGroup doesn't escape this function.
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        for node in daq_nodes:
+                            tg.create_task(gen_manifest(node))
+                except* Exception as eg:
+                    for exc in eg.exceptions:
+                        manifest_errors.append(f"gen_manifest task failed: {exc}")
+                        logger.warning("gen_manifest task raised: %s", exc)
 
-        except ImportError:
-            logger.warning("panoseti_grpc not available; skipping manifest generation")
+            except ImportError:
+                logger.warning("panoseti_grpc not available; skipping manifest generation")
 
-        if manifest_errors:
-            logger.error("[%s] Manifest generation failed: %s", run_name, "; ".join(manifest_errors))
-            state_mgr.transition("TRANSFER_FAILED")
-            return False
+            if manifest_errors:
+                err_msg = "; ".join(manifest_errors)
+                logger.error("[%s] Manifest generation failed: %s", run_name, err_msg)
+                state_mgr.transition("TRANSFER_FAILED")
+                return False, err_msg
 
-        # --- Stage 2: rsync ---
-        logger.info("[%s] Stage: TRANSFERRING", run_name)
-        state_mgr.transition("TRANSFERRING")
-        transfer_errors: list[str] = []
-        for node in daq_nodes:
-            head_run_dir = pathlib.Path(head_data_dir) / run_name
-            cmd = build_rsync_cmd(node, run_name, head_run_dir)
-            result = await asyncio.to_thread(
-                subprocess.run, cmd, capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                err = f"rsync failed for {node.ip_addr}: {result.stderr}"
-                transfer_errors.append(err)
-                logger.error("Rsync failed for %s: %s", node.ip_addr, result.stderr)
+            # --- Stage 2: rsync ---
+            if shutdown.is_set():
+                return False, "DAEMON_SHUTDOWN"
 
-        if transfer_errors:
-            logger.error("[%s] Transfer failed: %s", run_name, "; ".join(transfer_errors))
-            state_mgr.transition("TRANSFER_FAILED")
-            return False
+            logger.info("[%s] Stage: TRANSFERRING", run_name)
+            state_mgr.transition("TRANSFERRING")
+            transfer_errors: list[str] = []
+            for node in daq_nodes:
+                head_run_dir = pathlib.Path(head_data_dir) / run_name
+                cmd = build_rsync_cmd(node, run_name, head_run_dir)
+                result = await asyncio.to_thread(
+                    subprocess.run, cmd, capture_output=True, text=True
+                )
+                if result.returncode != 0:
+                    err = f"rsync failed for {node.ip_addr}: {result.stderr}"
+                    transfer_errors.append(err)
+                    logger.error("Rsync failed for %s: %s", node.ip_addr, result.stderr)
 
-        # --- Stage 3: verify manifest digests on head node ---
-        logger.info("[%s] Stage: VERIFYING", run_name)
-        state_mgr.transition("VERIFYING")
-        verify_errors: list[str] = []
-        head_run_path = pathlib.Path(head_data_dir) / run_name
-        for algo_suffix in ("blake3", "xxh3_128", "sha256"):
-            candidate = head_run_path / f"manifest.{algo_suffix}"
-            if candidate.exists():
-                ok, errs = await asyncio.to_thread(verify_manifest, candidate, head_run_path)
-                if not ok:
-                    verify_errors.extend(errs)
-                    logger.error(
-                        "[%s] Manifest verification failed (%s): %s",
-                        run_name, candidate.name, "; ".join(errs),
-                    )
-                else:
-                    logger.info("[%s] Manifest OK: %s", run_name, candidate.name)
-        if verify_errors:
-            state_mgr.transition("VERIFY_FAILED")
-            logger.error(
-                "[%s] Verification failed — skipping cleanup to preserve DAQ-side data. "
-                "Manual recovery required.",
-                run_name,
-            )
-            return False
+            if transfer_errors:
+                err_msg = "; ".join(transfer_errors)
+                logger.error("[%s] Transfer failed: %s", run_name, err_msg)
+                state_mgr.transition("TRANSFER_FAILED")
+                return False, err_msg
 
-    # --- Stage 4: selective cleanup ---
-    if not no_cleanup:
-        logger.info("[%s] Stage: CLEANING", run_name)
-        state_mgr.transition("CLEANING")
-        cleanup_errors: list[str] = []
-        try:
-            from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+            # --- Stage 3: verify manifest digests on head node ---
+            if shutdown.is_set():
+                return False, "DAEMON_SHUTDOWN"
 
-            async def cleanup_node(node: object) -> None:
-                from control.transfer.models import TransferNodeSpec as _TNS
-                assert isinstance(node, _TNS)
-                
-                host = str(node.ip_addr)
-                port = 50051
-                if node.port_forwarding and node.port_forwarding.status:
-                    host = str(node.port_forwarding.gw_ip)
-                    port = node.port_forwarding.grpc_port
-
-                async with AsyncDaqControlClient(host=host, port=port) as client:
-                    try:
-                        resp = await asyncio.wait_for(
-                            client.CleanupData({
-                                "data_dir": node.data_dir,
-                                "run_dir": run_name,
-                                "module_id": node.module_ids,
-                                "mode": "CLEANUP_SELECTIVE",
-                                "delete_patterns": ["*.pff"],
-                                "preserve_patterns": ["*.json", "*.log", "*.toml"],
-                            }),
-                            timeout=15.0
+            logger.info("[%s] Stage: VERIFYING", run_name)
+            state_mgr.transition("VERIFYING")
+            verify_errors: list[str] = []
+            head_run_path = pathlib.Path(head_data_dir) / run_name
+            for algo_suffix in ("blake3", "xxh3_128", "sha256"):
+                candidate = head_run_path / f"manifest.{algo_suffix}"
+                if candidate.exists():
+                    ok, errs = await asyncio.to_thread(verify_manifest, candidate, head_run_path)
+                    if not ok:
+                        verify_errors.extend(errs)
+                        logger.error(
+                            "[%s] Manifest verification failed (%s): %s",
+                            run_name, candidate.name, "; ".join(errs),
                         )
-                        if not resp.get("success", True):
-                            err = f"CleanupData failed for {node.ip_addr}: {resp.get('message', 'unknown error')}"
+                    else:
+                        logger.info("[%s] Manifest OK: %s", run_name, candidate.name)
+
+            if verify_errors:
+                err_msg = "; ".join(verify_errors)
+                state_mgr.transition("VERIFY_FAILED")
+                logger.error(
+                    "[%s] Verification failed — skipping cleanup to preserve DAQ-side data. "
+                    "Manual recovery required.",
+                    run_name,
+                )
+                return False, err_msg
+
+        # --- Stage 4: selective cleanup ---
+        if shutdown.is_set():
+            return False, "DAEMON_SHUTDOWN"
+
+        if not no_cleanup:
+            logger.info("[%s] Stage: CLEANING", run_name)
+            state_mgr.transition("CLEANING")
+            cleanup_errors: list[str] = []
+
+            try:
+                from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
+                async def cleanup_node(node: object) -> None:
+                    from control.transfer.models import TransferNodeSpec as _TNS
+                    assert isinstance(node, _TNS)
+
+                    host = str(node.ip_addr)
+                    port = 50051
+                    if node.port_forwarding and node.port_forwarding.status:
+                        host = str(node.port_forwarding.gw_ip)
+                        port = node.port_forwarding.grpc_port
+
+                    async with AsyncDaqControlClient(host=host, port=port) as client:
+                        try:
+                            resp = await asyncio.wait_for(
+                                client.CleanupData({
+                                    "data_dir": node.data_dir,
+                                    "run_dir": run_name,
+                                    "module_id": node.module_ids,
+                                    "mode": "CLEANUP_SELECTIVE",
+                                    "delete_patterns": ["*.pff"],
+                                    "preserve_patterns": ["*.json", "*.log", "*.toml"],
+                                }),
+                                timeout=15.0,
+                            )
+                            if not resp.get("success", True):
+                                err = f"CleanupData failed for {node.ip_addr}: {resp.get('message', 'unknown error')}"
+                                cleanup_errors.append(err)
+                                logger.warning(err)
+                        except Exception as exc:
+                            err = f"CleanupData failed for {node.ip_addr}: {exc}"
                             cleanup_errors.append(err)
                             logger.warning(err)
-                    except Exception as exc:
-                        err = f"CleanupData failed for {node.ip_addr}: {exc}"
-                        cleanup_errors.append(err)
-                        logger.warning(err)
 
-            async with asyncio.TaskGroup() as tg:
-                for node in daq_nodes:
-                    tg.create_task(cleanup_node(node))
+                try:
+                    async with asyncio.TaskGroup() as tg:
+                        for node in daq_nodes:
+                            tg.create_task(cleanup_node(node))
+                except* Exception as eg:
+                    for exc in eg.exceptions:
+                        cleanup_errors.append(f"cleanup_node task failed: {exc}")
+                        logger.warning("cleanup_node task raised: %s", exc)
 
-        except ImportError:
-            logger.warning("panoseti_grpc not available; skipping cleanup")
+            except ImportError:
+                logger.warning("panoseti_grpc not available; skipping cleanup")
 
-        if cleanup_errors:
-            logger.error("[%s] Cleanup failed: %s", run_name, "; ".join(cleanup_errors))
-            state_mgr.transition("VERIFY_FAILED")
-            return False
+            if cleanup_errors:
+                err_msg = "; ".join(cleanup_errors)
+                logger.error("[%s] Cleanup failed: %s", run_name, err_msg)
+                state_mgr.transition("VERIFY_FAILED")
+                return False, err_msg
 
-    # --- Stage 5: archive ---
-    logger.info("[%s] Stage: ARCHIVED", run_name)
-    head_run_dir_anyio = anyio.Path(head_data_dir) / run_name
-    run_complete_path = head_run_dir_anyio / "run_complete"
-    if not await run_complete_path.exists():
-        await head_run_dir_anyio.mkdir(parents=True, exist_ok=True)
-        await run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
+        # --- Stage 5: archive ---
+        logger.info("[%s] Stage: ARCHIVED", run_name)
+        head_run_dir_anyio = anyio.Path(head_data_dir) / run_name
+        run_complete_path = head_run_dir_anyio / "run_complete"
+        if not await run_complete_path.exists():
+            await head_run_dir_anyio.mkdir(parents=True, exist_ok=True)
+            await run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
 
-    state_mgr.transition("ARCHIVED")
-    logger.info("Run %s archived successfully", run_name)
-    return True
+        state_mgr.transition("ARCHIVED")
+        logger.info("Run %s archived successfully", run_name)
+        return True, None
+
+    except Exception as exc:
+        # Catch-all: no exception must escape this function. The daemon loop
+        # must remain alive regardless of what happens inside a job.
+        logger.exception("[%s] Unhandled exception in _process_job: %s", run_name, exc)
+        with contextlib.suppress(Exception):
+            state_mgr.transition("TRANSFER_FAILED")
+        return False, str(exc)
 
 
 def _sweep_stranded_jobs(tq: TransferQueue) -> None:
     """Move jobs stranded in ``active/`` back to ``pending/`` (SC-TX-005).
 
-    Called at daemon startup to recover jobs left behind by a prior crash.
-    Each rename is POSIX-atomic; failures are logged but do not abort startup.
+    If a stranded job has already reached ``MAX_ATTEMPTS``, it is moved
+    directly to ``failed/`` instead of pending — breaking the infinite-bounce
+    loop that occurs when a daemon crash prevents attempt-count persistence.
 
     Args:
         tq: The active :class:`TransferQueue` instance.
@@ -316,10 +340,27 @@ def _sweep_stranded_jobs(tq: TransferQueue) -> None:
     active_dir = tq._queue / "active"
     for stale in sorted(active_dir.glob("*.job.toml")):
         run_name_stale = stale.stem.removesuffix(".job")
-        pending_path = tq._queue / "pending" / stale.name
         try:
-            os.rename(stale, pending_path)
-            logger.warning("Recovered stranded job from active/: %s", run_name_stale)
+            import tomllib
+            with open(stale, "rb") as f:
+                data = tomllib.load(f)
+            stranded_attempts = data.get("attempts", 0)
+
+            if stranded_attempts >= MAX_ATTEMPTS:
+                # Job has exhausted retries; move to failed/ to stop the bounce.
+                failed_path = tq._queue / "failed" / stale.name
+                os.rename(stale, failed_path)
+                logger.warning(
+                    "Stranded job %s already at MAX_ATTEMPTS (%d); moved to failed/",
+                    run_name_stale, MAX_ATTEMPTS,
+                )
+            else:
+                pending_path = tq._queue / "pending" / stale.name
+                os.rename(stale, pending_path)
+                logger.warning(
+                    "Recovered stranded job from active/ (attempts=%d): %s",
+                    stranded_attempts, run_name_stale,
+                )
         except OSError as exc:
             logger.error("Failed to recover stranded job %s: %s", run_name_stale, exc)
 
@@ -327,11 +368,12 @@ def _sweep_stranded_jobs(tq: TransferQueue) -> None:
 async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
     """Main daemon loop: acquire lock, write pid/heartbeat, poll for jobs, process them.
 
-    Acquires an exclusive flock on the transfer lock file.  If another daemon
+    Acquires an exclusive lock on the transfer lock file.  If another daemon
     already holds the lock the function returns immediately.  On startup,
     sweeps ``active/`` for jobs stranded by a prior crash and moves them back
-    to ``pending/``.  Handles ``SIGTERM``/``SIGINT`` gracefully: finishes the
-    current processing step, then releases the lock.
+    to ``pending/`` (or to ``failed/`` if MAX_ATTEMPTS is exhausted).
+    Handles ``SIGTERM``/``SIGINT`` gracefully: finishes the current processing
+    step, then releases the lock.
 
     Args:
         poll_interval: Seconds to wait between queue polls when no job is
@@ -371,40 +413,62 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
                 continue
 
             run_name = job.run_name
-            attempts: int = job.attempts + 1
-
+            # Persist the incremented attempt count into active/ BEFORE processing.
+            # If the daemon process dies mid-job, _sweep_stranded_jobs will see
+            # the bumped count and avoid infinite bouncing.
+            bumped_attempts = job.attempts + 1
+            bumped_job = job.model_copy(update={"attempts": bumped_attempts})
+            active_job_path = tq._queue / "active" / f"{run_name}.job.toml"
             try:
-                success = await _process_job(job)
-                if success:
-                    tq.complete(run_name)
-                elif attempts >= MAX_ATTEMPTS:
-                    logger.error(
-                        "Run %s failed after %d attempts. Marking failed.",
-                        run_name,
-                        MAX_ATTEMPTS,
-                    )
+                tq._write_job(active_job_path, bumped_job)
+            except OSError as exc:
+                logger.error("Failed to persist bumped attempt count for %s: %s", run_name, exc)
+                # Move to failed to avoid an unpersisted-attempts bounce.
+                with contextlib.suppress(OSError):
                     tq.fail(run_name)
-                else:
-                    backoff = _RETRY_BACKOFF_SEC[min(attempts - 1, len(_RETRY_BACKOFF_SEC) - 1)]
-                    logger.warning(
-                        "Run %s attempt %d/%d failed. Retrying in %.0f s.",
-                        run_name,
-                        attempts,
-                        MAX_ATTEMPTS,
-                        backoff,
-                    )
-                    # Re-enqueue with incremented attempt count by claiming and
-                    # writing back to pending.
-                    updated_job = job.model_copy(update={"attempts": attempts})
-                    updated_job_path = tq._queue / "active" / f"{run_name}.job.toml"
-                    if not updated_job_path.exists():
-                        # Write back so retry logic can pick it up
-                        tq._write_job(updated_job_path, updated_job)
-                    os.rename(updated_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
-                    await asyncio.sleep(backoff)
-            except Exception:
-                logger.exception("Unhandled error processing %s", run_name)
+                continue
+
+            success, error_msg = await _process_job(bumped_job, shutdown)
+
+            if error_msg == "DAEMON_SHUTDOWN":
+                # Re-enqueue to pending so the next daemon start picks it up cleanly.
+                logger.info("Shutdown requested mid-job %s; re-enqueueing to pending/", run_name)
+                try:
+                    os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
+                except OSError as exc:
+                    logger.error("Failed to re-enqueue %s on shutdown: %s", run_name, exc)
+                break
+
+            if success:
+                tq.complete(run_name)
+            elif bumped_attempts >= MAX_ATTEMPTS:
+                logger.error(
+                    "Run %s failed after %d attempts. Marking failed.",
+                    run_name, MAX_ATTEMPTS,
+                )
                 tq.fail(run_name)
+            else:
+                backoff = RETRY_DELAYS[min(bumped_attempts - 1, len(RETRY_DELAYS) - 1)]
+                logger.warning(
+                    "Run %s attempt %d/%d failed (%s). Retrying in %.0f s.",
+                    run_name, bumped_attempts, MAX_ATTEMPTS, error_msg or "unknown", backoff,
+                )
+                # Persist the error message and re-enqueue.
+                now = datetime.now(UTC)
+                retry_job = bumped_job.model_copy(update={
+                    "last_error": error_msg,
+                    "last_error_at": now,
+                })
+                try:
+                    tq._write_job(active_job_path, retry_job)
+                    os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
+                except OSError as exc:
+                    logger.error("Failed to re-enqueue %s for retry: %s; marking failed", run_name, exc)
+                    with contextlib.suppress(OSError):
+                        tq.fail(run_name)
+                    continue
+                await asyncio.sleep(backoff)
+
     finally:
         hb_task.cancel()
         await asyncio.gather(hb_task, return_exceptions=True)

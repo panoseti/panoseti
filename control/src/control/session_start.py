@@ -97,7 +97,7 @@ def session_start(
         logger.info('starting Redis daemons')
         util.start_redis_daemons()
         logger.info('starting transfer daemon')
-        util.start_daemon(["python", "-m", "control.transfer"])
+        util.start_daemon(["python", "-m", "control.transfer"], name="transfer_daemon")
     
     if stage == 'maroc_config':
         stage = 'mask_config'

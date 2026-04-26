@@ -515,6 +515,8 @@ class TransferJob(BaseStrictModel):
     no_cleanup: bool = False
     no_collect: bool = False
     skip_verify: bool = False
+    last_error: str | None = None
+    last_error_at: datetime | None = None
     daq_nodes: list[TransferNodeSpec]
 
 

@@ -132,15 +132,16 @@ class StopTransaction:
                 logger.warning(f"Aborting stop due to validation failure: {exc_val}")
                 return True
 
-            # Ladder Step 0: Check for fundamental failure passed from the 'with' block
+            # Ladder Step 0: Log fundamental failures from the 'with' block, then
+            # fall through so the teardown ladder always executes.  An early return
+            # here would leave DAQ nodes and Quabos running.
             if exc_type is not None:
-                logger.error(f"[CRITICAL FAILURE] Stop process aborted: {exc_val}")
-                if self.run:
-                    await asyncio.to_thread(self.state_mgr.transition, "STOPPED_WITH_ERRORS")
-                return False # Let the exception bubble
+                logger.error(f"[CRITICAL FAILURE] Stop transaction entered with exception: {exc_val}. "
+                             "Continuing teardown ladder to avoid leaving hardware in a running state.")
 
             if not self.run:
-                self.success = True
+                if exc_type is None:
+                    self.success = True
                 return False
 
             # Ensure all shutdown steps execute even if one fails
@@ -618,8 +619,12 @@ async def stop_run(
                 else:
                     raise ValidationError(msg)
 
-            # Load from ledger
-            ledger = state_mgr.load_state()
+            # Load from ledger (guard against corrupt or missing TOML)
+            try:
+                ledger = state_mgr.load_state()
+            except Exception as e:
+                logger.warning(f"Failed to load state ledger: {e}. Proceeding with run marker.")
+                ledger = None
             if not tx.run:
                 tx.run = ledger.run_name if ledger else util.read_run_name()
 

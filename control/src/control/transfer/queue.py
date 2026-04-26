@@ -84,9 +84,9 @@ class TransferQueue:
         _skip_keys = {"daq_nodes"}
         try:
             with os.fdopen(fd, "w") as f:
-                # Top-level scalar fields first
+                # Top-level scalar fields first; skip None values (optional fields)
                 for k, v in data.items():
-                    if k in _skip_keys:
+                    if k in _skip_keys or v is None:
                         continue
                     f.write(f"{k} = {self._toml_scalar(v)}\n")
                 

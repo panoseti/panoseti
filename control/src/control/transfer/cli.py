@@ -163,9 +163,14 @@ def tail(
 ) -> None:
     """Tail the transfer daemon log."""
     log_dir = PanoPaths.daemon_logs_dir("transfer_daemon")
-    log_file = log_dir / "current.log"
+    log_file = log_dir / "transfer_daemon.log"
     if not log_file.exists():
-        typer.echo(f"Log file not found: {log_file}", err=True)
+        stderr_log = log_dir / "stderr.log"
+        typer.echo(
+            f"Log file not found: {log_file}\n"
+            f"  Check also: {stderr_log} (backstop for pre-logger crashes)",
+            err=True,
+        )
         raise typer.Exit(1)
     flags = ["-f"] if follow else []
     os.execvp("tail", ["tail", f"-n{lines}", *flags, str(log_file)])

@@ -82,11 +82,11 @@ class StartTransaction:
     Implements a robust rollback ladder and lock management.
     """
     def __init__(
-        self, 
-        state_mgr: RunStateManager, 
-        run_name: str, 
-        daq_config: DaqConfig, 
-        quabo_uids: QuaboUids, 
+        self,
+        state_mgr: RunStateManager,
+        run_name: str,
+        daq_config: DaqConfig,
+        quabo_uids: QuaboUids,
         network_config: NetworkConfig
     ) -> None:
         self.state_mgr = state_mgr
@@ -95,6 +95,11 @@ class StartTransaction:
         self.quabo_uids = quabo_uids
         self.network_config = network_config
         self.success = False
+        # Set to True in start_run immediately before start_data_flow() is called.
+        # Only this transaction may undo data flow that it started — calling
+        # stop_data_flow() on a rollback from a pre-flight failure would silently
+        # halt an already-running valid observation on the same Quabos.
+        self.data_flow_started: bool = False
 
     async def __aenter__(self) -> StartTransaction:
         await asyncio.to_thread(self.state_mgr.acquire_lock)
@@ -121,15 +126,21 @@ class StartTransaction:
 
                 # Ladder Step 1: Update ledger to ABORTED immediately (WAL pattern)
                 # We re-load to ensure we have any node receipts written just before cancellation
-                ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                if ledger:
-                    ledger.status = "ABORTED"
-                    await asyncio.to_thread(self.state_mgr.save_state, ledger)
+                try:
+                    ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                    if ledger:
+                        ledger.status = "ABORTED"
+                        await asyncio.to_thread(self.state_mgr.save_state, ledger)
+                except Exception as e_led:
+                    logger.error(f"Failed to update ledger to ABORTED: {e_led}")
 
                 # Ladder Step 2: Stop remote DAQ nodes (Any that were attempted)
                 logger.info("Stopping remote DAQ nodes...")
                 # Re-load again to be absolutely sure we have all concurrent updates
-                ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                try:
+                    ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                except Exception:
+                    ledger = None
                 
                 async def rollback_node(node: DaqNode) -> None:
                     receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
@@ -167,12 +178,18 @@ class StartTransaction:
                         if node.module_ids:
                             tg.create_task(rollback_node(node))
 
-                # Ladder Step 3: Stop Quabo data flow
-                logger.info("Stopping Quabo data flow...")
-                try:
-                    await asyncio.to_thread(util.stop_data_flow, self.quabo_uids, self.network_config)
-                except Exception as e2:
-                    logger.error(f"Failed to stop Quabo data flow: {e2}")
+                # Ladder Step 3: Stop Quabo data flow — ONLY if this transaction
+                # was the one that started it. Calling stop_data_flow without
+                # having called start_data_flow would interrupt a pre-existing
+                # valid observation on the same Quabos.
+                if self.data_flow_started:
+                    logger.info("Stopping Quabo data flow (started by this transaction)...")
+                    try:
+                        await asyncio.to_thread(util.stop_data_flow, self.quabo_uids, self.network_config)
+                    except Exception as e2:
+                        logger.error(f"Failed to stop Quabo data flow: {e2}")
+                else:
+                    logger.info("Skipping stop_data_flow — this transaction never called start_data_flow.")
 
                 # Ladder Step 4: Kill local daemons
                 logger.info("Stopping local daemons...")
@@ -768,6 +785,102 @@ async def _check_daq_reachability(daq_config: DaqConfig) -> None:
         raise ValidationError("One or more DAQ nodes are unreachable via gRPC.") from eg
 
 
+def _resolve_strict_mode(strict_flag: bool | None, daq_config: DaqConfig) -> bool:
+    """Resolve the effective strict mode for pre-flight checks.
+
+    Resolution order:
+    1. CLI flag ``--strict/--no-strict`` (highest priority).
+    2. Env var ``PSETI_STRICT=1|0``.
+    3. Tier-aware default: ``True`` unless we are in a pure-SW container CI
+       tier (tier3_fleet, tier4_chaos, tier5_integration).  HW-SW tests and
+       bare-metal runs always default to strict.
+
+    Args:
+        strict_flag: Value from ``--strict/--no-strict`` CLI option.  ``None``
+            means the flag was not passed and the default should be applied.
+        daq_config: Loaded DAQ configuration model.
+
+    Returns:
+        True if strict mode is active; False for lenient mode.
+    """
+    if strict_flag is not None:
+        return strict_flag
+    env_val = os.environ.get("PSETI_STRICT")
+    if env_val is not None:
+        return env_val.strip() not in ("0", "false", "no")
+    # Default: lenient only in known SW-simulation CI tiers.
+    sw_tiers = {"tier3_fleet", "tier4_chaos", "tier5_integration"}
+    in_sw_tier = os.environ.get("PSETI_TEST_TIER", "") in sw_tiers
+    return not (daq_config.head_node_container and in_sw_tier)
+
+
+async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool = False) -> None:
+    """Verify that no DAQ node is already running Hashpipe.
+
+    Prevents a new start transaction from issuing UDP configuration to Quabos
+    while an existing observation is in progress, which would corrupt the
+    running run.
+
+    Args:
+        daq_config: Validated DAQ configuration model.
+        force_restart: If True, call StopDaq on each node that reports a
+            running Hashpipe instead of raising.
+
+    Raises:
+        ValidationError: If any DAQ node reports Hashpipe running and
+            *force_restart* is False.
+    """
+    logger.info("Performing remote Hashpipe liveness pre-flight check...")
+
+    async def check_node(node: DaqNode) -> None:
+        if not node.module_ids:
+            return
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        try:
+            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                ok, status = await client.StatusDaq({
+                    "data_dir": node.data_dir,
+                    "check_hashpipe_running": True,
+                    "check_disk_usage": False,
+                    "check_run_dirs": False,
+                }, timeout=5.0)
+        except Exception as e:
+            logger.warning("StatusDaq failed for %s during hashpipe pre-flight: %s", node.ip_addr, e)
+            return
+
+        if ok and status.get("hashpipe_running"):
+            if force_restart:
+                logger.warning(
+                    "Hashpipe running on %s (pid=%s) — stopping per --force-restart.",
+                    node.ip_addr, status.get("hashpipe_pid"),
+                )
+                try:
+                    async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                        await client.StopDaq({"data_dir": node.data_dir}, timeout=15.0)
+                except Exception as stop_err:
+                    raise ValidationError(
+                        f"--force-restart: StopDaq failed for {node.ip_addr}: {stop_err}"
+                    ) from stop_err
+            else:
+                raise ValidationError(
+                    f"Hashpipe already running on {node.ip_addr} "
+                    f"(pid={status.get('hashpipe_pid')}). "
+                    "Run `pseti stop` first, or pass --force-restart."
+                )
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            for node in daq_config.daq_nodes:
+                tg.create_task(check_node(node))
+    except ExceptionGroup as eg:
+        for exc in eg.exceptions:
+            if isinstance(exc, ValidationError):
+                raise exc from None
+        raise ValidationError("Remote Hashpipe liveness check failed.") from eg
+
+    logger.info("Remote Hashpipe pre-flight OK — no running instances detected.")
+
+
 async def start_run(
     obs_config: ObsConfig,
     daq_config: DaqConfig,
@@ -780,6 +893,8 @@ async def start_run(
     force_reset: bool = False,
     run_name: str | None = None,
     no_check_daq: bool = False,
+    strict: bool | None = None,
+    force_restart: bool = False,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -810,6 +925,10 @@ async def start_run(
         str | None: _description_
     """
     
+    # --- Resolve strict mode ---
+    strict_mode = _resolve_strict_mode(strict, daq_config)
+    logger.info("Strict mode: %s", strict_mode)
+
     # --- Pre-flight: DAQ gRPC reachability sweep ---
     if not no_check_daq:
         await _check_daq_reachability(daq_config)
@@ -835,17 +954,17 @@ async def start_run(
         async with StartTransaction(state_mgr, run_name, daq_config, quabo_uids, network_config) as tx:
             # Pre-flight Validation
             if not config_file.validate_all(check_network=False):
-                 msg = "Pre-flight configuration validation failed."
-                 if daq_config.head_node_container:
-                     logger.warning(f"{msg} (Non-fatal in container/CI environment)")
-                 else:
-                     raise ValidationError(msg)
+                msg = "Pre-flight configuration validation failed."
+                if not strict_mode:
+                    logger.warning(f"{msg} (Non-fatal in lenient mode)")
+                else:
+                    raise ValidationError(msg)
 
             # Validation checks
             if not util.is_local(daq_config.head_node_ip_addr, daq_config):
                 msg = f'This node is not the head node specified in daq_config.json ({daq_config.head_node_ip_addr})'
-                if daq_config.head_node_container:
-                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                if not strict_mode:
+                    logger.warning(f"{msg} (Non-fatal in lenient mode)")
                 else:
                     raise ValidationError(msg)
 
@@ -880,23 +999,23 @@ async def start_run(
 
             if await asyncio.to_thread(util.is_hk_recorder_running):
                 msg = 'The HK recorder is running. Run stop.py, then try again.'
-                if daq_config.head_node_container:
-                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                if not strict_mode:
+                    logger.warning(f"{msg} (Non-fatal in lenient mode)")
                 else:
                     raise ValidationError(msg)
-                
+
             if not no_redis and not await asyncio.to_thread(util.are_redis_daemons_running):
                 await asyncio.to_thread(util.show_redis_daemons)
                 msg = 'Redis daemons are not running. Run config.py --redis_daemons'
-                if daq_config.head_node_container:
-                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                if not strict_mode:
+                    logger.warning(f"{msg} (Non-fatal in lenient mode)")
                 else:
                     raise ValidationError(msg)
 
             if not await asyncio.to_thread(ph_baseline_file_ok):
                 msg = 'PH baseline file check failed.'
-                if daq_config.head_node_container:
-                    logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+                if not strict_mode:
+                    logger.warning(f"{msg} (Non-fatal in lenient mode)")
                 else:
                     raise ValidationError(msg)
             # Initialize Ledger
@@ -933,14 +1052,27 @@ async def start_run(
 
             if not no_data:
                 await _check_quabo_reachability(
-                    quabo_uids, network_config, lenient=bool(daq_config.head_node_container)
+                    quabo_uids, network_config, lenient=not strict_mode
                 )
 
             if not no_data:
                 if cancel_event.is_set():
                     raise asyncio.CancelledError()
 
+                # Refuse to start if Hashpipe is already running on any DAQ node.
+                # This prevents a failed-then-retried start from racing against a
+                # live observation.  In strict mode this is a hard error; lenient
+                # mode logs a warning and continues.
+                try:
+                    await _check_no_remote_hashpipe(daq_config, force_restart=force_restart)
+                except ValidationError as e:
+                    if not strict_mode:
+                        logger.warning(f"Remote Hashpipe check: {e} (Non-fatal in lenient mode)")
+                    else:
+                        raise
+
                 logger.info('starting data flow from quabos')
+                tx.data_flow_started = True
                 start_data_flow(quabo_uids, data_config, daq_config, network_config)
                 
                 logger.info('starting recording (Phase 3: Transactional)')
@@ -988,6 +1120,14 @@ def main(
     verbose_opt: bool = typer.Option(False, "--verbose", help="print commands."),
     force_reset: bool = typer.Option(False, "--force-reset", help="Force reset the state ledger if stale."),
     no_check_daq: bool = typer.Option(False, "--no-check-daq", help="Skip the pre-flight gRPC reachability sweep."),
+    strict: bool | None = typer.Option(
+        None, "--strict/--no-strict",
+        help="Strict mode: hardware pre-flights are hard errors (default: True outside SW-CI tiers).",
+    ),
+    force_restart: bool = typer.Option(
+        False, "--force-restart",
+        help="Stop any orphaned Hashpipe instances before starting (implies remote Hashpipe check).",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ):
     """
@@ -1012,7 +1152,8 @@ def main(
         typer.confirm("Are you sure you want to start a new recording run?", abort=True)
         
     success = asyncio.run(async_main_logic(
-        no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq
+        no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq,
+        strict=strict, force_restart=force_restart,
     ))
     if not success:
         raise typer.Exit(code=1)
@@ -1026,6 +1167,8 @@ async def async_main_logic(
     verbose: bool,
     force_reset: bool,
     no_check_daq: bool = False,
+    strict: bool | None = None,
+    force_restart: bool = False,
 ) -> bool:
 
     # load config files
@@ -1035,10 +1178,11 @@ async def async_main_logic(
     data_config = config_file.get_data_config()
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
-    
+
     success_run_name = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
-        network_config, no_hv, no_redis, no_data, force_reset, no_check_daq=no_check_daq
+        network_config, no_hv, no_redis, no_data, force_reset,
+        no_check_daq=no_check_daq, strict=strict, force_restart=force_restart,
     )
     
     if not success_run_name:

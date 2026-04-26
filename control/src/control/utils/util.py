@@ -243,30 +243,49 @@ def is_quabo_old_version(module: ObsModuleConfig, i: int, quabo_uids: QuaboUids,
 
 #-------------- RECORDING ---------------
 
-def start_daemon(prog: str | list[str]) -> None:
+def start_daemon(prog: str | list[str], name: str | None = None) -> None:
     """Launch a daemon process in a new session, detached from the caller.
+
+    stdout and stderr are redirected to ``state/logs/<name>/stdout.log`` and
+    ``state/logs/<name>/stderr.log`` so that crashes are always recoverable
+    even before the daemon's structured logger is initialised.
 
     Args:
         prog: Either a path to a Python script (str) or a full command list
             such as ``["python", "-m", "control.transfer"]``.  When a str is
             given the daemon is launched as ``[sys.executable, prog]``.  When a
             list is given it is used verbatim, enabling module-style invocation.
+        name: Human-readable daemon name used as the log directory stem.  When
+            ``None``, derived from the last path component of *prog*.
     """
     if isinstance(prog, list):
         cmd = prog
         prog_label = " ".join(prog)
+        _name = name or cmd[-1].replace("-", "_").replace(".", "_")
     else:
         cmd = [sys.executable, prog]
         prog_label = prog
+        _name = name or os.path.splitext(os.path.basename(prog))[0]
+
     if is_script_running(prog_label):
         print(f'{prog_label} is already running')
         return
+
+    log_dir = PanoPaths.daemon_logs_dir(_name)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = log_dir / "stdout.log"
+    stderr_path = log_dir / "stderr.log"
+
     try:
+        stdout_fd = os.open(str(stdout_path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+        stderr_fd = os.open(str(stderr_path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
         subprocess.Popen(
             cmd, start_new_session=True,
             close_fds=True, stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            stdout=stdout_fd, stderr=stderr_fd,
         )
+        os.close(stdout_fd)
+        os.close(stderr_fd)
     except OSError:
         print(f"can't launch {prog_label}")
         return

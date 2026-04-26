@@ -157,9 +157,11 @@ async def test_process_job_happy_path(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_ok()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     run_complete = tmp_path / "data" / run_name / "run_complete"
     assert run_complete.exists(), "run_complete marker must be written on success"
 
@@ -182,9 +184,11 @@ async def test_process_job_rsync_failure(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_fail()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is False
+    ok, _ = result
+    assert ok is False
     run_complete = tmp_path / "data" / run_name / "run_complete"
     assert not run_complete.exists()
 
@@ -207,9 +211,11 @@ async def test_process_job_no_collect_skips_rsync(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_ok()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     mock_sub.run.assert_not_called()
     run_complete = tmp_path / "data" / run_name / "run_complete"
     assert run_complete.exists()
@@ -233,9 +239,11 @@ async def test_process_job_no_cleanup_skips_cleanup(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_ok()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     mock_client.CleanupData.assert_not_called()
 
 
@@ -259,9 +267,11 @@ async def test_process_job_run_complete_idempotent(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_ok()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     assert (run_dir / "run_complete").read_text() == sentinel
 
 
@@ -283,9 +293,11 @@ async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_ok()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     mock_client.GenerateManifest.assert_not_called()
     mock_client.CleanupData.assert_not_called()
 
@@ -319,9 +331,11 @@ async def test_process_job_multiple_nodes(tmp_path, monkeypatch):
     with _mock_grpc_modules(mock_client), \
          patch("control.transfer.daemon.subprocess") as mock_sub:
         mock_sub.run.return_value = _mock_rsync_ok()
-        result = await _process_job(job)
+        import asyncio as _asyncio
+        result = await _process_job(job, _asyncio.Event())
 
-    assert result is True
+    ok, _ = result
+    assert ok is True
     assert mock_sub.run.call_count == 2
 
 
