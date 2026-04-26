@@ -27,6 +27,7 @@ import hashlib
 import os
 import pathlib
 import uuid
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -211,7 +212,7 @@ class TestSCTX003NetworkDropMidRsync:
         ):
             job = tq.claim()
             assert job is not None
-            success = await _process_job(job)
+            success = await _process_job(job, asyncio.Event())
             # Simulate daemon loop: move failed job out of active/
             if not success:
                 tq.fail(run_name)
@@ -278,7 +279,7 @@ class TestSCTX004ManifestMismatch:
         ):
             job = tq.claim()
             assert job is not None
-            success = await _process_job(job)
+            success = await _process_job(job, asyncio.Event())
             # Simulate daemon loop: move failed job out of active/
             if not success:
                 tq.fail(run_name)

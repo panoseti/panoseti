@@ -21,6 +21,7 @@ The tests assert:
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import pathlib
 import sys
@@ -289,7 +290,7 @@ class TestProcessJobWithPortForwarding:
         with _mock_grpc(client), \
              patch("control.transfer.daemon.subprocess") as mock_sub:
             mock_sub.run.side_effect = _capture_rsync
-            result = await _process_job(pf_job)
+            result, _ = await _process_job(pf_job, asyncio.Event())
 
         assert result is True
         assert rsync_calls, "rsync must have been called"

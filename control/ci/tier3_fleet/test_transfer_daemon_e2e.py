@@ -164,7 +164,7 @@ async def test_transfer_daemon_archives_run(
     with patch("control.transfer.daemon.subprocess.run", side_effect=mocked_rsync), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         # Allow up to 30s for the entire multi-node manifest/transfer/cleanup state machine
-        job_success = await asyncio.wait_for(_process_job(job), timeout=30.0)
+        job_success = await asyncio.wait_for(_process_job(job, asyncio.Event()), timeout=30.0)
         assert job_success
 
     tq.complete(job.run_name)
@@ -233,9 +233,10 @@ async def test_transfer_daemon_resumes_after_crash(
     # Simulate crash mid-rsync (Stage 2)
     # We must ensure Stage 1 (Manifest) passes first!
     with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client), \
-         pytest.raises(RuntimeError, match="Simulated crash"):
-        await _process_job(job)
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+        success, err = await _process_job(job, asyncio.Event())
+        assert not success
+        assert "Simulated crash" in err
                 
     # Orphaned in active/. Move back to pending/
     os.rename(tq._queue / "active" / f"{job.run_name}.job.toml", tq._queue / "pending" / f"{job.run_name}.job.toml")
@@ -245,7 +246,7 @@ async def test_transfer_daemon_resumes_after_crash(
 
     with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success2 = await asyncio.wait_for(_process_job(job2), timeout=30.0)
+        success2 = await asyncio.wait_for(_process_job(job2, asyncio.Event()), timeout=30.0)
         assert success2
         tq.complete(job2.run_name)
 
@@ -305,7 +306,7 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     assert job1 is not None
     with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success1 = await _process_job(job1)
+        success1 = (await _process_job(job1, asyncio.Event()))[0]
         assert not success1
         tq.fail(job1.run_name)
 
@@ -316,7 +317,7 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     assert job2 is not None
     with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success2 = await _process_job(job2)
+        success2 = (await _process_job(job2, asyncio.Event()))[0]
         assert not success2
         tq.fail(job2.run_name)
 
@@ -327,7 +328,7 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     assert job3 is not None
     with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success3 = await asyncio.wait_for(_process_job(job3), timeout=30.0)
+        success3 = await asyncio.wait_for(_process_job(job3, asyncio.Event()), timeout=30.0)
         assert success3
         tq.complete(job3.run_name)
 
@@ -388,7 +389,7 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Persistent failure")), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         for attempt in range(MAX_ATTEMPTS):
-            success = await _process_job(job)
+            success = (await _process_job(job, asyncio.Event()))[0]
             assert not success
             tq.fail(job.run_name)
             if attempt < MAX_ATTEMPTS - 1:
@@ -513,7 +514,7 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
 
     try:
         with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
-            success = await _process_job(job)
+            success = (await _process_job(job, asyncio.Event()))[0]
             assert success
     finally:
         if orig_mod:

@@ -18,6 +18,7 @@ the suite runs without real hashpipe output or real SSH keys.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import pathlib
@@ -172,7 +173,7 @@ class TestTransferBasicHappyPath:
         with _mock_grpc(client), \
              patch("control.transfer.daemon.subprocess") as mock_sub:
             mock_sub.run.return_value = MagicMock(returncode=0, stderr="")
-            result = await _process_job(transfer_job)
+            result, _ = await _process_job(transfer_job, asyncio.Event())
         assert result is True
         assert (run_dir / "run_complete").exists(), "run_complete must be written on ARCHIVED"
         monkeypatch.undo()
@@ -210,7 +211,7 @@ class TestTransferBasicHappyPath:
         with _mock_grpc(client), \
              patch("control.transfer.daemon.subprocess") as mock_sub:
             mock_sub.run.return_value = MagicMock(returncode=0, stderr="")
-            await _process_job(transfer_job)
+            _, _ = await _process_job(transfer_job, asyncio.Event())
         assert (run_dir / "run_complete").read_text() == sentinel
         monkeypatch.undo()
 

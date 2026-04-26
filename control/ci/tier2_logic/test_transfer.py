@@ -6,6 +6,7 @@ Logic tests for the transfer pipeline using isolated state and mocked gRPC.
 
 from __future__ import annotations
 
+import asyncio
 import pathlib
 from unittest.mock import MagicMock, patch
 
@@ -45,9 +46,9 @@ async def test_when_transfer_job_processed_then_reaches_archived(
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
         patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0))
     ):
-        success = await _process_job(job)
+        success = await _process_job(job, asyncio.Event())
             
-    assert success is True
+    assert success[0] is True
     
     # 4. Verify side effects
     head_run_dir = head_root / run_name
@@ -72,9 +73,9 @@ async def test_when_manifest_fails_then_transfer_aborts(
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
         patch("control.transfer.daemon.subprocess.run") as mock_rsync
     ):
-        success = await _process_job(job)
+        success = await _process_job(job, asyncio.Event())
             
-        assert success is False
+        assert success[0] is False
         mock_rsync.assert_not_called()
 
 @pytest.mark.asyncio
@@ -96,9 +97,9 @@ async def test_when_rsync_fails_then_job_returns_false(
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
         patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="network loss"))
     ):
-        success = await _process_job(job)
+        success = await _process_job(job, asyncio.Event())
             
-    assert success is False
+    assert success[0] is False
 
 @pytest.mark.asyncio
 async def test_when_file_corrupted_then_verify_fails(
@@ -133,9 +134,9 @@ async def test_when_file_corrupted_then_verify_fails(
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
         patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0))
     ):
-        success = await _process_job(job)
+        success = await _process_job(job, asyncio.Event())
             
-    assert success is False
+    assert success[0] is False
     # Verify cleanup was bypassed (mock cleanup never called)
     mock_daq.client.CleanupData.assert_not_called()
 
