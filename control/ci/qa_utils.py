@@ -232,14 +232,20 @@ class TestRunner:
 
     def _generate_dynamic_env(self, suite: SuiteConfig) -> tuple[Path, dict[str, str]]:
         """Generates a temporary .env file with non-overlapping subnets."""
-        # Use random prefixes to avoid collisions
-        # 10.x.y where x and y are random
-        x = random.randint(100, 200)
-        y = random.randint(1, 250)
-        
-        head_prefix = f"10.{x}.{y}"
-        daq_prefix = f"192.168.{random.randint(0, 250)}"
-        quabo_prefix = f"192.168.{random.randint(0, 250)}"
+        # Use random prefixes to avoid collisions, but respect suite-specific overrides
+        head_prefix = suite.env.get('HEAD_NET_PREFIX')
+        if not head_prefix:
+            x = random.randint(100, 200)
+            y = random.randint(1, 250)
+            head_prefix = f'10.{x}.{y}'
+            
+        daq_prefix = suite.env.get('DAQ_NET_PREFIX')
+        if not daq_prefix:
+            daq_prefix = f'192.168.{random.randint(0, 250)}'
+            
+        quabo_prefix = suite.env.get('QUABO_NET_PREFIX')
+        if not quabo_prefix:
+            quabo_prefix = f'192.168.{random.randint(0, 250)}'
         
         expanded_env = {
             "HEAD_NET_PREFIX": head_prefix,

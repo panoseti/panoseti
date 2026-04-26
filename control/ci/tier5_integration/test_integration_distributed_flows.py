@@ -7,6 +7,7 @@ Verifies start/stop command propagation across nodes using real Hashpipe logic.
 
 from __future__ import annotations
 
+import os
 import unittest.mock
 
 import pytest
@@ -36,12 +37,13 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
     tmp_path, daq_control_direct, daq_control_node2
 ) -> None:
     """Verify distributed gRPC orchestration for a multi-node run in heavy stack."""
-    # Use the static configs from the environment
-    obs_cfg      = config_file.get_obs_config()
-    daq_cfg      = config_file.get_daq_config()
+    # Use the session-isolated configs from the environment
+    config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
+    obs_cfg      = config_file.get_obs_config(dir=config_dir)
+    daq_cfg      = config_file.get_daq_config(dir=config_dir)
     quabo_uids   = config_file.get_quabo_uids()
-    data_cfg     = config_file.get_data_config()
-    network_cfg  = config_file.get_network_config()
+    data_cfg     = config_file.get_data_config(dir=config_dir)
+    network_cfg  = config_file.get_network_config(dir=config_dir)
 
     # Ensure head_node_data_dir exists for the test
     (tmp_path / "head_data").mkdir(parents=True, exist_ok=True)
@@ -73,11 +75,12 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
     tmp_path, daq_control_direct, daq_control_node2
 ) -> None:
     """Verify clean teardown of a distributed observing run in heavy stack."""
-    daq_cfg     = config_file.get_daq_config()
-    obs_cfg     = config_file.get_obs_config()
+    config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
+    daq_cfg     = config_file.get_daq_config(dir=config_dir)
+    obs_cfg     = config_file.get_obs_config(dir=config_dir)
     quabo_uids  = config_file.get_quabo_uids()
-    data_cfg    = config_file.get_data_config()
-    network_cfg = config_file.get_network_config()
+    data_cfg    = config_file.get_data_config(dir=config_dir)
+    network_cfg = config_file.get_network_config(dir=config_dir)
 
     (tmp_path / "head_data").mkdir(parents=True, exist_ok=True)
     daq_cfg.head_node_data_dir = str(tmp_path / "head_data")

@@ -62,8 +62,9 @@ requires_docker = true
 compose_file = "ci/docker-compose.integration.yml"
 test_dir = "ci/tier5_integration/"
 pytest_args = ["--ignore=ci/integration/scenarios"]
-env = { HEAD_NET_PREFIX = "10.0.1", DAQ_NET_PREFIX = "192.168.0", QUABO_NET_PREFIX = "192.168.3", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/tmp/pseti_test/logs" }
--pre_run = "mkdir -p /tmp/pseti_test/integration_configs /tmp/pseti_test/tmp /tmp/pseti_test/logs && cp -rL /app/ci/integration/configs/direct/*.json /tmp/pseti_test/integration_configs/ && ln -sf /app/ci/integration/configs/quabo_uids_chaos.json /tmp/pseti_test/tmp/quabo_uids.json"
+env = { HEAD_NET_PREFIX = "10.51.1", DAQ_NET_PREFIX = "172.25.0", QUABO_NET_PREFIX = "172.25.3", DAQNODE_DIRECT_HOST = "172.25.0.10", DAQNODE2_DIRECT_HOST = "172.25.0.20", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/ci/integration/configs", PSETI_LOGS = "/tmp/pseti_test/logs" }
+pre_run = "python3 /app/ci/tier5_setup.py"
+
 
 [suites.test-hw]
 description = "Physical Hardware-Software (HITL) tests"

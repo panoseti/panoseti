@@ -104,7 +104,7 @@ class TestIntegrationDataCollection:
         assert wait_hashpipe_stopped(daq_control_direct, "/data")
 
         # 4. Simulate head-node copying data
-        from ci.tier3_fleet.test_transfer_daemon_e2e import copy_run_dir
+        from ci.tier3_fleet.conftest import copy_run_dir
         assert copy_run_dir(params, pathlib.Path(head_data_dir))
 
         # 5. Cleanup MUST succeed now for all modules

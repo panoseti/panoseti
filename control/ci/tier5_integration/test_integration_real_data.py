@@ -37,7 +37,7 @@ class TestIntegrationRealDataFlow:
         )
         assert found, f"No module data directory appeared in {host_data_root}"
 
-    def test_real_stream_delivers_frames(self, daq_data_client) -> None:
+    def test_real_stream_delivers_frames(self, daq_data_client, hashpipe_pcap_session) -> None:
         """stream_images() yields at least 1 frame driven by live hashpipe output."""
         frames = list(islice(
             daq_data_client.stream_images(
@@ -50,7 +50,7 @@ class TestIntegrationRealDataFlow:
         ))
         assert len(frames) >= 1
 
-    def test_frame_is_dict(self, daq_data_client) -> None:
+    def test_frame_is_dict(self, daq_data_client, hashpipe_pcap_session) -> None:
         """Each frame returned by the real stream is a non-empty dict."""
         for frame in islice(
             daq_data_client.stream_images(
