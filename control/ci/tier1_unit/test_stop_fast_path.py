@@ -52,12 +52,17 @@ FAST_PATH_TIMEOUT_SECS = 5.0
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def daq_config(tmp_path) -> DaqConfig:
+def daq_config(tmp_path, monkeypatch) -> DaqConfig:
     """
     Minimal DaqConfig whose data_dir points to tmp_path so the run_dir
     computed inside StopTransaction matches the one we create on disk.
+    Also isolates PSETI_STATE to tmp_path for TransferQueue.
     """
+    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "state" / "transfer" / "queue"))
+
     return DaqConfig(
+
         head_node_data_dir=str(tmp_path),
         head_node_ip_addr="127.0.0.1",
         head_node_container=True,

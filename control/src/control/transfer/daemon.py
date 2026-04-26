@@ -151,16 +151,27 @@ async def _process_job(job: TransferJob) -> bool:
                 from control.transfer.models import TransferNodeSpec as _TNS
                 assert isinstance(node, _TNS)
                 module_ids: list[int] = node.module_ids
-                async with AsyncDaqControlClient(host=str(node.ip_addr), port=50051) as client:
+                
+                host = str(node.ip_addr)
+                port = 50051
+                if node.port_forwarding and node.port_forwarding.status:
+                    host = str(node.port_forwarding.gw_ip)
+                    port = node.port_forwarding.grpc_port
+
+                async with AsyncDaqControlClient(host=host, port=port) as client:
                     for mid in module_ids:
                         try:
-                            resp = await client.GenerateManifest({
-                                "data_dir": node.data_dir,
-                                "run_dir": run_name,
-                                "module_id": mid,
-                                "algorithm": "blake3",
-                                "include_patterns": ["*.pff"],
-                            })
+                            # Bump timeout for CI stability
+                            resp = await asyncio.wait_for(
+                                client.GenerateManifest({
+                                    "data_dir": node.data_dir,
+                                    "run_dir": run_name,
+                                    "module_id": mid,
+                                    "algorithm": "blake3",
+                                    "include_patterns": ["*.pff"],
+                                }),
+                                timeout=15.0
+                            )
                             if not resp.get("success", True):
                                 err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {resp.get('message', 'unknown error')}"
                                 manifest_errors.append(err)
@@ -239,16 +250,26 @@ async def _process_job(job: TransferJob) -> bool:
             async def cleanup_node(node: object) -> None:
                 from control.transfer.models import TransferNodeSpec as _TNS
                 assert isinstance(node, _TNS)
-                async with AsyncDaqControlClient(host=str(node.ip_addr), port=50051) as client:
+                
+                host = str(node.ip_addr)
+                port = 50051
+                if node.port_forwarding and node.port_forwarding.status:
+                    host = str(node.port_forwarding.gw_ip)
+                    port = node.port_forwarding.grpc_port
+
+                async with AsyncDaqControlClient(host=host, port=port) as client:
                     try:
-                        resp = await client.CleanupData({
-                            "data_dir": node.data_dir,
-                            "run_dir": run_name,
-                            "module_id": node.module_ids,
-                            "mode": "CLEANUP_SELECTIVE",
-                            "delete_patterns": ["*.pff"],
-                            "preserve_patterns": ["*.json", "*.log", "*.toml"],
-                        })
+                        resp = await asyncio.wait_for(
+                            client.CleanupData({
+                                "data_dir": node.data_dir,
+                                "run_dir": run_name,
+                                "module_id": node.module_ids,
+                                "mode": "CLEANUP_SELECTIVE",
+                                "delete_patterns": ["*.pff"],
+                                "preserve_patterns": ["*.json", "*.log", "*.toml"],
+                            }),
+                            timeout=15.0
+                        )
                         if not resp.get("success", True):
                             err = f"CleanupData failed for {node.ip_addr}: {resp.get('message', 'unknown error')}"
                             cleanup_errors.append(err)

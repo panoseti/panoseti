@@ -54,7 +54,6 @@ def generate_fleet_configs(
 
     import os
     head_data_dir = os.environ.get("HEAD_DATA_DIR", "/data/head")
-    daq_data_dir = os.environ.get("DAQ_DATA_DIR", "/data")
 
     for i in range(num_daq_nodes):
         node_ip_str = str(IPv4Address(daq_start + i))
@@ -117,7 +116,7 @@ def generate_fleet_configs(
 
         daq_node = DaqNode(
             username="panoseti",
-            data_dir=daq_data_dir,
+            data_dir="/data",
             ip_addr=node_ip,
             module_ids=managed_module_ids,
             bindhost="0.0.0.0",
@@ -182,8 +181,8 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     )
     
     daq_nodes = [
-        DaqNode(username="panoseti", data_dir=daq_data_dir, ip_addr=node1_ip, module_ids=[200]),
-        DaqNode(username="panoseti", data_dir=daq_data_dir, ip_addr=node2_ip, module_ids=[201], port_forwarding=pf2)
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node1_ip, module_ids=[200]),
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[201], port_forwarding=pf2)
     ]
     
     daq_config = DaqConfig(

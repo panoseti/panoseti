@@ -25,7 +25,6 @@ import pathlib
 import shutil
 import subprocess
 import time
-import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -287,162 +286,36 @@ def get_daq_and_network_config(kind: str = "direct") -> tuple[dict[str, Any], di
 
 
 # ---------------------------------------------------------------------------
-# Session setup — ensure shared data directories exist before any test runs
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="session", autouse=True)
-def create_data_dirs(daq_data_dir_session, head_data_dir_session) -> None:
-    """Create expected data directories on the shared volume at session start.
-
-    head_data_dir_session is referenced by daq_config.json (head_node_data_dir) and must
-    exist for global_validator's Headnode Disk Space check to pass.
-    """
-    try:
-        head_data_dir_session.mkdir(parents=True, exist_ok=True)
-        daq_data_dir_session.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# DaqControlClient fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="session")
-def session_fleet() -> Iterator[Any]:
-    """Start a 2-node testcontainers fleet and yield (fleet, daq_cfg_dict).
-
-    The daq_cfg dict is built from a validated Pydantic DaqConfig so
-    all port-forwarding metadata is guaranteed correct before any test runs.
-    """
-    import json
-
-    from ci.fixtures.fleet import make_fleet, setup_docker_host
-
-    # 1. Configure Docker host (macOS Docker Desktop socket detection).
-    setup_docker_host()
-
-    # 2. Build and start the fleet.
-    fleet = make_fleet(n=2)
-    try:
-        fleet.start()
-        fleet.wait_healthy(timeout=90.0)
-    except Exception as exc:
-        fleet.tear_down()
-        raise RuntimeError(f"Fleet failed to start or become healthy: {exc}") from exc
-
-    # 3. Materialise a validated Pydantic DaqConfig and serialise to dict.
-    #    to_daq_config() injects port_forwarding blocks with the dynamic
-    #    mapped ports so clients use 127.0.0.1:<port> automatically.
-    daq_config = fleet.to_daq_config()
-    daq_cfg = json.loads(daq_config.model_dump_json())
-
-    yield fleet, daq_cfg
-
-    fleet.tear_down()
-
-@pytest.fixture(scope="session")
-def daq_control_direct(session_fleet) -> DaqControlClient:
-    """Client connected directly to the first daqnode."""
-    fleet, _daq_cfg = session_fleet
-    spec = fleet.specs[0]
-    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
-
-
-@pytest.fixture(scope="session")
-def daq_control_gateway(session_fleet) -> DaqControlClient:
-    """Client connected via the gateway. For local testcontainers, it's just the first node."""
-    fleet, _daq_cfg = session_fleet
-    spec = fleet.specs[0]
-    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
-
-
-@pytest.fixture(scope="session")
-def daq_control_node2(session_fleet) -> DaqControlClient:
-    """DaqControlClient connected to the second DAQ node (two-node tests)."""
-    fleet, _daq_cfg = session_fleet
-    spec = fleet.specs[1]
-    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
-
-
-@pytest.fixture(scope="session")
-def daq_data_client(session_fleet) -> Iterator[DaqDataClient]:
-    """Session-scoped DaqDataClient connected to the fleet."""
-    _fleet, daq_cfg = session_fleet
-    with DaqDataClient(daq_cfg, network_config=None) as client:
-        yield client
-
-
-# ---------------------------------------------------------------------------
-# Run parameters fixture
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope='module')
-def run_params(session_fleet) -> dict[str, Any]:
-    """Fresh run parameters for each module — daq_ip_addr from the fleet node.
-
-    Using the fleet node's placeholder IP (not DAQNODE_DIRECT_HOST) ensures
-    Pydantic validation always passes even when the Docker CI env vars are
-    absent (e.g., running locally).
-    """
-    fleet, _ = session_fleet
-    return {
-        "data_dir":         DAQ_DATA_DIR,
-        "daq_ip_addr":      fleet.node_ip(0),
-        "bindhost":         BINDHOST,
-        "max_file_size_mb": 1,
-        "group_ph_frames":  True,
-        "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",
-        "obs":              "citest",
-        "module_id":        [250, 254],
-    }
-
-
-# ---------------------------------------------------------------------------
 # Data directory fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session")
-def daq_data_dir_session(tmp_path_factory) -> pathlib.Path:
-    """Session-scoped root data directory on the daqnode."""
-    # If we are in a container with a real /data volume, use it.
-    # Otherwise (on host), use a temporary directory.
-    if os.path.exists("/data") and os.access("/data", os.W_OK):
-        return pathlib.Path("/data")
-    
-    p = tmp_path_factory.mktemp("daq_data")
-    return p
-
-
-@pytest.fixture(scope="session")
-def head_data_dir_session(tmp_path_factory) -> pathlib.Path:
-    """Session-scoped head node data directory."""
-    if os.path.exists("/data/head") and os.access("/data/head", os.W_OK):
-        return pathlib.Path("/data/head")
-    return tmp_path_factory.mktemp("head_data")
-
-
-@pytest.fixture(autouse=True)
-def _patch_daq_data_dir(monkeypatch, daq_data_dir_session, head_data_dir_session):
-    """Automatically redirect data directories for all tests/fixtures."""
-    monkeypatch.setenv("DAQ_DATA_DIR", str(daq_data_dir_session))
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_dir_session))
-    # Update the global constant used by some tests
-    global DAQ_DATA_DIR, HEAD_DATA_DIR
-    DAQ_DATA_DIR = str(daq_data_dir_session)
-    HEAD_DATA_DIR = str(head_data_dir_session)
+@pytest.fixture(scope="session", autouse=True)
+def create_data_dirs() -> None:
+    """Ensure session-scoped data directories exist on the host with broad permissions."""
+    for env_var in ["DAQ_DATA_DIR", "HEAD_DATA_DIR"]:
+        val = os.environ.get(env_var)
+        if val:
+            p = pathlib.Path(val)
+            p.mkdir(parents=True, exist_ok=True)
+            # Ensure Docker can read/write even if running as a different user/group
+            os.chmod(p, 0o777)
+            for root, dirs, files in os.walk(p):
+                for d in dirs:
+                    os.chmod(os.path.join(root, d), 0o777)
+                for f in files:
+                    os.chmod(os.path.join(root, f), 0o777)
 
 
 @pytest.fixture
-def daq_data_dir(daq_data_dir_session) -> pathlib.Path:
-    """Root data directory on the daqnode (also mounted in test-runner)."""
-    return daq_data_dir_session
+def daq_data_dir() -> pathlib.Path:
+    """Root data directory on the daqnode (host perspective)."""
+    return pathlib.Path(os.environ["DAQ_DATA_DIR"])
 
 
 @pytest.fixture
-def head_data_dir(head_data_dir_session) -> pathlib.Path:
-    """Head node data directory (where collected data lands)."""
-    return head_data_dir_session
+def head_data_dir() -> pathlib.Path:
+    """Head node data directory (host perspective)."""
+    return pathlib.Path(os.environ["HEAD_DATA_DIR"])
 
 
 # ---------------------------------------------------------------------------
@@ -457,19 +330,6 @@ def docker_client() -> Any:
         return docker.from_env()
     except Exception as e:
         pytest.skip(f"Docker SDK unavailable: {e}")
-
-
-@pytest.fixture(scope="session")
-def daqnode_container(session_fleet) -> Any:
-    """
-    Returns the Docker SDK Container for the first fleet daqnode.
-
-    Uses the testcontainers-managed container rather than looking up a
-    hardcoded Docker Compose container name (DAQNODE_CONTAINER).  This
-    makes the fixture work both locally and in the Docker CI runner.
-    """
-    fleet, _ = session_fleet
-    return fleet.containers[0].get_wrapped_container()
 
 
 # ---------------------------------------------------------------------------
@@ -524,28 +384,3 @@ def copy_run_dir_fn() -> Callable[[dict[str, Any], pathlib.Path], bool]:
 @pytest.fixture
 def start_copy_background_fn() -> Callable[[dict[str, Any], pathlib.Path], subprocess.Popen]:
     return start_copy_background
-
-
-# ---------------------------------------------------------------------------
-# Auto-cleanup: stop any lingering hashpipe after each test
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=False)
-def ensure_clean_daq_state(daq_control_direct: DaqControlClient, run_params: dict[str, Any]) -> Iterator[None]:
-    """Stop hashpipe and clean up if a test leaves it running."""
-    yield
-    # Always call StopDaq unconditionally — it's idempotent and handles
-    # the case where hashpipe crashed (leaving a stale hashpipe_pid on the
-    # server) so CleanupData isn't blocked by the stale pid check.
-    with contextlib.suppress(Exception):
-        daq_control_direct.StopDaq({
-            "data_dir": run_params["data_dir"],
-            "run_dir":  run_params["run_dir"],
-        })
-    wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"], timeout=8)
-    with contextlib.suppress(Exception):
-        daq_control_direct.CleanupData({
-            "data_dir":  run_params["data_dir"],
-            "run_dir":   run_params["run_dir"],
-            "module_id": run_params["module_id"],
-        })

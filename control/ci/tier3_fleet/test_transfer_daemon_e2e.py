@@ -9,7 +9,9 @@ These tests require the full Docker stack to verify the interaction between:
 4.  daq_control_server (manifest/cleanup RPCs)
 """
 
+import asyncio
 import os
+import pathlib
 import subprocess
 import uuid
 from datetime import UTC, datetime
@@ -30,18 +32,53 @@ from control.utils.run_state import RunStateManager
 # Docker-based Integration Tests
 # ---------------------------------------------------------------------------
 
-def copy_run_dir(run_params: dict, head_data_dir: Path) -> bool:
-    """Mock rsync by manually copying files from /data to /data/head."""
-    run_dir = run_params["run_dir"]
-    daq_data = Path(run_params["data_dir"])
+def _prepare_host_dirs(daq_config: Any, run_dir: str) -> None:
+    """
+    Split-Brain Data Injection:
+    Create dummy files on the host using DAQ_DATA_DIR so the container-side
+    server can see them in its /data mount.
+    """
+    host_data_root = os.environ.get("DAQ_DATA_DIR")
+    if not host_data_root:
+        return
+    host_root = pathlib.Path(host_data_root)
     
-    source_root = daq_data
+    for node in daq_config.daq_nodes:
+        for mid in node.module_ids:
+            mod_root = host_root / f"module_{mid}"
+            module_dir = mod_root / run_dir
+            module_dir.mkdir(parents=True, exist_ok=True)
+            f_path = module_dir / "data.pff"
+            f_path.write_bytes(b"synthetic data")
+            
+            # Recursive chmod 0o777
+            for root, dirs, files in os.walk(mod_root):
+                os.chmod(root, 0o777)
+                for d in dirs:
+                    os.chmod(os.path.join(root, d), 0o777)
+                for f in files:
+                    os.chmod(os.path.join(root, f), 0o777)
+            
+    # Root run dir for validator
+    root_dir = host_root / run_dir
+    root_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(root_dir, 0o777)
+
+
+def copy_run_dir(run_params: dict, head_data_dir: Path) -> bool:
+    """Mock rsync by manually copying files from host DAQ_DATA_DIR to /data/head."""
+    run_dir = run_params["run_dir"]
+    host_data_root = os.environ.get("DAQ_DATA_DIR")
+    if not host_data_root:
+        return False
+        
+    daq_data = Path(host_data_root)
     dest_run = head_data_dir / run_dir
     dest_run.mkdir(parents=True, exist_ok=True)
     
     success = False
     for mid in run_params["module_id"]:
-        src = source_root / f"module_{mid}" / run_dir
+        src = daq_data / f"module_{mid}" / run_dir
         if src.exists():
             import shutil
             dest_mod = dest_run / f"module_{mid}"
@@ -58,6 +95,7 @@ async def test_transfer_daemon_archives_run(
     run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
     tmp_path: Path,
+    session_fleet: Any,
 ) -> None:
     """
     E2E happy path: enqueue job → daemon processes all 5 stages → job lands
@@ -74,8 +112,11 @@ async def test_transfer_daemon_archives_run(
     head_data_tmp.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
+    
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    run_params["data_dir"] = "/data" # Container perspective
+    
     RunStateManager().clear_state()
 
     from control.utils.pydantic_config_models import RunStateLedger
@@ -89,7 +130,7 @@ async def test_transfer_daemon_archives_run(
 
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
-    wait_hashpipe_running(daq_control_direct, run_params["data_dir"], timeout=5)
+    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
     daq_config = config_file.get_daq_config()
     daq_config.head_node_data_dir = str(head_data_tmp)
 
@@ -99,16 +140,23 @@ async def test_transfer_daemon_archives_run(
     # Ensure head dir exists for stop_run
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
 
-    # Ensure daqnode dirs exist for manifest generation (shared volume)
-    for node in daq_config.daq_nodes:
-        for mid in node.module_ids:
-            module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            module_dir.mkdir(parents=True, exist_ok=True)
-            (module_dir / "data.pff").write_bytes(b"synthetic data")
+    # Prepare host directories
+    _prepare_host_dirs(daq_config, run_params["run_dir"])
     
-    # Also create the root run dir because the GenerateManifestModel validator expects it!
-    root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
-    root_run_dir.mkdir(parents=True, exist_ok=True)
+    # DIAGNOSTIC: check visibility from inside the container
+    fleet, _ = session_fleet
+    for container in fleet._containers:
+        raw_container = container.get_wrapped_container()
+        res = raw_container.exec_run("ls -R /data")
+        print(f"DIAGNOSTIC: ls -R /data in {raw_container.name}:\n{res.output.decode()}")
+    
+    # Verification: check host directory existence directly
+    host_data_root = os.environ.get("DAQ_DATA_DIR")
+    if host_data_root:
+        for node in daq_config.daq_nodes:
+            for mid in node.module_ids:
+                p = Path(host_data_root) / f"module_{mid}" / run_params["run_dir"]
+                assert p.is_dir(), f"Host directory {p} was not created!"
 
     # 2. Stop real run (enqueues job)
     success = await stop.stop_run(
@@ -129,8 +177,19 @@ async def test_transfer_daemon_archives_run(
         ok = copy_run_dir(run_params, Path(job.head_data_dir))
         return MagicMock(returncode=0 if ok else 1, stderr="Simulated copy failed")
 
-    with patch("control.transfer.daemon.subprocess.run", side_effect=mocked_rsync):
-        job_success = await _process_job(job)
+    # Use fully qualified path for patching
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    
+    def _get_mapped_client(host, port=50051):
+        for node in daq_config.daq_nodes:
+            if str(node.ip_addr) == host:
+                return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
+        return AsyncDaqControlClient(host=host, port=port)
+
+    with patch("control.transfer.daemon.subprocess.run", side_effect=mocked_rsync), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+        # Allow up to 30s for the entire multi-node manifest/transfer/cleanup state machine
+        job_success = await asyncio.wait_for(_process_job(job), timeout=30.0)
         assert job_success
 
     tq.complete(job.run_name)
@@ -163,15 +222,16 @@ async def test_transfer_daemon_resumes_after_crash(
     head_data_tmp.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
+    
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    run_params["data_dir"] = "/data"
+    
     RunStateManager().clear_state()
 
-    RunStateManager()
-    
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
-    wait_hashpipe_running(daq_control_direct, run_params["data_dir"], timeout=5)
+    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
     daq_config = config_file.get_daq_config()
     daq_config.head_node_data_dir = str(head_data_tmp)
 
@@ -179,15 +239,7 @@ async def test_transfer_daemon_resumes_after_crash(
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    for node in daq_config.daq_nodes:
-        for mid in node.module_ids:
-            module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            module_dir.mkdir(parents=True, exist_ok=True)
-            (module_dir / "data.pff").write_bytes(b"synthetic data")
-    
-    # Also create the root run dir because the GenerateManifestModel validator expects it!
-    root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
-    root_run_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_host_dirs(daq_config, run_params["run_dir"])
 
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
@@ -195,21 +247,32 @@ async def test_transfer_daemon_resumes_after_crash(
     job = tq.claim()
     assert job is not None
 
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    def _get_mapped_client(host, port=50051):
+        for node in daq_config.daq_nodes:
+            if str(node.ip_addr) == host:
+                return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
+        return AsyncDaqControlClient(host=host, port=port)
+
     # Simulate crash mid-rsync (Stage 2)
     # We must ensure Stage 1 (Manifest) passes first!
-    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")), \
-         pytest.raises(RuntimeError, match="Simulated crash"):
-        await _process_job(job)
+    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")):
+        with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+            with pytest.raises(RuntimeError, match="Simulated crash"):
+                await _process_job(job)
+                
     # Orphaned in active/. Move back to pending/
     os.rename(tq._queue / "active" / f"{job.run_name}.job.toml", tq._queue / "pending" / f"{job.run_name}.job.toml")
 
     job2 = tq.claim()
     assert job2 is not None
 
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
-        success2 = await _process_job(job2)
+    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+        success2 = await asyncio.wait_for(_process_job(job2), timeout=30.0)
         assert success2
         tq.complete(job2.run_name)
+
 
     assert (tq._queue / "completed" / f"{run_params['run_dir']}.job.toml").exists()
     monkeypatch.undo()
@@ -234,35 +297,37 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     head_data_tmp.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
+    
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    run_params["data_dir"] = "/data"
+    
     RunStateManager().clear_state()
 
     daq_config = config_file.get_daq_config()
     daq_config.head_node_data_dir = str(head_data_tmp)
     net = config_file.get_network_config()
-
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    for node in daq_config.daq_nodes:
-        for mid in node.module_ids:
-            module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            module_dir.mkdir(parents=True, exist_ok=True)
-            (module_dir / "data.pff").write_bytes(b"synthetic data")
-
-    # Also create the root run dir because the GenerateManifestModel validator expects it!
-    root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
-    root_run_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_host_dirs(daq_config, run_params["run_dir"])
 
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()
 
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    def _get_mapped_client(host, port=50051):
+        for node in daq_config.daq_nodes:
+            if str(node.ip_addr) == host:
+                return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
+        return AsyncDaqControlClient(host=host, port=port)
+
     # Attempt 1
     job1 = tq.claim()
     assert job1 is not None
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")):
+    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success1 = await _process_job(job1)
         assert not success1
         tq.fail(job1.run_name)
@@ -272,7 +337,8 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 2
     job2 = tq.claim()
     assert job2 is not None
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")):
+    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success2 = await _process_job(job2)
         assert not success2
         tq.fail(job2.run_name)
@@ -282,10 +348,12 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 3
     job3 = tq.claim()
     assert job3 is not None
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
-        success3 = await _process_job(job3)
+    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+        success3 = await asyncio.wait_for(_process_job(job3), timeout=30.0)
         assert success3
         tq.complete(job3.run_name)
+
 
     assert (tq._queue / "completed" / f"{run_params['run_dir']}.job.toml").exists()
     monkeypatch.undo()
@@ -311,26 +379,20 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     head_data_tmp.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
     PanoPaths.ensure_state_dirs()
+    
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    run_params["data_dir"] = "/data"
+    
     RunStateManager().clear_state()
 
     daq_config = config_file.get_daq_config()
     daq_config.head_node_data_dir = str(head_data_tmp)
     net = config_file.get_network_config()
-
     uids = config_file.get_quabo_uids()
 
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    for node in daq_config.daq_nodes:
-        for mid in node.module_ids:
-            module_dir = Path(run_params["data_dir"]) / f"module_{mid}" / run_params["run_dir"]
-            module_dir.mkdir(parents=True, exist_ok=True)
-            (module_dir / "data.pff").write_bytes(b"synthetic data")
-
-    # Also create the root run dir because the GenerateManifestModel validator expects it!
-    root_run_dir = Path(run_params["data_dir"]) / run_params["run_dir"]
-    root_run_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_host_dirs(daq_config, run_params["run_dir"])
 
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
@@ -338,7 +400,15 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     job = tq.claim()
     assert job is not None
 
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Persistent failure")):
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    def _get_mapped_client(host, port=50051):
+        for node in daq_config.daq_nodes:
+            if str(node.ip_addr) == host:
+                return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
+        return AsyncDaqControlClient(host=host, port=port)
+
+    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Persistent failure")), \
+         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         for attempt in range(MAX_ATTEMPTS):
             success = await _process_job(job)
             assert not success

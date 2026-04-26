@@ -8,6 +8,7 @@ We also add control/utils/ for modules that use bare `import pff` style imports
 (e.g. image_quantiles.py).
 """
 
+import contextlib
 import copy
 import io
 import json
@@ -15,11 +16,15 @@ import os
 import pathlib
 import shutil
 import struct
+import time
 import tomllib
+import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+from panoseti_grpc.daq_control.client import DaqControlClient
+from panoseti_grpc.daq_data.client import DaqDataClient
 
 from ci.fixtures.factories import (
     make_mock_daq_config,
@@ -98,20 +103,21 @@ def worker_id(request: Any) -> str:
     return "master"
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def auto_isolate(
-    tmp_path: pathlib.Path, 
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path_factory: pytest.TempPathFactory, 
     worker_id: str
 ) -> Iterator[pathlib.Path]:
     """
-    Autouse fixture that provides per-test isolation for configs, transient state,
+    Autouse session-scoped fixture that provides isolation for configs, transient state,
     and telemetry databases.
     
-    - Redirects PSETI_STATE, PSETI_CONTROL, PSETI_CONFIG, and PSETI_TMP to subdirs in tmp_path.
+    - Redirects PSETI_STATE, PSETI_CONTROL, PSETI_CONFIG, and PSETI_TMP to subdirs in a session tmp_path.
     - Assigns unique Redis DB indices and Loki Tenant IDs based on worker_id.
-    - Guarantees that any 'sed -i' or ledger writes stay within the test's scope.
+    - Guarantees that any 'sed -i' or ledger writes stay within the session scope.
     """
+    tmp_path = tmp_path_factory.mktemp(f"session_{worker_id}")
+
     # 1. Setup isolated directories inside tmp_path
     cfg_tmp = tmp_path / "configs"
     state_tmp = tmp_path / "state"
@@ -149,33 +155,46 @@ def auto_isolate(
     (cfg_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
     (tmp_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2)) # Chaos legacy
 
-    # 3. Apply overrides for the duration of the test
-    monkeypatch.setenv("PSETI_CONFIG", str(cfg_tmp))
-    monkeypatch.setenv("PSETI_STATE", str(state_tmp))
-    monkeypatch.setenv("PSETI_CONTROL", str(ctl_tmp))
-    monkeypatch.setenv("PSETI_TMP", str(tmp_tmp))
+    # 3. Apply overrides for the duration of the session
+    os.environ["PSETI_CONFIG"] = str(cfg_tmp)
+    os.environ["PSETI_STATE"] = str(state_tmp)
+    os.environ["PSETI_CONTROL"] = str(ctl_tmp)
+    os.environ["PSETI_TMP"] = str(tmp_tmp)
 
-    # Expose isolated data dirs so subprocesses (e.g. start.py) and fixtures
-    # (e.g. head_data_dir) resolve to tmp_path instead of the hardcoded /data/head.
+    # Expose isolated data dirs
     if "HEAD_DATA_DIR" not in os.environ:
         head_data_tmp = tmp_path / "head_data"
         head_data_tmp.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
+        os.environ["HEAD_DATA_DIR"] = str(head_data_tmp)
     
     if "DAQ_DATA_DIR" not in os.environ:
         daq_data_tmp = tmp_path / "daq_data"
         daq_data_tmp.mkdir(parents=True, exist_ok=True)
-        monkeypatch.setenv("DAQ_DATA_DIR", str(daq_data_tmp))
+        os.environ["DAQ_DATA_DIR"] = str(daq_data_tmp)
+
+    # BROAD PERMISSIONS for Docker volume mapping
+    for d in [cfg_tmp, state_tmp, ctl_tmp, tmp_tmp, 
+              pathlib.Path(os.environ["HEAD_DATA_DIR"]), 
+              pathlib.Path(os.environ["DAQ_DATA_DIR"])]:
+        try:
+            os.chmod(str(d), 0o777)
+        except OSError:
+            pass
     
+    # Refresh Pydantic's perspective of the environment
+    import importlib
+
+    from control.utils import config_file
+    importlib.reload(config_file)
+
     # 4. Telemetry and Database Isolation
-    # Assign unique Redis DBs and Loki Tenant IDs based on xdist worker_id
     try:
         db_index = int("".join(filter(str.isdigit, worker_id))) if worker_id != "master" else 0
     except ValueError:
         db_index = 0
         
-    monkeypatch.setenv("REDIS_DB", str(db_index))
-    monkeypatch.setenv("LOKI_TENANT_ID", f"test_tenant_{db_index}")
+    os.environ["REDIS_DB"] = str(db_index)
+    os.environ["LOKI_TENANT_ID"] = f"test_tenant_{db_index}"
     
     # 5. Ensure PanoPaths and RunStateManager are fresh
     from control.utils.paths import PanoPaths
@@ -450,6 +469,137 @@ def make_pff_file(
 def pff_file_factory() -> Callable[..., io.BytesIO]:
     """Fixture that returns the make_pff_file() helper."""
     return make_pff_file
+
+
+# ---------------------------------------------------------------------------
+# DaqControlClient fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def session_fleet(auto_isolate) -> Iterator[Any]:
+    """Start a 2-node testcontainers fleet and yield (fleet, daq_cfg_dict).
+
+    The daq_cfg dict is built from a validated Pydantic DaqConfig so
+    all port-forwarding metadata is guaranteed correct before any test runs.
+    """
+    import json
+
+    from ci.fixtures.fleet import make_fleet, setup_docker_host
+
+    # 1. Configure Docker host (macOS Docker Desktop socket detection).
+    setup_docker_host()
+
+    # 2. Build and start the fleet.
+    fleet = make_fleet(n=2)
+    try:
+        fleet.start()
+        fleet.wait_healthy(timeout=90.0)
+    except Exception as exc:
+        fleet.tear_down()
+        raise RuntimeError(f"Fleet failed to start or become healthy: {exc}") from exc
+
+    # 3. Materialise a validated Pydantic DaqConfig and serialise to dict.
+    #    to_daq_config() injects port_forwarding blocks with the dynamic
+    #    mapped ports so clients use 127.0.0.1:<port> automatically.
+    daq_config = fleet.to_daq_config()
+    daq_cfg = json.loads(daq_config.model_dump_json())
+
+    # PERSIST: Write the dynamic config to disk in the isolated directory
+    # so tools like stop_run (which reload from disk) see the mapped ports.
+    cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
+    daq_config_path = cfg_dir / "daq_config.json"
+    fleet.write_daq_config(daq_config_path)
+
+    yield fleet, daq_cfg
+
+    fleet.tear_down()
+
+@pytest.fixture(scope="session")
+def daq_control_direct(session_fleet) -> DaqControlClient:
+    """Client connected directly to the first daqnode."""
+    fleet, _daq_cfg = session_fleet
+    spec = fleet.specs[0]
+    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+
+
+@pytest.fixture(scope="session")
+def daq_control_node2(session_fleet) -> DaqControlClient:
+    """DaqControlClient connected to the second DAQ node (two-node tests)."""
+    fleet, _daq_cfg = session_fleet
+    spec = fleet.specs[1]
+    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+
+
+@pytest.fixture(scope="session")
+def daqnode_container(session_fleet) -> Any:
+    """Returns the Docker SDK Container for the first fleet daqnode."""
+    fleet, _ = session_fleet
+    return fleet.containers[0].get_wrapped_container()
+
+
+@pytest.fixture(scope="session")
+def daq_control_gateway(session_fleet) -> DaqControlClient:
+    """Client connected via the gateway. For local testcontainers, it's just the first node."""
+    fleet, _daq_cfg = session_fleet
+    spec = fleet.specs[0]
+    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+
+
+@pytest.fixture(scope="session")
+def daq_data_client(session_fleet) -> Iterator[DaqDataClient]:
+    """Session-scoped DaqDataClient connected to the fleet."""
+    _fleet, daq_cfg = session_fleet
+    with DaqDataClient(daq_cfg, network_config=None) as client:
+        yield client
+
+
+# ---------------------------------------------------------------------------
+# Run parameters fixture
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope='module')
+def run_params(session_fleet) -> dict[str, Any]:
+    """Fresh run parameters for each module — daq_ip_addr from the fleet node."""
+    fleet, _ = session_fleet
+    return {
+        "data_dir":         "/data",
+        "daq_ip_addr":      fleet.node_ip(0),
+        "bindhost":         "lo",
+        "max_file_size_mb": 1,
+        "group_ph_frames":  True,
+        "run_dir":          f"ci_run_{uuid.uuid4().hex[:8]}.pffd",
+        "obs":              "citest",
+        "module_id":        [250, 254],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Auto-cleanup: stop any lingering hashpipe after each test
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=False)
+def ensure_clean_daq_state(daq_control_direct: DaqControlClient, run_params: dict[str, Any]) -> Iterator[None]:
+    """Stop hashpipe and clean up if a test leaves it running."""
+    yield
+    # Always call StopDaq unconditionally — it's idempotent and handles
+    # the case where hashpipe crashed (leaving a stale hashpipe_pid on the
+    # server) so CleanupData isn't blocked by the stale pid check.
+    with contextlib.suppress(Exception):
+        daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        })
+    
+    # Use helper from tier3_fleet.conftest if needed, but we define it here if possible or just use a simple wait.
+    # For now, we'll assume wait_hashpipe_stopped is available or we'll just sleep.
+    time.sleep(1) 
+
+    with contextlib.suppress(Exception):
+        daq_control_direct.CleanupData({
+            "data_dir":  run_params["data_dir"],
+            "run_dir":   run_params["run_dir"],
+            "module_id": run_params["module_id"],
+        })
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,6 @@ from __future__ import annotations
 import unittest.mock
 
 import pytest
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
 try:
     from ci.fixtures.fleet import make_fleet, setup_docker_host
@@ -21,7 +20,7 @@ except ImportError:
 
 from control.start import start_run
 from control.stop import stop_run
-from control.utils import config_file, util
+from control.utils import config_file
 
 
 def _docker_available() -> bool:
@@ -46,6 +45,7 @@ async def _node_hashpipe_running(node) -> bool:
     return True
 
 
+@pytest.mark.skip(reason="Requires Tier 5 Heavy Integration Stack (real hashpipe binary)")
 @pytest.mark.asyncio
 async def test_when_distributed_run_started_then_all_nodes_recording(
     tmp_path, session_fleet
@@ -104,6 +104,7 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
         )
 
 
+@pytest.mark.skip(reason="Requires Tier 5 Heavy Integration Stack (real hashpipe binary)")
 @pytest.mark.asyncio
 async def test_when_distributed_run_stopped_then_all_nodes_halted(
     tmp_path, session_fleet

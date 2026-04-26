@@ -173,10 +173,20 @@ class Fleet:
         """Start all daqnode containers.  Fills spec.mapped_port for each."""
         setup_docker_host()
         self._network.create()
+        daq_data_dir = os.environ.get("DAQ_DATA_DIR")
+        # Support architectural fixes by mounting local gRPC source code
+        # Path is relative to control/ (the CWD of the test runner)
+        grpc_source = pathlib.Path("../grpc/src/panoseti_grpc").resolve()
+
         for spec in self.specs:
             container = DockerContainer(self.image)
             container.with_name(spec.name)
             container.with_network(self._network)
+            if daq_data_dir:
+                container.with_volume_mapping(daq_data_dir, "/data", "rw")
+            
+            if grpc_source.exists():
+                container.with_volume_mapping(str(grpc_source), "/grpc/src/panoseti_grpc", "rw")
             container.with_exposed_ports(spec.grpc_container_port)
             container.with_env("GRPC_PORT", str(spec.grpc_container_port))
             # gRPC log forwarding will fail gracefully when headnode is
@@ -284,6 +294,11 @@ class Fleet:
         Raises:
             RuntimeError: if start() has not been called yet.
         """
+        # Container perspective: data is always at /data
+        # Mapped to host via volume mapping in start()
+        daq_data_dir = "/data"
+        head_data_dir = os.environ.get("HEAD_DATA_DIR", "/data/head")
+
         daq_nodes: list[DaqNode] = []
         for i, spec in enumerate(self.specs):
             if spec.mapped_port is None:
@@ -293,11 +308,12 @@ class Fleet:
             pf = PortForwarding(
                 status=True,
                 gw_ip=IPv4Address(spec.container_host_ip),
+                port=2222,  # Dummy SSH port (must be >= 1024) for build_rsync_cmd
                 grpc_port=spec.mapped_port,
             )
             node = DaqNode(
                 username="panoseti",
-                data_dir="/data",
+                data_dir=daq_data_dir,
                 # Placeholder — never used for routing; isolates from head_node_ip
                 # so Pydantic's check_head_node_data_dir_match stays silent.
                 ip_addr=IPv4Address(f"{_PLACEHOLDER_SUBNET}.{_PLACEHOLDER_OFFSET + i}"),
@@ -308,7 +324,7 @@ class Fleet:
             daq_nodes.append(node)
 
         return DaqConfig(
-            head_node_data_dir="/data/head",
+            head_node_data_dir=head_data_dir,
             head_node_ip_addr=IPv4Address(head_node_ip),
             head_node_container=True,
             daq_nodes=daq_nodes,

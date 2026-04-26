@@ -466,8 +466,10 @@ class TestSC033StaleInterleavePID:
                 "with a stale PID — the file was not cleaned up."
             )
             # PID 1 (init) must still be running — we must not have killed it
-            assert pathlib.Path("/proc/1").exists(), \
-                "CRITICAL: PID 1 (/proc/1) is gone — stop_interleave() killed init!"
+            # /proc/1 check only works on Linux
+            if pathlib.Path("/proc").exists():
+                assert pathlib.Path("/proc/1").exists(), \
+                    "CRITICAL: PID 1 (/proc/1) is gone — stop_interleave() killed init!"
 
         finally:
             stop_module.PID_FILE = original

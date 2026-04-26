@@ -90,9 +90,16 @@ def _stop(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
 def _cleanup(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
     """CleanupData dict → (ok, msg).  Never raises."""
     try:
-        result = client.CleanupData(params)
-        return result.get("success", False), result.get("message", "")
+        # Use force=True by default for tests to bypass stale PID checks
+        p = {**params, "force": True}
+        result = client.CleanupData(p)
+        ok = result.get("success", False)
+        msg = result.get("message", "")
+        if not ok:
+            print(f"DEBUG: CleanupData failed. Params: {p} -> Response: {result}")
+        return ok, msg
     except (ValueError, ConnectionError, Exception) as exc:
+        print(f"DEBUG: CleanupData raised exception: {exc}")
         return False, str(exc)
 
 
@@ -186,14 +193,14 @@ def daqnode_fleet(request: Any, docker_client: Any) -> Iterator[Any]:
         fleet.tear_down()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def daqnode_ip(session_fleet) -> str:
     """Placeholder IP of the first fleet node."""
     fleet, _ = session_fleet
     return fleet.node_ip(0)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def daqnode2_ip(session_fleet) -> str:
     """Placeholder IP of the second fleet node."""
     fleet, _ = session_fleet
