@@ -632,18 +632,6 @@ def mock_daq_config_for_headnode():
         with open(ph_baseline, "w") as f:
             json.dump({"quabos": []}, f)
 
-    # Use the real loader to get module IDs
-    module_ids = []
-    try:
-        quabo_uids = config_file.get_quabo_uids()
-        for dome in quabo_uids.domes:
-            for module in dome.modules:
-                # module.ip_addr can be used to derive ID if id is missing
-                mid = config_file.ip_addr_to_module_id(str(module.ip_addr))
-                module_ids.append(mid)
-    except Exception as e:
-        print(f"Warning: could not load quabo_uids: {e}")
-
     if os.path.exists(path):
         import shutil
         shutil.copyfile(path, backup)
@@ -662,6 +650,15 @@ def mock_daq_config_for_headnode():
     cfg["head_node_ip_addr"] = tester_ip
     cfg["head_node_data_dir"] = tmp_data_dir
     cfg["head_node_container"] = True
+    
+    # Coherence Fix: Ensure the DAQ node is handling ALL modules defined in the 
+    # current obs_config.json to prevent "no DAQ node is handling module X" errors.
+    mids = []
+    obs = config_file.get_obs_config()
+    for dome in obs.domes:
+        for module in dome.modules:
+            mids.append(config_file.ip_addr_to_module_id(str(module.ip_addr)))
+
     # Assign ALL modules to the single available CI node
     # Use the reachable daqnode IP from the environment for gRPC success.
     # SSH/SCP are handled by fake_bin in run_start_and_kill.
@@ -671,7 +668,7 @@ def mock_daq_config_for_headnode():
             "ip_addr": daqnode_ip,
             "data_dir": "/data",
             "username": "root",
-            "module_ids": module_ids,
+            "module_ids": mids,
             "bindhost": "lo"
         }
     ]
@@ -761,8 +758,10 @@ async def test_SC021_killed_after_make_run_dirs_leaves_orphan_dirs(
     if mgr.lock_path.exists():
         mgr.lock_path.unlink()
     
-    # Ensure /data/head exists for CI
-    os.makedirs("/data/head", exist_ok=True)
+    # Ensure head_node_data_dir exists for CI
+    head_data_dir = os.environ.get("HEAD_DATA_DIR")
+    if head_data_dir:
+        os.makedirs(head_data_dir, exist_ok=True)
     
     # 1. Kill start.py after run dirs are created
     await run_start_and_kill("setting up run directories for")
@@ -808,7 +807,6 @@ async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
         import subprocess
         env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
-        env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
             ["python3", "-m", "control.stop", "--yes", "--no_collect", "--no_cleanup"],
             capture_output=True, text=True, env=env
@@ -838,7 +836,8 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     # Link to the chaos config which has the mock modules
     src = PanoPaths.base_dir() / "ci/fixtures/configs/quabo_uids_chaos.json"
     if src.exists():
-        target.symlink_to(src)
+        shutil.copy(src, target)
+        os.chmod(target, 0o666)
 
     # 1. Kill after recording starts
 
@@ -864,7 +863,6 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
         env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
-        env["PSETI_IS_CONTAINER"] = "1"
         result = subprocess.run(
             ["python3", "-m", "control.start", "--yes", "--force-reset", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
             capture_output=True, text=True, env=env
@@ -1173,7 +1171,7 @@ def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
     try:
         # 2. Run start.py — it must fail because 192.168.250.250 is unreachable
         # and it's listed in our UID map.
-        env = os.environ.copy()
+        env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         env["PSETI_IS_CONTAINER"] = "0"

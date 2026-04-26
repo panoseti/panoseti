@@ -34,23 +34,12 @@ def _require_telemetry() -> None:
         pytest.skip("Set ENABLE_TELEMETRY_TESTS=1 to run telemetry tests")
 
 
-def _redis_client() -> Any:
-    try:
-        import redis
-        return redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
-    except Exception as e:
-        pytest.skip(f"Redis unavailable: {e}")
-
-
 @pytest.fixture(autouse=True)
-def clear_redis_logs() -> Generator[None]:
+def clear_redis_logs(redis_client) -> Generator[None]:
     """Ensure a clean slate for telemetry tests."""
-    rc = _redis_client()
-    if rc:
-        rc.delete("logs:ingress", "logs:processing")
+    redis_client.delete("logs:ingress", "logs:processing")
     yield
-    if rc:
-        rc.delete("logs:ingress", "logs:processing")
+    redis_client.delete("logs:ingress", "logs:processing")
 
 
 def _make_log_entry(payload: str, ts: float | None = None) -> str:
@@ -107,7 +96,7 @@ def _wait_for_loki_tag(tag: str, timeout: float = 15.0) -> bool:
 
 # ── SC-056: Loki down during run ──────────────────────────────────────────────
 
-def test_SC056_loki_down_does_not_crash_storeLoki(monkeypatch) -> None:
+def test_SC056_loki_down_does_not_crash_storeLoki(monkeypatch, redis_client) -> None:
     """
     storeLoki.py should buffer or die loudly when Loki is unavailable.
     Currently: it might crash or OOM if not careful.
@@ -120,7 +109,7 @@ def test_SC056_loki_down_does_not_crash_storeLoki(monkeypatch) -> None:
 
     from control.daemons.storeLoki import LokiPublisher
     
-    rc = _redis_client()
+    rc = redis_client
     publisher = LokiPublisher("http://loki:3100/loki/api/v1/push", rc)
     
     # Mock requests.post to raise a ConnectionError
@@ -178,14 +167,14 @@ def test_SC057_redis_full_raises_backpressure(monkeypatch) -> None:
 
 # ── SC-061: Large log payload ─────────────────────────────────────────────────
 
-def test_SC061_large_log_payload_ships_without_crash() -> None:
+def test_SC061_large_log_payload_ships_without_crash(redis_client) -> None:
     """
     A 100 KB log line must not crash the gRPC log handler or storeLoki.py.
 
     Pins the large-payload contract.
     """
     _require_telemetry()
-    rc = _redis_client()
+    rc = redis_client
 
     # Push the large payload using the storeLoki-expected format (payload_json field)
     large_payload = "X" * 100_000  # 100 KB
@@ -203,13 +192,13 @@ def test_SC061_large_log_payload_ships_without_crash() -> None:
 
 # ── SC-062: Non-UTF8 bytes in log message ─────────────────────────────────────
 
-def test_SC062_non_utf8_log_message_does_not_crash() -> None:
+def test_SC062_non_utf8_log_message_does_not_crash(redis_client) -> None:
     """
     A log message containing non-UTF8 bytes must not crash storeLoki.py.
     Lone surrogate pairs in payload_json must be handled gracefully.
     """
     _require_telemetry()
-    rc = _redis_client()
+    rc = redis_client
 
     # Embed lone surrogates inside payload_json; the json.dumps encode path in
     # storeLoki's flush() must not raise on this.
@@ -228,13 +217,13 @@ def test_SC062_non_utf8_log_message_does_not_crash() -> None:
 
 # ── SC-063: Burst logging ──────────────────────────────────────────────────────
 
-def test_SC063_burst_logging_all_entries_arrive() -> None:
+def test_SC063_burst_logging_all_entries_arrive(redis_client) -> None:
     """
     10k log/s burst for 2 s (20k entries) — batcher must keep up.
     All entries (or near-all) must arrive in Loki.
     """
     _require_telemetry()
-    rc = _redis_client()
+    rc = redis_client
 
     burst_tag = f"sc063_{uuid.uuid4().hex[:8]}"
     N = 200  # reduced from 20k to keep test fast while still proving the path
@@ -298,7 +287,7 @@ def test_SC060_storeloki_crash_logs_pile_in_redis() -> None:
 
 # ── SC-064: Clock skew between head and DAQ ───────────────────────────────────
 
-def test_SC064_loki_timestamp_skew_within_tolerance() -> None:
+def test_SC064_loki_timestamp_skew_within_tolerance(redis_client) -> None:
     """
     SC-064: Loki requires log entries to arrive in monotonically increasing
     timestamp order within a stream. A 2 s clock skew between head and DAQ
@@ -308,7 +297,7 @@ def test_SC064_loki_timestamp_skew_within_tolerance() -> None:
     reasonable timestamps (within ±10 s of wall time).
     """
     _require_telemetry()
-    rc = _redis_client()
+    rc = redis_client
 
     now = time.time()
     tag = f"sc064_{uuid.uuid4().hex[:8]}"
@@ -380,7 +369,7 @@ def test_SC066_startup_proceeds_when_telemetry_unavailable() -> None:
 
 # ── SC-067: storeLoki.py crash during flush ───────────────────────────────────
 
-def test_SC067_storeLoki_crash_during_flush_no_silent_loss() -> None:
+def test_SC067_storeLoki_crash_during_flush_no_silent_loss(redis_client) -> None:
     """
     SC-067: Ensure that if storeLoki.py crashes during a flush to Loki,
     the messages are not silently lost.
@@ -389,7 +378,7 @@ def test_SC067_storeLoki_crash_during_flush_no_silent_loss() -> None:
     popping but before successful POST, those logs are lost forever.
     """
     _require_telemetry()
-    rc = _redis_client()
+    rc = redis_client
 
     # Clear any existing chaos triggers
     rc.delete("chaos:storeLoki:crash_on_flush")
@@ -424,7 +413,7 @@ def test_SC067_storeLoki_crash_during_flush_no_silent_loss() -> None:
 
 # ── SC-068: SANDBOX: TTL expiry during a read ─────────────────────────────────
 
-def test_SC068_sandbox_key_ttl_expiry_during_read_is_handled() -> None:
+def test_SC068_sandbox_key_ttl_expiry_during_read_is_handled(redis_client) -> None:
     """
     SC-068: A SANDBOX: key with a short TTL that expires between a write and read
     must not crash the reader. The reader must handle None/missing key gracefully.
@@ -432,7 +421,7 @@ def test_SC068_sandbox_key_ttl_expiry_during_read_is_handled() -> None:
     Pins the TTL-race robustness contract for SANDBOX-prefixed Redis keys.
     """
     _require_telemetry()
-    rc = _redis_client()
+    rc = redis_client
 
     key = f"SANDBOX:sc068:{uuid.uuid4().hex[:8]}"
     rc.set(key, "test-value", ex=1)  # 1 s TTL

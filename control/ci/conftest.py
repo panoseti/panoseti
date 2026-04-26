@@ -152,14 +152,26 @@ def auto_isolate(
     (cfg_tmp / "daq_config.json").write_text(daq_cfg.model_dump_json(indent=2))
     (cfg_tmp / "obs_config.json").write_text(obs_cfg.model_dump_json(indent=2))
     (cfg_tmp / "network_config.json").write_text(net_cfg.model_dump_json(indent=2))
-    (cfg_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
-    (tmp_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2)) # Chaos legacy
+    
+    # 4. Provide quabo_uids.json for Chaos tests
+    # Prefer the chaos-specific config which has the mock modules
+    uids_src = pathlib.Path(__file__).parent / "fixtures" / "configs" / "quabo_uids_chaos.json"
+    if uids_src.exists():
+        shutil.copy(uids_src, cfg_tmp / "quabo_uids.json")
+        shutil.copy(uids_src, tmp_tmp / "quabo_uids.json")
+        os.chmod(cfg_tmp / "quabo_uids.json", 0o666)
+        os.chmod(tmp_tmp / "quabo_uids.json", 0o666)
+    else:
+        # Fallback to generated if chaos-specific is missing
+        (cfg_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
+        (tmp_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
 
     # 3. Apply overrides for the duration of the session
     os.environ["PSETI_CONFIG"] = str(cfg_tmp)
     os.environ["PSETI_STATE"] = str(state_tmp)
     os.environ["PSETI_CONTROL"] = str(ctl_tmp)
     os.environ["PSETI_TMP"] = str(tmp_tmp)
+    os.environ["PSETI_QUABOS"] = str(tmp_tmp)
 
     # Expose isolated data dirs
     if "HEAD_DATA_DIR" not in os.environ:
@@ -175,14 +187,6 @@ def auto_isolate(
         os.environ["DAQ_DATA_DIR"] = str(daq_data_tmp)
         # Ensure it is writable by container
         os.chmod(str(daq_data_tmp), 0o777)
-
-    # 4. Provide quabo_uids.json for Chaos tests
-    # Link to the chaos config which has the mock modules
-    uids_src = pathlib.Path(__file__).parent / "fixtures" / "configs" / "quabo_uids_chaos.json"
-    uids_dst = tmp_tmp / "quabo_uids.json"
-    if uids_src.exists():
-        shutil.copy(uids_src, uids_dst)
-        os.chmod(uids_dst, 0o666)
 
     # 5. Refresh Pydantic's perspective of the environment
     import importlib
@@ -552,6 +556,19 @@ def daq_control_gateway(session_fleet) -> DaqControlClient:
     spec = fleet.specs[0]
     return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
 
+
+@pytest.fixture(scope="session")
+def redis_client(session_fleet) -> Iterator[Any]:
+    """Session-scoped Redis client connected to the fleet."""
+    import redis
+    fleet, _daq_cfg = session_fleet
+    r = redis.Redis(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=fleet.redis_port,
+        db=int(os.getenv("REDIS_DB", "0")),
+        decode_responses=True
+    )
+    yield r
 
 @pytest.fixture(scope="session")
 def daq_data_client(session_fleet) -> Iterator[DaqDataClient]:

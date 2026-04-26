@@ -223,10 +223,22 @@ def sw_chaos(
     if not ok:
         raise typer.Exit(code=1)
 
+@sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def sw_integration(
+    ctx: typer.Context,
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+) -> None:
+    """Tier 5: Heavy Integration (Hashpipe, Static stack)"""
+    if tool and hasattr(ctx, "obj") and ctx.obj:
+        ctx.obj.container_tool = tool
+    ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
+
 @sw_app.command(name="all")
 def sw_all(ctx: typer.Context) -> None:
-    """Run the full software testing suite (Tiers 1-4)"""
-    suites = ["lint", "unit", "logic", "fleet", "chaos"]
+    """Run the full software testing suite (Tiers 1-5)"""
+    suites = ["lint", "unit", "logic", "fleet", "chaos", "integration"]
     success = True
     for s in suites:
         ok = asyncio.run(ctx.obj.run_suite(s))

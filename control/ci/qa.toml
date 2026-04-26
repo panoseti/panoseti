@@ -54,6 +54,12 @@ requires_docker = false
 test_dir = "ci/tier4_chaos/"
 env = { ENABLE_TELEMETRY_TESTS = "1" }
 
+[suites.integration]
+description = "Tier 5: Heavy Integration (Hashpipe, Static stack)"
+type = "test"
+requires_docker = false
+test_dir = "ci/tier5_integration/"
+
 [suites.test-hw]
 description = "Physical Hardware-Software (HITL) tests"
 type = "test"

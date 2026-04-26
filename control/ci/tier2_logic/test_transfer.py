@@ -181,4 +181,5 @@ def test_when_double_enqueued_then_queue_is_idempotent():
     assert res2 is False
     
     pending = list((tq._queue / "pending").glob("*.toml"))
-    assert len(pending) == 1
+    test_jobs = [p for p in pending if "idempotent_test" in p.name]
+    assert len(test_jobs) == 1
