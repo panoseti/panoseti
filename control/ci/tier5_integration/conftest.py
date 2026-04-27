@@ -51,6 +51,21 @@ def daq_control_node2():
     """Client connected directly to the second static daqnode."""
     return DaqControlClient(host=DAQNODE2_DIRECT_HOST, port=GRPC_PORT)
 
+@pytest.fixture(autouse=True)
+def ensure_clean_daq_state(daq_control_direct, daq_control_node2) -> Iterator[None]:
+    """Ensure no Hashpipe instances are running before and after the test."""
+    def _stop_all():
+        for client in (daq_control_direct, daq_control_node2):
+            with contextlib.suppress(Exception):
+                client.StopDaq({"data_dir": "/data", "run_dir": ""})
+            wait_hashpipe_stopped(client, "/data", timeout=8)
+        from control.utils.run_state import RunStateManager
+        RunStateManager().clear_state()
+
+    _stop_all()
+    yield
+    _stop_all()
+
 @pytest.fixture(scope="session")
 def redis_client() -> Iterator[Any]:
     """Static Redis client connected to the compose service."""

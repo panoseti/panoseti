@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import os
 import unittest.mock
+import contextlib
+import uuid
+from collections.abc import Iterator
 
 import pytest
 
 from control.start import start_run
 from control.stop import stop_run
 from control.utils import config_file
+from control.utils.run_state import RunStateManager
+from ci.tier3_fleet.conftest import wait_hashpipe_stopped
 
 
 def _prepare_daq_dirs(daq_cfg, run_name: str) -> None:
@@ -55,7 +60,7 @@ async def _node_hashpipe_running(node_ip: str) -> bool:
 
 @pytest.mark.asyncio
 async def test_when_distributed_run_started_then_all_nodes_recording(
-    tmp_path, daq_control_direct, daq_control_node2
+    tmp_path, daq_control_direct, daq_control_node2, ensure_clean_daq_state
 ) -> None:
     """Verify distributed gRPC orchestration for a multi-node run in heavy stack."""
     # Use the session-isolated configs from the environment
@@ -75,7 +80,7 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
     (tmp_path / "head_data").mkdir(parents=True, exist_ok=True)
     daq_cfg.head_node_data_dir = str(tmp_path / "head_data")
 
-    run_name = "dist_test_run.pffd"
+    run_name = f"dist_test_run_{uuid.uuid4().hex[:8]}.pffd"
     _prepare_daq_dirs(daq_cfg, run_name)
     with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
             unittest.mock.patch("control.start._check_daq_reachability"), \
@@ -99,7 +104,7 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
 
 @pytest.mark.asyncio
 async def test_when_distributed_run_stopped_then_all_nodes_halted(
-    tmp_path, daq_control_direct, daq_control_node2
+    tmp_path, daq_control_direct, daq_control_node2, ensure_clean_daq_state
 ) -> None:
     """Verify clean teardown of a distributed observing run in heavy stack."""
     config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
@@ -113,7 +118,7 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
     (tmp_path / "head_data").mkdir(parents=True, exist_ok=True)
     daq_cfg.head_node_data_dir = str(tmp_path / "head_data")
 
-    run_name = "stop_test_run.pffd"
+    run_name = f"stop_test_run_{uuid.uuid4().hex[:8]}.pffd"
     _prepare_daq_dirs(daq_cfg, run_name)
     with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
             unittest.mock.patch("control.start._check_daq_reachability"), \
@@ -138,8 +143,13 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
     # All nodes must be halted
     for node in daq_cfg.daq_nodes:
         ip = str(node.port_forwarding.gw_ip) if node.port_forwarding else str(node.ip_addr)
-        assert not await _node_hashpipe_running(ip), f"hashpipe still running on node {ip}"
+        # Use mapped IPs for external client check
+        from panoseti_grpc.daq_control.client import DaqControlClient
+        client = DaqControlClient(host=ip, port=50051)
+        try:
+            assert wait_hashpipe_stopped(client, "/data", timeout=10), f"hashpipe still running on node {ip}"
+        finally:
+            client.close()
 
-    from control.utils.run_state import RunStateManager
     ledger = RunStateManager().load_state()
     assert ledger is not None and ledger.status == "RECORDING_ENDED"

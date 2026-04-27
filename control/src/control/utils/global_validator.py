@@ -158,7 +158,7 @@ class GlobalConfigValidator:
                 self.report.add_test("Science Guardrails", "WARN",
                                      f"Run type '{run_type}' has flash/stim enabled. Artificial signals will be injected.")
                 return
-        self.report.add_test("Science Guardrails", "PASS", f"Run type: {run_type}")
+        self.report.add_test("Science Guardrails", "PASS", f"Run type: '{run_type}'")
 
     def _check_geospatial_coherence(self) -> None:
         """Ensure all domes are within a reasonable physical distance (2km).

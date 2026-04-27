@@ -171,21 +171,13 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     node1_ip = IPv4Address(f"{daq_prefix}.10")
     mod1_ip = IPv4Address(f"{quabo_prefix}.32")
     
-    # ── Node 2: Port Forwarded (Via Gateway) ──
+    # ── Node 2: Direct Connection (Previously incorrect Gateway) ──
     node2_ip = IPv4Address(f"{daq_prefix}.20")
-    gw_ip = IPv4Address(f"{head_prefix}.254")
     mod2_ip = IPv4Address(f"{quabo_prefix}.36") # Not actually booted in CI, but conceptually exists
-    
-    pf2 = PortForwarding(
-        status=True,
-        gw_ip=gw_ip,
-        port=50022,
-        grpc_port=50051
-    )
     
     daq_nodes = [
         DaqNode(username="panoseti", data_dir="/data", ip_addr=node1_ip, module_ids=[200], bindhost="lo"),
-        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[201], port_forwarding=pf2, bindhost="lo")
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[201], bindhost="lo")
     ]
     
     daq_config = DaqConfig(
@@ -202,23 +194,10 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     quabo_uids = QuaboUids(domes=[QuaboUidDome(num=0, modules=quabo_uid_modules)])
     
     network_modules = [
-        # Node 1 is direct, no PF entry needed
-        # Node 2 is port forwarded
-        NetworkModule(
-            ip_addr=mod2_ip,
-            port_forwarding=PortForwarding(
-                status=True,
-                gw_ip=gw_ip,
-                reboot_port=[69, 60004, 60005, 60006],
-                cmd_port=[60000, 60001, 60002, 60003]
-            )
-        )
+        # Both nodes are direct, no PF entries needed
     ]
     network_daq_nodes = [
-        NetworkDaqNode(
-            ip_addr=node2_ip,
-            port_forwarding=pf2
-        )
+        # Both nodes are direct, no PF entries needed
     ]
     network_config = NetworkConfig(modules=network_modules, daq_nodes=network_daq_nodes)
     

@@ -16,13 +16,15 @@ import pytest
 from control.transfer.daemon import run_daemon
 from control.transfer.lifecycle import MAX_ATTEMPTS
 from control.transfer.models import TransferJob, TransferNodeSpec
+from ipaddress import ip_address
 from control.transfer.queue import TransferQueue
 from control.utils.run_state import RunStateLedger
+from control.utils.paths import PanoPaths
 
 
 def _make_job(run_name: str, tmp_path: pathlib.Path, attempts: int = 0) -> TransferJob:
     node = TransferNodeSpec(
-        ip_addr="192.168.0.10",
+        ip_addr=ip_address("192.168.0.10"),
         username="root",
         data_dir=str(tmp_path / "data"),
         module_ids=[250],
@@ -62,13 +64,13 @@ async def _run_daemon_until(
 @pytest.mark.asyncio
 async def test_transfer_daemon_ledger_sync(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
-    monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
+    # monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
     
     # Pre-write a ledger
-    state_dir = tmp_path / "state"
+    state_dir = PanoPaths.state_dir()
     state_dir.mkdir(parents=True)
     (state_dir / "runs").mkdir(parents=True)
-    (state_dir / "locks").mkdir(parents=True)
+    PanoPaths.locks_dir().mkdir(parents=True)
     
     from control.utils.run_state import RunStateManager
     state_mgr = RunStateManager(base_dir=state_dir)
@@ -76,7 +78,7 @@ async def test_transfer_daemon_ledger_sync(tmp_path: pathlib.Path, monkeypatch: 
     ledger_obj = RunStateLedger(run_name="r1", status="RECORDING_ENDED", start_time=datetime.now(UTC).isoformat(), nodes=[])
     state_mgr.save_state(ledger_obj)
 
-    tq = TransferQueue(queue_dir=tmp_path / "queue")
+    tq = TransferQueue(queue_dir=PanoPaths.transfer_queue_dir())
     job = _make_job("r1", tmp_path)
     _enqueue(tq, job)
 

@@ -70,7 +70,8 @@ class RunStateManager:
 
         for attempt in range(2):
             try:
-                # O_EXCL ensures that this call creates the file; if it exists, it fails.
+                # O_EXCL ensures that this call atomically creates the file; if it exists, it fails.
+                # https://man7.org/linux/man-pages/man2/open.2.html
                 fd = os.open(str(self.lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
                 with os.fdopen(fd, "w") as f:
                     f.write(str(os.getpid()))

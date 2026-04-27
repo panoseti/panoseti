@@ -32,6 +32,7 @@ import socket
 import subprocess
 import time
 import traceback
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -101,6 +102,8 @@ class StartTransaction:
         # stop_data_flow() on a rollback from a pre-flight failure would silently
         # halt an already-running valid observation on the same Quabos.
         self.data_flow_started: bool = False
+        # Set to True in start_run after the ledger is initialized for THIS run.
+        self.ledger_initialized: bool = False
 
     async def __aenter__(self) -> StartTransaction:
         await asyncio.to_thread(self.state_mgr.acquire_lock)
@@ -130,13 +133,16 @@ class StartTransaction:
 
                 # Ladder Step 1: Update ledger to ABORTED immediately (WAL pattern)
                 # We re-load to ensure we have any node receipts written just before cancellation
-                try:
-                    ledger = await asyncio.to_thread(self.state_mgr.load_state)
-                    if ledger:
-                        ledger.status = "ABORTED"
-                        await asyncio.to_thread(self.state_mgr.save_state, ledger)
-                except Exception as e_led:
-                    logger.error(f"Failed to update ledger to ABORTED: {e_led}")
+                if self.ledger_initialized:
+                    try:
+                        ledger = await asyncio.to_thread(self.state_mgr.load_state)
+                        if ledger and ledger.run_name == self.run_name:
+                            ledger.status = "ABORTED"
+                            await asyncio.to_thread(self.state_mgr.save_state, ledger)
+                    except Exception as e_led:
+                        logger.error(f"Failed to update ledger to ABORTED: {e_led}")
+                else:
+                    logger.info("Skipping ledger status update — this transaction never initialized the ledger.")
 
                 # Ladder Step 2: Stop remote DAQ nodes (Any that were attempted)
                 logger.info("Stopping remote DAQ nodes...")
@@ -1025,13 +1031,14 @@ async def start_run(
                 if force_reset:
                     logger.info("Force reset requested. Archiving existing ledger.")
                     stale = True
-                elif existing_state.host == socket.gethostname() and existing_state.pid:
-                    # Check if PID is alive
-                    try:
-                        os.kill(existing_state.pid, 0)
-                    except OSError:
-                        logger.info(f"Detected stale ledger from dead PID {existing_state.pid} on this host.")
-                        stale = True
+                elif existing_state.status in ["STARTING", "STOPPING"]:
+                    if existing_state.host == socket.gethostname() and existing_state.pid:
+                        # Check if PID is alive
+                        try:
+                            os.kill(existing_state.pid, 0)
+                        except OSError:
+                            logger.info(f"Detected stale {existing_state.status} ledger from dead PID {existing_state.pid} on this host.")
+                            stale = True
                 
                 if stale:
                     aborted_base = f"{daq_config.head_node_data_dir}/_aborted/{existing_state.run_name}"
@@ -1082,6 +1089,7 @@ async def start_run(
                 }
             )
             await asyncio.to_thread(state_mgr.save_state, initial_ledger)
+            tx.ledger_initialized = True
 
             # Snapshot configs into the directory immediately (before validation/delays)
             # This ensures we archive the ORIGINAL files even if they change on disk mid-setup
