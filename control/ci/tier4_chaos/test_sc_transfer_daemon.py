@@ -30,14 +30,13 @@ import pathlib
 import uuid
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
 
-from ci.fixtures.state_probe import StateProbe
 from ci.fixtures.mocks import _mock_subprocess_fail, _mock_subprocess_ok
+from ci.fixtures.state_probe import StateProbe
 from ci.tier3_fleet.conftest import (
     DAQNODE_DIRECT_HOST,
     GRPC_PORT,
