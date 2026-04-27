@@ -174,7 +174,7 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     # ── Node 2: Port Forwarded (Via Gateway) ──
     node2_ip = IPv4Address(f"{daq_prefix}.20")
     gw_ip = IPv4Address(f"{head_prefix}.254")
-    mod2_ip = IPv4Address(f"{quabo_prefix}.40") # Not actually booted in CI, but conceptually exists
+    mod2_ip = IPv4Address(f"{quabo_prefix}.36") # Not actually booted in CI, but conceptually exists
     
     pf2 = PortForwarding(
         status=True,
@@ -184,8 +184,8 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     )
     
     daq_nodes = [
-        DaqNode(username="panoseti", data_dir="/data", ip_addr=node1_ip, module_ids=[200]),
-        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[201], port_forwarding=pf2)
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node1_ip, module_ids=[200], bindhost="lo"),
+        DaqNode(username="panoseti", data_dir="/data", ip_addr=node2_ip, module_ids=[201], port_forwarding=pf2, bindhost="lo")
     ]
     
     daq_config = DaqConfig(

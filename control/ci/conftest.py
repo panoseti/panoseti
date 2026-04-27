@@ -156,7 +156,7 @@ def auto_isolate(
     # 4. Provide quabo_uids.json for Chaos tests
     # Prefer the chaos-specific config which has the mock modules
     uids_src = pathlib.Path(__file__).parent / "fixtures" / "configs" / "quabo_uids_chaos.json"
-    if uids_src.exists():
+    if uids_src.exists() and os.environ.get("PSETI_TEST_TIER") == "tier4_chaos":
         shutil.copy(uids_src, cfg_tmp / "quabo_uids.json")
         shutil.copy(uids_src, tmp_tmp / "quabo_uids.json")
         os.chmod(cfg_tmp / "quabo_uids.json", 0o666)

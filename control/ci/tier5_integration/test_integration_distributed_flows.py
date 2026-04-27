@@ -17,6 +17,27 @@ from control.stop import stop_run
 from control.utils import config_file
 
 
+def _prepare_daq_dirs(daq_cfg, run_name: str) -> None:
+    """Prepare host-side directories mapped to the container's /data."""
+    import pathlib
+    host_data_root = os.environ.get("DAQ_DATA_DIR")
+    if not host_data_root:
+        return
+    host_root = pathlib.Path(host_data_root)
+    # Root run dir for validator
+    main_dir = host_root / run_name
+    main_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(main_dir, 0o777)
+    for node in daq_cfg.daq_nodes:
+        for mid in node.module_ids:
+            mod_dir = host_root / f"module_{mid}" / run_name
+            mod_dir.mkdir(parents=True, exist_ok=True)
+            dummy_file = mod_dir / "dummy.pff"
+            dummy_file.touch()
+            os.chmod(mod_dir, 0o777)
+            os.chmod(dummy_file, 0o777)
+
+
 async def _node_hashpipe_running(node_ip: str) -> bool:
     """Query a single node via gRPC to check if hashpipe is running."""
     from panoseti_grpc.daq_control.client import DaqControlClient
@@ -55,6 +76,7 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
     daq_cfg.head_node_data_dir = str(tmp_path / "head_data")
 
     run_name = "dist_test_run.pffd"
+    _prepare_daq_dirs(daq_cfg, run_name)
     with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
             unittest.mock.patch("control.start._check_daq_reachability"), \
             unittest.mock.patch("control.start._check_quabo_reachability"), \
@@ -92,6 +114,7 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
     daq_cfg.head_node_data_dir = str(tmp_path / "head_data")
 
     run_name = "stop_test_run.pffd"
+    _prepare_daq_dirs(daq_cfg, run_name)
     with unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
             unittest.mock.patch("control.start._check_daq_reachability"), \
             unittest.mock.patch("control.start._check_quabo_reachability"), \
