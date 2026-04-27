@@ -81,9 +81,11 @@ def do_cmd(quabo: quabo_driver.QUABO, words: list[str]) -> bool:
         else:
             print('no HK packet')
     elif cmd == 'IM-PH-IP':
-        quabo.data_packet_destination(words.pop(0))
+        from ipaddress import ip_address
+        quabo.data_packet_destination(ip_address(words.pop(0)))
     elif cmd == 'HK-IP':
-        quabo.hk_packet_destination(words.pop(0))
+        from ipaddress import ip_address
+        quabo.hk_packet_destination(ip_address(words.pop(0)))
     else:
         print(f'unknown command {cmd}')
 

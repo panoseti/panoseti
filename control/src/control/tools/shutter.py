@@ -4,6 +4,7 @@
 # if the ip is not specified, we will open the shutter on all of the used modules.
 
 from argparse import ArgumentParser
+from ipaddress import IPv4Address, IPv6Address, ip_address
 
 from panoseti_grpc.telemetry.logger import get_logger
 
@@ -37,7 +38,7 @@ def ip_check(ip: str) -> int:
     
 # shutter operation
 #
-def shutterop(ip: str, port: int, op: int) -> None:
+def shutterop(ip: str | IPv4Address | IPv6Address, port: int, op: int) -> None:
     """Issue a hardware command to open or close a shutter.
 
     Args:
@@ -51,7 +52,7 @@ def shutterop(ip: str, port: int, op: int) -> None:
     #     1--close the shutter
     opstr = 'close' if op else 'open'
     logger.info(f'{opstr} shutter on {ip}:{port}')
-    quabo = quabo_driver.QUABO(ip, port)
+    quabo = quabo_driver.QUABO(ip_address(ip), port)
     quabo.shutter_new(bool(op))
 
 def main() -> None:

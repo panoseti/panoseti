@@ -30,6 +30,7 @@ dependencies = [
     "jsonpickle",
     "panoseti_grpc>=0.4.10",
     "testcontainers>=4.14.2",
+    "docker>=7.1.0",
 ]
 
 [project.optional-dependencies]

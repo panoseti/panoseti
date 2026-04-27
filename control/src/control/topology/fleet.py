@@ -14,6 +14,8 @@ from control.utils.pydantic_config_models import (
     DaqConfig,
     DaqNode,
     NetworkConfig,
+    NetworkDaqNode,
+    NetworkModule,
     ObsConfig,
     ObsDomeConfig,
     ObsModuleConfig,
@@ -70,10 +72,12 @@ def generate_fleet_configs(
                 port=22, # SSH/rsync
                 grpc_port=50051 + i
             )
-            network_daq_nodes.append({
-                "ip_addr": node_ip,
-                "port_forwarding": pf.model_dump()
-            })
+            if pf:
+                network_daq_nodes.append(NetworkDaqNode(
+                    ip_addr=node_ip,
+                    port_forwarding=pf
+                ))
+
 
         managed_module_ids = []
         for _j in range(modules_per_node):
@@ -91,15 +95,15 @@ def generate_fleet_configs(
             # 2. NetworkConfig Module (Port Forwarding for Quabos)
             if pf:
                 # Realistic reboot/cmd ports
-                network_modules.append({
-                    "ip_addr": mod_ip,
-                    "port_forwarding": {
-                        "status": True,
-                        "gw_ip": pf.gw_ip,
-                        "reboot_port": [69, 60004, 60005, 60006],
-                        "cmd_port": [60000, 60001, 60002, 60003]
-                    }
-                })
+                network_modules.append(NetworkModule(
+                    ip_addr=mod_ip,
+                    port_forwarding=PortForwarding(
+                        status=True,
+                        gw_ip=pf.gw_ip,
+                        reboot_port=[69, 60004, 60005, 60006],
+                        cmd_port=[60000, 60001, 60002, 60003]
+                    )
+                ))
 
             # 3. ObsConfig Module
             obs_module = ObsModuleConfig(
@@ -200,21 +204,21 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     network_modules = [
         # Node 1 is direct, no PF entry needed
         # Node 2 is port forwarded
-        {
-            "ip_addr": mod2_ip,
-            "port_forwarding": {
-                "status": True,
-                "gw_ip": gw_ip,
-                "reboot_port": [69, 60004, 60005, 60006],
-                "cmd_port": [60000, 60001, 60002, 60003]
-            }
-        }
+        NetworkModule(
+            ip_addr=mod2_ip,
+            port_forwarding=PortForwarding(
+                status=True,
+                gw_ip=gw_ip,
+                reboot_port=[69, 60004, 60005, 60006],
+                cmd_port=[60000, 60001, 60002, 60003]
+            )
+        )
     ]
     network_daq_nodes = [
-        {
-            "ip_addr": node2_ip,
-            "port_forwarding": pf2.model_dump()
-        }
+        NetworkDaqNode(
+            ip_addr=node2_ip,
+            port_forwarding=pf2
+        )
     ]
     network_config = NetworkConfig(modules=network_modules, daq_nodes=network_daq_nodes)
     
@@ -231,9 +235,9 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     ]
     obs_config = ObsConfig(
         name="CI_Fleet",
-        domes=obs_domes,
-        **{"wps": {"url": f"http://admin:1234@{head_prefix}.100", "quabo_socket": 4}}
+        domes=obs_domes
     )
+    obs_config.wps = {"url": f"http://admin:1234@{head_prefix}.100", "quabo_socket": 4} # type: ignore
     
     return daq_config, quabo_uids, network_config, obs_config
 
@@ -281,21 +285,23 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
         ))
         
         # Network DAQ Node
-        network_daq_nodes.append({
-            "ip_addr": node_ip,
-            "port_forwarding": pf.model_dump()
-        })
-        
+        if pf:
+            network_daq_nodes.append(NetworkDaqNode(
+                ip_addr=node_ip,
+                port_forwarding=pf
+            ))
+
         # Network Module
-        network_modules.append({
-            "ip_addr": mod_ip,
-            "port_forwarding": {
-                "status": True,
-                "gw_ip": gw_ip,
-                "reboot_port": [69, 60004, 60005, 60006],
-                "cmd_port": [60000, 60001, 60002, 60003]
-            }
-        })
+        network_modules.append(NetworkModule(
+            ip_addr=mod_ip,
+            port_forwarding=PortForwarding(
+                status=True,
+                gw_ip=IPv4Address(gw_ip),
+                reboot_port=[69, 60004, 60005, 60006],
+                cmd_port=[60000, 60001, 60002, 60003]
+            )
+        ))
+
         
         # Quabo UIDs
         quabo_uid_modules.append(QuaboUidModule(
@@ -334,7 +340,7 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
         name="Palomar_Full",
         domes=obs_domes,
         # Add required WPS definition
-        **{"wps": {"url": "http://admin:1234@10.200.146.100", "quabo_socket": 4}}
     )
+    obs_config.wps = {"url": "http://admin:1234@10.200.146.100", "quabo_socket": 4} # type: ignore
     
     return daq_config, quabo_uids, network_config, obs_config

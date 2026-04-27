@@ -226,7 +226,10 @@ def sw_chaos(
 @sw_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def sw_integration(
     ctx: typer.Context,
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
+    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman)."),
+    # clean: bool = typer.Option(True, "--clean/--no-clean", 
+    #     help="Tear down the Docker Compose stack after tests complete. Use --no-clean for debugging."
+    # )
 ) -> None:
     """Tier 5: Heavy Integration (Hashpipe, Static stack)"""
     if tool and hasattr(ctx, "obj") and ctx.obj:

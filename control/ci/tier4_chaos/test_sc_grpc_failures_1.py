@@ -8,9 +8,6 @@ Part 1 of partitioned test suite.
 from __future__ import annotations
 
 import contextlib
-import os
-import pathlib
-import time
 import unittest.mock
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -18,22 +15,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 
-from ci.fixtures.chaos import process_chaos
 from ci.fixtures.state_probe import StateProbe
 from ci.tier3_fleet.conftest import (
     DAQ_DATA_DIR,
     wait_hashpipe_running,
-    wait_hashpipe_stopped,
 )
 from ci.tier4_chaos.conftest import (
     StopPartialFailure,
-    any_pff_files_on_daqnode,
-)
-from ci.tier4_chaos.conftest import (
-    _cleanup as grpc_cleanup,
-)
-from ci.tier4_chaos.conftest import (
-    _start as grpc_start,
 )
 from ci.tier4_chaos.conftest import (
     _stop as grpc_stop,
@@ -52,7 +40,6 @@ async def test_SC001_startdaq_timeout_hangs_forever(
     Fix required: deadline/timeout on all StartDaq calls.
     """
     import asyncio
-    import unittest.mock
 
     import anyio
 
@@ -117,7 +104,6 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
 
     Fix: Phase 5 Liveness Probe in start.py after heartbeat.
     """
-    import unittest.mock
 
     import control.start as start
     from control.utils import config_file
@@ -231,7 +217,6 @@ class TestSC006StopDaqPartialFailure:
         )
 
         import asyncio
-        import unittest.mock
 
         import grpc
 

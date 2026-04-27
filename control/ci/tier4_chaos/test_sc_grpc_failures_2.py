@@ -7,10 +7,6 @@ Part 2 of partitioned test suite.
 
 from __future__ import annotations
 
-import contextlib
-import os
-import pathlib
-import time
 import unittest.mock
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -26,10 +22,6 @@ from ci.tier3_fleet.conftest import (
     wait_hashpipe_stopped,
 )
 from ci.tier4_chaos.conftest import (
-    StopPartialFailure,
-    any_pff_files_on_daqnode,
-)
-from ci.tier4_chaos.conftest import (
     _cleanup as grpc_cleanup,
 )
 from ci.tier4_chaos.conftest import (
@@ -37,6 +29,9 @@ from ci.tier4_chaos.conftest import (
 )
 from ci.tier4_chaos.conftest import (
     _stop as grpc_stop,
+)
+from ci.tier4_chaos.conftest import (
+    any_pff_files_on_daqnode,
 )
 
 # ── SC-007: StopDaq on already-stopped service (contract test) ──────────────
@@ -336,7 +331,6 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
     SC-004: A transient UNAVAILABLE error on StartDaq must trigger a retry and
     eventually succeed.
     """
-    import unittest.mock
 
     import grpc
 

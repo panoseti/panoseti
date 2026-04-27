@@ -7,10 +7,7 @@ Part 3 of partitioned test suite.
 
 from __future__ import annotations
 
-import contextlib
 import os
-import pathlib
-import time
 import unittest.mock
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -18,16 +15,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 
-from ci.fixtures.chaos import process_chaos
-from ci.fixtures.state_probe import StateProbe
 from ci.tier3_fleet.conftest import (
     DAQ_DATA_DIR,
     wait_hashpipe_running,
     wait_hashpipe_stopped,
-)
-from ci.tier4_chaos.conftest import (
-    StopPartialFailure,
-    any_pff_files_on_daqnode,
 )
 from ci.tier4_chaos.conftest import (
     _cleanup as grpc_cleanup,
@@ -118,9 +109,8 @@ def test_SC012_cleanup_with_full_head_disk_does_not_retry(
     FAILS RED TODAY: collect.collect_data does not retry on ENOSPC.
     Fix: retry with exponential backoff on transient ENOSPC.
     """
-    import os
     from ipaddress import IPv4Address
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from control.utils import collect
     from control.utils.pydantic_config_models import DaqConfig, DaqNode
@@ -252,7 +242,6 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     SC-020: When StopDaq RPC times out or fails with UNAVAILABLE, stop.py must
     escalate to a hard-kill via SSH to ensure the node is made safe.
     """
-    import os
     import unittest.mock
     from ipaddress import IPv4Address
 

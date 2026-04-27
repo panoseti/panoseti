@@ -37,12 +37,15 @@ class TestIntegrationRealDataFlow:
         )
         assert found, f"No module data directory appeared in {host_data_root}"
 
-    def test_real_stream_delivers_frames(self, daq_data_client, hashpipe_pcap_session) -> None:
+    def test_real_stream_delivers_frames(self, real_daq_data_client) -> None:
         """stream_images() yields at least 1 frame driven by live hashpipe output."""
         import time
 
         import grpc
-        
+
+        # Verify at least one host is reachable. 
+        # daq_data_client.validate_daq_hosts()
+
         # Capped retry loop for Hashpipe initialization (SC-055 resolution)
         MAX_RETRIES = 30
         RETRY_INTERVAL = 1.0
@@ -51,7 +54,7 @@ class TestIntegrationRealDataFlow:
         for i in range(MAX_RETRIES):
             try:
                 frames = list(islice(
-                    daq_data_client.stream_images(
+                    real_daq_data_client.stream_images(
                         hosts=None,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,
@@ -72,20 +75,20 @@ class TestIntegrationRealDataFlow:
 
         assert len(frames) >= 1, f"Failed to deliver frames after {MAX_RETRIES} retries."
 
-    def test_frame_is_dict(self, daq_data_client, hashpipe_pcap_session) -> None:
+    def test_frame_is_dict(self, real_daq_data_client) -> None:
         """Each frame returned by the real stream is a non-empty dict."""
         import time
 
         import grpc
         
-        MAX_RETRIES = 30
+        MAX_RETRIES = 10
         RETRY_INTERVAL = 1.0
         frames = []
         
         for i in range(MAX_RETRIES):
             try:
                 frames = list(islice(
-                    daq_data_client.stream_images(
+                    real_daq_data_client.stream_images(
                         hosts=None,
                         stream_movie_data=True,
                         stream_pulse_height_data=True,

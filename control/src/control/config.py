@@ -120,7 +120,8 @@ def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: Netwo
         return
     else:
         _get_logger().info(f'Rebooting {ip_addr}...')
-        ip_ports = util.get_quabo_ip_port(ip_base, index, network_config)
+        from ipaddress import ip_address
+        ip_ports = util.get_quabo_ip_port(ip_address(ip_base), index, network_config)
         real_ip = ip_ports.ip_addr
         cmd_port = ip_ports.cmd_port
         reboot_port = ip_ports.reboot_port
@@ -377,7 +378,8 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config
             _get_logger().info(f'Real IP: {real_ip}')
             _get_logger().info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
-            quabo.hk_packet_destination(headnode_ip_addr)
+            from ipaddress import ip_address
+            quabo.hk_packet_destination(ip_address(headnode_ip_addr))
             quabo.close()
 
 def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], detector_info: dict[str, Any], network_config: NetworkConfig, verbose: bool = False) -> None:

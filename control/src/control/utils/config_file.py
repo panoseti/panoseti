@@ -128,10 +128,18 @@ def assign_numbers(c: ObsConfig | QuaboUids) -> None:
     Args:
         c: The configuration model (ObsConfig or QuaboUids) to modify in-place.
     """
+    from control.utils.pydantic_config_models import (
+        ObsDomeConfig,
+        ObsModuleConfig,
+        QuaboUidDome,
+        QuaboUidModule,
+    )
     for ndome, dome in enumerate(c.domes):
-        dome.num = ndome
-        for module in dome.modules:
-            module.id = ip_addr_to_module_id(str(module.ip_addr))
+        if isinstance(dome, ObsDomeConfig) or isinstance(dome, QuaboUidDome):
+            dome.num = ndome
+            for module in dome.modules:
+                if isinstance(module, ObsModuleConfig) or isinstance(module, QuaboUidModule):
+                    module.id = ip_addr_to_module_id(str(module.ip_addr))
 
 def string_to_list(s: str) -> list[int]:
     """Parse a range string like '0-2, 5-6' into a list of integers.
@@ -165,12 +173,8 @@ def expand_ranges(daq_config: DaqConfig) -> None:
         daq_config: The validated DAQ configuration model.
     """
     for node in daq_config.daq_nodes: 
-        if isinstance(node.module_ids, str):
-            node.module_ids = string_to_list(node.module_ids)
-        elif isinstance(node.module_ids, list):
+        if isinstance(node.module_ids, list):
             node.module_ids = list(set(int(x) for x in node.module_ids))
-        elif node.module_ids is not None:
-            raise TypeError(f"module_ids must be str or list, not {type(node.module_ids)}")
 
 
 def module_id_to_daq_node(daq_config: DaqConfig, module_id: int) -> DaqNode:

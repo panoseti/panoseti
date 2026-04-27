@@ -85,7 +85,8 @@ def main(quabo_uids: QuaboUids, module_id: int, dp: str) -> None:
             j += line_bytes.decode()
         show_pff.print_json(j, ph, False)
         #print('got header')
-        raw_img = pff.read_image(process.stdout, image_size, bpp)
+        from typing import BinaryIO, cast
+        raw_img = pff.read_image(cast(BinaryIO, process.stdout), image_size, bpp)
         if raw_img is None:
             break
         img = np.array(raw_img)

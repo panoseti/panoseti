@@ -393,13 +393,14 @@ def start_data_flow(
                 logger.info(f'Quabo IP: {ip_addr}')
                 logger.info(f'Real IP: {real_ip}')
                 logger.info(f'Cmd Port: {cmd_port}')
+                from ipaddress import ip_address
                 quabo = quabo_driver.QUABO(real_ip, cmd_port)
                 if verbose:
                     print(f'setting HK packet dest to {head_node_ip_addr} on quabo {ip_addr}')
-                quabo.hk_packet_destination(head_node_ip_addr)
+                quabo.hk_packet_destination(ip_address(head_node_ip_addr))
                 if verbose:
                     print(f'setting data packet dest to {daq_node_ip_addr} on quabo {ip_addr}')
-                quabo.data_packet_destination(daq_node_ip_addr)
+                quabo.data_packet_destination(ip_address(daq_node_ip_addr))
                 if verbose:
                     print(f'setting DAQ mode on quabo {ip_addr}')
                 quabo.send_daq_params(daq_params)
@@ -746,7 +747,8 @@ async def _quabo_reachability_report(
     results: list[QuaboProbeResult] = []
     
     async def check_one(uid: str, base_ip: str, index: int) -> None:
-        ip_ports = util.get_quabo_ip_port(base_ip, index, network_config)
+        from ipaddress import ip_address
+        ip_ports = util.get_quabo_ip_port(ip_address(base_ip), index, network_config)
         real_ip = ip_ports.ip_addr
         cmd_port = ip_ports.cmd_port
         

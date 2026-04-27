@@ -30,7 +30,6 @@ from typing import Any
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
-from panoseti_grpc.daq_data.client import DaqDataClient
 
 from ci.paths import PanoPathsTest
   
@@ -130,25 +129,25 @@ def hashpipe_pcap_session(daqnode_container: Any, daq_control_direct: DaqControl
 # Helper: daq_data client configured for real (non-simulated) mode
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def real_daq_data_client(hashpipe_pcap_session: dict[str, Any]) -> Iterator[DaqDataClient]:
-    """
-    DaqDataClient connected to the unified daqnode gRPC server.
-    daq_data and daq_control share a process, so hashpipe UDS sockets
-    at /tmp are directly accessible — no shared volume required.
-    """
-    run_params = hashpipe_pcap_session
-    daq_cfg = {
-        "daq_nodes": [{"ip_addr": DAQNODE_DATA_HOST, "data_dir": run_params["data_dir"]}]
-    }
-    with DaqDataClient(daq_cfg, network_config=None) as client:
-        ok = client.init_hp_io(hosts=None, hp_io_cfg=REAL_HP_IO_CFG)
-        if not ok:
-            pytest.skip(
-                "init_hp_io(simulate_daq=False) failed — "
-                "check that hashpipe started and UDS sockets are present at /tmp."
-            )
-        yield client
+# @pytest.fixture
+# def real_daq_data_client(hashpipe_pcap_session: dict[str, Any]) -> Iterator[DaqDataClient]:
+#     """
+#     DaqDataClient connected to the unified daqnode gRPC server.
+#     daq_data and daq_control share a process, so hashpipe UDS sockets
+#     at /tmp are directly accessible — no shared volume required.
+#     """
+#     run_params = hashpipe_pcap_session
+#     daq_cfg = {
+#         "daq_nodes": [{"ip_addr": DAQNODE_DATA_HOST, "data_dir": run_params["data_dir"]}]
+#     }
+#     with DaqDataClient(daq_cfg, network_config=None) as client:
+#         ok = client.init_hp_io(hosts=None, hp_io_cfg=REAL_HP_IO_CFG)
+#         if not ok:
+#             pytest.skip(
+#                 "init_hp_io(simulate_daq=False) failed — "
+#                 "check that hashpipe started and UDS sockets are present at /tmp."
+#             )
+#         yield client
 
 
 # ---------------------------------------------------------------------------

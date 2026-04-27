@@ -966,6 +966,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
+    { name = "docker" },
     { name = "gitpython" },
     { name = "haversine" },
     { name = "influxdb" },
@@ -1009,6 +1010,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "astropy", specifier = ">=5.2" },
+    { name = "docker", specifier = ">=7.1.0" },
     { name = "docker", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26" },
     { name = "gitpython", specifier = ">=3.1" },

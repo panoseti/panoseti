@@ -11,12 +11,13 @@
 # dt        sec per step
 import sys
 import time
+from ipaddress import ip_address
 
 from control.driver import quabo_driver
 
 
 def main(ip_addr: str, start: int, end: int, step: int, dt: float) -> None:
-    q = quabo_driver.QUABO(ip_addr)
+    q = quabo_driver.QUABO(ip_address(ip_addr))
     val = start
     while val < end:
         q.focus(val)

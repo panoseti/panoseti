@@ -706,9 +706,11 @@ def get_quabo_ip_port(ip_addr: IPvAnyAddress, i: int, network_config: NetworkCon
             if p and p.status:
                 real_ip = str(p.gw_ip)
                 if p.reboot_port:
-                    reboot_port = p.reboot_port[i]
+                    from typing import cast
+                    reboot_port = cast(int, p.reboot_port[i])
                 if p.cmd_port:
-                    cmd_port = p.cmd_port[i]
+                    from typing import cast
+                    cmd_port = cast(int, p.cmd_port[i])
             break
     return QuaboIpPorts(
         ip_addr=ip_address(real_ip),
