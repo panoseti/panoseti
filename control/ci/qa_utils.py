@@ -223,7 +223,7 @@ class TestRunner:
                     await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
             else:
                 # Fallback to full build if services couldn't be parsed
-                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{suite.compose_file} build"
+                cmd = f"{self.container_tool} compose --env-file {ENV_CI_PATH} -f {CONTROL_ROOT}/{compose_file} build"
                 await self._run_cmd(cmd, env={"COMPOSE_PROJECT_NAME": project_name})
                 
             processed_files.add(compose_file)

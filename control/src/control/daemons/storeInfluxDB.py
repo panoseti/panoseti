@@ -18,7 +18,6 @@
 #           Runs the Telemetry gRPC Service for high-performance metadata streams from remote Linux machines.
 #       - Modification: possible with client-only modifications or changes to capture_telemetry_service/telemetry_config.toml
 ##############################################################
-import logging
 import re
 import time
 from datetime import datetime
@@ -26,15 +25,14 @@ from typing import Any
 
 import redis
 from influxdb import InfluxDBClient
+from panoseti_grpc.telemetry.logger import get_logger
 from requests.exceptions import ConnectionError
-from rich.console import Console
 
 # Rich Logging Imports
-from rich.logging import RichHandler
-
 # Add control root to path
 # Add telemetry subdirectory to path for local utils
 from control.utils import config_file
+from control.utils.paths import PanoPaths
 from control.utils.redis_utils import get_casted_redis_value, redis_init
 
 try:
@@ -74,14 +72,7 @@ DATATYPE_FORMAT = {
 
 # --- LOGGING SETUP
 # Configure Rich logging for pretty, structured output
-console = Console()
-logging.basicConfig(
-    level="INFO",
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler(console=console, rich_tracebacks=True)]
-)
-logger = logging.getLogger("storeInfluxDB")
+logger = get_logger("PSETI.storeInfluxDB", log_dir=PanoPaths.logs_dir())
 
 # --- Code
 

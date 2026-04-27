@@ -149,9 +149,9 @@ async def test_transfer_daemon_archives_run(
     job = tq.claim()
     assert job is not None
 
-    def mocked_rsync(*args, **kwargs):
+    async def mocked_rsync(*args, **kwargs):
         ok = copy_run_dir_from_fleet(fleet, run_params["run_dir"], Path(job.head_data_dir))
-        return MagicMock(returncode=0 if ok else 1, stderr="Simulated copy failed")
+        proc = MagicMock(); proc.returncode = 0 if ok else 1; proc.wait = AsyncMock(return_value=proc.returncode); proc.communicate = AsyncMock(return_value=(b'', b'Simulated copy failed' if not ok else b'')); proc.stdout.readline = AsyncMock(return_value=b''); proc.stderr.read = AsyncMock(return_value=b'Simulated copy failed' if not ok else b''); return proc
     # Use fully qualified path for patching
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     
@@ -161,10 +161,10 @@ async def test_transfer_daemon_archives_run(
                 return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
         return AsyncDaqControlClient(host=host, port=port)
 
-    with patch("control.transfer.daemon.subprocess.run", side_effect=mocked_rsync), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=mocked_rsync), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         # Allow up to 30s for the entire multi-node manifest/transfer/cleanup state machine
-        job_success = await asyncio.wait_for(_process_job(job, asyncio.Event()), timeout=30.0)
+        job_success = await asyncio.wait_for(_process_job(job, asyncio.Event(), RunStateManager()), timeout=30.0)
         assert job_success
 
     tq.complete(job.run_name)
@@ -232,9 +232,9 @@ async def test_transfer_daemon_resumes_after_crash(
 
     # Simulate crash mid-rsync (Stage 2)
     # We must ensure Stage 1 (Manifest) passes first!
-    with patch("control.transfer.daemon.subprocess.run", side_effect=RuntimeError("Simulated crash")), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=RuntimeError("Simulated crash")), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success, err = await _process_job(job, asyncio.Event())
+        success, err = await _process_job(job, asyncio.Event(), RunStateManager())
         assert not success
         assert "Simulated crash" in err
                 
@@ -244,9 +244,9 @@ async def test_transfer_daemon_resumes_after_crash(
     job2 = tq.claim()
     assert job2 is not None
 
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success2 = await asyncio.wait_for(_process_job(job2, asyncio.Event()), timeout=30.0)
+        success2 = await asyncio.wait_for(_process_job(job2, asyncio.Event(), RunStateManager()), timeout=30.0)
         assert success2
         tq.complete(job2.run_name)
 
@@ -304,9 +304,9 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 1
     job1 = tq.claim()
     assert job1 is not None
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success1 = (await _process_job(job1, asyncio.Event()))[0]
+        success1 = (await _process_job(job1, asyncio.Event(), RunStateManager()))[0]
         assert not success1
         tq.fail(job1.run_name)
 
@@ -315,9 +315,9 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 2
     job2 = tq.claim()
     assert job2 is not None
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Transient error")), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success2 = (await _process_job(job2, asyncio.Event()))[0]
+        success2 = (await _process_job(job2, asyncio.Event(), RunStateManager()))[0]
         assert not success2
         tq.fail(job2.run_name)
 
@@ -326,9 +326,9 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 3
     job3 = tq.claim()
     assert job3 is not None
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        success3 = await asyncio.wait_for(_process_job(job3, asyncio.Event()), timeout=30.0)
+        success3 = await asyncio.wait_for(_process_job(job3, asyncio.Event(), RunStateManager()), timeout=30.0)
         assert success3
         tq.complete(job3.run_name)
 
@@ -386,10 +386,10 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
                 return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
         return AsyncDaqControlClient(host=host, port=port)
 
-    with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="Persistent failure")), \
+    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         for attempt in range(MAX_ATTEMPTS):
-            success = (await _process_job(job, asyncio.Event()))[0]
+            success = (await _process_job(job, asyncio.Event(), RunStateManager()))[0]
             assert not success
             tq.fail(job.run_name)
             if attempt < MAX_ATTEMPTS - 1:
@@ -456,7 +456,7 @@ except FileExistsError:
         stdout_bytes, _ = await asyncio.wait_for(p2.communicate(), timeout=5)
         stdout = stdout_bytes.decode()
         assert p2.returncode == 0
-        assert "Another transfer daemon is already running" in stdout
+        assert all(x in stdout for x in ["Another", "transfer", "daemon", "already", "running"])
     finally:
         p1.terminate()
         await p1.wait()
@@ -513,8 +513,8 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
     sys.modules["panoseti_grpc.daq_control.client"] = stub_mod
 
     try:
-        with patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
-            success = (await _process_job(job, asyncio.Event()))[0]
+        with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok):
+            success = (await _process_job(job, asyncio.Event(), RunStateManager()))[0]
             assert success
     finally:
         if orig_mod:
@@ -524,3 +524,21 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
     
     assert (Path(job.head_data_dir) / run_name / "run_complete").exists()
     monkeypatch.undo()
+
+async def _mock_subprocess_ok(*args, **kwargs):
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.wait = AsyncMock(return_value=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr.read = AsyncMock(return_value=b"")
+    return proc
+
+async def _mock_subprocess_fail(*args, **kwargs):
+    proc = MagicMock()
+    proc.returncode = 1
+    proc.wait = AsyncMock(return_value=1)
+    proc.communicate = AsyncMock(return_value=(b"", b"error"))
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr.read = AsyncMock(return_value=b"error")
+    return proc

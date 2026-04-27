@@ -648,3 +648,19 @@ def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any)
     }
     # Print with a unique prefix so it's easy to grep from the stream
     print(f"\nTEST_METRICS_JSON: {json.dumps(summary)}")
+
+@pytest.fixture(autouse=True)
+def _enable_log_propagation_for_caplog(caplog):
+    """caplog attaches to root; flip propagation for the test only."""
+    import logging
+    saved = {}
+    # We want to enable propagation for our specific loggers so caplog can see them
+    for name in ("PSETI.Start", "PSETI.Stop", "PSETI.Status",
+                 "transfer_daemon", "PSETI.Config", "PSETI.Interleave",
+                 "PSETI.Interface", "PSETI.storeInfluxDB"):
+        lg = logging.getLogger(name)
+        saved[name] = lg.propagate
+        lg.propagate = True
+    yield
+    for name, p in saved.items():
+        logging.getLogger(name).propagate = p

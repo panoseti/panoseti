@@ -40,6 +40,7 @@ from control.transfer.queue import TransferQueue
 from control.transfer.rsync import build_rsync_cmd
 from control.utils import config_file
 from control.utils.pydantic_config_models import PortForwarding
+from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -288,9 +289,9 @@ class TestProcessJobWithPortForwarding:
             return MagicMock(returncode=0, stderr="")
 
         with _mock_grpc(client), \
-             patch("control.transfer.daemon.subprocess") as mock_sub:
-            mock_sub.run.side_effect = _capture_rsync
-            result, _ = await _process_job(pf_job, asyncio.Event())
+             patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+            mock_sub.side_effect = await _capture_rsync_async(rsync_calls)
+            result, _ = await _process_job(pf_job, asyncio.Event(), RunStateManager())
 
         assert result is True
         assert rsync_calls, "rsync must have been called"
@@ -303,3 +304,18 @@ class TestProcessJobWithPortForwarding:
                 f"rsync must NOT use raw daqnode IP {DAQNODE_IP} when PF is active"
             )
         monkeypatch.undo()
+
+async def _mock_subprocess_ok(*args, **kwargs):
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.wait = AsyncMock(return_value=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr.read = AsyncMock(return_value=b"")
+    return proc
+
+async def _capture_rsync_async(rsync_calls: list):
+    async def _mock(*args, **kwargs):
+        rsync_calls.append(args) # args[0] is the cmd list
+        return await _mock_subprocess_ok()
+    return _mock

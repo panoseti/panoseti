@@ -32,6 +32,7 @@ import socket
 import subprocess
 import time
 import traceback
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -117,7 +118,10 @@ class StartTransaction:
                 if exc_type is ValidationError:
                     logger.warning(f"Aborting start due to validation failure: {exc_val}")
                 else:
-                    logger.error(f"[CRITICAL FAILURE] Start process aborted: {exc_val}")
+                    # Use traceback.format_exception to handle ExceptionGroups (Python 3.11+)
+                    # This automatically renders the nested tree of sub-exceptions.
+                    full_tb = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
+                    logger.error(f"[CRITICAL FAILURE] Start process aborted: {exc_val}\n{full_tb}")
                 
                 logger.info("Triggering Rollback Ladder...")
 
@@ -214,11 +218,11 @@ class StartTransaction:
 
                     # Write failure context
                     err_msg = str(exc_val)
-                    tb_msg = "".join(traceback.format_tb(exc_tb)) if exc_tb else ""
+                    full_tb = "".join(traceback.format_exception(exc_type, exc_val, exc_tb)) if exc_tb else ""
                     def dump_context(msg: str, tb: str) -> None:
                         with open(f"{aborted_dir}/start_failure_context.json", "w") as f:
                             json.dump({"error": msg, "traceback": tb}, f, indent=4)
-                    await asyncio.to_thread(dump_context, err_msg, tb_msg)
+                    await asyncio.to_thread(dump_context, err_msg, full_tb)
 
                     local_run_dir = f"{self.daq_config.head_node_data_dir}/{self.run_name}"
                     if await asyncio.to_thread(os.path.exists, local_run_dir):
@@ -726,6 +730,48 @@ async def start_recording(
             tg.create_task(verify_liveness(n))
 
 
+@dataclass(frozen=True)
+class QuaboProbeResult:
+    uid: str
+    ip: str
+    port: int
+    reachable: bool
+    error: str | None
+
+async def _quabo_reachability_report(
+    quabo_uids: QuaboUids,
+    network_config: NetworkConfig
+) -> list[QuaboProbeResult]:
+    """Perform a structured reachability sweep and return results per-Quabo."""
+    results: list[QuaboProbeResult] = []
+    
+    async def check_one(uid: str, base_ip: str, index: int) -> None:
+        ip_ports = util.get_quabo_ip_port(base_ip, index, network_config)
+        real_ip = ip_ports.ip_addr
+        cmd_port = ip_ports.cmd_port
+        
+        from control.utils.config_validator import _check_reachability
+        
+        loop = asyncio.get_running_loop()
+        ok, err = await loop.run_in_executor(None, lambda: _check_reachability(str(real_ip), cmd_port, target_type="quabo", timeout=2.0))
+        results.append(QuaboProbeResult(
+            uid=uid,
+            ip=str(real_ip),
+            port=cmd_port,
+            reachable=ok,
+            error=err if not ok else None
+        ))
+
+    async with asyncio.TaskGroup() as tg:
+        for dome in quabo_uids.domes:
+            for module in dome.modules:
+                base_ip = str(module.ip_addr)
+                for i in range(4):
+                    uid = module.quabos[i].uid
+                    if uid != '':
+                        tg.create_task(check_one(uid, base_ip, i))
+    return results
+
 async def _check_quabo_reachability(
     quabo_uids: QuaboUids,
     network_config: NetworkConfig,
@@ -734,30 +780,23 @@ async def _check_quabo_reachability(
     """Verify that all configured Quabos are reachable on the network."""
     logger.info("Performing Quabo reachability sweep...")
 
-    async def check_one(base_ip: str, index: int) -> None:
-        ip_ports = util.get_quabo_ip_port(module.ip_addr, index, network_config)
-        real_ip = ip_ports.ip_addr
-        cmd_port = ip_ports.cmd_port
-        
-        from control.utils.config_validator import _check_reachability
-        
-        loop = asyncio.get_running_loop()
-        ok, err = await loop.run_in_executor(None, lambda: _check_reachability(str(real_ip), cmd_port, target_type="quabo", timeout=2.0))
-        if not ok:
-            msg = f"Quabo at {real_ip}:{cmd_port} is UNREACHABLE: {err}"
-            if lenient:
-                 logger.warning(f"{msg} (Non-fatal in container/CI environment)")
-                 return
-            raise ValidationError(msg)
+    results = await _quabo_reachability_report(quabo_uids, network_config)
+    unreachable = [r for r in results if not r.reachable]
+    
+    if not unreachable:
+        logger.info("All configured Quabos are reachable.")
+        return
 
-    async with asyncio.TaskGroup() as tg:
-        for dome in quabo_uids.domes:
-            for module in dome.modules:
-                base_ip = str(module.ip_addr)
-                for i in range(4):
-                    if module.quabos[i].uid != '':
-                        tg.create_task(check_one(base_ip, i))
-    logger.info("All configured Quabos are reachable.")
+    for r in unreachable:
+        msg = f"Quabo {r.uid} at {r.ip}:{r.port} is UNREACHABLE: {r.error}"
+        if lenient:
+            logger.warning(f"{msg} (Non-fatal in container/CI environment)")
+        else:
+            logger.error(msg)
+    
+    if not lenient:
+        summary = "\n".join([f"  - {r.uid} ({r.ip}:{r.port}): {r.error}" for r in unreachable])
+        raise ValidationError(f"One or more Quabos are unreachable:\n{summary}")
 
 
 async def _check_daq_reachability(daq_config: DaqConfig) -> None:
@@ -778,7 +817,7 @@ async def _check_daq_reachability(daq_config: DaqConfig) -> None:
             for node in daq_config.daq_nodes:
                 tg.create_task(check_node_grpc(node))
         logger.info("All configured DAQ nodes are reachable via gRPC.")
-    except ExceptionGroup as eg:
+    except* Exception as eg:
         for i, exc in enumerate(eg.exceptions, 1):
             tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             logger.error(f"gRPC reachability check {i}/{len(eg.exceptions)} failed: {type(exc).__name__}: {exc}\n{tb}")
@@ -872,7 +911,16 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool =
         async with asyncio.TaskGroup() as tg:
             for node in daq_config.daq_nodes:
                 tg.create_task(check_node(node))
-    except ExceptionGroup as eg:
+    except* Exception as eg:
+        for i, exc in enumerate(eg.exceptions, 1):
+            if isinstance(exc, ValidationError):
+                 logger.error(f"Remote Hashpipe check {i}/{len(eg.exceptions)} failed: {exc}")
+            else:
+                 tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                 logger.error(f"Remote Hashpipe check {i}/{len(eg.exceptions)} failed: {type(exc).__name__}: {exc}\n{tb}")
+        
+        # If any were ValidationErrors, re-raise the first one to maintain existing API contract
+        # but the operator now sees all of them in the log.
         for exc in eg.exceptions:
             if isinstance(exc, ValidationError):
                 raise exc from None
@@ -936,7 +984,7 @@ async def start_run(
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
     
-    def signal_handler(signal: signal.Signals):
+    def signal_handler(signal: signal.Signals) -> None:
         logger.critical(f"start.py received the signal {signal!r}")
         cancel_event.set()
          
@@ -1129,7 +1177,7 @@ def main(
         help="Stop any orphaned Hashpipe instances before starting (implies remote Hashpipe check).",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
-):
+) -> None:
     """
     start a recording run:
 

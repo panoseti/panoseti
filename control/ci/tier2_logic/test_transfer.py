@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ci.fixtures.mocks import MockDaqNode
 from control.transfer.daemon import _process_job, _sweep_stranded_jobs
 from control.transfer.queue import TransferQueue
+from control.utils.run_state import RunStateManager
 
 
 @pytest.mark.asyncio
@@ -44,9 +45,9 @@ async def test_when_transfer_job_processed_then_reaches_archived(
     # Inject mock into the daemon's gRPC client factory
     with (
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
-        patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0))
+        patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok)
     ):
-        success = await _process_job(job, asyncio.Event())
+        success = await _process_job(job, asyncio.Event(), RunStateManager())
             
     assert success[0] is True
     
@@ -71,9 +72,9 @@ async def test_when_manifest_fails_then_transfer_aborts(
     
     with (
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
-        patch("control.transfer.daemon.subprocess.run") as mock_rsync
+        patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok) as mock_rsync
     ):
-        success = await _process_job(job, asyncio.Event())
+        success = await _process_job(job, asyncio.Event(), RunStateManager())
             
         assert success[0] is False
         mock_rsync.assert_not_called()
@@ -95,9 +96,9 @@ async def test_when_rsync_fails_then_job_returns_false(
     
     with (
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
-        patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="network loss"))
+        patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail)
     ):
-        success = await _process_job(job, asyncio.Event())
+        success = await _process_job(job, asyncio.Event(), RunStateManager())
             
     assert success[0] is False
 
@@ -132,9 +133,9 @@ async def test_when_file_corrupted_then_verify_fails(
     
     with (
         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client),
-        patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0))
+        patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok)
     ):
-        success = await _process_job(job, asyncio.Event())
+        success = await _process_job(job, asyncio.Event(), RunStateManager())
             
     assert success[0] is False
     # Verify cleanup was bypassed (mock cleanup never called)
@@ -184,3 +185,21 @@ def test_when_double_enqueued_then_queue_is_idempotent():
     pending = list((tq._queue / "pending").glob("*.toml"))
     test_jobs = [p for p in pending if "idempotent_test" in p.name]
     assert len(test_jobs) == 1
+
+async def _mock_subprocess_ok(*args, **kwargs):
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.wait = AsyncMock(return_value=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr.read = AsyncMock(return_value=b"")
+    return proc
+
+async def _mock_subprocess_fail(*args, **kwargs):
+    proc = MagicMock()
+    proc.returncode = 1
+    proc.wait = AsyncMock(return_value=1)
+    proc.communicate = AsyncMock(return_value=(b"", b"error"))
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr.read = AsyncMock(return_value=b"error")
+    return proc

@@ -268,12 +268,12 @@ class ObsConfig(BaseModel):
 
 class PortForwarding(BaseStrictModel):
     """Networking metadata for port-forwarded devices (Gateways)."""
-    status: bool
+    status: bool = Field(False)
     gw_ip: IPvAnyAddress
     reboot_port: list[int | None] | None = Field(None)
     cmd_port: list[int | None] | None = Field(None)
     port: int | None = None                              # SSH forwarded port (legacy)
-    grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
+    grpc_port: int = Field(50051, ge=1, le=65535)  # gRPC forwarded port
 
 
 class QuaboIpPorts(BaseStrictModel):

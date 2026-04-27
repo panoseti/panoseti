@@ -30,13 +30,14 @@ class PanoLazyGroup(BaseLazyGroup):
             "status": ("control.status", "app", "Alias for 'pseti obs status'."),
             # Primary command groups
             "obs": ("control.tools.obs_cli", "app", "Observatory operations (Start/Stop, Power, Config)."),
+            "cfg": ("control.config", "app", "Alias for 'pseti obs config'."),
             "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
             # Maintenance and diagnostics
             "test": ("test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
             "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
         }
         # Explicit order to ensure consistent UX regardless of mapping insertion order
-        command_order = ["obs", "grpc",  "start", "stop", "status", "show", "test"]
+        command_order = ["obs", "cfg", "grpc", "start", "stop", "status", "show", "test"]
         super().__init__(
             *args, 
             lazy_mapping=lazy_mapping, 
@@ -59,7 +60,7 @@ app = typer.Typer(
 def main_callback(
     ctx: typer.Context,
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree and exit.", callback=display_tree_callback)] = False
-):
+) -> None:
     """PSETI Control Plane."""
     pass
 

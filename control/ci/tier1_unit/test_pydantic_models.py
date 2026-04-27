@@ -606,14 +606,17 @@ class TestPortForwarding:
     _BASE: ClassVar[dict[str, Any]] = {"status": True, "gw_ip": "203.0.113.1"}
 
     def test_valid_without_grpc_port(self) -> None:
-        """grpc_port is optional; omitting it is valid."""
+        """grpc_port is required; omitting it implies the default grpc port of 50051."""
         pf = PortForwarding(**self._BASE)
-        assert pf.grpc_port is None
+        assert pf.grpc_port == 50051
 
     def test_valid_grpc_port(self) -> None:
         """grpc_port in 1-65535 is accepted."""
-        pf = PortForwarding(**self._BASE, grpc_port=50051)
-        assert pf.grpc_port == 50051
+        from random import randint
+        for _ in range(10):
+            grpc_port = 50051 + randint(-10000, 10000)
+            pf = PortForwarding(**self._BASE, grpc_port=grpc_port)
+            assert pf.grpc_port == grpc_port
 
     def test_grpc_port_zero_rejected(self) -> None:
         """grpc_port=0 is below the valid range."""

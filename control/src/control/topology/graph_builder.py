@@ -24,7 +24,7 @@ class GraphBuilder:
     Constructs a NetworkX representation of the observatory hardware and network topology.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.graph = nx.DiGraph()
 
     def build_from_configs(
@@ -111,7 +111,7 @@ class GraphBuilder:
         
         return self.graph
 
-    def _add_module_to_graph(self, module: Any, dome_num: int | None, upstream_ips: dict[str, str]):
+    def _add_module_to_graph(self, module: Any, dome_num: int | None, upstream_ips: dict[str, str]) -> None:
         """Helper to add module and its 4 quabos to the graph."""
         module_ip = str(module.ip_addr)
         module_id = getattr(module, 'id', 'unknown')

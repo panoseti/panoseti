@@ -524,6 +524,37 @@ def hw_clean(ctx: typer.Context) -> None:
                 asyncio.run(runner._run_cmd(daq_down, env=env))
     console.print("[yellow]Placeholder: Data wiping skipped.[/yellow]")
 
+@hw_app.command(name="down")
+def hw_down(ctx: typer.Context) -> None:
+    """Stop containers but preserve volumes (use 'clean' for full wipe)."""
+    runner: TestRunner = ctx.obj
+    _suite, env_cfg = get_hw_suite_and_env(ctx)
+    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
+    tool = runner.container_tool
+    
+    console.print(f"[yellow]Stopping Headnode profile with {tool}...[/yellow]")
+    head_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode down"
+    asyncio.run(runner._run_cmd(head_down))
+    
+    for node in daq_cfg.daq_nodes:
+        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
+            continue
+        ssh_host_uri = get_ssh_host(node)
+        
+        if tool == "docker":
+            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
+            console.print(f"[yellow]Stopping DAQnode profile on {node.ip_addr} via context {context_name}...[/yellow]")
+            daq_down = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down"
+            asyncio.run(runner._run_cmd(daq_down))
+        else:
+            ssh_args = get_raw_ssh_args(ssh_host_uri)
+            console.print(f"[yellow]Stopping DAQnode profile on {node.ip_addr} via tunnel...[/yellow]")
+            remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
+            with SSHTunnel(ssh_args, remote_sock) as local_sock:
+                env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
+                daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down"
+                asyncio.run(runner._run_cmd(daq_down, env=env))
+
 @hw_app.command(name="attach")
 def hw_attach(ctx: typer.Context) -> None:
     """Enter the headnode container shell for debugging."""

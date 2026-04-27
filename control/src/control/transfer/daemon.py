@@ -3,28 +3,63 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import pathlib
 import signal
-import subprocess
 import time
-from datetime import UTC, datetime
+import traceback
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import anyio
 from panoseti_grpc.telemetry.logger import get_logger
 
 from control.transfer.lifecycle import MAX_ATTEMPTS, RETRY_DELAYS
-from control.transfer.models import TransferJob
+from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.progress import parse_rsync_progress
 from control.transfer.queue import TransferQueue
 from control.transfer.rsync import build_rsync_cmd
 from control.transfer.verify import verify_manifest
 from control.utils.paths import PanoPaths
+from control.utils.run_state import RunStateManager
 
 POLL_INTERVAL_SEC = 5.0
+
+def _write_progress(run_name: str, node_ip: str, progress: dict[str, Any]) -> None:
+    """Write rsync progress snapshot to a sidecar file atomically."""
+    # Place sidecars next to the active job file
+    active_d = PanoPaths.transfer_queue_dir() / "active"
+    active_d.mkdir(parents=True, exist_ok=True)
+    
+    path = active_d / f"{run_name}.{node_ip}.progress.json"
+    tmp_path = path.with_suffix(".tmp")
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(progress, f)
+        os.replace(tmp_path, path)
+    except Exception as exc:
+        logger.warning("Failed to write progress sidecar for %s: %s", run_name, exc)
+
+def _clear_progress(run_name: str) -> None:
+    """Remove all progress sidecars for a run."""
+    active_d = PanoPaths.transfer_queue_dir() / "active"
+    if active_d.exists():
+        for p in active_d.glob(f"{run_name}.*.progress.json"):
+            with contextlib.suppress(OSError):
+                p.unlink()
 
 _log_dir = PanoPaths.daemon_logs_dir("transfer_daemon")
 _log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger("transfer_daemon", log_dir=_log_dir, grpc_enabled=False)
+
+
+def _safe_ledger_update(state_mgr: RunStateManager, *, status: str, **fields: Any) -> None:
+    """Update the ledger state, catching and logging any errors to prevent daemon crash."""
+    try:
+        state_mgr.transition(status, **fields)
+    except Exception as exc:
+        logger.warning("Ledger update failed (non-fatal): %s", exc)
 
 
 def _transfer_state_dir() -> pathlib.Path:
@@ -98,7 +133,12 @@ async def _heartbeat_loop(heartbeat_path: pathlib.Path, interval: float = 5.0) -
         pass
 
 
-async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool, str | None]:
+async def _process_job(
+    job: TransferJob, 
+    shutdown: asyncio.Event,
+    state_mgr: RunStateManager
+) -> tuple[bool, str | None]:
+
     """Drive a single transfer job through the full state machine.
 
     All exceptions are caught internally. The caller receives ``(False, error)``
@@ -119,9 +159,6 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
     no_collect = job.no_collect
     no_cleanup = job.no_cleanup
 
-    from control.utils.run_state import RunStateManager
-    state_mgr = RunStateManager()
-
     logger.info("Processing transfer job for run: %s", run_name)
 
     try:
@@ -131,7 +168,7 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
-            state_mgr.transition("MANIFEST_GENERATING")
+            _safe_ledger_update(state_mgr, status="TRANSFERRING")
             manifest_errors: list[str] = []
 
             try:
@@ -177,7 +214,9 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
                             tg.create_task(gen_manifest(node))
                 except* Exception as eg:
                     for exc in eg.exceptions:
-                        manifest_errors.append(f"gen_manifest task failed: {exc}")
+                        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                        err = f"gen_manifest task failed: {exc}\n{tb}"
+                        manifest_errors.append(err)
                         logger.warning("gen_manifest task raised: %s", exc)
 
             except ImportError:
@@ -186,7 +225,7 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
             if manifest_errors:
                 err_msg = "; ".join(manifest_errors)
                 logger.error("[%s] Manifest generation failed: %s", run_name, err_msg)
-                state_mgr.transition("TRANSFER_FAILED")
+                _safe_ledger_update(state_mgr, status="TRANSFER_FAILED", last_transfer_error=err_msg)
                 return False, err_msg
 
             # --- Stage 2: rsync ---
@@ -194,23 +233,62 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: TRANSFERRING", run_name)
-            state_mgr.transition("TRANSFERRING")
+            _safe_ledger_update(state_mgr, status="TRANSFERRING")
             transfer_errors: list[str] = []
-            for node in daq_nodes:
+            
+            async def run_rsync_with_progress(node: TransferNodeSpec) -> int:
                 head_run_dir = pathlib.Path(head_data_dir) / run_name
                 cmd = build_rsync_cmd(node, run_name, head_run_dir)
-                result = await asyncio.to_thread(
-                    subprocess.run, cmd, capture_output=True, text=True
+                
+                if "--info=progress2" not in cmd:
+                    cmd.append("--info=progress2")
+
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                if result.returncode != 0:
-                    err = f"rsync failed for {node.ip_addr}: {result.stderr}"
+                
+                async def read_stdout() -> None:
+                    if proc.stdout:
+                        while True:
+                            line = await proc.stdout.readline()
+                            if not line:
+                                break
+                            decoded = line.decode().strip()
+                            prog = parse_rsync_progress(decoded)
+                            if prog:
+                                _write_progress(run_name, str(node.ip_addr), prog)
+                
+                async def read_stderr() -> str:
+                    if proc.stderr:
+                        data = await proc.stderr.read()
+                        return data.decode()
+                    return ""
+
+                # Concurrently read stdout (for progress) and wait for the process to finish.
+                # stderr is read at the end.
+                stdout_task = asyncio.create_task(read_stdout())
+                await proc.wait()
+                await stdout_task
+                stderr_output = await read_stderr()
+                
+                if proc.returncode != 0:
+                    err = f"rsync failed for {node.ip_addr}: {stderr_output}"
                     transfer_errors.append(err)
-                    logger.error("Rsync failed for %s: %s", node.ip_addr, result.stderr)
+                    logger.error("Rsync failed for %s: %s", node.ip_addr, stderr_output)
+                return proc.returncode or 0
+
+            # We process nodes sequentially to keep progress reporting simple for now,
+            # or could use a TaskGroup if parallelism is desired. 
+            # The plan implies one node at a time in the loop.
+            for node in daq_nodes:
+                await run_rsync_with_progress(node)
 
             if transfer_errors:
                 err_msg = "; ".join(transfer_errors)
                 logger.error("[%s] Transfer failed: %s", run_name, err_msg)
-                state_mgr.transition("TRANSFER_FAILED")
+                _safe_ledger_update(state_mgr, status="TRANSFER_FAILED", last_transfer_error=err_msg)
                 return False, err_msg
 
             # --- Stage 3: verify manifest digests on head node ---
@@ -218,7 +296,7 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: VERIFYING", run_name)
-            state_mgr.transition("VERIFYING")
+            _safe_ledger_update(state_mgr, status="VERIFYING")
             verify_errors: list[str] = []
             head_run_path = pathlib.Path(head_data_dir) / run_name
             for algo_suffix in ("blake3", "xxh3_128", "sha256"):
@@ -236,7 +314,7 @@ async def _process_job(job: TransferJob, shutdown: asyncio.Event) -> tuple[bool,
 
             if verify_errors:
                 err_msg = "; ".join(verify_errors)
-                state_mgr.transition("VERIFY_FAILED")
+                _safe_ledger_update(state_mgr, status="VERIFY_FAILED", last_transfer_error=err_msg)
                 logger.error(
                     "[%s] Verification failed — skipping cleanup to preserve DAQ-side data. "
                     "Manual recovery required.",
@@ -406,68 +484,90 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
 
     try:
         while not shutdown.is_set():
-            job = tq.claim()
-            if job is None:
-                with contextlib.suppress(asyncio.TimeoutError):
-                    await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
-                continue
-
-            run_name = job.run_name
-            # Persist the incremented attempt count into active/ BEFORE processing.
-            # If the daemon process dies mid-job, _sweep_stranded_jobs will see
-            # the bumped count and avoid infinite bouncing.
-            bumped_attempts = job.attempts + 1
-            bumped_job = job.model_copy(update={"attempts": bumped_attempts})
-            active_job_path = tq._queue / "active" / f"{run_name}.job.toml"
             try:
-                tq._write_job(active_job_path, bumped_job)
-            except OSError as exc:
-                logger.error("Failed to persist bumped attempt count for %s: %s", run_name, exc)
-                # Move to failed to avoid an unpersisted-attempts bounce.
-                with contextlib.suppress(OSError):
-                    tq.fail(run_name)
-                continue
+                job = tq.claim()
+                if job is None:
+                    with contextlib.suppress(asyncio.TimeoutError):
+                        await asyncio.wait_for(shutdown.wait(), timeout=poll_interval)
+                    continue
 
-            success, error_msg = await _process_job(bumped_job, shutdown)
+                run_name = job.run_name
+                state_mgr = RunStateManager()
 
-            if error_msg == "DAEMON_SHUTDOWN":
-                # Re-enqueue to pending so the next daemon start picks it up cleanly.
-                logger.info("Shutdown requested mid-job %s; re-enqueueing to pending/", run_name)
+                # Persist the incremented attempt count into active/ BEFORE processing.
+                # If the daemon process dies mid-job, _sweep_stranded_jobs will see
+                # the bumped count and avoid infinite bouncing.
+                bumped_attempts = job.attempts + 1
+                bumped_job = job.model_copy(update={"attempts": bumped_attempts})
+                active_job_path = tq._queue / "active" / f"{run_name}.job.toml"
                 try:
-                    os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
+                    tq._write_job(active_job_path, bumped_job)
+                    _safe_ledger_update(state_mgr, status="TRANSFERRING", transfer_attempts=bumped_attempts)
                 except OSError as exc:
-                    logger.error("Failed to re-enqueue %s on shutdown: %s", run_name, exc)
-                break
-
-            if success:
-                tq.complete(run_name)
-            elif bumped_attempts >= MAX_ATTEMPTS:
-                logger.error(
-                    "Run %s failed after %d attempts. Marking failed.",
-                    run_name, MAX_ATTEMPTS,
-                )
-                tq.fail(run_name)
-            else:
-                backoff = RETRY_DELAYS[min(bumped_attempts - 1, len(RETRY_DELAYS) - 1)]
-                logger.warning(
-                    "Run %s attempt %d/%d failed (%s). Retrying in %.0f s.",
-                    run_name, bumped_attempts, MAX_ATTEMPTS, error_msg or "unknown", backoff,
-                )
-                # Persist the error message and re-enqueue.
-                now = datetime.now(UTC)
-                retry_job = bumped_job.model_copy(update={
-                    "last_error": error_msg,
-                    "last_error_at": now,
-                })
-                try:
-                    tq._write_job(active_job_path, retry_job)
-                    os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
-                except OSError as exc:
-                    logger.error("Failed to re-enqueue %s for retry: %s; marking failed", run_name, exc)
+                    logger.error("Failed to persist bumped attempt count for %s: %s", run_name, exc)
+                    # Move to failed to avoid an unpersisted-attempts bounce.
                     with contextlib.suppress(OSError):
                         tq.fail(run_name)
                     continue
-                await asyncio.sleep(backoff)
+
+                success, error_msg = await _process_job(bumped_job, shutdown, state_mgr)
+
+                if error_msg == "DAEMON_SHUTDOWN":
+                    # Re-enqueue to pending so the next daemon start picks it up cleanly.
+                    logger.info("Shutdown requested mid-job %s; re-enqueueing to pending/", run_name)
+                    try:
+                        os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
+                    except OSError as exc:
+                        logger.error("Failed to re-enqueue %s on shutdown: %s", run_name, exc)
+                    break
+
+                if success:
+                    tq.complete(run_name)
+                    _clear_progress(run_name)
+
+                elif bumped_attempts >= MAX_ATTEMPTS:
+                    logger.error(
+                        "Run %s failed after %d attempts. Marking failed.",
+                        run_name, MAX_ATTEMPTS,
+                    )
+                    tq.fail(run_name)
+                    _safe_ledger_update(
+                        state_mgr,
+                        status="TRANSFER_FAILED",
+                        transfer_attempts=bumped_attempts,
+                        last_transfer_error=error_msg,
+                    )
+                else:
+                    backoff = RETRY_DELAYS[min(bumped_attempts - 1, len(RETRY_DELAYS) - 1)]
+                    logger.warning(
+                        "Run %s attempt %d/%d failed (%s). Retrying in %.0f s.",
+                        run_name, bumped_attempts, MAX_ATTEMPTS, error_msg or "unknown", backoff,
+                    )
+                    # Persist the error message and re-enqueue.
+                    now = datetime.now(UTC)
+                    retry_job = bumped_job.model_copy(update={
+                        "last_error": error_msg,
+                        "last_error_at": now,
+                    })
+                    try:
+                        tq._write_job(active_job_path, retry_job)
+                        os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
+                        _safe_ledger_update(
+                            state_mgr,
+                            status="TRANSFERRING",  # still in flight (retrying)
+                            transfer_attempts=bumped_attempts,
+                            last_transfer_error=error_msg,
+                            next_action_not_before=now + timedelta(seconds=RETRY_DELAYS[min(bumped_attempts - 1, len(RETRY_DELAYS) - 1)]),
+                        )
+                    except OSError as exc:
+                        logger.error("Failed to re-enqueue %s for retry: %s; marking failed", run_name, exc)
+                        with contextlib.suppress(OSError):
+                            tq.fail(run_name)
+                        continue
+                    await asyncio.sleep(backoff)
+            except Exception as e:
+                logger.error("Unexpected error in daemon loop: %s", e, exc_info=True)
+                await asyncio.sleep(poll_interval)
 
     finally:
         hb_task.cancel()

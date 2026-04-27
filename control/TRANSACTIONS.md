@@ -44,10 +44,10 @@ The system state is persisted in a TOML-based ledger (`state/runs/ledger.toml`).
 | `MANIFEST_GENERATING` | daemon | DAQ nodes computing checksums |
 | `MANIFEST_READY` | daemon | All manifests generated |
 | `TRANSFER_PENDING` | daemon | Awaiting rsync start |
-| `TRANSFERRING` | daemon | rsync in progress |
-| `TRANSFER_FAILED` | daemon | rsync failed; will retry |
+| `TRANSFERRING` | daemon | rsync in progress; `transfer_attempts` mirrored to ledger |
+| `TRANSFER_FAILED` | daemon | rsync failed; `last_transfer_error` mirrored to ledger |
 | `VERIFYING` | daemon | Checking transferred files |
-| `VERIFY_FAILED` | daemon | Digest mismatch detected |
+| `VERIFY_FAILED` | daemon | Digest mismatch detected; mirrored to ledger |
 | `CLEANUP_PENDING` | daemon | Awaiting selective cleanup |
 | `CLEANING` | daemon | Removing .pff files from DAQ nodes |
 | `ARCHIVED` | daemon | run_complete marker written |
@@ -55,6 +55,10 @@ The system state is persisted in a TOML-based ledger (`state/runs/ledger.toml`).
 | `STOPPED_WITH_ERRORS` | daemon | Archive complete but with errors |
 
 **Node receipts** (`NodeReceipt` in `pydantic_config_models.py`) track per-DAQ-node state including `manifest_path`, `manifest_bytes`, `rsync_bytes_transferred`, `rsync_last_progress_at`, `verify_ok`, and `cleanup_ok`.
+
+### Ledger Mirroring
+
+The Transfer Daemon maintains "Ledger Truth" by mirroring its internal state onto the central run ledger. Every time a transfer attempt is incremented or an error is encountered, the daemon calls `state_mgr.transition()` to update the ledger's `transfer_attempts` and `last_transfer_error` fields. This allows operators to inspect the ledger at any time (e.g., via `pseti obs ledger`) to understand why a transfer is retrying or has failed.
 
 ---
 
@@ -162,8 +166,10 @@ if self.data_flow_started:
 
 Managed via `async with StopTransaction(...) as tx:`.
 
-### 1. `__aenter__`
+### 1. `__aenter__` (Pre-flight Ledger Guard)
 - Acquires the control advisory lock.
+- **Ledger Validation**: Proactively loads the run ledger. If the ledger indicates the run is already in a terminal state (e.g., `ARCHIVED`, `TRANSFER_FAILED`), the transaction refuses to proceed with hardware commands and raises a `ValidationError`. This prevents redundant hardware teardown on runs that have already been cleanly stopped and enqueued for transfer.
+- **Force Override**: The `--force-cleanup` flag bypasses all ledger status checks, allowing a full hardware teardown attempt even if the ledger is missing or in an unexpected state.
 
 ### 2. `__aexit__` (Teardown sequence)
 Ensures **resilient best-effort hardware shutdown**. All steps execute even if previous ones fail. Bulk I/O is NOT in this sequence:

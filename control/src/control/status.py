@@ -131,8 +131,7 @@ async def _remote_summary() -> list[str]:
 
 async def _sweep_summary() -> list[str]:
     """Full reachability sweep: Quabo ping + gRPC checks. Read-only."""
-    from control.start import _check_daq_reachability, _check_quabo_reachability
-    from control.utils.run_state import ValidationError
+    from control.start import _check_daq_reachability, _quabo_reachability_report
 
     lines: list[str] = ["=== Network Sweep ==="]
     try:
@@ -150,12 +149,20 @@ async def _sweep_summary() -> list[str]:
     except Exception as e:
         lines.append(f"DAQ gRPC:  FAILED — {e}")
 
-    # Quabo reachability (always lenient in this context — just report, don't abort)
+    # Quabo reachability report
     try:
-        await _check_quabo_reachability(quabo_uids, network_config, lenient=True)
-        lines.append("Quabos:    OK — all configured Quabos reachable")
-    except ValidationError as e:
-        lines.append(f"Quabos:    WARNING — {e}")
+        results = await _quabo_reachability_report(quabo_uids, network_config)
+        total = len(results)
+        reachable = [r for r in results if r.reachable]
+        up_count = len(reachable)
+        
+        if up_count == total:
+            lines.append(f"Quabos:    OK    — {up_count}/{total} reachable")
+        elif up_count > 0:
+            down_uids = [r.uid for r in results if not r.reachable]
+            lines.append(f"Quabos:    DEGRADED — {up_count}/{total} reachable; down: {', '.join(down_uids)}")
+        else:
+            lines.append(f"Quabos:    DOWN  — 0/{total} reachable")
     except Exception as e:
         lines.append(f"Quabos:    ERROR — {e}")
 

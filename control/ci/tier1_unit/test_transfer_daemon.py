@@ -123,20 +123,32 @@ def _mock_grpc_modules(mock_client: MagicMock):
                 sys.modules[key] = original
 
 
-def _mock_rsync_ok() -> MagicMock:
-    """Return a mock subprocess.CompletedProcess representing rsync success."""
-    result = MagicMock()
-    result.returncode = 0
-    result.stderr = ""
-    return result
+def _mock_subprocess_ok(*args, **kwargs) -> MagicMock:
+    """Return a mock process representing rsync success."""
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.wait = AsyncMock(return_value=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc.stdout = MagicMock()
+    proc.stdout.readline = AsyncMock(side_effect=[b"1000 50% 10MB/s 0:01\n", b""])
+    proc.stderr = MagicMock()
+    proc.stderr.read = AsyncMock(return_value=b"")
+    return proc
 
 
-def _mock_rsync_fail(msg: str = "rsync: connection timeout") -> MagicMock:
-    """Return a mock subprocess.CompletedProcess representing rsync failure."""
-    result = MagicMock()
-    result.returncode = 1
-    result.stderr = msg
-    return result
+def _mock_subprocess_fail(*args, **kwargs) -> MagicMock:
+    """Return a mock process representing rsync failure."""
+    # If the first arg (cmd) contains a message, use it
+    msg = "rsync: connection timeout"
+    proc = MagicMock()
+    proc.returncode = 1
+    proc.wait = AsyncMock(return_value=1)
+    proc.communicate = AsyncMock(return_value=(b"", msg.encode()))
+    proc.stdout = MagicMock()
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr = MagicMock()
+    proc.stderr.read = AsyncMock(return_value=msg.encode())
+    return proc
 
 
 # ---------------------------------------------------------------------------
@@ -148,17 +160,17 @@ async def test_process_job_happy_path(tmp_path, monkeypatch):
     """_process_job() drives all stages and returns True on success."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
     job = _make_job(tmp_path, run_name)
 
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_ok()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_ok
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
@@ -175,17 +187,17 @@ async def test_process_job_rsync_failure(tmp_path, monkeypatch):
     """_process_job() returns False when rsync fails."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
     job = _make_job(tmp_path, run_name)
 
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_fail()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_fail
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is False
@@ -202,17 +214,17 @@ async def test_process_job_no_collect_skips_rsync(tmp_path, monkeypatch):
     """With no_collect=True, rsync is not called and job reaches ARCHIVED."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
     job = _make_job(tmp_path, run_name, no_collect=True)
 
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_ok()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_ok
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
@@ -230,17 +242,17 @@ async def test_process_job_no_cleanup_skips_cleanup(tmp_path, monkeypatch):
     """With no_cleanup=True, CleanupData is not called on the gRPC client."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
     job = _make_job(tmp_path, run_name, no_cleanup=True)
 
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_ok()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_ok
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
@@ -256,7 +268,7 @@ async def test_process_job_run_complete_idempotent(tmp_path, monkeypatch):
     """If run_complete already exists, _process_job() must not overwrite it."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     run_dir = _make_run_dir(tmp_path, run_name)
     sentinel = "original content"
     (run_dir / "run_complete").write_text(sentinel)
@@ -265,10 +277,10 @@ async def test_process_job_run_complete_idempotent(tmp_path, monkeypatch):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_ok()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_ok
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
@@ -284,17 +296,17 @@ async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path, monkeypatch):
     """With both flags True, no DaqControlClient methods are called."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
     job = _make_job(tmp_path, run_name, no_collect=True, no_cleanup=True)
 
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_ok()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_ok
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
@@ -311,7 +323,7 @@ async def test_process_job_multiple_nodes(tmp_path, monkeypatch):
     """subprocess.run (rsync) is called once per DAQ node."""
     monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    _make_test_ledger(tmp_path, run_name)
+    state_mgr = _make_test_ledger(tmp_path, run_name)
     _make_run_dir(tmp_path, run_name)
 
     job = TransferJob(
@@ -329,14 +341,14 @@ async def test_process_job_multiple_nodes(tmp_path, monkeypatch):
     mock_client = _mock_grpc_client()
 
     with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.subprocess") as mock_sub:
-        mock_sub.run.return_value = _mock_rsync_ok()
+         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
+        mock_sub.side_effect = _mock_subprocess_ok
         import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event())
+        result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
-    assert mock_sub.run.call_count == 2
+    assert mock_sub.call_count == 2
 
 
 # ---------------------------------------------------------------------------

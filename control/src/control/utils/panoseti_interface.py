@@ -1,5 +1,4 @@
 import bisect
-import logging
 import mmap
 import re
 import time
@@ -20,17 +19,13 @@ except ImportError:
     HAS_DASK = False
 
 # Setup Rich Logging
+from panoseti_grpc.telemetry.logger import get_logger
 from rich.console import Console
-from rich.logging import RichHandler
 from rich.tree import Tree
 
-logging.basicConfig(
-    level="INFO",
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler(rich_tracebacks=True)]
-)
-logger = logging.getLogger("PanosetiInterface")
+from control.utils.paths import PanoPaths
+
+logger = get_logger("PSETI.Interface", log_dir=PanoPaths.logs_dir())
 
 
 # --- Precise Timing Helper (Integer Arithmetic) ---

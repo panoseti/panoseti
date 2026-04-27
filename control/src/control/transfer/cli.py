@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import time
 from typing import Annotated
 
 import typer
+from rich.console import Console
+from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn, TransferSpeedColumn
 
 from control.utils.paths import PanoPaths
 
@@ -54,33 +57,90 @@ def _daemon_alive() -> bool:
 # ---------------------------------------------------------------------------
 
 @app.command()
-def status(run: Annotated[str | None, typer.Argument(help="Run name to inspect")] = None) -> None:
+def status(
+    run: Annotated[str | None, typer.Argument(help="Run name to inspect")] = None,
+    watch: Annotated[bool, typer.Option("--watch", "-w", help="Periodically refresh the status display.")] = False,
+    interval: Annotated[float, typer.Option("--interval", "-i", help="Refresh interval in seconds.")] = 5.0,
+) -> None:
     """Show transfer daemon health and queue summary."""
     from control.transfer.service import get_queue_summary
 
-    pid = _daemon_pid()
-    age = _daemon_heartbeat_age()
+    console = Console()
 
-    if pid is None:
-        typer.echo("Daemon: NOT RUNNING (no pid file)")
-    elif age is None:
-        typer.echo(f"Daemon: pid={pid}  heartbeat: absent")
-    elif age < 30:
-        typer.echo(f"Daemon: RUNNING  pid={pid}  heartbeat {age:.0f}s ago")
-    else:
-        typer.echo(f"Daemon: STALE    pid={pid}  heartbeat {age:.0f}s ago (>30s)")
+    def render_once() -> None:
+        pid = _daemon_pid()
+        age = _daemon_heartbeat_age()
 
-    typer.echo("")
-    summary = get_queue_summary()
-    for bucket in ("pending", "active", "completed", "failed"):
-        runs = summary.get(bucket, [])
-        typer.echo(f"  {bucket:12s} {len(runs):3d} job(s)")
-        if run:
-            if run in runs:
-                typer.echo(f"    ✓ {run}")
-        elif runs:
-            for r in runs:
-                typer.echo(f"    - {r}")
+        if pid is None:
+            typer.echo("Daemon: NOT RUNNING (no pid file)")
+        elif age is None:
+            typer.echo(f"Daemon: pid={pid}  heartbeat: absent")
+        elif age < 30:
+            typer.echo(f"Daemon: RUNNING  pid={pid}  heartbeat {age:.0f}s ago")
+        else:
+            typer.echo(f"Daemon: STALE    pid={pid}  heartbeat {age:.0f}s ago (>30s)")
+
+        typer.echo("")
+        summary = get_queue_summary()
+        for bucket in ("pending", "active", "completed", "failed"):
+            runs = summary.get(bucket, [])
+            typer.echo(f"  {bucket:12s} {len(runs):3d} job(s)")
+            if run:
+                if run in runs:
+                    typer.echo(f"    ✓ {run}")
+            elif runs:
+                for r in runs:
+                    typer.echo(f"    - {r}")
+        
+        # Progress reporting for active jobs
+        active_runs = summary.get("active", [])
+        if active_runs:
+            typer.echo("\nActive Transfers:")
+            active_d = PanoPaths.transfer_queue_dir() / "active"
+            
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                "[progress.percentage]{task.percentage:>3.0f}%",
+                TransferSpeedColumn(),
+                TimeRemainingColumn(),
+                console=console,
+            ) as progress:
+                for r_name in active_runs:
+                    # Find all progress sidecars for this run
+                    sidecars = list(active_d.glob(f"{r_name}.*.progress.json"))
+                    if not sidecars:
+                        progress.add_task(f"[yellow]{r_name}[/] (starting...)", total=None)
+                        continue
+                    
+                    for s in sidecars:
+                        node_ip = s.name.split(".")[1]
+                        try:
+                            with open(s) as f:
+                                data = json.load(f)
+                            # rsync --info=progress2 gives total bytes and percentage
+                            # We'll use 100 as total and 'pct' as completed for simplicity
+                            # if total size isn't easily available here.
+                            progress.add_task(
+                                f"{r_name} [{node_ip}]",
+                                total=100,
+                                completed=data.get("pct", 0),
+                            )
+                            # Update speed/eta if needed (Rich handles this if we use completed/total)
+                        except Exception:
+                            progress.add_task(f"{r_name} [{node_ip}] (loading...)", total=None)
+
+    if not watch:
+        render_once()
+        return
+
+    try:
+        while True:
+            console.clear()
+            render_once()
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        pass
 
 
 @app.command()

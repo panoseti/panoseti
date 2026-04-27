@@ -20,6 +20,9 @@ Stop and finish the current recording run.
 ### `pseti status` (Alias for `pseti obs status`)
 Show control plane status. Checks the transactional ledger, local markers, and probes remote DAQ nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
 
+### `pseti cfg` (Alias for `pseti obs config`)
+Configure observatory hardware and daemons.
+
 ---
 
 ## Sub-App Commands
@@ -35,7 +38,9 @@ Observatory operations (Start/Stop, Power, Config, Validation).
 - `start`: Start a new recording run.
 - `status`: Show observatory health and acquisition status.
 - `stop`: Stop and finish the current recording run.
-- `transfer`: Manage the file transfer daemon. 
+- `transfer`: Manage the file transfer daemon. Supports `--watch` for real-time progress.
+- `ledger`: Inspect the run state ledger (read-only).
+- `led`: Short alias for `ledger`.
 - `session-start`: Initialize hardware, power, and calibration for an observing session.
 - `session-stop`: Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
 
@@ -55,7 +60,13 @@ Quality Assurance and Testing Suite.
   - `all`: Run the full software testing suite.
   - `build`: Rebuild the testing Docker images.
   - `cleanup`: Tear down all test containers and volumes.
-- `hw`: Hardware-in-the-Loop (HITL) physical lab tests (`build`, `check-env`, `deploy`, `clean`, `run`).
+- `hw`: Hardware-in-the-Loop (HITL) physical lab tests.
+  - `build`: Build HITL images.
+  - `check-env`: Verify physical lab environment.
+  - `deploy`: Deploy stack to physical nodes.
+  - `down`: Stop containers but preserve volumes.
+  - `clean`: Tear down containers and wipe volumes.
+  - `run`: Run HITL test suite.
 - `grpc`: gRPC service layer tests (`all`, `lint`, `daq_data`, `daq_control`, `telemetry`, etc.).
 
 ---

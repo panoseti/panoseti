@@ -23,8 +23,9 @@ class ObsLazyGroup(BaseLazyGroup):
             "val": ("control.config", "validate_app", "Configuration and topology validation tools."),
             "transfer": ("control.transfer.cli", "app", "Inspect and manage the background transfer queue."),
             "ledger": ("control.tools.ledger_cli", "app", "Inspect the run state ledger (read-only)."),
+            "led": ("control.tools.ledger_cli", "app", "Short alias for 'ledger'."),
         }
-        command_order = ["power", "get-uids", "config", "val", "start", "status", "stop", "transfer", "ledger", "session-start", "session-stop"]
+        command_order = ["power", "get-uids", "config", "val", "start", "status", "stop", "transfer", "ledger", "led", "session-start", "session-stop"]
         super().__init__(*args, lazy_mapping=lazy_mapping, command_order=command_order, **kwargs)
 
 app = typer.Typer(

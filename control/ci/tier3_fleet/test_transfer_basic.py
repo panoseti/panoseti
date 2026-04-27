@@ -171,9 +171,9 @@ class TestTransferBasicHappyPath:
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
         client = _grpc_client_ok()
         with _mock_grpc(client), \
-             patch("control.transfer.daemon.subprocess") as mock_sub:
-            mock_sub.run.return_value = MagicMock(returncode=0, stderr="")
-            result, _ = await _process_job(transfer_job, asyncio.Event())
+             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok) as mock_sub:
+            
+            result, _ = await _process_job(transfer_job, asyncio.Event(), RunStateManager())
         assert result is True
         assert (run_dir / "run_complete").exists(), "run_complete must be written on ARCHIVED"
         monkeypatch.undo()
@@ -209,9 +209,9 @@ class TestTransferBasicHappyPath:
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
         client = _grpc_client_ok()
         with _mock_grpc(client), \
-             patch("control.transfer.daemon.subprocess") as mock_sub:
-            mock_sub.run.return_value = MagicMock(returncode=0, stderr="")
-            _, _ = await _process_job(transfer_job, asyncio.Event())
+             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok) as mock_sub:
+            
+            _, _ = await _process_job(transfer_job, asyncio.Event(), RunStateManager())
         assert (run_dir / "run_complete").read_text() == sentinel
         monkeypatch.undo()
 
@@ -311,3 +311,12 @@ class TestTransferBasicQueue:
         ok = tq.retry(run_name)
         assert ok is True
         assert (queue_dir / "pending" / f"{run_name}.job.toml").exists()
+
+async def _mock_subprocess_ok(*args, **kwargs):
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.wait = AsyncMock(return_value=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr.read = AsyncMock(return_value=b"")
+    return proc

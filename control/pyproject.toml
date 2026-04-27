@@ -85,13 +85,15 @@ ignore = [
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 python_version = "3.14"
+exclude = ["ci"]
+
 strict = false
 check_untyped_defs = true
 strict_equality = true
 extra_checks = true
 ignore_missing_imports = true
 warn_return_any = false
-disallow_untyped_defs = false
+disallow_untyped_defs = true
 disallow_incomplete_defs = false
 warn_unused_ignores = false
 warn_unreachable = true

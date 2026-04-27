@@ -9,7 +9,6 @@ switch Quabo FPGA and MAROC registers between different observing modes.
 
 import argparse
 import contextlib
-import logging
 import os
 import signal
 import sys
@@ -18,10 +17,12 @@ from typing import Any
 
 import numpy as np
 import psutil
+from panoseti_grpc.telemetry.logger import get_logger
 
 import control.config as pano_config
 from control.driver import quabo_driver
 from control.utils import config_file, util
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,
     DataConfig,
@@ -34,8 +35,7 @@ from control.utils.pydantic_config_models import (
 
 PID_FILE = "tmp/interleave.pid"
 
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")
-logger = logging.getLogger("panoseti.interleave")
+logger = get_logger("PSETI.Interleave", log_dir=PanoPaths.logs_dir())
 
 
 class InterleaveController:

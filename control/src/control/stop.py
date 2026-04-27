@@ -130,6 +130,7 @@ class StopTransaction:
         try:
             if exc_type is ValidationError:
                 logger.warning(f"Aborting stop due to validation failure: {exc_val}")
+                self.success = True
                 return True
 
             # Ladder Step 0: Log fundamental failures from the 'with' block, then
@@ -625,6 +626,7 @@ async def stop_run(
             except Exception as e:
                 logger.warning(f"Failed to load state ledger: {e}. Proceeding with run marker.")
                 ledger = None
+            
             if not tx.run:
                 tx.run = ledger.run_name if ledger else util.read_run_name()
 
@@ -633,13 +635,21 @@ async def stop_run(
                 tx.success = True
                 return True
 
+            # Refuse to stop if already finished, unless forced
+            if ledger:
+                stoppable = {"STARTING", "ACTIVE", "STOPPING"}
+                if ledger.status not in stoppable and not force_cleanup:
+                    raise ValidationError(
+                        f"Ledger says run '{ledger.run_name}' is in '{ledger.status}'; "
+                        "nothing to stop. Use --force-cleanup to run the full ladder anyway."
+                    )
+
             # Validation: prevent orphaning the current run
             if ledger and tx.run != ledger.run_name and not force_cleanup:
                  raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-cleanup if you are sure.")
 
-            if ledger:
-                ledger.status = "STOPPING"
-                state_mgr.save_state(ledger)
+            # Update status to STOPPING
+            state_mgr.transition("STOPPING")
 
             logger.info(f"stopping data recording for run {tx.run}")
 
@@ -669,7 +679,7 @@ def main(
     force_cleanup: bool = typer.Option(False, "--force-cleanup", help="Force cleanup on DAQ nodes even if hashpipe liveness is uncertain."),
     verbose: bool = typer.Option(False, "--verbose", help="Print details."),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
-):
+) -> None:
     """Stop an in-progress recording run and enqueue it for background transfer.
 
     Hardware teardown completes in seconds. The Transfer Daemon handles rsync,

@@ -102,7 +102,7 @@ app = typer.Typer(help="Scan and cache Quabo hardware UIDs.", no_args_is_help=Fa
 @app.command()
 def main(
     exclude: list[int] = typer.Option(None, "--exclude", "-e", help="Quabo indices (0-3) to skip in every module.")
-):
+) -> None:
     """
     Scan possible quabo IP addrs.
     If they respond to ping, get their UID
