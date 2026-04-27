@@ -185,7 +185,7 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
         
         success = await start.start_run(
             obs_config, daq_config, quabo_uids, data_config, network_config,
-            no_hv=True, no_redis=True, no_data=False, force_reset=True
+            no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
         )
         assert not success, "start_run should have failed due to Phase 5 liveness probe failure"
 
@@ -418,6 +418,7 @@ class TestSC010OrphanedHashpipe:
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
+            "force":     False,
         })
         assert not ok, (
             "FAIL (SC-010): CleanupData succeeded after hashpipe was orphaned — "
@@ -672,7 +673,8 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
     mock_client.StartDaq = AsyncMock(side_effect=retry_start_daq)
     mock_client.StatusDaq = AsyncMock(side_effect=success_status_daq)
 
-    with unittest.mock.patch("control.start.AsyncDaqControlClient", return_value=mock_client), \
+    with unittest.mock.patch("control.utils.config_file.get_quabo_uids", return_value=quabo_uids), \
+         unittest.mock.patch("control.start.AsyncDaqControlClient", return_value=mock_client), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
          unittest.mock.patch("control.start._check_daq_reachability"), \
          unittest.mock.patch("control.start.make_run_dirs"), \
@@ -686,7 +688,7 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
         
         success = await start.start_run(
             obs_config, daq_config, quabo_uids, data_config, network_config,
-            no_hv=True, no_redis=True, no_data=False, force_reset=True
+            no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
         )
         assert success, "start_run should have succeeded after transient retry"
         assert call_count == 2, f"Expected 2 StartDaq calls, but got {call_count}"
@@ -951,7 +953,7 @@ async def test_SC020_stopdaqs_timeout_triggers_sigkill_fallback(
     with unittest.mock.patch("control.stop.AsyncDaqControlClient", return_value=mock_client), \
          unittest.mock.patch("asyncio.create_subprocess_exec", side_effect=mocked_create_subprocess_exec), \
          unittest.mock.patch("control.stop.config_file.get_daq_config", return_value=daq_config), \
-         unittest.mock.patch("control.stop.config_file.get_quabo_uids"), \
+         unittest.mock.patch("control.stop.config_file.get_quabo_uids", return_value=unittest.mock.MagicMock()), \
          unittest.mock.patch("control.stop.config_file.get_network_config"), \
          unittest.mock.patch("control.stop.util.local_ip", return_value=[os.environ.get("HEADNODE_TESTER_HOST", f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'), "127.0.0.1"]), \
          unittest.mock.patch("control.stop.RunStateManager.load_state", return_value=None), \

@@ -90,8 +90,8 @@ def _stop(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
 def _cleanup(client: DaqControlClient, params: dict[str, Any]) -> tuple[bool, str]:
     """CleanupData dict → (ok, msg).  Never raises."""
     try:
-        # Use force=True by default for tests to bypass stale PID checks
-        p = {**params, "force": True}
+        # Use force=True by default for tests to bypass stale PID checks, but allow override
+        p = {"force": True, **params}
         result = client.CleanupData(p)
         ok = result.get("success", False)
         msg = result.get("message", "")

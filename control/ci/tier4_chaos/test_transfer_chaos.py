@@ -102,7 +102,7 @@ async def test_when_rsync_exhausts_retries_then_job_fails(
     with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client), \
          patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="persistent error")):
         
-        success = await _process_job(job, asyncio.Event())
+        success = await _process_job(job, asyncio.Event(), RunStateManager())
         
     assert success is False
     assert not (head_root / run_name / "run_complete").exists()
@@ -129,7 +129,7 @@ async def test_when_cleanup_precondition_fails_then_pff_preserved(
     with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", return_value=mock_daq.client), \
          patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)):
         
-        success = await _process_job(job, asyncio.Event())
+        success = await _process_job(job, asyncio.Event(), RunStateManager())
         
     assert success is False
     assert not (head_root / run_name / "run_complete").exists()

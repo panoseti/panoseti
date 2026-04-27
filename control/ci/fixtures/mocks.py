@@ -101,3 +101,31 @@ class MockHeadNode:
         
     def get_last_command(self) -> tuple[str, Any] | None:
         return self.command_log[-1] if self.command_log else None
+
+
+async def _mock_subprocess_ok(*args, **kwargs) -> MagicMock:
+    """Return a mock process representing rsync success."""
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.wait = AsyncMock(return_value=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    proc.stdout = MagicMock()
+    proc.stdout.readline = AsyncMock(side_effect=[b"1000 50% 10MB/s 0:01\n", b""])
+    proc.stderr = MagicMock()
+    proc.stderr.read = AsyncMock(return_value=b"")
+    return proc
+
+
+async def _mock_subprocess_fail(*args, **kwargs) -> MagicMock:
+    """Return a mock process representing rsync failure."""
+    # If the first arg (cmd) contains a message, use it
+    msg = "rsync: connection timeout"
+    proc = MagicMock()
+    proc.returncode = 1
+    proc.wait = AsyncMock(return_value=1)
+    proc.communicate = AsyncMock(return_value=(b"", msg.encode()))
+    proc.stdout = MagicMock()
+    proc.stdout.readline = AsyncMock(return_value=b"")
+    proc.stderr = MagicMock()
+    proc.stderr.read = AsyncMock(return_value=msg.encode())
+    return proc

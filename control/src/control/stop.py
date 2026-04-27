@@ -178,7 +178,18 @@ class StopTransaction:
             data_dir = self.daq_config.head_node_data_dir
             run_dir = f'{data_dir}/{self.run}'
             run_dir_exists = await asyncio.to_thread(os.path.exists, run_dir)
-            if run_dir_exists:
+            
+            if not run_dir_exists:
+                msg = f"Run dir {data_dir}/{self.run} not found; recorded artifacts may be missing."
+                logger.error(msg)
+                self.all_errors.append(msg)
+
+            # --- DECISION: Should we enqueue for transfer? ---
+            # We only enqueue if the teardown ladder started cleanly (exc_type is None)
+            # AND the local run directory exists.
+            can_enqueue = (exc_type is None) and run_dir_exists
+
+            if can_enqueue:
                 if not await asyncio.to_thread(complete_file_exists, run_dir, recording_ended_filename):
                     await asyncio.to_thread(write_complete_file, run_dir, recording_ended_filename)
 
@@ -230,12 +241,24 @@ class StopTransaction:
                 logger.info(f'completed run {self.run}')
                 self.success = True
             else:
-                msg = f"Run dir {data_dir}/{self.run} not found; recorded artifacts may be missing."
-                logger.error(msg)
-                self.all_errors.append(msg)
+                # FUNDAMENTAL FAILURE: Do not feed to Transfer Daemon.
+                # Mark as terminal error in ledger so it's not a zombie.
+                failure_reason = str(exc_val) if exc_val else "; ".join(self.all_errors)
+                logger.error(f"Fundamental failure during stop for {self.run}. Bypassing transfer queue. Reason: {failure_reason}")
+                await asyncio.to_thread(
+                    self.state_mgr.transition,
+                    "STOPPED_WITH_ERRORS",
+                    last_transfer_error=failure_reason
+                )
 
             if self.all_errors:
                 logger.error(f"Shutdown completed with {len(self.all_errors)} errors.")
+            
+            if exc_type is not None:
+                # Return True to suppress the exception and signal that we handled the teardown ladder.
+                # Do NOT suppress signals (KeyboardInterrupt, etc).
+                return not issubclass(exc_type, (KeyboardInterrupt, SystemExit, asyncio.CancelledError))
+            
             return False
 
         finally:

@@ -235,8 +235,8 @@ class StartTransaction:
                         await asyncio.to_thread(os.rmdir, local_run_dir)
                     else:
                         logger.warning(f"local_run_dir {local_run_dir} does not exist; nothing to archive.")
-                except Exception as e4:
-                    logger.error(f"Failed to archive partial artifacts: {e4}")
+                except Exception:
+                    logger.exception("Failed to archive partial artifacts (non-fatal)")
 
             if exc_type is ValidationError:
                 return True # Suppress validation errors for a clean exit

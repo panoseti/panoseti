@@ -41,7 +41,8 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
     config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
     obs_cfg      = config_file.get_obs_config(dir=config_dir)
     daq_cfg      = config_file.get_daq_config(dir=config_dir)
-    quabo_uids   = config_file.get_quabo_uids()
+    # quabo_uids.json is in tmp_dir
+    quabo_uids   = config_file.get_quabo_uids(dir=os.environ.get("PSETI_TMP"))
     data_cfg     = config_file.get_data_config(dir=config_dir)
     network_cfg  = config_file.get_network_config(dir=config_dir)
 
@@ -78,7 +79,7 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
     config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
     daq_cfg     = config_file.get_daq_config(dir=config_dir)
     obs_cfg     = config_file.get_obs_config(dir=config_dir)
-    quabo_uids  = config_file.get_quabo_uids()
+    quabo_uids  = config_file.get_quabo_uids(dir=os.environ.get("PSETI_TMP"))
     data_cfg    = config_file.get_data_config(dir=config_dir)
     network_cfg = config_file.get_network_config(dir=config_dir)
 

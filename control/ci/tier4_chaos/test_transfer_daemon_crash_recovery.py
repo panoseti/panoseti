@@ -100,7 +100,7 @@ class TestDaemonCrashRecovery:
         # _process_job must return (False, str) — never raise. The daemon loop
         # trusts this contract. The mock simulates repeated logical failures.
         async def _always_fail(
-            j: TransferJob, shutdown: asyncio.Event
+            j: TransferJob, shutdown: asyncio.Event, state_mgr: Any
         ) -> tuple[bool, str | None]:
             return False, "RuntimeError: boom"
 
@@ -143,7 +143,7 @@ class TestDaemonCrashRecovery:
         call_count = 0
 
         async def _fail_once_then_succeed(
-            j: TransferJob, shutdown: asyncio.Event
+            j: TransferJob, shutdown: asyncio.Event, state_mgr: Any
         ) -> tuple[bool, str | None]:
             nonlocal call_count
             call_count += 1
@@ -240,7 +240,7 @@ class TestDaemonCrashRecovery:
         captured_attempts: list[int] = []
 
         async def _capture_and_fail(
-            j: TransferJob, shutdown: asyncio.Event
+            j: TransferJob, shutdown: asyncio.Event, state_mgr: Any
         ) -> tuple[bool, str | None]:
             # At this point, the job should already be in active/ with bumped attempts.
             active_path = tq._queue / "active" / "run_atomic.job.toml"

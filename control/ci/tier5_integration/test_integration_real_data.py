@@ -39,28 +39,72 @@ class TestIntegrationRealDataFlow:
 
     def test_real_stream_delivers_frames(self, daq_data_client, hashpipe_pcap_session) -> None:
         """stream_images() yields at least 1 frame driven by live hashpipe output."""
-        frames = list(islice(
-            daq_data_client.stream_images(
-                hosts=None,
-                stream_movie_data=True,
-                stream_pulse_height_data=True,
-                update_interval_seconds=0.1,
-            ),
-            5,
-        ))
-        assert len(frames) >= 1
+        import time
+
+        import grpc
+        
+        # Capped retry loop for Hashpipe initialization (SC-055 resolution)
+        MAX_RETRIES = 30
+        RETRY_INTERVAL = 1.0
+        frames = []
+        
+        for i in range(MAX_RETRIES):
+            try:
+                frames = list(islice(
+                    daq_data_client.stream_images(
+                        hosts=None,
+                        stream_movie_data=True,
+                        stream_pulse_height_data=True,
+                        update_interval_seconds=0.1,
+                    ),
+                    5,
+                ))
+                if frames:
+                    break
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.FAILED_PRECONDITION and "hp_io" in e.details():
+                    # Expected transient error while hashpipe initializes threads
+                    time.sleep(RETRY_INTERVAL)
+                    continue
+                raise
+            except Exception:
+                raise
+
+        assert len(frames) >= 1, f"Failed to deliver frames after {MAX_RETRIES} retries."
 
     def test_frame_is_dict(self, daq_data_client, hashpipe_pcap_session) -> None:
         """Each frame returned by the real stream is a non-empty dict."""
-        for frame in islice(
-            daq_data_client.stream_images(
-                hosts=None,
-                stream_movie_data=True,
-                stream_pulse_height_data=True,
-                update_interval_seconds=0.1,
-            ),
-            3,
-        ):
+        import time
+
+        import grpc
+        
+        MAX_RETRIES = 30
+        RETRY_INTERVAL = 1.0
+        frames = []
+        
+        for i in range(MAX_RETRIES):
+            try:
+                frames = list(islice(
+                    daq_data_client.stream_images(
+                        hosts=None,
+                        stream_movie_data=True,
+                        stream_pulse_height_data=True,
+                        update_interval_seconds=0.1,
+                    ),
+                    3,
+                ))
+                if frames:
+                    break
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.FAILED_PRECONDITION and "hp_io" in e.details():
+                    time.sleep(RETRY_INTERVAL)
+                    continue
+                raise
+            except Exception:
+                raise
+
+        assert len(frames) >= 1, f"Failed to deliver frames after {MAX_RETRIES} retries."
+        for frame in frames:
             assert isinstance(frame, dict)
             assert len(frame) > 0
 

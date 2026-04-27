@@ -37,6 +37,7 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
 
 from ci.fixtures.state_probe import StateProbe
+from ci.fixtures.mocks import _mock_subprocess_fail, _mock_subprocess_ok
 from ci.tier3_fleet.conftest import (
     DAQNODE_DIRECT_HOST,
     GRPC_PORT,
@@ -48,6 +49,7 @@ from ci.tier4_chaos.conftest import (
     make_run_params,
 )
 from control.transfer.models import TransferJob, TransferNodeSpec
+from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -105,10 +107,12 @@ class TestSCTX001PartialStartRollback:
         client: DaqControlClient,
         run_params: dict[str, Any],
         state_probe: StateProbe,
+        tmp_path: pathlib.Path,
     ) -> None:
         from control.utils.run_state import RunStateManager
 
         RunStateManager().clear_state()
+        run_params["data_dir"] = str(tmp_path / "daq_data")
 
         # Start hashpipe on node, then immediately inject a failure via
         # process_chaos to simulate a second node rejecting StartDaq.
@@ -207,17 +211,22 @@ class TestSCTX003NetworkDropMidRsync:
 
         # Patch rsync to always fail and GenerateManifest to skip
         with (
-            patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=1, stderr="simulated loss")),
+            patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_grpc_cls,
+            patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail),
             patch("control.transfer.daemon.verify_manifest", return_value=(True, [])),
         ):
+            # Ensure GenerateManifest succeeds so we reach rsync
+            mock_grpc_cls.return_value.__aenter__.return_value.GenerateManifest.return_value = {"success": True}
+            
             job = tq.claim()
             assert job is not None
-            success = await _process_job(job, asyncio.Event())
+            success, err = await _process_job(job, asyncio.Event(), RunStateManager())
             # Simulate daemon loop: move failed job out of active/
             if not success:
                 tq.fail(run_name)
 
         assert not success, "rsync failure must return False"
+        assert "rsync failed" in str(err)
         assert not (tq._queue / "active" / f"{run_name}.job.toml").exists()
 
 
@@ -275,16 +284,21 @@ class TestSCTX004ManifestMismatch:
 
         # No rsync needed (skip), go straight to verify
         with (
-            patch("control.transfer.daemon.subprocess.run", return_value=MagicMock(returncode=0)),
+            patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_grpc_cls,
+            patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok),
         ):
+            # Ensure GenerateManifest succeeds so we reach verify
+            mock_grpc_cls.return_value.__aenter__.return_value.GenerateManifest.return_value = {"success": True}
+            
             job = tq.claim()
             assert job is not None
-            success = await _process_job(job, asyncio.Event())
+            success, err = await _process_job(job, asyncio.Event(), RunStateManager())
             # Simulate daemon loop: move failed job out of active/
             if not success:
                 tq.fail(run_name)
 
         assert not success, "Corrupted file must cause _process_job to return False"
+        assert "Digest mismatch" in str(err)
         # Verify no active job remains (daemon loop moved it to failed/)
         assert not list((tq._queue / "active").glob("*.toml"))
 

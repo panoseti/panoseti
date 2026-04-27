@@ -57,8 +57,9 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     daq_raw = copy.deepcopy(topology_templates.get("base_daq", {}))
     daq_raw["head_node_ip_addr"] = headnode_ip
     daq_raw["head_node_container"] = True
+    # Pair DAQ IPs with modules in coherent subnets to pass Tier-2 validation
     daq_raw["daq_nodes"] = [
-        {"ip_addr": f"192.168.100.{30+i}", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [200+i]}
+        {"ip_addr": f"192.168.{100+i}.30", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [200+i]}
         for i in range(4)
     ]
     daq_config = DaqConfig(**daq_raw)
@@ -76,7 +77,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
         mid = 200 + i
         modules_list.append({
             "id": mid,
-            "ip_addr": f"192.168.3.{mid}",
+            "ip_addr": f"192.168.{100+i}.{mid}", # Same subnet as DAQ
             "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
         })
     quabo_uids = QuaboUids(**uids_dict)
@@ -103,7 +104,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
         mock_client.__aexit__ = AsyncMock(return_value=None)
         
         async def _start(params, **kw):
-            if host == "192.168.0.32":
+            if host == "192.168.102.30": # Node 2
                  print(f"DEBUG: Failing StartDaq for {host}")
                  raise RuntimeError("Node 2 Simulated StartDaq Failure (SC-N003)")
             print(f"DEBUG: Success StartDaq for {host}")
@@ -136,15 +137,14 @@ async def test_SCN003_partial_start_rollback_4_nodes(
         
         success = await start.start_run(
             obs_config, daq_config, quabo_uids, data_config, network_config,
-            no_hv=True, no_redis=True, no_data=False, force_reset=True
+            no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
         )
         
         assert not success, "start_run should fail due to Node 2 partial failure"
 
     # 5. Assert Rollback Ladder: Nodes 0, 1, 3 should have received StopDaq if they were attempted.
-    # Node 0: .30, Node 1: .31, Node 3: .33
     
-    expected_ips = {"192.168.0.30", "192.168.0.31"}
+    expected_ips = {"192.168.100.30", "192.168.101.30"}
     
     # Check that at least Nodes 0 and 1 were rolled back.
     for ip in expected_ips:
@@ -175,19 +175,20 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
     daq_raw = copy.deepcopy(topology_templates.get("base_daq", {}))
     daq_raw["head_node_ip_addr"] = headnode_ip
     daq_raw["head_node_container"] = True
+    # Pair DAQ IPs with modules in coherent subnets to pass Tier-2 validation
     daq_raw["daq_nodes"] = [
-        {"ip_addr": "192.168.100.10", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [250]},
-        {"ip_addr": "192.168.100.11", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [251]},
-        {"ip_addr": "192.168.100.12", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [252]},
+        {"ip_addr": "192.168.100.30", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [250]},
+        {"ip_addr": "192.168.101.30", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [251]},
+        {"ip_addr": "192.168.102.30", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [252]},
     ]
     daq_config = DaqConfig(**daq_raw)
 
     # Construct UIDs for these 3 modules
     uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
     modules_list = cast(list[dict[str, Any]], uids_dict["domes"][0]["modules"])
-    for mid in [250, 251, 252]:
+    for i, mid in enumerate([250, 251, 252]):
          modules_list.append({
-                "id": mid, "ip_addr": f"192.168.3.{mid}",
+                "id": mid, "ip_addr": f"192.168.{100+i}.{mid}", # Same subnet as DAQ
                 "quabos": [{"uid": f"q{mid}"}] + [{"uid": ""}]*3
          })
     quabo_uids = QuaboUids(**uids_dict)
@@ -205,7 +206,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
         mock_client.__aexit__ = AsyncMock(return_value=None)
         
         async def _start(params, **kw):
-            if host == "192.168.0.12":
+            if host == "192.168.102.30": # Node 2
                  await asyncio.sleep(0.5)
                  raise RuntimeError("Node 2 Simulated StartDaq Failure")
             await asyncio.sleep(0.1)
@@ -235,13 +236,13 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
         
         success = await start.start_run(
             obs_config, daq_config, quabo_uids, data_config, network_config,
-            no_hv=True, no_redis=True, no_data=False
+            no_hv=True, no_redis=True, no_data=False, strict=False
         )
         assert not success
 
     # 3. Assert Rollback Ladder: Node 0 and 1 MUST have received StopDaq
-    assert "192.168.0.10" in rollback_results["stop_called_ips"]
-    assert "192.168.0.11" in rollback_results["stop_called_ips"]
+    assert "192.168.100.30" in rollback_results["stop_called_ips"]
+    assert "192.168.101.30" in rollback_results["stop_called_ips"]
 
 
 # ── SC-071: Sequential StartDaq latency ───────────────────────────────────────

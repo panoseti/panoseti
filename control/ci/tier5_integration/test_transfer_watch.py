@@ -17,9 +17,11 @@ import pytest
 @pytest.mark.skipif(not os.environ.get("RUN_REAL_DATA_TESTS"), reason="RUN_REAL_DATA_TESTS not set")
 def test_transfer_status_watch_smoke(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
-    monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
+    # PSETI_TQ_DIR must point to the queue root, not state root
+    tq_dir = tmp_path / "queue"
+    monkeypatch.setenv("PSETI_TQ_DIR", str(tq_dir))
     
-    active_d = tmp_path / "state" / "transfer" / "queue" / "active"
+    active_d = tq_dir / "active"
     active_d.mkdir(parents=True)
     
     # Create a fake active job file
