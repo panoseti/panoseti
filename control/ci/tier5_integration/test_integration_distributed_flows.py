@@ -9,17 +9,15 @@ from __future__ import annotations
 
 import os
 import unittest.mock
-import contextlib
 import uuid
-from collections.abc import Iterator
 
 import pytest
 
+from ci.tier3_fleet.conftest import wait_hashpipe_stopped
 from control.start import start_run
 from control.stop import stop_run
 from control.utils import config_file
 from control.utils.run_state import RunStateManager
-from ci.tier3_fleet.conftest import wait_hashpipe_stopped
 
 
 def _prepare_daq_dirs(daq_cfg, run_name: str) -> None:
@@ -147,7 +145,10 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
         from panoseti_grpc.daq_control.client import DaqControlClient
         client = DaqControlClient(host=ip, port=50051)
         try:
-            assert wait_hashpipe_stopped(client, "/data", timeout=10), f"hashpipe still running on node {ip}"
+            assert wait_hashpipe_stopped(client, "/data", timeout=15), f"hashpipe still running on node {ip}"
+            # Explicit PID check
+            ok, status = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            assert status.get("hashpipe_pid") is None, f"Node {ip} still reporting hashpipe_pid={status.get('hashpipe_pid')}"
         finally:
             client.close()
 

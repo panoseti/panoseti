@@ -388,7 +388,7 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
                     ok = await client.StopDaq({
                         'data_dir': node.data_dir,
                         'run_dir':  run_dir,
-                    }, timeout=30.0)
+                    }, timeout=70.0)
 
                     if not ok:
                         msg = f"StopDaq returned success=False for node {node.ip_addr}"

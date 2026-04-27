@@ -31,6 +31,7 @@ from ci.fixtures.factories import (
     make_transfer_job,
     simulate_daq_filesystem,
 )
+from ci.fixtures.fleet import Fleet
 from ci.paths import PanoPathsTest
 from control.utils.pydantic_config_models import (
     DaqConfig,
@@ -85,14 +86,14 @@ def pytest_configure(config: Any) -> None:
     os.environ["TC_SESSION_ID"] = f"tc-{worker_id}-{run_uuid}"
 
     # Ensure testcontainers internal state is updated
-    try:
-        import testcontainers.core.utils
-        if hasattr(testcontainers.core.utils, "setup_default_session_id"):
-            testcontainers.core.utils.setup_default_session_id()
-        else:
-            testcontainers.core.utils.SESSION_ID = os.environ["TC_SESSION_ID"]
-    except (ImportError, AttributeError):
-        pass
+    # try:
+    #     import testcontainers.core.utils
+    #     if hasattr(testcontainers.core.utils, "setup_default_session_id"):
+    #         testcontainers.core.utils.setup_default_session_id()
+    #     else:
+    #         testcontainers.core.utils.SESSION_ID = os.environ["TC_SESSION_ID"]
+    # except (ImportError, AttributeError):
+    #     pass
 
 
 @pytest.fixture(scope="session")
@@ -309,7 +310,7 @@ def mock_daq_config() -> DaqConfig:
 @pytest.fixture
 def mock_network_config() -> NetworkConfig:
     """Fully valid Pydantic model for network configuration."""
-    baseline = {
+    baseline: dict[str, Any] = {
         "modules": [
             {
                 "ip_addr": "192.168.3.200",
@@ -483,13 +484,12 @@ def pff_file_factory() -> Callable[..., io.BytesIO]:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def session_fleet(auto_isolate) -> Iterator[Any]:
+def session_fleet(auto_isolate) -> Iterator[tuple[Fleet, dict[str, Any]]]:
     """Start a 2-node testcontainers fleet and yield (fleet, daq_cfg_dict).
 
     The daq_cfg dict is built from a validated Pydantic DaqConfig so
     all port-forwarding metadata is guaranteed correct before any test runs.
     """
-    import json
 
     from ci.fixtures.fleet import make_fleet, setup_docker_host
 
@@ -509,7 +509,7 @@ def session_fleet(auto_isolate) -> Iterator[Any]:
     #    to_daq_config() injects port_forwarding blocks with the dynamic
     #    mapped ports so clients use 127.0.0.1:<port> automatically.
     daq_config = fleet.to_daq_config()
-    daq_cfg = json.loads(daq_config.model_dump_json())
+    daq_cfg: dict[str, Any] = daq_config.model_dump()
 
     # PERSIST: Write the dynamic config to disk in the isolated directory
     # so tools like stop_run (which reload from disk) see the mapped ports.

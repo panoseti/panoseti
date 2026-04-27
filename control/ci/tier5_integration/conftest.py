@@ -57,8 +57,9 @@ def ensure_clean_daq_state(daq_control_direct, daq_control_node2) -> Iterator[No
     def _stop_all():
         for client in (daq_control_direct, daq_control_node2):
             with contextlib.suppress(Exception):
-                client.StopDaq({"data_dir": "/data", "run_dir": ""})
-            wait_hashpipe_stopped(client, "/data", timeout=8)
+                # Use a long timeout to allow the server's 60s graceful wait to complete
+                client.StopDaq({"data_dir": "/data", "run_dir": ""}, timeout=70.0)
+            wait_hashpipe_stopped(client, "/data", timeout=10)
         from control.utils.run_state import RunStateManager
         RunStateManager().clear_state()
 

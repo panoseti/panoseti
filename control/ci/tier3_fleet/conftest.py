@@ -193,7 +193,7 @@ def wait_hashpipe_running(
 ) -> bool:
     """Poll StatusDaq until hashpipe_running=True or timeout."""
     return wait_until(
-        lambda: client.StatusDaq({"data_dir": data_dir, **_HP_STATUS_PARAMS})[1].get(
+        lambda: client.StatusDaq({"data_dir": data_dir, **_HP_STATUS_PARAMS}, timeout=2.0)[1].get(
             "hashpipe_running"
         )
         is True,
@@ -209,7 +209,7 @@ def wait_hashpipe_stopped(
 ) -> bool:
     """Poll StatusDaq until hashpipe_running is False/None or timeout."""
     return wait_until(
-        lambda: client.StatusDaq({"data_dir": data_dir, **_HP_STATUS_PARAMS})[1].get(
+        lambda: client.StatusDaq({"data_dir": data_dir, **_HP_STATUS_PARAMS}, timeout=2.0)[1].get(
             "hashpipe_running"
         )
         is not True,

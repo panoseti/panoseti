@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import pathlib
 from datetime import UTC, datetime
+from ipaddress import ip_address
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,10 +17,9 @@ import pytest
 from control.transfer.daemon import run_daemon
 from control.transfer.lifecycle import MAX_ATTEMPTS
 from control.transfer.models import TransferJob, TransferNodeSpec
-from ipaddress import ip_address
 from control.transfer.queue import TransferQueue
-from control.utils.run_state import RunStateLedger
 from control.utils.paths import PanoPaths
+from control.utils.run_state import RunStateLedger
 
 
 def _make_job(run_name: str, tmp_path: pathlib.Path, attempts: int = 0) -> TransferJob:

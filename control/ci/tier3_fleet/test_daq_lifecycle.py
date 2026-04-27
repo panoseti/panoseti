@@ -7,10 +7,11 @@ connections, validating that gRPC topology works end-to-end for both paths.
 from __future__ import annotations
 
 import contextlib
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
+from testcontainers.core.container import DockerContainer
 
 from ci.tier3_fleet.conftest import (
     wait_hashpipe_running,
@@ -239,3 +240,68 @@ class TestDaqRunDirIsolation:
                 "run_dir":   rp_b["run_dir"],
                 "module_id": rp_b["module_id"],
             })
+
+
+class TestStopDaqRobustness:
+    """Verify that StopDaq handles process leaks and graceful waits correctly."""
+
+    def test_stop_daq_clears_all_orphans(
+        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
+    ) -> None:
+        """One StopDaq call must clear ALL hashpipe processes on the node."""
+        fleet, _ = session_fleet
+        container: DockerContainer = cast(list[DockerContainer], fleet.containers)[0]
+
+        # 1. Start one hashpipe via gRPC
+        daq_control_direct.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"])
+
+        # 2. Start a SECOND hashpipe manually to simulate an orphan
+        # We don't need a real hashpipe; any process named 'hashpipe' will trigger the cleanup.
+        wrapped = container.get_wrapped_container()
+        wrapped.exec_run("cp /bin/sleep /tmp/hashpipe")
+        wrapped.exec_run("/tmp/hashpipe 300", detach=True)
+        
+        # Verify two processes are running
+        import time
+        time.sleep(2.0)
+        exit_code, output = wrapped.exec_run("pgrep hashpipe")
+        pids = output.decode().strip().split()
+        assert len(pids) >= 2, f"Expected >=2 hashpipe processes, found {len(pids)}: {output.decode()}"
+
+        # 3. Call StopDaq once
+        ok = daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        }, timeout=70.0)
+        assert ok is True
+
+        # 4. Verify ALL are gone
+        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), "Hashpipes still running after StopDaq"
+        exit_code, output = wrapped.exec_run("pgrep hashpipe")
+        assert exit_code != 0 or not output.strip(), f"Processes leaked: {output.decode()}"
+
+    def test_stop_daq_graceful_wait(self, daq_control_direct, run_params, ensure_clean_daq_state) -> None:
+        """StopDaq must wait for the process to actually terminate before returning."""
+        import time
+        daq_control_direct.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"])
+
+        t0 = time.monotonic()
+        ok = daq_control_direct.StopDaq({
+            "data_dir": run_params["data_dir"],
+            "run_dir":  run_params["run_dir"],
+        }, timeout=70.0)
+        elapsed = time.monotonic() - t0
+
+        assert ok is True
+        # It should take at least the poll interval, but usually very fast if it exits gracefully.
+        # This just ensures it doesn't hang for the full 60s unless necessary.
+        assert elapsed < 60.0, f"StopDaq took too long: {elapsed:.1f}s"
+        
+        # Status should immediately show not running
+        ok, status = daq_control_direct.StatusDaq({
+            "data_dir": run_params["data_dir"],
+            "check_hashpipe_running": True
+        })
+        assert ok and status.get("hashpipe_running") is False
