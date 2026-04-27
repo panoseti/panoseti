@@ -51,7 +51,7 @@ class TestIntegrationRealDataFlow:
         RETRY_INTERVAL = 1.0
         frames = []
         
-        for i in range(MAX_RETRIES):
+        for _i in range(MAX_RETRIES):
             try:
                 frames = list(islice(
                     real_daq_data_client.stream_images(
@@ -85,7 +85,7 @@ class TestIntegrationRealDataFlow:
         RETRY_INTERVAL = 1.0
         frames = []
         
-        for i in range(MAX_RETRIES):
+        for _i in range(MAX_RETRIES):
             try:
                 frames = list(islice(
                     real_daq_data_client.stream_images(

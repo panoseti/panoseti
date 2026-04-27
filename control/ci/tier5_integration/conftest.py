@@ -8,6 +8,7 @@ These tests require Hashpipe and high Linux capabilities.
 import contextlib
 import os
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +87,7 @@ def run_params():
         "group_ph_frames": False,
         "run_dir": "tier5_integration_test.pffd",
         "obs": "tier5",
-        "module_id": [250, 254],
+        "module_id": [200, 201, 250], # MUST INCLUDE MODULE 250: hardcoded bc the pcapng file only has module 250 data
     }
 
 @pytest.fixture(scope="session")
@@ -175,3 +176,23 @@ def real_daq_data_client(hashpipe_pcap_session: dict[str, Any], daqnode_num: int
         yield client
         
     
+
+
+@contextmanager
+def env_var(key, value):
+    """
+    # Usage
+    with env_var("DATABASE_URL", "postgres://user:pass@localhost/db"):
+        # Code in this block sees the new environment variable
+        print(os.environ["DATABASE_URL"])
+    """
+    original_value = os.environ.get(key)
+    os.environ[key] = value
+    try:
+        yield
+    finally:
+        if original_value is None:
+            del os.environ[key]
+        else:
+            os.environ[key] = original_value
+

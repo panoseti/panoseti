@@ -237,7 +237,7 @@ class GlobalConfigValidator:
 
         missing = required_hw - firmware_keys
         if missing:
-            self.report.add_test("Hardware-Firmware Alignment", "ERROR", f"Missing binary configurations for HW types: {missing}")
+            self.report.add_test("Hardware-Firmware Alignment", "ERROR", f"Missing binary configurations for HW types: {missing}. {self.firmware_conf=}")
         else:
             self.report.add_test("Hardware-Firmware Alignment", "PASS", "Binary configurations exist for all active hardware.")
     def _check_firmware_filesystem(self) -> None:

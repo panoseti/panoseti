@@ -151,7 +151,13 @@ async def test_transfer_daemon_archives_run(
 
     async def mocked_rsync(*args, **kwargs):
         ok = copy_run_dir_from_fleet(fleet, run_params["run_dir"], Path(job.head_data_dir))
-        proc = MagicMock(); proc.returncode = 0 if ok else 1; proc.wait = AsyncMock(return_value=proc.returncode); proc.communicate = AsyncMock(return_value=(b'', b'Simulated copy failed' if not ok else b'')); proc.stdout.readline = AsyncMock(return_value=b''); proc.stderr.read = AsyncMock(return_value=b'Simulated copy failed' if not ok else b''); return proc
+        proc = MagicMock()
+        proc.returncode = 0 if ok else 1
+        proc.wait = AsyncMock(return_value=proc.returncode)
+        proc.communicate = AsyncMock(return_value=(b'', b'Simulated copy failed' if not ok else b''))
+        proc.stdout.readline = AsyncMock(return_value=b'')
+        proc.stderr.read = AsyncMock(return_value=b'Simulated copy failed' if not ok else b'')
+        return proc
     # Use fully qualified path for patching
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     

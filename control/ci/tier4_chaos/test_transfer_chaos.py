@@ -19,6 +19,7 @@ import pytest
 from ci.fixtures.mocks import MockDaqNode
 from control.transfer.daemon import run_daemon
 from control.transfer.queue import TransferQueue
+from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # CI guard

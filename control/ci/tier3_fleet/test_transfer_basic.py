@@ -171,7 +171,7 @@ class TestTransferBasicHappyPath:
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
         client = _grpc_client_ok()
         with _mock_grpc(client), \
-             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok) as mock_sub:
+             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok):
             
             result, _ = await _process_job(transfer_job, asyncio.Event(), RunStateManager())
         assert result is True
@@ -209,7 +209,7 @@ class TestTransferBasicHappyPath:
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
         client = _grpc_client_ok()
         with _mock_grpc(client), \
-             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok) as mock_sub:
+             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok):
             
             _, _ = await _process_job(transfer_job, asyncio.Event(), RunStateManager())
         assert (run_dir / "run_complete").read_text() == sentinel

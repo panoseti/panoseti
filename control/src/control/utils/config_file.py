@@ -135,10 +135,10 @@ def assign_numbers(c: ObsConfig | QuaboUids) -> None:
         QuaboUidModule,
     )
     for ndome, dome in enumerate(c.domes):
-        if isinstance(dome, ObsDomeConfig) or isinstance(dome, QuaboUidDome):
+        if isinstance(dome, (ObsDomeConfig, QuaboUidDome)):
             dome.num = ndome
             for module in dome.modules:
-                if isinstance(module, ObsModuleConfig) or isinstance(module, QuaboUidModule):
+                if isinstance(module, (ObsModuleConfig, QuaboUidModule)):
                     module.id = ip_addr_to_module_id(str(module.ip_addr))
 
 def string_to_list(s: str) -> list[int]:

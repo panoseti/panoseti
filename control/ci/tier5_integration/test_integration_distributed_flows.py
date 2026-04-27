@@ -38,13 +38,17 @@ async def test_when_distributed_run_started_then_all_nodes_recording(
 ) -> None:
     """Verify distributed gRPC orchestration for a multi-node run in heavy stack."""
     # Use the session-isolated configs from the environment
+    print(f'{os.environ.get("PSETI_CONFIG", None)=}')
     config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
     obs_cfg      = config_file.get_obs_config(dir=config_dir)
     daq_cfg      = config_file.get_daq_config(dir=config_dir)
     # quabo_uids.json is in tmp_dir
-    quabo_uids   = config_file.get_quabo_uids(dir=os.environ.get("PSETI_TMP"))
+    quabo_uids   = config_file.get_quabo_uids()
     data_cfg     = config_file.get_data_config(dir=config_dir)
     network_cfg  = config_file.get_network_config(dir=config_dir)
+
+    from control.utils.config_file import validate_all
+    validate_all(debug=True)
 
     # Ensure head_node_data_dir exists for the test
     (tmp_path / "head_data").mkdir(parents=True, exist_ok=True)
@@ -77,9 +81,10 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
 ) -> None:
     """Verify clean teardown of a distributed observing run in heavy stack."""
     config_dir = os.environ.get("PSETI_CONFIG", str(config_file.PanoPaths.config_dir()))
+    print(f"{config_dir=}")
     daq_cfg     = config_file.get_daq_config(dir=config_dir)
     obs_cfg     = config_file.get_obs_config(dir=config_dir)
-    quabo_uids  = config_file.get_quabo_uids(dir=os.environ.get("PSETI_TMP"))
+    quabo_uids  = config_file.get_quabo_uids()
     data_cfg    = config_file.get_data_config(dir=config_dir)
     network_cfg = config_file.get_network_config(dir=config_dir)
 

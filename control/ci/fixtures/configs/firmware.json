@@ -1,3 +1,4 @@
 {
-    "bga": "stub_firmware.bin"
+    "qfp": "quabo_0214_2D8DFAA7.bin",
+    "bga": "quabo_0215_2D8E1868.bin"
 }
