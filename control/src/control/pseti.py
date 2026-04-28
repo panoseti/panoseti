@@ -24,20 +24,27 @@ def pseti_path_injector(name: str) -> None:
 class PanoLazyGroup(BaseLazyGroup):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         lazy_mapping = {
-            # Root aliases for high-frequency commands
-            "start": ("control.start", "app", "Alias for 'pseti obs start'."),
-            "stop": ("control.stop", "app", "Alias for 'pseti obs stop'."),
-            "status": ("control.status", "app", "Alias for 'pseti obs status'."),
-            # Primary command groups
-            "obs": ("control.tools.obs_cli", "app", "Observatory operations (Start/Stop, Power, Config)."),
-            "cfg": ("control.config", "app", "Alias for 'pseti obs config'."),
+            # Root commands (formerly under 'obs')
+            "power": ("control.power", "app", "Control Quabo power via WPS."),
+            "uids": ("control.get_uids", "app", "Scan and record Quabo hardware UIDs."),
+            "cfg": ("control.config", "app", "Configure observatory hardware and daemons."),
+            "val": ("control.config", "validate_app", "Configuration and topology validation tools."),
+            "start": ("control.start", "app", "Start a new recording run."),
+            "stat": ("control.status", "app", "Show observatory health, acquisition status, and ledger."),
+            "stop": ("control.stop", "app", "Stop and finish the current recording run."),
+            "xfr": ("control.transfer.cli", "app", "Inspect and manage the background transfer queue."),
+            "session-start": ("control.session_start", "app", "Initialize hardware/power for an observing session."),
+            "session-stop": ("control.session_stop", "app", "Gracefully power down and terminate a session."),
+            # System commands
             "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
-            # Maintenance and diagnostics
             "test": ("test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
             "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
         }
         # Explicit order to ensure consistent UX regardless of mapping insertion order
-        command_order = ["obs", "cfg", "grpc", "start", "stop", "status", "show", "test"]
+        command_order = [
+            "power", "uids", "cfg", "val", "start", "stat", "stop", "xfr",
+            "session-start", "session-stop", "show", "test", "grpc"
+        ]
         super().__init__(
             *args, 
             lazy_mapping=lazy_mapping, 

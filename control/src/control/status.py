@@ -186,8 +186,22 @@ def status(remote: bool = False, sweep_mode: bool = False) -> None:
     typer.echo(_render(local, remote_lines, sweep_lines))
 
 
+from panoseti_grpc.util.cli import BaseLazyGroup
+from typing import Any
+
+class StatLazyGroup(BaseLazyGroup):
+    """
+    Lazy-loading group for status subcommands like ledger.
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        lazy_mapping = {
+            "ledger": ("control.tools.ledger_cli", "app", "Inspect the run state ledger (read-only)."),
+        }
+        super().__init__(*args, lazy_mapping=lazy_mapping, **kwargs)
+
 app = typer.Typer(
-    help="Show the status of a PSETI recording run.",
+    cls=StatLazyGroup,
+    help="Show observatory health, acquisition status, and ledger.",
     no_args_is_help=False,
     invoke_without_command=True,
 )

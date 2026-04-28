@@ -14,28 +14,23 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import pathlib
 import time
 from typing import Any
 from unittest.mock import patch
 
 import pytest
-from panoseti_grpc.daq_control.client import DaqControlClient
-from control.transfer.daemon import run_daemon
 
-from control.start import start_run
-from control.stop import stop_run
-from control.utils import config_file
+from ci.tier5_integration.transfer_integration_utils import (
+    generate_integration_run,
+    mocked_build_rsync_cmd,
+    setup_isolated_integration_transfer_env,
+    verify_integration_transfer_accuracy,
+)
+from control.transfer.daemon import run_daemon
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
 
-from ci.tier5_integration.transfer_integration_utils import (
-    setup_isolated_integration_transfer_env,
-    generate_integration_run,
-    verify_integration_transfer_accuracy,
-    mocked_build_rsync_cmd
-)
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(300)
@@ -57,7 +52,7 @@ async def test_integration_transfer_queue_lifecycle(
     # --- Step 2: Run Transfer Daemon Loop as a task ---
     with patch("control.transfer.daemon.build_rsync_cmd", side_effect=mocked_build_rsync_cmd):
         daemon_task = asyncio.create_task(run_daemon(poll_interval=1.0))
-        
+
         # Wait for daemon heartbeat
         tq_dir = PanoPaths.transfer_queue_dir()
         hb_path = tq_dir.parent / "daemon.heartbeat"

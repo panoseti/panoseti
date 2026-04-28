@@ -2,21 +2,18 @@
 import asyncio
 import os
 import shutil
-import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
-import pytest
+from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
 from ci.fixtures.fleet import Fleet
 from control.start import start_run
 from control.stop import stop_run
-from control.transfer.daemon import _process_job
-from control.transfer.queue import TransferQueue
 from control.utils import config_file
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateManager
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+
 
 def setup_isolated_transfer_env(tmp_path: Path, monkeypatch: Any, daq_cfg_dict: dict[str, Any]) -> tuple[Path, config_file.DaqConfig]:
     """Isolates the PSETI state and config for a transfer test."""
@@ -36,7 +33,6 @@ def setup_isolated_transfer_env(tmp_path: Path, monkeypatch: Any, daq_cfg_dict: 
 
 def get_mapped_client_factory(daq_config: config_file.DaqConfig):
     """Returns a factory function for AsyncDaqControlClient that handles port forwarding."""
-    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     def _get_mapped_client(host, port=50051):
         for node in daq_config.daq_nodes:
             # Match by internal IP (if non-forwarded) OR by gateway IP + port (if forwarded)

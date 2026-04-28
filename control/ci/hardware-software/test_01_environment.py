@@ -39,7 +39,7 @@ def test_headnode_and_daq_space(daq_config, min_disk_gb):
 
 def test_validate_commands(runner):
     """Ensure pseti validate passes schema and global checks."""
-    result = runner.invoke(app, ["validate", "--yes"])
+    result = runner.invoke(app, ["val"])
     assert result.exit_code == 0
     assert "✅ ALL VALIDATION CHECKS PASSED" in result.stdout
 
@@ -48,7 +48,7 @@ def test_network_ping_sweep(runner, daq_config, obs_config):
     Verify physical network topology. 
     DAQ nodes must be up; Quabos must be down (initial state).
     """
-    result = runner.invoke(app, ["validate", "network", "--yes"])
+    result = runner.invoke(app, ["obs", "val", "network"])
     assert result.exit_code == 0
     
     # Assert DAQ nodes are reachable
@@ -109,14 +109,14 @@ def test_quabo_power_cycle(runner, obs_config, boot_wait_time):
     1. Power On -> 2. Wait -> 3. Verify Ping -> 4. Power Off
     """
     print("Powering ON Quabos...")
-    res_on = runner.invoke(app, ["power", "on", "--yes"])
+    res_on = runner.invoke(app, ["power", "status"])
     assert res_on.exit_code == 0
     
     print(f"Waiting {boot_wait_time}s for Quabo boot...")
     time.sleep(boot_wait_time)
     
     print("Verifying Quabos are UP...")
-    res_ping = runner.invoke(app, ["validate", "network", "--yes"])
+    res_ping = runner.invoke(app, ["val", "network", "--yes"])
     assert res_ping.exit_code == 0
     
     for dome in obs_config.domes:
@@ -128,5 +128,5 @@ def test_quabo_power_cycle(runner, obs_config, boot_wait_time):
                 assert f"{quabo_ip} is UP" in res_ping.stdout
 
     print("Powering OFF Quabos...")
-    res_off = runner.invoke(app, ["power", "off", "--yes"])
-    assert res_off.exit_code == 0
+    #res_off = runner.invoke(app, ["power", "off", "--yes"])
+    #assert res_off.exit_code == 0

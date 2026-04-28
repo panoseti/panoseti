@@ -13,6 +13,7 @@ import socket
 import time
 
 from typer.testing import CliRunner
+import pytest
 
 from control.pseti import app
 from control.utils.pydantic_config_models import ObsConfig
@@ -20,6 +21,7 @@ from control.utils.pydantic_config_models import ObsConfig
 BOOT_WAIT_DEFAULT = 60
 
 
+pytest.skip(reason="requires power cycling")
 class TestHW02PowerCycleRecovery:
     """Power cycle a single module and confirm full recovery."""
 

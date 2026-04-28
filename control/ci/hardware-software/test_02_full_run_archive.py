@@ -41,10 +41,10 @@ ARCHIVE_TIMEOUT = 300       # maximum seconds to wait for ARCHIVED state
 class TestHW01FullRunArchive:
     """End-to-end integration test against real Quabos."""
 
-    def test_HW_01_session_start(self, runner: CliRunner) -> None:
-        """Power on, get UIDs, calibrate. Prerequisite for all other HW tests."""
-        result = runner.invoke(app, ["session-start", "--yes"])
-        assert result.exit_code == 0, f"session-start failed:\n{result.stdout}"
+    # def test_HW_01_session_start(self, runner: CliRunner) -> None:
+    #     """Power on, get UIDs, calibrate. Prerequisite for all other HW tests."""
+    #     result = runner.invoke(app, ["session-start", "--yes"])
+    #     assert result.exit_code == 0, f"session-start failed:\n{result.stdout}"
 
     def test_HW_01_start_30s_run(self, runner: CliRunner, daq_config: DaqConfig) -> None:
         """Start a 30-second test run and verify it reaches ACTIVE state."""

@@ -4,26 +4,25 @@ Covers chaos recovery, scale, queue depth, and lifecycle resilience.
 """
 
 import asyncio
-import os
-import shutil
 import uuid
 from pathlib import Path
 from typing import Any
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from control.transfer.daemon import _process_job, run_daemon
-from control.transfer.queue import TransferQueue
-from control.utils.run_state import RunStateManager
-from control.utils.paths import PanoPaths
 from ci.tier3_fleet.transfer_testing_utils import (
-    setup_isolated_transfer_env,
     generate_mocked_run,
     get_mapped_client_factory,
+    setup_isolated_transfer_env,
     simulate_rsync_from_fleet,
-    verify_head_node_accuracy
+    verify_head_node_accuracy,
 )
+from control.transfer.daemon import _process_job, run_daemon
+from control.transfer.queue import TransferQueue
+from control.utils.paths import PanoPaths
+from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # 1. Chaos: Partial Transfer Recovery
@@ -68,7 +67,7 @@ async def test_transfer_queue_chaos_partial_transfer_recovery(
         return proc
 
 
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
     job.head_node_username = "panoseti"
     job.created_at = datetime.now(UTC)
 
@@ -134,7 +133,8 @@ async def test_transfer_queue_parameterized_scale(
     
     run_name = "scale_test.pffd"
     tq = TransferQueue()
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
+
     from control.transfer.models import TransferJob, TransferNodeSpec
     job = TransferJob(
         run_name=run_name,
@@ -182,7 +182,7 @@ async def test_transfer_queue_parameterized_scale(
         mock_client_cls.return_value = mock_client
 
         mgr = RunStateManager()
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
         active_job.head_node_username = "panoseti"
         active_job.created_at = datetime.now(UTC)
         success, err = await asyncio.wait_for(_process_job(active_job, asyncio.Event(), mgr), timeout=10.0)

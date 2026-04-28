@@ -7,24 +7,23 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import pathlib
 import time
 from typing import Any
 from unittest.mock import patch
 
 import pytest
-from panoseti_grpc.daq_control.client import DaqControlClient
 
+from ci.tier5_integration.transfer_integration_utils import (
+    generate_integration_run,
+    mocked_build_rsync_cmd,
+    setup_isolated_integration_transfer_env,
+    verify_integration_transfer_accuracy,
+)
 from control.transfer.daemon import run_daemon
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
-from ci.tier5_integration.transfer_integration_utils import (
-    setup_isolated_integration_transfer_env,
-    generate_integration_run,
-    verify_integration_transfer_accuracy,
-    mocked_build_rsync_cmd
-)
+
 
 @pytest.mark.parametrize("num_runs", [2])
 @pytest.mark.asyncio

@@ -34,7 +34,43 @@ from control.utils.pydantic_config_models import (
     QuaboUids,
 )
 
+from panoseti_grpc.util.cli import BaseLazyGroup
+
+class ConfigLazyGroup(BaseLazyGroup):
+    """
+    Lazy-loading group for PSETI configuration operations.
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        lazy_mapping = {
+            "show": ("control.config", "show", "Show list of domes/modules/quabos."),
+            "ping": ("control.config", "ping", "Ping quabos."),
+            "reboot": ("control.config", "reboot", "Reboot quabos."),
+            "reboot-single": ("control.config", "reboot_single", "Reboot a single quabo."),
+            "loads": ("control.config", "loads", "Load silver firmware in quabos."),
+            "init-daq-nodes": ("control.config", "init_daq_nodes", "Copy software to daq nodes."),
+            "hk-dest": ("control.config", "hk_dest", "Set the dest IP for HK packet."),
+            "redis-daemons": ("control.config", "redis_daemons", "Start background HK/GPS/WR/Influx daemons."),
+            "stop-redis-daemons": ("control.config", "stop_redis_daemons", "Stop background Redis daemons."),
+            "permanent-daemons": ("control.config", "permanent_daemons", "Start permanent daemons."),
+            "stop-permanent-daemons": ("control.config", "stop_permanent_daemons", "Stop permanent daemons."),
+            "show-permanent-daemons": ("control.config", "show_permanent_daemons", "Show permanent daemon status."),
+            "hv-on": ("control.config", "hv_on", "Enable detectors (High Voltage)."),
+            "hv-off": ("control.config", "hv_off", "Disable detectors (High Voltage)."),
+            "maroc-config": ("control.config", "maroc_config", "Configure MAROC chips."),
+            "mask-config": ("control.config", "mask_config", "Configure pixel masks."),
+            "calibrate-ph": ("control.config", "calibrate_ph", "Run PH baseline calibration."),
+            "show-ph-baselines": ("control.config", "show_ph_baselines", "Show PH baseline stats."),
+            "shutter-open": ("control.config", "shutter_open", "Open all module shutters."),
+            "shutter-close": ("control.config", "shutter_close", "Close all module shutters."),
+            "disk-space": ("control.config", "disk_space", "Check disk space on DAQ nodes."),
+            "start-interleave": ("control.config", "start_interleave", "Start background interleaver."),
+            "stop-interleave": ("control.config", "stop_interleave", "Stop background interleaver."),
+            "dry-run-interleave": ("control.config", "dry_run_interleave", "Test interleave schedule."),
+        }
+        super().__init__(*args, lazy_mapping=lazy_mapping, **kwargs)
+
 app = typer.Typer(
+    cls=ConfigLazyGroup,
     help="Configure observatory hardware and daemons.",
     no_args_is_help=True,
     rich_markup_mode="rich",
@@ -1111,7 +1147,25 @@ def dry_run_interleave() -> None:
     """Test the interleave schedule for 2 cycles without hardware commands."""
     do_dry_run_interleave()
 
-validate_app = typer.Typer(help="Configuration and topology validation tools.", context_settings={"help_option_names": ["-h", "--help"]})
+class ValLazyGroup(BaseLazyGroup):
+    """
+    Lazy-loading group for PSETI validation operations.
+    """
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        lazy_mapping = {
+            "network": ("control.config", "network", "Validate configs and perform network ping sweep."),
+            "graph": ("control.config", "graph", "Validate configs and display topology graph."),
+            "debug": ("control.config", "debug", "Validate configs with verbose debug output."),
+            "all": ("control.config", "validate_all_modes", "Run all validation checks (Schema, Global, Network, Graph)."),
+        }
+        super().__init__(*args, lazy_mapping=lazy_mapping, **kwargs)
+
+validate_app = typer.Typer(
+    cls=ValLazyGroup,
+    help="Configuration and topology validation tools.",
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]}
+)
 
 @validate_app.callback(invoke_without_command=True)
 def validate_main(ctx: typer.Context) -> None:

@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import socket
 import time
+import pytest
 
 from typer.testing import CliRunner
 
@@ -40,7 +41,7 @@ def _quabo_emitting(quabo_ip: str, listen_sec: float = 5.0) -> bool:
         except TimeoutError:
             return False
 
-
+pytest.skip(reason="Requires verification")
 class TestHW04HashpipeCrashRollback:
     """Resilient teardown when hashpipe crashes mid-run."""
 

@@ -4,31 +4,28 @@ Covers mixed port-forwarding topologies and unresponsive node failures.
 """
 
 import asyncio
-import os
 import random
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
 
 import pytest
 
-from control.transfer.daemon import _process_job, run_daemon
-from control.transfer.queue import TransferQueue
-from control.utils.run_state import RunStateManager
-from control.utils.paths import PanoPaths
-from control.utils.config_file import DaqConfig, DaqNode
-from control.utils.pydantic_config_models import PortForwarding
-from control.transfer.models import TransferJob, TransferNodeSpec
-
 from ci.tier3_fleet.transfer_testing_utils import (
-    setup_isolated_transfer_env,
     generate_mocked_run,
     get_mapped_client_factory,
+    setup_isolated_transfer_env,
     simulate_rsync_from_fleet,
-    verify_head_node_accuracy
 )
+from control.transfer.daemon import _process_job, run_daemon
+from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.queue import TransferQueue
+from control.utils.config_file import DaqConfig, DaqNode
+from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import PortForwarding
+from control.utils.run_state import RunStateManager
 
 
 @pytest.mark.parametrize("num_nodes", [2, 4, 8])
@@ -167,7 +164,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
     def mocked_client_factory(host, port=50051):
         if host == unresponsive_ip or (unresponsive_node.port_forwarding and host == str(unresponsive_node.port_forwarding.gw_ip)):
             mock_client = AsyncMock()
-            mock_client.GenerateManifest.side_effect = asyncio.TimeoutError("Node unresponsive")
+            mock_client.GenerateManifest.side_effect = TimeoutError("Node unresponsive")
             mock_client.__aenter__.return_value = mock_client
             return mock_client
         return real_client_factory(host, port)
@@ -175,7 +172,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
     async def mocked_rsync(*args, **kwargs):
         cmd_str = " ".join(args)
         if unresponsive_ip in cmd_str or (unresponsive_node.port_forwarding and str(unresponsive_node.port_forwarding.gw_ip) in cmd_str):
-            raise asyncio.TimeoutError("Rsync connection timed out")
+            raise TimeoutError("Rsync connection timed out")
             
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
         proc = MagicMock()
@@ -197,8 +194,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < 30:
             ledger = mgr.load_state()
-            if ledger and ledger.status == "TRANSFER_FAILED":
-                if (tq._queue / "failed" / f"{run_name}.job.toml").exists():
+            if ledger and ledger.status == "TRANSFER_FAILED" and (tq._queue / "failed" / f"{run_name}.job.toml").exists():
                     break
             await asyncio.sleep(0.5)
         else:

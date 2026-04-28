@@ -119,7 +119,20 @@ def do_all(obs_config: ObsConfig, op: str) -> None:
 
 
 
-app = typer.Typer(help="Control Quabo power via Web Power Switches (WPS).", no_args_is_help=True, context_settings={"help_option_names": ["-h", "--help"]})
+app = typer.Typer(
+    help="Control Quabo power via Web Power Switches (WPS).",
+    no_args_is_help=False,
+    invoke_without_command=True,
+    context_settings={"help_option_names": ["-h", "--help"]}
+)
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    """Control Quabo power. By default, queries the status of all switches."""
+    if ctx.invoked_subcommand is not None:
+        return
+    c = config_file.get_obs_config()
+    do_all(c, 'query')
 
 @app.command()
 def on() -> None:
@@ -132,12 +145,6 @@ def off() -> None:
     """Turn all Quabo power switches OFF."""
     c = config_file.get_obs_config()
     do_all(c, 'off')
-
-@app.command()
-def status() -> None:
-    """Query the power state of all Quabo switches."""
-    c = config_file.get_obs_config()
-    do_all(c, 'query')
 
 
 if __name__ == "__main__":
