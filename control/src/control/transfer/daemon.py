@@ -168,7 +168,7 @@ async def _process_job(
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
-            _safe_ledger_update(state_mgr, status="TRANSFERRING")
+            _safe_ledger_update(state_mgr, status="MANIFEST_GENERATING")
             manifest_errors: list[str] = []
 
             try:
