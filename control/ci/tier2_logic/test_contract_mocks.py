@@ -28,7 +28,7 @@ async def test_when_daq_mock_called_then_params_match_grpc_schema():
     params = {
         "data_dir": "/data",
         "run_dir": "test_run.pffd",
-        "module_id": 200,
+        "module_id": [200],
         "algorithm": "blake3"
     }
     

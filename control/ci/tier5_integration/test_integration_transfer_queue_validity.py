@@ -152,9 +152,11 @@ async def test_integration_transfer_queue_lifecycle(
         replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {PCAP_GLOB}'"
         daqnode_container.exec_run(replay_cmd, detach=True)
 
+        # Simulate metadata generation on the DAQ node (normally done by control plane)
+        daqnode_container.exec_run(f"sh -c \"echo '{{'test': true}}' > /data/{TEST_RUN_NAME}/meta.json\"")
+
         # Let it run for a bit to generate .pff files
         await asyncio.sleep(5.0)
-
         # --- Step 2: Stop Run (Enqueue Job) ---
         stop_ok = await stop_run(
             daq_config, net_config, quabo_uids,
@@ -211,7 +213,7 @@ async def test_integration_transfer_queue_lifecycle(
             assert (head_run_dir / "run_complete").exists()
             
             # Check manifest
-            manifests = list(head_run_dir.glob("manifest.*"))
+            manifests = list(head_run_dir.glob("dp_manifest.node_*.txt"))
             assert manifests, "Manifest file missing on head node"
             
             # Check for real .pff files (expecting imaging or PH data)
@@ -221,13 +223,18 @@ async def test_integration_transfer_queue_lifecycle(
             # 2. Selective cleanup on DAQ node
             # We check the host-side mapped directory
             daq_data_root = pathlib.Path(os.environ["DAQ_DATA_DIR"])
+            
+            # meta.json and manifest should be preserved in root run dir on DAQ
+            daq_root_run_dir = daq_data_root / TEST_RUN_NAME
+            assert (daq_root_run_dir / "meta.json").exists(), "Metadata missing on DAQ root run dir"
+            assert (daq_root_run_dir / "hp_stdout.log").exists(), "Hashpipe log missing on DAQ root run dir"
+            assert list(daq_root_run_dir.glob("dp_manifest.node_*.txt")), "Manifest missing on DAQ root run dir"
+
             for mid in daq_config.daq_nodes[0].module_ids:
                 daq_mod_run_dir = daq_data_root / f"module_{mid}" / TEST_RUN_NAME
                 # Science files should be gone
                 remaining_pff = list(daq_mod_run_dir.glob("*.pff"))
                 assert not remaining_pff, f"Cleanup failed: .pff files still on DAQ module {mid}"
-                # Manifest and logs should remain
-                assert list(daq_mod_run_dir.glob("manifest.*")), f"Manifest missing on DAQ module {mid}"
 
         finally:
             # Kill tcpreplay and stop daemon task

@@ -113,7 +113,7 @@ def test_pseti_grpc_daq_control_get_manifest(mock_grpc_channels):
     
     with patch("panoseti_grpc._cli.daq_control.daq_control_pb2_grpc.DaqControlStub") as mock_stub:
         mock_stub.return_value.GetManifest.return_value = [mock_entry]
-        result = runner.invoke(app, ["grpc", "daq-control", "get-manifest", "--run-dir", "run01", "--module-id", "200"])
+        result = runner.invoke(app, ["grpc", "daq-control", "get-manifest", "--run-dir", "run01", "--module-id", "[200]"])
         assert result.exit_code == 0
         assert "test.pff" in result.output
         assert "abcdef" in result.output
