@@ -4,15 +4,12 @@ Ensures that multiline strings (like rsync errors) and special characters
 are correctly escaped and can be re-loaded without errors.
 """
 
-import os
 import pathlib
 import tomllib
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-import pytest
-
-from control.transfer.queue import TransferQueue
 from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.queue import TransferQueue
 
 
 def test_transfer_queue_serialization_robustness(tmp_path: pathlib.Path) -> None:

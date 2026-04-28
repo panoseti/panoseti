@@ -7,7 +7,6 @@ import asyncio
 import os
 import shutil
 import uuid
-import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -141,7 +140,7 @@ async def test_transfer_queue_validity_happy_path(
         container.exec_run("sync")
         
         # Debug: list what the container sees
-        ls_res = container.exec_run(f"ls -R /data")
+        ls_res = container.exec_run("ls -R /data")
         print(f"DEBUG: Container {i} /data contents:\n{ls_res.output.decode()}")
     
     # 1s settling period for mount propagation
@@ -174,7 +173,7 @@ async def test_transfer_queue_validity_happy_path(
     # Mock Rsync (simulates flattening)
     def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
         head_run_dir.mkdir(parents=True, exist_ok=True)
-        for i, temp_dir in enumerate(fleet._temp_dirs):
+        for _i, temp_dir in enumerate(fleet._temp_dirs):
             host_root = Path(temp_dir)
             # 1. Root contents (hp_stdout, pss, meta.json)
             daq_run_dir = host_root / run_name

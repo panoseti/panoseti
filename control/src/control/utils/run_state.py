@@ -131,8 +131,9 @@ class RunStateManager:
             return None
 
     def _escape_toml_str(self, s: str) -> str:
-        """Escapes a string for TOML."""
-        return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
+        """Escapes a string for TOML using JSON-style escaping (compatible with TOML)."""
+        import json
+        return json.dumps(s)
 
     def save_state(self, state: RunStateLedger) -> None:
         """

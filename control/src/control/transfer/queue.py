@@ -52,8 +52,9 @@ class TransferQueue:
 
     @staticmethod
     def _escape_toml_str(s: str) -> str:
-        """Escapes a string for TOML, handling newlines and quotes."""
-        return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
+        """Escapes a string for TOML using JSON-style escaping (compatible with TOML)."""
+        import json
+        return json.dumps(s)
 
     def _write_job(self, path: pathlib.Path, job: TransferJob) -> None:
         """Serialize *job* to TOML atomically via a temp file and ``os.replace``.

@@ -147,7 +147,7 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
         try:
             assert wait_hashpipe_stopped(client, "/data", timeout=15), f"hashpipe still running on node {ip}"
             # Explicit PID check
-            ok, status = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            _ok, status = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
             assert status.get("hashpipe_pid") is None, f"Node {ip} still reporting hashpipe_pid={status.get('hashpipe_pid')}"
         finally:
             client.close()
