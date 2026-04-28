@@ -16,7 +16,7 @@ def redis_init() -> redis.Redis:
     return redis.Redis(host=host, port=port, db=db)
 
 
-def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict) -> None:
+def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict[str, Any]) -> None:
     """
     Writes every field from rkey_fields into the hashset stored at rkey
     in the Redis database represented by the object r.
@@ -26,7 +26,7 @@ def store_in_redis(r: redis.Redis, rkey: bytes | str, rkey_fields: dict) -> None
         r.hset(rk, field, value)
 
 
-def get_updated_redis_keys(r: redis.Redis, key_timestamps: dict) -> list[str]:
+def get_updated_redis_keys(r: redis.Redis, key_timestamps: dict[str, Any]) -> list[str]:
     # r.keys returns a list of bytes or a list of awaitables depending on the redis client version
     # The sync client returns a list of bytes.
     keys_raw = r.keys('*')

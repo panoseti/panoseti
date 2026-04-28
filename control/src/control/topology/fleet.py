@@ -197,10 +197,10 @@ def generate_ci_topology(head_prefix: str, daq_prefix: str, quabo_prefix: str) -
     ]
     quabo_uids = QuaboUids(domes=[QuaboUidDome(num=0, modules=quabo_uid_modules)])
     
-    network_modules = [
+    network_modules: list[NetworkModule] = [
         # Both nodes are direct, no PF entries needed
     ]
-    network_daq_nodes = [
+    network_daq_nodes: list[NetworkDaqNode] = [
         # Both nodes are direct, no PF entries needed
     ]
     network_config = NetworkConfig(modules=network_modules, daq_nodes=network_daq_nodes)

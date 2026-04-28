@@ -56,8 +56,8 @@ def _daemon_alive() -> bool:
 # Commands
 # ---------------------------------------------------------------------------
 
-@app.command()
-def status(
+@app.command("stat")
+def stat(
     run: Annotated[str | None, typer.Argument(help="Run name to inspect")] = None,
     watch: Annotated[bool, typer.Option("--watch", "-w", help="Periodically refresh the status display.")] = False,
     interval: Annotated[float, typer.Option("--interval", "-i", help="Refresh interval in seconds.")] = 5.0,

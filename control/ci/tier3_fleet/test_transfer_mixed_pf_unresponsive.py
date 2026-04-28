@@ -4,6 +4,7 @@ Covers mixed port-forwarding topologies and unresponsive node failures.
 """
 
 import asyncio
+import contextlib
 import random
 import uuid
 from datetime import UTC, datetime
@@ -22,7 +23,7 @@ from ci.tier3_fleet.transfer_testing_utils import (
 from control.transfer.daemon import _process_job, run_daemon
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
-from control.utils.config_file import DaqConfig, DaqNode
+from control.utils.config_file import DaqNode
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import PortForwarding
 from control.utils.run_state import RunStateManager
@@ -62,11 +63,11 @@ async def test_transfer_queue_mixed_port_forwarding(
             )
         )
         
-    daq_config = DaqConfig(
-        daq_nodes=nodes, 
-        head_node_data_dir=str(head_data_dir),
-        head_node_ip_addr="127.0.0.1"
-    )
+    # daq_config = DaqConfig(
+    #     daq_nodes=nodes, 
+    #     head_node_data_dir=str(head_data_dir),
+    #     head_node_ip_addr="127.0.0.1"
+    # )
     
     run_name = "mixed_pf_test.pffd"
     tq = TransferQueue()
@@ -146,7 +147,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
     run_name = f"unresponsive_{uuid.uuid4().hex[:8]}.pffd"
     
     # 1. Valid start and stop condition -> data generated and transfer enqueued
-    expected_data = await generate_mocked_run(fleet, daq_config, run_name)
+    await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
     tq = TransferQueue()
@@ -201,10 +202,8 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
             pytest.fail(f"Transfer did not fail as expected. Ledger status: {ledger.status if ledger else 'None'}")
             
         daemon_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await daemon_task
-        except asyncio.CancelledError:
-            pass
             
     # Verify the job is in the failed queue bucket
     assert (tq._queue / "failed" / f"{run_name}.job.toml").exists()

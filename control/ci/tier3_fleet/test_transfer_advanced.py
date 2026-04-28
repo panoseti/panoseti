@@ -4,10 +4,10 @@ Covers chaos recovery, scale, queue depth, and lifecycle resilience.
 """
 
 import asyncio
+import contextlib
 import uuid
 from pathlib import Path
 from typing import Any
-import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -115,7 +115,7 @@ async def test_transfer_queue_parameterized_scale(
     monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_dir))
     PanoPaths.ensure_state_dirs()
     
-    from control.utils.config_file import DaqConfig, DaqNode
+    from control.utils.config_file import DaqNode
     nodes = [
         DaqNode(
             ip_addr=f"192.168.100.{10+i}",
@@ -125,11 +125,11 @@ async def test_transfer_queue_parameterized_scale(
         )
         for i in range(num_nodes)
     ]
-    daq_config = DaqConfig(
-        daq_nodes=nodes, 
-        head_node_data_dir=str(head_data_dir),
-        head_node_ip_addr="127.0.0.1"
-    )
+    # daq_config = DaqConfig(
+    #     daq_nodes=nodes, 
+    #     head_node_data_dir=str(head_data_dir),
+    #     head_node_ip_addr="127.0.0.1"
+    # )
     
     run_name = "scale_test.pffd"
     tq = TransferQueue()
@@ -215,7 +215,7 @@ async def test_transfer_queue_drain_6_deep(
     tq = TransferQueue()
     assert len(list((tq._queue / "pending").glob("*.job.toml"))) == 6
     
-    mgr = RunStateManager()
+    # mgr = RunStateManager()
     
     async def mocked_rsync(*args, **kwargs):
         # Extract run name from args (the destination path contains it)
@@ -253,10 +253,8 @@ async def test_transfer_queue_drain_6_deep(
             pytest.fail("Timed out waiting for 6 jobs to complete")
         
         daemon_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await daemon_task
-        except asyncio.CancelledError:
-            pass
 
     for run_name, expected_data in runs:
         verify_head_node_accuracy(head_data_dir, run_name, expected_data)
@@ -306,10 +304,8 @@ async def test_transfer_queue_stop_start_during_transfer(
         # 2. "Crash" the daemon
         daemon_task.cancel()
         daemon_cancelled.set()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await daemon_task
-        except asyncio.CancelledError:
-            pass
 
     # Job should be stranded in active/
     assert (tq._queue / "active" / f"{run_name}.job.toml").exists()
@@ -341,10 +337,8 @@ async def test_transfer_queue_stop_start_during_transfer(
             pytest.fail("Job did not finish after daemon restart")
             
         daemon_task2.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await daemon_task2
-        except asyncio.CancelledError:
-            pass
 
     verify_head_node_accuracy(head_data_dir, run_name, expected_data)
     assert (tq._queue / "completed" / f"{run_name}.job.toml").exists()

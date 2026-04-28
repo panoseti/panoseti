@@ -18,7 +18,7 @@ def test_pseti_validate_basic():
     """Verify that pseti validate runs without crashing on current configs."""
     # The callback in pseti.py calls config_file.validate_all
     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["obs", "val"])
+        result = runner.invoke(app, ["val"])
         assert result.exit_code == 0
         mock_val.assert_called()
 
@@ -26,7 +26,7 @@ def test_pseti_validate_basic():
 def test_pseti_validate_graph():
     """Verify that pseti validate triggers the network engine with graph=True."""
     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["obs", "val", "graph"])
+        result = runner.invoke(app, ["val", "graph"])
         assert result.exit_code == 0, f"{result=}"
         mock_val.assert_called_once_with(graph=True)
 
@@ -34,7 +34,7 @@ def test_pseti_validate_graph():
 def test_pseti_validate_all_modes():
     """Verify pseti validate all enables everything."""
     with patch("control.utils.config_file.validate_all", return_value=True) as mock_val:
-        result = runner.invoke(app, ["obs", "val", "all"])
+        result = runner.invoke(app, ["val", "all"])
         assert result.exit_code == 0
         mock_val.assert_called_once_with(check_network=True, debug=True, graph=True)
 
@@ -58,7 +58,7 @@ def test_structural_integrity_integrated_in_validate():
          patch("control.utils.config_file.get_data_config"), \
          patch("control.utils.global_validator.GlobalConfigValidator._check_topology_structural_integrity"):
          
-        runner.invoke(app, ["validate"])
+        runner.invoke(app, ["val"])
         # Tier-1 might fail if mock_daq/obs are empty, but we check if mock_struct was called if it got to Tier-2
         # To be sure it gets to Tier-2, we can just patch the whole rule execution
         pass

@@ -177,7 +177,6 @@ async def _process_job(
                 async def gen_manifest(node: object) -> None:
                     from control.transfer.models import TransferNodeSpec as _TNS
                     assert isinstance(node, _TNS)
-                    module_ids: list[int] = node.module_ids
 
                     host = str(node.ip_addr)
                     port = 50051

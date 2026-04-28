@@ -5,10 +5,11 @@
 import asyncio
 import time
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from panoseti_grpc.telemetry.logger import get_logger
+from panoseti_grpc.util.cli import BaseLazyGroup
 
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
@@ -186,8 +187,6 @@ def status(remote: bool = False, sweep_mode: bool = False) -> None:
     typer.echo(_render(local, remote_lines, sweep_lines))
 
 
-from panoseti_grpc.util.cli import BaseLazyGroup
-from typing import Any
 
 class StatLazyGroup(BaseLazyGroup):
     """

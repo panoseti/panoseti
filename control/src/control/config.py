@@ -20,6 +20,7 @@ from typing import Any
 
 import typer
 from panoseti_grpc.telemetry.logger import get_logger
+from panoseti_grpc.util.cli import BaseLazyGroup
 
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
@@ -34,7 +35,6 @@ from control.utils.pydantic_config_models import (
     QuaboUids,
 )
 
-from panoseti_grpc.util.cli import BaseLazyGroup
 
 class ConfigLazyGroup(BaseLazyGroup):
     """
@@ -1163,7 +1163,6 @@ class ValLazyGroup(BaseLazyGroup):
 validate_app = typer.Typer(
     cls=ValLazyGroup,
     help="Configuration and topology validation tools.",
-    no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]}
 )
 

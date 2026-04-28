@@ -12,6 +12,8 @@ Assumptions:
 - Remote "current" dir on cylon already exists; we do NOT mkdir remotely.
 """
 
+from __future__ import annotations
+
 import contextlib
 import csv
 import datetime
@@ -63,7 +65,7 @@ SSH_CMD_TIMEOUT = 4  # seconds (per remote command)
 SCP_TIMEOUT     = 4  # seconds
 
 # ===================== HELPERS =====================
-def run_ssh(ssh_user: str, ssh_host: str, ssh_port: int, remote_argv: list, timeout: int = SSH_CMD_TIMEOUT) -> str | None:
+def run_ssh(ssh_user: str, ssh_host: str, ssh_port: int, remote_argv: list[str], timeout: int = SSH_CMD_TIMEOUT) -> str | None:
     """Run a remote command via SSH; return stdout or None on error/timeout."""
     try:
         cmd = ["ssh", "-p", str(ssh_port), *SSH_OPTS, f"{ssh_user}@{ssh_host}", *remote_argv]

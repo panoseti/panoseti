@@ -17,8 +17,8 @@ from __future__ import annotations
 import os
 import socket
 import time
-import pytest
 
+import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app

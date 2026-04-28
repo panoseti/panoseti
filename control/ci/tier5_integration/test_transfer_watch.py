@@ -34,7 +34,7 @@ def test_transfer_status_watch_smoke(tmp_path: pathlib.Path, monkeypatch: pytest
     
     # Run the command with a short interval and timeout
     # We use subprocess to capture stdout of the watch loop
-    cmd = ["pseti", "xfr", "status", "--watch", "--interval", "0.5"]
+    cmd = ["pseti", "xfr", "stat", "--watch", "--interval", "0.5"]
     
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=os.environ)
     

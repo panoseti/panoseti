@@ -22,18 +22,18 @@ def _compute_digest(data: bytes, algo: str) -> str:
         try:
             import blake3 as _blake3
             return str(_blake3.blake3(data).hexdigest())
-        except ImportError:
+        except ImportError as e:
             raise ValueError(
                 "Algorithm 'blake3' requested but 'blake3' library is not installed."
-            )
+            ) from e
     if algo in ("xxh3_128", "xxhash"):
         try:
             import xxhash
             return str(xxhash.xxh3_128(data).hexdigest())
-        except ImportError:
+        except ImportError as e:
             raise ValueError(
                 "Algorithm 'xxh3_128' requested but 'xxhash' library is not installed."
-            )
+            ) from e
     return hashlib.sha256(data).hexdigest()
 
 

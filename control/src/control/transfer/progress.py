@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _PROGRESS_RE = re.compile(
     r"^\s*(?P<bytes>[\d,]+)\s+(?P<pct>\d+)%\s+(?P<speed>\S+)\s+(?P<eta>\S+)"
 )
 
 
-def parse_rsync_progress(line: str) -> dict | None:
+def parse_rsync_progress(line: str) -> dict[str, Any] | None:
     """Parse a single rsync --info=progress2 output line.
 
     Returns a dict with bytes, pct, speed, eta, or None if not a progress line.

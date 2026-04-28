@@ -68,7 +68,7 @@ def session_stop(obs_config: ObsConfig) -> None:
         util.stop_redis_daemons()
     except PermissionError:
         logger.error("You don't have permission to stop the redis daemons. "
-                     "Try running 'sudo ./config.py --stop_redis_daemons'.")
+                     "Try running 'sudo ./config.py --stop-redis-daemons'.")
 
 app = typer.Typer(help="Gracefully terminate an observing session.", no_args_is_help=False, context_settings={"help_option_names": ["-h", "--help"]})
 

@@ -12,6 +12,8 @@ Destination:
 Default behavior: INFINITE LOOP
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import re
@@ -21,6 +23,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 # ---------------- CONFIG ----------------
 L0_ROOT = "/mnt/data11/data/palomar/L0"
@@ -58,7 +61,7 @@ def source_path(yyyymmdd: str) -> Path:
     return Path(L0_ROOT) / yyyymmdd / OBSLOGS_SUBDIR / f"datarec_{yyyymmdd}.log"
 
 
-def file_signature(p: Path) -> dict:
+def file_signature(p: Path) -> dict[str, Any]:
     st = p.stat()
     return {
         "size": st.st_size,
@@ -66,14 +69,14 @@ def file_signature(p: Path) -> dict:
     }
 
 
-def load_state() -> dict:
+def load_state() -> dict[str, Any]:
     try:
         return json.loads(Path(STATE_FILE).read_text())
     except Exception:
         return {}
 
 
-def save_state(state: dict) -> None:
+def save_state(state: dict[str, Any]) -> None:
     Path(STATE_FILE).write_text(json.dumps(state, indent=2) + "\n")
 
 

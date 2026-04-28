@@ -128,7 +128,7 @@ app = typer.Typer(help="Start an observing session.", no_args_is_help=False, con
 
 @app.command()
 def main(
-    no_hv: bool = typer.Option(False, "--no_hv", help="Turn off HV when running `start.py`."),
+    no_hv: bool = typer.Option(False, "--no-hv", help="Turn off HV when running `start.py`."),
     stage: str = typer.Option("poweron", help="The session will start from this stage: poweron, get_uids, reboot, hk_dest, start_redis, maroc_config, mask_config, calibrate_ph, show_ph_baselines.")
 ) -> None:
     """Initialize hardware, power, and calibration for an observing session."""

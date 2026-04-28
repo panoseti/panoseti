@@ -12,8 +12,8 @@ from __future__ import annotations
 import socket
 import time
 
-from typer.testing import CliRunner
 import pytest
+from typer.testing import CliRunner
 
 from control.pseti import app
 from control.utils.pydantic_config_models import ObsConfig

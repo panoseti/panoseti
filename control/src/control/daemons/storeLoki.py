@@ -16,6 +16,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import redis
 import requests
@@ -48,7 +49,7 @@ class LokiPublisher:
     def __init__(self, loki_url: str, redis_client: redis.Redis):
         self.url = loki_url
         self.redis = redis_client
-        self.buffer: list[dict] = []
+        self.buffer: list[dict[str, Any]] = []
         self.last_flush = time.time()
         self.current_batch_bytes = 0
 
@@ -65,7 +66,7 @@ class LokiPublisher:
         """Returns False if buffer is full (backpressure to Redis)."""
         return len(self.buffer) < MAX_BUFFER_SIZE
 
-    def add(self, log_entry: dict) -> None:
+    def add(self, log_entry: dict[str, Any]) -> None:
         self.buffer.append(log_entry)
         # Conservative estimate of uncompressed size
         self.current_batch_bytes += len(json.dumps(log_entry))
@@ -149,9 +150,9 @@ class LokiPublisher:
         delay = min(initial * (2 ** (self.consecutive_errors - 1)), MAX_BACKOFF_SECONDS)
         self.next_retry_time = time.time() + delay
 
-    def _build_loki_payload(self) -> dict:
+    def _build_loki_payload(self) -> dict[str, Any]:
         """Group logs by labels for Loki efficiency."""
-        streams: dict[str, dict] = {}
+        streams: dict[str, Any] = {}
 
         # Sort buffer by timestamp to ensure monotonic increasing order within each stream
         self.buffer.sort(key=lambda x: x.get("timestamp", 0))

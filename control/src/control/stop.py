@@ -693,9 +693,9 @@ app = typer.Typer(help="Stop and finish a PSETI recording run.", no_args_is_help
 
 @app.command()
 def main(
-    no_cleanup: bool = typer.Option(False, "--no_cleanup", help="(Legacy) Keep .pff files on DAQ nodes after transfer."),
-    no_collect: bool = typer.Option(False, "--no_collect", help="(Legacy) Skip rsync to head node."),
-    keep_daq_data: bool = typer.Option(False, "--keep-daq-data", help="Keep .pff files on DAQ nodes after transfer (alias for --no_cleanup)."),
+    no_cleanup: bool = typer.Option(False, "--no-cleanup", help="(Legacy) Keep .pff files on DAQ nodes after transfer."),
+    no_collect: bool = typer.Option(False, "--no-collect", help="(Legacy) Skip rsync to head node."),
+    keep_daq_data: bool = typer.Option(False, "--keep-daq-data", help="Keep .pff files on DAQ nodes after transfer (alias for --no-cleanup)."),
     no_transfer: bool = typer.Option(False, "--no-transfer", help="Skip transfer entirely; data stays on DAQ nodes until manually recovered."),
     skip_verify: bool = typer.Option(False, "--skip-verify", help="[Discouraged] Skip manifest digest verification during transfer."),
     run: str | None = typer.Option(None, "--run", help="Stop/Cleanup specific run."),

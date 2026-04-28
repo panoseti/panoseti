@@ -284,14 +284,14 @@ def ph_baseline_file_ok(path: pathlib.Path | str | None = None) -> bool:
         path = pathlib.Path(path)
     assert isinstance(path, pathlib.Path)
     if not path.exists():
-        print(f'{path} not found.  Run config.py --calibrate_ph')
+        print(f'{path} not found.  Run config.py --calibrate-ph')
         return False
     if path.stat().st_size == 0:
-        print(f'{path} is empty.  Run config.py --calibrate_ph')
+        print(f'{path} is empty.  Run config.py --calibrate-ph')
         return False
     # Fix SC-031: 24 hours is 3600*24, not 86400*24
     if path.stat().st_mtime < time.time() - 86400:
-        print(f'{path} is too old (>24h).  Run config.py --calibrate_ph')
+        print(f'{path} is too old (>24h).  Run config.py --calibrate-ph')
         return False
     return True
 
@@ -1074,7 +1074,7 @@ async def start_run(
 
             if not no_redis and not await asyncio.to_thread(util.are_redis_daemons_running):
                 await asyncio.to_thread(util.show_redis_daemons)
-                msg = 'Redis daemons are not running. Run config.py --redis_daemons'
+                msg = 'Redis daemons are not running. Run config.py --redis-daemons'
                 if not strict_mode:
                     logger.warning(f"{msg} (Non-fatal in lenient mode)")
                 else:
@@ -1181,11 +1181,11 @@ app = typer.Typer(help="Start a PSETI recording run.", no_args_is_help=False)
 
 @app.command()
 def main(
-    no_hv: bool = typer.Option(False, "--no_hv", help="Take data without high voltage."),
-    no_redis: bool = typer.Option(False, "--no_redis", help="OK if redis daemons not running."),
-    no_data: bool = typer.Option(False, "--no_data", help="Set up to record, but don't start data flow or record."),
+    no_hv: bool = typer.Option(False, "--no-hv", help="Take data without high voltage."),
+    no_redis: bool = typer.Option(False, "--no-redis", help="OK if redis daemons not running."),
+    no_data: bool = typer.Option(False, "--no-data", help="Set up to record, but don't start data flow or record."),
     nsecs: int = typer.Option(0, "--nsecs", help="Record for N seconds, then stop run."),
-    stop_session: bool = typer.Option(False, "--stop_session", help="Stop session at end of run (with --nsecs)."),
+    stop_session: bool = typer.Option(False, "--stop-session", help="Stop session at end of run (with --nsecs)."),
     verbose_opt: bool = typer.Option(False, "--verbose", help="print commands."),
     force_reset: bool = typer.Option(False, "--force-reset", help="Force reset the state ledger if stale."),
     no_check_daq: bool = typer.Option(False, "--no-check-daq", help="Skip the pre-flight gRPC reachability sweep."),

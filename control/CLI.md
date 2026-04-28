@@ -9,87 +9,68 @@ The `pseti` command is the unified entry point for the PSETI observatory control
 
 ---
 
-## Top-Level Commands
+## Primary Commands
 
-### `pseti start` (Alias for `pseti obs start`)
+### `pseti start`
 Start a new recording run.
+- `--no-hv`: Take data without high voltage.
+- `--no-redis`: OK if redis daemons not running.
+- `--no-data`: Set up to record, but don't start data flow or record.
+- `--nsecs N`: Record for N seconds, then stop.
+- `--stop-session`: Stop session at end of run.
 
-### `pseti stop` (Alias for `pseti obs stop`)
+### `pseti stat`
+Show observatory health, acquisition status, and transactional ledger.
+- `pseti stat ledger`: Inspect the run state ledger (read-only).
+- `pseti stat remote`: Query each DAQ node via gRPC.
+- `pseti stat sweep`: Full network reachability sweep.
+
+### `pseti stop`
 Stop and finish the current recording run.
+- `--no-cleanup`: Keep .pff files on DAQ nodes after transfer.
+- `--no-collect`: Skip rsync to head node.
 
-### `pseti status` (Alias for `pseti obs status`)
-Show control plane status. Checks the transactional ledger, local markers, and probes remote DAQ nodes via gRPC/SSH to report on Hashpipe liveness and disk usage.
+### `pseti cfg`
+Configure observatory hardware and daemons (e.g., `ping`, `reboot`, `hv-on`, `maroc-config`).
 
-### `pseti cfg` (Alias for `pseti obs config`)
-Configure observatory hardware and daemons.
+### `pseti val`
+Configuration and topology validation tools (`all`, `network`, `graph`, `debug`).
 
----
+### `pseti power`
+Control Quabo power via Web Power Switches (WPS). By default, queries the status of all switches.
+- `on`: Turn all Quabo power switches ON.
+- `off`: Turn all Quabo power switches OFF.
 
-## Sub-App Commands
+### `pseti uids`
+Fetch quabo IP addrs based on the current `obs_config.json` to get UIDs.
 
-### `pseti obs`
-Observatory operations (Start/Stop, Power, Config, Validation).
+### `pseti xfr`
+Manage the background file transfer queue. Supports `stat`, `queue`, `retry`, `tail`, `verify`, and `start`/`stop` for the daemon.
 
-**Subcommands:**
-- `power`: Control Quabo power via Web Power Switches (WPS) (`on`, `off`, `status`).
-- `get-uids`: Fetch quabo IP addrs based on the current obs_config.json to get UIDs.
-- `config`: Configure observatory hardware and daemons (e.g., `ping`, `reboot`, `hv-on`, `maroc-config`).
-- `val`: Configuration and topology validation tools (`all`, `network`, `graph`, `debug`).
-- `start`: Start a new recording run.
-- `status`: Show observatory health and acquisition status.
-- `stop`: Stop and finish the current recording run.
-- `transfer`: Manage the file transfer daemon. Supports `--watch` for real-time progress.
-- `ledger`: Inspect the run state ledger (read-only).
-- `led`: Short alias for `ledger`.
-- `session-start`: Initialize hardware, power, and calibration for an observing session.
-- `session-stop`: Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
+### `pseti session-start`
+Initialize hardware, power, and calibration for an observing session.
+- `--no-hv`: Turn off HV when running `start.py`.
 
----
-
-### `pseti test`
-Quality Assurance and Testing Suite.
-
-**Subcommands:**
-- `lint`: Static analysis and linting (Ruff, MyPy).
-- `sw`: Software QA tests (Docker-based CI simulations).
-  - `unit`: Run parallel unit tests.
-  - `logic`: Run mocked grpc tests.
-  - `fleet`: Run mocked distributed system nodes.
-  - `chaos`: Run TDD-forcing chaos/scenario tests.
-  - `integration`: Run structural/topology tests.
-  - `all`: Run the full software testing suite.
-  - `build`: Rebuild the testing Docker images.
-  - `cleanup`: Tear down all test containers and volumes.
-- `hw`: Hardware-in-the-Loop (HITL) physical lab tests.
-  - `build`: Build HITL images.
-  - `check-env`: Verify physical lab environment.
-  - `deploy`: Deploy stack to physical nodes.
-  - `down`: Stop containers but preserve volumes.
-  - `clean`: Tear down containers and wipe volumes.
-  - `run`: Run HITL test suite.
-- `grpc`: gRPC service layer tests (`all`, `lint`, `daq_data`, `daq_control`, `telemetry`, etc.).
+### `pseti session-stop`
+Gracefully terminate a session. Powers off all modules and stops background Redis daemons.
 
 ---
+
+## System Commands
 
 ### `pseti show`
 Inspect and visualize PSETI system state.
-
-**Subcommands:**
 - `commands`: Display a tree-like view of all available PSETI commands.
 - `paths`: Display the current resolved paths for all key directories and environment variable overrides.
 
----
+### `pseti test`
+Quality Assurance and Testing Suite.
+- `lint`: Static analysis and linting (Ruff, MyPy).
+- `sw`: Software QA tests (Docker-based CI simulations).
+- `hw`: Hardware-in-the-Loop (HITL) physical lab tests.
 
 ### `pseti grpc`
 PSETI unified gRPC CLI. Connects to the unified server and issues RPCs.
-
-**Subcommands:**
-- `status`: Probe all services and print a summary.
-- `reflect`: List all services via gRPC reflection.
-- `telemetry`: Telemetry service operations.
-- `daq-data`: DAQ Data service operations.
-- `daq-control`: DAQ Control service operations.
-- `server`: Manage and run the unified gRPC server.
 
 ---
 
@@ -110,14 +91,8 @@ To change options or behavior for a command like `start`, edit the corresponding
     def main(name: str):
         print(f"Hello {name}")
     ```
-2.  **Register it** in `control/src/control/pseti.py` (or the relevant lazy group file) inside the `lazy_mapping` dictionary:
-    ```python
-    lazy_mapping = {
-        ...,
-        "new-tool": ("control.new_tool", "app", "Description of tool."),
-    }
-    ```
-3. **Order it**: the `command_order` argument allows you to specify an explicit command ordering to ensure consistent and intuitive UX.
+2.  **Register it** in `control/src/control/pseti.py` inside the `lazy_mapping` dictionary.
+3. **Order it**: the `command_order` argument allows you to specify an explicit command ordering.
 
 ### 3. The "Unwrap" Pattern
-If a module's Typer app contains only one command (usually named `main` or `@app.command()`), the lazy loader automatically "unwraps" it. This allows `pseti my-tool --option` instead of forcing `pseti my-tool main --option`.
+If a module's Typer app contains only one command (usually named `main` or `@app.command()`), the lazy loader automatically "unwraps" it. This allows `pseti start --option` instead of forcing `pseti start main --option`.

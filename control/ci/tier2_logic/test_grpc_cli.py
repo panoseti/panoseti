@@ -29,12 +29,12 @@ def test_pseti_grpc_help():
     result = runner.invoke(app, ["grpc", "--help"])
     assert result.exit_code == 0
     assert "PSETI unified gRPC CLI." in result.output, f"{result.output=}"
-    assert "status" in result.output
+    assert "stat" in result.output
     assert "telemetry" in result.output
 
 
-def test_pseti_grpc_status_success(mock_grpc_channels):
-    """Verify pseti grpc status reports OK when services are responsive."""
+def test_pseti_grpc_stat_success(mock_grpc_channels):
+    """Verify pseti grpc stat reports OK when services are responsive."""
     _, _, _ = mock_grpc_channels
     
     # Mock DaqControl StatusDaq response
@@ -55,7 +55,7 @@ def test_pseti_grpc_status_success(mock_grpc_channels):
         mock_ctrl_stub.return_value.StatusDaq.return_value = mock_ctrl_resp
         mock_telem_client.return_value.send_log_future.return_value.result.return_value = mock_telem_resp
         
-        result = runner.invoke(app, ["grpc", "status"])
+        result = runner.invoke(app, ["grpc", "stat"])
         if result.exit_code != 0:
             print(f"EXIT CODE: {result.exit_code}")
             print(f"OUTPUT: {result.output}")
@@ -81,8 +81,8 @@ def test_pseti_grpc_daq_data_ping(mock_grpc_channels):
         mock_stub.return_value.Ping.assert_called_once()
 
 
-def test_pseti_grpc_daq_control_status(mock_grpc_channels):
-    """Verify pseti grpc daq-control status command with flags."""
+def test_pseti_grpc_daq_control_stat(mock_grpc_channels):
+    """Verify pseti grpc daq-control stat command with flags."""
     _, _, _mock_ctrl_ch = mock_grpc_channels
     
     mock_resp = MagicMock()
@@ -91,7 +91,7 @@ def test_pseti_grpc_daq_control_status(mock_grpc_channels):
     
     with patch("panoseti_grpc._cli.daq_control.daq_control_pb2_grpc.DaqControlStub") as mock_stub:
         mock_stub.return_value.StatusDaq.return_value = mock_resp
-        result = runner.invoke(app, ["grpc", "daq-control", "status", "--no-disk", "--no-runs"])
+        result = runner.invoke(app, ["grpc", "daq-control", "stat", "--no-disk", "--no-runs"])
         assert result.exit_code == 0
         assert "Hashpipe running" in result.output
         # Verify requested flags in proto call
@@ -113,7 +113,12 @@ def test_pseti_grpc_daq_control_get_manifest(mock_grpc_channels):
     
     with patch("panoseti_grpc._cli.daq_control.daq_control_pb2_grpc.DaqControlStub") as mock_stub:
         mock_stub.return_value.GetManifest.return_value = [mock_entry]
-        result = runner.invoke(app, ["grpc", "daq-control", "get-manifest", "--run-dir", "run01", "--module-id", "[200]"])
+        result = runner.invoke(app, ["grpc", "daq-control", "get-manifest", "--run-dir", "run01", "--module-id", "200"])
+        if result.exit_code != 0:
+            print(f"OUTPUT: {result.output}")
+            if result.exception:
+                import traceback
+                traceback.print_exception(type(result.exception), result.exception, result.exception.__traceback__)
         assert result.exit_code == 0
         assert "test.pff" in result.output
         assert "abcdef" in result.output
