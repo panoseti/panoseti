@@ -411,7 +411,7 @@ def get_quabo_ph_baselines() -> dict[str, Any]:
             return c
     raise FileNotFoundError(
         f"{quabo_ph_baseline_filename} not found in calibration_dir, tmp_dir, or config_dir. "
-        "Run: pseti obs config calibrate-ph"
+        "Run: pseti config calibrate-ph"
     )
 
 def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]:

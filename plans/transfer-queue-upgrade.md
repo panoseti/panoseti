@@ -38,7 +38,7 @@ control/state/
 │   ├── manifests/            # Cached manifest copies pulled from DAQ nodes (head-side)
 │   │   └── {run_name}/{module_id}/manifest.{blake3,xxh3_128,sha256}
 │   └── daemon.pid            # Single-instance pid file (companion to flock)
-├── calibration/              # Outputs of pseti obs config calibrate-*
+├── calibration/              # Outputs of pseti config calibrate-*
 │   ├── quabo_ph_baseline.json
 │   └── quabo_uids.json
 ├── snapshots/                # Per-run artifact snapshots (read-only after creation)
@@ -76,7 +76,7 @@ Each accessor honors a corresponding env var (`PSETI_LOCKS_DIR`, `PSETI_TRANSFER
 **Root cause confirmed.** The bug is read-side, not write-side:
 
 - `config.py::do_calibrate_ph` (line 692) **correctly** writes to `PanoPaths.tmp_dir() / quabo_ph_baseline_filename`.
-- `start.py::ph_baseline_file_ok` (line 248) calls `os.path.exists(filename)` where `filename` defaults to the bare string `'quabo_ph_baseline.json'` — **no directory prefix**. It probes CWD, not `tmp/`. So `pseti obs start --no_hv --no_redis` reports "not found" even though the file exists in `tmp/`.
+- `start.py::ph_baseline_file_ok` (line 248) calls `os.path.exists(filename)` where `filename` defaults to the bare string `'quabo_ph_baseline.json'` — **no directory prefix**. It probes CWD, not `tmp/`. So `pseti start --no_hv --no_redis` reports "not found" even though the file exists in `tmp/`.
 
 The state refactor eliminates this entire class of bug. After migration:
 
@@ -108,7 +108,7 @@ src/control/transfer/
 ├── lifecycle.py       # State machine: stages, transitions, retry policy
 ├── progress.py        # Progress reporter (parses rsync --info=progress2 stderr)
 ├── service.py         # Public API used by stop.py and CLI: enqueue(), status(), retry()
-└── cli.py             # Typer app for `pseti obs transfer`
+└── cli.py             # Typer app for `pseti transfer`
 ```
 
 **Hard cut migration** (no shim layer): all imports update atomically in one PR. `control/utils/transfer/` is deleted. `control/daemons/transfer_daemon.py` is deleted — `start_daemon` is updated to accept any module-resolvable target via `python -m control.transfer`, or to invoke a small launcher in `daemons/` that just imports and calls `control.transfer.daemon.run_daemon`. Decision: extend `start_daemon(prog)` to accept a `["python", "-m", "control.transfer"]`-style command, eliminating the `daemons_dir()` dependency for the transfer process specifically. Other daemons keep their existing layout.
@@ -187,15 +187,15 @@ Three new RPCs, one extension:
 
 | RPC | Purpose | Why |
 |---|---|---|
-| `GetTransferStatus(GetTransferStatusRequest) → GetTransferStatusResponse` | Per-DAQ-node: hashpipe state, run dirs present, free disk, manifest existence. | Consumed by `pseti obs transfer status`. Replaces ad-hoc SSH probes. |
+| `GetTransferStatus(GetTransferStatusRequest) → GetTransferStatusResponse` | Per-DAQ-node: hashpipe state, run dirs present, free disk, manifest existence. | Consumed by `pseti transfer status`. Replaces ad-hoc SSH probes. |
 | `GetManifestDigest(GetManifestDigestRequest) → GetManifestDigestResponse` | Returns SHA-256 of the manifest file content for `(data_dir, run_dir, module_id)`. | Required so the head node can pass `manifest_digest` to `CleanupData(CLEANUP_SELECTIVE)` (closes the documented invariant). |
 | `RetryFailedTransfer(RetryFailedTransferRequest) → RetryFailedTransferResponse` | DAQ-side: re-emit a missing file by absolute path, returns size+digest. | Lets the head node patch a single corrupt file without re-rsyncing the whole tree. |
 
-Extension to `CleanupDataRequest`: add `bool dry_run = 11;` returning the `preserved_paths[]` and `deleted_count` it *would* produce. Used by `pseti obs transfer plan-cleanup`.
+Extension to `CleanupDataRequest`: add `bool dry_run = 11;` returning the `preserved_paths[]` and `deleted_count` it *would* produce. Used by `pseti transfer plan-cleanup`.
 
 `StatusDaq` is left alone — `GetTransferStatus` is the new aggregate, `StatusDaq` remains the legacy single-purpose probe.
 
-### 2.6 `pseti obs transfer` CLI sub-app
+### 2.6 `pseti transfer` CLI sub-app
 
 Register in `tools/obs_cli.py` `lazy_mapping`:
 
@@ -207,17 +207,17 @@ Subcommands:
 
 | Command | Behavior |
 |---|---|
-| `pseti obs transfer status [run]` | Daemon health (heartbeat age, current job, pid). If `[run]` given: per-run progress — bytes transferred / total, manifest digest match, per-module rsync state. Reads queue + heartbeat + ledger. Pretty-printed via `rich.Table`. |
-| `pseti obs transfer tail [-f] [-n N]` | Tails `state/logs/transfer_daemon/current.log`. `-f` follows. |
-| `pseti obs transfer start` | Idempotent: refuses if heartbeat fresh; otherwise `start_daemon`. |
-| `pseti obs transfer stop` | SIGTERM, wait up to 60s for graceful exit, then SIGKILL. |
-| `pseti obs transfer restart` | stop + start. |
-| `pseti obs transfer queue [pending\|active\|completed\|failed]` | Lists jobs in the named bucket. Default: all four, summary counts only. |
-| `pseti obs transfer retry <run_name>` | Moves `failed/{run}.job.toml` → `pending/` after resetting `attempts=0`. |
-| `pseti obs transfer cancel <run_name>` | Moves `pending/{run}.job.toml` → `failed/` with `last_transfer_error="CANCELLED_BY_OPERATOR"`. Refuses if job is `active/`. |
-| `pseti obs transfer run <run_name> [--no-cleanup] [--skip-verify]` | Manual one-shot: builds a `TransferJob` from current configs and runs the state machine inline (no daemon). For ad-hoc rescue. |
-| `pseti obs transfer manifest <run_name> [--module M]` | Pretty-prints the head-side manifest, flags any digest mismatches against re-hashed local files. |
-| `pseti obs transfer verify <run_name>` | Runs `verify_manifest()` standalone, no state transitions. |
+| `pseti transfer status [run]` | Daemon health (heartbeat age, current job, pid). If `[run]` given: per-run progress — bytes transferred / total, manifest digest match, per-module rsync state. Reads queue + heartbeat + ledger. Pretty-printed via `rich.Table`. |
+| `pseti transfer tail [-f] [-n N]` | Tails `state/logs/transfer_daemon/current.log`. `-f` follows. |
+| `pseti transfer start` | Idempotent: refuses if heartbeat fresh; otherwise `start_daemon`. |
+| `pseti transfer stop` | SIGTERM, wait up to 60s for graceful exit, then SIGKILL. |
+| `pseti transfer restart` | stop + start. |
+| `pseti transfer queue [pending\|active\|completed\|failed]` | Lists jobs in the named bucket. Default: all four, summary counts only. |
+| `pseti transfer retry <run_name>` | Moves `failed/{run}.job.toml` → `pending/` after resetting `attempts=0`. |
+| `pseti transfer cancel <run_name>` | Moves `pending/{run}.job.toml` → `failed/` with `last_transfer_error="CANCELLED_BY_OPERATOR"`. Refuses if job is `active/`. |
+| `pseti transfer run <run_name> [--no-cleanup] [--skip-verify]` | Manual one-shot: builds a `TransferJob` from current configs and runs the state machine inline (no daemon). For ad-hoc rescue. |
+| `pseti transfer manifest <run_name> [--module M]` | Pretty-prints the head-side manifest, flags any digest mismatches against re-hashed local files. |
+| `pseti transfer verify <run_name>` | Runs `verify_manifest()` standalone, no state transitions. |
 
 ### 2.7 `pseti stop` UX changes
 
@@ -235,8 +235,8 @@ New flags (replacing the current `--no_cleanup`/`--no_collect`/`--force-cleanup`
 
 - **Daemon healthy** → enqueue silently, transition to `RECORDING_ENDED`.
 - **Daemon stale** (`>30s` since heartbeat) and stdin is a TTY → interactive prompt:
-  > Transfer daemon appears down. Job will be queued but no transfer will occur until you run `pseti obs transfer start`. Continue? [y/N]
-- **Daemon stale** and `--yes` → enqueue, but emit a `WARNING` log + write a sentinel file `state/transfer/queue/pending/{run}.WARN_DAEMON_DOWN` that `pseti obs transfer status` surfaces in red.
+  > Transfer daemon appears down. Job will be queued but no transfer will occur until you run `pseti transfer start`. Continue? [y/N]
+- **Daemon stale** and `--yes` → enqueue, but emit a `WARNING` log + write a sentinel file `state/transfer/queue/pending/{run}.WARN_DAEMON_DOWN` that `pseti transfer status` surfaces in red.
 - **Daemon stale** and not a TTY (CI, headless) → enqueue, emit warning, exit 0 (so cron-driven stops don't fail).
 
 **Where disk-fill prevention actually belongs: `pseti start` pre-flight, not `pseti stop`.**
@@ -248,7 +248,7 @@ New flags (replacing the current `--no_cleanup`/`--no_collect`/`--force-cleanup`
   - Multiply by configured run duration × number of modules per node → projected bytes per node.
   - Probe each DAQ node via `GetTransferStatus.disk_usage` (new RPC, see §2.5) for free bytes.
   - Sum projected bytes for *all pending and active runs* in the transfer queue (jobs not yet ARCHIVED still own DAQ data) plus the new run's projection.
-  - If projected total > free × `0.9` (10% safety margin) → fail validation; operator must run `pseti obs transfer status` and clear stuck jobs before retrying.
+  - If projected total > free × `0.9` (10% safety margin) → fail validation; operator must run `pseti transfer status` and clear stuck jobs before retrying.
 - This makes `pseti start` the chokepoint for storage accountability. `pseti stop` only emits the warning; `pseti start` enforces.
 - Override flag: `pseti start --skip-disk-check` for emergencies (logs WARNING with daemon-down sentinel parallel).
 
@@ -258,7 +258,7 @@ New flags (replacing the current `--no_cleanup`/`--no_collect`/`--force-cleanup`
 - Document the `TransferJob` schema as the contract between `pseti stop` and the daemon.
 - Add a "Daemon Lifecycle" section: how `session_start`/`session_stop` own the daemon process, heartbeat semantics, what happens on `pseti stop` with a dead daemon.
 - Document the new RPCs and the `manifest_digest` precondition (currently violated by the daemon).
-- Add an "Operator Recovery" section listing the `pseti obs transfer` workflows for stuck runs.
+- Add an "Operator Recovery" section listing the `pseti transfer` workflows for stuck runs.
 
 ---
 
@@ -378,7 +378,7 @@ def test_07_transfer_pipeline(panoseti_env):
 2. **PF round-trip:** unit test loads a `daq_config.json` with `port_forwarding.status=True`, builds a `TransferJob`, serializes to TOML, reloads, validates — `port_forwarding` round-trips exactly.
 3. **Daemon launch:** `pseti session-start` → `state/transfer/daemon.pid` exists, heartbeat fresh within 5s.
 4. **Daemon-down warning:** `kill $(cat state/transfer/daemon.pid); pseti stop` → interactive prompt fires.
-5. **CLI smoke:** `pseti obs transfer --help`, `pseti obs transfer status`, `pseti obs transfer queue`, `pseti obs transfer tail -n 20`.
+5. **CLI smoke:** `pseti transfer --help`, `pseti transfer status`, `pseti transfer queue`, `pseti transfer tail -n 20`.
 6. **Integration:** `pseti test sw integration -k transfer` → 100% pass.
 7. **HW-SW:** `pseti test hw run -k HW_07` → ARCHIVED with manifest match and PF round-trip assertion green.
 8. **Lint/types:** `pseti test lint` clean.

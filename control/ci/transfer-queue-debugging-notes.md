@@ -69,7 +69,7 @@ Warning: Log directory '/app/logs' is not writable ([Errno 2] No such file or di
 
 ### UX issues
 
-- UX: the pseti obs transfer command has no progress bar. There’s also no resolved path for the ledgers, making it hard to manually inspect logs. (how to add this without making it cramped?
+- UX: the pseti transfer command has no progress bar. There’s also no resolved path for the ledgers, making it hard to manually inspect logs. (how to add this without making it cramped?
 - The start command dumps the entire validation output onto the screen. I feel like this is nice to have but it can make it hard to see errors.
 - The quabo_driver is noisy and spits out warnings and errors for timeouts during reboot. These are expected and I noticed that it’s making me ignore them. So if there’s actually an unexpected error I’ll miss it.
     - Perhaps we should decrease the log level by 1 unless a verbose or log-level flag is given this way timemouts might be warnings only. Though I’m not sure what a higher log level would constitute, as during reboot the worst that can happen is the quabo not respond. We can’t really tell what’s happening…
@@ -80,6 +80,6 @@ Warning: Log directory '/app/logs' is not writable ([Errno 2] No such file or di
 
 - The transfer queue has lots of entries pending and while it seems to be prioritizing the oldest run. However, the oldest bounces bounces back and forth between active and pending without any retries counter being updated. There’s no warning message or errors so I have no idea what’s wrong.
 - The transfer queue tail command is broken:
-    - root@panoseti-headnode-ucb:/app# pseti obs transfer  tail
+    - root@panoseti-headnode-ucb:/app# pseti transfer  tail
     Log file not found: /app/state/logs/transfer_daemon/current.log
 - When I s

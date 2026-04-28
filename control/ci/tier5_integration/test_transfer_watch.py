@@ -1,7 +1,7 @@
 """Tier 5 (Integration): Transfer --watch smoke test.
 
 Verifies:
-- pseti obs transfer status --watch renders correctly.
+- pseti transfer status --watch renders correctly.
 """
 from __future__ import annotations
 

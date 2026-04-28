@@ -45,6 +45,7 @@ from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError, UnavailableError
 from panoseti_grpc.telemetry.logger import get_logger
 
+# control imports
 import control.session_stop as session_stop
 import control.stop as stop
 from control.driver import quabo_driver
@@ -380,7 +381,6 @@ def start_data_flow(
         daq_config: DAQ node and head node networking details.
         network_config: Network routing and port forwarding settings.
     """
-    # logger = logging.getLogger('PSETI.Start.start_data_flow')
     daq_params = get_daq_params(data_config)
     for dome in quabo_uids.domes:
         for module in dome.modules:

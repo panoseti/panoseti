@@ -15,9 +15,9 @@ After the Phase-1 stabilization landed, manual HITL testing surfaced six recurri
 1. `pseti start` aborts correctly when Quabos are down, but the operator-visible message is `unhandled errors in a TaskGroup (2 sub-exceptions)` — the underlying tracebacks are lost.
 2. `pseti stop` runs the full hardware ladder regardless of ledger state, even when the ledger marks the run as already finished.
 3. The transfer daemon correctly moves failed jobs to `failed/`, but **the run ledger** never sees `transfer_attempts` increment or `last_transfer_error` populated. Operators cannot tell from the ledger why a transfer failed.
-4. `pseti obs status` reports Quabos as `OK` even when they are physically off — lenient mode is misused as a status report.
+4. `pseti status` reports Quabos as `OK` even when they are physically off — lenient mode is misused as a status report.
 5. Console output is **doubled** for `start/stop/status` (but not for `config` or `quabo_driver`); console lines also lack a service tag, so operators cannot tell which subsystem produced each line.
-6. Operator friction: `pseti obs ledger` is too long; `pseti cfg` doesn't exist; transfer status has no `--watch` or progress bar; `pseti test hw clean` always wipes Docker volumes (no non-destructive sibling).
+6. Operator friction: `pseti ledger` is too long; `pseti cfg` doesn't exist; transfer status has no `--watch` or progress bar; `pseti test hw clean` always wipes Docker volumes (no non-destructive sibling).
 
 This plan delivers each fix with minimal scope, proves each one with a Tier-1/Tier-2 test that fails on the current branch, and leaves Tier-3+ regressions for the dedicated verification phase.
 
@@ -91,7 +91,7 @@ Two cooperating defects:
 1. `PanosetiLogFactory.configure_logger` (`logger.py:225-279`) attaches a `RichHandler` to a named logger but **never sets `logger.propagate = False`**. Records propagate to the root logger.
 2. `interleave.py:37` calls `logging.basicConfig(level=INFO, handlers=[RichHandler(...)])` at **module import time**, installing a `RichHandler` on the **root** logger. `stop.py:39` does `from control.tools.interleave import PID_FILE` at module top, so importing `stop` triggers it; `start.py:48` imports `stop`, so importing `start` triggers it transitively. (Same pattern in `panoseti_interface.py:27` and `daemons/storeInfluxDB.py:78`.)
 
-Net result: every record from `PSETI.Start` / `PSETI.Stop` fires on its named RichHandler **and** propagates to the root RichHandler installed by `interleave.basicConfig`. Two prints. `pseti obs config` and `quabo_driver` do not import `interleave` (or `stop`/`start`), so they only have one handler — matching the operator's observation.
+Net result: every record from `PSETI.Start` / `PSETI.Stop` fires on its named RichHandler **and** propagates to the root RichHandler installed by `interleave.basicConfig`. Two prints. `pseti config` and `quabo_driver` do not import `interleave` (or `stop`/`start`), so they only have one handler — matching the operator's observation.
 
 Console format: `RichHandler` is constructed without a custom formatter, so the logger name (`%(name)s`) is not surfaced; lines have no `[start]`/`[stop]`/`[transfer_daemon]` tag.
 
@@ -105,7 +105,7 @@ Console format: `RichHandler` is constructed without a custom formatter, so the 
 **File:** `control/src/control/pseti.py`, `control/src/control/tools/obs_cli.py`, `control/src/control/config.py`, `control/src/control/transfer/cli.py`, `control/ci/test_cli.py`
 
 - Boot path is already lazy via `BaseLazyGroup` (`grpc/src/panoseti_grpc/util/cli.py:106-120`) — `--help` returns a stub `click.Command` without importing the subcommand. Confirmed: no top-level `get_*_config()` calls leak.
-- One leak remains: `config.py:47-49` runs `PanoPaths.logs_dir().mkdir()` and `get_logger(..., grpc_enabled=True)` at **import** time. Move to a Typer callback so they only fire on actual `pseti obs config` / `pseti cfg` invocation.
+- One leak remains: `config.py:47-49` runs `PanoPaths.logs_dir().mkdir()` and `get_logger(..., grpc_enabled=True)` at **import** time. Move to a Typer callback so they only fire on actual `pseti config` / `pseti cfg` invocation.
 - Aliases: `pseti.py` already aliases `start/stop/status` at line 28-30. Add `cfg`. `obs_cli.py` already lists `ledger`; add a short alias under the same `lazy_mapping`.
 - `transfer/cli.py` has no `--watch` flag. Pattern exists in `status.py:193-194,218-219`. `transfer/progress.py` already has `parse_rsync_progress(line)` for `rsync --info=progress2` output — exactly what a progress bar needs. `rich` is already a project dep.
 - `pseti test hw clean` (`ci/test_cli.py:495-525`) shells out `compose … down -v` (destroys volumes). A non-destructive sibling `hw down` is the same code path minus `-v`.
@@ -327,11 +327,11 @@ Same change applies anywhere else that misuses `lenient=True` to mean "tell me t
 
 Add to `PanoLazyGroup.lazy_mapping` (around line 28-30):
 ```
-"cfg": ("control.config", "app", "Alias for 'pseti obs config'."),
+"cfg": ("control.config", "app", "Alias for 'pseti config'."),
 ```
 Append `"cfg"` to `command_order` (line 39).
 
-### 5.2 Short alias for `pseti obs ledger`
+### 5.2 Short alias for `pseti ledger`
 
 **File:** `control/src/control/tools/obs_cli.py`
 
@@ -358,7 +358,7 @@ Move the `PanoPaths.logs_dir().mkdir(...)` and `get_logger("PSETI.Config", ..., 
 (b) Progress bar: use `rich.progress.Progress` (`rich` already a dep). The daemon's `transfer/daemon.py` already shells `rsync --info=progress2`; `transfer/progress.py::parse_rsync_progress` already parses it. Wire the daemon to:
 1. Read rsync stdout line-by-line via `asyncio.create_subprocess_exec` and `async for line in proc.stdout`.
 2. For each parsed `{bytes, pct, speed, eta}` dict, write the latest snapshot to a per-job sidecar file `state/transfer/queue/active/{run_name}.progress.json` (write to `tmp` and `os.replace`).
-3. The CLI `pseti obs transfer status --watch` reads each active job's sidecar and renders a `Progress` task per active job (one row per node × run). Use `Progress.update(task_id, completed=bytes)` and a `BarColumn`, `TransferSpeedColumn`, `TimeRemainingColumn`.
+3. The CLI `pseti transfer status --watch` reads each active job's sidecar and renders a `Progress` task per active job (one row per node × run). Use `Progress.update(task_id, completed=bytes)` and a `BarColumn`, `TransferSpeedColumn`, `TimeRemainingColumn`.
 
 **Edge cases:**
 - Sidecar must tolerate partial writes (atomic `os.replace` from `tmp_path`).
@@ -447,7 +447,7 @@ Reuse the in-process daemon harness from `tier4_chaos/test_transfer_daemon_crash
 **Path:** `control/ci/tier5_integration/test_transfer_watch.py`
 
 - Start the daemon; enqueue a job that succeeds via mocked rsync writing a fake progress sidecar.
-- Run `pseti obs transfer status --watch --interval 0.5` as a subprocess for 2 s; capture stdout; assert at least 2 frames were rendered and at least one frame contains a `%` progress token.
+- Run `pseti transfer status --watch --interval 0.5` as a subprocess for 2 s; capture stdout; assert at least 2 frames were rendered and at least one frame contains a `%` progress token.
 - Skip when `RUN_REAL_DATA_TESTS` is unset (consistent with other Tier-5 conventions).
 
 ### 6.8 Verification command sequence
@@ -498,7 +498,7 @@ pseti test sw integration                                        # full integrat
 ## Out of scope (explicitly)
 
 - Fixing the underlying manifest-generation bug observed in HITL — Phase 2.3 surfaces it but does not fix the rsync/path issue. File a follow-up ticket once the traceback is visible.
-- A general "pseti obs ledger edit" surface (per prior plan: inspection only).
+- A general "pseti ledger edit" surface (per prior plan: inspection only).
 - Renaming the overloaded `head_node_container` config field.
 - Replacing the legacy gRPC `Log` RPC during the Alloy shadow period.
 - Disk-fill prevention in `pseti start`.
@@ -512,6 +512,6 @@ pseti test sw integration                                        # full integrat
 2. `pseti start` against unreachable Quabos prints **every** sub-exception's traceback to console and writes them to the failure-context JSON.
 3. `pseti stop` against a `RECORDING_ENDED` ledger refuses without `--force-cleanup`.
 4. After a transfer-daemon failure burst, `cat state/runs/ledger.toml` shows `transfer_attempts == MAX_ATTEMPTS` and a non-empty `last_transfer_error`.
-5. `pseti obs status sweep` against one powered-off Quabo prints `Quabos: DEGRADED — N/M reachable`.
+5. `pseti status sweep` against one powered-off Quabo prints `Quabos: DEGRADED — N/M reachable`.
 6. Every console line carries a `[service]` tag; no double output for any command.
-7. `pseti cfg --help` and `pseti obs led --help` both work; `pseti test hw down` stops containers but `docker volume ls` still shows the data volumes.
+7. `pseti cfg --help` and `pseti led --help` both work; `pseti test hw down` stops containers but `docker volume ls` still shows the data volumes.

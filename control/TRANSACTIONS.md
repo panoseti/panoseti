@@ -58,7 +58,7 @@ The system state is persisted in a TOML-based ledger (`state/runs/ledger.toml`).
 
 ### Ledger Mirroring
 
-The Transfer Daemon maintains "Ledger Truth" by mirroring its internal state onto the central run ledger. Every time a transfer attempt is incremented or an error is encountered, the daemon calls `state_mgr.transition()` to update the ledger's `transfer_attempts` and `last_transfer_error` fields. This allows operators to inspect the ledger at any time (e.g., via `pseti obs ledger`) to understand why a transfer is retrying or has failed.
+The Transfer Daemon maintains "Ledger Truth" by mirroring its internal state onto the central run ledger. Every time a transfer attempt is incremented or an error is encountered, the daemon calls `state_mgr.transition()` to update the ledger's `transfer_attempts` and `last_transfer_error` fields. This allows operators to inspect the ledger at any time (e.g., via `pseti ledger`) to understand why a transfer is retrying or has failed.
 
 ---
 
@@ -332,45 +332,45 @@ On startup the daemon sweeps `active/` for jobs left behind by a prior crash (SC
 
 ---
 
-## Operator Recovery (`pseti obs transfer`)
+## Operator Recovery (`pseti transfer`)
 
-Use the `pseti obs transfer` sub-commands to inspect the queue and recover from failures.
+Use the `pseti transfer` sub-commands to inspect the queue and recover from failures.
 
 | Command | Purpose |
 |---|---|
-| `pseti obs transfer status` | Daemon health (heartbeat age, pid) + per-bucket job counts. |
-| `pseti obs transfer status <run>` | Show which bucket a specific run is in. |
-| `pseti obs transfer queue [pending\|active\|completed\|failed]` | List jobs in a bucket. |
-| `pseti obs transfer retry <run>` | Move a failed job back to pending/ (resets attempts). |
-| `pseti obs transfer start` | Start the daemon (idempotent; no-op if already running). |
-| `pseti obs transfer stop` | SIGTERM the daemon; wait up to 60 s for graceful exit. |
-| `pseti obs transfer tail [-f] [-n N]` | Tail `state/logs/transfer_daemon/transfer_daemon.log`. |
-| `pseti obs transfer verify <run>` | Run manifest verification standalone (no state transitions). |
+| `pseti transfer status` | Daemon health (heartbeat age, pid) + per-bucket job counts. |
+| `pseti transfer status <run>` | Show which bucket a specific run is in. |
+| `pseti transfer queue [pending\|active\|completed\|failed]` | List jobs in a bucket. |
+| `pseti transfer retry <run>` | Move a failed job back to pending/ (resets attempts). |
+| `pseti transfer start` | Start the daemon (idempotent; no-op if already running). |
+| `pseti transfer stop` | SIGTERM the daemon; wait up to 60 s for graceful exit. |
+| `pseti transfer tail [-f] [-n N]` | Tail `state/logs/transfer_daemon/transfer_daemon.log`. |
+| `pseti transfer verify <run>` | Run manifest verification standalone (no state transitions). |
 
 **Common recovery flows:**
 
 *Transfer daemon was down when `pseti stop` ran:*
 ```bash
-pseti obs transfer status          # confirm daemon is down
-pseti obs transfer start           # restart it
+pseti transfer status          # confirm daemon is down
+pseti transfer start           # restart it
 # daemon auto-picks up the pending job
-pseti obs transfer status <run>    # confirm it moved to active/
+pseti transfer status <run>    # confirm it moved to active/
 ```
 
 *rsync failed and exhausted retries:*
 ```bash
-pseti obs transfer queue failed    # confirm run is in failed/
+pseti transfer queue failed    # confirm run is in failed/
 # investigate root cause (disk space, network, SSH keys)
-pseti obs transfer retry <run>     # move back to pending/
-pseti obs transfer start           # ensure daemon is running
+pseti transfer retry <run>     # move back to pending/
+pseti transfer start           # ensure daemon is running
 ```
 
 *Manifest digest mismatch (VERIFY_FAILED):*
 ```bash
-pseti obs transfer verify <run>    # re-run verification to confirm which files differ
+pseti transfer verify <run>    # re-run verification to confirm which files differ
 # DAQ data is preserved — do NOT run CleanupData manually
 # Fix the head-side issue (re-rsync the specific file), then:
-pseti obs transfer retry <run>
+pseti transfer retry <run>
 ```
 
 ---

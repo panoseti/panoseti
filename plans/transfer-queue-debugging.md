@@ -13,7 +13,7 @@ The hardware-software (HITL) pipeline is now stable for `pseti start`/`pseti sto
 1. **Silent transfer-daemon crashes**, plus an "infinite bounce" of jobs between `active/` and `pending/` with no retry counter increment and no log evidence.
 2. **`pseti start` ignores Quabo unreachability** (always lenient in container mode), so the start transaction succeeds with no real data flow — and HW-SW failure modes are masked.
 3. **Race condition / non-idempotent `pseti start`**: first invocation reports `ABORTED` while a hashpipe child is still running on the DAQ node; subsequent invocations succeed against the orphaned state.
-4. **CLI observability blindspots**: `pseti obs transfer tail` looks at a path that the daemon never writes to; ledger inspection is awkward; remote DAQ status requires hand-resolving IPs and port-forwarding.
+4. **CLI observability blindspots**: `pseti transfer tail` looks at a path that the daemon never writes to; ledger inspection is awkward; remote DAQ status requires hand-resolving IPs and port-forwarding.
 5. **gRPC server singleton not enforced** — multiple `panoseti-server` processes can attach to the same node config, racing for UDP packets.
 
 This plan fixes #1–#5 with minimal scope, adds tests that will fail on the current `master`/`test-refactor` branch, and gives a manual HITL verification checklist for the work that requires real Quabos.
@@ -92,7 +92,7 @@ Two things must change:
 - `start_data_flow` must come **after** a remote-hashpipe-running pre-flight check (a `StatusDaq` probe with `check_hashpipe_running=True`); refuse without `--force-restart`.
 - Add a `_data_flow_started: bool = False` flag to `StartTransaction`. Set it to `True` immediately before `start_data_flow` is called (`start.py:944`). In `__aexit__`, call `stop_data_flow` **only if `self._data_flow_started is True`**. Failures that abort before reaching `start_data_flow` leave Quabo state untouched.
 
-### D-5. Why `pseti obs transfer tail` looks at the wrong path
+### D-5. Why `pseti transfer tail` looks at the wrong path
 
 `cli.py:165-169` reads `PanoPaths.daemon_logs_dir("transfer_daemon") / "current.log"` → `state/logs/transfer_daemon/current.log`. The daemon **never writes that file** (see D-1). Two possible fixes; we choose: **make the daemon actually write to that path** (using the unified `panoseti_grpc.telemetry.logger.get_logger`), keeping the tail command unchanged. This makes the daemon's logs show up in Loki for free.
 
@@ -197,7 +197,7 @@ Add two fields:
 - `last_error: str | None = None`
 - `last_error_at: datetime | None = None`
 
-Update `_process_job` failure paths to set these via `model_copy` and `_write_job` before transitioning. Without this, `pseti obs transfer queue failed` is uninformative.
+Update `_process_job` failure paths to set these via `model_copy` and `_write_job` before transitioning. Without this, `pseti transfer queue failed` is uninformative.
 
 ---
 
@@ -234,13 +234,13 @@ Single section under "Pre-flight": list the seven preconditions (config validati
 
 ## Phase 3 — CLI Observability
 
-### 3.1 Fix `pseti obs transfer tail`
+### 3.1 Fix `pseti transfer tail`
 
 **File:** `control/src/control/transfer/cli.py:165-171`
 
 Update to read `transfer_daemon.log` instead of `current.log` (matches the file produced by 1.1). Also update the error message to print *both* `state/logs/transfer_daemon/transfer_daemon.log` and `state/logs/transfer_daemon/stderr.log` so operators don't miss the backstop.
 
-### 3.2 New command: `pseti obs status` with auto-resolution
+### 3.2 New command: `pseti status` with auto-resolution
 
 **File:** `control/src/control/status.py` (read first; if it's currently a thin wrapper, extend it)
 
@@ -248,23 +248,23 @@ Add commands so operators don't hand-resolve IPs:
 
 | Command | Behavior |
 |---|---|
-| `pseti obs status` | Local head-node summary: ledger status, run name, transfer queue counts, daemon health, Redis status, disk free. |
-| `pseti obs status --remote` | Iterate `daq_config.daq_nodes` (use `util.daq_grpc_endpoint` + `attach_daq_config` so port-forwarding is transparent); per-node show: gRPC reachable, hashpipe_pid, run_dir present, free disk. |
-| `pseti obs status --watch [--interval N]` | Re-render every N seconds (default 5) using `rich.live.Live`. Supports `--remote` modifier. |
-| `pseti obs status sweep` | Full network sweep: Quabo ping, gRPC reachability, port-forwarding checks. Read-only; no state changes. |
+| `pseti status` | Local head-node summary: ledger status, run name, transfer queue counts, daemon health, Redis status, disk free. |
+| `pseti status --remote` | Iterate `daq_config.daq_nodes` (use `util.daq_grpc_endpoint` + `attach_daq_config` so port-forwarding is transparent); per-node show: gRPC reachable, hashpipe_pid, run_dir present, free disk. |
+| `pseti status --watch [--interval N]` | Re-render every N seconds (default 5) using `rich.live.Live`. Supports `--remote` modifier. |
+| `pseti status sweep` | Full network sweep: Quabo ping, gRPC reachability, port-forwarding checks. Read-only; no state changes. |
 
 The implementation reuses `_check_daq_reachability()` and `_check_quabo_reachability(lenient=True)` already in `start.py`. Move them into `control/utils/preflight.py` and import from both places — small refactor, keeps blast radius low.
 
-### 3.3 New command: `pseti obs ledger [<run_name>]`
+### 3.3 New command: `pseti ledger [<run_name>]`
 
 **File:** `control/src/control/tools/ledger_cli.py` (new) — register in `obs_cli.py:14-25` lazy_mapping.
 
 | Subcommand | Behavior |
 |---|---|
-| `pseti obs ledger` | Show current ledger TOML pretty-printed (rich Syntax) with full path: `state/runs/ledger.toml`. |
-| `pseti obs ledger path` | Print just the absolute path (for shell composition: `vim "$(pseti obs ledger path)"`). |
-| `pseti obs ledger history` | List archived ledgers under `head_node_data_dir/_aborted/*/stale_run_state.toml`. |
-| `pseti obs ledger show <run_name>` | Read-only view of a specific run's ledger snapshot. |
+| `pseti ledger` | Show current ledger TOML pretty-printed (rich Syntax) with full path: `state/runs/ledger.toml`. |
+| `pseti ledger path` | Print just the absolute path (for shell composition: `vim "$(pseti ledger path)"`). |
+| `pseti ledger history` | List archived ledgers under `head_node_data_dir/_aborted/*/stale_run_state.toml`. |
+| `pseti ledger show <run_name>` | Read-only view of a specific run's ledger snapshot. |
 
 **Hard rule (per user request):** no `edit`/`set` subcommand. Inspection only.
 
@@ -317,7 +317,7 @@ Then `strict=False` against same mock: assert `start_data_flow` **is** called an
 
 **Path:** `control/ci/tier5_integration/test_transfer_observability.py` (new)
 
-**Scenario:** Start the real transfer daemon via `pseti obs transfer start` inside the integration container. Wait for heartbeat. Run `pseti obs transfer tail -n 5`; assert non-empty output containing `"Transfer daemon started"`. Run `pseti obs ledger path`; assert it prints an existing path. Stop the daemon; assert `pseti obs transfer status` reports STALE within `>30s` heartbeat age.
+**Scenario:** Start the real transfer daemon via `pseti transfer start` inside the integration container. Wait for heartbeat. Run `pseti transfer tail -n 5`; assert non-empty output containing `"Transfer daemon started"`. Run `pseti ledger path`; assert it prints an existing path. Stop the daemon; assert `pseti transfer status` reports STALE within `>30s` heartbeat age.
 
 ---
 
@@ -326,7 +326,7 @@ Then `strict=False` against same mock: assert `start_data_flow` **is** called an
 These are scoped but **only commit if Phases 1-4 pass clean** in CI:
 
 - **5.1** Singleton `panoseti-server` enforcement via lock file under `state/locks/grpc_server.lock` (mirrors transfer-daemon pattern). One file edit in `panoseti_grpc/server/main.py`.
-- **5.2** `pseti obs transfer tail -f` should also tail `stderr.log` and `stdout.log` interleaved so the daemon-died-before-logging case is still visible. Implement via `tail -F log1 log2 log3` exec.
+- **5.2** `pseti transfer tail -f` should also tail `stderr.log` and `stdout.log` interleaved so the daemon-died-before-logging case is still visible. Implement via `tail -F log1 log2 log3` exec.
 - **5.3** Decrement noisy `quabo_driver` `WARNING` to `DEBUG` during reboot windows; out-of-scope for this plan (note in TRANSACTIONS.md follow-up section).
 
 ---
@@ -373,19 +373,19 @@ pseti test sw integration                           # full integration — must 
 
 ## Verification — manual HW-SW (Nico runs this; agent does not have hardware)
 
-Pre-condition: HITL container running, real Quabos powered, DAQ node reachable. Use `pseti obs status sweep` to confirm baseline.
+Pre-condition: HITL container running, real Quabos powered, DAQ node reachable. Use `pseti status sweep` to confirm baseline.
 
 ### M-1. Daemon-crash visibility (validates Phase 1.1, 1.2)
 
 ```bash
 pseti session-start
-pseti obs transfer status                  # daemon RUNNING, fresh heartbeat
+pseti transfer status                  # daemon RUNNING, fresh heartbeat
 sudo kill -9 $(cat $PSETI_STATE/transfer/daemon.pid)
 sleep 2
 ls -la $PSETI_STATE/logs/transfer_daemon/  # expect: transfer_daemon.log, transfer_daemon.jsonl, stderr.log, stdout.log
-pseti obs transfer tail -n 20              # must show last logs incl. shutdown reason if any
-pseti obs transfer start                   # restart
-pseti obs transfer tail -f                 # continues to stream
+pseti transfer tail -n 20              # must show last logs incl. shutdown reason if any
+pseti transfer start                   # restart
+pseti transfer tail -f                 # continues to stream
 ```
 
 **Pass criteria:** all four files exist and contain content; tail shows real log lines (not "file not found"); restart produces a new "Transfer daemon started" entry.
@@ -399,10 +399,10 @@ pseti start --strict --nsecs=20            # 20-second run
 pseti stop                                 # enqueues transfer
 # Now break the network mid-transfer:
 sudo iptables -A OUTPUT -d <daqnode_ip> -j DROP
-pseti obs transfer status                  # watch for 60s
+pseti transfer status                  # watch for 60s
 sudo iptables -D OUTPUT -d <daqnode_ip> -j DROP
-pseti obs transfer queue failed            # job must appear here within ~3 attempts × backoff
-pseti obs transfer tail -n 100             # must contain 3 retry log lines + 1 "Marking failed" line
+pseti transfer queue failed            # job must appear here within ~3 attempts × backoff
+pseti transfer tail -n 100             # must contain 3 retry log lines + 1 "Marking failed" line
 ```
 
 **Pass criteria:** within `MAX_ATTEMPTS × max_backoff = 3 × 30s = ~90s` after the partition heals, the job lands in `failed/`. The `attempts` field in the failed TOML is exactly `3`. No infinite bounce.
@@ -430,7 +430,7 @@ pseti power on --quabo <ip>
 pseti start --strict                       # success
 # Force-orphan the hashpipe by SIGKILLing the head-side python process:
 sudo kill -9 $(pgrep -f 'pseti start')
-pseti obs ledger                           # ledger is in STARTING/ACTIVE
+pseti ledger                           # ledger is in STARTING/ACTIVE
 pseti start --strict                       # MUST refuse: "Hashpipe already running on {ip}"
 pseti start --strict --force-restart       # stops the orphan, then succeeds
 pseti stop --yes
@@ -443,14 +443,14 @@ pseti stop --yes
 ### M-5. Observability commands (validates Phase 3)
 
 ```bash
-pseti obs status                           # local summary
-pseti obs status --remote                  # remote DAQ summary, no manual --host needed
-pseti obs status --remote --watch          # Live view, Ctrl-C to exit
-pseti obs status sweep                     # full reachability matrix
-pseti obs ledger                           # current ledger
-pseti obs ledger path                      # absolute path
-vim "$(pseti obs ledger path)"             # opens the actual file
-pseti obs ledger history                   # archived ledgers
+pseti status                           # local summary
+pseti status --remote                  # remote DAQ summary, no manual --host needed
+pseti status --remote --watch          # Live view, Ctrl-C to exit
+pseti status sweep                     # full reachability matrix
+pseti ledger                           # current ledger
+pseti ledger path                      # absolute path
+vim "$(pseti ledger path)"             # opens the actual file
+pseti ledger history                   # archived ledgers
 ```
 
 **Pass criteria:** every command exits 0, prints content matching `daq_config.json` topology, and resolves port-forwarding transparently.
@@ -471,6 +471,6 @@ pseti obs ledger history                   # archived ledgers
 
 1. All seven `pseti test ...` commands above are green on a clean checkout of the resulting branch.
 2. Manual checklist M-1 through M-5 passes on the HITL fixture (operator-driven).
-3. `pseti obs transfer tail` returns real content within 10 seconds of `pseti session-start`.
+3. `pseti transfer tail` returns real content within 10 seconds of `pseti session-start`.
 4. A deliberately-injected daemon crash converges on `failed/` within `MAX_ATTEMPTS` and produces a stack trace in the daemon log.
 5. `TRANSACTIONS.md` documents strictness modes and the new CLI surface.

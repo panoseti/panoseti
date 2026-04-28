@@ -1,4 +1,4 @@
-"""Read-only ledger inspection CLI — `pseti obs ledger`."""
+"""Read-only ledger inspection CLI — `pseti ledger`."""
 from __future__ import annotations
 
 import pathlib

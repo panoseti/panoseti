@@ -583,7 +583,7 @@ def hw_run(
     pytest_args = " ".join(ctx.args)
     cmd = f"{runner.container_tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode exec headnode-server pytest {suite.test_dir} {pytest_args}"
     
-    console.print(f"[cyan]Running test-hw in headnode-server container...[/cyan]")
+    console.print("[cyan]Running test-hw in headnode-server container...[/cyan]")
     exit_code = os.system(cmd)
     if exit_code != 0:
         raise typer.Exit(code=1)
