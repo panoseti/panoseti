@@ -575,10 +575,17 @@ def hw_run(
     tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
 ) -> None:
     """Run the physical hardware-software (HITL) test suite."""
-    if tool and hasattr(ctx, "obj") and ctx.obj:
-        ctx.obj.container_tool = tool
-    ok = asyncio.run(ctx.obj.run_suite("test-hw", extra_args=ctx.args))
-    if not ok:
+    runner: TestRunner = ctx.obj
+    suite, env_cfg = get_hw_suite_and_env(ctx)
+    if tool:
+        runner.container_tool = tool
+    
+    pytest_args = " ".join(ctx.args)
+    cmd = f"{runner.container_tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode exec headnode-server pytest {suite.test_dir} {pytest_args}"
+    
+    console.print(f"[cyan]Running test-hw in headnode-server container...[/cyan]")
+    exit_code = os.system(cmd)
+    if exit_code != 0:
         raise typer.Exit(code=1)
 
 if __name__ == "__main__":

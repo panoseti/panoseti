@@ -159,17 +159,16 @@ class TestHW07TransferPipeline:
         run_dir = HEAD_DATA_DIR / ledger.run_name
         assert run_dir.exists(), f"Head run dir missing: {run_dir}"
 
-        found_any = False
-        for algo in ("blake3", "xxh3_128", "sha256"):
-            mf = run_dir / f"manifest.{algo}"
-            if not mf.exists():
-                continue
-            found_any = True
+        # Find all manifest files (new and legacy formats)
+        manifest_files = list(run_dir.glob("dp_manifest.node_*.txt"))
+        manifest_files.extend(list(run_dir.glob("manifest.*")))
+        manifest_files = list(dict.fromkeys(manifest_files))
+
+        assert manifest_files, f"No manifest files found under {run_dir}"
+
+        for mf in manifest_files:
             ok, errs = verify_manifest(mf, run_dir)
-            assert ok, (
-                f"manifest.{algo} verification failed:\n" + "\n".join(errs)
-            )
-        assert found_any, f"No manifest files found under {run_dir}"
+            assert ok, f"{mf.name} verification failed:\n" + "\n".join(errs)
 
     # ── Phase 5: selective cleanup proof ────────────────────────────────────
 
