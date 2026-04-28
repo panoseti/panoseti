@@ -186,26 +186,26 @@ async def _process_job(
                         port = node.port_forwarding.grpc_port
 
                     async with AsyncDaqControlClient(host=host, port=port) as client:
-                        for mid in module_ids:
-                            try:
-                                resp = await asyncio.wait_for(
-                                    client.GenerateManifest({
-                                        "data_dir": node.data_dir,
-                                        "run_dir": run_name,
-                                        "module_id": mid,
-                                        "algorithm": "blake3",
-                                        "include_patterns": ["*.pff"],
-                                    }),
-                                    timeout=15.0,
-                                )
-                                if not resp.get("success", True):
-                                    err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {resp.get('message', 'unknown error')}"
-                                    manifest_errors.append(err)
-                                    logger.warning(err)
-                            except Exception as exc:
-                                err = f"GenerateManifest failed for module {mid} on {node.ip_addr}: {exc}"
+                        try:
+                            # Generate a single manifest for the entire node (all modules + configs)
+                            resp = await asyncio.wait_for(
+                                client.GenerateManifest({
+                                    "data_dir": node.data_dir,
+                                    "run_dir": run_name,
+                                    "module_id": node.module_ids,
+                                    "algorithm": "blake3",
+                                    # include_patterns default handles .pff and configs
+                                }),
+                                timeout=20.0,
+                            )
+                            if not resp.get("success", True):
+                                err = f"GenerateManifest failed on {node.ip_addr}: {resp.get('message', 'unknown error')}"
                                 manifest_errors.append(err)
                                 logger.warning(err)
+                        except Exception as exc:
+                            err = f"GenerateManifest failed on {node.ip_addr}: {exc}"
+                            manifest_errors.append(err)
+                            logger.warning(err)
 
                 # Wrap TaskGroup so an ExceptionGroup doesn't escape this function.
                 try:
@@ -299,18 +299,27 @@ async def _process_job(
             _safe_ledger_update(state_mgr, status="VERIFYING")
             verify_errors: list[str] = []
             head_run_path = pathlib.Path(head_data_dir) / run_name
-            for algo_suffix in ("blake3", "xxh3_128", "sha256"):
-                candidate = head_run_path / f"manifest.{algo_suffix}"
-                if candidate.exists():
-                    ok, errs = await asyncio.to_thread(verify_manifest, candidate, head_run_path)
-                    if not ok:
-                        verify_errors.extend(errs)
-                        logger.error(
-                            "[%s] Manifest verification failed (%s): %s",
-                            run_name, candidate.name, "; ".join(errs),
-                        )
-                    else:
-                        logger.info("[%s] Manifest OK: %s", run_name, candidate.name)
+
+            # Find all manifest files (new and legacy formats)
+            manifest_files = list(head_run_path.glob("dp_manifest.node_*.txt"))
+            manifest_files.extend(list(head_run_path.glob("manifest.*")))
+
+            # Remove duplicates (if any) while preserving order
+            manifest_files = list(dict.fromkeys(manifest_files))
+
+            if not manifest_files:
+                logger.warning("[%s] No manifest files found in %s", run_name, head_run_path)
+
+            for manifest_file in manifest_files:
+                ok, errs = await asyncio.to_thread(verify_manifest, manifest_file, head_run_path)
+                if not ok:
+                    verify_errors.extend(errs)
+                    logger.error(
+                        "[%s] Manifest verification failed (%s): %s",
+                        run_name, manifest_file.name, "; ".join(errs),
+                    )
+                else:
+                    logger.info("[%s] Manifest OK: %s", run_name, manifest_file.name)
 
             if verify_errors:
                 err_msg = "; ".join(verify_errors)

@@ -246,15 +246,18 @@ async def test_transfer_queue_validity_happy_path(
         host_root = Path(temp_dir)
         spec = fleet.specs[i]
         
-        # meta.json should be preserved in root run dir
-        assert (host_root / run_name / "meta.json").exists(), f"Metadata missing on DAQ {i}"
+        # meta.json and manifest should be preserved in root run dir
+        daq_root_run_dir = host_root / run_name
+        assert (daq_root_run_dir / "meta.json").exists(), f"Metadata missing on DAQ {i}"
         
+        # manifest should remain (preserved pattern)
+        manifests = list(daq_root_run_dir.glob("dp_manifest.node_*.txt"))
+        # Fallback to legacy check for safety if needed, but test expects new format
+        manifests.extend(list(daq_root_run_dir.glob("manifest.*")))
+        assert manifests, f"Manifest missing on DAQ {i} root run dir"
+
         for mid in spec.module_ids:
             daq_mod_run_dir = host_root / f"module_{mid}" / run_name
             # .pff files should be deleted
             pff_files = list(daq_mod_run_dir.glob("*.pff"))
             assert not pff_files, f"Cleanup failed: .pff files still on DAQ node {i} for module {mid}"
-            
-            # manifest should remain (preserved pattern)
-            manifests = list(daq_mod_run_dir.glob("manifest.*"))
-            assert manifests, f"Manifest missing on DAQ {i} module {mid}"

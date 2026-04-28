@@ -14,27 +14,35 @@ def _compute_digest(data: bytes, algo: str) -> str:
 
     Returns:
         Lowercase hex digest string.
+
+    Raises:
+        ValueError: If the requested algorithm library is not installed.
     """
     if algo == "blake3":
         try:
             import blake3 as _blake3
             return str(_blake3.blake3(data).hexdigest())
         except ImportError:
-            pass
+            raise ValueError(
+                "Algorithm 'blake3' requested but 'blake3' library is not installed."
+            )
     if algo in ("xxh3_128", "xxhash"):
         try:
             import xxhash
             return str(xxhash.xxh3_128(data).hexdigest())
         except ImportError:
-            pass
+            raise ValueError(
+                "Algorithm 'xxh3_128' requested but 'xxhash' library is not installed."
+            )
     return hashlib.sha256(data).hexdigest()
 
 
 def _algo_from_path(manifest_path: pathlib.Path) -> str:
-    """Infer the hash algorithm from the manifest file suffix.
+    """Infer the hash algorithm from the manifest file name or suffix.
 
-    The manifest server writes files named ``manifest.<algo>`` (e.g.
-    ``manifest.blake3``, ``manifest.xxh3_128``, ``manifest.sha256``).
+    Supports:
+        1. Legacy format: ``manifest.<algo>``
+        2. New format: ``dp_manifest.node_<hostname>.algo_<algo>.txt``
 
     Args:
         manifest_path: Path to the manifest file.
@@ -42,6 +50,16 @@ def _algo_from_path(manifest_path: pathlib.Path) -> str:
     Returns:
         Algorithm name string suitable for ``_compute_digest``.
     """
+    name = manifest_path.name
+    # 1. New format: algo_<algo>
+    if ".algo_" in name:
+        parts = name.split(".algo_")
+        if len(parts) > 1:
+            algo_part = parts[1].split(".")[0]
+            if algo_part in {"blake3", "xxh3_128", "sha256"}:
+                return algo_part
+
+    # 2. Legacy format: manifest.<algo>
     suffix = manifest_path.suffix.lstrip(".")
     known = {"blake3", "xxh3_128", "sha256"}
     return suffix if suffix in known else "sha256"
