@@ -251,6 +251,11 @@ class Fleet:
             
             if grpc_source.exists():
                 container.with_volume_mapping(str(grpc_source), "/grpc/src/panoseti_grpc", "rw")
+                # Ensure the mounted source is preferred over pre-installed site-packages
+            container.with_env("PYTHONPATH", "/grpc/src")
+            # Force uninstallation of the site-packages version to ensure 
+            # the mounted source is the only one available.
+            container.with_command("sh -c 'pip uninstall -y panoseti-grpc && python -m panoseti_grpc.daq_control.server'")
             container.with_exposed_ports(spec.grpc_container_port)
             container.with_env("GRPC_PORT", str(spec.grpc_container_port))
             # gRPC log forwarding will fail gracefully when headnode is

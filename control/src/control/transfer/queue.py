@@ -51,20 +51,9 @@ class TransferQueue:
         return self._queue / subdir / f"{run_name}.job.toml"
 
     @staticmethod
-    def _toml_scalar(value: Any) -> str:
-        """Render a scalar value as a TOML literal string fragment.
-
-        Args:
-            value: A bool, int, float, or str-convertible value.
-
-        Returns:
-            TOML-formatted string (e.g. ``"true"``, ``42``, ``"hello"``).
-        """
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        return f'"{value}"'
+    def _escape_toml_str(s: str) -> str:
+        """Escapes a string for TOML, handling newlines and quotes."""
+        return '"' + s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n') + '"'
 
     def _write_job(self, path: pathlib.Path, job: TransferJob) -> None:
         """Serialize *job* to TOML atomically via a temp file and ``os.replace``.
@@ -88,7 +77,13 @@ class TransferQueue:
                 for k, v in data.items():
                     if k in _skip_keys or v is None:
                         continue
-                    f.write(f"{k} = {self._toml_scalar(v)}\n")
+                    if isinstance(v, bool):
+                        val = "true" if v else "false"
+                    elif isinstance(v, (int, float)):
+                        val = str(v)
+                    else:
+                        val = self._escape_toml_str(str(v))
+                    f.write(f"{k} = {val}\n")
                 
                 # [[daq_nodes]] array-of-tables
                 daq_nodes = data.get("daq_nodes", [])
@@ -101,8 +96,13 @@ class TransferQueue:
                         if isinstance(v, list):
                             # module_ids is a list of ints
                             f.write(f"{k} = [{', '.join(str(i) for i in v)}]\n")
+                        elif isinstance(v, bool):
+                            f.write(f"{k} = {'true' if v else 'false'}\n")
+                        elif isinstance(v, (int, float)):
+                            f.write(f"{k} = {v}\n")
                         else:
-                            f.write(f"{k} = {self._toml_scalar(v)}\n")
+                            f.write(f"{k} = {self._escape_toml_str(str(v))}\n")
+                    
                     if pf_data is not None:
                         f.write("\n[daq_nodes.port_forwarding]\n")
                         for k, v in pf_data.items():
@@ -112,8 +112,12 @@ class TransferQueue:
                                 # reboot_port / cmd_port may be lists
                                 non_null = [str(i) for i in v if i is not None]
                                 f.write(f"{k} = [{', '.join(non_null)}]\n")
+                            elif isinstance(v, bool):
+                                f.write(f"{k} = {'true' if v else 'false'}\n")
+                            elif isinstance(v, (int, float)):
+                                f.write(f"{k} = {v}\n")
                             else:
-                                f.write(f"{k} = {self._toml_scalar(v)}\n")
+                                f.write(f"{k} = {self._escape_toml_str(str(v))}\n")
             os.replace(tmp_path, path)
         except Exception:
             with contextlib.suppress(OSError):

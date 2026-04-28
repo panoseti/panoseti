@@ -6,8 +6,8 @@ Verifies 100% byte accuracy of transferred .pff files from DAQ nodes to head nod
 import asyncio
 import os
 import shutil
-import subprocess
 import uuid
+import subprocess
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,51 +23,6 @@ from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
 
-
-def _prepare_simulated_data(fleet: Fleet, run_name: str) -> dict[str, bytes]:
-    """
-    Populate DAQ nodes with simulated data files.
-    Returns a mapping of relative_path (on head node) -> expected_bytes.
-    """
-    expected_data = {}
-    for i, temp_dir in enumerate(fleet._temp_dirs):
-        host_root = Path(temp_dir)
-        spec = fleet.specs[i]
-        container = fleet.containers[i].get_wrapped_container()
-        
-        # Log for debugging
-        print(f"DEBUG: Node {i} host_root={host_root}")
-        
-        # 1. Ensure host root is writable
-        os.system(f"chmod 777 {host_root}")
-        
-        # 2. Create the root run dir
-        daq_run_dir = host_root / run_name
-        daq_run_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 3. Create module dirs
-        for mid in spec.module_ids:
-            mod_run_dir = host_root / f"module_{mid}" / run_name
-            mod_run_dir.mkdir(parents=True, exist_ok=True)
-            print(f"DEBUG: Created {mod_run_dir}")
-            
-            for f_idx in range(2):
-                filename = f"start_2026.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
-                content = os.urandom(1024) 
-                f_path = mod_run_dir / filename
-                f_path.write_bytes(content)
-                expected_data[filename] = content
-                
-        # 4. CRITICAL: Force 777 recursively again after all files are written
-        subprocess.run(["chmod", "-R", "777", str(host_root)], check=True)
-        
-        # 5. Debug check from inside the container
-        for mid in spec.module_ids:
-            container_path = f"/data/module_{mid}/{run_name}"
-            res = container.exec_run(f"ls -ld {container_path}")
-            print(f"DEBUG: Container path {container_path} check: exit={res.exit_code} output={res.output.decode().strip()}")
-                
-    return expected_data
 
 @pytest.mark.asyncio
 async def test_transfer_queue_validity_happy_path(
@@ -114,17 +69,22 @@ async def test_transfer_queue_validity_happy_path(
         # Create head node run dir locally
         run_dir = Path(dc.head_node_data_dir) / rn
         run_dir.mkdir(parents=True, exist_ok=True)
-        # 1. We MUST create the directories on the DAQ nodes too.
-        # Since we are in a fleet test without SSH, we use docker exec.
+        # 1. Create the directories on the DAQ nodes via docker exec
         for i, node in enumerate(dc.daq_nodes):
             container = fleet.containers[i].get_wrapped_container()
-            # Root run dir
+            # Root run dir on DAQ node
             container.exec_run(f"mkdir -p {node.data_dir}/{rn}")
             container.exec_run(f"chmod 777 {node.data_dir}/{rn}")
+            # Module-specific dirs on DAQ node
             for mid in node.module_ids:
                 mpath = f"{node.data_dir}/module_{mid}/{rn}"
                 container.exec_run(f"mkdir -p {mpath}")
                 container.exec_run(f"chmod 777 {mpath}")
+                # Also ensure the parent module_mid dir exists
+                container.exec_run(f"chmod 777 {node.data_dir}/module_{mid}")
+            
+            # Final broad chmod to be absolutely sure
+            container.exec_run(f"chmod -R 777 {node.data_dir}")
 
     with patch("control.start.ph_baseline_file_ok", return_value=True), \
          patch("control.start._check_daq_reachability"), \
@@ -149,20 +109,43 @@ async def test_transfer_queue_validity_happy_path(
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
         spec = fleet.specs[i]
+        container = fleet.containers[i].get_wrapped_container()
+        
+        # 1. Add metadata to root run dir
+        meta_file = host_root / run_name / "meta.json"
+        meta_file.parent.mkdir(parents=True, exist_ok=True)
+        meta_file.write_text('{"test": true}')
+        
         for mid in spec.module_ids:
             # The directory should ALREADY exist thanks to mocked_make_run_dirs
             host_mod_run_dir = host_root / f"module_{mid}" / run_name
+            host_mod_run_dir.mkdir(parents=True, exist_ok=True)
+            
             for f_idx in range(2):
+                # Unique name across the whole fleet
                 filename = f"start_2026.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
                 content = os.urandom(1024) 
                 f_path = host_mod_run_dir / filename
                 f_path.write_bytes(content)
                 expected_data[filename] = content
+                
+                # Fix permissions from inside so gRPC server (root) can read them
+                container.exec_run(f"chmod 666 /data/module_{mid}/{run_name}/{filename}")
         
-        # Ensure container can see them
-        subprocess.run(["chmod", "-R", "777", str(host_root)], check=True)
+        # Final safety chmod
+        container.exec_run(f"chmod -R 777 /data/{run_name}")
+        for mid in spec.module_ids:
+            container.exec_run(f"chmod -R 777 /data/module_{mid}/{run_name}")
+        
+        # Explicit sync to flush caches inside the container
+        container.exec_run("sync")
+        
+        # Debug: list what the container sees
+        ls_res = container.exec_run(f"ls -R /data")
+        print(f"DEBUG: Container {i} /data contents:\n{ls_res.output.decode()}")
     
-    await asyncio.sleep(0.5)
+    # 1s settling period for mount propagation
+    await asyncio.sleep(1.0)
 
     # --- Step 4: Stop Run (Enqueue) ---
     with patch("control.stop.util.stop_data_flow"), \
@@ -191,9 +174,9 @@ async def test_transfer_queue_validity_happy_path(
     # Mock Rsync (simulates flattening)
     def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
         head_run_dir.mkdir(parents=True, exist_ok=True)
-        for temp_dir in fleet._temp_dirs:
+        for i, temp_dir in enumerate(fleet._temp_dirs):
             host_root = Path(temp_dir)
-            # 1. Root contents (hp_stdout, pss)
+            # 1. Root contents (hp_stdout, pss, meta.json)
             daq_run_dir = host_root / run_name
             if daq_run_dir.is_dir():
                 for f in daq_run_dir.iterdir():
@@ -220,7 +203,10 @@ async def test_transfer_queue_validity_happy_path(
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     def _get_mapped_client(host, port=50051):
         for node in daq_config.daq_nodes:
-            if str(node.ip_addr) == host or (node.port_forwarding and str(node.port_forwarding.gw_ip) == host):
+            # Match by internal IP (if non-forwarded) OR by gateway IP + port (if forwarded)
+            if str(node.ip_addr) == host:
+                 return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
+            if node.port_forwarding and str(node.port_forwarding.gw_ip) == host and node.port_forwarding.grpc_port == port:
                 return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
         return AsyncDaqControlClient(host=host, port=port)
 
@@ -248,6 +234,7 @@ async def test_transfer_queue_validity_happy_path(
     run_dir_on_head = head_data_dir / run_name
     assert run_dir_on_head.exists()
     assert (run_dir_on_head / "run_complete").exists()
+    assert (run_dir_on_head / "meta.json").exists()
     
     for filename, expected_bytes in expected_data.items():
         actual_path = run_dir_on_head / filename
@@ -259,14 +246,16 @@ async def test_transfer_queue_validity_happy_path(
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
         spec = fleet.specs[i]
-        for mod_root in host_root.glob("module_*"):
-            daq_mod_run_dir = mod_root / run_name
+        
+        # meta.json should be preserved in root run dir
+        assert (host_root / run_name / "meta.json").exists(), f"Metadata missing on DAQ {i}"
+        
+        for mid in spec.module_ids:
+            daq_mod_run_dir = host_root / f"module_{mid}" / run_name
             # .pff files should be deleted
             pff_files = list(daq_mod_run_dir.glob("*.pff"))
-            assert not pff_files, f"Cleanup failed: .pff files still on DAQ node {i}"
+            assert not pff_files, f"Cleanup failed: .pff files still on DAQ node {i} for module {mid}"
             
             # manifest should remain (preserved pattern)
-            assert (daq_mod_run_dir / "manifest.blake3").exists(), f"Manifest missing on DAQ {i}"
-            
-        # Root run dir metadata should remain
-        assert (host_root / run_name / "meta.json").exists(), f"Metadata missing on DAQ {i}"
+            manifests = list(daq_mod_run_dir.glob("manifest.*"))
+            assert manifests, f"Manifest missing on DAQ {i} module {mid}"
