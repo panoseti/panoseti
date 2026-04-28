@@ -8,6 +8,7 @@ import time
 import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
+from paths import PanoPathsTest
 
 # We keep Pydantic imports at module level for model definitions, 
 # but Pydantic v2 is generally fast.
@@ -136,7 +137,7 @@ class TestRunner:
                 self.cfg = QAConfig.model_validate(raw_cfg)
         except Exception as e:
             from rich.console import Console
-            Console().print(f"[red]Error loading {config_path}: {e}[/red]")
+            Console().print(f"[red]Error loading '{config_path}': {e}[/red]")
             sys.exit(1)
         
         self.no_teardown = False
@@ -355,6 +356,9 @@ class TestRunner:
         p = jobs or self.default_parallel
         args = suite.pytest_args + (extra_args or [])
         args_str = " ".join(args)
+
+        assert suite.test_dir is not None, f"Must supply a test_dir for {suite=}"
+        # normalized_pytest_dir = "${PSETI_CONTROL}/" + f"{suite.test_dir}"
         
         pytest_cmd = f"pytest {suite.test_dir} -v --color=no"
         if suite.parallel:

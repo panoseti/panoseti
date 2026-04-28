@@ -398,7 +398,7 @@ class Fleet:
                 # so Pydantic's check_head_node_data_dir_match stays silent.
                 ip_addr=IPv4Address(f"{_PLACEHOLDER_SUBNET}.{_PLACEHOLDER_OFFSET + i}"),
                 module_ids=spec.module_ids,
-                bindhost="0.0.0.0",
+                bindhost="lo",
                 port_forwarding=pf,
             )
             daq_nodes.append(node)

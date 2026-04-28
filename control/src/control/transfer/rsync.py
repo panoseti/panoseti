@@ -40,9 +40,9 @@ def build_rsync_cmd(
 
     if use_pf and pf is not None:
         port = pf.port
-        if port is None or not (1024 <= port <= 65535):
+        if port is None:
             raise ValueError(
-                f"Port-forwarding port {port!r} is out of valid range [1024, 65535]"
+                f"Port-forwarding port {port!r} is None"
             )
         full_ssh_cmd = f"ssh -p {port} {' '.join(ssh_base)}"
         cmd += ["-e", full_ssh_cmd]

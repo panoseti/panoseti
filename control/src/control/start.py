@@ -103,6 +103,8 @@ class StartTransaction:
         self.data_flow_started: bool = False
         # Set to True in start_run after the ledger is initialized for THIS run.
         self.ledger_initialized: bool = False
+        # Set of IP addresses of nodes that this transaction attempted to start.
+        self.nodes_attempted: set[str] = set()
 
     async def __aenter__(self) -> StartTransaction:
         await asyncio.to_thread(self.state_mgr.acquire_lock)
@@ -152,6 +154,12 @@ class StartTransaction:
                     ledger = None
                 
                 async def rollback_node(node: DaqNode) -> None:
+                    # Rollback logic MUST only apply to nodes that THIS transaction
+                    # attempted to start. Rolling back nodes from a pre-existing
+                    # conflicting run would violate the non-interference invariant.
+                    if str(node.ip_addr) not in self.nodes_attempted:
+                        return
+
                     receipt = next((n for n in ledger.nodes if str(n.ip_addr) == str(node.ip_addr)), None) if ledger else None
                     if not receipt:
                         return
@@ -523,6 +531,7 @@ async def start_recording(
     no_hv: bool,
     state_mgr: RunStateManager,
     cancel_event: asyncio.Event,
+    tx: StartTransaction,
     startdaq_timeout: float = 10.0,
     startdaq_retries: int = 3
 ) -> None:
@@ -552,6 +561,9 @@ async def start_recording(
     # Pre-write STARTING receipts to ensure rollback ladder catches them if TaskGroup is cancelled early
     for node_validator in daq_config.daq_nodes:
         if node_validator.module_ids:
+            # Track that we are attempting this node
+            tx.nodes_attempted.add(str(node_validator.ip_addr))
+
             await state_mgr.update_node_receipt(NodeReceipt(
                 ip_addr=node_validator.ip_addr,
                 status="STARTING",
@@ -1134,7 +1146,7 @@ async def start_run(
                 
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
-                    obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event,
+                    obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx,
                     startdaq_timeout=10.0, startdaq_retries=3
                 )
             
