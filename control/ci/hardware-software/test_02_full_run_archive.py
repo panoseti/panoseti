@@ -20,11 +20,14 @@ import os
 import pathlib
 import time
 
+import pytest
 from typer.testing import CliRunner
 
 from control.pseti import app
 from control.utils.pydantic_config_models import DaqConfig
 from control.utils.run_state import RunStateManager
+
+pytestmark = pytest.mark.skip(reason="Skipped as per user request")
 
 # ---------------------------------------------------------------------------
 # Fixtures

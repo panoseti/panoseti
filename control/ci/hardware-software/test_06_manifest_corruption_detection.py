@@ -21,6 +21,8 @@ import pytest
 from control.transfer.verify import verify_manifest
 from control.utils.run_state import RunStateManager
 
+pytestmark = pytest.mark.skip(reason="Skipped as per user request")
+
 HEAD_DATA_DIR = pathlib.Path(os.getenv("HEAD_DATA_DIR", "/data/head"))
 
 

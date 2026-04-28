@@ -27,7 +27,9 @@ SAMPLE_FRAMES = 500       # frames to sample for the timing check
 TIMING_THRESHOLD_MS = 25  # |pkt_nsec/1e6 - tv_usec/1000| must be < this
 
 
-pytest.skip(reason="Requires double-check")
+pytestmark = pytest.mark.skip(reason="Skipped as per user request")
+
+
 class TestHW03WhiteRabbitTiming:
     """Timing sanity on real WR hardware."""
 
