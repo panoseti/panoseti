@@ -491,7 +491,7 @@ def session_fleet(auto_isolate) -> Iterator[tuple[Fleet, dict[str, Any]]]:
     all port-forwarding metadata is guaranteed correct before any test runs.
     """
 
-    from ci.fixtures.fleet import make_fleet, setup_docker_host
+    from ci.fixtures.fleet import setup_docker_host
     from control.utils.config_file import ip_addr_to_module_id
 
     # 1. Configure Docker host (macOS Docker Desktop socket detection).

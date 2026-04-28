@@ -46,6 +46,11 @@ Every test uses the `auto_isolate` fixture to redirect `PSETI_STATE`, `PSETI_CON
 Tiers 3 and 4 use `testcontainers` to spin up a dynamic fleet of DAQ nodes.
 *   **Shared Backbone:** All nodes attach to a persistent `pseti-shared-net` to avoid subnet exhaustion.
 *   **Isolated Volumes:** Every container is assigned a unique host directory for its `/data` volume to prevent parallel state collisions.
+*   **Session-Aware IDs:** Module IDs are dynamically calculated from the assigned session IP prefix (`ip_addr_to_module_id`). This ensures mathematical consistency with PANOSETI validation rules even when prefixes are shifted for parallel workers.
+
+### Reliability & Timeouts
+*   **Robust Teardown:** All tests utilize a global cleanup fixture that performs a tiered termination (SIGINT -> wait -> SIGKILL) of remote processes.
+*   **Extended Timeouts:** Integration tests (`pytest-timeout`) are configured for **120 seconds** to accommodate the hardware-mandated 60-second graceful buffer flush period during `StopDaq`.
 
 ### `daq_control_direct` / `daq_data_client`
 Standard gRPC clients connected to the first node in the current test's fleet (via dynamic port mapping).

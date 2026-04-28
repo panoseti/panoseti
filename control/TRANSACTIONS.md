@@ -72,16 +72,16 @@ Managed via `async with StartTransaction(...) as tx:`.
 
 ### 2. Execution Phase (in `start_run`)
 - **Pre-flight**: Validates configs, checks Quabo reachability.
-- **Initialize**: Writes `STARTING` status and node receipts.
-- **Start**: Launches local daemons, concurrent `StartDaq` RPCs, and heartbeat probes.
+- **Initialize**: Writes `STARTING` status and node receipts. Sets `tx.ledger_initialized = True`.
+- **Start**: Launches local daemons, concurrent `StartDaq` RPCs, and heartbeat probes. Populates `tx.nodes_attempted` set for every node that received a gRPC call.
 
 ### 3. `__aexit__` (Rollback Ladder)
 If an exception occurs (e.g., node timeout), `__aexit__` triggers the rollback:
-1. **Stop Attempted DAQs**: Concurrent `StopDaq` for nodes with receipts.
+1. **Stop Attempted DAQs**: Concurrent `StopDaq` ONLY for nodes in `self.nodes_attempted`. This prevents a failed start attempt from stopping a pre-existing active run on overlapping hardware.
 2. **Stop Quabo Flow**: Halt data transmission.
 3. **Kill Local Daemons**: Cleanup HK/HV/Temp processes.
 4. **Archive artifacts**: Move partial run data to `_aborted/` with a context dump.
-5. **Update Ledger**: Mark as `ABORTED`.
+5. **Update Ledger**: Mark as `ABORTED` ONLY if `self.ledger_initialized` is True.
 6. **Release Lock**.
 
 ### Start Flow Diagram
@@ -121,12 +121,19 @@ The helper `_resolve_strict_mode(strict_flag, daq_config)` in `start.py` encodes
 |---|---|---|---|
 | 1 | Config file validation (pydantic + cross-config rules) | **Abort** | **Abort** (always enforced) |
 | 2 | Head-node identity (`socket.gethostname()` matches config) | Abort | Warn + continue |
-| 3 | Ledger freshness (no stale `ACTIVE` ledger) | Abort | Warn + continue |
+| 3 | **Ledger freshness** (no stale `ACTIVE` ledger) | **Abort** | Warn + continue |
 | 4 | HK recorder not running (would conflict with new run) | Abort | Warn + continue |
 | 5 | Redis daemons reachable | Abort | Warn + continue |
 | 6 | PH baseline file age (< 24 h) | Abort | Warn + continue |
 | 7 | Quabo reachability (UDP ping each configured Quabo) | Abort | Warn + continue |
 | 8 | **Remote Hashpipe not running** (gRPC `StatusDaq` per DAQ node) | **Abort** | Warn + continue |
+
+### Stale Ledger Self-Healing (Check #3)
+
+The control plane implements PID-based self-healing for crashed transactions. If the ledger indicates a run is in progress:
+
+- **`STARTING` or `STOPPING`**: If the PID recorded in the ledger is no longer alive on the head node, the ledger is declared stale and automatically archived to `_aborted/`.
+- **`ACTIVE`**: PID-based healing is **disabled**. An `ACTIVE` run is considered valid even if the `pseti start` process that created it has exited. To clear an `ACTIVE` run, use `pseti stop` or `pseti start --force-reset`.
 
 Check #8 is the most critical: it prevents a `pseti start` from issuing UDP reconfiguration to Quabos while an existing observation is in progress on the same hardware.
 
@@ -175,6 +182,8 @@ Managed via `async with StopTransaction(...) as tx:`.
 Ensures **resilient best-effort hardware shutdown**. All steps execute even if previous ones fail. Bulk I/O is NOT in this sequence:
 
 1. **Stop DAQs**: Concurrent `StopDaq` RPCs to all DAQ nodes.
+    - **Robust Termination Ladder**: The DAQ node server performs a global sweep for **all** `hashpipe` processes. It sends `SIGINT`, waits up to **60 seconds** for graceful termination (allowing data buffer flush), then escalates to `SIGKILL` for survivors. 
+    - **Sidecar Cleanup**: The server also ensures the `capture_hk.py` recorder is terminated.
 2. **Kill Daemons**: Terminate local control processes (HV updater, HK recorder, etc.).
 3. **Stop Quabos**: Signal hardware to halt data generation.
 4. **Enqueue transfer job**: Build a `TransferJob` (see schema below) and write `{run_name}.job.toml` to `state/transfer/queue/pending/`. Skipped if `--no-transfer`.

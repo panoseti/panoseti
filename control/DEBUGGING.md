@@ -6,7 +6,8 @@ This document captures hard-won debugging strategies and core principles for the
 
 ## 🧠 Core Principles
 1. **Atomic Receipt First (WAL)**: Always write the node receipt to the ledger *before* issuing a gRPC call. This ensures the rollback ladder knows which nodes to clean up if the process is killed mid-RPC.
-2. **Path Totality**: Never use bare strings for paths (e.g. `open("data.json")`). Always use `PanoPaths` accessors. Construction of a path outside of `PanoPaths` is an architectural defect.
+2. **At Most One Run Per Hardware**: A module ID can only be active in one run at a time. The control plane strictly enforces this via global process sweeps on DAQ nodes. Orphaned `hashpipe` processes are treated as active collisions.
+3. **Path Totality**: Never use bare strings for paths (e.g. `open("data.json")`). Always use `PanoPaths` accessors. Construction of a path outside of `PanoPaths` is an architectural defect.
 3. **Explicit Success Validation**: gRPC responses often return `success: bool`. Never assume a response without an exception is a success. Always check `resp.success` and log `resp.message`.
 4. **State Isolation**: When debugging tests, always set `PSETI_STATE` to a unique temporary directory via `monkeypatch` to prevent pollution of the global `/app/state`.
 5. **The Permission Paradox**: Docker containers run as `root`, but host-side tests prepare their data directories. You MUST call `os.chmod(path, 0o777)` recursively on any host directories created for container use, or the container will fail to write/delete due to UID/GID boundaries.
@@ -32,6 +33,7 @@ We use a role-segregated hierarchy under `control/state/` (override via `PSETI_S
 - **Location**: `state/runs/ledger.toml`
 - **Statuses that block a new start**: `STARTING`, `ACTIVE`, `STOPPING`, `RECORDING_ENDED`.
 - **Resetting state**: `pseti state migrate` (idempotent) or `rm state/runs/ledger.toml`.
+- **PID Protection**: `ACTIVE` runs are protected from PID-based auto-healing. You MUST use `pseti stop` or `--force-reset` to clear them.
 
 ---
 
@@ -54,6 +56,7 @@ Jobs move between subdirectories in `state/transfer/queue/`:
 
 - **Redis Ingress**: `docker exec ctl-int-redis-1 redis-cli LLEN logs:ingress` (Should be near 0).
 - **Server Internal Log**: `/var/log/panoseti/daq_control_server.log` inside the `daqnode` container.
+- **Status Consistency**: `StatusDaq` returns `hashpipe_pid`. If `StartDaq` rejects a call but `StatusDaq` reported not running, verify that the server's global process sweep is identifying all orphans.
 - **Validation Failure**: If a gRPC call fails with "Validation Error," check `grpc/src/panoseti_grpc/daq_control/config.py`. The server enforces strict existence checks on `run_dir` and `module_id` paths.
 
 ---

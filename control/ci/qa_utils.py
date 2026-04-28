@@ -8,7 +8,6 @@ import time
 import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
-from paths import PanoPathsTest
 
 # We keep Pydantic imports at module level for model definitions, 
 # but Pydantic v2 is generally fast.

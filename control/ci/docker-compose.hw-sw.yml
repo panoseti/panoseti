@@ -53,7 +53,7 @@ services:
     volumes:
       - ..:/app
       - ../../grpc:/grpc
-      - panoseti_mnt:/mnt/panoseti/
+      - /mnt/panoseti-test/:/mnt/panoseti-test/
       - ../firmware:/app/firmware:ro
       - ../quabos:/app/quabos:ro
       - ~/.ssh:/root/.ssh-host:ro
@@ -89,7 +89,7 @@ services:
       - SYS_NICE
     shm_size: '2gb'
     volumes:
-      - panoseti_mnt:/mnt/panoseti/
+      - /mnt/panoseti-test/:/mnt/panoseti-test/
     environment:
       HEADNODE_IP: "192.168.88.103"
       GRPC_PORT: "50051"
@@ -98,7 +98,7 @@ services:
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
-      DAQ_DATA_DIR: "/mnt/panoseti"
+      DAQ_DATA_DIR: "/mnt/panoseti-test"
       GRPC_SERVER_CONFIG: "/app/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
     restart: always
 

@@ -112,7 +112,7 @@ Gold-standard configurations for the HITL environment are located in `control/ci
 
 - `obs_config.json`: Defines the 4-Quabo module and site coordinates.
 - `network_config.json`: Maps the router and port-forwarding rules.
-- `daq_config.json`: Configures `/mnt/panoseti/` as the primary SSD storage path.
+- `daq_config.json`: Configures `/mnt/panoseti-test/` as the primary SSD storage path.
 - `firmware.json` & `quabo_uids.json`: Hardware-level metadata for the physical Quabos.
 
 ## 🧪 Safety & Stability

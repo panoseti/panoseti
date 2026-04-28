@@ -9,21 +9,18 @@ Verifies:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import unittest.mock
 import uuid
-import asyncio
-from ipaddress import IPv4Address
+from collections.abc import Iterator
 
 import pytest
 
+from ci.tier3_fleet.conftest import wait_hashpipe_stopped
 from control.start import start_run
-from control.stop import stop_run
 from control.utils import config_file
 from control.utils.run_state import RunStateManager
-from ci.tier3_fleet.conftest import wait_hashpipe_running, wait_hashpipe_stopped
-import contextlib
-from collections.abc import Iterator
 
 
 @pytest.fixture
