@@ -109,11 +109,11 @@ async def test_transfer_daemon_archives_run(
     
     RunStateManager().clear_state()
 
-    from control.utils.pydantic_config_models import RunStateLedger
+    from control.utils.pydantic_config_models import RunStateLedger, RunStatus
     mgr = RunStateManager()
     ledger = RunStateLedger(
         run_name=run_params["run_dir"],
-        status="ACTIVE",
+        status=RunStatus.ACTIVE,
         start_time=datetime.now(UTC).isoformat(),
     )
     mgr.save_state(ledger)
@@ -142,7 +142,7 @@ async def test_transfer_daemon_archives_run(
 
     ledger = mgr.load_state()
     assert ledger is not None
-    assert ledger.status == "RECORDING_ENDED"
+    assert ledger.status == RunStatus.RECORDING_ENDED
 
     # 3. Process job
     tq = TransferQueue()
@@ -176,7 +176,7 @@ async def test_transfer_daemon_archives_run(
     tq.complete(job.run_name)
 
     ledger = mgr.load_state()
-    assert ledger and ledger.status == "ARCHIVED"
+    assert ledger and ledger.status == RunStatus.ARCHIVED
     run_dir_path = Path(daq_config.head_node_data_dir) / run_params["run_dir"]
     assert (run_dir_path / "run_complete").exists()
     monkeypatch.undo()

@@ -26,7 +26,7 @@ from control.transfer.daemon import (
 )
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.verify import verify_manifest
-from control.utils.pydantic_config_models import RunStateLedger
+from control.utils.pydantic_config_models import RunStateLedger, RunStatus
 from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ from control.utils.run_state import RunStateManager
 def _make_test_ledger(
     tmp_path: pathlib.Path,
     run_name: str = "myrun.pffd",
-    status: str = "RECORDING_ENDED",
+    status: RunStatus = RunStatus.RECORDING_ENDED,
 ) -> RunStateManager:
     """Create a RunStateManager with a minimal ledger written to tmp_path."""
     mgr = RunStateManager(base_dir=str(tmp_path))

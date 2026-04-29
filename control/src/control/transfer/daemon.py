@@ -22,6 +22,7 @@ from control.transfer.queue import TransferQueue
 from control.transfer.rsync import build_rsync_cmd
 from control.transfer.verify import verify_manifest
 from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
 
 POLL_INTERVAL_SEC = 5.0
@@ -54,7 +55,7 @@ _log_dir.mkdir(parents=True, exist_ok=True)
 logger = get_logger("transfer_daemon", log_dir=_log_dir, grpc_enabled=False)
 
 
-def _safe_ledger_update(state_mgr: RunStateManager, *, status: str, **fields: Any) -> None:
+def _safe_ledger_update(state_mgr: RunStateManager, *, status: RunStatus, **fields: Any) -> None:
     """Update the ledger state, catching and logging any errors to prevent daemon crash."""
     try:
         state_mgr.transition(status, **fields)
@@ -168,7 +169,7 @@ async def _process_job(
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: MANIFEST_GENERATING", run_name)
-            _safe_ledger_update(state_mgr, status="MANIFEST_GENERATING")
+            _safe_ledger_update(state_mgr, status=RunStatus.MANIFEST_GENERATING)
             manifest_errors: list[str] = []
 
             try:
@@ -224,7 +225,7 @@ async def _process_job(
             if manifest_errors:
                 err_msg = "; ".join(manifest_errors)
                 logger.error("[%s] Manifest generation failed: %s", run_name, err_msg)
-                _safe_ledger_update(state_mgr, status="TRANSFER_FAILED", last_transfer_error=err_msg)
+                _safe_ledger_update(state_mgr, status=RunStatus.TRANSFER_FAILED, last_transfer_error=err_msg)
                 return False, err_msg
 
             # --- Stage 2: rsync ---
@@ -232,7 +233,7 @@ async def _process_job(
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: TRANSFERRING", run_name)
-            _safe_ledger_update(state_mgr, status="TRANSFERRING")
+            _safe_ledger_update(state_mgr, status=RunStatus.TRANSFERRING)
             transfer_errors: list[str] = []
             
             async def run_rsync_with_progress(node: TransferNodeSpec) -> int:
@@ -287,7 +288,7 @@ async def _process_job(
             if transfer_errors:
                 err_msg = "; ".join(transfer_errors)
                 logger.error("[%s] Transfer failed: %s", run_name, err_msg)
-                _safe_ledger_update(state_mgr, status="TRANSFER_FAILED", last_transfer_error=err_msg)
+                _safe_ledger_update(state_mgr, status=RunStatus.TRANSFER_FAILED, last_transfer_error=err_msg)
                 return False, err_msg
 
             # --- Stage 3: verify manifest digests on head node ---
@@ -295,7 +296,7 @@ async def _process_job(
                 return False, "DAEMON_SHUTDOWN"
 
             logger.info("[%s] Stage: VERIFYING", run_name)
-            _safe_ledger_update(state_mgr, status="VERIFYING")
+            _safe_ledger_update(state_mgr, status=RunStatus.VERIFYING)
             verify_errors: list[str] = []
             head_run_path = pathlib.Path(head_data_dir) / run_name
 
@@ -322,7 +323,7 @@ async def _process_job(
 
             if verify_errors:
                 err_msg = "; ".join(verify_errors)
-                _safe_ledger_update(state_mgr, status="VERIFY_FAILED", last_transfer_error=err_msg)
+                _safe_ledger_update(state_mgr, status=RunStatus.VERIFY_FAILED, last_transfer_error=err_msg)
                 logger.error(
                     "[%s] Verification failed — skipping cleanup to preserve DAQ-side data. "
                     "Manual recovery required.",
@@ -336,7 +337,7 @@ async def _process_job(
 
         if not no_cleanup:
             logger.info("[%s] Stage: CLEANING", run_name)
-            state_mgr.transition("CLEANING")
+            state_mgr.transition(RunStatus.CLEANING)
             cleanup_errors: list[str] = []
 
             try:
@@ -389,7 +390,7 @@ async def _process_job(
             if cleanup_errors:
                 err_msg = "; ".join(cleanup_errors)
                 logger.error("[%s] Cleanup failed: %s", run_name, err_msg)
-                state_mgr.transition("VERIFY_FAILED")
+                state_mgr.transition(RunStatus.VERIFY_FAILED)
                 return False, err_msg
 
         # --- Stage 5: archive ---
@@ -400,7 +401,7 @@ async def _process_job(
             await head_run_dir_anyio.mkdir(parents=True, exist_ok=True)
             await run_complete_path.write_text(time.strftime("%Y-%m-%d %H:%M:%S UTC"))
 
-        state_mgr.transition("ARCHIVED")
+        state_mgr.transition(RunStatus.ARCHIVED)
         logger.info("Run %s archived successfully", run_name)
         return True, None
 
@@ -409,7 +410,7 @@ async def _process_job(
         # must remain alive regardless of what happens inside a job.
         logger.exception("[%s] Unhandled exception in _process_job: %s", run_name, exc)
         with contextlib.suppress(Exception):
-            state_mgr.transition("TRANSFER_FAILED")
+            state_mgr.transition(RunStatus.TRANSFER_FAILED)
         return False, str(exc)
 
 
@@ -510,7 +511,7 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
                 active_job_path = tq._queue / "active" / f"{run_name}.job.toml"
                 try:
                     tq._write_job(active_job_path, bumped_job)
-                    _safe_ledger_update(state_mgr, status="TRANSFERRING", transfer_attempts=bumped_attempts)
+                    _safe_ledger_update(state_mgr, status=RunStatus.TRANSFERRING, transfer_attempts=bumped_attempts)
                 except OSError as exc:
                     logger.error("Failed to persist bumped attempt count for %s: %s", run_name, exc)
                     # Move to failed to avoid an unpersisted-attempts bounce.
@@ -541,7 +542,7 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
                     tq.fail(run_name)
                     _safe_ledger_update(
                         state_mgr,
-                        status="TRANSFER_FAILED",
+                        status=RunStatus.TRANSFER_FAILED,
                         transfer_attempts=bumped_attempts,
                         last_transfer_error=error_msg,
                     )
@@ -562,7 +563,7 @@ async def run_daemon(poll_interval: float = POLL_INTERVAL_SEC) -> None:
                         os.rename(active_job_path, tq._queue / "pending" / f"{run_name}.job.toml")
                         _safe_ledger_update(
                             state_mgr,
-                            status="TRANSFERRING",  # still in flight (retrying)
+                            status=RunStatus.TRANSFERRING,  # still in flight (retrying)
                             transfer_attempts=bumped_attempts,
                             last_transfer_error=error_msg,
                             next_action_not_before=now + timedelta(seconds=RETRY_DELAYS[min(bumped_attempts - 1, len(RETRY_DELAYS) - 1)]),

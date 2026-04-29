@@ -30,9 +30,9 @@ Starting with Phase 4 of the architectural modernization, the control plane uses
 
 ### Distributed Ledger
 
-The system state is persisted in a TOML-based ledger (`state/runs/ledger.toml`).
+The system state is persisted in a TOML-based ledger (`state/runs/ledger.toml`). State transitions are automatically logged by the `RunStateManager` to facilitate debugging.
 
-**Full status vocabulary:**
+**Full status vocabulary (`RunStatus` Enum):**
 
 | Status | Owner | Meaning |
 |---|---|---|

@@ -17,7 +17,7 @@ import pytest
 
 from control.start import StartTransaction
 from control.stop import stop_run
-from control.utils.run_state import RunStateLedger, RunStateManager
+from control.utils.run_state import RunStateLedger, RunStateManager, RunStatus
 
 # ── 1. Validation Resilience ──────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ async def test_stop_run_bypasses_enqueue_on_fundamental_failure(
     # Pre-write an ACTIVE ledger
     ledger = RunStateLedger(
         run_name=run_name,
-        status="ACTIVE",
+        status=RunStatus.ACTIVE,
         start_time="2026-01-01T00:00:00Z"
     )
     state_mgr.save_state(ledger)
@@ -185,5 +185,5 @@ async def test_stop_run_bypasses_enqueue_on_fundamental_failure(
          # Ledger must reflect the failure
          updated_ledger = state_mgr.load_state()
          assert updated_ledger is not None
-         assert updated_ledger.status == "STOPPED_WITH_ERRORS"
+         assert updated_ledger.status == RunStatus.STOPPED_WITH_ERRORS
          assert "Ladder Crash" in (updated_ledger.last_transfer_error or "")

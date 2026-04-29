@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from control.utils.pydantic_config_models import RunStateLedger
+from control.utils.pydantic_config_models import RunStateLedger, RunStatus
 from control.utils.run_state import LockError, RunStateManager
 
 
@@ -63,18 +63,18 @@ def test_when_run_aborted_then_ledger_transitions_to_aborted():
     
     ledger = RunStateLedger(
         run_name=run_name,
-        status="STARTING",
+        status=RunStatus.STARTING,
         start_time=datetime.now(UTC).isoformat(),
         pid=1234,
         host=socket.gethostname()
     )
     mgr.save_state(ledger)
     
-    mgr.transition("ABORTED")
+    mgr.transition(RunStatus.ABORTED)
     
     updated = mgr.load_state()
     assert updated is not None
-    assert updated.status == "ABORTED"
+    assert updated.status == RunStatus.ABORTED
 
 def test_when_ledger_stale_then_self_heals_on_new_start():
     """
@@ -89,7 +89,7 @@ def test_when_ledger_stale_then_self_heals_on_new_start():
     
     stale_ledger = RunStateLedger(
         run_name="stale_run.pffd",
-        status="ACTIVE",
+        status=RunStatus.ACTIVE,
         start_time=datetime.now(UTC).isoformat(),
         pid=dead_pid,
         host=socket.gethostname()
@@ -102,5 +102,5 @@ def test_when_ledger_stale_then_self_heals_on_new_start():
     # Verify our logic for 'is_stale' (mimicking start.py)
     # (Simplified check: process not alive on this host)
     is_alive = False # Mock dead process
-    assert current.status == "ACTIVE"
+    assert current.status == RunStatus.ACTIVE
     assert not is_alive 

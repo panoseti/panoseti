@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from enum import StrEnum, unique
 from typing import Any, Literal
 
 from pydantic import (
@@ -273,7 +274,7 @@ class PortForwarding(BaseStrictModel):
     reboot_port: list[int | None] | None = Field(None)
     cmd_port: list[int | None] | None = Field(None)
     port: int | None = None                              # SSH forwarded port (legacy)
-    grpc_port: int | None = Field(None, ge=1, le=65535)  # gRPC forwarded port
+    grpc_port: int = Field(50051, ge=1, le=65535)  # gRPC forwarded port
 
 
 class QuaboIpPorts(BaseStrictModel):
@@ -447,10 +448,41 @@ class QuaboUids(BaseStrictModel):
 # --- Run State Ledger ---
 # ---------------------------
 
+@unique
+class RunStatus(StrEnum):
+    """Lifecycle phases of an observatory recording run."""
+    STARTING = "STARTING"
+    ACTIVE = "ACTIVE"
+    ABORTED = "ABORTED"
+    STOPPING = "STOPPING"
+    RECORDING_ENDED = "RECORDING_ENDED"
+    MANIFEST_PENDING = "MANIFEST_PENDING"
+    MANIFEST_GENERATING = "MANIFEST_GENERATING"
+    MANIFEST_READY = "MANIFEST_READY"
+    TRANSFER_PENDING = "TRANSFER_PENDING"
+    TRANSFERRING = "TRANSFERRING"
+    TRANSFER_FAILED = "TRANSFER_FAILED"
+    VERIFYING = "VERIFYING"
+    VERIFY_FAILED = "VERIFY_FAILED"
+    CLEANUP_PENDING = "CLEANUP_PENDING"
+    CLEANING = "CLEANING"
+    ARCHIVED = "ARCHIVED"
+    COMPLETED = "COMPLETED"
+    STOPPED_WITH_ERRORS = "STOPPED_WITH_ERRORS"
+
+@unique
+class NodeStatus(StrEnum):
+    """Transactional status of an individual DAQ node."""
+    STARTING = "STARTING"
+    START_SUCCESS = "START_SUCCESS"
+    START_FAILED = "START_FAILED"
+    STOPPED = "STOPPED"
+
+
 class NodeReceipt(BaseStrictModel):
     """Transactional status report from a single DAQ node."""
     ip_addr: IPvAnyAddress
-    status: Literal["STARTING", "START_SUCCESS", "START_FAILED", "STOPPED"] = "STARTING"
+    status: NodeStatus = NodeStatus.STARTING
     hashpipe_pid: int | None = None
     data_dir: str | None = None
     message: str | None = None
@@ -471,15 +503,7 @@ class CollectResult(BaseStrictModel):
 class RunStateLedger(BaseStrictModel):
     """The central source of truth for an active observatory run."""
     run_name: str
-    status: Literal[
-        "STARTING", "ACTIVE", "ABORTED", "STOPPING",
-        "RECORDING_ENDED",
-        "MANIFEST_PENDING", "MANIFEST_GENERATING", "MANIFEST_READY",
-        "TRANSFER_PENDING", "TRANSFERRING", "TRANSFER_FAILED",
-        "VERIFYING", "VERIFY_FAILED",
-        "CLEANUP_PENDING", "CLEANING",
-        "ARCHIVED", "COMPLETED", "STOPPED_WITH_ERRORS",
-    ] = "STARTING"
+    status: RunStatus = RunStatus.STARTING
     start_time: str  # ISO 8601
     pid: int | None = None
     host: str | None = None

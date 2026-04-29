@@ -25,7 +25,7 @@ from typer.testing import CliRunner
 
 from control.pseti import app
 from control.utils.pydantic_config_models import DaqConfig
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 pytestmark = pytest.mark.skip(reason="Skipped as per user request")
 
@@ -74,7 +74,7 @@ class TestHW01FullRunArchive:
                 break
             time.sleep(ARCHIVE_POLL_INTERVAL)
 
-        assert status == "ARCHIVED", (
+        assert status == RunStatus.ARCHIVED, (
             f"Run did not reach ARCHIVED within {ARCHIVE_TIMEOUT}s. Final status: {status}"
         )
 

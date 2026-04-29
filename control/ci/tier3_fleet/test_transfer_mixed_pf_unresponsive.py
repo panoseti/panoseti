@@ -26,7 +26,7 @@ from control.transfer.queue import TransferQueue
 from control.utils.config_file import DaqNode
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import PortForwarding
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.mark.parametrize("num_nodes", [2, 4, 8])
@@ -154,7 +154,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
     
     # Check that job is in pending
     assert len(list((tq._queue / "pending").glob("*.job.toml"))) == 1
-    assert mgr.load_state().status == "RECORDING_ENDED"
+    assert mgr.load_state().status == RunStatus.RECORDING_ENDED
     
     # 2. Pick a random node to be unresponsive
     unresponsive_node = random.choice(daq_config.daq_nodes)
@@ -195,7 +195,7 @@ async def test_transfer_queue_unresponsive_node_fails_transfer(
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < 30:
             ledger = mgr.load_state()
-            if ledger and ledger.status == "TRANSFER_FAILED" and (tq._queue / "failed" / f"{run_name}.job.toml").exists():
+            if ledger and ledger.status == RunStatus.TRANSFER_FAILED and (tq._queue / "failed" / f"{run_name}.job.toml").exists():
                     break
             await asyncio.sleep(0.5)
         else:

@@ -29,7 +29,7 @@ from ci.tier5_integration.transfer_integration_utils import (
 )
 from control.transfer.daemon import run_daemon
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.mark.asyncio
@@ -68,7 +68,7 @@ async def test_integration_transfer_queue_lifecycle(
             start_time = time.time()
             while time.time() - start_time < timeout:
                 ledger = mgr.load_state()
-                if ledger and ledger.run_name == run_name and ledger.status == "ARCHIVED":
+                if ledger and ledger.run_name == run_name and ledger.status == RunStatus.ARCHIVED:
                     break
                 await asyncio.sleep(2.0)
             else:

@@ -57,9 +57,11 @@ from control.utils.pydantic_config_models import (
     DaqNode,
     DataConfig,
     NetworkConfig,
+    NodeStatus,
     ObsConfig,
     QuaboUids,
     RunStateLedger,
+    RunStatus,
 )
 from control.utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
 
@@ -139,7 +141,7 @@ class StartTransaction:
                     try:
                         ledger = await asyncio.to_thread(self.state_mgr.load_state)
                         if ledger and ledger.run_name == self.run_name:
-                            ledger.status = "ABORTED"
+                            ledger.status = RunStatus.ABORTED
                             await asyncio.to_thread(self.state_mgr.save_state, ledger)
                     except Exception as e_led:
                         logger.error(f"Failed to update ledger to ABORTED: {e_led}")
@@ -566,7 +568,7 @@ async def start_recording(
 
             await state_mgr.update_node_receipt(NodeReceipt(
                 ip_addr=node_validator.ip_addr,
-                status="STARTING",
+                status=NodeStatus.STARTING,
                 data_dir=node_validator.data_dir
             ))
 
@@ -632,7 +634,7 @@ async def start_recording(
         # If we reach here, it's a hard failure or we ran out of retries
         await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
-            status="START_FAILED",
+            status=NodeStatus.START_FAILED,
             message=last_err
         ))
         raise RuntimeError(f'StartDaq failed for node {node_validator.ip_addr}: {last_err}')
@@ -682,7 +684,7 @@ async def start_recording(
                         # Success: Update ledger with START_SUCCESS
                         receipt = NodeReceipt(
                             ip_addr=node_validator.ip_addr,
-                            status="START_SUCCESS",
+                            status=NodeStatus.START_SUCCESS,
                             hashpipe_pid=status.get('hashpipe_pid'),
                             data_dir=node_validator.data_dir
                         )
@@ -701,7 +703,7 @@ async def start_recording(
         # If we reach here, all retries failed
         await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
-            status="START_FAILED",
+            status=NodeStatus.START_FAILED,
             message=f"Heartbeat failed after 5 attempts: {last_err}"
         ))
         raise RuntimeError(f"Hashpipe heartbeat check failed on node {node_validator.ip_addr}: {last_err}")
@@ -740,7 +742,7 @@ async def start_recording(
                 except Exception as e:
                     await state_mgr.update_node_receipt(NodeReceipt(
                         ip_addr=node_validator.ip_addr,
-                        status="START_FAILED",
+                        status=NodeStatus.START_FAILED,
                         message=f"Liveness Check Failed: {e}"
                     ))
                     raise RuntimeError(f"Node {node_validator.ip_addr} liveness check failed: {e}") from e
@@ -1037,12 +1039,12 @@ async def start_run(
 
             # Stale ledger self-heal
             existing_state = state_mgr.load_state()
-            if existing_state and existing_state.status in ["STARTING", "ACTIVE", "STOPPING"]:
+            if existing_state and existing_state.status in [RunStatus.STARTING, RunStatus.ACTIVE, RunStatus.STOPPING]:
                 stale = False
                 if force_reset:
                     logger.info("Force reset requested. Archiving existing ledger.")
                     stale = True
-                elif existing_state.status in ["STARTING", "STOPPING"]:
+                elif existing_state.status in [RunStatus.STARTING, RunStatus.STOPPING]:
                     if existing_state.host == socket.gethostname() and existing_state.pid:
                         # Check if PID is alive
                         try:
@@ -1089,7 +1091,7 @@ async def start_run(
             # Initialize Ledger
             initial_ledger = RunStateLedger(
                 run_name=run_name,
-                status="STARTING",
+                status=RunStatus.STARTING,
                 start_time=datetime.now(UTC).isoformat(),
                 pid=os.getpid(),
                 host=socket.gethostname(),
@@ -1153,7 +1155,7 @@ async def start_run(
             # Mark ACTIVE in ledger
             ledger = state_mgr.load_state()
             if ledger:
-                ledger.status = "ACTIVE"
+                ledger.status = RunStatus.ACTIVE
                 state_mgr.save_state(ledger)
                 
             # Write legacy current_run file for compatibility

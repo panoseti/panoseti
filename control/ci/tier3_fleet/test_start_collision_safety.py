@@ -20,7 +20,7 @@ import pytest
 from ci.tier3_fleet.conftest import wait_hashpipe_stopped
 from control.start import start_run
 from control.utils import config_file
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.fixture
@@ -110,7 +110,7 @@ async def test_start_collision_does_not_stop_active_run(session_fleet, tmp_path,
         
     # Verify Run 1 is active
     ledger = RunStateManager().load_state()
-    assert ledger.status == "ACTIVE"
+    assert ledger.status == RunStatus.ACTIVE
     await _check_hashpipe_on_nodes(daq_cfg, expected_running=True)
 
     # 2. Attempt Run 2 (Should abort due to ACTIVE ledger)
@@ -137,7 +137,7 @@ async def test_start_collision_does_not_stop_active_run(session_fleet, tmp_path,
     # This confirms the second start attempt didn't erroneously roll back the first run's hardware.
     ledger = RunStateManager().load_state()
     assert ledger.run_name == run1_name
-    assert ledger.status == "ACTIVE"
+    assert ledger.status == RunStatus.ACTIVE
     await _check_hashpipe_on_nodes(daq_cfg, expected_running=True)
 
 
@@ -199,5 +199,5 @@ async def test_start_with_force_reset_stops_previous_run(session_fleet, tmp_path
     # 3. Verify Run 2 is ACTIVE and Run 1 was cleared
     ledger = RunStateManager().load_state()
     assert ledger.run_name == run2_name
-    assert ledger.status == "ACTIVE"
+    assert ledger.status == RunStatus.ACTIVE
     await _check_hashpipe_on_nodes(daq_cfg, expected_running=True)

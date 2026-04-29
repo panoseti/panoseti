@@ -20,7 +20,7 @@ from control.transfer.daemon import _process_job
 from control.transfer.queue import TransferQueue
 from control.utils import config_file
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.mark.asyncio
@@ -101,7 +101,7 @@ async def test_transfer_queue_validity_happy_path(
 
     # Assert: Ledger is ACTIVE
     ledger = mgr.load_state()
-    assert ledger.status == "ACTIVE"
+    assert ledger.status == RunStatus.ACTIVE
 
     # --- Step 3: Populate Data ---
     expected_data = {}
@@ -154,7 +154,7 @@ async def test_transfer_queue_validity_happy_path(
 
     # Assert: Ledger is RECORDING_ENDED
     ledger = mgr.load_state()
-    assert ledger.status == "RECORDING_ENDED"
+    assert ledger.status == RunStatus.RECORDING_ENDED
 
     # Assert: Job is in PENDING queue
     pending_jobs = list((tq._queue / "pending").glob("*.job.toml"))
@@ -223,7 +223,7 @@ async def test_transfer_queue_validity_happy_path(
     # --- Step 6: Final Verification ---
     # Ledger should be ARCHIVED
     ledger = mgr.load_state()
-    assert ledger.status == "ARCHIVED"
+    assert ledger.status == RunStatus.ARCHIVED
 
     # Queue should be COMPLETED
     assert not list((tq._queue / "active").glob("*.job.toml"))

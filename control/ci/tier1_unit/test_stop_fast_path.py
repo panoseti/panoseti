@@ -36,6 +36,7 @@ from control.utils.pydantic_config_models import (
     NetworkConfig,
     QuaboUids,
     RunStateLedger,
+    RunStatus,
 )
 from control.utils.run_state import RunStateManager
 
@@ -105,9 +106,10 @@ def state_mgr(tmp_path, run_dir) -> RunStateManager:
     mgr = RunStateManager(base_dir=str(tmp_path))
     ledger = RunStateLedger(
         run_name=RUN_NAME,
-        status="ACTIVE",
-        start_time="2024-01-01T00:00:00",
+        status=RunStatus.ACTIVE,
+        start_time="2024-01-01T00:00:00Z"
     )
+
     mgr.save_state(ledger)
     return mgr
 
@@ -236,7 +238,7 @@ class TestStopFastPath:
 
         loaded = state_mgr.load_state()
         assert loaded is not None, "Ledger must exist after stop_run()"
-        assert loaded.status == "RECORDING_ENDED", (
+        assert loaded.status == RunStatus.RECORDING_ENDED, (
             f"Expected RECORDING_ENDED but got {loaded.status!r}.\n"
             "The current codebase sets COMPLETED — Phase 2 must change this."
         )

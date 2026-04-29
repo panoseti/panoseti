@@ -19,7 +19,7 @@ from control.transfer.lifecycle import MAX_ATTEMPTS
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateLedger
+from control.utils.run_state import RunStateLedger, RunStatus
 
 
 def _make_job(run_name: str, tmp_path: pathlib.Path, attempts: int = 0) -> TransferJob:
@@ -75,7 +75,7 @@ async def test_transfer_daemon_ledger_sync(tmp_path: pathlib.Path, monkeypatch: 
     from control.utils.run_state import RunStateManager
     state_mgr = RunStateManager(base_dir=state_dir)
     
-    ledger_obj = RunStateLedger(run_name="r1", status="RECORDING_ENDED", start_time=datetime.now(UTC).isoformat(), nodes=[])
+    ledger_obj = RunStateLedger(run_name="r1", status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat(), nodes=[])
     state_mgr.save_state(ledger_obj)
 
     tq = TransferQueue(queue_dir=PanoPaths.transfer_queue_dir())
@@ -91,6 +91,6 @@ async def test_transfer_daemon_ledger_sync(tmp_path: pathlib.Path, monkeypatch: 
     # Assert the on-disk ledger has been updated
     updated_ledger = state_mgr.load_state()
     assert updated_ledger is not None
-    assert updated_ledger.status == "TRANSFER_FAILED"
+    assert updated_ledger.status == RunStatus.TRANSFER_FAILED
     assert updated_ledger.transfer_attempts == MAX_ATTEMPTS
     assert updated_ledger.last_transfer_error == "rsync_blackbox_error"

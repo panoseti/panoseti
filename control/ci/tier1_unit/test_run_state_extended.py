@@ -19,26 +19,25 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger
+from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger, RunStatus
 from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # New RunStateLedger status values
 # ---------------------------------------------------------------------------
-
 NEW_STATUSES = [
-    "RECORDING_ENDED",
-    "MANIFEST_PENDING",
-    "MANIFEST_GENERATING",
-    "MANIFEST_READY",
-    "TRANSFER_PENDING",
-    "TRANSFERRING",
-    "TRANSFER_FAILED",
-    "VERIFYING",
-    "VERIFY_FAILED",
-    "CLEANUP_PENDING",
-    "CLEANING",
-    "ARCHIVED",
+    RunStatus.RECORDING_ENDED,
+    RunStatus.MANIFEST_PENDING,
+    RunStatus.MANIFEST_GENERATING,
+    RunStatus.MANIFEST_READY,
+    RunStatus.TRANSFER_PENDING,
+    RunStatus.TRANSFERRING,
+    RunStatus.TRANSFER_FAILED,
+    RunStatus.VERIFYING,
+    RunStatus.VERIFY_FAILED,
+    RunStatus.CLEANUP_PENDING,
+    RunStatus.CLEANING,
+    RunStatus.ARCHIVED,
 ]
 
 
@@ -46,13 +45,13 @@ class TestRunStateLedgerExtendedStatuses:
     """Tests for the new Phase 2 status values on RunStateLedger."""
 
     def test_new_status_recording_ended(self) -> None:
-        """RECORDING_ENDED must be accepted by the Literal validator."""
+        """RECORDING_ENDED must be accepted by the validator."""
         ledger = RunStateLedger(
             run_name="r",
-            status="RECORDING_ENDED",
+            status=RunStatus.RECORDING_ENDED,
             start_time="2024-01-01T00:00:00",
         )
-        assert ledger.status == "RECORDING_ENDED"
+        assert ledger.status == RunStatus.RECORDING_ENDED
 
     @pytest.mark.parametrize("status", NEW_STATUSES)
     def test_new_statuses_accepted(self, status) -> None:
@@ -68,10 +67,10 @@ class TestRunStateLedgerExtendedStatuses:
         """COMPLETED must still be accepted (backward compatibility canary)."""
         ledger = RunStateLedger(
             run_name="r",
-            status="COMPLETED",
+            status=RunStatus.COMPLETED,
             start_time="2024-01-01T00:00:00",
         )
-        assert ledger.status == "COMPLETED"
+        assert ledger.status == RunStatus.COMPLETED
 
     def test_unknown_status_rejected(self) -> None:
         """Arbitrary strings must still be rejected."""
@@ -180,7 +179,7 @@ class TestSaveLoadRoundTripNewFields:
         ledger = RunStateLedger(
             run_name="myrun",
             start_time="2024-01-01T00:00:00",
-            status="RECORDING_ENDED",
+            status=RunStatus.RECORDING_ENDED,
             transfer_attempts=2,
             last_transfer_error="timeout",
             manifest_algorithm="blake3",
@@ -190,7 +189,7 @@ class TestSaveLoadRoundTripNewFields:
 
         loaded = mgr.load_state()
         assert loaded is not None
-        assert loaded.status == "RECORDING_ENDED"
+        assert loaded.status == RunStatus.RECORDING_ENDED
         assert loaded.transfer_attempts == 2
         assert loaded.last_transfer_error == "timeout"
         assert loaded.manifest_algorithm == "blake3"
@@ -211,13 +210,13 @@ class TestTransitionHelper:
         initial = RunStateLedger(
             run_name="myrun",
             start_time="2024-01-01T00:00:00",
-            status="ACTIVE",
+            status=RunStatus.ACTIVE,
         )
         mgr.save_state(initial)
 
-        result = mgr.transition("RECORDING_ENDED")
+        result = mgr.transition(RunStatus.RECORDING_ENDED)
         assert result is not None
-        assert result.status == "RECORDING_ENDED"
+        assert result.status == RunStatus.RECORDING_ENDED
 
     def test_transition_helper_persists_to_disk(self, tmp_path) -> None:
         """transition() must save the updated ledger so load_state reflects it."""
@@ -225,14 +224,14 @@ class TestTransitionHelper:
         initial = RunStateLedger(
             run_name="myrun",
             start_time="2024-01-01T00:00:00",
-            status="STOPPING",
+            status=RunStatus.STOPPING,
         )
         mgr.save_state(initial)
 
-        mgr.transition("RECORDING_ENDED")
+        mgr.transition(RunStatus.RECORDING_ENDED)
         loaded = mgr.load_state()
         assert loaded is not None
-        assert loaded.status == "RECORDING_ENDED"
+        assert loaded.status == RunStatus.RECORDING_ENDED
 
     def test_transition_helper_accepts_extra_fields(self, tmp_path) -> None:
         """transition() must accept additional keyword fields to update."""
@@ -240,18 +239,18 @@ class TestTransitionHelper:
         initial = RunStateLedger(
             run_name="myrun",
             start_time="2024-01-01T00:00:00",
-            status="ACTIVE",
+            status=RunStatus.ACTIVE,
         )
         mgr.save_state(initial)
 
-        result = mgr.transition("TRANSFER_FAILED", transfer_attempts=1, last_transfer_error="rsync timeout")
+        result = mgr.transition(RunStatus.TRANSFER_FAILED, transfer_attempts=1, last_transfer_error="rsync timeout")
         assert result is not None
-        assert result.status == "TRANSFER_FAILED"
+        assert result.status == RunStatus.TRANSFER_FAILED
         assert result.transfer_attempts == 1
         assert result.last_transfer_error == "rsync timeout"
 
     def test_transition_helper_returns_none_when_no_state(self, tmp_path) -> None:
         """transition() on a missing state file must return None."""
         mgr = RunStateManager(base_dir=str(tmp_path))
-        result = mgr.transition("RECORDING_ENDED")
+        result = mgr.transition(RunStatus.RECORDING_ENDED)
         assert result is None

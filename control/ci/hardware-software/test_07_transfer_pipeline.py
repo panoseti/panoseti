@@ -29,7 +29,7 @@ from control.transfer.models import TransferJob
 from control.transfer.queue import TransferQueue
 from control.transfer.verify import verify_manifest
 from control.utils import config_file, util
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -38,7 +38,7 @@ from control.utils.run_state import RunStateManager
 HEAD_DATA_DIR = pathlib.Path(os.getenv("HEAD_DATA_DIR", "/data/head"))
 ARCHIVE_POLL_INTERVAL = 5    # seconds between ledger polls
 ARCHIVE_TIMEOUT = 600        # 10 minutes maximum to reach ARCHIVED
-TERMINAL_STATUSES = {"ARCHIVED", "STOPPED_WITH_ERRORS", "VERIFY_FAILED", "TRANSFER_FAILED"}
+TERMINAL_STATUSES = {RunStatus.ARCHIVED, RunStatus.STOPPED_WITH_ERRORS, RunStatus.VERIFY_FAILED, RunStatus.TRANSFER_FAILED}
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ class TestHW07TransferPipeline:
         mgr = RunStateManager()
         ledger = mgr.load_state()
         assert ledger is not None, "Ledger must exist after start"
-        assert ledger.status == "ACTIVE", (
+        assert ledger.status == RunStatus.ACTIVE, (
             f"Expected ACTIVE, got {ledger.status!r}"
         )
 
@@ -75,7 +75,7 @@ class TestHW07TransferPipeline:
         mgr = RunStateManager()
         ledger = mgr.load_state()
         assert ledger is not None
-        assert ledger.status == "RECORDING_ENDED", (
+        assert ledger.status == RunStatus.RECORDING_ENDED, (
             f"Expected RECORDING_ENDED after stop, got {ledger.status!r}"
         )
 
@@ -136,7 +136,7 @@ class TestHW07TransferPipeline:
                 break
             time.sleep(ARCHIVE_POLL_INTERVAL)
 
-        assert status == "ARCHIVED", (
+        assert status == RunStatus.ARCHIVED, (
             f"Run did not reach ARCHIVED within {ARCHIVE_TIMEOUT}s. "
             f"Final status: {status!r}"
         )

@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from control.stop import stop_run
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def mock_daq_config(tmp_path: pathlib.Path) -> MagicMock:
 async def test_stop_refuses_if_already_finished(mock_state_mgr: MagicMock, mock_daq_config: MagicMock, caplog: pytest.LogCaptureFixture) -> None:
     ledger = MagicMock()
     ledger.run_name = "r1"
-    ledger.status = "RECORDING_ENDED"
+    ledger.status = RunStatus.RECORDING_ENDED
     mock_state_mgr.load_state.return_value = ledger
     
     with patch("control.utils.util.is_local", return_value=True), \
@@ -60,7 +60,7 @@ async def test_stop_refuses_if_already_finished(mock_state_mgr: MagicMock, mock_
 async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_daq_config: MagicMock) -> None:
     ledger = MagicMock()
     ledger.run_name = "r1"
-    ledger.status = "RECORDING_ENDED"
+    ledger.status = RunStatus.RECORDING_ENDED
     mock_state_mgr.load_state.return_value = ledger
     
     with patch("control.utils.util.is_local", return_value=True), \
@@ -89,7 +89,7 @@ async def test_stop_proceeds_with_force_cleanup(mock_state_mgr: MagicMock, mock_
 async def test_stop_proceeds_if_active(mock_state_mgr: MagicMock, mock_daq_config: MagicMock) -> None:
     ledger = MagicMock()
     ledger.run_name = "r1"
-    ledger.status = "ACTIVE"
+    ledger.status = RunStatus.ACTIVE
     mock_state_mgr.load_state.return_value = ledger
     
     with patch("control.utils.util.is_local", return_value=True), \

@@ -11,7 +11,7 @@ from control.utils.pydantic_config_models import (
     ObsConfig,
     QuaboUids,
 )
-from control.utils.run_state import RunStateLedger, RunStateManager
+from control.utils.run_state import RunStateLedger, RunStateManager, RunStatus
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ async def test_active_ledger_blocks_even_with_dead_pid(tmp_path, monkeypatch, mo
     fake_pid = 999999
     ledger = RunStateLedger(
         run_name="active_run",
-        status="ACTIVE",
+        status=RunStatus.ACTIVE,
         start_time="2024-01-01T00:00:00Z",
         pid=fake_pid,
         host=socket.gethostname()
@@ -91,5 +91,5 @@ async def test_active_ledger_blocks_even_with_dead_pid(tmp_path, monkeypatch, mo
         current_state = state_mgr.load_state()
         assert current_state is not None
         assert current_state.run_name == "active_run"
-        assert current_state.status == "ACTIVE"
+        assert current_state.status == RunStatus.ACTIVE
 

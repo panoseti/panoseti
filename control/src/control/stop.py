@@ -46,6 +46,7 @@ from control.utils.pydantic_config_models import (
     DaqNode,
     NetworkConfig,
     QuaboUids,
+    RunStatus,
 )
 from control.utils.run_state import LockError, RunStateManager, ValidationError
 from control.utils.util import (
@@ -235,7 +236,7 @@ class StopTransaction:
                 # knows to pick up this run.
                 await asyncio.to_thread(
                     self.state_mgr.transition,
-                    "RECORDING_ENDED",
+                    RunStatus.RECORDING_ENDED,
                 )
                 await asyncio.to_thread(util.remove_run_name)
                 logger.info(f'completed run {self.run}')
@@ -247,7 +248,7 @@ class StopTransaction:
                 logger.error(f"Fundamental failure during stop for {self.run}. Bypassing transfer queue. Reason: {failure_reason}")
                 await asyncio.to_thread(
                     self.state_mgr.transition,
-                    "STOPPED_WITH_ERRORS",
+                    RunStatus.STOPPED_WITH_ERRORS,
                     last_transfer_error=failure_reason
                 )
 
@@ -660,7 +661,7 @@ async def stop_run(
 
             # Refuse to stop if already finished, unless forced
             if ledger:
-                stoppable = {"STARTING", "ACTIVE", "STOPPING"}
+                stoppable = {RunStatus.STARTING, RunStatus.ACTIVE, RunStatus.STOPPING}
                 if ledger.status not in stoppable and not force_cleanup:
                     raise ValidationError(
                         f"Ledger says run '{ledger.run_name}' is in '{ledger.status}'; "
@@ -672,7 +673,7 @@ async def stop_run(
                  raise ValidationError(f"Warning: Requested run '{tx.run}' does not match ledger run '{ledger.run_name}'. Use --force-cleanup if you are sure.")
 
             # Update status to STOPPING
-            state_mgr.transition("STOPPING")
+            state_mgr.transition(RunStatus.STOPPING)
 
             logger.info(f"stopping data recording for run {tx.run}")
 

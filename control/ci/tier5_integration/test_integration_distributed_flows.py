@@ -17,7 +17,7 @@ from ci.tier3_fleet.conftest import wait_hashpipe_stopped
 from control.start import start_run
 from control.stop import stop_run
 from control.utils import config_file
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 def _prepare_daq_dirs(daq_cfg, run_name: str) -> None:
@@ -153,4 +153,4 @@ async def test_when_distributed_run_stopped_then_all_nodes_halted(
             client.close()
 
     ledger = RunStateManager().load_state()
-    assert ledger is not None and ledger.status == "RECORDING_ENDED"
+    assert ledger is not None and ledger.status == RunStatus.RECORDING_ENDED

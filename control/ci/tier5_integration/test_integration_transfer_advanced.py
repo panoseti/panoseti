@@ -22,7 +22,7 @@ from ci.tier5_integration.transfer_integration_utils import (
 )
 from control.transfer.daemon import run_daemon
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.mark.parametrize("num_runs", [2])
@@ -50,7 +50,7 @@ async def test_integration_transfer_queue_drain(
         # Verify ledger state (singleton ledger matches last stopped run)
         ledger = mgr.load_state()
         assert ledger.run_name == run_name
-        assert ledger.status == "RECORDING_ENDED"
+        assert ledger.status == RunStatus.RECORDING_ENDED
         
     # Verify queue depth
     pending_jobs = list((tq_dir / "pending").glob("*.job.toml"))
@@ -80,7 +80,7 @@ async def test_integration_transfer_queue_drain(
                 if not remaining:
                     # Final check that last run in ledger is ARCHIVED
                     ledger = mgr.load_state()
-                    if ledger and ledger.status == "ARCHIVED":
+                    if ledger and ledger.status == RunStatus.ARCHIVED:
                         break
                 await asyncio.sleep(2.0)
             else:
@@ -130,7 +130,7 @@ async def test_integration_transfer_queue_active_daemon(
             start_time = time.time()
             while time.time() - start_time < timeout:
                 ledger = mgr.load_state()
-                if ledger and ledger.run_name == run_name and ledger.status == "ARCHIVED":
+                if ledger and ledger.run_name == run_name and ledger.status == RunStatus.ARCHIVED:
                     break
                 await asyncio.sleep(2.0)
             else:

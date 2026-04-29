@@ -8,11 +8,15 @@ import tempfile
 import tomllib
 from typing import Any
 
+from panoseti_grpc.telemetry.logger import get_logger
+
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger
+from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger, RunStatus
 
 LOCK_FILE = "panoseti_control.lock"
 STATE_FILE = "run_state.toml"
+
+logger = get_logger("PSETI.RunState")
 
 
 class ValidationError(Exception):
@@ -216,7 +220,7 @@ class RunStateManager:
                 self.lock_path.unlink()
         self._lock_fh = None
 
-    def transition(self, status: str, **fields: Any) -> RunStateLedger | None:
+    def transition(self, status: RunStatus, **fields: Any) -> RunStateLedger | None:
         """Load current state, update status and any extra fields, save, return new state.
 
         Returns None if no state exists.
@@ -224,7 +228,9 @@ class RunStateManager:
         state = self.load_state()
         if state is None:
             return None
-        state.status = status  # type: ignore[assignment]
+        
+        logger.info(f"Transaction Phase: [{status.value}]")
+        state.status = status
         for key, value in fields.items():
             setattr(state, key, value)
         self.save_state(state)
@@ -240,6 +246,7 @@ class RunStateManager:
             if not state:
                 return
 
+            logger.info(f"Node {receipt.ip_addr} Phase: [{receipt.status.value}]")
             # Find existing node or append
             for i, node in enumerate(state.nodes):
                 if str(node.ip_addr) == str(receipt.ip_addr):

@@ -22,7 +22,7 @@ from ci.tier3_fleet.transfer_testing_utils import (
 from control.transfer.daemon import _process_job, run_daemon
 from control.transfer.queue import TransferQueue
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateManager
+from control.utils.run_state import RunStateManager, RunStatus
 
 # ---------------------------------------------------------------------------
 # 1. Chaos: Partial Transfer Recovery
@@ -299,7 +299,7 @@ async def test_transfer_queue_stop_start_during_transfer(
         
         # Wait for daemon to reach TRANSFERRING
         await asyncio.wait_for(sync_event.wait(), timeout=10.0)
-        assert mgr.load_state().status == "TRANSFERRING"
+        assert mgr.load_state().status == RunStatus.TRANSFERRING
         
         # 2. "Crash" the daemon
         daemon_task.cancel()
@@ -330,7 +330,7 @@ async def test_transfer_queue_stop_start_during_transfer(
         timeout = 20.0
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < timeout:
-            if mgr.load_state().status == "ARCHIVED":
+            if mgr.load_state().status == RunStatus.ARCHIVED:
                 break
             await asyncio.sleep(0.5)
         else:
