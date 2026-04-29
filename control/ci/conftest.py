@@ -134,11 +134,13 @@ def auto_isolate(
     daq_prefix = os.environ.get("DAQ_NET_PREFIX", "192.168.0")
     quabo_prefix = os.environ.get("QUABO_NET_PREFIX", "192.168.3")
 
+    is_hw_sw_test = src_cfg and "hardware-software" in src_cfg
+
     if src_cfg and os.path.exists(src_cfg):
         for item in pathlib.Path(src_cfg).iterdir():
             try:
-                # Copy everything EXCEPT the topological configs we are about to overwrite
-                if item.name not in ["daq_config.json", "obs_config.json", "network_config.json", "quabo_uids.json"]:
+                # Copy everything EXCEPT the topological configs we are about to overwrite (unless hw-sw test)
+                if is_hw_sw_test or item.name not in ["daq_config.json", "obs_config.json", "network_config.json", "quabo_uids.json"]:
                     if item.is_file():
                         shutil.copy2(item, cfg_tmp)
                     elif item.is_dir():
@@ -146,26 +148,31 @@ def auto_isolate(
             except Exception:
                 pass
                 
-    # 2.5 Generate Pristine Topological Configs
-    from control.topology.fleet import generate_ci_topology
-    daq_cfg, quabo_uids, net_cfg, obs_cfg = generate_ci_topology(head_prefix, daq_prefix, quabo_prefix)
-    
-    (cfg_tmp / "daq_config.json").write_text(daq_cfg.model_dump_json(indent=2))
-    (cfg_tmp / "obs_config.json").write_text(obs_cfg.model_dump_json(indent=2))
-    (cfg_tmp / "network_config.json").write_text(net_cfg.model_dump_json(indent=2))
-    
-    # 4. Provide quabo_uids.json for Chaos tests
-    # Prefer the chaos-specific config which has the mock modules
-    uids_src = pathlib.Path(__file__).parent / "fixtures" / "configs" / "quabo_uids_chaos.json"
-    if uids_src.exists() and os.environ.get("PSETI_TEST_TIER") == "tier4_chaos":
-        shutil.copy(uids_src, cfg_tmp / "quabo_uids.json")
-        shutil.copy(uids_src, tmp_tmp / "quabo_uids.json")
-        os.chmod(cfg_tmp / "quabo_uids.json", 0o666)
-        os.chmod(tmp_tmp / "quabo_uids.json", 0o666)
+    if not is_hw_sw_test:
+        # 2.5 Generate Pristine Topological Configs
+        from control.topology.fleet import generate_ci_topology
+        daq_cfg, quabo_uids, net_cfg, obs_cfg = generate_ci_topology(head_prefix, daq_prefix, quabo_prefix)
+        
+        (cfg_tmp / "daq_config.json").write_text(daq_cfg.model_dump_json(indent=2))
+        (cfg_tmp / "obs_config.json").write_text(obs_cfg.model_dump_json(indent=2))
+        (cfg_tmp / "network_config.json").write_text(net_cfg.model_dump_json(indent=2))
+        
+        # 4. Provide quabo_uids.json for Chaos tests
+        # Prefer the chaos-specific config which has the mock modules
+        uids_src = pathlib.Path(__file__).parent / "fixtures" / "configs" / "quabo_uids_chaos.json"
+        if uids_src.exists() and os.environ.get("PSETI_TEST_TIER") == "tier4_chaos":
+            shutil.copy(uids_src, cfg_tmp / "quabo_uids.json")
+            shutil.copy(uids_src, tmp_tmp / "quabo_uids.json")
+            os.chmod(cfg_tmp / "quabo_uids.json", 0o666)
+            os.chmod(tmp_tmp / "quabo_uids.json", 0o666)
+        else:
+            # Fallback to generated if chaos-specific is missing
+            (cfg_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
+            (tmp_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
     else:
-        # Fallback to generated if chaos-specific is missing
-        (cfg_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
-        (tmp_tmp / "quabo_uids.json").write_text(quabo_uids.model_dump_json(indent=2))
+        if (cfg_tmp / "quabo_uids.json").exists():
+            shutil.copy(cfg_tmp / "quabo_uids.json", tmp_tmp / "quabo_uids.json")
+            os.chmod(tmp_tmp / "quabo_uids.json", 0o666)
 
     # 3. Apply overrides for the duration of the session
     os.environ["PSETI_CONFIG"] = str(cfg_tmp)

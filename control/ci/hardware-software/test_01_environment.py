@@ -55,7 +55,7 @@ def test_network_ping_sweep(runner, daq_config, obs_config):
     for node in daq_config.daq_nodes:
         ip = str(node.ip_addr)
         assert ip in result.stdout
-        assert f"{ip:<40} is UP" in result.stdout
+        assert f"DAQ Node ({ip})" in result.stdout
 
     # Assert Quabos are down (assuming they were powered off by safety net or initial state)
     # We get all valid Quabo IPs from the obs_config

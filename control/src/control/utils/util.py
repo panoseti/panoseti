@@ -117,8 +117,8 @@ def daq_grpc_endpoint(node: DaqNode) -> tuple[str, int]:
     Reads port_forwarding from the node model (attached by attach_daq_config).
     Falls back to direct connection on port 50051.
     """
-    if node.port_forwarding and node.port_forwarding.status:
-        return str(node.port_forwarding.gw_ip), node.port_forwarding.grpc_port or 50051
+    if node.port_forwarding and node.port_forwarding.status and node.port_forwarding.grpc_port is not None:
+        return str(node.port_forwarding.gw_ip), node.port_forwarding.grpc_port
     return str(node.ip_addr), 50051
 
 
