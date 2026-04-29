@@ -1,7 +1,7 @@
 """Tier 5 (Integration): Transfer --watch smoke test.
 
 Verifies:
-- pseti transfer status --watch renders correctly.
+- pseti xfr status --watch renders correctly.
 """
 from __future__ import annotations
 

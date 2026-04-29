@@ -1,4 +1,4 @@
-"""Transfer queue CLI — `pseti transfer`."""
+"""Transfer queue CLI — `pseti xfr`."""
 from __future__ import annotations
 
 import contextlib

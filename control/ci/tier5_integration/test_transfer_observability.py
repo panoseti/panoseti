@@ -2,9 +2,9 @@
 
 Test 4.4 from EXECUTION_PLAN — validates that:
   - The real transfer daemon writes to transfer_daemon.log (not /dev/null).
-  - `pseti transfer tail` produces non-empty output after daemon starts.
+  - `pseti xfr tail` produces non-empty output after daemon starts.
   - `pseti ledger path` returns an existing (or printable) path.
-  - After SIGTERM + >30s, `pseti transfer status` reports STALE heartbeat.
+  - After SIGTERM + >30s, `pseti xfr status` reports STALE heartbeat.
 
 These tests do NOT require Docker or real hardware — they start the daemon
 in-process and assert against the filesystem state.  The daemon is isolated
@@ -175,7 +175,7 @@ class TestTransferTailCommand:
     def test_tail_produces_output_after_daemon_start(
         self, tmp_path: pathlib.Path, daemon_env: dict[str, str]
     ) -> None:
-        """pseti transfer tail must return non-empty content after daemon starts.
+        """pseti xfr tail must return non-empty content after daemon starts.
 
         This is the D-5 regression check: the old tail pointed at current.log
         which never existed; now it points at transfer_daemon.log.
@@ -192,7 +192,7 @@ class TestTransferTailCommand:
             assert _wait_for_file_content(log_file, "Transfer daemon started", timeout=15.0), \
                 "Daemon did not write log within 15s"
 
-            # Simulate what `pseti transfer tail -n 5` does: read last N lines.
+            # Simulate what `pseti xfr tail -n 5` does: read last N lines.
             result = subprocess.run(
                 ["tail", "-n5", str(log_file)],
                 capture_output=True, text=True,

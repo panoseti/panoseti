@@ -198,7 +198,7 @@ class StopTransaction:
                     logger.warning(
                         "Transfer skipped (--no-transfer). "
                         "DAQ data will NOT be collected. "
-                        "Run `pseti transfer retry %s` to recover.",
+                        "Run `pseti xfr retry %s` to recover.",
                         self.run,
                     )
                 else:
@@ -731,7 +731,7 @@ def main(
         msg = (
             "Transfer daemon appears down (heartbeat stale or absent). "
             "The job will be queued but no transfer will occur until you run "
-            "`pseti transfer start`."
+            "`pseti xfr start`."
         )
         if sys.stdin.isatty() and not yes:
             typer.confirm(f"WARNING: {msg}\nContinue?", abort=True)
