@@ -120,12 +120,12 @@ class PanoPaths:
     @classmethod
     def tools_dir(cls) -> pathlib.Path:
         """Directory containing control plane utility scripts."""
-        return cls.base_dir() / "src/control/tools"
+        return cls.software_root_dir() / "control/src/control/tools"
 
     @classmethod
     def daemons_dir(cls) -> pathlib.Path:
         """Directory containing background service daemons."""
-        return cls.base_dir() / "src/control/daemons"
+        return cls.software_root_dir() / "control/src/control/daemons"
 
     @classmethod
     def state_dir(cls) -> pathlib.Path:

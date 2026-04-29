@@ -52,7 +52,7 @@ class TestHW07TransferPipeline:
 
     def test_HW_07_start_run(self, runner: CliRunner) -> None:
         """Start a 30-second test run and verify ACTIVE state."""
-        result = runner.invoke(app, ["start", "--run-type", "hwsw_transfer", "--yes"])
+        result = runner.invoke(app, ["start", "--yes"])
         assert result.exit_code == 0, f"pseti start failed:\n{result.stdout}"
         mgr = RunStateManager()
         ledger = mgr.load_state()

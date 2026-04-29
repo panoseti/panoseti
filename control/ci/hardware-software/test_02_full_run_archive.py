@@ -51,7 +51,7 @@ class TestHW01FullRunArchive:
 
     def test_HW_01_start_30s_run(self, runner: CliRunner, daq_config: DaqConfig) -> None:
         """Start a 30-second test run and verify it reaches ACTIVE state."""
-        result = runner.invoke(app, ["start", "--run-type", "test", "--yes"])
+        result = runner.invoke(app, ["start", "--yes"])
         assert result.exit_code == 0, f"pseti start failed:\n{result.stdout}"
 
         mgr = RunStateManager()

@@ -152,7 +152,6 @@ async def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
 
     # 0. Clear stale state
     RunStateManager().clear_state()
-
     # 1. Inject a Quabo UID that points to a non-existent IP but valid module_id range
     mid = 254
     mock_uids = QuaboUids(domes=[{"num": 0, "modules": [{
@@ -361,9 +360,9 @@ async def slow_start():
 
             await start.start_run(
                 obs, daq, uids, data, net,
-                no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
+                no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False,
+                run_name=run_name
             )
-
     except Exception as e:
         print(f"START_RUN_FAILED:{{e}}", flush=True)
 

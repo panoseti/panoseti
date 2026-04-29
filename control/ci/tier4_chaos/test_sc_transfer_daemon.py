@@ -55,8 +55,8 @@ from control.utils.run_state import RunStateManager
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def client(daqnode_ip) -> DaqControlClient:
-    return DaqControlClient(host=daqnode_ip, port=GRPC_PORT)
+def client(daq_control_direct) -> DaqControlClient:
+    return daq_control_direct
 
 
 @pytest.fixture
@@ -111,7 +111,6 @@ class TestSCTX001PartialStartRollback:
         from control.utils.run_state import RunStateManager
 
         RunStateManager().clear_state()
-        run_params["data_dir"] = str(tmp_path / "daq_data")
 
         # Start hashpipe on node, then immediately inject a failure via
         # process_chaos to simulate a second node rejecting StartDaq.

@@ -15,6 +15,7 @@ import pathlib
 import time
 import unittest.mock
 import uuid
+import tempfile
 from typing import Any
 
 import pytest
@@ -45,7 +46,7 @@ PH_BASELINE_FILE = PanoPaths.config_dir() / "quabo_ph_baseline.json"
 # ── Shared Helpers ───────────────────────────────────────────────────────────
 
 @contextlib.contextmanager
-def mock_daq_config_for_headnode():
+def mock_daq_config_for_headnode(daq_endpoint: tuple[str, int] | None = None, internal_ip: str | None = None):
     """Temporarily patch daq_config.json to point to localhost (CI headnode)."""
     import json
 
@@ -58,9 +59,10 @@ def mock_daq_config_for_headnode():
     PanoPaths.ensure_dirs()
     PanoPaths.config_dir().mkdir(parents=True, exist_ok=True)
     
-    # Create a dummy PH baseline if missing
-    ph_baseline = PanoPaths.tmp_dir() / "quabo_ph_baseline.json"
-    if not os.path.exists(ph_baseline):
+    # Create a dummy PH baseline in the CORRECT location
+    ph_baseline = PanoPaths.calibration_file("quabo_ph_baseline.json")
+    ph_baseline.parent.mkdir(parents=True, exist_ok=True)
+    if not ph_baseline.exists():
         with open(ph_baseline, "w") as f:
             json.dump({"quabos": []}, f)
 
@@ -68,20 +70,18 @@ def mock_daq_config_for_headnode():
         import shutil
         shutil.copyfile(path, backup)
     
-    with open(path) as f:
-        cfg = json.load(f)
-    
-    import tempfile
+    # Preference reachable endpoint if provided
+    real_ip = daq_endpoint[0] if daq_endpoint else "127.0.0.1"
+    grpc_port = daq_endpoint[1] if daq_endpoint else 50051
+    # Use internal_ip for 'ip_addr' to pass control-loop validation
+    daqnode_ip = internal_ip or "192.168.3.30"
+
     # Prefer the isolated HEAD_DATA_DIR set by auto_isolate so the subprocess
-    # env and the daq_config.json written here share the same path.  Fall back
-    # to a fresh tempdir only when running outside the pytest harness.
+    # env and the daq_config.json written here share the same path.
     tmp_data_dir = os.environ.get("HEAD_DATA_DIR") or tempfile.mkdtemp()
     os.makedirs(tmp_data_dir, exist_ok=True)
 
     tester_ip = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
-    cfg["head_node_ip_addr"] = tester_ip
-    cfg["head_node_data_dir"] = tmp_data_dir
-    cfg["head_node_container"] = True
     
     # Coherence Fix: Ensure the DAQ node is handling ALL modules defined in the 
     # current obs_config.json to prevent "no DAQ node is handling module X" errors.
@@ -92,18 +92,27 @@ def mock_daq_config_for_headnode():
             mids.append(config_file.ip_addr_to_module_id(str(module.ip_addr)))
 
     # Assign ALL modules to the single available CI node
-    # Use a DAQ IP that is on the same /24 subnet as the modules (192.168.3.x)
-    # to pass strict Tier-2 Subnet Coherence validation.
-    daqnode_ip = "192.168.3.30"
-    cfg["daq_nodes"] = [
-        {
-            "ip_addr": daqnode_ip,
-            "data_dir": "/data",
-            "username": "root",
-            "module_ids": mids,
-            "bindhost": "lo"
-        }
-    ]
+    node_spec: dict[str, Any] = {
+        "ip_addr": daqnode_ip,
+        "data_dir": "/data",
+        "username": "root",
+        "module_ids": mids,
+        "bindhost": "lo"
+    }
+    
+    # Enable port forwarding mode so start.py uses the reachable endpoint
+    node_spec["port_forwarding"] = {
+        "status": True,
+        "gw_ip": real_ip,
+        "grpc_port": grpc_port
+    }
+
+    cfg = {
+        "daq_nodes": [node_spec],
+        "head_node_ip_addr": tester_ip,
+        "head_node_data_dir": tmp_data_dir,
+        "head_node_container": True
+    }
     
     with open(path, "w") as f:
         json.dump(cfg, f, indent=4)
@@ -111,14 +120,17 @@ def mock_daq_config_for_headnode():
     # Write matching quabo_uids.json to tmp/ so associate() in subprocess passes
     uids_path = PanoPaths.tmp_dir() / "quabo_uids.json"
     uids_path.parent.mkdir(parents=True, exist_ok=True)
+
     from control.utils.pydantic_config_models import QuaboUids
     uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
-    for mid in mids:
-        uids_dict["domes"][0]["modules"].append({
-            "id": mid,
-            "ip_addr": f"192.168.3.{mid}",
-            "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
-        })
+    for dome in obs.domes:
+        for module in dome.modules:
+            mid = config_file.ip_addr_to_module_id(str(module.ip_addr))
+            uids_dict["domes"][0]["modules"].append({
+                "id": mid,
+                "ip_addr": str(module.ip_addr),
+                "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
+            })
     with open(uids_path, "w") as f:
         json.dump(uids_dict, f, indent=4)
 
@@ -131,7 +143,7 @@ def mock_daq_config_for_headnode():
                 shutil.move(backup, path)
 
 
-async def run_start_and_kill(marker: str, timeout: float = 15) -> int:
+async def run_start_and_kill(marker: str, daq_endpoint: tuple[str, int] | None = None, internal_ip: str | None = None, timeout: float = 15) -> int:
     """Launch start.py, wait for marker in stdout, then SIGKILL."""
     import signal
     import subprocess
@@ -152,11 +164,10 @@ async def run_start_and_kill(marker: str, timeout: float = 15) -> int:
     cmd = [
         "python3", "-m", "control.start",
         "--yes", "--no-strict",
-        "--no_hv", "--no_redis",
+        "--no-strict", "--no-hv", "--no-redis",
         "--verbose", "--no-check-daq"
-    ]
-    
-    with mock_daq_config_for_headnode():
+    ]    
+    with mock_daq_config_for_headnode(daq_endpoint=daq_endpoint, internal_ip=internal_ip):
         # We run from control/ directory as per the qa.py context
         proc = subprocess.Popen(
             cmd,
@@ -228,16 +239,17 @@ async def test_SC021_killed_after_make_run_dirs_leaves_orphan_dirs(
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         result = subprocess.run(
-            ["python3", "-m", "control.start", "--yes", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
+            ["python3", "-m", "control.start", "--yes", "--no-strict", "--no-hv", "--no-redis", "--no-data", "--no-check-daq"],
             capture_output=True, text=True, env=env
         )
-    assert result.returncode == 0, f"Next start.py failed to self-heal: {result.stderr}"
+    assert result.returncode == 0, f"Next start.py failed to self-heal: {result.stderr or result.stdout}"
     assert "started run" in result.stdout
 
 
 @pytest.mark.asyncio
 async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
     daq_control_direct: DaqControlClient,
+    daqnode_ip: str,
 ) -> None:
     """
     SC-022: If killed after start_data_flow, quabos are streaming but no hashpipe.
@@ -249,16 +261,20 @@ async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
     if mgr.lock_path.exists():
         mgr.lock_path.unlink()
 
+    # Get actual reachable endpoint
+    host, port_str = daq_control_direct.target.split(':')
+    endpoint = (host, int(port_str))
+
     # 1. Kill after data flow starts
-    await run_start_and_kill("starting data flow from quabos")
+    await run_start_and_kill("starting data flow from quabos", daq_endpoint=endpoint, internal_ip=daqnode_ip)
     
     # 2. Verify we can stop it
-    with mock_daq_config_for_headnode():
+    with mock_daq_config_for_headnode(daq_endpoint=endpoint, internal_ip=daqnode_ip):
         import subprocess
         env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         result = subprocess.run(
-            ["python3", "-m", "control.stop", "--yes", "--no_collect", "--no_cleanup"],
+            ["python3", "-m", "control.stop", "--yes", "--no-collect", "--no-cleanup"],
             capture_output=True, text=True, env=env
         )        # Allow return code 1 if it's just a gRPC failure to 127.0.0.1
         assert result.returncode in [0, 1], f"stop.py failed after SC-022: {result.stderr}"
@@ -267,6 +283,7 @@ async def test_SC022_killed_after_start_data_flow_quabos_streaming_to_void(
 @pytest.mark.asyncio
 async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     daq_control_direct: DaqControlClient,
+    daqnode_ip: str,
     state_probe: StateProbe, tmp_path: pathlib.Path,
 ) -> None:
     """
@@ -279,42 +296,28 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     if mgr.lock_path.exists():
         mgr.lock_path.unlink()
 
-    from control.utils.paths import PanoPaths
-    import shutil
-    target = PanoPaths.tmp_dir() / "quabo_uids.json"
-    target.unlink(missing_ok=True)
-    # Link to the chaos config which has the mock modules
-    src = PanoPaths.base_dir() / "ci/fixtures/configs/quabo_uids_chaos.json"
-    if src.exists():
-        shutil.copy(src, target)
-        os.chmod(target, 0o666)
+    # Get actual reachable endpoint
+    host, port_str = daq_control_direct.target.split(':')
+    endpoint = (host, int(port_str))
 
     # 1. Kill after recording starts
-
-    # We use a reachable IP for the real gRPC call to succeed
-    # But wait, run_start_and_kill uses mock_daq_config_for_headnode
-    # which points to 10.0.1.5. gRPC is listening on 50051 on all nodes.
-    # 10.0.1.5 is the int-tester container, does it run a gRPC server?
-    # No, but daqnode (192.168.0.10) does.
-    # I should use 192.168.0.10 for SC-023 so it actually starts a hashpipe.
-    
-    with mock_daq_config_for_headnode():
-        # Wait for Phase 5 to ensure StartDaq has actually finished on the remote node
-        await run_start_and_kill("Phase 5: Performing 2s stabilization", timeout=35)
+    # Use 'Waiting for Hashpipe stabilization' as marker to ensure it actually started
+    with mock_daq_config_for_headnode(daq_endpoint=endpoint, internal_ip=daqnode_ip):
+        await run_start_and_kill("Waiting for Hashpipe stabilization", daq_endpoint=endpoint, internal_ip=daqnode_ip, timeout=35)
     # 2. Verify hashpipe is orphaned and running
     import time
     time.sleep(2)
     assert wait_hashpipe_running(daq_control_direct, "/data", timeout=10), \
-        "Hashpipe should be orphaned and running on 192.168.0.10"
+        "Hashpipe should be orphaned and running on DAQ node"
     
     # 2. Run start.py with --force-reset to self-heal the orphaned hashpipe
-    with mock_daq_config_for_headnode():
+    with mock_daq_config_for_headnode(daq_endpoint=endpoint, internal_ip=daqnode_ip):
         import subprocess
         env = get_isolated_env()
         env["PATH"] = f"{PanoPaths.tmp_dir() / 'fake_bin'}:{env['PATH']}"
         env["PYTHONPATH"] = f"{os.getcwd()}/src:{env.get('PYTHONPATH', '')}"
         result = subprocess.run(
-            ["python3", "-m", "control.start", "--yes", "--force-reset", "--no_hv", "--no_redis", "--no_data", "--no-check-daq"],
+            ["python3", "-m", "control.start", "--yes", "--force-reset", "--no-strict", "--no-hv", "--no-redis", "--no-data", "--no-check-daq"],
             capture_output=True, text=True, env=env
         )
     assert result.returncode == 0, f"Next start.py failed to self-heal orphaned hashpipe: {result.stderr}"
@@ -323,5 +326,5 @@ async def test_SC023_killed_after_start_recording_hashpipe_orphaned(
     assert "Archiving stale ledger" in result.stdout
     
     # Cleanup
-    with mock_daq_config_for_headnode():
-        subprocess.run(["python3", "-m", "control.stop", "--yes", "--no_collect", "--no_cleanup"], capture_output=True, env=env)
+    with mock_daq_config_for_headnode(daq_endpoint=endpoint, internal_ip=daqnode_ip):
+        subprocess.run(["python3", "-m", "control.stop", "--yes", "--no-collect", "--no-cleanup"], capture_output=True, env=env)

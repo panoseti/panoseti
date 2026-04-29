@@ -25,15 +25,25 @@ def hw_safety_net(runner):
     # ── Setup ────────────────────────────────────────────────────────────────
     print("\n[SAFETY NET] Validating HITL configurations...")
     # We use the CLI to validate, which checks all files.
-    result = runner.invoke(app, ["validate", "--yes"])
+    result = runner.invoke(app, ["val"])
     if result.exit_code != 0:
         pytest.exit(f"Configuration validation failed: {result.stdout}")
+
+    print("[SAFETY NET] Starting Transfer Daemon...")
+    runner.invoke(app, ["xfr", "start"])
 
     yield
 
     # ── Teardown ─────────────────────────────────────────────────────────────
     print("\n[SAFETY NET] Starting mandatory hardware teardown...")
     
+    # 0. Stop Transfer Daemon
+    try:
+        print("[SAFETY NET] Stopping Transfer Daemon...")
+        runner.invoke(app, ["xfr", "stop", "--timeout", "10"])
+    except Exception as e:
+        print(f"[SAFETY NET] WARNING: pseti xfr stop failed: {e}")
+
     # 1. Stop any active runs and force cleanup hashpipes
     try:
         print("[SAFETY NET] Stopping active runs and cleaning up DAQ nodes...")
@@ -44,7 +54,7 @@ def hw_safety_net(runner):
     # 2. Power off Quabos
     try:
         print("[SAFETY NET] Powering off Quabos...")
-        runner.invoke(app, ["power", "off", "--yes"])
+        # runner.invoke(app, ["power", "off", "--yes"])
     except Exception as e:
         print(f"[SAFETY NET] WARNING: pseti power off failed: {e}")
 

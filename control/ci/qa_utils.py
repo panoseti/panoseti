@@ -545,4 +545,8 @@ def get_isolated_env() -> dict[str, str]:
         if "src" not in env["PYTHONPATH"]:
             env["PYTHONPATH"] = f"src:{env['PYTHONPATH']}"
             
+    # Ensure PSETI_ROOT points to the real repo root so src/ logic works
+    from control.utils.paths import PanoPaths
+    env["PSETI_ROOT"] = str(PanoPaths.software_root_dir())
+
     return env

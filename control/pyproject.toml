@@ -21,6 +21,7 @@ dependencies = [
   "rich>=13.0",
   "pydantic>=2.0",
   "tftpy>=0.8.2",
+  "paramiko",
   "orjson",
   "typing_extensions>=4.5",
   "typer",

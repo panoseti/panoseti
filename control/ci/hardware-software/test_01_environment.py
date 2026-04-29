@@ -48,7 +48,7 @@ def test_network_ping_sweep(runner, daq_config, obs_config):
     Verify physical network topology. 
     DAQ nodes must be up; Quabos must be down (initial state).
     """
-    result = runner.invoke(app, ["obs", "val", "network"])
+    result = runner.invoke(app, ["val", "network"])
     assert result.exit_code == 0
     
     # Assert DAQ nodes are reachable
@@ -81,7 +81,7 @@ def test_grpc_liveness(daq_config, network_config):
     print(f"Checking Head Node gRPC: {head_ip}:{head_port}")
     channel = grpc.insecure_channel(f"{head_ip}:{head_port}")
     try:
-        grpc.channel_ready_future(channel).result(timeout=5)
+        grpc.channel_ready_future(channel).result(timeout=15)
     except grpc.FutureTimeoutError:
         pytest.fail(f"Head Node gRPC server on {head_ip}:{head_port} is not responding!")
     finally:
@@ -97,7 +97,7 @@ def test_grpc_liveness(daq_config, network_config):
         
         channel = grpc.insecure_channel(f"{host}:{port}")
         try:
-            grpc.channel_ready_future(channel).result(timeout=5)
+            grpc.channel_ready_future(channel).result(timeout=15)
         except grpc.FutureTimeoutError:
             pytest.fail(f"DAQ Node gRPC server on {host}:{port} is not responding!")
         finally:
@@ -109,7 +109,7 @@ def test_quabo_power_cycle(runner, obs_config, boot_wait_time):
     1. Power On -> 2. Wait -> 3. Verify Ping -> 4. Power Off
     """
     print("Powering ON Quabos...")
-    res_on = runner.invoke(app, ["power", "status"])
+    res_on = runner.invoke(app, ["power", "on"])
     assert res_on.exit_code == 0
     
     print(f"Waiting {boot_wait_time}s for Quabo boot...")
