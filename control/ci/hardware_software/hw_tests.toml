@@ -1,0 +1,85 @@
+# hw_tests.toml
+[settings]
+default_safety_check = "before_each_batch"
+emergency_teardown_state = "UNPOWERED"
+preflight_marker = "preflight"
+
+# ── Test classes ──
+[classes.driver_protocol]
+description = "Low-level UDP/TFTP packet protocol verification against real quabos."
+required_state = "BOOTED"
+leaves_state = "BOOTED"
+batch_priority = 0
+preflight = false
+parallel = false
+
+[classes.fast_reconfig]
+description = "Configuration changes + short observation, no power cycle."
+required_state = "ACQ_CONFIGURED"
+leaves_state = "ACQ_CONFIGURED"
+batch_priority = 1
+preflight = true
+parallel = false
+
+[classes.observing]
+description = "Real DAQ flow: start.py → record → stop.py → transfer → verify."
+required_state = "ACQUIRING"
+leaves_state = "ACQ_CONFIGURED"
+batch_priority = 2
+preflight = true
+parallel = false
+
+[classes.lifecycle]
+description = "Power cycle, firmware reboot, baseline calibration."
+required_state = "UNPOWERED"
+leaves_state = "BOOTED"
+batch_priority = 3
+preflight = false
+parallel = false
+
+[classes.telemetry]
+description = "HK packet pipeline: UDP → capture_hk.py → Redis → InfluxDB."
+required_state = "BOOTED"
+leaves_state = "BOOTED"
+batch_priority = 0
+preflight = true
+parallel = false
+
+# ── Test → class mapping (node-id glob) ──
+[[mapping]]
+glob = "suites/hw0_driver_protocol/**::*"
+class = "driver_protocol"
+
+[[mapping]]
+glob = "suites/hw1_reconfig/test_interleave_state_switch.py::*"
+class = "fast_reconfig"
+
+[[mapping]]
+glob = "suites/hw2_observing/test_transfer_queue_e2e.py::*"
+class = "observing"
+
+[[mapping]]
+glob = "suites/hw3_lifecycle/test_firmware_reboot.py::*"
+class = "lifecycle"
+
+[[mapping]]
+glob = "suites/hw4_telemetry/**::*"
+class = "telemetry"
+
+# ── Topology requirements ──
+[[requirements]]
+glob = "suites/hw2_observing/test_transfer_queue_multinode.py::*"
+requires_min_modules = 2
+requires_min_daq_nodes = 2
+
+[[requirements]]
+glob = "suites/hw3_lifecycle/test_wr_sync.py::*"
+requires_capability = "white_rabbit"
+
+[[requirements]]
+glob = "suites/hw3_lifecycle/test_gnss_lock.py::*"
+requires_capability = "gnss"
+
+[[requirements]]
+glob = "suites/hw0_driver_protocol/test_port_forwarding.py::*"
+requires_capability = "port_forwarding"

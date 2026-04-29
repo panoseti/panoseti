@@ -1,0 +1,113 @@
+# hw_state_machine.toml
+[state_machine]
+initial = "UNPOWERED"
+safe = "UNPOWERED"   # state to leave hardware in on framework exit
+
+# States ordered loosely from "cold" → "warm" → "hot"
+[[states]]
+name = "UNPOWERED"
+desc = "WPS outlet off."
+
+[[states]]
+name = "BOOTED"
+desc = "Quabo CPU up, FPGA loaded, ping responsive, registers at firmware default."
+
+[[states]]
+name = "MAROC_LOADED"
+desc = "MAROC chip registers programmed."
+
+[[states]]
+name = "ACQ_CONFIGURED"
+desc = "ACQ params + trigger masks + GOE masks + dest IPs set."
+
+[[states]]
+name = "HV_ON"
+desc = "HV ramped to setpoint; detector live."
+
+[[states]]
+name = "ACQUIRING"
+desc = "DAQ mode bits set; quabo emitting science packets to DAQ node."
+
+# Primitives — atomic state transitions.
+[[primitives]]
+name = "wps_power_on"
+from_states = ["UNPOWERED"]
+to_state = "BOOTED"
+budget_s = { typical = 120, max = 300 }
+safety = "high"
+entrypoint = "control.power:quabo_power"
+kwargs = { on = true }
+
+[[primitives]]
+name = "wps_power_off"
+from_states = ["*"]
+to_state = "UNPOWERED"
+budget_s = { typical = 5, max = 10 }
+safety = "high"
+entrypoint = "control.power:quabo_power"
+kwargs = { on = false }
+
+[[primitives]]
+name = "tftp_reboot"
+from_states = ["BOOTED", "MAROC_LOADED", "ACQ_CONFIGURED", "HV_ON"]
+to_state = "BOOTED"
+budget_s = { typical = 60, max = 120 }
+safety = "medium"
+entrypoint = "control.driver.quabo_tftp:tftpw.reboot"
+
+[[primitives]]
+name = "soft_reset"
+from_states = ["MAROC_LOADED", "ACQ_CONFIGURED", "HV_ON", "ACQUIRING"]
+to_state = "BOOTED"
+budget_s = { typical = 1, max = 2 }
+safety = "low"
+entrypoint = "control.driver.quabo_driver:QUABO.reset"
+
+[[primitives]]
+name = "configure_maroc"
+from_states = ["BOOTED"]
+to_state = "MAROC_LOADED"
+budget_s = { typical = 1, max = 5 }
+safety = "low"
+entrypoint = "hw_utils.driver_ops:configure_maroc"
+
+[[primitives]]
+name = "configure_acq"
+from_states = ["MAROC_LOADED"]
+to_state = "ACQ_CONFIGURED"
+budget_s = { typical = 1, max = 5 }
+safety = "low"
+entrypoint = "hw_utils.driver_ops:configure_acq"
+
+[[primitives]]
+name = "hv_on"
+from_states = ["ACQ_CONFIGURED"]
+to_state = "HV_ON"
+budget_s = { typical = 2, max = 10 }
+safety = "high"
+entrypoint = "hw_utils.driver_ops:hv_set_from_config"
+guards = ["shutter_must_be_closed", "light_sensor_dark"]
+
+[[primitives]]
+name = "hv_off"
+from_states = ["*"]
+to_state = "ACQ_CONFIGURED"
+budget_s = { typical = 2, max = 5 }
+safety = "high"
+entrypoint = "hw_utils.driver_ops:hv_zero"
+
+[[primitives]]
+name = "start_acq"
+from_states = ["HV_ON", "ACQ_CONFIGURED"]
+to_state = "ACQUIRING"
+budget_s = { typical = 5, max = 15 }
+safety = "low"
+entrypoint = "hw_utils.run_ops:start_run_via_cli"
+
+[[primitives]]
+name = "stop_acq"
+from_states = ["ACQUIRING"]
+to_state = "ACQ_CONFIGURED"
+budget_s = { typical = 60, max = 90 }
+safety = "low"
+entrypoint = "hw_utils.run_ops:stop_run_via_cli"

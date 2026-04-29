@@ -61,6 +61,7 @@ dependencies = [
   include = ["control*"]
 
   [tool.pytest.ini_options]
+  pythonpath = ["src", "."]
   testpaths = ["ci"]
   asyncio_mode = "auto"
   timeout = 30

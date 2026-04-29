@@ -17,12 +17,14 @@ import click
 import typer
 import typer.core
 from panoseti_grpc.util.cli import BaseLazyGroup, display_tree_callback
-from qa_utils import (
+from ci.shared.qa_models import (
+    EnvironmentConfig,
+    SuiteConfig,
+)
+from ci.software_only.qa_utils import (
     CONTROL_ROOT,
     QA_TOML_PATH,
-    EnvironmentConfig,
     SSHTunnel,
-    SuiteConfig,
     TestRunner,
 )
 from rich.console import Console
@@ -71,6 +73,38 @@ class GrpcTestLazyGroup(BaseLazyGroup):
             return None
 
 
+class HwTestLazyGroup(BaseLazyGroup):
+    """
+    Lazy-loading group for Hardware-Software (HITL) tests.
+    Delegates to ci.hardware_software.hw_utils.cli.
+    """
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        import importlib
+        try:
+            mod = importlib.import_module("ci.hardware_software.hw_utils.cli")
+            test_app = mod.app
+            click_group = typer.main.get_command(test_app)
+            return click_group.list_commands(ctx)  # type: ignore[attr-defined]
+        except Exception:
+            return []
+
+    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
+        import importlib
+        try:
+            mod = importlib.import_module("ci.hardware_software.hw_utils.cli")
+            test_app = mod.app
+            click_group = typer.main.get_command(test_app)
+            cmd = click_group.get_command(ctx, name)  # type: ignore[attr-defined]
+            if cmd:
+                cmd.name = name
+                return cmd
+            return None
+        except Exception as e:
+            error_console = Console(stderr=True)
+            error_console.print(f"[red]Error loading HW test command '{name}': {e}[/red]")
+            return None
+
+
 app = typer.Typer(
     help="PSETI Quality Assurance & Testing Suite.",
     no_args_is_help=True,
@@ -79,7 +113,7 @@ app = typer.Typer(
 
 # Sub-apps for organization
 sw_app = typer.Typer(help="Software QA tests (Docker-based CI simulations)", no_args_is_help=True)
-hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
+hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True, cls=HwTestLazyGroup)
 grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
 
 app.add_typer(sw_app, name="sw")
@@ -260,333 +294,6 @@ def sw_cleanup(ctx: typer.Context) -> None:
     # TestRunner cleanup logic needed in qa_utils.py
     pass
 
-
-# ---------------------------------------------------------------------------
-# HW Subcommands (HITL)
-# ---------------------------------------------------------------------------
-
-def get_hw_suite_and_env(ctx: typer.Context) -> tuple[SuiteConfig, EnvironmentConfig]:
-    """Helper to resolve the hardware suite and its environment configuration."""
-    runner: TestRunner = ctx.obj
-    suite_name = "test-hw"
-    if suite_name not in runner.cfg.suites:
-        console.print(f"[red]Error: Suite {suite_name} not found in qa.toml[/red]")
-        raise typer.Exit(code=1)
-    
-    suite = runner.cfg.suites[suite_name]
-    if not suite.environment:
-        console.print(f"[red]Error: Suite {suite_name} does not specify an environment[/red]")
-        raise typer.Exit(code=1)
-    
-    if suite.environment not in runner.cfg.environments:
-        console.print(f"[red]Error: Environment {suite.environment} not found in qa.toml[/red]")
-        raise typer.Exit(code=1)
-    
-    return suite, runner.cfg.environments[suite.environment]
-
-def load_hitl_configs(env_cfg: EnvironmentConfig):
-    """Load PSETI configs from the HITL-specific directory."""
-    from control.utils import config_file, util
-    config_dir = CONTROL_ROOT / env_cfg.config_dir
-    daq_cfg = config_file.get_daq_config(dir=str(config_dir))
-    net_cfg = config_file.get_network_config(dir=str(config_dir))
-    obs_cfg = config_file.get_obs_config(dir=str(config_dir))
-    util.attach_daq_config(daq_cfg, net_cfg)
-    return daq_cfg, net_cfg, obs_cfg
-
-def get_ssh_host(node: Any) -> str:
-    """Construct ssh:// URI for a node, handling port forwarding gateway."""
-    if node.port_forwarding and node.port_forwarding.status:
-        port = node.port_forwarding.port or 22
-        if port == 22:
-            return f"ssh://{node.username}@{node.port_forwarding.gw_ip}"
-        return f"ssh://{node.username}@{node.port_forwarding.gw_ip}:{port}"
-    return f"ssh://{node.username}@{node.ip_addr}"
-
-def get_raw_ssh_args(ssh_host_uri: str) -> str:
-    """Convert a ssh:// URI into raw ssh command arguments."""
-    uri = ssh_host_uri.replace("ssh://", "")
-    if ":" in uri:
-        target, port = uri.split(":")
-        return f"-p {port} {target}"
-    return uri
-
-async def resolve_remote_socket_path(runner: TestRunner, ssh_args: str) -> str:
-    """Query remote host to find the correct rootless Podman socket path."""
-    await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} 'systemctl --user start podman.socket || true'", quiet=True)
-    remote_cmd = (
-        "if [ -S /run/user/$(id -u)/podman/podman.sock ]; then echo /run/user/$(id -u)/podman/podman.sock; "
-        "elif [ -S /run/podman/podman.sock ]; then echo /run/podman/podman.sock; "
-        "else echo /run/podman/podman.sock; fi"
-    )
-    res = await runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} '{remote_cmd}'", capture=True)
-    return res.stdout.strip() if res.ok and res.stdout else "/run/podman/podman.sock"
-
-@hw_app.command(name="build")
-def hw_build(ctx: typer.Context) -> None:
-    """Build required container images locally."""
-    runner: TestRunner = ctx.obj
-    _suite, env_cfg = get_hw_suite_and_env(ctx)
-    tool = runner.container_tool
-    
-    console.print(f"[cyan]Building HITL images locally with {tool}...[/cyan]")
-    env = {"BUILDAH_ISOLATION": "chroot"} if tool == "podman" else {}
-    if tool == "podman":
-        console.print("[dim]Ensuring local Podman socket is active...[/dim]")
-        asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
-    
-    # Build profiles one by one to avoid resource exhaustion and RPC timeouts during export
-    for profile in ["headnode", "daqnode"]:
-        console.print(f"[cyan]Building profile: {profile}...[/cyan]")
-        build_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile {profile} build"
-        asyncio.run(runner._run_cmd(build_cmd, env=env))
-
-@hw_app.command(name="check-env")
-def hw_check_env(
-    ctx: typer.Context, 
-    min_gb: int = typer.Option(10, "--min-gb", help="Minimum required free space in GB.")
-) -> None:
-    """Verify environment, disk space, and container engine."""
-    runner: TestRunner = ctx.obj
-    _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg, obs_cfg = load_hitl_configs(env_cfg)
-    tool = runner.container_tool
-    
-    console.print(f"[dim]Checking container engine ({tool})...[/dim]")
-    res = asyncio.run(runner._run_cmd(f"{tool} version", quiet=True))
-    if not res.ok:
-        console.print(f"[red]Error: {tool} is not installed or responsive.[/red]")
-        raise typer.Exit(code=1)
-        
-    if tool == "podman":
-        res = asyncio.run(runner._run_cmd("systemctl --user is-active podman.socket", quiet=True))
-        if not res.ok:
-            console.print("[yellow]Warning: podman.socket is not active. Attempting to start...[/yellow]")
-            asyncio.run(runner._run_cmd("systemctl --user start podman.socket"))
-
-    # Check Headnode storage
-    console.print(f"[dim]Checking Headnode storage {daq_cfg.head_node_data_dir}...[/dim]")
-    if not os.path.exists(daq_cfg.head_node_data_dir):
-        console.print(f"[red]Error: {daq_cfg.head_node_data_dir} does not exist.[/red]")
-        raise typer.Exit(code=1)
-    
-    usage = shutil.disk_usage(daq_cfg.head_node_data_dir)
-    free_gb = usage.free / (2**30)
-    if free_gb < min_gb:
-        console.print(f"[red]Error: Low Headnode space. {free_gb:.1f}GB free, {min_gb}GB required.[/red]")
-        raise typer.Exit(code=1)
-
-    # Check WPS reachability
-    console.print("[dim]Checking WPS power supplies reachability...[/dim]")
-    extra_data = obs_cfg.model_extra or {}
-    for key, val in extra_data.items():
-        if key.startswith("wps"):
-            url = val.get("url")
-            if url:
-                console.print(f"[dim]Checking WPS {key} at {url}...[/dim]")
-                # Use a short timeout for the reachability check
-                cmd = f"curl -s --connect-timeout 2 --head {url}"
-                res = asyncio.run(runner._run_cmd(cmd, quiet=True))
-                if res.ok:
-                    console.print(f"[green]✔ WPS {key} is reachable.[/green]")
-                else:
-                    console.print(f"[yellow]⚠ WPS {key} is NOT reachable (url={url}).[/yellow]")
-
-    # Check remote connectivity and DAQnode storage
-    for node in daq_cfg.daq_nodes:
-        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
-            continue
-
-        console.print(f"[dim]Checking SSH credentials for {node.ip_addr}...[/dim]")
-        ssh_args = get_raw_ssh_args(get_ssh_host(node))
-        res = asyncio.run(runner._run_cmd(f"ssh -o BatchMode=yes {ssh_args} 'true'", quiet=True))
-        if not res.ok:
-             console.print(f"[red]Error: SSH key-based authentication failed for {node.ip_addr}.[/red]")
-             raise typer.Exit(code=1)
-
-        console.print(f"[dim]Checking DAQnode ({node.ip_addr}) storage {node.data_dir}...[/dim]")
-        df_cmd = f"ssh {ssh_args} 'df -B1 --output=avail {node.data_dir} | tail -n 1'"
-        res = asyncio.run(runner._run_cmd(df_cmd, capture=True))
-        if res.ok and res.stdout:
-            try:
-                free_bytes = int(res.stdout.strip())
-                node_free_gb = free_bytes / (2**30)
-                if node_free_gb < min_gb:
-                    console.print(f"[red]Error: Low space on {node.ip_addr}. {node_free_gb:.1f}GB free.[/red]")
-                    raise typer.Exit(code=1)
-            except ValueError:
-                console.print(f"[red]Error: Could not parse disk space from {node.ip_addr}.[/red]")
-                raise typer.Exit(code=1) from None
-
-    console.print(f"[green]Environment OK. {tool} is ready and space is sufficient.[/green]")
-
-async def ensure_docker_context(runner: TestRunner, name: str, ssh_host_uri: str) -> None:
-    """Ensure a Docker context exists and points to the correct host."""
-    res = await runner._run_cmd(f"docker context inspect {name}", quiet=True, capture=True)
-    if not res.ok:
-        # Context doesn't exist, create it
-        create_cmd = f"docker context create {name} --docker \"host={ssh_host_uri}\""
-        await runner._run_cmd(create_cmd)
-    else:
-        # Context exists, verify the host matches (in case IPs/ports changed)
-        try:
-            inspect_data = json.loads(res.stdout)
-            current_host = inspect_data[0].get("Endpoints", {}).get("docker", {}).get("Host", "")
-            if current_host != ssh_host_uri:
-                # Update context
-                update_cmd = f"docker context update {name} --docker \"host={ssh_host_uri}\""
-                await runner._run_cmd(update_cmd)
-        except (IndexError, KeyError, json.JSONDecodeError):
-            pass
-
-@hw_app.command(name="deploy")
-def hw_deploy(ctx: typer.Context) -> None:
-    """Initialize containers on head node and remote DAQ node."""
-    runner: TestRunner = ctx.obj
-    _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
-    tool = runner.container_tool
-    
-    console.print(f"[cyan]Deploying Headnode profile locally with {tool}...[/cyan]")
-    if tool == "podman":
-        asyncio.run(runner._run_cmd("systemctl --user start podman.socket || true"))
-    
-    head_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode up -d"
-    if runner.no_build:
-        head_cmd += " --no-build"
-    asyncio.run(runner._run_cmd(head_cmd))
-    
-    for node in daq_cfg.daq_nodes:
-        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
-            continue
-        
-        ssh_host_uri = get_ssh_host(node)
-        
-        if tool == "docker":
-            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
-            console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via context {context_name}...[/cyan]")
-            asyncio.run(ensure_docker_context(runner, context_name, ssh_host_uri))
-            
-            if not runner.no_build:
-                console.print(f"[cyan]Transferring images to {node.ip_addr} via context...[/cyan]")
-                # Use --context for BOTH save and load to be explicit, though save is usually local
-                transfer_cmd = f"docker save pseti-daqnode:hitl | docker --context {context_name} load"
-                os.system(transfer_cmd)
-                
-            daq_cmd = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
-            if runner.no_build:
-                daq_cmd += " --no-build"
-            asyncio.run(runner._run_cmd(daq_cmd))
-        else:
-            # Podman path using SSHTunnel
-            ssh_args = get_raw_ssh_args(ssh_host_uri)
-            console.print(f"[cyan]Deploying DAQnode profile to {node.ip_addr} via tunnel...[/cyan]")
-            remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
-            with SSHTunnel(ssh_args, remote_sock) as local_sock:
-                env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
-                
-                if not runner.no_build:
-                    console.print(f"[cyan]Transferring images to {node.ip_addr} via tunnel...[/cyan]")
-                    transfer_cmd = f"{tool} save pseti-daqnode:hitl | env DOCKER_HOST=unix://{local_sock} CONTAINER_HOST=unix://{local_sock} {tool} load"
-                    os.system(transfer_cmd)
-                    
-                daq_cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode up -d"
-                if runner.no_build:
-                    daq_cmd += " --no-build"
-                asyncio.run(runner._run_cmd(daq_cmd, env=env))
-
-@hw_app.command(name="clean")
-def hw_clean(ctx: typer.Context) -> None:
-    """Tear down containers and wipe physical data directory."""
-    runner: TestRunner = ctx.obj
-    _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
-    tool = runner.container_tool
-    
-    console.print(f"[yellow]Tearing down Headnode profile with {tool}...[/yellow]")
-    head_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode down -v"
-    asyncio.run(runner._run_cmd(head_down))
-    
-    for node in daq_cfg.daq_nodes:
-        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
-            continue
-        ssh_host_uri = get_ssh_host(node)
-        
-        if tool == "docker":
-            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
-            console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} via context {context_name}...[/yellow]")
-            daq_down = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
-            asyncio.run(runner._run_cmd(daq_down))
-        else:
-            ssh_args = get_raw_ssh_args(ssh_host_uri)
-            console.print(f"[yellow]Tearing down DAQnode profile on {node.ip_addr} via tunnel...[/yellow]")
-            remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
-            with SSHTunnel(ssh_args, remote_sock) as local_sock:
-                env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
-                daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down -v"
-                asyncio.run(runner._run_cmd(daq_down, env=env))
-    console.print("[yellow]Placeholder: Data wiping skipped.[/yellow]")
-
-@hw_app.command(name="down")
-def hw_down(ctx: typer.Context) -> None:
-    """Stop containers but preserve volumes (use 'clean' for full wipe)."""
-    runner: TestRunner = ctx.obj
-    _suite, env_cfg = get_hw_suite_and_env(ctx)
-    daq_cfg, _net_cfg, _obs_cfg = load_hitl_configs(env_cfg)
-    tool = runner.container_tool
-    
-    console.print(f"[yellow]Stopping Headnode profile with {tool}...[/yellow]")
-    head_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode down"
-    asyncio.run(runner._run_cmd(head_down))
-    
-    for node in daq_cfg.daq_nodes:
-        if str(node.ip_addr) == str(daq_cfg.head_node_ip_addr):
-            continue
-        ssh_host_uri = get_ssh_host(node)
-        
-        if tool == "docker":
-            context_name = f"pseti-daq-{str(node.ip_addr).replace('.', '-')}"
-            console.print(f"[yellow]Stopping DAQnode profile on {node.ip_addr} via context {context_name}...[/yellow]")
-            daq_down = f"docker --context {context_name} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down"
-            asyncio.run(runner._run_cmd(daq_down))
-        else:
-            ssh_args = get_raw_ssh_args(ssh_host_uri)
-            console.print(f"[yellow]Stopping DAQnode profile on {node.ip_addr} via tunnel...[/yellow]")
-            remote_sock = asyncio.run(resolve_remote_socket_path(runner, ssh_args))
-            with SSHTunnel(ssh_args, remote_sock) as local_sock:
-                env = {"CONTAINER_HOST": f"unix://{local_sock}", "DOCKER_HOST": f"unix://{local_sock}"}
-                daq_down = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile daqnode down"
-                asyncio.run(runner._run_cmd(daq_down, env=env))
-
-@hw_app.command(name="attach")
-def hw_attach(ctx: typer.Context) -> None:
-    """Enter the headnode container shell for debugging."""
-    runner: TestRunner = ctx.obj
-    _suite, env_cfg = get_hw_suite_and_env(ctx)
-    tool = runner.container_tool
-    
-    cmd = f"{tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode exec headnode-server /bin/bash"
-    console.print("[cyan]Attaching to headnode-server...[/cyan]")
-    os.system(cmd)
-
-@hw_app.command(name="run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def hw_run(
-    ctx: typer.Context,
-    tool: str | None = typer.Option(None, "--tool", help="Container tool to use (docker or podman).")
-) -> None:
-    """Run the physical hardware-software (HITL) test suite."""
-    runner: TestRunner = ctx.obj
-    suite, env_cfg = get_hw_suite_and_env(ctx)
-    if tool:
-        runner.container_tool = tool
-    
-    pytest_args = " ".join(ctx.args)
-    cmd = f"{runner.container_tool} compose -f {CONTROL_ROOT}/{env_cfg.compose_file} --profile headnode exec headnode-server pytest {suite.test_dir} {pytest_args}"
-    
-    console.print("[cyan]Running test-hw in headnode-server container...[/cyan]")
-    exit_code = os.system(cmd)
-    if exit_code != 0:
-        raise typer.Exit(code=1)
 
 if __name__ == "__main__":
     app()
