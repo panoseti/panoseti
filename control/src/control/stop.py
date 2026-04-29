@@ -377,7 +377,7 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
     async def stop_node(node: DaqNode) -> None:
         if not node.module_ids:
             return
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         if verbose:
             logger.info(f'StopDaq via gRPC: {grpc_host}:{grpc_port}')
         
@@ -558,7 +558,7 @@ async def _cleanup_daq_grpc(
                     log_error(msg, head_run_dir)
                     errors.append(msg)
         else:
-            grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+            grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
             if verbose:
                 logger.info(f'CleanupData via gRPC: {grpc_host}:{grpc_port} run_dir={run} force={force}')
             try:

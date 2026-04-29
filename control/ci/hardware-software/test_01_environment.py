@@ -92,7 +92,7 @@ def test_grpc_liveness(daq_config, network_config):
     util.attach_daq_config(daq_config, network_config)
     
     for node in daq_config.daq_nodes:
-        host, port = util.daq_grpc_endpoint(node)
+        host, port = util.daq_grpc_endpoint(node, daq_config)
         print(f"Checking DAQ Node gRPC: {host}:{port} (Physical: {node.ip_addr})")
         
         channel = grpc.insecure_channel(f"{host}:{port}")

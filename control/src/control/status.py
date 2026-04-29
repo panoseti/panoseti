@@ -97,7 +97,7 @@ async def _remote_summary() -> list[str]:
         assert isinstance(node, DaqNode)
         if not node.module_ids:
             return f"  {node.ip_addr}  (no modules)"
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         try:
             async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
                 ok, status = await asyncio.wait_for(

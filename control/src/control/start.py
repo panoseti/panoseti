@@ -167,7 +167,7 @@ class StartTransaction:
 
                     logger.info(f"Rolling back node {node.ip_addr} (Status: {receipt.status})...")
                     try:
-                        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+                        grpc_host, grpc_port = util.daq_grpc_endpoint(node, self.daq_config)
                         async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
                             await client.StopDaq({'data_dir': node.data_dir, 'run_dir': self.run_name}, timeout=15.0)
                     except Exception as stop_err:
@@ -574,7 +574,7 @@ async def start_recording(
         if not node_validator.module_ids:
             return
         
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
         logger.info(f'StartDaq via gRPC: {grpc_host}:{grpc_port} modules={node_validator.module_ids}')
         
         start_args = {
@@ -658,7 +658,7 @@ async def start_recording(
         if not node_validator.module_ids:
             return
         
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
         
         # Retry loop: 5 attempts, 1s backoff
         last_err = ""
@@ -721,7 +721,7 @@ async def start_recording(
                 continue
             
             async def verify_liveness(node_validator: DaqNode) -> None:
-                grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator)
+                grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
                 
                 try:
                     async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
@@ -824,7 +824,7 @@ async def _check_daq_reachability(daq_config: DaqConfig) -> None:
     async def check_node_grpc(node: DaqNode) -> None:
         if not node.module_ids:
             return
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         try:
             async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
                 await client.StatusDaq({"data_dir": node.data_dir}, timeout=5.0)
@@ -893,7 +893,7 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool =
     async def check_node(node: DaqNode) -> None:
         if not node.module_ids:
             return
-        grpc_host, grpc_port = util.daq_grpc_endpoint(node)
+        grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         try:
             async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
                 ok, status = await client.StatusDaq({

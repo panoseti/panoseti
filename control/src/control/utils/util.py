@@ -111,14 +111,26 @@ def now_str() -> str:
 #
 default_hk_dest = '192.168.1.100'
 
-def daq_grpc_endpoint(node: DaqNode) -> tuple[str, int]:
+def daq_grpc_endpoint(node: DaqNode, daq_config: DaqConfig | None = None) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.
 
     Reads port_forwarding from the node model (attached by attach_daq_config).
+    If we are not local to the node, it uses the gateway IP and forwarded port.
     Falls back to direct connection on port 50051.
     """
-    if node.port_forwarding and node.port_forwarding.status and node.port_forwarding.grpc_port is not None:
-        return str(node.port_forwarding.gw_ip), node.port_forwarding.grpc_port
+    # 1. If we have a daq_config, check if we are actually ON the node or in its local network.
+    # If so, bypass the gateway entirely.
+    if daq_config and is_local(node.ip_addr, daq_config):
+        return str(node.ip_addr), 50051
+
+    # 2. If port forwarding is enabled and we are not local, use the gateway.
+    if node.port_forwarding and node.port_forwarding.status:
+        # If grpc_port is None, assume the default 50051 is forwarded.
+        host = str(node.port_forwarding.gw_ip)
+        port = node.port_forwarding.grpc_port or 50051
+        return host, port
+
+    # 3. Default direct connection
     return str(node.ip_addr), 50051
 
 
