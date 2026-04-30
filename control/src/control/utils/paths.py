@@ -54,12 +54,11 @@ class PanoPaths:
                 return pathlib.Path(override).resolve()
         
         # In Docker, we often mount control at /app. 
-        # If software_root is /, base_dir should be /app if it exists.
-        root = cls.software_root_dir()
-        if root == pathlib.Path("/") and pathlib.Path("/app").exists():
+        # If /app exists, prioritize it as the base directory.
+        if pathlib.Path("/app").exists():
             return pathlib.Path("/app")
 
-        return root / "control"
+        return cls.software_root_dir() / "control"
 
     @classmethod
     def config_dir(cls) -> pathlib.Path:
@@ -120,12 +119,12 @@ class PanoPaths:
     @classmethod
     def tools_dir(cls) -> pathlib.Path:
         """Directory containing control plane utility scripts."""
-        return cls.software_root_dir() / "control/src/control/tools"
+        return cls.base_dir() / "src/control/tools"
 
     @classmethod
     def daemons_dir(cls) -> pathlib.Path:
         """Directory containing background service daemons."""
-        return cls.software_root_dir() / "control/src/control/daemons"
+        return cls.base_dir() / "src/control/daemons"
 
     @classmethod
     def state_dir(cls) -> pathlib.Path:

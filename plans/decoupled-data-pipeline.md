@@ -253,15 +253,15 @@ Three TDD phases. Each phase: **(a) write failing tests first**, **(b) implement
 
 **Goal:** `stop.py` completes in seconds. All collect/cleanup logic leaves the critical section and becomes a pending job. No daemon yet — jobs accumulate in `tmp/transfer_queue/pending/`.
 
-1. **Red: unit tests for new ledger states** (`control/ci/unit/test_run_state_extended.py`)
+1. **Red: unit tests for new ledger states** (`control/src/ci/unit/test_run_state_extended.py`)
    - Accepts the full status `Literal` set.
    - `NodeReceipt` round-trips new fields through `save_state`/`load_state` (exercise `_escape_toml_str` via manifest path with spaces).
    - Legacy `run_state.toml` files (only pre-existing statuses) still load.
-2. **Red: unit tests for transfer-queue writer** (`control/ci/unit/test_transfer_queue.py`)
+2. **Red: unit tests for transfer-queue writer** (`control/src/ci/unit/test_transfer_queue.py`)
    - `TransferQueue.enqueue(run_name, ...)` creates exactly one `pending/*.job.toml` atomically.
    - Double-enqueue of the same run is idempotent (no duplicate file).
    - `TransferQueue.claim()` / `.complete()` / `.fail()` move files between dirs via `os.rename`.
-3. **Red: integration test that `stop.py` is fast** (`control/ci/integration/test_stop_fast_path.py`)
+3. **Red: integration test that `stop.py` is fast** (`control/src/ci/integration/test_stop_fast_path.py`)
    - Mock DAQ nodes that sleep 30 s in `StopDaq` are unacceptable; assert end-to-end `stop_run()` returns in < 5 s with the transfer queue populated.
    - Assert ledger status is `RECORDING_ENDED` (not `COMPLETED`).
    - Assert `run_complete` marker is **not** yet written (moved to daemon).
@@ -281,7 +281,7 @@ Three TDD phases. Each phase: **(a) write failing tests first**, **(b) implement
      - Move `collect_data` body into `control/utils/transfer/rsync_worker.py::rsync_one_node`.
      - Replace `collect.py` top-of-file and `__main__` CLI with a deprecation banner + enqueue call.
      - Delete `collect.cleanup_daq`.
-5. **Green:** Phase 2 tests pass; existing `control/ci/integration/` suite continues to pass, with the single change that `run_complete` assertions move to the daemon test suite (Phase 3). Any test that asserts on-disk data presence post-`stop.py` is converted to drain the queue synchronously via a test helper (`TransferQueue.run_once_inline()`).
+5. **Green:** Phase 2 tests pass; existing `control/src/ci/integration/` suite continues to pass, with the single change that `run_complete` assertions move to the daemon test suite (Phase 3). Any test that asserts on-disk data presence post-`stop.py` is converted to drain the queue synchronously via a test helper (`TransferQueue.run_once_inline()`).
 6. **Integration gate:** `python ci/qa.py unit integration` green; `python ci/qa.py chaos -k "SC002 or SC010"` shows no regressions versus master baseline.
 
 **Critical files:** `control/stop.py`, `control/utils/run_state.py`, `control/utils/transfer/queue.py` (new), `control/utils/transfer/rsync_worker.py` (new), `control/utils/collect.py` (shrunk).
@@ -290,14 +290,14 @@ Three TDD phases. Each phase: **(a) write failing tests first**, **(b) implement
 
 **Goal:** a long-running async process drains the queue: manifest → rsync → verify → selective cleanup → archive.
 
-1. **Red: unit tests** (`control/ci/unit/test_transfer_daemon.py`)
+1. **Red: unit tests** (`control/src/ci/unit/test_transfer_daemon.py`)
    - State-machine tests driving a daemon instance with a fake gRPC client + fake filesystem, asserting exact ledger transitions per scenario:
      - Happy path → `ARCHIVED`.
      - Manifest RPC fails → `MANIFEST_PENDING` retry with exponential backoff in `next_action_not_before`.
      - Rsync partial → `TRANSFER_FAILED` → retry resumes from rsync's own partial state (no re-manifest).
      - Head-node digest mismatch for one module → node flagged `verify_ok=False`, others proceed to cleanup, overall run → `STOPPED_WITH_ERRORS`.
      - `--force-cleanup` flag on job skips verify.
-2. **Red: integration tests** (`control/ci/integration/test_transfer_daemon_e2e.py`)
+2. **Red: integration tests** (`control/src/ci/integration/test_transfer_daemon_e2e.py`)
    - Two-node topology (existing `daqnode` + `daqnode-2`); run a tiny synthetic job (few MB of fake `.pff` + `.json`); assert:
      - DAQ side after archive: `.pff` gone, `.json` + `hp_stdout.log` + `manifest.blake3` preserved.
      - Head side: all `.pff` copied; head-node manifest matches; ledger `ARCHIVED`; `run_complete` marker present.

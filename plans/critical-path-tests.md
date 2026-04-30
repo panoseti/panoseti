@@ -255,7 +255,7 @@ The DAQ-node multi-disk layout and head-node multi-volume layout (`Storage-on-DA
 
 #### Config validation (SC-081 → SC-094)
 
-These extend `control/ci/unit/test_global_validator.py` but exercise the full `start.py --validate-only` path with mock-quabo responses where needed.
+These extend `control/src/ci/unit/test_global_validator.py` but exercise the full `start.py --validate-only` path with mock-quabo responses where needed.
 
 | # | Scenario | TDD-forcing |
 |---|---|---|
@@ -279,7 +279,7 @@ These extend `control/ci/unit/test_global_validator.py` but exercise the full `s
 ### 1.4 Fixture architecture
 
 ```
-control/ci/integration/
+control/src/ci/integration/
 ├── conftest.py                    # existing — extended
 ├── chaos/
 │   ├── __init__.py

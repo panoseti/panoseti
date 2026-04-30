@@ -1,24 +1,7 @@
-import sys
-from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 from panoseti_grpc.util.cli import BaseLazyGroup, display_tree_callback
-
-
-def pseti_path_injector(name: str) -> None:
-    """Inject paths for PSETI development and CI environments."""
-    # Special handling for QA suites which live in control/ci/
-    if name == "test":
-        ci_path = str(Path(__file__).parent.parent.parent / "ci")
-        if Path(ci_path).exists() and ci_path not in sys.path:
-            sys.path.insert(0, ci_path)
-    
-    # Support dev environments where panoseti_grpc is adjacent
-    if name == "grpc":
-        grpc_path = str(Path(__file__).parent.parent.parent.parent / "grpc" / "src")
-        if Path(grpc_path).exists() and grpc_path not in sys.path:
-            sys.path.insert(0, grpc_path)
 
 
 class PanoLazyGroup(BaseLazyGroup):
@@ -37,7 +20,7 @@ class PanoLazyGroup(BaseLazyGroup):
             "session-stop": ("control.session_stop", "app", "Gracefully power down and terminate a session."),
             # System commands
             "show": ("control.tools.show_cli", "app", "Inspect and visualize system state (paths, commands)."),
-            "test": ("test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
+            "test": ("ci.test_cli", "app", "Unified PSETI testing suite (lint, sw, hw)."),
             "grpc": ("panoseti_grpc.cli", "app", "gRPC service operations (health, reflection, etc)."),
         }
         # Explicit order to ensure consistent UX regardless of mapping insertion order
@@ -49,7 +32,6 @@ class PanoLazyGroup(BaseLazyGroup):
             *args, 
             lazy_mapping=lazy_mapping, 
             command_order=command_order,
-            path_injector=pseti_path_injector, 
             **kwargs
         )
 

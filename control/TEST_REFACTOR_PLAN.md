@@ -122,8 +122,8 @@ Every test class or function must strictly document:
 ## 8. Implementation Roadmap (Iterative)
 
 1. **Phase 1 (COMPLETED)**: Implement the expanded `auto_isolate` fixture.
-   - **Status**: Core logic isolation is active via `control/ci/fixtures/conftest.py`.
-   - **Infrastructure**: Introduced `MockDaqNode`, `make_transfer_job`, and `simulate_daq_fs` factories in `control/ci/fixtures/`.
+   - **Status**: Core logic isolation is active via `control/src/ci/fixtures/conftest.py`.
+   - **Infrastructure**: Introduced `MockDaqNode`, `make_transfer_job`, and `simulate_daq_fs` factories in `control/src/ci/fixtures/`.
    - **Contract Verification**: Tier 2 logic tests now include `test_contract_mocks.py` to prevent drift against production gRPC models.
 2. **Phase 2 (COMPLETED)**: Refine topology generation utilities.
    - **Status**: `control/src/control/topology/fleet.py` updated to generate realistic multi-site matrices.
@@ -131,7 +131,7 @@ Every test class or function must strictly document:
    - **Verification**: Tier 1 unit tests (`test_topology_gen.py`) verify model consistency and documentation parity.
 3. **Phase 3 (COMPLETED)**: Migrate remaining legacy scenarios into the Domain-Driven Tier 2 structure.
    - **Status**: Transitioned `RunStateManager`, `TransferPipeline`, `ConfigValidation`, and `Telemetry` logic tests.
-   - **Domains**: Created `test_config_logic.py`, `test_ledger.py`, `test_transfer.py`, and `test_telemetry.py` in `control/ci/tier2_logic/`.
+   - **Domains**: Created `test_config_logic.py`, `test_ledger.py`, `test_transfer.py`, and `test_telemetry.py` in `control/src/ci/tier2_logic/`.
    - **Modernization**: All migrated tests now utilize the `auto_isolate` fixture and BDD-style naming standards.
 4. **Phase 4 (COMPLETED)**: Dynamic Fleets & Runner Modernization.
    - **Infrastructure**: Added `testcontainers-python` to `pyproject.toml`.

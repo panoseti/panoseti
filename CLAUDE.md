@@ -288,12 +288,12 @@ The daemon holds `tmp/panoseti_transfer.lock` (flock) as a singleton guard. `sto
 `control/pyproject.toml` sets `requires-python = ">=3.14"`.
 
 ### Test locations
-- `control/ci/unit/` — hardware-agnostic Python unit tests (538 tests, 12 modules)
-- `control/ci/integration/` — end-to-end Docker integration tests (65 passing)
-- `control/ci/integration/scenarios/` — chaos / transactional-integrity tests (114 tests)
-- `control/ci/hardware-software/` — hardware-in-the-loop tests (HW-01 … HW-05, requires real Quabos)
-- `control/ci/Dockerfile.ci` — multi-stage image for all test suites
-- `control/ci/test_cli.py` — unified `pseti test` CLI (invoked via `pseti test sw/hw/grpc/lint`)
+- `control/src/ci/unit/` — hardware-agnostic Python unit tests (538 tests, 12 modules)
+- `control/src/ci/integration/` — end-to-end Docker integration tests (65 passing)
+- `control/src/ci/integration/scenarios/` — chaos / transactional-integrity tests (114 tests)
+- `control/src/ci/hardware-software/` — hardware-in-the-loop tests (HW-01 … HW-05, requires real Quabos)
+- `control/src/ci/Dockerfile.ci` — multi-stage image for all test suites
+- `control/src/ci/test_cli.py` — unified `pseti test` CLI (invoked via `pseti test sw/hw/grpc/lint`)
 
 ### Integration test topology
 

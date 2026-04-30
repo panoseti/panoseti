@@ -1,0 +1,235 @@
+"""
+conftest.py — Shared fixtures for the PANOSETI integration test suite.
+
+Environment variables (set by docker-compose.integration.yml):
+    DAQNODE_DIRECT_HOST    — IP of the daqnode container (direct access)
+    DAQNODE_GATEWAY_HOST   — IP of the gateway container (forwarded access)
+    DAQNODE_DATA_HOST      — IP for daq_data gRPC (defaults to DAQNODE_DIRECT_HOST;
+                             unified server hosts daq_data + daq_control on the same port)
+    DAQNODE2_HOST          — IP of the second DAQ node
+    HEADNODE_HOST          — IP of the headnode Telemetry gRPC service
+    GRPC_PORT              — gRPC port (default 50051)
+    LOKI_URL               — Loki HTTP base URL
+    REDIS_HOST             — Redis hostname
+    DAQ_DATA_DIR           — data dir on the daqnode (and shared volume mount point)
+    HEAD_DATA_DIR          — headnode data destination dir
+    DAQNODE_CONTAINER_NAME — Docker container name for pause/unpause tests
+    CONFIG_DIR             — Directory to integration test configuration files
+"""
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+from collections.abc import Callable
+from typing import Any
+
+import pytest
+from panoseti_grpc.daq_control.client import DaqControlClient
+
+from ci.paths import PanoPathsTest
+from ci.software_only.conftest import (
+    wait_until,
+)
+from control.utils import config_file
+
+# ---------------------------------------------------------------------------
+# Environment / connection parameters
+# ---------------------------------------------------------------------------
+
+DAQNODE_DIRECT_HOST: str  = os.getenv("DAQNODE_DIRECT_HOST") or ""
+DAQNODE_GATEWAY_HOST: str = os.getenv("DAQNODE_GATEWAY_HOST") or ""
+DAQNODE_DATA_HOST: str    = os.getenv("DAQNODE_DATA_HOST", DAQNODE_DIRECT_HOST) or ""
+DAQNODE2_HOST: str        = os.getenv("DAQNODE2_HOST") or ""
+HEADNODE_HOST: str        = os.getenv("HEADNODE_HOST") or ""
+REDIS_HOST: str           = os.getenv("REDIS_HOST") or ""
+GRPC_PORT: int            = int(os.getenv("GRPC_PORT", "50051"))
+
+LOKI_URL: str             = os.getenv("LOKI_URL",   "http://localhost:3100")
+DAQ_DATA_DIR: str         = os.getenv("DAQ_DATA_DIR", "/data")
+HEAD_DATA_DIR: str        = os.getenv("HEAD_DATA_DIR", "/data/head")
+DAQNODE_CONTAINER: str    = os.getenv("DAQNODE_CONTAINER_NAME", "ctl-int-daqnode-1")
+BINDHOST: str             = os.getenv("BINDHOST") or "lo"
+
+
+CONTROL_DIR = PanoPathsTest.base_dir()
+CONFIG_DIR = PanoPathsTest.integration_configs_root()
+
+
+# ---------------------------------------------------------------------------
+# Clean-up autouse
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _ensure_clean_daq_state(ensure_clean_daq_state):
+    """Make the shared clean-up fixture autouse for Tier 3."""
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Polling helpers — (REMOVED: imported from parent)
+# ---------------------------------------------------------------------------
+
+def wait_grpc_reachable(client: DaqControlClient, data_dir: str, *, timeout: float = 15.0) -> bool:
+    """Poll until a StatusDaq RPC succeeds (server is back after restart/pause)."""
+    return wait_until(
+        lambda: client.StatusDaq({
+            "data_dir":               data_dir,
+            "check_hashpipe_running": False,
+            "check_disk_usage":       False,
+            "check_run_dirs":         False,
+        })[0] is True,
+        timeout=timeout,
+    )
+
+# ---------------------------------------------------------------------------
+# Portforwarding fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def direct_config_dir() -> pathlib.Path:
+    """Returns the isolated directory for direct-connect configs."""
+    # In CI, PSETI_CONFIG already points to the isolated variant dir (direct or chaos)
+    return pathlib.Path(os.environ["PSETI_CONFIG"])
+
+@pytest.fixture
+def gateway_config_dir() -> pathlib.Path:
+    """Returns the isolated directory for gateway configs."""
+    # If we are in chaos mode, we use the current isolated PSETI_CONFIG.
+    # Otherwise, fallback to the gateway template root (but this shouldn't happen often)
+    p = pathlib.Path(os.environ["PSETI_CONFIG"])
+    if (p / "network_config.json").exists():
+        return p
+    return PanoPathsTest.integration_configs("gateway")
+
+
+
+def get_daq_and_network_config(kind: str = "direct") -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """(daq_config.json, network_config.json) for clients connected:
+        1. Directly to the daqnode (bypasses gateway).
+        2. Via the socat gateway (simulates VPN/NAT topology)
+    """
+    match kind:
+        case "direct": 
+            cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
+            net_cfg = None
+        case "gateway": 
+            cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
+            # If network_config.json is missing (not in chaos mode), 
+            # fallback to gateway template
+            if not (cfg_dir / "network_config.json").exists():
+                cfg_dir = PanoPathsTest.integration_configs("gateway")
+                
+            with open(cfg_dir / "network_config.json", 'rb') as f:
+                net_cfg_raw = json.load(f)
+                net_cfg = config_file.NetworkConfig(**net_cfg_raw).model_dump(mode='json', exclude_unset=True)
+        case _:
+            raise ValueError(f"Invalid {kind=}. Must be 'direct' or 'gateway'")
+
+    with open(cfg_dir / "daq_config.json", 'rb') as f:
+        daq_cfg_raw = json.load(f)
+        daq_cfg = config_file.DaqConfig(**daq_cfg_raw).model_dump(mode='json', exclude_unset=True)
+    return daq_cfg, net_cfg
+
+
+# ---------------------------------------------------------------------------
+# Data directory fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session", autouse=True)
+def create_data_dirs() -> None:
+    """Ensure session-scoped data directories exist on the host with broad permissions."""
+    for env_var in ["DAQ_DATA_DIR", "HEAD_DATA_DIR"]:
+        val = os.environ.get(env_var)
+        if val:
+            p = pathlib.Path(val)
+            p.mkdir(parents=True, exist_ok=True)
+            # Ensure Docker can read/write even if running as a different user/group
+            os.chmod(p, 0o777)
+            for root, dirs, files in os.walk(p):
+                for d in dirs:
+                    os.chmod(os.path.join(root, d), 0o777)
+                for f in files:
+                    os.chmod(os.path.join(root, f), 0o777)
+
+
+@pytest.fixture
+def daq_data_dir() -> pathlib.Path:
+    """Root data directory on the daqnode (host perspective)."""
+    return pathlib.Path(os.environ["DAQ_DATA_DIR"])
+
+
+@pytest.fixture
+def head_data_dir() -> pathlib.Path:
+    """Head node data directory (host perspective)."""
+    return pathlib.Path(os.environ["HEAD_DATA_DIR"])
+
+
+# ---------------------------------------------------------------------------
+# Docker container handle (for pause/unpause in failure-simulation tests)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def docker_client() -> Any:
+    """Returns a Docker SDK client handle. Skips if unavailable."""
+    try:
+        import docker
+        return docker.from_env()
+    except Exception as e:
+        pytest.skip(f"Docker SDK unavailable: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Helper: simulate data copy (rsync equivalent using shared volume)
+# ---------------------------------------------------------------------------
+
+def copy_run_dir(run_params: dict[str, Any], dst: pathlib.Path) -> bool:
+    """
+    Simulate rsync from daqnode to headnode using the shared Docker volume.
+    Copies module_{id}/{run_dir}/ from daq_data_dir to dst/{run_dir}/.
+    Returns True on success, False if source data is missing.
+    """
+    src_root = pathlib.Path(run_params["data_dir"])
+    run_dir  = run_params["run_dir"]
+    success  = True
+
+    dst_run = dst / run_dir
+    dst_run.mkdir(parents=True, exist_ok=True)
+
+    for module_id in run_params["module_id"]:
+        src = src_root / f"module_{module_id}" / run_dir
+        if not src.exists():
+            success = False
+            continue
+        dst_module = dst_run / f"module_{module_id}"
+        if dst_module.exists():
+            shutil.rmtree(dst_module)
+        shutil.copytree(src, dst_module)
+
+    return success
+
+
+def start_copy_background(run_params: dict[str, Any], dst: pathlib.Path) -> subprocess.Popen:
+    """
+    Start a copy in the background using cp -r (subprocess).
+    Returns the Popen handle so tests can pause containers mid-copy.
+    """
+    src_root = pathlib.Path(run_params["data_dir"])
+    run_dir  = run_params["run_dir"]
+    src = str(src_root / f"module_{run_params['module_id'][0]}" / run_dir)
+    dst_dir = str(dst / run_dir)
+    os.makedirs(dst_dir, exist_ok=True)
+    return subprocess.Popen(["cp", "-r", src, dst_dir])
+
+
+# Expose helpers as fixtures too
+@pytest.fixture
+def copy_run_dir_fn() -> Callable[[dict[str, Any], pathlib.Path], bool]:
+    return copy_run_dir
+
+
+@pytest.fixture
+def start_copy_background_fn() -> Callable[[dict[str, Any], pathlib.Path], subprocess.Popen]:
+    return start_copy_background

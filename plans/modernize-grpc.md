@@ -290,7 +290,7 @@ Gate: these register in `qa.toml` under `suites.test-hw`. `pseti test hw run` is
 
 ## Phase 4: Test Migration Plan
 
-These changes touch ~700 existing tests across `control/ci/unit/` (524), `control/ci/integration/` (65), `control/ci/integration/scenarios/` (114), `grpc/tests/` (~200 based on layout). We cannot refactor blindly or we lose the regression net; we cannot keep all of them or we carry dead weight. The answer is a **triage-shadow-cutover** pipeline.
+These changes touch ~700 existing tests across `control/src/ci/unit/` (524), `control/src/ci/integration/` (65), `control/src/ci/integration/scenarios/` (114), `grpc/tests/` (~200 based on layout). We cannot refactor blindly or we lose the regression net; we cannot keep all of them or we carry dead weight. The answer is a **triage-shadow-cutover** pipeline.
 
 ### 4.1 Triage framework — every test is one of three labels
 
@@ -325,9 +325,9 @@ Output: one CSV of `file, test_name, current_label, reviewer_label, status` comm
 
 | Suite | Total | UPDATE | REFACTOR | DELETE | KEEP |
 |---|---|---|---|---|---|
-| `control/ci/unit/` | ~524 | ~60 (gRPC error types, TaskGroup outcome handling, `client_models` propagation) | ~8 (transfer daemon VERIFYING wiring) | ~8 (old retry loop, SSH cleanup paths if any touch deprecated code) | ~448 |
-| `control/ci/integration/` | ~65 | ~15 (Ping → Health, error unwrapping) | ~3 (`test_loki_pipeline.py`, `test_daq_data_ping.py` if exists) | ~4 | ~43 |
-| `control/ci/integration/scenarios/` | ~114 | ~8 (SC056–SC068 telemetry scenarios now target Alloy outage modes) | ~5 | ~0 | ~101 |
+| `control/src/ci/unit/` | ~524 | ~60 (gRPC error types, TaskGroup outcome handling, `client_models` propagation) | ~8 (transfer daemon VERIFYING wiring) | ~8 (old retry loop, SSH cleanup paths if any touch deprecated code) | ~448 |
+| `control/src/ci/integration/` | ~65 | ~15 (Ping → Health, error unwrapping) | ~3 (`test_loki_pipeline.py`, `test_daq_data_ping.py` if exists) | ~4 | ~43 |
+| `control/src/ci/integration/scenarios/` | ~114 | ~8 (SC056–SC068 telemetry scenarios now target Alloy outage modes) | ~5 | ~0 | ~101 |
 | `grpc/tests/telemetry/` | ~50 | ~10 | ~10 (rewrite to Alloy E2E) | ~20 (RedisBatcher, AsyncGrpcHandler, Log-stub pytest fixtures) | ~10 |
 | `grpc/tests/daq_data/` | ~60 | ~15 (Ping → Health; `__aexit__` cancellation tests) | ~5 | ~2 | ~38 |
 | `grpc/tests/daq_control/` | ~70 | ~25 (client_models propagation, typed exceptions, CleanupData manifest_digest precondition) | ~3 | ~2 | ~40 |
@@ -398,8 +398,8 @@ Budget: ~20 more deletions expected. Commit separately so the migration-attribut
 
 New code:
 - `grpc/src/panoseti_grpc/grpc_utils/{channel,exceptions,decorators,interceptors,retries,health}.py`
-- `control/src/control/ci/integration/scenarios/test_sc_transfer_daemon.py` (SC-TX-001..007)
-- `control/src/control/ci/hardware-software/test_02_*..test_06_*.py` (HW-01..05)
+- `control/src/ci/integration/scenarios/test_sc_transfer_daemon.py` (SC-TX-001..007)
+- `control/src/ci/hardware-software/test_02_*..test_06_*.py` (HW-01..05)
 
 Modified code:
 - `grpc/src/panoseti_grpc/{daq_data,daq_control,telemetry}/client.py` — thin down to service-specific methods using `grpc_utils` (`ublox_control` excluded)

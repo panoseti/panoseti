@@ -102,7 +102,7 @@ Console format: `RichHandler` is constructed without a custom formatter, so the 
 
 ### D-6. Why the CLI feels heavy / aliases are missing
 
-**File:** `control/src/control/pseti.py`, `control/src/control/tools/obs_cli.py`, `control/src/control/config.py`, `control/src/control/transfer/cli.py`, `control/ci/test_cli.py`
+**File:** `control/src/control/pseti.py`, `control/src/control/tools/obs_cli.py`, `control/src/control/config.py`, `control/src/control/transfer/cli.py`, `control/src/ci/test_cli.py`
 
 - Boot path is already lazy via `BaseLazyGroup` (`grpc/src/panoseti_grpc/util/cli.py:106-120`) — `--help` returns a stub `click.Command` without importing the subcommand. Confirmed: no top-level `get_*_config()` calls leak.
 - One leak remains: `config.py:47-49` runs `PanoPaths.logs_dir().mkdir()` and `get_logger(..., grpc_enabled=True)` at **import** time. Move to a Typer callback so they only fire on actual `pseti config` / `pseti cfg` invocation.
@@ -255,7 +255,7 @@ RichHandler still renders timestamp/level/markup; the formatter only controls th
 
 ### 3.4 Pytest caplog compatibility
 
-**File (new or extended):** `control/ci/conftest.py`
+**File (new or extended):** `control/src/ci/conftest.py`
 
 Add an autouse fixture **scoped to tests that request `caplog`**:
 ```
@@ -367,7 +367,7 @@ Move the `PanoPaths.logs_dir().mkdir(...)` and `get_logger("PSETI.Config", ..., 
 
 ### 5.5 `pseti test hw down` — non-destructive teardown
 
-**File:** `control/ci/test_cli.py`
+**File:** `control/src/ci/test_cli.py`
 
 Clone `hw clean` (lines 495-525) into a new `hw down` command. Keep all SSH-tunnel / podman-context plumbing identical. The only diffs are:
 - Drop `-v` from the three `compose … down -v` invocations (lines 504, 515, 523).
@@ -384,7 +384,7 @@ Each test below must **fail** on the current `test-refactor` branch before the c
 
 ### 6.1 Tier 2 — `start.py` ExceptionGroup unwrap
 
-**Path:** `control/ci/tier2_logic/test_start_exceptiongroup_unwrap.py`
+**Path:** `control/src/ci/tier2_logic/test_start_exceptiongroup_unwrap.py`
 
 - Mock `_check_reachability` so two Quabos raise distinct exceptions (`ConnectionRefusedError("port closed")`, `TimeoutError("UDP")`).
 - Call `_check_quabo_reachability(..., lenient=False)`; assert `ValidationError` is raised whose message contains **both** `"port closed"` and `"UDP"`.
@@ -393,7 +393,7 @@ Each test below must **fail** on the current `test-refactor` branch before the c
 
 ### 6.2 Tier 2 — `stop.py` ledger guard
 
-**Path:** `control/ci/tier2_logic/test_stop_ledger_guard.py`
+**Path:** `control/src/ci/tier2_logic/test_stop_ledger_guard.py`
 
 - Pre-write a ledger with `status="RECORDING_ENDED"` and `run_name="r"`.
 - Call `stop_run(force_cleanup=False)`; assert `ValidationError` raised with message matching `"is in 'RECORDING_ENDED'"`.
@@ -403,7 +403,7 @@ Each test below must **fail** on the current `test-refactor` branch before the c
 
 ### 6.3 Tier 2 — Transfer daemon → ledger sync
 
-**Path:** `control/ci/tier2_logic/test_transfer_daemon_ledger_sync.py`
+**Path:** `control/src/ci/tier2_logic/test_transfer_daemon_ledger_sync.py`
 
 Reuse the in-process daemon harness from `tier4_chaos/test_transfer_daemon_crash_recovery.py`.
 
@@ -418,7 +418,7 @@ Reuse the in-process daemon harness from `tier4_chaos/test_transfer_daemon_crash
 
 ### 6.4 Tier 1 — Logger propagation & idempotency
 
-**Path:** `control/ci/tier1_unit/test_logger_propagation.py`
+**Path:** `control/src/ci/tier1_unit/test_logger_propagation.py`
 
 - `get_logger("X.Y")`; assert `logger.propagate is False` and exactly one `RichHandler`.
 - Call `get_logger("X.Y")` again; assert handler count is **still 1** (idempotent).
@@ -427,7 +427,7 @@ Reuse the in-process daemon harness from `tier4_chaos/test_transfer_daemon_crash
 
 ### 6.5 Tier 2 — Status reports DEGRADED when Quabos down
 
-**Path:** `control/ci/tier2_logic/test_status_quabo_report.py`
+**Path:** `control/src/ci/tier2_logic/test_status_quabo_report.py`
 
 - Mock `_check_reachability`: 2/3 Quabos reachable, 1 unreachable.
 - Run `_sweep_summary()` synchronously (or via `asyncio.run`).
@@ -436,7 +436,7 @@ Reuse the in-process daemon harness from `tier4_chaos/test_transfer_daemon_crash
 
 ### 6.6 Tier 1 — CLI alias loading
 
-**Path:** `control/ci/tier1_unit/test_cli_aliases.py`
+**Path:** `control/src/ci/tier1_unit/test_cli_aliases.py`
 
 - Use Typer's `runner.invoke(app, ["cfg", "--help"])`; assert exit code 0 and the output contains the same help text as `["obs", "config", "--help"]`.
 - Same for `["obs", "led", "--help"]` vs `["obs", "ledger", "--help"]`.
@@ -444,7 +444,7 @@ Reuse the in-process daemon harness from `tier4_chaos/test_transfer_daemon_crash
 
 ### 6.7 Tier 5 — Transfer `--watch` smoke
 
-**Path:** `control/ci/tier5_integration/test_transfer_watch.py`
+**Path:** `control/src/ci/tier5_integration/test_transfer_watch.py`
 
 - Start the daemon; enqueue a job that succeeds via mocked rsync writing a fake progress sidecar.
 - Run `pseti transfer status --watch --interval 0.5` as a subprocess for 2 s; capture stdout; assert at least 2 frames were rendered and at least one frame contains a `%` progress token.
@@ -476,20 +476,20 @@ pseti test sw integration                                        # full integrat
 | `control/src/control/tools/interleave.py` | 3.2 | Drop `logging.basicConfig`; use `get_logger`. |
 | `control/src/control/utils/panoseti_interface.py` | 3.2 | Same. |
 | `control/src/control/daemons/storeInfluxDB.py` | 3.2 | Same. |
-| `control/ci/conftest.py` | 3.4 | caplog-propagation fixture. |
+| `control/src/ci/conftest.py` | 3.4 | caplog-propagation fixture. |
 | `control/src/control/status.py` | 4.2 | Wire `_sweep_summary` to report helper; OK / DEGRADED / DOWN rendering. |
 | `control/src/control/pseti.py` | 5.1 | Add `cfg` alias. |
 | `control/src/control/tools/obs_cli.py` | 5.2 | Add `led` alias for `ledger`. |
 | `control/src/control/config.py` | 5.3 | Defer logger init from import scope to Typer callback. |
 | `control/src/control/transfer/cli.py` | 5.4 | `--watch` and `rich.progress` rendering from sidecar. |
-| `control/ci/test_cli.py` | 5.5 | New `hw down` (non-destructive teardown). |
-| `control/ci/tier1_unit/test_logger_propagation.py` | 6.4 | New. |
-| `control/ci/tier1_unit/test_cli_aliases.py` | 6.6 | New. |
-| `control/ci/tier2_logic/test_start_exceptiongroup_unwrap.py` | 6.1 | New. |
-| `control/ci/tier2_logic/test_stop_ledger_guard.py` | 6.2 | New. |
-| `control/ci/tier2_logic/test_transfer_daemon_ledger_sync.py` | 6.3 | New. |
-| `control/ci/tier2_logic/test_status_quabo_report.py` | 6.5 | New. |
-| `control/ci/tier5_integration/test_transfer_watch.py` | 6.7 | New. |
+| `control/src/ci/test_cli.py` | 5.5 | New `hw down` (non-destructive teardown). |
+| `control/src/ci/tier1_unit/test_logger_propagation.py` | 6.4 | New. |
+| `control/src/ci/tier1_unit/test_cli_aliases.py` | 6.6 | New. |
+| `control/src/ci/tier2_logic/test_start_exceptiongroup_unwrap.py` | 6.1 | New. |
+| `control/src/ci/tier2_logic/test_stop_ledger_guard.py` | 6.2 | New. |
+| `control/src/ci/tier2_logic/test_transfer_daemon_ledger_sync.py` | 6.3 | New. |
+| `control/src/ci/tier2_logic/test_status_quabo_report.py` | 6.5 | New. |
+| `control/src/ci/tier5_integration/test_transfer_watch.py` | 6.7 | New. |
 | `control/CLI.md` | 5.1, 5.2, 5.5 | Document `cfg`, `led`, `hw down`. |
 | `control/TRANSACTIONS.md` | 1.2, 2.1 | Document stop/ledger guard and ledger-attempts mirroring. |
 

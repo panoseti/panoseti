@@ -11,8 +11,7 @@ import sys
 import time
 from glob import glob
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import pff, util
+from control.utils import pff, util
 
 
 def main(dp: str, nsecs: float, module: int) -> None:

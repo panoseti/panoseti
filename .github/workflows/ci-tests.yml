@@ -23,7 +23,7 @@ jobs:
         run: git submodule update --init grpc grafana
       
       - name: Load .env.ci into GitHub environment
-        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
       
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -40,7 +40,7 @@ jobs:
       - name: Pre-build and Cache All Test Images
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f control/ci/docker-compose.integration.yml \
+            -f control/src/ci/docker-compose.integration.yml \
             --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
@@ -58,7 +58,7 @@ jobs:
         run: git submodule update --init grpc grafana
 
       - name: Load .env.ci into GitHub environment
-        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -75,7 +75,7 @@ jobs:
       - name: Build and Load Test Runner
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f control/ci/docker-compose.unit.yml \
+            -f control/src/ci/docker-compose.unit.yml \
             --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
@@ -106,7 +106,7 @@ jobs:
         run: git submodule update --init grpc grafana
 
       - name: Load .env.ci into GitHub environment
-        run: grep -v '^#' control/ci/.env.ci >> $GITHUB_ENV
+        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -123,7 +123,7 @@ jobs:
       - name: Build and Load Integration Stack
         run: |
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f control/ci/docker-compose.integration.yml \
+            -f control/src/ci/docker-compose.integration.yml \
             --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \

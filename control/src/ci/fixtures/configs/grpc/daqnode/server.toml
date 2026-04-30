@@ -1,0 +1,73 @@
+# ============================================================
+# PANOSETI Unified gRPC Server — CI DAQ Node Config
+#
+# Runs daq_data + daq_control on a single port (50051).
+# Telemetry is disabled locally; log records are forwarded
+# to the CI headnode Telemetry service via gRPC.
+#
+# Usage:
+#   panoseti-server --config /app/src/ci/integration/configs/grpc/daqnode/server.toml
+#
+# Required env vars (set by docker-compose.integration.yml):
+#   BINDHOST=lo               — loopback interface for hashpipe (Docker CI requirement)
+#   HEADNODE_IP=10.0.1.22     — Telemetry gRPC endpoint on the CI headnode
+#   HEADNODE_GRPC_PORT=50051  — port of the CI headnode Telemetry service
+# ============================================================
+
+[server]
+port = 50051
+shutdown_grace_period = 5.0
+log_dir = "/tmp/panoseti_logs"
+grpc_logging = true            # forward log records to HEADNODE_IP:HEADNODE_GRPC_PORT
+
+[server.services]
+telemetry   = false   # telemetry runs on headnode; logs forwarded via HEADNODE_IP
+daq_data    = true
+daq_control = true
+
+# -------------------------------------------------------
+# DAQ Data service
+# -------------------------------------------------------
+[daq_data]
+init_from_default     = false
+unix_domain_socket    = "unix:///tmp/daq_data.sock"
+max_concurrent_rpcs   = 25
+max_read_queue_size   = 100
+min_hp_io_update_interval_seconds  = 0.01
+max_client_update_interval_seconds = 60.0
+max_reader_enqueue_timeouts = 10
+max_reader_dequeue_timeouts = 10
+reader_timeout        = 60.0
+shutdown_grace_period = 5.0
+hp_io_stop_timeout    = 10.0
+valid_data_products   = ["img8", "img16", "ph256", "ph1024"]
+grpc_logging          = true
+
+[daq_data.acquisition_methods.uds]
+enabled              = true
+data_products        = ["img8", "img16", "ph256", "ph1024"]
+socket_path_template = "/tmp/hashpipe_grpc.dp_{dp_name}.sock"
+read_timeout         = 600.0
+
+[daq_data.simulate_daq_cfg]
+simulation_mode         = "uds"
+sim_module_ids          = [250, 254]
+movie_type              = "img16"
+ph_type                 = "ph256"
+
+[daq_data.simulate_daq_cfg.source_data]
+real_module_id = 1
+movie_pff_path = "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_img16.bpp_2.module_1.seqno_0.debug_TRUNCATED.pff"
+ph_pff_path    = "daq_data/simulated_data_dir/obs_Lick.start_2024-07-25T04:34:06Z.runtype_sci-data.pffd/start_2024-07-25T04_34_46Z.dp_ph256.bpp_2.module_3.seqno_0.debug_TRUNCATED.pff"
+
+[daq_data.simulate_daq_cfg.strategies.uds]
+data_products = ["ph256", "img16"]
+
+# -------------------------------------------------------
+# DAQ Control service
+# -------------------------------------------------------
+[daq_control]
+log_dir           = "/tmp/panoseti_logs"
+grpc_logging      = true
+shutdown_grace_period = 5.0
+log_level         = "INFO"

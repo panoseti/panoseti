@@ -58,11 +58,11 @@ dependencies = [
 
   [tool.setuptools.packages.find]
   where = ["src"]
-  include = ["control*"]
+  include = ["control*", "ci*"]
 
   [tool.pytest.ini_options]
-  pythonpath = ["src", "."]
-  testpaths = ["ci"]
+  pythonpath = ["src"]
+  testpaths = ["src/ci"]
   asyncio_mode = "auto"
   timeout = 30
 filterwarnings = [

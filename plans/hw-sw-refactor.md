@@ -2,7 +2,7 @@
 
 ## Context
 
-Hardware-software (HITL) testing today is a single-suite, sequence-coupled scaffold under `control/ci/hardware-software/` (one active test, six skipped). The QA harness (`qa.toml` / `qa_utils.py` / `test_cli.py`) was designed for Docker-based software CI: it conflates suite definition with `compose up/down` lifecycle, generates random subnets, and forces `PSETI_*` paths to `tmp_path`. Bringing dozens more HITL tests online in this scaffold would (a) waste 5–7 min on every test that doesn't need a power cycle, (b) leak software-CI assumptions onto real hardware, (c) make heterogeneity (driver protocol, GNSS, focus, HK pipeline) painful to express, and (d) duplicate a `FakeSocket` packet-assertion pattern already invented four times in `tier1_unit/`.
+Hardware-software (HITL) testing today is a single-suite, sequence-coupled scaffold under `control/src/ci/hardware-software/` (one active test, six skipped). The QA harness (`qa.toml` / `qa_utils.py` / `test_cli.py`) was designed for Docker-based software CI: it conflates suite definition with `compose up/down` lifecycle, generates random subnets, and forces `PSETI_*` paths to `tmp_path`. Bringing dozens more HITL tests online in this scaffold would (a) waste 5–7 min on every test that doesn't need a power cycle, (b) leak software-CI assumptions onto real hardware, (c) make heterogeneity (driver protocol, GNSS, focus, HK pipeline) painful to express, and (d) duplicate a `FakeSocket` packet-assertion pattern already invented four times in `tier1_unit/`.
 
 Goal: an extensible, TOML-driven, **state-aware** HITL test framework that batches tests by physical prerequisites, derives topology dynamically from the active observatory configs, and protects hardware via ironclad teardown. The framework must scale from a single-module UCB lab rig to a full Palomar production deployment using the same TOML, with no code changes.
 
@@ -13,7 +13,7 @@ This plan is design-only. Implementation waits for approval.
 ## 1. Repository Layout (refactor)
 
 ```
-control/ci/
+control/src/ci/
 ├── software-only/                # NEW — was the body of ci/conftest.py
 │   ├── conftest.py               # auto_isolate, session_fleet, generate_ci_topology, fakeredis
 │   ├── tier1_unit/               # moved from ci/tier1_unit
@@ -519,19 +519,19 @@ Complete rewrite, structured as:
 ## 8. Critical Files
 
 **To create**:
-- `control/ci/hardware-software/hw_state_machine.toml`
-- `control/ci/hardware-software/hw_tests.toml`
-- `control/ci/hardware-software/hw_utils/{state_machine,scheduler,safety,topology,driver_ops,run_ops,guards,pytest_plugin,stream}.py`
-- `control/ci/hardware-software/hw_assertions.py`
-- `control/ci/hardware-software/fixtures/{packet_capture,quabo_fixtures,wps_fixtures,telemetry_fixtures}.py`
-- `control/ci/hardware-software/suites/hw{0..4}_*/test_*.py`
-- `control/ci/shared/{qa_models,stream}.py`
+- `control/src/ci/hardware-software/hw_state_machine.toml`
+- `control/src/ci/hardware-software/hw_tests.toml`
+- `control/src/ci/hardware-software/hw_utils/{state_machine,scheduler,safety,topology,driver_ops,run_ops,guards,pytest_plugin,stream}.py`
+- `control/src/ci/hardware-software/hw_assertions.py`
+- `control/src/ci/hardware-software/fixtures/{packet_capture,quabo_fixtures,wps_fixtures,telemetry_fixtures}.py`
+- `control/src/ci/hardware-software/suites/hw{0..4}_*/test_*.py`
+- `control/src/ci/shared/{qa_models,stream}.py`
 
 **To modify**:
-- `control/ci/test_cli.py:325-589` — replace inline `hw_*` Typer commands with delegations to `hw_utils.cli` (keeps the public CLI surface).
-- `control/ci/qa.toml` — narrow scope; the `[suites.test-hw]` block becomes a thin pointer to the new HITL runner.
-- `control/ci/qa_utils.py` — extract `QAConfig`/`SuiteConfig`/`EnvironmentConfig` and `_stream` to `control/ci/shared/`; leave Docker orchestration in place.
-- `control/ci/conftest.py` — split: HITL-incompatible logic (`auto_isolate`'s PSETI_* rewrites, `session_fleet`, `_generate_dynamic_env`) moves to `control/ci/software-only/conftest.py`; root keeps only the truly shared bits.
+- `control/src/ci/test_cli.py:325-589` — replace inline `hw_*` Typer commands with delegations to `hw_utils.cli` (keeps the public CLI surface).
+- `control/src/ci/qa.toml` — narrow scope; the `[suites.test-hw]` block becomes a thin pointer to the new HITL runner.
+- `control/src/ci/qa_utils.py` — extract `QAConfig`/`SuiteConfig`/`EnvironmentConfig` and `_stream` to `control/src/ci/shared/`; leave Docker orchestration in place.
+- `control/src/ci/conftest.py` — split: HITL-incompatible logic (`auto_isolate`'s PSETI_* rewrites, `session_fleet`, `_generate_dynamic_env`) moves to `control/src/ci/software-only/conftest.py`; root keeps only the truly shared bits.
 - `control/TEST-HW-SW.md` — full rewrite per §7.
 - `control/CLI.md` — update the `pseti test hw` block to list the new subcommands.
 

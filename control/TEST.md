@@ -1,6 +1,6 @@
 # PANOSETI Control — CI Test Suite
 
-The PANOSETI control plane uses a **5-Tier Tiered Testing Architecture** to balance speed, isolation, and high-fidelity simulation. All tests live under `control/ci/`.
+The PANOSETI control plane uses a **5-Tier Tiered Testing Architecture** to balance speed, isolation, and high-fidelity simulation. All tests live under `control/src/ci/`.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Author:** Principal architect (planning role)
 **Audience:** Coding agent (Sonnet)
-**Scope:** Diagnose-and-fix package targeting the bugs surfaced in `control/ci/transfer-queue-debugging-notes.md`. No new features beyond what's listed; no refactors beyond what each bug requires.
+**Scope:** Diagnose-and-fix package targeting the bugs surfaced in `control/src/ci/transfer-queue-debugging-notes.md`. No new features beyond what's listed; no refactors beyond what each bug requires.
 
 ---
 
@@ -287,7 +287,7 @@ Each test below must **fail** on the current `test-refactor` branch and **pass**
 
 ### Test 4.1 — Tier 4 (chaos): infinite-bounce regression
 
-**Path:** `control/ci/tier4_chaos/test_transfer_daemon_crash_recovery.py` (new)
+**Path:** `control/src/ci/tier4_chaos/test_transfer_daemon_crash_recovery.py` (new)
 
 **Scenario:** Enqueue a job whose `_process_job` is monkeypatched to raise `RuntimeError("boom")` on the first attempt. Start the daemon. Assert that within 5 seconds:
 - Job moves through `active/` to `failed/` (not back to `pending/`).
@@ -298,7 +298,7 @@ Each test below must **fail** on the current `test-refactor` branch and **pass**
 
 ### Test 4.2 — Tier 2 (logic): strict mode aborts on Quabo unreachable
 
-**Path:** `control/ci/tier2_logic/test_start_strict_mode.py` (new)
+**Path:** `control/src/ci/tier2_logic/test_start_strict_mode.py` (new)
 
 **Scenario:** Mock `_check_reachability` to return `(False, "timeout")` for one Quabo. Call `start_run(...)` with `strict=True`. Assert that:
 - `ValidationError` is raised before `start_data_flow` is ever called (use a spy).
@@ -309,13 +309,13 @@ Then `strict=False` against same mock: assert `start_data_flow` **is** called an
 
 ### Test 4.3 — Tier 4 (chaos): start.py refuses if remote hashpipe already running
 
-**Path:** `control/ci/tier4_chaos/test_start_remote_hashpipe_guard.py` (new)
+**Path:** `control/src/ci/tier4_chaos/test_start_remote_hashpipe_guard.py` (new)
 
 **Scenario:** Spin up a fake `daq_control` server that returns `hashpipe_pid=999, hashpipe_running=True` for `StatusDaq`. Call `start_run(strict=True)`. Assert `ValidationError` is raised, no UDP commands are issued to Quabos (spy `start_data_flow`), ledger is not in `STARTING`. Repeat with `--force-restart=True`: assert `StopDaq` is called first, then start succeeds.
 
 ### Test 4.4 — Tier 5 (integration): tail produces real output and ledger CLI works end-to-end
 
-**Path:** `control/ci/tier5_integration/test_transfer_observability.py` (new)
+**Path:** `control/src/ci/tier5_integration/test_transfer_observability.py` (new)
 
 **Scenario:** Start the real transfer daemon via `pseti transfer start` inside the integration container. Wait for heartbeat. Run `pseti transfer tail -n 5`; assert non-empty output containing `"Transfer daemon started"`. Run `pseti ledger path`; assert it prints an existing path. Stop the daemon; assert `pseti transfer status` reports STALE within `>30s` heartbeat age.
 
@@ -348,10 +348,10 @@ These are scoped but **only commit if Phases 1-4 pass clean** in CI:
 | `control/src/control/tools/obs_cli.py` | 3.3 | Register `ledger` lazy mapping. |
 | `panoseti_grpc/.../cli.py` | 3.4 | `--from-config`, `--watch`. (submodule) |
 | `control/TRANSACTIONS.md` | 2.4 | Document strictness modes. |
-| `control/ci/tier2_logic/test_start_strict_mode.py` | 4.2 | New. |
-| `control/ci/tier4_chaos/test_transfer_daemon_crash_recovery.py` | 4.1 | New. |
-| `control/ci/tier4_chaos/test_start_remote_hashpipe_guard.py` | 4.3 | New. |
-| `control/ci/tier5_integration/test_transfer_observability.py` | 4.4 | New. |
+| `control/src/ci/tier2_logic/test_start_strict_mode.py` | 4.2 | New. |
+| `control/src/ci/tier4_chaos/test_transfer_daemon_crash_recovery.py` | 4.1 | New. |
+| `control/src/ci/tier4_chaos/test_start_remote_hashpipe_guard.py` | 4.3 | New. |
+| `control/src/ci/tier5_integration/test_transfer_observability.py` | 4.4 | New. |
 
 ---
 
@@ -407,7 +407,7 @@ pseti transfer tail -n 100             # must contain 3 retry log lines + 1 "Mar
 
 **Pass criteria:** within `MAX_ATTEMPTS × max_backoff = 3 × 30s = ~90s` after the partition heals, the job lands in `failed/`. The `attempts` field in the failed TOML is exactly `3`. No infinite bounce.
 
-**Automated analog:** Test 4.1 simulates this with monkey-patched failures; for true network-level fidelity, plan a future Tier 6 HW-SW chaos test under `control/ci/hardware-software/test_transfer_partition.py` using the iptables fixture.
+**Automated analog:** Test 4.1 simulates this with monkey-patched failures; for true network-level fidelity, plan a future Tier 6 HW-SW chaos test under `control/src/ci/hardware-software/test_transfer_partition.py` using the iptables fixture.
 
 ### M-3. Strict-mode Quabo-down abort (validates Phase 2)
 
@@ -422,7 +422,7 @@ pseti power on --quabo <ip>
 
 **Pass criteria:** strict mode aborts before `start_data_flow`; ledger is not written; no UDP commands reach the surviving Quabos. `--no-strict` proceeds with warnings.
 
-**Automated analog:** Test 4.2 covers this with mocked reachability. HW-SW analog: `control/ci/hardware-software/test_strict_mode.py` cycling Quabo power via the WPS gRPC.
+**Automated analog:** Test 4.2 covers this with mocked reachability. HW-SW analog: `control/src/ci/hardware-software/test_strict_mode.py` cycling Quabo power via the WPS gRPC.
 
 ### M-4. Remote-hashpipe guard (validates Phase 2.3)
 

@@ -1,0 +1,264 @@
+networks:
+  headnode_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${HEAD_NET_PREFIX:-10.0.1}.0/24
+  daqnode_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${DAQ_NET_PREFIX:-192.168.0}.0/24
+  quabo_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${QUABO_NET_PREFIX:-192.168.3}.0/24
+
+volumes:
+  daq_data:
+  daq_data_2:
+  mock_quabo_uds:
+  grafana_data:
+
+services:
+
+  grafana:
+    image: grafana/grafana:latest
+    network_mode: "service:influxdb"
+    volumes:
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/var/lib/grafana/dashboards:ro
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  influxdb:
+    image: influxdb:1.8
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_HEADNODE:-10.0.1.22}
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_REDIS:-10.0.1.20}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.7.0
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_LOKI:-10.0.1.21}
+
+  gateway:
+    image: alpine/socat
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_GATEWAY:-10.0.1.254}
+      daqnode_net:
+        ipv4_address: ${DAQ_NET_GATEWAY:-192.168.0.254}
+    volumes:
+      - ./fixtures/build/gateway_setup.sh:/gateway_setup.sh:ro
+    entrypoint: ["sh", "/gateway_setup.sh"]
+    environment:
+      DAQNODE_IP: "${DAQ_NET_DAQNODE_1:-192.168.0.10}"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${GRPC_PORT:-50051} || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 2s
+
+  headnode:
+    image: pseti-test-runner:latest
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: test-runner
+    restart: always
+    network_mode: "service:influxdb"
+    volumes:
+      - ${PSETI_CONTROL_BUILD}:/app
+      - ${PSETI_ROOT_BUILD}/grpc:/grpc
+    environment:
+      REDIS_HOST: "${HEAD_NET_REDIS:-10.0.1.20}"
+      LOKI_URL:   "http://${HEAD_NET_LOKI:-10.0.1.21}:3100"
+      PYTHONDONTWRITEBYTECODE: "1"
+    depends_on:
+      redis:
+        condition: service_started
+      loki:
+        condition: service_started
+      influxdb:
+        condition: service_healthy
+    command: >
+      /bin/sh -c "pseti-grpc server --config /app/src/ci/fixtures/configs/grpc/headnode/server.toml &
+      python src/control/daemons/storeInfluxDB.py &
+      exec python src/control/daemons/storeLoki.py"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  daqnode:
+    image: pseti-daqnode:latest
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: integration-daqnode
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_DAQNODE_1:-10.0.1.10}
+      daqnode_net:
+        ipv4_address: ${DAQ_NET_DAQNODE_1:-192.168.0.10}
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
+    volumes:
+      - daq_data:/data
+      - ${PSETI_CONTROL_BUILD}:/app
+      - ${PSETI_ROOT_BUILD}/grpc:/grpc
+    environment:
+      GRPC_PORT:          "${GRPC_PORT:-50051}"
+      BINDHOST:           "${BINDHOST:-lo}"
+      HEADNODE_IP:        "${HEAD_NET_HEADNODE:-10.0.1.22}"
+      HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  daqnode-2:
+    image: pseti-daqnode:latest
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: integration-daqnode
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_DAQNODE_2:-10.0.1.11}
+      daqnode_net:
+        ipv4_address: ${DAQ_NET_DAQNODE_2:-192.168.0.20}
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
+    volumes:
+      - daq_data:/data
+      - ${PSETI_CONTROL_BUILD}:/app
+      - ${PSETI_ROOT_BUILD}/grpc:/grpc
+    environment:
+      GRPC_PORT:          "${GRPC_PORT:-50051}"
+      BINDHOST:           "${BINDHOST:-lo}"
+      HEADNODE_IP:        "${HEAD_NET_HEADNODE:-10.0.1.22}"
+      HEADNODE_GRPC_PORT: "${GRPC_PORT:-50051}"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',${GRPC_PORT:-50051})); s.close()\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  mock-quabo:
+    image: pseti-mock-quabo:latest
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/mock_quabo/Dockerfile
+    networks:
+      quabo_net:
+        ipv4_address: ${QUABO_NET_MOCK:-192.168.3.32}
+    cap_add:
+      - NET_ADMIN
+    environment:
+      MOCK_QUABO_BASE_IP: "${QUABO_NET_MOCK:-192.168.3.32}"
+      MOCK_QUABO_MODULE_ID: "200"
+      MOCK_QUABO_UDS: "/uds/mock_quabo.sock"
+    volumes:
+      - mock_quabo_uds:/uds
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /uds/mock_quabo.sock || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+
+  int-tester:
+    image: pseti-test-runner:latest
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: test-runner
+    networks:
+      headnode_net:
+        ipv4_address: ${HEAD_NET_TESTER:-10.0.1.5}
+      daqnode_net:
+        ipv4_address: ${DAQ_NET_TESTER:-192.168.0.5}
+      quabo_net:
+        ipv4_address: ${QUABO_NET_TESTER:-192.168.3.5}
+    environment:
+      IN_DOCKER_CI:           "1"
+      DAQNODE_DIRECT_HOST:    "${DAQ_NET_DAQNODE_1:-192.168.0.10}"
+      DAQNODE_GATEWAY_HOST:   "${HEAD_NET_GATEWAY:-10.0.1.254}"
+      DAQNODE_DATA_HOST:      "${DAQ_NET_DAQNODE_1:-192.168.0.10}"
+      DAQNODE2_HOST:          "${DAQ_NET_DAQNODE_2:-192.168.0.20}"
+      HEADNODE_HOST:          "${HEAD_NET_HEADNODE:-10.0.1.22}"
+      BINDHOST:               "${BINDHOST:-lo}"
+      GRPC_PORT:              "${GRPC_PORT:-50051}"
+      LOKI_URL:               "http://${HEAD_NET_LOKI:-10.0.1.21}:3100"
+      REDIS_HOST:             "${HEAD_NET_REDIS:-10.0.1.20}"
+      DAQ_DATA_DIR:           "/data"
+      HEAD_DATA_DIR:          "/data/head"
+      DAQNODE_CONTAINER_NAME: "${DAQNODE_CONTAINER_NAME:-ctl-int-daqnode-1}"
+      MOCK_QUABO_UDS:         "/uds/mock_quabo.sock"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - daq_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PSETI_CONTROL_BUILD}:/app
+      - ${PSETI_ROOT_BUILD}/grpc:/grpc
+      - mock_quabo_uds:/uds:ro
+    depends_on:
+      daqnode:
+        condition: service_healthy
+      daqnode-2:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      loki:
+        condition: service_started
+      influxdb:
+        condition: service_healthy
+      headnode:
+        condition: service_healthy
+      mock-quabo:
+        condition: service_healthy
+    command: ["sleep", "infinity"]

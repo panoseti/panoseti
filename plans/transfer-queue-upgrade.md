@@ -365,10 +365,10 @@ def test_07_transfer_pipeline(panoseti_env):
 | `grpc/src/panoseti_grpc/daq_control/server.py` | Implement new RPCs. |
 | `grpc/src/panoseti_grpc/daq_control/client.py` | Wrap new RPCs in `AsyncDaqControlClient`. |
 | `control/TRANSACTIONS.md` | Update paths, document daemon lifecycle, document new RPCs and CLI. |
-| `control/ci/integration/transfer/test_transfer_basic.py` (new) | Standard transfer suite. |
-| `control/ci/integration/transfer/test_transfer_port_forwarding.py` (new) | PF over socat. |
-| `control/ci/integration/transfer/test_transfer_chaos.py` (new) | Failure injection matrix. |
-| `control/ci/hardware-software/test_07_transfer_pipeline.py` (new) | HW-SW E2E happy path. |
+| `control/src/ci/integration/transfer/test_transfer_basic.py` (new) | Standard transfer suite. |
+| `control/src/ci/integration/transfer/test_transfer_port_forwarding.py` (new) | PF over socat. |
+| `control/src/ci/integration/transfer/test_transfer_chaos.py` (new) | Failure injection matrix. |
+| `control/src/ci/hardware-software/test_07_transfer_pipeline.py` (new) | HW-SW E2E happy path. |
 
 ---
 

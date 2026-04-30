@@ -54,11 +54,11 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 ---
 
 ## Testing and Debugging
-- **Tier 1 (Unit)**: `src/control/ci/tier1_unit/`. Zero-dependency logic and parsing.
-- **Tier 2 (Logic)**: `src/control/ci/tier2_logic/`. Subsystem logic with mocked gRPC.
-- **Tier 3 (Fleet)**: `src/control/ci/tier3_fleet/`. Multi-node E2E with testcontainers.
-- **Tier 4 (Chaos)**: `src/control/ci/tier4_chaos/`. Fault injection and TDD-forcing failure scenarios.
-- **Tier 5 (Integration)**: `src/control/ci/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis).
+- **Tier 1 (Unit)**: `src/ci/tier1_unit/`. Zero-dependency logic and parsing.
+- **Tier 2 (Logic)**: `src/ci/tier2_logic/`. Subsystem logic with mocked gRPC.
+- **Tier 3 (Fleet)**: `src/ci/tier3_fleet/`. Multi-node E2E with testcontainers.
+- **Tier 4 (Chaos)**: `src/ci/tier4_chaos/`. Fault injection and TDD-forcing failure scenarios.
+- **Tier 5 (Integration)**: `src/ci/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis).
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
 - **State Isolation**: ALL integration tests MUST isolate their state using `PSETI_STATE` redirected to a temporary directory.
 

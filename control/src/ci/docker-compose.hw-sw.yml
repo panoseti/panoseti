@@ -1,0 +1,106 @@
+services:
+  # ── Head Node Profile ──────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  influxdb:
+    image: influxdb:1.8
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "show databases"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+
+  loki:
+    image: grafana/loki:3.7.0
+    profiles: ["headnode"]
+    network_mode: host
+    restart: always
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["headnode"]
+    network_mode: host
+    volumes:
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+    restart: always
+
+  headnode-server:
+    image: pseti-headnode:hitl
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: headnode
+    profiles: ["headnode"]
+    network_mode: host
+    volumes:
+      - ${PSETI_CONTROL_BUILD}:/app
+      - ${PSETI_ROOT_BUILD}/grpc:/grpc
+      - /mnt/panoseti-test/:/mnt/panoseti-test/
+      - ${PSETI_CONTROL_BUILD}/firmware:/app/firmware:ro
+      - ${PSETI_CONTROL_BUILD}/quabos:/app/quabos:ro
+      - ~/.ssh:/root/.ssh-host:ro
+      - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
+    environment:
+      REDIS_HOST: "127.0.0.1"
+      LOKI_URL: "http://127.0.0.1:3100/loki/api/v1/push"
+      PSETI_CONFIG: "/app/src/ci/hardware-software/configs"
+      PSETI_QUABOS: "/app/quabos"
+      PSETI_FIRMWARE: "/app/firmware"
+      PYTHONDONTWRITEBYTECODE: "1"
+      SSH_AUTH_SOCK: "/run/host-ssh-agent"
+    command: >
+      /bin/sh -c "mkdir -p /root/.ssh && cp -r /root/.ssh-host/* /root/.ssh/ && chmod 700 /root/.ssh && find /root/.ssh -type f -exec chmod 600 {} + &&
+      pseti-grpc server --config /app/src/ci/hardware-software/configs/grpc/grpc-server.headnode.toml &
+      python src/control/daemons/storeInfluxDB.py &
+      exec python src/control/daemons/storeLoki.py"
+    restart: always
+
+  # ── DAQ Node Profile ───────────────────────────────────────────────────────
+  daqnode-server:
+    image: pseti-daqnode:hitl
+    build:
+      context: ${PSETI_ROOT_BUILD}/
+      dockerfile: control/src/ci/Dockerfile.ci
+      target: integration-daqnode
+    profiles: ["daqnode"]
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+      - IPC_LOCK
+      - SYS_NICE
+    shm_size: '2gb'
+    volumes:
+      - /mnt/panoseti-test/:/mnt/panoseti-test/
+    environment:
+      HEADNODE_IP: "192.168.88.103"
+      GRPC_PORT: "50051"
+      HEADNODE_GRPC_PORT: "50051"
+      PSETI_CONFIG: "/app/src/ci/hardware-software/configs"
+      PSETI_QUABOS: "/app/quabos"
+      PSETI_FIRMWARE: "/app/firmware"
+      PYTHONDONTWRITEBYTECODE: "1"
+      DAQ_DATA_DIR: "/mnt/panoseti-test"
+      GRPC_SERVER_CONFIG: "/app/src/ci/hardware-software/configs/grpc/grpc-server.daqnode.toml"
+    restart: always
+
+volumes:
+  panoseti_mnt:

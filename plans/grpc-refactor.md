@@ -94,8 +94,8 @@ Full specifications are in **Appendix: Test Design Logic**.
 - `control/utils/util.py` — mixed-typed helpers (main source of dict leaks)
 - `control/utils/pydantic_config_models.py` — model definitions (needs `pid/host` on ledger)
 - `control/utils/config_file.py` — loader entry points
-- `control/ci/integration/scenarios/` — chaos test suite (47 stubs to close)
-- `control/ci/integration/scenarios/conftest.py` — `_start/_stop/_cleanup` normalizers already in place
+- `control/src/ci/integration/scenarios/` — chaos test suite (47 stubs to close)
+- `control/src/ci/integration/scenarios/conftest.py` — `_start/_stop/_cleanup` normalizers already in place
 
 ---
 
