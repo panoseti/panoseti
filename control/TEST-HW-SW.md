@@ -101,10 +101,48 @@ pseti test hw run
 ```
 
 #### State Machine & Boot Semantics
-Tests requiring the `BOOTED` state now trigger a formal `boot_verify` primitive. This primitive:
-- Toggles WPS power if needed.
-- Optionally triggers a TFTP reboot if a `reboot_port` is defined in `network_config.json`.
-- Polls for UDP reachability through the gateway until all Quabos respond to a command echo.
+The HITL framework uses a state machine to automatically transition hardware to the required state before each test batch. The state graph models the exact sequence of a `pseti session-start`, including the cyclic nature of interleaved observing modes.
+
+```mermaid
+stateDiagram-v2
+    [*] --> UNPOWERED
+    
+    UNPOWERED --> POWERED : wps_power_on
+    POWERED --> BOOTED : boot_verify
+    
+    BOOTED --> HK_ROUTED : route_hk
+    HK_ROUTED --> MAROC_CONFIGURED : configure_maroc
+    
+    MAROC_CONFIGURED --> MASKS_CONFIGURED : configure_masks
+    MASKS_CONFIGURED --> PH_CALIBRATED : calibrate_ph
+    
+    PH_CALIBRATED --> HV_OFF_READY : prepare_hv_off
+    PH_CALIBRATED --> HV_ON_READY : prepare_hv_on
+    
+    %% Interleave / Reconfig Loops (skipping calibration)
+    HV_OFF_READY --> MAROC_CONFIGURED : configure_maroc (reconfig)
+    HV_ON_READY --> MAROC_CONFIGURED : configure_maroc (reconfig)
+    MASKS_CONFIGURED --> HV_OFF_READY : prepare_hv_off (reconfig)
+    MASKS_CONFIGURED --> HV_ON_READY : prepare_hv_on (reconfig)
+    
+    %% Acquisition
+    HV_OFF_READY --> ACQUIRING_HV_OFF : start_acq (--no-hv)
+    ACQUIRING_HV_OFF --> HV_OFF_READY : stop_acq
+    
+    HV_ON_READY --> ACQUIRING_HV_ON : start_acq
+    ACQUIRING_HV_ON --> HV_ON_READY : stop_acq
+    
+    %% Recovery
+    ACQUIRING_HV_OFF --> BOOTED : soft_reset
+    ACQUIRING_HV_ON --> BOOTED : soft_reset
+    BOOTED --> BOOTED : tftp_reboot
+```
+
+**Key Features of the State Machine:**
+- **Robust Booting (`boot_verify`)**: Transitions from `POWERED` to `BOOTED` by optionally triggering a TFTP reboot (if a `reboot_port` is defined) and polling for UDP reachability through the gateway.
+- **Granular Initialization**: Explicitly models `HK_ROUTED`, `MAROC_CONFIGURED`, and `MASKS_CONFIGURED` to allow tests to target exact configuration phases.
+- **Optional HV Paths**: The graph branches after `PH_CALIBRATED`. Tests can require `HV_OFF_READY` (using a pulse generator) or `HV_ON_READY` (using physical detectors).
+- **Cyclic Reconfiguration**: Supports the "interleaved" observing mode natively. The system can loop back from a `READY` state to `MAROC_CONFIGURED` and back to `READY` without dropping High Voltage or requiring recalibration.
 
 #### Telemetry Co-existence
 To allow test sockets and the `capture_hk.py` daemon to receive the same UDP/60002 packets, both must set the `SO_REUSEPORT` and `SO_REUSEADDR` socket options. The `hk_socket` fixture and `capture_hk.py` are both patched to support this cooperative binding.
