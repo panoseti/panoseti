@@ -52,8 +52,8 @@ class HwTopology:
 
     def quabo_ips(self) -> list[QuaboAddr]:
         """All quabos in the active observatory layout."""
-        from control.utils.config_file import get_boardloc, ip_addr_to_module_id
         from control.utils import util
+        from control.utils.config_file import get_boardloc, ip_addr_to_module_id
         result: list[QuaboAddr] = []
         for dome in self._obs.domes:
             for module in dome.modules:

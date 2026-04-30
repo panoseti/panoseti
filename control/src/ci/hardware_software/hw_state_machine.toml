@@ -17,12 +17,20 @@ name = "BOOTED"
 desc = "Quabo CPU up, FPGA loaded, ping responsive, registers at firmware default."
 
 [[states]]
+name = "HK_ROUTED"
+desc = "Housekeeping packet destination routed to head node."
+
+[[states]]
 name = "MAROC_LOADED"
 desc = "MAROC chip registers programmed."
 
 [[states]]
 name = "ACQ_CONFIGURED"
 desc = "ACQ params + trigger masks + GOE masks + dest IPs set."
+
+[[states]]
+name = "PH_CALIBRATED"
+desc = "Pulse Height baselines calibrated."
 
 [[states]]
 name = "HV_ON"
@@ -46,7 +54,7 @@ kwargs = { on = true }
 name = "boot_verify"
 from_states = ["POWERED"]
 to_state = "BOOTED"
-budget_s = { typical = 120, max = 300 }
+budget_s = { typical = 400, max = 600 }
 safety = "low"
 entrypoint = "hw_utils.driver_ops:boot_verify"
 
@@ -61,23 +69,31 @@ kwargs = { on = false }
 
 [[primitives]]
 name = "tftp_reboot"
-from_states = ["BOOTED", "MAROC_LOADED", "ACQ_CONFIGURED", "HV_ON"]
+from_states = ["BOOTED", "HK_ROUTED", "MAROC_LOADED", "ACQ_CONFIGURED", "PH_CALIBRATED", "HV_ON"]
 to_state = "BOOTED"
-budget_s = { typical = 60, max = 120 }
+budget_s = { typical = 400, max = 600 }
 safety = "medium"
 entrypoint = "control.driver.quabo_tftp:tftpw.reboot"
 
 [[primitives]]
 name = "soft_reset"
-from_states = ["MAROC_LOADED", "ACQ_CONFIGURED", "HV_ON", "ACQUIRING"]
+from_states = ["HK_ROUTED", "MAROC_LOADED", "ACQ_CONFIGURED", "PH_CALIBRATED", "HV_ON", "ACQUIRING"]
 to_state = "BOOTED"
 budget_s = { typical = 1, max = 2 }
 safety = "low"
 entrypoint = "control.driver.quabo_driver:QUABO.reset"
 
 [[primitives]]
-name = "configure_maroc"
+name = "route_hk"
 from_states = ["BOOTED"]
+to_state = "HK_ROUTED"
+budget_s = { typical = 1, max = 5 }
+safety = "low"
+entrypoint = "hw_utils.driver_ops:route_hk"
+
+[[primitives]]
+name = "configure_maroc"
+from_states = ["HK_ROUTED"]
 to_state = "MAROC_LOADED"
 budget_s = { typical = 1, max = 5 }
 safety = "low"
@@ -92,8 +108,16 @@ safety = "low"
 entrypoint = "hw_utils.driver_ops:configure_acq"
 
 [[primitives]]
-name = "hv_on"
+name = "calibrate_ph"
 from_states = ["ACQ_CONFIGURED"]
+to_state = "PH_CALIBRATED"
+budget_s = { typical = 15, max = 30 }
+safety = "low"
+entrypoint = "hw_utils.driver_ops:calibrate_ph"
+
+[[primitives]]
+name = "hv_on"
+from_states = ["PH_CALIBRATED"]
 to_state = "HV_ON"
 budget_s = { typical = 2, max = 10 }
 safety = "high"
@@ -103,14 +127,14 @@ guards = ["shutter_must_be_closed", "light_sensor_dark"]
 [[primitives]]
 name = "hv_off"
 from_states = ["*"]
-to_state = "ACQ_CONFIGURED"
+to_state = "PH_CALIBRATED"
 budget_s = { typical = 2, max = 5 }
 safety = "high"
 entrypoint = "hw_utils.driver_ops:hv_zero"
 
 [[primitives]]
 name = "start_acq"
-from_states = ["HV_ON", "ACQ_CONFIGURED"]
+from_states = ["HV_ON", "PH_CALIBRATED"]
 to_state = "ACQUIRING"
 budget_s = { typical = 5, max = 15 }
 safety = "low"
@@ -119,7 +143,7 @@ entrypoint = "hw_utils.run_ops:start_run_via_cli"
 [[primitives]]
 name = "stop_acq"
 from_states = ["ACQUIRING"]
-to_state = "ACQ_CONFIGURED"
+to_state = "PH_CALIBRATED"
 budget_s = { typical = 60, max = 90 }
 safety = "low"
 entrypoint = "hw_utils.run_ops:stop_run_via_cli"
