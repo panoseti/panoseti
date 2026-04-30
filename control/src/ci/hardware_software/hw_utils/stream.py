@@ -16,10 +16,10 @@ class Result:
     def ok(self) -> bool: return self.code == 0
 
 async def stream_test_output(
-    name: str, 
-    proc: asyncio.subprocess.Process, 
-    lock: asyncio.Lock, 
-    start_time: float, 
+    name: str,
+    proc: asyncio.subprocess.Process,
+    lock: asyncio.Lock,
+    start_time: float,
     tag: str = ""
 ) -> Result:
     """
@@ -27,7 +27,7 @@ async def stream_test_output(
     and colorizing output using rich.
     """
     assert proc.stdout is not None
-    
+
     stats = {"passed": 0, "failed": 0, "skipped": 0, "error": 0}
     has_json_metrics = False
     ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -35,7 +35,7 @@ async def stream_test_output(
     async for raw in proc.stdout:
         line = raw.decode("utf-8", errors="replace").rstrip()
         plain_line = ansi_escape.sub('', line)
-        
+
         if "TEST_METRICS_JSON: " in plain_line:
             try:
                 json_str = plain_line.split("TEST_METRICS_JSON: ")[1]
@@ -67,7 +67,7 @@ async def stream_test_output(
                 formatted_line = formatted_line.replace("FAILED", "[red]FAILED[/red]")
             elif "ERROR" in formatted_line:
                 formatted_line = formatted_line.replace("ERROR", "[red]ERROR[/red]")
-            
+
             stream_console = Console(highlight=False, force_terminal=True)
             stream_console.print(f"{tag}{formatted_line}")
 
