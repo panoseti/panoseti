@@ -4,6 +4,8 @@
 
 import asyncio
 import time
+import sys
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -80,48 +82,89 @@ def _local_summary() -> list[str]:
     return lines
 
 
-async def _remote_summary() -> list[str]:
-    """Query each DAQ node via gRPC and return one row per node."""
+async def _remote_summary(daq_config=None, clients: dict[str, Any] | None = None) -> list[str]:
+    """Query each DAQ node via gRPC and return detailed rows per node."""
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    import os
 
     lines: list[str] = []
-    try:
-        daq_config = config_file.get_daq_config()
-        network_config = config_file.get_network_config()
-        util.attach_daq_config(daq_config, network_config)
-    except Exception as e:
-        return [f"ERROR loading daq_config: {e}"]
+    
+    if daq_config is None:
+        try:
+            daq_config = config_file.get_daq_config()
+            network_config = config_file.get_network_config()
+            util.attach_daq_config(daq_config, network_config)
+        except Exception as e:
+            return [f"ERROR loading daq_config: {e}"]
+
+    async def _do_query(client: AsyncDaqControlClient, data_dir: str):
+        return await asyncio.wait_for(
+            client.StatusDaq({
+                "data_dir": data_dir,
+                "check_hashpipe_running": True,
+                "check_disk_usage": True,
+                "check_run_dirs": True,
+            }),
+            timeout=5.0,
+        )
 
     async def probe(node: object) -> str:
         from control.utils.pydantic_config_models import DaqNode
         assert isinstance(node, DaqNode)
+        ip_str = str(node.ip_addr)
+        
         if not node.module_ids:
-            return f"  {node.ip_addr}  (no modules)"
+            return f"  • {ip_str:<14} | (no modules configured)"
+            
         grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
+        
         try:
-            async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                ok, status = await asyncio.wait_for(
-                    client.StatusDaq({
-                        "data_dir": node.data_dir,
-                        "check_hashpipe_running": True,
-                        "check_disk_usage": True,
-                        "check_run_dirs": False,
-                    }),
-                    timeout=5.0,
-                )
+            # Reuse cached client if available, otherwise spin up a new context
+            if clients is not None and ip_str in clients:
+                ok, status = await _do_query(clients[ip_str], node.data_dir)
+            else:
+                async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
+                    ok, status = await _do_query(client, node.data_dir)
+
             if not ok:
-                return f"  {node.ip_addr}  gRPC returned not-ok"
-            hp = "hashpipe=RUNNING" if status.get("hashpipe_running") else "hashpipe=stopped"
-            pid = f"pid={status.get('hashpipe_pid', '?')}" if status.get("hashpipe_running") else ""
-            vols = status.get("vols", {})
-            free_strs = [
-                f"{name}:{v.get('free', 0) / 1e9:.1f}GB"
-                for name, v in vols.items()
-            ] if vols else []
-            disk = "  disk=" + ",".join(free_strs) if free_strs else ""
-            return f"  {node.ip_addr}:{grpc_port}  {hp} {pid}{disk}".strip()
+                return f"  • {ip_str:<14} | gRPC returned not-ok"
+
+            # 1. Modules
+            mod_str = f"Mods: {len(node.module_ids)}"
+
+            # 2. Hashpipe Status & PID
+            hp_state = "RUNNING" if status.get("hashpipe_running") else "STOPPED"
+            pid = status.get('hashpipe_pid')
+            pid_str = f" (PID:{pid})" if pid else ""
+            hp_str = f"HP: {hp_state}{pid_str}"
+            
+            # 3. Disk Usage (in KB with commas)
+            disk_usage = status.get("disk_usage", {})
+            free_bytes = disk_usage.get("free_disk_space", 0)
+            total_bytes = disk_usage.get("total_disk_space", 0)
+            
+            if total_bytes > 0:
+                free_gb = free_bytes / 2**30
+                total_gb = total_bytes / 2**30
+                disk_str = f"Free: {free_gb:,.3f} /{total_gb:,.3f} GiB"
+            else:
+                disk_str = "Disk: ?"
+
+            # 4. Run Directory (Base name only)
+            run_dirs = status.get("run_dirs", [])
+            if run_dirs:
+                # Strip parent path, leave only the run folder name
+                run_name = os.path.basename(run_dirs[0])
+                runs_str = f"{run_name}"
+            else:
+                runs_str = "none"
+
+            # Combine everything cleanly
+            # Adjusted string padding lengths to accommodate larger KB numbers and PIDs
+            return f"  • {ip_str:<14} | {hp_str:<16} | {disk_str:<28} | {runs_str}"
+
         except Exception as exc:
-            return f"  {node.ip_addr}  UNREACHABLE: {exc}"
+            return f"  • {ip_str:<14} | UNREACHABLE: {exc}"
 
     tasks = [probe(n) for n in daq_config.daq_nodes]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -179,12 +222,52 @@ def _render(local: list[str], remote: list[str] | None, sweep: list[str] | None)
     return "\n".join(parts)
 
 
-def status(remote: bool = False, sweep_mode: bool = False) -> None:
+def status(no_remote: bool = False, sweep_mode: bool = False) -> None:
     """Synchronous single-shot status render."""
     local = _local_summary()
-    remote_lines = asyncio.run(_remote_summary()) if remote else None
+    remote_lines = None if no_remote else asyncio.run(_remote_summary())
     sweep_lines = asyncio.run(_sweep_summary()) if sweep_mode else None
     typer.echo(_render(local, remote_lines, sweep_lines))
+
+async def _watch_loop(interval: float, no_remote: bool) -> None:
+    """Continuously fetch and display status, maintaining persistent gRPC connections."""
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+    import sys
+
+    try:
+        daq_config = config_file.get_daq_config()
+        network_config = config_file.get_network_config()
+        util.attach_daq_config(daq_config, network_config)
+    except Exception as e:
+        typer.echo(f"ERROR loading config for watch loop: {e}")
+        return
+
+    # Use an exit stack to gracefully manage the lifespans of all our gRPC clients
+    async with AsyncExitStack() as stack:
+        clients: dict[str, AsyncDaqControlClient] = {}
+        
+        if not no_remote:
+            for node in daq_config.daq_nodes:
+                if node.module_ids:
+                    grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
+                    client = AsyncDaqControlClient(host=grpc_host, port=grpc_port)
+                    await stack.enter_async_context(client)
+                    # Ensure IP is saved as a string in the cache lookup
+                    clients[str(node.ip_addr)] = client
+
+        # Clear the entire screen on initialization
+        sys.stdout.write("\033[2J")
+
+        while True:
+            local = _local_summary()
+            remote_lines = None if no_remote else await _remote_summary(daq_config, clients)
+            output = _render(local, remote_lines, None)
+            
+            # Cursor to top-left (\033[H) + Clear to end of screen (\033[0J)
+            sys.stdout.write(f"\033[H\033[0J{output}\n")
+            sys.stdout.flush()
+            
+            await asyncio.sleep(interval)
 
 
 
@@ -209,9 +292,9 @@ app = typer.Typer(
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    remote: Annotated[bool, typer.Option("--remote", help="Also query DAQ nodes via gRPC.")] = False,
+    no_remote: Annotated[bool, typer.Option("--no-remote", help="Skip querying DAQ nodes via gRPC.")] = False,
     watch: Annotated[bool, typer.Option("--watch", "-w", help="Refresh continuously.")] = False,
-    interval: Annotated[float, typer.Option("--interval", "-i", help="Refresh interval in seconds (--watch).")] = 5.0,
+    interval: Annotated[float, typer.Option("--interval", "-i", help="Refresh interval in seconds (requires --watch).")] = 1.0,
 ) -> None:
     """Query and display the current status of the observatory control plane."""
     if ctx.invoked_subcommand is not None:
@@ -219,42 +302,13 @@ def main(
 
     if watch:
         try:
-            while True:
-                local = _local_summary()
-                remote_lines = asyncio.run(_remote_summary()) if remote else None
-                output = _render(local, remote_lines, None)
-                import os
-                os.system("clear")
-                typer.echo(output)
-                time.sleep(interval)
+            # We now pass the interval variable directly
+            asyncio.run(_watch_loop(interval=interval, no_remote=no_remote))
         except KeyboardInterrupt:
-            pass
+            sys.stdout.write("\n")
+            sys.stdout.flush()
     else:
-        status(remote=remote)
-
-
-@app.command("remote")
-def remote_cmd(
-    watch: Annotated[bool, typer.Option("--watch", help="Refresh continuously.")] = False,
-    interval: Annotated[float, typer.Option("--interval", help="Refresh interval in seconds.")] = 5.0,
-) -> None:
-    """Query each DAQ node via gRPC (auto-resolves port-forwarding)."""
-    if watch:
-        try:
-            while True:
-                local = _local_summary()
-                remote_lines = asyncio.run(_remote_summary())
-                output = _render(local, remote_lines, None)
-                import os
-                os.system("clear")
-                typer.echo(output)
-                time.sleep(interval)
-        except KeyboardInterrupt:
-            pass
-    else:
-        local = _local_summary()
-        remote_lines = asyncio.run(_remote_summary())
-        typer.echo(_render(local, remote_lines, None))
+        status(no_remote=no_remote)
 
 
 @app.command("sweep")
