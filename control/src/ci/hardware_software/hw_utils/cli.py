@@ -270,6 +270,84 @@ def hw_plan(
         raise typer.Exit(code=1) from exc
 
 
+@app.command(name="ls")
+def hw_ls(
+    hw_class: Annotated[str | None, typer.Option("--class", "-c", help="Filter to one test class.")] = None,
+    hw_state: Annotated[str | None, typer.Option("--state", "-s", help="Filter by required state.")] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full node IDs.")] = False,
+) -> None:
+    """List all available HITL tests grouped by hardware state and class."""
+    import tomllib
+    import fnmatch
+
+    try:
+        # 1. Load TOML for class metadata
+        with (_HW_SW_DIR / "hw_tests.toml").open("rb") as f:
+            data = tomllib.load(f)
+        classes = data.get("classes", {})
+        mappings = data.get("mapping", [])
+
+        # 2. Collect tests via pytest
+        result = subprocess.run(
+            _uv_pytest(
+                str(_HW_SW_DIR),
+                "-p", "ci.hardware_software.hw_utils.pytest_plugin",
+                "--collect-only", "-q", "--no-header",
+            ),
+            capture_output=True, text=True,
+            cwd=_CONTROL_DIR,
+        )
+        
+        # 3. Classify and group
+        state_groups: dict[str, dict[str, list[str]]] = {}
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith("=") or "warning" in line.lower() or "collected" in line.lower():
+                continue
+            
+            # Match to class
+            matched_cls = None
+            for m in mappings:
+                if fnmatch.fnmatch(line, f"*{m['glob'].lstrip('*')}*") or fnmatch.fnmatch(line, m["glob"]):
+                    matched_cls = m["class"]
+                    break
+            
+            if not matched_cls:
+                matched_cls = "unclassified"
+            
+            # Filter by class
+            if hw_class and matched_cls != hw_class:
+                continue
+            
+            cfg = classes.get(matched_cls, {})
+            state = cfg.get("required_state", "UNKNOWN")
+            
+            # Filter by state
+            if hw_state and state != hw_state:
+                continue
+            
+            state_groups.setdefault(state, {}).setdefault(matched_cls, []).append(line)
+
+        # 4. Render
+        if not state_groups:
+            console.print("[yellow]No tests found matching filters.[/yellow]")
+            return
+
+        for state in sorted(state_groups.keys()):
+            console.print(f"\n[bold green]State: {state}[/bold green]")
+            for cls_name in sorted(state_groups[state].keys()):
+                test_list = state_groups[state][cls_name]
+                desc = classes.get(cls_name, {}).get("description", "")
+                console.print(f"  [bold cyan]{cls_name}[/bold cyan]  [dim]({len(test_list)} tests) - {desc}[/dim]")
+                for test in sorted(test_list):
+                    display_name = test if verbose else test.split("::")[-1]
+                    console.print(f"    • {display_name}")
+
+    except Exception as exc:
+        console.print(f"[red]Discovery failed: {exc}[/red]")
+        raise typer.Exit(code=1)
+
+
 # ---------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------
@@ -286,7 +364,12 @@ def hw_run(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
     explain: Annotated[str | None, typer.Option("--explain", help="Print state plan for a single test ID and exit.")] = None,
 ) -> None:
-    """Run HITL tests with state-aware batching."""
+    """
+    Run HITL tests with state-aware batching.
+    
+    All standard pytest flags (e.g. -k, -v, -s, -x) can be passed at the end.
+    Example: pseti test hw run -k "test_hk" -v
+    """
     if dev:
         console.print("[bold yellow]DEV MODE[/bold yellow] — power cycles skipped; hardware will NOT be returned to safe state.")
         keep_running = True
