@@ -316,7 +316,11 @@ def test_session_start_full(runner, topology) -> None:
     Run 'pseti session-start --no-hv'; assert all expected daemons are running
     and the Redis HASH for each quabo is populated within 15 seconds.
     """
-    result = runner.invoke(__import__("control.pseti", fromlist=["app"]).app, ["session-start", "--no-hv"])
+    result = runner.invoke(
+        __import__("control.pseti", fromlist=["app"]).app, 
+        ["session-start", "--no-hv"], 
+        input="y\n" * 16
+    )
     assert result.exit_code == 0, f"session-start failed:\n{result.stdout}"
 
     # Check Redis population

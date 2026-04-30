@@ -406,6 +406,9 @@ class QUABO:
         end_time = time.time() + 10
         if not self.have_hk_sock:
             self.hk_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.hk_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                self.hk_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             self.hk_sock.settimeout(0.5)
             self.hk_sock.bind(("", UDP_HK_PORT))
             self.have_hk_sock = True
@@ -899,4 +902,6 @@ def write_maroc_config_cmd() -> None:
     cmd = bytearray(492)
     q.make_maroc_cmd(config, cmd)
     with open('maroc_cmd_new.bin', 'wb') as f:
+        f.write(cmd)
+md_new.bin', 'wb') as f:
         f.write(cmd)
