@@ -229,7 +229,10 @@ class TestGetPermanentDaemons:
     def test_empty_config_returns_only_base(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config", lambda: None)
         result = get_permanent_daemons()
-        assert result == [str(PanoPaths.daemons_dir() / "storeInfluxDB.py")]
+        assert result == [
+            str(PanoPaths.daemons_dir() / "storeInfluxDB.py"),
+            str(PanoPaths.daemons_dir() / "storeLoki.py"),
+        ]
 
     def test_multiple_permanent_daemons(self, monkeypatch) -> None:
         monkeypatch.setattr("control.utils.util._safe_get_daemons_config",

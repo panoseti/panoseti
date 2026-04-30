@@ -142,6 +142,7 @@ async def test_start_collision_does_not_stop_active_run(session_fleet, tmp_path,
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(90)
 async def test_start_with_force_reset_stops_previous_run(session_fleet, tmp_path, ensure_clean_daq_state):
     """
     Verify that start_run --force-reset correctly cleans up a previous active run.

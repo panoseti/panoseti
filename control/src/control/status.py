@@ -3,7 +3,6 @@
 # show the status of a recording run
 
 import asyncio
-import sys
 import time
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime
@@ -12,6 +11,9 @@ from typing import Annotated, Any
 import typer
 from panoseti_grpc.telemetry.logger import get_logger
 from panoseti_grpc.util.cli import BaseLazyGroup
+from rich.console import Console
+from rich.live import Live
+from rich.text import Text
 
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
@@ -227,12 +229,14 @@ def status(no_remote: bool = False, sweep_mode: bool = False) -> None:
     local = _local_summary()
     remote_lines = None if no_remote else asyncio.run(_remote_summary())
     sweep_lines = asyncio.run(_sweep_summary()) if sweep_mode else None
-    typer.echo(_render(local, remote_lines, sweep_lines))
+    
+    # Use Rich Console with Text wrapper to ensure timestamps aren't parsed as formatting tags
+    console = Console()
+    console.print(Text(_render(local, remote_lines, sweep_lines)))
+
 
 async def _watch_loop(interval: float, no_remote: bool) -> None:
     """Continuously fetch and display status, maintaining persistent gRPC connections."""
-    import sys
-
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
     try:
@@ -256,20 +260,19 @@ async def _watch_loop(interval: float, no_remote: bool) -> None:
                     # Ensure IP is saved as a string in the cache lookup
                     clients[str(node.ip_addr)] = client
 
-        # Clear the entire screen on initialization
-        sys.stdout.write("\033[2J")
-
-        while True:
-            local = _local_summary()
-            remote_lines = None if no_remote else await _remote_summary(daq_config, clients)
-            output = _render(local, remote_lines, None)
-            
-            # Cursor to top-left (\033[H) + Clear to end of screen (\033[0J)
-            sys.stdout.write(f"\033[H\033[0J{output}\n")
-            sys.stdout.flush()
-            
-            await asyncio.sleep(interval)
-
+        console = Console()
+        
+        # Use Rich's Live view. Text() wrapper ensures '[2026-04-30 UTC]' isn't 
+        # accidentally interpreted as a rich styling tag.
+        with Live(console=console, auto_refresh=True) as live:
+            while True:
+                local = _local_summary()
+                remote_lines = None if no_remote else await _remote_summary(daq_config, clients)
+                output = _render(local, remote_lines, None)
+                
+                live.update(Text(output))
+                
+                await asyncio.sleep(interval)
 
 
 class StatLazyGroup(BaseLazyGroup):
@@ -306,8 +309,7 @@ def main(
             # We now pass the interval variable directly
             asyncio.run(_watch_loop(interval=interval, no_remote=no_remote))
         except KeyboardInterrupt:
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            pass
     else:
         status(no_remote=no_remote)
 
@@ -316,7 +318,8 @@ def main(
 def sweep_cmd() -> None:
     """Full network reachability sweep (Quabo ping + DAQ gRPC). Read-only."""
     lines = asyncio.run(_sweep_summary())
-    typer.echo("\n".join(lines))
+    console = Console()
+    console.print(Text("\n".join(lines)))
 
 
 if __name__ == "__main__":

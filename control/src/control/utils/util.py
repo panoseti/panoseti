@@ -360,7 +360,9 @@ def get_daemons() -> list[str]:
         str(PanoPaths.daemons_dir() / d) for d in redis_daemons
     ]
     for k, v in enabled.items():
-        if v:
+        if 'loki' in k: 
+            continue
+        elif v:
             lst.append(str(PanoPaths.daemons_dir() / f'capture_{k}.py'))
     return lst
 
@@ -394,7 +396,10 @@ def get_permanent_daemons() -> list[str]:
     daemons_config = _safe_get_daemons_config()
     enabled = daemons_config.permanent_daemons.model_dump() if daemons_config else {}
 
-    lst: list[str] = [str(PanoPaths.daemons_dir() / 'storeInfluxDB.py')]
+    lst: list[str] = [
+        str(PanoPaths.daemons_dir() / 'storeInfluxDB.py'),
+        str(PanoPaths.daemons_dir() / 'storeLoki.py'),
+    ]
     for k, v in enabled.items():
         if v:
             lst.append(str(PanoPaths.daemons_dir() / f'permanent_{k}.py'))

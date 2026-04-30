@@ -16,9 +16,9 @@ from sys import exit
 from typing import Any
 
 import redis
-from capture_hk import metadata_status_monitor_utils as md_utils
-from capture_hk.panosetiSIconvert import HKconvert
 
+from control.daemons.capture_hk import metadata_status_monitor_utils as md_utils
+from control.daemons.capture_hk.panosetiSIconvert import HKconvert
 from control.utils.redis_utils import redis_init
 
 HKconv = HKconvert()
