@@ -15,17 +15,22 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from control.utils.paths import PanoPaths
+
 app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True)
 console = Console()
 
 # Directory containing hw_tests.toml and the suites/ tree
 _HW_SW_DIR = Path(__file__).parent.parent
 # control/ root (contains pyproject.toml — needed for `uv run`)
-_CONTROL_DIR = _HW_SW_DIR.parent.parent.parent
+_CONTROL_DIR = PanoPaths.base_dir()
 # panoseti-software/ root (needed for compose env vars)
-_PSETI_ROOT = _CONTROL_DIR.parent
+_PSETI_ROOT = PanoPaths.software_root_dir()
 # Compose file for headnode/daqnode services (Redis, InfluxDB, etc.)
-_COMPOSE_FILE = _HW_SW_DIR.parent / "docker-compose.hw-sw.yml"
+_COMPOSE_FILE = _CONTROL_DIR / "src/ci/docker-compose.hw-sw.yml"
+
+# Default configuration path for HITL tests
+_HW_CONFIGS_DIR = _HW_SW_DIR / "configs"
 
 _STATE_FILE = Path.home() / ".pseti" / "hw_runtime_state.json"
 
@@ -50,6 +55,7 @@ def _compose_env() -> dict[str, str]:
     return {
         "PSETI_ROOT_BUILD": str(_PSETI_ROOT),
         "PSETI_CONTROL_BUILD": str(_CONTROL_DIR),
+        "PSETI_CONFIG": str(_HW_CONFIGS_DIR),
     }
 
 
@@ -74,6 +80,13 @@ def _run_compose(
     if args:
         cmd.extend(args)
     return subprocess.run(cmd, env=env).returncode
+
+
+@app.callback()
+def hw_main(ctx: typer.Context):
+    """Hardware-in-the-Loop (HITL) physical lab tests"""
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -581,7 +594,7 @@ def hw_check_env() -> None:
         console.print(
             "[yellow]⚠ PSETI_CONFIG is not set.[/yellow]\n"
             "  Set it to the directory containing obs_config.json, e.g.:\n"
-            "    export PSETI_CONFIG=/path/to/panoseti-software/control/configs"
+            f"    export PSETI_CONFIG={_HW_CONFIGS_DIR}"
         )
         all_ok = False
     else:

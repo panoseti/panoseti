@@ -159,7 +159,7 @@ pseti test hw clean
 
 ## 📁 Configuration Details
 
-Gold-standard configurations for the HITL environment are located in `control/src/ci/hardware-software/configs/`.
+Gold-standard configurations for the HITL environment are located in `control/src/ci/hardware_software/configs/`.
 
 - `obs_config.json`: Defines the 4-Quabo module and site coordinates.
 - `network_config.json`: Maps the router and port-forwarding rules.
