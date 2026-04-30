@@ -32,6 +32,8 @@ services:
     image: grafana/grafana:latest
     profiles: ["headnode"]
     network_mode: host
+    ports:
+      - 3005:3000
     volumes:
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro

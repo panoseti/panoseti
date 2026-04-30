@@ -121,6 +121,8 @@ def auto_isolate(
     os.environ["PSETI_CONTROL"] = str(ctl_tmp)
     os.environ["PSETI_TMP"] = str(tmp_tmp)
     os.environ["PSETI_QUABOS"] = str(tmp_tmp)
+    print("THE TMP PATH:", str(tmp_path))
+    
 
     # Expose isolated data dirs
     if "HEAD_DATA_DIR" not in os.environ:

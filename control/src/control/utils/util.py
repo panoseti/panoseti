@@ -195,6 +195,7 @@ def ping(ip_addr: IPvAnyAddress, cmd_port: int) -> bool:
         quabo = quabo_driver.QUABO(ip_addr, cmd_port)
         try:
             # Use our own IP as a sensible target for the liveness check
+            # VERY SPECIAL IP ADDRESS: DON'T TOUCH OR YOUR QUABOS WONT REBOOT!!!!!!
             target_ip = '192.168.1.1' #'local_ip()[0]
         except Exception:
             target_ip = '192.168.1.1'

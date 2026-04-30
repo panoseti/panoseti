@@ -21,11 +21,14 @@ volumes:
   mock_quabo_uds:
   grafana_data:
 
+
+
 services:
 
   grafana:
     image: grafana/grafana:latest
-    network_mode: "service:influxdb"
+    networks:
+      - headnode_net
     volumes:
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/var/lib/grafana/dashboards:ro
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -39,6 +42,8 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+    ports:
+      - 3000:3000
 
   influxdb:
     image: influxdb:1.8

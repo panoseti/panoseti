@@ -20,24 +20,24 @@ parallel = false
 
 [classes.telemetry]
 description = "HK packet pipeline: UDP → capture_hk.py → Redis → InfluxDB."
-required_state = "BOOTED"
-leaves_state = "BOOTED"
+required_state = "HK_ROUTED"
+leaves_state = "HK_ROUTED"
 batch_priority = 0
 preflight = true
 parallel = false
 
 [classes.fast_reconfig]
 description = "Configuration changes + short observation, no power cycle."
-required_state = "PH_CALIBRATED"
-leaves_state = "PH_CALIBRATED"
+required_state = "MASKS_CONFIGURED"
+leaves_state = "MASKS_CONFIGURED"
 batch_priority = 1
 preflight = true
 parallel = false
 
 [classes.observing]
 description = "Real DAQ flow: pseti start → record → pseti stop → transfer → verify."
-required_state = "ACQUIRING"
-leaves_state = "PH_CALIBRATED"
+required_state = "HV_OFF_READY"
+leaves_state = "HV_OFF_READY"
 batch_priority = 2
 preflight = true
 parallel = false

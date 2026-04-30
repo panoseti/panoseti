@@ -100,11 +100,11 @@ def configure_maroc(quabo_ip: str | None = None, **kwargs) -> None:
         q.send_maroc_params()
 
 
-def configure_acq(quabo_ip: str | None = None, **kwargs) -> None:
+def configure_masks(quabo_ip: str | None = None, **kwargs) -> None:
     """
     Write ACQ params, trigger masks, GOE masks, and destination IPs to quabo(s).
 
-    Transitions: MAROC_LOADED → ACQ_CONFIGURED.
+    Transitions: MAROC_CONFIGURED → MASKS_CONFIGURED.
     """
     from control.driver.quabo_driver import DAQ_PARAMS
     from control.utils import config_file
@@ -114,7 +114,7 @@ def configure_acq(quabo_ip: str | None = None, **kwargs) -> None:
     quabos = _all_quabos(quabo_ip)
 
     for q in quabos:
-        logger.info("configure_acq: setting DAQ params on %s:%d", q.ip_addr, q.port)
+        logger.info("configure_masks: setting DAQ params on %s:%d", q.ip_addr, q.port)
         params = DAQ_PARAMS(data)
         q.send_daq_params(params)
 

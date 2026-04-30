@@ -16,6 +16,7 @@ pytest-timeout: 180 seconds (60s graceful buffer flush + transfer overhead)
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 
@@ -392,3 +393,147 @@ def test_no_hv_safety_during_run(runner, topology) -> None:
 
     for val in hv_readings:
         assert val < 1000, f"HVMON unexpectedly high ({val}) during --no-hv run"
+
+
+# ---------------------------------------------------------------------------
+# Timing consistency (from legacy test_04)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow_hw
+@pytest.mark.timeout(180)
+def test_white_rabbit_timing(runner) -> None:
+    """
+    Sample PFF frames and verify WR timing consistency.
+    """
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    assert "ACTIVE" in out or "started" in out.lower(), f"pseti start failed:\n{out}"
+    archived = _wait_for_ledger_state("ARCHIVED", timeout=150.0)
+    assert archived, "Run did not reach ARCHIVED"
+
+    from control.utils.transfer.ledger import RunStateLedger
+
+    from control.utils import pff as pff_utils
+
+    ledger = RunStateLedger.load()
+    run_dir = Path(os.getenv("HEAD_DATA_DIR", "/data/head")) / ledger.run_name
+
+    pff_files = sorted(run_dir.rglob("*.pff"))
+    assert pff_files, f"No PFF files under {run_dir}"
+
+    mismatches = 0
+    total = 0
+    SAMPLE_FRAMES = 500
+    TIMING_THRESHOLD_MS = 25
+
+    for pff_path in pff_files:
+        if total >= SAMPLE_FRAMES:
+            break
+        try:
+            for header, _image in pff_utils.read_pff(str(pff_path)):
+                if total >= SAMPLE_FRAMES:
+                    break
+                pkt_nsec = header.get("pkt_nsec", 0)
+                tv_usec = header.get("tv_usec", 0)
+                diff_ms = abs(pkt_nsec / 1e6 - tv_usec / 1000)
+                if diff_ms > 25:
+                    diff_ms = abs(diff_ms - 1000)
+                if diff_ms >= TIMING_THRESHOLD_MS:
+                    mismatches += 1
+                total += 1
+        except Exception:
+            continue
+
+    assert total > 0, "No frames sampled"
+    bad_pct = mismatches / total * 100
+    assert bad_pct < 1.0, f"WR timing out of spec: {mismatches}/{total} frames ({bad_pct:.1f}%)"
+
+
+# ---------------------------------------------------------------------------
+# Hashpipe crash rollback (from legacy test_05)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow_hw
+@pytest.mark.timeout(180)
+def test_hashpipe_crash_rollback(runner) -> None:
+    """SIGKILL hashpipe mid-run, then verify pseti stop --force-cleanup."""
+    import subprocess
+
+    from control.utils import util
+
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", "60", "--no-hv"])
+    assert "ACTIVE" in out or "started" in out.lower(), f"pseti start failed:\n{out}"
+    time.sleep(5)
+
+    daq_config = config_file.get_daq_config()
+    network_config = config_file.get_network_config()
+    util.attach_daq_config(daq_config, network_config)
+    node = daq_config.daq_nodes[0]
+    host, _ = util.daq_grpc_endpoint(node)
+
+    result = subprocess.run(
+        ["ssh", *util.ssh_options, f"{node.username}@{host}", "pkill -9 hashpipe"],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode in (0, 1), f"ssh pkill failed: {result.stderr}"
+
+    out = _invoke_pseti(runner, ["stop", "--yes", "--force-cleanup"])
+    assert "done" in out.lower() or "aborted" in out.lower()
+
+    from control.utils.transfer.ledger import RunStateLedger
+    ledger = RunStateLedger.load()
+    status = ledger.status if ledger else None
+    assert status in ("ABORTED", "STOPPED_WITH_ERRORS", "RECORDING_ENDED"), f"Expected error status, got: {status}"
+
+
+# ---------------------------------------------------------------------------
+# Manifest corruption detection (from legacy test_06)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow_hw
+@pytest.mark.timeout(180)
+def test_manifest_corruption_detection(runner, tmp_path) -> None:
+    """Flip one byte in a real PFF file and verify_manifest catches it."""
+    import shutil
+
+    from control.transfer.verify import verify_manifest
+
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    assert "ACTIVE" in out or "started" in out.lower(), f"pseti start failed:\n{out}"
+    archived = _wait_for_ledger_state("ARCHIVED", timeout=150.0)
+    assert archived, "Run did not reach ARCHIVED"
+
+    from control.utils.transfer.ledger import RunStateLedger
+    ledger = RunStateLedger.load()
+    run_dir = Path(os.getenv("HEAD_DATA_DIR", "/data/head")) / ledger.run_name
+
+    manifests = list(run_dir.rglob("manifest.*"))
+    if not manifests:
+        pytest.skip("No manifest file found")
+
+    manifest_path = manifests[0]
+    parent_dir = manifest_path.parent
+
+    target_relpath = None
+    with open(manifest_path) as f:
+        for line in f:
+            parts = line.strip().split("  ", 3)
+            relpath = parts[-1] if len(parts) >= 3 else None
+            if relpath and relpath.endswith(".pff") and (parent_dir / relpath).exists():
+                target_relpath = relpath
+                break
+
+    if not target_relpath:
+        pytest.skip("No .pff file found in manifest")
+
+    tmp_run = tmp_path / "run_copy"
+    shutil.copytree(parent_dir, tmp_run)
+    tmp_manifest = tmp_run / manifest_path.name
+    target_file = tmp_run / target_relpath
+
+    data = bytearray(target_file.read_bytes())
+    data[0] ^= 0xFF
+    target_file.write_bytes(bytes(data))
+
+    ok, errors = verify_manifest(tmp_manifest, tmp_run)
+    assert not ok, "verify_manifest must detect the corruption"
+    assert any(target_relpath in e for e in errors), f"Expected {target_relpath} in errors: {errors}"

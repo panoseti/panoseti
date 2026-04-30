@@ -210,8 +210,8 @@ app = typer.Typer(
 def main(
     ctx: typer.Context,
     remote: Annotated[bool, typer.Option("--remote", help="Also query DAQ nodes via gRPC.")] = False,
-    watch: Annotated[bool, typer.Option("--watch", help="Refresh continuously.")] = False,
-    interval: Annotated[float, typer.Option("--interval", help="Refresh interval in seconds (--watch).")] = 5.0,
+    watch: Annotated[bool, typer.Option("--watch", "-w", help="Refresh continuously.")] = False,
+    interval: Annotated[float, typer.Option("--interval", "-i", help="Refresh interval in seconds (--watch).")] = 5.0,
 ) -> None:
     """Query and display the current status of the observatory control plane."""
     if ctx.invoked_subcommand is not None:
