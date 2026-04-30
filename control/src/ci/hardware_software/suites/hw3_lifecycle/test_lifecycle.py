@@ -68,6 +68,8 @@ def _wps_toggle(obs_config, on: bool) -> None:
 # Full power cycle
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow_hw
+@pytest.mark.timeout(360)
 def test_full_power_cycle(topology) -> None:
     """
     WPS off → WPS on → ping check → first HK packet bootbyte == 0xAA.
@@ -119,6 +121,7 @@ def test_full_power_cycle(topology) -> None:
 # TFTP reboot
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow_hw
 @pytest.mark.timeout(180)
 def test_tftp_reboot(topology) -> None:
     """

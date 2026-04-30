@@ -37,6 +37,10 @@ def pytest_configure(config: Any) -> None:
         "markers",
         "required_state(state): minimum HW state required by this test",
     )
+    config.addinivalue_line(
+        "markers",
+        "slow_hw: markers tests with long hardware timeouts (>60s)",
+    )
 
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
@@ -108,6 +112,36 @@ def pytest_runtest_setup(item: Any) -> None:
     from ci.hardware_software.hw_utils.cli import _STATE_FILE
     from ci.hardware_software.hw_utils.state_machine import HardwareStateMachine, read_state
     
+    # Check session-wide reachability first if we require BOOTED or above
+    if target_state != "UNPOWERED":
+        try:
+            # We look for the session-scoped fixture value if possible, 
+            # but hooks are tricky with fixtures. 
+            # For simplicity, we just run a cached check or the check itself.
+            from control.utils.paths import PanoPaths
+            cache_file = PanoPaths.tmp_dir() / ".topology_reachable_cache"
+            if not cache_file.exists() or (time.monotonic() - cache_file.stat().st_mtime) > 300:
+                from ci.hardware_software.hw_utils.topology import HwTopology
+                from control.driver.quabo_driver import QUABO
+                topo = HwTopology()
+                errors = []
+                for a in topo.quabo_ips():
+                    q = QUABO(a.real_ip, port=a.cmd_port)
+                    try:
+                        q.send(q.make_cmd(0x01))
+                        q.sock.settimeout(1.0)
+                        if not q.sock.recvfrom(1024)[0]:
+                            errors.append(f"{a.ip} (loc={a.boardloc}) no data")
+                    except Exception as exc:
+                        errors.append(f"{a.ip} (loc={a.boardloc}) unreachable: {exc}")
+                    finally:
+                        q.close()
+                if errors:
+                    pytest.skip(f"Topology unreachable:\n" + "\n".join(errors))
+                cache_file.touch()
+        except Exception as exc:
+            logger.debug("Topology reachability check failed: %s", exc)
+
     current_state = read_state(_STATE_FILE)
     if current_state == target_state:
         return

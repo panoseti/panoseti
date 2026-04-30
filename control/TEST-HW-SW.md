@@ -95,10 +95,23 @@ pseti test hw deploy
 ```
 
 ### 4. Run Tests
-Execute the HW-SW test suite.
+Execute the HW-SW test suite. The framework uses a state machine to automatically transition hardware to the required state before each batch.
 ```bash
 pseti test hw run
 ```
+
+#### State Machine & Boot Semantics
+Tests requiring the `BOOTED` state now trigger a formal `boot_verify` primitive. This primitive:
+- Toggles WPS power if needed.
+- Optionally triggers a TFTP reboot if a `reboot_port` is defined in `network_config.json`.
+- Polls for UDP reachability through the gateway until all Quabos respond to a command echo.
+
+#### Telemetry Co-existence
+To allow test sockets and the `capture_hk.py` daemon to receive the same UDP/60002 packets, both must set the `SO_REUSEPORT` and `SO_REUSEADDR` socket options. The `hk_socket` fixture and `capture_hk.py` are both patched to support this cooperative binding.
+
+#### Test Markers & Timeouts
+- **`@pytest.mark.timeout(N)`**: Used to override the global default for long-running hardware operations (booting, high-voltage ramping, data transfers).
+- **`@pytest.mark.slow_hw`**: Marks tests that take >60 seconds. You can run a fast subset with `pytest -m "not slow_hw"`.
 
 ### 5. Cleanup
 Tear down the stack and wipe the physical data directory to prevent disk exhaustion.

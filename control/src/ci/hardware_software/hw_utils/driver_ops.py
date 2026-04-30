@@ -38,6 +38,17 @@ def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
     
     logger.info("boot_verify: polling %d quabos for UDP reachability (timeout=%ds)", len(addrs), timeout_s)
     
+    # Optional: trigger TFTP reboot for each quabo first if reboot_port is defined
+    from control.driver.quabo_tftp import tftpw
+    for a in addrs:
+        if a.reboot_port != 69:  # Non-default or explicitly forwarded port
+            logger.info("boot_verify: triggering TFTP reboot for %s via port %d", a.real_ip, a.reboot_port)
+            try:
+                t = tftpw(a.real_ip, port=a.reboot_port)
+                t.reboot()
+            except Exception as exc:
+                logger.warning("boot_verify: TFTP reboot trigger failed for %s: %s", a.real_ip, exc)
+
     while len(reachable) < len(addrs) and (time.time() - start_time) < timeout_s:
         for a in addrs:
             if a.boardloc in reachable:

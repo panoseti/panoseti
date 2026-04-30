@@ -61,6 +61,7 @@ def _wait_for_ledger_state(target: str, timeout: float = 120.0) -> bool:
 # Full run → archive
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow_hw
 @pytest.mark.timeout(180)
 def test_full_run_to_archive(runner) -> None:
     """
@@ -88,6 +89,8 @@ def test_full_run_to_archive(runner) -> None:
 # Multi-run drain
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow_hw
+@pytest.mark.timeout(360)
 def test_multi_run_drain(runner) -> None:
     """
     Run three short back-to-back runs; assert each reaches ARCHIVED and no
