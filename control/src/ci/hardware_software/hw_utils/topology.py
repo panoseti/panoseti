@@ -53,19 +53,29 @@ class HwTopology:
     def quabo_ips(self) -> list[QuaboAddr]:
         """All quabos in the active observatory layout."""
         from control.utils.config_file import get_boardloc, ip_addr_to_module_id
+        from control.utils import util
         result: list[QuaboAddr] = []
         for dome in self._obs.domes:
             for module in dome.modules:
                 base_ip: str = str(module.ip_addr)
-                parts = base_ip.split(".")
                 for q in range(4):
-                    ip = f"{parts[0]}.{parts[1]}.{parts[2]}.{int(parts[3]) + q}"
+                    # Resolve real IP/port through gateway if needed
+                    res = util.get_quabo_ip_port(module.ip_addr, q, self._net)
+                    
+                    # Compute raw IP for legacy/display
+                    parts = base_ip.split(".")
+                    parts[3] = str(int(parts[3]) + q)
+                    ip = ".".join(parts)
+                    
                     mid = ip_addr_to_module_id(base_ip)
                     result.append(QuaboAddr(
                         ip=ip,
                         module_id=mid,
                         quadrant=q,
                         boardloc=get_boardloc(base_ip, q),
+                        real_ip=str(res.ip_addr),
+                        cmd_port=res.cmd_port,
+                        reboot_port=res.reboot_port
                     ))
         return result
 
