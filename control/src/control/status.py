@@ -3,8 +3,8 @@
 # show the status of a recording run
 
 import asyncio
-import time
 import sys
+import time
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -82,22 +82,24 @@ def _local_summary() -> list[str]:
     return lines
 
 
-async def _remote_summary(daq_config=None, clients: dict[str, Any] | None = None) -> list[str]:
+async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None = None) -> list[str]:
     """Query each DAQ node via gRPC and return detailed rows per node."""
-    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     import os
+
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
     lines: list[str] = []
     
     if daq_config is None:
         try:
+            from control.utils import config_file, util
             daq_config = config_file.get_daq_config()
             network_config = config_file.get_network_config()
             util.attach_daq_config(daq_config, network_config)
         except Exception as e:
             return [f"ERROR loading daq_config: {e}"]
 
-    async def _do_query(client: AsyncDaqControlClient, data_dir: str):
+    async def _do_query(client: AsyncDaqControlClient, data_dir: str) -> tuple[bool, dict[str, Any]]:
         return await asyncio.wait_for(
             client.StatusDaq({
                 "data_dir": data_dir,
@@ -109,6 +111,7 @@ async def _remote_summary(daq_config=None, clients: dict[str, Any] | None = None
         )
 
     async def probe(node: object) -> str:
+        from control.utils import util
         from control.utils.pydantic_config_models import DaqNode
         assert isinstance(node, DaqNode)
         ip_str = str(node.ip_addr)
@@ -128,9 +131,6 @@ async def _remote_summary(daq_config=None, clients: dict[str, Any] | None = None
 
             if not ok:
                 return f"  • {ip_str:<14} | gRPC returned not-ok"
-
-            # 1. Modules
-            mod_str = f"Mods: {len(node.module_ids)}"
 
             # 2. Hashpipe Status & PID
             hp_state = "RUNNING" if status.get("hashpipe_running") else "STOPPED"
@@ -231,8 +231,9 @@ def status(no_remote: bool = False, sweep_mode: bool = False) -> None:
 
 async def _watch_loop(interval: float, no_remote: bool) -> None:
     """Continuously fetch and display status, maintaining persistent gRPC connections."""
-    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     import sys
+
+    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
     try:
         daq_config = config_file.get_daq_config()

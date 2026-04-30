@@ -903,5 +903,3 @@ def write_maroc_config_cmd() -> None:
     q.make_maroc_cmd(config, cmd)
     with open('maroc_cmd_new.bin', 'wb') as f:
         f.write(cmd)
-md_new.bin', 'wb') as f:
-        f.write(cmd)
