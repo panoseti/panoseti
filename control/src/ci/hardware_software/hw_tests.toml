@@ -28,8 +28,8 @@ parallel = false
 
 [classes.fast_reconfig]
 description = "Configuration changes + short observation, no power cycle."
-required_state = "ACQ_CONFIGURED"
-leaves_state = "ACQ_CONFIGURED"
+required_state = "PH_CALIBRATED"
+leaves_state = "PH_CALIBRATED"
 batch_priority = 1
 preflight = true
 parallel = false
@@ -37,7 +37,7 @@ parallel = false
 [classes.observing]
 description = "Real DAQ flow: pseti start → record → pseti stop → transfer → verify."
 required_state = "ACQUIRING"
-leaves_state = "ACQ_CONFIGURED"
+leaves_state = "PH_CALIBRATED"
 batch_priority = 2
 preflight = true
 parallel = false

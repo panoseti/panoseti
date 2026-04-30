@@ -124,20 +124,15 @@ def pytest_runtest_setup(item: Any) -> None:
             cache_file = PanoPaths.tmp_dir() / ".topology_reachable_cache"
             if not cache_file.exists() or (time.monotonic() - cache_file.stat().st_mtime) > 300:
                 from ci.hardware_software.hw_utils.topology import HwTopology
-                from control.driver.quabo_driver import QUABO
+                from control.utils import util
                 topo = HwTopology()
                 errors = []
                 for a in topo.quabo_ips():
-                    q = QUABO(a.real_ip, port=a.cmd_port)
                     try:
-                        q.send(q.make_cmd(0x01))
-                        q.sock.settimeout(1.0)
-                        if not q.sock.recvfrom(1024)[0]:
-                            errors.append(f"{a.ip} (loc={a.boardloc}) no data")
+                        if not util.ping(a.real_ip, a.cmd_port):
+                            errors.append(f"{a.ip} (loc={a.boardloc}) unreachable via util.ping")
                     except Exception as exc:
-                        errors.append(f"{a.ip} (loc={a.boardloc}) unreachable: {exc}")
-                    finally:
-                        q.close()
+                        errors.append(f"{a.ip} (loc={a.boardloc}) unreachable error: {exc}")
                 if errors:
                     pytest.skip("Topology unreachable:\n" + "\n".join(errors))
                 cache_file.touch()

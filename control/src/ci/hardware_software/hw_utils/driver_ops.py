@@ -18,7 +18,6 @@ def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
     Transitions: POWERED → BOOTED.
     """
     from ci.hardware_software.hw_utils.topology import HwTopology
-    from control.driver.quabo_driver import QUABO
     
     topo = HwTopology()
     addrs = topo.quabo_ips()
@@ -54,21 +53,10 @@ def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
             if a.boardloc in reachable:
                 continue
             
-            # Use command 0x01 (GET_ID/VERSION usually) as a ping. 
-            # It's better than 0x0a which side-effects destination IPs.
-            q = QUABO(a.real_ip, port=a.cmd_port)
-            try:
-                cmd = q.make_cmd(0x01)
-                q.send(cmd)
-                q.sock.settimeout(0.5)
-                data, _ = q.sock.recvfrom(1024)
-                if data:
-                    logger.info("boot_verify: quabo at %s (loc=%d) is REACHABLE", a.real_ip, a.boardloc)
-                    reachable.add(a.boardloc)
-            except (TimeoutError, OSError):
-                pass
-            finally:
-                q.close()
+            from control.utils import util
+            if util.ping(a.real_ip, a.cmd_port):
+                logger.info("boot_verify: quabo at %s (loc=%d) is REACHABLE", a.real_ip, a.boardloc)
+                reachable.add(a.boardloc)
         
         if len(reachable) < len(addrs):
             time.sleep(2)
@@ -80,14 +68,31 @@ def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
     logger.info("boot_verify: all quabos are BOOTED and reachable")
 
 
+def route_hk(quabo_ip: str | None = None, **kwargs) -> None:
+    """
+    Configure the housekeeping packet destination for Quabos.
+    Transitions: BOOTED → HK_ROUTED.
+    """
+    import control.config as config
+    from control.utils import config_file
+
+    obs_config = config_file.get_obs_config()
+    daq_config = config_file.get_daq_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+
+    logger.info("route_hk: Setting HK destination to this node")
+    config.do_hk_dest(modules, quabo_uids, daq_config, network_config)
+
+
 def configure_maroc(quabo_ip: str | None = None, **kwargs) -> None:
     """
     Program MAROC registers on all (or one) quabo(s).
 
     Loads the config from quabo_config.txt and sends the 829-byte serial command.
-    Transitions: BOOTED → MAROC_LOADED.
+    Transitions: HK_ROUTED → MAROC_LOADED.
     """
-
     quabos = _all_quabos(quabo_ip)
 
     for q in quabos:
@@ -114,12 +119,29 @@ def configure_acq(quabo_ip: str | None = None, **kwargs) -> None:
         q.send_daq_params(params)
 
 
+def calibrate_ph(quabo_ip: str | None = None, **kwargs) -> None:
+    """
+    Run the PH baseline calibration.
+    Transitions: ACQ_CONFIGURED → PH_CALIBRATED.
+    """
+    import control.config as config
+    from control.utils import config_file
+
+    obs_config = config_file.get_obs_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+
+    logger.info("calibrate_ph: Running PH baseline calibration")
+    config.do_calibrate_ph(modules, quabo_uids, network_config)
+
+
 def hv_set_from_config(quabo_ip: str | None = None, **kwargs) -> None:
     """
     Ramp HV to the setpoint specified in obs_config detector_overvoltage.
 
     Guards (shutter_must_be_closed, light_sensor_dark) run before this call.
-    Transitions: ACQ_CONFIGURED → HV_ON.
+    Transitions: PH_CALIBRATED → HV_ON.
     """
     from control.utils import config_file
 

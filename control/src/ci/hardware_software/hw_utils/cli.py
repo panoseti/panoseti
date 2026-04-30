@@ -180,7 +180,6 @@ def hw_attach(
     """Enter the headnode container shell for interactive debugging."""
     env = {**os.environ, **_compose_env()}
     # Use os.system so stdin/stdout/stderr are inherited (interactive shell).
-    cmd = f"{tool} compose -f {_COMPOSE_FILE} --profile headnode exec {service} /bin/bash"
     console.print(f"[cyan]Attaching to {service}...[/cyan]")
     os.execvpe(tool, [tool, "compose", "-f", str(_COMPOSE_FILE),
                       "--profile", "headnode", "exec", service, "/bin/bash"], env)
@@ -655,6 +654,7 @@ def hw_check_env() -> None:
             
             # 3. Reboot port check (TFTP/UDP 69 or forwarded)
             reboot_ok = False
+            import contextlib
             with contextlib.suppress(Exception):
                 # We can't easily "ping" TFTP without a request, but we can try to open a socket 
                 # or just check if it's reachable. For simplicity, we check if we can bind/connect.
