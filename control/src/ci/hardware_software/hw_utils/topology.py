@@ -12,10 +12,13 @@ from typing import Any
 
 @dataclass
 class QuaboAddr:
-    ip: str
+    ip: str           # raw quabo IP (kept for backward compat / display)
     module_id: int
     quadrant: int
     boardloc: int
+    real_ip: str      # gateway IP if forwarded, else == ip
+    cmd_port: int     # 60000+quadrant or forwarded port
+    reboot_port: int  # 60004+quadrant or forwarded port
 
 
 @dataclass
@@ -138,6 +141,11 @@ class HwTopology:
             return f"Need ≥{min_modules} modules, found {len(self.module_ids())}"
 
         min_daq = requirement.get("requires_min_daq_nodes")
+        if min_daq and len(self.daq_nodes()) < min_daq:
+            return f"Need ≥{min_daq} DAQ nodes, found {len(self.daq_nodes())}"
+
+        return True
+      min_daq = requirement.get("requires_min_daq_nodes")
         if min_daq and len(self.daq_nodes()) < min_daq:
             return f"Need ≥{min_daq} DAQ nodes, found {len(self.daq_nodes())}"
 

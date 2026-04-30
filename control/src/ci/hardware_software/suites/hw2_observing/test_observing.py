@@ -61,13 +61,14 @@ def _wait_for_ledger_state(target: str, timeout: float = 120.0) -> bool:
 # Full run → archive
 # ---------------------------------------------------------------------------
 
+@pytest.mark.timeout(180)
 def test_full_run_to_archive(runner) -> None:
     """
     Start a 30-second run with --no-hv, wait for ARCHIVED in the ledger.
     Then verify the head-node run directory has the run_complete marker and
     at least one PFF file (transferred from the DAQ node).
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower(), f"pseti start failed:\n{out}"
 
     archived = _wait_for_ledger_state("ARCHIVED", timeout=150.0)
@@ -93,7 +94,7 @@ def test_multi_run_drain(runner) -> None:
     orphaned jobs remain in the active/ transfer queue directory.
     """
     for i in range(3):
-        out = _invoke_pseti(runner, ["start", "--nsecs", "15", "--no-hv"])
+        out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", "15", "--no-hv"])
         assert "ACTIVE" in out or "started" in out.lower(), f"Run {i+1} start failed:\n{out}"
         # Wait for run to finish recording before starting the next
         time.sleep(20.0)
@@ -115,7 +116,7 @@ def test_active_daemon_race(runner) -> None:
     is polling, assert clean handoff (job moves from pending/ to completed/).
     """
     # Start a run and immediately check the daemon picks it up
-    out = _invoke_pseti(runner, ["start", "--nsecs", "20", "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", "20", "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower(), f"start failed:\n{out}"
 
     # Immediately wait; pending may already be claimed by the daemon
@@ -137,7 +138,7 @@ def test_distributed_run_started(runner, topology) -> None:
     if len(topology.daq_nodes()) < 2:
         pytest.skip("Fewer than 2 DAQ nodes in active topology")
 
-    out = _invoke_pseti(runner, ["start", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower(), f"start failed:\n{out}"
 
     from panoseti_grpc.daq_control.client import DaqControlClient
@@ -166,7 +167,7 @@ def test_grpc_streams_real_quabo_data(runner, topology) -> None:
     After start, the DaqDataClient should stream ≥10 PanoImage frames
     within 15 seconds. Asserts shape matches configured data product.
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower(), f"start failed:\n{out}"
 
     daq = config_file.get_daq_config()
@@ -201,7 +202,7 @@ def test_frame_header_fields(runner, topology) -> None:
     Frames streamed from a real quabo must have non-zero pkt_num, pkt_tai,
     and a tv_sec in a plausible Unix timestamp range (year 2020+).
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower()
 
     daq = config_file.get_daq_config()
@@ -234,7 +235,7 @@ def test_module_id_consistency(runner, topology) -> None:
     The module_id field in streamed frames must match the module IDs declared
     in the active obs_config.
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower()
 
     expected_ids = set(topology.module_ids())
@@ -272,7 +273,7 @@ def test_concurrent_clients_receive_same_frames(runner, topology) -> None:
     Two DaqDataClient instances connected simultaneously should see the
     same frame timestamps (broadcast semantics).
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", str(_RUN_DURATION_S), "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower()
 
     daq = config_file.get_daq_config()
@@ -319,7 +320,7 @@ def test_cleanup_precondition_enforced(runner, topology) -> None:
     manifest_digest is provided (FAILED_PRECONDITION). A correct digest
     succeeds. This verifies the safety invariant end-to-end on real hardware.
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", "15", "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", "15", "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower()
     time.sleep(20.0)  # let the run finish
 
@@ -358,7 +359,7 @@ def test_no_hv_safety_during_run(runner, topology) -> None:
     When started with --no-hv, HVMON0..3 in HK packets should stay near zero
     throughout the run. Asserts the safety contract of the --no-hv flag.
     """
-    out = _invoke_pseti(runner, ["start", "--nsecs", "15", "--no-hv"])
+    out = _invoke_pseti(runner, ["start", "--yes", "--nsecs", "15", "--no-hv"])
     assert "ACTIVE" in out or "started" in out.lower()
 
     # Collect a few HK packets during the run

@@ -7,8 +7,66 @@ HardwareStateMachine.execute() via importlib.
 from __future__ import annotations
 
 import logging
+import time
 
 logger = logging.getLogger(__name__)
+
+
+def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
+    """
+    Poll each quabo's cmd_port until UDP echo responds.
+    Transitions: POWERED → BOOTED.
+    """
+    from ci.hardware_software.hw_utils.topology import HwTopology
+    from control.driver.quabo_driver import QUABO
+    
+    topo = HwTopology()
+    addrs = topo.quabo_ips()
+    
+    if quabo_ip:
+        # Filter to just this raw IP (or it might be passed as real_ip, 
+        # but usually state machine works on the topology's identity)
+        addrs = [a for a in addrs if a.ip == quabo_ip or a.real_ip == quabo_ip]
+
+    if not addrs:
+        logger.warning("boot_verify: no quabos found to verify")
+        return
+
+    timeout_s = kwargs.get("budget_s", {}).get("max", 300)
+    start_time = time.time()
+    reachable = set()
+    
+    logger.info("boot_verify: polling %d quabos for UDP reachability (timeout=%ds)", len(addrs), timeout_s)
+    
+    while len(reachable) < len(addrs) and (time.time() - start_time) < timeout_s:
+        for a in addrs:
+            if a.boardloc in reachable:
+                continue
+            
+            # Use command 0x01 (GET_ID/VERSION usually) as a ping. 
+            # It's better than 0x0a which side-effects destination IPs.
+            q = QUABO(a.real_ip, port=a.cmd_port)
+            try:
+                cmd = q.make_cmd(0x01)
+                q.send(cmd)
+                q.sock.settimeout(0.5)
+                data, _ = q.sock.recvfrom(1024)
+                if data:
+                    logger.info("boot_verify: quabo at %s (loc=%d) is REACHABLE", a.real_ip, a.boardloc)
+                    reachable.add(a.boardloc)
+            except (TimeoutError, OSError):
+                pass
+            finally:
+                q.close()
+        
+        if len(reachable) < len(addrs):
+            time.sleep(2)
+
+    if len(reachable) < len(addrs):
+        missing = [a.ip for a in addrs if a.boardloc not in reachable]
+        raise RuntimeError(f"boot_verify: timeout reached. Unreachable quabos: {missing}")
+
+    logger.info("boot_verify: all quabos are BOOTED and reachable")
 
 
 def configure_maroc(quabo_ip: str | None = None, **kwargs) -> None:
@@ -21,14 +79,10 @@ def configure_maroc(quabo_ip: str | None = None, **kwargs) -> None:
     from control.driver.quabo_driver import QUABO
     from control.utils import config_file
 
-    if quabo_ip:
-        quabos = [QUABO(quabo_ip)]
-    else:
-        obs = config_file.get_obs_config()
-        quabos = _all_quabos(obs)
+    quabos = _all_quabos(quabo_ip)
 
     for q in quabos:
-        logger.info("configure_maroc: sending MAROC params to %s", q.ip_addr)
+        logger.info("configure_maroc: sending MAROC params to %s:%d", q.ip_addr, q.port)
         q.send_maroc_params()
 
 
@@ -41,13 +95,12 @@ def configure_acq(quabo_ip: str | None = None, **kwargs) -> None:
     from control.driver.quabo_driver import DAQ_PARAMS, QUABO
     from control.utils import config_file
 
-    obs = config_file.get_obs_config()
     data = config_file.get_data_config()
 
-    quabos = [QUABO(quabo_ip)] if quabo_ip else _all_quabos(obs)
+    quabos = _all_quabos(quabo_ip)
 
     for q in quabos:
-        logger.info("configure_acq: setting DAQ params on %s", q.ip_addr)
+        logger.info("configure_acq: setting DAQ params on %s:%d", q.ip_addr, q.port)
         params = DAQ_PARAMS(data)
         q.send_daq_params(params)
 
@@ -65,10 +118,10 @@ def hv_set_from_config(quabo_ip: str | None = None, **kwargs) -> None:
     obs = config_file.get_obs_config()
     overvoltage = obs.get("detector_overvoltage", 0)
 
-    quabos = [QUABO(quabo_ip)] if quabo_ip else _all_quabos(obs)
+    quabos = _all_quabos(quabo_ip)
 
     for q in quabos:
-        logger.info("hv_set_from_config: setting HV overvoltage=%.2f on %s", overvoltage, q.ip_addr)
+        logger.info("hv_set_from_config: setting HV overvoltage=%.2f on %s:%d", overvoltage, q.ip_addr, q.port)
         q.hv_set_from_config(overvoltage)
 
 
@@ -79,30 +132,25 @@ def hv_zero(quabo_ip: str | None = None, **kwargs) -> None:
     Transitions: any → ACQ_CONFIGURED.
     """
     from control.driver.quabo_driver import QUABO
-    from control.utils import config_file
 
-    if quabo_ip:
-        quabos = [QUABO(quabo_ip)]
-    else:
-        obs = config_file.get_obs_config()
-        quabos = _all_quabos(obs)
+    quabos = _all_quabos(quabo_ip)
 
     for q in quabos:
-        logger.info("hv_zero: zeroing HV on %s", q.ip_addr)
+        logger.info("hv_zero: zeroing HV on %s:%d", q.ip_addr, q.port)
         q.hv_set([0, 0, 0, 0])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _all_quabos(obs_config: dict) -> list:
-    """Instantiate QUABO objects for every quabo in the observatory layout."""
+def _all_quabos(quabo_ip: str | None = None) -> list:
+    """Instantiate QUABO objects for every quabo in the observatory layout, respecting port forwarding."""
+    from ci.hardware_software.hw_utils.topology import HwTopology
     from control.driver.quabo_driver import QUABO
-    result = []
-    for dome in obs_config.get("domes", []):
-        for module in dome.get("modules", []):
-            base_ip: str = module["ip"]
-            parts = base_ip.split(".")
-            for q in range(4):
-                ip = f"{parts[0]}.{parts[1]}.{parts[2]}.{int(parts[3]) + q}"
-                result.append(QUABO(ip))
-    return result
+    
+    topo = HwTopology()
+    addrs = topo.quabo_ips()
+    
+    if quabo_ip:
+        addrs = [a for a in addrs if a.ip == quabo_ip or a.real_ip == quabo_ip]
+        
+    return [QUABO(a.real_ip, port=a.cmd_port) for a in addrs]

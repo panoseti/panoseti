@@ -9,6 +9,10 @@ name = "UNPOWERED"
 desc = "WPS outlet off."
 
 [[states]]
+name = "POWERED"
+desc = "WPS outlet on; quabo CPU booting."
+
+[[states]]
 name = "BOOTED"
 desc = "Quabo CPU up, FPGA loaded, ping responsive, registers at firmware default."
 
@@ -108,6 +112,10 @@ entrypoint = "hw_utils.run_ops:start_run_via_cli"
 name = "stop_acq"
 from_states = ["ACQUIRING"]
 to_state = "ACQ_CONFIGURED"
+budget_s = { typical = 60, max = 90 }
+safety = "low"
+entrypoint = "hw_utils.run_ops:stop_run_via_cli"
+FIGURED"
 budget_s = { typical = 60, max = 90 }
 safety = "low"
 entrypoint = "hw_utils.run_ops:stop_run_via_cli"

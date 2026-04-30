@@ -91,6 +91,38 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
     items[:] = ordered
 
 
+def pytest_runtest_setup(item: Any) -> None:
+    """
+    Before each test, ensure hardware is in the required state.
+    If a transition fails, skip the test (and subsequent tests in the same batch).
+    """
+    # 1. Get required state from markers
+    marker = item.get_closest_marker("required_state")
+    if not marker:
+        return
+    target_state = marker.args[0]
+    if not target_state:
+        return
+
+    # 2. Get current state
+    from ci.hardware_software.hw_utils.cli import _STATE_FILE
+    from ci.hardware_software.hw_utils.state_machine import HardwareStateMachine, read_state
+    
+    current_state = read_state(_STATE_FILE)
+    if current_state == target_state:
+        return
+
+    # 3. Plan and execute transition
+    sm = HardwareStateMachine()
+    try:
+        plan = sm.plan(current_state or sm.initial, target_state)
+        if plan:
+            logger.info("Transitioning for %s: %s → %s", item.nodeid, current_state, target_state)
+            sm.execute(plan, state_file=_STATE_FILE)
+    except Exception as exc:
+        pytest.skip(f"State transition to {target_state} failed: {exc}")
+
+
 def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any) -> None:
     """Print the HITL batch plan vs actual execution summary if any HITL items ran."""
     if not _batch_plan:

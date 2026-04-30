@@ -46,6 +46,7 @@ def _wait_for_redis_key(redis_client, boardloc: int, timeout: float = _POPULATE_
 # Redis populated for all quabos
 # ---------------------------------------------------------------------------
 
+@pytest.mark.timeout(60)
 def test_redis_populated_for_all_quabos(redis_client, topology) -> None:
     """
     Every quabo in the active topology must have a QUABO_<boardloc> HASH

@@ -119,7 +119,7 @@ def test_influx_tags_correct(influx_client, topology) -> None:
     datatype=housekeeping.
     """
     from control.utils import config_file
-    obs_name = config_file.get_obs_config().get("name", "")
+    obs_name = config_file.get_obs_config().name
 
     time.sleep(_INGEST_WAIT_S)
     for addr in topology.quabo_ips()[:1]:  # check first quabo only for speed
@@ -239,7 +239,7 @@ def test_influx_continues_through_run_lifecycle(influx_client, topology, runner)
     from control.pseti import app
 
     # Start a short run
-    result = runner.invoke(app, ["start", "--nsecs", "15", "--no-hv"])
+    result = runner.invoke(app, ["start", "--yes", "--nsecs", "15", "--no-hv"])
     assert result.exit_code == 0, f"pseti start failed:\n{result.stdout}"
     time.sleep(20.0)
     runner.invoke(app, ["stop", "--yes"])
@@ -303,4 +303,6 @@ def test_influx_stops_on_power_off(influx_client, topology) -> None:
 
     # Power back on for subsequent lifecycle tests
     for wps_val in wps_entries.values():
+        quabo_power(wps_val, on=True)
+alues():
         quabo_power(wps_val, on=True)

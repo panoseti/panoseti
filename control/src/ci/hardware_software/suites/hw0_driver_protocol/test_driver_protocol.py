@@ -124,39 +124,17 @@ def test_acq_params_ph_mode(quabo: QUABO) -> None:
 # MAROC roundtrip
 # ---------------------------------------------------------------------------
 
-def test_maroc_roundtrip(quabo: QUABO, obs_config: dict) -> None:
+def test_maroc_roundtrip(quabo: QUABO, maroc_config: dict) -> None:
     """
     Send a known MAROC config twice; the echo's 829-bit shift-register region
     should be identical between calls (proving the FPGA loaded the registers).
     The 492-byte MAROC command echoes as 492 bytes with opcode 0x81.
     """
-    # Build a minimal all-zero config dict (all GAIN=0, CTEST=0)
-    config: dict = {}
-    bool_fields = [
-        'OTABG_ON', 'DAC_ON', 'SMALL_DAC', 'DAC2', 'DAC1', 'ENB_OUT_ADC',
-        'INV_START_GRAY', 'RAMP8B', 'RAMP10B', 'CMD_CK_MUX', 'D1_D2',
-        'INV_DISCR_ADC', 'POLAR_DISCRI', 'ENB3ST', 'VAL_DC_FSB2',
-        'SW_FSB2_50F', 'SW_FSB2_100F', 'SW_FSB2_100K', 'SW_FSB2_50K',
-        'VALID_DC_FS', 'CMD_FSB_FSU', 'SW_FSB1_50F', 'SW_FSB1_100F',
-        'SW_FSB1_100K', 'SW_FSB1_50k', 'SW_FSU_100K', 'SW_FSU_50K',
-        'SW_FSU_25K', 'SW_FSU_40F', 'SW_FSU_20F', 'H1H2_CHOICE', 'EN_ADC',
-        'SW_SS_1200F', 'SW_SS_600F', 'SW_SS_300F', 'ON_OFF_SS',
-        'SWB_BUF_2P', 'SWB_BUF_1P', 'SWB_BUF_500F', 'SWB_BUF_250F',
-        'CMD_FSB', 'CMD_SS', 'CMD_FSU',
-    ]
-    for f in bool_fields:
-        config[f] = 0
-    for i in range(64):
-        config[f'GAIN{i}'] = 0
-        config[f'CTEST_{i}'] = 0
-        config[f'MASKOR1_{i}'] = 0
-        config[f'MASKOR2_{i}'] = 0
-
     echo1 = _flush_and_echo(
-        quabo, lambda: quabo.send_maroc_params(config), echo_size=512
+        quabo, lambda: quabo.send_maroc_params(maroc_config), echo_size=512
     )
     echo2 = _flush_and_echo(
-        quabo, lambda: quabo.send_maroc_params(config), echo_size=512
+        quabo, lambda: quabo.send_maroc_params(maroc_config), echo_size=512
     )
     assert echo1 == echo2, "MAROC echo differed between two identical sends"
 

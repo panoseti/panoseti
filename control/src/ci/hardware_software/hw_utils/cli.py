@@ -549,10 +549,39 @@ def hw_check_env() -> None:
     # ── Quabo reachability ──────────────────────────────────────────────────
     if topo is not None:
         console.print("[dim]Checking quabo reachability (first module)...[/dim]")
+        from control.driver.quabo_driver import QUABO
         for q in topo.quabo_ips()[:4]:
+            # 1. ICMP ping (raw IP)
             r = subprocess.run(["ping", "-c1", "-W1", q.ip], capture_output=True, timeout=3)
-            icon = "[green]✓[/green]" if r.returncode == 0 else "[red]✗[/red]"
-            console.print(f"  {icon} {q.ip} (module {q.module_id} Q{q.quadrant})")
+            ping_ok = r.returncode == 0
+            ping_icon = "[green]✓[/green]" if ping_ok else "[red]✗[/red]"
+            
+            # 2. UDP Echo (real_ip:cmd_port)
+            udp_ok = False
+            try:
+                drv = QUABO(q.real_ip, port=q.cmd_port)
+                drv.send(drv.make_cmd(0x01))
+                drv.sock.settimeout(1.0)
+                data, _ = drv.sock.recvfrom(1024)
+                if data:
+                    udp_ok = True
+                drv.close()
+            except (TimeoutError, OSError):
+                pass
+            udp_icon = "[green]✓[/green]" if udp_ok else "[red]✗[/red]"
+            
+            console.print(f"  {ping_icon} ICMP {q.ip:15} | {udp_icon} UDP {q.real_ip}:{q.cmd_port} (loc={q.boardloc})")
+            if not udp_ok:
+                all_ok = False
+
+    # ── Daemon configuration ───────────────────────────────────────────────
+    console.print("[dim]Checking daemon configuration...[/dim]")
+    capture_script = _CONTROL_DIR / "src" / "control" / "daemons" / "capture_hk.py"
+    if capture_script.exists():
+        console.print(f"[green]✓ capture_hk.py found at {capture_script.name}[/green]")
+    else:
+        console.print(f"[red]✗ capture_hk.py NOT found at {capture_script}[/red]")
+        all_ok = False
 
     console.print()
     if all_ok:

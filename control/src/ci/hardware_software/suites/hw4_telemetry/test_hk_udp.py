@@ -22,7 +22,6 @@ from collections import defaultdict
 import pytest
 
 from ci.hardware_software.hw_assertions import HK_PACKET_LEN, HKPacketParser
-from control.utils.config_file import get_boardloc
 
 pytestmark = pytest.mark.hw_class("telemetry")
 
@@ -108,7 +107,7 @@ def test_hk_boardloc_matches_obs_config(topology, hk_socket: socket.socket) -> N
     BOARDLOC (bytes 2:4, LE uint16) must equal module_id * 4 + quadrant
     for every quabo, matching the active obs_config.
     """
-    expected = {get_boardloc(a.module_id, a.quadrant) for a in topology.quabo_ips()}
+    expected = {a.boardloc for a in topology.quabo_ips()}
     seen: set[int] = set()
     packets = _collect_packets(hk_socket, _CAPTURE_WINDOW_S)
     for pkt in packets:
@@ -210,10 +209,10 @@ def test_hk_pcb_revision(hk_socket: socket.socket, topology) -> None:
     for BGA quabos it must be 0. Cross-check against obs_config quabo_version.
     """
     version_map = {}
-    for dome in topology._obs.get("domes", []):
-        for module in dome.get("modules", []):
-            base_ip = module.get("ip_addr", "")
-            hw_ver = module.get("quabo_version", "qfp")
+    for dome in topology._obs.domes:
+        for module in dome.modules:
+            base_ip = str(module.ip_addr)
+            hw_ver = module.quabo_version or "qfp"
             parts = base_ip.split(".")
             for q in range(4):
                 mid = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
@@ -246,10 +245,10 @@ def test_hk_fwver_matches_firmware_json(hk_socket: socket.socket, topology) -> N
     fw_config = get_firmware_config()
 
     version_map: dict[int, str] = {}
-    for dome in topology._obs.get("domes", []):
-        for module in dome.get("modules", []):
-            base_ip = module.get("ip_addr", "")
-            hw_ver = module.get("quabo_version", "qfp")
+    for dome in topology._obs.domes:
+        for module in dome.modules:
+            base_ip = str(module.ip_addr)
+            hw_ver = module.quabo_version or "qfp"
             parts = base_ip.split(".")
             for q in range(4):
                 mid = (int(parts[2]) * 256 + int(parts[3])) >> 2 & 0xFF
@@ -317,9 +316,10 @@ def test_hk_packet_count_per_quabo(hk_socket: socket.socket, topology) -> None:
         boardloc = struct.unpack_from("<H", pkt, 2)[0]
         counts[boardloc] += 1
 
-    expected_boardlocs = {get_boardloc(a.module_id, a.quadrant) for a in topology.quabo_ips()}
+    expected_boardlocs = {a.boardloc for a in topology.quabo_ips()}
     for bl in expected_boardlocs:
         n = counts.get(bl, 0)
         assert 8 <= n <= 12, (
             f"BOARDLOC {bl}: expected 8-12 HK packets in {_CAPTURE_WINDOW_S}s, got {n}"
         )
+    )

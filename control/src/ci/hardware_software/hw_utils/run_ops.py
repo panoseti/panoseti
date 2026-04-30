@@ -24,7 +24,7 @@ def start_run_via_cli(nsecs: int = 30, no_hv: bool = True, **kwargs) -> None:
     from control.pseti import app
 
     runner = CliRunner()
-    args = ["start", "--nsecs", str(nsecs)]
+    args = ["start", "--yes", "--nsecs", str(nsecs)]
     if no_hv:
         args.append("--no-hv")
     logger.info("start_run_via_cli: invoking pseti %s", " ".join(args))

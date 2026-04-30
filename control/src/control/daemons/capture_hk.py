@@ -165,6 +165,9 @@ def storeInRedis(packet: bytes, r: redis.Redis) -> bool:
 
 def initialize() -> tuple[socket.socket, redis.Redis]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "SO_REUSEPORT"):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     r = redis_init()
     return sock, r
     

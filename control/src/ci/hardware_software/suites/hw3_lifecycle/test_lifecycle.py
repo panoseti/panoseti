@@ -54,9 +54,10 @@ def _wait_for_ping(ip: str, timeout: float = _BOOT_TIMEOUT_S) -> bool:
     return False
 
 
-def _wps_toggle(obs_config: dict, on: bool) -> None:
+def _wps_toggle(obs_config, on: bool) -> None:
     from control.power import quabo_power
-    wps_cfg = {k: v for k, v in obs_config.items() if k.startswith("wps")}
+    extra = obs_config.model_extra or {}
+    wps_cfg = {k: v for k, v in extra.items() if k.startswith("wps")}
     if not wps_cfg:
         pytest.skip("No WPS configured in obs_config")
     for _wps_key, wps_val in wps_cfg.items():
@@ -118,6 +119,7 @@ def test_full_power_cycle(topology) -> None:
 # TFTP reboot
 # ---------------------------------------------------------------------------
 
+@pytest.mark.timeout(180)
 def test_tftp_reboot(topology) -> None:
     """
     Issue a TFTP reboot; verify quabo returns to pingable within _TFTP_REBOOT_WAIT_S

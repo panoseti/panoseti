@@ -94,6 +94,38 @@ def hw_safety_net(runner):
 # ── Config fixtures ───────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
+def topology_reachable(obs_config, network_config):
+    """
+    Session-scoped reachability check. 
+    Quickly verifies every quabo responds to UDP echo through the gateway.
+    """
+    from ci.hardware_software.hw_utils.topology import HwTopology
+    from control.driver.quabo_driver import QUABO
+    
+    topo = HwTopology()
+    addrs = topo.quabo_ips()
+    
+    errors = []
+    for a in addrs:
+        q = QUABO(a.real_ip, port=a.cmd_port)
+        try:
+            cmd = q.make_cmd(0x01)
+            q.send(cmd)
+            q.sock.settimeout(1.0)
+            data, _ = q.sock.recvfrom(1024)
+            if not data:
+                errors.append(f"Quabo {a.ip} (loc={a.boardloc}) at {a.real_ip}:{a.cmd_port} returned no data")
+        except (TimeoutError, OSError) as exc:
+            errors.append(f"Quabo {a.ip} (loc={a.boardloc}) at {a.real_ip}:{a.cmd_port} unreachable: {exc}")
+        finally:
+            q.close()
+            
+    if errors:
+        return False, "\n".join(errors)
+    return True, "All quabos reachable"
+
+
+@pytest.fixture(scope="session")
 def daq_config():
     """Load the validated DAQ configuration model."""
     return config_file.get_daq_config()

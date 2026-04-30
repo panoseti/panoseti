@@ -15,11 +15,17 @@ def hk_socket():
     """
     Bound UDP socket for receiving raw housekeeping packets (UDP/60002).
     Times out after 5 s; must be used in tests with hardware active.
+    Sets SO_REUSEPORT to allow co-existence with capture_hk.py.
     """
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.settimeout(5.0)
         sock.bind(("", 60002))
         yield sock
+    finally:
         sock.close()
 
 
@@ -30,7 +36,8 @@ def redis_client():
         import redis
         client = redis.Redis(host="localhost", port=6379, db=0)
         client.ping()
-        return client
+        yield client
+        client.close()
     except Exception as exc:
         pytest.skip(f"Redis not available: {exc}")
 
@@ -42,6 +49,7 @@ def influx_client():
         from influxdb import InfluxDBClient  # type: ignore[import-untyped]
         client = InfluxDBClient(host="localhost", port=8086, database="metadata")
         client.ping()
-        return client
+        yield client
+        client.close()
     except Exception as exc:
         pytest.skip(f"InfluxDB not available: {exc}")
