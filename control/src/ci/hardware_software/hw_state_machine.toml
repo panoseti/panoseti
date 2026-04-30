@@ -36,11 +36,19 @@ desc = "DAQ mode bits set; quabo emitting science packets to DAQ node."
 [[primitives]]
 name = "wps_power_on"
 from_states = ["UNPOWERED"]
-to_state = "BOOTED"
-budget_s = { typical = 120, max = 300 }
+to_state = "POWERED"
+budget_s = { typical = 5, max = 15 }
 safety = "high"
 entrypoint = "control.power:quabo_power"
 kwargs = { on = true }
+
+[[primitives]]
+name = "boot_verify"
+from_states = ["POWERED"]
+to_state = "BOOTED"
+budget_s = { typical = 120, max = 300 }
+safety = "low"
+entrypoint = "hw_utils.driver_ops:boot_verify"
 
 [[primitives]]
 name = "wps_power_off"
@@ -112,10 +120,6 @@ entrypoint = "hw_utils.run_ops:start_run_via_cli"
 name = "stop_acq"
 from_states = ["ACQUIRING"]
 to_state = "ACQ_CONFIGURED"
-budget_s = { typical = 60, max = 90 }
-safety = "low"
-entrypoint = "hw_utils.run_ops:stop_run_via_cli"
-FIGURED"
 budget_s = { typical = 60, max = 90 }
 safety = "low"
 entrypoint = "hw_utils.run_ops:stop_run_via_cli"
