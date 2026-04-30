@@ -145,8 +145,3 @@ class HwTopology:
             return f"Need ≥{min_daq} DAQ nodes, found {len(self.daq_nodes())}"
 
         return True
-      min_daq = requirement.get("requires_min_daq_nodes")
-        if min_daq and len(self.daq_nodes()) < min_daq:
-            return f"Need ≥{min_daq} DAQ nodes, found {len(self.daq_nodes())}"
-
-        return True

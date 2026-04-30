@@ -118,6 +118,8 @@ def pytest_runtest_setup(item: Any) -> None:
             # We look for the session-scoped fixture value if possible, 
             # but hooks are tricky with fixtures. 
             # For simplicity, we just run a cached check or the check itself.
+            import time
+
             from control.utils.paths import PanoPaths
             cache_file = PanoPaths.tmp_dir() / ".topology_reachable_cache"
             if not cache_file.exists() or (time.monotonic() - cache_file.stat().st_mtime) > 300:
@@ -137,7 +139,7 @@ def pytest_runtest_setup(item: Any) -> None:
                     finally:
                         q.close()
                 if errors:
-                    pytest.skip(f"Topology unreachable:\n" + "\n".join(errors))
+                    pytest.skip("Topology unreachable:\n" + "\n".join(errors))
                 cache_file.touch()
         except Exception as exc:
             logger.debug("Topology reachability check failed: %s", exc)

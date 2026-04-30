@@ -322,4 +322,3 @@ def test_hk_packet_count_per_quabo(hk_socket: socket.socket, topology) -> None:
         assert 8 <= n <= 12, (
             f"BOARDLOC {bl}: expected 8-12 HK packets in {_CAPTURE_WINDOW_S}s, got {n}"
         )
-    )

@@ -5,8 +5,8 @@ Ensures --yes is always passed and captures output for debugging.
 
 from __future__ import annotations
 
-import subprocess
 import logging
+import subprocess
 
 logger = logging.getLogger(__name__)
 

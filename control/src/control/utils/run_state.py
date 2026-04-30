@@ -87,7 +87,7 @@ class RunStateManager:
                 # Process B must wait before assuming the file is empty/stale.
                 pid: int | None = None
                 
-                for poll_attempt in range(3):
+                for _poll_attempt in range(3):
                     try:
                         with open(self.lock_path) as f:
                             pid_str = f.read().strip()

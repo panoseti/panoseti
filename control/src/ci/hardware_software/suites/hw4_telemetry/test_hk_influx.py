@@ -304,5 +304,3 @@ def test_influx_stops_on_power_off(influx_client, topology) -> None:
     # Power back on for subsequent lifecycle tests
     for wps_val in wps_entries.values():
         quabo_power(wps_val, on=True)
-alues():
-        quabo_power(wps_val, on=True)

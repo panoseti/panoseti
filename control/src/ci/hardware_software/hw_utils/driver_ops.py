@@ -87,8 +87,6 @@ def configure_maroc(quabo_ip: str | None = None, **kwargs) -> None:
     Loads the config from quabo_config.txt and sends the 829-byte serial command.
     Transitions: BOOTED → MAROC_LOADED.
     """
-    from control.driver.quabo_driver import QUABO
-    from control.utils import config_file
 
     quabos = _all_quabos(quabo_ip)
 
@@ -103,7 +101,7 @@ def configure_acq(quabo_ip: str | None = None, **kwargs) -> None:
 
     Transitions: MAROC_LOADED → ACQ_CONFIGURED.
     """
-    from control.driver.quabo_driver import DAQ_PARAMS, QUABO
+    from control.driver.quabo_driver import DAQ_PARAMS
     from control.utils import config_file
 
     data = config_file.get_data_config()
@@ -123,7 +121,6 @@ def hv_set_from_config(quabo_ip: str | None = None, **kwargs) -> None:
     Guards (shutter_must_be_closed, light_sensor_dark) run before this call.
     Transitions: ACQ_CONFIGURED → HV_ON.
     """
-    from control.driver.quabo_driver import QUABO
     from control.utils import config_file
 
     obs = config_file.get_obs_config()
@@ -142,7 +139,6 @@ def hv_zero(quabo_ip: str | None = None, **kwargs) -> None:
 
     Transitions: any → ACQ_CONFIGURED.
     """
-    from control.driver.quabo_driver import QUABO
 
     quabos = _all_quabos(quabo_ip)
 

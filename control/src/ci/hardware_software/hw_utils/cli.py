@@ -277,8 +277,8 @@ def hw_ls(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show full node IDs.")] = False,
 ) -> None:
     """List all available HITL tests grouped by hardware state and class."""
-    import tomllib
     import fnmatch
+    import tomllib
 
     try:
         # 1. Load TOML for class metadata
@@ -345,7 +345,7 @@ def hw_ls(
 
     except Exception as exc:
         console.print(f"[red]Discovery failed: {exc}[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
 
 # ---------------------------------------------------------------------------
@@ -725,3 +725,4 @@ def _confirm_run(cmd: list[str]) -> bool:
     console.print(f"[dim]Will run:[/dim] {' '.join(cmd)}")
     ans = typer.prompt("Proceed? [y/N]", default="N")
     return ans.strip().lower() in ("y", "yes")
+

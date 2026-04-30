@@ -5,12 +5,13 @@ Bootstraps the capture_hk.py daemon.
 
 from __future__ import annotations
 
-import subprocess
-import time
+import logging
 import os
 import signal
+import subprocess
+import time
+
 import pytest
-import logging
 
 logger = logging.getLogger(__name__)
 
