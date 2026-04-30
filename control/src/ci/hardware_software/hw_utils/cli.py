@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -59,6 +58,24 @@ def _uv_pytest(*args: str) -> list[str]:
     return ["uv", "run", "--directory", str(_CONTROL_DIR), "pytest", *args]
 
 
+def _run_compose(
+    tool: str,
+    context: str | None,
+    profile: str,
+    action: str,
+    args: list[str] | None = None,
+    env: dict[str, str] | None = None,
+) -> int:
+    """Helper to run a docker-compose command on a specific context."""
+    cmd = [tool]
+    if context:
+        cmd.extend(["--context", context])
+    cmd.extend(["compose", "-f", str(_COMPOSE_FILE), "--profile", profile, action])
+    if args:
+        cmd.extend(args)
+    return subprocess.run(cmd, env=env).returncode
+
+
 # ---------------------------------------------------------------------------
 # build
 # ---------------------------------------------------------------------------
@@ -69,12 +86,23 @@ def hw_build(
 ) -> None:
     """Build headnode and daqnode container images locally."""
     env = {**os.environ, **_compose_env()}
-    for profile in ("headnode", "daqnode"):
-        console.print(f"[cyan]Building profile: {profile}...[/cyan]")
-        cmd = [tool, "compose", "-f", str(_COMPOSE_FILE), "--profile", profile, "build"]
-        ret = subprocess.run(cmd, env=env).returncode
-        if ret != 0:
-            raise typer.Exit(code=ret)
+
+    # 1. Build headnode locally
+    console.print("[cyan]Building profile: headnode locally...[/cyan]")
+    ret = _run_compose(tool, None, "headnode", "build", env=env)
+    if ret != 0:
+        raise typer.Exit(code=ret)
+
+    # 2. Build daqnode on all remote nodes
+    try:
+        topo = _get_topology()
+        for node in topo.daq_nodes():
+            context = f"pseti-daq-{node.host.replace('.', '-')}"
+            console.print(f"[cyan]Building profile: daqnode on {node.host} (context: {context})...[/cyan]")
+            _run_compose(tool, context, "daqnode", "build", env=env)
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Could not build on DAQ nodes: {exc}[/yellow]")
+
     console.print("[green]Build complete.[/green]")
 
 
@@ -89,12 +117,25 @@ def hw_deploy(
 ) -> None:
     """Start the HITL service stack (Redis, InfluxDB, headnode-server) in the background."""
     env = {**os.environ, **_compose_env()}
-    cmd = [tool, "compose", "-f", str(_COMPOSE_FILE), "--profile", "headnode", "up", "-d"]
+    args = ["-d"]
     if no_build:
-        cmd.append("--no-build")
-    console.print("[cyan]Deploying headnode profile...[/cyan]")
-    ret = subprocess.run(cmd, env=env).returncode
-    raise typer.Exit(code=ret)
+        args.append("--no-build")
+
+    # 1. Deploy headnode locally
+    console.print("[cyan]Deploying headnode profile locally...[/cyan]")
+    ret = _run_compose(tool, None, "headnode", "up", args=args, env=env)
+    if ret != 0:
+        raise typer.Exit(code=ret)
+
+    # 2. Deploy daqnode to all remote nodes
+    try:
+        topo = _get_topology()
+        for node in topo.daq_nodes():
+            context = f"pseti-daq-{node.host.replace('.', '-')}"
+            console.print(f"[cyan]Deploying daqnode profile to {node.host} (context: {context})...[/cyan]")
+            _run_compose(tool, context, "daqnode", "up", args=args, env=env)
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Could not deploy to DAQ nodes: {exc}[/yellow]")
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +149,23 @@ def hw_down(
 ) -> None:
     """Stop the HITL service stack (preserves volumes unless -v is given)."""
     env = {**os.environ, **_compose_env()}
-    cmd = [tool, "compose", "-f", str(_COMPOSE_FILE), "--profile", "headnode", "down"]
+    args = []
     if volumes:
-        cmd.append("--volumes")
-    console.print("[yellow]Stopping headnode profile...[/yellow]")
-    ret = subprocess.run(cmd, env=env).returncode
-    raise typer.Exit(code=ret)
+        args.append("--volumes")
+
+    # 1. Down headnode locally
+    console.print("[yellow]Stopping headnode profile locally...[/yellow]")
+    _run_compose(tool, None, "headnode", "down", args=args, env=env)
+
+    # 2. Down daqnode on all remote nodes
+    try:
+        topo = _get_topology()
+        for node in topo.daq_nodes():
+            context = f"pseti-daq-{node.host.replace('.', '-')}"
+            console.print(f"[yellow]Stopping daqnode profile on {node.host} (context: {context})...[/yellow]")
+            _run_compose(tool, context, "daqnode", "down", args=args, env=env)
+    except Exception as exc:
+        console.print(f"[yellow]Warning: Could not stop on DAQ nodes: {exc}[/yellow]")
 
 
 # ---------------------------------------------------------------------------

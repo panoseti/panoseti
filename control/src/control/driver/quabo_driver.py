@@ -166,9 +166,12 @@ class QUABO:
                 bl_subtract=False
             )
         daq_stop = DAQ_PARAMS(False, 0, False, False, True)
-        # This IP is not important, so I put a static IP here.
-        # It's just for generating a ph packet
-        ip_addr = ip_address('192.168.1.1')
+        # Use local IP as destination for the calibration packets
+        try:
+            from control.utils.util import local_ip
+            ip_addr = ip_address(local_ip()[0])
+        except Exception:
+            ip_addr = ip_address('0.0.0.0')
         self.data_packet_destination(ip_addr)
         self.send_daq_params(daq_start)
         #time.sleep(1)

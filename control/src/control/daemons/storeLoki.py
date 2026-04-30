@@ -206,7 +206,7 @@ def main() -> None:
 
     redis_key = DEFAULT_REDIS_KEY
     loki_base = os.getenv("LOKI_URL", "http://localhost:3100")
-    loki_url = loki_base.rstrip("/") + "/loki/api/v1/push"
+    loki_url = loki_base.rstrip("/") + "/loki/api/v1/push" if "push" not in loki_base else loki_base
 
     if config_path.exists():
         try:

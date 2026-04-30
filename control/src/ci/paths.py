@@ -33,9 +33,10 @@ class PanoPathsTest(PanoPaths):
         return cls.integration_configs_root() / variant
 
     @classmethod
-    def hw_sw_configs(cls) -> Path:
-        """Path to hardware-software test configurations."""
-        return cls.ci_root() / "hardware-software" / "configs"
+    def hw_configs_root(cls) -> Path:
+        """Path to hardware_software test configurations."""
+        return cls.ci_root() / "hardware_software" / "configs"
+
 
     @classmethod
     def configs_root(cls) -> Path:

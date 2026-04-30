@@ -5,6 +5,7 @@ import contextlib
 import os
 import pathlib
 import tempfile
+import time
 import tomllib
 from typing import Any
 
@@ -69,43 +70,58 @@ class RunStateManager:
         if self._lock_fh:
             return True
 
-        # Ensure tmp/ exists
+        # Ensure directory exists
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
 
         for attempt in range(2):
             try:
                 # O_EXCL ensures that this call atomically creates the file; if it exists, it fails.
-                # https://man7.org/linux/man-pages/man2/open.2.html
                 fd = os.open(str(self.lock_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL)
                 with os.fdopen(fd, "w") as f:
                     f.write(str(os.getpid()))
                 self._lock_fh = True
-                # print(f"DEBUG: Lock acquired by PID {os.getpid()} at {self.lock_path}")
                 return True
             except FileExistsError:
-                # Check if the lock is stale
-                try:
-                    with open(self.lock_path) as f:
-                        pid_str = f.read().strip()
-                        pid = int(pid_str)
-                    
-                    # Check if process is alive
-                    os.kill(pid, 0)
-                    # print(f"DEBUG: Lock held by LIVE PID {pid} at {self.lock_path}")
-                except (OSError, ValueError, ProcessLookupError):
-                    # Process is dead or file is corrupt. Self-heal.
-                    # print(f"DEBUG: Lock stale (PID {pid_str}) at {self.lock_path}. Unlinking.")
-                    try:
-                        self.lock_path.unlink()
-                        if attempt == 0:
-                            continue # Try creating again
-                    except OSError:
-                        pass
+                # The file exists. Check if it's live or stale.
+                # Window of danger: Process A just called os.open() but hasn't written its PID yet.
+                # Process B must wait before assuming the file is empty/stale.
+                pid: int | None = None
                 
-                raise LockError(
-                    f"Another PANOSETI control process (PID {pid}) is already running. "
-                    f"Check for concurrent start.py or stop.py executions. Lock file: {self.lock_path}"
-                ) from None
+                for poll_attempt in range(3):
+                    try:
+                        with open(self.lock_path) as f:
+                            pid_str = f.read().strip()
+                        if pid_str:
+                            pid = int(pid_str)
+                            break
+                    except (ValueError, OSError):
+                        pass
+                    # Wait 50ms and try again
+                    time.sleep(0.05)
+                
+                if pid is not None:
+                    # Check if process is alive
+                    try:
+                        os.kill(pid, 0)
+                        # Process is LIVE. This is a legitimate lock collision.
+                        raise LockError(
+                            f"Another PANOSETI control process (PID {pid}) is already running. "
+                            f"Check for concurrent start.py or stop.py executions. Lock file: {self.lock_path}"
+                        ) from None
+                    except (ProcessLookupError, OSError):
+                        # Process is dead. Stale lock.
+                        pass
+
+                # If we reach here, either the file was empty after 150ms or the PID is dead.
+                # Self-heal (unlink and retry once).
+                try:
+                    self.lock_path.unlink()
+                    if attempt == 0:
+                        continue
+                except OSError:
+                    pass
+                
+                raise LockError(f"Failed to acquire lock. Stale lock file detected and could not be cleared: {self.lock_path}") from None
             except OSError as e:
                 raise LockError(f"Failed to create lock file: {e}") from None
         

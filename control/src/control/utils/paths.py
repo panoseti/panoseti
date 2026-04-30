@@ -54,11 +54,12 @@ class PanoPaths:
                 return pathlib.Path(override).resolve()
         
         # In Docker, we often mount control at /app. 
-        # If /app exists, prioritize it as the base directory.
-        if pathlib.Path("/app").exists():
+        # Only use /app if we are likely in a container and it exists.
+        root = cls.software_root_dir()
+        if (root == pathlib.Path("/") or os.environ.get("IN_DOCKER_CI")) and pathlib.Path("/app").exists():
             return pathlib.Path("/app")
 
-        return cls.software_root_dir() / "control"
+        return root / "control"
 
     @classmethod
     def config_dir(cls) -> pathlib.Path:
@@ -90,7 +91,7 @@ class PanoPaths:
         override = os.environ.get("PSETI_LOGS")
         if override:
             return pathlib.Path(override).resolve()
-        return cls.base_dir() / "logs"
+        return cls.state_dir() / "logs"
 
     @classmethod
     def firmware_dir(cls) -> pathlib.Path:
@@ -195,6 +196,7 @@ class PanoPaths:
         for d in [
             cls.locks_dir(),
             cls.runs_dir(),
+            cls.logs_dir(),
             cls.transfer_queue_dir() / "pending",
             cls.transfer_queue_dir() / "active",
             cls.transfer_queue_dir() / "completed",

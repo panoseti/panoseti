@@ -16,11 +16,11 @@ def hk_socket():
     Bound UDP socket for receiving raw housekeeping packets (UDP/60002).
     Times out after 5 s; must be used in tests with hardware active.
     """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(5.0)
-    sock.bind(("", 60002))
-    yield sock
-    sock.close()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.settimeout(5.0)
+        sock.bind(("", 60002))
+        yield sock
+        sock.close()
 
 
 @pytest.fixture(scope="session")

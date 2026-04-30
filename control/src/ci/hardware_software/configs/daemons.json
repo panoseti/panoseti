@@ -4,8 +4,8 @@
         "gps": false,
         "telemetry_service": true,
         "loki": true,
-        "power": true,
-        "wr": true
+        "power": false,
+        "wr": false
     },
     "permanent_daemons": {
     }

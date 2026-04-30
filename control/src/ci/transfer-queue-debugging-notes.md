@@ -2,7 +2,7 @@
 
 ### Incorrect Start Transactions
 
-- start does not do the network sweep to check reachability of all quabos, allowing hashpipe to start with no data. This is probably find in the sw-only environment, but in the hardware-software environment this is an issue because we want the quabos to be reachable or the test fails in most cases. Though I can see some value in allowing hashpipe-only hardware-software tests to check the behavior over real router hardware.
+- start does not do the network sweep to check reachability of all quabos, allowing hashpipe to start with no data. This is probably find in the sw-only environment, but in the hardware_software environment this is an issue because we want the quabos to be reachable or the test fails in most cases. Though I can see some value in allowing hashpipe-only hardware_software tests to check the behavior over real router hardware.
     
     ```bash
     [04/26/26 01:09:07] WARNING  Quabo at 192.168.88.152:60003 is UNREACHABLE: Quabo ping failed   
@@ -19,7 +19,7 @@
     [2026-04-26 01:09:08,007] WARNING: Quabo at 192.168.88.152:60001 is UNREACHABLE: Quabo ping failed (UDP timeout) (Non-fatal in container/CI environment)
     ```
     
-- When I turned off the quabos and tried to run start, I was able to in the hardware-software tests because the in container flag was active, bypassing checks and preventing us from testing the transaction behavior.
+- When I turned off the quabos and tried to run start, I was able to in the hardware_software tests because the in container flag was active, bypassing checks and preventing us from testing the transaction behavior.
 - I can run multiple starts. the first one fails with an aborted but subsequent ones work fine? Oh but the first hashpipe luckily not stopped.
     - Confirmed: there seems to be a race condition in the start up procedure.
     - When I run start multiple times in a row, sometimes the transaction aborts correctly and other times it fails.

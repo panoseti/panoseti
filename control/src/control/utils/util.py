@@ -191,8 +191,14 @@ def ping(ip_addr: IPvAnyAddress, cmd_port: int) -> bool:
     if not s:
         return True
     else:
+        # Fallback: check if the quabo responds to UDP commands even if it blocks ICMP
         quabo = quabo_driver.QUABO(ip_addr, cmd_port)
-        return quabo.data_packet_destination(ip_address('192.168.1.1'))
+        try:
+            # Use our own IP as a sensible target for the liveness check
+            target_ip = local_ip()[0]
+        except Exception:
+            target_ip = '0.0.0.0'
+        return quabo.data_packet_destination(ip_address(target_ip))
 
 
 def mac_addr_str(b: bytes) -> str:

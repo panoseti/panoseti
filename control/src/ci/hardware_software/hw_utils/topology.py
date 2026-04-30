@@ -51,9 +51,9 @@ class HwTopology:
         """All quabos in the active observatory layout."""
         from control.utils.config_file import get_boardloc, ip_addr_to_module_id
         result: list[QuaboAddr] = []
-        for dome in self._obs.get("domes", []):
-            for module in dome.get("modules", []):
-                base_ip: str = module["ip"]
+        for dome in self._obs.domes:
+            for module in dome.modules:
+                base_ip: str = str(module.ip_addr)
                 parts = base_ip.split(".")
                 for q in range(4):
                     ip = f"{parts[0]}.{parts[1]}.{parts[2]}.{int(parts[3]) + q}"
@@ -62,24 +62,25 @@ class HwTopology:
                         ip=ip,
                         module_id=mid,
                         quadrant=q,
-                        boardloc=get_boardloc(mid, q),
+                        boardloc=get_boardloc(base_ip, q),
                     ))
         return result
 
     def daq_nodes(self) -> list[DaqNode]:
         """All DAQ nodes in the active config."""
         result: list[DaqNode] = []
-        for node in self._daq.get("daq_nodes", []):
+        for node in self._daq.daq_nodes:
             result.append(DaqNode(
-                host=node["ip"],
-                module_ids=node.get("module_ids", []),
+                host=str(node.ip_addr),
+                module_ids=node.module_ids,
             ))
         return result
 
     def wps_outlets(self) -> list[WpsOutlet]:
         """All WPS outlets defined in obs_config."""
         result: list[WpsOutlet] = []
-        for key, val in self._obs.items():
+        extra_data = self._obs.model_extra or {}
+        for key, val in extra_data.items():
             if key.startswith("wps") and isinstance(val, dict):
                 result.append(WpsOutlet(
                     name=key,
@@ -97,19 +98,21 @@ class HwTopology:
         caps: set[str] = set()
 
         # White Rabbit: any module with timing_mode == "wr"
-        for dome in self._obs.get("domes", []):
-            for module in dome.get("modules", []):
-                if module.get("timing_mode", "") == "wr":
+        for dome in self._obs.domes:
+            for module in dome.modules:
+                if module.timing_mode == "wr":
                     caps.add("white_rabbit")
 
         # GNSS: any module with timing_mode == "gnss"
-        for dome in self._obs.get("domes", []):
-            for module in dome.get("modules", []):
-                if module.get("timing_mode", "") == "gnss":
+        for dome in self._obs.domes:
+            for module in dome.modules:
+                if module.timing_mode == "gnss":
                     caps.add("gnss")
 
         # Port forwarding: non-empty network_config port_forwarding list
-        if self._net.get("port_forwarding"):
+        has_pf = any(n.port_forwarding and n.port_forwarding.status for n in self._net.daq_nodes) or \
+                 any(m.port_forwarding and m.port_forwarding.status for m in self._net.modules)
+        if has_pf:
             caps.add("port_forwarding")
 
         # Multi-module: more than one module

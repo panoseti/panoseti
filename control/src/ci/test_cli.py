@@ -69,7 +69,7 @@ class GrpcTestLazyGroup(BaseLazyGroup):
 
 class HwTestLazyGroup(BaseLazyGroup):
     """
-    Lazy-loading group for Hardware-Software (HITL) tests.
+    Lazy-loading group for hardware_software (HITL) tests.
     Delegates to ci.hardware_software.hw_utils.cli.
     """
     def list_commands(self, ctx: click.Context) -> list[str]:
