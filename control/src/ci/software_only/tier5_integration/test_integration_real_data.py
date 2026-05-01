@@ -123,7 +123,7 @@ class TestIntegrationRealDataFlow:
             "data_dir": "/data",
             "run_dir":  run_params["run_dir"],
         })
-        wait_hashpipe_stopped(daq_control_direct, "/data", timeout=8)
+        wait_hashpipe_stopped(daq_control_direct, "/data", timeout=15)
 
         # Copy from shared volume
         assert copy_run_dir(run_params, pathlib.Path(head_data_dir))

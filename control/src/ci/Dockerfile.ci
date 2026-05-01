@@ -38,6 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim tree procps htop \
     && rm -rf /var/lib/apt/lists/*
 
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy software version info from repo root
 COPY sw_info.json /sw_info.json
 

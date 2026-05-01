@@ -187,6 +187,19 @@ def test_when_double_enqueued_then_queue_is_idempotent():
     assert len(test_jobs) == 1
 
 async def _mock_subprocess_ok(*args, **kwargs):
+    # args contains the unpacked rsync command list.
+    # The destination directory is often followed by --info=progress2.
+    dest = None
+    if args:
+        for arg in reversed(args):
+            if isinstance(arg, (str, pathlib.Path)) and str(arg).endswith(".pffd"):
+                dest = pathlib.Path(arg)
+                break
+    
+    if dest:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "dp_manifest.node_test.algo_blake3.txt").touch()
+
     proc = MagicMock()
     proc.returncode = 0
     proc.wait = AsyncMock(return_value=0)

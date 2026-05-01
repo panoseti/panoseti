@@ -33,10 +33,14 @@ def test_transfer_status_watch_smoke(tmp_path: pathlib.Path, monkeypatch: pytest
         json.dump({"bytes": 1000, "pct": 50, "speed": "10MB/s", "eta": "0:01"}, f)
     
     # Run the command with a short interval and timeout
-    # We use subprocess to capture stdout of the watch loop
+    # We use subprocess to capture stdout of the watch loop.
+    # Force rich to render even in non-TTY by setting FORCE_COLOR and COLUMNS.
     cmd = ["pseti", "xfr", "stat", "--watch", "--interval", "0.5"]
+    env = os.environ.copy()
+    env["FORCE_COLOR"] = "1"
+    env["COLUMNS"] = "120"
     
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=os.environ)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
     
     # Give it some time to render a few frames
     time.sleep(2.0)

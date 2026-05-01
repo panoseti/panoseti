@@ -79,6 +79,9 @@ def _make_run_dir(tmp_path: pathlib.Path, run_name: str = "myrun.pffd") -> pathl
     """Create the head-node run directory expected by _process_job()."""
     run_dir = tmp_path / "data" / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
+    # Create a dummy manifest so the VERIFYING stage doesn't fail immediately
+    manifest = run_dir / "dp_manifest.node_test.algo_blake3.txt"
+    manifest.write_text("")
     return run_dir
 
 

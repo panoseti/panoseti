@@ -4,7 +4,7 @@ from __future__ import annotations
 import pathlib
 
 from control.utils.pydantic_config_models import TransferNodeSpec
-from control.utils.util import hp_stdout_prefix, pss_prefix, ssh_options
+from control.utils.util import ssh_options
 
 
 def build_rsync_cmd(
@@ -53,8 +53,10 @@ def build_rsync_cmd(
 
     head_run = str(head_run_dir)
     cmd += [
-        f"{host}:{node.data_dir}/{run_name}/{hp_stdout_prefix}*",
-        f"{host}:{node.data_dir}/{run_name}/{pss_prefix}*",
+        # 1. Pull everything from the root run directory (configs, logs, manifests)
+        # Note: trailing slash ensures we copy contents into 
+        f"{host}:{node.data_dir}/{run_name}/",
+        # 2. Pull everything from each module's run directory (science data)
         *[f"{host}:{node.data_dir}/module_{m}/{run_name}/" for m in node.module_ids],
         head_run,
     ]

@@ -290,7 +290,7 @@ class TestProcessJobWithPortForwarding:
 
         with _mock_grpc(client), \
              patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-            mock_sub.side_effect = await _capture_rsync_async(rsync_calls)
+            mock_sub.side_effect = await _capture_rsync_async(rsync_calls, head_data_dir, pf_job.run_name)
             result, _ = await _process_job(pf_job, asyncio.Event(), RunStateManager())
 
         assert result is True
@@ -314,8 +314,10 @@ async def _mock_subprocess_ok(*args, **kwargs):
     proc.stderr.read = AsyncMock(return_value=b"")
     return proc
 
-async def _capture_rsync_async(rsync_calls: list):
+async def _capture_rsync_async(rsync_calls: list, head_data_dir: pathlib.Path, run_name: str):
     async def _mock(*args, **kwargs):
         rsync_calls.append(args) # args[0] is the cmd list
+        (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
+        (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
         return await _mock_subprocess_ok()
     return _mock

@@ -4,7 +4,7 @@
 
 import asyncio
 import time
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -305,11 +305,9 @@ def main(
         return
 
     if watch:
-        try:
+        with suppress(KeyboardInterrupt):
             # We now pass the interval variable directly
             asyncio.run(_watch_loop(interval=interval, no_remote=no_remote))
-        except KeyboardInterrupt:
-            pass
     else:
         status(no_remote=no_remote)
 

@@ -59,22 +59,42 @@ def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
 
 
 def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:
-    """Mock rsync by copying from all isolated container volumes to head node."""
+    """Mock rsync by copying from all isolated container volumes to head node.
+    Simulates the inclusive rsync which pulls from both root and module directories.
+    """
     dest_run = head_data_dir / run_dir
     dest_run.mkdir(parents=True, exist_ok=True)
-    
+    # Create a dummy manifest so the VERIFYING stage doesn't fail
+    (dest_run / "dp_manifest.node_mock.algo_blake3.txt").write_text("")
+
     success = False
+
     import shutil
     for temp_dir in fleet._temp_dirs:
         host_root = Path(temp_dir)
+        # 1. Simulate root run dir transfer
+        src_root = host_root / run_dir
+        if src_root.is_dir():
+            # Copy contents of root run dir into dest_run
+            for item in src_root.iterdir():
+                dest_path = dest_run / item.name
+                if item.is_dir():
+                    if dest_path.exists():
+                        shutil.rmtree(dest_path)
+                    shutil.copytree(item, dest_path)
+                else:
+                    shutil.copy2(item, dest_path)
+            success = True
+        
+        # 2. Simulate module run dir transfer
         for mod_dir in host_root.glob("module_*"):
-            src = mod_dir / run_dir
-            if src.is_dir():
+            src_mod = mod_dir / run_dir
+            if src_mod.is_dir():
                 mid = mod_dir.name.split("_")[1]
                 dest_mod = dest_run / f"module_{mid}"
                 if dest_mod.exists():
                     shutil.rmtree(dest_mod)
-                shutil.copytree(src, dest_mod)
+                shutil.copytree(src_mod, dest_mod)
                 success = True
     return success
 
@@ -179,6 +199,15 @@ async def test_transfer_daemon_archives_run(
     assert ledger and ledger.status == RunStatus.ARCHIVED
     run_dir_path = Path(daq_config.head_node_data_dir) / run_params["run_dir"]
     assert (run_dir_path / "run_complete").exists()
+
+    # Strengthened checks: Ensure manifests and logs were transferred
+    manifests = list(run_dir_path.glob("dp_manifest.node_*.txt"))
+    assert len(manifests) > 0, "No manifest files found on head node after transfer"
+
+    # Check for unique log files
+    logs = list(run_dir_path.glob("hp_stdout_*.log"))
+    assert len(logs) > 0, "No node-specific log files found on head node after transfer"
+
     monkeypatch.undo()
 
 
@@ -519,7 +548,12 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
     sys.modules["panoseti_grpc.daq_control.client"] = stub_mod
 
     try:
-        with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok):
+        async def custom_mock_rsync(*args, **kwargs):
+            (Path(job.head_data_dir) / run_name).mkdir(parents=True, exist_ok=True)
+            (Path(job.head_data_dir) / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
+            return await _mock_subprocess_ok()
+
+        with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=custom_mock_rsync):
             success = (await _process_job(job, asyncio.Event(), RunStateManager()))[0]
             assert success
     finally:

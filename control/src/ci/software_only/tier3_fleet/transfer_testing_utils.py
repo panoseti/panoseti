@@ -46,6 +46,9 @@ def get_mapped_client_factory(daq_config: config_file.DaqConfig):
 def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
     """Simulates the effect of rsync by copying files from the fleet's host paths to the head node."""
     head_run_dir.mkdir(parents=True, exist_ok=True)
+    # Create a dummy manifest so the VERIFYING stage doesn't fail
+    (head_run_dir / "dp_manifest.node_mock.algo_blake3.txt").write_text("")
+    
     for _i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
         # 1. Root contents (hp_stdout, pss, meta.json)

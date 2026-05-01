@@ -32,8 +32,6 @@ services:
     image: grafana/grafana:latest
     profiles: ["headnode"]
     network_mode: host
-    ports:
-      - 3005:3000
     volumes:
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ${PSETI_ROOT_BUILD}/grafana/grafana_provisioning/datasources:/etc/grafana/provisioning/datasources:ro
@@ -41,7 +39,8 @@ services:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+      # - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/panoseti/observatory-home.json
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/a/grafana-lokiexplore-app/explore
     restart: always
 
   headnode-server:
@@ -70,7 +69,7 @@ services:
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
     command: >
       /bin/sh -c "mkdir -p /root/.ssh && cp -r /root/.ssh-host/* /root/.ssh/ && chmod 700 /root/.ssh && find /root/.ssh -type f -exec chmod 600 {} + &&
-      pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml
+      pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"
     restart: always
 
   # ── DAQ Node Profile ───────────────────────────────────────────────────────

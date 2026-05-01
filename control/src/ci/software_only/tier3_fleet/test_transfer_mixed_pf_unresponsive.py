@@ -106,6 +106,7 @@ async def test_transfer_queue_mixed_port_forwarding(
                 rsync_ips.add(expected_ip)
 
         (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
+        (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
         proc = MagicMock()
         proc.returncode = 0
         proc.wait = AsyncMock(return_value=0)

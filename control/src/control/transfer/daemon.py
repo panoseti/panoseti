@@ -309,6 +309,13 @@ async def _process_job(
 
             if not manifest_files:
                 logger.warning("[%s] No manifest files found in %s", run_name, head_run_path)
+                if not job.no_collect:
+                    err_msg = f"No manifest files found in {head_run_path} after transfer."
+                    _safe_ledger_update(state_mgr, status=RunStatus.VERIFY_FAILED, last_transfer_error=err_msg)
+                    logger.error("[%s] %s", run_name, err_msg)
+                    return False, err_msg
+                else:
+                    logger.warning("[%s] No manifest files found in %s", run_name, head_run_path)
 
             for manifest_file in manifest_files:
                 ok, errs = await asyncio.to_thread(verify_manifest, manifest_file, head_run_path)

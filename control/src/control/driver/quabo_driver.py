@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import socket
 import time
-from ipaddress import ip_address
+from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Any
 
 from panoseti_grpc.telemetry.logger import get_logger
@@ -71,8 +71,12 @@ class DAQ_PARAMS:
         self.stim_level = level
 
 class QUABO:
-    def __init__(self, ip_addr: IPvAnyAddress, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt', logfile: str = 'logs/quabo_driver.log') -> None:
-        self.ip_addr = str(ip_addr)
+    def __init__(self, ip_addr: IPvAnyAddress | str, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt', logfile: str = 'logs/quabo_driver.log') -> None:
+        if isinstance(ip_addr, (str, IPv4Address, IPv6Address)):
+            validated_ip_addr = ip_address(ip_addr)
+        else:
+            raise ValueError(f"Unexpected type for ip_addr: {type(ip_addr)=}, which should be IPvAnyAddress or str")
+        self.ip_addr = str(validated_ip_addr)
         self.port = port
         self.config_file_path = config_file_path
 

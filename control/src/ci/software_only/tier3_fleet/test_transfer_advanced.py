@@ -161,7 +161,8 @@ async def test_transfer_queue_parameterized_scale(
     async def mock_rsync(*args, **kwargs):
         # Just create the manifest file on head node so verification passes
         (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
-        
+        (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
+
         proc = MagicMock()
         proc.returncode = 0
         proc.wait = AsyncMock(return_value=0)

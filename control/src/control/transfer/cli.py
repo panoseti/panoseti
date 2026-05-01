@@ -71,7 +71,7 @@ def stat(
 
     def generate_layout() -> Group:
         """Generates a single Rich renderable combining text and progress bars."""
-        renderables = []
+        renderables: list[Text | Progress] = []
 
         # 1. Daemon Health
         pid = _daemon_pid()
@@ -288,20 +288,26 @@ def verify(run_name: Annotated[str, typer.Argument(help="Run name to verify")]) 
         console.print(f"[bold red]Error:[/] Run directory not found: {run_dir}")
         raise typer.Exit(1)
 
-    found_any = False
-    all_ok = True
+    # 1. New format: dp_manifest.node_*.algo_*.txt
+    manifest_files = list(run_dir.glob("dp_manifest.node_*.algo_*.txt"))
+    # 2. Legacy format: manifest.<algo>
     for algo in ("blake3", "xxh3_128", "sha256"):
-        mf = run_dir / f"manifest.{algo}"
-        if not mf.exists():
-            continue
-        
-        found_any = True
+        legacy = run_dir / f"manifest.{algo}"
+        if legacy.exists() and legacy not in manifest_files:
+            manifest_files.append(legacy)
+      
+    if not manifest_files:
+        console.print(f"[bold red]Error:[/] No manifest files found in {run_dir}")
+        raise typer.Exit(1)
+    
+    all_ok = True
+    for mf in manifest_files:
         ok, errs = verify_manifest(mf, run_dir)
         
         if ok:
-            console.print(f"  manifest.{algo}: [bold green]OK[/]")
+            console.print(f"  {mf.name}: [bold green]OK[/]")
         else:
-            console.print(f"  manifest.{algo}: [bold red]FAILED[/]")
+            console.print(f"  {mf.name}: [bold red]FAILED[/]")
             
         for e in errs:
             console.print(f"    [red]{e}[/]")
@@ -309,8 +315,7 @@ def verify(run_name: Annotated[str, typer.Argument(help="Run name to verify")]) 
         if not ok:
             all_ok = False
 
-    if not found_any:
-        console.print(f"[bold red]Error:[/] No manifest files found in {run_dir}")
+    if not all_ok:
         raise typer.Exit(1)
 
     if not all_ok:

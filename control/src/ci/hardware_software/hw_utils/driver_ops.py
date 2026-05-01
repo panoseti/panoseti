@@ -7,7 +7,6 @@ HardwareStateMachine.execute() via importlib.
 from __future__ import annotations
 
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
