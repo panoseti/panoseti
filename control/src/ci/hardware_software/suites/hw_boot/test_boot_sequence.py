@@ -28,6 +28,7 @@ Leaves state: BOOTED (written to the state file on success).
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import time
@@ -56,7 +57,7 @@ def _check_all_reachable(topo: HwTopology) -> list[str]:
     errors = []
     for a in topo.quabo_ips():
         try:
-            if not util.ping(a.real_ip, a.cmd_port):
+            if not util.ping(ipaddress.ip_address(a.real_ip), a.cmd_port):
                 errors.append(f"{a.ip} (loc={a.boardloc}, real={a.real_ip}:{a.cmd_port}) not reachable")
         except Exception as exc:
             errors.append(f"{a.ip} (loc={a.boardloc}) ping error: {exc}")
@@ -105,7 +106,7 @@ def test_annotated_boot_sequence(topology) -> None:
     # ── Stage 3: UID discovery via TFTP ──────────────────────────────────────
     # If any quabo is still offline the UID will be empty — caught below.
     logger.info("[BOOT] Stage 3: get_uids (tests TFTP bootloader reachability)")
-    get_uids.get_uids(obs_config, network_config)
+    _quabo_uids = get_uids.get_uids(obs_config, network_config)
 
     quabo_uids = config_file.get_quabo_uids()
     uid_errors = []

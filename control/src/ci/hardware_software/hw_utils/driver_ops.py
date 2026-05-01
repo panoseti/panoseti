@@ -60,7 +60,7 @@ def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
     time.sleep(boot_wait)
 
     # Populate tmp/quabo_uids.json before do_reboot needs it (mirrors session_start)
-    get_uids.get_uids(obs_config, network_config)
+    _quabo_uids = get_uids.get_uids(obs_config, network_config)
 
     quabo_uids = config_file.get_quabo_uids()
     config.do_reboot(modules, quabo_uids, network_config)

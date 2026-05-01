@@ -67,7 +67,15 @@ class ConfigLazyGroup(BaseLazyGroup):
             "stop-interleave": ("control.config", "stop_interleave", "Stop background interleaver."),
             "dry-run-interleave": ("control.config", "dry_run_interleave", "Test interleave schedule."),
         }
-        super().__init__(*args, lazy_mapping=lazy_mapping, **kwargs)
+        command_order = [
+            "reboot", "hk-dest", "ping", "maroc-config", "mask-config", "calibrate-ph", "show-ph-baselines", "redis-daemons", 
+        ]
+        super().__init__(
+            *args,
+            lazy_mapping=lazy_mapping, 
+            command_order=command_order,
+            **kwargs
+        )
 
 app = typer.Typer(
     cls=ConfigLazyGroup,

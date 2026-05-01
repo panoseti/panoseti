@@ -76,7 +76,7 @@ def session_start(
     if stage == 'get_uids':
         stage = 'reboot'
         logger.info('getting quabo UIDs')
-        get_uids.get_uids(obs_config, network_config)
+        quabo_uids = get_uids.get_uids(obs_config, network_config)
 
     if stage == 'reboot':
         stage = 'hk_dest'

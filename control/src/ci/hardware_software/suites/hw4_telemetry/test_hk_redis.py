@@ -159,7 +159,7 @@ def test_redis_hv_off_state(redis_client, topology) -> None:
 # HV on state
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("channel,setpoint_raw", [(0, 30000)])
+@pytest.mark.parametrize(("channel", "setpoint_raw"), [(0, 30000)])
 def test_redis_hv_on_state(redis_client, topology, quabo, channel, setpoint_raw) -> None:
     """
     After commanding HV to a setpoint on one channel, HVMON for that channel

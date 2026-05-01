@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from control.utils.util import attach_daq_config
+
 
 @dataclass
 class QuaboAddr:
@@ -49,6 +51,8 @@ class HwTopology:
         self._obs = config_file.get_obs_config()
         self._daq = config_file.get_daq_config()
         self._net = config_file.get_network_config()
+        attach_daq_config(self._daq, self._net)
+
 
     # ── Public accessors ──────────────────────────────────────────────────────
 
@@ -85,8 +89,19 @@ class HwTopology:
         """All DAQ nodes in the active config."""
         result: list[DaqNode] = []
         for node in self._daq.daq_nodes:
+            host = str(node.ip_addr)
+            pf = node.port_forwarding
+            if pf is None or pf.status is False:
+                real_host = host
+                ssh_port = 22
+            else:
+                real_host = str(pf.gw_ip)
+                ssh_port = 22 if pf.port is None else int(pf.port)
+                
             result.append(DaqNode(
-                host=str(node.ip_addr),
+                host=host,
+                real_host=real_host,
+                ssh_port=ssh_port,
                 module_ids=node.module_ids,
             ))
         return result

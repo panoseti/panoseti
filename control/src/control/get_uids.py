@@ -51,7 +51,7 @@ def get_uid(ip_addr: IPvAnyAddress, port: int) -> str:
         return ""
 
 
-def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list[int] | None = None) -> None:
+def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list[int] | None = None) -> QuaboUids:
     """Scan the observatory for Quabos and cache their unique hardware IDs."""
     if exclude is None:
         exclude = []
@@ -94,6 +94,7 @@ def get_uids(obs_config: ObsConfig, network_config: NetworkConfig, exclude: list
     quabo_uids_path = PanoPaths.tmp_dir() / config_file.quabo_uids_filename
     with open(quabo_uids_path, "w", encoding="utf-8") as f:
         f.write(quabo_uids.model_dump_json(indent=4))
+    return quabo_uids
 
 
 
@@ -110,7 +111,7 @@ def main(
     """
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
-    get_uids(obs_config, network_config, exclude)
+    _quabo_uids = get_uids(obs_config, network_config, exclude)
     if os.path.exists('flashuid'):
         os.remove('flashuid')
 
