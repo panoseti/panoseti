@@ -399,6 +399,11 @@ def hw_run(
         _write_state(_STATE_FILE, assume_state)
         console.print(f"[dim]Assuming hardware state: [green]{assume_state}[/green][/dim]")
 
+    # Ensure PSETI_CONFIG is set for both this process and the pytest subprocess.
+    # hw_main callback may not run when dispatched via the lazy test_cli proxy.
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
+
     pytest_args = list(ctx.args)
     if hw_class:
         pytest_args += ["-m", hw_class]
@@ -432,6 +437,9 @@ def hw_run(
 @app.command(name="preflight", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def hw_preflight(ctx: typer.Context) -> None:
     """Run only tests with preflight=true in their TOML class (pre-observation subset)."""
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
+
     import tomllib
     toml_path = _HW_SW_DIR / "hw_tests.toml"
     with toml_path.open("rb") as f:
@@ -463,6 +471,8 @@ def hw_preflight(ctx: typer.Context) -> None:
 @app.command(name="status")
 def hw_status() -> None:
     """Report current believed hardware state and reachability."""
+    if "PSETI_CONFIG" not in os.environ:
+        os.environ["PSETI_CONFIG"] = str(_HW_CONFIGS_DIR)
     state = _read_state()
     if state:
         console.print(f"Last known state: [green]{state}[/green] (from {_STATE_FILE})")

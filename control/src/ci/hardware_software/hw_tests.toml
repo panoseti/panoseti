@@ -10,11 +10,27 @@ preflight_marker = "preflight"
 # batch_priority controls execution order (lower = earlier).
 # Tests with the same priority run in a single batch (same required_state).
 
+[classes.env_check]
+description = "Pre-boot environment validation: config files, WPS CURL, DAQ ping, DAQ SSH."
+required_state = "UNPOWERED"
+leaves_state = "UNPOWERED"
+batch_priority = -2
+preflight = false
+parallel = false
+
+[classes.boot_sequence]
+description = "Annotated boot from UNPOWERED: WPS on → boot wait → get_uids → TFTP reboot → echo check."
+required_state = "UNPOWERED"
+leaves_state = "BOOTED"
+batch_priority = -1
+preflight = false
+parallel = false
+
 [classes.driver_protocol]
 description = "Low-level UDP/TFTP packet protocol verification against real quabos."
 required_state = "BOOTED"
 leaves_state = "BOOTED"
-batch_priority = 0
+batch_priority = 1
 preflight = false
 parallel = false
 
@@ -53,6 +69,14 @@ parallel = false
 # ── Test → class mapping (node-id glob patterns) ──────────────────────────────
 # The glob is matched against the pytest node ID (relative to the hardware_software/ dir).
 # First matching entry wins.
+
+[[mapping]]
+glob = "*/hw_boot/test_env_check*"
+class = "env_check"
+
+[[mapping]]
+glob = "*/hw_boot/**"
+class = "boot_sequence"
 
 [[mapping]]
 glob = "*/hw0_driver_protocol/**"

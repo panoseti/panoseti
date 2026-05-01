@@ -71,7 +71,7 @@ async def stream_test_output(
                 formatted_line = formatted_line.replace("ERROR", "[red]ERROR[/red]")
             
             stream_console = Console(highlight=False, force_terminal=True)
-            stream_console.print(f"{tag}{formatted_line}")
+            stream_console.print(f"{tag}{formatted_line}", markup=False)
 
     await proc.wait()
     return Result(name, proc.returncode or 0, time.monotonic() - start_time, stats=stats)

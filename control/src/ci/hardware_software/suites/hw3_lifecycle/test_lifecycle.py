@@ -218,15 +218,15 @@ def test_firmware_load_and_reboot(topology, quabo_uids) -> None:
     if not hw_version:
         pytest.skip("Cannot determine hardware version for this quabo")
 
-    fw_entry = fw_config.get(hw_version)
-    if not fw_entry:
+    fw_filename = getattr(fw_config, hw_version, None)
+    if not fw_filename:
         pytest.skip(f"No firmware entry for hw_version={hw_version!r} in firmware.json")
 
     from control.driver.quabo_tftp import tftpw
-    tftpw_instance = tftpw(q0_addr.ip)
+    tftpw_instance = tftpw(q0_addr.real_ip, q0_addr.reboot_port)
 
     from control.utils.paths import PanoPaths
-    fw_path = PanoPaths.config_dir() / "firmware" / fw_entry["file"]
+    fw_path = PanoPaths.firmware_dir() / fw_filename
     assert fw_path.exists(), f"Firmware binary not found: {fw_path}"
 
     tftpw_instance.put_bin_file(str(fw_path))

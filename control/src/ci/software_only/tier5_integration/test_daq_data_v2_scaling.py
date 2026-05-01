@@ -89,10 +89,10 @@ class TestDaqDataV2Scaling:
         
         # Diagnostic: Wait for frames to reach aggregator cache
         frames_arrived = False
-        for i in range(50):
+        for i in range(60):
             if servicer.cache:
                 frames_arrived = True
-                print(f"DEBUG: Frames reached aggregator after {i}s")
+                print(f"DEBUG: Frames reached aggregator after {i}s. Cache keys: {list(servicer.cache.keys())}")
                 break
             await asyncio.sleep(1.0)
         

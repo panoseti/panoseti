@@ -23,7 +23,9 @@ class QuaboAddr:
 
 @dataclass
 class DaqNode:
-    host: str
+    host: str          # raw internal IP (display/logging)
+    real_host: str     # gateway IP if port-forwarded, else == host
+    ssh_port: int      # SSH port (forwarded or default 22)
     module_ids: list[int]
 
 

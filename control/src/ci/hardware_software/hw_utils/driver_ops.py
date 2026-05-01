@@ -36,19 +36,33 @@ def _wps_toggle(on: bool) -> None:
 
 def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
     """
-    Reboot all quabos via TFTP (Q0→Q1→Q2→Q3 within each module, parallel
-    across modules), then discover and cache hardware UIDs.
-    Mirrors the session-start golden path: do_reboot → get_uids.
+    Discover and cache hardware UIDs, then reboot all quabos via TFTP
+    (Q0→Q1→Q2→Q3 within each module, sequential per module).
+    Mirrors the session-start golden path: sleep → get_uids → do_reboot.
+    do_reboot handles its own post-reboot ping wait internally.
     Transitions: POWERED → BOOTED.
     """
+    import os
+    import time
+
     import control.config as config
+    import control.get_uids as get_uids
     from control.utils import config_file
 
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
     modules = config_file.get_modules(obs_config)
-    quabo_uids = config_file.get_quabo_uids()
 
+    # Mirror session_start.py line 73-74: flat sleep before get_uids.
+    # do_reboot handles the post-reboot ping wait itself.
+    boot_wait = int(os.environ.get("HW_TEST_QUABO_BOOT_WAIT", 60))
+    logger.info("boot_verify: waiting %ds for quabos to boot", boot_wait)
+    time.sleep(boot_wait)
+
+    # Populate tmp/quabo_uids.json before do_reboot needs it (mirrors session_start)
+    get_uids.get_uids(obs_config, network_config)
+
+    quabo_uids = config_file.get_quabo_uids()
     config.do_reboot(modules, quabo_uids, network_config)
 
 

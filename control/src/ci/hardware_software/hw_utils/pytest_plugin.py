@@ -31,7 +31,7 @@ def _load_toml(path: Path) -> dict[str, Any]:
 def pytest_configure(config: Any) -> None:
     config.addinivalue_line(
         "markers",
-        "hw_class(name): HITL test class (driver_protocol, fast_reconfig, observing, lifecycle, telemetry)",
+        "hw_class(name): HITL test class (env_check, boot_sequence, driver_protocol, fast_reconfig, observing, lifecycle, telemetry)",
     )
     config.addinivalue_line(
         "markers",
@@ -42,7 +42,7 @@ def pytest_configure(config: Any) -> None:
         "slow_hw: markers tests with long hardware timeouts (>60s)",
     )
     # Bare class markers registered for -m filtering (e.g. -m driver_protocol)
-    for _cls in ("driver_protocol", "fast_reconfig", "observing", "lifecycle", "telemetry"):
+    for _cls in ("env_check", "boot_sequence", "driver_protocol", "fast_reconfig", "observing", "lifecycle", "telemetry"):
         config.addinivalue_line("markers", f"{_cls}: HITL test class {_cls!r}")
 
 
@@ -112,16 +112,18 @@ def pytest_runtest_setup(item: Any) -> None:
     if not target_state:
         return
 
-    # 2. Get current state
+    # 2. Read current state before the reachability check so we can detect stale state.
     from ci.hardware_software.hw_utils.cli import _STATE_FILE
     from ci.hardware_software.hw_utils.state_machine import HardwareStateMachine, read_state
-    
-    # Check session-wide reachability first if we require BOOTED or above
-    if target_state != "UNPOWERED":
+
+    current_state = read_state(_STATE_FILE)
+
+    # 3. Reachability pre-flight.
+    #    Skip entirely when current_state is UNPOWERED: the power-on sequence in
+    #    boot_verify verifies reachability itself via ping-wait, so no pre-check is needed.
+    #    Only run when hardware is supposedly already up (non-UNPOWERED state file).
+    if target_state != "UNPOWERED" and current_state not in (None, "UNPOWERED"):
         try:
-            # We look for the session-scoped fixture value if possible, 
-            # but hooks are tricky with fixtures. 
-            # For simplicity, we just run a cached check or the check itself.
             import time
 
             from control.utils.paths import PanoPaths
@@ -138,19 +140,30 @@ def pytest_runtest_setup(item: Any) -> None:
                     except Exception as exc:
                         errors.append(f"{a.ip} (loc={a.boardloc}) unreachable error: {exc}")
                 if errors:
-                    pytest.skip("Topology unreachable:\n" + "\n".join(errors))
-                cache_file.touch()
+                    # State file claims a powered state but hardware is unreachable.
+                    # This is a stale state (crash/kill during a previous session left
+                    # the file behind). Reset to UNPOWERED so the state machine can
+                    # power on from scratch instead of trying mid-sequence transitions.
+                    logger.warning(
+                        "Stale state detected (state=%r, %d quabo(s) unreachable). "
+                        "Resetting to UNPOWERED for power-on recovery.",
+                        current_state, len(errors),
+                    )
+                    _STATE_FILE.write_text('{"state": "UNPOWERED"}')
+                    current_state = "UNPOWERED"
+                    cache_file.unlink(missing_ok=True)
+                else:
+                    cache_file.touch()
         except BaseException as exc:
             from _pytest.outcomes import OutcomeException
             if isinstance(exc, OutcomeException):
                 raise
             logger.debug("Topology reachability check failed: %s", exc)
 
-    current_state = read_state(_STATE_FILE)
     if current_state == target_state:
         return
 
-    # 3. Plan and execute transition
+    # 4. Plan and execute transition
     sm = HardwareStateMachine()
     try:
         plan = sm.plan(current_state or sm.initial, target_state)
