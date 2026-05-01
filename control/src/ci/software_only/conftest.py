@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.daq_data.client import DaqDataClient
-from panoseti_grpc.daq_data_v2.client import DaqDataV2Client
 
 from ci.fixtures.fleet import Fleet
 from ci.paths import PanoPathsTest
@@ -243,16 +242,6 @@ def redis_client(session_fleet) -> Iterator[Any]:
 def daq_data_client(session_fleet) -> Iterator[DaqDataClient]:
     _fleet, daq_cfg = session_fleet
     with DaqDataClient(daq_cfg, network_config=None) as client:
-        yield client
-
-@pytest.fixture(scope="session")
-def daq_data_v2_client(session_fleet) -> Iterator[DaqDataV2Client]:
-    # In fleet tests, the first node is usually treated as the headnode gateway
-    # for services that run there.
-    fleet, _daq_cfg = session_fleet
-    spec = fleet.specs[0]
-    target = f"{spec.container_host_ip}:{spec.mapped_port}"
-    with DaqDataV2Client(target) as client:
         yield client
 
 @pytest.fixture(scope='module')

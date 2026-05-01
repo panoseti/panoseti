@@ -59,10 +59,8 @@ async def stream_test_output(
 
         async with lock:
             from rich.console import Console
-            from rich.markup import escape
             # Colorize test statuses for better readability without pytest's native ANSI
-            # We must escape brackets in the raw output first.
-            formatted_line = escape(plain_line)
+            formatted_line = plain_line
             if "PASSED" in formatted_line:
                 formatted_line = formatted_line.replace("PASSED", "[green]PASSED[/green]")
             elif "FAILED" in formatted_line:
@@ -71,7 +69,7 @@ async def stream_test_output(
                 formatted_line = formatted_line.replace("ERROR", "[red]ERROR[/red]")
             
             stream_console = Console(highlight=False, force_terminal=True)
-            stream_console.print(f"{tag}{formatted_line}", markup=False)
+            stream_console.print(f"{tag}{formatted_line}")
 
     await proc.wait()
     return Result(name, proc.returncode or 0, time.monotonic() - start_time, stats=stats)

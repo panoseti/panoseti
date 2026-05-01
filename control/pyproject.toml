@@ -64,7 +64,7 @@ dependencies = [
   pythonpath = ["src"]
   testpaths = ["src/ci"]
   asyncio_mode = "auto"
-  timeout = 120
+  timeout = 30
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
