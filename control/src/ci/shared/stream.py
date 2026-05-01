@@ -59,8 +59,10 @@ async def stream_test_output(
 
         async with lock:
             from rich.console import Console
+            from rich.markup import escape
             # Colorize test statuses for better readability without pytest's native ANSI
-            formatted_line = plain_line
+            # We must escape brackets in the raw output first.
+            formatted_line = escape(plain_line)
             if "PASSED" in formatted_line:
                 formatted_line = formatted_line.replace("PASSED", "[green]PASSED[/green]")
             elif "FAILED" in formatted_line:

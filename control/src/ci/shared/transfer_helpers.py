@@ -31,6 +31,10 @@ def setup_isolated_integration_transfer_env(tmp_path: pathlib.Path, monkeypatch:
     monkeypatch.setenv("PSETI_CONFIG", str(config_dir))
     monkeypatch.setenv("HEAD_DATA_DIR", str(tmp_path / "head_data"))
     
+    # In Docker CI (Tier 5), DAQ_DATA_DIR should always point to the shared /data volume
+    if os.environ.get("IN_DOCKER_CI") == "1":
+        monkeypatch.setenv("DAQ_DATA_DIR", "/data")
+    
     # Ensure directories exist
     PanoPaths.ensure_state_dirs()
     head_data_dir = tmp_path / "head_data"
@@ -53,17 +57,26 @@ def setup_isolated_integration_transfer_env(tmp_path: pathlib.Path, monkeypatch:
 def mocked_make_run_dirs_factory(daqnode_container: Any):
     def mocked_make_run_dirs(rn, oc, dc, quids, dtc, nc):
         # Create head node run dir locally
-        run_dir = pathlib.Path(dc.head_node_data_dir) / rn
-        run_dir.mkdir(parents=True, exist_ok=True)
-        # Create the directories on the DAQ node via docker exec
+        head_run_dir = pathlib.Path(dc.head_node_data_dir) / rn
+        head_run_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create the directories on the DAQ node shared volume directly
         for node in dc.daq_nodes:
-            daqnode_container.exec_run(f"mkdir -p {node.data_dir}/{rn}")
-            daqnode_container.exec_run(f"chmod 777 {node.data_dir}/{rn}")
+            # DAQ node data_dir is usually /data
+            daq_data_path = pathlib.Path(node.data_dir)
+            
+            # Root run dir
+            (daq_data_path / rn).mkdir(parents=True, exist_ok=True)
+            
+            # Module subdirs
             for mid in node.module_ids:
-                mpath = f"{node.data_dir}/module_{mid}/{rn}"
-                daqnode_container.exec_run(f"mkdir -p {mpath}")
-                daqnode_container.exec_run(f"chmod 777 {mpath}")
-            daqnode_container.exec_run(f"chmod -R 777 {node.data_dir}")
+                (daq_data_path / f"module_{mid}" / rn).mkdir(parents=True, exist_ok=True)
+                
+            # Ensure permissions allow both containers to read/write
+            # (In Docker volumes, this is usually 777 or shared group)
+            import subprocess
+            subprocess.run(["chmod", "-R", "777", str(daq_data_path)], check=False)
+            
     return mocked_make_run_dirs
 
 def mocked_build_rsync_cmd(node, run_name, head_run_dir):
@@ -83,15 +96,6 @@ async def generate_integration_run(run_name: str, daq_config: config_file.DaqCon
     net_config = config_file.get_network_config()
     
     data_config.run_type = "modified" # avoid strict checks
-
-    # Ensure DAQ_DATA_DIR environment variable matches the container's mapped host path
-    # so verify_integration_transfer_accuracy can see the files from the host.
-    import os
-    if hasattr(daqnode_container, "attrs") and "Mounts" in daqnode_container.attrs:
-        for m in daqnode_container.attrs["Mounts"]:
-            if m["Destination"] == "/data":
-                os.environ["DAQ_DATA_DIR"] = m["Source"]
-                break
 
     hostname = getattr(daqnode_container, "name", "test-node")
     
@@ -114,10 +118,13 @@ async def generate_integration_run(run_name: str, daq_config: config_file.DaqCon
         replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {PCAP_GLOB}'"
         daqnode_container.exec_run(replay_cmd, detach=True)
 
-        # Simulate metadata and logs generation on the DAQ node
-        daqnode_container.exec_run(f"sh -c \"echo '{{\"test\": true}}' > /data/{run_name}/meta.json\"")
-        daqnode_container.exec_run(f"sh -c \"touch /data/{run_name}/hp_stdout_{hostname}.log\"")
-        daqnode_container.exec_run(f"sh -c \"touch /data/{run_name}/dp_manifest.node_test.txt\"")
+        # Simulate metadata and logs generation on the DAQ node.
+        # Since /data is a shared volume between int-tester and daqnode, we can write directly.
+        daq_run_path = pathlib.Path("/data") / run_name
+        daq_run_path.mkdir(parents=True, exist_ok=True)
+        (daq_run_path / "meta.json").write_text('{"test": true}')
+        (daq_run_path / f"hp_stdout_{hostname}.log").touch()
+        (daq_run_path / "dp_manifest.node_test.txt").touch()
 
         # Let it run for a bit to generate .pff files
         await asyncio.sleep(5.0)
