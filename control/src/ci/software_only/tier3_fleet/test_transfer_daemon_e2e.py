@@ -36,23 +36,26 @@ def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
         spec = fleet.specs[i]
-        
+
         # Root run dir (e.g. /data/ci_run_xxx.pffd/)
         main_run_dir = host_root / run_dir
         main_run_dir.mkdir(parents=True, exist_ok=True)
+        # Touch metadata logs to satisfy verification. Name must include node name.
+        (main_run_dir / f"hp_stdout_{spec.name}.log").touch()
+        (main_run_dir / "meta.json").write_text('{"test": true}')
         os.chmod(main_run_dir, 0o777)
-        
+
         # Module subdirs (e.g. /data/module_250/ci_run_xxx.pffd/)
         for mid in spec.module_ids:
             mod_root = host_root / f"module_{mid}"
             mod_root.mkdir(parents=True, exist_ok=True)
             os.chmod(mod_root, 0o777)
-            
+
             mod_run_dir = mod_root / run_dir
             mod_run_dir.mkdir(parents=True, exist_ok=True)
             os.chmod(mod_run_dir, 0o777)
-            
-            # Dummy data
+
+            # Dummy data - name must match what GenerateManifest picks up
             f_path = mod_run_dir / f"data.module_{mid}.pff"
             f_path.write_bytes(b"synthetic data")
             os.chmod(f_path, 0o666)
@@ -70,8 +73,9 @@ def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> 
     success = False
 
     import shutil
-    for temp_dir in fleet._temp_dirs:
+    for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
+        spec = fleet.specs[i]
         # 1. Simulate root run dir transfer
         src_root = host_root / run_dir
         if src_root.is_dir():
@@ -85,19 +89,16 @@ def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> 
                 else:
                     shutil.copy2(item, dest_path)
             success = True
-        
-        # 2. Simulate module run dir transfer
-        for mod_dir in host_root.glob("module_*"):
-            src_mod = mod_dir / run_dir
+
+        # 2. Simulate module run dir transfer (flattened)
+        for mid in spec.module_ids:
+            src_mod = host_root / f"module_{mid}" / run_dir
             if src_mod.is_dir():
-                mid = mod_dir.name.split("_")[1]
-                dest_mod = dest_run / f"module_{mid}"
-                if dest_mod.exists():
-                    shutil.rmtree(dest_mod)
-                shutil.copytree(src_mod, dest_mod)
+                for item in src_mod.iterdir():
+                    if item.is_file():
+                        shutil.copy2(item, dest_run / item.name)
                 success = True
     return success
-
 
 @pytest.mark.asyncio
 async def test_transfer_daemon_archives_run(

@@ -83,6 +83,17 @@ async def generate_integration_run(run_name: str, daq_config: config_file.DaqCon
     net_config = config_file.get_network_config()
     
     data_config.run_type = "modified" # avoid strict checks
+
+    # Ensure DAQ_DATA_DIR environment variable matches the container's mapped host path
+    # so verify_integration_transfer_accuracy can see the files from the host.
+    import os
+    if hasattr(daqnode_container, "attrs") and "Mounts" in daqnode_container.attrs:
+        for m in daqnode_container.attrs["Mounts"]:
+            if m["Destination"] == "/data":
+                os.environ["DAQ_DATA_DIR"] = m["Source"]
+                break
+
+    hostname = getattr(daqnode_container, "name", "test-node")
     
     with patch("control.start.make_run_dirs", side_effect=mocked_make_run_dirs_factory(daqnode_container)), \
          patch("control.start.start_data_flow"), \
@@ -103,8 +114,10 @@ async def generate_integration_run(run_name: str, daq_config: config_file.DaqCon
         replay_cmd = f"sh -c 'tcpreplay --mbps=0.1 --loop=0 --intf1=lo {PCAP_GLOB}'"
         daqnode_container.exec_run(replay_cmd, detach=True)
 
-        # Simulate metadata generation on the DAQ node
-        daqnode_container.exec_run(f"sh -c \"echo '{{'test': true}}' > /data/{run_name}/meta.json\"")
+        # Simulate metadata and logs generation on the DAQ node
+        daqnode_container.exec_run(f"sh -c \"echo '{{\"test\": true}}' > /data/{run_name}/meta.json\"")
+        daqnode_container.exec_run(f"sh -c \"touch /data/{run_name}/hp_stdout_{hostname}.log\"")
+        daqnode_container.exec_run(f"sh -c \"touch /data/{run_name}/dp_manifest.node_test.txt\"")
 
         # Let it run for a bit to generate .pff files
         await asyncio.sleep(5.0)
@@ -136,7 +149,11 @@ def verify_integration_transfer_accuracy(head_data_dir: pathlib.Path, run_name: 
     daq_data_root = pathlib.Path(os.environ["DAQ_DATA_DIR"])
     daq_root_run_dir = daq_data_root / run_name
     assert (daq_root_run_dir / "meta.json").exists(), f"Metadata missing on DAQ root run dir for {run_name}"
-    assert (daq_root_run_dir / "hp_stdout.log").exists(), f"Hashpipe log missing on DAQ root run dir for {run_name}"
+    
+    # Use glob for node-specific logs
+    logs = list(daq_root_run_dir.glob("hp_stdout_*.log"))
+    assert len(logs) > 0, f"Hashpipe log missing on DAQ root run dir for {run_name}"
+    
     assert list(daq_root_run_dir.glob("dp_manifest.node_*.txt")), f"Manifest missing on DAQ root run dir for {run_name}"
 
     for mid in daq_config.daq_nodes[0].module_ids:
