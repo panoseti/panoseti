@@ -101,14 +101,31 @@ pseti test hw run
 ```
 
 #### State Machine & Boot Semantics
-The HITL framework uses a state machine to automatically transition hardware to the required state before each test batch. The state graph models the exact sequence of a `pseti session-start`, including the cyclic nature of interleaved observing modes.
+
+**Golden Path Principle:** The HITL state machine is a direct mirror of the `pseti session-start` production boot sequence. Every primitive in the state machine must delegate to the same `control.config` function that `session-start` uses — never re-implement hardware control logic in `driver_ops.py`. This guarantees that the test harness exercises exactly the same code path as production.
+
+The `pseti session-start` sequence is:
+1. `pseti power on` → WPS outlet on
+2. `pseti uids` → TFTP-fetch hardware UIDs from each quabo (Q0→Q1→Q2→Q3 within module, parallel across modules), save to `tmp/quabo_uids.json`
+3. `pseti reboot` → TFTP reboot in the same Q0→Q1→Q2→Q3 order, wait for each quabo to ping-respond before moving to next
+4. `pseti cfg hk-dest` → Route housekeeping packets to head node
+5. `pseti cfg maroc` → Program MAROC registers (uses per-quabo calibration from `quabo_info.json`, keyed by UID — requires UIDs to be discovered first)
+6. `pseti cfg masks` → Write trigger masks and GOE masks
+7. `pseti cfg calibrate-ph` → Run PH baseline calibration
+
+**Critical ordering constraints:**
+- Quabos within a module must be rebooted Q0→Q1→Q2→Q3 (Q0 sets the timing reference)
+- UIDs must be discovered (step 2) before MAROC configuration (step 5), because `do_maroc_config` looks up per-quabo calibration data by UID
+- `quabo_info.json` must contain a `"default"` entry for any UID not explicitly listed; missing UIDs will cause an interactive prompt that blocks non-interactive runs
+
+The HITL framework uses a state machine to automatically transition hardware to the required state before each test batch:
 
 ```mermaid
 stateDiagram-v2
     [*] --> UNPOWERED
     
     UNPOWERED --> POWERED : wps_power_on
-    POWERED --> BOOTED : boot_verify
+    POWERED --> BOOTED : boot_verify (do_reboot + pseti uids)
     
     BOOTED --> HK_ROUTED : route_hk
     HK_ROUTED --> MAROC_CONFIGURED : configure_maroc
@@ -139,7 +156,8 @@ stateDiagram-v2
 ```
 
 **Key Features of the State Machine:**
-- **Robust Booting (`boot_verify`)**: Transitions from `POWERED` to `BOOTED` by optionally triggering a TFTP reboot (if a `reboot_port` is defined) and polling for UDP reachability through the gateway.
+- **Golden Path Delegation**: Each primitive in `driver_ops.py` calls the corresponding `control.config.do_*` function used by `session-start`. Never re-implement hardware logic.
+- **Robust Booting (`boot_verify`)**: Delegates to `config.do_reboot` which handles Q0→Q1→Q2→Q3 ordering. Followed by `pseti uids` to cache hardware UIDs before later steps need them.
 - **Granular Initialization**: Explicitly models `HK_ROUTED`, `MAROC_CONFIGURED`, and `MASKS_CONFIGURED` to allow tests to target exact configuration phases.
 - **Optional HV Paths**: The graph branches after `PH_CALIBRATED`. Tests can require `HV_OFF_READY` (using a pulse generator) or `HV_ON_READY` (using physical detectors).
 - **Cyclic Reconfiguration**: Supports the "interleaved" observing mode natively. The system can loop back from a `READY` state to `MAROC_CONFIGURED` and back to `READY` without dropping High Voltage or requiring recalibration.

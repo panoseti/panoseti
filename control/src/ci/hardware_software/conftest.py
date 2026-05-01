@@ -84,7 +84,7 @@ def hw_safety_net(runner):
 
     try:
         logger.info("[SAFETY NET] Stopping redis daemons...")
-        runner.invoke(app, ["config", "stop-redis-daemons", "--yes"])
+        runner.invoke(app, ["cfg", "stop-redis-daemons"])
     except Exception as exc:
         logger.warning("[SAFETY NET] pseti stop-redis-daemons failed: %s", exc)
 

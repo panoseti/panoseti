@@ -41,6 +41,9 @@ def pytest_configure(config: Any) -> None:
         "markers",
         "slow_hw: markers tests with long hardware timeouts (>60s)",
     )
+    # Bare class markers registered for -m filtering (e.g. -m driver_protocol)
+    for _cls in ("driver_protocol", "fast_reconfig", "observing", "lifecycle", "telemetry"):
+        config.addinivalue_line("markers", f"{_cls}: HITL test class {_cls!r}")
 
 
 def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
@@ -82,6 +85,7 @@ def pytest_collection_modifyitems(config: Any, items: list[Any]) -> None:
             item.user_properties.append(("required_state", cls_cfg.get("required_state", "")))
             item.user_properties.append(("leaves_state", cls_cfg.get("leaves_state", "")))
             item.add_marker(pytest.mark.hw_class(cls_name))
+            item.add_marker(getattr(pytest.mark, cls_name))  # bare class marker for -m filtering
             item.add_marker(pytest.mark.required_state(cls_cfg.get("required_state", "")))
             priority = cls_cfg.get("batch_priority", 99)
             classified.append((priority, idx, item))
@@ -122,7 +126,7 @@ def pytest_runtest_setup(item: Any) -> None:
 
             from control.utils.paths import PanoPaths
             cache_file = PanoPaths.tmp_dir() / ".topology_reachable_cache"
-            if not cache_file.exists() or (time.monotonic() - cache_file.stat().st_mtime) > 300:
+            if not cache_file.exists() or (time.time() - cache_file.stat().st_mtime) > 300:
                 from ci.hardware_software.hw_utils.topology import HwTopology
                 from control.utils import util
                 topo = HwTopology()
@@ -136,7 +140,10 @@ def pytest_runtest_setup(item: Any) -> None:
                 if errors:
                     pytest.skip("Topology unreachable:\n" + "\n".join(errors))
                 cache_file.touch()
-        except Exception as exc:
+        except BaseException as exc:
+            from _pytest.outcomes import OutcomeException
+            if isinstance(exc, OutcomeException):
+                raise
             logger.debug("Topology reachability check failed: %s", exc)
 
     current_state = read_state(_STATE_FILE)

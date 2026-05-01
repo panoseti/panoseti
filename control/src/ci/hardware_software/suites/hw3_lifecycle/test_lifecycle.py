@@ -84,7 +84,8 @@ def test_full_power_cycle(topology) -> None:
     if not quabo_addrs:
         pytest.skip("No quabos in topology")
 
-    q0_ip = next(a.ip for a in quabo_addrs if a.quadrant == 0)
+    q0_addr = next(a for a in quabo_addrs if a.quadrant == 0)
+    q0_ip = q0_addr.ip  # raw IP for ICMP ping (pre-boot, before port-forwarding matters)
 
     # Power OFF
     _wps_toggle(obs, on=False)
@@ -102,7 +103,7 @@ def test_full_power_cycle(topology) -> None:
     time.sleep(10.0)
 
     # Read first HK packet — bootbyte must be 0xAA
-    q = QUABO(q0_ip)
+    q = QUABO(q0_addr.real_ip, port=q0_addr.cmd_port)
     pkt = q.read_hk_packet()
     q.close()
     if pkt is None:
@@ -110,7 +111,7 @@ def test_full_power_cycle(topology) -> None:
     assert pkt[1] == 0xAA, f"First HK bootbyte should be 0xAA after power on, got 0x{pkt[1]:02X}"
 
     # Read the next packet — bootbyte must be 0x00
-    q2 = QUABO(q0_ip)
+    q2 = QUABO(q0_addr.real_ip, port=q0_addr.cmd_port)
     pkt2 = q2.read_hk_packet()
     q2.close()
     if pkt2:
@@ -133,7 +134,7 @@ def test_tftp_reboot(topology) -> None:
         pytest.skip("No quabos in topology")
 
     q0_addr = next(a for a in quabo_addrs if a.quadrant == 0)
-    q = QUABO(q0_addr.ip)
+    q = QUABO(q0_addr.real_ip, port=q0_addr.cmd_port)
 
     # Capture FWVER before reboot
     pkt_before = q.read_hk_packet()
@@ -165,7 +166,7 @@ def test_tftp_reboot(topology) -> None:
     time.sleep(10.0)
 
     # Check FWVER is unchanged
-    q2 = QUABO(q0_addr.ip)
+    q2 = QUABO(q0_addr.real_ip, port=q0_addr.cmd_port)
     pkt_after = q2.read_hk_packet()
     q2.close()
 
@@ -208,10 +209,10 @@ def test_firmware_load_and_reboot(topology, quabo_uids) -> None:
     # Find the firmware binary for this quabo's hardware version
     obs = config_file.get_obs_config()
     hw_version = None
-    for dome in obs.get("domes", []):
-        for module in dome.get("modules", []):
-            if module.get("ip_addr", "").startswith(q0_addr.ip.rsplit(".", 1)[0]):
-                hw_version = module.get("quabo_version", "qfp")
+    for dome in obs.domes:
+        for module in dome.modules:
+            if str(module.ip_addr).startswith(q0_addr.ip.rsplit(".", 1)[0]):
+                hw_version = getattr(module, "quabo_version", "qfp")
                 break
 
     if not hw_version:
@@ -235,7 +236,7 @@ def test_firmware_load_and_reboot(topology, quabo_uids) -> None:
     assert up, "Quabo did not return after firmware flash + reboot"
 
     time.sleep(10.0)
-    q = QUABO(q0_addr.ip)
+    q = QUABO(q0_addr.real_ip, port=q0_addr.cmd_port)
     pkt = q.read_hk_packet()
     q.close()
     assert pkt is not None, "No HK packet after firmware flash"
@@ -255,7 +256,7 @@ def test_baseline_calibration(topology) -> None:
         pytest.skip("No quabos in topology")
 
     for addr in quabo_addrs:
-        q = QUABO(addr.ip)
+        q = QUABO(addr.real_ip, port=addr.cmd_port)
         coeffs = q.calibrate_ph_baseline()
         q.close()
         assert len(coeffs) == 256, f"{addr.ip}: expected 256 coefficients, got {len(coeffs)}"
@@ -279,8 +280,8 @@ def test_uid_stability_across_reboot(topology) -> None:
 
     q0_addr = next(a for a in quabo_addrs if a.quadrant == 0)
 
-    def read_uid(ip: str) -> int | None:
-        q = QUABO(ip)
+    def read_uid(addr) -> int | None:
+        q = QUABO(addr.real_ip, port=addr.cmd_port)
         pkt = q.read_hk_packet()
         q.close()
         if not pkt or len(pkt) < 58:
@@ -289,7 +290,7 @@ def test_uid_stability_across_reboot(topology) -> None:
         parts = [struct.unpack_from("<H", pkt, 44 + 2 * i)[0] for i in range(4)]
         return parts[0] + (parts[1] << 16) + (parts[2] << 32) + (parts[3] << 48)
 
-    uid_before = read_uid(q0_addr.ip)
+    uid_before = read_uid(q0_addr)
     if uid_before is None:
         pytest.skip("Could not read UID before reboot")
 
@@ -300,7 +301,7 @@ def test_uid_stability_across_reboot(topology) -> None:
     _wait_for_ping(q0_addr.ip, timeout=_TFTP_REBOOT_WAIT_S)
     time.sleep(10.0)
 
-    uid_after = read_uid(q0_addr.ip)
+    uid_after = read_uid(q0_addr)
     assert uid_after is not None, "Could not read UID after reboot"
     assert uid_after == uid_before, (
         f"UID changed across reboot: before=0x{uid_before:016X}, after=0x{uid_after:016X}"

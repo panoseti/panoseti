@@ -12,60 +12,45 @@ import time
 logger = logging.getLogger(__name__)
 
 
+def wps_power_on(**kwargs) -> None:
+    """Power on all WPS outlets in obs_config. Transitions: UNPOWERED → POWERED."""
+    _wps_toggle(on=True)
+
+
+def wps_power_off(**kwargs) -> None:
+    """Power off all WPS outlets in obs_config. Transitions: any → UNPOWERED."""
+    _wps_toggle(on=False)
+
+
+def _wps_toggle(on: bool) -> None:
+    from control.power import quabo_power
+    from control.utils import config_file
+    obs = config_file.get_obs_config()
+    extra = obs.model_extra or {}
+    wps_entries = {k: v for k, v in extra.items() if k.startswith("wps") and isinstance(v, dict)}
+    if not wps_entries:
+        raise RuntimeError("No WPS entries found in obs_config (looking for keys starting with 'wps')")
+    for name, wps_cfg in wps_entries.items():
+        logger.info("_wps_toggle: %s on=%s", name, on)
+        quabo_power(wps_cfg, on=on)
+
+
 def boot_verify(quabo_ip: str | None = None, **kwargs) -> None:
     """
-    Poll each quabo's cmd_port until UDP echo responds.
+    Reboot all quabos via TFTP (Q0→Q1→Q2→Q3 within each module, parallel
+    across modules), then discover and cache hardware UIDs.
+    Mirrors the session-start golden path: do_reboot → get_uids.
     Transitions: POWERED → BOOTED.
     """
-    from ci.hardware_software.hw_utils.topology import HwTopology
-    
-    topo = HwTopology()
-    addrs = topo.quabo_ips()
-    
-    if quabo_ip:
-        # Filter to just this raw IP (or it might be passed as real_ip, 
-        # but usually state machine works on the topology's identity)
-        addrs = [a for a in addrs if a.ip == quabo_ip or a.real_ip == quabo_ip]
+    import control.config as config
+    from control.utils import config_file
 
-    if not addrs:
-        logger.warning("boot_verify: no quabos found to verify")
-        return
+    obs_config = config_file.get_obs_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
 
-    timeout_s = kwargs.get("budget_s", {}).get("max", 300)
-    start_time = time.time()
-    reachable = set()
-    
-    logger.info("boot_verify: polling %d quabos for UDP reachability (timeout=%ds)", len(addrs), timeout_s)
-    
-    # Optional: trigger TFTP reboot for each quabo first if reboot_port is defined
-    from control.driver.quabo_tftp import tftpw
-    for a in addrs:
-        if a.reboot_port != 69:  # Non-default or explicitly forwarded port
-            logger.info("boot_verify: triggering TFTP reboot for %s via port %d", a.real_ip, a.reboot_port)
-            try:
-                t = tftpw(a.real_ip, port=a.reboot_port)
-                t.reboot()
-            except Exception as exc:
-                logger.warning("boot_verify: TFTP reboot trigger failed for %s: %s", a.real_ip, exc)
-
-    while len(reachable) < len(addrs) and (time.time() - start_time) < timeout_s:
-        for a in addrs:
-            if a.boardloc in reachable:
-                continue
-            
-            from control.utils import util
-            if util.ping(a.real_ip, a.cmd_port):
-                logger.info("boot_verify: quabo at %s (loc=%d) is REACHABLE", a.real_ip, a.boardloc)
-                reachable.add(a.boardloc)
-        
-        if len(reachable) < len(addrs):
-            time.sleep(2)
-
-    if len(reachable) < len(addrs):
-        missing = [a.ip for a in addrs if a.boardloc not in reachable]
-        raise RuntimeError(f"boot_verify: timeout reached. Unreachable quabos: {missing}")
-
-    logger.info("boot_verify: all quabos are BOOTED and reachable")
+    config.do_reboot(modules, quabo_uids, network_config)
 
 
 def route_hk(quabo_ip: str | None = None, **kwargs) -> None:
@@ -88,35 +73,39 @@ def route_hk(quabo_ip: str | None = None, **kwargs) -> None:
 
 def configure_maroc(quabo_ip: str | None = None, **kwargs) -> None:
     """
-    Program MAROC registers on all (or one) quabo(s).
-
-    Loads the config from quabo_config.txt and sends the 829-byte serial command.
-    Transitions: HK_ROUTED → MAROC_LOADED.
+    Program MAROC registers on all quabos via config.do_maroc_config,
+    which applies per-quabo calibration data from quabo_info.
+    Transitions: HK_ROUTED → MAROC_CONFIGURED.
     """
-    quabos = _all_quabos(quabo_ip)
+    import control.config as config
+    from control.utils import config_file
 
-    for q in quabos:
-        logger.info("configure_maroc: sending MAROC params to %s:%d", q.ip_addr, q.port)
-        q.send_maroc_params()
+    obs_config = config_file.get_obs_config()
+    daq_config = config_file.get_daq_config()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+    quabo_info = config_file.get_quabo_info()
+
+    config.do_maroc_config(modules, quabo_uids, quabo_info, data_config, obs_config, daq_config, network_config)
 
 
 def configure_masks(quabo_ip: str | None = None, **kwargs) -> None:
     """
-    Write ACQ params, trigger masks, GOE masks, and destination IPs to quabo(s).
-
+    Write trigger masks and GOE masks to all quabos via config.do_mask_config.
     Transitions: MAROC_CONFIGURED → MASKS_CONFIGURED.
     """
-    from control.driver.quabo_driver import DAQ_PARAMS
+    import control.config as config
     from control.utils import config_file
 
-    data = config_file.get_data_config()
+    obs_config = config_file.get_obs_config()
+    data_config = config_file.get_data_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
 
-    quabos = _all_quabos(quabo_ip)
-
-    for q in quabos:
-        logger.info("configure_masks: setting DAQ params on %s:%d", q.ip_addr, q.port)
-        params = DAQ_PARAMS(data)
-        q.send_daq_params(params)
+    config.do_mask_config(modules, data_config, network_config, quabo_uids)
 
 
 def calibrate_ph(quabo_ip: str | None = None, **kwargs) -> None:
@@ -146,7 +135,7 @@ def hv_set_from_config(quabo_ip: str | None = None, **kwargs) -> None:
     from control.utils import config_file
 
     obs = config_file.get_obs_config()
-    overvoltage = obs.get("detector_overvoltage", 0)
+    overvoltage = obs.detector_overvoltage or 0
 
     quabos = _all_quabos(quabo_ip)
 
@@ -167,6 +156,35 @@ def hv_zero(quabo_ip: str | None = None, **kwargs) -> None:
     for q in quabos:
         logger.info("hv_zero: zeroing HV on %s:%d", q.ip_addr, q.port)
         q.hv_set([0, 0, 0, 0])
+
+
+def soft_reset_all(quabo_ip: str | None = None, **kwargs) -> None:
+    """
+    Send cmd 0x04 (logic reset, no firmware reload) to all quabos.
+    Transitions: any configured state → BOOTED.
+    """
+    quabos = _all_quabos(quabo_ip)
+    for q in quabos:
+        logger.info("soft_reset_all: resetting %s:%d", q.ip_addr, q.port)
+        q.reset()
+
+
+def tftp_reboot_all(quabo_ip: str | None = None, **kwargs) -> None:
+    """
+    TFTP firmware reload + reboot on all quabos (same as boot_verify but
+    used when already above POWERED, e.g. from a configured state).
+    Delegates to config.do_reboot for correct Q0→Q1→Q2→Q3 ordering.
+    Transitions: any state above POWERED → BOOTED.
+    """
+    import control.config as config
+    from control.utils import config_file
+
+    obs_config = config_file.get_obs_config()
+    network_config = config_file.get_network_config()
+    modules = config_file.get_modules(obs_config)
+    quabo_uids = config_file.get_quabo_uids()
+
+    config.do_reboot(modules, quabo_uids, network_config)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

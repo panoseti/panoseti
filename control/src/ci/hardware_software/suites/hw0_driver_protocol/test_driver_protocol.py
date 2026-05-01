@@ -60,11 +60,11 @@ def _flush_and_echo(quabo: QUABO, cmd_fn, echo_size: int = 64) -> bytes:
 
 def test_hv_set_packet_layout(quabo: QUABO) -> None:
     """
-    hv_set([0,0,0,0]) sends opcode 0x02; FPGA echoes with bit-7 set (0x82).
+    hv_set([0,0,0,0], echo=True) sends opcode 0x82; FPGA echoes back.
     Payload bytes [2:10] must all be zero (zero HV for all 4 channels).
     Total echo length must be 64 bytes.
     """
-    data = _flush_and_echo(quabo, lambda: quabo.hv_set([0, 0, 0, 0]))
+    data = _flush_and_echo(quabo, lambda: quabo.hv_set([0, 0, 0, 0], echo=True))
     assert_opcode(data, 0x82)
     assert_packet_length(data, 64)
     assert_bytes_zero(data, 2, 10)
@@ -72,11 +72,11 @@ def test_hv_set_packet_layout(quabo: QUABO) -> None:
 
 def test_hv_set_nonzero_layout(quabo: QUABO) -> None:
     """
-    hv_set([1000, 2000, 3000, 4000]) — verify the LE-encoded values appear
-    correctly at bytes [2:10] of the echo, then zero them out.
+    hv_set([1000, 2000, 3000, 4000], echo=True) — verify the LE-encoded values
+    appear correctly at bytes [2:10] of the echo, then zero them out.
     """
     values = [1000, 2000, 3000, 4000]
-    data = _flush_and_echo(quabo, lambda: quabo.hv_set(values))
+    data = _flush_and_echo(quabo, lambda: quabo.hv_set(values, echo=True))
     assert_opcode(data, 0x82)
     for i, v in enumerate(values):
         assert_le_uint16(data, 2 + 2 * i, v)
@@ -90,14 +90,14 @@ def test_hv_set_nonzero_layout(quabo: QUABO) -> None:
 
 def test_acq_params_packet_layout(quabo: QUABO) -> None:
     """
-    send_daq_params() sends opcode 0x03; FPGA echoes 0x83.
+    send_daq_params(..., echo=True) sends opcode 0x83; FPGA echoes back.
     Verify mode byte at [2] and integration_time bytes at [4:6].
     """
     params = DAQ_PARAMS(
         do_image=True, image_us=10000, image_8bit=False,
         do_ph=False, bl_subtract=True
     )
-    data = _flush_and_echo(quabo, lambda: quabo.send_daq_params(params))
+    data = _flush_and_echo(quabo, lambda: quabo.send_daq_params(params, echo=True))
     assert_opcode(data, 0x83)
     assert_packet_length(data, 64)
     expected_mode = ACQ_IMAGE  # 0x02
@@ -114,7 +114,7 @@ def test_acq_params_ph_mode(quabo: QUABO) -> None:
         do_image=False, image_us=0, image_8bit=False,
         do_ph=True, bl_subtract=True
     )
-    data = _flush_and_echo(quabo, lambda: quabo.send_daq_params(params))
+    data = _flush_and_echo(quabo, lambda: quabo.send_daq_params(params, echo=True))
     assert_opcode(data, 0x83)
     assert data[2] & ACQ_PULSE_HEIGHT, "ACQ_PULSE_HEIGHT bit missing"
     assert not (data[2] & ACQ_IMAGE), "ACQ_IMAGE bit unexpectedly set"

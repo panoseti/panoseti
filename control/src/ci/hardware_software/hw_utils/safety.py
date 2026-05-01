@@ -96,15 +96,12 @@ class SafetyManager:
 
 
 def _emergency_wps_off() -> None:
-    """Last-resort: call 'pseti power off --yes' via subprocess."""
+    """Last-resort: call driver_ops.wps_power_off() directly."""
     try:
-        subprocess.run(
-            [sys.executable, "-m", "control.pseti", "power", "off", "--yes"],
-            timeout=30,
-            check=False,
-        )
+        from ci.hardware_software.hw_utils.driver_ops import wps_power_off
+        wps_power_off()
     except Exception as exc:
-        logger.error("Emergency WPS off via subprocess failed: %s", exc)
+        logger.error("Emergency WPS off failed: %s", exc)
 
 
 def _banner(msg: str) -> None:

@@ -97,9 +97,9 @@ class QUABO:
         self.logger.info('close')
         self.sock.close()
 
-    def send_daq_params(self, params: DAQ_PARAMS) -> None:
+    def send_daq_params(self, params: DAQ_PARAMS, echo: bool = False) -> None:
         self.logger.info('send_daq_params')
-        cmd = self.make_cmd(0x03)
+        cmd = self.make_cmd(0x83 if echo else 0x03)
         mode = 0
 
         if params.do_image:
@@ -189,18 +189,18 @@ class QUABO:
             x.append(val)
         return x
 
-    def hv_config(self) -> None:
+    def hv_config(self, echo: bool = False) -> None:
         self.logger.info('hv_config')
-        cmd = self.make_cmd(0x02)
+        cmd = self.make_cmd(0x82 if echo else 0x02)
         with open(self.config_file_path) as f:
             self.parse_hv_params(f, cmd)
         self.flush_rx_buf()     # needed?
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def hv_set_chan(self, chan: int, value: int) -> None:
+    def hv_set_chan(self, chan: int, value: int, echo: bool = False) -> None:
         self.logger.info(f'hv_set_chan: ch - {chan}, val - {value}')
-        cmd = self.make_cmd(0x02)
+        cmd = self.make_cmd(0x82 if echo else 0x02)
         self.HV_vals[chan] = int(value)
         for i in range(4):
             LSbyte = self.HV_vals[i] & 0xff
@@ -212,18 +212,18 @@ class QUABO:
 
     # set high voltage for all 4 channels
     #
-    def hv_set(self, values: list[int]) -> None:
+    def hv_set(self, values: list[int], echo: bool = False) -> None:
         self.logger.info(f'hv_set: val - {values[0]} {values[1]} {values[2]} {values[3]}')
-        cmd = self.make_cmd(0x02)
+        cmd = self.make_cmd(0x82 if echo else 0x02)
         for i in range(4):
             cmd[2*i+2] = values[i] & 0xff
             cmd[2*i+3] = (values[i] >> 8) & 0xff
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def send_acq_parameters_file(self) -> None:
+    def send_acq_parameters_file(self, echo: bool = False) -> None:
         self.logger.info('send_acq_parameters_file')
-        cmd = self.make_cmd(0x03)
+        cmd = self.make_cmd(0x83 if echo else 0x03)
         with open(self.config_file_path) as f:
             self.parse_acq_parameters(f, cmd)
         self.flush_rx_buf()
@@ -414,6 +414,11 @@ class QUABO:
             self.have_hk_sock = True
 
         while True:
+            if time.time() > end_time:
+                if self.hk_sock:
+                    self.hk_sock.close()
+                self.have_hk_sock = False
+                return None
             try:
                 if self.hk_sock is None:
                     continue
@@ -427,11 +432,6 @@ class QUABO:
                     self.hk_sock.close()
                 self.have_hk_sock = False
                 return x[0]
-            if time.time() > end_time:
-                if self.hk_sock:
-                    self.hk_sock.close()
-                self.have_hk_sock = False
-                return None
 
     # set destination IP addr for both PH and image packets
     #

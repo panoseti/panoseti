@@ -386,17 +386,24 @@ def hw_run(
         console.print("[bold yellow]DEV MODE[/bold yellow] — power cycles skipped; hardware will NOT be returned to safe state.")
         keep_running = True
         if assume_state is None:
-            assume_state = "ACQ_CONFIGURED"
+            assume_state = "MASKS_CONFIGURED"
 
     if explain:
         _cmd_explain(explain)
         return
 
+    # If --assume-state is given, persist it to the state file so pytest_runtest_setup
+    # uses the correct starting point for transition planning.
+    if assume_state:
+        from ci.hardware_software.hw_utils.state_machine import _write_state
+        _write_state(_STATE_FILE, assume_state)
+        console.print(f"[dim]Assuming hardware state: [green]{assume_state}[/green][/dim]")
+
     pytest_args = list(ctx.args)
     if hw_class:
-        pytest_args += ["-m", f"hw_class({hw_class!r})"]
+        pytest_args += ["-m", hw_class]
     if hw_state:
-        pytest_args += ["-m", f"required_state({hw_state!r})"]
+        pytest_args += ["-m", hw_state]
 
     cmd = _uv_pytest(
         str(_HW_SW_DIR),

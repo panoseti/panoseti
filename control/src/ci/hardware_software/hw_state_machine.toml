@@ -55,8 +55,7 @@ from_states = ["UNPOWERED"]
 to_state = "POWERED"
 budget_s = { typical = 5, max = 15 }
 safety = "high"
-entrypoint = "control.power:quabo_power"
-kwargs = { on = true }
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:wps_power_on"
 
 [[primitives]]
 name = "boot_verify"
@@ -64,7 +63,7 @@ from_states = ["POWERED"]
 to_state = "BOOTED"
 budget_s = { typical = 400, max = 600 }
 safety = "low"
-entrypoint = "hw_utils.driver_ops:boot_verify"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:boot_verify"
 
 [[primitives]]
 name = "wps_power_off"
@@ -72,8 +71,7 @@ from_states = ["*"]
 to_state = "UNPOWERED"
 budget_s = { typical = 5, max = 10 }
 safety = "high"
-entrypoint = "control.power:quabo_power"
-kwargs = { on = false }
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:wps_power_off"
 
 [[primitives]]
 name = "tftp_reboot"
@@ -81,7 +79,7 @@ from_states = ["BOOTED", "HK_ROUTED", "MAROC_CONFIGURED", "MASKS_CONFIGURED", "P
 to_state = "BOOTED"
 budget_s = { typical = 400, max = 600 }
 safety = "medium"
-entrypoint = "control.driver.quabo_tftp:tftpw.reboot"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:tftp_reboot_all"
 
 [[primitives]]
 name = "soft_reset"
@@ -89,7 +87,7 @@ from_states = ["HK_ROUTED", "MAROC_CONFIGURED", "MASKS_CONFIGURED", "PH_CALIBRAT
 to_state = "BOOTED"
 budget_s = { typical = 1, max = 2 }
 safety = "low"
-entrypoint = "control.driver.quabo_driver:QUABO.reset"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:soft_reset_all"
 
 [[primitives]]
 name = "route_hk"
@@ -97,7 +95,7 @@ from_states = ["BOOTED"]
 to_state = "HK_ROUTED"
 budget_s = { typical = 1, max = 5 }
 safety = "low"
-entrypoint = "hw_utils.driver_ops:route_hk"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:route_hk"
 
 [[primitives]]
 name = "configure_maroc"
@@ -105,7 +103,7 @@ from_states = ["HK_ROUTED", "HV_OFF_READY", "HV_ON_READY"]
 to_state = "MAROC_CONFIGURED"
 budget_s = { typical = 1, max = 5 }
 safety = "low"
-entrypoint = "hw_utils.driver_ops:configure_maroc"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_maroc"
 
 [[primitives]]
 name = "configure_masks"
@@ -113,7 +111,7 @@ from_states = ["MAROC_CONFIGURED"]
 to_state = "MASKS_CONFIGURED"
 budget_s = { typical = 1, max = 5 }
 safety = "low"
-entrypoint = "hw_utils.driver_ops:configure_masks"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_masks"
 
 [[primitives]]
 name = "calibrate_ph"
@@ -121,7 +119,7 @@ from_states = ["MASKS_CONFIGURED"]
 to_state = "PH_CALIBRATED"
 budget_s = { typical = 15, max = 30 }
 safety = "low"
-entrypoint = "hw_utils.driver_ops:calibrate_ph"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:calibrate_ph"
 
 [[primitives]]
 name = "prepare_hv_off"
@@ -129,7 +127,7 @@ from_states = ["PH_CALIBRATED", "MASKS_CONFIGURED"]
 to_state = "HV_OFF_READY"
 budget_s = { typical = 2, max = 5 }
 safety = "high"
-entrypoint = "hw_utils.driver_ops:hv_zero"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:hv_zero"
 
 [[primitives]]
 name = "prepare_hv_on"
@@ -137,7 +135,7 @@ from_states = ["PH_CALIBRATED", "MASKS_CONFIGURED"]
 to_state = "HV_ON_READY"
 budget_s = { typical = 2, max = 10 }
 safety = "high"
-entrypoint = "hw_utils.driver_ops:hv_set_from_config"
+entrypoint = "ci.hardware_software.hw_utils.driver_ops:hv_set_from_config"
 guards = ["shutter_must_be_closed", "light_sensor_dark"]
 
 [[primitives]]
@@ -146,7 +144,7 @@ from_states = ["HV_OFF_READY"]
 to_state = "ACQUIRING_HV_OFF"
 budget_s = { typical = 5, max = 15 }
 safety = "low"
-entrypoint = "hw_utils.run_ops:start_run_via_cli"
+entrypoint = "ci.hardware_software.hw_utils.run_ops:start_run_via_cli"
 kwargs = { no_hv = true }
 
 [[primitives]]
@@ -155,7 +153,7 @@ from_states = ["HV_ON_READY"]
 to_state = "ACQUIRING_HV_ON"
 budget_s = { typical = 5, max = 15 }
 safety = "low"
-entrypoint = "hw_utils.run_ops:start_run_via_cli"
+entrypoint = "ci.hardware_software.hw_utils.run_ops:start_run_via_cli"
 kwargs = { no_hv = false }
 
 [[primitives]]
@@ -164,7 +162,7 @@ from_states = ["ACQUIRING_HV_OFF"]
 to_state = "HV_OFF_READY"
 budget_s = { typical = 60, max = 90 }
 safety = "low"
-entrypoint = "hw_utils.run_ops:stop_run_via_cli"
+entrypoint = "ci.hardware_software.hw_utils.run_ops:stop_run_via_cli"
 
 [[primitives]]
 name = "stop_acq_hv_on"
@@ -172,4 +170,4 @@ from_states = ["ACQUIRING_HV_ON"]
 to_state = "HV_ON_READY"
 budget_s = { typical = 60, max = 90 }
 safety = "low"
-entrypoint = "hw_utils.run_ops:stop_run_via_cli"
+entrypoint = "ci.hardware_software.hw_utils.run_ops:stop_run_via_cli"
