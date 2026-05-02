@@ -47,7 +47,7 @@ def copy_file_to_node(file_path: Path | str, node: DaqNode, run_dir: str = '', v
     for f in files:
         f_str = str(f)
         if node.port_forwarding and node.port_forwarding.status:
-            cmd = ["scp", "-q", *util.ssh_options, "-P", str(node.port_forwarding.port), f_str, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
+            cmd = ["scp", "-q", *util.ssh_options, "-P", str(node.port_forwarding.ssh_port), f_str, f"{node.username}@{node.port_forwarding.gw_ip}:{dest_path}"]
         else:
             cmd = ["scp", "-q", *util.ssh_options, f_str, f"{node.username}@{node.ip_addr}:{dest_path}"]
         
@@ -114,7 +114,7 @@ def copy_dir_from_node(run_name: str, daq_config: DaqConfig, node: DaqNode, modu
     # Base rsync command
     base_rsync = ["rsync", "-P"]
     if use_pf and pf is not None:
-        base_rsync.extend(["-e", f"ssh -p {pf.port}"])
+        base_rsync.extend(["-e", f"ssh -p {pf.ssh_port}"])
         remote_host = f"{node.username}@{pf.gw_ip}"
     else:
         remote_host = f"{node.username}@{node.ip_addr}"
@@ -152,7 +152,7 @@ def make_remote_dirs(daq_config: DaqConfig, dirname: str) -> None:
         ssh_cmd = ["ssh", *util.ssh_options]
         if node.port_forwarding and node.port_forwarding.status:
              real_ip = str(node.port_forwarding.gw_ip)
-             port = str(node.port_forwarding.port)
+             port = str(node.port_forwarding.ssh_port)
              ssh_cmd.extend(["-p", port, f"{node.username}@{real_ip}"])
         else:
              ssh_cmd.append(f"{node.username}@{node.ip_addr}")

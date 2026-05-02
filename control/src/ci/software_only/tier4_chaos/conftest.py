@@ -28,7 +28,7 @@ from ci.software_only.tier3_fleet.conftest import (
 )
 
 # ── Environment ───────────────────────────────────────────────────────────────
-INTERLEAVE_PID_FILE = pathlib.Path("tmp/interleave.pid")
+# INTERLEAVE_PID_FILE = pathlib.Path("tmp/interleave.lock")
 MOCK_QUABO_UDS = os.getenv("MOCK_QUABO_UDS", "/tmp/mock_quabo.sock")
 
 

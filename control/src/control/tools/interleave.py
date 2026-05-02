@@ -33,7 +33,9 @@ from control.utils.pydantic_config_models import (
     QuaboUids,
 )
 
-PID_FILE = "tmp/interleave.pid"
+INTERLEAVE_LOCK_FILE = "interleave.lock"
+INTERLEAVE_LOCK_PATH = PanoPaths.locks_dir() / INTERLEAVE_LOCK_FILE
+
 
 logger = get_logger("PSETI.Interleave", log_dir=PanoPaths.logs_dir())
 
@@ -123,9 +125,9 @@ class InterleaveController:
         Raises:
             SystemExit: If another instance is already running.
         """
-        if os.path.exists(PID_FILE):
+        if os.path.exists(INTERLEAVE_LOCK_PATH):
             try:
-                with open(PID_FILE) as f:
+                with open(INTERLEAVE_LOCK_PATH) as f:
                     old_pid = int(f.read().strip())
 
                 if psutil.pid_exists(old_pid):
@@ -136,19 +138,19 @@ class InterleaveController:
                     sys.exit(1)
                 else:
                     logger.warning(f"Stale PID file detected for dead process {old_pid}. Cleaning up...")
-                    os.remove(PID_FILE)
+                    os.remove(INTERLEAVE_LOCK_PATH)
             except (ValueError, OSError):
-                os.remove(PID_FILE)
+                os.remove(INTERLEAVE_LOCK_PATH)
 
-        os.makedirs(os.path.dirname(PID_FILE), exist_ok=True)
-        with open(PID_FILE, "w") as f:
+        os.makedirs(os.path.dirname(INTERLEAVE_LOCK_PATH), exist_ok=True)
+        with open(INTERLEAVE_LOCK_PATH, "w") as f:
             f.write(str(os.getpid()))
 
     def _release_lock(self) -> None:
         """Remove the interleaver PID file."""
-        if os.path.exists(PID_FILE):
+        if os.path.exists(INTERLEAVE_LOCK_PATH):
             with contextlib.suppress(OSError):
-                os.remove(PID_FILE)
+                os.remove(INTERLEAVE_LOCK_PATH)
 
     def _handle_shutdown_signal(self, signum: int, frame: Any) -> None:
         """Gracefully break the observing loop on SIGINT/SIGTERM."""
@@ -256,7 +258,6 @@ class InterleaveController:
     def run_loop(self) -> None:
         """Execute the main interleaving observing loop until stopped."""
         # Must import start dynamically to avoid circular import errors
-        from control.start import get_daq_params
 
         if not self.interleave_cfg.enable:
             #logger.info("Interleaving disabled in config. Exiting.")
@@ -286,7 +287,7 @@ class InterleaveController:
                         state.movie_mode_config,
                         state.pulse_height_mode_config
                     )
-                    start_daq_params = get_daq_params(next_state_data_config)
+                    start_daq_params = quabo_driver.get_daq_params(next_state_data_config)
 
                     t_overhead_start = time.perf_counter()
 
@@ -315,7 +316,7 @@ class InterleaveController:
         except Exception as e:
             logger.error(f"Error in interleaving loop: {e}", exc_info=True)
         finally:
-            start_default_daq_params = get_daq_params(self.data_config)
+            start_default_daq_params = quabo_driver.get_daq_params(self.data_config)
             self._teardown(stop_daq_params, start_default_daq_params)
 
     def _teardown(self, stop_daq_params: quabo_driver.DAQ_PARAMS, start_default_daq_params: quabo_driver.DAQ_PARAMS) -> None:

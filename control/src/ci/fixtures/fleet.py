@@ -393,7 +393,7 @@ class Fleet:
             pf = PortForwarding(
                 status=True,
                 gw_ip=IPv4Address(spec.container_host_ip),
-                port=2222,  # Dummy SSH port (must be >= 1024) for build_rsync_cmd
+                ssh_port=2222,  # Dummy SSH port (must be >= 1024) for build_rsync_cmd
                 grpc_port=spec.mapped_port,
             )
             node = DaqNode(

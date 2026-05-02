@@ -63,7 +63,13 @@ from control.utils.pydantic_config_models import (
     RunStateLedger,
     RunStatus,
 )
-from control.utils.run_state import LockError, NodeReceipt, RunStateManager, ValidationError
+from control.utils.run_state import (
+    STATE_FILE_STALE,
+    LockError,
+    NodeReceipt,
+    RunStateManager,
+    ValidationError,
+)
 
 # ---------------------------------------------------
 
@@ -128,7 +134,7 @@ class StartTransaction:
                     # Use traceback.format_exception to handle ExceptionGroups (Python 3.11+)
                     # This automatically renders the nested tree of sub-exceptions.
                     full_tb = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
-                    logger.error(f"[CRITICAL FAILURE] Start process aborted: {exc_val}\n{full_tb}")
+                    logger.error(f"[FAILURE] Start process aborted: {exc_val}\n{full_tb}")
                 
                 logger.info("Triggering Rollback Ladder...")
 
@@ -173,12 +179,12 @@ class StartTransaction:
                         async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
                             await client.StopDaq({'data_dir': node.data_dir, 'run_dir': self.run_name}, timeout=15.0)
                     except Exception as stop_err:
-                        logger.warning(f"StopDaq RPC failed for {node.ip_addr} during rollback ({stop_err}). Escalating to SSH pkill...")
+                        logger.error(f"StopDaq RPC failed for {node.ip_addr} during rollback ({stop_err}). Escalating to SSH pkill...")
                         try:
                             ssh_args = ["ssh", *util.ssh_options]
                             if node.port_forwarding and node.port_forwarding.status:
                                 real_ip = str(node.port_forwarding.gw_ip)
-                                port = str(node.port_forwarding.port)
+                                port = str(node.port_forwarding.ssh_port)
                                 ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
                             else:
                                 ssh_args.append(f"{node.username}@{node.ip_addr}")
@@ -189,9 +195,10 @@ class StartTransaction:
                             if res.returncode in [0, 1]:
                                 logger.info(f"Hard-kill escalation succeeded for node {node.ip_addr}")
                             else:
-                                logger.error(f"Hard-kill escalation failed for node {node.ip_addr} (rc={res.returncode})")
+                                logger.critical(f"Hard-kill SSH escalation failed for node {node.ip_addr} (rc={res.returncode})")
                         except Exception as ssh_err:
-                            logger.error(f"Failed to stop node {node.ip_addr} even with SSH escalation: {ssh_err}")
+                            logger.critical(f"Failed to stop node {node.ip_addr} even with SSH escalation: {ssh_err}")
+                            logger.exception(ssh_err)
 
                 async with asyncio.TaskGroup() as tg:
                     for node in self.daq_config.daq_nodes:
@@ -318,51 +325,6 @@ def check_img_params(image_8bit: bool, image_usec: int) -> None:
         if image_usec < 40:
             raise Exception('integration time must be >= 40 usec in 16 bit mode')
 
-# parse the data config file to get DAQ params for quabos
-#
-def get_daq_params(data_config: DataConfig) -> quabo_driver.DAQ_PARAMS:
-    """Translate the high-level data configuration into Quabo-level DAQ parameters.
-    
-    Parses image mode settings (integration time, sample size), pulse-height 
-    mode settings (any_trigger, grouping), and test signals (flash/stim).
-
-    Args:
-        data_config: The validated science/engineering configuration model.
-
-    Returns:
-        An initialized quabo_driver.DAQ_PARAMS object.
-    """
-    do_image = False
-    image_usec = 1
-    image_8bit = False
-    do_ph = False
-    bl_subtract = True
-    do_any_trigger = False
-    group_ph_frames = False
-    if data_config.image:
-        do_image = True
-        image = data_config.image
-        if image.quabo_sample_size == 8:
-            image_8bit = True
-        image_usec = image.integration_time_usec
-    if data_config.pulse_height:
-        do_ph = True
-        if data_config.pulse_height.any_trigger:
-            do_any_trigger = True
-            any_trigger = data_config.pulse_height.any_trigger
-            if any_trigger.group_ph_frames == 1:
-                group_ph_frames = True
-    daq_params = quabo_driver.DAQ_PARAMS(
-        do_image, image_usec - 1, image_8bit, do_ph, bl_subtract, do_any_trigger, group_ph_frames
-    )
-    if data_config.flash_params:
-        fp = data_config.flash_params
-        daq_params.set_flash_params(fp.rate, fp.level, fp.width)
-    if data_config.stim_params:
-        sp = data_config.stim_params
-        daq_params.set_stim_params(sp.rate, sp.level)
-    return daq_params
-
 def start_data_flow(
     quabo_uids: QuaboUids,
     data_config: DataConfig,
@@ -383,7 +345,7 @@ def start_data_flow(
         daq_config: DAQ node and head node networking details.
         network_config: Network routing and port forwarding settings.
     """
-    daq_params = get_daq_params(data_config)
+    daq_params = quabo_driver.get_daq_params(data_config)
     for dome in quabo_uids.domes:
         for module in dome.modules:
             # Note: QuaboUidModule has 'ip_addr'
@@ -509,7 +471,7 @@ def make_run_dirs(
             ssh_args = ["ssh", *util.ssh_options]
             if node.port_forwarding and node.port_forwarding.status:
                 real_ip = str(node.port_forwarding.gw_ip)
-                port = str(node.port_forwarding.port)
+                port = str(node.port_forwarding.ssh_port)
                 ssh_args.extend(["-p", port, f"{username}@{real_ip}"])
             else:
                 ssh_args.append(f"{username}@{ip_addr}")
@@ -558,7 +520,7 @@ async def start_recording(
 
     # 2. Concurrent StartDaq
     max_file_size_mb = data_config.max_file_size_mb or util.default_max_file_size_mb
-    daq_params = get_daq_params(data_config)
+    daq_params = quabo_driver.get_daq_params(data_config)
 
     # Pre-write STARTING receipts to ensure rollback ladder catches them if TaskGroup is cancelled early
     for node_validator in daq_config.daq_nodes:
@@ -1063,7 +1025,7 @@ async def start_run(
                     
                     logger.info(f"Archiving stale ledger to {aborted_dir}")
                     os.makedirs(aborted_dir, exist_ok=True)
-                    shutil.move(str(state_mgr.state_path), f"{aborted_dir}/stale_run_state.toml")
+                    shutil.move(str(state_mgr.state_path), f"{aborted_dir}/{STATE_FILE_STALE}")
                 else:
                     raise ValidationError(f"A run is already in progress according to ledger: {existing_state.run_name} (Status: {existing_state.status}). Run stop.py, then try again, or use --force-reset.")
 

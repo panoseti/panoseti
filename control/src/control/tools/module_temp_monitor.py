@@ -10,11 +10,10 @@ import time
 from typing import Any
 
 import redis
-import redis_utils
 from panoseti_grpc.telemetry.logger import get_logger
 
 import control.power as power
-from control.utils import config_file
+from control.utils import config_file, redis_utils
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import ObsConfig
 from control.utils.util import are_redis_daemons_running

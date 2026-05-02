@@ -7,6 +7,8 @@ from typing import Annotated
 
 import typer
 
+from control.utils.run_state import STATE_FILE, STATE_FILE_STALE
+
 app = typer.Typer(
     name="ledger",
     help="Inspect the run state ledger (read-only).",
@@ -16,7 +18,7 @@ app = typer.Typer(
 
 def _ledger_path() -> pathlib.Path:
     from control.utils.paths import PanoPaths
-    return PanoPaths.runs_dir() / "run_state.toml"
+    return PanoPaths.runs_dir() / STATE_FILE
 
 
 @app.command("show")
@@ -45,7 +47,7 @@ def show(
         except Exception:
             typer.echo("Could not load daq_config.json; cannot locate archived ledger.", err=True)
             raise typer.Exit(1) from None
-        candidates = glob(f"{data_dir}/_aborted/{run_name}*/stale_run_state.toml")
+        candidates = glob(f"{data_dir}/_aborted/{run_name}*/{STATE_FILE_STALE}")
         if not candidates:
             typer.echo(f"No archived ledger found for run '{run_name}'.", err=True)
             raise typer.Exit(1)
@@ -85,7 +87,7 @@ def history() -> None:
         typer.echo("Could not load daq_config.json to find archived ledgers.", err=True)
         raise typer.Exit(1) from None
 
-    candidates = sorted(glob(f"{data_dir}/_aborted/*/stale_run_state.toml"))
+    candidates = sorted(glob(f"{data_dir}/_aborted/*/{STATE_FILE_STALE}"))
     if not candidates:
         typer.echo("No archived ledgers found.")
         return

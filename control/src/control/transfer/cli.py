@@ -14,6 +14,7 @@ from rich.live import Live
 from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn, TransferSpeedColumn
 from rich.text import Text
 
+from control.transfer.models import TransferStatus
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(
@@ -98,7 +99,7 @@ def stat(
         }
 
         queue_lines = []
-        for bucket in ("pending", "active", "completed", "failed"):
+        for bucket in TransferStatus:
             runs = summary.get(bucket, [])
             color = bucket_colors.get(bucket, "white")
             queue_lines.append(f"  [{color}]{bucket:12s}[/] {len(runs):3d} job(s)")
@@ -113,10 +114,10 @@ def stat(
         renderables.append(Text.from_markup("\n".join(queue_lines)))
 
         # 3. Active Progress Bars
-        active_runs = summary.get("active", [])
+        active_runs = summary.get(TransferStatus.ACTIVE, [])
         if active_runs:
             renderables.append(Text.from_markup("\n[bold]Active Transfers:[/bold]"))
-            active_d = PanoPaths.transfer_queue_dir() / "active"
+            active_d = PanoPaths.transfer_queue_dir() / TransferStatus.ACTIVE
             
             # Instantiate without context manager for embedding in Group
             progress = Progress(
@@ -174,13 +175,12 @@ def queue(
     from control.transfer.queue import TransferQueue
 
     console = Console()
-    valid = ("pending", "active", "completed", "failed")
-    if bucket not in valid:
-        console.print(f"[bold red]Unknown bucket '{bucket}'.[/] Choose from: {', '.join(valid)}")
+    if bucket not in TransferStatus:
+        console.print(f"[bold red]Unknown bucket '{bucket}'.[/] Choose from: {', '.join(TransferStatus)}")
         raise typer.Exit(1)
         
     tq = TransferQueue()
-    jobs = tq.list_jobs(bucket)
+    jobs = tq.list_jobs(TransferStatus(bucket))
     if not jobs:
         console.print(f"No jobs in {bucket}/")
         return

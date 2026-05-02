@@ -7,8 +7,6 @@ Covers every field boundary, cross-field validator, and interleave constraint.
 No hardware required.
 """
 
-
-
 import pytest
 from pydantic import ValidationError
 

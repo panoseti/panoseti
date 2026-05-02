@@ -86,21 +86,23 @@ def test_wps_reachable(topology) -> None:
 # ---------------------------------------------------------------------------
 
 def test_daq_node_reachable(topology) -> None:
-    """Each DAQ node IP responds to ICMP ping."""
+    """Each DAQ node is reachable via TCP on its SSH port (ICMP may be blocked by gateway)."""
+    import socket
     nodes = topology.daq_nodes()
     if not nodes:
         pytest.skip("No DAQ nodes defined in daq_config")
 
     errors = []
     for node in nodes:
-        r = subprocess.run(
-            ["ping", "-c1", "-W3", node.host],
-            capture_output=True, timeout=10,
-        )
-        if r.returncode != 0:
-            errors.append(f"DAQ node {node.host} (modules {node.module_ids}): no ICMP response")
-        else:
-            logger.info("DAQ node %s: pingable", node.host)
+        try:
+            with socket.create_connection((node.real_host, node.ssh_port), timeout=5):
+                pass
+            logger.info("DAQ node %s → %s:%d: TCP reachable", node.host, node.real_host, node.ssh_port)
+        except OSError as exc:
+            errors.append(
+                f"DAQ node {node.host} → {node.real_host}:{node.ssh_port} "
+                f"(modules {node.module_ids}): TCP unreachable: {exc}"
+            )
 
     assert not errors, (
         f"DAQ node reachability FAILED for {len(errors)} node(s):\n" + "\n".join(errors)
@@ -125,17 +127,19 @@ def test_daq_node_ssh(topology) -> None:
                 "-o", "BatchMode=yes",          # fail immediately if key prompt needed
                 "-o", "ConnectTimeout=5",
                 "-o", "StrictHostKeyChecking=no",
-                node.host,
+                "-p", str(node.ssh_port),
+                f"{node.username}@{node.real_host}",
                 "echo ok",
             ],
             capture_output=True, text=True, timeout=15,
         )
         if r.returncode != 0 or r.stdout.strip() != "ok":
             errors.append(
-                f"DAQ node {node.host}: SSH failed (exit {r.returncode}): {r.stderr.strip()}"
+                f"DAQ node {node.host} → {node.username}@{node.real_host}:{node.ssh_port}: "
+                f"SSH failed (exit {r.returncode}): {r.stderr.strip()}"
             )
         else:
-            logger.info("DAQ node %s: SSH ok", node.host)
+            logger.info("DAQ node %s → %s@%s:%d: SSH ok", node.host, node.username, node.real_host, node.ssh_port)
 
     assert not errors, (
         f"DAQ node SSH FAILED for {len(errors)} node(s):\n" + "\n".join(errors)

@@ -20,6 +20,7 @@ import json
 import socket
 import time
 from ipaddress import IPv4Address, IPv6Address, ip_address
+from pathlib import Path
 from typing import Any
 
 from panoseti_grpc.telemetry.logger import get_logger
@@ -27,6 +28,7 @@ from pydantic import IPvAnyAddress
 
 from control.utils import util
 from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import DataConfig
 
 UDP_CMD_PORT= 60000
     # port used on both sides for command packets
@@ -41,7 +43,10 @@ ACQ_IMAGE = 0x2
 ACQ_IMAGE_8BIT = 0x4
 ACQ_NO_BASELINE_SUBTRACT = 0x10
 
-QUABO_CONFIG = 'quabo_config'
+QUABO_CONFIG_FILE = 'quabo_config.txt'
+QUABO_CONFIG_FILE_TEMPLATE = 'quabo_config_{ip_addr}.json'
+
+
 class DAQ_PARAMS:
     def __init__(self, do_image: bool, image_us: int, image_8bit: bool, do_ph: bool, bl_subtract: bool, do_any_trigger: bool = False, do_group_ph_frames: bool = False) -> None:
         self.do_image = do_image
@@ -71,7 +76,7 @@ class DAQ_PARAMS:
         self.stim_level = level
 
 class QUABO:
-    def __init__(self, ip_addr: IPvAnyAddress | str, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt', logfile: str = 'logs/quabo_driver.log') -> None:
+    def __init__(self, ip_addr: IPvAnyAddress | str, port: int = UDP_CMD_PORT, config_file_path: str = 'quabo_config.txt') -> None:
         if isinstance(ip_addr, (str, IPv4Address, IPv6Address)):
             validated_ip_addr = ip_address(ip_addr)
         else:
@@ -328,10 +333,10 @@ class QUABO:
         self.logger.debug("CMD (spaced): " + ' '.join(f'{b:02X}' for b in cmd))
         self.send(cmd)
 
-    def write_maroc_config(self, config: dict[str, Any], config_file: str = 'quabo_config.json') -> None:
-        self.logger.info('write_maroc_config')
+    def write_maroc_config(self, config: dict[str, Any], config_path: Path) -> dict[str, Any]:
+        self.logger.info(f'write_maroc_config to/from {config_path=}')
         try:
-            with open(config_file, 'rb') as f:
+            with open(config_path, 'rb') as f:
                 cfg = json.load(f)
         except (OSError, json.JSONDecodeError):
             cfg = {}
@@ -364,13 +369,14 @@ class QUABO:
         for tag in tag_list:
             cfg[tag] = config[tag]
         # write the maroc config params back to config file
-        with open(config_file, 'w') as f:
+        with open(config_path, 'w') as f:
             json.dump(cfg, f, indent=2)
+        return cfg
     
-    def write_trigger_mask_config(self, config: dict[str, int], config_file: str = 'quabo_config.json') -> None:
-        self.logger.info('write_trigger_mask_config')
+    def write_trigger_mask_config(self, config: dict[str, int], config_path: Path) -> dict[str, int]:
+        self.logger.info(f'write_trigger_mask_config to/from {config_path=}')
         try:
-            with open(config_file, 'rb') as f:
+            with open(config_path, 'rb') as f:
                 cfg = json.load(f)
         except (OSError, json.JSONDecodeError):
             cfg = {}
@@ -382,13 +388,14 @@ class QUABO:
         for tag in tag_list:
             cfg[tag] = hex(config[tag])
         # write the trigger mask params back to config file
-        with open(config_file, 'w') as f:
+        with open(config_path, 'w') as f:
             json.dump(cfg, f, indent=2)
+        return cfg
 
-    def write_goe_mask_config(self, config: dict[str, int], config_file: str = 'quabo_config.json') -> None:
-        self.logger.info('write_goe_mask_config')
+    def write_goe_mask_config(self, config: dict[str, int], config_path: Path) -> dict[str, int]:
+        self.logger.info(f'write_goe_mask_config to/from {config_path=}')
         try:
-            with open(config_file, 'rb') as f:
+            with open(config_path, 'rb') as f:
                 cfg = json.load(f)
         except (OSError, json.JSONDecodeError):
             cfg = {}
@@ -396,8 +403,9 @@ class QUABO:
         tag = 'GOEMASK'
         cfg[tag] = hex(config[tag])
         # write the trigger mask params back to config file
-        with open(config_file, 'w') as f:
+        with open(config_path, 'w') as f:
             json.dump(cfg, f, indent=2)
+        return cfg
 
     # read from housekeeping socket, wait for one from this quabo
     # (discard ones from other quabos)
@@ -871,7 +879,7 @@ class QUABO:
 # ... and return a dictionary mapping name to value.
 # strip off comments (text starting with *)
 #
-def parse_quabo_config_file(path: str) -> dict[str, str]:
+def parse_quabo_config_file(path: str | Path) -> dict[str, str]:
     x: dict[str, str] = {}
     with open(path) as f:
         for line in f:
@@ -907,3 +915,49 @@ def write_maroc_config_cmd() -> None:
     q.make_maroc_cmd(config, cmd)
     with open('maroc_cmd_new.bin', 'wb') as f:
         f.write(cmd)
+
+
+# parse the data config file to get DAQ params for quabos
+#
+def get_daq_params(data_config: DataConfig) -> DAQ_PARAMS:
+    """Translate the high-level data configuration into Quabo-level DAQ parameters.
+    
+    Parses image mode settings (integration time, sample size), pulse-height 
+    mode settings (any_trigger, grouping), and test signals (flash/stim).
+
+    Args:
+        data_config: The validated science/engineering configuration model.
+
+    Returns:
+        An initialized quabo_driver.DAQ_PARAMS object.
+    """
+    do_image = False
+    image_usec = 1
+    image_8bit = False
+    do_ph = False
+    bl_subtract = True
+    do_any_trigger = False
+    group_ph_frames = False
+    if data_config.image:
+        do_image = True
+        image = data_config.image
+        if image.quabo_sample_size == 8:
+            image_8bit = True
+        image_usec = image.integration_time_usec
+    if data_config.pulse_height:
+        do_ph = True
+        if data_config.pulse_height.any_trigger:
+            do_any_trigger = True
+            any_trigger = data_config.pulse_height.any_trigger
+            if any_trigger.group_ph_frames == 1:
+                group_ph_frames = True
+    daq_params = DAQ_PARAMS(
+        do_image, image_usec - 1, image_8bit, do_ph, bl_subtract, do_any_trigger, group_ph_frames
+    )
+    if data_config.flash_params:
+        fp = data_config.flash_params
+        daq_params.set_flash_params(fp.rate, fp.level, fp.width)
+    if data_config.stim_params:
+        sp = data_config.stim_params
+        daq_params.set_stim_params(sp.rate, sp.level)
+    return daq_params

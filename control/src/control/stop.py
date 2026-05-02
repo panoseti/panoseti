@@ -36,7 +36,7 @@ except ImportError:
     from panoseti_grpc.telemetry.logger import get_logger
 
 import control.config as config
-from control.tools.interleave import PID_FILE
+from control.tools.interleave import INTERLEAVE_LOCK_PATH
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils import config_file, pff, util
@@ -270,11 +270,11 @@ def stop_interleave(retry_limit: int = 10) -> None:
     Checks if the interleave process is running and cleanly shuts it down.
     Includes process identity verification and SIGKILL escalation.
     """
-    pid_file = PID_FILE
-    if os.path.exists(pid_file):
+    interleave_lock_path = INTERLEAVE_LOCK_PATH
+    if os.path.exists(interleave_lock_path):
         logger.info("Active interleave process detected. Stopping it gracefully...")
         try:
-            with open(pid_file) as f:
+            with open(interleave_lock_path) as f:
                 pid = int(f.read().strip())
             
             # Verify identity: check /proc/pid/cmdline for 'interleave.py'
@@ -284,18 +284,18 @@ def stop_interleave(retry_limit: int = 10) -> None:
                     # Allow the chaos test's simulated process to bypass this check
                     if 'interleave.py' not in cmdline and 'import signal, time' not in cmdline:
                          logger.warning(f"PID {pid} does not appear to be interleave.py. Cleaning stale PID file.")
-                         os.remove(pid_file)
+                         os.remove(interleave_lock_path)
                          return
             except FileNotFoundError:
                 logger.warning(f"PID {pid} no longer exists. Cleaning stale PID file.")
-                os.remove(pid_file)
+                os.remove(interleave_lock_path)
                 return
 
             os.kill(pid, signal.SIGTERM)
 
             # Wait briefly for it to clean up and restore defaults
             for r in range(retry_limit):
-                if not os.path.exists(pid_file):
+                if not os.path.exists(interleave_lock_path):
                     logger.info("Interleave process stopped.")
                     return
                 logger.warning(f"Waiting for interleave process {pid} to exit... [{r+1}/{retry_limit}]")
@@ -310,8 +310,8 @@ def stop_interleave(retry_limit: int = 10) -> None:
             with contextlib.suppress(ChildProcessError):
                 os.waitpid(pid, os.WNOHANG)
 
-            if os.path.exists(pid_file):
-                os.remove(pid_file)
+            if os.path.exists(interleave_lock_path):
+                os.remove(interleave_lock_path)
             
             # Synchronously restore MAROC defaults as a safety measure
             logger.info("Restoring Quabo MAROC register defaults...")
@@ -340,8 +340,8 @@ def stop_interleave(retry_limit: int = 10) -> None:
 
         except (OSError, ValueError) as e:
             logger.error(f"Error stopping interleave: {e}")
-            if os.path.exists(pid_file):
-                os.remove(pid_file)
+            if os.path.exists(interleave_lock_path):
+                os.remove(interleave_lock_path)
 
 # write message to error log
 #
@@ -407,7 +407,7 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
                         ssh_args = ["ssh", *util.ssh_options]
                         if node.port_forwarding and node.port_forwarding.status:
                             real_ip = str(node.port_forwarding.gw_ip)
-                            port = str(node.port_forwarding.port)
+                            port = str(node.port_forwarding.ssh_port)
                             ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
                         else:
                             ssh_args.append(f"{node.username}@{node.ip_addr}")
@@ -629,7 +629,7 @@ async def stop_run(
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: cancel_event.set())
-
+    tx = None
     try:
         async with StopTransaction(
             state_mgr, daq_config, network_config, quabo_uids,

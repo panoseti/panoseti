@@ -113,7 +113,7 @@ async def test_manifest_corruption_aborts_cleanup(
     with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=corrupting_rsync), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=wrapped_client_factory):
          
-         success, err = await _process_job(job, asyncio.Event(), mgr)
+         success, _err = await _process_job(job, asyncio.Event(), mgr)
          
          # The test is strictly designed: it MUST fail the job.
          assert success is False, "Job should have failed due to data corruption"

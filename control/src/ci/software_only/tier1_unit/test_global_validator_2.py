@@ -7,88 +7,13 @@ minimal config dicts and verifying the ValidationReport outcome.
 No hardware or network access required.
 """
 
-from typing import Any, cast
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from control.utils.global_validator import GlobalConfigValidator
-from control.utils.pydantic_config_models import (
-    DaqConfig,
-    DataConfig,
-    FirmwareConfig,
-    NetworkConfig,
-    ObsConfig,
-    QuaboUids,
-)
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_validator(
-    obs: dict[str, Any] | None = None,
-    data: dict[str, Any] | None = None,
-    daq: dict[str, Any] | None = None,
-    net: dict[str, Any] | None = None,
-    firmware: dict[str, Any] | None = None
-) -> GlobalConfigValidator:
-    """Build a GlobalConfigValidator with sensible defaults, overrideable per-test."""
-    # Build minimal valid dictionaries to satisfy model requirements
-    obs_dict: dict[str, Any] = {"name": "test", "domes": []}
-    if obs:
-        obs_dict.update(obs)
-        # Ensure domes have required fields if provided
-        domes = cast(list[dict[str, Any]], obs_dict.get("domes", []))
-        for dome in domes:
-            if "obsalt" not in dome:
-                dome["obsalt"] = 0.0
-            if "modules" not in dome:
-                dome["modules"] = []
-
-    data_dict: dict[str, Any] = {"run_type": "sci"}
-    if data:
-        data_dict.update(data)
-        # Ensure image mode has pe_threshold if provided
-        if data_dict.get("image"):
-            image_conf = cast(dict[str, Any], data_dict["image"])
-            if "pe_threshold" not in image_conf:
-                image_conf["pe_threshold"] = 1.0
-
-    daq_dict: dict[str, Any] = {"head_node_data_dir": "/data", "head_node_ip_addr": "10.0.0.1", "daq_nodes": []}
-    if daq:
-        daq_dict.update(daq)
-    
-    net_dict: dict[str, Any] = {"modules": [], "daq_nodes": []}
-    if net:
-        net_dict.update(net)
-    
-    fw_dict: dict[str, Any] = firmware or {}
-
-    return GlobalConfigValidator({
-        "obs":      ObsConfig(**obs_dict),
-        "data":     DataConfig(**data_dict),
-        "daq":      DaqConfig(**daq_dict),
-        "network":  NetworkConfig(**net_dict),
-        "firmware": FirmwareConfig(**fw_dict),
-    })
-
-
-def _run_check(validator: GlobalConfigValidator, method_name: str) -> tuple[bool, Any]:
-    """Call a single _check_* method and return (passed, report)."""
-    getattr(validator, method_name)()
-    return not validator.report.has_errors, validator.report
-
-
-def _check_passes(validator: GlobalConfigValidator, method_name: str) -> bool:
-    passed, _ = _run_check(validator, method_name)
-    return passed
-
-
-def _check_fails(validator: GlobalConfigValidator, method_name: str) -> bool:
-    passed, _ = _run_check(validator, method_name)
-    return not passed
-
+from ci.software_only.tier1_unit.conftest import _make_validator
+from control.utils.pydantic_config_models import QuaboUids
 
 # ===========================================================================
 # _check_port_collisions

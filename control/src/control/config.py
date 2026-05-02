@@ -9,13 +9,13 @@ import datetime
 import json
 import logging
 import os
-import pathlib
 import signal
 import statistics
 import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -24,6 +24,7 @@ from panoseti_grpc.util.cli import BaseLazyGroup
 
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
+from control.tools.interleave import INTERLEAVE_LOCK_PATH
 from control.utils import config_file, file_xfer, pixel_coords, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
@@ -34,7 +35,10 @@ from control.utils.pydantic_config_models import (
     ObsModuleConfig,
     QuaboUids,
 )
+from control.utils.run_state import STATE_FILE
 
+CONTROL_DRIVER_DIR = Path(quabo_driver.__file__).parent
+QUABO_CONFIG_PATH = CONTROL_DRIVER_DIR / quabo_driver.QUABO_CONFIG_FILE
 
 class ConfigLazyGroup(BaseLazyGroup):
     """
@@ -85,27 +89,28 @@ app = typer.Typer(
     context_settings={"allow_extra_args": True, "help_option_names": ["-h", "--help"]},
 )
 
-logger_obj: logging.Logger | None = None
 
 def _init_logger() -> logging.Logger:
-    """Initialize the project-specific gRPC _get_logger()."""
-    global logger_obj
+    """Idempotently initialize the project-specific gRPC logger."""
+    global logger
     log_dir = PanoPaths.logs_dir()
-    log_dir.mkdir(parents=True, exist_ok=True)
-    logger_obj = get_logger("PSETI.Config", log_dir=str(log_dir), grpc_enabled=True)
-    return logger_obj
+    log_dir.mkdir(parents=False, exist_ok=True)
+    logger = get_logger("PSETI.Config", log_dir=str(log_dir), grpc_enabled=True)
+    return logger
+
+logger: logging.Logger = _init_logger()
 
 @app.callback()
 def main() -> None:
-    """Initialize logging for config operations."""
-    _init_logger()
+    """"""
+    pass
 
-def _get_logger() -> logging.Logger:
-    """Get the initialized logger or initialize it with defaults if missing."""
-    global logger_obj
-    if logger_obj is None:
-        return _init_logger()
-    return logger_obj
+# def _get_logger() -> logging.Logger:
+#     """Get the initialized logger or initialize it with defaults if missing."""
+#     global logger_obj
+#     if logger_obj is None:
+#         return _init_logger()
+#     return logger_obj
 
 firmware_silver_qfp = 'quabo_0206_2846D1AE.bin'
 firmware_silver_bga = 'quabo_0207_28514055.bin'
@@ -119,7 +124,7 @@ def ask_use_default_calibration(ip_addr: str) -> bool:
         elif choice == "N":
             return False
         else:
-            _get_logger().info("Invalid input. Please enter Y or N.")
+            logger.info("Invalid input. Please enter Y or N.")
 
 # print summary of obs and daq config files
 #
@@ -130,20 +135,20 @@ def show_config(obs_config: ObsConfig, quabo_uids: QuaboUids) -> None:
         obs_config: Validated observatory configuration model.
         quabo_uids: Validated Quabo UID registry model.
     """
-    _get_logger().info('Show config')
+    logger.info('Show config')
 
     for dome in obs_config.domes:
-        _get_logger().info(f'dome {dome.name}')
+        logger.info(f'dome {dome.name}')
         for module in dome.modules:
             module_id = module.id
             ip_addr = str(module.ip_addr)
-            _get_logger().info(f'   module ID {module_id}')
-            _get_logger().info(f'      Mobo serial#: {module.mobo_serialno}')
+            logger.info(f'   module ID {module_id}')
+            logger.info(f'      Mobo serial#: {module.mobo_serialno}')
             for i in range(4):
                 quabo_ip = config_file.quabo_ip_addr(ip_addr, i)
-                _get_logger().info(f'      quabo {i}')
-                _get_logger().info(f'         IP addr: {quabo_ip}')
-    #_get_logger().info(f"This node's IP addr: {util.local_ip()}")
+                logger.info(f'      quabo {i}')
+                logger.info(f'         IP addr: {quabo_ip}')
+    #logger.info(f"This node's IP addr: {util.local_ip()}")
     config_file.show_daq_assignments(quabo_uids)
 
 def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: NetworkConfig, timeout: int = 60) -> None:
@@ -155,23 +160,23 @@ def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: Netwo
         network_config: Network routing configuration.
         timeout: Maximum seconds to wait for reboot completion (default 60).
     """
-    _get_logger().info(f"The Quabo IP address/ID is {ip}.")
+    logger.info(f"The Quabo IP address/ID is {ip}.")
     ips = util.get_valid_ip(obs_config)
     ip_base, index = util.convert_ip(ip)
     ip_addr = config_file.quabo_ip_addr(ip_base, index)
     if ip_addr not in ips:
-        _get_logger().error(f"{ip} is not a valid IP address or Quabo ID.")
+        logger.error(f"{ip} is not a valid IP address or Quabo ID.")
         return
     else:
-        _get_logger().info(f'Rebooting {ip_addr}...')
+        logger.info(f'Rebooting {ip_addr}...')
         from ipaddress import ip_address
         ip_ports = util.get_quabo_ip_port(ip_address(ip_base), index, network_config)
         real_ip = ip_ports.ip_addr
         cmd_port = ip_ports.cmd_port
         reboot_port = ip_ports.reboot_port
-        _get_logger().info(f'Quabo IP: {ip_addr}')
-        _get_logger().info(f'Real IP: {real_ip}')
-        _get_logger().info(f'Reboot port: {reboot_port}')
+        logger.info(f'Quabo IP: {ip_addr}')
+        logger.info(f'Real IP: {real_ip}')
+        logger.info(f'Reboot port: {reboot_port}')
         x = tftpw(real_ip, reboot_port)
         x.reboot()
         # wait for the board to reboot
@@ -179,16 +184,16 @@ def do_reboot_single_quabo(ip: str, obs_config: ObsConfig, network_config: Netwo
         time.sleep(30)
         timeout_remaining -= 30
         while timeout_remaining > 0:
-            _get_logger().info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
+            logger.info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
             if util.ping(real_ip, cmd_port):
-                _get_logger().info(f'pinged {ip_addr}; reboot done')
-                _get_logger().info(f'Quabo ({ip_addr}) is rebooted successfully.')
+                logger.info(f'pinged {ip_addr}; reboot done')
+                logger.info(f'Quabo ({ip_addr}) is rebooted successfully.')
                 break
             time.sleep(5)
             timeout_remaining -= 5
         if timeout_remaining <= 0:
-            _get_logger().info(f'reboot {ip_addr} failed; timeout ({timeout}s)')
-            _get_logger().error(f'Quabo ({ip_addr}) is failed to rebooted.')
+            logger.error(f'reboot {ip_addr} failed; timeout ({timeout}s)')
+            logger.critical(f'Quabo ({ip_addr}) is failed to reboot.')
 
 # Reboot one module
 #
@@ -216,22 +221,22 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config
         ip_addr = config_file.quabo_ip_addr(m_ip, i)
         if i == 0:
             if module.timing_mode == 'gnss':
-                _get_logger().info('*******************************************************')
-                _get_logger().info(f'Timing Mode for Quabo ({ip_addr}): GNSS')
-                _get_logger().info('*******************************************************')
+                logger.info('*******************************************************')
+                logger.info(f'Timing Mode for Quabo ({ip_addr}): GNSS')
+                logger.info('*******************************************************')
             else:
-                _get_logger().info('*******************************************************')
-                _get_logger().info(f'Timing Mode for Quabo ({ip_addr}): WR')
-                _get_logger().info('*******************************************************')
+                logger.info('*******************************************************')
+                logger.info(f'Timing Mode for Quabo ({ip_addr}): WR')
+                logger.info('*******************************************************')
         
-        _get_logger().info(f'rebooting quabo at {ip_addr}')
+        logger.info(f'rebooting quabo at {ip_addr}')
         ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
         real_ip = ip_ports.ip_addr
         cmd_port = ip_ports.cmd_port
         reboot_port = ip_ports.reboot_port
-        _get_logger().info(f'Quabo IP: {ip_addr}')
-        _get_logger().info(f'Real IP: {real_ip}')
-        _get_logger().info(f'Reboot port: {reboot_port}')
+        logger.info(f'Quabo IP: {ip_addr}')
+        logger.info(f'Real IP: {real_ip}')
+        logger.info(f'Reboot port: {reboot_port}')
         x = tftpw(real_ip, reboot_port)
         # check timing mode, and only use it on Quabo0
         if i == 0:
@@ -244,7 +249,7 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config
                 wrpc_fs_path = wr_dir / 'wrpc_filesys'
                 timing_mode = 'WR'
             x.put_wrpc_filesys(str(wrpc_fs_path))
-            _get_logger().info(f'Set Timing Mode to {timing_mode} on Quabo {ip_addr}')
+            logger.info(f'Set Timing Mode to {timing_mode} on Quabo {ip_addr}')
         
         x.reboot()
         # wait for a while to let the quabo get rebooted successfully
@@ -253,19 +258,19 @@ def reboot_module(module: ObsModuleConfig, quabo_uids: QuaboUids, network_config
         timeout_remaining -= 30
         # check if the quabo is back online
         while timeout_remaining > 0:
-            _get_logger().info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
+            logger.info(f'Pinging {ip_addr}; Timeout Remaining {timeout_remaining}s... ')
             if util.ping(real_ip, cmd_port):
                 reboot_status.append({f"{ip_addr}" : True})
-                _get_logger().info(f'pinged {ip_addr}; reboot done')
-                _get_logger().info(f'Quabo ({ip_addr}) is rebooted successfully.')
+                logger.info(f'pinged {ip_addr}; reboot done')
+                logger.info(f'Quabo ({ip_addr}) is rebooted successfully.')
                 break
             else:
                 time.sleep(5)
                 timeout_remaining -= 5
         if timeout_remaining <=0:
             reboot_status.append({f"{ip_addr}" : False})
-            _get_logger().info(f'reboot {ip_addr} failed; timeout ({timeout}s)')
-            _get_logger().error(f'Quabo ({ip_addr}) is failed to rebooted.')
+            logger.error(f'reboot {ip_addr} failed; timeout ({timeout}s)')
+            logger.critical(f'Quabo ({ip_addr}) failed to reboot.')
     return reboot_status
 
 def do_reboot(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
@@ -279,7 +284,7 @@ def do_reboot(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_con
         quabo_uids: Quabo hardware UID registry.
         network_config: Network routing rules.
     """
-    _get_logger().info("Rebooting all of the modules in parallel...")
+    logger.info("Rebooting all of the modules in parallel...")
     start_time = time.time()
     start_dt = datetime.datetime.fromtimestamp(start_time)
     nmodules = len(modules)
@@ -288,29 +293,29 @@ def do_reboot(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_con
             pool.submit(reboot_module, module, quabo_uids, network_config): module
             for module in modules
         }
-    _get_logger().info('Checking the reboot status...')
-    _get_logger().info('*******************************************************')
-    _get_logger().info("Reboot Status Summary:")
-    _get_logger().info('*******************************************************')
+    logger.info('Checking the reboot status...')
+    logger.info('*******************************************************')
+    logger.info("Reboot Status Summary:")
+    logger.info('*******************************************************')
     for f in as_completed(futures):
         status = f.result()
         for s in status:
             for k, v in s.items():
                 if v:
-                    _get_logger().info(f'Reboot {k} successfully.')
+                    logger.info(f'Reboot {k} successfully.')
                 else:
-                    _get_logger().info(f'Reboot {k} failed.')
-                _get_logger().info(f"Rebooting {k} status is {v}.")
-    _get_logger().info('*******************************************************')
+                    logger.info(f'Reboot {k} failed.')
+                logger.info(f"Rebooting {k} status is {v}.")
+    logger.info('*******************************************************')
     end_time = time.time()
     end_dt = datetime.datetime.fromtimestamp(end_time)
     elapsed = int(end_time - start_time)
     minutes = elapsed // 60
     seconds = elapsed % 60
-    _get_logger().info(f"Reboot Start Time : {start_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-    _get_logger().info(f"Reboot Stop  Time : {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")
-    _get_logger().info(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
-    _get_logger().info('*******************************************************')
+    logger.info(f"Reboot Start Time : {start_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Reboot Stop  Time : {end_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"Reboot Process Time: {minutes} minutes {seconds} seconds")
+    logger.info('*******************************************************')
 
 def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], network_config: NetworkConfig) -> None:
     """Load firmware binaries onto multiple modules via TFTP.
@@ -326,8 +331,8 @@ def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
     firmware = config_file.get_firmware_config()
     fw_dir = PanoPaths.firmware_dir()
     
-    fw_silver_qfp = fw_dir / (firmware.qfp or '')
-    fw_silver_bga = fw_dir / (firmware.bga or '')
+    fw_silver_qfp = fw_dir / (firmware.qfp or firmware_silver_qfp)
+    fw_silver_bga = fw_dir / (firmware.bga or firmware_silver_bga)
 
     for module in modules:
         m_ip = str(module.ip_addr)
@@ -338,26 +343,26 @@ def do_loads(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             port = ip_ports.reboot_port
-            _get_logger().info(f'Real IP: {real_ip}')
-            _get_logger().info('Reboot Port: %d', port)
+            logger.info(f'Real IP: {real_ip}')
+            logger.info('Reboot Port: %d', port)
             
             if util.is_quabo_old_version(module, i, quabo_uids, quabo_info):
-                _get_logger().info(f'Loading firmware: {firmware_silver_qfp}')
+                logger.info(f'Loading firmware: {fw_silver_qfp}')
                 fw = fw_silver_qfp
             else:
-                _get_logger().info(f'Loading firmware: {firmware_silver_bga}')
+                logger.info(f'Loading firmware: {fw_silver_bga}')
                 fw = fw_silver_bga
             
             if not fw.exists():
-                _get_logger().error(f"Firmware file not found: {fw}")
+                logger.error(f"Firmware file not found: {fw}")
                 continue
 
             x = tftpw(real_ip, port)
-            _get_logger().info(f'loading {fw} into {ip_addr}')
+            logger.info(f'loading {fw} into {ip_addr}')
             x.put_bin_file(str(fw))
 
 def do_loadg(modules: list[dict[str, Any]]) -> None:
-    _get_logger().info("not supported")
+    logger.info("not supported")
     #x.put_bin_file(firmware_gold, 0x0)
 
 def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfig, verbose: bool = False) -> dict[str, list[str]]:
@@ -382,17 +387,17 @@ def do_ping(modules: list[ObsModuleConfig], network_config: NetworkConfig, verbo
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
             real_ip = ip_ports.ip_addr
             port = ip_ports.cmd_port
-            _get_logger().info(f'Real IP: {real_ip}')
-            _get_logger().info('Cmd Port: %d', port)
+            logger.info(f'Real IP: {real_ip}')
+            logger.info('Cmd Port: %d', port)
             if util.ping(real_ip, port):
                 ping_record["ping_true"].append(ip_addr)
             else:
                 ping_record["ping_false"].append(ip_addr)
     if verbose:
         for ip in ping_record["ping_true"]:
-            _get_logger().info(f"pinged {ip}")
+            logger.info(f"pinged {ip}")
         for ip in ping_record["ping_false"]:
-            _get_logger().info(f"can't ping {ip}")
+            logger.info(f"can't ping {ip}")
     return ping_record
 
 def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config: DaqConfig, network_config: NetworkConfig) -> None:
@@ -407,7 +412,7 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config
         network_config: Network routing rules.
     """
     headnode_ip_addr = str(daq_config.head_node_ip_addr)
-    _get_logger().info(f'Head node IP: {headnode_ip_addr}')
+    logger.info(f'Head node IP: {headnode_ip_addr}')
     for module in modules:
         m_ip = str(module.ip_addr)
         for i in range(4):
@@ -418,9 +423,9 @@ def do_hk_dest(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, daq_config
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
-            _get_logger().info(f'Quabo IP: {ip_addr}')
-            _get_logger().info(f'Real IP: {real_ip}')
-            _get_logger().info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             from ipaddress import ip_address
             quabo.hk_packet_destination(ip_address(headnode_ip_addr))
@@ -456,14 +461,14 @@ def do_hv_on(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: 
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
-            _get_logger().info(f'Quabo IP: {ip_addr}')
-            _get_logger().info(f'Real IP: {real_ip}')
-            _get_logger().info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
             if verbose:
-                _get_logger().info(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
+                logger.info(f'{ip_addr}: set HV to [{v[0]} {v[1]} {v[2]} {v[3]}]')
 
 def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
     """Disable high voltage (HV) for all detectors in multiple modules.
@@ -484,22 +489,20 @@ def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_con
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
-            _get_logger().info(f'Quabo IP: {ip_addr}')
-            _get_logger().info(f'Real IP: {real_ip}')
-            _get_logger().info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.hv_set(v)
             quabo.close()
-            _get_logger().info(f'{ip_addr}: set HV to zero')
+            logger.info(f'{ip_addr}: set HV to zero')
 
 # set the DAC1/DA2/GAIN* params for MAROC chips
 #
-MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(
-    str(pathlib.Path(__file__).parent / 'driver/quabo_config.txt')
-)
+MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(QUABO_CONFIG_PATH) # load once to avoid redundant I/O
 cal_cache: dict[tuple[Any, ...], Any] = {}
 def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], data_config: DataConfig, obs_config: ObsConfig, daq_config: DaqConfig, network_config: NetworkConfig, verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
-    """Configure MAROC ASIC registers for multiple modules.
+    """Configure MAROC ASIC registers (DAC1/DA2/GAIN* params) for multiple modules.
     
     This includes setting gains and discriminator thresholds (DAC1/DAC2) 
     derived from calibration data for the target observing mode.
@@ -520,10 +523,14 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
     do_img = data_config.image is not None
     do_ph = data_config.pulse_height is not None
 
-    if do_img:
-        pe_thresh1 = float(data_config.image.pe_threshold) if data_config.image else 1.0
-    if do_ph:
-        pe_thresh2 = float(data_config.pulse_height.pe_threshold) if data_config.pulse_height else 1.0
+    pe_thresh1 = 1.0
+    pe_thresh2 = 1.0
+    if do_img and data_config.image:
+        # pe_thresh1 = float(data_config.image.pe_threshold) if data_config.image else 1.0
+        pe_thresh1 = float(data_config.image.pe_threshold)
+    if do_ph and data_config.pulse_height:
+        # pe_thresh2 = float(data_config.pulse_height.pe_threshold) if data_config.pulse_height else 1.0
+        pe_thresh2 = float(data_config.pulse_height.pe_threshold)
     if not do_img and not do_ph:
         raise Exception('data_config.json specifies no data products')
 
@@ -531,6 +538,7 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
     if data_config.stim_params:
         stim_mask_quaboi = [bool(m) for m in data_config.stim_params.mask]
         
+    # Extract maroc config dict & cache it 
     qc_dict_src = copy.deepcopy(MAROC_CONFIG_QUABO_CONFIG)
     for module in modules:
         m_ip = str(module.ip_addr)
@@ -585,11 +593,11 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
             if do_img:
                 qc_dict['DAC1'] = f'{dac1[0]},{dac1[1]},{dac1[2]},{dac1[3]}'
                 if verbose:
-                    _get_logger().info('{}: DAC1 = {}'.format(ip_addr, qc_dict['DAC1'])) 
+                    logger.info('{}: DAC1 = {}'.format(ip_addr, qc_dict['DAC1'])) 
             if do_ph:
                 qc_dict['DAC2'] = f'{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}'
                 if verbose:
-                    _get_logger().info('{}: DAC2 = {}'.format(ip_addr, qc_dict['DAC2']))
+                    logger.info('{}: DAC2 = {}'.format(ip_addr, qc_dict['DAC2']))
             # compute GAIN0[]..GAIN63[] based on calibration data
             # TODO: fix indexing
             maroc_gain = [[0]*4 for i in range(64)]
@@ -604,7 +612,7 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
                 tag = f'GAIN{k}'
                 qc_dict[tag] = f'{maroc_gain[k][0]},{maroc_gain[k][1]},{maroc_gain[k][2]},{maroc_gain[k][3]}'
                 if verbose:
-                    _get_logger().info(f'{ip_addr}: {tag} = {qc_dict[tag]}')
+                    logger.info(f'{ip_addr}: {tag} = {qc_dict[tag]}')
             # set D1_D2 based on the two_pixel_trigger and three_pixel_trigger in data_config.json
             do_two_pixel_trigger = False
             do_three_pixel_trigger = False
@@ -615,15 +623,15 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
             if do_two_pixel_trigger or do_three_pixel_trigger:
                 qc_dict['D1_D2'] = '1,1,1,1'
             if verbose:
-                _get_logger().info('{}: {} = {}'.format(ip_addr, 'D1_D2', qc_dict['D1_D2']))
+                logger.info('{}: {} = {}'.format(ip_addr, 'D1_D2', qc_dict['D1_D2']))
             # send MAROC params to the quabo
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
             if do_log:
-                _get_logger().info(f'Quabo IP: {ip_addr}')
-                _get_logger().info(f'Real IP: {real_ip}')
-                _get_logger().info(f'Cmd Port: {cmd_port}')
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             # For ph mode, we seem to have a bug in firmware.
             # we need to set DAC2 to low, and make the quabos send out data first.
@@ -641,7 +649,7 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
                 # set the DAC2 values back
                 qc_dict['DAC2'] = f'{dac2[0]},{dac2[1]},{dac2[2]},{dac2[3]}'
             if no_cali and do_log:
-                _get_logger().warning(f'No calibration data: UID -{uid}')
+                logger.warning(f'No calibration data: UID -{uid}')
             # If the stim_mask is 0 for this quabo, set all CTEST values to 0
             if stim_mask_quaboi[i] == 0:
                 for k in range(64):
@@ -649,17 +657,16 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
                     assert ctest_key in qc_dict, f"{ctest_key=} not in qc_dict"
                     qc_dict[ctest_key] = "0,0,0,0"
             quabo.send_maroc_params(qc_dict)
-            if write_config:
-                quabo.write_maroc_config(qc_dict, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
+            if write_config:
+                quabo_i_config_path = PanoPaths.tmp_dir() / quabo_driver.QUABO_CONFIG_FILE_TEMPLATE.format(ip_addr=ip_addr)
+                _maroc_cfg = quabo.write_maroc_config(qc_dict, quabo_i_config_path)
 
 # set CHANMASK and GOEMASK for modules
 #
-MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(
-    str(pathlib.Path(__file__).parent / 'driver/quabo_config.txt')
-) # load once to avoid redundant I/O
+MASK_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(QUABO_CONFIG_PATH) # load once to avoid redundant I/O
 def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, network_config: NetworkConfig, quabo_uids: QuaboUids, verbose: bool = False, write_config: bool = True, do_flush_rx_buf: bool = False, do_log: bool = True) -> None:
-    """Configure channel trigger masks and geometric coincidence masks.
+    """Configure channel trigger masks (CHANMASK) and geometric coincidence masks (GOEMASK).
 
     Args:
         modules: List of target module configurations.
@@ -701,23 +708,23 @@ def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, netw
             ip_addr = config_file.quabo_ip_addr(m_ip, i)
             for tag in ['CHANMASK_8', 'GOEMASK']:
                 if verbose:
-                    _get_logger().info(f'{ip_addr}: {tag} = 0x{qc_dict_int[tag]:x}')
+                    logger.info(f'{ip_addr}: {tag} = 0x{qc_dict_int[tag]:x}')
             # send MASK params to the quabo
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
             if do_log:
-                _get_logger().info(f'Quabo IP: {ip_addr}')
-                _get_logger().info(f'Real IP: {real_ip}')
-                _get_logger().info(f'Cmd Port: {cmd_port}')
+                logger.info(f'Quabo IP: {ip_addr}')
+                logger.info(f'Real IP: {real_ip}')
+                logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             quabo.send_trigger_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
-            if write_config:
-                quabo.write_trigger_mask_config(qc_dict_int, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.send_goe_mask(qc_dict_int, do_flush_rx_buf=do_flush_rx_buf)
-            if write_config:
-                quabo.write_goe_mask_config(qc_dict_int, '{}_{}.json'.format('tmp/quabo_config',ip_addr))
             quabo.close()
+            if write_config:
+                quabo_i_config_path = PanoPaths.tmp_dir() / quabo_driver.QUABO_CONFIG_FILE_TEMPLATE.format(ip_addr=ip_addr)
+                _trigger_mask_cfg   = quabo.write_trigger_mask_config(qc_dict_int, quabo_i_config_path)
+                _goe_mask_cfg       = quabo.write_goe_mask_config(qc_dict_int, quabo_i_config_path)
 
 def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
     """Trigger pulse-height (PH) baseline calibration on multiple modules.
@@ -740,9 +747,9 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, netwo
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
-            _get_logger().info(f'Quabo IP: {ip_addr}')
-            _get_logger().info(f'Real IP: {real_ip}')
-            _get_logger().info(f'Cmd Port: {cmd_port}')
+            logger.info(f'Quabo IP: {ip_addr}')
+            logger.info(f'Real IP: {real_ip}')
+            logger.info(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
@@ -767,7 +774,7 @@ def do_show_ph_baselines(quabo_uids: QuaboUids) -> None:
     Args:
         quabo_uids: Quabo hardware UID registry model.
     """
-    _get_logger().info('Show PH baseline')
+    logger.info('Show PH baseline')
     quabo_ph_baselines = config_file.get_quabo_ph_baselines()
     msg = f"Creation date: {quabo_ph_baselines['date']}\n"
     for dome in quabo_uids.domes:
@@ -791,7 +798,7 @@ def do_show_ph_baselines(quabo_uids: QuaboUids) -> None:
                     msg += f'\tquabo {quabo_num: 5}: mean={round(mean, 2): 7}, ' \
                            f'median={round(median, 2): 7}, stdev={round(stdev, 2): 7},' \
                            f' min={min(coefs): 5}, max={max(coefs): 5}\n'
-    _get_logger().info(msg)
+    logger.info(msg)
 
 
 
@@ -809,10 +816,10 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
     Returns:
         Estimated recording time in hours.
     """
-    _get_logger().info('Check disk space.')
+    logger.info('Check disk space.')
     bps = util.daq_bytes_per_sec_per_module(data_config)
     if verbose:
-        _get_logger().info(f'Data rate per module: {bps/1e6:.2f} MB/sec')
+        logger.info(f'Data rate per module: {bps/1e6:.2f} MB/sec')
     nmod_total = 0
     available_hours = 1e9
 
@@ -826,7 +833,7 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
         nmod_total += nmod
         ip_addr = str(node.ip_addr)
         if verbose:
-            _get_logger().info(f'DAQ node {ip_addr}: {nmod} modules')
+            logger.info(f'DAQ node {ip_addr}: {nmod} modules')
 
         # get list of volumes on the DAQ node
         #
@@ -862,99 +869,101 @@ def do_disk_space(data_config: DataConfig, daq_config: DaqConfig, verbose: bool 
             mods_here_list = vol.get('mods_here', [])
             nmods = len(mods_here_list)
             if verbose:
-                _get_logger().info(f'   {name}:')
+                logger.info(f'   {name}:')
             if nmods:
                 t = free/(3600.*bps*nmods)
                 if verbose:
-                    _get_logger().info(f'      modules: {mods_here_list}')
-                    _get_logger().info(f'      space: {free/1e12:.2f}TB ({t:.2f} hours)')
+                    logger.info(f'      modules: {mods_here_list}')
+                    logger.info(f'      space: {free/1e12:.2f}TB ({t:.2f} hours)')
                 if t < available_hours:
                     available_hours = t
             else:
                 if verbose:
-                    _get_logger().info(f'      space: {free/1e12:.2f}TB')
+                    logger.info(f'      space: {free/1e12:.2f}TB')
     # TODO: this is hard-coded??
     with open("/home/panosetigraph/web/head_node_volumes.json") as f:
         head_node_vols = json.loads(f.read())
     hnd = str(daq_config.head_node_data_dir)
     hnd = os.path.realpath(hnd)
-    _get_logger().info('head node:')
+    logger.info('head node:')
     for vol in head_node_vols:
         path = f'/home/panosetigraph/web/{vol}/data'
         path = os.path.realpath(path)
         hfree = util.free_space(path)
         if verbose:
-            _get_logger().info(f'   {path} ({vol})')
+            logger.info(f'   {path} ({vol})')
         t = hfree/(3600*bps*nmod_total)
         if hnd == path:
             if t < available_hours:
                 available_hours = t
             if verbose:
-                _get_logger().info('      selected for write')
-        _get_logger().info(f'      space: {hfree/1e12:.2f}TB ({t:.2f} hours)')
+                logger.info('      selected for write')
+        logger.info(f'      space: {hfree/1e12:.2f}TB ({t:.2f} hours)')
 
     if verbose:
-        _get_logger().info(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
+        logger.info(f'---------------\nAvailable recording time: {available_hours:.2f} hours')
     return available_hours
 
 
 def do_shutter(action: str) -> None:
+    from control.tools import shutter
+    shutter_path = (Path(shutter.__file__)) # resolve absolute shutter.py path
     if action == "open":
-        os.system("tools/shutter.py --open")
+        subprocess.run([shutter_path, "--open"])
     elif action == "close":
-        os.system("tools/shutter.py --close")
+        subprocess.run([shutter_path, "--close"])
+    else:
+        raise ValueError(f"{action=} but must be 'open' or 'close'")
 
 def do_start_interleave() -> None:
     """Starts the interleaver process in the background. (SC-034b: Prevents duplicate daemons)"""
-    pid_file = "tmp/interleave.pid"
-    if os.path.exists(pid_file):
-        _get_logger().error("ERROR: Interleave daemon is already running (PID file exists). Stop it first.")
+    if os.path.exists(INTERLEAVE_LOCK_PATH):
+        logger.error("ERROR: Interleave daemon is already running (PID file exists). Stop it first.")
         sys.exit(1)
 
-    if not os.path.exists("tmp/current_run") and not os.path.exists("tmp/run_state.toml"):
-        _get_logger().error("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
+    if not os.path.exists("tmp/current_run") and not os.path.exists(PanoPaths.tmp_dir() / STATE_FILE):
+        logger.error("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
         sys.exit(1)
 
-    _get_logger().info("Starting interleave controller in the background...")
+    logger.info("Starting interleave controller in the background...")
     # Start detached background process
     subprocess.Popen(['python3', 'tools/interleave.py'],
                      stdout=open('logs/interleave.log', 'a'), # noqa: SIM115
                      stderr=subprocess.STDOUT)
-    _get_logger().info("Interleave process started. Check logs/interleave.log for details.")
+    logger.info("Interleave process started. Check logs/interleave.log for details.")
 
 def do_stop_interleave() -> None:
     """Gracefully stops the background interleaver if it is running."""
-    pid_file = "tmp/interleave.pid"
-    if not os.path.exists(pid_file):
-        _get_logger().info("No active interleave process found (PID file missing).")
+    if not os.path.exists(INTERLEAVE_LOCK_PATH):
+        logger.info("No active interleave process found (PID file missing).")
         return # Return instead of sys.exit(0) so other scripts can call this safely
 
-    with open(pid_file) as f:
+    with open(INTERLEAVE_LOCK_PATH) as f:
         try:
             pid = int(f.read().strip())
         except ValueError:
-            _get_logger().info("Stale PID file found. Cleaning up.")
-            os.remove(pid_file)
+            logger.info("Stale PID file found. Cleaning up.")
+            os.remove(INTERLEAVE_LOCK_PATH)
             return
 
-    _get_logger().info(f"Sending shutdown signal to interleave process (PID {pid})...")
+    logger.info(f"Sending shutdown signal to interleave process (PID {pid})...")
     try:
         os.kill(pid, signal.SIGTERM)
-        _get_logger().info("Signal sent. Waiting for hardware default restoration to complete...")
+        logger.info("Signal sent. Waiting for hardware default restoration to complete...")
         # Simple wait loop to ensure process dies and deletes its pid file
         for _ in range(20):
-            if not os.path.exists(pid_file):
+            if not os.path.exists(INTERLEAVE_LOCK_PATH):
                 break
             time.sleep(0.5)
-        _get_logger().info("Interleave process successfully stopped.")
+        logger.info("Interleave process successfully stopped.")
     except OSError:
-        _get_logger().info("Process was already dead. Cleaning up stale PID file.")
-        os.remove(pid_file)
+        logger.info("Process was already dead. Cleaning up stale PID file.")
+        os.remove(INTERLEAVE_LOCK_PATH)
 
 
 def do_dry_run_interleave() -> None:
     """Runs the interleaver in the foreground for 2 cycles without hardware commands."""
-    _get_logger().info("Starting interleave DRY RUN (2 cycles) in the foreground...")
+    logger.info("Starting interleave DRY RUN (2 cycles) in the foreground...")
 
     # We use subprocess.run to block and stream output directly to the console for CI tools
     result = subprocess.run(
@@ -962,9 +971,9 @@ def do_dry_run_interleave() -> None:
     )
 
     if result.returncode == 0:
-        _get_logger().info("\nDry run completed successfully.")
+        logger.info("\nDry run completed successfully.")
     else:
-        _get_logger().info(f"\nDry run failed with return code {result.returncode}.")
+        logger.info(f"\nDry run failed with return code {result.returncode}.")
         sys.exit(result.returncode)
 
 
@@ -1019,7 +1028,7 @@ def loads() -> None:
 @app.command()
 def init_daq_nodes() -> None:
     """Copy software to daq nodes."""
-    _get_logger().info('Init daq nodes.')
+    logger.info('Init daq nodes.')
     daq_config = config_file.get_daq_config()
     file_xfer.copy_daq_files(daq_config)
 
@@ -1038,25 +1047,25 @@ def hk_dest() -> None:
 @app.command()
 def redis_daemons() -> None:
     """Start daemons to populate Redis with HK/GPS/WR data, and to copy data from Redis to InfluxDB."""
-    _get_logger().info('Start redis daemons.')
+    logger.info('Start redis daemons.')
     util.start_redis_daemons()
 
 @app.command()
 def stop_redis_daemons() -> None:
     """Stop the above."""
-    _get_logger().info('Stop redis daemons.')
+    logger.info('Stop redis daemons.')
     util.stop_redis_daemons()
 
 @app.command()
 def permanent_daemons() -> None:
     """Start permanent daemons (permanent_*.py) plus storeInfluxDB.py."""
-    _get_logger().info('Start permanent daemons.')
+    logger.info('Start permanent daemons.')
     util.start_permanent_daemons()
 
 @app.command()
 def stop_permanent_daemons() -> None:
     """Stop the above."""
-    _get_logger().info('Stop permanent daemons.')
+    logger.info('Stop permanent daemons.')
     util.stop_permanent_daemons()
 
 @app.command()

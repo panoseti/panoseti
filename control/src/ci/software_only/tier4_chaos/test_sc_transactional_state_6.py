@@ -40,7 +40,6 @@ from ci.software_only.tier4_chaos.conftest import (
 from ci.software_only.qa_utils import get_isolated_env
 
 from control.utils.paths import PanoPaths
-INTERLEAVE_PID_FILE = PanoPaths.tmp_dir() / "interleave.pid"
 PH_BASELINE_FILE = PanoPaths.config_dir() / "quabo_ph_baseline.json"
 
 

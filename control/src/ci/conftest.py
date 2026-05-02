@@ -159,7 +159,7 @@ def mock_network_config() -> NetworkConfig:
                 "port_forwarding": {
                     "status": False,
                     "gw_ip": "10.200.146.11",
-                    "port": 22
+                    "ssh_port": 22
                 }
             }
         ]

@@ -213,17 +213,17 @@ class StateProbe:
 
     # ── Background process daemons ───────────────────────────────────────────
 
-    def interleave_pid_file_exists(self) -> bool:
-        """True if state/runs/interleave.pid exists."""
-        return (PanoPaths.runs_dir() / "interleave.pid").exists()
+    # def interleave_pid_file_exists(self) -> bool:
+    #     """True if state/runs/interleave.lock exists."""
+    #     return (PanoPaths.runs_dir() / "interleave.lock").exists()
 
-    def interleave_pid(self) -> int | None:
-        """Return the PID in state/runs/interleave.pid, or None if absent/invalid."""
-        p = PanoPaths.runs_dir() / "interleave.pid"
-        try:
-            return int(p.read_text().strip())
-        except (FileNotFoundError, ValueError):
-            return None
+    # def interleave_pid(self) -> int | None:
+    #     """Return the PID in state/runs/interleave.lock, or None if absent/invalid."""
+    #     p = PanoPaths.runs_dir() / "interleave.lock"
+    #     try:
+    #         return int(p.read_text().strip())
+    #     except (FileNotFoundError, ValueError):
+    #         return None
 
     def hk_recorder_running(self) -> bool:
         """True if capture_hk.py is running (checked via log presence and pidfile)."""

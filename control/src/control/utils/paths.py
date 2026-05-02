@@ -4,6 +4,8 @@ import contextlib
 import os
 import pathlib
 
+from control.transfer.models import TransferStatus
+
 
 class PanoPaths:
     """
@@ -197,10 +199,10 @@ class PanoPaths:
             cls.locks_dir(),
             cls.runs_dir(),
             cls.logs_dir(),
-            cls.transfer_queue_dir() / "pending",
-            cls.transfer_queue_dir() / "active",
-            cls.transfer_queue_dir() / "completed",
-            cls.transfer_queue_dir() / "failed",
+            cls.transfer_queue_dir() / TransferStatus.PENDING,
+            cls.transfer_queue_dir() / TransferStatus.ACTIVE,
+            cls.transfer_queue_dir() / TransferStatus.COMPLETED,
+            cls.transfer_queue_dir() / TransferStatus.FAILED,
             cls.transfer_manifests_dir(),
             cls.calibration_dir(),
         ]:

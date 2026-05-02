@@ -39,7 +39,7 @@ def build_rsync_cmd(
     ssh_base = list(ssh_options)  # copy to avoid mutation
 
     if use_pf and pf is not None:
-        port = pf.port
+        port = pf.ssh_port
         if port is None:
             raise ValueError(
                 f"Port-forwarding port {port!r} is None"

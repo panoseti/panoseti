@@ -1,7 +1,7 @@
 """Public API for transfer queue management, used by stop.py and CLI."""
 from __future__ import annotations
 
-from control.transfer.models import TransferJob
+from control.transfer.models import TransferJob, TransferStatus
 from control.transfer.queue import TransferQueue
 
 
@@ -19,7 +19,7 @@ def enqueue(job: TransferJob) -> bool:
     return q.enqueue(job)
 
 
-def get_queue_summary() -> dict[str, list[str]]:
+def get_queue_summary() -> dict[TransferStatus, list[str]]:
     """Return run names in each queue bucket.
 
     Returns:
@@ -28,10 +28,10 @@ def get_queue_summary() -> dict[str, list[str]]:
     """
     q = TransferQueue()
     return {
-        "pending": q.list_jobs("pending"),
-        "active": q.list_jobs("active"),
-        "completed": q.list_jobs("completed"),
-        "failed": q.list_jobs("failed"),
+        TransferStatus.PENDING: q.list_jobs(TransferStatus.PENDING),
+        TransferStatus.ACTIVE: q.list_jobs(TransferStatus.ACTIVE),
+        TransferStatus.COMPLETED: q.list_jobs(TransferStatus.COMPLETED),
+        TransferStatus.FAILED: q.list_jobs(TransferStatus.FAILED),
     }
 
 

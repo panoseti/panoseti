@@ -20,7 +20,7 @@ import time
 
 import pytest
 
-from ci.hardware_software.fixtures.packet_capture import (
+from ci.fixtures.packet_capture import (
     assert_bytes_zero,
     assert_le_uint16,
     assert_opcode,

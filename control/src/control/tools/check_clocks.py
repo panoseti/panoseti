@@ -13,8 +13,8 @@ from typing import Literal
 
 import paramiko
 import serial
-from check_clocks import qstart
 
+from control.tools.check_clocks_helper import qstart
 from control.utils import config_file
 
 # this is the offset time between tai and utc
@@ -106,7 +106,7 @@ class check_clocks:
             bytesize=serial.EIGHTBITS
         )
 
-        if isinstance(self.ser, serial.Serial) and not self.ser.isOpen():
+        if isinstance(self.ser, serial.Serial) and not self.ser.is_open:
             self.ser.open()
 
         data = b''
@@ -123,7 +123,7 @@ class check_clocks:
             # get gps packets from uart port
             while bytesToRead == 0:
                 if isinstance(self.ser, serial.Serial):
-                    bytesToRead = self.ser.inWaiting()
+                    bytesToRead = self.ser.in_waiting
             if isinstance(self.ser, serial.Serial):
                 recv_byte = self.ser.read(bytesToRead)
             if(recv_byte == b'\x10' and last_recv_byte == b'\x10'):

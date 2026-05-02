@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+from control.transfer.models import TransferStatus
 from control.utils import config_file, util
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager
@@ -47,7 +48,7 @@ def _queue_counts() -> dict[str, int]:
     from control.transfer.queue import TransferQueue
     try:
         tq = TransferQueue()
-        return {b: len(tq.list_jobs(b)) for b in ("pending", "active", "completed", "failed")}
+        return {b: len(tq.list_jobs(b)) for b in TransferStatus}
     except Exception:
         return {}
 

@@ -27,7 +27,6 @@ import __main__
 # but the quabo_driver and config_file won't be copied to daq nodes
 # TODO: we may need to improve this
 from control.driver import quabo_driver
-from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaemonConfig,
@@ -340,6 +339,7 @@ def _are_daemons_running(progs: list[str]) -> bool:
 def _safe_get_daemons_config() -> DaemonConfig | None:
     # Handle "util.py copied to daq nodes" case (config_file may not exist).
     try:
+        from control.utils import config_file
         return config_file.get_daemons_config()
     except Exception:
         return None

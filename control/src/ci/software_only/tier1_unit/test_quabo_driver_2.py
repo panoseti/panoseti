@@ -13,16 +13,10 @@ Packet format reference:
 """
 from __future__ import annotations
 
-import os
 import struct
-from typing import Any
-from unittest.mock import MagicMock
-
-import pytest
 
 # Ensure control/ is on the path (pyproject.toml sets pythonpath=["."])
 from control.driver.quabo_driver import (
-    QUABO,
     UDP_CMD_PORT,
 )
 
@@ -72,33 +66,7 @@ class FakeSocket:
 # Shared fixture: QUABO instance with FakeSocket
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def quabo_and_sock(monkeypatch: Any, tmp_path: Any) -> tuple[QUABO, FakeSocket]:
-    """Yield (quabo, fake_sock).  All socket I/O is captured in fake_sock."""
-    fake_sock = FakeSocket()
-    monkeypatch.setattr("socket.socket", lambda *a, **kw: fake_sock)
-    monkeypatch.setattr("socket.gethostbyname", lambda x: x)
 
-    # Suppress log-file creation — tests don't need a real log file
-    monkeypatch.setattr("control.driver.quabo_driver.get_logger", lambda *a, **kw: MagicMock())
-
-    cfg_file = tmp_path / "quabo_config.txt"
-    # Copy the real quabo_config.txt into tmp so send_maroc_params_file() works
-    real_cfg = os.path.join(
-        os.path.dirname(__file__), "..", "..", "driver", "quabo_config.txt"
-    )
-    if os.path.exists(real_cfg):
-        with open(real_cfg) as f:
-            cfg_file.write_text(f.read())
-    else:
-        cfg_file.write_text("* minimal stub\n")
-
-    q = QUABO(
-        "192.168.3.100",
-        config_file_path=str(cfg_file),
-        logfile=str(tmp_path / "quabo_driver.log"),
-    )
-    return q, fake_sock
 
 
 # ===========================================================================

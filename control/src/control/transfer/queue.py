@@ -8,7 +8,7 @@ import tempfile
 import tomllib
 from typing import Any
 
-from control.transfer.models import TransferJob
+from control.transfer.models import TransferJob, TransferStatus
 from control.utils.paths import PanoPaths
 
 
@@ -35,14 +35,14 @@ class TransferQueue:
             queue_dir if queue_dir is not None else PanoPaths.transfer_queue_dir()
         )
         self._queue: pathlib.Path = pathlib.Path(raw_queue)
-        for sub in ("pending", "active", "completed", "failed"):
+        for sub in TransferStatus:
             (self._queue / sub).mkdir(parents=True, exist_ok=True)
 
-    def _job_path(self, subdir: str, run_name: str) -> pathlib.Path:
+    def _job_path(self, subdir: TransferStatus, run_name: str) -> pathlib.Path:
         """Return the path for a job file in the given subdirectory.
 
         Args:
-            subdir: One of ``pending``, ``active``, ``completed``, ``failed``.
+            subdir: One of TransferStatus: (``pending``, ``active``, ``completed``, ``failed``).
             run_name: The run identifier (without the ``.job.toml`` suffix).
 
         Returns:
@@ -139,10 +139,10 @@ class TransferQueue:
             ``True`` if the job was newly enqueued; ``False`` if it already
             existed in any bucket.
         """
-        for subdir in ("pending", "active", "completed", "failed"):
+        for subdir in TransferStatus:
             if self._job_path(subdir, job.run_name).exists():
                 return False
-        self._write_job(self._job_path("pending", job.run_name), job)
+        self._write_job(self._job_path(TransferStatus.PENDING, job.run_name), job)
         return True
 
     def claim(self) -> TransferJob | None:
@@ -152,12 +152,12 @@ class TransferQueue:
             A ``TransferJob`` instance if a job was claimed, ``None`` if no
             pending jobs exist.
         """
-        pending_dir = self._queue / "pending"
+        pending_dir = self._queue / TransferStatus.PENDING
         for entry in sorted(pending_dir.iterdir()):
             if entry.suffix != ".toml":
                 continue
             run_name = entry.stem.removesuffix(".job")
-            active_path = self._job_path("active", run_name)
+            active_path = self._job_path(TransferStatus.ACTIVE, run_name)
             try:
                 os.rename(entry, active_path)
             except OSError:
@@ -176,8 +176,8 @@ class TransferQueue:
         Raises:
             FileNotFoundError: If no active job exists for *run_name*.
         """
-        src = self._job_path("active", run_name)
-        dst = self._job_path("completed", run_name)
+        src = self._job_path(TransferStatus.ACTIVE, run_name)
+        dst = self._job_path(TransferStatus.COMPLETED, run_name)
         os.rename(src, dst)
 
     def fail(self, run_name: str) -> None:
@@ -189,8 +189,8 @@ class TransferQueue:
         Raises:
             FileNotFoundError: If no active job exists for *run_name*.
         """
-        src = self._job_path("active", run_name)
-        dst = self._job_path("failed", run_name)
+        src = self._job_path(TransferStatus.ACTIVE, run_name)
+        dst = self._job_path(TransferStatus.FAILED, run_name)
         os.rename(src, dst)
 
     def retry(self, run_name: str) -> bool:
@@ -203,19 +203,19 @@ class TransferQueue:
             ``True`` if the job was moved; ``False`` if no failed job exists
             for *run_name*.
         """
-        src = self._job_path("failed", run_name)
+        src = self._job_path(TransferStatus.FAILED, run_name)
         if not src.exists():
             return False
         with open(src, "rb") as f:
             data = tomllib.load(f)
         data["attempts"] = 0
         job = TransferJob.model_validate(data)
-        target = self._job_path("pending", run_name)
+        target = self._job_path(TransferStatus.PENDING, run_name)
         self._write_job(target, job)
         os.unlink(src)
         return True
 
-    def list_jobs(self, bucket: str) -> list[str]:
+    def list_jobs(self, bucket: TransferStatus) -> list[str]:
         """Return run names in a queue bucket.
 
         Args:

@@ -9,18 +9,20 @@ exact stage where the boot breaks.
 
 Boot stages (matching session_start.py golden path):
   Stage 1 — WPS power on: outlets energised; FPGA bootloader starts.
-  Stage 2 — Boot wait (60s): flat sleep matching session_start.py; bootloader
-            becomes ready for TFTP while main firmware is NOT yet loaded.
-            Command ports (60000-60003) are inactive at this point.
-  Stage 3 — UID discovery via TFTP: tests that the TFTP bootloader is
-            reachable and returns valid UIDs.  Fails if quabos never booted.
-  Stage 4 — TFTP reboot (config.do_reboot): loads main firmware.  do_reboot
-            internally waits for each quabo to become pingable before moving
-            to the next.  After this stage, command ports are active.
-  Stage 5 — Post-reboot reachability: all quabos respond to util.ping
-            (falls back to data_packet_destination UDP command).
-  Stage 6 — Echo check: each quabo echoes back an hv_set command, confirming
-            the main firmware is processing commands correctly.
+            Asserts WPS reports ON after the command.
+  Stage 2 — Boot wait (60s): timed sleep with 15s progress logs.
+            TFTP bootloader becomes ready; command ports are NOT yet active.
+  Stage 3 — UID discovery via TFTP: each quabo's real IP/port is logged so
+            port-forwarding issues are immediately visible.  Fails with a
+            per-quabo table showing which ones responded.
+  Stage 4a — TFTP reboot: config.do_reboot loads main firmware.
+  Stage 4b — Reboot skip check: asserts zero quabos were silently skipped
+             because of an empty UID (symptom: bootloader was unreachable at
+             Stage 3 but do_reboot would have swallowed that silently).
+  Stage 4c — Post-reboot command-port reachability: all quabos respond to
+             util.ping on their command port.
+  Stage 5  — Echo check: each quabo echoes back an hv_set command, confirming
+             the main firmware is processing commands correctly.
 
 Required state: UNPOWERED (test drives hardware to BOOTED itself).
 Leaves state: BOOTED (written to the state file on success).
@@ -64,6 +66,15 @@ def _check_all_reachable(topo: HwTopology) -> list[str]:
     return errors
 
 
+def _log_topology_targets(topo: HwTopology) -> None:
+    """Log each quabo's raw IP and its resolved real_ip:port for easy diagnosis."""
+    for a in topo.quabo_ips():
+        logger.info(
+            "[BOOT] quabo map: raw=%-18s  real=%-18s  cmd_port=%-6d  reboot_port=%d",
+            a.ip, a.real_ip, a.cmd_port, a.reboot_port,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Boot sequence test
 # ---------------------------------------------------------------------------
@@ -92,55 +103,102 @@ def test_annotated_boot_sequence(topology) -> None:
     if not quabo_addrs:
         pytest.skip("No quabos in active topology")
 
+    _log_topology_targets(topology)
+
     # ── Stage 1: WPS power on ─────────────────────────────────────────────────
     logger.info("[BOOT] Stage 1: WPS power on")
     wps_power_on()
+
+    from control.power import quabo_power_query
+    wps_errors = []
+    for wps in topology.wps_outlets():
+        state = quabo_power_query({"url": wps.url, "quabo_socket": wps.quabo_socket})
+        # quabo_power_query returns 'true' when outlet is energised
+        if state != "true":
+            wps_errors.append(f"{wps.name} ({wps.url}): power query returned {state!r} (expected 'true')")
+        else:
+            logger.info("[BOOT] Stage 1: %s power confirmed ON (state=%r)", wps.name, state)
+    assert not wps_errors, (
+        f"[BOOT] Stage 1 FAILED: WPS did not confirm ON for {len(wps_errors)} outlet(s):\n"
+        + "\n".join(wps_errors)
+    )
 
     # ── Stage 2: Boot wait ────────────────────────────────────────────────────
     # Mirrors session_start.py line 73-74: flat sleep before get_uids.
     # After power-on the quabo runs the TFTP bootloader (port 69/6000x), not
     # the main firmware; command ports are NOT yet active.
     logger.info("[BOOT] Stage 2: waiting %ds for TFTP bootloader to be ready", _BOOT_WAIT_S)
-    time.sleep(_BOOT_WAIT_S)
+    elapsed = 0
+    while elapsed < _BOOT_WAIT_S:
+        chunk = min(15, _BOOT_WAIT_S - elapsed)
+        time.sleep(chunk)
+        elapsed += chunk
+        logger.info("[BOOT] Stage 2: %ds / %ds elapsed", elapsed, _BOOT_WAIT_S)
 
     # ── Stage 3: UID discovery via TFTP ──────────────────────────────────────
-    # If any quabo is still offline the UID will be empty — caught below.
-    logger.info("[BOOT] Stage 3: get_uids (tests TFTP bootloader reachability)")
-    _quabo_uids = get_uids.get_uids(obs_config, network_config)
+    # Log per-quabo target so port-forwarding issues are immediately visible.
+    logger.info("[BOOT] Stage 3: get_uids (TFTP to FPGA bootloader)")
+    quabo_uids = get_uids.get_uids(obs_config, network_config)
 
-    quabo_uids = config_file.get_quabo_uids()
-    uid_errors = []
+    uid_rows: list[str] = []
+    uid_errors: list[str] = []
     for dome in quabo_uids.domes:
         for module in dome.modules:
             for quadrant, entry in enumerate(module.quabos):
+                from control.utils import util as _util
+                ip_ports = _util.get_quabo_ip_port(module.ip_addr, quadrant, network_config)
+                status = f"UID={entry.uid!r}" if entry.uid else "OFFLINE (empty UID)"
+                uid_rows.append(
+                    f"  module {module.ip_addr} Q{quadrant} "
+                    f"→ {ip_ports.ip_addr}:{ip_ports.reboot_port}  {status}"
+                )
                 if not entry.uid:
                     uid_errors.append(
                         f"module {module.ip_addr} quadrant {quadrant}: "
-                        "UID empty — quabo offline or TFTP unreachable after boot wait"
+                        f"UID empty — quabo offline or TFTP unreachable at "
+                        f"{ip_ports.ip_addr}:{ip_ports.reboot_port}"
                     )
 
+    logger.info("[BOOT] Stage 3 UID table:\n%s", "\n".join(uid_rows))
     assert not uid_errors, (
         f"[BOOT] Stage 3 FAILED: get_uids did not populate valid UIDs for "
         f"{len(uid_errors)} quabo(s):\n" + "\n".join(uid_errors)
     )
     logger.info("[BOOT] Stage 3 passed: all %d UIDs populated", len(quabo_addrs))
 
-    # ── Stage 4: TFTP reboot (loads main firmware) ────────────────────────────
+    # ── Stage 4a: TFTP reboot (loads main firmware) ───────────────────────────
     # config.do_reboot handles its own post-reboot ping-wait per quabo.
     # After this returns, main firmware is loaded and command ports are active.
-    logger.info("[BOOT] Stage 4: TFTP reboot via config.do_reboot")
-    config.do_reboot(modules, quabo_uids, network_config)
+    logger.info("[BOOT] Stage 4a: TFTP reboot via config.do_reboot")
+    quabo_uids_cached = config_file.get_quabo_uids()
+    config.do_reboot(modules, quabo_uids_cached, network_config)
 
-    # ── Stage 5: Post-reboot command-port reachability ────────────────────────
+    # ── Stage 4b: Reboot skip check ───────────────────────────────────────────
+    # do_reboot silently skips quabos with empty UIDs.  Catch that here so the
+    # failure message names the quabo and its cause rather than showing a
+    # generic "unreachable after reboot".
+    skipped = [
+        f"module {m.ip_addr} Q{q_idx}: UID was empty → do_reboot skipped it"
+        for d in quabo_uids_cached.domes
+        for m in d.modules
+        for q_idx, e in enumerate(m.quabos)
+        if not e.uid
+    ]
+    assert not skipped, (
+        f"[BOOT] Stage 4b FAILED: do_reboot skipped {len(skipped)} quabo(s) "
+        f"because their UIDs were empty:\n" + "\n".join(skipped)
+    )
+
+    # ── Stage 4c: Post-reboot command-port reachability ───────────────────────
     post_reboot_errors = _check_all_reachable(topology)
     assert not post_reboot_errors, (
-        f"[BOOT] Stage 5 FAILED: {len(post_reboot_errors)} quabo(s) unreachable "
+        f"[BOOT] Stage 4c FAILED: {len(post_reboot_errors)} quabo(s) unreachable "
         f"via command port after TFTP reboot:\n" + "\n".join(post_reboot_errors)
     )
-    logger.info("[BOOT] Stage 5 passed: all %d quabo(s) reachable after reboot", len(quabo_addrs))
+    logger.info("[BOOT] Stage 4c passed: all %d quabo(s) reachable after reboot", len(quabo_addrs))
 
-    # ── Stage 6: Echo responsiveness ─────────────────────────────────────────
-    logger.info("[BOOT] Stage 6: echo check on each quabo")
+    # ── Stage 5: Echo responsiveness ─────────────────────────────────────────
+    logger.info("[BOOT] Stage 5: echo check on each quabo")
     from control.driver.quabo_driver import QUABO
     echo_errors = []
     for a in quabo_addrs:
@@ -158,10 +216,10 @@ def test_annotated_boot_sequence(topology) -> None:
             q.close()
 
     assert not echo_errors, (
-        f"[BOOT] Stage 6 FAILED: {len(echo_errors)} quabo(s) did not echo commands "
+        f"[BOOT] Stage 5 FAILED: {len(echo_errors)} quabo(s) did not echo commands "
         f"after TFTP reboot:\n" + "\n".join(echo_errors)
     )
-    logger.info("[BOOT] Stage 6 passed: all %d quabo(s) echo-responsive", len(quabo_addrs))
+    logger.info("[BOOT] Stage 5 passed: all %d quabo(s) echo-responsive", len(quabo_addrs))
 
     # ── Write BOOTED to state file ────────────────────────────────────────────
     _write_state(_STATE_FILE, "BOOTED")

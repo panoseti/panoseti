@@ -22,10 +22,7 @@ from pydantic import ValidationError
 from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger, RunStatus
 from control.utils.run_state import RunStateManager
 
-# ---------------------------------------------------------------------------
-# New RunStateLedger status values
-# ---------------------------------------------------------------------------
-NEW_STATUSES = [
+VALID_RUN_STATUSES = [
     RunStatus.RECORDING_ENDED,
     RunStatus.MANIFEST_PENDING,
     RunStatus.MANIFEST_GENERATING,
@@ -53,7 +50,7 @@ class TestRunStateLedgerExtendedStatuses:
         )
         assert ledger.status == RunStatus.RECORDING_ENDED
 
-    @pytest.mark.parametrize("status", NEW_STATUSES)
+    @pytest.mark.parametrize("status", VALID_RUN_STATUSES)
     def test_new_statuses_accepted(self, status) -> None:
         """All new Phase 2 statuses must be accepted."""
         ledger = RunStateLedger(

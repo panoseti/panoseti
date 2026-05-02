@@ -22,8 +22,6 @@ from pydantic import (
 )
 from rich.console import Console
 
-from control.utils.paths import PanoPaths
-
 console = Console()
 
 # Global restrictions
@@ -273,7 +271,7 @@ class PortForwarding(BaseStrictModel):
     gw_ip: IPvAnyAddress
     reboot_port: list[int | None] | None = Field(None)
     cmd_port: list[int | None] | None = Field(None)
-    port: int | None = None                              # SSH forwarded port (legacy)
+    ssh_port: int | None = None                              # SSH forwarded port (legacy)
     grpc_port: int = Field(50051, ge=1, le=65535)  # gRPC forwarded port
 
 
@@ -397,20 +395,6 @@ class FirmwareConfig(BaseModel):
     qfp: str | None = None
     bga: str | None = None
     gold: str | None = None
-
-    @model_validator(mode='after')
-    def validate_firmware_files(self) -> FirmwareConfig:
-        fw_dir = PanoPaths.firmware_dir()
-        for field in ['qfp', 'bga', 'gold']:
-            filename = getattr(self, field)
-            if filename:
-                fw_path = fw_dir / filename
-                if not fw_path.exists():
-                    # We only log a warning during validation if file is missing,
-                    # as it might be a partial dev setup.
-                    # Use print since we don't have a logger here yet.
-                    pass
-        return self
 
 # --------------------------------
 # --- Quabo UIDs Config Models ---
@@ -542,6 +526,17 @@ class TransferJob(BaseStrictModel):
     last_error: str | None = None
     last_error_at: datetime | None = None
     daq_nodes: list[TransferNodeSpec]
+
+
+@unique
+class TransferStatus(StrEnum):
+    """Lifecycle bucket for a transfer queue job."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
 
 
 # ---------------------------

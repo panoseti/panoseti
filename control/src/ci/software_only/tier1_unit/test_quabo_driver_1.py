@@ -13,12 +13,7 @@ Packet format reference:
 """
 from __future__ import annotations
 
-import os
 import struct
-from typing import Any
-from unittest.mock import MagicMock
-
-import pytest
 
 # Ensure control/ is on the path (pyproject.toml sets pythonpath=["."])
 from control.driver.quabo_driver import (
@@ -27,84 +22,8 @@ from control.driver.quabo_driver import (
     ACQ_NO_BASELINE_SUBTRACT,
     ACQ_PULSE_HEIGHT,
     DAQ_PARAMS,
-    QUABO,
     UDP_CMD_PORT,
 )
-
-# ---------------------------------------------------------------------------
-# FakeSocket — captures sendto() calls and optionally injects responses
-# ---------------------------------------------------------------------------
-
-class FakeSocket:
-    def __init__(self):
-        self.sent: list[tuple[bytes, tuple]] = []
-        self._timeout = 0.5
-        self.responses: dict[int, bytes] = {}   # opcode → bytes returned by recvfrom
-
-    def settimeout(self, t):
-        self._timeout = t
-
-    def bind(self, addr):
-        pass
-
-    def close(self):
-        pass
-
-    def sendto(self, data, addr):
-        self.sent.append((bytes(data), addr))
-
-    def recvfrom(self, size):
-        if self.sent:
-            # last sent packet's first byte is the command opcode (mask off echo bit)
-            opcode = self.sent[-1][0][0] & 0x7F
-            if opcode in self.responses:
-                return self.responses[opcode], ('192.168.3.100', UDP_CMD_PORT)
-        raise TimeoutError()
-
-    @property
-    def last_cmd(self) -> bytes:
-        """Return the payload of the most recent sendto() call."""
-        assert self.sent, "No packets sent yet"
-        return self.sent[-1][0]
-
-    @property
-    def last_dest(self) -> tuple:
-        """Return the (ip, port) of the most recent sendto() call."""
-        assert self.sent, "No packets sent yet"
-        return self.sent[-1][1]
-
-
-# Shared fixture: QUABO instance with FakeSocket
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def quabo_and_sock(monkeypatch: Any, tmp_path: Any) -> tuple[QUABO, FakeSocket]:
-    """Yield (quabo, fake_sock).  All socket I/O is captured in fake_sock."""
-    fake_sock = FakeSocket()
-    monkeypatch.setattr("socket.socket", lambda *a, **kw: fake_sock)
-    monkeypatch.setattr("socket.gethostbyname", lambda x: x)
-
-    # Suppress log-file creation — tests don't need a real log file
-    monkeypatch.setattr("control.driver.quabo_driver.get_logger", lambda *a, **kw: MagicMock())
-
-    cfg_file = tmp_path / "quabo_config.txt"
-    # Copy the real quabo_config.txt into tmp so send_maroc_params_file() works
-    real_cfg = os.path.join(
-        os.path.dirname(__file__), "..", "..", "driver", "quabo_config.txt"
-    )
-    if os.path.exists(real_cfg):
-        with open(real_cfg) as f:
-            cfg_file.write_text(f.read())
-    else:
-        cfg_file.write_text("* minimal stub\n")
-
-    q = QUABO(
-        "192.168.3.100",
-        config_file_path=str(cfg_file),
-        logfile=str(tmp_path / "quabo_driver.log"),
-    )
-    return q, fake_sock
-
 
 # ===========================================================================
 # TestDAQParamsClass — unit tests of the DAQ_PARAMS data class

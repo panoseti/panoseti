@@ -36,10 +36,6 @@ from control.utils.pydantic_config_models import (
 
 console = Console()
 
-# Resolved root of the control/ package (useful for tests and tooling).
-# Do NOT use this for runtime hardware paths — use CWD-relative strings instead.
-_CONTROL_BASE = Path(__file__).parent.parent.resolve()
-
 # Globals to control console verbosity
 IS_CLI_VALIDATION = False
 DEBUG_VALIDATION = False

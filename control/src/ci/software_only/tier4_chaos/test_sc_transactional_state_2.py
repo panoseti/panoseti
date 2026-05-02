@@ -5,42 +5,19 @@ SC-033, SC-034: Transactional state corruption tests.
 Part 2 of partitioned test suite.
 """
 
-# ruff: noqa
 from __future__ import annotations
 
 import contextlib
 import json
 import os
 import pathlib
-import time
 import unittest.mock
-import uuid
 from typing import Any
 
 import pytest
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient, DaqControlClient
-from unittest.mock import AsyncMock, MagicMock
-
-from ci.software_only.conftest import (
-    wait_hashpipe_running,
-    wait_hashpipe_stopped,
-)
-from ci.software_only.tier3_fleet.conftest import (  # noqa: E402
-    DAQ_DATA_DIR,
-)
-from ci.fixtures.state_probe import StateProbe  # noqa: E402
-
-from ci.software_only.tier4_chaos.conftest import (  # noqa: E402
-    _start as grpc_start,
-)
-from ci.software_only.tier4_chaos.conftest import (  # noqa: E402
-    _stop as grpc_stop,
-)
-
-from ci.software_only.qa_utils import get_isolated_env
 
 from control.utils.paths import PanoPaths
-INTERLEAVE_PID_FILE = PanoPaths.tmp_dir() / "interleave.pid"
+
 PH_BASELINE_FILE = PanoPaths.config_dir() / "quabo_ph_baseline.json"
 
 
@@ -72,7 +49,7 @@ class TestSC033StaleInterleavePID:
         Currently fails because stop_interleave() sends SIGTERM to PID 1 (which
         raises PermissionError and silently leaves the file).
         """
-        pid_file = tmp_path / "interleave.pid"
+        pid_file = tmp_path / "interleave.lock"
         pid_file.write_text("1\n")
 
         try:
@@ -83,12 +60,12 @@ class TestSC033StaleInterleavePID:
         # Monkey-patch PID_FILE to our temp file
         import control.stop as stop_module
         import control.tools.interleave as interleave_module
-        original = stop_module.PID_FILE
+        original = stop_module.INTERLEAVE_LOCK_PATH
         try:
-            stop_module.PID_FILE = str(pid_file)
+            stop_module.INTERLEAVE_LOCK_PATH = str(pid_file)
             # Also patch tools.interleave.PID_FILE (imported by stop.py)
-            original_interleave = interleave_module.PID_FILE
-            interleave_module.PID_FILE = str(pid_file)
+            original_interleave = interleave_module.INTERLEAVE_LOCK_PATH
+            interleave_module.INTERLEAVE_LOCK_PATH = str(pid_file)
 
             _stop_interleave(retry_limit=2)
 
@@ -104,15 +81,15 @@ class TestSC033StaleInterleavePID:
                     "CRITICAL: PID 1 (/proc/1) is gone — stop_interleave() killed init!"
 
         finally:
-            stop_module.PID_FILE = original
-            interleave_module.PID_FILE = original_interleave
+            stop_module.INTERLEAVE_LOCK_PATH = original
+            interleave_module.INTERLEAVE_LOCK_PATH = original_interleave
 
     def test_SC033_stale_pid_dead_process_clears_file(self, tmp_path: pathlib.Path) -> None:
         """
         PID file contains a PID for a process that no longer exists.
         stop_interleave() must clean the stale file without raising.
         """
-        pid_file = tmp_path / "interleave.pid"
+        pid_file = tmp_path / "interleave.lock"
         # Find a PID that doesn't exist
         stale_pid = 99999
         while pathlib.Path(f"/proc/{stale_pid}").exists():
@@ -126,17 +103,17 @@ class TestSC033StaleInterleavePID:
         except ImportError:
             pytest.skip("Could not import stop.stop_interleave")
 
-        original_stop = stop_module.PID_FILE
-        original_interleave = interleave_module.PID_FILE
+        original_stop = stop_module.INTERLEAVE_LOCK_PATH
+        original_interleave = interleave_module.INTERLEAVE_LOCK_PATH
         try:
-            stop_module.PID_FILE = str(pid_file)
-            interleave_module.PID_FILE = str(pid_file)
+            stop_module.INTERLEAVE_LOCK_PATH = str(pid_file)
+            interleave_module.INTERLEAVE_LOCK_PATH = str(pid_file)
             _stop_interleave(retry_limit=2)
             assert not pid_file.exists(), \
                 "Stale PID file for dead process must be cleaned up by stop_interleave()"
         finally:
-            stop_module.PID_FILE = original_stop
-            interleave_module.PID_FILE = original_interleave
+            stop_module.INTERLEAVE_LOCK_PATH = original_stop
+            interleave_module.INTERLEAVE_LOCK_PATH = original_interleave
 
 
 # ── SC-034: Interleave daemon outlives retry window ──────────────────────────
@@ -167,7 +144,7 @@ class TestSC034InterleaveDaemonHardKill:
             start_new_session=True,
         )
         pid = proc.pid
-        pid_file = tmp_path / "interleave.pid"
+        pid_file = tmp_path / "interleave.lock"
         pid_file.write_text(f"{pid}\n")
 
         try:
@@ -178,11 +155,11 @@ class TestSC034InterleaveDaemonHardKill:
             proc.kill()
             pytest.skip("Could not import stop.stop_interleave")
 
-        original_stop = stop_module.PID_FILE
-        original_interleave = interleave_module.PID_FILE
+        original_stop = stop_module.INTERLEAVE_LOCK_PATH
+        original_interleave = interleave_module.INTERLEAVE_LOCK_PATH
         try:
-            stop_module.PID_FILE = str(pid_file)
-            interleave_module.PID_FILE = str(pid_file)
+            stop_module.INTERLEAVE_LOCK_PATH = str(pid_file)
+            interleave_module.INTERLEAVE_LOCK_PATH = str(pid_file)
 
             # With retry_limit=4 (4 x 0.5 s = 2 s budget), the daemon outlives it
             _stop_interleave(retry_limit=4)
@@ -194,8 +171,8 @@ class TestSC034InterleaveDaemonHardKill:
                 "Fix: send SIGKILL after retry_limit is exhausted."
             )
         finally:
-            stop_module.PID_FILE = original_stop
-            interleave_module.PID_FILE = original_interleave
+            stop_module.INTERLEAVE_LOCK_PATH = original_stop
+            interleave_module.INTERLEAVE_LOCK_PATH = original_interleave
             with contextlib.suppress(Exception):
                 proc.kill()
                 proc.wait(timeout=2)
@@ -217,13 +194,13 @@ class TestSC034InterleaveDaemonHardKill:
             ["python3", "-c", "import time; time.sleep(60)"],
             start_new_session=True,
         )
-        pid_file = tmp_path / "interleave.pid"
+        pid_file = tmp_path / "interleave.lock"
         pid_file.write_text(f"{proc.pid}\n")
 
         try:
             import control.tools.interleave as interleave_module
-            original = interleave_module.PID_FILE
-            interleave_module.PID_FILE = str(pid_file)
+            original = interleave_module.INTERLEAVE_LOCK_PATH
+            interleave_module.INTERLEAVE_LOCK_PATH = str(pid_file)
 
             try:
                 # Attempting to construct InterleaveController while one is "running"
@@ -234,7 +211,7 @@ class TestSC034InterleaveDaemonHardKill:
             except ImportError:
                 pytest.skip("Could not import tools.interleave.InterleaveController")
             finally:
-                interleave_module.PID_FILE = original
+                interleave_module.INTERLEAVE_LOCK_PATH = original
         finally:
             proc.kill()
             proc.wait(timeout=2)
@@ -245,10 +222,8 @@ class TestSC034InterleaveDaemonHardKill:
 @contextlib.contextmanager
 def mock_daq_config_for_headnode():
     """Temporarily patch daq_config.json to point to localhost (CI headnode)."""
-    import json
 
     from control.utils import config_file
-    
     from control.utils.paths import PanoPaths
     path = PanoPaths.config_dir() / "daq_config.json"
     backup = str(path) + ".bak"

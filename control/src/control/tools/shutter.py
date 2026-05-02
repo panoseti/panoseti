@@ -56,17 +56,18 @@ def shutterop(ip: str | IPv4Address | IPv6Address, port: int, op: int) -> None:
     quabo.shutter_new(bool(op))
 
 def main() -> None:
-    logger.info('************************************')
     parser = ArgumentParser(description="Usage for openning/closing shutter.")
     parser.add_argument("--ip",type=str, dest="ip",help="ip address of the quabo")
     parser.add_argument("--port",type=int, dest="port", default=60000, help="port used for communicating with Quabo.")
     parser.add_argument("--open", dest="open",action="store_true", help="open the shutter")
     parser.add_argument("--close", dest="close",action="store_true", help="close the shutter")
     opts = parser.parse_args()
-    if(opts.open):
+    if opts.open:
         op = 0
-    if(opts.close):
+    elif opts.close:
         op = 1
+    else:
+        op = 0
     if(opts.ip):
         shutterop(opts.ip, opts.port, op)
         return

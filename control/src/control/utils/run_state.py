@@ -16,6 +16,7 @@ from control.utils.pydantic_config_models import NodeReceipt, RunStateLedger, Ru
 
 LOCK_FILE = "panoseti_control.lock"
 STATE_FILE = "run_state.toml"
+STATE_FILE_STALE = f"stale_{STATE_FILE}"
 
 logger = get_logger("PSETI.RunState")
 
