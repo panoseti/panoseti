@@ -954,7 +954,7 @@ async def _check_daq_data_status(
                     logger.warning(
                         f"DaqData service hp_io is NOT initialized on {host}. "
                         "Real-time streaming (pseti show sci) will not be available. "
-                        "Use --init-hp-io to initialize it automatically."
+                        "Use --init-snapshot it automatically."
                     )
             else:
                 logger.info(f"DaqData service hp_io is initialized and valid on {host}.")
@@ -1215,7 +1215,7 @@ def main(
         help="Stop any orphaned Hashpipe instances before starting (implies remote Hashpipe check).",
     ),
     init_snapshot: bool = typer.Option(
-        False, "--init-hp-io",
+        False, "--init-snapshot",
         help="Automatically initialize the snapshot (DaqData) gRPC service on each node for real-time streaming.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),

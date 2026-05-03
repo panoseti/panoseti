@@ -74,8 +74,8 @@ class TestConcurrentDaqOperations:
         hashpipe_pid; subsequent calls see pid > 0 and return success=False,
         which the client converts to ValueError.
         """
-        from random import uniform
         import time
+        from random import uniform
         rp = run_params_conc
         fleet, _ = session_fleet
         spec = fleet.specs[0]

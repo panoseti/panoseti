@@ -6,6 +6,7 @@ verification and selective cleanup contracts.
 """
 
 import asyncio
+import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -73,11 +74,13 @@ async def test_manifest_corruption_aborts_cleanup(
         # Now artificially corrupt one of the .pff files on the head node
         dest_run = head_data_dir / run_name
         pff_files = list(dest_run.glob("**/*.pff"))
-        if pff_files:
+        non_empty_pff_files = [fname for fname in pff_files if os.path.getsize(fname) > 0]
+        assert len(non_empty_pff_files) > 0
+        if non_empty_pff_files:
             # Flip a byte
-            data = bytearray(pff_files[0].read_bytes())
+            data = bytearray(non_empty_pff_files[0].read_bytes())
             data[0] ^= 0xFF
-            pff_files[0].write_bytes(data)
+            non_empty_pff_files[0].write_bytes(data)
             
         proc = MagicMock()
         proc.returncode = 0
