@@ -9,10 +9,12 @@ from typing import Annotated, Any
 import numpy as np
 import typer
 from grpc.aio import AioRpcError
+from matplotlib import colormaps
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 from panoseti_grpc.util.cli import display_tree_callback
 from rich import print
+from rich.columns import Columns
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -122,9 +124,34 @@ def show_paths(
     console.print("\n[dim]Tip: Overriding PSETI_ROOT or PSETI_CONTROL will shift the default locations of all sub-directories.[/dim]")
 
 
-def render_image_text(img_array: Any, shape: list[int], bpp: int, min_val: float = 0, max_val: float = 0) -> Text:
-    """Renders a PanoImage as a rich Text object using density scaling."""
-    scale = ' .:-=+*#%@▒▓█'
+def get_color(val: float, cmap_name: str | None) -> str:
+    """Get RGB string from matplotlib colormap or grayscale."""
+    if not cmap_name or cmap_name.lower() == "none":
+        v = int(val * 255)
+        return f"rgb({v},{v},{v})"
+    
+    try:
+        cmap = colormaps.get_cmap(cmap_name)
+    except ValueError:
+        # Fallback to grayscale if cmap not found
+        v = int(val * 255)
+        return f"rgb({v},{v},{v})"
+    
+    rgba = cmap(val)
+    r, g, b = int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)
+    return f"rgb({r},{g},{b})"
+
+
+def render_image_text(
+    img_array: Any, 
+    shape: list[int], 
+    bpp: int, 
+    min_val: float = 0, 
+    max_val: float = 0,
+    color_palette: str | None = "viridis",
+    compact: bool = True
+) -> Text:
+    """Renders a PanoImage as a rich Text object using density scaling or half-blocks."""
     img_size_y, img_size_x = shape
     text = Text()
     
@@ -135,21 +162,45 @@ def render_image_text(img_array: Any, shape: list[int], bpp: int, min_val: float
             min_val = float(np.min(flat)) if hasattr(flat, "min") else float(min(flat))
             max_val = float(np.max(flat)) if hasattr(flat, "max") else float(max(flat))
 
-    for row in range(img_size_y):
-        line = ""
-        for col in range(img_size_x):
-            val = img_array[row][col] if hasattr(img_array, "shape") else img_array[row * img_size_x + col]
-            if max_val != min_val:
-                y = (val - min_val) / (max_val - min_val)
-                y = max(0.0, min(1.0, float(y)))
-                idx = int(y * (len(scale) - 1))
-            else:
-                idx = val // 8192 if bpp == 2 else val // 32
-                idx = max(0, min(len(scale) - 1, int(idx)))
-                if val > 0 and idx == 0:
-                    idx = 1
-            line += scale[idx] + " "
-        text.append(line + "\n")
+    if compact:
+        # High-resolution half-block mode (2 pixels per character cell)
+        for row in range(0, img_size_y, 2):
+            for col in range(img_size_x):
+                # Handle potential odd row count (though PanoSETI is always 16 or 32)
+                v1 = img_array[row][col] if hasattr(img_array, "shape") else img_array[row * img_size_x + col]
+                y1 = (v1 - min_val) / (max_val - min_val) if max_val != min_val else 0
+                y1 = max(0.0, min(1.0, float(y1)))
+                
+                if row + 1 < img_size_y:
+                    v2 = img_array[row+1][col] if hasattr(img_array, "shape") else img_array[(row+1) * img_size_x + col]
+                    y2 = (v2 - min_val) / (max_val - min_val) if max_val != min_val else 0
+                    y2 = max(0.0, min(1.0, float(y2)))
+                else:
+                    y2 = 0
+                
+                color_top = get_color(y1, color_palette)
+                color_bottom = get_color(y2, color_palette)
+                text.append("▀", style=f"{color_top} on {color_bottom}")
+            text.append("\n")
+    else:
+        # Density scale mode (1 pixel per character cell + space for aspect ratio)
+        scale = ' .:-=+*#%@▒▓█'
+        for row in range(img_size_y):
+            for col in range(img_size_x):
+                val = img_array[row][col] if hasattr(img_array, "shape") else img_array[row * img_size_x + col]
+                if max_val != min_val:
+                    y = (val - min_val) / (max_val - min_val)
+                    y = max(0.0, min(1.0, float(y)))
+                    idx = int(y * (len(scale) - 1))
+                else:
+                    y = (val // 8192 if bpp == 2 else val // 32) / (len(scale)-1)
+                    y = max(0.0, min(1.0, float(y)))
+                    idx = int(y * (len(scale) - 1))
+                
+                char = scale[idx]
+                color = get_color(y, color_palette)
+                text.append(char + " ", style=color)
+            text.append("\n")
     return text
 
 
@@ -159,76 +210,34 @@ async def stream_sci_data(
     movie: bool,
     ph: bool,
     init: bool = False,
-    legend: bool = False,
+    init_sim: bool = False,
+    legend_local: bool = False,
+    legend_global: bool = False,
+    color: str | None = "viridis",
+    compact: bool = True,
 ) -> None:
-    """Async generator-driven science data stream."""
-    daq_config = config_file.get_daq_config()
-    network_config = config_file.get_network_config()
-    util.attach_daq_config(daq_config, network_config)
-    
-    # dict conversion for client
-    daq_cfg_dict = daq_config if isinstance(daq_config, dict) else daq_config.model_dump()
-    net_cfg_dict = network_config if isinstance(network_config, dict) else network_config.model_dump()
+    """Async science data stream with decoupled rendering to prevent flickering."""
+    # Simplified: AioDaqDataClient accepts config paths directly and handles all valid hosts if hosts=[] is passed.
+    daq_config_path = PanoPaths.config_dir() / config_file.daq_config_filename
+    network_config_path = PanoPaths.config_dir() / config_file.network_config_filename
 
-    # module_id -> type -> {quabo_id or 'full': pano_image}
+    # Shared state between ingestion and rendering
     latest_images: dict[int, dict[str, dict[Any, Any]]] = {}
-
-    async with AioDaqDataClient(daq_cfg_dict, net_cfg_dict) as client:
-        hosts = await client.get_valid_daq_hosts()
-        if not hosts:
-            print("[red]No valid DAQ hosts found. Ensure daq_data services are running.[/red]")
-            return
-
-        # Check status and optionally initialize
-        status_ok = True
-        for h_str in hosts:
-            s = await client.status(h_str)
-            if not s or not s.hp_io_initialized:
-                if init:
-                    # Find matching DaqNode to get data_dir and check hashpipe liveness
-                    matching_node = None
-                    for node in daq_config.daq_nodes:
-                        endpoint_h, endpoint_p = util.daq_grpc_endpoint(node, daq_config)
-                        if f"{endpoint_h}:{endpoint_p}" == h_str:
-                            matching_node = node
-                            break
-                    
-                    if matching_node:
-                        h, p = util.daq_grpc_endpoint(matching_node, daq_config)
-                        async with AsyncDaqControlClient(host=h, port=p) as control_client:
-                            try:
-                                ok, daq_status = await control_client.StatusDaq({
-                                    'data_dir': matching_node.data_dir,
-                                    'check_hashpipe_running': True
-                                }, timeout=5.0)
-                                
-                                if ok and daq_status.get('hashpipe_running'):
-                                    hp_io_cfg = {
-                                        "update_interval_seconds": 0.1,
-                                        "force": True,
-                                        "simulate_daq": False,
-                                        "module_ids": []
-                                    }
-                                    success = await client.init_hp_io(h_str, hp_io_cfg)
-                                    if success:
-                                        print(f"[green]Successfully initialized DaqData hp_io on {h_str}.[/green]")
-                                        continue
-                                    else:
-                                        print(f"[red]Failed to initialize DaqData hp_io on {h_str}.[/red]")
-                                else:
-                                    print(f"[yellow]Warning: Hashpipe is NOT running on {h_str}. Cannot initialize DaqData.[/yellow]")
-                            except Exception as e:
-                                print(f"[red]Error checking hashpipe status on {h_str}: {e}[/red]")
-                
-                print(f"[yellow]Warning: DaqData hp_io is not initialized on {h_str}.[/yellow]")
-                status_ok = False
-        
-        if not status_ok:
-            print("[dim]Tip: Run 'pseti show sci --init' or 'pseti start --init-snapshot' to initialize the data streaming service.[/dim]")
-
+    dirty = False
+    
+    async with AioDaqDataClient(daq_config_path, network_config_path) as client:
+        # Handle initialization if requested
+        if init_sim:
+            await client.init_sim(hosts=[])
+            print("[green]Initialized simulation stream on all DAQ nodes.[/green]")
+        elif init:
+            # client.init_hp_io handles broadcasting and node-specific data_dirs from daq_config
+            hp_io_cfg = {"update_interval_seconds": 0.1, "force": True}
+            await client.init_hp_io(hosts=[], hp_io_cfg=hp_io_cfg)
+            print("[green]Initialized science stream on all DAQ nodes.[/green]")
 
         stream = await client.stream_images(
-            hosts=hosts,
+            hosts=[],
             stream_movie_data=movie,
             stream_pulse_height_data=ph,
             update_interval_seconds=interval,
@@ -237,7 +246,9 @@ async def stream_sci_data(
         )
 
         console = Console()
-        with Live(Text("Waiting for data..."), console=console, refresh_per_second=4) as live:
+
+        async def ingestion_task():
+            nonlocal dirty
             async for pano_image in stream:
                 if isinstance(pano_image, dict):
                     mid = pano_image.get("module_id", 0)
@@ -252,7 +263,6 @@ async def stream_sci_data(
                     if shape == [32, 32]:
                         latest_images[mid][img_type]['full'] = pano_image
                     elif shape == [16, 16]:
-                        # Identify quabo from header
                         qid = 0
                         header = pano_image.get('header', {})
                         for i in range(4):
@@ -260,8 +270,39 @@ async def stream_sci_data(
                                 qid = i
                                 break
                         latest_images[mid][img_type][qid] = pano_image
+                    dirty = True
+
+        # Start ingestion in the background
+        ingest_fut = asyncio.create_task(ingestion_task())
+
+        try:
+            with Live(Text("Waiting for data..."), console=console, refresh_per_second=2) as live:
+                while not ingest_fut.done():
+                    if not dirty:
+                        await asyncio.sleep(0.05)
+                        continue
                     
-                    # Build display
+                    dirty = False
+                    
+                    # Compute global stats if requested
+                    g_min, g_max = 0.0, 0.0
+                    g_flat = np.array([])
+                    if legend_global:
+                        all_arrays = []
+                        for m_id in latest_images:
+                            for t_id in latest_images[m_id]:
+                                d = latest_images[m_id][t_id]
+                                if 'full' in d:
+                                    all_arrays.append(d['full']['image_array'].flatten())
+                                else:
+                                    for q in d:
+                                        if isinstance(q, int):
+                                            all_arrays.append(d[q]['image_array'].flatten())
+                        if all_arrays:
+                            g_flat = np.concatenate(all_arrays)
+                            g_min = float(np.min(g_flat))
+                            g_max = float(np.max(g_flat))
+
                     sorted_mids = sorted(latest_images.keys())
                     display_group = []
                     
@@ -284,77 +325,64 @@ async def stream_sci_data(
                                 frame_num = img_dict.get('frame_number', 0)
                             else:
                                 qids = [q for q in data if isinstance(q, int)]
-                                if not qids:
-                                    continue
-                                
-                                # Use info from the most recent quadrant we've seen
+                                if not qids: continue
                                 latest_q = data[max(qids)]
                                 bpp = latest_q.get('bytes_per_pixel', 2)
                                 header = latest_q.get('header', {})
                                 frame_num = latest_q.get('frame_number', 0)
-                                
-                                # Assembled view is always 32x32
                                 merged = np.zeros((32, 32), dtype=np.uint16)
                                 for qid in qids:
-                                    q_img = data[qid]
-                                    q_arr = q_img['image_array']
-                                    # PANOSETI quadrant layout: 0 1 / 2 3
-                                    row_off = (qid // 2) * 16
-                                    col_off = (qid % 2) * 16
+                                    q_arr = data[qid]['image_array']
+                                    row_off, col_off = (qid // 2) * 16, (qid % 2) * 16
                                     merged[row_off:row_off+16, col_off:col_off+16] = q_arr
-                                img_to_render = merged
-                                shape_to_render = [32, 32]
+                                img_to_render, shape_to_render = merged, [32, 32]
                             
                             if img_to_render is not None:
-                                # Calculate stats for legend
                                 flat = img_to_render.flatten()
-                                v_min = float(np.min(flat))
-                                v_max = float(np.max(flat))
+                                l_min, l_max = float(np.min(flat)), float(np.max(flat))
+                                use_min = g_min if legend_global else l_min
+                                use_max = g_max if legend_global else l_max
                                 
                                 img_text = render_image_text(
-                                    img_to_render, 
-                                    shape_to_render, 
-                                    bpp,
-                                    min_val=v_min,
-                                    max_val=v_max
+                                    img_to_render, shape_to_render, bpp,
+                                    min_val=use_min, max_val=use_max,
+                                    color_palette=color, compact=compact
                                 )
                                 ts = header.get("pandas_unix_timestamp", "N/A")
-                                info = Text(f"Module {m} | {t} | Frame {frame_num}\n{ts}", style="dim")
-                                
+                                info = Text(f"M{m}|{t}|F{frame_num} {ts}", style="dim")
                                 content: list[Any] = [info, img_text]
                                 
-                                if legend:
-                                    v_25 = float(np.percentile(flat, 25))
-                                    v_50 = float(np.percentile(flat, 50))
-                                    v_75 = float(np.percentile(flat, 75))
+                                if legend_local or legend_global:
+                                    stats_flat = g_flat if legend_global else flat
+                                    s_min = g_min if legend_global else l_min
+                                    s_max = g_max if legend_global else l_max
                                     
-                                    scale = ' .:-=+*#%@▒▓█'
-                                    legend_text = Text("\nLegend (ADC):\n", style="bold")
-                                    legend_text.append(f"Min: {v_min:.0f} | 25%: {v_25:.0f} | 50%: {v_50:.0f} | 75%: {v_75:.0f} | Max: {v_max:.0f}\n", style="dim")
+                                    quants = [0, 0.25, 0.5, 0.75, 1.0]
+                                    labels = ["Min", "25%", "50%", "75%", "Max"]
+                                    vals = np.percentile(stats_flat, [q*100 for q in quants])
                                     
-                                    # Show a small sample of the scale mapping
-                                    mapping = "Scale: "
-                                    for i, char in enumerate(scale):
-                                        val = v_min + (i / (len(scale)-1)) * (v_max - v_min)
-                                        mapping += f"{char}:{val:.0f} "
-                                    legend_text.append(mapping, style="dim")
+                                    legend_text = Text(f"{'Global' if legend_global else 'Local'} ADC: ", style="bold")
+                                    for lbl, val, q in zip(labels, vals, quants):
+                                        c_str = get_color(q, color)
+                                        sym = "█" if compact else "█" 
+                                        legend_text.append(f"{lbl}:", style="dim")
+                                        legend_text.append(f"{val:.0f}", style="bold")
+                                        legend_text.append(f"{sym} ", style=c_str)
                                     content.append(legend_text)
                                 
                                 panel = Panel(
                                     Group(*content),
-                                    title=f"Module {m} - {t}",
+                                    title=f"M{m}-{t}",
                                     border_style="green" if t == "MOVIE" else "magenta",
-                                    padding=(0, 1)
+                                    padding=(0, 0)
                                 )
                                 display_group.append(panel)
                     
-                    if not display_group:
-                        live.update(Text("Waiting for data..."))
-                        continue
-
-                    # Tile the panels efficiently
-                    live.update(Columns(display_group, expand=True, equal=True))
-
+                    if display_group:
+                        live.update(Columns(display_group, expand=True, equal=True))
+                    await asyncio.sleep(0.1) # UI Refresh interval
+        finally:
+            ingest_fut.cancel()
 
 @app.command(name="sci")
 def show_sci(
@@ -363,13 +391,18 @@ def show_sci(
     movie: Annotated[bool, typer.Option("--movie/--no-movie", help="Stream movie-mode images.")] = True,
     ph: Annotated[bool, typer.Option("--ph/--no-ph", help="Stream pulse-height images.")] = True,
     init: Annotated[bool, typer.Option("--init", help="Attempt to initialize gRPC servers on all daq nodes.")] = False,
-    legend: Annotated[bool, typer.Option("--legend", help="Display ADC quantiles and symbol mapping legend.")] = False,
+    init_sim: Annotated[bool, typer.Option("--init-sim", help="Initialize the server with simulation data streaming.")] = False,
+    legend_local: Annotated[bool, typer.Option("--legend-local", help="Display per-figure ADC quantiles.")] = False,
+    legend_global: Annotated[bool, typer.Option("--legend-global", help="Display global ADC quantiles.")] = False,
+    color: Annotated[str, typer.Option("--color", help="Matplotlib colormap (e.g. viridis, inferno, plasma, magma, hot, bone). Default is viridis.")] = "plasma",
+    compact: Annotated[bool, typer.Option("--compact/--no-compact", help="Use high-density half-blocks (default).")] = True,
 ) -> None:
     """
     Display a live-updating text view of the science data stream.
     """
+    palette = None if color.lower() == "none" else color.lower()
     with contextlib.suppress(KeyboardInterrupt, AioRpcError):
-        asyncio.run(stream_sci_data(interval, module_ids, movie, ph, init, legend))
+        asyncio.run(stream_sci_data(interval, module_ids, movie, ph, init, init_sim, legend_local, legend_global, palette, compact))
 
 
 @app.command(name="commands")
@@ -380,7 +413,6 @@ def show_commands(
     """
     Display a tree-like view of all available PSETI commands and subcommands.
     """
-    # This command is now just an alias for -t at this level
     pass
 
 
