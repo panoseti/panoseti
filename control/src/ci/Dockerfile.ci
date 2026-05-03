@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy software version info from repo root
-COPY sw_info.json /sw_info.json
+# COPY sw_info.json /sw_info.json
 
 # Copy source code (this layer invalidates if control/ changes)
 COPY control/ .
@@ -102,7 +102,7 @@ COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpi
 COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
 WORKDIR /app
 # Copy software version info from repo root
-COPY sw_info.json /sw_info.json
+# COPY sw_info.json /sw_info.json
 COPY control/ .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras

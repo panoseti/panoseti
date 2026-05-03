@@ -924,8 +924,8 @@ async def _check_daq_data_status(
     # Construct a minimal daq_config dict for the client.
     # We avoid .model_dump() because daq_config.daq_nodes might contain MagicMocks during tests,
     # which Pydantic cannot serialize.
-    daq_cfg_dict = {"daq_nodes": [{"ip_addr": str(node.ip_addr)} for node in daq_config.daq_nodes]}
-    net_cfg_dict = network_config.model_dump() if hasattr(network_config, "model_dump") else network_config
+    daq_cfg_dict = daq_config.model_dump() #{"daq_nodes": [{"ip_addr": str(node.ip_addr)} for node in daq_config.daq_nodes]}
+    net_cfg_dict = network_config.model_dump()
 
     async with AioDaqDataClient(daq_cfg_dict, net_cfg_dict) as client:
         hosts = await client.get_valid_daq_hosts()
@@ -977,7 +977,7 @@ async def start_run(
     no_check_daq: bool = False,
     strict: bool | None = None,
     force_restart: bool = False,
-    init_hp_io: bool = False,
+    init_snapshot: bool = False,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -1015,7 +1015,7 @@ async def start_run(
     # --- Pre-flight: DAQ gRPC reachability sweep ---
     if not no_check_daq:
         await _check_daq_reachability(daq_config)
-        await _check_daq_data_status(daq_config, network_config, do_init=init_hp_io)
+        await _check_daq_data_status(daq_config, network_config, do_init=init_snapshot)
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -1214,9 +1214,9 @@ def main(
         False, "--force-restart",
         help="Stop any orphaned Hashpipe instances before starting (implies remote Hashpipe check).",
     ),
-    init_hp_io: bool = typer.Option(
+    init_snapshot: bool = typer.Option(
         False, "--init-hp-io",
-        help="Automatically initialize the DaqData gRPC service on each node for real-time streaming.",
+        help="Automatically initialize the snapshot (DaqData) gRPC service on each node for real-time streaming.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ) -> None:
@@ -1243,7 +1243,7 @@ def main(
         
     success = asyncio.run(async_main_logic(
         no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq,
-        strict=strict, force_restart=force_restart, init_hp_io=init_hp_io
+        strict=strict, force_restart=force_restart, init_snapshot=init_snapshot
     ))
     if not success:
         raise typer.Exit(code=1)
@@ -1259,7 +1259,7 @@ async def async_main_logic(
     no_check_daq: bool = False,
     strict: bool | None = None,
     force_restart: bool = False,
-    init_hp_io: bool = False,
+    init_snapshot: bool = False,
 ) -> bool:
 
     # load config files
@@ -1274,7 +1274,7 @@ async def async_main_logic(
         obs_config, daq_config, quabo_uids, data_config,
         network_config, no_hv, no_redis, no_data, force_reset,
         no_check_daq=no_check_daq, strict=strict, force_restart=force_restart,
-        init_hp_io=init_hp_io,
+        init_snapshot=init_snapshot,
     )
     
     if not success_run_name:

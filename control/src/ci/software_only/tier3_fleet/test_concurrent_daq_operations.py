@@ -74,6 +74,8 @@ class TestConcurrentDaqOperations:
         hashpipe_pid; subsequent calls see pid > 0 and return success=False,
         which the client converts to ValueError.
         """
+        from random import uniform
+        import time
         rp = run_params_conc
         fleet, _ = session_fleet
         spec = fleet.specs[0]
@@ -84,6 +86,7 @@ class TestConcurrentDaqOperations:
             # is only set in the Docker CI environment).
             client = DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
             try:
+                time.sleep(uniform(0.05, 0.75))
                 return client.StartDaq(rp)   # True on success
             except ValueError:
                 return False                  # Server rejected duplicate start

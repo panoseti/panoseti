@@ -110,6 +110,7 @@ async def test_start_collision_does_not_stop_active_run(session_fleet, tmp_path,
         
     # Verify Run 1 is active
     ledger = RunStateManager().load_state()
+    assert ledger is not None
     assert ledger.status == RunStatus.ACTIVE
     await _check_hashpipe_on_nodes(daq_cfg, expected_running=True)
 

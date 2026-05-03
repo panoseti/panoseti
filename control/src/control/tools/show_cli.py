@@ -241,7 +241,7 @@ def show_sci(
     interval: Annotated[float, typer.Option("--interval", "-i", help="Update interval in seconds.")] = 1.0,
     module_ids: Annotated[list[int], typer.Option("--module", "-m", help="Whitelist of module IDs to display.")] = [],
     movie: Annotated[bool, typer.Option("--movie/--no-movie", help="Stream movie-mode images.")] = True,
-    ph: Annotated[bool, typer.Option("--ph/--no-ph", help="Stream pulse-height images.")] = False,
+    ph: Annotated[bool, typer.Option("--ph/--no-ph", help="Stream pulse-height images.")] = True,
 ) -> None:
     """
     Display a live-updating text view of the science data stream.

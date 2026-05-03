@@ -25,7 +25,7 @@ from control.utils.run_state import RunStateManager
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(strict=True, reason="Strict VERIFYING stage should catch this data corruption")
+# @pytest.mark.xfail(strict=True, reason="Strict VERIFYING stage should catch this data corruption")
 async def test_manifest_corruption_aborts_cleanup(
     session_fleet: Any,
     tmp_path: Path,

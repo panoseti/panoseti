@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient, DaqControlClient
+from control.utils.pydantic_config_models import DaqConfig, DaqNode
 from unittest.mock import AsyncMock, MagicMock
 
 from ci.software_only.conftest import (
@@ -29,7 +30,6 @@ from ci.software_only.tier3_fleet.conftest import (
     DAQ_DATA_DIR,
 )
 from ci.fixtures.state_probe import StateProbe
-
 from ci.software_only.tier4_chaos.conftest import (
     _start as grpc_start,
 )
@@ -172,11 +172,20 @@ async def test_SC035_unreachable_quabo_uid_silently_fails() -> None:
 
         daq_config = config_file.get_daq_config()
         # Coherence: Ensure DAQ IP matches module subnet
-        daq_config.daq_nodes = [MagicMock(ip_addr="192.168.3.30", module_ids=[mid])]
+        daq_config.daq_nodes = [
+            DaqNode(**{
+                    'username': 'panoseti',
+                    'ip_addr': "192.168.3.30", 
+                    'data_dir': '/tmp/',
+                    'module_ids': [mid]
+                }
+            )
+        ]
+        validated_mock_daq_config = DaqConfig(**daq_config.model_dump())
         
         success = await start_run(
             config_file.get_obs_config(), 
-            daq_config, 
+            validated_mock_daq_config, 
             mock_uids, 
             config_file.get_data_config(), 
             config_file.get_network_config(),
