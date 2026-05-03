@@ -27,19 +27,13 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import grpc
 
-try:
-    import grpc
-    _GRPC_AVAILABLE = True
-except ImportError:
-    _GRPC_AVAILABLE = False
+logger = logging.getLogger(__name__)
 
 
 def _make_rpc_error(code_name: str, message: str = "") -> Exception:
     """Build a grpc.RpcError with the given status code name."""
-    if not _GRPC_AVAILABLE:
-        return RuntimeError(f"gRPC {code_name}: {message}")
 
     class _RpcError(grpc.RpcError):
         def code(self) -> Any:

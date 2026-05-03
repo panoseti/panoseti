@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-import pathlib
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -11,9 +11,10 @@ from control.start import start_run
 from control.stop import stop_run
 from control.utils import config_file
 from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import DaqConfig
 
 
-def setup_isolated_integration_transfer_env(tmp_path: pathlib.Path, monkeypatch: Any) -> tuple[pathlib.Path, config_file.DaqConfig]:
+def setup_isolated_integration_transfer_env(tmp_path: Path, monkeypatch: Any) -> tuple[Path, DaqConfig]:
     """Redirect all PSETI state and config to tmp_path for isolation."""
     state_dir = tmp_path / "state"
     state_dir.mkdir()
@@ -57,13 +58,13 @@ def setup_isolated_integration_transfer_env(tmp_path: pathlib.Path, monkeypatch:
 def mocked_make_run_dirs_factory(daqnode_container: Any):
     def mocked_make_run_dirs(rn, oc, dc, quids, dtc, nc):
         # Create head node run dir locally
-        head_run_dir = pathlib.Path(dc.head_node_data_dir) / rn
+        head_run_dir = Path(dc.head_node_data_dir) / rn
         head_run_dir.mkdir(parents=True, exist_ok=True)
         
         # Create the directories on the DAQ node shared volume directly
         for node in dc.daq_nodes:
             # DAQ node data_dir is usually /data
-            daq_data_path = pathlib.Path(node.data_dir)
+            daq_data_path = Path(node.data_dir)
             
             # Root run dir
             (daq_data_path / rn).mkdir(parents=True, exist_ok=True)
@@ -88,7 +89,7 @@ def mocked_build_rsync_cmd(node, run_name, head_run_dir):
     cmd.append(str(head_run_dir) + "/")
     return cmd
 
-async def generate_integration_run(run_name: str, daq_config: config_file.DaqConfig, daqnode_container: Any) -> None:
+async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode_container: Any) -> None:
     """Start run, generate real data via tcpreplay, simulate metadata, and stop run."""
     obs_config = config_file.get_obs_config()
     quabo_uids = config_file.get_quabo_uids()
@@ -120,7 +121,7 @@ async def generate_integration_run(run_name: str, daq_config: config_file.DaqCon
 
         # Simulate metadata and logs generation on the DAQ node.
         # Since /data is a shared volume between int-tester and daqnode, we can write directly.
-        daq_run_path = pathlib.Path("/data") / run_name
+        daq_run_path = Path("/data") / run_name
         daq_run_path.mkdir(parents=True, exist_ok=True)
         (daq_run_path / "meta.json").write_text('{"test": true}')
         (daq_run_path / f"hp_stdout_{hostname}.log").touch()
@@ -139,7 +140,7 @@ async def generate_integration_run(run_name: str, daq_config: config_file.DaqCon
         # Kill tcpreplay for this run
         daqnode_container.exec_run("pkill -9 tcpreplay", detach=False)
 
-def verify_integration_transfer_accuracy(head_data_dir: pathlib.Path, run_name: str, daq_config: config_file.DaqConfig) -> None:
+def verify_integration_transfer_accuracy(head_data_dir: Path, run_name: str, daq_config: DaqConfig) -> None:
     head_run_dir = head_data_dir / run_name
     assert head_run_dir.exists()
     assert (head_run_dir / "run_complete").exists()
@@ -153,7 +154,7 @@ def verify_integration_transfer_accuracy(head_data_dir: pathlib.Path, run_name: 
     assert len(pff_files) > 0, f"No .pff files transferred to head node for {run_name}"
     
     # 2. Selective cleanup on DAQ node
-    daq_data_root = pathlib.Path(os.environ["DAQ_DATA_DIR"])
+    daq_data_root = Path(os.environ["DAQ_DATA_DIR"])
     daq_root_run_dir = daq_data_root / run_name
     assert (daq_root_run_dir / "meta.json").exists(), f"Metadata missing on DAQ root run dir for {run_name}"
     
