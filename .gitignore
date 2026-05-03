@@ -9,6 +9,7 @@ control/quabo_ph_baseline.json
 control/quabo_config*.json
 control/skymap_info_dir
 util/__pycache__/*
+sw_info.json
 
 # Ignore Python bytecode cache directories
 __pycache__/

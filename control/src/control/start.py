@@ -42,6 +42,7 @@ import typer
 # ---------------------------------------------------
 # panoseti-grpc imports
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError, UnavailableError
 from panoseti_grpc.telemetry.logger import get_logger
 
@@ -912,6 +913,56 @@ async def _check_no_remote_hashpipe(daq_config: DaqConfig, force_restart: bool =
     logger.info("Remote Hashpipe pre-flight OK — no running instances detected.")
 
 
+async def _check_daq_data_status(
+    daq_config: DaqConfig, 
+    network_config: NetworkConfig,
+    do_init: bool = False
+) -> None:
+    """Verify DaqData service initialization and optionally initialize it."""
+    logger.info("Performing DaqData service status pre-flight check...")
+    
+    # We need a dummy path or a real path to construct AioDaqDataClient.
+    # AioDaqDataClient expects daq_config and network_config paths or dicts.
+    # We have models, so we can pass their dict versions.
+    daq_cfg_dict = daq_config.model_dump()
+    net_cfg_dict = network_config.model_dump()
+
+    async with AioDaqDataClient(daq_cfg_dict, net_cfg_dict) as client:
+        hosts = await client.get_valid_daq_hosts()
+        
+        async def check_host(host: str) -> None:
+            status = await client.status(host)
+            if not status or not status.hp_io_initialized:
+                if do_init:
+                    logger.info(f"Initializing DaqData hp_io on {host}...")
+                    # Construct a default hp_io_cfg. 
+                    # We'll use the head_node_data_dir from daq_config.
+                    # Note: In a real run, it should watch the root data_dir.
+                    hp_io_cfg = {
+                        "data_dir": daq_config.head_node_data_dir,
+                        "update_interval_seconds": 0.1,
+                        "force": True,
+                        "simulate_daq": False,
+                        "module_ids": []
+                    }
+                    success = await client.init_hp_io(host, hp_io_cfg)
+                    if success:
+                        logger.info(f"Successfully initialized DaqData hp_io on {host}.")
+                    else:
+                        logger.warning(f"Failed to initialize DaqData hp_io on {host}.")
+                else:
+                    logger.warning(
+                        f"DaqData service hp_io is NOT initialized on {host}. "
+                        "Real-time streaming (pseti show sci) will not be available. "
+                        "Use --init-hp-io to initialize it automatically."
+                    )
+            else:
+                logger.info(f"DaqData service hp_io is initialized and valid on {host}.")
+
+        async with asyncio.TaskGroup() as tg:
+            for h in hosts:
+                tg.create_task(check_host(h))
+
 async def start_run(
     obs_config: ObsConfig,
     daq_config: DaqConfig,
@@ -926,6 +977,7 @@ async def start_run(
     no_check_daq: bool = False,
     strict: bool | None = None,
     force_restart: bool = False,
+    init_hp_io: bool = False,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -963,6 +1015,7 @@ async def start_run(
     # --- Pre-flight: DAQ gRPC reachability sweep ---
     if not no_check_daq:
         await _check_daq_reachability(daq_config)
+        await _check_daq_data_status(daq_config, network_config, do_init=init_hp_io)
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -1161,6 +1214,10 @@ def main(
         False, "--force-restart",
         help="Stop any orphaned Hashpipe instances before starting (implies remote Hashpipe check).",
     ),
+    init_hp_io: bool = typer.Option(
+        False, "--init-hp-io",
+        help="Automatically initialize the DaqData gRPC service on each node for real-time streaming.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
 ) -> None:
     """
@@ -1186,7 +1243,7 @@ def main(
         
     success = asyncio.run(async_main_logic(
         no_hv, no_redis, no_data, nsecs, stop_session, verbose, force_reset, no_check_daq,
-        strict=strict, force_restart=force_restart,
+        strict=strict, force_restart=force_restart, init_hp_io=init_hp_io
     ))
     if not success:
         raise typer.Exit(code=1)
@@ -1202,6 +1259,7 @@ async def async_main_logic(
     no_check_daq: bool = False,
     strict: bool | None = None,
     force_restart: bool = False,
+    init_hp_io: bool = False,
 ) -> bool:
 
     # load config files
@@ -1216,6 +1274,7 @@ async def async_main_logic(
         obs_config, daq_config, quabo_uids, data_config,
         network_config, no_hv, no_redis, no_data, force_reset,
         no_check_daq=no_check_daq, strict=strict, force_restart=force_restart,
+        init_hp_io=init_hp_io,
     )
     
     if not success_run_name:
