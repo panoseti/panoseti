@@ -271,7 +271,7 @@ class PortForwarding(BaseStrictModel):
     gw_ip: IPvAnyAddress
     reboot_port: list[int | None] | None = Field(None)
     cmd_port: list[int | None] | None = Field(None)
-    ssh_port: int | None = None                              # SSH forwarded port (legacy)
+    port: int | None = None                              # SSH forwarded port (legacy)
     grpc_port: int = Field(50051, ge=1, le=65535)  # gRPC forwarded port
 
 

@@ -62,7 +62,7 @@ def _make_job_with_pf(run_name: str = "pf_run_001") -> TransferJob:
                 port_forwarding=PortForwarding(
                     status=True,
                     gw_ip="10.0.1.254",
-                    ssh_port=2222,
+                    port=2222,
                 ),
             )
         ],
@@ -254,7 +254,7 @@ class TestRoundTrip:
         assert node.port_forwarding is not None
         assert node.port_forwarding.status is True
         assert str(node.port_forwarding.gw_ip) == str(orig_node.port_forwarding.gw_ip)  # type: ignore[union-attr]
-        assert node.port_forwarding.ssh_port == 2222
+        assert node.port_forwarding.port == 2222
 
     def test_roundtrip_no_portforwarding(self, tq: TransferQueue) -> None:
         """Jobs without port_forwarding survive a round-trip cleanly."""

@@ -96,7 +96,7 @@ class HwTopology:
                 ssh_port = 22
             else:
                 real_host = str(pf.gw_ip)
-                ssh_port = 22 if pf.ssh_port is None else int(pf.ssh_port)
+                ssh_port = 22 if pf.port is None else int(pf.port)
                 
             result.append(DaqNode(
                 host=host,

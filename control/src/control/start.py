@@ -185,7 +185,7 @@ class StartTransaction:
                             ssh_args = ["ssh", *util.ssh_options]
                             if node.port_forwarding and node.port_forwarding.status:
                                 real_ip = str(node.port_forwarding.gw_ip)
-                                port = str(node.port_forwarding.ssh_port)
+                                port = str(node.port_forwarding.port)
                                 ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
                             else:
                                 ssh_args.append(f"{node.username}@{node.ip_addr}")
@@ -472,7 +472,7 @@ def make_run_dirs(
             ssh_args = ["ssh", *util.ssh_options]
             if node.port_forwarding and node.port_forwarding.status:
                 real_ip = str(node.port_forwarding.gw_ip)
-                port = str(node.port_forwarding.ssh_port)
+                port = str(node.port_forwarding.port)
                 ssh_args.extend(["-p", port, f"{username}@{real_ip}"])
             else:
                 ssh_args.append(f"{username}@{ip_addr}")
@@ -921,11 +921,11 @@ async def _check_daq_data_status(
     """Verify DaqData service initialization and optionally initialize it."""
     logger.info("Performing DaqData service status pre-flight check...")
     
-    # We need a dummy path or a real path to construct AioDaqDataClient.
-    # AioDaqDataClient expects daq_config and network_config paths or dicts.
-    # We have models, so we can pass their dict versions.
-    daq_cfg_dict = daq_config.model_dump()
-    net_cfg_dict = network_config.model_dump()
+    # Construct a minimal daq_config dict for the client.
+    # We avoid .model_dump() because daq_config.daq_nodes might contain MagicMocks during tests,
+    # which Pydantic cannot serialize.
+    daq_cfg_dict = {"daq_nodes": [{"ip_addr": str(node.ip_addr)} for node in daq_config.daq_nodes]}
+    net_cfg_dict = network_config.model_dump() if hasattr(network_config, "model_dump") else network_config
 
     async with AioDaqDataClient(daq_cfg_dict, net_cfg_dict) as client:
         hosts = await client.get_valid_daq_hosts()

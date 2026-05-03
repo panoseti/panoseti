@@ -69,7 +69,7 @@ def generate_fleet_configs(
             pf = PortForwarding(
                 status=True,
                 gw_ip=IPv4Address(gw_ip),
-                ssh_port=22, # SSH/rsync
+                port=22, # SSH/rsync
                 grpc_port=50051 + i
             )
             if pf:
@@ -252,7 +252,7 @@ def generate_palomar_topology() -> tuple[DaqConfig, QuaboUids, NetworkConfig, Ob
         pf = PortForwarding(
             status=True,
             gw_ip=gw_ip,
-            ssh_port=22,
+            port=22,
             grpc_port=50051
         )
         

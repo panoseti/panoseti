@@ -51,7 +51,7 @@ async def test_transfer_queue_mixed_port_forwarding(
             pf = None
         else:
             # Port forwarded behind different routers
-            pf = PortForwarding(status=True, gw_ip=f"10.0.1.{10+i}", ssh_port=2200+i)
+            pf = PortForwarding(status=True, gw_ip=f"10.0.1.{10+i}", port=2200+i)
             
         nodes.append(
             DaqNode(

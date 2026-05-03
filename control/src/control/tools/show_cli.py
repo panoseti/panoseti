@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+import pathlib
 from typing import Annotated, Any
 
+import numpy as np
 import typer
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 from panoseti_grpc.util.cli import display_tree_callback
+from rich import print
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -180,7 +184,7 @@ async def stream_sci_data(
         if not status_ok:
             print("[dim]Tip: Run 'pseti start --init-hp-io' to initialize the data service.[/dim]")
 
-        stream = client.stream_images(
+        stream = await client.stream_images(
             hosts=hosts,
             stream_movie_data=movie,
             stream_pulse_height_data=ph,
@@ -197,7 +201,7 @@ async def stream_sci_data(
                     latest_images[mid] = pano_image
                     
                     # Build display
-                    display_group = []
+                    # display_group = []
                     sorted_mids = sorted(latest_images.keys())
                     
                     # Create a layout for modules (2 per row if possible)
@@ -242,16 +246,8 @@ def show_sci(
     """
     Display a live-updating text view of the science data stream.
     """
-    try:
-        import numpy as np  # Ensure numpy is available for rendering
-    except ImportError:
-        print("[red]Error: numpy is required for 'pseti show sci'.[/red]")
-        raise typer.Exit(1)
-
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(stream_sci_data(interval, module_ids, movie, ph))
-    except KeyboardInterrupt:
-        pass
 
 
 @app.command(name="commands")

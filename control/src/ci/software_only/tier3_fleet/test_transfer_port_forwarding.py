@@ -97,7 +97,7 @@ def _grpc_client_ok() -> MagicMock:
 
 @pytest.fixture
 def pf() -> PortForwarding:
-    return PortForwarding(status=True, gw_ip=GATEWAY_IP, ssh_port=PF_PORT)
+    return PortForwarding(status=True, gw_ip=GATEWAY_IP, port=PF_PORT)
 
 
 @pytest.fixture
@@ -165,7 +165,7 @@ class TestPortForwardingRoundTrip:
             "port_forwarding was silently dropped — this is the core regression!"
         )
         assert str(node.port_forwarding.gw_ip) == GATEWAY_IP
-        assert node.port_forwarding.ssh_port == PF_PORT
+        assert node.port_forwarding.port == PF_PORT
         assert node.port_forwarding.status is True
 
     def test_no_pf_survives_toml_roundtrip(
@@ -251,7 +251,7 @@ class TestBuildRsyncCmd:
             username="panoseti",
             data_dir=str(DAQ_DATA_DIR),
             module_ids=[200],
-            port_forwarding=PortForwarding(status=False, gw_ip=GATEWAY_IP, ssh_port=PF_PORT),
+            port_forwarding=PortForwarding(status=False, gw_ip=GATEWAY_IP, port=PF_PORT),
         )
         cmd = build_rsync_cmd(node, run_name, str(HEAD_DATA_DIR / run_name))
         cmd_str = " ".join(cmd)

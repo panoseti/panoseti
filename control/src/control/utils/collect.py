@@ -112,7 +112,7 @@ def cleanup_daq(daq_config: DaqConfig, run_dir: str, verbose: bool = False) -> s
             rcmd = f'rm -rf {node.data_dir}/module_*/{run_dir}; rm -rf {node.data_dir}/{run_dir}'
             ssh_args = ["ssh"]
             if node.port_forwarding and node.port_forwarding.status:
-                ssh_args.extend(["-p", str(node.port_forwarding.ssh_port), f"{node.username}@{node.port_forwarding.gw_ip}"])
+                ssh_args.extend(["-p", str(node.port_forwarding.port), f"{node.username}@{node.port_forwarding.gw_ip}"])
             else:
                 ssh_args.append(f"{node.username}@{ip_addr}")
             ssh_args.append(rcmd)

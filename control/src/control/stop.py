@@ -407,7 +407,7 @@ async def stop_recording(daq_config: DaqConfig, run_dir: str | None, verbose: bo
                         ssh_args = ["ssh", *util.ssh_options]
                         if node.port_forwarding and node.port_forwarding.status:
                             real_ip = str(node.port_forwarding.gw_ip)
-                            port = str(node.port_forwarding.ssh_port)
+                            port = str(node.port_forwarding.port)
                             ssh_args.extend(["-p", port, f"{node.username}@{real_ip}"])
                         else:
                             ssh_args.append(f"{node.username}@{node.ip_addr}")
