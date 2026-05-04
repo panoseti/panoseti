@@ -68,6 +68,10 @@ dependencies = [
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "hw_class(name): hardware test class name (env_check, boot_sequence, happy_path)",
+    "slow_hw: marks tests that require full hardware I/O (may take minutes)",
+]
 
 [tool.ruff]
 target-version = "py314"

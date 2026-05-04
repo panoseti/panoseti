@@ -97,8 +97,20 @@ def hw_main(ctx: typer.Context):
 def hw_build(
     tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
 ) -> None:
-    """Build headnode and daqnode container images locally."""
-    env = {**os.environ, **_compose_env()}
+    """Build headnode and daqnode container images locally.
+
+    Automatically injects HOST_UID and HOST_GID from the current user so that
+    files created inside the container are owned by the same user on the host.
+    """
+    import pwd
+    uid = os.getuid()
+    gid = os.getgid()
+    try:
+        username = pwd.getpwuid(uid).pw_name
+    except KeyError:
+        username = str(uid)
+    console.print(f"[dim]Injecting HOST_UID={uid} HOST_GID={gid} (user: {username})[/dim]")
+    env = {**os.environ, **_compose_env(), "HOST_UID": str(uid), "HOST_GID": str(gid)}
 
     # 1. Build headnode locally
     console.print("[cyan]Building profile: headnode locally...[/cyan]")
@@ -314,7 +326,7 @@ def hw_ls(
         state_groups: dict[str, dict[str, list[str]]] = {}
         for line in result.stdout.splitlines():
             line = line.strip()
-            if not line or line.startswith("=") or "warning" in line.lower() or "collected" in line.lower():
+            if not line or line.startswith("=") or "warning" in line.lower() or "collected" in line.lower() or line.startswith("TEST_METRICS_JSON"):
                 continue
             
             # Match to class

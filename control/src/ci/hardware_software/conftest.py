@@ -6,6 +6,13 @@ production paths must be preserved so quabo_uids.json, firmware/, and
 /mnt/panoseti-test/ remain accessible.
 """
 
+# Exclude archived test suites from collection.
+# Tests in _archived/ are preserved for future promotion but not collected.
+collect_ignore_glob = ["suites/_archived/*"]
+
+# Re-export topology so it's discoverable by both suites/ and core_happy_path/.
+from ci.hardware_software.fixtures.quabo_fixtures import topology  # noqa: F401
+
 import logging
 import os
 from pathlib import Path

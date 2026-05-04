@@ -49,6 +49,9 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: headnode
+      args:
+        HOST_UID: "${HOST_UID:-1000}"
+        HOST_GID: "${HOST_GID:-1000}"
     profiles: ["headnode"]
     network_mode: host
     volumes:

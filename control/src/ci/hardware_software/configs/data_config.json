@@ -1,16 +1,1 @@
-{
-    "run_type": "hw-sw-eng",
-    "detector_overvoltage": 2,
-    "max_file_size_mb": 2000,
-    "gain": 60,
-    "stim_params": {
-        "rate": 0,
-        "level": 255,
-        "mask": [1, 0, 0, 0]
-    },
-    "image": {
-        "integration_time_usec": 10000,
-        "pe_threshold": 2.0,
-        "quabo_sample_size": 16
-    }
-}
+/app/src/ci/hardware_software/core_obs_configs/data_config_image_8bit.json

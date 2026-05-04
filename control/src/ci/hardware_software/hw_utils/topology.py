@@ -29,6 +29,7 @@ class DaqNode:
     real_host: str     # gateway IP if port-forwarded, else == host
     ssh_port: int      # SSH port (forwarded or default 22)
     module_ids: list[int]
+    username: str = "panoseti"
 
 
 @dataclass
@@ -103,6 +104,7 @@ class HwTopology:
                 real_host=real_host,
                 ssh_port=ssh_port,
                 module_ids=node.module_ids,
+                username=node.username,
             ))
         return result
 

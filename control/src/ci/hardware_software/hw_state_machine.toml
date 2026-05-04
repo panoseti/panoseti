@@ -1,9 +1,14 @@
 # hw_state_machine.toml
+# MVP scope: only the states and primitives used by the active boot + happy-path tests.
+# Archived primitives (soft_reset, tftp_reboot, hv_set, start_acq/stop_acq) are removed
+# because cmd 0x04 does not re-enter the TFTP bootloader — the only reliable reset
+# is a WPS power cycle.
+
 [state_machine]
 initial = "UNPOWERED"
 safe = "UNPOWERED"   # state to leave hardware in on framework exit
 
-# States ordered loosely from "cold" → "warm" → "hot"
+# States in cold → warm order
 [[states]]
 name = "UNPOWERED"
 desc = "WPS outlet off."
@@ -32,23 +37,8 @@ desc = "Trigger masks and GOE masks loaded."
 name = "PH_CALIBRATED"
 desc = "Pulse Height baselines calibrated."
 
-[[states]]
-name = "HV_OFF_READY"
-desc = "Ready to acquire data (HV off, using pulse generator)."
+# ── Primitives ─────────────────────────────────────────────────────────────────
 
-[[states]]
-name = "HV_ON_READY"
-desc = "Ready to acquire data (HV ramped up, physical detectors active)."
-
-[[states]]
-name = "ACQUIRING_HV_OFF"
-desc = "DAQ mode bits set; quabo emitting science packets (HV off)."
-
-[[states]]
-name = "ACQUIRING_HV_ON"
-desc = "DAQ mode bits set; quabo emitting science packets (HV on)."
-
-# Primitives — atomic state transitions.
 [[primitives]]
 name = "wps_power_on"
 from_states = ["UNPOWERED"]
@@ -74,22 +64,6 @@ safety = "high"
 entrypoint = "ci.hardware_software.hw_utils.driver_ops:wps_power_off"
 
 [[primitives]]
-name = "tftp_reboot"
-from_states = ["BOOTED", "HK_ROUTED", "MAROC_CONFIGURED", "MASKS_CONFIGURED", "PH_CALIBRATED", "HV_OFF_READY", "HV_ON_READY"]
-to_state = "BOOTED"
-budget_s = { typical = 400, max = 600 }
-safety = "medium"
-entrypoint = "ci.hardware_software.hw_utils.driver_ops:tftp_reboot_all"
-
-[[primitives]]
-name = "soft_reset"
-from_states = ["HK_ROUTED", "MAROC_CONFIGURED", "MASKS_CONFIGURED", "PH_CALIBRATED", "HV_OFF_READY", "HV_ON_READY", "ACQUIRING_HV_OFF", "ACQUIRING_HV_ON"]
-to_state = "BOOTED"
-budget_s = { typical = 1, max = 2 }
-safety = "low"
-entrypoint = "ci.hardware_software.hw_utils.driver_ops:soft_reset_all"
-
-[[primitives]]
 name = "route_hk"
 from_states = ["BOOTED"]
 to_state = "HK_ROUTED"
@@ -99,9 +73,9 @@ entrypoint = "ci.hardware_software.hw_utils.driver_ops:route_hk"
 
 [[primitives]]
 name = "configure_maroc"
-from_states = ["HK_ROUTED", "HV_OFF_READY", "HV_ON_READY"]
+from_states = ["HK_ROUTED"]
 to_state = "MAROC_CONFIGURED"
-budget_s = { typical = 1, max = 5 }
+budget_s = { typical = 5, max = 30 }
 safety = "low"
 entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_maroc"
 
@@ -109,7 +83,7 @@ entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_maroc"
 name = "configure_masks"
 from_states = ["MAROC_CONFIGURED"]
 to_state = "MASKS_CONFIGURED"
-budget_s = { typical = 1, max = 5 }
+budget_s = { typical = 5, max = 30 }
 safety = "low"
 entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_masks"
 
@@ -117,57 +91,6 @@ entrypoint = "ci.hardware_software.hw_utils.driver_ops:configure_masks"
 name = "calibrate_ph"
 from_states = ["MASKS_CONFIGURED"]
 to_state = "PH_CALIBRATED"
-budget_s = { typical = 15, max = 30 }
+budget_s = { typical = 15, max = 60 }
 safety = "low"
 entrypoint = "ci.hardware_software.hw_utils.driver_ops:calibrate_ph"
-
-[[primitives]]
-name = "prepare_hv_off"
-from_states = ["PH_CALIBRATED", "MASKS_CONFIGURED"]
-to_state = "HV_OFF_READY"
-budget_s = { typical = 2, max = 5 }
-safety = "high"
-entrypoint = "ci.hardware_software.hw_utils.driver_ops:hv_zero"
-
-[[primitives]]
-name = "prepare_hv_on"
-from_states = ["PH_CALIBRATED", "MASKS_CONFIGURED"]
-to_state = "HV_ON_READY"
-budget_s = { typical = 2, max = 10 }
-safety = "high"
-entrypoint = "ci.hardware_software.hw_utils.driver_ops:hv_set_from_config"
-guards = ["shutter_must_be_closed", "light_sensor_dark"]
-
-[[primitives]]
-name = "start_acq_hv_off"
-from_states = ["HV_OFF_READY"]
-to_state = "ACQUIRING_HV_OFF"
-budget_s = { typical = 5, max = 15 }
-safety = "low"
-entrypoint = "ci.hardware_software.hw_utils.run_ops:start_run_via_cli"
-kwargs = { no_hv = true }
-
-[[primitives]]
-name = "start_acq_hv_on"
-from_states = ["HV_ON_READY"]
-to_state = "ACQUIRING_HV_ON"
-budget_s = { typical = 5, max = 15 }
-safety = "low"
-entrypoint = "ci.hardware_software.hw_utils.run_ops:start_run_via_cli"
-kwargs = { no_hv = false }
-
-[[primitives]]
-name = "stop_acq_hv_off"
-from_states = ["ACQUIRING_HV_OFF"]
-to_state = "HV_OFF_READY"
-budget_s = { typical = 60, max = 90 }
-safety = "low"
-entrypoint = "ci.hardware_software.hw_utils.run_ops:stop_run_via_cli"
-
-[[primitives]]
-name = "stop_acq_hv_on"
-from_states = ["ACQUIRING_HV_ON"]
-to_state = "HV_ON_READY"
-budget_s = { typical = 60, max = 90 }
-safety = "low"
-entrypoint = "ci.hardware_software.hw_utils.run_ops:stop_run_via_cli"
