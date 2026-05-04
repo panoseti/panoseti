@@ -68,8 +68,10 @@ services:
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
       IN_DOCKER_CI: "1"
     command: >
-      /bin/sh -c "mkdir -p /home/panoseti/.ssh && cp -r /home/panoseti/.ssh-host/* /home/panoseti/.ssh/ && chmod 700 /home/panoseti/.ssh && find /home/panoseti/.ssh -type f -exec chmod 600 {} + &&
-      pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"
+      /bin/sh -c "mkdir -p /home/panoseti/.ssh && cp -r /home/panoseti/.ssh-host/* /home/panoseti/.ssh/ &&
+      chown -R panoseti:panoseti /home/panoseti/.ssh && chmod 700 /home/panoseti/.ssh && find /home/panoseti/.ssh -type f -exec chmod 600 {} + &&
+      mkdir -p ${DAQ_DATA_DIR:-/mnt/panoseti-test/} && chown panoseti:panoseti ${DAQ_DATA_DIR:-/mnt/panoseti-test/} &&
+      exec gosu panoseti pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"
     restart: always
 
   # ── DAQ Node Profile ───────────────────────────────────────────────────────

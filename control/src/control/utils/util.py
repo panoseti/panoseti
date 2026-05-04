@@ -788,8 +788,10 @@ def attach_daq_config(
     if network_config is not None:
         for daq in daq_config.daq_nodes:
             for pdaq in network_config.daq_nodes:
-                if str(daq.ip_addr) == str(pdaq.ip_addr) and pdaq.port_forwarding.status:
-                    daq.port_forwarding = pdaq.port_forwarding
+                if str(daq.ip_addr) == str(pdaq.ip_addr):
+                    if pdaq.port_forwarding:
+                        daq.port_forwarding = pdaq.port_forwarding
+                    break
 
 
 

@@ -24,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     iputils-ping \
     gcc build-essential \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -73,6 +74,7 @@ RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
 # Install shell completion for pseti
 RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
+USER root
 CMD ["sleep", "infinity"]
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -130,8 +132,9 @@ COPY --chown=panoseti:panoseti control/ .
 
 RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
     uv sync --all-extras
-
 # Install shell completion for pseti
-RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
+RUN mkdir -p /etc/bash_completion.d && \
+    /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
-CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]
+USER root
+CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && chown panoseti:panoseti ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && chown panoseti:panoseti ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec gosu panoseti pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]
