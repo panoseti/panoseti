@@ -27,10 +27,7 @@ def quabos_responsive() -> bool:
         from ci.hardware_software.hw_utils.topology import HwTopology
         from control.utils import util
         topo = HwTopology()
-        for a in topo.quabo_ips():
-            if not util.ping(ipaddress.ip_address(a.real_ip), a.cmd_port):
-                return False
-        return True
+        return all(util.ping(ipaddress.ip_address(a.real_ip), a.cmd_port) for a in topo.quabo_ips())
     except Exception as exc:
         logger.debug("quabos_responsive check failed: %s", exc)
         return False

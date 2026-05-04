@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -77,7 +77,7 @@ def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
 
 def _uv_pytest(*args: str) -> list[str]:
     """Return a command list that runs pytest via `uv run` in the control project env."""
-    return ["uv", "run", "--no-build", "--directory", str(_CONTROL_DIR), "pytest", *args]
+    return ["uv", "run", "--no-sync", "--directory", str(_CONTROL_DIR), "pytest", *args]
 
 
 def _run_compose(
@@ -441,8 +441,10 @@ def hw_run(
     if hw_state:
         pytest_args += ["-m", hw_state]
     if verbose:
-        if "-v" not in pytest_args: pytest_args.append("-v")
-        if "-s" not in pytest_args: pytest_args.append("-s")
+        if "-v" not in pytest_args:
+            pytest_args.append("-v")
+        if "-s" not in pytest_args:
+            pytest_args.append("-s")
 
     cmd = _uv_pytest(
         str(_HW_SW_DIR),

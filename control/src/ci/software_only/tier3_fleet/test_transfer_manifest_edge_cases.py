@@ -74,7 +74,7 @@ async def test_manifest_corruption_aborts_cleanup(
         # Now artificially corrupt one of the .pff files on the head node
         dest_run = head_data_dir / run_name
         pff_files = list(dest_run.glob("**/*.pff"))
-        non_empty_pff_files = [fname for fname in pff_files if os.path.getsize(fname) > 0]
+        non_empty_pff_files = [fname for fname in pff_files if fname.stat().st_size > 0]
         assert len(non_empty_pff_files) > 0
         if non_empty_pff_files:
             # Flip a byte

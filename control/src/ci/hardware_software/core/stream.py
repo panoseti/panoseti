@@ -12,10 +12,10 @@ import asyncio
 import time
 
 
-async def _collect_async(host: str, port: int, run_dir: str, module_id: int, n: int, timeout: float) -> list:
+async def _collect_async(host: str, port: int, run_dir: str, module_id: int, n: int, timeout_s: float) -> list:
     from panoseti_grpc.daq_data.client import DaqDataClient
     frames: list = []
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + timeout_s
     async with DaqDataClient(host, port) as client:
         await client.init_hp_io(run_dir, module_id)
         async for image in client.stream_images():

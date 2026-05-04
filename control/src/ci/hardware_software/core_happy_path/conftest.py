@@ -96,7 +96,7 @@ def booted_calibrated(runner, topology):
     _write_state(_STATE_FILE, "BOOTED")
 
     # Stage 6-10: hk-dest → redis-daemons → maroc-config → mask-config → calibrate-ph
-    for stage, args in [
+    for _stage, args in [
         ("hk-dest",       ["cfg", "hk-dest"]),
         ("redis-daemons", ["cfg", "redis-daemons"]),
         ("maroc-config",  ["cfg", "maroc-config"]),
