@@ -77,7 +77,7 @@ def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
 
 def _uv_pytest(*args: str) -> list[str]:
     """Return a command list that runs pytest via `uv run` in the control project env."""
-    return ["uv", "run", "--directory", str(_CONTROL_DIR), "pytest", *args]
+    return ["uv", "run", "--no-build", "--directory", str(_CONTROL_DIR), "pytest", *args]
 
 
 def _run_compose(
