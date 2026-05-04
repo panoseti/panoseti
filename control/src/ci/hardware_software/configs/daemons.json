@@ -2,8 +2,7 @@
     "daemons": {
         "hk": true,
         "gps": false,
-        "telemetry_service": true,
-        "loki": true,
+        "telemetry_service": false,
         "power": false,
         "wr": false
     },

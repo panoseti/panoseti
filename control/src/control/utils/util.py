@@ -94,7 +94,7 @@ pss_prefix = 'pss_'
 # to ensure they respect environment overrides (e.g. in Tier 2 isolated tests).
 redis_daemons = [
     'storeInfluxDB.py',
-    # 'storeLoki.py'
+    'storeLoki.py'
 ]
 
 #-------------- TIME ---------------
@@ -363,7 +363,8 @@ def get_daemons() -> list[str]:
         if 'loki' in k: 
             continue
         elif v:
-            lst.append(str(PanoPaths.daemons_dir() / f'capture_{k}.py'))
+            daemons_path = PanoPaths.daemons_dir() / f'capture_{k}.py'
+            lst.append(str(daemons_path))
     return lst
 
 

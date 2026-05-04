@@ -53,8 +53,26 @@ def booted_calibrated(runner, topology):
     from ci.hardware_software.hw_utils.cli import _STATE_FILE
     from ci.hardware_software.hw_utils.state_machine import _write_state
 
-    if state_file_says("PH_CALIBRATED") and quabos_responsive():
+    # Check if we can skip the boot sequence
+    state_ok = state_file_says("PH_CALIBRATED")
+    
+    # Try a few times to see if quabos are responsive before giving up and rebooting
+    responsive = False
+    for attempt in range(3):
+        if quabos_responsive():
+            responsive = True
+            break
+        if attempt < 2:
+            logger.info("[HAPPY-PATH] booted_calibrated: quabos not responsive, retrying in 2s... (attempt %d/3)", attempt + 1)
+            time.sleep(2)
+            
+    logger.info("[HAPPY-PATH] booted_calibrated: check: state(PH_CALIBRATED)=%s, responsive=%s", state_ok, responsive)
+
+    if state_ok and responsive:
         logger.info("[HAPPY-PATH] booted_calibrated: hardware already in PH_CALIBRATED — skipping boot")
+        # Ensure redis-daemons are running (precondition for start.py)
+        r = runner.invoke(app, ["cfg", "redis-daemons"])
+        assert r.exit_code == 0, f"booted_calibrated: pseti cfg redis-daemons failed:\n{r.output}"
         yield
         return
 

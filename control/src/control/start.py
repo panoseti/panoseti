@@ -1090,12 +1090,17 @@ async def start_run(
                     raise ValidationError(msg)
 
             if not no_redis and not await asyncio.to_thread(util.are_redis_daemons_running):
-                await asyncio.to_thread(util.show_redis_daemons)
-                msg = 'Redis daemons are not running. Run config.py --redis-daemons'
-                if not strict_mode:
-                    logger.warning(f"{msg} (Non-fatal in lenient mode)")
-                else:
-                    raise ValidationError(msg)
+                logger.info("Redis daemons are not running. Starting them now...")
+                await asyncio.to_thread(util.start_redis_daemons)
+                # Small wait to let them initialize
+                await asyncio.sleep(2)
+                if not await asyncio.to_thread(util.are_redis_daemons_running):
+                    await asyncio.to_thread(util.show_redis_daemons)
+                    msg = 'Failed to start Redis daemons. Ensure redis-server is running and reachable.'
+                    if not strict_mode:
+                        logger.warning(f"{msg} (Non-fatal in lenient mode)")
+                    else:
+                        raise ValidationError(msg)
 
             if not await asyncio.to_thread(ph_baseline_file_ok):
                 msg = 'PH baseline file check failed.'
