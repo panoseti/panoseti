@@ -52,11 +52,27 @@ def _read_state() -> str | None:
 
 def _compose_env() -> dict[str, str]:
     """Env vars required by docker-compose.hw-sw.yml."""
+    # Inject host UID/GID so that files created in the container have host-compatible ownership
+    uid = os.getuid()
+    gid = os.getgid()
+    # If run via sudo, attempt to use the original user's IDs
+    if uid == 0:
+        uid = int(os.environ.get("SUDO_UID", 0))
+        gid = int(os.environ.get("SUDO_GID", 0))
+
     return {
         "PSETI_ROOT_BUILD": str(_PSETI_ROOT),
         "PSETI_CONTROL_BUILD": str(_CONTROL_DIR),
         "PSETI_CONFIG": str(_HW_CONFIGS_DIR),
+        "HOST_UID": str(uid),
+        "HOST_GID": str(gid),
     }
+
+
+def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Print command and execute it."""
+    console.print(f"[dim]Running:[/dim] [cyan]{' '.join(cmd)}[/cyan]")
+    return subprocess.run(cmd, **kwargs)
 
 
 def _uv_pytest(*args: str) -> list[str]:
@@ -79,7 +95,7 @@ def _run_compose(
     cmd.extend(["compose", "-f", str(_COMPOSE_FILE), "--profile", profile, action])
     if args:
         cmd.extend(args)
-    return subprocess.run(cmd, env=env).returncode
+    return _run(cmd, env=env).returncode
 
 
 @app.callback()
@@ -102,15 +118,8 @@ def hw_build(
     Automatically injects HOST_UID and HOST_GID from the current user so that
     files created inside the container are owned by the same user on the host.
     """
-    import pwd
-    uid = os.getuid()
-    gid = os.getgid()
-    try:
-        username = pwd.getpwuid(uid).pw_name
-    except KeyError:
-        username = str(uid)
-    console.print(f"[dim]Injecting HOST_UID={uid} HOST_GID={gid} (user: {username})[/dim]")
-    env = {**os.environ, **_compose_env(), "HOST_UID": str(uid), "HOST_GID": str(gid)}
+    env = {**os.environ, **_compose_env()}
+    console.print(f"[dim]Injecting HOST_UID={env.get('HOST_UID')} HOST_GID={env.get('HOST_GID')}[/dim]")
 
     # 1. Build headnode locally
     console.print("[cyan]Building profile: headnode locally...[/cyan]")
@@ -451,7 +460,7 @@ def hw_run(
         mgr = SafetyManager(sm, _STATE_FILE, keep_running=keep_running)
         mgr.register()
 
-    ret = subprocess.run(cmd, cwd=_CONTROL_DIR).returncode
+    ret = _run(cmd, cwd=_CONTROL_DIR).returncode
     raise typer.Exit(code=ret)
 
 
@@ -485,7 +494,7 @@ def hw_preflight(ctx: typer.Context) -> None:
         "--tb=short",
         *ctx.args,
     )
-    ret = subprocess.run(cmd, cwd=_CONTROL_DIR).returncode
+    ret = _run(cmd, cwd=_CONTROL_DIR).returncode
     raise typer.Exit(code=ret)
 
 

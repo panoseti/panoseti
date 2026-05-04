@@ -14,7 +14,6 @@ on:
 jobs:
   # 1. Warm up the base cache.
   prepare-base:
-    # runs-on: ubuntu-24.04
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +143,7 @@ jobs:
         run: uv run pseti test hw check-env --post-deploy
         working-directory: control
 
-      - name: Power Off Hardware (Assume State: UNPOWERED)
+      - name: Power Off Hardware Before Tests
         run: docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti power off
         working-directory: control
 

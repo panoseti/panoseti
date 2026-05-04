@@ -63,11 +63,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN mkdir -p /etc/bash_completion.d && \
     /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
-# Create the lab user with matching UID/GID and transfer ownership of runtime dirs.
-# /app and /opt/venv are set up as root above; chown once here so USER switch works.
-RUN groupadd -f -g "${HOST_GID}" panoseti \
- && id -u panoseti &>/dev/null || useradd -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && chown -R "${HOST_UID}:${HOST_GID}" /app /data /opt/venv /etc/bash_completion.d/pseti
+# Create the panoseti user with matching host UID/GID for seamless volume mounting.
+# We use the -o (non-unique) flag to force creation even if the ID is already 
+# used by a default system account in the base image (e.g., ubuntu or node).
+RUN groupadd -o -g "${HOST_GID}" panoseti \
+ && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
+ && chown -R panoseti:panoseti /app /data /opt/venv /etc/bash_completion.d/pseti
 
 USER panoseti
 
