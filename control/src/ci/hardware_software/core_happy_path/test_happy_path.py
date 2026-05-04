@@ -28,7 +28,7 @@ from ci.hardware_software.core_happy_path.checks import (
 )
 from ci.hardware_software.core import ledger as ledger_core
 from control.pseti import app
-from control.utils import config_file
+from control.utils import config_file, util
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,8 @@ def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> 
       8. Verify the manifest.
     """
     daq_cfg = config_file.get_daq_config()
+    network_cfg = config_file.get_network_config()
+    util.attach_daq_config(daq_cfg, network_cfg)
     first_node = daq_cfg.daq_nodes[0]
     quabo_addrs = topology.quabo_ips()
 
@@ -99,6 +101,10 @@ def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> 
     logger.info("[HAPPY-PATH] run_name=%s", run_name)
 
     try:
+        if active_data_config == "interleave":
+            logger.info("[HAPPY-PATH] Starting background interleave scheduler")
+            _invoke(runner, ["cfg", "start-interleave"])
+
         # Step 3a: ledger must be ACTIVE immediately after start returns
         ledger_checks.is_active(run_name)
 

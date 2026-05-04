@@ -53,45 +53,53 @@ def _queue_counts() -> dict[str, int]:
         return {}
 
 
-def _local_summary() -> list[str]:
-    lines: list[str] = []
+def _local_summary() -> list[Text]:
+    lines: list[Text] = []
     state_mgr = RunStateManager()
     ledger = state_mgr.load_state()
 
     if ledger:
-        lines.append(f"Run:     {ledger.run_name}")
-        lines.append(f"Status:  {ledger.status}")
-        lines.append(f"Started: {ledger.start_time}")
+        lines.append(Text.assemble(("Run:     ", "bold"), f"{ledger.run_name}"))
+        status_style = "green" if ledger.status == "recording" else "yellow"
+        lines.append(Text.assemble(("Status:  ", "bold"), (f"{ledger.status}", status_style)))
+        lines.append(Text.assemble(("Started: ", "bold"), f"{ledger.start_time}"))
     else:
         run_name = util.read_run_name()
-        lines.append(f"Run:     {run_name or '(none)'}")
-        lines.append("Status:  (no active ledger)")
+        lines.append(Text.assemble(("Run:     ", "bold"), f"{run_name or '(none)'}"))
+        lines.append(Text.assemble(("Status:  ", "bold"), ("(no active ledger)", "dim")))
 
-    lines.append(f"HK rec:  {'running' if util.is_hk_recorder_running() else 'stopped'}")
+    hk_running = util.is_hk_recorder_running()
+    hk_style = "green" if hk_running else "red"
+    lines.append(Text.assemble(("HK rec:  ", "bold"), (f"{'running' if hk_running else 'stopped'}", hk_style)))
 
     age = _transfer_daemon_age()
     if age is None:
-        lines.append("Daemon:  not running (no heartbeat)")
+        lines.append(Text.assemble(("Daemon:  ", "bold"), ("not running (no heartbeat)", "red")))
     elif age < 30:
-        lines.append(f"Daemon:  RUNNING  (heartbeat {age:.0f}s ago)")
+        lines.append(Text.assemble(("Daemon:  ", "bold"), ("RUNNING", "green"), f"  (heartbeat {age:.0f}s ago)"))
     else:
-        lines.append(f"Daemon:  STALE    (heartbeat {age:.0f}s ago)")
+        lines.append(Text.assemble(("Daemon:  ", "bold"), ("STALE", "yellow"), f"    (heartbeat {age:.0f}s ago)"))
 
     counts = _queue_counts()
     if counts:
-        q_str = "  ".join(f"{k}={v}" for k, v in counts.items())
-        lines.append(f"Queue:   {q_str}")
+        q_text = Text.assemble(("Queue:   ", "bold"))
+        for k, v in counts.items():
+            style = "green" if v == 0 else "yellow"
+            q_text.append(f"{k}=")
+            q_text.append(f"{v}", style=style)
+            q_text.append("  ")
+        lines.append(q_text)
 
     return lines
 
 
-async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None = None) -> list[str]:
+async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None = None) -> list[Text]:
     """Query each DAQ node via gRPC and return detailed rows per node."""
     import os
 
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 
-    lines: list[str] = []
+    lines: list[Text] = []
     
     if daq_config is None:
         try:
@@ -100,7 +108,7 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
             network_config = config_file.get_network_config()
             util.attach_daq_config(daq_config, network_config)
         except Exception as e:
-            return [f"ERROR loading daq_config: {e}"]
+            return [Text(f"ERROR loading daq_config: {e}", style="red")]
 
     async def _do_query(client: AsyncDaqControlClient, data_dir: str) -> tuple[bool, dict[str, Any]]:
         return await asyncio.wait_for(
@@ -113,14 +121,14 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
             timeout=5.0,
         )
 
-    async def probe(node: object) -> str:
+    async def probe(node: object) -> Text:
         from control.utils import util
         from control.utils.pydantic_config_models import DaqNode
         assert isinstance(node, DaqNode)
         ip_str = str(node.ip_addr)
         
         if not node.module_ids:
-            return f"  • {ip_str:<14} | (no modules configured)"
+            return Text(f"  • {ip_str:<14} | (no modules configured)", style="dim")
             
         grpc_host, grpc_port = util.daq_grpc_endpoint(node, daq_config)
         
@@ -133,15 +141,17 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
                     ok, status = await _do_query(client, node.data_dir)
 
             if not ok:
-                return f"  • {ip_str:<14} | gRPC returned not-ok"
+                return Text.assemble(f"  • {ip_str:<14} | ", ("gRPC returned not-ok", "red"))
 
             # 2. Hashpipe Status & PID
-            hp_state = "RUNNING" if status.get("hashpipe_running") else "STOPPED"
+            hp_running = status.get("hashpipe_running")
+            hp_state = "RUNNING" if hp_running else "STOPPED"
+            hp_style = "green" if hp_running else "red"
             pid = status.get('hashpipe_pid')
             pid_str = f" (PID:{pid})" if pid else ""
-            hp_str = f"HP: {hp_state}{pid_str}"
+            hp_text = Text.assemble((f"HP: {hp_state}", hp_style), f"{pid_str}")
             
-            # 3. Disk Usage (in KB with commas)
+            # 3. Disk Usage
             disk_usage = status.get("disk_usage", {})
             free_bytes = disk_usage.get("free_disk_space", 0)
             total_bytes = disk_usage.get("total_disk_space", 0)
@@ -149,52 +159,64 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
             if total_bytes > 0:
                 free_gb = free_bytes / 2**30
                 total_gb = total_bytes / 2**30
+                usage_ratio = free_bytes / total_bytes
+                disk_style = "green" if usage_ratio > 0.2 else "yellow" if usage_ratio > 0.1 else "red"
                 disk_str = f"Free: {free_gb:,.3f} /{total_gb:,.3f} GiB"
             else:
                 disk_str = "Disk: ?"
+                disk_style = "dim"
 
-            # 4. Run Directory (Base name only)
+            # 4. Run Directory
             run_dirs = status.get("run_dirs", [])
             if run_dirs:
-                # Strip parent path, leave only the run folder name
                 run_name = os.path.basename(run_dirs[0])
                 runs_str = f"{run_name}"
             else:
                 runs_str = "none"
 
-            # Combine everything cleanly
-            # Adjusted string padding lengths to accommodate larger KB numbers and PIDs
-            return f"  • {ip_str:<14} | {hp_str:<16} | {disk_str:<28} | {runs_str}"
+            # Combine
+            return Text.assemble(
+                f"  • {ip_str:<14} | ",
+                hp_text,
+                " " * max(0, 16 - len(hp_text.plain)),
+                "| ",
+                (disk_str, disk_style),
+                " " * max(0, 28 - len(disk_str)),
+                f" | {runs_str}"
+            )
 
         except Exception as exc:
-            return f"  • {ip_str:<14} | UNREACHABLE: {exc}"
+            return Text.assemble(f"  • {ip_str:<14} | ", (f"UNREACHABLE: {exc}", "red"))
 
     tasks = [probe(n) for n in daq_config.daq_nodes]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for r in results:
-        lines.append(str(r))
+        if isinstance(r, Exception):
+            lines.append(Text(f"ERROR probing node: {r}", style="red"))
+        else:
+            lines.append(r)
     return lines
 
 
-async def _sweep_summary() -> list[str]:
+async def _sweep_summary() -> list[Text]:
     """Full reachability sweep: Quabo ping + gRPC checks. Read-only."""
     from control.start import _check_daq_reachability, _quabo_reachability_report
 
-    lines: list[str] = ["=== Network Sweep ==="]
+    lines: list[Text] = [Text("=== Network Sweep ===", style="bold yellow")]
     try:
         daq_config = config_file.get_daq_config()
         quabo_uids = config_file.get_quabo_uids()
         network_config = config_file.get_network_config()
         util.attach_daq_config(daq_config, network_config)
     except Exception as e:
-        return [f"ERROR loading config: {e}"]
+        return [Text(f"ERROR loading config: {e}", style="red")]
 
     # DAQ gRPC
     try:
         await _check_daq_reachability(daq_config)
-        lines.append("DAQ gRPC:  OK — all nodes reachable")
+        lines.append(Text.assemble(("DAQ gRPC:  ", "bold"), ("OK — all nodes reachable", "green")))
     except Exception as e:
-        lines.append(f"DAQ gRPC:  FAILED — {e}")
+        lines.append(Text.assemble(("DAQ gRPC:  ", "bold"), (f"FAILED — {e}", "red")))
 
     # Quabo reachability report
     try:
@@ -204,25 +226,42 @@ async def _sweep_summary() -> list[str]:
         up_count = len(reachable)
         
         if up_count == total:
-            lines.append(f"Quabos:    OK    — {up_count}/{total} reachable")
+            lines.append(Text.assemble(("Quabos:    ", "bold"), (f"OK    — {up_count}/{total} reachable", "green")))
         elif up_count > 0:
             down_uids = [r.uid for r in results if not r.reachable]
-            lines.append(f"Quabos:    DEGRADED — {up_count}/{total} reachable; down: {', '.join(down_uids)}")
+            lines.append(Text.assemble(
+                ("Quabos:    ", "bold"), 
+                (f"DEGRADED — {up_count}/{total} reachable", "yellow"),
+                f"; down: {', '.join(down_uids)}"
+            ))
         else:
-            lines.append(f"Quabos:    DOWN  — 0/{total} reachable")
+            lines.append(Text.assemble(("Quabos:    ", "bold"), (f"DOWN  — 0/{total} reachable", "red")))
     except Exception as e:
-        lines.append(f"Quabos:    ERROR — {e}")
+        lines.append(Text.assemble(("Quabos:    ", "bold"), (f"ERROR — {e}", "red")))
 
     return lines
 
 
-def _render(local: list[str], remote: list[str] | None, sweep: list[str] | None) -> str:
-    parts = [f"[{ut_now_str()}]", "--- Head Node ---", *local]
+def _render(local: list[Text], remote: list[Text] | None, sweep: list[Text] | None) -> Text:
+    res = Text()
+    res.append(f"[{ut_now_str()}]\n", style="dim")
+    res.append("--- Head Node ---\n", style="bold blue")
+    for line in local:
+        res.append(line)
+        res.append("\n")
+    
     if remote is not None:
-        parts += ["", "--- DAQ Nodes ---", *remote]
+        res.append("\n--- DAQ Nodes ---\n", style="bold magenta")
+        for line in remote:
+            res.append(line)
+            res.append("\n")
+            
     if sweep is not None:
-        parts += ["", *sweep]
-    return "\n".join(parts)
+        res.append("\n")
+        for line in sweep:
+            res.append(line)
+            res.append("\n")
+    return res
 
 
 def status(no_remote: bool = False, sweep_mode: bool = False) -> None:
@@ -231,9 +270,8 @@ def status(no_remote: bool = False, sweep_mode: bool = False) -> None:
     remote_lines = None if no_remote else asyncio.run(_remote_summary())
     sweep_lines = asyncio.run(_sweep_summary()) if sweep_mode else None
     
-    # Use Rich Console with Text wrapper to ensure timestamps aren't parsed as formatting tags
     console = Console()
-    console.print(Text(_render(local, remote_lines, sweep_lines)))
+    console.print(_render(local, remote_lines, sweep_lines))
 
 
 async def _watch_loop(interval: float, no_remote: bool) -> None:
@@ -263,15 +301,14 @@ async def _watch_loop(interval: float, no_remote: bool) -> None:
 
         console = Console()
         
-        # Use Rich's Live view. Text() wrapper ensures '[2026-04-30 UTC]' isn't 
-        # accidentally interpreted as a rich styling tag.
+        # Use Rich's Live view.
         with Live(console=console, auto_refresh=True) as live:
             while True:
                 local = _local_summary()
                 remote_lines = None if no_remote else await _remote_summary(daq_config, clients)
                 output = _render(local, remote_lines, None)
                 
-                live.update(Text(output))
+                live.update(output)
                 
                 await asyncio.sleep(interval)
 
@@ -318,7 +355,8 @@ def sweep_cmd() -> None:
     """Full network reachability sweep (Quabo ping + DAQ gRPC). Read-only."""
     lines = asyncio.run(_sweep_summary())
     console = Console()
-    console.print(Text("\n".join(lines)))
+    for line in lines:
+        console.print(line)
 
 
 if __name__ == "__main__":
