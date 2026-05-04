@@ -460,7 +460,11 @@ class GlobalConfigValidator:
 
         # 1. Build the graph
         from control.utils import config_file
-        quabo_uids = self.uids or config_file.get_quabo_uids()
+        quabo_uids = self.uids or config_file.get_quabo_uids(exit_on_missing=False)
+        if not quabo_uids:
+             self.report.add_test("Topology Reachability", "WARN", "quabo_uids.json missing; skipping full reachability check.")
+             return
+             
         try:
             config_file.associate(self.daq_conf, quabo_uids)
         except ValueError as e:

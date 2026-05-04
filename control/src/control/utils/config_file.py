@@ -297,16 +297,21 @@ def get_daemons_config(dir: str | None = None) -> DaemonConfig:
     config_dir = dir if dir is not None else str(PanoPaths.config_dir())
     return load_and_validate(DaemonConfig, daemons_config_filename, config_dir, "Daemons Config")
 
-def get_quabo_uids() -> QuaboUids:
+def get_quabo_uids(exit_on_missing: bool = True) -> QuaboUids | None:
     """Load and validate the Quabo UIDs from the local cache file.
 
+    Args:
+        exit_on_missing: If True, sys.exit(1) if the file is missing.
+
     Returns:
-        A validated QuaboUids model.
+        A validated QuaboUids model or None if missing (and exit_on_missing is False).
     """
     path = PanoPaths.tmp_dir() / quabo_uids_filename
     if not path.exists():
-        print(f"{path} is missing.  Run get_uids.py")
-        sys.exit(1)
+        if exit_on_missing:
+            print(f"{path} is missing.  Run get_uids.py")
+            sys.exit(1)
+        return None
     with open(path) as f:
         s = f.read()
     quabo_uids_conf: dict[str, Any] = json.loads(s)
@@ -553,7 +558,11 @@ def print_topology_graph(obs_conf: ObsConfig, daq_conf: DaqConfig, net_conf: Net
         
         # We need quabo_uids for the full graph
         try:
-            quabo_uids = get_quabo_uids()
+            quabo_uids = get_quabo_uids(exit_on_missing=False)
+            if not quabo_uids:
+                 console.print("\n[yellow]⚠ quabo_uids.json missing. Skipping graph generation.[/yellow]")
+                 return
+                 
             # Ensure associate is called to link the IDs
             associate(daq_conf, quabo_uids)
             
