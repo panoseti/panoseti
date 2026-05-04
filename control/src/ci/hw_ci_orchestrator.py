@@ -56,7 +56,7 @@ def main():
         # 6. Power off (Ensure clean state)
         ["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "power", "off"],
         # 7. Run tests
-        ["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "test", "hw", "run", "--assume-state", "UNPOWERED", "-v"],
+        ["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "test", "hw", "run", "--assume-state", "UNPOWERED", "-v", "--yes"],
     ]
 
     failed = False

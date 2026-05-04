@@ -26,22 +26,12 @@ def _prepare_dirs(params: dict) -> None:
     # Root run dir for validator
     main_dir = host_root / run_dir
     main_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(main_dir, 0o777)
     
     for mid in params["module_id"]:
         mod_dir = host_root / f"module_{mid}" / run_dir
         mod_dir.mkdir(parents=True, exist_ok=True)
         dummy_file = mod_dir / "dummy.pff"
         dummy_file.touch()
-        os.chmod(dummy_file, 0o777)
-
-        # Recursive chmod 0o777
-        for root, dirs, files in os.walk(host_root / f"module_{mid}"):
-            os.chmod(root, 0o777)
-            for d in dirs:
-                os.chmod(os.path.join(root, d), 0o777)
-            for f in files:
-                os.chmod(os.path.join(root, f), 0o777)
 
 class TestIntegrationTwoNodeDirect:
     """Two DAQ nodes managed independently in heavy integration stack."""
