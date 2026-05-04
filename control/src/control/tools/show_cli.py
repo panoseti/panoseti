@@ -10,7 +10,6 @@ import numpy as np
 import typer
 from grpc.aio import AioRpcError
 from matplotlib import colormaps
-from panoseti_grpc.daq_control.client import AsyncDaqControlClient
 from panoseti_grpc.daq_data.client import AioDaqDataClient
 from panoseti_grpc.util.cli import display_tree_callback
 from rich import print
@@ -22,7 +21,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from control.utils import config_file, util
+from control.utils import config_file
 from control.utils.paths import PanoPaths
 
 app = typer.Typer(help="Inspect and visualize PSETI system state.", no_args_is_help=True)

@@ -111,10 +111,14 @@ def pytest_runtest_logreport(report: Any) -> None:
 
 
 def pytest_runtest_setup(item: Any) -> None:
-    """Skip happy_path tests if the boot_sequence already failed this session."""
+    """Skip downstream tests when a boot stage has already failed this session."""
     for mark in item.iter_markers("hw_class"):
-        if mark.args and mark.args[0] == "happy_path" and _session_boot_failed[0]:
-            pytest.skip("Skipping happy_path: boot_sequence failed earlier in this session")
+        cls = mark.args[0] if mark.args else None
+        if _session_boot_failed[0]:
+            if cls == "happy_path":
+                pytest.skip("Skipping happy_path: boot_sequence failed earlier in this session")
+            if cls == "boot_sequence":
+                pytest.skip("Skipping boot stage: a prior boot stage failed")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

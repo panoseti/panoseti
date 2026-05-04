@@ -9,11 +9,12 @@ Provides two key fixtures:
 
 from __future__ import annotations
 
-import importlib
 import logging
 from pathlib import Path
 
 import pytest
+
+from ci.hardware_software.core.reachability import wait_until_all_quabos_reachable
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ CORE_OBS_CONFIGS = _HW_SW_DIR / "core_obs_configs"
 DATA_CONFIGS = [
     "image_8bit",
     "pulse_height_uhe",
+    "interleave",
 ]
 
 
@@ -109,6 +111,7 @@ def booted_calibrated(runner, topology):
 
     _write_state(_STATE_FILE, "PH_CALIBRATED")
     logger.info("booted_calibrated: hardware in PH_CALIBRATED")
+    wait_until_all_quabos_reachable(topology, timeout=30, retry_every=2)
     yield
 
 
@@ -117,7 +120,7 @@ def booted_calibrated(runner, topology):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(params=DATA_CONFIGS)
-def active_data_config(request, runner):
+def active_data_config(request, runner, topology):
     """Point configs/data_config.json at a specific variant, re-apply maroc+mask.
 
     Parameterized over DATA_CONFIGS so each variant gets its own test run.
@@ -144,6 +147,7 @@ def active_data_config(request, runner):
     r = runner.invoke(app, ["cfg", "mask-config"])
     assert r.exit_code == 0, f"active_data_config({name}): pseti cfg mask-config failed:\n{r.output}"
 
+    wait_until_all_quabos_reachable(topology, timeout=30, retry_every=2)
     yield name
 
     # Restore symlink to image_8bit as a safe default

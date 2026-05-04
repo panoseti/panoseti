@@ -8,17 +8,12 @@
         "level": 10,
         "mask": [0, 1, 0, 0]
     },
-    "image": {
-        "integration_time_usec": 10000,
-        "pe_threshold": 2.0,
-        "quabo_sample_size": 16
-    },
     "pulse_height": {
         "pe_threshold": 20.5,
         "any_trigger": {
             "group_ph_frames": 1
         },
-        "two_pixel_trigger": 0,
+        "two_pixel_trigger": 1,
         "three_pixel_trigger": 0
     }
 }
