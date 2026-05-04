@@ -67,7 +67,11 @@ RUN mkdir -p /etc/bash_completion.d && \
 # We use the -o (non-unique) flag to force creation even if the ID is already 
 # used by a default system account in the base image (e.g., ubuntu or node).
 RUN groupadd -o -g "${HOST_GID}" panoseti \
- && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
+ && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti
+
+# Pre-create state and cache directories so they are owned by panoseti 
+# even when /app is mounted as a volume.
+RUN mkdir -p /app/state /app/.pytest_cache /data /opt/venv \
  && chown -R panoseti:panoseti /app /data /opt/venv /etc/bash_completion.d/pseti
 
 USER panoseti

@@ -29,6 +29,10 @@ def run_cmd(cmd: list[str], cwd: Path | str = _CONTROL_DIR) -> int:
         env["PSETI_CONTROL_BUILD"] = "."
     if "PSETI_ROOT_BUILD" not in env:
         env["PSETI_ROOT_BUILD"] = ".."
+    
+    # Inject PSETI_CONFIG for HITL environment so check-env passes on host
+    if "PSETI_CONFIG" not in env:
+        env["PSETI_CONFIG"] = str(_CONTROL_DIR / "src/ci/hardware_software/configs")
 
     return subprocess.run(cmd, cwd=cwd, env=env).returncode
 
