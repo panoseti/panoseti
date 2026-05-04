@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 
 
 async def _collect_async(host: str, port: int, run_dir: str, module_id: int, n: int, timeout: float) -> list:

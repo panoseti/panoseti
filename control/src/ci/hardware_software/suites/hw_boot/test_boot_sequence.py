@@ -142,7 +142,8 @@ def test_boot_02_boot_wait(runner, topology) -> None:
 def test_boot_03_uid_discovery(runner, topology) -> None:
     """Discover quabo UIDs via TFTP and assert all are populated."""
     import control.get_uids as get_uids
-    from control.utils import config_file, util as _util
+    from control.utils import config_file
+    from control.utils import util as _util
 
     logger.info("[BOOT] Stage 03: get_uids (TFTP to FPGA bootloader)")
     obs_config = config_file.get_obs_config()
@@ -333,6 +334,7 @@ def test_boot_10_mask_config(runner, topology) -> None:
 def test_boot_11_calibrate_ph(runner, topology) -> None:
     """Run PH calibration and verify saved coefficients are in [0, 4095]."""
     import json
+
     from ci.hardware_software.hw_utils.cli import _STATE_FILE
     from ci.hardware_software.hw_utils.state_machine import _write_state
     from control.utils.config_file import quabo_ph_baseline_filename

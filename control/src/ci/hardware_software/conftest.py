@@ -11,8 +11,6 @@ production paths must be preserved so quabo_uids.json, firmware/, and
 collect_ignore_glob = ["suites/_archived/*"]
 
 # Re-export topology so it's discoverable by both suites/ and core_happy_path/.
-from ci.hardware_software.fixtures.quabo_fixtures import topology  # noqa: F401
-
 import logging
 import os
 from pathlib import Path
@@ -20,6 +18,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from ci.hardware_software.fixtures.quabo_fixtures import topology  # noqa: F401
 from control.pseti import app
 from control.utils import config_file
 

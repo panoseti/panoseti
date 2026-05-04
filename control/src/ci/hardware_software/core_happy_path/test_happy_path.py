@@ -16,17 +16,20 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 
 import pytest
 
+from ci.hardware_software.core import ledger as ledger_core
 from ci.hardware_software.core_happy_path.checks import (
     daq,
     hk,
+)
+from ci.hardware_software.core_happy_path.checks import (
     ledger as ledger_checks,
+)
+from ci.hardware_software.core_happy_path.checks import (
     queue as queue_checks,
 )
-from ci.hardware_software.core import ledger as ledger_core
 from control.pseti import app
 from control.utils import config_file, util
 

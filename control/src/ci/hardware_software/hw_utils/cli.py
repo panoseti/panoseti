@@ -179,8 +179,8 @@ def hw_deploy(
 @app.command(name="down")
 def hw_down(
     tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
-    volumes: Annotated[bool, typer.Option("--volumes", "-v", help="Also remove named volumes.")] = False,
-    verbose: Annotated[bool, typer.Option("--verbose", help="Show verbose output.")] = False,
+    volumes: Annotated[bool, typer.Option("--volumes", help="Also remove named volumes.")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show verbose output.")] = False,
 ) -> None:
     """Stop the HITL service stack (preserves volumes unless -v is given)."""
     env = {**os.environ, **_compose_env()}
@@ -638,6 +638,7 @@ def hw_check_env(
 ) -> None:
     """Verify HITL environment: config files, WPS reachability, network connectivity."""
     import shutil
+
     from control.utils.run_state import RunStateManager
 
     all_ok = True
@@ -694,7 +695,7 @@ def hw_check_env(
         # 2. Execute pseti val inside container
         console.print("[dim]Executing 'pseti val' inside headnode-server...[/dim]")
         val_res = subprocess.run(
-            ["docker", "compose", "-f", str(_COMPOSE_FILE), "exec", "headnode-server", "pseti", "val"],
+            ["docker", "compose", "-f", str(_COMPOSE_FILE), "exec", "-T", "headnode-server", "pseti", "val"],
             capture_output=True, text=True
         )
         if val_res.returncode != 0:

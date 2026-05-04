@@ -59,13 +59,13 @@ def booted_calibrated(runner, topology):
         return
 
     logger.info("[HAPPY-PATH] booted_calibrated: running full boot sequence")
-    from control.pseti import app
-    from control.utils import config_file, util
+    import os
+    import time
+
     import control.config as config
     import control.get_uids as get_uids
-    import ipaddress
-    import time
-    import os
+    from control.pseti import app
+    from control.utils import config_file
 
     obs_config = config_file.get_obs_config()
     network_config = config_file.get_network_config()
