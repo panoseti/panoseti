@@ -12,6 +12,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_PROJECT_ENVIRONMENT="/opt/venv" \
     PATH="/opt/venv/bin:$PATH"
 
+# ── UID/GID parity ───────────────────────────────────────────────────────────
+# We define these in base so that all layers are built with correct ownership
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+ARG DOCKER_GID=999
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,10 +28,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Create the panoseti user early.
+RUN groupadd -o -g "${HOST_GID}" panoseti \
+ && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
+ && (getent group docker || groupadd -g "${DOCKER_GID}" docker || groupadd docker) \
+ && (groupmod -o -g "${DOCKER_GID}" docker || true) \
+ && usermod -aG docker panoseti
+
+# Pre-allocate and chown environment/data/grpc dirs. 
+# Also pre-create /etc/bash_completion.d as root.
+RUN mkdir -p /opt/venv /grpc /data /app /etc/bash_completion.d \
+ && chown -R panoseti:panoseti /opt/venv /grpc /data /app /etc/bash_completion.d
+
+USER panoseti
+
 # Dependency Caching Layer
-COPY grpc/ /grpc/
-COPY control/pyproject.toml control/uv.lock* ./
-RUN --mount=type=cache,target=/root/.cache/uv \
+COPY --chown=panoseti:panoseti grpc/ /grpc/
+COPY --chown=panoseti:panoseti control/pyproject.toml control/uv.lock* ./
+RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
     uv sync --no-install-project --all-extras
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -34,51 +54,24 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS headnode
 
-# ── UID/GID parity ───────────────────────────────────────────────────────────
-# Build with the host user's UID/GID so container-written files (locks, transfer
-# queue, calibration outputs, quabo_uids.json) are owned by the same user that
-# runs pseti on the host.  Build via:
-#   pseti test hw build   (auto-injects HOST_UID/HOST_GID from 'id')
-# or manually:
-#   docker build --build-arg HOST_UID=$(id -u) --build-arg HOST_GID=$(id -g) ...
-ARG HOST_UID=1000
-ARG HOST_GID=1000
-ARG DOCKER_GID=999
-
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io curl \
     vim tree procps htop \
     && rm -rf /var/lib/apt/lists/*
+USER panoseti
 
-# Copy software version info from repo root
-# COPY sw_info.json /sw_info.json
+# Prepare directories with correct ownership before copying/syncing
+RUN mkdir -p /app/state /app/.pytest_cache
 
-# Copy source code (this layer invalidates if control/ changes)
-COPY control/ .
-RUN mkdir -p /data /data/head
+# Copy source code as the panoseti user
+COPY --chown=panoseti:panoseti control/ .
 
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
     uv sync --all-extras
 
 # Install shell completion for pseti
-RUN mkdir -p /etc/bash_completion.d && \
-    /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
-
-# Create the panoseti user with matching host UID/GID for seamless volume mounting.
-# We use the -o (non-unique) flag to force creation even if the ID is already 
-# used by a default system account in the base image (e.g., ubuntu or node).
-RUN groupadd -o -g "${HOST_GID}" panoseti \
- && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && (getent group docker || groupadd -g "${DOCKER_GID}" docker || groupadd docker) \
- && (groupmod -o -g "${DOCKER_GID}" docker || true) \
- && usermod -aG docker panoseti
-
-# Pre-create state and cache directories so they are owned by panoseti 
-# even if /app/state is mounted as a volume.
-RUN mkdir -p /app/state /app/.pytest_cache /data /opt/venv \
- && chown -R panoseti:panoseti /app/state /app/.pytest_cache /data /opt/venv /etc/bash_completion.d/pseti
-
-USER panoseti
+RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
 CMD ["sleep", "infinity"]
 
@@ -116,6 +109,8 @@ RUN make
 # Stage: integration-daqnode
 # ═══════════════════════════════════════════════════════════════════════════
 FROM base AS integration-daqnode
+
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     socat tcpreplay procps \
     && rm -rf /var/lib/apt/lists/*
@@ -125,34 +120,18 @@ COPY --from=hashpipe-builder /usr/local/bin/hashpipe /usr/local/bin/hashpipe
 COPY --from=hashpipe-builder /usr/local/lib/libhashpipe* /usr/local/lib/
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/usr-local-lib.conf && ldconfig
 
-RUN mkdir -p /data
-COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /data/hashpipe.so
-COPY --from=hashpipe-plugin-builder /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
-WORKDIR /app
-# Copy software version info from repo root
-# COPY sw_info.json /sw_info.json
-COPY control/ .
-RUN --mount=type=cache,target=/root/.cache/uv \
+USER panoseti
+
+COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /data/hashpipe.so
+COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_daq/hashpipe.so /usr/local/lib/panoseti_hashpipe.so
+
+# Copy source code as the panoseti user
+COPY --chown=panoseti:panoseti control/ .
+
+RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
     uv sync --all-extras
 
 # Install shell completion for pseti
-RUN mkdir -p /etc/bash_completion.d && \
-    /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
-
-# Create the panoseti user with matching host UID/GID for seamless volume mounting.
-ARG HOST_UID=1000
-ARG HOST_GID=1000
-ARG DOCKER_GID=999
-RUN groupadd -o -g "${HOST_GID}" panoseti \
- && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && (getent group docker || groupadd -g "${DOCKER_GID}" docker || groupadd docker) \
- && (groupmod -o -g "${DOCKER_GID}" docker || true) \
- && usermod -aG docker panoseti
-
-# Pre-create data and state dirs
-RUN mkdir -p /app/state /data /opt/venv \
- && chown -R panoseti:panoseti /app /data /opt/venv /etc/bash_completion.d/pseti
-
-USER panoseti
+RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
 CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]

@@ -6,7 +6,6 @@ verification and selective cleanup contracts.
 """
 
 import asyncio
-import os
 import uuid
 from pathlib import Path
 from typing import Any

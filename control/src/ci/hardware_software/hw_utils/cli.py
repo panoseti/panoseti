@@ -130,8 +130,16 @@ def hw_build(
     # 2. Build daqnode on all remote nodes
     try:
         topo = _get_topology()
+        # Get available contexts to skip missing ones
+        import subprocess as sp
+        res = sp.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True)
+        available_contexts = set(res.stdout.splitlines())
+
         for node in topo.daq_nodes():
             context = f"pseti-daq-{node.host.replace('.', '-')}"
+            if context not in available_contexts:
+                console.print(f"[yellow]Skipping daqnode build on {node.host}: context '{context}' not found.[/yellow]")
+                continue
             console.print(f"[cyan]Building profile: daqnode on {node.host} (context: {context})...[/cyan]")
             _run_compose(tool, context, "daqnode", "build", env=env)
     except Exception as exc:

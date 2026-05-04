@@ -246,7 +246,7 @@ async def stream_sci_data(
 
         console = Console()
 
-        async def ingestion_task():
+        async def ingestion_task() -> None:
             nonlocal dirty
             async for pano_image in stream:
                 if isinstance(pano_image, dict):
@@ -324,7 +324,8 @@ async def stream_sci_data(
                                 frame_num = img_dict.get('frame_number', 0)
                             else:
                                 qids = [q for q in data if isinstance(q, int)]
-                                if not qids: continue
+                                if not qids:
+                                    continue
                                 latest_q = data[max(qids)]
                                 bpp = latest_q.get('bytes_per_pixel', 2)
                                 header = latest_q.get('header', {})
@@ -353,17 +354,15 @@ async def stream_sci_data(
                                 
                                 if legend_local or legend_global:
                                     stats_flat = g_flat if legend_global else flat
-                                    s_min = g_min if legend_global else l_min
-                                    s_max = g_max if legend_global else l_max
                                     
                                     quants = [0, 0.25, 0.5, 0.75, 1.0]
                                     labels = ["Min", "25%", "50%", "75%", "Max"]
                                     vals = np.percentile(stats_flat, [q*100 for q in quants])
                                     
                                     legend_text = Text(f"{'Global' if legend_global else 'Local'} ADC: ", style="bold")
-                                    for lbl, val, q in zip(labels, vals, quants):
+                                    for lbl, val, q in zip(labels, vals, quants, strict=True):
                                         c_str = get_color(q, color)
-                                        sym = "█" if compact else "█" 
+                                        sym = "█" 
                                         legend_text.append(f"{lbl}:", style="dim")
                                         legend_text.append(f"{val:.0f}", style="bold")
                                         legend_text.append(f"{sym} ", style=c_str)
@@ -386,7 +385,7 @@ async def stream_sci_data(
 @app.command(name="sci")
 def show_sci(
     interval: Annotated[float, typer.Option("--interval", "-i", help="Update interval in seconds.")] = 1.0,
-    module_ids: Annotated[list[int], typer.Option("--module", "-m", help="Whitelist of module IDs to display.")] = [],
+    module_ids: Annotated[list[int] | None, typer.Option("--module", "-m", help="Whitelist of module IDs to display.")] = None,
     movie: Annotated[bool, typer.Option("--movie/--no-movie", help="Stream movie-mode images.")] = True,
     ph: Annotated[bool, typer.Option("--ph/--no-ph", help="Stream pulse-height images.")] = True,
     init: Annotated[bool, typer.Option("--init", help="Attempt to initialize gRPC servers on all daq nodes.")] = False,
@@ -399,6 +398,7 @@ def show_sci(
     """
     Display a live-updating text view of the science data stream.
     """
+    module_ids = module_ids or []
     palette = None if color.lower() == "none" else color.lower()
     with contextlib.suppress(KeyboardInterrupt, AioRpcError):
         asyncio.run(stream_sci_data(interval, module_ids, movie, ph, init, init_sim, legend_local, legend_global, palette, compact))

@@ -191,7 +191,7 @@ async def _remote_summary(daq_config: Any = None, clients: dict[str, Any] | None
     tasks = [probe(n) for n in daq_config.daq_nodes]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for r in results:
-        if isinstance(r, Exception):
+        if isinstance(r, BaseException):
             lines.append(Text(f"ERROR probing node: {r}", style="red"))
         else:
             lines.append(r)
