@@ -101,6 +101,7 @@ services:
       args:
         HOST_UID: "${HOST_UID:-1000}"
         HOST_GID: "${HOST_GID:-1000}"
+        DOCKER_GID: "${DOCKER_GID:-999}"
     restart: always
     network_mode: "service:influxdb"
     volumes:
@@ -232,6 +233,7 @@ services:
       args:
         HOST_UID: "${HOST_UID:-1000}"
         HOST_GID: "${HOST_GID:-1000}"
+        DOCKER_GID: "${DOCKER_GID:-999}"
     networks:
       headnode_net:
         ipv4_address: ${HEAD_NET_TESTER:-10.0.1.5}
