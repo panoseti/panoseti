@@ -798,7 +798,10 @@ def hw_check_env(
 
             console.print(f"  {ping_icon} ICMP {q.ip:15} | {udp_icon} CMD {q.real_ip}:{q.cmd_port} | {reboot_icon} REBOOT {q.real_ip}:{q.reboot_port} (loc={q.boardloc})")
             if not udp_ok:
-                all_ok = False
+                if not pre_deploy:
+                    all_ok = False
+                else:
+                    console.print("    [dim]Ignoring unreachable quabo during pre-deploy check (may be unpowered).[/dim]")
 
     # ── Daemon configuration ───────────────────────────────────────────────
     console.print("[dim]Checking daemon configuration...[/dim]")

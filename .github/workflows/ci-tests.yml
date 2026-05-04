@@ -35,6 +35,8 @@ jobs:
       
       - name: Pre-build and Cache All Test Images
         run: |
+          export HOST_UID=$(id -u)
+          export HOST_GID=$(id -g)
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f control/src/ci/docker-compose.integration.yml \
             --pull=false \
@@ -78,6 +80,8 @@ jobs:
           else
              compose_file="control/src/ci/docker-compose.integration.yml"
           fi
+          export HOST_UID=$(id -u)
+          export HOST_GID=$(id -g)
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
             -f $compose_file \
             --pull=false \
