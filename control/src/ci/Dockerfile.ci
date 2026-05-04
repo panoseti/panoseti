@@ -69,13 +69,14 @@ RUN mkdir -p /etc/bash_completion.d && \
 # used by a default system account in the base image (e.g., ubuntu or node).
 RUN groupadd -o -g "${HOST_GID}" panoseti \
  && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && (groupadd -o -g "${DOCKER_GID}" docker || groupadd -o docker) \
+ && (getent group docker || groupadd -g "${DOCKER_GID}" docker || groupadd docker) \
+ && (groupmod -o -g "${DOCKER_GID}" docker || true) \
  && usermod -aG docker panoseti
 
 # Pre-create state and cache directories so they are owned by panoseti 
-# even when /app is mounted as a volume.
+# even if /app/state is mounted as a volume.
 RUN mkdir -p /app/state /app/.pytest_cache /data /opt/venv \
- && chown -R panoseti:panoseti /app /data /opt/venv /etc/bash_completion.d/pseti
+ && chown -R panoseti:panoseti /app/state /app/.pytest_cache /data /opt/venv /etc/bash_completion.d/pseti
 
 USER panoseti
 
@@ -144,7 +145,8 @@ ARG HOST_GID=1000
 ARG DOCKER_GID=999
 RUN groupadd -o -g "${HOST_GID}" panoseti \
  && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && (groupadd -o -g "${DOCKER_GID}" docker || groupadd -o docker) \
+ && (getent group docker || groupadd -g "${DOCKER_GID}" docker || groupadd docker) \
+ && (groupmod -o -g "${DOCKER_GID}" docker || true) \
  && usermod -aG docker panoseti
 
 # Pre-create data and state dirs

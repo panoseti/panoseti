@@ -52,15 +52,12 @@ services:
       args:
         HOST_UID: "${HOST_UID:-1000}"
         HOST_GID: "${HOST_GID:-1000}"
+        DOCKER_GID: "${DOCKER_GID:-999}"
     profiles: ["headnode"]
     network_mode: host
     volumes:
-      - ${PSETI_CONTROL_BUILD}:/app
-      - ${PSETI_ROOT_BUILD}/grpc:/grpc
-      - /mnt/panoseti-test/:/mnt/panoseti-test/
-      - ${PSETI_CONTROL_BUILD}/firmware:/app/firmware:ro
-      - ${PSETI_CONTROL_BUILD}/quabos:/app/quabos:ro
-      - ~/.ssh:/home/panoseti/.ssh-host:ro
+      - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
+      - ${SSH_KEY_DIR:-~/.ssh}:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
     environment:
       REDIS_HOST: "127.0.0.1"
@@ -68,7 +65,6 @@ services:
       PSETI_CONFIG: "/app/src/ci/hardware_software/configs"
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
-      PYTHONDONTWRITEBYTECODE: "1"
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
       IN_DOCKER_CI: "1"
     command: >
@@ -83,6 +79,10 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
+      args:
+        HOST_UID: "${HOST_UID:-1000}"
+        HOST_GID: "${HOST_GID:-1000}"
+        DOCKER_GID: "${DOCKER_GID:-999}"
     profiles: ["daqnode"]
     network_mode: host
     cap_add:
@@ -92,16 +92,15 @@ services:
       - SYS_NICE
     shm_size: '2gb'
     volumes:
-      - /mnt/panoseti-test/:/mnt/panoseti-test/
+      - ${DAQ_DATA_DIR:-/mnt/panoseti-test/}:${DAQ_DATA_DIR:-/mnt/panoseti-test/}
     environment:
-      HEADNODE_IP: "192.168.88.103"
+      HEADNODE_IP: "${HEADNODE_IP:-192.168.88.103}"
       GRPC_PORT: "50051"
       HEADNODE_GRPC_PORT: "50051"
       PSETI_CONFIG: "/app/src/ci/hardware_software/configs"
       PSETI_QUABOS: "/app/quabos"
       PSETI_FIRMWARE: "/app/firmware"
-      PYTHONDONTWRITEBYTECODE: "1"
-      DAQ_DATA_DIR: "/mnt/panoseti-test"
+      DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-test}"
       GRPC_SERVER_CONFIG: "/app/src/ci/hardware_software/configs/grpc/grpc-server.daqnode.toml"
     restart: always
 
