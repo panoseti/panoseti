@@ -171,16 +171,23 @@ def hw_deploy(
 def hw_down(
     tool: Annotated[str, typer.Option("--tool", help="Container tool (docker or podman).")] = "docker",
     volumes: Annotated[bool, typer.Option("--volumes", "-v", help="Also remove named volumes.")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", help="Show verbose output.")] = False,
 ) -> None:
     """Stop the HITL service stack (preserves volumes unless -v is given)."""
     env = {**os.environ, **_compose_env()}
     args = []
     if volumes:
         args.append("--volumes")
+    
+    if verbose:
+        console.print(f"[dim]Compose file: {_COMPOSE_FILE}[/dim]")
+        console.print(f"[dim]Env: {env}[/dim]")
 
     # 1. Down headnode locally
     console.print("[yellow]Stopping headnode profile locally...[/yellow]")
-    _run_compose(tool, None, "headnode", "down", args=args, env=env)
+    ret = _run_compose(tool, None, "headnode", "down", args=args, env=env)
+    if verbose:
+        console.print(f"[dim]Local down exit code: {ret}[/dim]")
 
     # 2. Down daqnode on all remote nodes
     try:
@@ -188,7 +195,9 @@ def hw_down(
         for node in topo.daq_nodes():
             context = f"pseti-daq-{node.host.replace('.', '-')}"
             console.print(f"[yellow]Stopping daqnode profile on {node.host} (context: {context})...[/yellow]")
-            _run_compose(tool, context, "daqnode", "down", args=args, env=env)
+            ret = _run_compose(tool, context, "daqnode", "down", args=args, env=env)
+            if verbose:
+                console.print(f"[dim]Remote down ({node.host}) exit code: {ret}[/dim]")
     except Exception as exc:
         console.print(f"[yellow]Warning: Could not stop on DAQ nodes: {exc}[/yellow]")
 
@@ -387,6 +396,7 @@ def hw_run(
     keep_running: Annotated[bool, typer.Option("--keep-running", help="Skip final safety teardown (dev/lab use only).")] = False,
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
     explain: Annotated[str | None, typer.Option("--explain", help="Print state plan for a single test ID and exit.")] = None,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Print detailed logs of the test execution.")] = False,
 ) -> None:
     """
     Run HITL tests with state-aware batching.
@@ -421,6 +431,9 @@ def hw_run(
         pytest_args += ["-m", hw_class]
     if hw_state:
         pytest_args += ["-m", hw_state]
+    if verbose:
+        if "-v" not in pytest_args: pytest_args.append("-v")
+        if "-s" not in pytest_args: pytest_args.append("-s")
 
     cmd = _uv_pytest(
         str(_HW_SW_DIR),
@@ -610,11 +623,80 @@ def hw_explain(
 # ---------------------------------------------------------------------------
 
 @app.command(name="check-env")
-def hw_check_env() -> None:
+def hw_check_env(
+    pre_deploy: Annotated[bool, typer.Option("--pre-deploy", help="Check environment before deployment.")] = False,
+    post_deploy: Annotated[bool, typer.Option("--post-deploy", help="Check environment after deployment.")] = False,
+) -> None:
     """Verify HITL environment: config files, WPS reachability, network connectivity."""
     import shutil
+    from control.utils.run_state import RunStateManager
 
     all_ok = True
+
+    if pre_deploy:
+        console.print("[dim]Running pre-deploy checks...[/dim]")
+        
+        # 1. Check for active runs
+        state_mgr = RunStateManager()
+        ledger = state_mgr.load_state()
+        if ledger and ledger.status == "recording":
+            console.print(f"[red]✗ Pre-deploy failed: An active run ({ledger.run_name}) is currently recording.[/red]")
+            console.print("  [yellow]Hardware may be left in a bad state. Please stop the run or let it finish.[/yellow]")
+            raise typer.Exit(code=1)
+        else:
+            console.print("[green]✓ No active runs recording.[/green]")
+            
+        # 2. Check Docker contexts
+        try:
+            topo = _get_topology()
+            import subprocess
+            r = subprocess.run(["docker", "context", "ls", "--format", "{{.Name}}"], capture_output=True, text=True, check=True)
+            contexts = r.stdout.splitlines()
+            for node in topo.daq_nodes():
+                expected_context = f"pseti-daq-{node.host.replace('.', '-')}"
+                if expected_context not in contexts:
+                    console.print(f"[red]✗ Pre-deploy failed: Missing docker context '{expected_context}' for DAQ node {node.host}.[/red]")
+                    all_ok = False
+                else:
+                    console.print(f"[green]✓ Docker context '{expected_context}' exists.[/green]")
+        except Exception as exc:
+             console.print(f"[yellow]⚠ Failed to fully check docker contexts: {exc}[/yellow]")
+             # We don't fail immediately here in case they use podman or local deploy, 
+             # but the topology check above should catch structural issues.
+
+        if not all_ok:
+             raise typer.Exit(code=1)
+
+    if post_deploy:
+        console.print("[dim]Running post-deploy checks...[/dim]")
+        import subprocess
+        
+        # 1. Verify headnode is running
+        r = subprocess.run(
+            ["docker", "compose", "-f", str(_COMPOSE_FILE), "--profile", "headnode", "ps", "--format", "json"],
+            capture_output=True, text=True
+        )
+        if "headnode-server" not in r.stdout:
+            console.print("[red]✗ Post-deploy failed: headnode-server container is not running.[/red]")
+            all_ok = False
+        else:
+             console.print("[green]✓ headnode-server container is running.[/green]")
+
+        # 2. Execute pseti val inside container
+        console.print("[dim]Executing 'pseti val' inside headnode-server...[/dim]")
+        val_res = subprocess.run(
+            ["docker", "compose", "-f", str(_COMPOSE_FILE), "exec", "headnode-server", "pseti", "val"],
+            capture_output=True, text=True
+        )
+        if val_res.returncode != 0:
+            console.print(f"[red]✗ Post-deploy failed: 'pseti val' returned errors.[/red]\n{val_res.stdout}\n{val_res.stderr}")
+            all_ok = False
+        else:
+             console.print("[green]✓ 'pseti val' passed inside container.[/green]")
+
+        if not all_ok:
+             raise typer.Exit(code=1)
+
 
     # ── Config ──────────────────────────────────────────────────────────────
     console.print("[dim]Checking HITL configuration...[/dim]")

@@ -2,12 +2,12 @@ name: CI Tests
 
 on:
   push:
-    branches: [master, dev, test-hw-sw, claude-refactor, phase-2-robustness-and-driver-tests, add-linting]
+    branches: [master, dev, test-hw-sw, claude-refactor, phase-2-robustness-and-driver-tests, add-linting, test-pseti]
     paths:
       - 'control/**'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/ci-tests.yml'
   pull_request:
-    branches: [master, dev]
+    branches: [master, dev, test-pseti]
     paths:
       - 'control/**'
 
@@ -46,11 +46,14 @@ jobs:
             --set *.cache-from=type=gha,scope=pseti-ci \
             --set *.cache-to=type=gha,mode=max,scope=pseti-ci
 
-  # 2. Run Unit, Structural, and Lint tests together in a single job/container.
-  fast-validation:
+  # 2. Software Tests (Matrix for Parallelism)
+  software-tests:
     needs: prepare-base
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: ["lint all", "sw unit", "sw logic", "sw fleet", "sw chaos", "sw integration"]
     steps:
       - uses: actions/checkout@v4
       
@@ -72,71 +75,86 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Build and Load Test Runner
+      - name: Build/Load Images (Tier-specific)
         run: |
+          if [[ "${{ matrix.tier }}" == *"unit"* ]]; then
+             compose_file="control/src/ci/docker-compose.unit.yml"
+          else
+             compose_file="control/src/ci/docker-compose.integration.yml"
+          fi
           BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f control/src/ci/docker-compose.unit.yml \
-            --pull=false \
-            --set *.context=. \
-            --set *.cache-from=type=gha,scope=pseti-ci \
-            --load \
-            unit-test-runner
-
-      - name: Run Unit Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build sw unit
-        working-directory: control
-
-      - name: Run Structural Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build sw structural
-        working-directory: control
-
-      - name: Run Linting
-        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build lint all
-        working-directory: control
-
-  # 3. Integration Tests
-  integration-tests:
-    needs: prepare-base
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Initialize required submodules
-        run: git submodule update --init grpc grafana
-
-      - name: Load .env.ci into GitHub environment
-        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install host dependencies
-        run: uv sync --all-extras
-        working-directory: control
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and Load Integration Stack
-        run: |
-          BUILDX_BAKE_ENTITLEMENTS_FS=0 docker buildx bake \
-            -f control/src/ci/docker-compose.integration.yml \
+            -f $compose_file \
             --pull=false \
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load
 
-      - name: Run Integration Tests
-        run: PYTHONPATH=src uv run python3 -m control.pseti test --no-build sw integration
+      - name: Run Test Tier
+        run: uv run pseti test --no-build ${{ matrix.tier }}
         working-directory: control
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-results
+          name: results-${{ matrix.tier }}
           path: control/.pytest_cache/
           if-no-files-found: ignore
+
+  # 3. Hardware Tests (HITL)
+  hardware-software-tests:
+    needs: prepare-base
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Initialize submodules
+        run: git submodule update --init grpc grafana
+
+      - name: Load .env.ci
+        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build/Install local pseti package
+        run: uv sync --all-extras
+        working-directory: control
+
+      - name: Pre-deploy Environment Check
+        run: uv run pseti test hw check-env --pre-deploy
+        working-directory: control
+
+      - name: Teardown existing stack
+        run: uv run pseti test hw down -v
+        working-directory: control
+
+      - name: Build hardware-software stack
+        run: uv run pseti test hw build
+        working-directory: control
+
+      - name: Deploy hardware-software stack
+        run: uv run pseti test hw deploy
+        working-directory: control
+
+      - name: Post-deploy Environment Check
+        run: uv run pseti test hw check-env --post-deploy
+        working-directory: control
+
+      - name: Power Off Hardware (Assume State: UNPOWERED)
+        run: docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti power off
+        working-directory: control
+
+      - name: Run Hardware Tests
+        run: docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti test hw run --assume-state UNPOWERED -v
+        working-directory: control
+
+      - name: Final Safety Teardown
+        if: always()
+        run: |
+          docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti power off || true
+          uv run pseti test hw down -v
+        working-directory: control
