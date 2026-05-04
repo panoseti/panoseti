@@ -10,8 +10,10 @@ Provides two key fixtures:
 from __future__ import annotations
 
 import logging
+import os
+import time
 from pathlib import Path
-
+from control.pseti import app
 import pytest
 
 from ci.hardware_software.core.reachability import wait_until_all_quabos_reachable
@@ -77,12 +79,9 @@ def booted_calibrated(runner, topology):
         return
 
     logger.info("[HAPPY-PATH] booted_calibrated: running full boot sequence")
-    import os
-    import time
 
     import control.config as config
     import control.get_uids as get_uids
-    from control.pseti import app
     from control.utils import config_file
 
     obs_config = config_file.get_obs_config()
@@ -110,6 +109,7 @@ def booted_calibrated(runner, topology):
     # Stage 3-4: UIDs + do_reboot
     get_uids.get_uids(obs_config, network_config)
     quabo_uids = config_file.get_quabo_uids()
+    assert quabo_uids is not None
     config.do_reboot(modules, quabo_uids, network_config)
     _write_state(_STATE_FILE, "BOOTED")
 
