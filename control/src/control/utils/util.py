@@ -38,6 +38,7 @@ from control.utils.pydantic_config_models import (
     ObsModuleConfig,
     QuaboIpPorts,
     QuaboUids,
+    TransferNodeSpec,
 )
 
 #-------------- DEFAULTS ---------------
@@ -110,7 +111,7 @@ def now_str() -> str:
 #
 default_hk_dest = '192.168.1.100'
 
-def daq_grpc_endpoint(node: DaqNode, daq_config: DaqConfig | None = None) -> tuple[str, int]:
+def daq_grpc_endpoint(node: DaqNode | TransferNodeSpec, daq_config: DaqConfig | None = None) -> tuple[str, int]:
     """Return (host, port) for the gRPC DAQ-control server on this node.
 
     Reads port_forwarding from the node model (attached by attach_daq_config).
@@ -122,12 +123,11 @@ def daq_grpc_endpoint(node: DaqNode, daq_config: DaqConfig | None = None) -> tup
     if daq_config and is_local(node.ip_addr, daq_config):
         return str(node.ip_addr), 50051
 
-    # 2. If port forwarding is enabled and we are not local, use the gateway.
-    if node.port_forwarding and node.port_forwarding.status:
-        # If grpc_port is None, assume the default 50051 is forwarded.
-        host = str(node.port_forwarding.gw_ip)
-        port = node.port_forwarding.grpc_port or 50051
-        return host, port
+    # 2. If port forwarding is enabled and grpc_port is explicitly set, use the gateway.
+    # grpc_port=None means gRPC is not forwarded at the gateway — fall through to direct.
+    if (node.port_forwarding and node.port_forwarding.status
+            and node.port_forwarding.grpc_port is not None):
+        return str(node.port_forwarding.gw_ip), node.port_forwarding.grpc_port
 
     # 3. Default direct connection
     return str(node.ip_addr), 50051

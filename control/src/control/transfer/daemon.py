@@ -24,6 +24,7 @@ from control.transfer.verify import verify_manifest
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
+from control.utils.util import daq_grpc_endpoint
 
 POLL_INTERVAL_SEC = 5.0
 
@@ -179,12 +180,7 @@ async def _process_job(
                     from control.transfer.models import TransferNodeSpec as _TNS
                     assert isinstance(node, _TNS)
 
-                    host = str(node.ip_addr)
-                    port = 50051
-                    if node.port_forwarding and node.port_forwarding.status:
-                        host = str(node.port_forwarding.gw_ip)
-                        port = node.port_forwarding.grpc_port
-
+                    host, port = daq_grpc_endpoint(node)
                     async with AsyncDaqControlClient(host=host, port=port) as client:
                         try:
                             # Generate a single manifest for the entire node (all modules + configs)
@@ -354,12 +350,7 @@ async def _process_job(
                     from control.transfer.models import TransferNodeSpec as _TNS
                     assert isinstance(node, _TNS)
 
-                    host = str(node.ip_addr)
-                    port = 50051
-                    if node.port_forwarding and node.port_forwarding.status:
-                        host = str(node.port_forwarding.gw_ip)
-                        port = node.port_forwarding.grpc_port
-
+                    host, port = daq_grpc_endpoint(node)
                     async with AsyncDaqControlClient(host=host, port=port) as client:
                         try:
                             resp = await asyncio.wait_for(

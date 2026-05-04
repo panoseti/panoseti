@@ -43,6 +43,7 @@ FROM base AS headnode
 #   docker build --build-arg HOST_UID=$(id -u) --build-arg HOST_GID=$(id -g) ...
 ARG HOST_UID=1000
 ARG HOST_GID=1000
+ARG DOCKER_GID=999
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     rsync openssh-client docker.io curl \
@@ -68,7 +69,7 @@ RUN mkdir -p /etc/bash_completion.d && \
 # used by a default system account in the base image (e.g., ubuntu or node).
 RUN groupadd -o -g "${HOST_GID}" panoseti \
  && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && (getent group docker || groupadd docker) \
+ && (groupadd -o -g "${DOCKER_GID}" docker || groupadd -o docker) \
  && usermod -aG docker panoseti
 
 # Pre-create state and cache directories so they are owned by panoseti 
