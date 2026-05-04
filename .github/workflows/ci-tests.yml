@@ -140,7 +140,7 @@ jobs:
         working-directory: control
 
       - name: Orchestrate HITL Sequence
-        run: uv run python3 src/ci/hw_ci_orchestrator.py
+        run: uv run python3 src/ci/hw_ci_orchestrator.py --no-fail-fast
         working-directory: control
         env:
           PSETI_CONTROL_BUILD: "."

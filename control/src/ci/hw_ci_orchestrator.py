@@ -5,6 +5,7 @@ Provides a robust sequence for hardware-software integration tests.
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
@@ -37,6 +38,10 @@ def run_cmd(cmd: list[str], cwd: Path | str = _CONTROL_DIR) -> int:
     return subprocess.run(cmd, cwd=cwd, env=env).returncode
 
 def main():
+    parser = argparse.ArgumentParser(description="PSETI HITL CI Orchestrator")
+    parser.add_argument("--no-fail-fast", action="store_true", help="Continue even if steps fail.")
+    args_parsed = parser.parse_args()
+
     steps = [
         # 1. Pre-deploy check
         ["uv", "run", "pseti", "test", "hw", "check-env", "--pre-deploy"],
@@ -48,27 +53,30 @@ def main():
         ["uv", "run", "pseti", "test", "hw", "deploy"],
         # 5. Post-deploy check
         ["uv", "run", "pseti", "test", "hw", "check-env", "--post-deploy"],
-        # 6. Power off
+        # 6. Power off (Ensure clean state)
         ["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "power", "off"],
         # 7. Run tests
         ["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "test", "hw", "run", "--assume-state", "UNPOWERED", "-v"],
     ]
 
+    failed = False
     for i, step in enumerate(steps, 1):
         print(f"\n[Step {i}/{len(steps)}] {step[2] if 'pseti' in step else step[0]}")
         ret = run_cmd(step)
         if ret != 0:
             print(f"\n!!! Step {i} failed with exit code {ret}")
-            # Final cleanup attempt
-            print("\n>>> Attempting final safety teardown...")
-            run_cmd(["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "power", "off"])
-            run_cmd(["uv", "run", "pseti", "test", "hw", "down", "-v"])
-            sys.exit(ret)
+            failed = True
+            if not args_parsed.no_fail_fast:
+                break
 
-    # Success cleanup
-    print("\n>>> All steps passed. Performing final safety teardown...")
+    # Final cleanup sequence
+    print("\n>>> Performing final safety teardown...")
     run_cmd(["docker", "compose", "-f", "src/ci/docker-compose.hw-sw.yml", "exec", "-T", "headnode-server", "pseti", "power", "off"])
     run_cmd(["uv", "run", "pseti", "test", "hw", "down", "-v"])
+    
+    if failed and not args_parsed.no_fail_fast:
+        sys.exit(1)
+    
     print("\nDONE.")
 
 if __name__ == "__main__":

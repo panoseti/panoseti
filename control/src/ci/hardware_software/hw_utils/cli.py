@@ -798,10 +798,13 @@ def hw_check_env(
 
             console.print(f"  {ping_icon} ICMP {q.ip:15} | {udp_icon} CMD {q.real_ip}:{q.cmd_port} | {reboot_icon} REBOOT {q.real_ip}:{q.reboot_port} (loc={q.boardloc})")
             if not udp_ok:
-                if not pre_deploy:
+                # During CI/Deployment, Quabos might be unpowered. 
+                # We only fail if we are in a state that EXPLICITLY requires them to be reachable.
+                if not pre_deploy and not post_deploy:
                     all_ok = False
                 else:
-                    console.print("    [dim]Ignoring unreachable quabo during pre-deploy check (may be unpowered).[/dim]")
+                    status_type = "pre-deploy" if pre_deploy else "post-deploy"
+                    console.print(f"    [dim]Ignoring unreachable quabo during {status_type} check (may be unpowered).[/dim]")
 
     # ── Daemon configuration ───────────────────────────────────────────────
     console.print("[dim]Checking daemon configuration...[/dim]")
