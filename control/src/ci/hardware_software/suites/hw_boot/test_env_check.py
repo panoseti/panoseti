@@ -145,6 +145,7 @@ def test_daq_node_ssh(topology) -> None:
 # Post-deploy checks
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(os.environ.get("IN_DOCKER_CI") == "1", reason="Redundant inside container; checked by host orchestrator.")
 def test_post_deploy_containers_and_val(topology) -> None:
     """Verify that headnode-server is running and 'pseti val' passes inside it."""
     import subprocess
