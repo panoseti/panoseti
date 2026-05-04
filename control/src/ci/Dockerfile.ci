@@ -62,7 +62,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 USER panoseti
 
 # Prepare directories with correct ownership before copying/syncing
-RUN mkdir -p /app/state /app/.pytest_cache
+RUN mkdir -p /app/state /app/.pytest_cache /app/tmp/
 
 # Copy source code as the panoseti user
 COPY --chown=panoseti:panoseti control/ .
