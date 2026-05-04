@@ -70,6 +70,7 @@ services:
       PSETI_FIRMWARE: "/app/firmware"
       PYTHONDONTWRITEBYTECODE: "1"
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
+      IN_DOCKER_CI: "1"
     command: >
       /bin/sh -c "mkdir -p /home/panoseti/.ssh && cp -r /home/panoseti/.ssh-host/* /home/panoseti/.ssh/ && chmod 700 /home/panoseti/.ssh && find /home/panoseti/.ssh -type f -exec chmod 600 {} + &&
       pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"
