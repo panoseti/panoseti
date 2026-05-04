@@ -21,9 +21,6 @@ jobs:
       - name: Initialize required submodules
         run: git submodule update --init grpc grafana
       
-      - name: Load .env.ci into GitHub environment
-        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
-      
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -44,6 +41,9 @@ jobs:
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --set *.cache-to=type=gha,mode=max,scope=pseti-ci
+        env:
+          PSETI_CONTROL_BUILD: "."
+          PSETI_ROOT_BUILD: ".."
 
   # 2. Software Tests (Matrix for Parallelism)
   software-tests:
@@ -58,9 +58,6 @@ jobs:
       
       - name: Initialize required submodules
         run: git submodule update --init grpc grafana
-
-      - name: Load .env.ci into GitHub environment
-        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
@@ -87,10 +84,17 @@ jobs:
             --set *.context=. \
             --set *.cache-from=type=gha,scope=pseti-ci \
             --load
+        env:
+          PSETI_CONTROL_BUILD: "."
+          PSETI_ROOT_BUILD: ".."
 
       - name: Run Test Tier
         run: uv run pseti test --no-build ${{ matrix.tier }}
         working-directory: control
+        env:
+          COMPOSE_PROJECT_NAME: ctl-int-${{ github.run_id }}-${{ matrix.tier }}
+          BINDHOST: lo
+          GRPC_PORT: 50051
 
       - name: Upload artifacts
         if: always()
@@ -111,9 +115,6 @@ jobs:
       - name: Initialize submodules
         run: git submodule update --init grpc grafana
 
-      - name: Load .env.ci
-        run: grep -v '^#' control/src/ci/.env.ci >> $GITHUB_ENV
-
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -123,37 +124,9 @@ jobs:
         run: uv sync --all-extras
         working-directory: control
 
-      - name: Pre-deploy Environment Check
-        run: uv run pseti test hw check-env --pre-deploy
+      - name: Orchestrate HITL Sequence
+        run: uv run python3 src/ci/hw_ci_orchestrator.py
         working-directory: control
-
-      - name: Teardown existing stack
-        run: uv run pseti test hw down -v
-        working-directory: control
-
-      - name: Build hardware-software stack
-        run: uv run pseti test hw build
-        working-directory: control
-
-      - name: Deploy hardware-software stack
-        run: uv run pseti test hw deploy
-        working-directory: control
-
-      - name: Post-deploy Environment Check
-        run: uv run pseti test hw check-env --post-deploy
-        working-directory: control
-
-      - name: Power Off Hardware Before Tests
-        run: docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti power off
-        working-directory: control
-
-      - name: Run Hardware Tests
-        run: docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti test hw run --assume-state UNPOWERED -v
-        working-directory: control
-
-      - name: Final Safety Teardown
-        if: always()
-        run: |
-          docker compose -f src/ci/docker-compose.hw-sw.yml exec -T headnode-server pseti power off || true
-          uv run pseti test hw down -v
-        working-directory: control
+        env:
+          PSETI_CONTROL_BUILD: "."
+          PSETI_ROOT_BUILD: ".."

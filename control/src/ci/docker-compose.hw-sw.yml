@@ -60,7 +60,7 @@ services:
       - /mnt/panoseti-test/:/mnt/panoseti-test/
       - ${PSETI_CONTROL_BUILD}/firmware:/app/firmware:ro
       - ${PSETI_CONTROL_BUILD}/quabos:/app/quabos:ro
-      - ~/.ssh:/root/.ssh-host:ro
+      - ~/.ssh:/home/panoseti/.ssh-host:ro
       - ${SSH_AUTH_SOCK:-/dev/null}:/run/host-ssh-agent
     environment:
       REDIS_HOST: "127.0.0.1"
@@ -71,7 +71,7 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
     command: >
-      /bin/sh -c "mkdir -p /root/.ssh && cp -r /root/.ssh-host/* /root/.ssh/ && chmod 700 /root/.ssh && find /root/.ssh -type f -exec chmod 600 {} + &&
+      /bin/sh -c "mkdir -p /home/panoseti/.ssh && cp -r /home/panoseti/.ssh-host/* /home/panoseti/.ssh/ && chmod 700 /home/panoseti/.ssh && find /home/panoseti/.ssh -type f -exec chmod 600 {} + &&
       pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"
     restart: always
 
