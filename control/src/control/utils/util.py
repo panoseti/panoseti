@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import datetime
 import json
-import logging
 
 # control script utilities
 # CWD CONTRACT: relative paths in this module are relative to the control/ directory.

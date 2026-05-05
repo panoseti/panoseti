@@ -44,28 +44,35 @@ def get_mapped_client_factory(daq_config: config_file.DaqConfig):
     return _get_mapped_client
 
 def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
-    """Simulates the effect of rsync by copying files from the fleet's host paths to the head node."""
-    head_run_dir.mkdir(parents=True, exist_ok=True)
-    # Create a dummy manifest so the VERIFYING stage doesn't fail
-    (head_run_dir / "dp_manifest.node_mock.algo_blake3.txt").write_text("")
+    """Simulates the effect of rsync by copying files from the fleet's host paths to the head node.
     
+    Respects manifest exclusion rules to ensure integrity tests accurately reflect real rsync behavior.
+    """
+    head_run_dir.mkdir(parents=True, exist_ok=True)
+    
+    exclude_patterns = ["dp_manifest.node_*.txt", "manifest.*"]
+
+    def _should_exclude(name: str) -> bool:
+        import fnmatch
+        return any(fnmatch.fnmatch(name, pat) for pat in exclude_patterns)
+
     for _i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
         # 1. Root contents (hp_stdout, pss, meta.json)
         daq_run_dir = host_root / run_name
         if daq_run_dir.is_dir():
             for f in daq_run_dir.iterdir():
-                if f.is_file():
+                if f.is_file() and not _should_exclude(f.name):
                     shutil.copy2(f, head_run_dir / f.name)
         # 2. Module contents (flattened as per build_rsync_cmd)
         for mod_root in host_root.glob("module_*"):
             src = mod_root / run_name
             if src.is_dir():
                 for f in src.iterdir():
-                    if f.is_file():
+                    if f.is_file() and not _should_exclude(f.name):
                         shutil.copy2(f, head_run_dir / f.name)
 
-async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, run_name: str) -> dict[str, bytes]:
+async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, run_name: str, file_size_kb: int = 1) -> dict[str, bytes]:
     """Starts a run, generates fake .pff files and metadata on containers, and stops the run."""
     obs_config = config_file.get_obs_config()
     quabo_uids = config_file.get_quabo_uids()
@@ -129,8 +136,8 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
             
             for f_idx in range(2):
                 # Unique name across the whole fleet
-                filename = f"start_2026.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
-                content = os.urandom(1024) 
+                filename = f"{run_name}.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
+                content = os.urandom(file_size_kb * 1024) 
                 f_path = host_mod_run_dir / filename
                 f_path.write_bytes(content)
                 expected_data[filename] = content

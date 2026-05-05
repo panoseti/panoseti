@@ -25,17 +25,15 @@ Leaves state:   PH_CALIBRATED.
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import os
 import time
 
 import pytest
 
-from ci.hardware_software.hw_utils.topology import HwTopology
 from ci.hardware_software.hw_utils.driver_ops import check_all_reachable
+from ci.hardware_software.hw_utils.topology import HwTopology
 from control.pseti import app
-from control.utils import util
 
 logger = logging.getLogger(__name__)
 

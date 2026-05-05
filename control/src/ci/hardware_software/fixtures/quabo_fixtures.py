@@ -6,11 +6,11 @@ derived from the active topology (no hardcoded IPs).
 
 from __future__ import annotations
 
+from collections.abc import Generator
+
 import pytest
-from typing import Generator
 
 from control.driver.quabo_driver import QUABO
-
 
 
 @pytest.fixture(scope="session")

@@ -13,10 +13,11 @@ import logging
 import os
 import time
 from pathlib import Path
-from control.pseti import app
+
 import pytest
 
 from ci.hardware_software.core.reachability import wait_until_all_quabos_reachable
+from control.pseti import app
 
 logger = logging.getLogger(__name__)
 

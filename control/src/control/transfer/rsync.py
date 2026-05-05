@@ -11,6 +11,7 @@ def build_rsync_cmd(
     node: TransferNodeSpec,
     run_name: str,
     head_run_dir: str | pathlib.Path,
+    bwlimit: int | None = None,
 ) -> list[str]:
     """Build an rsync command for a single DAQ node's run directory.
 
@@ -24,6 +25,7 @@ def build_rsync_cmd(
         run_name: Name of the run directory to transfer.
         head_run_dir: Absolute path to the destination run directory on the
             head node.
+        bwlimit: Optional bandwidth limit in KiB/s (passed to --bwlimit).
 
     Returns:
         A list of strings forming a complete rsync invocation, ready to pass
@@ -36,6 +38,14 @@ def build_rsync_cmd(
     use_pf = pf is not None and pf.status
 
     cmd: list[str] = ["rsync", "-aP", "--info=progress2", "--partial-dir=.rsync-partial"]
+    if bwlimit:
+        cmd.append(f"--bwlimit={bwlimit}")
+    
+    # Exclude manifest files to prevent DAQ-side manifests from overwriting 
+    # the secure manifest obtained via gRPC.
+    cmd.append("--exclude=dp_manifest.node_*.txt")
+    cmd.append("--exclude=manifest.*")
+    
     ssh_base = list(ssh_options)  # copy to avoid mutation
 
     if use_pf and pf is not None:

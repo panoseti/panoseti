@@ -40,25 +40,38 @@ def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
         # Root run dir (e.g. /data/ci_run_xxx.pffd/)
         main_run_dir = host_root / run_dir
         main_run_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(main_run_dir, 0o777)
+        except OSError:
+            pass
+
         # Touch metadata logs to satisfy verification. Name must include node name.
         (main_run_dir / f"hp_stdout_{spec.name}.log").touch()
         (main_run_dir / "meta.json").write_text('{"test": true}')
-        os.chmod(main_run_dir, 0o777)
 
         # Module subdirs (e.g. /data/module_250/ci_run_xxx.pffd/)
         for mid in spec.module_ids:
             mod_root = host_root / f"module_{mid}"
             mod_root.mkdir(parents=True, exist_ok=True)
-            os.chmod(mod_root, 0o777)
+            try:
+                os.chmod(mod_root, 0o777)
+            except OSError:
+                pass
 
             mod_run_dir = mod_root / run_dir
             mod_run_dir.mkdir(parents=True, exist_ok=True)
-            os.chmod(mod_run_dir, 0o777)
+            try:
+                os.chmod(mod_run_dir, 0o777)
+            except OSError:
+                pass
 
             # Dummy data - name must match what GenerateManifest picks up
             f_path = mod_run_dir / f"data.module_{mid}.pff"
             f_path.write_bytes(b"synthetic data")
-            os.chmod(f_path, 0o666)
+            try:
+                os.chmod(f_path, 0o666)
+            except OSError:
+                pass
 
 
 def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:
@@ -139,6 +152,10 @@ async def test_transfer_daemon_archives_run(
     )
     mgr.save_state(ledger)
 
+    # Prepare host directories FIRST
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
+
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
     wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
@@ -150,10 +167,6 @@ async def test_transfer_daemon_archives_run(
 
     # Ensure head dir exists for stop_run
     os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-
-    # Prepare host directories
-    fleet, _ = session_fleet
-    _prepare_container_dirs(fleet, run_params["run_dir"])
 
     # 2. Stop real run (enqueues job)
     success = await stop.stop_run(
@@ -241,6 +254,10 @@ async def test_transfer_daemon_resumes_after_crash(
     
     RunStateManager().clear_state()
 
+    os.makedirs(f"{head_data_tmp}/{run_params['run_dir']}", exist_ok=True)
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
+
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
     wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
@@ -249,10 +266,6 @@ async def test_transfer_daemon_resumes_after_crash(
 
     net = config_file.get_network_config()
     uids = config_file.get_quabo_uids()
-
-    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    fleet, _ = session_fleet
-    _prepare_container_dirs(fleet, run_params["run_dir"])
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()
@@ -318,14 +331,14 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     
     RunStateManager().clear_state()
 
+    os.makedirs(f"{head_data_tmp}/{run_params['run_dir']}", exist_ok=True)
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
+
     daq_config = config_file.get_daq_config()
     daq_config.head_node_data_dir = str(head_data_tmp)
     net = config_file.get_network_config()
     uids = config_file.get_quabo_uids()
-
-    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    fleet, _ = session_fleet
-    _prepare_container_dirs(fleet, run_params["run_dir"])
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()
@@ -401,14 +414,14 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
     
     RunStateManager().clear_state()
 
+    os.makedirs(f"{head_data_tmp}/{run_params['run_dir']}", exist_ok=True)
+    fleet, _ = session_fleet
+    _prepare_container_dirs(fleet, run_params["run_dir"])
+
     daq_config = config_file.get_daq_config()
     daq_config.head_node_data_dir = str(head_data_tmp)
     net = config_file.get_network_config()
     uids = config_file.get_quabo_uids()
-
-    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
-    fleet, _ = session_fleet
-    _prepare_container_dirs(fleet, run_params["run_dir"])
     await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
 
     tq = TransferQueue()

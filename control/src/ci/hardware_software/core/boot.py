@@ -8,7 +8,6 @@ expected state.
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,6 +30,7 @@ def quabos_responsive(retries: int = 5, delay_s: float = 5.0) -> bool:
     try:
         import ipaddress
         from concurrent.futures import ThreadPoolExecutor
+
         from ci.hardware_software.hw_utils.topology import HwTopology
         from control.utils import util
         

@@ -124,6 +124,7 @@ class DataConfig(BaseModel):
     interleave: InterleaveConfig | None = None
     stim_params: StimParams | None = None
     flash_params: FlashParams | None = None
+    xfr_bwlimit: int | None = Field(None, gt=0)
 
     @field_validator("run_type")
     def validate_run_type(cls, v: str) -> str:
@@ -523,6 +524,8 @@ class TransferJob(BaseStrictModel):
     no_cleanup: bool = False
     no_collect: bool = False
     skip_verify: bool = False
+    bwlimit: int | None = None
+    algo: str = "blake3"
     last_error: str | None = None
     last_error_at: datetime | None = None
     daq_nodes: list[TransferNodeSpec]

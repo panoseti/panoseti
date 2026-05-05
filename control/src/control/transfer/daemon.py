@@ -183,23 +183,43 @@ async def _process_job(
                     host, port = daq_grpc_endpoint(node)
                     async with AsyncDaqControlClient(host=host, port=port) as client:
                         try:
-                            # Generate a single manifest for the entire node (all modules + configs)
+                            # 1. Generate the manifest on the DAQ node
                             resp = await asyncio.wait_for(
                                 client.GenerateManifest({
                                     "data_dir": node.data_dir,
                                     "run_dir": run_name,
                                     "module_id": node.module_ids,
-                                    "algorithm": "blake3",
-                                    # include_patterns default handles .pff and configs
+                                    "algorithm": job.algo,
                                 }),
-                                timeout=20.0,
+                                timeout=30.0,
                             )
                             if not resp.get("success", True):
                                 err = f"GenerateManifest failed on {node.ip_addr}: {resp.get('message', 'unknown error')}"
                                 manifest_errors.append(err)
                                 logger.warning(err)
+                                return
+
+                            # 2. Fetch the manifest entries via secure gRPC stream
+                            # This ensures the manifest used for verification is independent of the rsync transfer.
+                            lines: list[str] = []
+                            async for entry in client.GetManifest({
+                                "data_dir": node.data_dir,
+                                "run_dir": run_name,
+                                "module_id": node.module_ids,
+                            }):
+                                # Format: <digest>  <size>  <mtime_ns>  <relpath>
+                                line = f"{entry['digest_hex']}  {entry['size_bytes']}  {entry['mtime_ns']}  {entry['relative_path']}"
+                                lines.append(line)
+                            
+                            # 3. Write securely to the head node
+                            manifest_name = f"dp_manifest.node_{node.ip_addr}.algo_{job.algo}.txt"
+                            manifest_path = pathlib.Path(head_data_dir) / run_name / manifest_name
+                            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+                            await anyio.Path(manifest_path).write_text("\n".join(lines) + "\n")
+                            logger.info("[%s] Securely fetched manifest from %s", run_name, node.ip_addr)
+
                         except Exception as exc:
-                            err = f"GenerateManifest failed on {node.ip_addr}: {exc}"
+                            err = f"Manifest retrieval failed on {node.ip_addr}: {exc}"
                             manifest_errors.append(err)
                             logger.warning(err)
 
@@ -234,7 +254,7 @@ async def _process_job(
             
             async def run_rsync_with_progress(node: TransferNodeSpec) -> int:
                 head_run_dir = pathlib.Path(head_data_dir) / run_name
-                cmd = build_rsync_cmd(node, run_name, head_run_dir)
+                cmd = build_rsync_cmd(node, run_name, head_run_dir, bwlimit=job.bwlimit)
                 
                 if "--info=progress2" not in cmd:
                     cmd.append("--info=progress2")

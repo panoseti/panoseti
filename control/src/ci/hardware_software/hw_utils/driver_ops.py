@@ -9,10 +9,11 @@ bootloader — the only reliable reset is a WPS power cycle.
 
 from __future__ import annotations
 
-import logging
 import ipaddress
-from control.utils import util
+import logging
+
 from ci.hardware_software.hw_utils.topology import HwTopology
+from control.utils import util
 
 logger = logging.getLogger(__name__)
 

@@ -75,8 +75,11 @@ class TransferQueue:
         try:
             with os.fdopen(fd, "w") as f:
                 # Top-level scalar fields first; skip None values (optional fields)
-                for k, v in data.items():
-                    if k in _skip_keys or v is None:
+                for k in ["schema_version", "run_name", "head_data_dir", "head_node_username", 
+                          "created_at", "attempts", "no_cleanup", "no_collect", "skip_verify", 
+                          "bwlimit", "algo", "last_error", "last_error_at"]:
+                    v = data.get(k)
+                    if v is None:
                         continue
                     if isinstance(v, bool):
                         val = "true" if v else "false"

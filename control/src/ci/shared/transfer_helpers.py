@@ -80,7 +80,7 @@ def mocked_make_run_dirs_factory(daqnode_container: Any):
             
     return mocked_make_run_dirs
 
-def mocked_build_rsync_cmd(node, run_name, head_run_dir):
+def mocked_build_rsync_cmd(node, run_name, head_run_dir, bwlimit):
     # We simulate the per-node rsync by copying everything from /data 
     cmd = ["rsync", "-rtv"]
     for mid in node.module_ids:
