@@ -102,7 +102,12 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
 
     # Create dummy PH baseline to pass pre-flight checks
     ph_baseline_path = PanoPaths.calibration_file("quabo_ph_baseline.json")
-    ph_baseline_path.write_text("{}")
+    import json
+    dummy_data = {
+        "date": "2024-01-01T00:00:00",
+        "quabos": [] # Empty list is valid according to schema
+    }
+    ph_baseline_path.write_text(json.dumps(dummy_data))
 
     with patch("control.start.ph_baseline_file_ok", return_value=True), \
          patch("control.start._check_daq_reachability"), \

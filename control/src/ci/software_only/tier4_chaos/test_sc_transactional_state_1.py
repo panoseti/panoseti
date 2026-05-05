@@ -206,7 +206,7 @@ async def main():
         ph_path.parent.mkdir(parents=True, exist_ok=True)
         if not ph_path.exists():
             with open(ph_path, "w") as f:
-                json.dump({"quabos": []}, f)
+                json.dump({"date": "2024-01-01T00:00:00", "quabos": []}, f)
 
         # Ensure coherence by assigning all modules in obs_config to the first DAQ node
         # FIRST: clear other nodes to avoid overlaps

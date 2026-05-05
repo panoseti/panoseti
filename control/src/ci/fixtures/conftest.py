@@ -19,6 +19,12 @@ from control.utils.run_state import RunStateManager
 from .factories import make_mock_daq_config, make_transfer_job, simulate_daq_filesystem
 from .state_probe import StateProbe
 
+pytest_plugins = [
+    "ci.fixtures.workspace_fixtures",
+    "ci.fixtures.network_fixtures",
+    "ci.fixtures.data_fixtures",
+]
+
 
 @pytest.fixture(scope="session")
 def worker_id(request: Any) -> str:

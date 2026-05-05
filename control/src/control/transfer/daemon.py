@@ -7,6 +7,7 @@ import json
 import os
 import pathlib
 import signal
+import inspect
 import time
 import traceback
 from datetime import UTC, datetime, timedelta
@@ -210,8 +211,8 @@ async def _process_job(
                                 "run_dir": run_name,
                                 "module_id": node.module_ids,
                             })
-                            # if hasattr(manifest_res, "__await__"):
-                            #     manifest_res = await manifest_res
+                            if inspect.isawaitable(manifest_res):
+                                manifest_res = await manifest_res
 
                             async for entry in manifest_res:
                                 # Format: <digest>  <size>  <mtime_ns>  <relpath>

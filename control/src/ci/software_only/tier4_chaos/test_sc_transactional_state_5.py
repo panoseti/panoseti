@@ -64,7 +64,7 @@ def mock_daq_config_for_headnode():
     ph_baseline = PanoPaths.tmp_dir() / "quabo_ph_baseline.json"
     if not os.path.exists(ph_baseline):
         with open(ph_baseline, "w") as f:
-            json.dump({"quabos": []}, f)
+            json.dump({"date": "2024-01-01T00:00:00", "quabos": []}, f)
 
     if os.path.exists(path):
         import shutil

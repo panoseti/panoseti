@@ -65,7 +65,7 @@ def mock_daq_config_for_headnode(daq_endpoint: tuple[str, int] | None = None, in
     ph_baseline.parent.mkdir(parents=True, exist_ok=True)
     if not ph_baseline.exists():
         with open(ph_baseline, "w") as f:
-            json.dump({"quabos": []}, f)
+            json.dump({"date": "2024-01-01T00:00:00", "quabos": []}, f)
 
     if os.path.exists(path):
         import shutil
