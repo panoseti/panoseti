@@ -181,24 +181,36 @@ def ip_addr_str_to_bytes(ip_addr: IPvAnyAddress) -> bytearray:
 # return true if can ping IP addr
 #
 def ping(ip_addr: IPvAnyAddress, cmd_port: int) -> bool:
+    """Check network reachability for a Quabo via its command port.
+
+    This uses a two-pass approach:
+    1. Standard ICMP ping (verifies the gateway/router is up).
+    2. UDP Echo probe (verifies the Quabo application is alive).
+
+    The UDP probe reuses the opcode 0x82 (Echo HV) logic from the boot
+    sequence Stage 06. It is safe for all environments and does not
+    change hardware state.
+    """
     ip_addr_str = str(ip_addr)
-    logging.getLogger('PANOSETI.Config.util.ping')
-    #return not subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr], capture_output=True).returncode
-    # TODO: implement the qping cmd in the firmware
-    # For now, we just use the data_packet_destination to see if we can talk to Quabo
+    # Pass 1: ICMP ping
     s = subprocess.run(['ping', '-c', '1', '-w', '1', '-q', ip_addr_str], capture_output=True).returncode
     if not s:
         return True
-    else:
-        # Fallback: check if the quabo responds to UDP commands even if it blocks ICMP
-        quabo = quabo_driver.QUABO(ip_addr, cmd_port)
-        try:
-            # Use our own IP as a sensible target for the liveness check
-            # VERY SPECIAL IP ADDRESS: DON'T TOUCH OR YOUR QUABOS WONT REBOOT!!!!!!
-            target_ip = '192.168.1.1' #'local_ip()[0]
-        except Exception:
-            target_ip = '192.168.1.1'
-        return quabo.data_packet_destination(ip_address(target_ip))
+
+    # Pass 2: UDP Echo probe (opcode 0x82)
+    quabo = quabo_driver.QUABO(ip_addr, cmd_port)
+    try:
+        quabo.sock.settimeout(1.0)
+        quabo.flush_rx_buf()
+        # Request an echo response usingopcode 0x82
+        quabo.hv_set([0, 0, 0, 0], echo=True)
+        data, _ = quabo.sock.recvfrom(64)
+        # Verify we got an echo packet with the matching opcode
+        return bool(data and data[0] == 0x82)
+    except (TimeoutError, OSError):
+        return False
+    finally:
+        quabo.close()
 
 
 def mac_addr_str(b: bytes) -> str:

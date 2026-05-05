@@ -74,6 +74,7 @@ class InterleaveController:
             "overhead": []
         }
 
+        logger.info("Initializing InterleaveController...")
         self._acquire_lock()
 
         # Enforce that an active run exists
@@ -88,6 +89,13 @@ class InterleaveController:
 
         self.data_config = data_config
         self.interleave_cfg = data_config.interleave or InterleaveConfig()
+        
+        if not self.interleave_cfg.enable:
+            logger.warning("Interleaving is disabled in the current data configuration.")
+            # We don't exit here because run_loop handles it, but we log it.
+        else:
+            logger.info("Interleaving is enabled. Found %d states.", len(self.interleave_cfg.states or []))
+
         self.obs_config = obs_config
         self.daq_config = daq_config
         self.quabo_uids = quabo_uids
@@ -131,16 +139,27 @@ class InterleaveController:
                     old_pid = int(f.read().strip())
 
                 if psutil.pid_exists(old_pid):
-                    logger.critical(
-                        f"CRITICAL: Another interleave process (PID {old_pid}) is currently running.\n"
-                        "To resolve this, run `python config.py --stop-interleave`."
-                    )
-                    sys.exit(1)
+                    # Check if the process is actually an interleave process
+                    try:
+                        p = psutil.Process(old_pid)
+                        if "interleave.py" in " ".join(p.cmdline()):
+                            logger.critical(
+                                f"CRITICAL: Another interleave process (PID {old_pid}) is currently running.\n"
+                                "To resolve this, run `python config.py --stop-interleave`."
+                            )
+                            sys.exit(1)
+                        else:
+                            logger.warning(f"Lock file belongs to unrelated process {old_pid}. Cleaning up...")
+                            os.remove(INTERLEAVE_LOCK_PATH)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        logger.warning(f"Stale lock file for inaccessible process {old_pid}. Cleaning up...")
+                        os.remove(INTERLEAVE_LOCK_PATH)
                 else:
                     logger.warning(f"Stale PID file detected for dead process {old_pid}. Cleaning up...")
                     os.remove(INTERLEAVE_LOCK_PATH)
             except (ValueError, OSError):
-                os.remove(INTERLEAVE_LOCK_PATH)
+                with contextlib.suppress(OSError):
+                    os.remove(INTERLEAVE_LOCK_PATH)
 
         os.makedirs(os.path.dirname(INTERLEAVE_LOCK_PATH), exist_ok=True)
         with open(INTERLEAVE_LOCK_PATH, "w") as f:
@@ -159,28 +178,23 @@ class InterleaveController:
             self.keep_running = False
 
     def _broadcast_acq_mode(self, daq_params: quabo_driver.DAQ_PARAMS) -> None:
-        """Broadcast acquisition mode parameters to all Quabos.
-        
-        Broadcasts are performed sequentially across modules.
+        """Broadcast acquisition mode parameters to all Quabos in parallel.
 
         Args:
             daq_params: The Quabo-level DAQ parameters to send.
         """
         if self.dry_run:
-            #logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
             return
 
-        def send_acq_mode_to_module(module_id: int) -> None:
-            """Sequentially broadcast ACQ mode to Quabos in the Q0, Q1, Q2, Q3 order."""
-            quabos = self.quabos[module_id]
-            for q in quabos:
-                q.send_daq_params(daq_params)
-        #futures = []
-        for mid in self.quabos:
-            #futures.append(self.executor.submit(send_acq_mode_to_module, mid))
-            send_acq_mode_to_module(mid)
-        #for f in as_completed(futures):
-        #    f.result()
+        from concurrent.futures import ThreadPoolExecutor
+        
+        all_quabos = [q for quabos in self.quabos.values() for q in quabos]
+        if not all_quabos:
+            return
+
+        with ThreadPoolExecutor(max_workers=len(all_quabos)) as executor:
+            # Dispatch pings in parallel
+            executor.map(lambda q: q.send_daq_params(daq_params), all_quabos)
 
     def _reconfigure_quabos(self, next_state_data_config: DataConfig) -> None:
         """Reconfigure MAROC and FPGA registers for a specific observing mode.
@@ -196,7 +210,8 @@ class InterleaveController:
                 modules, self.quabo_uids, self.quabo_info,
                 next_state_data_config, self.obs_config, self.daq_config,
                 self.network_config, 
-                verbose=False, write_config=False, do_log=False
+                verbose=False, write_config=False, do_log=False,
+                non_interactive=True
             )
             pano_config.do_mask_config(
                 modules, next_state_data_config, 

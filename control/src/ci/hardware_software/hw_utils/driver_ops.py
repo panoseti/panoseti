@@ -128,13 +128,28 @@ def calibrate_ph(**kwargs) -> None:
 # ---------------------------------------------------------------------------
 
 def check_all_reachable(topo: HwTopology) -> list[str]:
-    """Return error strings for each quabo that fails util.ping (command port)."""
+    """Return error strings for each quabo that fails util.ping (command port).
+    
+    Performs parallel pings across the topology.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    quabo_addrs = list(topo.quabo_ips())
+    if not quabo_addrs:
+        return []
+
     errors = []
-    for a in topo.quabo_ips():
-        try:
-            if not util.ping(ipaddress.ip_address(a.real_ip), a.cmd_port):
-                errors.append(f"{a.ip} (loc={a.boardloc}, real={a.real_ip}:{a.cmd_port}) not reachable")
-        except Exception as exc:
-            errors.append(f"{a.ip} (loc={a.boardloc}) ping error: {exc}")
+    with ThreadPoolExecutor(max_workers=len(quabo_addrs)) as executor:
+        futures = {
+            executor.submit(util.ping, ipaddress.ip_address(a.real_ip), a.cmd_port): a 
+            for a in quabo_addrs
+        }
+        
+        for future in futures:
+            a = futures[future]
+            try:
+                if not future.result():
+                    errors.append(f"{a.ip} (loc={a.boardloc}, real={a.real_ip}:{a.cmd_port}) not reachable")
+            except Exception as exc:
+                errors.append(f"{a.ip} (loc={a.boardloc}) ping error: {exc}")
     return errors
 

@@ -501,7 +501,7 @@ def do_hv_off(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_con
 #
 MAROC_CONFIG_QUABO_CONFIG = quabo_driver.parse_quabo_config_file(QUABO_CONFIG_PATH) # load once to avoid redundant I/O
 cal_cache: dict[tuple[Any, ...], Any] = {}
-def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], data_config: DataConfig, obs_config: ObsConfig, daq_config: DaqConfig, network_config: NetworkConfig, verbose: bool = False, write_config: bool = True, do_log: bool = True) -> None:
+def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo_info: dict[str, Any], data_config: DataConfig, obs_config: ObsConfig, daq_config: DaqConfig, network_config: NetworkConfig, verbose: bool = False, write_config: bool = True, do_log: bool = True, non_interactive: bool = False) -> None:
     """Configure MAROC ASIC registers (DAC1/DA2/GAIN* params) for multiple modules.
     
     This includes setting gains and discriminator thresholds (DAC1/DAC2) 
@@ -518,6 +518,7 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
         verbose: If True, prints detailed register settings.
         write_config: If True, writes JSON configuration snapshots.
         do_log: If True, enables logging for this operation.
+        non_interactive: If True, uses default calibration if missing instead of asking.
     """
     gain = float(data_config.gain) if data_config.gain is not None else 1.0
     do_img = data_config.image is not None
@@ -553,7 +554,12 @@ def do_maroc_config(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, quabo
             try:
                 qi = quabo_info[uid]
             except Exception:
-                use_default_calib = ask_use_default_calibration(ip_addr)
+                if non_interactive:
+                    logger.warning(f"No calibration found for {ip_addr}. Using default (non-interactive mode).")
+                    use_default_calib = True
+                else:
+                    use_default_calib = ask_use_default_calibration(ip_addr)
+                
                 if use_default_calib:
                     qi = quabo_info['default']
                     is_qfp = False
@@ -925,14 +931,18 @@ def do_start_interleave() -> None:
         logger.error("ERROR: Cannot start interleaving. No active observation running. Run start.py first.")
         sys.exit(1)
 
+    # Validate interleave config before starting
+    data_config = config_file.get_data_config()
+    if not data_config.interleave or not data_config.interleave.enable:
+        logger.error("ERROR: Interleaving is disabled in data_config.json. Set 'enable': true to use this feature.")
+        sys.exit(1)
+
     logger.info("Starting interleave controller in the background...")
-    # Start detached background process
+    # Start detached background process via util.start_daemon
     from control.tools import interleave
-    interleave_script_path = Path(interleave.__file__)
-    subprocess.Popen(['python3', str(interleave_script_path)],
-                     stdout=subprocess.STDOUT,
-                     stderr=subprocess.STDOUT)
-    logger.info("Interleave process started. Check logs/PSETI.Interleave.log for details.")
+    interleave_script_path = str(Path(interleave.__file__))
+    util.start_daemon(interleave_script_path, name="PSETI.Interleave")
+    logger.info("Interleave process started. Check logs/PSETI.Interleave/stdout.log for details.")
 
 def do_stop_interleave() -> None:
     """Gracefully stops the background interleaver if it is running."""
