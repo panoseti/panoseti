@@ -10,6 +10,7 @@ These tests require the full Docker stack to verify the interaction between:
 """
 
 import asyncio
+import contextlib
 import os
 import uuid
 from datetime import UTC, datetime
@@ -40,10 +41,8 @@ def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
         # Root run dir (e.g. /data/ci_run_xxx.pffd/)
         main_run_dir = host_root / run_dir
         main_run_dir.mkdir(parents=True, exist_ok=True)
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(main_run_dir, 0o777)
-        except OSError:
-            pass
 
         # Touch metadata logs to satisfy verification. Name must include node name.
         (main_run_dir / f"hp_stdout_{spec.name}.log").touch()
@@ -53,25 +52,19 @@ def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
         for mid in spec.module_ids:
             mod_root = host_root / f"module_{mid}"
             mod_root.mkdir(parents=True, exist_ok=True)
-            try:
+            with contextlib.suppress(OSError):
                 os.chmod(mod_root, 0o777)
-            except OSError:
-                pass
 
             mod_run_dir = mod_root / run_dir
             mod_run_dir.mkdir(parents=True, exist_ok=True)
-            try:
+            with contextlib.suppress(OSError):
                 os.chmod(mod_run_dir, 0o777)
-            except OSError:
-                pass
 
             # Dummy data - name must match what GenerateManifest picks up
             f_path = mod_run_dir / f"data.module_{mid}.pff"
             f_path.write_bytes(b"synthetic data")
-            try:
+            with contextlib.suppress(OSError):
                 os.chmod(f_path, 0o666)
-            except OSError:
-                pass
 
 
 def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:

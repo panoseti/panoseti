@@ -94,7 +94,7 @@ async def test_transfer_robustness_low_bandwidth_interrupted(
 
     # 4. Convergence Loop
     max_attempts = 20
-    for attempt in range(max_attempts):
+    for _attempt in range(max_attempts):
         current_job = tq.claim()
         if not current_job:
             # Check if it was already completed
@@ -110,7 +110,7 @@ async def test_transfer_robustness_low_bandwidth_interrupted(
              patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
              
              shutdown_event = asyncio.Event()
-             success, err = await _process_job(current_job, shutdown_event, mgr)
+             success, _err = await _process_job(current_job, shutdown_event, mgr)
              
              if success:
                  tq.complete(current_job.run_name)

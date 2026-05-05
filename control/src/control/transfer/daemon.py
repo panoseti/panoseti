@@ -202,11 +202,18 @@ async def _process_job(
                             # 2. Fetch the manifest entries via secure gRPC stream
                             # This ensures the manifest used for verification is independent of the rsync transfer.
                             lines: list[str] = []
-                            async for entry in client.GetManifest({
+                            # Note: client.GetManifest is decorated with @grpc_call which returns the 
+                            # AsyncIterator directly for agen functions. However, AsyncMock in tests 
+                            # often returns a coroutine that must be awaited to get the mock's result.
+                            manifest_res = client.GetManifest({
                                 "data_dir": node.data_dir,
                                 "run_dir": run_name,
                                 "module_id": node.module_ids,
-                            }):
+                            })
+                            # if hasattr(manifest_res, "__await__"):
+                            #     manifest_res = await manifest_res
+
+                            async for entry in manifest_res:
                                 # Format: <digest>  <size>  <mtime_ns>  <relpath>
                                 line = f"{entry['digest_hex']}  {entry['size_bytes']}  {entry['mtime_ns']}  {entry['relative_path']}"
                                 lines.append(line)

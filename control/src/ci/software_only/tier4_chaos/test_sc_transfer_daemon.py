@@ -165,6 +165,10 @@ class TestSCTX002HeadCrashMidStart:
         mgr.release_lock()
 
 
+async def _mock_get_manifest(*args: Any, **kwargs: Any) -> Any:
+    """Async generator mock for GetManifest."""
+    yield {"digest_hex": "abc", "size_bytes": 10, "mtime_ns": 1, "relative_path": "data.pff"}
+
 # ---------------------------------------------------------------------------
 # SC-TX-003: Network drop mid-rsync — retry ladder with backoff
 # ---------------------------------------------------------------------------
@@ -215,6 +219,8 @@ class TestSCTX003NetworkDropMidRsync:
         ):
             # Ensure GenerateManifest succeeds so we reach rsync
             mock_grpc_cls.return_value.__aenter__.return_value.GenerateManifest.return_value = {"success": True}
+            from unittest.mock import MagicMock
+            mock_grpc_cls.return_value.__aenter__.return_value.GetManifest = MagicMock(side_effect=_mock_get_manifest)
             
             job = tq.claim()
             assert job is not None
@@ -287,6 +293,8 @@ class TestSCTX004ManifestMismatch:
         ):
             # Ensure GenerateManifest succeeds so we reach verify
             mock_grpc_cls.return_value.__aenter__.return_value.GenerateManifest.return_value = {"success": True}
+            from unittest.mock import MagicMock
+            mock_grpc_cls.return_value.__aenter__.return_value.GetManifest = MagicMock(side_effect=_mock_get_manifest)
             
             job = tq.claim()
             assert job is not None

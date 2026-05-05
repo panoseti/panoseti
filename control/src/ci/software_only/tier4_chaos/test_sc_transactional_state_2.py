@@ -191,7 +191,7 @@ class TestSC034InterleaveDaemonHardKill:
 
         # Spawn a fake interleave daemon
         proc = subprocess.Popen(
-            ["python3", "-c", "import time; time.sleep(60)"],
+            ["python3", "interleave.py", "-c", "import time; time.sleep(60)"],
             start_new_session=True,
         )
         pid_file = tmp_path / "interleave.lock"

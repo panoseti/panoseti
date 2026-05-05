@@ -97,7 +97,6 @@ async def test_manifest_not_overwritten_by_rsync(
         return proc
 
     # Mock GenerateManifest and GetManifest to return something ELSE (the 'real' secure manifest)
-    real_secure_content = "REAL_SECURE_MANIFEST_CONTENT"
     
     # We need a custom mock for the client that handles the stream
     class MockClient:
@@ -133,7 +132,7 @@ async def test_manifest_not_overwritten_by_rsync(
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=mocked_client_factory(daq_config)):
          
          # Execute the transfer job
-         success, _ = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=30.0)
+         _success, _ = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=30.0)
          
          # The head node should now have exactly one manifest file per node,
          # and its content should be what we returned via GetManifest.

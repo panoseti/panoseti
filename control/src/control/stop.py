@@ -44,6 +44,7 @@ from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,
     DaqNode,
+    DataConfig,
     NetworkConfig,
     QuaboUids,
     RunStatus,
@@ -94,6 +95,7 @@ class StopTransaction:
         daq_config: DaqConfig,
         network_config: NetworkConfig,
         quabo_uids: QuaboUids,
+        data_config: DataConfig,
         run: str | None,
         no_collect: bool,
         no_cleanup: bool,
@@ -107,6 +109,7 @@ class StopTransaction:
         self.daq_config = daq_config
         self.network_config = network_config
         self.quabo_uids = quabo_uids
+        self.data_config = data_config
         self.run = run
         self.no_collect = no_collect
         self.no_cleanup = no_cleanup
@@ -217,6 +220,7 @@ class StopTransaction:
                         no_collect=self.no_collect,
                         no_cleanup=self.no_cleanup,
                         skip_verify=self.skip_verify,
+                        bwlimit=self.data_config.xfr_bwlimit,
                         daq_nodes=[
                             TransferNodeSpec(
                                 ip_addr=n.ip_addr,
@@ -618,10 +622,12 @@ async def stop_run(
         force_cleanup: Force cleanup even on uncertain hashpipe state.
         no_transfer: Skip enqueueing entirely (data stays on DAQ nodes).
         skip_verify: Skip manifest digest verification (job flag).
-
-    Returns:
-        True if stop completed without errors, False otherwise.
     """
+
+    # Prepare configs
+    obs_config = config_file.get_obs_config()
+    data_config = config_file.get_data_config()
+
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
 
@@ -632,7 +638,7 @@ async def stop_run(
     tx = None
     try:
         async with StopTransaction(
-            state_mgr, daq_config, network_config, quabo_uids,
+            state_mgr, daq_config, network_config, quabo_uids, data_config,
             run, no_collect, no_cleanup, no_transfer, skip_verify,
             force_cleanup, verbose, cancel_event
         ) as tx:

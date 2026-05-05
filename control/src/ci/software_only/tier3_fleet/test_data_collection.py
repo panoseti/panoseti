@@ -8,6 +8,7 @@ Transaction invariant:
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 
@@ -86,10 +87,8 @@ class TestCleanupEdgeCases:
             for mid in run_params["module_id"]:
                 mod_root = host_root / f"module_{mid}"
                 mod_root.mkdir(parents=True, exist_ok=True)
-                try:
+                with contextlib.suppress(OSError):
                     os.chmod(mod_root, 0o777)
-                except OSError:
-                    pass
 
         # Cleanup should succeed (nothing to do)
         for mid in run_params["module_id"]:

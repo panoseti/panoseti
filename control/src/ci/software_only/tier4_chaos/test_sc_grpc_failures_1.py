@@ -105,12 +105,14 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
     Fix: Phase 5 Liveness Probe in start.py after heartbeat.
     """
 
+    import asyncio
+
     import control.start as start
     from control.utils import config_file
+    _original_sleep = asyncio.sleep
 
     async def fast_sleep(delay: float, result: Any = None) -> Any:
-        import asyncio
-        return await asyncio.sleep(0, result=result)
+        return await _original_sleep(0, result=result)
 
     daq_config = config_file.get_daq_config()
     obs_config = config_file.get_obs_config()
@@ -148,6 +150,7 @@ async def test_SC005_hashpipe_exits_immediately_not_detected(
     mock_client.__aexit__ = AsyncMock(return_value=None)
     mock_client.StartDaq = AsyncMock(side_effect=success_start_daq)
     mock_client.StatusDaq = AsyncMock(side_effect=status_responses)
+    mock_client.StopDaq = AsyncMock(return_value={"success": True})
 
     with unittest.mock.patch("control.start.AsyncDaqControlClient", return_value=mock_client), \
          unittest.mock.patch("asyncio.sleep", side_effect=fast_sleep), \
