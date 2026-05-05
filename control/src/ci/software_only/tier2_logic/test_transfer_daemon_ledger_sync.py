@@ -62,15 +62,9 @@ async def _run_daemon_until(
         await task
 
 @pytest.mark.asyncio
-async def test_transfer_daemon_ledger_sync(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path / "state"))
-    # monkeypatch.setenv("PSETI_TQ_DIR", str(tmp_path / "queue"))
-    
-    # Pre-write a ledger
+async def test_transfer_daemon_ledger_sync(mock_workspace, tmp_path: pathlib.Path) -> None:
+    # mock_workspace already sets up PSETI_STATE and creates runs/ dir via PanoPaths.ensure_dirs()
     state_dir = PanoPaths.state_dir()
-    state_dir.mkdir(parents=True)
-    (state_dir / "runs").mkdir(parents=True)
-    PanoPaths.locks_dir().mkdir(parents=True)
     
     from control.utils.run_state import RunStateManager
     state_mgr = RunStateManager(base_dir=state_dir)

@@ -6,11 +6,13 @@ Fixtures for mocking network communication and Quabo command/HK streams.
 
 from __future__ import annotations
 
-import socket
-import pytest
+import struct
 from typing import Any
 
+import pytest
+
 from control.driver.quabo_driver import UDP_CMD_PORT
+
 
 class FakeSocket:
     """A simulated UDP socket for testing network drivers."""
@@ -36,7 +38,7 @@ class FakeSocket:
         if self.received_packets:
              return self.received_packets.pop(0)
 
-        raise socket.timeout("Fake socket timeout")
+        raise TimeoutError("Fake socket timeout")
 
     def settimeout(self, timeout: float | None) -> None:
         self.timeout = timeout

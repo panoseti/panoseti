@@ -108,6 +108,7 @@ def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> 
 
 @pytest.mark.asyncio
 async def test_transfer_daemon_archives_run(
+    mock_workspace,
     daq_control_direct: Any,
     run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
@@ -122,13 +123,9 @@ async def test_transfer_daemon_archives_run(
     from ci.software_only.conftest import wait_hashpipe_running
     from ci.software_only.tier4_chaos.conftest import _start as grpc_start
 
-    # Isolate state and data
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    # mock_workspace already isolates PSETI_STATE and PSETI_CONFIG
     head_data_tmp = tmp_path / "head_data"
     head_data_tmp.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
-    PanoPaths.ensure_state_dirs()
     
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
@@ -159,7 +156,7 @@ async def test_transfer_daemon_archives_run(
     uids = config_file.get_quabo_uids()
 
     # Ensure head dir exists for stop_run
-    os.makedirs(f"{daq_config.head_node_data_dir}/{run_params['run_dir']}", exist_ok=True)
+    (head_data_tmp / run_params["run_dir"]).mkdir(parents=True, exist_ok=True)
 
     # 2. Stop real run (enqueues job)
     success = await stop.stop_run(
@@ -340,7 +337,9 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     def _get_mapped_client(host, port=50051):
         for node in daq_config.daq_nodes:
             if str(node.ip_addr) == host:
-                return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
+                grpc_port = node.port_forwarding.grpc_port if node.port_forwarding else 50051
+                host = node.port_forwarding.gw_ip if node.port_forwarding else "localhost"
+                return AsyncDaqControlClient(host=host, port=grpc_port)
         return AsyncDaqControlClient(host=host, port=port)
 
     # Attempt 1

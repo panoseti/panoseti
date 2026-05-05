@@ -15,56 +15,30 @@ from __future__ import annotations
 
 import struct
 
+import pytest
+
 # Ensure control/ is on the path (pyproject.toml sets pythonpath=["."])
 from control.driver.quabo_driver import (
-    UDP_CMD_PORT,
+    QUABO,
 )
 
 # ---------------------------------------------------------------------------
-# FakeSocket — captures sendto() calls and optionally injects responses
-# ---------------------------------------------------------------------------
-
-class FakeSocket:
-    def __init__(self):
-        self.sent: list[tuple[bytes, tuple]] = []
-        self._timeout = 0.5
-        self.responses: dict[int, bytes] = {}   # opcode → bytes returned by recvfrom
-
-    def settimeout(self, t):
-        self._timeout = t
-
-    def bind(self, addr):
-        pass
-
-    def close(self):
-        pass
-
-    def sendto(self, data, addr):
-        self.sent.append((bytes(data), addr))
-
-    def recvfrom(self, size):
-        if self.sent:
-            # last sent packet's first byte is the command opcode (mask off echo bit)
-            opcode = self.sent[-1][0][0] & 0x7F
-            if opcode in self.responses:
-                return self.responses[opcode], ('192.168.3.100', UDP_CMD_PORT)
-        raise TimeoutError()
-
-    @property
-    def last_cmd(self) -> bytes:
-        """Return the payload of the most recent sendto() call."""
-        assert self.sent, "No packets sent yet"
-        return self.sent[-1][0]
-
-    @property
-    def last_dest(self) -> tuple:
-        """Return the (ip, port) of the most recent sendto() call."""
-        assert self.sent, "No packets sent yet"
-        return self.sent[-1][1]
-
-
 # Shared fixture: QUABO instance with FakeSocket
 # ---------------------------------------------------------------------------
+
+@pytest.fixture
+def quabo_and_sock(monkeypatch, tmp_path, mock_network):
+    """Yield (quabo, fake_sock). mock_network provides the FakeSocket."""
+    from control.driver.quabo_driver import QUABO_CONFIG_FILE
+    
+    fake_sock = mock_network
+    monkeypatch.setattr("socket.gethostbyname", lambda x: x)
+    
+    cfg_path = tmp_path / QUABO_CONFIG_FILE
+    cfg_path.write_text("* dummy config\n")
+    
+    q = QUABO("192.168.0.100", config_file_path=str(cfg_path))
+    return q, fake_sock
 
 
 

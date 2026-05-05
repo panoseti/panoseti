@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ci.fixtures.packet_capture import FakeSocket
 from control.driver.quabo_driver import QUABO
 from control.utils.global_validator import GlobalConfigValidator
 from control.utils.pydantic_config_models import (
