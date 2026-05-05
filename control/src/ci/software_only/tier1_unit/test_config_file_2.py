@@ -16,6 +16,7 @@ from control.utils.config_file import (
     get_modules,
     load_and_validate,
 )
+from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,
     DataConfig,
@@ -147,43 +148,36 @@ class TestGetModules:
 # ===========================================================================
 
 class TestLoadAndValidate:
-    def _write_json(self, tmp_path, relpath, data):
-        """Write JSON to a subdirectory of tmp_path matching the expected config path."""
-        full = tmp_path / "unit_test_configs" / relpath
-        full.parent.mkdir(parents=True, exist_ok=True)
-        full.write_text(json.dumps(data))
-        return str(tmp_path / "unit_test_configs")
-
-    def test_loads_valid_data_config(self, tmp_path, minimal_data_config) -> None:
-        base = self._write_json(tmp_path, "configs/data_config.json", minimal_data_config)
-        result = load_and_validate(DataConfig, "configs/data_config.json", base, "Data Config")
+    def test_loads_valid_data_config(self, mock_workspace, minimal_data_config) -> None:
+        # minimal_data_config is already in mock_workspace's data_config.json
+        from control.utils.config_file import data_config_filename
+        result = load_and_validate(DataConfig, data_config_filename, str(PanoPaths.config_dir()), "Data Config")
         assert result.run_type == "sci"
 
-    def test_missing_file_raises_value_error(self, tmp_path) -> None:
+    def test_missing_file_raises_value_error(self, mock_workspace, tmp_path) -> None:
         # Use a path that is definitely empty
-        empty_dir = tmp_path / "empty"
+        empty_dir = tmp_path / "empty_dir"
         empty_dir.mkdir()
         with pytest.raises(ValueError, match="Missing file"):
-            load_and_validate(DataConfig, "configs/data_config.json",
+            load_and_validate(DataConfig, "nonexistent.json",
                               str(empty_dir), "Data Config")
 
-    def test_invalid_json_raises_value_error(self, tmp_path) -> None:
-        p = tmp_path / "unit_test_configs" / "configs"
-        p.mkdir(parents=True, exist_ok=True)
-        (p / "data_config.json").write_text("{ not valid json }")
+    def test_invalid_json_raises_value_error(self, mock_workspace) -> None:
+        p = PanoPaths.config_dir() / "invalid.json"
+        p.write_text("{ not valid json }")
         with pytest.raises(ValueError, match="JSON Parse Error"):
-            load_and_validate(DataConfig, "configs/data_config.json",
-                              str(tmp_path / "unit_test_configs"), "Data Config")
+            load_and_validate(DataConfig, "invalid.json",
+                              str(PanoPaths.config_dir()), "Data Config")
 
-    def test_schema_error_raises_value_error(self, tmp_path) -> None:
+    def test_schema_error_raises_value_error(self, mock_workspace) -> None:
         """Invalid schema causes ValueError in non-CLI mode (by default)."""
         bad_data = {"run_type": "a" * 20}  # Too long — Pydantic will reject
-        base = self._write_json(tmp_path, "configs/data_config.json", bad_data)
-        # Default behaviour is now ValueError on schema error when not in CLI mode
-        # to allow orchestration rollback ladders to run.
+        p = PanoPaths.config_dir() / "bad_schema.json"
+        p.write_text(json.dumps(bad_data))
+        
         with pytest.raises(ValueError, match="Pydantic Validation failed"):
-            load_and_validate(DataConfig, "configs/data_config.json",
-                              base, "Data Config")
+            load_and_validate(DataConfig, "bad_schema.json",
+                              str(PanoPaths.config_dir()), "Data Config")
 
 
 # ===========================================================================
@@ -280,55 +274,46 @@ class TestCheckConfigFile:
 # ===========================================================================
 
 class TestGetConfigs:
-    def _write_json(self, tmp_path, filename, data):
-        p = tmp_path / filename
-        p.write_text(json.dumps(data))
-        return str(tmp_path)
-
-    def test_get_obs_config(self, tmp_path, minimal_obs_config) -> None:
+    def test_get_obs_config(self, mock_workspace, minimal_obs_config) -> None:
         from control.utils.config_file import get_obs_config
-        base = self._write_json(tmp_path, "obs_config.json", minimal_obs_config)
-        config = get_obs_config(base)
+        config = get_obs_config()
         assert config.name == minimal_obs_config["name"]
 
-    def test_get_daq_config(self, tmp_path, minimal_daq_config) -> None:
+    def test_get_daq_config(self, mock_workspace, minimal_daq_config) -> None:
         from control.utils.config_file import get_daq_config
-        base = self._write_json(tmp_path, "daq_config.json", minimal_daq_config)
-        config = get_daq_config(base)
+        config = get_daq_config()
         assert str(config.head_node_ip_addr) == minimal_daq_config["head_node_ip_addr"]
 
-    def test_get_data_config(self, tmp_path, minimal_data_config) -> None:
+    def test_get_data_config(self, mock_workspace, minimal_data_config) -> None:
         from control.utils.config_file import get_data_config
-        base = self._write_json(tmp_path, "data_config.json", minimal_data_config)
-        config = get_data_config(base)
+        config = get_data_config()
         assert config.run_type == minimal_data_config["run_type"]
 
-    def test_get_network_config(self, tmp_path) -> None:
+    def test_get_network_config(self, mock_workspace) -> None:
         from control.utils.config_file import get_network_config
-        net_data: dict[str, Any] = {"modules": [], "daq_nodes": []}
-        base = self._write_json(tmp_path, "network_config.json", net_data)
-        config = get_network_config(base)
-        assert len(config.modules) == 0
+        config = get_network_config()
+        # mock_workspace provides a default network config with 1 module
+        assert len(config.modules) == 1
 
-    def test_get_firmware_config(self, tmp_path, minimal_firmware_config) -> None:
+    def test_get_firmware_config(self, mock_workspace, minimal_firmware_config) -> None:
         from control.utils.config_file import get_firmware_config
-        base = self._write_json(tmp_path, "firmware.json", minimal_firmware_config)
-        config = get_firmware_config(base)
+        # We need to write firmware.json specifically since mock_workspace doesn't
+        (PanoPaths.config_dir() / "firmware.json").write_text(json.dumps(minimal_firmware_config))
+        config = get_firmware_config()
         assert config.qfp == minimal_firmware_config["qfp"]
 
-    def test_get_daemons_config(self, tmp_path) -> None:
+    def test_get_daemons_config(self, mock_workspace) -> None:
         from control.utils.config_file import get_daemons_config
         daemons_data = {
             "daemons": {"hk": True},
             "permanent_daemons": {"influx": True}
         }
-        base = self._write_json(tmp_path, "daemons.json", daemons_data)
-        config = get_daemons_config(base)
+        (PanoPaths.config_dir() / "daemons.json").write_text(json.dumps(daemons_data))
+        config = get_daemons_config()
         assert config.daemons.model_extra["hk"] is True
 
-    def test_get_quabo_uids(self, tmp_path, monkeypatch) -> None:
+    def test_get_quabo_uids(self, mock_workspace) -> None:
         from control.utils.config_file import get_quabo_uids, quabo_uids_filename
-        from control.utils.paths import PanoPaths
         
         uids_data = {
             "domes": [
@@ -343,34 +328,29 @@ class TestGetConfigs:
             ]
         }
         
-        # Mock PanoPaths.tmp_dir to use our tmp_path
-        monkeypatch.setattr(PanoPaths, "tmp_dir", lambda: tmp_path)
-        p = tmp_path / quabo_uids_filename
+        p = PanoPaths.tmp_dir() / quabo_uids_filename
         p.write_text(json.dumps(uids_data))
         
         config = get_quabo_uids()
         assert str(config.domes[0].modules[0].ip_addr) == "192.168.0.4"
 
-    def test_get_quabo_info(self, tmp_path, monkeypatch) -> None:
+    def test_get_quabo_info(self, mock_workspace) -> None:
         from control.utils.config_file import get_quabo_info, quabo_info_filename
-        from control.utils.paths import PanoPaths
         
         info_data = [
             {"uid": "u1", "rev": "1"},
             {"uid": "u2", "rev": "2"}
         ]
         
-        monkeypatch.setattr(PanoPaths, "quabos_dir", lambda: tmp_path)
-        p = tmp_path / quabo_info_filename
+        p = PanoPaths.quabos_dir() / quabo_info_filename
         p.write_text(json.dumps(info_data))
         
         info = get_quabo_info()
         assert info["u1"]["rev"] == "1"
         assert info["u2"]["rev"] == "2"
 
-    def test_get_quabo_ph_baselines(self, tmp_path, monkeypatch) -> None:
+    def test_get_quabo_ph_baselines(self, mock_workspace) -> None:
         from control.utils.config_file import get_quabo_ph_baselines, quabo_ph_baseline_filename
-        from control.utils.paths import PanoPaths
         
         baseline_data = {
             "date": "2024-01-01T00:00:00",
@@ -379,8 +359,7 @@ class TestGetConfigs:
             ]
         }
         
-        monkeypatch.setattr(PanoPaths, "tmp_dir", lambda: tmp_path)
-        p = tmp_path / quabo_ph_baseline_filename
+        p = PanoPaths.tmp_dir() / quabo_ph_baseline_filename
         p.write_text(json.dumps(baseline_data))
         
         baselines = get_quabo_ph_baselines()
@@ -388,25 +367,17 @@ class TestGetConfigs:
         assert baselines.quabos[0].uid == "u1"
         assert baselines.quabos[0].coefs == [100] * 256
 
-    def test_get_detector_info(self, tmp_path, monkeypatch) -> None:
+    def test_get_detector_info(self, mock_workspace) -> None:
         from control.utils.config_file import (
-            data_config_filename,
             detector_info_filename,
             get_detector_info,
-            obs_config_filename,
         )
-        from control.utils.paths import PanoPaths
         
         det_data = [{"serialno": "d1", "operating_voltage": 75.0}]
-        obs_data = {"name": "test", "domes": []}
-        data_data = {"run_type": "sci", "detector_overvoltage": 3}
+        # These are already in mock_workspace but let's be explicit if needed
+        # (detector_info is not)
         
-        monkeypatch.setattr(PanoPaths, "quabos_dir", lambda: tmp_path)
-        monkeypatch.setattr(PanoPaths, "config_dir", lambda: tmp_path)
-        
-        (tmp_path / detector_info_filename).write_text(json.dumps(det_data))
-        (tmp_path / obs_config_filename).write_text(json.dumps(obs_data))
-        (tmp_path / data_config_filename).write_text(json.dumps(data_data))
+        (PanoPaths.quabos_dir() / detector_info_filename).write_text(json.dumps(det_data))
         
         info = get_detector_info()
         assert info["d1"] == 75.0

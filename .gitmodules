@@ -14,3 +14,6 @@
 [submodule "wiki_docs"]
 	path = wiki_docs
 	url = https://github.com/panoseti/panoseti.wiki.git
+[submodule "pypff"]
+	path = pypff
+	url = https://github.com/panoseti/pypff.git

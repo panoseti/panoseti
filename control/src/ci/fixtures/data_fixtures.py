@@ -15,6 +15,7 @@ import pytest
 
 from control.utils.pydantic_config_models import DaqConfig
 
+
 @pytest.fixture
 def dummy_data_generator():
     """Returns a function that populates a directory with valid PFF data."""

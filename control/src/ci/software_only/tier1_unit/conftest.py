@@ -22,12 +22,13 @@ from control.utils.pydantic_config_models import (
 # Quabo driver fixtures
 
 @pytest.fixture
-def quabo_and_sock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[QUABO, FakeSocket]:
+def quabo_and_sock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mock_network: Any) -> tuple[QUABO, Any]:
     """Yield (quabo, fake_sock).  All socket I/O is captured in fake_sock."""
     from control import driver
     from control.driver.quabo_driver import QUABO_CONFIG_FILE
-    fake_sock = FakeSocket()
-    monkeypatch.setattr("socket.socket", lambda *a, **kw: fake_sock)
+    
+    # mock_network already monkeypatches socket.socket
+    fake_sock = mock_network
     monkeypatch.setattr("socket.gethostbyname", lambda x: x)
 
     # Suppress log-file creation — tests don't need a real log file

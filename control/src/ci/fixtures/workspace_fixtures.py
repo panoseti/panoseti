@@ -15,7 +15,13 @@ from pathlib import Path
 import pytest
 
 from control.utils.paths import PanoPaths
-from control.utils.pydantic_config_models import DaqConfig, DataConfig, NetworkConfig, ObsConfig, QuaboUids
+from control.utils.pydantic_config_models import (
+    DaqConfig,
+    DataConfig,
+    NetworkConfig,
+    ObsConfig,
+    QuaboUids,
+)
 
 logger = logging.getLogger(__name__)
 

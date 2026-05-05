@@ -28,6 +28,12 @@ from control.utils.pydantic_config_models import (
     ObsConfig,
 )
 
+pytest_plugins = [
+    "ci.fixtures.workspace_fixtures",
+    "ci.fixtures.network_fixtures",
+    "ci.fixtures.data_fixtures",
+]
+
 
 def pytest_configure_node(node: Any) -> None:
     """Called by xdist controller to configure each worker before it starts."""

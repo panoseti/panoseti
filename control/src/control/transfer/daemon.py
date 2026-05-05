@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import os
 import pathlib
 import signal
-import inspect
 import time
 import traceback
 from datetime import UTC, datetime, timedelta

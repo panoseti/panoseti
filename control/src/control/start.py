@@ -1011,10 +1011,6 @@ async def start_run(
     # --- Pre-flight: DAQ gRPC reachability sweep ---
     if not no_check_daq:
         await _check_daq_reachability(daq_config)
-        try:
-            await _check_daq_data_status(daq_config, network_config, do_init=init_snapshot)
-        except Exception as e:
-            logger.warning(f"DaqData service pre-flight check failed: {e}. Proceeding anyway.")
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -1170,6 +1166,11 @@ async def start_run(
                     obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx,
                     startdaq_timeout=10.0, startdaq_retries=3
                 )
+                # Init & check daq_data servers
+                try:
+                    await _check_daq_data_status(daq_config, network_config, do_init=init_snapshot)
+                except Exception as e:
+                    logger.warning(f"DaqData service pre-flight check failed: {e}. Proceeding anyway.")
             
             # Mark ACTIVE in ledger
             ledger = state_mgr.load_state()

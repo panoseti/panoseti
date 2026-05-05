@@ -86,6 +86,7 @@ select = ["E", "F", "UP", "B", "I", "ASYNC", "RUF", "SIM"]
 ignore = [
     "E501",   # line too long – handled separately
     "B008",   # function calls in default args (common in Pydantic)
+    "F841",   # unused variables
 ]
 
 [tool.ruff.lint.per-file-ignores]
