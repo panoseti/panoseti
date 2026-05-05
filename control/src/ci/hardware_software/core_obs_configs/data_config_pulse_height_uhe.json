@@ -5,7 +5,7 @@
     "gain": 60,
     "stim_params": {
         "rate": 0,
-        "level": 10,
+        "level": 255,
         "mask": [0, 1, 0, 0]
     },
     "pulse_height": {

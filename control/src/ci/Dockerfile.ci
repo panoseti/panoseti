@@ -39,7 +39,7 @@ RUN groupadd -o -g "${HOST_GID}" panoseti \
 # Pre-allocate and chown environment/data/grpc dirs. 
 # Also pre-create /etc/bash_completion.d as root.
 RUN mkdir -p /opt/venv /grpc /data /app /etc/bash_completion.d \
- && chown -R panoseti:panoseti /opt/venv /grpc /data /app /etc/bash_completion.d
+ && chown -R panoseti:panoseti /opt/venv /grpc /data /app /etc/bash_completion.d /tmp/
 
 USER panoseti
 

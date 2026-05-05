@@ -171,7 +171,10 @@ class TestGetDaemons:
                             ))
         result = get_daemons()
         # 'daemons' empty → only base list
-        assert result == [str(PanoPaths.daemons_dir() / "storeInfluxDB.py")]
+        assert result == [
+            str(PanoPaths.daemons_dir() / "storeInfluxDB.py"),
+            str(PanoPaths.daemons_dir() / "storeLoki.py")
+        ]
 
     def test_does_not_mutate_base_list(self, monkeypatch) -> None:
         """Calling get_daemons twice returns consistent results (no global mutation)."""

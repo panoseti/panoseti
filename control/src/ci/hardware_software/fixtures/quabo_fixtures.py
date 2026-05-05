@@ -7,8 +7,10 @@ derived from the active topology (no hardcoded IPs).
 from __future__ import annotations
 
 import pytest
+from typing import Generator
 
 from control.driver.quabo_driver import QUABO
+
 
 
 @pytest.fixture(scope="session")
@@ -19,7 +21,7 @@ def topology(obs_config, daq_config, network_config):
 
 
 @pytest.fixture(scope="session")
-def quabo(topology) -> QUABO:
+def quabo(topology) -> Generator[QUABO]:
     """
     Return a QUABO object for the first (Q0) quabo of the first module.
     Tests that need all quabos should iterate topology.quabo_ips() directly.
@@ -34,7 +36,7 @@ def quabo(topology) -> QUABO:
 
 
 @pytest.fixture(scope="session")
-def all_quabos(topology) -> list[QUABO]:
+def all_quabos(topology) -> Generator[list[QUABO]]:
     """Return QUABO objects for every quabo in the active topology."""
     qs = [QUABO(a.real_ip, port=a.cmd_port) for a in topology.quabo_ips()]
     yield qs

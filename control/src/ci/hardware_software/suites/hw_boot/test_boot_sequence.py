@@ -33,6 +33,7 @@ import time
 import pytest
 
 from ci.hardware_software.hw_utils.topology import HwTopology
+from ci.hardware_software.hw_utils.driver_ops import check_all_reachable
 from control.pseti import app
 from control.utils import util
 
@@ -47,20 +48,6 @@ pytestmark = [
 _BOOT_WAIT_S = int(os.environ.get("HW_TEST_QUABO_BOOT_WAIT", 60))
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _check_all_reachable(topo: HwTopology) -> list[str]:
-    """Return error strings for each quabo that fails util.ping (command port)."""
-    errors = []
-    for a in topo.quabo_ips():
-        try:
-            if not util.ping(ipaddress.ip_address(a.real_ip), a.cmd_port):
-                errors.append(f"{a.ip} (loc={a.boardloc}, real={a.real_ip}:{a.cmd_port}) not reachable")
-        except Exception as exc:
-            errors.append(f"{a.ip} (loc={a.boardloc}) ping error: {exc}")
-    return errors
 
 
 def _log_topology_targets(topo: HwTopology) -> None:
@@ -69,7 +56,6 @@ def _log_topology_targets(topo: HwTopology) -> None:
             "[BOOT] quabo map: raw=%-18s  real=%-18s  cmd_port=%-6d  reboot_port=%d",
             a.ip, a.real_ip, a.cmd_port, a.reboot_port,
         )
-
 
 # ---------------------------------------------------------------------------
 # Stage 00 — Force power off
@@ -218,7 +204,7 @@ def test_boot_04_tftp_reboot(runner, topology) -> None:
 def test_boot_05_post_reboot_reachability(runner, topology) -> None:
     """Assert every quabo is reachable on its command port after firmware load."""
     logger.info("[BOOT] Stage 05: post-reboot reachability check")
-    errors = _check_all_reachable(topology)
+    errors = check_all_reachable(topology)
     assert not errors, (
         f"[BOOT] Stage 05 FAILED: {len(errors)} quabo(s) unreachable after reboot:\n"
         + "\n".join(errors)

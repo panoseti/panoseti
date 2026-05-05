@@ -927,10 +927,12 @@ def do_start_interleave() -> None:
 
     logger.info("Starting interleave controller in the background...")
     # Start detached background process
-    subprocess.Popen(['python3', 'tools/interleave.py'],
-                     stdout=open('logs/interleave.log', 'a'), # noqa: SIM115
+    from control.tools import interleave
+    interleave_script_path = Path(interleave.__file__)
+    subprocess.Popen(['python3', str(interleave_script_path)],
+                     stdout=subprocess.STDOUT,
                      stderr=subprocess.STDOUT)
-    logger.info("Interleave process started. Check logs/interleave.log for details.")
+    logger.info("Interleave process started. Check logs/PSETI.Interleave.log for details.")
 
 def do_stop_interleave() -> None:
     """Gracefully stops the background interleaver if it is running."""

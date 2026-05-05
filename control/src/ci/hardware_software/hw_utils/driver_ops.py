@@ -10,6 +10,9 @@ bootloader — the only reliable reset is a WPS power cycle.
 from __future__ import annotations
 
 import logging
+import ipaddress
+from control.utils import util
+from ci.hardware_software.hw_utils.topology import HwTopology
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +121,20 @@ def calibrate_ph(**kwargs) -> None:
     quabo_uids = config_file.get_quabo_uids()
 
     config.do_calibrate_ph(modules, quabo_uids, network_config)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def check_all_reachable(topo: HwTopology) -> list[str]:
+    """Return error strings for each quabo that fails util.ping (command port)."""
+    errors = []
+    for a in topo.quabo_ips():
+        try:
+            if not util.ping(ipaddress.ip_address(a.real_ip), a.cmd_port):
+                errors.append(f"{a.ip} (loc={a.boardloc}, real={a.real_ip}:{a.cmd_port}) not reachable")
+        except Exception as exc:
+            errors.append(f"{a.ip} (loc={a.boardloc}) ping error: {exc}")
+    return errors
+
