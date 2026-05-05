@@ -111,7 +111,7 @@ def booted_calibrated(runner, topology):
         ("redis-daemons", ["cfg", "redis-daemons"]),
         ("maroc-config",  ["cfg", "maroc-config"]),
         ("mask-config",   ["cfg", "mask-config"]),
-        ("calibrate-ph",  ["cfg", "calibrate-ph"]),
+        ("calibrate-ph",  ["cfg", "calibrate-ph", "--strict"]),
     ]:
         # maroc-config may prompt "Use default calibration file?" for each quabo
         # whose UID isn't in quabo_info.json — auto-accept with Y.

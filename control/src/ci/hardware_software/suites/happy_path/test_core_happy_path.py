@@ -145,4 +145,48 @@ def test_happy_path(booted_calibrated, active_data_config, runner, topology) -> 
     # Step 7: verify manifest
     _invoke(runner, ["xfr", "verify", run_name])
 
+    # Step 8: Data Product Verification
+    logger.info("[HAPPY-PATH] Step 8: Verifying data products using panoseti_interface")
+    from pathlib import Path
+    from control.utils.panoseti_interface import PanosetiRun
+    from rich.console import Console
+    
+    run_path = Path(daq_cfg.head_node_data_dir) / run_name
+    pseti_run = PanosetiRun(run_path)
+    
+    # 8a: Run show() on the collected run dir
+    logger.info("[HAPPY-PATH] Run structure for %s:", run_name)
+    pseti_run.show()
+    
+    # 8b: Read first N frames and print headers for non-empty products
+    num_frames_to_read = 10
+    num_headers_to_print = 4
+    console = Console()
+    
+    products = pseti_run.list_products()
+    assert len(products) > 0, f"No data products found in {run_path}"
+    
+    for prod_name in products:
+        seq = pseti_run.get_product(prod_name)
+        n_frames = len(seq)
+        if n_frames == 0:
+            logger.info("[HAPPY-PATH] Product %s is empty, skipping.", prod_name)
+            continue
+            
+        logger.info("[HAPPY-PATH] Reading first %d frames of %s (total frames: %d)", 
+                    min(num_frames_to_read, n_frames), prod_name, n_frames)
+        
+        # Read the frames (validates structure/checksums implicitly)
+        frames_to_read = min(num_frames_to_read, n_frames)
+        for i in range(frames_to_read):
+            header, image = seq.get_frame(i)
+            
+            # 8c: Nicely print headers of at most the first 4 frames
+            if i < num_headers_to_print:
+                console.print(f"[bold cyan]Header for {prod_name} Frame {i}:[/]")
+                console.print(header)
+                # Check that we got a valid image array
+                assert image.shape == seq.frame_config.image_shape
+                assert image.dtype == seq.frame_config.dtype
+
     logger.info("[HAPPY-PATH] data_config=%s run=%s: ALL CHECKS PASSED", active_data_config, run_name)
