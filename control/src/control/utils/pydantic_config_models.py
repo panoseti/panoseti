@@ -564,3 +564,13 @@ class ModuleHeader(BaseStrictModel):
     quabo_1: PFFHeader
     quabo_2: PFFHeader
     quabo_3: PFFHeader
+
+class QuaboPhBaseline(BaseStrictModel):
+    """Pulse height baseline calibration for a single Quabo."""
+    uid: str
+    coefs: list[int] = Field(..., min_length=256, max_length=256)
+
+class PhBaselineConfig(BaseStrictModel):
+    """Pulse Height (PH) baseline calibration registry."""
+    date: str
+    quabos: list[QuaboPhBaseline]

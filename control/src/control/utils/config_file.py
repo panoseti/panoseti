@@ -31,6 +31,7 @@ from control.utils.pydantic_config_models import (
     NetworkConfig,
     ObsConfig,
     ObsModuleConfig,
+    PhBaselineConfig,
     QuaboUids,
 )
 
@@ -390,11 +391,11 @@ def get_quabo_info() -> dict[str, Any]:
         d[q['uid']] = q
     return d
 
-def get_quabo_ph_baselines() -> dict[str, Any]:
-    """Load Pulse Height baselines, searching calibration_dir then tmp_dir then config_dir.
+def get_quabo_ph_baseline_path() -> Path:
+    """Find the PH baseline calibration file path.
 
     Returns:
-        A dictionary containing the Quabo pulse-height baselines.
+        The path to the baseline file.
 
     Raises:
         FileNotFoundError: If the file is not found in any of the search paths.
@@ -406,14 +407,59 @@ def get_quabo_ph_baselines() -> dict[str, Any]:
     ]:
         path = search_dir / quabo_ph_baseline_filename
         if path.exists():
-            with open(path) as f:
-                s = f.read()
-            c: dict[str, Any] = json.loads(s)
-            return c
+            return path
     raise FileNotFoundError(
         f"{quabo_ph_baseline_filename} not found in calibration_dir, tmp_dir, or config_dir. "
         "Run: pseti config calibrate-ph"
     )
+
+def get_quabo_ph_baselines() -> PhBaselineConfig:
+    """Load Pulse Height baselines, searching calibration_dir then tmp_dir then config_dir.
+
+    Returns:
+        A validated PhBaselineConfig model.
+
+    Raises:
+        FileNotFoundError: If the file is not found in any of the search paths.
+        ValidationError: If the file content does not match the schema.
+    """
+    path = get_quabo_ph_baseline_path()
+    with open(path) as f:
+        data = json.load(f)
+    return PhBaselineConfig(**data)
+
+def validate_ph_baselines(
+    baselines: PhBaselineConfig,
+    min_val: int = 600,
+    max_val: int = 800,
+    raise_error: bool = False
+) -> bool:
+    """Validate that PH baseline values are within the specified range.
+
+    Args:
+        baselines: The PhBaselineConfig model to validate.
+        min_val: Minimum allowed baseline value.
+        max_val: Maximum allowed baseline value.
+        raise_error: If True, raises a ValueError on validation failure.
+
+    Returns:
+        True if all values are within range, False otherwise.
+    """
+    valid = True
+    for q in baselines.quabos:
+        out_of_range = [(i, v) for i, v in enumerate(q.coefs) if v < min_val or v > max_val]
+        if out_of_range:
+            valid = False
+            msg = f"[bold yellow]WARNING:[/bold yellow] PH baseline out of range for Quabo {q.uid}: {len(out_of_range)} pixels affected."
+            console.print(msg)
+            for idx, val in out_of_range[:5]: # Show first 5
+                console.print(f"  - Pixel {idx}: {val} (expected {min_val}-{max_val})")
+            if len(out_of_range) > 5:
+                console.print(f"  - ... and {len(out_of_range) - 5} more.")
+
+    if not valid and raise_error:
+        raise ValueError("PH baseline validation failed.")
+    return valid
 
 def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]:
     """Load Quabo calibration data for a specific detector and mode.

@@ -732,15 +732,25 @@ def do_mask_config(modules: list[ObsModuleConfig], data_config: DataConfig, netw
                 _trigger_mask_cfg   = quabo.write_trigger_mask_config(qc_dict_int, quabo_i_config_path)
                 _goe_mask_cfg       = quabo.write_goe_mask_config(qc_dict_int, quabo_i_config_path)
 
-def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, network_config: NetworkConfig) -> None:
+def do_calibrate_ph(
+    modules: list[ObsModuleConfig], 
+    quabo_uids: QuaboUids, 
+    network_config: NetworkConfig,
+    min_baseline: int = 600,
+    max_baseline: int = 800,
+    strict: bool = False
+) -> None:
     """Trigger pulse-height (PH) baseline calibration on multiple modules.
     
-    Results are saved to the local PH baseline cache file.
+    Results are saved to the local PH baseline cache file and validated against ranges.
 
     Args:
         modules: List of target module configurations.
         quabo_uids: Quabo hardware UID registry.
         network_config: Network routing rules.
+        min_baseline: Minimum allowed baseline value (default 600).
+        max_baseline: Maximum allowed baseline value (default 800).
+        strict: If True, raises an error if validation fails.
     """
     quabos: list[dict[str, Any]] = []
     for module in modules:
@@ -753,9 +763,9 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, netwo
             ip_ports = util.get_quabo_ip_port(module.ip_addr, i, network_config)
             real_ip = ip_ports.ip_addr
             cmd_port = ip_ports.cmd_port
-            logger.info(f'Quabo IP: {ip_addr}')
-            logger.info(f'Real IP: {real_ip}')
-            logger.info(f'Cmd Port: {cmd_port}')
+            logger.debug(f'Quabo IP: {ip_addr}')
+            logger.debug(f'Real IP: {real_ip}')
+            logger.debug(f'Cmd Port: {cmd_port}')
             quabo = quabo_driver.QUABO(real_ip, cmd_port)
             coefs = quabo.calibrate_ph_baseline()
             quabo.close()
@@ -768,9 +778,19 @@ def do_calibrate_ph(modules: list[ObsModuleConfig], quabo_uids: QuaboUids, netwo
     x['date'] = d.isoformat()
     x['quabos'] = quabos
     PanoPaths.ensure_state_dirs()
+    # Use config_file to get the standard path
     baseline_file = PanoPaths.calibration_file(config_file.quabo_ph_baseline_filename)
     with open(baseline_file, "w") as f:
         f.write(json.dumps(x, indent=4))
+    
+    # Apply validation
+    try:
+        baselines = config_file.get_quabo_ph_baselines()
+        config_file.validate_ph_baselines(baselines, min_val=min_baseline, max_val=max_baseline, raise_error=strict)
+    except Exception as e:
+        if strict:
+            raise
+        logger.warning(f"PH baseline validation failed: {e}")
 
 
 # show summary statistics for the PH baseline calibrations of each quabo
@@ -782,7 +802,7 @@ def do_show_ph_baselines(quabo_uids: QuaboUids) -> None:
     """
     logger.info('Show PH baseline')
     quabo_ph_baselines = config_file.get_quabo_ph_baselines()
-    msg = f"Creation date: {quabo_ph_baselines['date']}\n"
+    msg = f"Creation date: {quabo_ph_baselines.date}\n"
     for dome in quabo_uids.domes:
         for module in dome.modules:
             module_ip_addr = str(module.ip_addr)
@@ -791,13 +811,13 @@ def do_show_ph_baselines(quabo_uids: QuaboUids) -> None:
                 quabo_num = config_file.get_boardloc(module_ip_addr, quabo_index)
                 quabo_uid = module.quabos[quabo_index].uid
                 quabo_baselines: Any = None
-                for q in quabo_ph_baselines['quabos']:
-                    if q['uid'] == quabo_uid:
+                for q in quabo_ph_baselines.quabos:
+                    if q.uid == quabo_uid:
                         quabo_baselines = q
                 if quabo_baselines is None:
                     msg += f'\tquabo {quabo_num}: found no ph baseline data\n'
                 else:
-                    coefs = quabo_baselines['coefs']
+                    coefs = quabo_baselines.coefs
                     mean = statistics.mean(coefs)
                     median = statistics.median(coefs)
                     stdev = statistics.stdev(coefs)
@@ -1130,13 +1150,17 @@ def mask_config() -> None:
     do_mask_config(modules, data_config, network_config, quabo_uids, True)
 
 @app.command()
-def calibrate_ph() -> None:
+def calibrate_ph(
+    min_baseline: int = typer.Option(600, help="Minimum allowed PH baseline value."),
+    max_baseline: int = typer.Option(800, help="Maximum allowed PH baseline value."),
+    strict: bool = typer.Option(False, "--strict", help="Raise error if validation fails.")
+) -> None:
     """Run PH baseline calibration on quabos and write to file"""
     obs_config = config_file.get_obs_config()
     modules = config_file.get_modules(obs_config)
     quabo_uids = config_file.get_quabo_uids()
     network_config = config_file.get_network_config()
-    do_calibrate_ph(modules, quabo_uids, network_config)
+    do_calibrate_ph(modules, quabo_uids, network_config, min_baseline, max_baseline, strict)
 
 @app.command()
 def show_ph_baselines() -> None:

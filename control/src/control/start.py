@@ -284,47 +284,43 @@ def ph_baseline_file_ok(path: pathlib.Path | str | None = None) -> bool:
     Stale or missing calibration data can lead to incorrect PH measurements.
 
     Args:
-        path: Optional Path (or str) to the baseline file. Defaults to PanoPaths.calibration_file().
+        path: Optional Path (or str) to the baseline file. Defaults to using config_file.get_quabo_ph_baselines().
 
     Returns:
-        True if the file is valid, False otherwise.
+        True if the file is valid and values are within range, False otherwise.
     """
+    # Resolve the path if not provided
     if path is None:
-        path = PanoPaths.calibration_file(config_file.quabo_ph_baseline_filename)
+        try:
+            path = config_file.get_quabo_ph_baseline_path()
+        except FileNotFoundError:
+            print('PH baseline file not found.  Run config.py --calibrate-ph')
+            return False
     else:
         path = pathlib.Path(path)
-    assert isinstance(path, pathlib.Path)
-    if not path.exists():
-        print(f'{path} not found.  Run config.py --calibrate-ph')
-        return False
+        if not path.exists():
+            print(f'{path} not found.  Run config.py --calibrate-ph')
+            return False
+
+    # Common checks for the resolved path
     if path.stat().st_size == 0:
         print(f'{path} is empty.  Run config.py --calibrate-ph')
         return False
-    # Fix SC-031: 24 hours is 3600*24, not 86400*24
     if path.stat().st_mtime < time.time() - 86400:
         print(f'{path} is too old (>24h).  Run config.py --calibrate-ph')
         return False
-    return True
+    
+    try:
+        # Load and validate content
+        with open(path) as f:
+            data = json.load(f)
+        from control.utils.pydantic_config_models import PhBaselineConfig
+        baselines = PhBaselineConfig(**data)
+        return config_file.validate_ph_baselines(baselines)
+    except Exception as e:
+        print(f"PH baseline validation failed: {e}")
+        return False
 
-
-# check validity of image params (rate, bpp)
-#
-def check_img_params(image_8bit: bool, image_usec: int) -> None:
-    """Validate image acquisition parameters against hardware constraints.
-
-    Args:
-        image_8bit: Whether using 8-bit image mode.
-        image_usec: Integration time in microseconds.
-
-    Raises:
-        Exception: If parameters violate hardware limits.
-    """
-    if image_8bit:
-        if image_usec < 20 or image_usec > 25:
-            raise Exception('integration time must be 20-25 usec in 8 bit mode')
-    else:
-        if image_usec < 40:
-            raise Exception('integration time must be >= 40 usec in 16 bit mode')
 
 def start_data_flow(
     quabo_uids: QuaboUids,

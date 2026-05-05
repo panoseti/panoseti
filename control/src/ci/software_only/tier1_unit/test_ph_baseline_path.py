@@ -140,21 +140,23 @@ def test_get_quabo_ph_baselines_fallback(tmp_path, monkeypatch):
     importlib.reload(config_file)
 
     # Test 1: File in tmp_dir (calibration_dir is empty)
-    test_data = {"date": "2024-01-01", "quabos": [{"uid": "test", "coefs": [1.0]}]}
+    test_data = {"date": "2024-01-01", "quabos": [{"uid": "test", "coefs": [100] * 256}]}
     (tmp_dir / config_file.quabo_ph_baseline_filename).write_text(json.dumps(test_data))
 
     result = config_file.get_quabo_ph_baselines()
-    assert result == test_data
+    assert result.date == test_data["date"]
+    assert result.quabos[0].uid == test_data["quabos"][0]["uid"]
+    assert result.quabos[0].coefs == test_data["quabos"][0]["coefs"]
 
     # Clean up
     (tmp_dir / config_file.quabo_ph_baseline_filename).unlink()
 
     # Test 2: File in calibration_dir (should prefer it over tmp_dir)
     (calib_dir / config_file.quabo_ph_baseline_filename).write_text(json.dumps(test_data))
-    (tmp_dir / config_file.quabo_ph_baseline_filename).write_text(json.dumps({"old": "data"}))
+    (tmp_dir / config_file.quabo_ph_baseline_filename).write_text(json.dumps({"date": "old", "quabos": []}))
 
     result = config_file.get_quabo_ph_baselines()
-    assert result == test_data
+    assert result.date == test_data["date"]
 
     # Test 3: File not found anywhere should raise FileNotFoundError
     (calib_dir / config_file.quabo_ph_baseline_filename).unlink()

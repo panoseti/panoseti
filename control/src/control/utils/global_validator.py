@@ -337,6 +337,22 @@ class GlobalConfigValidator:
                         return
         self.report.add_test("Timing Port Collision", "PASS", "No timing IP collisions detected.")
 
+    def _check_ph_baselines(self) -> None:
+        """Check if Pulse Height baselines are within valid bounds (600-800)."""
+        from control.utils import config_file
+        try:
+            # Load and validate baselines
+            baselines = config_file.get_quabo_ph_baselines()
+            valid = config_file.validate_ph_baselines(baselines)
+            if not valid:
+                 self.report.add_test("PH Baseline Calibration", "WARN", "Some baseline values are out of range (600-800).")
+            else:
+                 self.report.add_test("PH Baseline Calibration", "PASS", "All baseline values within range.")
+        except FileNotFoundError:
+             self.report.add_test("PH Baseline Calibration", "WARN", "Baseline file missing. Run: pseti config calibrate-ph")
+        except Exception as e:
+             self.report.add_test("PH Baseline Calibration", "ERROR", f"Validation error: {e}")
+
     # --- NEW TEST 2: DAQ Assignment Overlap Check ---
     def _check_module_id_uniqueness(self) -> None:
         """Ensure every module (physical board) has a unique derived module_id."""

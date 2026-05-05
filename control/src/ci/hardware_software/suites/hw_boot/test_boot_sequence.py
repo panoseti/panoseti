@@ -328,26 +328,23 @@ def test_boot_11_calibrate_ph(runner, topology) -> None:
     r = runner.invoke(app, ["cfg", "calibrate-ph"])
     assert r.exit_code == 0, f"[BOOT] Stage 11 FAILED: pseti cfg calibrate-ph:\n{r.output}"
 
-    baseline_path = PanoPaths.calibration_file(quabo_ph_baseline_filename)
-    assert baseline_path.exists(), (
-        f"[BOOT] Stage 11 FAILED: baseline file not written: {baseline_path}"
-    )
-    with baseline_path.open() as f:
-        baseline = json.load(f)
+    from control.utils.config_file import get_quabo_ph_baselines, validate_ph_baselines
+    try:
+        baselines = get_quabo_ph_baselines()
+    except Exception as e:
+        pytest.fail(f"[BOOT] Stage 11 FAILED: Could not load/validate baseline file: {e}")
 
     ph_errors = []
-    for entry in baseline.get("quabos", []):
-        uid = entry.get("uid", "?")
-        coeffs = entry.get("coefs", [])
-        out_of_range = [(i, c) for i, c in enumerate(coeffs) if not (0 <= c <= 4095)]
-        if len(coeffs) != 256:
-            ph_errors.append(f"uid={uid}: expected 256 coefficients, got {len(coeffs)}")
-        elif out_of_range:
-            ph_errors.append(
-                f"uid={uid}: {len(out_of_range)} coeff(s) out of [0,4095]: {out_of_range[:5]}"
-            )
-        else:
-            logger.info("[BOOT] Stage 11: uid=%s PH coefficients OK", uid)
+    # Use our new validation logic to check ranges (default 600-800)
+    # The HW simulation might return values outside 600-800, so we check 0-4095 specifically here
+    # to avoid failing the boot test on range warnings unless they are hardware-impossible.
+    if not validate_ph_baselines(baselines, min_val=0, max_val=4095):
+        ph_errors.append("Some coefficients were outside the hardware range [0, 4095]")
+
+    for entry in baselines.quabos:
+        uid = entry.uid
+        coeffs = entry.coefs
+        logger.info("[BOOT] Stage 11: uid=%s PH coefficients OK (count=%d)", uid, len(coeffs))
 
     assert not ph_errors, (
         "[BOOT] Stage 11 FAILED: PH coefficients out of range:\n" + "\n".join(ph_errors)

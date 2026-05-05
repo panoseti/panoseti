@@ -372,14 +372,21 @@ class TestGetConfigs:
         from control.utils.config_file import get_quabo_ph_baselines, quabo_ph_baseline_filename
         from control.utils.paths import PanoPaths
         
-        baseline_data = {"u1": [100, 101]}
+        baseline_data = {
+            "date": "2024-01-01T00:00:00",
+            "quabos": [
+                {"uid": "u1", "coefs": [100] * 256}
+            ]
+        }
         
         monkeypatch.setattr(PanoPaths, "tmp_dir", lambda: tmp_path)
         p = tmp_path / quabo_ph_baseline_filename
         p.write_text(json.dumps(baseline_data))
         
         baselines = get_quabo_ph_baselines()
-        assert baselines["u1"] == [100, 101]
+        assert baselines.date == "2024-01-01T00:00:00"
+        assert baselines.quabos[0].uid == "u1"
+        assert baselines.quabos[0].coefs == [100] * 256
 
     def test_get_detector_info(self, tmp_path, monkeypatch) -> None:
         from control.utils.config_file import (

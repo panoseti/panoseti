@@ -43,7 +43,11 @@ def setup_isolated_integration_transfer_env(tmp_path: Path, monkeypatch: Any) ->
 
     # Create dummy PH baseline to pass pre-flight checks
     ph_baseline_path = PanoPaths.calibration_file("quabo_ph_baseline.json")
-    ph_baseline_path.write_text("{}")
+    dummy_data = {
+        "date": "2024-01-01T00:00:00",
+        "quabos": [] # Empty list is valid according to schema
+    }
+    ph_baseline_path.write_text(json.dumps(dummy_data))
     
     # Reload config objects to see new environment
     import importlib

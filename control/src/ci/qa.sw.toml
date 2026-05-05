@@ -44,7 +44,7 @@ description = "Tier 3: Distributed flows (Dynamic Fleets, Real gRPC)"
 type = "test"
 requires_docker = false
 test_dir = "software_only/tier3_fleet/"
-parallel = true
+parallel = false
 
 [suites.chaos]
 description = "Tier 4: Fault injection (Active failure scenarios)"

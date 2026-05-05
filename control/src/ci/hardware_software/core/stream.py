@@ -11,14 +11,30 @@ from __future__ import annotations
 import asyncio
 import time
 
+from panoseti_grpc.daq_data.client import AioDaqDataClient
 
-async def _collect_async(host: str, port: int, run_dir: str, module_id: int, n: int, timeout_s: float) -> list:
-    from panoseti_grpc.daq_data.client import DaqDataClient
+from control.utils.pydantic_config_models import DaqConfig, NetworkConfig
+
+
+async def _collect_async(daq_cfg: DaqConfig, net_cfg: NetworkConfig, run_dir: str, n: int, timeout_s: float) -> list:
     frames: list = []
     deadline = time.monotonic() + timeout_s
-    async with DaqDataClient(host, port) as client:
-        await client.init_hp_io(run_dir, module_id)
-        async for image in client.stream_images():
+    hp_io_cfg = {
+        "data_dir": '/tmp/',
+        "update_interval_seconds": 0.1,
+        "force": False,
+        "simulate_daq": False,
+        "module_ids": []
+    }
+
+    async with AioDaqDataClient(daq_cfg.model_dump(), net_cfg.model_dump()) as client:
+        await client.init_hp_io(run_dir, hp_io_cfg)
+        async for image in await client.stream_images(
+            hosts=[],
+            stream_movie_data=True,
+            stream_pulse_height_data=True,
+            update_interval_seconds=0.5
+        ):
             frames.append(image)
             if len(frames) >= n or time.monotonic() > deadline:
                 break
@@ -43,7 +59,10 @@ def collect_n_frames(host: str, port: int, run_dir: str, module_id: int,
     Raises:
         AssertionError: if fewer than n frames are collected within timeout.
     """
-    frames = asyncio.run(_collect_async(host, port, run_dir, module_id, n, timeout))
+    from control.utils import config_file
+    daq_cfg = config_file.get_daq_config()
+    net_cfg = config_file.get_network_config()
+    frames = asyncio.run(_collect_async(daq_cfg, net_cfg, run_dir, n, timeout))
     assert len(frames) >= n, (
         f"DaqData stream yielded only {len(frames)} frames in {timeout:.0f}s "
         f"(expected ≥ {n}) from {host}:{port} module={module_id}"

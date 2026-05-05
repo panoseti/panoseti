@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import time
 
+import redis
 
-def _client():
-    import redis
+
+def _client() -> redis.Redis:
     return redis.Redis(host="127.0.0.1", port=6379, socket_timeout=2)
 
 
