@@ -317,12 +317,9 @@ def test_boot_10_mask_config(runner, topology) -> None:
 
 def test_boot_11_calibrate_ph(runner, topology) -> None:
     """Run PH calibration and verify saved coefficients are in [0, 4095]."""
-    import json
 
     from ci.hardware_software.hw_utils.cli import _STATE_FILE
     from ci.hardware_software.hw_utils.state_machine import _write_state
-    from control.utils.config_file import quabo_ph_baseline_filename
-    from control.utils.paths import PanoPaths
 
     logger.info("[BOOT] Stage 11: pseti cfg calibrate-ph")
     r = runner.invoke(app, ["cfg", "calibrate-ph"])

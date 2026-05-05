@@ -1,9 +1,10 @@
 import json
+
 import pytest
 from typer.testing import CliRunner
+
 from control.config import app
 from control.utils import config_file
-from control.utils.paths import PanoPaths
 
 runner = CliRunner()
 
@@ -121,3 +122,30 @@ def test_global_validator_ph_baseline_check(mock_ph_data):
     validator._check_ph_baselines()
     report = [t for t in validator.report.tests if t["name"] == "PH Baseline Calibration"][0]
     assert report["status"] == "PASS"
+
+def test_ph_baseline_average_focus(mock_ph_data):
+    """Validate that we focus on average values, allowing individual pixel outliers."""
+    # Data with average in range but some pixels out of range
+    # Average: (700 * 250 + 400 * 6) / 256 = 692.9 (OK)
+    mixed_coefs = [700] * 250 + [400] * 6
+    mixed_data = {
+        "date": "2024-01-01T00:00:00",
+        "quabos": [{"uid": "q1", "coefs": mixed_coefs}]
+    }
+    (mock_ph_data / config_file.quabo_ph_baseline_filename).write_text(json.dumps(mixed_data))
+    
+    baselines = config_file.get_quabo_ph_baselines()
+    # Should PASS because average is 692.9, even with 400s
+    assert config_file.validate_ph_baselines(baselines, raise_error=True) is True
+    
+    # Data with average out of range
+    # Average: 500 (Fail)
+    bad_data = {
+        "date": "2024-01-01T00:00:00",
+        "quabos": [{"uid": "q1", "coefs": [500] * 256}]
+    }
+    (mock_ph_data / config_file.quabo_ph_baseline_filename).write_text(json.dumps(bad_data))
+    
+    baselines = config_file.get_quabo_ph_baselines()
+    with pytest.raises(ValueError, match="average values out of range"):
+        config_file.validate_ph_baselines(baselines, raise_error=True)

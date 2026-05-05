@@ -937,7 +937,7 @@ async def _check_daq_data_status(
                     hp_io_cfg = {
                         "data_dir": daq_config.head_node_data_dir,
                         "update_interval_seconds": 0.1,
-                        "force": True,
+                        "force": False,
                         "simulate_daq": False,
                         "module_ids": []
                     }
@@ -950,7 +950,7 @@ async def _check_daq_data_status(
                     logger.warning(
                         f"DaqData service hp_io is NOT initialized on {host}. "
                         "Real-time streaming (pseti show sci) will not be available. "
-                        "Use --init-snapshot it automatically."
+                        "Use --init-snapshot to enable it automatically (default)."
                     )
             else:
                 logger.info(f"DaqData service hp_io is initialized and valid on {host}.")
@@ -973,7 +973,7 @@ async def start_run(
     no_check_daq: bool = False,
     strict: bool | None = None,
     force_restart: bool = False,
-    init_snapshot: bool = False,
+    init_snapshot: bool = True,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -1011,7 +1011,10 @@ async def start_run(
     # --- Pre-flight: DAQ gRPC reachability sweep ---
     if not no_check_daq:
         await _check_daq_reachability(daq_config)
-        await _check_daq_data_status(daq_config, network_config, do_init=init_snapshot)
+        try:
+            await _check_daq_data_status(daq_config, network_config, do_init=init_snapshot)
+        except Exception as e:
+            logger.warning(f"DaqData service pre-flight check failed: {e}. Proceeding anyway.")
 
     state_mgr = RunStateManager()
     cancel_event = asyncio.Event()
@@ -1216,7 +1219,7 @@ def main(
         help="Stop any orphaned Hashpipe instances before starting (implies remote Hashpipe check).",
     ),
     init_snapshot: bool = typer.Option(
-        False, "--init-snapshot",
+        True, "--init-snapshot/--no-init-snapshot",
         help="Automatically initialize the snapshot (DaqData) gRPC service on each node for real-time streaming.",
     ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the action without prompting."),
@@ -1260,7 +1263,7 @@ async def async_main_logic(
     no_check_daq: bool = False,
     strict: bool | None = None,
     force_restart: bool = False,
-    init_snapshot: bool = False,
+    init_snapshot: bool = True,
 ) -> bool:
 
     # load config files

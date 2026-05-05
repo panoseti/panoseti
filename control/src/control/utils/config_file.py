@@ -434,7 +434,7 @@ def validate_ph_baselines(
     max_val: int = 800,
     raise_error: bool = False
 ) -> bool:
-    """Validate that PH baseline values are within the specified range.
+    """Validate that PH baseline average values are within the specified range.
 
     Args:
         baselines: The PhBaselineConfig model to validate.
@@ -443,22 +443,25 @@ def validate_ph_baselines(
         raise_error: If True, raises a ValueError on validation failure.
 
     Returns:
-        True if all values are within range, False otherwise.
+        True if all average values are within range, False otherwise.
     """
     valid = True
     for q in baselines.quabos:
-        out_of_range = [(i, v) for i, v in enumerate(q.coefs) if v < min_val or v > max_val]
-        if out_of_range:
+        if not q.coefs:
+            continue
+        avg = sum(q.coefs) / len(q.coefs)
+        if avg < min_val or avg > max_val:
             valid = False
-            msg = f"[bold yellow]WARNING:[/bold yellow] PH baseline out of range for Quabo {q.uid}: {len(out_of_range)} pixels affected."
+            msg = f"[bold red]ERROR:[/bold red] Average PH baseline out of range for Quabo {q.uid}: [bold yellow]{avg:.2f}[/bold yellow] (expected {min_val}-{max_val})"
             console.print(msg)
-            for idx, val in out_of_range[:5]: # Show first 5
-                console.print(f"  - Pixel {idx}: {val} (expected {min_val}-{max_val})")
-            if len(out_of_range) > 5:
-                console.print(f"  - ... and {len(out_of_range) - 5} more.")
+        else:
+            # Check for extreme outliers even if average is okay (optional warning)
+            outliers = [v for v in q.coefs if v < (min_val - 200) or v > (max_val + 200)]
+            if outliers:
+                console.print(f"[bold yellow]WARNING:[/bold yellow] Quabo {q.uid} has {len(outliers)} extreme baseline outliers, though average is OK ({avg:.2f}).")
 
     if not valid and raise_error:
-        raise ValueError("PH baseline validation failed.")
+        raise ValueError("PH baseline validation failed: average values out of range.")
     return valid
 
 def get_quabo_calib(serialno: str, detovervol: int, mode: str) -> dict[str, Any]:
