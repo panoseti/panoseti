@@ -49,5 +49,5 @@ glob = "*/hw_boot/**"
 class = "boot_sequence"
 
 [[mapping]]
-glob = "*/core_happy_path/**"
+glob = "*/happy_path/**"
 class = "happy_path"

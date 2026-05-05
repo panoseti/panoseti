@@ -1,5 +1,5 @@
 """
-conftest for core_happy_path tests.
+conftest for happy_path tests.
 
 Provides two key fixtures:
   booted_calibrated  — session-scoped; ensures hardware is in PH_CALIBRATED.
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Paths used by the data-config swap fixture.
 # CONFIGS is where pseti reads data_config.json (set via $PSETI_CONFIG).
 # CORE_OBS_CONFIGS is where our variant JSON files live.
-_HW_SW_DIR = Path(__file__).parent.parent
+_HW_SW_DIR = Path(__file__).parent.parent.parent
 CONFIGS = _HW_SW_DIR / "configs"
 CORE_OBS_CONFIGS = _HW_SW_DIR / "core_obs_configs"
 

@@ -1,5 +1,5 @@
 """
-core_happy_path — Parameterized observing-loop test.
+happy_path — Parameterized observing-loop test.
 
 Runs the full pseti observing cycle — start → record → stop → transfer queue
 → verify — for each data-config variant in DATA_CONFIGS.  No power cycle is
@@ -20,14 +20,14 @@ import time
 import pytest
 
 from ci.hardware_software.core import ledger as ledger_core
-from ci.hardware_software.core_happy_path.checks import (
+from ci.hardware_software.suites.happy_path.checks import (
     daq,
     hk,
 )
-from ci.hardware_software.core_happy_path.checks import (
+from ci.hardware_software.suites.happy_path.checks import (
     ledger as ledger_checks,
 )
-from ci.hardware_software.core_happy_path.checks import (
+from ci.hardware_software.suites.happy_path.checks import (
     queue as queue_checks,
 )
 from control.pseti import app
