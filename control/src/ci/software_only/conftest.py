@@ -92,21 +92,28 @@ def auto_isolate(
     for d in [cfg_tmp, state_tmp, ctl_tmp, tmp_tmp]:
         d.mkdir(parents=True, exist_ok=True)
         
-    # 2. Populate configs from current PSETI_CONFIG
-    src_cfg = os.environ.get("PSETI_CONFIG")
+    # 2. Populate static configs from the known-good direct/ config base.
+    # We always seed from PanoPathsTest.integration_configs("direct") rather than from
+    # $PSETI_CONFIG, because $PSETI_CONFIG may point to hardware_software/configs which
+    # uses Docker-only symlinks (e.g. data_config.json → /app/...) that are broken on
+    # the host. The topological configs (daq/obs/network/quabo_uids) are regenerated
+    # fresh below, so we only copy the static non-topological files here.
+    from ci.paths import PanoPathsTest as _PanoPathsTest
+    _static_src = _PanoPathsTest.integration_configs("direct")
     head_prefix = os.environ.get("HEAD_NET_PREFIX", "10.0.1")
     daq_prefix = os.environ.get("DAQ_NET_PREFIX", "192.168.0")
     quabo_prefix = os.environ.get("QUABO_NET_PREFIX", "192.168.3")
 
-    if src_cfg and os.path.exists(src_cfg):
-        for item in pathlib.Path(src_cfg).iterdir():
+    _topological = {"daq_config.json", "obs_config.json", "network_config.json", "quabo_uids.json"}
+    if _static_src.exists():
+        for item in _static_src.iterdir():
+            if item.name in _topological:
+                continue
             try:
-                # Copy everything EXCEPT the topological configs we are about to overwrite
-                if item.name not in ["daq_config.json", "obs_config.json", "network_config.json", "quabo_uids.json"]:
-                    if item.is_file():
-                        shutil.copy2(item, cfg_tmp)
-                    elif item.is_dir():
-                        shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
+                if item.is_file():
+                    shutil.copy2(item, cfg_tmp)
+                elif item.is_dir():
+                    shutil.copytree(item, cfg_tmp / item.name, dirs_exist_ok=True)
             except Exception:
                 pass
                 
@@ -230,8 +237,7 @@ def session_fleet(auto_isolate) -> Iterator[tuple[Fleet, dict[str, Any]]]:
 def topology(session_fleet):
     """Universal topology source of truth, pinned to the session fleet."""
     from ci.fixtures.topology_fixtures import ObservatoryTopology
-    _, daq_cfg = session_fleet
-    return ObservatoryTopology(daq_cfg)
+    return ObservatoryTopology()
 
 @pytest.fixture(scope="session")
 def daqnode_container(session_fleet) -> Any:
@@ -239,11 +245,35 @@ def daqnode_container(session_fleet) -> Any:
     return fleet.containers[0].get_wrapped_container()
 
 @pytest.fixture(scope="session")
+def daq_control_direct(session_fleet):
+    from panoseti_grpc.daq_control.client import DaqControlClient
+    fleet, _daq_cfg = session_fleet
+    spec = fleet.specs[0]
+    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+
+@pytest.fixture(scope="session")
 def daq_control_gateway(session_fleet):
     from panoseti_grpc.daq_control.client import DaqControlClient
     fleet, _daq_cfg = session_fleet
     spec = fleet.specs[0]
     return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+
+@pytest.fixture
+def daq_client(daq_control_direct: DaqControlClient) -> DaqControlClient:
+    """Fleet override: routes to the real container endpoint (specs[0])."""
+    return daq_control_direct
+
+@pytest.fixture(scope="session")
+def _daq_control_node2_session(session_fleet):
+    from panoseti_grpc.daq_control.client import DaqControlClient
+    fleet, _daq_cfg = session_fleet
+    spec = fleet.specs[1]
+    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+
+@pytest.fixture
+def daq_control_node2(_daq_control_node2_session: DaqControlClient) -> DaqControlClient:
+    """Fleet override: routes node-2 client to the real container endpoint (specs[1])."""
+    return _daq_control_node2_session
 
 @pytest.fixture(scope="session")
 def redis_client(session_fleet) -> Iterator[Any]:
@@ -262,6 +292,13 @@ def daq_data_client(session_fleet) -> Iterator[DaqDataClient]:
     _fleet, daq_cfg = session_fleet
     with DaqDataClient(daq_cfg, network_config=None) as client:
         yield client
+
+@pytest.fixture
+def head_data_dir(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Per-test head node data directory, isolated via tmp_path."""
+    d = tmp_path / "head_data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 @pytest.fixture(scope='module')
 def run_params(session_fleet) -> dict[str, Any]:

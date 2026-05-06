@@ -76,7 +76,8 @@ class TestConcurrentDaqOperations:
         def attempt():
             # Each thread needs its own gRPC channel to actually be concurrent.
             from panoseti_grpc.daq_control.client import DaqControlClient
-            client = DaqControlClient(host=daq_client.host, port=daq_client.port)
+            _host, _port_str = daq_client.target.rsplit(":", 1)
+            client = DaqControlClient(host=_host, port=int(_port_str))
             try:
                 time.sleep(uniform(0.05, 0.75))
                 return client.StartDaq(rp)   # True on success

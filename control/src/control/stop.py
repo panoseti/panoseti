@@ -225,7 +225,10 @@ class StopTransaction:
 
             # Finalize ledger
             final_status = RunStatus.STOPPED_WITH_ERRORS if exc_type is not None else RunStatus.RECORDING_ENDED
-            self.state_mgr.transition(final_status)
+            extra_fields = {}
+            if exc_type is not None and self.last_exception:
+                extra_fields["last_transfer_error"] = self.last_exception
+            self.state_mgr.transition(final_status, **extra_fields)
             self.success = True
             return True
 

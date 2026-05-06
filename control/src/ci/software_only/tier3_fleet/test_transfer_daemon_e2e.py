@@ -27,6 +27,7 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 from ci.fixtures.fleet import Fleet
 from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
+    _prepare_container_dirs,
     generate_mocked_run,
     get_mapped_client_factory,
     simulate_rsync_from_fleet,

@@ -19,7 +19,6 @@ import pytest
 
 from ci.fixtures.factories import (
     make_mock_daq_config,
-    make_transfer_job,
     simulate_daq_filesystem,
 )
 from control.utils.pydantic_config_models import (
@@ -57,11 +56,6 @@ def worker_id(request: Any) -> str:
 # ---------------------------------------------------------------------------
 # Shared Factories & Mocks (Infrastructure)
 # ---------------------------------------------------------------------------
-
-@pytest.fixture
-def transfer_job_factory():
-    """Factory for creating valid TransferJob models."""
-    return make_transfer_job
 
 @pytest.fixture
 def daq_fs_simulator():
@@ -131,10 +125,12 @@ def minimal_firmware_config(topology_templates) -> dict[str, Any]:
     return copy.deepcopy(topology_templates.get("base_firmware", {}))
 
 @pytest.fixture
-def mock_daq_config() -> DaqConfig:
+def mock_daq_config(tmp_path: pathlib.Path) -> DaqConfig:
     """Fully valid Pydantic model for DAQ configuration."""
+    head_data = tmp_path / "head_data"
+    head_data.mkdir(parents=True, exist_ok=True)
     baseline = {
-        "head_node_data_dir": "/data/head",
+        "head_node_data_dir": str(head_data),
         "head_node_ip_addr": "10.0.0.1",
         "head_node_container": False,
         "daq_nodes": [

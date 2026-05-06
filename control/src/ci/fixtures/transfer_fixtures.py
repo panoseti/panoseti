@@ -19,9 +19,6 @@ from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils.paths import PanoPaths
 
-from .topology_fixtures import ObservatoryTopology
-
-
 @pytest.fixture
 def transfer_queue(mock_env) -> TransferQueue:
     """Provides a TransferQueue instance in an isolated environment.
@@ -32,9 +29,9 @@ def transfer_queue(mock_env) -> TransferQueue:
     return TransferQueue(queue_dir=queue_dir)
 
 @pytest.fixture
-def transfer_job_factory(topology: ObservatoryTopology, no_collect: bool=False, no_cleanup: bool=False) -> Callable[..., TransferJob]:
+def transfer_job_factory(no_collect: bool=False, no_cleanup: bool=False) -> Callable[..., TransferJob]:
     """Returns a factory function for creating valid TransferJob objects.
-    Defaults are derived from the active ObservatoryTopology.
+    Defaults are derived from the active PSETI_CONFIG (set by mock_env or auto_isolate).
     """
     def _make(
         run_name: str | None = None,

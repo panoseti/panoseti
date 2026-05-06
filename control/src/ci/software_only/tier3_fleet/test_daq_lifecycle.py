@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 
-from ci.fixtures.topology_fixtures import ObservatoryTopology
 from ci.software_only.conftest import (
     wait_hashpipe_running,
     wait_hashpipe_stopped,
@@ -20,12 +19,15 @@ from ci.software_only.conftest import (
 
 
 @pytest.fixture(params=["direct", "gateway"])
-def daq_client_multi(request: Any, topology: ObservatoryTopology) -> DaqControlClient:
+def daq_client_multi(
+    request: Any,
+    daq_control_direct: DaqControlClient,
+    daq_control_gateway: DaqControlClient,
+) -> DaqControlClient:
     """Parameterized fixture — runs every test against both network paths."""
-    nodes = topology.daq_nodes()
-    primary = nodes[0]
-    host = primary.real_host if request.param == "gateway" else primary.host
-    return DaqControlClient(host=host, port=primary.grpc_port)
+    if request.param == "direct":
+        return daq_control_direct
+    return daq_control_gateway
 
 
 class TestDaqLifecycle:

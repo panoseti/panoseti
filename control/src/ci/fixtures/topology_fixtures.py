@@ -189,7 +189,7 @@ class ObservatoryTopology:
         return True
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def topology() -> ObservatoryTopology:
     """The universal observatory topology source of truth."""
     return ObservatoryTopology()

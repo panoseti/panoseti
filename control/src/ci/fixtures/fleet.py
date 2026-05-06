@@ -195,6 +195,11 @@ class Fleet:
         """The live testcontainers DockerContainer objects (one per spec)."""
         return self._containers
 
+    @property
+    def host_data_dirs(self) -> list[str]:
+        """Host-side temporary data directories mounted into each container (one per spec)."""
+        return self._temp_dirs
+
     def node_ip(self, index: int) -> str:
         """Placeholder IPv4 address assigned to the node at *index*.
 

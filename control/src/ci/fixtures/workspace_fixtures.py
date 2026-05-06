@@ -98,10 +98,15 @@ def setup_test_run_dir() -> Callable[[str, ObsConfig, DaqConfig, QuaboUids, Data
 
 
 def prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
-    """Create data directories in the ephemeral temp dirs used by containers."""
+    """Create data directories in the ephemeral temp dirs used by containers.
+
+    Uses docker exec for module subdirs since containers run as root and may
+    own those paths, making host-side mkdir fail with PermissionError.
+    """
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
         spec = fleet.specs[i]
+        container = fleet.containers[i].get_wrapped_container()
 
         # Root run dir (e.g. /data/ci_run_xxx.pffd/)
         main_run_dir = host_root / run_dir
@@ -113,23 +118,25 @@ def prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
         (main_run_dir / f"hp_stdout_{spec.name}.log").touch()
         (main_run_dir / "meta.json").write_text('{"test": true}')
 
-        # Module subdirs (e.g. /data/module_250/ci_run_xxx.pffd/)
+        # Module subdirs — use docker exec to avoid PermissionError when the
+        # container (root) already owns the parent module directory.
         for mid in spec.module_ids:
-            mod_root = host_root / f"module_{mid}"
-            mod_root.mkdir(parents=True, exist_ok=True)
-            with contextlib.suppress(OSError):
-                os.chmod(mod_root, 0o777)
+            mod_run_path = f"/data/module_{mid}/{run_dir}"
+            container.exec_run(f"mkdir -p {mod_run_path}")
+            container.exec_run(f"chmod 777 {mod_run_path}")
 
-            mod_run_dir = mod_root / run_dir
-            mod_run_dir.mkdir(parents=True, exist_ok=True)
-            with contextlib.suppress(OSError):
-                os.chmod(mod_run_dir, 0o777)
-
-            # Dummy data - name must match what GenerateManifest picks up
-            f_path = mod_run_dir / f"data.module_{mid}.pff"
-            f_path.write_bytes(b"synthetic data")
-            with contextlib.suppress(OSError):
-                os.chmod(f_path, 0o666)
+            # Write dummy data via the host path (which is the same volume).
+            mod_run_dir = host_root / f"module_{mid}" / run_dir
+            if mod_run_dir.exists():
+                f_path = mod_run_dir / f"data.module_{mid}.pff"
+                try:
+                    f_path.write_bytes(b"synthetic data")
+                    with contextlib.suppress(OSError):
+                        os.chmod(f_path, 0o666)
+                except PermissionError:
+                    container.exec_run(
+                        f"sh -c 'echo synthetic data > {mod_run_path}/data.module_{mid}.pff'"
+                    )
 
 
 def copy_run_dir(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:

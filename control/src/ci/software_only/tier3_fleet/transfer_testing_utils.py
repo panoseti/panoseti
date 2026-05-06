@@ -15,6 +15,17 @@ from control.utils import config_file
 from control.utils.paths import PanoPaths
 
 
+def _prepare_container_dirs(fleet: Fleet, run_name: str, data_dir: str = "/data") -> None:
+    """Create run and module directories on all testcontainers fleet nodes via docker exec."""
+    for i, spec in enumerate(fleet.specs):
+        container = fleet.containers[i].get_wrapped_container()
+        container.exec_run(f"mkdir -p {data_dir}/{run_name}")
+        for mid in spec.module_ids:
+            mod_dir = f"{data_dir}/module_{mid}/{run_name}"
+            container.exec_run(f"mkdir -p {mod_dir}")
+            container.exec_run(f"touch {mod_dir}/dummy.pff")
+
+
 def setup_isolated_transfer_env(tmp_path: Path, monkeypatch: Any, daq_cfg_dict: dict[str, Any]) -> tuple[Path, config_file.DaqConfig]:
     """Isolates the PSETI state and config for a transfer test."""
     monkeypatch.setenv("PSETI_STATE", str(tmp_path))
