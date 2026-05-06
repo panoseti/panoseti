@@ -10,7 +10,6 @@ These tests require the full Docker stack to verify the interaction between:
 """
 
 import asyncio
-import contextlib
 import os
 import uuid
 from collections.abc import Callable
@@ -24,7 +23,6 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 # ---------------------------------------------------------------------------
 # Docker-based Integration Tests
 # ---------------------------------------------------------------------------
-from ci.fixtures.fleet import Fleet
 from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     _prepare_container_dirs,
@@ -40,7 +38,6 @@ from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
-
 
 
 @pytest.mark.asyncio

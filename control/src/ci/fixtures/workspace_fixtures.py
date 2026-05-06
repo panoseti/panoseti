@@ -7,16 +7,16 @@ and run directory structures.
 
 from __future__ import annotations
 
-import os
+import contextlib
 import json
 import logging
+import os
 from collections.abc import Callable
 from pathlib import Path
-import contextlib
-from ci.fixtures.fleet import Fleet
 
 import pytest
 
+from ci.fixtures.fleet import Fleet
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
     DaqConfig,

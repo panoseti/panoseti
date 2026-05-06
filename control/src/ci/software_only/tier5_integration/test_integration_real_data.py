@@ -11,7 +11,7 @@ from itertools import islice
 
 import pytest
 
-from ci.software_only.conftest import wait_hashpipe_stopped, run_params
+from ci.software_only.conftest import wait_hashpipe_stopped
 from ci.software_only.tier3_fleet.conftest import (
     wait_until,
 )

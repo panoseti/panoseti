@@ -19,6 +19,7 @@ from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils.paths import PanoPaths
 
+
 @pytest.fixture
 def transfer_queue(mock_env) -> TransferQueue:
     """Provides a TransferQueue instance in an isolated environment.

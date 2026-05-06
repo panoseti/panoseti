@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock
 
-from ci.fixtures.transfer_fixtures import transfer_job_factory
 from ci.fixtures.rsync_fixtures import RsyncMock
 from control.transfer.daemon import (
     _acquire_transfer_lock,
