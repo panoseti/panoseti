@@ -11,8 +11,13 @@ import random
 from ipaddress import IPv4Address
 
 from control.utils.pydantic_config_models import (
+    DaemonConfig,
+    Daemons,
     DaqConfig,
     DaqNode,
+    DataConfig,
+    FirmwareConfig,
+    ImageMode,
     NetworkConfig,
     NetworkDaqNode,
     NetworkModule,
@@ -27,14 +32,50 @@ from control.utils.pydantic_config_models import (
 )
 
 
+def generate_data_config(
+    run_type: str = "engineering",
+    overvoltage: int = 2,
+    integration_time_usec: int = 1000,
+    pe_threshold: float = 1.0,
+    quabo_sample_size: int = 16,
+) -> DataConfig:
+    """Generates a minimal valid DataConfig with image mode enabled."""
+    return DataConfig(
+        run_type=run_type,
+        detector_overvoltage=overvoltage,  # type: ignore[arg-type]
+        image=ImageMode(
+            integration_time_usec=integration_time_usec,
+            pe_threshold=pe_threshold,
+            quabo_sample_size=quabo_sample_size,  # type: ignore[arg-type]
+        ),
+    )
+
+
+def generate_firmware_config(
+    qfp: str = "quabo_qfp_stub.bin",
+    bga: str = "quabo_bga_stub.bin",
+) -> FirmwareConfig:
+    """Generates a minimal FirmwareConfig. File names are stubs; no on-disk check is implied."""
+    return FirmwareConfig(qfp=qfp, bga=bga)
+
+
+def generate_daemons_config() -> DaemonConfig:
+    """Generates a test-safe DaemonConfig with all daemons disabled."""
+    return DaemonConfig(
+        daemons=Daemons(**{"hk": False, "gps": False, "telemetry_service": False, "loki": False}),
+        permanent_daemons=Daemons(),
+    )
+
+
 def generate_fleet_configs(
-    num_daq_nodes: int, 
+    num_daq_nodes: int,
     modules_per_node: int = 1,
     subnet_probability: float = 0.5,
     head_node_ip: str = "10.0.1.5",
     daq_base_ip: str = "192.168.0.100",
     module_base_ip: str = "192.168.3.10",
-    module_limit: int = 4
+    module_limit: int = 4,
+    seed: int | None = None,
 ) -> tuple[DaqConfig, QuaboUids, NetworkConfig, ObsConfig]:
     """
     Programmatically creates a complete set of configurations for an n-node fleet.
@@ -42,6 +83,8 @@ def generate_fleet_configs(
     Returns:
         (DaqConfig, QuaboUids, NetworkConfig, ObsConfig)
     """
+    rng = random.Random(seed)
+
     daq_nodes = []
     quabo_uid_modules = []
     network_modules = []
@@ -63,7 +106,7 @@ def generate_fleet_configs(
 
         # Decide if this node is in a subnet (requires port forwarding)
         pf = None
-        if random.random() < subnet_probability:
+        if rng.random() < subnet_probability:
             # Create a gateway IP in a different range
             gw_ip = f"10.0.2.{100 + i}"
             pf = PortForwarding(

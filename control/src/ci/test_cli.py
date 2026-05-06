@@ -23,6 +23,8 @@ from ci.software_only.qa_utils import (
 )
 from control.utils.paths import PanoPaths
 
+V2_QA_TOML_PATH = PanoPaths.base_dir() / "src" / "ci" / "software_only_v2" / "qa.toml"
+
 console = Console()
 
 
@@ -109,10 +111,12 @@ app = typer.Typer(
 sw_app = typer.Typer(help="Software QA tests (Docker-based CI simulations)", no_args_is_help=True)
 hw_app = typer.Typer(help="Hardware-in-the-Loop (HITL) physical lab tests", no_args_is_help=True, cls=HwTestLazyGroup)
 grpc_app = typer.Typer(help="gRPC service layer tests", no_args_is_help=True, cls=GrpcTestLazyGroup)
+v2_app = typer.Typer(help="v2 Software QA (topology-driven, realistic containers)", no_args_is_help=True)
 
 app.add_typer(sw_app, name="sw")
 app.add_typer(hw_app, name="hw")
 app.add_typer(grpc_app, name="grpc")
+sw_app.add_typer(v2_app, name="v2")
 
 @grpc_app.callback()
 def grpc_main(
@@ -287,6 +291,74 @@ def sw_cleanup(ctx: typer.Context) -> None:
     """Tear down all test containers and volumes"""
     # TestRunner cleanup logic needed in qa_utils.py
     pass
+
+
+# ---------------------------------------------------------------------------
+# V2 Subcommands (pseti test sw v2 <tier>)
+# ---------------------------------------------------------------------------
+
+@v2_app.callback()
+def v2_main(
+    ctx: typer.Context,
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Display the command tree for v2 tests.", callback=display_tree_callback)] = False,
+) -> None:
+    """v2 Software QA — topology-driven, realistic containers."""
+    if not hasattr(ctx, "obj") or ctx.obj is None:
+        ctx.obj = TestRunner(QA_TOML_PATH)
+    # Override runner to use v2 QA TOML
+    ctx.obj = TestRunner(V2_QA_TOML_PATH)
+
+
+@v2_app.command(name="unit", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def v2_unit(ctx: typer.Context) -> None:
+    """v2 Tier 1: In-process Pydantic validation and config logic"""
+    ok = asyncio.run(ctx.obj.run_suite("unit", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@v2_app.command(name="logic", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def v2_logic(ctx: typer.Context) -> None:
+    """v2 Tier 2: Subsystem logic with isolated workspace"""
+    ok = asyncio.run(ctx.obj.run_suite("logic", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@v2_app.command(name="fleet", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def v2_fleet(ctx: typer.Context) -> None:
+    """v2 Tier 3: Fleet of sim daqnodes with real gRPC"""
+    ok = asyncio.run(ctx.obj.run_suite("fleet", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@v2_app.command(name="chaos", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def v2_chaos(ctx: typer.Context) -> None:
+    """v2 Tier 4: Fault injection and resilience"""
+    ok = asyncio.run(ctx.obj.run_suite("chaos", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@v2_app.command(name="integration", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def v2_integration(ctx: typer.Context) -> None:
+    """v2 Tier 5: Real hashpipe binary, static stack"""
+    ok = asyncio.run(ctx.obj.run_suite("integration", extra_args=ctx.args))
+    if not ok:
+        raise typer.Exit(code=1)
+
+
+@v2_app.command(name="all")
+def v2_all(ctx: typer.Context) -> None:
+    """Run all v2 tiers (1-5) sequentially"""
+    suites = ["unit", "logic", "fleet", "chaos", "integration"]
+    success = True
+    for s in suites:
+        ok = asyncio.run(ctx.obj.run_suite(s))
+        success = success and ok
+    if not success:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

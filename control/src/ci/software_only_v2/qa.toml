@@ -1,0 +1,71 @@
+# qa.toml — v2 test suite definitions for pseti test sw v2 <suite>
+# Each suite is run by the same TestRunner used for v1, pointed at this file.
+
+[settings]
+default_parallel = 4
+project_prefix = "pseti-v2"
+
+# ---------------------------------------------------------------------------
+# Tier 1: Pure in-process logic — zero containers, pure Pydantic + validator
+# ---------------------------------------------------------------------------
+[suites.unit]
+description = "v2 Tier 1: In-process Pydantic validation and config logic"
+type = "test"
+requires_docker = true
+compose_file = "docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+test_dir = "software_only_v2/tier1_unit/"
+parallel = true
+
+# ---------------------------------------------------------------------------
+# Tier 2: State-machine logic — isolated workspace, no containers
+# ---------------------------------------------------------------------------
+[suites.logic]
+description = "v2 Tier 2: Subsystem logic with isolated workspace"
+type = "test"
+requires_docker = true
+compose_file = "docker-compose.unit.yml"
+profiles = ["unit"]
+service = "unit-test-runner"
+test_dir = "software_only_v2/tier2_logic/"
+parallel = true
+
+# ---------------------------------------------------------------------------
+# Tier 3: Sim daqnode fleet — testcontainers, UdsStrategy, no real hashpipe
+# ---------------------------------------------------------------------------
+[suites.fleet]
+description = "v2 Tier 3: Fleet of sim daqnodes with real gRPC"
+type = "test"
+requires_docker = false
+test_dir = "software_only_v2/tier3_fleet/"
+parallel = false
+
+# ---------------------------------------------------------------------------
+# Tier 4: Fault injection — Tier 3 + chaos toolkit
+# ---------------------------------------------------------------------------
+[suites.chaos]
+description = "v2 Tier 4: Fault injection and resilience"
+type = "test"
+requires_docker = false
+test_dir = "software_only_v2/tier4_chaos/"
+env = { ENABLE_TELEMETRY_TESTS = "1" }
+
+# ---------------------------------------------------------------------------
+# Tier 5: Real hashpipe + tcpreplay — static Docker Compose stack
+# ---------------------------------------------------------------------------
+[suites.integration]
+description = "v2 Tier 5: Real hashpipe binary, static stack"
+type = "test"
+service = "int-tester"
+requires_docker = true
+compose_file = "docker-compose.integration.yml"
+test_dir = "software_only_v2/tier5_integration/"
+env = { HEAD_NET_PREFIX = "10.51.1", DAQ_NET_PREFIX = "172.25.0", QUABO_NET_PREFIX = "172.25.3", DAQNODE_DIRECT_HOST = "172.25.0.10", DAQNODE2_DIRECT_HOST = "172.25.0.20", ENABLE_TELEMETRY_TESTS = "1", RUN_REAL_DATA_TESTS = "1", DAQNODE_CONTAINER_NAME = "pseti-integration-daqnode-1", PSETI_CONFIG = "/tmp/pseti_test/integration_configs", PSETI_TMP = "/tmp/pseti_test/tmp", PSETI_QUABOS = "/app/src/ci/fixtures/configs/direct", PSETI_LOGS = "/tmp/pseti_test/logs" }
+pre_run = "python3 /app/src/ci/tier5_setup.py"
+
+# ---------------------------------------------------------------------------
+# Corpus path override (optional — empty string means use importlib.resources)
+# ---------------------------------------------------------------------------
+[corpus]
+path = ""
