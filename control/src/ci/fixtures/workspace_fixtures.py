@@ -97,7 +97,7 @@ def setup_test_run_dir() -> Callable[[str, ObsConfig, DaqConfig, QuaboUids, Data
     return make_run_dirs
 
 
-def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
+def prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
     """Create data directories in the ephemeral temp dirs used by containers."""
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)

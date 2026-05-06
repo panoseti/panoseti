@@ -63,4 +63,4 @@ def data_client(topology: ObservatoryTopology) -> DaqDataClient:
     
     primary = daq_config.daq_nodes[0]
     # host, port = util.daq_grpc_endpoint(primary, daq_config)
-    return DaqDataClient(daq_config, network_config=topology._net)
+    return DaqDataClient(daq_config.model_dump(), network_config=topology._net.model_dump())

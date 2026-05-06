@@ -12,7 +12,7 @@ import contextlib
 import os
 import pathlib
 
-from ci.software_only.tier3_fleet.test_transfer_daemon_e2e import _prepare_container_dirs
+from ci.fixtures.workspace_fixtures import prepare_container_dirs
 from ci.software_only.tier4_chaos.conftest import (
     _cleanup as grpc_cleanup,
 )
@@ -29,7 +29,7 @@ class TestDataCollectionTransaction:
         run_params["data_dir"] = "/data"
         
         fleet, _ = session_fleet
-        _prepare_container_dirs(fleet, run_params["run_dir"])
+        prepare_container_dirs(fleet, run_params["run_dir"])
 
         # Simulate copy failure: we just DON'T call copy_run_dir or CleanupData
         # Verify data still exists on host in the isolated volumes
@@ -51,7 +51,7 @@ class TestDataCollectionTransaction:
         daq_control_direct.StopDaq({"data_dir": "/data", "run_dir": run_params["run_dir"]})
         
         fleet, _ = session_fleet
-        _prepare_container_dirs(fleet, run_params["run_dir"])
+        prepare_container_dirs(fleet, run_params["run_dir"])
 
         for mid in run_params["module_id"]:
             req = {
@@ -111,7 +111,7 @@ class TestNodeFailureDuringCollection:
         run_params["data_dir"] = "/data"
         
         fleet, _ = session_fleet
-        _prepare_container_dirs(fleet, run_params["run_dir"])
+        prepare_container_dirs(fleet, run_params["run_dir"])
         
         # Verify data exists in isolated volumes
         for i, temp_dir in enumerate(fleet._temp_dirs):
@@ -130,7 +130,7 @@ class TestNodeFailureDuringCollection:
         
         # 1. Previous session's data exists
         fleet, _ = session_fleet
-        _prepare_container_dirs(fleet, run_params["run_dir"])
+        prepare_container_dirs(fleet, run_params["run_dir"])
         
         # 2. Issue cleanup
         for mid in run_params["module_id"]:
