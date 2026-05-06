@@ -125,7 +125,7 @@ class TestIntegrationRealDataFlow:
         wait_hashpipe_stopped(daq_control_direct, "/data", timeout=15)
 
         # Copy from shared volume
-        from ci.software_only.tier3_fleet.test_transfer_daemon_e2e import copy_run_dir
+        from ci.fixtures.workspace_fixtures import copy_run_dir
         assert copy_run_dir(
             run_params, pathlib.Path(head_data_dir)
         )

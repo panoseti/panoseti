@@ -221,7 +221,7 @@ class TestSCTX004ManifestMismatch:
     """
 
     @pytest.mark.asyncio
-    def test_SC_TX_004_corrupted_file_triggers_verify_failed(
+    async def test_SC_TX_004_corrupted_file_triggers_verify_failed(
         self, 
         isolated_transfer_env: tuple[Path, DaqConfig],
         mock_rsync_transfer: RsyncMock,
