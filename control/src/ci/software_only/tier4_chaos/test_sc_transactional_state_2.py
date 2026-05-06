@@ -8,11 +8,7 @@ Part 2 of partitioned test suite.
 from __future__ import annotations
 
 import contextlib
-import json
-import os
 import pathlib
-import unittest.mock
-from typing import Any
 
 import pytest
 
@@ -39,17 +35,15 @@ class TestSC033StaleInterleavePID:
     use psutil to confirm the process is our interleave daemon).
     """
 
-    def test_SC033_stale_pid_of_init_not_signalled(self, tmp_path: pathlib.Path) -> None:
+    def test_SC033_stale_pid_of_init_not_signalled(self, mock_workspace, tmp_path: pathlib.Path) -> None:
         """
         Seed the PID file with PID=1 (init/systemd). stop_interleave() must:
           - Detect that PID 1 is NOT our interleave process
           - NOT send SIGTERM to PID 1
           - Clean up the stale PID file
-
-        Currently fails because stop_interleave() sends SIGTERM to PID 1 (which
-        raises PermissionError and silently leaves the file).
         """
-        pid_file = tmp_path / "interleave.lock"
+        # mock_workspace isolates PSETI_TMP
+        pid_file = PanoPaths.tmp_dir() / "interleave.lock"
         pid_file.write_text("1\n")
 
         try:
@@ -219,86 +213,4 @@ class TestSC034InterleaveDaemonHardKill:
 
 # ── SC-021 → SC-023: start.py interrupted at various stages ──────────────────
 
-@contextlib.contextmanager
-def mock_daq_config_for_headnode():
-    """Temporarily patch daq_config.json to point to localhost (CI headnode)."""
-
-    from control.utils import config_file
-    from control.utils.paths import PanoPaths
-    path = PanoPaths.config_dir() / "daq_config.json"
-    backup = str(path) + ".bak"
-    # Ensure tmp/ and configs/ exist (should already, but let's be safe)
-    PanoPaths.ensure_dirs()
-    PanoPaths.config_dir().mkdir(parents=True, exist_ok=True)
-    
-    # Create a dummy PH baseline if missing
-    ph_baseline = PanoPaths.tmp_dir() / "quabo_ph_baseline.json"
-    if not os.path.exists(ph_baseline):
-        with open(ph_baseline, "w") as f:
-            json.dump({"date": "2024-01-01T00:00:00", "quabos": []}, f)
-
-    if os.path.exists(path):
-        import shutil
-        shutil.copyfile(path, backup)
-    
-    with open(path) as f:
-        cfg = json.load(f)
-    
-    import tempfile
-    # Prefer the isolated HEAD_DATA_DIR set by auto_isolate so the subprocess
-    # env and the daq_config.json written here share the same path.  Fall back
-    # to a fresh tempdir only when running outside the pytest harness.
-    tmp_data_dir = os.environ.get("HEAD_DATA_DIR") or tempfile.mkdtemp()
-    os.makedirs(tmp_data_dir, exist_ok=True)
-
-    tester_ip = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
-    cfg["head_node_ip_addr"] = tester_ip
-    cfg["head_node_data_dir"] = tmp_data_dir
-    cfg["head_node_container"] = True
-    
-    # Coherence Fix: Ensure the DAQ node is handling ALL modules defined in the 
-    # current obs_config.json to prevent "no DAQ node is handling module X" errors.
-    mids = []
-    obs = config_file.get_obs_config()
-    for dome in obs.domes:
-        for module in dome.modules:
-            mids.append(config_file.ip_addr_to_module_id(str(module.ip_addr)))
-
-    # Assign ALL modules to the single available CI node
-    # Use a DAQ IP that is on the same /24 subnet as the modules (192.168.3.x)
-    # to pass strict Tier-2 Subnet Coherence validation.
-    daqnode_ip = "192.168.3.30"
-    cfg["daq_nodes"] = [
-        {
-            "ip_addr": daqnode_ip,
-            "data_dir": "/data",
-            "username": "root",
-            "module_ids": mids,
-            "bindhost": "lo"
-        }
-    ]
-    
-    with open(path, "w") as f:
-        json.dump(cfg, f, indent=4)
-    
-    # Write matching quabo_uids.json to tmp/ so associate() in subprocess passes
-    uids_path = PanoPaths.tmp_dir() / "quabo_uids.json"
-    uids_path.parent.mkdir(parents=True, exist_ok=True)
-    from control.utils.pydantic_config_models import QuaboUids
-    uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
-    for mid in mids:
-        uids_dict["domes"][0]["modules"].append({
-            "id": mid,
-            "ip_addr": f"192.168.3.{mid}",
-            "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
-        })
-    with open(uids_path, "w") as f:
-        json.dump(uids_dict, f, indent=4)
-
-    with unittest.mock.patch("control.utils.config_file.get_quabo_uids", return_value=QuaboUids(**uids_dict)):
-        try:
-            yield
-        finally:
-            if os.path.exists(backup):
-                import shutil
-                shutil.move(backup, path)
+# [REMOVED redundant mock_daq_config_for_headnode; use chaos_headnode_workspace fixture]

@@ -73,32 +73,14 @@ def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -
                         shutil.copy2(f, head_run_dir / f.name)
 
 async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, run_name: str, file_size_kb: int = 1) -> dict[str, bytes]:
-    """Starts a run, generates fake .pff files and metadata on containers, and stops the run."""
+    """Starts a run, generates fake .pff files and metadata on containers, and stops the run.
+    
+    Relies on production make_run_dirs logic (via start_run) to create the directory structure.
+    """
     obs_config = config_file.get_obs_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
     net_config = config_file.get_network_config()
-
-    def mocked_make_run_dirs(rn, oc, dc, quids, dtc, nc):
-        # Create head node run dir locally
-        run_dir = Path(dc.head_node_data_dir) / rn
-        run_dir.mkdir(parents=True, exist_ok=True)
-        # 1. Create the directories on the DAQ nodes via docker exec
-        for i, node in enumerate(dc.daq_nodes):
-            container = fleet.containers[i].get_wrapped_container()
-            # Root run dir on DAQ node
-            container.exec_run(f"mkdir -p {node.data_dir}/{rn}")
-            container.exec_run(f"chmod 777 {node.data_dir}/{rn}")
-            # Module-specific dirs on DAQ node
-            for mid in node.module_ids:
-                mpath = f"{node.data_dir}/module_{mid}/{rn}"
-                container.exec_run(f"mkdir -p {mpath}")
-                container.exec_run(f"chmod 777 {mpath}")
-                # Also ensure the parent module_mid dir exists
-                container.exec_run(f"chmod 777 {node.data_dir}/module_{mid}")
-            
-            # Final broad chmod to be absolutely sure
-            container.exec_run(f"chmod -R 777 {node.data_dir}")
 
     # Create dummy PH baseline to pass pre-flight checks
     ph_baseline_path = PanoPaths.calibration_file("quabo_ph_baseline.json")
@@ -109,11 +91,12 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
     }
     ph_baseline_path.write_text(json.dumps(dummy_data))
 
+    # Note: start_run calls make_run_dirs, which creates directories on DAQ nodes via docker exec.
+    # We don't need to manually mock it if we're in the Docker CI environment.
     with patch("control.start.ph_baseline_file_ok", return_value=True), \
          patch("control.start._check_daq_reachability"), \
          patch("control.start._check_quabo_reachability"), \
          patch("control.start.start_data_flow"), \
-         patch("control.start.make_run_dirs", side_effect=mocked_make_run_dirs), \
          patch("control.start.util.start_hk_recorder"), \
          patch("control.start.util.write_run_name"):
          
@@ -135,31 +118,24 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
         meta_file.write_text('{"test": true}')
         
         for mid in spec.module_ids:
-            # The directory should ALREADY exist thanks to mocked_make_run_dirs
+            # The directory should ALREADY exist thanks to make_run_dirs
             host_mod_run_dir = host_root / f"module_{mid}" / run_name
             host_mod_run_dir.mkdir(parents=True, exist_ok=True)
             
             for f_idx in range(2):
-                # Unique name across the whole fleet
                 filename = f"{run_name}.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
                 content = os.urandom(file_size_kb * 1024) 
                 f_path = host_mod_run_dir / filename
                 f_path.write_bytes(content)
                 expected_data[filename] = content
                 
-                # Fix permissions from inside so gRPC server (root) can read them
+                # Ensure the container-side process can read it
                 container.exec_run(f"chmod 666 /data/module_{mid}/{run_name}/{filename}")
         
-        # Final safety chmod
-        container.exec_run(f"chmod -R 777 /data/{run_name}")
-        for mid in spec.module_ids:
-            container.exec_run(f"chmod -R 777 /data/module_{mid}/{run_name}")
-        
-        # Explicit sync to flush caches inside the container
+        # Final safety sync
         container.exec_run("sync")
     
-    # 1s settling period for mount propagation
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(0.5)
 
     # --- Step 4: Stop Run (Enqueue) ---
     with patch("control.stop.util.stop_data_flow"), \

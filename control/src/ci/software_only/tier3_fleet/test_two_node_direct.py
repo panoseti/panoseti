@@ -11,8 +11,6 @@ concurrent StartDaq calls work without interference.
 from __future__ import annotations
 
 import contextlib
-import os
-import pathlib
 import uuid
 from collections.abc import Iterator
 from typing import Any
@@ -60,91 +58,77 @@ def run_params_node2(session_fleet) -> dict[str, Any]:
 
 
 @pytest.fixture(autouse=True)
-def ensure_node2_clean(daq_control_node2: Any, run_params_node2: dict[str, Any]) -> Iterator[None]:
+def ensure_node2_clean(daq_client_2: Any, run_params_node2: dict[str, Any]) -> Iterator[None]:
     """Stop and cleanup node-2 after each test regardless of outcome."""
     yield
     with contextlib.suppress(Exception):
-        daq_control_node2.StopDaq({
+        daq_client_2.StopDaq({
             "data_dir": run_params_node2["data_dir"],
             "run_dir":  run_params_node2["run_dir"],
         })
 
     # We must block until it is actually stopped before proceeding to the next test.
-    wait_hashpipe_stopped(daq_control_node2, run_params_node2["data_dir"], timeout=8)
+    wait_hashpipe_stopped(daq_client_2, run_params_node2["data_dir"], timeout=8)
 
     with contextlib.suppress(Exception):
         for mid in run_params_node2["module_id"]:
-            daq_control_node2.CleanupData({
+            daq_client_2.CleanupData({
                 "data_dir":  run_params_node2["data_dir"],
                 "run_dir":   run_params_node2["run_dir"],
                 "module_id": mid,
             })
 
 @pytest.fixture(autouse=True)
-def ensure_node1_clean(daq_control_direct: Any, run_params_node1: dict[str, Any]) -> Iterator[None]:
+def ensure_node1_clean(daq_client: Any, run_params_node1: dict[str, Any]) -> Iterator[None]:
     """Stop and cleanup node-1 after each test regardless of outcome."""
     yield
     with contextlib.suppress(Exception):
-        daq_control_direct.StopDaq({
+        daq_client.StopDaq({
             "data_dir": run_params_node1["data_dir"],
             "run_dir":  run_params_node1["run_dir"],
         })
 
-    wait_hashpipe_stopped(daq_control_direct, run_params_node1["data_dir"], timeout=8)
+    wait_hashpipe_stopped(daq_client, run_params_node1["data_dir"], timeout=8)
     with contextlib.suppress(Exception):
         for mid in run_params_node1["module_id"]:
-            daq_control_direct.CleanupData({
+            daq_client.CleanupData({
                 "data_dir":  run_params_node1["data_dir"],
                 "run_dir":   run_params_node1["run_dir"],
                 "module_id": mid,
             })
 
 
-def _prepare_dirs(params: dict) -> None:
+def _prepare_dirs(fleet: Fleet, params: dict, node_idx: int) -> None:
     """
-    Split-Brain Data Injection: 
-    Use the host-side DAQ_DATA_DIR to create directories, while gRPC
-    commands continue to use the container-relative path (/data).
+    Inject run directories on the host-side temp directory for the specific container.
     """
-    host_data_root = os.environ.get("DAQ_DATA_DIR")
-    if not host_data_root:
-        return
-        
-    host_root = pathlib.Path(host_data_root)
+    host_root = Path(fleet.host_data_dirs[node_idx])
     run_dir = params["run_dir"]
     
-    # Root run dir for validator
+    # Root run dir
     main_dir = host_root / run_dir
     main_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(main_dir, 0o777)
     
     for mid in params["module_id"]:
         mod_dir = host_root / f"module_{mid}" / run_dir
         mod_dir.mkdir(parents=True, exist_ok=True)
-        dummy_file = mod_dir / "dummy.pff"
-        dummy_file.touch()
-        os.chmod(dummy_file, 0o777)
-
-        # Recursive chmod 0o777 for the module hierarchy
-        for root, dirs, files in os.walk(host_root / f"module_{mid}"):
-            os.chmod(root, 0o777)
-            for d in dirs:
-                os.chmod(os.path.join(root, d), 0o777)
-            for f in files:
-                os.chmod(os.path.join(root, f), 0o777)
+        # Touch a dummy file so directory isn't empty
+        (mod_dir / "dummy.pff").touch()
 
 
 class TestTwoNodeDirect:
     """Two DAQ nodes can be managed completely independently."""
 
-    def test_node1_starts(self, daq_control_direct, run_params_node1) -> None:
+    def test_node1_starts(self, daq_client, run_params_node1, session_fleet, mock_workspace) -> None:
         """Node 1 starts hashpipe successfully."""
-        _prepare_dirs(run_params_node1)
-        ok = daq_control_direct.StartDaq(run_params_node1)
+        fleet, _ = session_fleet
+        _prepare_dirs(fleet, run_params_node1, 0)
+        ok = daq_client.StartDaq(run_params_node1)
         assert ok is True
 
-    def test_node2_starts(self, daq_control_node2, run_params_node2) -> None:
+    def test_node2_starts(self, daq_client_2, run_params_node2, session_fleet, mock_workspace) -> None:
         """Node 2 starts hashpipe successfully."""
-        _prepare_dirs(run_params_node2)
-        ok = daq_control_node2.StartDaq(run_params_node2)
+        fleet, _ = session_fleet
+        _prepare_dirs(fleet, run_params_node2, 1)
+        ok = daq_client_2.StartDaq(run_params_node2)
         assert ok is True

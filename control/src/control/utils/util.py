@@ -584,6 +584,24 @@ def kill_module_temp_monitor() -> None:
             continue
 
 
+def kill_transfer_daemon() -> None:
+    """Send SIGTERM to the transfer daemon if running.
+
+    The daemon is designed to handle SIGTERM gracefully by moving active
+    jobs back to pending/ and exiting cleanly.
+    """
+    pid_file = PanoPaths.state_dir() / "transfer" / "daemon.pid"
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, ValueError, OSError):
+            pass
+        finally:
+            with contextlib.suppress(OSError):
+                pid_file.unlink()
+
+
 # write a message to per-run log file, and to stdout
 #
 def write_log(msg: str) -> None:
@@ -801,7 +819,8 @@ def attach_daq_config(
         for daq in daq_config.daq_nodes:
             for pdaq in network_config.daq_nodes:
                 if str(daq.ip_addr) == str(pdaq.ip_addr):
-                    if pdaq.port_forwarding:
+                    # Only overwrite if pdaq has a non-None port_forwarding block
+                    if pdaq.port_forwarding is not None:
                         daq.port_forwarding = pdaq.port_forwarding
                     break
 

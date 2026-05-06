@@ -5,30 +5,29 @@ Verifies 100% byte accuracy of transferred .pff files from DAQ nodes to head nod
 
 import asyncio
 import os
-import shutil
 import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from ci.fixtures.fleet import Fleet
+from ci.fixtures.rsync_fixtures import RsyncMock
 from control.start import start_run
 from control.stop import stop_run
 from control.transfer.daemon import _process_job
 from control.transfer.queue import TransferQueue
 from control.utils import config_file
-from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager, RunStatus
 
 
 @pytest.mark.asyncio
 async def test_transfer_queue_validity_happy_path(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_queue: TransferQueue,
 ) -> None:
     """
     Happy path transfer test:
@@ -39,20 +38,8 @@ async def test_transfer_queue_validity_happy_path(
     5. Verify 100% byte accuracy on head node.
     6. Verify ledger and queue state transitions at each step.
     """
-    fleet, daq_cfg_dict = session_fleet
-    
-    # --- Step 1: Isolation & Config ---
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
-    head_data_dir = tmp_path / "head_data"
-    head_data_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_dir))
-    PanoPaths.ensure_state_dirs()
-    
-    # Update daq_config with isolated head_data_dir and persist to disk
-    daq_config = config_file.DaqConfig.model_validate(daq_cfg_dict)
-    daq_config.head_node_data_dir = str(head_data_dir)
-    config_dir = Path(os.environ["PSETI_CONFIG"])
-    (config_dir / "daq_config.json").write_text(daq_config.model_dump_json())
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     
     obs_config = config_file.get_obs_config()
     quabo_uids = config_file.get_quabo_uids()
@@ -61,7 +48,7 @@ async def test_transfer_queue_validity_happy_path(
     
     run_name = f"transfer_happy_{uuid.uuid4().hex[:8]}.pffd"
     mgr = RunStateManager()
-    tq = TransferQueue()
+    tq = transfer_queue
 
     # --- Step 2: Start Run ---
     def mocked_make_run_dirs(rn, oc, dc, quids, dtc, nc):
@@ -171,33 +158,13 @@ async def test_transfer_queue_validity_happy_path(
     assert len(list((tq._queue / "active").glob("*.job.toml"))) == 1
 
     # Mock Rsync (simulates flattening)
-    def simulate_rsync_from_fleet(fleet: Fleet, run_name: str, head_run_dir: Path) -> None:
-        head_run_dir.mkdir(parents=True, exist_ok=True)
-        for _i, temp_dir in enumerate(fleet._temp_dirs):
-            host_root = Path(temp_dir)
-            # 1. Root contents (hp_stdout, pss, meta.json)
-            daq_run_dir = host_root / run_name
-            if daq_run_dir.is_dir():
-                for f in daq_run_dir.iterdir():
-                    if f.is_file():
-                        shutil.copy2(f, head_run_dir / f.name)
-            # 2. Module contents (flattened as per build_rsync_cmd)
-            for mod_root in host_root.glob("module_*"):
-                src = mod_root / run_name
-                if src.is_dir():
-                    for f in src.iterdir():
-                        if f.is_file():
-                            shutil.copy2(f, head_run_dir / f.name)
+    from ci.software_only.tier3_fleet.transfer_testing_utils import simulate_rsync_from_fleet
 
-    async def mocked_rsync(*args, **kwargs):
+    def rsync_side_effect(*args, **kwargs):
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        proc = MagicMock()
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
+        return None
+
+    mock_rsync_transfer.side_effect = rsync_side_effect
 
     from panoseti_grpc.daq_control.client import AsyncDaqControlClient
     def _get_mapped_client(host, port=50051):
@@ -210,8 +177,7 @@ async def test_transfer_queue_validity_happy_path(
         return AsyncDaqControlClient(host=host, port=port)
 
     # Note: We don't patch GenerateManifest because we want to test the real gRPC server logic in the containers.
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=mocked_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         
         # Execute the state machine stages (Manifest -> Rsync -> Verify -> Cleanup -> Archive)
         success, err = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=60.0)

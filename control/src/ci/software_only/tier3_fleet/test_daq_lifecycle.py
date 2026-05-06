@@ -7,12 +7,12 @@ connections, validating that gRPC topology works end-to-end for both paths.
 from __future__ import annotations
 
 import contextlib
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
-from testcontainers.core.container import DockerContainer
 
+from ci.fixtures.topology_fixtures import ObservatoryTopology
 from ci.software_only.conftest import (
     wait_hashpipe_running,
     wait_hashpipe_stopped,
@@ -20,31 +20,31 @@ from ci.software_only.conftest import (
 
 
 @pytest.fixture(params=["direct", "gateway"])
-def daq_client(request: Any, daq_control_direct: DaqControlClient, daq_control_gateway: DaqControlClient) -> DaqControlClient:
+def daq_client_multi(request: Any, topology: ObservatoryTopology) -> DaqControlClient:
     """Parameterized fixture — runs every test against both network paths."""
-    if request.param == "direct":
-        return daq_control_direct
-    return daq_control_gateway
+    nodes = topology.daq_nodes()
+    primary = nodes[0]
+    host = primary.real_host if request.param == "gateway" else primary.host
+    return DaqControlClient(host=host, port=primary.grpc_port)
 
 
 class TestDaqLifecycle:
     """Full Start → Status (running) → double-start rejected → Stop → Status (stopped)."""
 
-    def test_start_daq(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_start_daq(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """StartDaq returns True for a fresh run."""
-        daq_client.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_client, run_params['data_dir']), (
+        daq_client_multi.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client_multi, run_params['data_dir']), (
             "Hashpipe failed to start"
         )
-        # assert ok is True
 
-    def test_status_shows_running(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_status_shows_running(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """After StartDaq, StatusDaq reports hashpipe_running=True."""
-        daq_client.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+        daq_client_multi.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client_multi, run_params["data_dir"]), (
             "hashpipe did not start within timeout"
         )
-        ok, status = daq_client.StatusDaq({
+        ok, status = daq_client_multi.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
             "check_disk_usage":       False,
@@ -53,42 +53,42 @@ class TestDaqLifecycle:
         assert ok
         assert status.get("hashpipe_running") is True
 
-    def test_double_start_rejected(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_double_start_rejected(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """A second StartDaq while hashpipe is running must fail (raises ValueError)."""
-        daq_client.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+        daq_client_multi.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client_multi, run_params["data_dir"]), (
             "hashpipe did not start within timeout"
         )
         # Server returns success=False → client raises ValueError
         with pytest.raises(ValueError):
-            daq_client.StartDaq(run_params)
+            daq_client_multi.StartDaq(run_params)
 
-    def test_stop_daq(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_stop_daq(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """StopDaq returns True."""
-        daq_client.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+        daq_client_multi.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client_multi, run_params["data_dir"]), (
             "hashpipe did not start within timeout"
         )
-        ok = daq_client.StopDaq({
+        ok = daq_client_multi.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
         assert ok is True
 
-    def test_status_shows_stopped_after_stop(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_status_shows_stopped_after_stop(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """After StopDaq, StatusDaq reports hashpipe_running=False."""
-        daq_client.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+        daq_client_multi.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client_multi, run_params["data_dir"]), (
             "hashpipe did not start within timeout"
         )
-        daq_client.StopDaq({
+        daq_client_multi.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        assert wait_hashpipe_stopped(daq_client, run_params["data_dir"]), (
+        assert wait_hashpipe_stopped(daq_client_multi, run_params["data_dir"]), (
             "hashpipe did not stop within timeout"
         )
-        ok, status = daq_client.StatusDaq({
+        ok, status = daq_client_multi.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": True,
             "check_disk_usage":       False,
@@ -97,13 +97,13 @@ class TestDaqLifecycle:
         assert ok
         assert status.get("hashpipe_running") is False
 
-    def test_run_dir_appears_in_status(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_run_dir_appears_in_status(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """After StartDaq, the run_dir appears in StatusDaq run_dirs list."""
-        daq_client.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
+        daq_client_multi.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client_multi, run_params["data_dir"]), (
             "hashpipe did not start within timeout"
         )
-        ok, status = daq_client.StatusDaq({
+        ok, status = daq_client_multi.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": False,
             "check_disk_usage":       False,
@@ -115,9 +115,9 @@ class TestDaqLifecycle:
             f"run_dir={run_params['run_dir']!r} not in {run_dirs}"
         )
 
-    def test_stop_idempotent(self, daq_client, run_params, ensure_clean_daq_state) -> None:
+    def test_stop_idempotent(self, daq_client_multi, run_params, ensure_clean_daq_state) -> None:
         """StopDaq when nothing is running should not raise."""
-        ok = daq_client.StopDaq({
+        ok = daq_client_multi.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
@@ -126,17 +126,17 @@ class TestDaqLifecycle:
 
 class TestDaqDiskUsage:
 
-    def test_disk_usage_fields_present(self, daq_control_direct, run_params, ensure_clean_daq_state) -> None:
+    def test_disk_usage_fields_present(self, daq_client, run_params, ensure_clean_daq_state) -> None:
         """StatusDaq with check_disk_usage returns expected disk usage keys."""
-        daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+        daq_client.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
             "hashpipe did not start within timeout"
         )
-        daq_control_direct.StopDaq({
+        daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        ok, status = daq_control_direct.StatusDaq({
+        ok, status = daq_client.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": False,
             "check_disk_usage":       True,
@@ -148,9 +148,9 @@ class TestDaqDiskUsage:
         assert du.get("free_disk_space", -1) >= 0
         assert du.get("used_disk_space", -1) >= 0
 
-    def test_disk_usage_values_plausible(self, daq_control_direct, run_params, ensure_clean_daq_state) -> None:
+    def test_disk_usage_values_plausible(self, daq_client, run_params, ensure_clean_daq_state) -> None:
         """Disk usage values are internally consistent: used ≈ total - free."""
-        ok, status = daq_control_direct.StatusDaq({
+        ok, status = daq_client.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": False,
             "check_disk_usage":       True,
@@ -176,7 +176,7 @@ class TestDaqRunDirIsolation:
     """Multiple run directories coexist independently on the same node."""
 
     def test_cleanup_removes_only_specified_run(
-        self, daq_control_direct, run_params, ensure_clean_daq_state
+        self, daq_client, run_params, ensure_clean_daq_state
     ) -> None:
         """CleanupData for run_dir A must not remove run_dir B on the same node."""
         import uuid as _uuid
@@ -184,39 +184,39 @@ class TestDaqRunDirIsolation:
         rp_b["run_dir"] = f"ci_run_b_{_uuid.uuid4().hex[:8]}.pffd"
 
         # Start, confirm running, then stop run A
-        daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"]), (
+        daq_client.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"]), (
             "run A: hashpipe did not start"
         )
-        daq_control_direct.StopDaq({
+        daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         })
-        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), (
+        assert wait_hashpipe_stopped(daq_client, run_params["data_dir"]), (
             "run A: hashpipe did not stop"
         )
 
         # Start, confirm running, then stop run B
-        daq_control_direct.StartDaq(rp_b)
-        assert wait_hashpipe_running(daq_control_direct, rp_b["data_dir"]), (
+        daq_client.StartDaq(rp_b)
+        assert wait_hashpipe_running(daq_client, rp_b["data_dir"]), (
             "run B: hashpipe did not start"
         )
-        daq_control_direct.StopDaq({
+        daq_client.StopDaq({
             "data_dir": rp_b["data_dir"],
             "run_dir":  rp_b["run_dir"],
         })
-        assert wait_hashpipe_stopped(daq_control_direct, rp_b["data_dir"]), (
+        assert wait_hashpipe_stopped(daq_client, rp_b["data_dir"]), (
             "run B: hashpipe did not stop"
         )
 
         # Clean up run A only
-        daq_control_direct.CleanupData({
+        daq_client.CleanupData({
             "data_dir":  run_params["data_dir"],
             "run_dir":   run_params["run_dir"],
             "module_id": run_params["module_id"],
         })
 
-        _, status = daq_control_direct.StatusDaq({
+        _, status = daq_client.StatusDaq({
             "data_dir":               run_params["data_dir"],
             "check_hashpipe_running": False,
             "check_disk_usage":       False,
@@ -235,7 +235,7 @@ class TestDaqRunDirIsolation:
 
         # Teardown run B
         with contextlib.suppress(Exception):
-            daq_control_direct.CleanupData({
+            daq_client.CleanupData({
                 "data_dir":  rp_b["data_dir"],
                 "run_dir":   rp_b["run_dir"],
                 "module_id": rp_b["module_id"],
@@ -246,19 +246,16 @@ class TestStopDaqRobustness:
     """Verify that StopDaq handles process leaks and graceful waits correctly."""
 
     def test_stop_daq_clears_all_orphans(
-        self, daq_control_direct, run_params, ensure_clean_daq_state, session_fleet
+        self, daq_client, run_params, ensure_clean_daq_state, daqnode_container
     ) -> None:
         """One StopDaq call must clear ALL hashpipe processes on the node."""
-        fleet, _ = session_fleet
-        container: DockerContainer = cast(list[DockerContainer], fleet.containers)[0]
-
         # 1. Start one hashpipe via gRPC
-        daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"])
+        daq_client.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"])
 
         # 2. Start a SECOND hashpipe manually to simulate an orphan
         # We don't need a real hashpipe; any process named 'hashpipe' will trigger the cleanup.
-        wrapped = container.get_wrapped_container()
+        wrapped = daqnode_container
         wrapped.exec_run("cp /bin/sleep /tmp/hashpipe")
         wrapped.exec_run("/tmp/hashpipe 300", detach=True)
         
@@ -270,25 +267,25 @@ class TestStopDaqRobustness:
         assert len(pids) >= 2, f"Expected >=2 hashpipe processes, found {len(pids)}: {output.decode()}"
 
         # 3. Call StopDaq once
-        ok = daq_control_direct.StopDaq({
+        ok = daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         }, timeout=70.0)
         assert ok is True
 
         # 4. Verify ALL are gone
-        assert wait_hashpipe_stopped(daq_control_direct, run_params["data_dir"]), "Hashpipes still running after StopDaq"
+        assert wait_hashpipe_stopped(daq_client, run_params["data_dir"]), "Hashpipes still running after StopDaq"
         exit_code, output = wrapped.exec_run("pgrep hashpipe")
         assert exit_code != 0 or not output.strip(), f"Processes leaked: {output.decode()}"
 
-    def test_stop_daq_graceful_wait(self, daq_control_direct, run_params, ensure_clean_daq_state) -> None:
+    def test_stop_daq_graceful_wait(self, daq_client, run_params, ensure_clean_daq_state) -> None:
         """StopDaq must wait for the process to actually terminate before returning."""
         import time
-        daq_control_direct.StartDaq(run_params)
-        assert wait_hashpipe_running(daq_control_direct, run_params["data_dir"])
+        daq_client.StartDaq(run_params)
+        assert wait_hashpipe_running(daq_client, run_params["data_dir"])
 
         t0 = time.monotonic()
-        ok = daq_control_direct.StopDaq({
+        ok = daq_client.StopDaq({
             "data_dir": run_params["data_dir"],
             "run_dir":  run_params["run_dir"],
         }, timeout=70.0)
@@ -300,7 +297,7 @@ class TestStopDaqRobustness:
         assert elapsed < 60.0, f"StopDaq took too long: {elapsed:.1f}s"
         
         # Status should immediately show not running
-        ok, status = daq_control_direct.StatusDaq({
+        ok, status = daq_client.StatusDaq({
             "data_dir": run_params["data_dir"],
             "check_hashpipe_running": True
         })

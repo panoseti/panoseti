@@ -26,59 +26,46 @@ import asyncio
 import contextlib
 import hashlib
 import os
-import pathlib
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from panoseti_grpc.daq_control.client import DaqControlClient
 from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
 
-from ci.fixtures.mocks import _mock_subprocess_fail, _mock_subprocess_ok
+from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.fixtures.state_probe import StateProbe
 from ci.software_only.conftest import wait_hashpipe_stopped
-from ci.software_only.tier3_fleet.conftest import (
-    DAQNODE_DIRECT_HOST,
-    GRPC_PORT,
-)
 from ci.software_only.tier4_chaos.conftest import (
     _start,
     _stop,
-    make_run_params,
 )
 from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.queue import TransferQueue
+from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import DaqConfig
 from control.utils.run_state import RunStateManager
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture(scope="session")
-def client(daq_control_direct) -> DaqControlClient:
-    return daq_control_direct
-
-
 @pytest.fixture
-def run_params(daqnode_ip) -> dict[str, Any]:
-    return make_run_params(daq_ip_addr=daqnode_ip)
-
-
-
-@pytest.fixture
-def state_probe(client: DaqControlClient) -> StateProbe:
-    return StateProbe(daq_control_client=client, redis_client=None, loki_url=None)
+def state_probe(daq_client: DaqControlClient) -> StateProbe:
+    return StateProbe(daq_control_client=daq_client, redis_client=None, loki_url=None)
 
 
 @pytest.fixture(autouse=True)
-def _teardown(client: DaqControlClient, run_params: dict[str, Any]) -> Any:
+def _teardown(daq_client: DaqControlClient, run_params: dict[str, Any]) -> Any:
     """Post-test: stop + cleanup any hashpipe left running."""
     yield
     with contextlib.suppress(Exception):
-        client.StopDaq({"data_dir": run_params["data_dir"], "run_dir": run_params["run_dir"]})
-        wait_hashpipe_stopped(client, run_params["data_dir"], timeout=5)
+        daq_client.StopDaq({"data_dir": run_params["data_dir"], "run_dir": run_params["run_dir"]})
+        wait_hashpipe_stopped(daq_client, run_params["data_dir"], timeout=5)
     with contextlib.suppress(Exception):
-        client.CleanupData({
+        daq_client.CleanupData({
             "data_dir": run_params["data_dir"],
             "run_dir": run_params["run_dir"],
             "module_id": run_params["module_id"],
@@ -92,41 +79,34 @@ def _teardown(client: DaqControlClient, run_params: dict[str, Any]) -> Any:
 class TestSCTX001PartialStartRollback:
     """
     When StartDaq fails on a subset of nodes, the StartTransaction rollback
-    ladder must stop all *already-started* nodes, leaving no orphan hashpipe
-    processes and ledger=ABORTED.
-
-    In CI we only have 1 real DAQ node, so we simulate multi-node failure by
-    injecting UNAVAILABLE from grpc_proxy on the primary node *after* one
-    module starts.
+    ladder must stop all *already-started* nodes.
     """
 
     @pytest.mark.asyncio
     async def test_SC_TX_001_rollback_leaves_no_orphan_hashpipe(
         self,
-        client: DaqControlClient,
+        daq_client: DaqControlClient,
         run_params: dict[str, Any],
         state_probe: StateProbe,
-        tmp_path: pathlib.Path,
     ) -> None:
         from control.utils.run_state import RunStateManager
 
         RunStateManager().clear_state()
 
-        # Start hashpipe on node, then immediately inject a failure via
-        # process_chaos to simulate a second node rejecting StartDaq.
-        ok, _ = _start(client, run_params)
+        # Start hashpipe on node
+        ok, _ = _start(daq_client, run_params)
         assert ok, "Pre-condition: initial start must succeed"
 
-        # Simulate the scenario where a sibling node would have failed:
-        # the rollback must call StopDaq on the first node.
-        ok_stop, msg = _stop(client, {
+        # Simulate rollback by manually stopping
+        ok_stop, msg = _stop(daq_client, {
             "data_dir": run_params["data_dir"],
             "run_dir": run_params["run_dir"],
         })
         assert ok_stop, f"Rollback StopDaq must succeed: {msg}"
 
-        wait_hashpipe_stopped(client, run_params["data_dir"], timeout=10)
-        assert not state_probe.hashpipe_process_alive(DAQNODE_DIRECT_HOST), \
+        wait_hashpipe_stopped(daq_client, run_params["data_dir"], timeout=10)
+        host = daq_client.target.split(":")[0]
+        assert not state_probe.hashpipe_process_alive(host), \
             "No orphan hashpipe after rollback"
 
 
@@ -137,23 +117,15 @@ class TestSCTX001PartialStartRollback:
 class TestSCTX002HeadCrashMidStart:
     """
     If the orchestrator crashes after writing STARTING but before completing
-    StartDaq on all nodes, the next `pseti start` must:
-      1. Detect the stale lock (dead PID).
-      2. Self-heal: delete lock, archive the abandoned run to _aborted/.
-      3. Bring up cleanly.
-
-    We test step 2 directly: write a fake STARTING ledger entry with a dead
-    PID in the lock file, then invoke RunStateManager.acquire_lock() and
-    assert it succeeds (stale-PID healing path).
+    StartDaq on all nodes, the next `pseti start` must self-heal.
     """
 
-    def test_SC_TX_002_stale_lock_self_heals(self, tmp_path: pathlib.Path) -> None:
+    def test_SC_TX_002_stale_lock_self_heals(self, mock_workspace: Path) -> None:
         from control.utils.run_state import RunStateManager
 
-        tmp_lock = tmp_path / "tmp"
-        tmp_lock.mkdir(exist_ok=True)
-        mgr = RunStateManager(base_dir=str(tmp_path))
-        lock_path = tmp_path / "tmp" / "panoseti_control.lock"
+        # mock_workspace already isolates PSETI_STATE and creates standard subdirs
+        mgr = RunStateManager()
+        lock_path = PanoPaths.locks_dir() / "panoseti_control.lock"
 
         # Write a lock file with a PID that cannot be alive (very large number).
         dead_pid = 2**22
@@ -178,26 +150,27 @@ class TestSCTX003NetworkDropMidRsync:
     Simulate 100% packet loss on daqnode_net while the transfer daemon runs
     Stage 2 (rsync). After the retry ladder exhausts MAX_ATTEMPTS, the job
     must land in failed/ with DAQ-side PFF data preserved.
-
-    In CI without netem privilege we assert the retry-ladder logic directly
-    via unit-level mocking of rsync_worker.
     """
 
     @pytest.mark.asyncio
     async def test_SC_TX_003_rsync_failure_lands_in_failed_queue(
-        self, tmp_path: pathlib.Path
+        self, 
+        isolated_transfer_env: tuple[Path, DaqConfig],
+        mock_rsync_transfer: RsyncMock,
+        transfer_queue: TransferQueue,
+        session_fleet: Any,
     ) -> None:
-        from unittest.mock import patch
-
         from control.transfer.daemon import _process_job
-        from control.transfer.queue import TransferQueue
-
-        tq = TransferQueue(queue_dir=tmp_path / "tmp" / "transfer_queue")
+        
+        fleet, _ = session_fleet
+        head_data_dir, daq_config = isolated_transfer_env
         run_name = f"sc_tx_003_{uuid.uuid4().hex[:8]}"
         
+        # 1. Enqueue job
+        tq = transfer_queue
         job_spec = TransferJob(
             run_name=run_name,
-            head_data_dir=str(tmp_path / "head"),
+            head_data_dir=str(head_data_dir),
             head_node_username="panoseti",
             created_at=datetime.now(UTC),
             daq_nodes=[
@@ -211,12 +184,12 @@ class TestSCTX003NetworkDropMidRsync:
         )
         tq.enqueue(job_spec)
 
-        # Patch rsync to always fail and GenerateManifest to skip
-        with (
-            patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_grpc_cls,
-            patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail),
-            patch("control.transfer.daemon.verify_manifest", return_value=(True, [])),
-        ):
+        # 2. Patch rsync to always fail and GenerateManifest to skip
+        mock_rsync_transfer.side_effect = mock_rsync_transfer.mock_process_fail
+
+        with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_grpc_cls, \
+             patch("control.transfer.daemon.verify_manifest", return_value=(True, [])):
+            
             # Ensure GenerateManifest succeeds so we reach rsync
             mock_grpc_cls.return_value.__aenter__.return_value.GenerateManifest.return_value = {"success": True}
             from unittest.mock import MagicMock
@@ -225,13 +198,14 @@ class TestSCTX003NetworkDropMidRsync:
             job = tq.claim()
             assert job is not None
             success, err = await _process_job(job, asyncio.Event(), RunStateManager())
-            # Simulate daemon loop: move failed job out of active/
+            
             if not success:
                 tq.fail(run_name)
 
         assert not success, "rsync failure must return False"
         assert "rsync failed" in str(err)
         assert not (tq._queue / "active" / f"{run_name}.job.toml").exists()
+        assert (tq._queue / "failed" / f"{run_name}.job.toml").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -242,37 +216,36 @@ class TestSCTX004ManifestMismatch:
     """
     After rsync completes, mutating one file on the head node before
     verify_manifest runs must produce VERIFY_FAILED with no CleanupData call.
-
-    We unit-test _process_job with a real temp manifest + a corrupted file.
     """
 
     @pytest.mark.asyncio
     async def test_SC_TX_004_corrupted_file_triggers_verify_failed(
-        self, tmp_path: pathlib.Path
+        self, 
+        isolated_transfer_env: tuple[Path, DaqConfig],
+        mock_rsync_transfer: RsyncMock,
+        transfer_queue: TransferQueue,
     ) -> None:
-        from unittest.mock import patch
-
-        head_run = tmp_path / "head" / "sc_tx_004"
-        head_run.mkdir(parents=True)
+        head_data_dir, daq_config = isolated_transfer_env
+        run_name = "sc_tx_004"
+        head_run = head_data_dir / run_name
+        head_run.mkdir(parents=True, exist_ok=True)
 
         # Write a real file and a matching manifest
         pff_file = head_run / "data.pff"
         pff_file.write_bytes(b"original content")
         digest = hashlib.sha256(b"original content").hexdigest()
-        manifest = head_run / "manifest.sha256"
+        manifest = head_run / "dp_manifest.node_test.algo_blake3.txt"
         manifest.write_text(f"{digest}  16  0  data.pff\n")
 
         # Now corrupt the file so verify_manifest fails
         pff_file.write_bytes(b"corrupted!")
 
         from control.transfer.daemon import _process_job
-        from control.transfer.queue import TransferQueue
-
-        tq = TransferQueue(queue_dir=tmp_path / "transfer_queue")
-        run_name = "sc_tx_004"
+        
+        tq = transfer_queue
         job_spec = TransferJob(
             run_name=run_name,
-            head_data_dir=str(tmp_path / "head"),
+            head_data_dir=str(head_data_dir),
             head_node_username="panoseti",
             created_at=datetime.now(UTC),
             daq_nodes=[
@@ -286,11 +259,8 @@ class TestSCTX004ManifestMismatch:
         )
         tq.enqueue(job_spec)
 
-        # No rsync needed (skip), go straight to verify
-        with (
-            patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_grpc_cls,
-            patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok),
-        ):
+        # No rsync needed (mocked as success)
+        with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_grpc_cls:
             # Ensure GenerateManifest succeeds so we reach verify
             mock_grpc_cls.return_value.__aenter__.return_value.GenerateManifest.return_value = {"success": True}
             from unittest.mock import MagicMock
@@ -299,14 +269,14 @@ class TestSCTX004ManifestMismatch:
             job = tq.claim()
             assert job is not None
             success, err = await _process_job(job, asyncio.Event(), RunStateManager())
-            # Simulate daemon loop: move failed job out of active/
+            
             if not success:
                 tq.fail(run_name)
 
         assert not success, "Corrupted file must cause _process_job to return False"
         assert "Digest mismatch" in str(err)
-        # Verify no active job remains (daemon loop moved it to failed/)
         assert not list((tq._queue / "active").glob("*.toml"))
+        assert (tq._queue / "failed" / f"{run_name}.job.toml").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -323,15 +293,14 @@ class TestSCTX005DaemonCrashResume:
 
     @pytest.mark.asyncio
     async def test_SC_TX_005_active_job_recovered_on_restart(
-        self, tmp_path: pathlib.Path
+        self, transfer_queue: TransferQueue
     ) -> None:
-        from control.transfer.queue import TransferQueue
-
-        tq = TransferQueue(queue_dir=tmp_path / "transfer_queue")
+        tq = transfer_queue
         run_name = f"sc_tx_005_{uuid.uuid4().hex[:8]}"
         job_spec = TransferJob(
+            schema_version=1,
             run_name=run_name,
-            head_data_dir=str(tmp_path / "head"),
+            head_data_dir="/head",
             head_node_username="panoseti",
             created_at=datetime.now(UTC),
             daq_nodes=[]
@@ -361,18 +330,16 @@ class TestSCTX005DaemonCrashResume:
 class TestSCTX006ConcurrentStop:
     """
     Two concurrent `pseti stop` invocations must not double-enqueue a transfer
-    job. TransferQueue.enqueue() is idempotent — verify that the second call
-    returns the existing path without creating a duplicate.
+    job. TransferQueue.enqueue() is idempotent.
     """
 
     def test_SC_TX_006_double_enqueue_is_idempotent(
-        self, tmp_path: pathlib.Path
+        self, transfer_queue: TransferQueue
     ) -> None:
-        from control.transfer.queue import TransferQueue
-
-        tq = TransferQueue(queue_dir=tmp_path / "transfer_queue")
+        tq = transfer_queue
         run_name = "sc_tx_006"
         job_spec = TransferJob(
+            schema_version=1,
             run_name=run_name,
             head_data_dir="/head",
             head_node_username="panoseti",
@@ -402,24 +369,21 @@ class TestSCTX007CleanupRefusedWrongDigest:
 
     @pytest.mark.asyncio
     async def test_SC_TX_007_cleanup_refused_wrong_digest(
-        self, run_params: dict[str, Any]
+        self, daq_client: DaqControlClient, run_params: dict[str, Any]
     ) -> None:
         from panoseti_grpc.grpc_utils.exceptions import PanosetiRpcError
 
-        # Start a real hashpipe so run_dir exists and cleanup is meaningful
-        _ok, _ = _start(None, run_params)  # type: ignore[arg-type]
-        # Use the sync client directly for this test
-        client = DaqControlClient(host=DAQNODE_DIRECT_HOST, port=GRPC_PORT)
-        _start(client, run_params)
-        wait_hashpipe_stopped(client, run_params["data_dir"], timeout=1)  # don't wait long
-        _stop(client, {"data_dir": run_params["data_dir"], "run_dir": run_params["run_dir"]})
-        wait_hashpipe_stopped(client, run_params["data_dir"], timeout=5)
+        # Start a real hashpipe so run_dir exists
+        _start(daq_client, run_params)
+        wait_hashpipe_stopped(daq_client, run_params["data_dir"], timeout=1) 
+        _stop(daq_client, {"data_dir": run_params["data_dir"], "run_dir": run_params["run_dir"]})
+        wait_hashpipe_stopped(daq_client, run_params["data_dir"], timeout=5)
 
         wrong_digest = b"\x00" * 32
 
         raised = False
         try:
-            client.CleanupData({
+            daq_client.CleanupData({
                 "data_dir": run_params["data_dir"],
                 "run_dir": run_params["run_dir"],
                 "module_id": run_params["module_id"],

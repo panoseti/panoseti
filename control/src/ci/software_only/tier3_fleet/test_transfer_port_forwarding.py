@@ -28,12 +28,12 @@ import sys
 import tomllib
 import uuid
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from ci.fixtures.rsync_fixtures import RsyncMock
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
@@ -126,12 +126,10 @@ def run_dir(run_name: str, head_data_dir: pathlib.Path) -> pathlib.Path:
 
 
 @pytest.fixture
-def pf_job(run_name: str, pf_node: TransferNodeSpec, head_data_dir: pathlib.Path) -> TransferJob:
-    return TransferJob(schema_version=1, 
+def pf_job(run_name: str, pf_node: TransferNodeSpec, head_data_dir: pathlib.Path, transfer_job_factory: Callable[..., TransferJob]) -> TransferJob:
+    return transfer_job_factory(
         run_name=run_name,
-        head_data_dir=str(head_data_dir),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
+        head_data_dir=head_data_dir,
         no_collect=False,
         no_cleanup=True,
         daq_nodes=[pf_node],
@@ -147,15 +145,14 @@ class TestPortForwardingRoundTrip:
 
     def test_pf_survives_toml_roundtrip(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
         pf_job: TransferJob,
     ) -> None:
         """Enqueue → read TOML → model_validate must preserve port_forwarding."""
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         tq.enqueue(pf_job)
-        pending = queue_dir / "pending" / f"{run_name}.job.toml"
+        pending = tq._queue / "pending" / f"{run_name}.job.toml"
         assert pending.exists()
         with open(pending, "rb") as f:
             data = tomllib.load(f)
@@ -170,15 +167,14 @@ class TestPortForwardingRoundTrip:
 
     def test_no_pf_survives_toml_roundtrip(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
+        transfer_job_factory: Callable[..., TransferJob],
     ) -> None:
         """A node with port_forwarding=None must also round-trip cleanly."""
-        job = TransferJob(schema_version=1, 
+        job = transfer_job_factory(
             run_name=run_name,
-            head_data_dir=str(HEAD_DATA_DIR),
-            head_node_username="panoseti",
-            created_at=datetime.now(UTC),
+            head_data_dir=HEAD_DATA_DIR,
             no_collect=True,
             no_cleanup=True,
             daq_nodes=[
@@ -191,10 +187,9 @@ class TestPortForwardingRoundTrip:
                 )
             ],
         )
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         tq.enqueue(job)
-        pending = queue_dir / "pending" / f"{run_name}.job.toml"
+        pending = tq._queue / "pending" / f"{run_name}.job.toml"
         with open(pending, "rb") as f:
             data = tomllib.load(f)
         reloaded = TransferJob.model_validate(data)
@@ -273,6 +268,7 @@ class TestProcessJobWithPortForwarding:
         run_dir: pathlib.Path,
         pf_job: TransferJob,
         head_data_dir: pathlib.Path,
+        mock_rsync_transfer: RsyncMock,
     ) -> None:
         """subprocess.run is called with the gateway address, not the daqnode IP."""
         monkeypatch = pytest.MonkeyPatch()
@@ -284,13 +280,15 @@ class TestProcessJobWithPortForwarding:
         client = _grpc_client_ok()
         rsync_calls: list[list[str]] = []
 
-        def _capture_rsync(cmd, **kwargs):
-            rsync_calls.append(cmd)
-            return MagicMock(returncode=0, stderr="")
+        def rsync_side_effect(*args, **kwargs):
+            rsync_calls.append(args[0])
+            (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
+            (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
+            return None
 
-        with _mock_grpc(client), \
-             patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-            mock_sub.side_effect = await _capture_rsync_async(rsync_calls, head_data_dir, pf_job.run_name)
+        mock_rsync_transfer.side_effect = rsync_side_effect
+
+        with _mock_grpc(client):
             result, _ = await _process_job(pf_job, asyncio.Event(), RunStateManager())
 
         assert result is True
@@ -304,20 +302,3 @@ class TestProcessJobWithPortForwarding:
                 f"rsync must NOT use raw daqnode IP {DAQNODE_IP} when PF is active"
             )
         monkeypatch.undo()
-
-async def _mock_subprocess_ok(*args, **kwargs):
-    proc = MagicMock()
-    proc.returncode = 0
-    proc.wait = AsyncMock(return_value=0)
-    proc.communicate = AsyncMock(return_value=(b"", b""))
-    proc.stdout.readline = AsyncMock(return_value=b"")
-    proc.stderr.read = AsyncMock(return_value=b"")
-    return proc
-
-async def _capture_rsync_async(rsync_calls: list, head_data_dir: pathlib.Path, run_name: str):
-    async def _mock(*args, **kwargs):
-        rsync_calls.append(args) # args[0] is the cmd list
-        (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
-        (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
-        return await _mock_subprocess_ok()
-    return _mock

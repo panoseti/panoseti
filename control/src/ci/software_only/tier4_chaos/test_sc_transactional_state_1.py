@@ -17,7 +17,7 @@ class TestPartialStartRollback:
         daq_control_node2: DaqControlClient,
         run_params: dict,
         state_probe: StateProbe,
-        tmp_path: pathlib.Path,
+        mock_workspace: Path,
     ) -> None:
         """
         Intent: Ensure that a single node failure doesn't leave the rest of the
@@ -38,13 +38,14 @@ class TestPartialStartRollback:
         from control.utils.pydantic_config_models import DaqNode
         from control.utils.run_state import NodeReceipt, RunStateManager
 
-        # Clear any stale lock/ledger from a previous test run.
+        # mock_workspace already isolates PSETI_STATE and creates standard subdirs
         RunStateManager().clear_state()
 
         obs_config = config_file.get_obs_config()
         daq_config = config_file.get_daq_config()
         daq_config.head_node_ip_addr = IPv4Address(f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5')
-        daq_config.head_node_data_dir = str(tmp_path / "head_data")
+        daq_config.head_node_data_dir = str(PanoPaths.tmp_dir() / "head_data")
+        
         quabo_uids = config_file.get_quabo_uids()
         data_config = config_file.get_data_config()
         network_config = config_file.get_network_config()
@@ -53,7 +54,7 @@ class TestPartialStartRollback:
         daq_config.daq_nodes.append(
             DaqNode(
                 ip_addr=IPv4Address("192.168.0.20"),
-                data_dir=str(tmp_path / "daq_data"),
+                data_dir=str(PanoPaths.tmp_dir() / "daq_data"),
                 username="root",
                 module_ids=[200],
             )
@@ -99,11 +100,10 @@ class TestPartialStartRollback:
 
         def mock_make_run_dirs(run_nm: str, obs_cfg: AnyT, daq_cfg: AnyT, quabo_uids: AnyT, data_cfg: AnyT, network_cfg: AnyT) -> None:
             """Create the local run directory so archiving logic in rollback finds it."""
-            path = f"{daq_cfg.head_node_data_dir}/{run_nm}"
-            os.makedirs(path, exist_ok=True)
+            path = Path(daq_cfg.head_node_data_dir) / run_nm
+            path.mkdir(parents=True, exist_ok=True)
             # Add a dummy file so Ladder Step 5 (Archive) actually finds something to snapshot
-            with open(f"{path}/dummy_artifact.txt", "w") as f:
-                f.write("test artifact")
+            (path / "dummy_artifact.txt").write_text("test artifact")
 
         with unittest.mock.patch("control.start.start_recording", mock_start_recording), \
              unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
@@ -150,7 +150,8 @@ class TestConcurrentStartLocking:
         self,
         daq_control_direct: DaqControlClient,
         run_params: dict[str, Any],
-        state_probe: StateProbe, tmp_path: pathlib.Path,
+        state_probe: StateProbe, 
+        mock_workspace: Path,
     ) -> None:
         """
         Intent: Verify that the control-plane advisory lock prevents race conditions
@@ -165,9 +166,10 @@ class TestConcurrentStartLocking:
 
         from control.utils.run_state import RunStateManager
 
-        # Ensure no run is active and clean up any leaked state from previous tests
+        # mock_workspace isolates PSETI_STATE
         env = get_isolated_env()
-        env["TEST_HEAD_DATA_DIR"] = str(tmp_path / "head_data")
+        env["TEST_HEAD_DATA_DIR"] = str(PanoPaths.tmp_dir() / "head_data")
+        
         subprocess.run(["python3", "-m", "control.stop", "--yes", "--no-collect"], capture_output=True, env=env)
         mgr = RunStateManager()
         mgr.clear_state()

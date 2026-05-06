@@ -19,6 +19,17 @@ from panoseti_grpc.daq_data.client import DaqDataClient
 from ci.fixtures.fleet import Fleet
 from ci.paths import PanoPathsTest
 
+pytest_plugins = [
+    "ci.fixtures.workspace_fixtures",
+    "ci.fixtures.network_fixtures",
+    "ci.fixtures.data_fixtures",
+    "ci.fixtures.topology_fixtures",
+    "ci.fixtures.client_fixtures",
+    "ci.fixtures.rsync_fixtures",
+    "ci.fixtures.transfer_fixtures",
+    "ci.fixtures.chaos_fixtures",
+]
+
 
 def pytest_configure(config: Any) -> None:
     """
@@ -192,9 +203,18 @@ def session_fleet(auto_isolate) -> Iterator[tuple[Fleet, dict[str, Any]]]:
     daq_config = fleet.to_daq_config(head_node_ip=f"{head_prefix}.22")
     daq_cfg: dict[str, Any] = daq_config.model_dump()
 
+    # Overwrite the configs written by auto_isolate with the real fleet details
     cfg_dir = pathlib.Path(os.environ["PSETI_CONFIG"])
-    daq_config_path = cfg_dir / "daq_config.json"
-    fleet.write_daq_config(daq_config_path)
+    fleet.write_daq_config(cfg_dir / "daq_config.json", head_node_ip=f"{head_prefix}.22")
+    
+    # Also update network_config.json to ensure no stale PF data exists
+    (cfg_dir / "network_config.json").write_text('{"modules": [], "daq_nodes": []}')
+
+    # Invalidate config cache
+    import importlib
+
+    from control.utils import config_file
+    importlib.reload(config_file)
 
     os.environ["REDIS_HOST"] = "localhost"
     os.environ["REDIS_PORT"] = str(fleet.redis_port)
@@ -204,16 +224,10 @@ def session_fleet(auto_isolate) -> Iterator[tuple[Fleet, dict[str, Any]]]:
     fleet.tear_down()
 
 @pytest.fixture(scope="session")
-def daq_control_direct(session_fleet) -> DaqControlClient:
-    fleet, _daq_cfg = session_fleet
-    spec = fleet.specs[0]
-    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
-
-@pytest.fixture(scope="session")
-def daq_control_node2(session_fleet) -> DaqControlClient:
-    fleet, _daq_cfg = session_fleet
-    spec = fleet.specs[1]
-    return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)
+def topology(session_fleet) -> ObservatoryTopology:
+    """Universal topology source of truth, pinned to the session fleet."""
+    from ci.fixtures.topology_fixtures import ObservatoryTopology
+    return ObservatoryTopology()
 
 @pytest.fixture(scope="session")
 def daqnode_container(session_fleet) -> Any:

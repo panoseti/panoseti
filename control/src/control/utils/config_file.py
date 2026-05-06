@@ -452,7 +452,9 @@ def validate_ph_baselines(
         avg = sum(q.coefs) / len(q.coefs)
         if avg < min_val or avg > max_val:
             valid = False
-            msg = f"[bold red]ERROR:[/bold red] Average PH baseline out of range for Quabo {q.uid}: [bold yellow]{avg:.2f}[/bold yellow] (expected {min_val}-{max_val})"
+            level = "ERROR" if raise_error else "WARNING"
+            color = "red" if raise_error else "yellow"
+            msg = f"[bold {color}]{level}:[/bold {color}] Average PH baseline out of range for Quabo {q.uid}: [bold yellow]{avg:.2f}[/bold yellow] (expected {min_val}-{max_val})"
             console.print(msg)
         else:
             # Check for extreme outliers even if average is okay (optional warning)

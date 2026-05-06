@@ -4,7 +4,7 @@ hw0_driver_protocol — Low-level packet protocol tests against real quabos.
 Tests verify the actual byte layout of commands sent to and echoed from
 the FPGA. This is the hardware-backed equivalent of the tier1_unit
 FakeSocket protocol tests; the same assertion helpers from
-fixtures/packet_capture.py are reused here.
+ci/fixtures/network_fixtures.py are reused here.
 
 Required state: BOOTED  (quabo CPU up, FPGA loaded, registers at defaults)
 Class: driver_protocol (batch_priority=0)

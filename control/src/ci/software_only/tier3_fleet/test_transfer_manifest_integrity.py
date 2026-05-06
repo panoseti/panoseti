@@ -7,28 +7,34 @@ DAQ node via rsync, which would defeat the purpose of independent verification.
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
+from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
     get_mapped_client_factory,
-    setup_isolated_transfer_env,
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
+from control.transfer.models import TransferJob
+from control.transfer.queue import TransferQueue
+from control.utils import config_file
 from control.utils.run_state import RunStateManager
 
 
 @pytest.mark.asyncio
 async def test_manifest_not_overwritten_by_rsync(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_job_factory: Callable[..., TransferJob],
+    transfer_queue: TransferQueue,
 ) -> None:
     """
     Scenario: A 'poisoned' manifest exists on the DAQ node disk.
@@ -36,25 +42,18 @@ async def test_manifest_not_overwritten_by_rsync(
     manifest obtained via gRPC (source of truth) takes precedence and is NOT
     overwritten by rsync's recursive copy.
     """
-    fleet, daq_cfg_dict = session_fleet
-    head_data_dir, daq_config = setup_isolated_transfer_env(tmp_path, monkeypatch, daq_cfg_dict)
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     run_name = f"manifest_test_{uuid.uuid4().hex[:8]}.pffd"
     
     # 1. Generate real run data
     await generate_mocked_run(fleet, daq_config, run_name)
     
     # 2. Poison the DAQ node with a fake manifest file
-    # The expected filename is dp_manifest.node_<hostname>.algo_blake3.txt
-    # We'll just poison all DAQ nodes for simplicity.
     poison_content = "POISONED_MANIFEST_CONTENT"
     
     for i, container in enumerate(fleet.containers):
         node = daq_config.daq_nodes[i]
-        # Note: In the fleet test, hostname inside container might be the container ID or 'daqnode-...'
-        # We'll use a glob to find it or just create one with a known name.
-        # But wait, daemon.py globs for dp_manifest.node_*.txt
-        
-        # Let's find the real hostname of the container
         res = container.get_wrapped_container().exec_run("hostname")
         hostname = res.output.decode().strip()
         manifest_name = f"dp_manifest.node_{hostname}.algo_blake3.txt"
@@ -65,36 +64,15 @@ async def test_manifest_not_overwritten_by_rsync(
         )
 
     mgr = RunStateManager()
-    from datetime import UTC, datetime
+    tq = transfer_queue
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
 
-    from control.transfer.models import TransferJob, TransferNodeSpec
-    
-    job = TransferJob(
-        run_name=run_name,
-        head_data_dir=str(head_data_dir),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
-        daq_nodes=[
-            TransferNodeSpec(
-                ip_addr=n.ip_addr,
-                username=n.username,
-                data_dir=str(n.data_dir),
-                module_ids=n.module_ids,
-                port_forwarding=n.port_forwarding
-            )
-            for n in daq_config.daq_nodes
-        ]
-    )
-
-    async def normal_rsync(*args, **kwargs):
+    def rsync_side_effect(*args, **kwargs):
         # This will copy everything, including our poison manifest!
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        proc = MagicMock(returncode=0)
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b"", b""))
-        proc.stdout.readline = AsyncMock(return_value=b"")
-        proc.stderr.read = AsyncMock(return_value=b"")
-        return proc
+        return None
+
+    mock_rsync_transfer.side_effect = rsync_side_effect
 
     # Mock GenerateManifest and GetManifest to return something ELSE (the 'real' secure manifest)
     
@@ -128,8 +106,7 @@ async def test_manifest_not_overwritten_by_rsync(
             return MockClient(real_factory(host, port))
         return _get_mocked
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=normal_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=mocked_client_factory(daq_config)):
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=mocked_client_factory(daq_config)):
          
          # Execute the transfer job
          _success, _ = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=30.0)

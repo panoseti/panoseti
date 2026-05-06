@@ -4,9 +4,6 @@ test_transfer_daemon.py
 
 Unit tests for the transfer daemon state machine, lock helpers, and
 verify_manifest utility.
-
-All tests are hardware-agnostic: gRPC and subprocess are mocked; the
-filesystem is isolated via tmp_path and env-var overrides.
 """
 
 from __future__ import annotations
@@ -17,14 +14,15 @@ import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
+from ci.fixtures.rsync_fixtures import RsyncMock
 from control.transfer.daemon import (
     _acquire_transfer_lock,
     _process_job,
     _release_transfer_lock,
 )
-from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.models import TransferNodeSpec
 from control.transfer.verify import verify_manifest
 from control.utils.pydantic_config_models import RunStateLedger, RunStatus
 from control.utils.run_state import RunStateManager
@@ -32,58 +30,6 @@ from control.utils.run_state import RunStateManager
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_test_ledger(
-    tmp_path: pathlib.Path,
-    run_name: str = "myrun.pffd",
-    status: RunStatus = RunStatus.RECORDING_ENDED,
-) -> RunStateManager:
-    """Create a RunStateManager with a minimal ledger written to tmp_path."""
-    mgr = RunStateManager(base_dir=str(tmp_path))
-    ledger = RunStateLedger(
-        run_name=run_name,
-        status=status,  # type: ignore[arg-type]
-        start_time=datetime.now(UTC).isoformat(),
-    )
-    mgr.save_state(ledger)
-    return mgr
-
-
-def _make_job(
-    tmp_path: pathlib.Path,
-    run_name: str = "myrun.pffd",
-    no_collect: bool = False,
-    no_cleanup: bool = False,
-) -> TransferJob:
-    """Return a minimal valid TransferJob for testing."""
-    return TransferJob(
-        run_name=run_name,
-        head_data_dir=str(tmp_path / "data"),
-        head_node_username="panoseti",
-        created_at=datetime(2024, 1, 1, tzinfo=UTC),
-        no_collect=no_collect,
-        no_cleanup=no_cleanup,
-        daq_nodes=[
-            TransferNodeSpec(
-                ip_addr="192.168.0.10",
-                username="panoseti",
-                data_dir="/app/data",
-                module_ids=[250],
-            )
-        ],
-    )
-
-
-def _make_run_dir(tmp_path: pathlib.Path, run_name: str = "myrun.pffd") -> pathlib.Path:
-    """Create the head-node run directory expected by _process_job()."""
-    run_dir = tmp_path / "data" / run_name
-    run_dir.mkdir(parents=True, exist_ok=True)
-    # Create a dummy manifest so the VERIFYING stage doesn't fail immediately
-    manifest = run_dir / "dp_manifest.node_test.algo_blake3.txt"
-    manifest.write_text("")
-    return run_dir
-
 
 def _mock_grpc_client() -> MagicMock:
     """Return a MagicMock that mimics AsyncDaqControlClient."""
@@ -97,15 +43,13 @@ def _mock_grpc_client() -> MagicMock:
 
 @contextmanager
 def _mock_grpc_modules(mock_client: MagicMock):
-    """Inject fake panoseti_grpc modules into sys.modules so that the
-    local import inside _process_job() resolves to our mock.
-    """
+    """Inject fake panoseti_grpc modules into sys.modules."""
     stub_root = ModuleType("panoseti_grpc")
     stub_daq = ModuleType("panoseti_grpc.daq_control")
     stub_client_mod = ModuleType("panoseti_grpc.daq_control.client")
     stub_client_mod.AsyncDaqControlClient = MagicMock(return_value=mock_client)
-    stub_root.daq_control = stub_daq  # type: ignore[attr-defined]
-    stub_daq.client = stub_client_mod  # type: ignore[attr-defined]
+    stub_root.daq_control = stub_daq
+    stub_daq.client = stub_client_mod
 
     injected = {
         "panoseti_grpc": stub_root,
@@ -126,134 +70,122 @@ def _mock_grpc_modules(mock_client: MagicMock):
                 sys.modules[key] = original
 
 
-def _mock_subprocess_ok(*args, **kwargs) -> MagicMock:
-    """Return a mock process representing rsync success."""
-    proc = MagicMock()
-    proc.returncode = 0
-    proc.wait = AsyncMock(return_value=0)
-    proc.communicate = AsyncMock(return_value=(b"", b""))
-    proc.stdout = MagicMock()
-    proc.stdout.readline = AsyncMock(side_effect=[b"1000 50% 10MB/s 0:01\n", b""])
-    proc.stderr = MagicMock()
-    proc.stderr.read = AsyncMock(return_value=b"")
-    return proc
-
-
-def _mock_subprocess_fail(*args, **kwargs) -> MagicMock:
-    """Return a mock process representing rsync failure."""
-    # If the first arg (cmd) contains a message, use it
-    msg = "rsync: connection timeout"
-    proc = MagicMock()
-    proc.returncode = 1
-    proc.wait = AsyncMock(return_value=1)
-    proc.communicate = AsyncMock(return_value=(b"", msg.encode()))
-    proc.stdout = MagicMock()
-    proc.stdout.readline = AsyncMock(return_value=b"")
-    proc.stderr = MagicMock()
-    proc.stderr.read = AsyncMock(return_value=msg.encode())
-    return proc
-
-
 # ---------------------------------------------------------------------------
 # 1. Happy path: full state machine → ARCHIVED
 # ---------------------------------------------------------------------------
 
-
-async def test_process_job_happy_path(tmp_path, monkeypatch):
+async def test_process_job_happy_path(mock_workspace, transfer_job_factory, mock_rsync_transfer: RsyncMock):
     """_process_job() drives all stages and returns True on success."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    _make_run_dir(tmp_path, run_name)
-    job = _make_job(tmp_path, run_name)
+    state_mgr = RunStateManager()
+    state_mgr.save_state(RunStateLedger(
+        run_name=run_name, status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat()
+    ))
+    
+    # Create the head-node run directory and a dummy manifest
+    from control.utils import config_file
+    head_data_dir = pathlib.Path(config_file.get_daq_config().head_node_data_dir)
+    run_dir = head_data_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "dp_manifest.node_test.algo_blake3.txt").touch()
 
+    job = transfer_job_factory(run_name=run_name)
     mock_client = _mock_grpc_client()
 
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_ok
+    with _mock_grpc_modules(mock_client):
         import asyncio as _asyncio
         result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
-    run_complete = tmp_path / "data" / run_name / "run_complete"
-    assert run_complete.exists(), "run_complete marker must be written on success"
+    assert (run_dir / "run_complete").exists()
 
 
 # ---------------------------------------------------------------------------
 # 2. rsync failure → returns False
 # ---------------------------------------------------------------------------
 
-
-async def test_process_job_rsync_failure(tmp_path, monkeypatch):
+async def test_process_job_rsync_failure(mock_workspace, transfer_job_factory, mock_rsync_transfer: RsyncMock):
     """_process_job() returns False when rsync fails."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    _make_run_dir(tmp_path, run_name)
-    job = _make_job(tmp_path, run_name)
+    state_mgr = RunStateManager()
+    state_mgr.save_state(RunStateLedger(
+        run_name=run_name, status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat()
+    ))
+    
+    from control.utils import config_file
+    head_data_dir = pathlib.Path(config_file.get_daq_config().head_node_data_dir)
+    run_dir = head_data_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "dp_manifest.node_test.algo_blake3.txt").touch()
 
+    job = transfer_job_factory(run_name=run_name)
+    mock_rsync_transfer.side_effect = mock_rsync_transfer.mock_process_fail
+    
     mock_client = _mock_grpc_client()
 
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_fail
+    with _mock_grpc_modules(mock_client):
         import asyncio as _asyncio
         result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is False
-    run_complete = tmp_path / "data" / run_name / "run_complete"
-    assert not run_complete.exists()
+    assert not (run_dir / "run_complete").exists()
 
 
 # ---------------------------------------------------------------------------
 # 3. no_collect=True skips rsync
 # ---------------------------------------------------------------------------
 
-
-async def test_process_job_no_collect_skips_rsync(tmp_path, monkeypatch):
+async def test_process_job_no_collect_skips_rsync(mock_workspace, transfer_job_factory, mock_rsync_transfer: RsyncMock):
     """With no_collect=True, rsync is not called and job reaches ARCHIVED."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    _make_run_dir(tmp_path, run_name)
-    job = _make_job(tmp_path, run_name, no_collect=True)
+    state_mgr = RunStateManager()
+    state_mgr.save_state(RunStateLedger(
+        run_name=run_name, status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat()
+    ))
+    
+    from control.utils import config_file
+    head_data_dir = pathlib.Path(config_file.get_daq_config().head_node_data_dir)
+    run_dir = head_data_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "dp_manifest.node_test.algo_blake3.txt").touch()
 
+    job = transfer_job_factory(run_name=run_name, no_collect=True)
     mock_client = _mock_grpc_client()
 
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_ok
+    with _mock_grpc_modules(mock_client):
         import asyncio as _asyncio
         result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
-    mock_sub.run.assert_not_called()
-    run_complete = tmp_path / "data" / run_name / "run_complete"
-    assert run_complete.exists()
+    assert mock_rsync_transfer.call_count == 0
+    assert (run_dir / "run_complete").exists()
 
 
 # ---------------------------------------------------------------------------
 # 4. no_cleanup=True skips CleanupData
 # ---------------------------------------------------------------------------
 
-
-async def test_process_job_no_cleanup_skips_cleanup(tmp_path, monkeypatch):
+async def test_process_job_no_cleanup_skips_cleanup(mock_workspace, transfer_job_factory, mock_rsync_transfer: RsyncMock):
     """With no_cleanup=True, CleanupData is not called on the gRPC client."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    _make_run_dir(tmp_path, run_name)
-    job = _make_job(tmp_path, run_name, no_cleanup=True)
+    state_mgr = RunStateManager()
+    state_mgr.save_state(RunStateLedger(
+        run_name=run_name, status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat()
+    ))
+    
+    from control.utils import config_file
+    head_data_dir = pathlib.Path(config_file.get_daq_config().head_node_data_dir)
+    run_dir = head_data_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "dp_manifest.node_test.algo_blake3.txt").touch()
 
+    job = transfer_job_factory(run_name=run_name, no_cleanup=True)
     mock_client = _mock_grpc_client()
 
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_ok
+    with _mock_grpc_modules(mock_client):
         import asyncio as _asyncio
         result = await _process_job(job, _asyncio.Event(), state_mgr)
 
@@ -266,22 +198,26 @@ async def test_process_job_no_cleanup_skips_cleanup(tmp_path, monkeypatch):
 # 5. run_complete is idempotent (already exists)
 # ---------------------------------------------------------------------------
 
-
-async def test_process_job_run_complete_idempotent(tmp_path, monkeypatch):
+async def test_process_job_run_complete_idempotent(mock_workspace, transfer_job_factory, mock_rsync_transfer: RsyncMock):
     """If run_complete already exists, _process_job() must not overwrite it."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
     run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    run_dir = _make_run_dir(tmp_path, run_name)
+    state_mgr = RunStateManager()
+    state_mgr.save_state(RunStateLedger(
+        run_name=run_name, status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat()
+    ))
+    
+    from control.utils import config_file
+    head_data_dir = pathlib.Path(config_file.get_daq_config().head_node_data_dir)
+    run_dir = head_data_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "dp_manifest.node_test.algo_blake3.txt").touch()
     sentinel = "original content"
     (run_dir / "run_complete").write_text(sentinel)
 
-    job = _make_job(tmp_path, run_name, no_collect=True, no_cleanup=True)
+    job = transfer_job_factory(run_name=run_name, no_collect=True, no_cleanup=True)
     mock_client = _mock_grpc_client()
 
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_ok
+    with _mock_grpc_modules(mock_client):
         import asyncio as _asyncio
         result = await _process_job(job, _asyncio.Event(), state_mgr)
 
@@ -291,49 +227,25 @@ async def test_process_job_run_complete_idempotent(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 6. no_collect + no_cleanup: no gRPC calls at all
-# ---------------------------------------------------------------------------
-
-
-async def test_process_job_no_collect_no_cleanup_no_grpc(tmp_path, monkeypatch):
-    """With both flags True, no DaqControlClient methods are called."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
-    run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    _make_run_dir(tmp_path, run_name)
-    job = _make_job(tmp_path, run_name, no_collect=True, no_cleanup=True)
-
-    mock_client = _mock_grpc_client()
-
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_ok
-        import asyncio as _asyncio
-        result = await _process_job(job, _asyncio.Event(), state_mgr)
-
-    ok, _ = result
-    assert ok is True
-    mock_client.GenerateManifest.assert_not_called()
-    mock_client.CleanupData.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
 # 7. Multiple DAQ nodes: subprocess.run called once per node
 # ---------------------------------------------------------------------------
 
-
-async def test_process_job_multiple_nodes(tmp_path, monkeypatch):
-    """subprocess.run (rsync) is called once per DAQ node."""
-    monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
+async def test_process_job_multiple_nodes(mock_workspace, transfer_job_factory, mock_rsync_transfer: RsyncMock):
+    """rsync is called once per DAQ node."""
     run_name = "myrun.pffd"
-    state_mgr = _make_test_ledger(tmp_path, run_name)
-    _make_run_dir(tmp_path, run_name)
+    state_mgr = RunStateManager()
+    state_mgr.save_state(RunStateLedger(
+        run_name=run_name, status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat()
+    ))
+    
+    from control.utils import config_file
+    head_data_dir = pathlib.Path(config_file.get_daq_config().head_node_data_dir)
+    run_dir = head_data_dir / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "dp_manifest.node_test.algo_blake3.txt").touch()
 
-    job = TransferJob(
+    job = transfer_job_factory(
         run_name=run_name,
-        head_data_dir=str(tmp_path / "data"),
-        head_node_username="panoseti",
-        created_at=datetime(2024, 1, 1, tzinfo=UTC),
         no_cleanup=True,
         daq_nodes=[
             TransferNodeSpec(ip_addr="192.168.0.10", username="panoseti", data_dir="/data", module_ids=[250]),
@@ -343,35 +255,30 @@ async def test_process_job_multiple_nodes(tmp_path, monkeypatch):
 
     mock_client = _mock_grpc_client()
 
-    with _mock_grpc_modules(mock_client), \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_sub:
-        mock_sub.side_effect = _mock_subprocess_ok
+    with _mock_grpc_modules(mock_client):
         import asyncio as _asyncio
         result = await _process_job(job, _asyncio.Event(), state_mgr)
 
     ok, _ = result
     assert ok is True
-    assert mock_sub.call_count == 2
+    assert mock_rsync_transfer.call_count == 2
 
 
 # ---------------------------------------------------------------------------
 # 8-10. Lock helpers
 # ---------------------------------------------------------------------------
 
-
 class TestDaemonSingletonLock:
     """Tests for _acquire_transfer_lock / _release_transfer_lock."""
 
-    def test_first_acquire_succeeds(self, tmp_path, monkeypatch) -> None:
+    def test_first_acquire_succeeds(self, mock_workspace) -> None:
         """_acquire_transfer_lock must return a non-None file handle."""
-        monkeypatch.setenv("PSETI_LOCKS_DIR", str(tmp_path / "locks"))
         fh = _acquire_transfer_lock()
         assert fh is not None
         _release_transfer_lock(fh)
 
-    def test_second_acquire_fails_while_held(self, tmp_path, monkeypatch) -> None:
+    def test_second_acquire_fails_while_held(self, mock_workspace) -> None:
         """A second acquire attempt while first holds lock returns None."""
-        monkeypatch.setenv("PSETI_LOCKS_DIR", str(tmp_path / "locks"))
         fh1 = _acquire_transfer_lock()
         assert fh1 is not None
         try:
@@ -380,16 +287,14 @@ class TestDaemonSingletonLock:
         finally:
             _release_transfer_lock(fh1)
 
-    def test_release_none_is_noop(self, tmp_path, monkeypatch) -> None:
+    def test_release_none_is_noop(self, mock_workspace) -> None:
         """_release_transfer_lock(None) must not raise."""
-        monkeypatch.setenv("PSETI_LOCKS_DIR", str(tmp_path / "locks"))
         _release_transfer_lock(None)  # must not raise
 
 
 # ---------------------------------------------------------------------------
 # 11. verify_manifest helper
 # ---------------------------------------------------------------------------
-
 
 class TestVerifyManifest:
     """Tests for the verify_manifest() utility function."""

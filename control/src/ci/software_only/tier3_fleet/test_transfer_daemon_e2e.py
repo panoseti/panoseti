@@ -13,7 +13,6 @@ import asyncio
 import contextlib
 import os
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,6 +23,7 @@ import pytest
 # Docker-based Integration Tests
 # ---------------------------------------------------------------------------
 from ci.fixtures.fleet import Fleet
+from ci.fixtures.rsync_fixtures import RsyncMock
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
@@ -108,120 +108,57 @@ def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> 
 
 @pytest.mark.asyncio
 async def test_transfer_daemon_archives_run(
-    mock_workspace,
-    daq_control_direct: Any,
-    run_params: dict[str, Any],
+    daq_client: DaqControlClient,
     ensure_clean_daq_state: Any,
-    tmp_path: Path,
     session_fleet: Any,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_queue: TransferQueue,
 ) -> None:
     """
-    E2E happy path: enqueue job → daemon processes all 5 stages → job lands
-    in completed/ → ledger ARCHIVED.
+    E2E happy path: Start Run → Stop Run (enqueue) → daemon processes job → ARCHIVED.
     """
-    import control.stop as stop
-    from ci.software_only.conftest import wait_hashpipe_running
-    from ci.software_only.tier4_chaos.conftest import _start as grpc_start
-
-    # mock_workspace already isolates PSETI_STATE and PSETI_CONFIG
-    head_data_tmp = tmp_path / "head_data"
-    head_data_tmp.mkdir(parents=True, exist_ok=True)
-    
-    run_params = dict(run_params)
-    run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
-    run_params["data_dir"] = "/data" # Container perspective
-    
-    RunStateManager().clear_state()
-
-    from control.utils.pydantic_config_models import RunStateLedger, RunStatus
-    mgr = RunStateManager()
-    ledger = RunStateLedger(
-        run_name=run_params["run_dir"],
-        status=RunStatus.ACTIVE,
-        start_time=datetime.now(UTC).isoformat(),
-    )
-    mgr.save_state(ledger)
-
-    # Prepare host directories FIRST
     fleet, _ = session_fleet
-    _prepare_container_dirs(fleet, run_params["run_dir"])
+    head_data_dir, daq_config = isolated_transfer_env
+    run_name = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+    
+    # 1. Start and Stop run via generate_mocked_run helper
+    # This automatically calls pseti start/stop logic and enqueues a TransferJob.
+    expected_data = await generate_mocked_run(fleet, daq_config, run_name)
 
-    ok, _ = grpc_start(daq_control_direct, run_params)
-    assert ok
-    wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
-    daq_config = config_file.get_daq_config()
-    daq_config.head_node_data_dir = str(head_data_tmp)
-
-    net = config_file.get_network_config()
-    uids = config_file.get_quabo_uids()
-
-    # Ensure head dir exists for stop_run
-    (head_data_tmp / run_params["run_dir"]).mkdir(parents=True, exist_ok=True)
-
-    # 2. Stop real run (enqueues job)
-    success = await stop.stop_run(
-        daq_config, net, uids, run=run_params["run_dir"], verbose=False
-    )
-    assert success
-
-    ledger = mgr.load_state()
-    assert ledger is not None
-    assert ledger.status == RunStatus.RECORDING_ENDED
-
-    # 3. Process job
-    tq = TransferQueue()
+    mgr = RunStateManager()
+    tq = transfer_queue
     job = tq.claim()
     assert job is not None
+    assert job.run_name == run_name
 
-    async def mocked_rsync(*args, **kwargs):
-        ok = copy_run_dir_from_fleet(fleet, run_params["run_dir"], Path(job.head_data_dir))
-        proc = MagicMock()
-        proc.returncode = 0 if ok else 1
-        proc.wait = AsyncMock(return_value=proc.returncode)
-        proc.communicate = AsyncMock(return_value=(b'', b'Simulated copy failed' if not ok else b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'Simulated copy failed' if not ok else b'')
-        return proc
-    # Use fully qualified path for patching
-    from panoseti_grpc.daq_control.client import AsyncDaqControlClient
-    
-    def _get_mapped_client(host, port=50051):
-        for node in daq_config.daq_nodes:
-            if str(node.ip_addr) == host:
-                return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
-        return AsyncDaqControlClient(host=host, port=port)
+    def rsync_side_effect(*args, **kwargs):
+        simulate_rsync_from_fleet(fleet, run_name, Path(job.head_data_dir) / run_name)
+        return None
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=mocked_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
-        # Allow up to 30s for the entire multi-node manifest/transfer/cleanup state machine
-        job_success = await asyncio.wait_for(_process_job(job, asyncio.Event(), RunStateManager()), timeout=30.0)
+    mock_rsync_transfer.side_effect = rsync_side_effect
+
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
+        # Execute the state machine
+        job_success = await asyncio.wait_for(_process_job(job, asyncio.Event(), mgr), timeout=30.0)
         assert job_success
 
     tq.complete(job.run_name)
 
+    # 2. Verify Final State
     ledger = mgr.load_state()
     assert ledger and ledger.status == RunStatus.ARCHIVED
-    run_dir_path = Path(daq_config.head_node_data_dir) / run_params["run_dir"]
-    assert (run_dir_path / "run_complete").exists()
-
-    # Strengthened checks: Ensure manifests and logs were transferred
-    manifests = list(run_dir_path.glob("dp_manifest.node_*.txt"))
-    assert len(manifests) > 0, "No manifest files found on head node after transfer"
-
-    # Check for unique log files
-    logs = list(run_dir_path.glob("hp_stdout_*.log"))
-    assert len(logs) > 0, "No node-specific log files found on head node after transfer"
-
-    monkeypatch.undo()
+    verify_head_node_accuracy(head_data_dir, run_name, expected_data)
 
 
 @pytest.mark.asyncio
 async def test_transfer_daemon_resumes_after_crash(
     daq_control_direct: Any,
-    run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
-    tmp_path: Path,
     session_fleet: Any,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_queue: TransferQueue,
 ) -> None:
     """
     Chaos: daemon killed mid-rsync; restart completes the transfer.
@@ -230,35 +167,32 @@ async def test_transfer_daemon_resumes_after_crash(
     from ci.software_only.conftest import wait_hashpipe_running
     from ci.software_only.tier4_chaos.conftest import _start as grpc_start
 
-    # Isolate state and data
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
-    head_data_tmp = tmp_path / "head_data"
-    head_data_tmp.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
-    PanoPaths.ensure_state_dirs()
-    
-    run_params = dict(run_params)
-    run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
-    run_params["data_dir"] = "/data"
+    head_data_dir, daq_config = isolated_transfer_env
+    run_name = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     
     RunStateManager().clear_state()
 
-    os.makedirs(f"{head_data_tmp}/{run_params['run_dir']}", exist_ok=True)
+    # Use run_params from direct fixture but override run_dir
+    run_params = {
+        "data_dir": "/data",
+        "run_dir": run_name,
+        "module_id": [232, 236],
+        "daq_ip_addr": session_fleet[0].node_ip(0),
+        "bindhost": "lo"
+    }
+
     fleet, _ = session_fleet
-    _prepare_container_dirs(fleet, run_params["run_dir"])
+    _prepare_container_dirs(fleet, run_name)
 
     ok, _ = grpc_start(daq_control_direct, run_params)
     assert ok
     wait_hashpipe_running(daq_control_direct, "/data", timeout=5)
-    daq_config = config_file.get_daq_config()
-    daq_config.head_node_data_dir = str(head_data_tmp)
-
+    
     net = config_file.get_network_config()
     uids = config_file.get_quabo_uids()
-    await stop.stop_run(daq_config, net, uids, run=run_params["run_dir"], verbose=False)
+    await stop.stop_run(daq_config, net, uids, run=run_name, verbose=False)
 
-    tq = TransferQueue()
+    tq = transfer_queue
     job = tq.claim()
     assert job is not None
 
@@ -271,8 +205,9 @@ async def test_transfer_daemon_resumes_after_crash(
 
     # Simulate crash mid-rsync (Stage 2)
     # We must ensure Stage 1 (Manifest) passes first!
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=RuntimeError("Simulated crash")), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+    mock_rsync_transfer.side_effect = RuntimeError("Simulated crash")
+    
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success, err = await _process_job(job, asyncio.Event(), RunStateManager())
         assert not success
         assert "Simulated crash" in err
@@ -283,37 +218,36 @@ async def test_transfer_daemon_resumes_after_crash(
     job2 = tq.claim()
     assert job2 is not None
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+    # Restart with WORKING rsync
+    mock_rsync_transfer.side_effect = None
+
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success2 = await asyncio.wait_for(_process_job(job2, asyncio.Event(), RunStateManager()), timeout=30.0)
         assert success2
         tq.complete(job2.run_name)
 
 
-    assert (tq._queue / "completed" / f"{run_params['run_dir']}.job.toml").exists()
-    monkeypatch.undo()
+    assert (tq._queue / "completed" / f"{run_name}.job.toml").exists()
 
 
 @pytest.mark.asyncio
 async def test_transfer_daemon_retry_on_transient_rsync_failure(
+    mock_workspace,
     daq_control_direct: Any,
     run_params: dict[str, Any],
     ensure_clean_daq_state: Any,
     tmp_path: Path,
     session_fleet: Any,
+    mock_rsync_transfer: RsyncMock,
 ) -> None:
     """
     Retry: rsync fails twice, succeeds on third attempt.
     """
     import control.stop as stop
 
-    # Isolate state and data
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    # mock_workspace already isolates PSETI_STATE and PSETI_CONFIG
     head_data_tmp = tmp_path / "head_data"
     head_data_tmp.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
-    PanoPaths.ensure_state_dirs()
     
     run_params = dict(run_params)
     run_params["run_dir"] = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
@@ -321,7 +255,7 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     
     RunStateManager().clear_state()
 
-    os.makedirs(f"{head_data_tmp}/{run_params['run_dir']}", exist_ok=True)
+    (head_data_tmp / run_params["run_dir"]).mkdir(parents=True, exist_ok=True)
     fleet, _ = session_fleet
     _prepare_container_dirs(fleet, run_params["run_dir"])
 
@@ -345,8 +279,9 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 1
     job1 = tq.claim()
     assert job1 is not None
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+    mock_rsync_transfer.side_effect = RuntimeError("rsync failed")
+
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success1 = (await _process_job(job1, asyncio.Event(), RunStateManager()))[0]
         assert not success1
         tq.fail(job1.run_name)
@@ -356,8 +291,8 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 2
     job2 = tq.claim()
     assert job2 is not None
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+    # side_effect persists
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success2 = (await _process_job(job2, asyncio.Event(), RunStateManager()))[0]
         assert not success2
         tq.fail(job2.run_name)
@@ -367,15 +302,15 @@ async def test_transfer_daemon_retry_on_transient_rsync_failure(
     # Attempt 3
     job3 = tq.claim()
     assert job3 is not None
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
+    mock_rsync_transfer.side_effect = None # use default success mock
+    
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):
         success3 = await asyncio.wait_for(_process_job(job3, asyncio.Event(), RunStateManager()), timeout=30.0)
         assert success3
         tq.complete(job3.run_name)
 
 
     assert (tq._queue / "completed" / f"{run_params['run_dir']}.job.toml").exists()
-    monkeypatch.undo()
 
 
 @pytest.mark.asyncio
@@ -439,22 +374,15 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
                 assert job is not None
 
     assert (tq._queue / "failed" / f"{run_params['run_dir']}.job.toml").exists()
-    monkeypatch.undo()
 
 
-async def test_transfer_daemon_singleton_lock_in_container(tmp_path: Path) -> None:
+async def test_transfer_daemon_singleton_lock_in_container(mock_workspace, tmp_path: Path) -> None:
     """
     Lock contention: second daemon must exit.
     """
     from control.utils.paths import PanoPaths
 
-    # Isolate state and data
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
-    head_data_tmp = tmp_path / "head_data"
-    head_data_tmp.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
-    PanoPaths.ensure_state_dirs()
+    # mock_workspace isolates PSETI_STATE
     lock_script = tmp_path / "hold_lock.py"
     lock_script.write_text('''
 import os
@@ -501,7 +429,6 @@ except FileExistsError:
     finally:
         p1.terminate()
         await p1.wait()
-    monkeypatch.undo()
 
 
 # ---------------------------------------------------------------------------
@@ -509,24 +436,20 @@ except FileExistsError:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
+async def test_transfer_daemon_unit_integration(
+    mock_workspace,
+    tmp_path: Path,
+    mock_rsync_transfer: RsyncMock,
+    transfer_job_factory: Callable[..., TransferJob],
+    transfer_queue: TransferQueue,
+) -> None:
     """
     Test _process_job with mocked gRPC and rsync.
     """
-    # Isolate state and data
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
-    head_data_tmp = tmp_path / "head_data"
-    head_data_tmp.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_tmp))
-    PanoPaths.ensure_state_dirs()
     run_name = "unit_int_run.pffd"
-    job = TransferJob(
-        schema_version=1,
+    job = transfer_job_factory(
         run_name=run_name,
-        head_data_dir=str(tmp_path / "head"),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
+        head_data_dir=tmp_path / "head",
         daq_nodes=[
             TransferNodeSpec(
                 ip_addr="127.0.0.1",
@@ -554,14 +477,14 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
     sys.modules["panoseti_grpc.daq_control.client"] = stub_mod
 
     try:
-        async def custom_mock_rsync(*args, **kwargs):
+        def rsync_side_effect(*args, **kwargs):
             (Path(job.head_data_dir) / run_name).mkdir(parents=True, exist_ok=True)
             (Path(job.head_data_dir) / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
-            return await _mock_subprocess_ok()
+            return None
 
-        with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=custom_mock_rsync):
-            success = (await _process_job(job, asyncio.Event(), RunStateManager()))[0]
-            assert success
+        mock_rsync_transfer.side_effect = rsync_side_effect
+        success = (await _process_job(job, asyncio.Event(), RunStateManager()))[0]
+        assert success
     finally:
         if orig_mod:
             sys.modules["panoseti_grpc.daq_control.client"] = orig_mod
@@ -569,22 +492,3 @@ async def test_transfer_daemon_unit_integration(tmp_path: Path) -> None:
             del sys.modules["panoseti_grpc.daq_control.client"]
     
     assert (Path(job.head_data_dir) / run_name / "run_complete").exists()
-    monkeypatch.undo()
-
-async def _mock_subprocess_ok(*args, **kwargs):
-    proc = MagicMock()
-    proc.returncode = 0
-    proc.wait = AsyncMock(return_value=0)
-    proc.communicate = AsyncMock(return_value=(b"", b""))
-    proc.stdout.readline = AsyncMock(return_value=b"")
-    proc.stderr.read = AsyncMock(return_value=b"")
-    return proc
-
-async def _mock_subprocess_fail(*args, **kwargs):
-    proc = MagicMock()
-    proc.returncode = 1
-    proc.wait = AsyncMock(return_value=1)
-    proc.communicate = AsyncMock(return_value=(b"", b"error"))
-    proc.stdout.readline = AsyncMock(return_value=b"")
-    proc.stderr.read = AsyncMock(return_value=b"error")
-    return proc

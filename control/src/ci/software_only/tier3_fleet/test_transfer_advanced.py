@@ -8,19 +8,21 @@ import contextlib
 import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
     get_mapped_client_factory,
-    setup_isolated_transfer_env,
     simulate_rsync_from_fleet,
     verify_head_node_accuracy,
 )
 from control.transfer.daemon import _process_job, run_daemon
+from control.transfer.models import TransferJob
 from control.transfer.queue import TransferQueue
+from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager, RunStatus
 
@@ -32,47 +34,38 @@ from control.utils.run_state import RunStateManager, RunStatus
 @pytest.mark.timeout(120)
 async def test_transfer_queue_chaos_partial_transfer_recovery(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_queue: TransferQueue,
 ) -> None:
     """Verify the queue recovers from an rsync error and succeeds on retry."""
-    fleet, daq_cfg_dict = session_fleet
-    head_data_dir, daq_config = setup_isolated_transfer_env(tmp_path, monkeypatch, daq_cfg_dict)
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     run_name = f"chaos_recovery_{uuid.uuid4().hex[:8]}.pffd"
     
     expected_data = await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
-    tq = TransferQueue()
+    tq = transfer_queue
     job = tq.claim()
     
-    call_count = 0
-    async def failing_rsync(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
+    def rsync_side_effect(*args, **kwargs):
+        if mock_rsync_transfer.call_count == 1:
             # Simulate partial transfer failure
             raise RuntimeError("Network timeout mid-rsync")
         
-        # Second attempt succeeds
+        # Subsequent attempts succeed
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        proc = MagicMock()
+        return None # Uses default success mock
 
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
-
+    mock_rsync_transfer.side_effect = rsync_side_effect
 
     from datetime import UTC, datetime
     job.head_node_username = "panoseti"
     job.created_at = datetime.now(UTC)
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=failing_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
 
         # 1st attempt: fails fast
         success1, err1 = await _process_job(job, asyncio.Event(), mgr)
@@ -93,7 +86,7 @@ async def test_transfer_queue_chaos_partial_transfer_recovery(
 
     verify_head_node_accuracy(head_data_dir, run_name, expected_data)
     # Call count: 1 (fail) + 2 (success across 2 nodes) = 3
-    assert call_count == len(daq_config.daq_nodes) + 1
+    assert mock_rsync_transfer.call_count == len(daq_config.daq_nodes) + 1
 # ---------------------------------------------------------------------------
 # 2. Scale: Parameterized Mock Fleet (2-8 nodes)
 # ---------------------------------------------------------------------------
@@ -102,16 +95,20 @@ async def test_transfer_queue_chaos_partial_transfer_recovery(
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_transfer_queue_parameterized_scale(
+    mock_workspace,
     num_nodes: int,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    transfer_job_factory: Callable[..., TransferJob],
+    transfer_queue: TransferQueue,
 ) -> None:
     """Verify the transfer queue handles scaling to 8 concurrent nodes over gRPC."""
     # We use a mock configuration with N nodes and mock clients to test concurrency logic
     # without the overhead of 8 actual Docker containers.
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    # mock_workspace already isolates PSETI_STATE and PSETI_CONFIG
     head_data_dir = tmp_path / "head_data"
-    head_data_dir.mkdir(parents=True)
+    head_data_dir.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("HEAD_DATA_DIR", str(head_data_dir))
     PanoPaths.ensure_state_dirs()
     
@@ -125,22 +122,15 @@ async def test_transfer_queue_parameterized_scale(
         )
         for i in range(num_nodes)
     ]
-    # daq_config = DaqConfig(
-    #     daq_nodes=nodes, 
-    #     head_node_data_dir=str(head_data_dir),
-    #     head_node_ip_addr="127.0.0.1"
-    # )
     
     run_name = "scale_test.pffd"
-    tq = TransferQueue()
+    tq = transfer_queue
     from datetime import UTC, datetime
 
-    from control.transfer.models import TransferJob, TransferNodeSpec
-    job = TransferJob(
+    from control.transfer.models import TransferNodeSpec
+    job = transfer_job_factory(
         run_name=run_name,
-        head_data_dir=str(head_data_dir),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
+        head_data_dir=head_data_dir,
         daq_nodes=[
             TransferNodeSpec(
                 ip_addr=n.ip_addr,
@@ -154,26 +144,21 @@ async def test_transfer_queue_parameterized_scale(
     tq.enqueue(job)
     active_job = tq.claim()
     
-    # Mock Manifest and Rsync
+    # Mock Manifest
     async def mock_gen_manifest(*args, **kwargs):
         return {"success": True, "manifest_path": "/data/manifest.blake3", "file_count": 1}
 
-    async def mock_rsync(*args, **kwargs):
+    # Configure mock rsync behavior
+    def rsync_side_effect(*args, **kwargs):
         # Just create the manifest file on head node so verification passes
         (head_data_dir / run_name).mkdir(parents=True, exist_ok=True)
         (head_data_dir / run_name / "dp_manifest.node_test.algo_blake3.txt").touch()
+        return None
 
-        proc = MagicMock()
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
+    mock_rsync_transfer.side_effect = rsync_side_effect
 
     # Mock verifying to always pass
     with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient") as mock_client_cls, \
-         patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=mock_rsync), \
          patch("control.transfer.daemon.verify_manifest", return_value=(True, [])):
         
         mock_client = AsyncMock()
@@ -199,13 +184,14 @@ async def test_transfer_queue_parameterized_scale(
 @pytest.mark.timeout(180)
 async def test_transfer_queue_drain_6_deep(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_queue: TransferQueue,
 ) -> None:
     """Verify the daemon correctly drains a pending queue 6 transfers deep."""
-    fleet, daq_cfg_dict = session_fleet
-    head_data_dir, daq_config = setup_isolated_transfer_env(tmp_path, monkeypatch, daq_cfg_dict)
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     
     runs = []
     for i in range(6):
@@ -213,12 +199,10 @@ async def test_transfer_queue_drain_6_deep(
         expected_data = await generate_mocked_run(fleet, daq_config, run_name)
         runs.append((run_name, expected_data))
     
-    tq = TransferQueue()
+    tq = transfer_queue
     assert len(list((tq._queue / "pending").glob("*.job.toml"))) == 6
     
-    # mgr = RunStateManager()
-    
-    async def mocked_rsync(*args, **kwargs):
+    def rsync_side_effect(*args, **kwargs):
         # Extract run name from args (the destination path contains it)
         head_run_path = None
         for arg in args:
@@ -228,16 +212,11 @@ async def test_transfer_queue_drain_6_deep(
         
         run_name = head_run_path.name
         simulate_rsync_from_fleet(fleet, run_name, head_run_path)
-        proc = MagicMock()
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
+        return None
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=mocked_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
+    mock_rsync_transfer.side_effect = rsync_side_effect
+
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
         
         # Start daemon loop as a task
         daemon_task = asyncio.create_task(run_daemon(poll_interval=0.1))
@@ -269,19 +248,20 @@ async def test_transfer_queue_drain_6_deep(
 @pytest.mark.timeout(120)
 async def test_transfer_queue_stop_start_during_transfer(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_queue: TransferQueue,
 ) -> None:
     """Verify daemon resume from crash mid-transfer without data loss."""
-    fleet, daq_cfg_dict = session_fleet
-    head_data_dir, daq_config = setup_isolated_transfer_env(tmp_path, monkeypatch, daq_cfg_dict)
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     run_name = f"stop_start_{uuid.uuid4().hex[:8]}.pffd"
     
     expected_data = await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
-    tq = TransferQueue()
+    tq = transfer_queue
     
     # 1. Start daemon, intercept rsync to "stall"
     sync_event = asyncio.Event()
@@ -291,10 +271,11 @@ async def test_transfer_queue_stop_start_during_transfer(
         sync_event.set()
         await daemon_cancelled.wait()
         # This will be interrupted by task cancellation
-        return MagicMock(returncode=0)
+        return None
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=stalling_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
+    mock_rsync_transfer.side_effect = stalling_rsync
+
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
         
         daemon_task = asyncio.create_task(run_daemon(poll_interval=0.1))
         
@@ -312,18 +293,13 @@ async def test_transfer_queue_stop_start_during_transfer(
     assert (tq._queue / "active" / f"{run_name}.job.toml").exists()
     
     # 3. Restart daemon with working rsync
-    async def mocked_rsync(*args, **kwargs):
+    def rsync_side_effect(*args, **kwargs):
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        proc = MagicMock()
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
+        return None
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=mocked_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
+    mock_rsync_transfer.side_effect = rsync_side_effect
+
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=get_mapped_client_factory(daq_config)):
         
         daemon_task2 = asyncio.create_task(run_daemon(poll_interval=0.1))
         

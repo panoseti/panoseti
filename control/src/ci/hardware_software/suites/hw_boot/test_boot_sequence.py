@@ -31,8 +31,8 @@ import time
 
 import pytest
 
+from ci.fixtures.topology_fixtures import ObservatoryTopology
 from ci.hardware_software.hw_utils.driver_ops import check_all_reachable
-from ci.hardware_software.hw_utils.topology import HwTopology
 from control.pseti import app
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ _BOOT_WAIT_S = int(os.environ.get("HW_TEST_QUABO_BOOT_WAIT", 60))
 
 
 
-def _log_topology_targets(topo: HwTopology) -> None:
+def _log_topology_targets(topo: ObservatoryTopology) -> None:
     for a in topo.quabo_ips():
         logger.info(
             "[BOOT] quabo map: raw=%-18s  real=%-18s  cmd_port=%-6d  reboot_port=%d",

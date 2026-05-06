@@ -21,9 +21,6 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-import shutil
-import subprocess
-from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -135,39 +132,6 @@ def get_daq_and_network_config(kind: str = "direct") -> tuple[dict[str, Any], di
 
 
 # ---------------------------------------------------------------------------
-# Data directory fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="session", autouse=True)
-def create_data_dirs() -> None:
-    """Ensure session-scoped data directories exist on the host with broad permissions."""
-    for env_var in ["DAQ_DATA_DIR", "HEAD_DATA_DIR"]:
-        val = os.environ.get(env_var)
-        if val:
-            p = pathlib.Path(val)
-            p.mkdir(parents=True, exist_ok=True)
-            # Ensure Docker can read/write even if running as a different user/group
-            os.chmod(p, 0o777)
-            for root, dirs, files in os.walk(p):
-                for d in dirs:
-                    os.chmod(os.path.join(root, d), 0o777)
-                for f in files:
-                    os.chmod(os.path.join(root, f), 0o777)
-
-
-@pytest.fixture
-def daq_data_dir() -> pathlib.Path:
-    """Root data directory on the daqnode (host perspective)."""
-    return pathlib.Path(os.environ["DAQ_DATA_DIR"])
-
-
-@pytest.fixture
-def head_data_dir() -> pathlib.Path:
-    """Head node data directory (host perspective)."""
-    return pathlib.Path(os.environ["HEAD_DATA_DIR"])
-
-
-# ---------------------------------------------------------------------------
 # Docker container handle (for pause/unpause in failure-simulation tests)
 # ---------------------------------------------------------------------------
 
@@ -179,57 +143,3 @@ def docker_client() -> Any:
         return docker.from_env()
     except Exception as e:
         pytest.skip(f"Docker SDK unavailable: {e}")
-
-
-# ---------------------------------------------------------------------------
-# Helper: simulate data copy (rsync equivalent using shared volume)
-# ---------------------------------------------------------------------------
-
-def copy_run_dir(run_params: dict[str, Any], dst: pathlib.Path) -> bool:
-    """
-    Simulate rsync from daqnode to headnode using the shared Docker volume.
-    Copies module_{id}/{run_dir}/ from daq_data_dir to dst/{run_dir}/.
-    Returns True on success, False if source data is missing.
-    """
-    src_root = pathlib.Path(run_params["data_dir"])
-    run_dir  = run_params["run_dir"]
-    success  = True
-
-    dst_run = dst / run_dir
-    dst_run.mkdir(parents=True, exist_ok=True)
-
-    for module_id in run_params["module_id"]:
-        src = src_root / f"module_{module_id}" / run_dir
-        if not src.exists():
-            success = False
-            continue
-        dst_module = dst_run / f"module_{module_id}"
-        if dst_module.exists():
-            shutil.rmtree(dst_module)
-        shutil.copytree(src, dst_module)
-
-    return success
-
-
-def start_copy_background(run_params: dict[str, Any], dst: pathlib.Path) -> subprocess.Popen:
-    """
-    Start a copy in the background using cp -r (subprocess).
-    Returns the Popen handle so tests can pause containers mid-copy.
-    """
-    src_root = pathlib.Path(run_params["data_dir"])
-    run_dir  = run_params["run_dir"]
-    src = str(src_root / f"module_{run_params['module_id'][0]}" / run_dir)
-    dst_dir = str(dst / run_dir)
-    os.makedirs(dst_dir, exist_ok=True)
-    return subprocess.Popen(["cp", "-r", src, dst_dir])
-
-
-# Expose helpers as fixtures too
-@pytest.fixture
-def copy_run_dir_fn() -> Callable[[dict[str, Any], pathlib.Path], bool]:
-    return copy_run_dir
-
-
-@pytest.fixture
-def start_copy_background_fn() -> Callable[[dict[str, Any], pathlib.Path], subprocess.Popen]:
-    return start_copy_background

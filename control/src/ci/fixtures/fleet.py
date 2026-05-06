@@ -269,13 +269,20 @@ class Fleet:
             )
             container.start()
             spec.mapped_port = int(container.get_exposed_port(spec.grpc_container_port))
-            # get_container_host_ip() is DinD-aware: returns the Docker host's
-            # reachable IP (bridge gateway inside CI, 127.0.0.1 on macOS).
+            
+            # get_container_host_ip() is DinD-aware. On local dev machines (macOS/Windows/Linux)
+            # we should generally use 'localhost' if we are connecting from the host.
+            # testcontainers' get_container_host_ip() usually returns 'localhost' or the bridge IP.
+            # We'll prefer 127.0.0.1 if it's reachable, else fallback.
             raw_host = container.get_container_host_ip()
-            try:
-                spec.container_host_ip = socket.gethostbyname(raw_host)
-            except socket.gaierror:
-                spec.container_host_ip = raw_host
+            if raw_host in ["localhost", "127.0.0.1"] or os.name == 'nt':
+                spec.container_host_ip = "127.0.0.1"
+            else:
+                try:
+                    spec.container_host_ip = socket.gethostbyname(raw_host)
+                except socket.gaierror:
+                    spec.container_host_ip = raw_host
+            
             self._containers.append(container)
 
     def wait_healthy(self, timeout: float = GRPC_HEALTHCHECK_TIMEOUT) -> None:

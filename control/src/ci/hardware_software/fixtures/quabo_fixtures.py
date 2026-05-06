@@ -14,13 +14,6 @@ from control.driver.quabo_driver import QUABO
 
 
 @pytest.fixture(scope="session")
-def topology(obs_config, daq_config, network_config):
-    """Session-scoped HwTopology wrapping the active configs."""
-    from ci.hardware_software.hw_utils.topology import HwTopology
-    return HwTopology()
-
-
-@pytest.fixture(scope="session")
 def quabo(topology) -> Generator[QUABO]:
     """
     Return a QUABO object for the first (Q0) quabo of the first module.

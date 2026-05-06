@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from ci.hardware_software.fixtures.quabo_fixtures import topology  # noqa: F401
 from control.pseti import app
 from control.utils import config_file
 
@@ -99,16 +98,14 @@ def hw_safety_net(runner):
 # ── Config fixtures ───────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")
-def topology_reachable(obs_config, network_config):
+def topology_reachable(topology):
     """
     Session-scoped reachability check. 
     Quickly verifies every quabo responds to UDP echo through the gateway.
     """
-    from ci.hardware_software.hw_utils.topology import HwTopology
     from control.driver.quabo_driver import QUABO
     
-    topo = HwTopology()
-    addrs = topo.quabo_ips()
+    addrs = topology.quabo_ips()
     
     errors = []
     for a in addrs:

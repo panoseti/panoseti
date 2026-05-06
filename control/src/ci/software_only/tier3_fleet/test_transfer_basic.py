@@ -28,10 +28,11 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from ci.fixtures.rsync_fixtures import RsyncMock
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
@@ -132,12 +133,10 @@ def state_mgr(tmp_path: pathlib.Path, run_name: str) -> RunStateManager:
 
 
 @pytest.fixture
-def transfer_job(run_name: str, run_dir: pathlib.Path, head_data_dir: pathlib.Path) -> TransferJob:
-    return TransferJob(schema_version=1, 
+def transfer_job(run_name: str, run_dir: pathlib.Path, head_data_dir: pathlib.Path, transfer_job_factory: Callable[..., TransferJob]) -> TransferJob:
+    return transfer_job_factory(
         run_name=run_name,
-        head_data_dir=str(head_data_dir),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
+        head_data_dir=head_data_dir,
         no_collect=True,   # skip rsync in basic suite; filesystem already has files
         no_cleanup=True,
         daq_nodes=[
@@ -165,14 +164,13 @@ class TestTransferBasicHappyPath:
         run_name: str,
         run_dir: pathlib.Path,
         transfer_job: TransferJob,
+        mock_rsync_transfer: RsyncMock,
     ) -> None:
         """_process_job returns True and writes run_complete."""
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
         client = _grpc_client_ok()
-        with _mock_grpc(client), \
-             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok):
-            
+        with _mock_grpc(client):
             result, _ = await _process_job(transfer_job, asyncio.Event(), RunStateManager())
         assert result is True
         assert (run_dir / "run_complete").exists(), "run_complete must be written on ARCHIVED"
@@ -180,15 +178,14 @@ class TestTransferBasicHappyPath:
 
     async def test_queue_job_toml_is_valid(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
         transfer_job: TransferJob,
     ) -> None:
         """Enqueued TOML is parseable and round-trips TransferJob exactly."""
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         tq.enqueue(transfer_job)
-        pending = queue_dir / "pending" / f"{run_name}.job.toml"
+        pending = tq._queue / "pending" / f"{run_name}.job.toml"
         assert pending.exists(), "pending job file must be written"
         data = tomllib.loads(pending.read_text())
         reloaded = TransferJob.model_validate(data)
@@ -201,6 +198,7 @@ class TestTransferBasicHappyPath:
         run_name: str,
         run_dir: pathlib.Path,
         transfer_job: TransferJob,
+        mock_rsync_transfer: RsyncMock,
     ) -> None:
         """If run_complete already exists, _process_job does not overwrite it."""
         sentinel = "original"
@@ -208,9 +206,7 @@ class TestTransferBasicHappyPath:
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setenv("PSETI_CONTROL", str(tmp_path))
         client = _grpc_client_ok()
-        with _mock_grpc(client), \
-             patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_ok):
-            
+        with _mock_grpc(client):
             _, _ = await _process_job(transfer_job, asyncio.Event(), RunStateManager())
         assert (run_dir / "run_complete").read_text() == sentinel
         monkeypatch.undo()
@@ -257,12 +253,11 @@ class TestTransferBasicQueue:
 
     def test_double_enqueue_is_idempotent(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
         transfer_job: TransferJob,
     ) -> None:
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         first = tq.enqueue(transfer_job)
         second = tq.enqueue(transfer_job)
         assert first is True
@@ -270,53 +265,42 @@ class TestTransferBasicQueue:
 
     def test_claim_moves_to_active(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
         transfer_job: TransferJob,
     ) -> None:
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         tq.enqueue(transfer_job)
         job = tq.claim()
         assert job is not None
         assert job.run_name == run_name
-        assert (queue_dir / "active" / f"{run_name}.job.toml").exists()
-        assert not (queue_dir / "pending" / f"{run_name}.job.toml").exists()
+        assert (tq._queue / "active" / f"{run_name}.job.toml").exists()
+        assert not (tq._queue / "pending" / f"{run_name}.job.toml").exists()
 
     def test_complete_moves_to_completed(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
         transfer_job: TransferJob,
     ) -> None:
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         tq.enqueue(transfer_job)
         tq.claim()
         tq.complete(run_name)
-        assert (queue_dir / "completed" / f"{run_name}.job.toml").exists()
+        assert (tq._queue / "completed" / f"{run_name}.job.toml").exists()
 
     def test_fail_and_retry(
         self,
-        tmp_path: pathlib.Path,
+        transfer_queue: TransferQueue,
         run_name: str,
         transfer_job: TransferJob,
     ) -> None:
-        queue_dir = tmp_path / "state" / "transfer" / "queue"
-        tq = TransferQueue(queue_dir=queue_dir)
+        tq = transfer_queue
         tq.enqueue(transfer_job)
         tq.claim()
         tq.fail(run_name)
-        assert (queue_dir / "failed" / f"{run_name}.job.toml").exists()
+        assert (tq._queue / "failed" / f"{run_name}.job.toml").exists()
         ok = tq.retry(run_name)
         assert ok is True
-        assert (queue_dir / "pending" / f"{run_name}.job.toml").exists()
+        assert (tq._queue / "pending" / f"{run_name}.job.toml").exists()
 
-async def _mock_subprocess_ok(*args, **kwargs):
-    proc = MagicMock()
-    proc.returncode = 0
-    proc.wait = AsyncMock(return_value=0)
-    proc.communicate = AsyncMock(return_value=(b"", b""))
-    proc.stdout.readline = AsyncMock(return_value=b"")
-    proc.stderr.read = AsyncMock(return_value=b"")
-    return proc

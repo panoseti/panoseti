@@ -46,42 +46,31 @@ PH_BASELINE_FILE = PanoPaths.config_dir() / "quabo_ph_baseline.json"
 # ── Shared Helpers ───────────────────────────────────────────────────────────
 
 @contextlib.contextmanager
-def mock_daq_config_for_headnode():
+def mock_daq_config_for_headnode(mock_workspace):
     """Temporarily patch daq_config.json to point to localhost (CI headnode)."""
-    import json
-
     from control.utils import config_file
     
-    from control.utils.paths import PanoPaths
     path = PanoPaths.config_dir() / "daq_config.json"
     backup = str(path) + ".bak"
-    # Ensure tmp/ and configs/ exist (should already, but let's be safe)
-    PanoPaths.ensure_dirs()
-    PanoPaths.config_dir().mkdir(parents=True, exist_ok=True)
     
     # Create a dummy PH baseline if missing
-    ph_baseline = PanoPaths.tmp_dir() / "quabo_ph_baseline.json"
-    if not os.path.exists(ph_baseline):
-        with open(ph_baseline, "w") as f:
-            json.dump({"date": "2024-01-01T00:00:00", "quabos": []}, f)
+    ph_baseline = PanoPaths.calibration_file("quabo_ph_baseline.json")
+    if not ph_baseline.exists():
+        ph_baseline.write_text(json.dumps({"date": "2024-01-01T00:00:00", "quabos": []}))
 
-    if os.path.exists(path):
+    if path.exists():
         import shutil
         shutil.copyfile(path, backup)
     
-    with open(path) as f:
-        cfg = json.load(f)
+    cfg = json.loads(path.read_text())
     
-    import tempfile
-    # Prefer the isolated HEAD_DATA_DIR set by auto_isolate so the subprocess
-    # env and the daq_config.json written here share the same path.  Fall back
-    # to a fresh tempdir only when running outside the pytest harness.
-    tmp_data_dir = os.environ.get("HEAD_DATA_DIR") or tempfile.mkdtemp()
-    os.makedirs(tmp_data_dir, exist_ok=True)
+    # mock_workspace isolates PSETI_TMP
+    tmp_data_dir = PanoPaths.tmp_dir() / "head_data"
+    tmp_data_dir.mkdir(parents=True, exist_ok=True)
 
     tester_ip = f'{os.environ.get("HEAD_NET_PREFIX", "10.0.1")}.5'
     cfg["head_node_ip_addr"] = tester_ip
-    cfg["head_node_data_dir"] = tmp_data_dir
+    cfg["head_node_data_dir"] = str(tmp_data_dir)
     cfg["head_node_container"] = True
     
     # Coherence Fix: Ensure the DAQ node is handling ALL modules defined in the 
@@ -93,8 +82,6 @@ def mock_daq_config_for_headnode():
             mids.append(config_file.ip_addr_to_module_id(str(module.ip_addr)))
 
     # Assign ALL modules to the single available CI node
-    # Use a DAQ IP that is on the same /24 subnet as the modules (192.168.3.x)
-    # to pass strict Tier-2 Subnet Coherence validation.
     daqnode_ip = "192.168.3.30"
     cfg["daq_nodes"] = [
         {
@@ -106,12 +93,10 @@ def mock_daq_config_for_headnode():
         }
     ]
     
-    with open(path, "w") as f:
-        json.dump(cfg, f, indent=4)
+    path.write_text(json.dumps(cfg, indent=4))
     
     # Write matching quabo_uids.json to tmp/ so associate() in subprocess passes
     uids_path = PanoPaths.tmp_dir() / "quabo_uids.json"
-    uids_path.parent.mkdir(parents=True, exist_ok=True)
     from control.utils.pydantic_config_models import QuaboUids
     uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
     for mid in mids:
@@ -120,8 +105,7 @@ def mock_daq_config_for_headnode():
             "ip_addr": f"192.168.3.{mid}",
             "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
         })
-    with open(uids_path, "w") as f:
-        json.dump(uids_dict, f, indent=4)
+    uids_path.write_text(json.dumps(uids_dict, indent=4))
 
     with unittest.mock.patch("control.utils.config_file.get_quabo_uids", return_value=QuaboUids(**uids_dict)):
         try:

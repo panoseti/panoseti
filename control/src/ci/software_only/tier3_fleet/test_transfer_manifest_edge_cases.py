@@ -9,14 +9,14 @@ import asyncio
 import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
+from ci.fixtures.rsync_fixtures import RsyncMock
 from ci.software_only.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
     get_mapped_client_factory,
-    setup_isolated_transfer_env,
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
@@ -28,45 +28,27 @@ from control.utils.run_state import RunStateManager
 # @pytest.mark.xfail(strict=True, reason="Strict VERIFYING stage should catch this data corruption")
 async def test_manifest_corruption_aborts_cleanup(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_job_factory: Callable[..., TransferJob],
 ) -> None:
     """
     Scenario: A bit flip occurs in a .pff file during/after transfer.
     Expectation: The VERIFYING stage MUST detect the digest mismatch, abort the
     job, transition to VERIFY_FAILED, and NEVER call CleanupData.
     """
-    fleet, daq_cfg_dict = session_fleet
-    head_data_dir, daq_config = setup_isolated_transfer_env(tmp_path, monkeypatch, daq_cfg_dict)
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     run_name = f"xfail_corrupt_{uuid.uuid4().hex[:8]}.pffd"
     
     # 1. Generate real run data on the DAQ containers
     await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
-    from datetime import UTC, datetime
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
 
-    from control.transfer.models import TransferJob, TransferNodeSpec
-    
-    job = TransferJob(
-        run_name=run_name,
-        head_data_dir=str(head_data_dir),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
-        daq_nodes=[
-            TransferNodeSpec(
-                ip_addr=n.ip_addr,
-                username=n.username,
-                data_dir=str(n.data_dir),
-                module_ids=n.module_ids,
-                port_forwarding=n.port_forwarding
-            )
-            for n in daq_config.daq_nodes
-        ]
-    )
-
-    async def corrupting_rsync(*args, **kwargs):
+    def rsync_side_effect(*args, **kwargs):
         # Do the real mock copy
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
         
@@ -80,14 +62,9 @@ async def test_manifest_corruption_aborts_cleanup(
             data = bytearray(non_empty_pff_files[0].read_bytes())
             data[0] ^= 0xFF
             non_empty_pff_files[0].write_bytes(data)
-            
-        proc = MagicMock()
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
+        return None
+
+    mock_rsync_transfer.side_effect = rsync_side_effect
 
     # Use a spy to track if CleanupData is called
     cleanup_called = False
@@ -112,8 +89,7 @@ async def test_manifest_corruption_aborts_cleanup(
         client.__aenter__ = mocked_aenter
         return client
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=corrupting_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=wrapped_client_factory):
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=wrapped_client_factory):
          
          success, _err = await _process_job(job, asyncio.Event(), mgr)
          
@@ -130,9 +106,10 @@ async def test_manifest_corruption_aborts_cleanup(
 @pytest.mark.xfail(strict=True, reason="Strict verify requires all digests to match, including the manifest itself")
 async def test_transfer_cleanup_rejected_on_digest_mismatch(
     session_fleet: Any,
-    tmp_path: Path,
     ensure_clean_daq_state: Any,
-    monkeypatch: pytest.MonkeyPatch,
+    mock_rsync_transfer: RsyncMock,
+    isolated_transfer_env: tuple[Path, config_file.DaqConfig],
+    transfer_job_factory: Callable[..., TransferJob],
 ) -> None:
     """
     Scenario: The TransferDaemon passes a manifest_digest to CleanupData, but
@@ -141,43 +118,20 @@ async def test_transfer_cleanup_rejected_on_digest_mismatch(
     Expectation: The cleanup is rejected with FAILED_PRECONDITION, job fails,
     and no files are deleted.
     """
-    fleet, daq_cfg_dict = session_fleet
-    head_data_dir, daq_config = setup_isolated_transfer_env(tmp_path, monkeypatch, daq_cfg_dict)
+    fleet, _ = session_fleet
+    head_data_dir, daq_config = isolated_transfer_env
     run_name = f"xfail_precond_{uuid.uuid4().hex[:8]}.pffd"
     
     await generate_mocked_run(fleet, daq_config, run_name)
     
     mgr = RunStateManager()
-    from datetime import UTC, datetime
+    job = transfer_job_factory(run_name=run_name, head_data_dir=head_data_dir)
 
-    from control.transfer.models import TransferJob, TransferNodeSpec
-    
-    job = TransferJob(
-        run_name=run_name,
-        head_data_dir=str(head_data_dir),
-        head_node_username="panoseti",
-        created_at=datetime.now(UTC),
-        daq_nodes=[
-            TransferNodeSpec(
-                ip_addr=n.ip_addr,
-                username=n.username,
-                data_dir=str(n.data_dir),
-                module_ids=n.module_ids,
-                port_forwarding=n.port_forwarding
-            )
-            for n in daq_config.daq_nodes
-        ]
-    )
-
-    async def normal_rsync(*args, **kwargs):
+    def rsync_side_effect(*args, **kwargs):
         simulate_rsync_from_fleet(fleet, run_name, head_data_dir / run_name)
-        proc = MagicMock()
-        proc.returncode = 0
-        proc.wait = AsyncMock(return_value=0)
-        proc.communicate = AsyncMock(return_value=(b'', b''))
-        proc.stdout.readline = AsyncMock(return_value=b'')
-        proc.stderr.read = AsyncMock(return_value=b'')
-        return proc
+        return None
+
+    mock_rsync_transfer.side_effect = rsync_side_effect
 
     def wrapped_client_factory(*args, **kwargs):
         client = get_mapped_client_factory(daq_config)(*args, **kwargs)
@@ -192,8 +146,7 @@ async def test_transfer_cleanup_rejected_on_digest_mismatch(
         client.__aenter__ = mocked_aenter
         return client
 
-    with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=normal_rsync), \
-         patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=wrapped_client_factory):
+    with patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=wrapped_client_factory):
          
          success, err = await _process_job(job, asyncio.Event(), mgr)
          

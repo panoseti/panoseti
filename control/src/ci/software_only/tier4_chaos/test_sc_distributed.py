@@ -46,7 +46,6 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     import unittest.mock
 
     import control.start as start
-    from control.utils import config_file
     from control.utils.run_state import RunStateManager
     RunStateManager().clear_state()
 
@@ -55,35 +54,51 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     from control.utils.pydantic_config_models import DaqConfig
     
     daq_raw = copy.deepcopy(topology_templates.get("base_daq", {}))
+    # Ensure headnode details for rollback logic
     daq_raw["head_node_ip_addr"] = headnode_ip
+    daq_raw["head_node_data_dir"] = str(tmp_path / "head_data")
     daq_raw["head_node_container"] = True
     # Pair DAQ IPs with modules in coherent subnets to pass Tier-2 validation
     daq_raw["daq_nodes"] = [
-        {"ip_addr": f"192.168.{100+i}.30", "data_dir": os.environ.get("DAQ_DATA_DIR", "/data"), "username": "root", "module_ids": [200+i]}
+        {"ip_addr": f"192.168.{100+i}.30", "data_dir": "/data", "username": "root", "module_ids": [200+i], "bindhost": "lo"}
         for i in range(4)
     ]
     daq_config = DaqConfig(**daq_raw)
 
     # 2. Prepare configurations
-    obs_config = config_file.get_obs_config()
+    from control.utils.pydantic_config_models import (
+        DataConfig,
+        NetworkConfig,
+        ObsConfig,
+        ObsDomeConfig,
+        ObsModuleConfig,
+        QuaboUids,
+    )
     
-    # Use template for quabo_uids
-    from control.utils.pydantic_config_models import QuaboUids
+    obs_cfg_obj = ObsConfig(
+        name="scn003_obs",
+        domes=[ObsDomeConfig(
+            name="dome0", obslat=0, obslon=0, obsalt=0,
+            modules=[
+                ObsModuleConfig(id=200+i, mobo_serialno=f"M{200+i}", ip_addr=f"192.168.{100+i}.{200+i}", timing_mode="wr", quabo_version="qfp")
+                for i in range(4)
+            ]
+        )]
+    )
     
-    # Construct it cleanly from the fleet spec
     uids_dict: dict[str, Any] = {"domes": [{"num": 0, "modules": []}]}
     modules_list = cast(list[dict[str, Any]], uids_dict["domes"][0]["modules"])
     for i in range(4):
         mid = 200 + i
         modules_list.append({
             "id": mid,
-            "ip_addr": f"192.168.{100+i}.{mid}", # Same subnet as DAQ
+            "ip_addr": f"192.168.{100+i}.{mid}",
             "quabos": [{"uid": f"q{mid}_{j}"} if j==0 else {"uid": ""} for j in range(4)]
         })
     quabo_uids = QuaboUids(**uids_dict)
     
-    data_config = config_file.get_data_config()
-    network_config = config_file.get_network_config()
+    data_config = DataConfig(run_type="modified")
+    network_config = NetworkConfig()
 
     
     # 3. Fault Injection: Mock AsyncDaqControlClient
@@ -123,6 +138,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     # 4. Run start_run and observe rollback
     with unittest.mock.patch("control.start.AsyncDaqControlClient", side_effect=create_mock_client), \
          unittest.mock.patch("control.start.config_file.get_daq_config", return_value=daq_config), \
+         unittest.mock.patch("control.start.config_file.get_obs_config", return_value=obs_cfg_obj), \
          unittest.mock.patch("control.start.config_file.get_quabo_uids", return_value=quabo_uids), \
          unittest.mock.patch("control.start.ph_baseline_file_ok", return_value=True), \
          unittest.mock.patch("control.start._check_daq_reachability"), \
@@ -136,7 +152,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
          unittest.mock.patch("control.utils.util.local_ip", return_value=[headnode_ip, "127.0.0.1"]):
         
         success = await start.start_run(
-            obs_config, daq_config, quabo_uids, data_config, network_config,
+            obs_cfg_obj, daq_config, quabo_uids, data_config, network_config,
             no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
         )
         
@@ -261,12 +277,12 @@ def test_SC071_startdaq_latency_scales_with_sequential_loop() -> None:
 # ── SC-075: Head node is also DAQ node (loopback) ────────────────────────────
 
 def test_SC075_head_equals_daq_node_direct_connect(
-    daq_control_direct: DaqControlClient,
+    daq_client: DaqControlClient,
 ) -> None:
     """
     SC-075: head node = DAQ node (loopback config). Pin current behavior.
     """
-    ok, resp = daq_control_direct.StatusDaq({
+    ok, resp = daq_client.StatusDaq({
         "data_dir": DAQ_DATA_DIR,
         "check_hashpipe_running": False,
         "check_disk_usage": False,
@@ -280,19 +296,15 @@ def test_SC075_head_equals_daq_node_direct_connect(
 @pytest.mark.parametrize("n_nodes", [2])
 def test_SCN001_sequential_start_latency_scales_linearly(
     n_nodes: int,
-    daq_control_direct: DaqControlClient,
-    daq_control_node2: DaqControlClient,
+    daq_client: DaqControlClient,
+    daq_client_2: DaqControlClient,
     daqnode_ip: str,
     daqnode2_ip: str,
 ) -> None:
     """
     SC-N001: Measure total wall time for sequential StartDaq to N nodes.
-    The time should scale linearly with N (each node is started in series).
-    This documents the CURRENT behavior; SC-N002 proves the async fix.
-
-    N=2 uses the existing fixed containers (no dynamic fleet needed).
     """
-    clients = [daq_control_direct, daq_control_node2][:n_nodes]
+    clients = [daq_client, daq_client_2][:n_nodes]
     run_dirs = [f"scn001_{uuid.uuid4().hex[:8]}.pffd" for _ in range(n_nodes)]
 
     t0 = time.monotonic()
@@ -326,29 +338,24 @@ def test_SCN001_sequential_start_latency_scales_linearly(
                 })
 
     assert elapsed < 30.0, f"StartDaq for {n_nodes} nodes took {elapsed:.1f}s — check for hangs"
-    # Document the measured time for comparison with async variant (SC-N002)
     print(f"\nSC-N001 ({n_nodes} nodes): sequential StartDaq wall time = {elapsed:.3f}s")
 
 
 @pytest.mark.parametrize("n_nodes", [2])
 def test_SCN002_parallel_start_is_faster_than_sequential(
     n_nodes: int,
-    daq_control_direct: DaqControlClient,
-    daq_control_node2: DaqControlClient,
+    daq_client: DaqControlClient,
+    daq_client_2: DaqControlClient,
     daqnode_ip: str,
     daqnode2_ip: str,
 ) -> None:
     """
-    SC-N002: asyncio.gather StartDaq to N nodes should be ~fastest-node,
-    not sum-of-all-nodes.
-
-    FAILS RED TODAY: start_recording in start.py is sequential.
-    Fix: refactor start_recording to use asyncio.gather.
+    SC-N002: asyncio.gather StartDaq to N nodes should be ~fastest-node.
     """
     import asyncio
     import concurrent.futures
 
-    clients = [daq_control_direct, daq_control_node2][:n_nodes]
+    clients = [daq_client, daq_client_2][:n_nodes]
     run_dirs = [f"scn002_{uuid.uuid4().hex[:8]}.pffd" for _ in range(n_nodes)]
     started = []
 
@@ -394,7 +401,6 @@ def test_SCN002_parallel_start_is_faster_than_sequential(
                 })
 
     print(f"\nSC-N002 ({n_nodes} nodes): parallel StartDaq wall time = {elapsed_parallel:.3f}s")
-    # No strict timing assertion — this is a measurement test that documents parallelism gains
 
 
 # ── SC-070: 3 DAQ nodes, node 1 drops during StopDaq ────────────────────────
@@ -460,16 +466,12 @@ def test_SC074_module_migration_between_daq_nodes() -> None:
 # ── SC-076: Head node separate from DAQ nodes (contract test) ────────────────
 
 def test_SC076_head_node_separate_from_daq_connected(
-    daq_control_direct: DaqControlClient,
+    daq_client: DaqControlClient,
 ) -> None:
     """
-    SC-076: In the default topology, the head node (where pytest runs) is
-    separate from the DAQ nodes. StatusDaq must succeed, confirming the
-    separate head/DAQ topology works.
-
-    Not TDD-forcing — pins the default topology contract.
+    SC-076: In the default topology, the head node is separate from the DAQ nodes.
     """
-    ok, resp = daq_control_direct.StatusDaq({
+    ok, resp = daq_client.StatusDaq({
         "data_dir": DAQ_DATA_DIR,
         "check_hashpipe_running": False,
         "check_disk_usage": False,
@@ -508,26 +510,20 @@ def test_SC078_mixed_direct_and_forwarded_topology() -> None:
 # ── SC-079: module.config write race regression ───────────────────────────────
 
 def test_SC079_two_daqnodes_have_separate_data_volumes(
-    daq_control_direct: DaqControlClient,
-    daq_control_node2: DaqControlClient,
+    daq_client: DaqControlClient,
+    daq_client_2: DaqControlClient,
 ) -> None:
     """
-    SC-079: daqnode and daqnode-2 have separate data volumes (daq_data and
-    daq_data_2 in docker-compose.integration.yml). A write to module.config
-    on node-1 must not affect node-2's data directory.
-
-    Pins the volume-isolation regression (already fixed in compose; this
-    test ensures it doesn't regress).
+    SC-079: daqnode and daqnode-2 have separate data volumes.
     """
-
     # Ask both nodes for their data dir status — must succeed independently
-    ok1, resp1 = daq_control_direct.StatusDaq({
+    ok1, resp1 = daq_client.StatusDaq({
         "data_dir": DAQ_DATA_DIR,
         "check_hashpipe_running": False,
         "check_disk_usage": False,
         "check_run_dirs": False,
     })
-    ok2, resp2 = daq_control_node2.StatusDaq({
+    ok2, resp2 = daq_client_2.StatusDaq({
         "data_dir": DAQ_DATA_DIR,
         "check_hashpipe_running": False,
         "check_disk_usage": False,
@@ -556,15 +552,13 @@ def test_SC080_server_sighup_reloads_config_without_dropping_connections() -> No
 @pytest.mark.asyncio
 async def test_SCN006_telemetry_volume_scales_with_n_nodes(
     n_nodes: int,
-    daq_control_direct: DaqControlClient,
-    daq_control_node2: DaqControlClient,
+    daq_client: DaqControlClient,
+    daq_client_2: DaqControlClient,
     daqnode_ip: str,
     daqnode2_ip: str,
 ) -> None:
     """
     SC-N006: Compare Redis log queue depth after N-node run.
-    Ensures RedisBatcher keeps up with N concurrent log producers.
-    Skipped if telemetry tests are disabled.
     """
     if os.getenv("ENABLE_TELEMETRY_TESTS", "").strip() != "1":
         pytest.skip("Set ENABLE_TELEMETRY_TESTS=1 to run telemetry scaling tests")
@@ -580,11 +574,10 @@ async def test_SCN006_telemetry_volume_scales_with_n_nodes(
         pytest.skip(f"Redis unavailable: {e}")
 
     import typing
-    from typing import Any
     # Measure queue depth before and after a short run
     depth_before = await typing.cast(Any, rc.llen("logs:ingress"))
 
-    clients = [daq_control_direct, daq_control_node2][:n_nodes]
+    clients = [daq_client, daq_client_2][:n_nodes]
     run_dirs = [f"scn006_{uuid.uuid4().hex[:8]}.pffd" for _ in range(n_nodes)]
     started = []
 

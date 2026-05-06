@@ -9,39 +9,17 @@ import asyncio
 import contextlib
 import pathlib
 from datetime import UTC, datetime
-from ipaddress import ip_address
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from control.transfer.daemon import run_daemon
 from control.transfer.lifecycle import MAX_ATTEMPTS
-from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.models import TransferJob
 from control.transfer.queue import TransferQueue
 from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateLedger, RunStatus
 
-
-def _make_job(run_name: str, tmp_path: pathlib.Path, attempts: int = 0) -> TransferJob:
-    node = TransferNodeSpec(
-        ip_addr=ip_address("192.168.0.10"),
-        username="root",
-        data_dir=str(tmp_path / "data"),
-        module_ids=[250],
-        port_forwarding=None,
-    )
-    return TransferJob(
-        run_name=run_name,
-        head_data_dir=str(tmp_path / "head"),
-        head_node_username="root",
-        created_at=datetime.now(UTC),
-        attempts=attempts,
-        daq_nodes=[node],
-    )
-
-def _enqueue(tq: TransferQueue, job: TransferJob) -> None:
-    pending_path = tq._queue / "pending" / f"{job.run_name}.job.toml"
-    tq._write_job(pending_path, job)
 
 async def _run_daemon_until(
     done_pred: object,
@@ -62,7 +40,12 @@ async def _run_daemon_until(
         await task
 
 @pytest.mark.asyncio
-async def test_transfer_daemon_ledger_sync(mock_workspace, tmp_path: pathlib.Path) -> None:
+async def test_transfer_daemon_ledger_sync(
+    mock_workspace, 
+    tmp_path: pathlib.Path,
+    transfer_queue: TransferQueue,
+    transfer_job_factory: Callable[..., TransferJob],
+) -> None:
     # mock_workspace already sets up PSETI_STATE and creates runs/ dir via PanoPaths.ensure_dirs()
     state_dir = PanoPaths.state_dir()
     
@@ -72,9 +55,9 @@ async def test_transfer_daemon_ledger_sync(mock_workspace, tmp_path: pathlib.Pat
     ledger_obj = RunStateLedger(run_name="r1", status=RunStatus.RECORDING_ENDED, start_time=datetime.now(UTC).isoformat(), nodes=[])
     state_mgr.save_state(ledger_obj)
 
-    tq = TransferQueue(queue_dir=PanoPaths.transfer_queue_dir())
-    job = _make_job("r1", tmp_path)
-    _enqueue(tq, job)
+    tq = transfer_queue
+    job = transfer_job_factory(run_name="r1", head_data_dir=tmp_path / "head")
+    tq.enqueue(job)
 
     with patch("control.transfer.daemon._process_job", new_callable=AsyncMock) as mock_process:
         mock_process.return_value = (False, "rsync_blackbox_error")

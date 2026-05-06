@@ -10,7 +10,6 @@ Probes the depth of non-trivial transactional root causes:
 from __future__ import annotations
 
 import errno
-import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -67,18 +66,15 @@ def test_realistic_palomar_topology_passes_validation() -> None:
 
 @pytest.mark.asyncio
 async def test_start_rollback_continues_on_erofs_archival_failure(
-    tmp_path: pathlib.Path,
+    mock_workspace: Path,
     caplog: pytest.LogCaptureFixture
 ) -> None:
     """Verify that StartTransaction rollback ladder completes even if /data is read-only."""
-    from control.utils.pydantic_config_models import DaqConfig, QuaboUids
+    from control.utils.pydantic_config_models import QuaboUids
     
-    state_mgr = RunStateManager(base_dir=tmp_path)
-    daq_cfg = DaqConfig(
-        head_node_ip_addr="127.0.0.1",
-        head_node_data_dir=str(tmp_path / "data"),
-        daq_nodes=[]
-    )
+    # mock_workspace isolates PSETI_STATE
+    state_mgr = RunStateManager()
+    daq_cfg = config_file.get_daq_config()
     uids = QuaboUids(domes=[])
     net = MagicMock()
     
@@ -137,26 +133,17 @@ async def test_cleanup_refused_on_uncertain_liveness_without_force() -> None:
 
 @pytest.mark.asyncio
 async def test_stop_run_bypasses_enqueue_on_fundamental_failure(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch
+    mock_workspace: Path,
 ) -> None:
     """Verify that StopTransaction does NOT enqueue a transfer job if a crash occurs in the ladder."""
-    from control.utils.pydantic_config_models import DaqConfig, NetworkConfig, QuaboUids
+    from control.utils.pydantic_config_models import NetworkConfig, QuaboUids
     
-    # Use environment override to force all RunStateManagers to use tmp_path
-    monkeypatch.setenv("PSETI_STATE", str(tmp_path))
+    # mock_workspace already isolates PSETI_STATE and creates standard subdirs
+    state_mgr = RunStateManager()
     
-    state_mgr = RunStateManager() # Now uses tmp_path via env
-    (tmp_path / "runs").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "locks").mkdir(parents=True, exist_ok=True)
-    
-    daq_cfg = DaqConfig(
-        head_node_ip_addr="127.0.0.1",
-        head_node_data_dir=str(tmp_path / "data"),
-        daq_nodes=[]
-    )
+    daq_cfg = config_file.get_daq_config()
     run_name = "myrun.pffd"
-    (tmp_path / "data" / run_name).mkdir(parents=True, exist_ok=True)
+    (Path(daq_cfg.head_node_data_dir) / run_name).mkdir(parents=True, exist_ok=True)
     
     # Pre-write an ACTIVE ledger
     ledger = RunStateLedger(

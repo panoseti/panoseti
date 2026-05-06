@@ -139,7 +139,7 @@ def _check_requirements(
         if not fnmatch.fnmatch(node_id, req["glob"]):
             continue
         if topology is None:
-            return "HwTopology unavailable"
+            return "ObservatoryTopology unavailable"
         result = topology.gate(node_id, req)
         if result is not True:
             return str(result)
@@ -148,8 +148,8 @@ def _check_requirements(
 
 def _try_load_topology() -> Any:
     try:
-        from ci.hardware_software.hw_utils.topology import HwTopology
-        return HwTopology()
+        from ci.fixtures.topology_fixtures import ObservatoryTopology
+        return ObservatoryTopology()
     except Exception as exc:
-        logger.debug("HwTopology load failed: %s", exc)
+        logger.debug("ObservatoryTopology load failed: %s", exc)
         return None

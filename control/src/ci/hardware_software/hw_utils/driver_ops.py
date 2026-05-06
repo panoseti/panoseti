@@ -12,7 +12,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 
-from ci.hardware_software.hw_utils.topology import HwTopology
+from ci.fixtures.topology_fixtures import ObservatoryTopology
 from control.utils import util
 
 logger = logging.getLogger(__name__)
@@ -128,7 +128,7 @@ def calibrate_ph(**kwargs) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def check_all_reachable(topo: HwTopology) -> list[str]:
+def check_all_reachable(topo: ObservatoryTopology) -> list[str]:
     """Return error strings for each quabo that fails util.ping (command port).
     
     Performs parallel pings across the topology.

@@ -1,16 +1,23 @@
 """
+ci/fixtures/topology_fixtures.py
+
 Hardware Topology adapter.
 Loads obs/daq/network configs and derives hardware capabilities for test gating.
+Works for both software Docker fleets and real hardware physical layouts.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from control.utils.util import attach_daq_config
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class QuaboAddr:
@@ -28,6 +35,8 @@ class DaqNode:
     host: str          # raw internal IP (display/logging)
     real_host: str     # gateway IP if port-forwarded, else == host
     ssh_port: int      # SSH port (forwarded or default 22)
+    grpc_port: int     # gRPC port (forwarded or default 50051)
+    data_dir: str      # DAQ-side data root (e.g. /data)
     module_ids: list[int]
     username: str = "panoseti"
 
@@ -39,7 +48,7 @@ class WpsOutlet:
     quabo_socket: int
 
 
-class HwTopology:
+class ObservatoryTopology:
     """
     Reads the active observatory configs and exposes hardware topology.
 
@@ -95,14 +104,18 @@ class HwTopology:
             if pf is None or pf.status is False:
                 real_host = host
                 ssh_port = 22
+                grpc_port = 50051
             else:
                 real_host = str(pf.gw_ip)
                 ssh_port = 22 if pf.port is None else int(pf.port)
+                grpc_port = 50051 if pf.grpc_port is None else int(pf.grpc_port)
                 
             result.append(DaqNode(
                 host=host,
                 real_host=real_host,
                 ssh_port=ssh_port,
+                grpc_port=grpc_port,
+                data_dir=str(node.data_dir),
                 module_ids=node.module_ids,
                 username=node.username,
             ))
@@ -174,3 +187,9 @@ class HwTopology:
             return f"Need ≥{min_daq} DAQ nodes, found {len(self.daq_nodes())}"
 
         return True
+
+
+@pytest.fixture
+def topology() -> ObservatoryTopology:
+    """The universal observatory topology source of truth."""
+    return ObservatoryTopology()

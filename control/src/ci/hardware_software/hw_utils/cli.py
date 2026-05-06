@@ -41,8 +41,8 @@ def _get_sm():
 
 
 def _get_topology():
-    from ci.hardware_software.hw_utils.topology import HwTopology
-    return HwTopology()
+    from ci.fixtures.topology_fixtures import ObservatoryTopology
+    return ObservatoryTopology()
 
 
 def _read_state() -> str | None:

@@ -31,10 +31,10 @@ def quabos_responsive(retries: int = 5, delay_s: float = 5.0) -> bool:
         import ipaddress
         from concurrent.futures import ThreadPoolExecutor
 
-        from ci.hardware_software.hw_utils.topology import HwTopology
+        from ci.fixtures.topology_fixtures import ObservatoryTopology
         from control.utils import util
         
-        topo = HwTopology()
+        topo = ObservatoryTopology()
         quabo_addrs = list(topo.quabo_ips())
         if not quabo_addrs:
             return True

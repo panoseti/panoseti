@@ -621,9 +621,9 @@ async def start_recording(
         
         grpc_host, grpc_port = util.daq_grpc_endpoint(node_validator, daq_config)
         
-        # Retry loop: 5 attempts, 1s backoff
+        # Retry loop: N attempts, 1s backoff
         last_err = ""
-        for attempt in range(1, 6):
+        for attempt in range(1, startdaq_retries + 1):
             if cancel_event.is_set():
                 raise asyncio.CancelledError("Heartbeat check cancelled by user")
             
@@ -657,13 +657,13 @@ async def start_recording(
             except Exception as e:
                 last_err = str(e)
             
-            logger.warning(f"Heartbeat attempt {attempt} failed for {node_validator.ip_addr}: {last_err}")
+            logger.warning(f"Heartbeat attempt {attempt}/{startdaq_retries} failed for {node_validator.ip_addr}: {last_err}")
 
         # If we reach here, all retries failed
         await state_mgr.update_node_receipt(NodeReceipt(
             ip_addr=node_validator.ip_addr,
             status=NodeStatus.START_FAILED,
-            message=f"Heartbeat failed after 5 attempts: {last_err}"
+            message=f"Heartbeat failed after {startdaq_retries} attempts: {last_err}"
         ))
         raise RuntimeError(f"Hashpipe heartbeat check failed on node {node_validator.ip_addr}: {last_err}")
 
@@ -1164,7 +1164,7 @@ async def start_run(
                 logger.info('starting recording (Phase 3: Transactional)')
                 await start_recording(
                     obs_config, data_config, daq_config, run_name, no_hv, state_mgr, cancel_event, tx,
-                    startdaq_timeout=10.0, startdaq_retries=3
+                    startdaq_timeout=10.0, startdaq_retries=heartbeat_timeout if heartbeat_timeout is not None else 15
                 )
                 # Init & check daq_data servers
                 try:

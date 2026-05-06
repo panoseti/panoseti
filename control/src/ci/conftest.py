@@ -32,6 +32,11 @@ pytest_plugins = [
     "ci.fixtures.workspace_fixtures",
     "ci.fixtures.network_fixtures",
     "ci.fixtures.data_fixtures",
+    "ci.fixtures.topology_fixtures",
+    "ci.fixtures.client_fixtures",
+    "ci.fixtures.rsync_fixtures",
+    "ci.fixtures.transfer_fixtures",
+    "ci.fixtures.chaos_fixtures",
 ]
 
 
