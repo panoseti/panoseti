@@ -178,23 +178,28 @@ class InterleaveController:
             self.keep_running = False
 
     def _broadcast_acq_mode(self, daq_params: quabo_driver.DAQ_PARAMS) -> None:
-        """Broadcast acquisition mode parameters to all Quabos in parallel.
+        """Broadcast acquisition mode parameters to all Quabos.
+        
+        Broadcasts are performed sequentially across modules.
 
         Args:
             daq_params: The Quabo-level DAQ parameters to send.
         """
         if self.dry_run:
+            #logger.info(f"[DRY-RUN] Simulating ACQ broadcast: do_image={daq_params.do_image}, do_ph={daq_params.do_ph}")
             return
 
-        from concurrent.futures import ThreadPoolExecutor
-        
-        all_quabos = [q for quabos in self.quabos.values() for q in quabos]
-        if not all_quabos:
-            return
-
-        with ThreadPoolExecutor(max_workers=len(all_quabos)) as executor:
-            # Dispatch pings in parallel
-            executor.map(lambda q: q.send_daq_params(daq_params), all_quabos)
+        def send_acq_mode_to_module(module_id: int) -> None:
+            """Sequentially broadcast ACQ mode to Quabos in the Q0, Q1, Q2, Q3 order."""
+            quabos = self.quabos[module_id]
+            for q in quabos:
+                q.send_daq_params(daq_params)
+        #futures = []
+        for mid in self.quabos:
+            #futures.append(self.executor.submit(send_acq_mode_to_module, mid))
+            send_acq_mode_to_module(mid)
+        #for f in as_completed(futures):
+        #    f.result()
 
     def _reconfigure_quabos(self, next_state_data_config: DataConfig) -> None:
         """Reconfigure MAROC and FPGA registers for a specific observing mode.
