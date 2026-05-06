@@ -45,7 +45,7 @@ async def test_SCN003_partial_start_rollback_4_nodes(
     """
     import unittest.mock
 
-    import control.start as start
+    from control.start import start_run
     from control.utils.run_state import RunStateManager
     RunStateManager().clear_state()
 
@@ -151,10 +151,11 @@ async def test_SCN003_partial_start_rollback_4_nodes(
          unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=[headnode_ip, "127.0.0.1"]):
         
-        success = await start.start_run(
+        success = await start_run(
             obs_cfg_obj, daq_config, quabo_uids, data_config, network_config,
             no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
         )
+
         
         assert not success, "start_run should fail due to Node 2 partial failure"
 
@@ -177,7 +178,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
     """
     import unittest.mock
 
-    import control.start as start
+    from control.start import start_run
     from control.utils import config_file
     from control.utils.pydantic_config_models import (
         DaqConfig,
@@ -250,7 +251,7 @@ async def test_SC069_partial_start_3_nodes_rolls_back(
          unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=["127.0.0.1", headnode_ip]):
         
-        success = await start.start_run(
+        success = await start_run(
             obs_config, daq_config, quabo_uids, data_config, network_config,
             no_hv=True, no_redis=True, no_data=False, strict=False
         )

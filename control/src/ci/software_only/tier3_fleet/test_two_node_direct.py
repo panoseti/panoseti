@@ -13,10 +13,12 @@ from __future__ import annotations
 import contextlib
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from ci.fixtures.fleet import Fleet
 from ci.software_only.conftest import wait_hashpipe_stopped
 from ci.software_only.tier3_fleet.conftest import (
     BINDHOST,

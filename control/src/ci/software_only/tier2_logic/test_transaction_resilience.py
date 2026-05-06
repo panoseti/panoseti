@@ -10,12 +10,14 @@ Probes the depth of non-trivial transactional root causes:
 from __future__ import annotations
 
 import errno
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from control.start import StartTransaction
 from control.stop import stop_run
+from control.utils import config_file
 from control.utils.run_state import RunStateLedger, RunStateManager, RunStatus
 
 # ── 1. Validation Resilience ──────────────────────────────────────────────────

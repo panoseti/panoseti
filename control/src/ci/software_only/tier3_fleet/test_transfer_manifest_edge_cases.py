@@ -7,6 +7,7 @@ verification and selective cleanup contracts.
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -20,6 +21,8 @@ from ci.software_only.tier3_fleet.transfer_testing_utils import (
     simulate_rsync_from_fleet,
 )
 from control.transfer.daemon import _process_job
+from control.transfer.models import TransferJob
+from control.utils import config_file
 from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
 

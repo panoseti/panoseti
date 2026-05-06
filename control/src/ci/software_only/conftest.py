@@ -28,6 +28,9 @@ pytest_plugins = [
     "ci.fixtures.rsync_fixtures",
     "ci.fixtures.transfer_fixtures",
     "ci.fixtures.chaos_fixtures",
+    "ci.fixtures.fleet",
+    "ci.fixtures.state_probe",
+    "ci.fixtures.mocks",
 ]
 
 
@@ -224,10 +227,11 @@ def session_fleet(auto_isolate) -> Iterator[tuple[Fleet, dict[str, Any]]]:
     fleet.tear_down()
 
 @pytest.fixture(scope="session")
-def topology(session_fleet) -> ObservatoryTopology:
+def topology(session_fleet):
     """Universal topology source of truth, pinned to the session fleet."""
     from ci.fixtures.topology_fixtures import ObservatoryTopology
-    return ObservatoryTopology()
+    _, daq_cfg = session_fleet
+    return ObservatoryTopology(daq_cfg)
 
 @pytest.fixture(scope="session")
 def daqnode_container(session_fleet) -> Any:
@@ -235,7 +239,8 @@ def daqnode_container(session_fleet) -> Any:
     return fleet.containers[0].get_wrapped_container()
 
 @pytest.fixture(scope="session")
-def daq_control_gateway(session_fleet) -> DaqControlClient:
+def daq_control_gateway(session_fleet):
+    from panoseti_grpc.daq_control.client import DaqControlClient
     fleet, _daq_cfg = session_fleet
     spec = fleet.specs[0]
     return DaqControlClient(host=spec.container_host_ip, port=spec.mapped_port)

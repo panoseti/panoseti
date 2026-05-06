@@ -13,22 +13,31 @@ import asyncio
 import contextlib
 import os
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from panoseti_grpc.daq_control.client import DaqControlClient
 
 # ---------------------------------------------------------------------------
 # Docker-based Integration Tests
 # ---------------------------------------------------------------------------
 from ci.fixtures.fleet import Fleet
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only.tier3_fleet.transfer_testing_utils import (
+    generate_mocked_run,
+    get_mapped_client_factory,
+    simulate_rsync_from_fleet,
+    verify_head_node_accuracy,
+)
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils import config_file
 from control.utils.paths import PanoPaths
+from control.utils.pydantic_config_models import RunStatus
 from control.utils.run_state import RunStateManager
 
 
@@ -67,7 +76,7 @@ def _prepare_container_dirs(fleet: Fleet, run_dir: str) -> None:
                 os.chmod(f_path, 0o666)
 
 
-def copy_run_dir_from_fleet(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:
+def copy_run_dir(fleet: Fleet, run_dir: str, head_data_dir: Path) -> bool:
     """Mock rsync by copying from all isolated container volumes to head node.
     Simulates the inclusive rsync which pulls from both root and module directories.
     """
@@ -119,8 +128,11 @@ async def test_transfer_daemon_archives_run(
     E2E happy path: Start Run → Stop Run (enqueue) → daemon processes job → ARCHIVED.
     """
     fleet, _ = session_fleet
-    head_data_dir, daq_config = isolated_transfer_env
+    _head_data_dir, daq_config = isolated_transfer_env
+    # Assign daq_config to a local variable that can be seen by the function scope
+    daq_config = daq_config
     run_name = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
+
     
     # 1. Start and Stop run via generate_mocked_run helper
     # This automatically calls pseti start/stop logic and enqueues a TransferJob.
@@ -148,7 +160,7 @@ async def test_transfer_daemon_archives_run(
     # 2. Verify Final State
     ledger = mgr.load_state()
     assert ledger and ledger.status == RunStatus.ARCHIVED
-    verify_head_node_accuracy(head_data_dir, run_name, expected_data)
+    verify_head_node_accuracy(Path(_head_data_dir), run_name, expected_data)
 
 
 @pytest.mark.asyncio
@@ -167,7 +179,7 @@ async def test_transfer_daemon_resumes_after_crash(
     from ci.software_only.conftest import wait_hashpipe_running
     from ci.software_only.tier4_chaos.conftest import _start as grpc_start
 
-    head_data_dir, daq_config = isolated_transfer_env
+    _head_data_dir, daq_config = isolated_transfer_env
     run_name = f"ci_daemon_{uuid.uuid4().hex[:8]}.pffd"
     
     RunStateManager().clear_state()
@@ -361,6 +373,13 @@ async def test_transfer_daemon_marks_failed_after_max_attempts(
             if str(node.ip_addr) == host:
                 return AsyncDaqControlClient(host=node.port_forwarding.gw_ip, port=node.port_forwarding.grpc_port)
         return AsyncDaqControlClient(host=host, port=port)
+
+    async def _mock_subprocess_fail(*args, **kwargs):
+        proc = MagicMock()
+        proc.returncode = 1
+        proc.communicate = AsyncMock(return_value=(b"", b"rsync failed"))
+        proc.wait = AsyncMock(return_value=1)
+        return proc
 
     with patch("control.transfer.daemon.asyncio.create_subprocess_exec", side_effect=_mock_subprocess_fail), \
          patch("panoseti_grpc.daq_control.client.AsyncDaqControlClient", side_effect=_get_mapped_client):

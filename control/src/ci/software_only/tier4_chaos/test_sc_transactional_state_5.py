@@ -334,7 +334,7 @@ if __name__ == "__main__":
 @pytest.mark.asyncio
 async def test_SC015_stale_ledger_self_heal(
     daq_control_direct: DaqControlClient,
-    run_params: dict[str, Any],
+    run_params: dict,
     tmp_path: pathlib.Path,
 ) -> None:
     """
@@ -345,8 +345,9 @@ async def test_SC015_stale_ledger_self_heal(
     import socket
     from datetime import UTC, datetime
 
-    import control.start as start
+    from control.start import start_run
     from control.utils import config_file, util
+
     from control.utils.pydantic_config_models import RunStateLedger
     from control.utils.run_state import RunStateManager
 

@@ -25,6 +25,7 @@ import pathlib
 import sys
 import tomllib
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from types import ModuleType

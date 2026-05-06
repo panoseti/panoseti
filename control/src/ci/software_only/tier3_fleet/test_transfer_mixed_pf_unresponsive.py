@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 import random
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch

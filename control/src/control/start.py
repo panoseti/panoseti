@@ -48,7 +48,6 @@ from panoseti_grpc.telemetry.logger import get_logger
 
 # control imports
 import control.session_stop as session_stop
-import control.stop as stop
 from control.driver import quabo_driver
 from control.tools.sw_info import get_sw_info
 from control.utils import config_file, file_xfer, pff, util
@@ -58,6 +57,7 @@ from control.utils.pydantic_config_models import (
     DaqNode,
     DataConfig,
     NetworkConfig,
+    NodeReceipt,
     NodeStatus,
     ObsConfig,
     QuaboUids,
@@ -67,7 +67,6 @@ from control.utils.pydantic_config_models import (
 from control.utils.run_state import (
     STATE_FILE_STALE,
     LockError,
-    NodeReceipt,
     RunStateManager,
     ValidationError,
 )
@@ -296,11 +295,11 @@ def ph_baseline_file_ok(path: pathlib.Path | str | None = None) -> bool:
         except FileNotFoundError:
             print('PH baseline file not found.  Run config.py --calibrate-ph')
             return False
-    else:
-        path = pathlib.Path(path)
-        if not path.exists():
-            print(f'{path} not found.  Run config.py --calibrate-ph')
-            return False
+
+    path = pathlib.Path(path)
+    if not path.exists():
+        print(f'{path} not found.  Run config.py --calibrate-ph')
+        return False
 
     # Common checks for the resolved path
     if path.stat().st_size == 0:
@@ -974,6 +973,7 @@ async def start_run(
     strict: bool | None = None,
     force_restart: bool = False,
     init_snapshot: bool = True,
+    heartbeat_timeout: int | None = None,
 ) -> str | None:
     """Main transactional run coordinator.
 
@@ -1275,6 +1275,7 @@ async def async_main_logic(
     network_config = config_file.get_network_config()
     util.attach_daq_config(daq_config, network_config)
 
+    assert quabo_uids is not None, "QuaboUids cannot be None at this stage"
     success_run_name = await start_run(
         obs_config, daq_config, quabo_uids, data_config,
         network_config, no_hv, no_redis, no_data, force_reset,
@@ -1287,6 +1288,7 @@ async def async_main_logic(
 
     if success_run_name and nsecs:
         await asyncio.sleep(nsecs)
+        import control.stop as stop
         await stop.stop_run(
             daq_config, 
             network_config, 

@@ -1,5 +1,6 @@
 import os
 import pathlib
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -7,6 +8,7 @@ from panoseti_grpc.daq_control.client import DaqControlClient
 
 from ci.fixtures.state_probe import StateProbe
 from ci.software_only.qa_utils import get_isolated_env
+from control.utils.paths import PanoPaths
 
 
 class TestPartialStartRollback:
@@ -28,15 +30,18 @@ class TestPartialStartRollback:
         """
         import unittest.mock
         from ipaddress import IPv4Address
+        from pathlib import Path
         from typing import Any as AnyT
 
         from panoseti_grpc.daq_control.client import AsyncDaqControlClient as _DaqClient
 
-        import control.start as start
+        from control.start import start_run
         from control.utils import config_file
         from control.utils import util as _util
+        from control.utils.paths import PanoPaths
         from control.utils.pydantic_config_models import DaqNode
         from control.utils.run_state import NodeReceipt, RunStateManager
+
 
         # mock_workspace already isolates PSETI_STATE and creates standard subdirs
         RunStateManager().clear_state()
@@ -115,7 +120,7 @@ class TestPartialStartRollback:
              unittest.mock.patch("control.start.util.kill_hv_updater"), \
              unittest.mock.patch("control.start.util.kill_module_temp_monitor"), \
              unittest.mock.patch("control.start.util.stop_data_flow"):
-            success = await start.start_run(
+            success = await start_run(
                 obs_config, daq_config, quabo_uids, data_config, network_config,
                 no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
             )

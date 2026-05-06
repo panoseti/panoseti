@@ -6,6 +6,7 @@ Covers chaos recovery, scale, queue depth, and lifecycle resilience.
 import asyncio
 import contextlib
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch

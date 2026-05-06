@@ -24,7 +24,6 @@ from panoseti_grpc.util.cli import BaseLazyGroup
 
 from control.driver import quabo_driver
 from control.driver.quabo_tftp import tftpw
-from control.tools.interleave import INTERLEAVE_LOCK_PATH
 from control.utils import config_file, file_xfer, pixel_coords, util
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import (
@@ -943,6 +942,7 @@ def do_shutter(action: str) -> None:
 
 def do_start_interleave() -> None:
     """Starts the interleaver process in the background. (SC-034b: Prevents duplicate daemons)"""
+    from control.tools.interleave import INTERLEAVE_LOCK_PATH
     if os.path.exists(INTERLEAVE_LOCK_PATH):
         logger.error("ERROR: Interleave daemon is already running (PID file exists). Stop it first.")
         sys.exit(1)
@@ -966,6 +966,7 @@ def do_start_interleave() -> None:
 
 def do_stop_interleave() -> None:
     """Gracefully stops the background interleaver if it is running."""
+    from control.tools.interleave import INTERLEAVE_LOCK_PATH
     if not os.path.exists(INTERLEAVE_LOCK_PATH):
         logger.info("No active interleave process found (PID file missing).")
         return # Return instead of sys.exit(0) so other scripts can call this safely

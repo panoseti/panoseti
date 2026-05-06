@@ -146,7 +146,7 @@ def _stop_patches(state_mgr: RunStateManager):
         return_value=mock_async_client,
     ))
 
-    stack.enter_context(patch("control.stop.make_links", return_value=None))
+    # stack.enter_context(patch("control.stop.make_links", return_value=None))
     # Redirect RunStateManager to our tmp_path-based instance
     stack.enter_context(patch("control.stop.RunStateManager", return_value=state_mgr))
     return stack

@@ -336,7 +336,6 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
 
     import grpc
 
-    import control.start as start
     from control.utils import config_file
 
     daq_config = config_file.get_daq_config()
@@ -356,9 +355,9 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
         node.module_ids = []
     daq_config.head_node_container = True
 
+    from control.start import start_run
     from control.utils.run_state import RunStateManager
     RunStateManager().clear_state()
-
     # Mock StartDaq:
     # 1. First call: raise grpc.RpcError with UNAVAILABLE
     # 2. Second call: return True (Success)
@@ -398,7 +397,7 @@ async def test_SC004_startdaq_transient_unavailable_succeeds_on_retry(
          unittest.mock.patch("control.start.util.stop_data_flow"), \
          unittest.mock.patch("control.utils.util.local_ip", return_value=["127.0.0.1", str(daq_config.head_node_ip_addr)]):
         
-        success = await start.start_run(
+        success = await start_run(
             obs_config, daq_config, quabo_uids, data_config, network_config,
             no_hv=True, no_redis=True, no_data=False, force_reset=True, strict=False
         )

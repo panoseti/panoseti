@@ -7,6 +7,7 @@ a successful transfer and verification.
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch

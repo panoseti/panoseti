@@ -20,6 +20,7 @@ import shutil
 import signal
 import sys
 import time
+from datetime import UTC, datetime
 from glob import glob
 from typing import Any
 
@@ -136,6 +137,7 @@ class StopTransaction:
             # fall through so the teardown ladder always executes.  An early return
             # here would leave DAQ nodes and Quabos running.
             if exc_type is not None:
+                self.last_exception = str(exc_val)
                 logger.error(f"[CRITICAL FAILURE] Stop transaction entered with exception: {exc_val}. "
                              "Continuing teardown ladder to avoid leaving hardware in a running state.")
 
@@ -198,15 +200,19 @@ class StopTransaction:
                     # Construct job
                     job = TransferJob(
                         run_name=self.run,
-                        head_node_data_dir=data_dir,
+                        head_data_dir=data_dir,
+                        head_node_username=__import__('getpass').getuser(),
+                        created_at=datetime.now(UTC),
                         no_cleanup=self.no_cleanup,
                         no_collect=self.no_collect,
                         skip_verify=self.skip_verify,
                         daq_nodes=[
                             TransferNodeSpec(
                                 ip_addr=n.ip_addr,
+                                username=n.username,
                                 data_dir=n.data_dir,
-                                modules=n.module_ids
+                                module_ids=n.module_ids,
+                                port_forwarding=n.port_forwarding
                             )
                             for n in self.daq_config.daq_nodes if n.module_ids
                         ]
@@ -218,7 +224,8 @@ class StopTransaction:
                     logger.info(f"Enqueued run {self.run} for transfer")
 
             # Finalize ledger
-            self.state_mgr.transition(RunStatus.RECORDING_ENDED)
+            final_status = RunStatus.STOPPED_WITH_ERRORS if exc_type is not None else RunStatus.RECORDING_ENDED
+            self.state_mgr.transition(final_status)
             self.success = True
             return True
 
@@ -240,9 +247,9 @@ async def stop_recording(daq_config: DaqConfig, run: str, verbose: bool) -> list
         
         try:
             async with AsyncDaqControlClient(host=grpc_host, port=grpc_port) as client:
-                ok, message = await client.StopDaq({'data_dir': node.data_dir}, timeout=15.0)
+                ok = await client.StopDaq({'data_dir': node.data_dir}, timeout=15.0)
                 if not ok:
-                    errors.append(f"StopDaq failed for {node.ip_addr}: {message}")
+                    errors.append(f"StopDaq failed for {node.ip_addr}")
         except Exception as e:
             errors.append(f"StopDaq error for {node.ip_addr}: {e}")
 
@@ -294,7 +301,9 @@ async def cleanup_daq(daq_config: DaqConfig, run: str, verbose: bool, force: boo
             except Exception:
                 pass
 
-    head_run_dir = f"{daq_config.head_node_data_dir}/{run}" if os.path.exists(f"{daq_config.head_node_data_dir}/{run}") else None
+    from pathlib import Path
+    # ...
+    head_run_dir = f"{daq_config.head_node_data_dir}/{run}" if Path(f"{daq_config.head_node_data_dir}/{run}").exists() else None
 
     async def cleanup_node(node: DaqNode) -> None:
         ip_addr = str(node.ip_addr)
@@ -302,7 +311,7 @@ async def cleanup_daq(daq_config: DaqConfig, run: str, verbose: bool, force: boo
         # Guard: check if collection succeeded for this node if not forced
         # In this legacy mode, we don't have a manifest readily available,
         # so we rely on the existence of the head-side directory.
-        if not force and head_run_dir and not os.path.isdir(f"{head_run_dir}/module_{node.module_ids[0]}"):
+        if not force and head_run_dir and not Path(f"{head_run_dir}/module_{node.module_ids[0]}").is_dir():
             logger.warning(f"Skipping cleanup for node {ip_addr} due to collection failure.")
             return
             
@@ -511,6 +520,7 @@ def main(
         logger.critical(f'Failed to stop interleave: {e}')
 
     # Execute async stop_run
+    assert quabo_uids is not None, "QuaboUids cannot be None at this stage"
     success = asyncio.run(stop_run(
         daq_config, network_config, quabo_uids,
         verbose, effective_no_cleanup, no_collect, run, force_cleanup,

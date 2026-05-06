@@ -11,9 +11,8 @@ from itertools import islice
 
 import pytest
 
-from ci.software_only.conftest import wait_hashpipe_stopped
+from ci.software_only.conftest import wait_hashpipe_stopped, run_params
 from ci.software_only.tier3_fleet.conftest import (
-    copy_run_dir,
     wait_until,
 )
 
@@ -126,7 +125,10 @@ class TestIntegrationRealDataFlow:
         wait_hashpipe_stopped(daq_control_direct, "/data", timeout=15)
 
         # Copy from shared volume
-        assert copy_run_dir(run_params, pathlib.Path(head_data_dir))
+        from ci.software_only.tier3_fleet.test_transfer_daemon_e2e import copy_run_dir
+        assert copy_run_dir(
+            run_params, pathlib.Path(head_data_dir)
+        )
 
         # Cleanup daqnode data
         result = daq_control_direct.CleanupData({

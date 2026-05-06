@@ -27,6 +27,7 @@ import pathlib
 import sys
 import tomllib
 import uuid
+from collections.abc import Callable
 from contextlib import contextmanager
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock

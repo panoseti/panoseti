@@ -28,6 +28,7 @@ import hashlib
 import os
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -162,8 +163,9 @@ class TestSCTX003NetworkDropMidRsync:
     ) -> None:
         from control.transfer.daemon import _process_job
         
-        fleet, _ = session_fleet
-        head_data_dir, daq_config = isolated_transfer_env
+        _fleet, _ = session_fleet
+        _head_data_dir, _daq_config = isolated_transfer_env
+        head_data_dir = _head_data_dir
         run_name = f"sc_tx_003_{uuid.uuid4().hex[:8]}"
         
         # 1. Enqueue job
@@ -219,15 +221,17 @@ class TestSCTX004ManifestMismatch:
     """
 
     @pytest.mark.asyncio
-    async def test_SC_TX_004_corrupted_file_triggers_verify_failed(
+    def test_SC_TX_004_corrupted_file_triggers_verify_failed(
         self, 
         isolated_transfer_env: tuple[Path, DaqConfig],
         mock_rsync_transfer: RsyncMock,
         transfer_queue: TransferQueue,
     ) -> None:
-        head_data_dir, daq_config = isolated_transfer_env
+        head_data_dir, _daq_config = isolated_transfer_env
         run_name = "sc_tx_004"
         head_run = head_data_dir / run_name
+
+
         head_run.mkdir(parents=True, exist_ok=True)
 
         # Write a real file and a matching manifest

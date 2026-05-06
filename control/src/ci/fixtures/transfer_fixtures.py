@@ -32,15 +32,15 @@ def transfer_queue(mock_env) -> TransferQueue:
     return TransferQueue(queue_dir=queue_dir)
 
 @pytest.fixture
-def transfer_job_factory(topology: ObservatoryTopology) -> Callable[..., TransferJob]:
+def transfer_job_factory(topology: ObservatoryTopology, no_collect: bool=False, no_cleanup: bool=False) -> Callable[..., TransferJob]:
     """Returns a factory function for creating valid TransferJob objects.
     Defaults are derived from the active ObservatoryTopology.
     """
     def _make(
         run_name: str | None = None,
         head_data_dir: str | pathlib.Path | None = None,
-        no_collect: bool = False,
-        no_cleanup: bool = False,
+        no_collect: bool = no_collect,
+        no_cleanup: bool = no_cleanup,
         daq_nodes: list[TransferNodeSpec] | None = None,
         bwlimit: int | None = None,
     ) -> TransferJob:
@@ -88,7 +88,7 @@ def transfer_job(transfer_job_factory) -> TransferJob:
 @pytest.fixture
 def isolated_transfer_env(mock_workspace, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch, session_fleet: Any):
     """Sets up an isolated environment for transfer tests, including head node data dir."""
-    fleet, daq_cfg_dict = session_fleet
+    _fleet, daq_cfg_dict = session_fleet
     
     head_data_dir = tmp_path / "head_data"
     head_data_dir.mkdir(parents=True, exist_ok=True)

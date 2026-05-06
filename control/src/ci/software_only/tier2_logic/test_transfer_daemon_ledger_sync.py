@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import pathlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 

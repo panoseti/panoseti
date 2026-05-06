@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from control.start import start_run
-from control.stop import stop_run
 from control.utils import config_file
 from control.utils.paths import PanoPaths
 from control.utils.pydantic_config_models import DaqConfig
@@ -96,6 +94,8 @@ def mocked_build_rsync_cmd(node, run_name, head_run_dir, bwlimit):
 
 async def generate_integration_run(run_name: str, daq_config: DaqConfig, daqnode_container: Any) -> None:
     """Start run, generate real data via tcpreplay, simulate metadata, and stop run."""
+    from control.start import start_run
+    from control.stop import stop_run
     obs_config = config_file.get_obs_config()
     quabo_uids = config_file.get_quabo_uids()
     data_config = config_file.get_data_config()
