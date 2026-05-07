@@ -46,7 +46,7 @@ requires_docker = pytest.mark.skipif(
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def two_node_workspace(tmp_path_factory, monkeypatch):
+def two_node_workspace(tmp_path_factory):
     """Module-scoped workspace for the two-node CI topology."""
     import importlib
     import os
@@ -63,11 +63,13 @@ def two_node_workspace(tmp_path_factory, monkeypatch):
         ("HEAD_DATA_DIR", "head_data"),
         ("DAQ_DATA_DIR", "daq_data"),
     ]
+    original: dict[str, str | None] = {}
     for key, sub in env_dirs:
+        original[key] = os.environ.get(key)
         path = tmp_path / sub
         path.mkdir(parents=True, exist_ok=True)
         os.chmod(path, 0o777)
-        monkeypatch.setenv(key, str(path))
+        os.environ[key] = str(path)
 
     from control.utils.paths import PanoPaths
     from ci.software_only_v2.infra.materialize import write_all
@@ -79,7 +81,13 @@ def two_node_workspace(tmp_path_factory, monkeypatch):
     PanoPaths.ensure_state_dirs()
     importlib.reload(_cfm)
 
-    return Workspace(root=tmp_path, topology=topology, state_probe=StateProbe())
+    yield Workspace(root=tmp_path, topology=topology, state_probe=StateProbe())
+
+    for key, orig in original.items():
+        if orig is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = orig
 
 
 # ---------------------------------------------------------------------------

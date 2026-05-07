@@ -122,13 +122,22 @@ class Fleet:
         self._network = SharedNetwork(f"pseti-v2-{tc_id}")
         self._network.create()
 
+        # Docker Network object (not just the name string) — testcontainers
+        # requires a network SDK object with a .name attribute.
+        docker_network = self._network._network
+        if docker_network is None:
+            raise RuntimeError(
+                f"Failed to create Docker network '{self._network.name}'. "
+                "Is the Docker daemon running?"
+            )
+
         # 2. HeadnodeContainer
         self._headnode_container = HeadnodeContainer(
             name=f"pseti-v2-headnode-{tc_id}",
             command=self._headnode_command,
             config_dir=self.workspace.config_dir,
             state_dir=self.workspace.root / "state",
-            network=self._network.name,
+            network=docker_network,
         )
 
         # 3. DaqNodeSimContainers — one per DaqNode in the topology
@@ -144,7 +153,7 @@ class Fleet:
                 name=f"pseti-v2-daqnode-{tc_id}-{i}",
                 module_ids=list(node_spec.module_ids),
                 headnode_ip=_HEADNODE_IP,
-                network=self._network.name,
+                network=docker_network,
             )
             sim._volume(data_dir, "/data", "rw")
             self._daqnode_containers.append(sim)

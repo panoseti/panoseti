@@ -26,7 +26,7 @@ class HeadnodeContainer(PsetiContainer):
     - ``command="sleep infinity"`` (default) — inert container used as an
       addressable headnode in fleet topologies that don't need the telemetry
       gRPC service running.
-    - ``command="panoseti-server --profile headnode"`` — starts the telemetry
+    - ``command="pseti-grpc server --profile headnode"`` — starts the telemetry
       service (requires Redis to be reachable at REDIS_HOST:REDIS_PORT).
     """
 

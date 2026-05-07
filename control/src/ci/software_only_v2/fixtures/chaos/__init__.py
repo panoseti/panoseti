@@ -1,21 +1,21 @@
 """
-fixtures/chaos.py — Chaos accessor for v2 tier-4 fault-injection tests.
+fixtures/chaos/ — Chaos accessor for v2 tier-4 fault-injection tests.
 
-Wraps the existing ci/fixtures/chaos/* modules through typed sub-handles so
-tests operate on Fleet container objects instead of bare container-name strings.
+Wraps the sub-modules (netem, iptables, disk_chaos, process_chaos, grpc_proxy,
+clock_chaos) through typed sub-handles so tests operate on Fleet container
+objects instead of bare container-name strings.
 
 Usage in tests::
 
     def test_latency(session_fleet):
         node = session_fleet.daq_nodes[0]
         with session_fleet.chaos.net.latency(node, latency_ms=200):
-            # gRPC calls to node experience ~200 ms added latency
             ...
 
     def test_process_kill(session_fleet):
         node = session_fleet.daq_nodes[0]
-        session_fleet.chaos.proc.kill(node, "panoseti-server")
-        assert not session_fleet.chaos.proc.alive(node, "panoseti-server")
+        session_fleet.chaos.proc.kill(node, "pseti-grpc")
+        assert not session_fleet.chaos.proc.alive(node, "pseti-grpc")
 
 Or via the pytest fixture::
 
@@ -312,9 +312,9 @@ class Chaos:
         """gRPC: proxy(), inject()."""
         return self._grpc
 
-    # Convenience: direct access to fleet handles
     @property
     def fleet(self) -> "Fleet":
+        """The Fleet this Chaos accessor is bound to."""
         return self._fleet
 
 

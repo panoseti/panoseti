@@ -71,10 +71,13 @@ class DaqNodeSimContainer(PsetiContainer):
             self._env("PYTHONPATH", "/grpc/src")
 
         # Run the unified gRPC server in daq_node profile
-        self._command("panoseti-server --profile daq_node")
+        self._command("pseti-grpc server --profile daq_node")
 
         # Capabilities required by hashpipe (even in sim mode, the base image
-        # requires IPC_LOCK for shared-memory setup)
+        # requires IPC_LOCK for shared-memory setup).
+        # init=True enables Docker's built-in tini as PID 1, which properly
+        # reaps orphaned zombie processes (needed for process chaos tests).
         self._kwargs(
             cap_add=["IPC_LOCK", "SYS_NICE"],
+            init=True,
         )
