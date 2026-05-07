@@ -39,14 +39,15 @@ pseti session-stop      # power off, stop daemons
 ### Run tests
 ```bash
 # v2 test suite (software_only_v2/ — current)
-pseti test sw v2 unit        # Tier 1: fast logic tests
-pseti test sw v2 logic       # Tier 2: state-machine logic
-pseti test sw v2 fleet       # Tier 3: testcontainers fleet
-pseti test sw v2 chaos       # Tier 4: fault injection
-pseti test sw v2 integration # Tier 5: real Hashpipe + tcpreplay
+pseti test sw2 unit        # Tier 1: fast logic + config unit tests
+pseti test sw2 logic       # Tier 2: state-machine logic
+pseti test sw2 fleet       # Tier 3: testcontainers fleet
+pseti test sw2 chaos       # Tier 4: fault injection
+pseti test sw2 integration # Tier 5: real Hashpipe + tcpreplay
+# pseti test sw v2 <suite> is also valid (legacy alias)
 
-# v1 test suite (software_only/ — being sunset alongside v2)
-pseti test sw unit
+# v1 test suite (software_only/ — sunset in progress; tier1 unit tests moved to sw2)
+pseti test sw logic
 pseti test sw integration
 pseti test sw chaos
 

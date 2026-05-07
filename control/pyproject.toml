@@ -73,6 +73,11 @@ filterwarnings = [
     "ignore::DeprecationWarning",
 ]
 markers = [
+    "tier1: Pure in-process logic and Pydantic validation (no containers)",
+    "tier2: State-machine logic with isolated workspace (no containers)",
+    "tier3: Distributed fleet with sim daqnodes (testcontainers)",
+    "tier4: Fault injection over a live fleet (testcontainers + chaos)",
+    "tier5: Real hashpipe binary, static Docker Compose stack",
     "hw_class(name): hardware test class name (env_check, boot_sequence, happy_path)",
     "slow_hw: marks tests that require full hardware I/O (may take minutes)",
 ]

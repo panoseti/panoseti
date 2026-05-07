@@ -23,16 +23,19 @@ The current test tree lives at `ci/software_only_v2/` (v2). A v1 tree at `ci/sof
 The PANOSETI QA runner (`pseti test`) manages isolated environments for different suites.
 
 ```bash
-# 1. Standard commands
-pseti test sw unit         # Tier 1: Fast unit tests
-pseti test sw logic        # Tier 2: State logic tests
-pseti test sw fleet        # Tier 3: Multi-node dynamic tests
-pseti test sw chaos        # Tier 4: Distributed resilience
-pseti test sw integration  # Tier 5: Heavy stack (Hashpipe/PCAP)
-pseti test lint            # Ruff & MyPy verification
+# 1. Standard commands (v2 — current)
+pseti test sw2 unit         # Tier 1: Fast unit tests
+pseti test sw2 logic        # Tier 2: State logic tests
+pseti test sw2 fleet        # Tier 3: Multi-node dynamic tests
+pseti test sw2 chaos        # Tier 4: Distributed resilience
+pseti test sw2 integration  # Tier 5: Heavy stack (Hashpipe/PCAP)
+pseti test lint             # Ruff & MyPy verification
 
 # 2. Comprehensive run
-pseti test sw all          # Run Tiers 1 through 5 sequentially
+pseti test sw2 all          # Run Tiers 1 through 5 sequentially
+
+# Legacy alias (v1 sunset in progress)
+pseti test sw v2 unit       # equivalent to pseti test sw2 unit
 ```
 
 ---
