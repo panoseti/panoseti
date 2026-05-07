@@ -20,8 +20,22 @@ from ci.software_only_v2.containers.base import PsetiContainer
 # Image built from Dockerfile.ci headnode stage (same as pseti-test-runner)
 _DAQNODE_SIM_IMAGE = os.environ.get("PSETI_TEST_RUNNER_IMAGE", "pseti-test-runner:latest")
 
+
+def _find_grpc_src() -> pathlib.Path:
+    # On the host the repo root is 6 levels up from this file's location.
+    # Inside the container the path is shallower, so guard against IndexError.
+    try:
+        host_path = pathlib.Path(__file__).parents[6] / "grpc" / "src" / "panoseti_grpc"
+        if host_path.exists():
+            return host_path.resolve()
+    except IndexError:
+        pass
+    # Fallback: standard container mount point (present whether bind-mounted or COPY'd)
+    return pathlib.Path("/grpc/src/panoseti_grpc").resolve()
+
+
 # grpc source on the host — volume-mounted so edits are visible immediately
-_GRPC_SRC = (pathlib.Path(__file__).parents[6] / "grpc" / "src" / "panoseti_grpc").resolve()
+_GRPC_SRC = _find_grpc_src()
 
 
 class DaqNodeSimContainer(PsetiContainer):

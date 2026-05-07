@@ -16,7 +16,19 @@ import pathlib
 from ci.software_only_v2.containers.base import PsetiContainer
 
 _HEADNODE_IMAGE = os.environ.get("PSETI_TEST_RUNNER_IMAGE", "pseti-test-runner:latest")
-_GRPC_SRC = (pathlib.Path(__file__).parents[6] / "grpc" / "src" / "panoseti_grpc").resolve()
+
+
+def _find_grpc_src() -> pathlib.Path:
+    try:
+        host_path = pathlib.Path(__file__).parents[6] / "grpc" / "src" / "panoseti_grpc"
+        if host_path.exists():
+            return host_path.resolve()
+    except IndexError:
+        pass
+    return pathlib.Path("/grpc/src/panoseti_grpc").resolve()
+
+
+_GRPC_SRC = _find_grpc_src()
 
 
 class HeadnodeContainer(PsetiContainer):

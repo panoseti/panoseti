@@ -189,3 +189,12 @@ Gold-standard configurations for the HITL environment are located in `control/sr
 - **Disk Exhaustion:** Always run `pseti test hw clean` after a run. It explicitly executes `rm -rf` on both local and remote data directories.
 - **Network Isolation:** The DAQ node is isolated behind the router; all communication from the head node goes through the specified `gw_ip`.
 - **No-HV:** All HW-SW tests should be initialized with the `--no_hv` flag (handled by the test runner) to protect the physical detectors during automated testing.
+
+## 🔗 Shared Helpers with software_only_v2
+
+Some assertion helpers from the software_only_v2 CI tree are useful in HITL tests:
+
+- **`StateProbe`** (`ci/software_only_v2/infra/workspace.py`): wraps ledger status assertions (`assert_ledger_status`, `current_run_name`, `any_pff_files`) and manifest verification over `PanoPaths`. Import directly if you want to assert post-run state without re-implementing ledger parsing.
+- **gRPC client builders** (`ci/software_only_v2/fixtures/fleet.py`): `daq_control_client(idx)` / `daq_data_client(idx)` construct typed gRPC clients given a host/port. Useful for in-process gRPC assertions against a live `pseti-grpc server` on the DAQ node.
+
+Note: HITL deliberately does **not** isolate `PSETI_*` env vars (it reads real configs), so `pseti_workspace`, `FleetSpec`, and the testcontainer orchestration from v2 are not applicable here.

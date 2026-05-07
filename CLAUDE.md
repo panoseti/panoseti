@@ -38,13 +38,16 @@ pseti session-stop      # power off, stop daemons
 
 ### Run tests
 ```bash
-# Unit tests (538 tests, no hardware required)
+# v2 test suite (software_only_v2/ — current)
+pseti test sw v2 unit        # Tier 1: fast logic tests
+pseti test sw v2 logic       # Tier 2: state-machine logic
+pseti test sw v2 fleet       # Tier 3: testcontainers fleet
+pseti test sw v2 chaos       # Tier 4: fault injection
+pseti test sw v2 integration # Tier 5: real Hashpipe + tcpreplay
+
+# v1 test suite (software_only/ — being sunset alongside v2)
 pseti test sw unit
-
-# Integration tests (Docker CI)
 pseti test sw integration
-
-# Chaos / transactional-integrity scenarios
 pseti test sw chaos
 
 # Lint (Ruff + MyPy)
@@ -52,8 +55,8 @@ pseti test lint
 
 # Hardware-in-the-loop tests (real Quabos + DAQ node required)
 pseti test hw check-env   # verify connectivity
-pseti test hw run         # full HW suite (HW-01 … HW-05)
-pseti test hw run -k HW_01   # single scenario
+pseti test hw run         # full HW suite (env_check, boot_sequence, happy_path)
+pseti test hw run -k boot_sequence   # single scenario
 
 # gRPC service layer tests
 pseti test grpc all
@@ -288,10 +291,13 @@ The daemon holds `tmp/panoseti_transfer.lock` (flock) as a singleton guard. `sto
 `control/pyproject.toml` sets `requires-python = ">=3.14"`.
 
 ### Test locations
-- `control/src/ci/unit/` — hardware-agnostic Python unit tests (538 tests, 12 modules)
-- `control/src/ci/integration/` — end-to-end Docker integration tests (65 passing)
-- `control/src/ci/integration/scenarios/` — chaos / transactional-integrity tests (114 tests)
-- `control/src/ci/hardware-software/` — hardware-in-the-loop tests (HW-01 … HW-05, requires real Quabos)
+- `control/src/ci/software_only_v2/tier1_unit/` — pure logic, Pydantic, parsing (no hardware, no Docker)
+- `control/src/ci/software_only_v2/tier2_logic/` — state-machine logic with isolated workspace
+- `control/src/ci/software_only_v2/tier3_fleet/` — multi-node E2E with testcontainers (`DaqNodeSimContainer`)
+- `control/src/ci/software_only_v2/tier4_chaos/` — fault injection (process kill, disk fill, gRPC proxy, netem)
+- `control/src/ci/software_only_v2/tier5_integration/` — real Hashpipe binary + tcpreplay (static compose)
+- `control/src/ci/software_only/` — v1 test suite (being sunset; runs in parallel with v2 during soak period)
+- `control/src/ci/hardware_software/` — hardware-in-the-loop tests (requires real Quabos + DAQ node)
 - `control/src/ci/Dockerfile.ci` — multi-stage image for all test suites
 - `control/src/ci/test_cli.py` — unified `pseti test` CLI (invoked via `pseti test sw/hw/grpc/lint`)
 

@@ -54,11 +54,13 @@ Read [TRANSACTIONS.md](TRANSACTIONS.md) for detailed diagrams and rollback rules
 ---
 
 ## Testing and Debugging
-- **Tier 1 (Unit)**: `src/ci/tier1_unit/`. Zero-dependency logic and parsing.
-- **Tier 2 (Logic)**: `src/ci/tier2_logic/`. Subsystem logic with mocked gRPC.
-- **Tier 3 (Fleet)**: `src/ci/tier3_fleet/`. Multi-node E2E with testcontainers.
-- **Tier 4 (Chaos)**: `src/ci/tier4_chaos/`. Fault injection and TDD-forcing failure scenarios.
-- **Tier 5 (Integration)**: `src/ci/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis).
+Tests live under `src/ci/software_only_v2/` (v2 — current) and `src/ci/software_only/` (v1 — sunset in progress):
+
+- **Tier 1 (Unit)**: `src/ci/software_only_v2/tier1_unit/`. Zero-dependency logic and parsing.
+- **Tier 2 (Logic)**: `src/ci/software_only_v2/tier2_logic/`. Subsystem logic with isolated workspace.
+- **Tier 3 (Fleet)**: `src/ci/software_only_v2/tier3_fleet/`. Multi-node E2E with testcontainers; no persistent compose service.
+- **Tier 4 (Chaos)**: `src/ci/software_only_v2/tier4_chaos/`. Fault injection and resilience. Also uses testcontainers; no persistent service.
+- **Tier 5 (Integration)**: `src/ci/software_only_v2/tier5_integration/`. Real Hashpipe binary and heavy telemetry (Loki/Redis). Drives static Docker Compose.
 - **Atomic Locking**: Locks are managed via `os.O_EXCL` file creation with stale PID detection. Orphaned locks from crashed runs are self-healing.
 - **State Isolation**: ALL integration tests MUST isolate their state using `PSETI_STATE` redirected to a temporary directory.
 
@@ -103,10 +105,13 @@ pseti test sw integration -k "real_data"
 ---
 
 ## CI Architecture Notes
-- **Persistent containers**: `pseti test up` starts containers that are reused across runs to minimize overhead.
-- **Live mount**: `control/` is volume-mounted into containers; source edits are visible instantly.
+- **Tier 1/2 (unit/logic)**: `pseti test sw v2 unit/logic` runs inside the `unit-test-runner` compose service. No persistent DAQ containers.
+- **Tier 3/4 (fleet/chaos)**: `pseti test sw v2 fleet/chaos` uses testcontainers — containers are created and torn down per test module. No `pseti test up` required; Docker daemon must be available on the host.
+- **Tier 5 (integration)**: `pseti test sw v2 integration` requires the static compose stack (`docker-compose.integration.yml`). `pseti test up` starts persistent services.
+- **Dev mode**: Pass `--dev` to any `pseti test sw` command to add hot-mounted source code into the container (useful for rapid iteration without rebuilding).
+- **CI isolation**: Without `--dev`, CI mode uses the image as the source of truth — no host bind mounts. Files written inside containers stay inside containers.
 - **Validation Leniency**: In CI, we bypass strict hardware checks if `daq_config.json` has `head_node_container: true`.
-- **Networking**: `headnode_net` (10.0.1.0/24) hosts telemetry and Loki; `daqnode_net` (192.168.0.0/24) hosts the DAQ fleet.
+- **Networking (Tier 5)**: `headnode_net` (10.0.1.0/24) hosts telemetry and Loki; `daqnode_net` (192.168.0.0/24) hosts the DAQ fleet.
 - **Loki Pipeline**: Logs are queued in Redis (`logs:ingress`) and processed by `storeLoki.py` with non-blocking resilience.
 
 Read [ci/README.md](ci/README.md) for the full network topology and test isolation strategy.
