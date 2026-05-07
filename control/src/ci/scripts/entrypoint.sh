@@ -15,11 +15,10 @@ fi
 
 if [ -n "${LOCAL_UID}" ] && [ "${LOCAL_UID}" != "${BAKED_UID}" ]; then
     usermod -o -u "${LOCAL_UID}" panoseti 2>/dev/null || true
-    # Fix ownership of internal directories that must be writable.
-    # We do this as root before switching to the panoseti user via gosu.
-    chown panoseti:panoseti /app /app/state /app/tmp /app/.pytest_cache /grpc /opt/venv 2>/dev/null || true
-    # Recursive chown for state and tmp as they are expected to be small.
-    chown -R panoseti:panoseti /app/state /app/tmp /app/.pytest_cache 2>/dev/null || true
+    # Recursive chown of /app, /grpc, and /opt/venv ensures that files baked at UID 1000 
+    # are aligned with the runtime LOCAL_UID. This is small enough to be efficient 
+    # and ensures total robustness against mixed-permission anti-patterns.
+    chown -R panoseti:panoseti /app /grpc /opt/venv 2>/dev/null || true
 fi
 
 exec gosu panoseti "$@"

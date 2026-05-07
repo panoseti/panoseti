@@ -24,4 +24,8 @@ DATA_DIR="${DAQ_DATA_DIR:-/mnt/panoseti-test/}"
 mkdir -p "${DATA_DIR}"
 chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}"
 
+# Ensure any metadata files created by root (like sw_info.json or flashuid) are fixed
+[ -f /app/sw_info.json ] && chown "${TARGET_UID}:${TARGET_GID}" /app/sw_info.json
+[ -f /app/flashuid ] && chown "${TARGET_UID}:${TARGET_GID}" /app/flashuid
+
 exec /entrypoint.sh "$@"

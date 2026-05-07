@@ -378,3 +378,52 @@ def _cleanup_blocked_while_hashpipe_running(fleet: Any, node_index: int = 0) -> 
     assert isinstance(last_exc, FailedPreconditionError), (
         f"Expected FailedPreconditionError when cleaning up active run, got: {last_exc!r}"
     )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "session_fleet"),
+    v2_fixtures=("pseti_workspace_session", "session_fleet"),
+    scenario="two_node_independent_lifecycle",
+    description="Independent nodes in a fleet can be started and stopped without interference",
+)
+def _two_node_independent_lifecycle(node_0_running: bool, node_1_running: bool) -> None:
+    """Assert the running state of two nodes matches expected independence."""
+    assert node_0_running is False, "Node 0 should have been stopped"
+    assert node_1_running is True, "Node 1 should still be running"
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "daq_control_gateway"),
+    v2_fixtures=("pseti_workspace_session", "session_fleet"),
+    scenario="gateway_consistency",
+    description="Gateway client sees the same server state as a direct client",
+)
+def _gateway_consistency(direct_running: bool, gateway_running: bool) -> None:
+    """Assert that direct and gateway views of the server state are identical."""
+    assert direct_running == gateway_running, (
+        f"State mismatch: direct={direct_running}, gateway={gateway_running}"
+    )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "mock_rsync_transfer"),
+    v2_fixtures=("pseti_workspace", "mock_rsync_transfer"),
+    scenario="transfer_partial_recovery",
+    description="Transfer queue recovers from partial rsync failure and succeeds on retry",
+)
+def _transfer_partial_recovery(success: bool, archived: bool) -> None:
+    """Assert that the transfer eventually succeeded and the run is ARCHIVED."""
+    assert success is True, "Transfer failed to recover"
+    assert archived is True, "Run status did not reach ARCHIVED"
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "transfer_job_factory"),
+    v2_fixtures=("pseti_workspace", "transfer_job_factory"),
+    scenario="transfer_selective_cleanup",
+    description="Transfer cleanup deletes .pff files but preserves metadata",
+)
+def _transfer_selective_cleanup(pff_count: int, meta_exists: bool) -> None:
+    """Assert that .pff files were removed but meta.json remains."""
+    assert pff_count == 0, f"Expected 0 .pff files, found {pff_count}"
+    assert meta_exists is True, "Metadata file was accidentally deleted"
