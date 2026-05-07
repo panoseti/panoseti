@@ -7,6 +7,10 @@ DATA_DIR="${DAQ_DATA_DIR:-/data}"
 mkdir -p "${DATA_DIR}"
 cp /usr/local/lib/panoseti_hashpipe.so "${DATA_DIR}/hashpipe.so"
 
+# Remove stale config files that might be owned by a different UID
+# to ensure StartDaq can recreate them.
+rm -f "${DATA_DIR}/module.config"
+
 TARGET_UID="${LOCAL_UID:-1000}"
 TARGET_GID="${LOCAL_GID:-1000}"
 
