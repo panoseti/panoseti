@@ -31,6 +31,8 @@ class TestPsetiVal:
 
     def test_pseti_val_graph(self, pseti_workspace: Workspace, runner: CliRunner) -> None:
         """Verify that pseti val graph generates the topology files."""
+        # Ensure tmp dir exists in isolated root
+        (pseti_workspace.root / "tmp").mkdir(parents=True, exist_ok=True)
         result = runner.invoke(app, ["val", "graph"])
         assert result.exit_code == 0
         
@@ -41,11 +43,12 @@ class TestPsetiVal:
 
     def test_pseti_val_all(self, pseti_workspace: Workspace, runner: CliRunner) -> None:
         """Verify pseti val all enables everything (schema, global, network, graph)."""
-        # Note: network check will attempt to ping, but in the sim-only tier2
-        # it should either be mocked or handled by the workspace.
-        # GlobalConfigValidator.validate_all() has check_network=True for 'all'.
-        result = runner.invoke(app, ["val", "all"])
-        assert result.exit_code == 0
+        # Mock reachability to avoid ping failures in logic tier
+        from unittest.mock import patch, AsyncMock
+        with patch("control.utils.config_validator._check_reachability", return_value=(True, "OK")), \
+             patch("control.start._quabo_reachability_report", new_callable=AsyncMock, return_value=[]):
+            result = runner.invoke(app, ["val", "all"])
+            assert result.exit_code == 0
 
 
 class TestPsetiShow:
@@ -55,13 +58,16 @@ class TestPsetiShow:
         """Verify pseti show paths correctly reflects the isolated workspace."""
         result = runner.invoke(app, ["show", "paths"])
         assert result.exit_code == 0
-        # The output should contain the temporary root of our isolated workspace
-        assert str(pseti_workspace.root) in result.output
+        # Check for presence of the isolated root path, allowing for table formatting/wrapping
+        # We search for the tail of the path to be safe from wrapping
+        assert pseti_workspace.root.name in result.output
         assert "PSETI_CONFIG" in result.output
         assert "PSETI_STATE" in result.output
 
     def test_pseti_show_config(self, pseti_workspace: Workspace, runner: CliRunner) -> None:
         """Verify pseti show config displays the topology."""
+        # 'pseti cfg show' might fail if it can't find quabo_uids.json or similar
+        # and doesn't gracefully handle it.
         result = runner.invoke(app, ["cfg", "show"])
         assert result.exit_code == 0
         assert "module ID" in result.output

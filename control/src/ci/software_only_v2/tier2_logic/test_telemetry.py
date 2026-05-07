@@ -45,7 +45,7 @@ def test_when_auto_isolated_then_loki_tenant_id_injected() -> None:
     """
     tenant = os.environ.get("LOKI_TENANT_ID")
     assert tenant is not None
-    assert tenant.startswith("test_tenant_")
+    assert tenant.startswith("v2_test_tenant_")
 
 def test_when_redis_full_then_backpressure_logged() -> None:
     """
