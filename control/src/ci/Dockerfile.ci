@@ -12,12 +12,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_PROJECT_ENVIRONMENT="/opt/venv" \
     PATH="/opt/venv/bin:$PATH"
 
-# ── UID/GID parity ───────────────────────────────────────────────────────────
-# We define these in base so that all layers are built with correct ownership
-ARG HOST_UID=1000
-ARG HOST_GID=1000
-ARG DOCKER_GID=999
-
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,15 +23,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Create the panoseti user early.
-RUN groupadd -o -g "${HOST_GID}" panoseti \
- && useradd -o -u "${HOST_UID}" -g "${HOST_GID}" -m -s /bin/bash panoseti \
- && (getent group docker || groupadd -g "${DOCKER_GID}" docker || groupadd docker) \
- && (groupmod -o -g "${DOCKER_GID}" docker || true) \
+# Copy runtime entrypoints before switching users so root can install them.
+COPY control/src/ci/scripts/entrypoint.sh /entrypoint.sh
+COPY control/src/ci/scripts/entrypoint-daqnode.sh /entrypoint-daqnode.sh
+COPY control/src/ci/scripts/entrypoint-headnode-hw.sh /entrypoint-headnode-hw.sh
+RUN chmod +x /entrypoint.sh /entrypoint-daqnode.sh /entrypoint-headnode-hw.sh
+
+# Create the panoseti user with a fixed UID/GID (1000).
+# UID is baked in the image — dev-mode compose overlays set LOCAL_UID/LOCAL_GID
+# so entrypoint.sh can rewrite at runtime without per-developer rebuilds.
+RUN groupadd -g 1000 panoseti \
+ && useradd -u 1000 -g 1000 -m -s /bin/bash panoseti \
+ && (getent group docker || groupadd -g 999 docker || groupadd docker) \
  && usermod -aG docker panoseti
 
-# Pre-allocate and chown environment/data/grpc dirs. 
-# Also pre-create /etc/bash_completion.d as root.
+# Pre-allocate and chown environment/data/grpc dirs.
 RUN mkdir -p /opt/venv /grpc /data /app /etc/bash_completion.d \
  && chown -R panoseti:panoseti /opt/venv /grpc /data /app /etc/bash_completion.d /tmp/
 
@@ -46,7 +46,7 @@ USER panoseti
 # Dependency Caching Layer
 COPY --chown=panoseti:panoseti grpc/ /grpc/
 COPY --chown=panoseti:panoseti control/pyproject.toml control/uv.lock* ./
-RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
+RUN --mount=type=cache,uid=1000,target=/home/panoseti/.cache/uv \
     uv sync --no-install-project --all-extras
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -68,13 +68,14 @@ RUN mkdir -p /app/state /app/.pytest_cache /app/tmp/
 # Copy source code as the panoseti user
 COPY --chown=panoseti:panoseti control/ .
 
-RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
+RUN --mount=type=cache,uid=1000,target=/home/panoseti/.cache/uv \
     uv sync --all-extras
 
 # Install shell completion for pseti
 RUN /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
 USER root
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["sleep", "infinity"]
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -130,11 +131,14 @@ COPY --from=hashpipe-plugin-builder --chown=panoseti:panoseti /build/panoseti_da
 # Copy source code as the panoseti user
 COPY --chown=panoseti:panoseti control/ .
 
-RUN --mount=type=cache,uid=${HOST_UID},target=/home/panoseti/.cache/uv \
+RUN --mount=type=cache,uid=1000,target=/home/panoseti/.cache/uv \
     uv sync --all-extras
 # Install shell completion for pseti
 RUN mkdir -p /etc/bash_completion.d && \
     /bin/bash -c "pseti --show-completion bash > /etc/bash_completion.d/pseti"
 
 USER root
-CMD ["/bin/sh", "-c", "mkdir -p ${DAQ_DATA_DIR:-/data} && chown panoseti:panoseti ${DAQ_DATA_DIR:-/data} && cp /usr/local/lib/panoseti_hashpipe.so ${DAQ_DATA_DIR:-/data}/hashpipe.so && chown panoseti:panoseti ${DAQ_DATA_DIR:-/data}/hashpipe.so && exec gosu panoseti pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]
+# entrypoint-daqnode.sh copies hashpipe.so to the data dir, then delegates to
+# entrypoint.sh for optional runtime UID rewrite before exec gosu panoseti.
+ENTRYPOINT ["/entrypoint-daqnode.sh"]
+CMD ["/bin/sh", "-c", "pseti-grpc server --config ${GRPC_SERVER_CONFIG:-/app/src/ci/fixtures/configs/grpc/daqnode/server.toml}"]

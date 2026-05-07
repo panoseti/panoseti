@@ -49,10 +49,6 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: headnode
-      args:
-        HOST_UID: "${HOST_UID:-1000}"
-        HOST_GID: "${HOST_GID:-1000}"
-        DOCKER_GID: "${DOCKER_GID:-999}"
     profiles: ["headnode"]
     network_mode: host
     volumes:
@@ -67,13 +63,10 @@ services:
       PSETI_FIRMWARE: "/app/firmware"
       SSH_AUTH_SOCK: "/run/host-ssh-agent"
       IN_DOCKER_CI: "1"
-    command: >
-      /bin/sh -c "mkdir -p /home/panoseti/.ssh && (cp -rf /home/panoseti/.ssh-host/* /home/panoseti/.ssh/ 2>/dev/null || true) &&
-      chown -R panoseti:panoseti /home/panoseti/.ssh && chmod 700 /home/panoseti/.ssh && (find /home/panoseti/.ssh -type f -exec chmod 600 {} + 2>/dev/null || true) &&
-      mkdir -p /root/.ssh && (cp -rf /home/panoseti/.ssh-host/* /root/.ssh/ 2>/dev/null || true) &&
-      chmod 700 /root/.ssh && (find /root/.ssh -type f -exec chmod 600 {} + 2>/dev/null || true) &&
-      mkdir -p ${DAQ_DATA_DIR:-/mnt/panoseti-test/} && chown panoseti:panoseti ${DAQ_DATA_DIR:-/mnt/panoseti-test/} &&
-      exec gosu panoseti pseti-grpc server --config /app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"
+      LOCAL_UID: "${HOST_UID:-1000}"
+      LOCAL_GID: "${HOST_GID:-1000}"
+    entrypoint: ["/entrypoint-headnode-hw.sh"]
+    command: ["pseti-grpc", "server", "--config", "/app/src/ci/hardware_software/configs/grpc/grpc-server.headnode.toml"]
     restart: always
 
   # ── DAQ Node Profile ───────────────────────────────────────────────────────
@@ -83,10 +76,6 @@ services:
       context: ${PSETI_ROOT_BUILD}/
       dockerfile: control/src/ci/Dockerfile.ci
       target: integration-daqnode
-      args:
-        HOST_UID: "${HOST_UID:-1000}"
-        HOST_GID: "${HOST_GID:-1000}"
-        DOCKER_GID: "${DOCKER_GID:-999}"
     profiles: ["daqnode"]
     network_mode: host
     cap_add:
@@ -106,7 +95,7 @@ services:
       PSETI_FIRMWARE: "/app/firmware"
       DAQ_DATA_DIR: "${DAQ_DATA_DIR:-/mnt/panoseti-test}"
       GRPC_SERVER_CONFIG: "/app/src/ci/hardware_software/configs/grpc/grpc-server.daqnode.toml"
+      LOCAL_UID: "${HOST_UID:-1000}"
+      LOCAL_GID: "${HOST_GID:-1000}"
     restart: always
 
-volumes:
-  panoseti_mnt:
