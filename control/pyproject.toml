@@ -120,6 +120,7 @@ check_untyped_defs = false
 
 [tool.uv.sources]
 panoseti_grpc = { path = "../grpc", editable = true }
+pypff = { path = "../pypff", editable = true }
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

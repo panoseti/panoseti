@@ -38,6 +38,7 @@ from ci.software_only_v2.orchestrator.network import (
 from control.utils.pydantic_config_models import DaqConfig, DaqNode, PortForwarding
 
 if TYPE_CHECKING:
+    from ci.software_only_v2.fixtures.chaos import Chaos
     from ci.software_only_v2.infra.spec import Topology
     from ci.software_only_v2.infra.workspace import Workspace
 
@@ -220,6 +221,16 @@ class Fleet:
             head_node_container=True,
             daq_nodes=live_nodes,
         )
+
+    # ------------------------------------------------------------------
+    # Chaos accessor
+    # ------------------------------------------------------------------
+
+    @property
+    def chaos(self) -> "Chaos":
+        """Fault-injection accessor for this fleet's containers."""
+        from ci.software_only_v2.fixtures.chaos import Chaos
+        return Chaos(self)
 
     # ------------------------------------------------------------------
     # Client factories
