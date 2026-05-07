@@ -104,8 +104,8 @@ class TestLedgerTransitions:
     def test_load_state_returns_none_when_no_ledger(
         self, pseti_workspace: Workspace
     ) -> None:
-        mgr = _make_manager(pseti_workspace)
-        assert mgr.load_state() is None
+        from ci.software_only_v2.infra.parity import run_scenario
+        run_scenario("ledger_starts_empty", state_dir=pseti_workspace.root / "state")
 
     def test_save_and_load_roundtrip(self, pseti_workspace: Workspace) -> None:
         mgr = _make_manager(pseti_workspace)

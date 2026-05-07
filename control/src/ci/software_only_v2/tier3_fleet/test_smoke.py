@@ -108,6 +108,8 @@ class TestFleetSmoke:
         with fleet:
             fleet.wait_healthy()
             assert fleet.n_nodes == 2
+            from ci.software_only_v2.infra.parity import run_scenario
+            run_scenario("fleet_boot_and_healthy", fleet=fleet)
 
     def test_live_daq_config_has_forwarded_ports(self, two_node_workspace: Workspace) -> None:
         """live_daq_config carries real host IPs + mapped gRPC ports after start()."""
@@ -176,13 +178,9 @@ class TestFleetSmoke:
         )
         with fleet:
             fleet.wait_healthy()
+            from ci.software_only_v2.infra.parity import run_scenario
             for i in range(fleet.n_nodes):
-                client = fleet.daq_control_client(i)
-                ok, status = client.StatusDaq({"data_dir": "/data"})
-                client.close()
-                assert ok
-                assert not status["hashpipe_running"]
-                assert status["hashpipe_pid"] is None
+                run_scenario("grpc_status_returns_idle", fleet=fleet, node_index=i)
 
     def test_n_nodes_matches_topology(self, two_node_workspace: Workspace) -> None:
         """fleet.n_nodes equals the topology's DAQ node count after start()."""

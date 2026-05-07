@@ -19,6 +19,8 @@ pytest_plugins = [
     "ci.software_only_v2.fixtures.fleet",
     "ci.software_only_v2.fixtures.chaos",
     "ci.software_only_v2.fixtures.corpus",
+    "ci.fixtures.rsync_fixtures",
+    "ci.fixtures.transfer_fixtures",
 ]
 
 

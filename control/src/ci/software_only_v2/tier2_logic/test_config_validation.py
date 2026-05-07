@@ -51,8 +51,20 @@ class TestWorkspaceConfigValidation:
     def test_minimal_unit_workspace_configs_validate(
         self, pseti_workspace: Workspace
     ) -> None:
-        errors = self._validate_topology(pseti_workspace)
-        assert not errors, f"Workspace configs have ERRORs: {errors}"
+        from ci.software_only_v2.infra.parity import run_scenario
+        run_scenario("config_validator_passes", topology=pseti_workspace.topology)
+
+    def test_workspace_seven_config_files(
+        self, pseti_workspace: Workspace
+    ) -> None:
+        from ci.software_only_v2.infra.parity import run_scenario
+        expected = [
+            "obs_config.json", "daq_config.json", "network_config.json",
+            "data_config.json", "firmware.json", "quabo_uids.json", "daemons.json",
+        ]
+        run_scenario("workspace_seven_config_files", 
+                     config_dir=pseti_workspace.config_dir, 
+                     expected_files=expected)
 
     def test_workspace_json_files_all_readable(
         self, pseti_workspace: Workspace
