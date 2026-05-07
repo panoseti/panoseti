@@ -17,6 +17,7 @@ from unittest.mock import patch
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only_v2.tier3_fleet.conftest import requires_docker
 from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
     get_mapped_client_factory,
@@ -30,21 +31,6 @@ from control.utils.run_state import RunStateManager
 from ci.software_only_v2.orchestrator.fleet import Fleet
 
 pytestmark = pytest.mark.tier3
-
-
-def _docker_available() -> bool:
-    try:
-        import docker
-        docker.from_env(timeout=5).ping()
-        return True
-    except Exception:
-        return False
-
-
-requires_docker = pytest.mark.skipif(
-    not _docker_available(),
-    reason="Docker daemon not available",
-)
 
 
 @requires_docker

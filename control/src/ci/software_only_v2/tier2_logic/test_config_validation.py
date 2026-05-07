@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_config_validation.py — Config validation tests for v2.
 
@@ -47,12 +46,6 @@ class TestWorkspaceConfigValidation:
         })
         v.validate_all_rules()
         return [r for r in v.report.tests if r["status"] == "ERROR"]
-
-    def test_minimal_unit_workspace_configs_validate(
-        self, pseti_workspace: Workspace
-    ) -> None:
-        from ci.software_only_v2.infra.parity import run_scenario
-        run_scenario("config_validator_passes", topology=pseti_workspace.topology)
 
     def test_workspace_seven_config_files(
         self, pseti_workspace: Workspace

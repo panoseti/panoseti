@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_run_state_extended.py
 

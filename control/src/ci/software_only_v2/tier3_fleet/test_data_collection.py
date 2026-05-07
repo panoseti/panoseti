@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_data_collection.py — Data collection and cleanup transaction tests.
 
@@ -7,30 +6,32 @@ Ported from ci/software_only/tier3_fleet/test_data_collection.py.
 
 from __future__ import annotations
 
-import pathlib
+import time
+
 import pytest
-import docker
 
 from ci.software_only_v2.infra.spec import FleetSpec
-from ci.software_only_v2.infra.workspace import Workspace
 from ci.software_only_v2.orchestrator.fleet import Fleet
+from ci.software_only_v2.tier3_fleet.conftest import make_startdaq_params, requires_docker
 
 pytestmark = pytest.mark.tier3
 
 
-def _docker_available() -> bool:
-    try:
-        import docker
-        docker.from_env(timeout=5).ping()
-        return True
-    except Exception:
-        return False
-
-
-requires_docker = pytest.mark.skipif(
-    not _docker_available(),
-    reason="Docker daemon not available",
-)
+def wait_until(
+    condition: "Any",
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> bool:
+    from typing import Any  # noqa: PLC0415
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if condition():
+                return True
+        except Exception:
+            pass
+        time.sleep(interval)
+    return False
 
 
 @requires_docker
@@ -42,63 +43,75 @@ requires_docker = pytest.mark.skipif(
 class TestDataCollectionTransaction:
     """Happy-path and sad-path collection + cleanup scenarios."""
 
-    def test_collection_happy_path(self, session_fleet: Fleet) -> None:
-        """Complete start->stop cycle and wire up parity scenario."""
+    def test_when_daq_started_and_stopped_then_hashpipe_exits_cleanly(
+        self, session_fleet: Fleet
+    ) -> None:
+        """Start→wait running→stop→wait stopped full lifecycle completes."""
         fleet = session_fleet
-        workspace = fleet.workspace
-        # This is a smoke test for the whole flow
-        # We use StateProbe to verify ledger status
-        
-        # Simulate a run
-        run_name = "happy_run"
-        workspace.state_probe.set_ledger_status(run_name, "RECORDING_ENDED")
-        
-        from ci.software_only_v2.infra.parity import run_scenario
-        run_scenario("data_collection_happy_path", probe=workspace.state_probe, expected_status="RECORDING_ENDED")
+        client = fleet.daq_control_client(0)
+        run_dir = "happy_run"
 
-    def test_cleanup_idempotent(self, session_fleet: Fleet) -> None:
-        """Calling CleanupData twice is safe."""
+        fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
+
+        ok = client.StartDaq(make_startdaq_params(fleet, 0, run_dir))
+        assert ok is True
+
+        def check_running() -> bool:
+            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            return bool(s["hashpipe_running"])
+
+        assert wait_until(check_running), "hashpipe did not start"
+
+        ok = client.StopDaq({"data_dir": "/data", "run_dir": run_dir})
+        assert ok is True
+
+        def check_stopped() -> bool:
+            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            return not bool(s["hashpipe_running"])
+
+        assert wait_until(check_stopped), "hashpipe did not stop"
+        client.close()
+
+    def test_when_cleanup_called_twice_then_both_succeed(
+        self, session_fleet: Fleet
+    ) -> None:
+        """Calling CleanupData twice on the same run dir is idempotent."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
         run_dir = "cleanup_idempotent"
-        
-        # Create dir
-        docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-            f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}"
-        )
-        
-        req = {
+        node_cfg = fleet.live_daq_config.daq_nodes[0]
+
+        fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
+
+        cleanup_params = {
             "data_dir": "/data",
             "run_dir": run_dir,
-            "module_id": [200],
+            "module_id": list(node_cfg.module_ids),
             "mode": "CLEANUP_FULL",
-            "force": True
+            "force": True,
         }
-        
-        res1 = client.CleanupData(req)
+
+        res1 = client.CleanupData(cleanup_params)
         assert res1["success"]
-        
-        res2 = client.CleanupData(req)
+
+        res2 = client.CleanupData(cleanup_params)
         assert res2["success"]
         client.close()
 
-    def test_cleanup_nonexistent_module_dirs_succeeds(self, session_fleet: Fleet) -> None:
-        """CleanupData succeeds even if some subdirs are missing."""
+    def test_when_cleanup_called_on_nonexistent_run_dir_then_succeeds(
+        self, session_fleet: Fleet
+    ) -> None:
+        """CleanupData succeeds even if the target run directory does not exist."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
-        
-        # Base module dir exists but run dir doesn't
-        docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-            "mkdir -p /data/module_200 && chmod 777 /data/module_200"
-        )
-        
-        req = {
+        node_cfg = fleet.live_daq_config.daq_nodes[0]
+
+        res = client.CleanupData({
             "data_dir": "/data",
             "run_dir": "nonexistent_run",
-            "module_id": [200],
+            "module_id": list(node_cfg.module_ids),
             "mode": "CLEANUP_FULL",
-            "force": True
-        }
-        res = client.CleanupData(req)
+            "force": True,
+        })
         assert res["success"]
         client.close()

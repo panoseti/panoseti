@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_contract_mocks.py — Contract tests for Tier 2 software mocks.
 

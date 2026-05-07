@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_transfer.py — Logic tests for the transfer pipeline.
 

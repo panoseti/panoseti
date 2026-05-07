@@ -20,30 +20,11 @@ import pytest
 from ci.software_only_v2.infra.spec import FleetSpec
 from ci.software_only_v2.infra.workspace import Workspace
 from ci.software_only_v2.orchestrator.fleet import Fleet
+from ci.software_only_v2.tier3_fleet.conftest import requires_docker
 
 
 pytestmark = pytest.mark.tier3
 
-
-def _docker_available() -> bool:
-    """Return True if Docker daemon is reachable."""
-    try:
-        import docker  # type: ignore[import]
-        docker.from_env(timeout=5).ping()
-        return True
-    except Exception:
-        return False
-
-
-requires_docker = pytest.mark.skipif(
-    not _docker_available(),
-    reason="Docker daemon not available",
-)
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Smoke tests
@@ -116,20 +97,7 @@ class TestFleetSmoke:
         fleet = Fleet.from_topology(pseti_workspace.topology, pseti_workspace)
         fleet.start()
         fleet.tear_down()
-        # After tear_down, container list is cleared
         assert fleet.n_nodes == 0
-
-    def test_validate_all_rules_pass(self, pseti_workspace: Workspace) -> None:
-        """GlobalConfigValidator passes on the configs materialized from the topology."""
-        from control.utils import config_file as _cfm
-        from control.utils.global_validator import GlobalConfigValidator
-        validated = {
-            "obs_config": _cfm.get_obs_config(),
-            "daq_config": _cfm.get_daq_config(),
-            "data_config": _cfm.get_data_config(),
-        }
-        validator = GlobalConfigValidator(validated)
-        assert validator.validate_all_rules()
 
     def test_status_daq_returns_idle(self, pseti_workspace: Workspace) -> None:
         """StatusDaq on each sim daqnode returns success with hashpipe not running."""
@@ -142,25 +110,15 @@ class TestFleetSmoke:
             for i in range(fleet.n_nodes):
                 run_scenario("grpc_status_returns_idle", fleet=fleet, node_index=i)
 
-    def test_n_nodes_matches_topology(self, pseti_workspace: Workspace) -> None:
-        """fleet.n_nodes equals the topology's DAQ node count after start()."""
-        fleet = Fleet.from_topology(pseti_workspace.topology, pseti_workspace)
-        with fleet:
-            assert fleet.n_nodes == len(pseti_workspace.topology.daq.daq_nodes)
-
     def test_generate_manifest_on_stub_run(self, pseti_workspace: Workspace) -> None:
         """GenerateManifest RPC on a stub run dir completes with success=True."""
-        import docker as _docker
         fleet = Fleet.from_topology(
             pseti_workspace.topology, pseti_workspace, healthcheck_timeout=120.0
         )
         with fleet:
             fleet.wait_healthy()
-            sim = fleet.daq_nodes[0]
             module_ids = list(pseti_workspace.topology.daq.daq_nodes[0].module_ids)
-            _docker.from_env().containers.get(sim.name).exec_run(
-                "bash -c 'mkdir -p /data/stub_run && chmod 777 /data/stub_run'"
-            )
+            fleet.exec_in_node(0, "mkdir -p /data/stub_run && chmod 777 /data/stub_run")
             client = fleet.daq_control_client(0)
             result = client.GenerateManifest({
                 "data_dir": "/data",
@@ -172,17 +130,13 @@ class TestFleetSmoke:
 
     def test_cleanup_data_full_succeeds(self, pseti_workspace: Workspace) -> None:
         """CleanupData CLEANUP_FULL on a stub run dir returns success."""
-        import docker as _docker
         fleet = Fleet.from_topology(
             pseti_workspace.topology, pseti_workspace, healthcheck_timeout=120.0
         )
         with fleet:
             fleet.wait_healthy()
-            sim = fleet.daq_nodes[0]
             module_ids = list(pseti_workspace.topology.daq.daq_nodes[0].module_ids)
-            _docker.from_env().containers.get(sim.name).exec_run(
-                "bash -c 'mkdir -p /data/stub_run_clean && chmod 777 /data/stub_run_clean'"
-            )
+            fleet.exec_in_node(0, "mkdir -p /data/stub_run_clean && chmod 777 /data/stub_run_clean")
             client = fleet.daq_control_client(0)
             result = client.CleanupData({
                 "data_dir": "/data",

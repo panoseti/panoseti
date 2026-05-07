@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_transaction_resilience.py — Transactional integrity and rollback tests.
 

@@ -88,31 +88,27 @@ async def generate_mocked_run(fleet: Fleet, daq_config: config_file.DaqConfig, r
     expected_data = {}
     for i, temp_dir in enumerate(fleet._temp_dirs):
         host_root = Path(temp_dir)
-        sim = fleet.daq_nodes[i]
-        import docker as _docker
-        container = _docker.from_env().containers.get(sim.name)
-        
+
         # 1. Add metadata to root run dir
         meta_file = host_root / run_name / "meta.json"
         meta_file.parent.mkdir(parents=True, exist_ok=True)
         meta_file.write_text('{"test": true}')
-        
+
         node_spec = fleet.workspace.topology.daq.daq_nodes[i]
         for mid in node_spec.module_ids:
             host_mod_run_dir = host_root / f"module_{mid}" / run_name
             host_mod_run_dir.mkdir(parents=True, exist_ok=True)
-            
+
             for f_idx in range(2):
                 filename = f"{run_name}.dp_ph256.module_{mid}.seqno_{f_idx}.pff"
-                content = os.urandom(file_size_kb * 1024) 
+                content = os.urandom(file_size_kb * 1024)
                 f_path = host_mod_run_dir / filename
                 f_path.write_bytes(content)
                 expected_data[filename] = content
-                
-                # Ensure the container-side process can read it
-                container.exec_run(f"chmod 666 /data/module_{mid}/{run_name}/{filename}")
-        
-        container.exec_run("sync")
+
+                fleet.exec_in_node(i, f"chmod 666 /data/module_{mid}/{run_name}/{filename}")
+
+        fleet.exec_in_node(i, "sync")
     
     await asyncio.sleep(0.5)
 

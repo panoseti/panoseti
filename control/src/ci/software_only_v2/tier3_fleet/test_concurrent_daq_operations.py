@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_concurrent_daq_operations.py — Concurrent and rapid-cycle DAQ tests.
 
@@ -9,35 +8,22 @@ from __future__ import annotations
 
 import concurrent.futures
 import time
-import uuid
-from typing import Any
 
 import pytest
-import docker
 
 from ci.software_only_v2.infra.spec import FleetSpec
-from ci.software_only_v2.infra.workspace import Workspace
 from ci.software_only_v2.orchestrator.fleet import Fleet
+from ci.software_only_v2.tier3_fleet.conftest import make_startdaq_params, requires_docker
 
 pytestmark = pytest.mark.tier3
 
 
-def _docker_available() -> bool:
-    try:
-        import docker
-        docker.from_env(timeout=5).ping()
-        return True
-    except Exception:
-        return False
-
-
-requires_docker = pytest.mark.skipif(
-    not _docker_available(),
-    reason="Docker daemon not available",
-)
-
-
-def wait_until(condition, timeout=10.0, interval=0.2):
+def wait_until(
+    condition: "Any",
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> bool:
+    from typing import Any  # noqa: PLC0415
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -58,25 +44,19 @@ def wait_until(condition, timeout=10.0, interval=0.2):
 class TestConcurrentDaqOperations:
     """Server must serialize concurrent StartDaq requests."""
 
-    def test_concurrent_start_only_one_wins(self, session_fleet: Fleet) -> None:
+    def test_when_three_concurrent_starts_issued_then_exactly_one_wins(
+        self, session_fleet: Fleet
+    ) -> None:
         """Three simultaneous StartDaq calls: exactly one returns True."""
         fleet = session_fleet
-        
-        run_params = {
-            "data_dir": "/data",
-            "run_dir": "conc_run",
-            "module_id": [200]
-        }
-        docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-            "mkdir -p /data/conc_run && chmod 777 /data/conc_run"
-        )
-        
-        def attempt():
-            from panoseti_grpc.daq_control.client import DaqControlClient
-            client = DaqControlClient(host=fleet.daq_nodes[0].grpc_host, port=fleet.daq_nodes[0].grpc_port)
+
+        fleet.exec_in_node(0, "mkdir -p /data/conc_run && chmod 777 /data/conc_run")
+
+        def attempt() -> bool:
+            client = fleet.daq_control_client(0)
             try:
                 time.sleep(0.1)
-                return client.StartDaq(run_params)
+                return client.StartDaq(make_startdaq_params(fleet, 0, "conc_run"))
             except ValueError:
                 return False
             finally:
@@ -89,19 +69,17 @@ class TestConcurrentDaqOperations:
         successes = [r for r in results if r is True]
         assert len(successes) == 1
 
-    def test_concurrent_status_all_succeed(self, session_fleet: Fleet) -> None:
+    def test_when_ten_concurrent_status_calls_issued_then_all_succeed(
+        self, session_fleet: Fleet
+    ) -> None:
         """Ten concurrent StatusDaq calls while hashpipe is running → all succeed."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
-        run_params = {"data_dir": "/data", "run_dir": "conc_status", "module_id": [200]}
-        docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-            "mkdir -p /data/conc_status && chmod 777 /data/conc_status"
-        )
-        client.StartDaq(run_params)
-        
-        def poll_status():
-            from panoseti_grpc.daq_control.client import DaqControlClient
-            c = DaqControlClient(host=fleet.daq_nodes[0].grpc_host, port=fleet.daq_nodes[0].grpc_port)
+        fleet.exec_in_node(0, "mkdir -p /data/conc_status && chmod 777 /data/conc_status")
+        client.StartDaq(make_startdaq_params(fleet, 0, "conc_status"))
+
+        def poll_status() -> bool:
+            c = fleet.daq_control_client(0)
             ok, _ = c.StatusDaq({"data_dir": "/data"})
             c.close()
             return ok
@@ -111,73 +89,67 @@ class TestConcurrentDaqOperations:
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
 
         assert all(results)
+        client.close()
 
-    def test_cleanup_blocked_while_running_then_succeeds(self, session_fleet: Fleet) -> None:
-        """CleanupData is blocked while hashpipe is running."""
+    def test_when_cleanup_called_while_running_then_blocked_then_succeeds_after_stop(
+        self, session_fleet: Fleet
+    ) -> None:
+        """CleanupData is blocked while hashpipe runs; succeeds after StopDaq."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
-        run_params = {"data_dir": "/data", "run_dir": "cleanup_block", "module_id": [200]}
-        docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-            "mkdir -p /data/cleanup_block && chmod 777 /data/cleanup_block"
-        )
-        client.StartDaq(run_params)
-        
-        # Use parity scenario for blocked cleanup
-        # First set the last exception on the fleet object if parity expects it
-        # Actually, the built-in parity scenario expects it on the fleet object.
-        
+        fleet.exec_in_node(0, "mkdir -p /data/cleanup_block && chmod 777 /data/cleanup_block")
+        client.StartDaq(make_startdaq_params(fleet, 0, "cleanup_block"))
+
         from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
-        try:
-            client.CleanupData({
-                "data_dir": "/data",
-                "run_dir": "cleanup_block",
-                "module_id": [200]
-            })
-        except FailedPreconditionError as e:
-            fleet._last_cleanup_exc = e
-        
-        from ci.software_only_v2.infra.parity import run_scenario
-        run_scenario("cleanup_blocked_while_hashpipe_running", fleet=fleet, node_index=0)
-        
-        # After stop, cleanup should succeed
-        client.StopDaq({"data_dir": "/data", "run_dir": "cleanup_block"})
-        
-        # Wait for stop
-        def check_stopped():
-            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
-            return s["hashpipe_running"] is False
-        assert wait_until(check_stopped)
-        
-        res = client.CleanupData({
+        node_cfg = fleet.live_daq_config.daq_nodes[0]
+        cleanup_params = {
             "data_dir": "/data",
             "run_dir": "cleanup_block",
-            "module_id": [200]
-        })
+            "module_id": list(node_cfg.module_ids),
+        }
+        try:
+            client.CleanupData(cleanup_params)
+        except FailedPreconditionError as exc:
+            fleet._last_cleanup_exc = exc  # type: ignore[attr-defined]
+
+        from ci.software_only_v2.infra.parity import run_scenario
+        run_scenario("cleanup_blocked_while_hashpipe_running", fleet=fleet, node_index=0)
+
+        client.StopDaq({"data_dir": "/data", "run_dir": "cleanup_block"})
+
+        def check_stopped() -> bool:
+            _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+            return not bool(s["hashpipe_running"])
+
+        assert wait_until(check_stopped)
+
+        res = client.CleanupData(cleanup_params)
         assert res["success"] is True
         client.close()
 
-    def test_rapid_start_stop_cycles(self, session_fleet: Fleet) -> None:
-        """Five rapid Start→Stop cycles complete."""
+    def test_when_rapid_start_stop_cycles_repeated_then_all_complete(
+        self, session_fleet: Fleet
+    ) -> None:
+        """Three rapid Start→Stop cycles all complete cleanly."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
         for i in range(3):
             run_dir = f"rapid_{i}"
-            run_params = {"data_dir": "/data", "run_dir": run_dir, "module_id": [200]}
-            docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-                f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}"
-            )
-            
-            assert client.StartDaq(run_params) is True
-            
-            def check_running():
+            fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
+
+            assert client.StartDaq(make_startdaq_params(fleet, 0, run_dir)) is True
+
+            def check_running() -> bool:
                 _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
-                return s["hashpipe_running"] is True
+                return bool(s["hashpipe_running"])
+
             assert wait_until(check_running)
-            
+
             assert client.StopDaq({"data_dir": "/data", "run_dir": run_dir}) is True
-            
-            def check_stopped():
+
+            def check_stopped() -> bool:
                 _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
-                return s["hashpipe_running"] is False
+                return not bool(s["hashpipe_running"])
+
             assert wait_until(check_stopped)
         client.close()

@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_fleet_spec.py — Unit tests for the FleetSpec DSL and Topology synthesis.
 

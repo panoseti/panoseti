@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_config_logic.py — Cross-config invariant tests for GlobalConfigValidator.
 

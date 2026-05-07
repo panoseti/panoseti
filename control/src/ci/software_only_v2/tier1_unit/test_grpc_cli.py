@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_grpc_cli.py — Integration tests for the 'pseti grpc' command group.
 

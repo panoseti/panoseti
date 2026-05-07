@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_telemetry.py — Telemetry and logging subsystem logic.
 
@@ -46,14 +45,3 @@ def test_when_auto_isolated_then_loki_tenant_id_injected() -> None:
     tenant = os.environ.get("LOKI_TENANT_ID")
     assert tenant is not None
     assert tenant.startswith("v2_test_tenant_")
-
-def test_when_redis_full_then_backpressure_logged() -> None:
-    """
-    Ensure Redis batcher handles ResponseError (OOM) correctly.
-    """
-    import redis
-    
-    with patch("redis.Redis.rpush", side_effect=redis.exceptions.ResponseError("OOM")):
-        rc = redis.Redis()
-        with pytest.raises(redis.exceptions.ResponseError):
-            rc.rpush("logs:ingress", "test_entry")

@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_daq_lifecycle.py — Integration tests for DAQ Start/Stop/Status.
 
@@ -8,32 +7,22 @@ Ported from ci/software_only/tier3_fleet/test_daq_lifecycle.py.
 from __future__ import annotations
 
 import time
+
 import pytest
-import docker
 
 from ci.software_only_v2.infra.spec import FleetSpec, GatewaySpec
-from ci.software_only_v2.infra.workspace import Workspace
 from ci.software_only_v2.orchestrator.fleet import Fleet
+from ci.software_only_v2.tier3_fleet.conftest import make_startdaq_params, requires_docker
 
 pytestmark = pytest.mark.tier3
 
 
-def _docker_available() -> bool:
-    try:
-        import docker
-        docker.from_env(timeout=5).ping()
-        return True
-    except Exception:
-        return False
-
-
-requires_docker = pytest.mark.skipif(
-    not _docker_available(),
-    reason="Docker daemon not available",
-)
-
-
-def wait_until(condition, timeout=10.0, interval=0.2):
+def wait_until(
+    condition: "Any",
+    timeout: float = 10.0,
+    interval: float = 0.2,
+) -> bool:
+    from typing import Any  # noqa: PLC0415
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -56,7 +45,7 @@ SPEC_LIFECYCLE = (
         ip="192.168.0.20",
         modules=[201],
         gateway=GatewaySpec(ip="10.200.146.13", grpc_port=50051),
-        bindhost="lo"
+        bindhost="lo",
     )
 )
 
@@ -71,56 +60,47 @@ class TestDaqLifecycle:
     """Full Start → Status (running) → double-start rejected → Stop → Status (stopped)."""
 
     @pytest.mark.parametrize("node_index", [0, 1])
-    def test_daq_lifecycle_full(self, session_fleet: Fleet, node_index: int) -> None:
+    def test_when_daq_started_then_lifecycle_completes_cleanly(
+        self, session_fleet: Fleet, node_index: int
+    ) -> None:
+        """Start → status shows running → double-start rejected → stop → status shows stopped."""
         fleet = session_fleet
-        topology = fleet.workspace.topology
         client = fleet.daq_control_client(node_index)
+        run_dir = f"run_node_{node_index}"
 
-        run_params = {
-            "data_dir": "/data",
-            "run_dir": f"run_node_{node_index}",
-            "module_id": list(topology.daq.daq_nodes[node_index].module_ids)
-        }
+        fleet.exec_in_node(node_index, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
 
-        # Prepare dir in container
-        docker.from_env().containers.get(fleet.daq_nodes[node_index].name).exec_run(
-            f"mkdir -p /data/{run_params['run_dir']} && chmod 777 /data/{run_params['run_dir']}"
-        )
-
-        # 1. Start
-        ok = client.StartDaq(run_params)
+        ok = client.StartDaq(make_startdaq_params(fleet, node_index, run_dir))
         assert ok is True
 
-        # 2. Status shows running
-        def check_running():
+        def check_running() -> bool:
             _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
-            return s["hashpipe_running"] is True
+            return bool(s["hashpipe_running"])
+
         assert wait_until(check_running), "Hashpipe did not start"
 
-        # 3. Double-start rejected
         with pytest.raises(ValueError):
-            client.StartDaq(run_params)
+            client.StartDaq(make_startdaq_params(fleet, node_index, run_dir))
 
-        # 4. Stop
-        ok = client.StopDaq({"data_dir": "/data", "run_dir": run_params["run_dir"]})
+        ok = client.StopDaq({"data_dir": "/data", "run_dir": run_dir})
         assert ok is True
 
-        # 5. Status shows stopped
-        def check_stopped():
+        def check_stopped() -> bool:
             _, s = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
-            return s["hashpipe_running"] is False
+            return not bool(s["hashpipe_running"])
+
         assert wait_until(check_stopped), "Hashpipe did not stop"
 
-        # 6. Stop idempotent
-        ok = client.StopDaq({"data_dir": "/data", "run_dir": run_params["run_dir"]})
-        assert ok is True
+        ok = client.StopDaq({"data_dir": "/data", "run_dir": run_dir})
+        assert ok is True  # idempotent
 
         client.close()
 
-    def test_daq_disk_usage(self, session_fleet: Fleet) -> None:
-        """StatusDaq returns plausible disk usage."""
-        fleet = session_fleet
-        client = fleet.daq_control_client(0)
+    def test_when_status_includes_disk_then_usage_is_plausible(
+        self, session_fleet: Fleet
+    ) -> None:
+        """StatusDaq with check_disk_usage=True returns non-zero total_disk_space."""
+        client = session_fleet.daq_control_client(0)
         ok, status = client.StatusDaq({"data_dir": "/data", "check_disk_usage": True})
         assert ok
         du = status.get("disk_usage", {})
@@ -128,20 +108,16 @@ class TestDaqLifecycle:
         assert du.get("free_disk_space", 0) >= 0
         client.close()
 
-    def test_run_dir_appears_in_status(self, session_fleet: Fleet) -> None:
-        """After StartDaq, the run_dir appears in StatusDaq run_dirs list."""
+    def test_when_run_started_then_run_dir_appears_in_status(
+        self, session_fleet: Fleet
+    ) -> None:
+        """After StartDaq, the run_dir appears in the StatusDaq run_dirs list."""
         fleet = session_fleet
         client = fleet.daq_control_client(0)
         run_dir = "status_test_run"
-        run_params = {
-            "data_dir": "/data",
-            "run_dir": run_dir,
-            "module_id": [200]
-        }
-        docker.from_env().containers.get(fleet.daq_nodes[0].name).exec_run(
-            f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}"
-        )
-        client.StartDaq(run_params)
+
+        fleet.exec_in_node(0, f"mkdir -p /data/{run_dir} && chmod 777 /data/{run_dir}")
+        client.StartDaq(make_startdaq_params(fleet, 0, run_dir))
 
         ok, status = client.StatusDaq({"data_dir": "/data", "check_run_dirs": True})
         assert ok

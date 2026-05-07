@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_status_quabo_report.py — Quabo reachability status reporting.
 

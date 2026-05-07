@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_ledger.py — RunStateManager locking and ledger transition tests.
 

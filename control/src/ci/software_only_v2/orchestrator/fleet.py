@@ -69,6 +69,10 @@ class Fleet:
         self.workspace = workspace
         self._headnode_command = headnode_command
         self._healthcheck_timeout = healthcheck_timeout
+        # Per-instance UUID prevents container name collisions when multiple
+        # Fleet objects are created in the same pytest session (e.g. test_smoke.py
+        # creates one Fleet per test function).
+        self._instance_uuid = uuid.uuid4().hex[:8]
 
         self._network: SharedNetwork | None = None
         self._headnode_container: HeadnodeContainer | None = None
@@ -115,7 +119,9 @@ class Fleet:
     def start(self) -> "Fleet":
         """Create and start all containers; patch DaqConfig with live ports."""
         setup_docker_host()
-        tc_id = os.environ.get("TC_SESSION_ID", "solo")
+        # Combine session ID with per-instance UUID so parallel sessions AND
+        # multiple Fleet objects within the same session get unique names.
+        tc_id = f"{os.environ.get('TC_SESSION_ID', 'solo')}-{self._instance_uuid}"
         subnet = placeholder_subnet()
 
         # 1. Shared Docker network
@@ -244,6 +250,23 @@ class Fleet:
     # ------------------------------------------------------------------
     # Client factories
     # ------------------------------------------------------------------
+
+    def exec_in_node(self, node_index: int, cmd: str) -> tuple[int, str]:
+        """Run a shell command inside the DAQ node container at node_index.
+
+        Args:
+            node_index: Index of the DAQ node container.
+            cmd: Shell command string to execute.
+
+        Returns:
+            (exit_code, output) tuple.
+        """
+        import docker as _docker  # noqa: PLC0415
+        sim = self._daqnode_containers[node_index]
+        result = _docker.from_env().containers.get(sim.name).exec_run(
+            f"bash -c '{cmd}'"
+        )
+        return result.exit_code, (result.output or b"").decode("utf-8", errors="replace")
 
     def daq_control_client(self, node_index: int) -> Any:
         """Return a connected DaqControlClient for the given DAQ node index."""

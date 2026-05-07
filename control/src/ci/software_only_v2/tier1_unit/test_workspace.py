@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_workspace.py — Unit tests for the pseti_workspace fixture.
 

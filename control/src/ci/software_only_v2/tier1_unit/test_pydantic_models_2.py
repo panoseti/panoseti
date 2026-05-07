@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_pydantic_models_2.py
 

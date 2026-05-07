@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_stop_ledger_guard.py — Ledger-based stop validation.
 

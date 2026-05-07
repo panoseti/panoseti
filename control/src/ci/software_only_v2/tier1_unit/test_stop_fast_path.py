@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_stop_fast_path.py
 

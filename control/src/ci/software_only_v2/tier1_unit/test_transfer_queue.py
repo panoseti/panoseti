@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 """
 test_transfer_queue.py
 
