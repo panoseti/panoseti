@@ -21,7 +21,7 @@ from typing import ClassVar
 
 import pytest
 
-from ci.software_only.tier1_unit.conftest import _minimal_maroc_config
+from ci.software_only_v2.tier1_unit.conftest import _minimal_maroc_config
 from control.driver.quabo_driver import (
     ACQ_IMAGE,
     ACQ_IMAGE_8BIT,

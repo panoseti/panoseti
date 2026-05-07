@@ -281,3 +281,100 @@ def _config_validator_passes(topology: Any) -> None:
     assert validator.validate_all_rules(), (
         "GlobalConfigValidator failed on topology — unexpected validation error"
     )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "session_fleet"),
+    v2_fixtures=("pseti_workspace", "session_fleet"),
+    scenario="fleet_boot_and_healthy",
+    description="All DAQ nodes in a fleet boot and pass gRPC health checks",
+)
+def _fleet_boot_and_healthy(fleet: Any) -> None:
+    """Assert every DAQ node in the fleet is alive and gRPC-healthy."""
+    for i in range(len(fleet.daq_nodes)):
+        client = fleet.daq_control_client(i)
+        resp = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": False})
+        assert resp is not None, f"DAQ node {i} health check returned None"
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "session_fleet"),
+    v2_fixtures=("pseti_workspace", "session_fleet"),
+    scenario="grpc_status_returns_idle",
+    description="StatusDaq RPC returns idle (hashpipe_pid==0) on a freshly booted node",
+)
+def _grpc_status_returns_idle(fleet: Any, node_index: int = 0) -> None:
+    """Assert freshly-booted DAQ node reports no running hashpipe process."""
+    client = fleet.daq_control_client(node_index)
+    resp = client.StatusDaq({"data_dir": "/data", "check_hashpipe_running": True})
+    assert resp.hashpipe_pid == 0, (
+        f"Expected hashpipe_pid=0 on idle node, got {resp.hashpipe_pid}"
+    )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "chaos_fleet"),
+    v2_fixtures=("pseti_workspace", "chaos_fleet"),
+    scenario="grpc_inject_unavailable",
+    description="gRPC proxy fault injection causes UnavailableError on client calls",
+)
+def _grpc_inject_unavailable(fleet: Any, node_index: int = 0) -> None:
+    """Assert that a gRPC call raised UnavailableError during the fault window.
+
+    The caller is responsible for setting up the fault; this function checks
+    the effect attribute set on the fleet object by the fault context manager.
+    """
+    from panoseti_grpc.grpc_utils.exceptions import UnavailableError
+    last_exc = getattr(fleet, "_last_grpc_exc", None)
+    assert isinstance(last_exc, UnavailableError), (
+        f"Expected UnavailableError during fault window, got: {last_exc!r}"
+    )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "chaos_fleet"),
+    v2_fixtures=("pseti_workspace", "chaos_fleet"),
+    scenario="process_kill_and_restart",
+    description="Killing the gRPC server process is detected and the process restarts",
+)
+def _process_kill_and_restart(fleet: Any, node_index: int = 0, timeout: int = 30) -> None:
+    """Assert the gRPC server on the given node is alive after a kill+restart cycle."""
+    alive = fleet.chaos.proc.wait_alive(
+        fleet.daq_nodes[node_index], "pseti-grpc", timeout=timeout
+    )
+    assert alive, (
+        f"gRPC server on node {node_index} did not restart within {timeout}s"
+    )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "session_fleet"),
+    v2_fixtures=("pseti_workspace", "session_fleet"),
+    scenario="data_collection_happy_path",
+    description="Start→record→stop cycle completes and ledger reaches RECORDING_ENDED",
+)
+def _data_collection_happy_path(probe: Any, expected_status: str = "RECORDING_ENDED") -> None:
+    """Assert ledger reaches expected_status after a full start+stop cycle."""
+    actual = probe.ledger_status()
+    assert actual == expected_status, (
+        f"Ledger status after happy-path run: expected {expected_status!r}, got {actual!r}"
+    )
+
+
+@parity_test(
+    v1_fixtures=("mock_workspace", "session_fleet"),
+    v2_fixtures=("pseti_workspace", "session_fleet"),
+    scenario="cleanup_blocked_while_hashpipe_running",
+    description="CleanupData RPC is rejected while hashpipe is still running",
+)
+def _cleanup_blocked_while_hashpipe_running(fleet: Any, node_index: int = 0) -> None:
+    """Assert that CleanupData raises an error while hashpipe is active.
+
+    The caller must have started hashpipe before invoking this assertion.
+    The assertion checks the fleet's recorded last RPC error.
+    """
+    from panoseti_grpc.grpc_utils.exceptions import FailedPreconditionError
+    last_exc = getattr(fleet, "_last_cleanup_exc", None)
+    assert isinstance(last_exc, FailedPreconditionError), (
+        f"Expected FailedPreconditionError when cleaning up active run, got: {last_exc!r}"
+    )

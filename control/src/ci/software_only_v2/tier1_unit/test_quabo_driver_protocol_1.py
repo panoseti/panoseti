@@ -20,7 +20,7 @@ import struct
 
 import pytest
 
-from ci.software_only.tier1_unit.conftest import _make_hk_packet, _parse_hk_field
+from ci.software_only_v2.tier1_unit.conftest import _make_hk_packet, _parse_hk_field
 from control.utils.config_file import get_boardloc, ip_addr_to_module_id
 
 # ===========================================================================

@@ -105,12 +105,14 @@ class TestIntegrationDataCollection:
 
         # Cleanup must succeed after a copy
         for mid in params["module_id"]:
-            ok, msg = daq_control_node1.CleanupData({
+            result = daq_control_node1.CleanupData({
                 "data_dir": params["data_dir"],
                 "run_dir": params["run_dir"],
                 "module_id": [mid],
             })
-            assert ok, f"Cleanup failed for module {mid}: {msg}"
+            assert result.get("success", False), (
+                f"Cleanup failed for module {mid}: {result.get('message', '')}"
+            )
 
         # Data must be gone from the DAQ volume
         host_root = pathlib.Path(DAQ_DATA_DIR)
@@ -130,14 +132,15 @@ class TestIntegrationDataCollection:
 
         try:
             for mid in params["module_id"]:
-                ok, msg = daq_control_node1.CleanupData({
+                result = daq_control_node1.CleanupData({
                     "data_dir": params["data_dir"],
                     "run_dir": params["run_dir"],
                     "module_id": [mid],
                 })
-                assert not ok, (
+                assert not result.get("success", True), (
                     f"Expected cleanup to be refused while hashpipe is running (module {mid})"
                 )
+                msg = result.get("message", "")
                 assert "alive" in msg.lower() or "running" in msg.lower(), (
                     f"Expected 'alive'/'running' in refusal message, got: {msg}"
                 )

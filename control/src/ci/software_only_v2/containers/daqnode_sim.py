@@ -22,16 +22,18 @@ _DAQNODE_SIM_IMAGE = os.environ.get("PSETI_TEST_RUNNER_IMAGE", "pseti-test-runne
 
 
 def _find_grpc_src() -> pathlib.Path:
-    # On the host the repo root is 6 levels up from this file's location.
-    # Inside the container the path is shallower, so guard against IndexError.
+    # Repo root is 5 levels up: containers/ → software_only_v2/ → ci/ → src/ → control/ → repo_root/
     try:
-        host_path = pathlib.Path(__file__).parents[6] / "grpc" / "src" / "panoseti_grpc"
-        if host_path.exists():
+        host_path = pathlib.Path(__file__).parents[5] / "grpc" / "src" / "panoseti_grpc"
+        if (host_path / "__init__.py").exists():
             return host_path.resolve()
     except IndexError:
         pass
-    # Fallback: standard container mount point (present whether bind-mounted or COPY'd)
-    return pathlib.Path("/grpc/src/panoseti_grpc").resolve()
+    # Fallback: standard container path — only valid if non-empty (has __init__.py)
+    fallback = pathlib.Path("/grpc/src/panoseti_grpc")
+    if (fallback / "__init__.py").exists():
+        return fallback.resolve()
+    return fallback
 
 
 # grpc source on the host — volume-mounted so edits are visible immediately
@@ -79,8 +81,10 @@ class DaqNodeSimContainer(PsetiContainer):
         # Data directory
         self._env("DATA_DIR", self._data_dir)
 
-        # Mount live grpc source if it exists on the host (dev convenience)
-        if _GRPC_SRC.exists():
+        # Mount live grpc source only if the host path is a valid Python package.
+        # Checking __init__.py prevents mounting a stale empty directory that
+        # would shadow the COPY'd source inside the image.
+        if (_GRPC_SRC / "__init__.py").exists():
             self._volume(str(_GRPC_SRC), "/grpc/src/panoseti_grpc", "rw")
             self._env("PYTHONPATH", "/grpc/src")
 

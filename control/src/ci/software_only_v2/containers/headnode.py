@@ -19,13 +19,18 @@ _HEADNODE_IMAGE = os.environ.get("PSETI_TEST_RUNNER_IMAGE", "pseti-test-runner:l
 
 
 def _find_grpc_src() -> pathlib.Path:
+    # Repo root is 5 levels up: containers/ → software_only_v2/ → ci/ → src/ → control/ → repo_root/
     try:
-        host_path = pathlib.Path(__file__).parents[6] / "grpc" / "src" / "panoseti_grpc"
-        if host_path.exists():
+        host_path = pathlib.Path(__file__).parents[5] / "grpc" / "src" / "panoseti_grpc"
+        if (host_path / "__init__.py").exists():
             return host_path.resolve()
     except IndexError:
         pass
-    return pathlib.Path("/grpc/src/panoseti_grpc").resolve()
+    # Fallback: standard container path — only valid if non-empty (has __init__.py)
+    fallback = pathlib.Path("/grpc/src/panoseti_grpc")
+    if (fallback / "__init__.py").exists():
+        return fallback.resolve()
+    return fallback
 
 
 _GRPC_SRC = _find_grpc_src()
@@ -79,7 +84,7 @@ class HeadnodeContainer(PsetiContainer):
             self._volume(str(self._state_dir), "/app/state", "rw")
             self._env("PSETI_STATE", "/app/state")
 
-        if _GRPC_SRC.exists():
+        if (_GRPC_SRC / "__init__.py").exists():
             self._volume(str(_GRPC_SRC), "/grpc/src/panoseti_grpc", "rw")
             self._env("PYTHONPATH", "/grpc/src")
 

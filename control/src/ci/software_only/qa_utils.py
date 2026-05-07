@@ -80,6 +80,7 @@ class TestRunner:
         
         self.no_teardown = False
         self.no_build = False
+        self.dev_mode = False
         self.container_tool = "docker"
         self.default_parallel = self.cfg.settings.get("default_parallel", 4)
         self.project_prefix = self.cfg.settings.get("project_prefix", "pseti")
@@ -227,23 +228,34 @@ class TestRunner:
         env_path.write_text(base_content + "\n".join(env_content) + "\n")
         return env_path, expanded_env
 
+    def _dev_overlay_flag(self, compose_file: str) -> str:
+        """Returns '-f {dev_file}' if dev_mode is on and the .dev.yml overlay exists."""
+        if not self.dev_mode:
+            return ""
+        stem = compose_file.removesuffix(".yml")
+        dev_path = CI_ROOT / f"{stem}.dev.yml"
+        if dev_path.exists():
+            return f" -f {dev_path}"
+        return ""
+
     async def _setup_docker(self, suite: SuiteConfig, project_name: str):
         self._header(f"SETUP: {suite.name.upper()}")
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
-        
+
         compose_file = suite.compose_file
         if not compose_file and suite.environment:
             env_cfg = self.cfg.environments.get(suite.environment)
             if env_cfg:
                 compose_file = env_cfg.compose_file
-        
+
         if not compose_file:
              from rich.console import Console
              Console().print(f"[red]Error: No compose file defined for suite {suite.name}[/red]")
              sys.exit(1)
 
         build_flag = " --no-build" if self.no_build else ""
-        
+        dev_flag = self._dev_overlay_flag(compose_file)
+
         # Dynamic env templating
         env_file, expanded_env = self._generate_dynamic_env(suite)
         self._temp_envs[suite.name] = (env_file, expanded_env)
@@ -252,8 +264,11 @@ class TestRunner:
         full_env = os.environ.copy()
         full_env.update(expanded_env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
+        if self.dev_mode:
+            full_env.setdefault("LOCAL_UID", str(os.getuid()))
+            full_env.setdefault("LOCAL_GID", str(os.getgid()))
 
-        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file} {profile_str} up -d{build_flag}"
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} up -d{build_flag}"
         res = await self._run_cmd(cmd, env=full_env)
         if not res.ok:
             from rich.console import Console
@@ -271,13 +286,13 @@ class TestRunner:
         if not quiet:
             self._header(f"TEARDOWN: {suite.name.upper()}")
         profile_str = " ".join([f"--profile {p}" for p in suite.profiles])
-        
+
         compose_file = suite.compose_file
         if not compose_file and suite.environment:
             env_cfg = self.cfg.environments.get(suite.environment)
             if env_cfg:
                 compose_file = env_cfg.compose_file
-        
+
         if not compose_file:
             return
 
@@ -287,12 +302,14 @@ class TestRunner:
         else:
             env_file, expanded_env = ENV_CI_PATH, suite.env
 
+        dev_flag = self._dev_overlay_flag(compose_file)
+
         # Merge suite env into process env for compose down
         full_env = os.environ.copy()
         full_env.update(expanded_env)
         full_env["COMPOSE_PROJECT_NAME"] = project_name
 
-        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file} {profile_str} down -v --remove-orphans"
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} down -v --remove-orphans"
         await self._run_cmd(cmd, env=full_env, quiet=quiet)
 
     async def _run_test_suite(self, suite: SuiteConfig, project_name: str, jobs: int | None, extra_args: list[str] | None) -> list[Result]:
@@ -317,8 +334,9 @@ class TestRunner:
         
         if not suite.requires_docker:
             # Host-based execution (testcontainers)
-            # Use the project root as CWD so paths in configs resolve correctly
-            cmd = f"pytest {CI_ROOT / suite.test_dir} -v --color=no"
+            # Use sys.executable so pytest resolves to the same venv that is
+            # running the orchestrator, regardless of PATH / uv activation state.
+            cmd = f"{sys.executable} -m pytest {CI_ROOT / suite.test_dir} -v --color=no"
             if suite.parallel:
                 cmd += f" -n {p}"
             if args_str:
@@ -345,7 +363,8 @@ class TestRunner:
             if env_cfg:
                 compose_file = env_cfg.compose_file
 
-        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
+        dev_flag = self._dev_overlay_flag(compose_file)
+        cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} exec -T {env_str} {suite.service} {pytest_cmd}"
         res = await self._stream(f"test.{suite.name}", cmd, lock, env={"COMPOSE_PROJECT_NAME": project_name})
         return [res]
 
@@ -367,8 +386,10 @@ class TestRunner:
         else:
             env_file, _ = ENV_CI_PATH, suite.env
 
+        dev_flag = self._dev_overlay_flag(compose_file)
+
         async def run_task(name: str, task_cmd: str):
-            cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
+            cmd = f"{self.container_tool} compose --env-file {env_file} -f {CI_ROOT}/{compose_file}{dev_flag} {profile_str} exec -T {suite.service} {task_cmd} {extra_str}"
             print(f"lint {cmd=}")
             tag_text = f"[{name}] "
             return await self._stream(f"lint.{name}", cmd, lock, tag=tag_text, env={"COMPOSE_PROJECT_NAME": project_name})

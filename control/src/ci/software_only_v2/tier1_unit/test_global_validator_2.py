@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ci.software_only.tier1_unit.conftest import _make_validator
+from ci.software_only_v2.tier1_unit.conftest import _make_validator
 from control.utils.pydantic_config_models import QuaboUids
 
 # ===========================================================================
