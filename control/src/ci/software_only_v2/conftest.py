@@ -16,7 +16,8 @@ import pytest
 
 pytest_plugins = [
     "ci.software_only_v2.fixtures.workspace",
-    # corpus, state_probe, clients, fleet, chaos — added in later phases
+    "ci.software_only_v2.fixtures.fleet",
+    # corpus, state_probe, clients, chaos — added in later phases
 ]
 
 
