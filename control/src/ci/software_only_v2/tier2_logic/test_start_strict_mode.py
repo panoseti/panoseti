@@ -10,15 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ci.software_only_v2.infra.spec import FleetSpec
+from ci.software_only_v2.infra.workspace import Workspace
 from control.start import (
     StartTransaction,
     _check_no_remote_hashpipe,
     _resolve_strict_mode,
 )
 from control.utils.run_state import RunStateManager, ValidationError
-from ci.software_only_v2.infra.spec import FleetSpec
-from ci.software_only_v2.infra.workspace import Workspace
-
 
 # ---------------------------------------------------------------------------
 # _resolve_strict_mode

@@ -16,11 +16,9 @@ from __future__ import annotations
 
 import pytest
 
+from ci.software_only_v2.infra.spec import FleetSpec
 from control.topology.fleet import generate_palomar_topology
 from control.utils.global_validator import GlobalConfigValidator
-
-from ci.software_only_v2.infra.spec import FleetSpec
-
 
 # ---------------------------------------------------------------------------
 # Fixture
@@ -84,9 +82,18 @@ class TestModuleIdCollision:
     def test_fleetspec_two_modules_same_id_rejected(self) -> None:
         """Two modules with the same IP (same module_id) in different domes must fail validation."""
         from ipaddress import IPv4Address
+
         from control.utils.pydantic_config_models import (
-            DaqConfig, DaqNode, NetworkConfig, ObsConfig, ObsDomeConfig,
-            ObsModuleConfig, QuaboUidDome, QuaboUidEntry, QuaboUidModule, QuaboUids,
+            DaqConfig,
+            DaqNode,
+            NetworkConfig,
+            ObsConfig,
+            ObsDomeConfig,
+            ObsModuleConfig,
+            QuaboUidDome,
+            QuaboUidEntry,
+            QuaboUidModule,
+            QuaboUids,
         )
         shared_ip = IPv4Address("192.168.3.32")
         obs = ObsConfig(
@@ -146,7 +153,6 @@ class TestDaqNodeOverlap:
 
     def test_fleetspec_no_overlap_by_construction(self) -> None:
         """FleetSpec.two_node_ci() topology must pass overlap validation."""
-        from control.utils.global_validator import validate_all
         # FleetSpec.build() calls validate_all() internally; if it returns a Topology,
         # it passed — no further assertion needed beyond the call not raising.
         t = FleetSpec.two_node_ci().build()
@@ -164,7 +170,12 @@ class TestFleetSpecTopologyInvariants:
     """Validate that FleetSpec-built topologies are clean by construction."""
 
     def test_minimal_unit_passes_validator(self) -> None:
-        from control.utils.pydantic_config_models import DaqConfig, NetworkConfig, ObsConfig, QuaboUids
+        from control.utils.pydantic_config_models import (
+            DaqConfig,
+            NetworkConfig,
+            ObsConfig,
+            QuaboUids,
+        )
         t = FleetSpec.minimal_unit().build()
         assert isinstance(t.obs, ObsConfig)
         assert isinstance(t.daq, DaqConfig)
@@ -187,8 +198,9 @@ class TestFleetSpecTopologyInvariants:
 
     def test_gateway_topology_network_routing_is_valid(self) -> None:
         """A FleetSpec with a gateway must pass network tunneling validation."""
-        from ci.software_only_v2.infra.spec import GatewaySpec
         import copy
+
+        from ci.software_only_v2.infra.spec import GatewaySpec
         spec = (
             FleetSpec(seed=42, name="gw_test")
             .with_headnode(ip="10.0.1.5")

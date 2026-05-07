@@ -9,9 +9,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-from unittest.mock import patch
 
-import pytest
 from panoseti_grpc.telemetry.logger import get_logger
 
 

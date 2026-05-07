@@ -16,8 +16,6 @@ Usage::
 from __future__ import annotations
 
 import os
-import pathlib
-import shutil
 import tempfile
 import uuid
 from ipaddress import IPv4Address
@@ -59,8 +57,8 @@ class Fleet:
 
     def __init__(
         self,
-        topology: "Topology",
-        workspace: "Workspace",
+        topology: Topology,
+        workspace: Workspace,
         *,
         headnode_command: str = "sleep infinity",
         healthcheck_timeout: float = 90.0,
@@ -87,10 +85,10 @@ class Fleet:
     @classmethod
     def from_topology(
         cls,
-        topology: "Topology",
-        workspace: "Workspace",
+        topology: Topology,
+        workspace: Workspace,
         **kwargs: Any,
-    ) -> "Fleet":
+    ) -> Fleet:
         """Build a Fleet from a Topology + Workspace without starting containers."""
         return cls(topology, workspace, **kwargs)
 
@@ -116,7 +114,7 @@ class Fleet:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def start(self) -> "Fleet":
+    def start(self) -> Fleet:
         """Create and start all containers; patch DaqConfig with live ports."""
         setup_docker_host()
         # Combine session ID with per-instance UUID so parallel sessions AND
@@ -165,7 +163,7 @@ class Fleet:
             self._daqnode_containers.append(sim)
 
         # 4. Start all containers (headnode first, then daq nodes)
-        all_containers: list[Any] = [self._headnode_container] + self._daqnode_containers  # type: ignore[list-item]
+        all_containers: list[Any] = [*self._headnode_container, self._daqnode_containers]  # type: ignore[list-item]
         start_all(all_containers)  # type: ignore[arg-type]
 
         # 5. Patch DaqConfig with live ports (Boot-and-Discover)
@@ -194,7 +192,7 @@ class Fleet:
     # Context manager
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "Fleet":
+    def __enter__(self) -> Fleet:
         return self.start()
 
     def __exit__(self, *_: Any) -> None:
@@ -242,7 +240,7 @@ class Fleet:
     # ------------------------------------------------------------------
 
     @property
-    def chaos(self) -> "Chaos":
+    def chaos(self) -> Chaos:
         """Fault-injection accessor for this fleet's containers."""
         from ci.software_only_v2.fixtures.chaos import Chaos
         return Chaos(self)
@@ -261,7 +259,7 @@ class Fleet:
         Returns:
             (exit_code, output) tuple.
         """
-        import docker as _docker  # noqa: PLC0415
+        import docker as _docker
         sim = self._daqnode_containers[node_index]
         result = _docker.from_env().containers.get(sim.name).exec_run(
             f"bash -c '{cmd}'"

@@ -1147,7 +1147,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "panoseti-grpc"
-version = "0.4.10"
+version = "0.4.11"
 source = { editable = "../grpc" }
 dependencies = [
     { name = "anyio" },

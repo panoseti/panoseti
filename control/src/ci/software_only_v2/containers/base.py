@@ -72,23 +72,23 @@ class PsetiContainer:
     # Fluent helpers (call from _configure())
     # ------------------------------------------------------------------
 
-    def _env(self, key: str, value: str) -> "PsetiContainer":
+    def _env(self, key: str, value: str) -> PsetiContainer:
         self._container.with_env(key, value)
         return self
 
-    def _volume(self, host_path: str, container_path: str, mode: str = "rw") -> "PsetiContainer":
+    def _volume(self, host_path: str, container_path: str, mode: str = "rw") -> PsetiContainer:
         self._container.with_volume_mapping(host_path, container_path, mode)
         return self
 
-    def _expose(self, port: int) -> "PsetiContainer":
+    def _expose(self, port: int) -> PsetiContainer:
         self._container.with_exposed_ports(port)
         return self
 
-    def _command(self, cmd: str) -> "PsetiContainer":
+    def _command(self, cmd: str) -> PsetiContainer:
         self._container.with_command(cmd)
         return self
 
-    def _kwargs(self, **kw: Any) -> "PsetiContainer":
+    def _kwargs(self, **kw: Any) -> PsetiContainer:
         self._container.with_kwargs(**kw)
         return self
 
@@ -96,7 +96,7 @@ class PsetiContainer:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def start(self) -> "PsetiContainer":
+    def start(self) -> PsetiContainer:
         self._container.start()
         self._mapped_grpc_port = self._discover_port(self._GRPC_PORT)
         self._host_ip = self._discover_host_ip()
@@ -190,7 +190,7 @@ class PsetiContainer:
     # Context-manager support
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "PsetiContainer":
+    def __enter__(self) -> PsetiContainer:
         return self.start()
 
     def __exit__(self, *_: Any) -> None:

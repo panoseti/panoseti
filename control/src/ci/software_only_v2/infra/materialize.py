@@ -11,7 +11,6 @@ import pathlib
 
 from ci.software_only_v2.infra.spec import Topology
 
-
 # Mapping of filename → Topology attribute name
 _CONFIG_FILES = {
     "obs_config.json":     "obs",

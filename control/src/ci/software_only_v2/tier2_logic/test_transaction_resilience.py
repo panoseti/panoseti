@@ -7,17 +7,15 @@ Ported from ci/software_only/tier2_logic/test_transaction_resilience.py.
 from __future__ import annotations
 
 import errno
-import os
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ci.software_only_v2.infra.workspace import Workspace
 from control.start import StartTransaction
 from control.stop import stop_run
-from control.utils import config_file
 from control.utils.run_state import RunStateLedger, RunStateManager, RunStatus
-from ci.software_only_v2.infra.workspace import Workspace
+
 
 @pytest.mark.asyncio
 async def test_start_rollback_continues_on_erofs_archival_failure(

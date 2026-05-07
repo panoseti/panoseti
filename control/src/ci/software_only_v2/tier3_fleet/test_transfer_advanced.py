@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only_v2.orchestrator.fleet import Fleet
 from ci.software_only_v2.tier3_fleet.conftest import requires_docker
 from ci.software_only_v2.tier3_fleet.transfer_testing_utils import (
     generate_mocked_run,
@@ -27,9 +28,7 @@ from control.transfer.daemon import _process_job, run_daemon
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.utils import config_file
-from control.utils.paths import PanoPaths
 from control.utils.run_state import RunStateManager, RunStatus
-from ci.software_only_v2.orchestrator.fleet import Fleet
 
 pytestmark = pytest.mark.tier3
 

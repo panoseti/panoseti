@@ -18,11 +18,9 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ci.software_only_v2.infra.workspace import Workspace
 from control.utils.pydantic_config_models import RunStateLedger, RunStatus
 from control.utils.run_state import LockError, RunStateManager
-
-from ci.software_only_v2.infra.workspace import Workspace
-
 
 # ---------------------------------------------------------------------------
 # Helpers

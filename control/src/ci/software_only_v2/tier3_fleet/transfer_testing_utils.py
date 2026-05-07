@@ -5,7 +5,6 @@ import asyncio
 import os
 import shutil
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 from panoseti_grpc.daq_control.client import AsyncDaqControlClient

@@ -22,7 +22,6 @@ from ci.software_only_v2.infra.workspace import Workspace
 from ci.software_only_v2.orchestrator.fleet import Fleet
 from ci.software_only_v2.tier3_fleet.conftest import requires_docker
 
-
 pytestmark = pytest.mark.tier3
 
 

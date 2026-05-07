@@ -12,7 +12,6 @@ import contextlib
 import os
 import pathlib
 
-
 # ---------------------------------------------------------------------------
 # Docker host auto-detection
 # ---------------------------------------------------------------------------
@@ -73,7 +72,7 @@ class SharedNetwork:
 # ---------------------------------------------------------------------------
 
 def worker_subnet_offset() -> int:
-    """Return an integer offset (0–63) derived from TC_SESSION_ID.
+    """Return an integer offset (0-63) derived from TC_SESSION_ID.
 
     Two xdist workers get different offsets so their quabo placeholder IPs
     don't collide.  Solo runs always return 0.

@@ -43,9 +43,8 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Internal registry
@@ -238,6 +237,7 @@ def _workspace_seven_config_files(config_dir: Any, expected_files: list[str]) ->
 def _ledger_starts_empty(state_dir: Any) -> None:
     """Assert RunStateManager reports no active run."""
     import pathlib
+
     from control.utils.run_state import RunStateManager
     mgr = RunStateManager(base_dir=pathlib.Path(state_dir))
     assert mgr.load_state() is None
@@ -266,6 +266,7 @@ def _two_node_start_stop(probe: Any, expected_status: str = "RECORDING_ENDED") -
 def _config_validator_passes(topology: Any) -> None:
     """Assert GlobalConfigValidator returns True for the given topology."""
     import copy
+
     from control.utils.global_validator import GlobalConfigValidator
 
     obs = topology.obs

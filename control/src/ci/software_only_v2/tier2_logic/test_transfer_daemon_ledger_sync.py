@@ -8,20 +8,19 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import pathlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ci.software_only_v2.infra.workspace import Workspace
 from control.transfer.daemon import run_daemon
 from control.transfer.lifecycle import MAX_ATTEMPTS
-from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.models import TransferJob
 from control.transfer.queue import TransferQueue
 from control.utils.paths import PanoPaths
-from control.utils.run_state import RunStateLedger, RunStatus, RunStateManager
-from ci.software_only_v2.infra.workspace import Workspace
+from control.utils.run_state import RunStateLedger, RunStateManager, RunStatus
 
 
 async def _run_daemon_until(
@@ -31,7 +30,7 @@ async def _run_daemon_until(
     poll_interval: float = 0.1,
 ) -> None:
     task = asyncio.create_task(run_daemon(poll_interval=poll_interval))
-    for i in range(timeout_iters):
+    for _i in range(timeout_iters):
         await asyncio.sleep(poll_interval)
         if done_pred():
             break

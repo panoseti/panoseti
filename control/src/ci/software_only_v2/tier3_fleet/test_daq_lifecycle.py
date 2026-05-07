@@ -7,6 +7,7 @@ Ported from ci/software_only/tier3_fleet/test_daq_lifecycle.py.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import pytest
 
@@ -18,11 +19,10 @@ pytestmark = pytest.mark.tier3
 
 
 def wait_until(
-    condition: "Any",
+    condition: Any,
     timeout: float = 10.0,
     interval: float = 0.2,
 ) -> bool:
-    from typing import Any  # noqa: PLC0415
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:

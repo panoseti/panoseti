@@ -8,23 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 import pathlib
 import tomllib
 import uuid
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ci.fixtures.rsync_fixtures import RsyncMock
+from ci.software_only_v2.infra.workspace import Workspace
 from control.transfer.daemon import _process_job
 from control.transfer.models import TransferJob, TransferNodeSpec
 from control.transfer.queue import TransferQueue
 from control.transfer.verify import verify_manifest
 from control.utils.pydantic_config_models import RunStateLedger
 from control.utils.run_state import RunStateManager
-from ci.software_only_v2.infra.workspace import Workspace
 
 # ---------------------------------------------------------------------------
 # Helpers

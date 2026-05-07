@@ -16,8 +16,7 @@ import pathlib
 import pytest
 
 from ci.software_only_v2.infra.spec import FleetSpec
-from ci.software_only_v2.infra.workspace import StateProbe, Workspace
-
+from ci.software_only_v2.infra.workspace import Workspace
 
 EXPECTED_CONFIG_FILES = {
     "obs_config.json",

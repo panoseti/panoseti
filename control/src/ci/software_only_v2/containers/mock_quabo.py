@@ -2,7 +2,7 @@
 containers/mock_quabo.py — MockQuabo container.
 
 Wraps the existing pseti-mock-quabo:latest image (built from
-ci/mock_quabo/Dockerfile).  Exposes UDP ports 60000–60003 for quabo
+ci/mock_quabo/Dockerfile).  Exposes UDP ports 60000-60003 for quabo
 command/HK traffic.  Requires NET_ADMIN to add IP aliases inside the
 container.
 """
@@ -23,7 +23,7 @@ class MockQuaboContainer(PsetiContainer):
     """A simulated Quabo module (4 UDP listeners per module IP).
 
     The mock server handles:
-    - UDP 60000–60003: command packets
+    - UDP 60000-60003: command packets
     - UDP 60002: housekeeping beacon (every ~3 s)
 
     Set ``hk_dest_ip`` to route HK packets to the head node's IP.

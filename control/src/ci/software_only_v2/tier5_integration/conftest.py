@@ -153,8 +153,8 @@ def t5_workspace(tmp_path_factory: pytest.TempPathFactory) -> Any:
     and materialize them to a tmp dir, then sets PSETI_* env vars for the
     duration of the session.
     """
-    from ci.software_only_v2.infra.spec import FleetSpec
     from ci.software_only_v2.infra.materialize import write_all
+    from ci.software_only_v2.infra.spec import FleetSpec
     from ci.software_only_v2.infra.workspace import StateProbe, Workspace
     from control.utils.paths import PanoPaths
 
@@ -361,7 +361,7 @@ def hashpipe_pcap_session(
 def ensure_clean_daq_state(
     daq_control_node1: Any,
     daq_control_node2: Any,
-) -> Generator[None, None, None]:
+) -> Generator[None]:
     """Ensure no hashpipe is running before and after each test."""
 
     def _stop_all() -> None:

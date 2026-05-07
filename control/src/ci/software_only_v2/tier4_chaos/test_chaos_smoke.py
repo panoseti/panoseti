@@ -17,7 +17,6 @@ from typing import Any
 import pytest
 
 from ci.software_only_v2.orchestrator.fleet import Fleet
-from ci.software_only_v2.fixtures.chaos import Chaos
 
 # Reuse shared Docker guard from the tier-level conftest
 from ci.software_only_v2.tier4_chaos.conftest import requires_docker
@@ -57,9 +56,8 @@ class TestGrpcProxy:
         proxy = session_fleet.chaos.grpc.proxy(client)
         proxy.set_mode("StatusDaq", "unavailable")
 
-        with proxy:
-            with pytest.raises(grpc.RpcError):
-                client.StatusDaq(_STATUS_PARAMS)
+        with proxy, pytest.raises(grpc.RpcError):
+            client.StatusDaq(_STATUS_PARAMS)
 
         # After context exit, restore() was called — original method is back
         try:

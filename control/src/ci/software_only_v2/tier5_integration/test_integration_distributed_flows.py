@@ -17,7 +17,6 @@ import pytest
 
 from ci.software_only_v2.tier5_integration.conftest import (
     DAQ_DATA_DIR,
-    DAQNODE1_HOST,
     GRPC_PORT,
     requires_compose_stack,
     wait_hashpipe_stopped,
@@ -115,11 +114,12 @@ async def test_distributed_run_all_nodes_halted_after_stop(
     daq_control_node2: Any,
 ) -> None:
     """stop_run() halts hashpipe on all nodes and advances ledger to RECORDING_ENDED."""
+    from panoseti_grpc.daq_control.client import DaqControlClient
+
     from control.start import start_run
     from control.stop import stop_run
     from control.utils import config_file
     from control.utils.run_state import RunStateManager, RunStatus
-    from panoseti_grpc.daq_control.client import DaqControlClient
 
     daq_cfg = config_file.get_daq_config()
     obs_cfg = config_file.get_obs_config()

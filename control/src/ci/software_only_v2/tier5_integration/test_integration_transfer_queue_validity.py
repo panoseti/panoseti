@@ -20,15 +20,14 @@ from unittest.mock import patch
 
 import pytest
 
-from ci.software_only_v2.tier5_integration.conftest import (
-    DAQ_DATA_DIR,
-    requires_compose_stack,
-)
 from ci.shared.transfer_helpers import (
     generate_integration_run,
     mocked_build_rsync_cmd,
     setup_isolated_integration_transfer_env,
     verify_integration_transfer_accuracy,
+)
+from ci.software_only_v2.tier5_integration.conftest import (
+    requires_compose_stack,
 )
 from control.transfer.daemon import run_daemon
 from control.utils.paths import PanoPaths
@@ -105,7 +104,7 @@ async def test_integration_transfer_queue_drain(
     daqnode_docker_container: Any,
 ) -> None:
     """Multiple runs queued while daemon is paused; daemon drains all to ARCHIVED."""
-    head_data_dir, daq_config = setup_isolated_integration_transfer_env(
+    _head_data_dir, daq_config = setup_isolated_integration_transfer_env(
         tmp_path, monkeypatch
     )
     mgr = RunStateManager()

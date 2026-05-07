@@ -24,7 +24,7 @@ Parametric (different topology)::
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(scope="session")
-def session_fleet(pseti_workspace_session: Workspace) -> Iterator["Fleet"]:
+def session_fleet(pseti_workspace_session: Workspace) -> Iterator[Fleet]:
     """Session-scoped Fleet: headnode + sim daqnodes, healthy before first test.
 
     The Fleet context manager starts all containers in start(), calls
@@ -44,7 +44,7 @@ def session_fleet(pseti_workspace_session: Workspace) -> Iterator["Fleet"]:
     """
     # Import deferred so testcontainers is not imported at module level;
     # tier1/2 tests can load this conftest plugin without Docker being present.
-    from ci.software_only_v2.orchestrator.fleet import Fleet  # noqa: PLC0415
+    from ci.software_only_v2.orchestrator.fleet import Fleet
 
     topology = pseti_workspace_session.topology
     workspace = pseti_workspace_session

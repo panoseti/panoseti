@@ -12,8 +12,8 @@ import pytest
 
 from ci.software_only_v2.infra.spec import FleetSpec, GatewaySpec, Topology
 from control.utils.pydantic_config_models import (
-    DaqConfig,
     DaemonConfig,
+    DaqConfig,
     DataConfig,
     FirmwareConfig,
     NetworkConfig,

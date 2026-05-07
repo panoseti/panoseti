@@ -8,19 +8,18 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from unittest.mock import MagicMock, patch
 
 import anyio
 import pytest
 
+from ci.software_only_v2.infra.spec import FleetSpec
+from ci.software_only_v2.infra.workspace import Workspace
 from control.start import (
     StartTransaction,
     _check_quabo_reachability,
 )
 from control.utils.run_state import RunStateManager, ValidationError
-from ci.software_only_v2.infra.spec import FleetSpec
-from ci.software_only_v2.infra.workspace import Workspace
 
 
 @pytest.fixture

@@ -7,14 +7,13 @@ Ported from ci/software_only/tier2_logic/test_pseti_commands.py.
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-from control.pseti import app
 from ci.software_only_v2.infra.workspace import Workspace
+from control.pseti import app
 
 
 @pytest.fixture

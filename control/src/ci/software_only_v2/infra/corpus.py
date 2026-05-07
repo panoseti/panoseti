@@ -22,6 +22,7 @@ Synthetic generation:
 
 from __future__ import annotations
 
+import contextlib
 import importlib.resources
 import io
 import os
@@ -30,22 +31,21 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Fixed-width JSON field widths for pypff.io2 compatibility.
 # Each integer value is right-aligned in a field of this many characters so
 # that byte offsets within the header are stable across all frames.
 # ---------------------------------------------------------------------------
 _HEADER_SIZE = 640   # total content bytes before \n\n (covers 4-quabo module)
-_QUABO_NUM_W = 2     # 0–3
+_QUABO_NUM_W = 2     # 0-3
 _PKT_NUM_W = 10      # up to 9,999,999,999
-_PKT_TAI_W = 6       # 0–1023
-_PKT_NSEC_W = 12     # nanoseconds (0–999,999,999)
+_PKT_TAI_W = 6       # 0-1023
+_PKT_NSEC_W = 12     # nanoseconds (0-999,999,999)
 _TV_SEC_W = 12       # Unix timestamp
-_TV_USEC_W = 8       # microseconds (0–999,999)
+_TV_USEC_W = 8       # microseconds (0-999,999)
 
-_IMG16_PIXELS = 1024  # 32 × 32
-_PH256_PIXELS = 256   # 16 × 16
+_IMG16_PIXELS = 1024  # 32 x 32
+_PH256_PIXELS = 256   # 16 x 16
 
 
 def _quabo_field_json(q: int, pkt_num: int, tv_sec: int, tv_usec: int) -> str:
@@ -106,12 +106,12 @@ def _default_corpus_root() -> pathlib.Path:
     try:
         pkg_ref = importlib.resources.files("panoseti_grpc.daq_data") / "simulated_data_dir"
         return pathlib.Path(str(pkg_ref))
-    except Exception:
+    except Exception as e:
         raise RuntimeError(
             "PFFCorpus: cannot locate simulated_data_dir. "
             "Install panoseti_grpc with 'pip install -e .[dev]' from the grpc/ directory, "
             "or set PSETI_V2_CORPUS_PATH to an existing PFF corpus directory."
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -201,10 +201,8 @@ class PFFCorpus:
         import json
         configs: dict[str, Any] = {}
         for path in self.run_dir.glob("*.json"):
-            try:
+            with contextlib.suppress(Exception):
                 configs[path.name] = json.loads(path.read_text())
-            except Exception:
-                pass
         return configs
 
     # ------------------------------------------------------------------
@@ -234,7 +232,7 @@ class PFFCorpus:
         pypff.io2.PanosetiRun can discover them via glob("*.pff").
 
         img16 payloads are written via panoseti_grpc.panoseti_util.pff.write_image_1D.
-        ph256 payloads are inlined (write_image_1D only supports 32×32 images).
+        ph256 payloads are inlined (write_image_1D only supports 32x32 images).
 
         Returns the run directory path.
         """
@@ -261,13 +259,13 @@ class PFFCorpus:
 
                     if dp in ("img16", "img8"):
                         buf.write(_img16_header(i, tv_sec, tv_usec))
-                        # pff.write_image_1D handles 32×32, bpp=2 (img16) or bpp=1 (img8)
+                        # pff.write_image_1D handles 32x32, bpp=2 (img16) or bpp=1 (img8)
                         bpp = 2 if dp == "img16" else 1
                         pff_util.write_image_1D(buf, _zero_img16, 32, bpp)
 
                     elif dp == "ph256":
                         buf.write(_ph256_header(i, tv_sec, tv_usec))
-                        # write_image_1D only supports 32×32; ph256 is 16×16
+                        # write_image_1D only supports 32x32; ph256 is 16x16
                         buf.write(b"*")
                         buf.write(_zero_ph256_bytes)
 

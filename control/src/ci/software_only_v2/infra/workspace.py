@@ -14,7 +14,6 @@ from typing import Any
 
 from ci.software_only_v2.infra.spec import Topology
 
-
 # ---------------------------------------------------------------------------
 # StateProbe — rebuilt on PanoPaths (no hard-coded env vars)
 # ---------------------------------------------------------------------------
@@ -55,8 +54,9 @@ class StateProbe:
 
     def any_pff_files(self, run_name: str, *, head: bool = True) -> bool:
         """Return True if at least one .pff file exists under the run directory."""
-        from control.utils.paths import PanoPaths
         import os
+
+        from control.utils.paths import PanoPaths
         base = pathlib.Path(os.environ.get("HEAD_DATA_DIR", str(PanoPaths.state_dir()))) if head \
             else pathlib.Path(os.environ.get("DAQ_DATA_DIR", "/data"))
         run_dir = base / run_name
@@ -152,6 +152,7 @@ class Workspace:
     def reload_configs(self) -> None:
         """Force config_file module to re-read from disk (after env changes)."""
         import importlib
+
         from control.utils import config_file
         importlib.reload(config_file)
 

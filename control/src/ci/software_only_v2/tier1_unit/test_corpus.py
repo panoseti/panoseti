@@ -44,7 +44,7 @@ class TestMakeSynthetic:
 
     def test_img16_files_present(self, synth_run: pathlib.Path) -> None:
         img16_files = list(synth_run.glob("*.dp_img16.*.pff"))
-        # One per module_id × one seqno
+        # One per module_id x one seqno
         assert len(img16_files) == 2, f"Expected 2 img16 files, got {img16_files}"
 
     def test_ph256_files_present(self, synth_run: pathlib.Path) -> None:
@@ -80,7 +80,7 @@ class TestMakeSynthetic:
 
     def test_pkt_num_byte_offset_stable_across_frames(self, synth_run: pathlib.Path) -> None:
         """pkt_num byte offset must be identical across all frames (required by pypff.io2)."""
-        from ci.software_only_v2.infra.corpus import _PKT_NUM_W, _HEADER_SIZE
+        from ci.software_only_v2.infra.corpus import _HEADER_SIZE, _PKT_NUM_W
 
         pff_file = sorted(synth_run.glob("*.dp_img16.*.pff"))[0]
         raw = pff_file.read_bytes()
@@ -118,10 +118,9 @@ class TestValidate:
 
     def test_validate_detects_non_monotone_pkt_num(self, tmp_path: pathlib.Path) -> None:
         """validate() must raise AssertionError when pkt_num decreases."""
-        from ci.software_only_v2.infra.corpus import (
-            PFFCorpus, _img16_header, _IMG16_PIXELS
-        )
         import struct
+
+        from ci.software_only_v2.infra.corpus import _IMG16_PIXELS, PFFCorpus, _img16_header
         pytest.importorskip("pypff", reason="pypff not installed")
 
         run_dir = tmp_path / "bad_run.pffd"

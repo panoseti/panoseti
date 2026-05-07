@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from control.pseti import app
 
+
 @pytest.fixture
 def runner():
     return CliRunner()

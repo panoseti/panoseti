@@ -49,7 +49,7 @@ class TelemetryStack:
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def start(self) -> "TelemetryStack":
+    def start(self) -> TelemetryStack:
         self._redis = DockerContainer(_REDIS_IMAGE)
         self._redis.with_name(f"{self._prefix}-redis")
         self._redis.with_exposed_ports(6379)
@@ -105,7 +105,7 @@ class TelemetryStack:
     # Context manager
     # ------------------------------------------------------------------
 
-    def __enter__(self) -> "TelemetryStack":
+    def __enter__(self) -> TelemetryStack:
         return self.start()
 
     def __exit__(self, *_: Any) -> None:

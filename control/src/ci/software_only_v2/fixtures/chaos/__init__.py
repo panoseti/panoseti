@@ -60,7 +60,7 @@ class NetemHandle:
         container: _ContainerArg,
         latency_ms: int,
         iface: str | None = None,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Add constant outbound latency for the block duration, then restore."""
         from ci.software_only_v2.fixtures.chaos import netem
         with netem.latency(_cname(container), latency_ms=latency_ms, iface=iface):
@@ -72,7 +72,7 @@ class NetemHandle:
         container: _ContainerArg,
         loss_pct: float,
         iface: str | None = None,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Add outbound packet loss for the block duration, then restore."""
         from ci.software_only_v2.fixtures.chaos import netem
         with netem.packet_loss(_cname(container), loss_pct=loss_pct, iface=iface):
@@ -114,7 +114,7 @@ class IptablesHandle:
         container: _ContainerArg,
         dst_ip: str,
         port: int | None = None,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Drop outbound traffic to dst_ip[:port] for the block duration."""
         from ci.software_only_v2.fixtures.chaos import iptables
         with iptables.blocked_egress(_cname(container), dst_ip=dst_ip, port=port):
@@ -150,7 +150,7 @@ class DiskHandle:
         container: _ContainerArg,
         mount_path: str,
         fill_pct: int = 99,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Fill mount_path to fill_pct% for the block, then release."""
         from ci.software_only_v2.fixtures.chaos import disk_chaos
         with disk_chaos.full_disk(_cname(container), mount_path=mount_path, fill_pct=fill_pct):
@@ -219,7 +219,7 @@ class ProcessHandle:
         self,
         container: _ContainerArg,
         process_name: str,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """SIGSTOP process_name for the block, then SIGCONT."""
         from ci.software_only_v2.fixtures.chaos import process_chaos
         with process_chaos.freeze_process(_cname(container), process_name=process_name):
@@ -232,7 +232,7 @@ class ProcessHandle:
         process_name: str,
         delay_s: float = 0.0,
         sig: str = "KILL",
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Kill process_name after delay_s seconds (context manager cancels if not fired)."""
         from ci.software_only_v2.fixtures.chaos import process_chaos
         with process_chaos.kill_after(
@@ -256,7 +256,7 @@ class GrpcHandle:
         method: str,
         mode: str,
         timeout_s: float = 30.0,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Inject a single-method fault for the block duration.
 
         Modes: "timeout", "unavailable", "slow_response",
@@ -279,7 +279,7 @@ class Chaos:
     strings) so tests stay readable without managing raw Docker names.
     """
 
-    def __init__(self, fleet: "Fleet") -> None:
+    def __init__(self, fleet: Fleet) -> None:
         self._fleet = fleet
         self._net = NetemHandle()
         self._iptables = IptablesHandle()
@@ -313,7 +313,7 @@ class Chaos:
         return self._grpc
 
     @property
-    def fleet(self) -> "Fleet":
+    def fleet(self) -> Fleet:
         """The Fleet this Chaos accessor is bound to."""
         return self._fleet
 

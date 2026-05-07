@@ -8,7 +8,6 @@ and partial failures using the v2 chaos tools.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -16,9 +15,9 @@ import anyio
 import grpc
 import pytest
 
+from ci.software_only_v2.fixtures.chaos import Chaos
 from ci.software_only_v2.infra.spec import FleetSpec
 from ci.software_only_v2.orchestrator.fleet import Fleet
-from ci.software_only_v2.fixtures.chaos import Chaos
 from ci.software_only_v2.tier4_chaos.conftest import requires_docker
 
 pytestmark = [pytest.mark.tier4, pytest.mark.tier3]

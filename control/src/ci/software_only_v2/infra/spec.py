@@ -21,7 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-
 # ---------------------------------------------------------------------------
 # Sub-dataclasses (components of the spec, not Pydantic)
 # ---------------------------------------------------------------------------
@@ -145,7 +144,7 @@ class FleetSpec:
     # Fluent builder methods
     # ------------------------------------------------------------------
 
-    def with_headnode(self, ip: str = "10.0.1.5", data_dir: str = "/data/head") -> "FleetSpec":
+    def with_headnode(self, ip: str = "10.0.1.5", data_dir: str = "/data/head") -> FleetSpec:
         self._headnode_ip = ip
         self._head_data_dir = data_dir
         return self
@@ -156,7 +155,7 @@ class FleetSpec:
         lat: float,
         lon: float,
         alt: float,
-    ) -> "FleetSpec":
+    ) -> FleetSpec:
         """Start a new dome context. Subsequent add_module() calls go here."""
         dome = _DomeSpec(name=name, lat=lat, lon=lon, alt=alt)
         self._domes.append(dome)
@@ -171,7 +170,7 @@ class FleetSpec:
         ip: str = "",
         mobo_serialno: str | None = None,
         wps: str | None = None,
-    ) -> "FleetSpec":
+    ) -> FleetSpec:
         """Add a module to the current dome context."""
         if self._current_dome is None:
             raise RuntimeError("Call add_dome() before add_module()")
@@ -196,7 +195,7 @@ class FleetSpec:
         data_dir: str = "/data",
         username: str = "panoseti",
         bindhost: str = "0.0.0.0",
-    ) -> "FleetSpec":
+    ) -> FleetSpec:
         self._daq_nodes.append(_DaqNodeSpec(
             ip=ip,
             module_ids=modules,
@@ -214,7 +213,7 @@ class FleetSpec:
         integration_time_usec: int = 1000,
         pe_threshold: float = 1.0,
         quabo_sample_size: int = 16,
-    ) -> "FleetSpec":
+    ) -> FleetSpec:
         self._data_spec = _DataSpec(
             run_type=run_type,
             overvoltage=overvoltage,
@@ -224,7 +223,7 @@ class FleetSpec:
         )
         return self
 
-    def with_firmware(self, qfp: str = "quabo_qfp_stub.bin", bga: str = "quabo_bga_stub.bin") -> "FleetSpec":
+    def with_firmware(self, qfp: str = "quabo_qfp_stub.bin", bga: str = "quabo_bga_stub.bin") -> FleetSpec:
         self._firmware_spec = _FirmwareSpec(qfp=qfp, bga=bga)
         return self
 
@@ -238,7 +237,7 @@ class FleetSpec:
     # ------------------------------------------------------------------
 
     @classmethod
-    def minimal_unit(cls) -> "FleetSpec":
+    def minimal_unit(cls) -> FleetSpec:
         """Single dome + one module + one DAQ node. Minimal topology that passes all validators."""
         return (
             cls(seed=0, name="minimal_unit", tier="tier1")
@@ -249,7 +248,7 @@ class FleetSpec:
         )
 
     @classmethod
-    def minimal_fleet(cls) -> "FleetSpec":
+    def minimal_fleet(cls) -> FleetSpec:
         """Single dome + one module + one DAQ node. Smallest valid fleet."""
         return (
             cls(seed=1, name="minimal_fleet", tier="tier3")
@@ -266,7 +265,7 @@ class FleetSpec:
         daq_prefix: str = "192.168.0",
         quabo_prefix: str = "192.168.3",
         tier: str = "tier3",
-    ) -> "FleetSpec":
+    ) -> FleetSpec:
         """Two-node CI fleet matching the static compose topology."""
         from control.utils.config_file import ip_addr_to_module_id
         mod1_ip = f"{quabo_prefix}.32"

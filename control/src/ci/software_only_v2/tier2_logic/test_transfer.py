@@ -7,19 +7,20 @@ Ported from ci/software_only/tier2_logic/test_transfer.py.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import pathlib
 import shutil
-import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ci.fixtures.mocks import MockDaqNode
-from control.transfer.daemon import _process_job, _sweep_stranded_jobs
-from control.transfer.queue import TransferQueue
-from control.transfer.models import TransferJob, TransferNodeSpec
-from control.utils.run_state import RunStateManager
 from ci.software_only_v2.infra.workspace import Workspace
+from control.transfer.daemon import _process_job, _sweep_stranded_jobs
+from control.transfer.models import TransferJob, TransferNodeSpec
+from control.transfer.queue import TransferQueue
+from control.utils.run_state import RunStateManager
+
 
 async def _mock_subprocess_ok(*args, **kwargs):
     dest = None

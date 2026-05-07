@@ -31,7 +31,6 @@ import importlib
 import os
 import pathlib
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 
@@ -65,8 +64,8 @@ def _setup_workspace(
         monkeypatch.setenv(key, str(path))
 
     # 2. Materialize all 7 config files into PSETI_CONFIG
-    from control.utils.paths import PanoPaths
     from ci.software_only_v2.infra.materialize import write_all
+    from control.utils.paths import PanoPaths
     write_all(topology, PanoPaths.config_dir())
 
     # 3. Create the state/ directory tree
@@ -138,9 +137,9 @@ def pseti_workspace_session(
 
     topology = spec.build()
 
-    from control.utils.paths import PanoPaths
     from ci.software_only_v2.infra.materialize import write_all
     from control.utils import config_file as _config_file_module
+    from control.utils.paths import PanoPaths
     write_all(topology, PanoPaths.config_dir())
     PanoPaths.ensure_state_dirs()
     importlib.reload(_config_file_module)

@@ -22,7 +22,7 @@ requires_docker = pytest.mark.skipif(
 
 
 def make_startdaq_params(
-    fleet: "Any",
+    fleet: Any,
     node_index: int,
     run_dir: str,
     *,

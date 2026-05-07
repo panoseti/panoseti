@@ -11,7 +11,7 @@ Each forwarding rule is a socat process:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ci.software_only_v2.containers.base import PsetiContainer
 

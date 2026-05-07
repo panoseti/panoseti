@@ -17,21 +17,21 @@ if TYPE_CHECKING:
     from ci.software_only_v2.containers.base import PsetiContainer
 
 
-def start_all(containers: list["PsetiContainer"]) -> None:
+def start_all(containers: list[PsetiContainer]) -> None:
     """Start each container in sequence.  Raises on the first failure."""
     for c in containers:
         c.start()
 
 
 def wait_all_healthy(
-    containers: list["PsetiContainer"],
+    containers: list[PsetiContainer],
     *,
     timeout: float = 90.0,
 ) -> None:
     """Wait until every container's gRPC port is READY.
 
     Each container is given the full remaining time budget, so the total
-    wall-clock time is at most ``timeout`` seconds (not N × timeout).
+    wall-clock time is at most ``timeout`` seconds (not N x timeout).
     """
     deadline = time.monotonic() + timeout
     for c in containers:
@@ -40,7 +40,7 @@ def wait_all_healthy(
 
 
 def tear_down_all(
-    containers: list["PsetiContainer"],
+    containers: list[PsetiContainer],
     *,
     temp_dirs: list[str] | None = None,
 ) -> None:

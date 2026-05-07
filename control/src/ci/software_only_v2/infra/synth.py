@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from ipaddress import IPv4Address
 
+from ci.software_only_v2.infra.spec import FleetSpec, Topology
 from control.topology.fleet import (
     generate_daemons_config,
     generate_data_config,
@@ -18,7 +19,6 @@ from control.topology.fleet import (
 from control.utils.pydantic_config_models import (
     DaqConfig,
     DaqNode,
-    FirmwareConfig,
     NetworkConfig,
     NetworkDaqNode,
     NetworkModule,
@@ -31,8 +31,6 @@ from control.utils.pydantic_config_models import (
     QuaboUidModule,
     QuaboUids,
 )
-
-from ci.software_only_v2.infra.spec import FleetSpec, Topology
 
 
 def realize(spec: FleetSpec) -> Topology:
