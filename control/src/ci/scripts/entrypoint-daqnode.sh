@@ -6,6 +6,11 @@ set -e
 DATA_DIR="${DAQ_DATA_DIR:-/data}"
 mkdir -p "${DATA_DIR}"
 cp /usr/local/lib/panoseti_hashpipe.so "${DATA_DIR}/hashpipe.so"
-chown -R panoseti:panoseti "${DATA_DIR}"
+
+TARGET_UID="${LOCAL_UID:-1000}"
+TARGET_GID="${LOCAL_GID:-1000}"
+
+chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}"
+chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}/hashpipe.so"
 
 exec /entrypoint.sh "$@"

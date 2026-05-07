@@ -3,10 +3,13 @@
 # delegate to entrypoint.sh for optional UID rewrite and exec gosu.
 set -e
 
+TARGET_UID="${LOCAL_UID:-1000}"
+TARGET_GID="${LOCAL_GID:-1000}"
+
 # Copy SSH keys from the bind-mounted host .ssh dir into the panoseti home dir.
 mkdir -p /home/panoseti/.ssh
 cp -rf /home/panoseti/.ssh-host/* /home/panoseti/.ssh/ 2>/dev/null || true
-chown -R panoseti:panoseti /home/panoseti/.ssh
+chown -R "${TARGET_UID}:${TARGET_GID}" /home/panoseti/.ssh
 chmod 700 /home/panoseti/.ssh
 find /home/panoseti/.ssh -type f -exec chmod 600 {} + 2>/dev/null || true
 
@@ -19,6 +22,6 @@ find /root/.ssh -type f -exec chmod 600 {} + 2>/dev/null || true
 # Ensure DAQ data directory exists and is owned by panoseti.
 DATA_DIR="${DAQ_DATA_DIR:-/mnt/panoseti-test/}"
 mkdir -p "${DATA_DIR}"
-chown panoseti:panoseti "${DATA_DIR}"
+chown "${TARGET_UID}:${TARGET_GID}" "${DATA_DIR}"
 
 exec /entrypoint.sh "$@"
